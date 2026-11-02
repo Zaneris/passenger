@@ -256,6 +256,12 @@ public sealed partial class ConsoleLinks : IHighlighter
                 }
             }
         }
+        else if (GodotFrame().Match(line, skip, line.Length - skip) is { Success: true } godot && Resolve(godot.Groups["path"].Value) is { } raised)
+        {
+            Group path = godot.Groups["path"];
+            Claim(found, new FoundLink(path.Index, godot.Groups["line"].Index + godot.Groups["line"].Length - path.Index,
+                new FileLink(raised, Position(godot.Groups["line"], null)) { CompiledLines = CSharp.ServerPlaces.CountedApart(raised) }));
+        }
         else if (Compiler().Match(line, skip, line.Length - skip) is { Success: true } message && Resolve(message.Groups["path"].Value, project: ProjectOf(line)) is { } source)
         {
             Group path = message.Groups["path"];
@@ -330,8 +336,13 @@ public sealed partial class ConsoleLinks : IHighlighter
         {
             return null;
         }
-        string relative = path;
-        if (path.StartsWith('/') && Paths() is { IsEmpty: false } map && map.ToHost(path) is { } host && Exists(host) is { } mapped)
+        // A Godot game's res:// path is its project's, which the folders given hold.
+        string relative = path.StartsWith(GodotResource, StringComparison.Ordinal) ? path[GodotResource.Length..] : path;
+        if (relative != path)
+        {
+            path = relative;
+        }
+        else if (path.StartsWith('/') && Paths() is { IsEmpty: false } map && map.ToHost(path) is { } host && Exists(host) is { } mapped)
         {
             return mapped;
         }
@@ -398,6 +409,14 @@ public sealed partial class ConsoleLinks : IHighlighter
     /// the method's closing parenthesis, so one with spaces (or " in ") is whole.</summary>
     [GeneratedRegex(@"^\s*at\s[^\r\n]*?\) in (?<path>[^\r\n]+?):line (?<line>\d{1,9})\b")]
     private static partial Regex Frame();
+
+    /// <summary>Where a Godot game's own files are named from, its project's folder.</summary>
+    private const string GodotResource = "res://";
+
+    /// <summary>The place a Godot game's error or warning was raised at, on the line after it: "   at: void Main._Process(double)
+    /// (res://Main.cs:19)", the function before the place in parentheses at the line's end.</summary>
+    [GeneratedRegex(@"^\s*at:\s[^\r\n]*\((?<path>[^()\r\n]+?):(?<line>\d{1,9})\)\s*$")]
+    private static partial Regex GodotFrame();
 
     /// <summary>The container's name and bar <c>docker compose logs</c> puts before each line of a service's.</summary>
     [GeneratedRegex(@"^(?:[\w.-]+-\d+\s+\| |\[[^\]\r\n]+\] )")]

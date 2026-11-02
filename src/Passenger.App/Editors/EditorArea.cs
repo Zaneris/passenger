@@ -119,6 +119,11 @@ public sealed partial class EditorArea : UserControl
 
     internal void PreviewToggled(EditorGroup group) => PreviewToggleClicked?.Invoke(this, group);
 
+    /// <summary>A group's list of the tabs its strip hides asked for, for the window to show it under the strip's button.</summary>
+    public event EventHandler<EditorGroup>? HiddenTabsRequested;
+
+    internal void HiddenTabsAsked(EditorGroup group) => HiddenTabsRequested?.Invoke(this, group);
+
     /// <summary>Whether the window's previewer draws an open XAML file.</summary>
     public Func<OpenDocument, bool> HasXamlPreview { get; set; } = _ => false;
 

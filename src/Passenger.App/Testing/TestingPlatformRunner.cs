@@ -336,7 +336,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             }
             else
             {
-                id = await debugger.LaunchAsync(new TestHostStart(Dotnet.Host(), arguments, folder, environment ?? new Dictionary<string, string>()));
+                id = await debugger.LaunchAsync(new TestHostStart(Dotnet.Host(), arguments, folder, environment ?? new Dictionary<string, string>(), assembly.Framework));
             }
             TcpClient client;
             try

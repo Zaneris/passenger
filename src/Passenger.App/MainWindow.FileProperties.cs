@@ -11,7 +11,8 @@ namespace Passenger.App;
 /// Indentation and Line Separators. A line separator chosen converts every break and writes the file. An encoding chosen
 /// is taken at once when nothing changes; otherwise a question, Reload (the file's bytes read again in it) or Convert
 /// (the text written in it), warning before either loses something. Each is one undoable step, its undo and redo
-/// reaching the file as it did. An indentation chosen is how the file indents from then on, its text left as it is.</summary>
+/// reaching the file as it did. An indentation chosen is how the file indents from then on, its text left as it is; a
+/// conversion writes every line's indentation in tabs or spaces as one undoable step.</summary>
 public partial class MainWindow
 {
     private void AddFileProperties()
@@ -27,6 +28,15 @@ public partial class MainWindow
             Menus = [new MenuPlace("File", 2, 2)],
             Words = ["Indent Using Tabs", "Indent Using Spaces", "Tab Size"],
         });
+        foreach ((string id, bool tabs) in (ReadOnlySpan<(string, bool)>)[(A.ConvertIndentationToTabs, true), (A.ConvertIndentationToSpaces, false)])
+        {
+            actions.Add(new IdeAction(id, tabs ? "Convert Indentation to Tabs" : "Convert Indentation to Spaces", "IDE", context => ConvertIndentation(context.File!, tabs))
+            {
+                WhyNot = context => Refusals.NeedsLines(context)
+                    ?? (context.File!.IsReadOnly ? Refusals.ReadOnly(context.File.Name) : !context.File.KnowsStrings ? Refusals.ReadingStrings(context.File.Name) : null),
+                Words = [tabs ? "Tabify" : "Untabify"],
+            });
+        }
         for (int i = 0; i < LineSeparators.All.Count; i++)
         {
             LineSeparator separator = LineSeparators.All[i];
@@ -98,7 +108,23 @@ public partial class MainWindow
             chosen && offered.UseTabs == now.UseTabs && (offered.UseTabs || offered.Size == now.Size), () => ChooseIndent(document, offered)))];
         items.Add(new Separator());
         items.Add(MenuChoice.Of($"Automatic: {document.Unchosen.Shown}", !chosen, () => ChooseIndent(document, null)));
+        ActionContext context = actions!.Context();
+        items.Add(new Separator());
+        items.Add(FlyoutEntry(new MenuEntry(A.ConvertIndentationToTabs), context));
+        items.Add(FlyoutEntry(new MenuEntry(A.ConvertIndentationToSpaces), context));
         Open(new ContextMenu { ItemsSource = items, Placement = PlacementMode.TopEdgeAlignedRight }, IndentButton);
+    }
+
+    /// <summary>Converts every line's indentation to tabs or spaces at the file's indent size, as one undoable step, and
+    /// says how many lines it changed and how the file indents now.</summary>
+    private void ConvertIndentation(OpenDocument document, bool tabs)
+    {
+        string kind = tabs ? "tabs" : "spaces";
+        (int lines, int inStrings) = document.ConvertIndentation(tabs);
+        string said = lines == 0
+            ? $"Every line of {document.Name} outside its strings already indents with {kind}"
+            : $"Converted the indentation of {Core.Plural.Of(lines, "line")} of {document.Name} to {kind}, {(tabs ? "a tab" : Core.Plural.Of(document.Indentation.Options.Size, "space"))} a level";
+        status.Text = inStrings == 0 ? said : $"{said}; {Core.Plural.Of(inStrings, "line")} inside strings left as {(inStrings == 1 ? "it is" : "they are")}";
     }
 
     private void ChooseIndent(OpenDocument document, IndentOptions? options)

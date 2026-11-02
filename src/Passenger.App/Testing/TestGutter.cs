@@ -8,13 +8,17 @@ namespace Passenger.App.Testing;
 /// <summary>The run icons beside the tests and test classes each open C# file declares, and beside the methods and types
 /// a runner found tests of (by their names, or a base type's by the file and line it gave them), coloured by how each last
 /// ran. A file's tests are read off the UI thread from its own parse as each lands, none made for them, so typing in one
-/// file reads no other; the Unit Tests window's tree takes the same read (<see cref="Read"/>).
+/// file reads no other; the Unit Tests window's tree takes the same read (<see cref="Read"/>). An open GDScript file of a
+/// Godot project carrying GUT is read for GUT's tests as its typing pauses (<see cref="GutScripts"/>).
 /// The icons follow the Unit Tests window at once when tests are found or a run begins or ends, and at most every 150 ms
 /// while its results come in (a pause would never come in a long run); with no test known, and none known before, there
 /// is nothing to follow.</summary>
 public sealed class TestGutter
 {
     private static readonly TimeSpan Throttle = TimeSpan.FromMilliseconds(150);
+
+    /// <summary>How long a GDScript file's typing pauses before its GUT tests are read again.</summary>
+    private static readonly TimeSpan ScriptPause = TimeSpan.FromMilliseconds(200);
 
     private readonly TestTree tree;
 
@@ -63,8 +67,16 @@ public sealed class TestGutter
     public void Watch(OpenDocument document)
     {
         UiThread.Check();
-        if (!files.TryAdd(document, new Declared()))
+        Declared declared = new();
+        if (!files.TryAdd(document, declared))
         {
+            return;
+        }
+        if (IsScript(document))
+        {
+            declared.Reading = new Debounce(ScriptPause, () => ReadScriptAsync(document, declared, ++declared.Asked, document.Text.Snapshot));
+            document.Text.Changed += (_, _) => declared.Reading.Restart();
+            declared.Reading.Restart();
             return;
         }
         document.Parsed += (_, parsed) => ReadParse(document, parsed);
@@ -91,7 +103,11 @@ public sealed class TestGutter
         UiThread.Check();
         foreach (OpenDocument document in files.Keys.ToList())
         {
-            if (document.Syntax?.Newest is { } now)
+            if (files[document].Reading is { } reading)
+            {
+                reading.Restart();
+            }
+            else if (document.Syntax?.Newest is { } now)
             {
                 ReadParse(document, now);
             }
@@ -102,7 +118,10 @@ public sealed class TestGutter
     public void Forget(OpenDocument document)
     {
         UiThread.Check();
-        files.Remove(document);
+        if (files.Remove(document, out Declared? file))
+        {
+            file.Reading?.Stop();
+        }
     }
 
     /// <summary>How many times a file's tests have been read from its syntax, for a test to count.</summary>
@@ -127,6 +146,61 @@ public sealed class TestGutter
         Index();
         return byType.TryGetValue(type.Replace('+', '.'), out HashSet<TestNode>? tests)
             && (method is null || tests.Any(t => t.FullName is { } name && TestsAtCaret.Matches(name, type, method)));
+    }
+
+    /// <summary>The GUT test function, else the GUT test class, a GDScript file's line is in, as the file was last read; null
+    /// in any other file, or outside them.</summary>
+    public DeclaredPlace? ScriptTestAt(OpenDocument document, int line)
+    {
+        UiThread.Check();
+        if (!files.TryGetValue(document, out Declared? file) || file.Reading is null)
+        {
+            return null;
+        }
+        if (file.Places.Methods.FirstOrDefault(m => m.First <= line && line <= m.Last) is { } method
+            && file.Tests.Tests.Any(t => t.Type == method.Type && t.Method == method.Method))
+        {
+            return method;
+        }
+        return file.Places.Types.Where(t => t.First <= line && line <= t.Last && file.Tests.Types.Any(held => held.Type == t.Type)).MaxBy(t => t.First);
+    }
+
+    /// <summary>Reads again each open GDScript file last read before its project was known to carry GUT: the test projects
+    /// were found again.</summary>
+    public void ReadUnplaced()
+    {
+        UiThread.Check();
+        foreach (Declared file in files.Values.Where(f => f.Unplaced))
+        {
+            file.Unplaced = false;
+            file.Reading?.Restart();
+        }
+    }
+
+    private static bool IsScript(OpenDocument document) => Path.GetExtension(document.Path).Equals(".gd", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A GDScript file's GUT tests read off the UI thread from its text as it stood, as the test class its path in
+    /// its Godot project names; none in a file of no project known to carry GUT, which tells the tree nothing, so what is
+    /// on disk stands for it until it is read again (<see cref="ReadUnplaced"/>).</summary>
+    private async Task ReadScriptAsync(OpenDocument document, Declared file, int asked, Passenger.Text.TextSnapshot text)
+    {
+        string? folder = ProjectsOf?.Invoke(document.Path).Where(p => Path.GetFileName(p) == Passenger.Workspace.GodotProject.FileName).Select(Path.GetDirectoryName).FirstOrDefault();
+        (FileTests tests, FilePlaces places) = folder is null ? (FileTests.None, FilePlaces.None)
+            : await BackgroundWork.Run(() => GutScripts.Read(text.ToString(), GutScripts.TypeOf(folder, document.Path)));
+        if (asked != file.Asked || !ReferenceEquals(document.Text.Snapshot, text) || !files.ContainsKey(document))
+        {
+            return;
+        }
+        file.Reads++;
+        file.Tests = tests;
+        file.Places = places;
+        file.Unplaced = folder is null;
+        if (folder is not null)
+        {
+            Read?.Invoke(this, (document, tests));
+        }
+        Index();
+        Colour(document, file);
     }
 
     private void ReadParse(OpenDocument document, ParsedText parsed)
@@ -174,7 +248,7 @@ public sealed class TestGutter
     /// derived type's).</summary>
     private void Colour(OpenDocument document, Declared file)
     {
-        if (document.Syntax is null)
+        if (document.Syntax is null && file.Reading is null)
         {
             file.Tests = FileTests.None;
             file.Places = FilePlaces.None;
@@ -287,5 +361,11 @@ public sealed class TestGutter
         public int Reads { get; set; }
         public FileTests Tests { get; set; } = FileTests.None;
         public FilePlaces Places { get; set; } = FilePlaces.None;
+
+        /// <summary>A GDScript file's read as its typing pauses; null for a C# file, read from its parses.</summary>
+        public Debounce? Reading { get; set; }
+
+        /// <summary>Whether a GDScript file was last read with no project carrying GUT known to hold it.</summary>
+        public bool Unplaced { get; set; }
     }
 }

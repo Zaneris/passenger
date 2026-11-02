@@ -44,6 +44,7 @@ public partial class MainWindow
         session.LocalHistory?.Noticed(changes.Paths);
         session.DesignTimeBuilds.FolderChanged(changes);
         session.FilesChanged(changes);
+        session.Debug.FilesChanged(changes.Paths);
         (bool programsMade, bool programsWritten) = ProgramsChanged(changes.Paths);
         // Lost changes may have made or moved anything in the folder.
         IReadOnlyCollection<string> cameOrWent = changes.Lost ? [folder] : changes.ComeOrGone;
@@ -101,6 +102,8 @@ public partial class MainWindow
         session.Tests.Finder.FolderChanged(changes);
         session.Xaml.CameOrWent(changes.ComeOrGone, every: changes.Lost);
         session.Xaml.FilesChanged(changes.Paths.Concat(changes.Restored));
+        session.GodotScenes.CameOrWent(changes.ComeOrGone, every: changes.Lost);
+        session.GodotScenes.FilesChanged(changes.Paths);
         session.MSBuild.FilesChanged(changes.Paths, changes.Structure);
         session.Web?.FilesChanged(changes.Paths);
         EndpointFilesChanged(changes);

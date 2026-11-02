@@ -199,7 +199,8 @@ public sealed class XamlPreview : IDisposable
         Say(words);
     }
 
-    /// <summary>The scale the pane's window draws at, which the previewer is asked to draw at too.</summary>
+    /// <summary>The scale the previewer is asked to draw at: the pane's window's, times the share of its design's size the
+    /// pane has room to show it at.</summary>
     public double Scaling
     {
         get => scaling;
@@ -392,10 +393,12 @@ public sealed class XamlPreview : IDisposable
 
     /// <summary>The project's newest build output that can run: its assembly with its dependencies beside it, and its runtime
     /// configuration when <paramref name="configured"/> (a class library has none), where MSBuild's evaluation says its
-    /// build puts it, under its own bin/ or under an artifacts folder above it.</summary>
+    /// build puts it, under its own bin/ or under an artifacts folder above it; of a multi-targeted project, the build of
+    /// the framework chosen alone (<see cref="ProjectInputs.ChosenFramework"/>), however the others' builds finished.</summary>
     public static string? Output(ProjectInputs inputs, bool configured = true)
     {
         string name = inputs.AssemblyName + ".dll";
+        string? chosen = inputs.ChosenFramework;
         List<string> found = [];
         if (inputs.TargetPath is { } evaluated && File.Exists(evaluated))
         {
@@ -404,7 +407,7 @@ public sealed class XamlPreview : IDisposable
         string bin = Path.Combine(inputs.Folder, "bin");
         if (Directory.Exists(bin))
         {
-            found.AddRange(Directory.EnumerateFiles(bin, name, SearchOption.AllDirectories));
+            found.AddRange(Directory.EnumerateFiles(bin, name, SearchOption.AllDirectories).Where(f => chosen is null || ProjectInputs.InFolderOf(f, chosen, bin)));
         }
         string project = Path.GetFileNameWithoutExtension(inputs.ProjectPath);
         for (DirectoryInfo? at = new(inputs.Folder); at is not null; at = at.Parent)
@@ -412,13 +415,40 @@ public sealed class XamlPreview : IDisposable
             string artifacts = Path.Combine(at.FullName, "artifacts", "bin", project);
             if (Directory.Exists(artifacts))
             {
-                found.AddRange(Directory.EnumerateFiles(artifacts, name, SearchOption.AllDirectories));
+                found.AddRange(Directory.EnumerateFiles(artifacts, name, SearchOption.AllDirectories).Where(f => chosen is null || ProjectInputs.InFolderOf(f, chosen, artifacts)));
                 break;
             }
         }
         return found.Where(f => (!configured || File.Exists(Path.ChangeExtension(f, ".runtimeconfig.json"))) && File.Exists(Path.ChangeExtension(f, ".deps.json"))
                 && !f.Contains($"{Path.DirectorySeparatorChar}ref{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
             .OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+    }
+
+    /// <summary>What the pane says of a project with no build to preview (<see cref="Output"/>): of a multi-targeted one,
+    /// that the framework chosen has none.</summary>
+    internal static string Unbuilt(ProjectInputs inputs)
+    {
+        string project = Path.GetFileNameWithoutExtension(inputs.ProjectPath);
+        return inputs.ChosenFramework is { } chosen
+            ? $"Build {project} to preview its XAML for {chosen}: the previewer draws that framework's last build, and it has none"
+            : $"Build {project} to preview its XAML: the previewer draws its last build";
+    }
+
+    /// <summary>The target framework a build's runtime configuration says it runs on (its <c>runtimeOptions.tfm</c>); null for
+    /// a build with none, or one that does not read. Read off the window's thread.</summary>
+    internal static string? FrameworkOfBuild(string assembly)
+    {
+        string configuration = Path.ChangeExtension(assembly, ".runtimeconfig.json");
+        try
+        {
+            using FileStream stream = File.OpenRead(configuration);
+            using System.Text.Json.JsonDocument json = System.Text.Json.JsonDocument.Parse(stream, LenientJson.Document);
+            return JsonMembers.Text(JsonMembers.Object(json.RootElement, "runtimeOptions"), "tfm");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Where a previewer says the XAML it was sent did not load, " (line N, column M)" from one, as the editor counts

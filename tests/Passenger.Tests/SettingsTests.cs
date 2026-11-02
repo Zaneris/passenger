@@ -9,6 +9,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Settings;
 using Passenger.App.State;
+using Passenger.Editor;
 
 namespace Passenger.Tests;
 
@@ -17,6 +18,124 @@ namespace Passenger.Tests;
 /// settings opens on them again, and another Passenger's change to them is followed even where the watcher lost it.</summary>
 public sealed class SettingsTests : IDisposable
 {
+    [AvaloniaFact]
+    public void Terminal_preferences_apply_to_the_view_and_are_kept_for_the_next_window()
+    {
+        string font = OtherTerminalFont();
+        MainWindow window = Open();
+        window.KeepSettings();
+        SettingsDialog dialog = TerminalDialog(window);
+        Assert.Contains("Font family", dialog.Shown);
+        Assert.False(Editor<CheckBox>(dialog, "Copy on selection").IsChecked);
+        Assert.False(Editor<CheckBox>(dialog, "Cursor blinking").IsChecked);
+        Assert.Equal("Block", Editor<ComboBox>(dialog, "Cursor style").SelectedItem);
+        Assert.Equal(TerminalFollows, FontList(dialog).SelectedItem?.ToString());
+        ChooseRow(FontList(dialog), font);
+        Ui.Click(Editor<CheckBox>(dialog, "Copy on selection"));
+        Ui.Click(Editor<CheckBox>(dialog, "Cursor blinking"));
+        Editor<ComboBox>(dialog, "Cursor style").SelectedIndex = 1;
+        dialog.Ok();
+        Ui.Settle();
+        Assert.Equal(font, window.TerminalPanel.View.FontFamily.Name);
+        window.Close();
+
+        MainWindow again = Open();
+        again.KeepSettings();
+        Assert.Equal(font, again.TerminalPanel.View.FontFamily.Name);
+        SettingsDialog kept = TerminalDialog(again);
+        Assert.Equal(font, FontList(kept).SelectedItem?.ToString());
+        Assert.True(Editor<CheckBox>(kept, "Copy on selection").IsChecked);
+        Assert.True(Editor<CheckBox>(kept, "Cursor blinking").IsChecked);
+        Assert.Equal("Line", Editor<ComboBox>(kept, "Cursor style").SelectedItem);
+        kept.Close();
+        again.Close();
+    }
+
+    /// <summary>The terminal's font chosen in Settings › Terminal is put in force only by Apply or OK; JetBrains Mono chosen
+    /// there stays the terminal's while the editor's font changes, and Same as the editor has it follow the editor's
+    /// again.</summary>
+    [AvaloniaFact]
+    public void A_terminal_font_waits_for_apply_and_same_as_the_editor_follows_the_editors_font()
+    {
+        string font = OtherTerminalFont();
+        MainWindow window = Open();
+        try
+        {
+            window.TerminalPanel.Shell = (OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh", []);
+            Ui.Run(window, AppActions.ShowTerminal);
+            Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true }, "the terminal's shell to start");
+            Passenger.Terminal.TerminalView view = window.TerminalPanel.View;
+            SettingsDialog dialog = TerminalDialog(window);
+            ChooseRow(FontList(dialog), font);
+            dialog.Close();
+            Assert.Equal(CodeFonts.Carried, view.FontFamily.Name);
+
+            dialog = TerminalDialog(window);
+            ChooseRow(FontList(dialog), font);
+            dialog.Apply();
+            Ui.Settle();
+            Assert.Equal(font, view.FontFamily.Name);
+            ChooseRow(FontList(dialog), CodeFonts.Carried);
+            dialog.Change(s => s with { EditorFontFamily = font });
+            dialog.Apply();
+            Ui.Settle();
+            Assert.Equal(CodeFonts.Carried, view.FontFamily.Name);
+            ChooseRow(FontList(dialog), TerminalFollows);
+            dialog.Apply();
+            Ui.Settle();
+            Assert.Null(window.Settings.TerminalFontFamily);
+            Assert.Equal(font, view.FontFamily.Name);
+            dialog.Close();
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { EditorFontFamily = null });
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Old_terminal_settings_and_an_unavailable_font_keep_a_usable_default()
+    {
+        File.WriteAllText(Path.Combine(settings, "settings.json"), """
+            { "version": 1, "terminalFontSize": 15, "terminalFontFamily": "Passenger Missing Font", "terminalCursorStyle": 99 }
+            """);
+        MainWindow window = Open();
+        window.KeepSettings();
+        Assert.Equal(15, window.TerminalPanel.View.FontSize);
+        Assert.Equal(CodeEditor.CodeFont, window.TerminalPanel.View.FontFamily);
+        Assert.Equal("Passenger Missing Font", window.Settings.TerminalFontFamily);
+        SettingsDialog dialog = TerminalDialog(window);
+        Assert.Contains("Cursor style", dialog.Shown);
+        Assert.Equal("Passenger Missing Font (not installed)", FontList(dialog).SelectedItem?.ToString());
+        Assert.Null(dialog.Refused);
+        Assert.Equal("Block", Editor<ComboBox>(dialog, "Cursor style").SelectedItem);
+        Assert.False(Editor<CheckBox>(dialog, "Copy on selection").IsChecked);
+        Assert.False(Editor<CheckBox>(dialog, "Cursor blinking").IsChecked);
+        dialog.Close();
+        window.Close();
+    }
+
+    /// <summary>A proportional family named for the terminal by settings.json leaves its cells in the code font, and
+    /// Settings refuses one chosen there, saying why.</summary>
+    [AvaloniaFact]
+    public void A_proportional_terminal_font_keeps_the_cell_grid_in_the_code_font_and_settings_refuses_it()
+    {
+        string? proportional = FontManager.Current.SystemFonts.Select(f => f.Name).FirstOrDefault(name => !name.StartsWith('.') && CodeFonts.Named(name) is null);
+        Assert.SkipWhen(proportional is null, "No proportional system font is installed");
+        MainWindow window = Open();
+        window.ApplySettings(window.Settings with { TerminalFontFamily = proportional });
+        Ui.Settle();
+        Assert.Equal(CodeEditor.CodeFont, window.TerminalPanel.View.FontFamily);
+        Assert.Equal(proportional, window.Settings.TerminalFontFamily);
+        window.ApplySettings(window.Settings with { TerminalFontFamily = null });
+        SettingsDialog dialog = TerminalDialog(window);
+        dialog.Change(s => s with { TerminalFontFamily = proportional });
+        Assert.Equal($"Font family {proportional} ({SettingsDialog.PlaceOfPage(SettingsDialog.TerminalPage)}) is not monospaced: code's columns need every character one width", dialog.Refused);
+        dialog.Close();
+        window.Close();
+    }
+
     private readonly string folder = TestFolders.Create("folder-");
     private readonly string settings = TestFolders.Create("settings-");
 
@@ -46,6 +165,71 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(["Split Right"], dialog.Shown);
         dialog.Close();
         window.Close();
+    }
+
+    /// <summary>The editor's font family chosen in Settings › Editor from the installed monospaced fonts, each row in its
+    /// own face, is the code font everywhere: every editor, the terminal, which has none of its own, and code the window
+    /// shows elsewhere (the find bar's and Find in Files' regex toggles); a proportional or missing family is refused,
+    /// saying why, and the carried font comes back when it is chosen again.</summary>
+    [AvaloniaFact]
+    public void The_editor_font_family_chosen_in_settings_is_the_code_font_everywhere_and_a_proportional_one_is_refused()
+    {
+        IReadOnlyList<string> installed = Ui.Await(CodeFonts.InstalledAsync(), "the installed monospaced fonts");
+        Assert.SkipWhen(installed.Count == 0, "No monospaced font is installed beside the one Passenger carries");
+        string font = installed[0];
+        File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
+        MainWindow window = Open();
+        window.OpenFile(Path.Combine(folder, "One.cs"));
+        Ui.Settle();
+        try
+        {
+            SettingsDialog dialog = window.ShowSettings();
+            dialog.Page = SettingsDialog.EditorPage;
+            Ui.Settle();
+            ComboBox family = Editor<ComboBox>(dialog, "Font family");
+            Ui.WaitFor(() => family.ItemCount == installed.Count + 1, "the installed monospaced fonts to fill Settings' list");
+            Assert.Equal(CodeFonts.Carried, family.SelectedItem?.ToString());
+            TextBlock row = ChooseRow(family, font);
+            Assert.Equal(font, row.FontFamily.Name);
+            dialog.Ok();
+            Ui.Settle();
+            Assert.Equal(font, window.Settings.EditorFontFamily);
+            Assert.Equal(font, window.EditorArea.CodeEditor.FontFamily.Name);
+            window.TerminalPanel.Shell = (OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh", []);
+            Ui.Run(window, AppActions.ShowTerminal);
+            Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true }, "the terminal's shell to start");
+            Assert.Equal(font, window.TerminalPanel.View.FontFamily.Name);
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Press(window, Ui.Shortcut(AppActions.Find));
+            Assert.Equal(font, RegexToggle(window.EditorArea.FindBar).FontFamily.Name);
+            Ui.Press(window, "ESCAPE");
+            Ui.Press(window, Ui.Shortcut(AppActions.FindInFiles));
+            Assert.Equal(font, RegexToggle(Assert.IsType<Passenger.App.Navigation.FindInFilesPopup>(window.Popup)).FontFamily.Name);
+            Ui.Press(window, "ESCAPE");
+
+            SettingsDialog again = window.ShowSettings();
+            Ui.Settle();
+            string? proportional = FontManager.Current.SystemFonts.Select(f => f.Name)
+                .FirstOrDefault(name => !name.StartsWith('.') && CodeFonts.Named(name) is null);
+            if (proportional is not null)
+            {
+                again.Change(s => s with { EditorFontFamily = proportional });
+                Assert.Equal($"Font family {proportional} ({SettingsDialog.PlaceOfPage(SettingsDialog.EditorPage)}) is not monospaced: code's columns need every character one width", again.Refused);
+            }
+            again.Change(s => s with { EditorFontFamily = "Passenger Missing Font" });
+            Assert.Equal($"Font family Passenger Missing Font ({SettingsDialog.PlaceOfPage(SettingsDialog.EditorPage)}) is not a font installed on this computer", again.Refused);
+            again.Change(s => s with { EditorFontFamily = null });
+            Assert.Null(again.Refused);
+            again.Ok();
+            Ui.Settle();
+            Assert.Equal(CodeEditor.CodeFont, window.EditorArea.CodeEditor.FontFamily);
+            Assert.Equal(CodeEditor.CodeFont, window.TerminalPanel.View.FontFamily);
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { EditorFontFamily = null });
+            window.Close();
+        }
     }
 
     [AvaloniaFact]
@@ -435,7 +619,54 @@ public sealed class SettingsTests : IDisposable
     }
 
     /// <summary>What edits an option, beside its label in the page shown.</summary>
-    private static T Editor<T>(SettingsDialog dialog, string label) where T : Control =>
+    /// <summary>The first row of the terminal's font list, which follows the editor's.</summary>
+    private const string TerminalFollows = "Same as the editor";
+
+    private static string OtherTerminalFont()
+    {
+        IReadOnlyList<string> installed = Ui.Await(CodeFonts.InstalledAsync(), "the installed monospaced fonts");
+        Assert.SkipWhen(installed.Count == 0, "No monospaced font is installed beside the one Passenger carries");
+        return installed[0];
+    }
+
+    /// <summary>The page's Font family drop-down, once the installed fonts fill it.</summary>
+    private static ComboBox FontList(SettingsDialog dialog)
+    {
+        ComboBox box = Editor<ComboBox>(dialog, "Font family");
+        IReadOnlyList<string> installed = Ui.Await(CodeFonts.InstalledAsync(), "the installed monospaced fonts");
+        Ui.WaitFor(() => installed.All(name => box.Items.Cast<object?>().Any(i => i?.ToString() == name)), "the installed monospaced fonts to fill Settings' list");
+        return box;
+    }
+
+    /// <summary>Chooses a drop-down's row by the words it shows, as a person does: the list opened, the row scrolled to and
+    /// clicked; the row's words, as shown.</summary>
+    internal static TextBlock ChooseRow(ComboBox box, string shown)
+    {
+        Ui.Click(box);
+        Ui.WaitFor(() => box.IsDropDownOpen, "the drop-down to open");
+        int at = box.Items.Cast<object?>().Select(i => i?.ToString()).ToList().IndexOf(shown);
+        Assert.True(at >= 0, $"The drop-down has no row {shown}: {string.Join(", ", box.Items.Cast<object?>())}");
+        box.ScrollIntoView(at);
+        Ui.Settle();
+        Control row = Assert.IsAssignableFrom<Control>(box.ContainerFromIndex(at));
+        TextBlock words = row.GetVisualDescendants().OfType<TextBlock>().First();
+        Assert.Equal(shown, words.Text);
+        Ui.Click(row);
+        Assert.False(box.IsDropDownOpen, $"Choosing {shown} left the drop-down open");
+        return words;
+    }
+
+    private static TextBlock RegexToggle(Visual within) => within.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == ".*");
+
+    internal static SettingsDialog TerminalDialog(MainWindow window)
+    {
+        SettingsDialog dialog = window.ShowSettings();
+        dialog.Page = SettingsDialog.TerminalPage;
+        Ui.Settle();
+        return dialog;
+    }
+
+    internal static T Editor<T>(SettingsDialog dialog, string label) where T : Control =>
         ((Visual)dialog.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == label).Parent!).GetVisualDescendants().OfType<T>().First();
 
     private MainWindow Open()

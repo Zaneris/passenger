@@ -50,6 +50,7 @@ public sealed class TestNode : Observable, ITreeRow
     private TestState state;
     private long ticks;
     private bool isExpanded;
+    private bool codeChanged;
 
     /// <summary>How many outcomes the method's run is waiting for.</summary>
     private int expected;
@@ -149,8 +150,58 @@ public sealed class TestNode : Observable, ITreeRow
         _ => Children.SelectMany(c => c.Methods),
     };
 
-    /// <summary>What the details pane shows: each result's outcome, message, stack, output and the files it carries.</summary>
-    public string Details => DetailsOf(results);
+    /// <summary>When the earlier session's run its results are kept from began, while every one of them is; null once any is
+    /// this session's, or it has none.</summary>
+    public DateTimeOffset? EarlierRun
+    {
+        get
+        {
+            DateTimeOffset? latest = null;
+            foreach (TestOutcome result in results)
+            {
+                if (result.Earlier is not { } ran)
+                {
+                    return null;
+                }
+                latest = latest is { } was && was > ran ? was : ran;
+            }
+            return latest;
+        }
+    }
+
+    /// <summary>A method's code when it last ran, as its file read then (<see cref="DeclaredTest.Code"/>); null where the
+    /// code was not read.</summary>
+    internal ulong? RanCode { get; set; }
+
+    /// <summary>A method showing an earlier run's results whose code has changed since that run, or a row of one.</summary>
+    public bool CodeChanged
+    {
+        get => codeChanged || (Kind == TestNodeKind.Row && Parent?.codeChanged == true);
+        internal set
+        {
+            if (Set(ref codeChanged, value))
+            {
+                Raise(nameof(Details));
+                foreach (TestNode row in Children)
+                {
+                    row.Raise(nameof(CodeChanged));
+                    row.Raise(nameof(Details));
+                }
+            }
+        }
+    }
+
+    /// <summary>What the details pane shows: each result's outcome, message, stack, output and the files it carries, after
+    /// when the run they are kept from ran, where they are an earlier session's.</summary>
+    public string Details => EarlierRun is { } ran
+        ? $"{EarlierWords(ran, CodeChanged)}\n\n{DetailsOf(results)}"
+        : DetailsOf(results);
+
+    /// <summary>What results kept from an earlier session's run say over them: when that run began, and whether the
+    /// test's code has changed since.</summary>
+    public static string EarlierWords(DateTimeOffset ran, bool changed) =>
+        $"From an earlier run, at {ran.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)}"
+        + (changed ? "; the test's code has changed since" : string.Empty);
 
     /// <summary>Results as the details pane shows them, each output whole, or with <paramref name="outputTail"/> only its last
     /// lines, at most that many, and a note of what was left out.</summary>
@@ -256,6 +307,7 @@ public sealed class TestNode : Observable, ITreeRow
         }
         AddTicks(kept - ticks);
         expected = results.Count + tests;
+        CodeChanged = false;
         State = TestState.Running;
         Raise(nameof(Details));
     }
@@ -304,6 +356,8 @@ public sealed class TestNode : Observable, ITreeRow
         results.AddRange(source.results);
         Array.Copy(source.counts, counts, counts.Length);
         expected = source.expected;
+        RanCode = source.RanCode;
+        CodeChanged = source.codeChanged;
         AddTicks(source.ticks - ticks);
         // Not through State, whose change a method's groups take: they are counted once the tree is made.
         if (state != source.state)
@@ -412,6 +466,19 @@ public sealed class TestTree
 
     /// <summary>The methods and rows the run under way began, by identity, which its end ends wherever they are by then.</summary>
     private HashSet<string> running = new(StringComparer.Ordinal);
+
+    /// <summary>An earlier session's results of each method by its identity (<see cref="Keep"/>), until it runs.</summary>
+    private Dictionary<string, KeptRun> kept = new(StringComparer.Ordinal);
+
+    /// <summary>The identities kept of a multi-targeted project's methods, one for each framework, by the identity the
+    /// method has without one.</summary>
+    private Dictionary<string, List<string>> keptUnframed = new(StringComparer.Ordinal);
+
+    /// <summary>The methods showing an earlier session's results, whose code is looked at again as their files are read.</summary>
+    private readonly HashSet<TestNode> fromEarlier = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>A method's code as its file reads now (<see cref="TestFinder.CodeOf"/>); null where it is not known.</summary>
+    public Func<TestNode, ulong?>? CodeOf { get; set; }
 
     private HashSet<TestState> outcomes = [];
     private string emptyText = string.Empty;
@@ -579,6 +646,77 @@ public sealed class TestTree
     /// <summary>The row a test is shown by: its data row's, else its method's (the first, when it is under two groups).</summary>
     public TestNode? Node(TestItem test) => byKey.TryGetValue(test.Key, out List<TestNode>? nodes) ? nodes[0] : null;
 
+    /// <summary>An earlier session's results, by method identity: each method that has none of its own takes its own, as an
+    /// earlier run's, now or once the tree shows it, until it runs again. A method shown without its target framework
+    /// (its project not yet built for several) takes those of every framework it ran for.</summary>
+    public void Keep(IReadOnlyDictionary<string, KeptRun> runs)
+    {
+        kept = new(runs, StringComparer.Ordinal);
+        keptUnframed = new(StringComparer.Ordinal);
+        foreach (string identity in kept.Keys.Where(k => !k.StartsWith('|')))
+        {
+            string unframed = identity[identity.IndexOf('|')..];
+            if (!keptUnframed.TryGetValue(unframed, out List<string>? framed))
+            {
+                keptUnframed[unframed] = framed = [];
+            }
+            framed.Add(identity);
+        }
+        bool reshaped = false;
+        foreach (TestNode method in Methods)
+        {
+            reshaped |= TakeKept(method);
+        }
+        foreach (TestNode root in Roots)
+        {
+            root.Recount();
+        }
+        if (reshaped || outcomes.Count > 0)
+        {
+            ShowRows();
+        }
+        Updated?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Looks at the code of each method showing an earlier session's results again: whether it has changed since.</summary>
+    public void CheckCode()
+    {
+        foreach (TestNode method in fromEarlier)
+        {
+            method.CodeChanged = method.RanCode is { } ran && CodeOf?.Invoke(method) is { } now && now != ran;
+        }
+    }
+
+    /// <summary>A method with no results of its own takes what was kept of it; whether it made rows that show.</summary>
+    private bool TakeKept(TestNode method)
+    {
+        if (method.Results.Count > 0 || method.Identity is not { } identity || running.Contains(identity))
+        {
+            return false;
+        }
+        List<KeptRun> runs = kept.TryGetValue(identity, out KeptRun? own) ? [own]
+            : [.. (keptUnframed.GetValueOrDefault(identity) ?? []).Select(kept.GetValueOrDefault).OfType<KeptRun>()];
+        if (runs.Count == 0 || method.ProjectPath is not { } project)
+        {
+            return false;
+        }
+        bool reshaped = false;
+        foreach (KeptRun run in runs)
+        {
+            // Rows in their names' order, as a runner's are shown.
+            foreach (KeptResult result in run.Results.OrderBy(r => r.Row, StringComparer.Ordinal))
+            {
+                TestOutcome outcome = result.Outcome(project, run.Ran);
+                (outcome.Row is { } name ? MadeRow(method, name, ref reshaped) : null)?.Add(outcome);
+                method.Add(outcome);
+            }
+        }
+        method.RanCode = runs.Select(r => r.Code).Distinct().Count() == 1 ? runs[0].Code : null;
+        fromEarlier.Add(method);
+        method.CodeChanged = method.RanCode is { } ran && CodeOf?.Invoke(method) is { } now && now != ran;
+        return reshaped;
+    }
+
     /// <summary>The tests about to run go to running, each method waiting for as many outcomes as it runs tests and
     /// keeping its results of the data rows the run leaves out; the rows a method's last run made wait to be made again.</summary>
     public void Begin(IReadOnlyList<TestItem> tests)
@@ -602,6 +740,17 @@ public sealed class TestTree
         foreach ((TestNode method, HashSet<string> keys) in methods)
         {
             method.Begin(keys.Count, keys.Count < method.Items.Count ? keys : null);
+            // What it says from now on is this session's: an earlier one's no longer stands for it.
+            if (method.Identity is { } identity)
+            {
+                kept.Remove(identity);
+                foreach (string framed in keptUnframed.GetValueOrDefault(identity) ?? [])
+                {
+                    kept.Remove(framed);
+                }
+            }
+            fromEarlier.Remove(method);
+            method.RanCode = CodeOf?.Invoke(method);
         }
         foreach (TestNode row in rows)
         {
@@ -879,6 +1028,13 @@ public sealed class TestTree
                 row.Key = $"{method.Key}/{(int)TestNodeKind.Row}:{row.Name}";
                 restored.Add(row);
             }
+        }
+        // A method that has not run in this session shows what an earlier one's run left, until it runs.
+        HashSet<TestNode> shown = new(methods, ReferenceEqualityComparer.Instance);
+        fromEarlier.RemoveWhere(m => !shown.Contains(m));
+        foreach (TestNode method in methods)
+        {
+            TakeKept(method);
         }
         // A test shown again under another group has its results there too, and the rows its run made.
         foreach ((TestNode copy, TestNode of) in copies)

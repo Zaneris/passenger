@@ -96,7 +96,7 @@ internal static class LocalizationSource
 
     /// <summary>The documents a file is: a C# file's own (one a target framework), or for a Razor file the C# Razor's generator
     /// makes of it in each project that has it.</summary>
-    private static async Task<IReadOnlyList<(Document Document, Project Project)>> DocumentsOfAsync(Solution solution, string path, bool razor, CancellationToken cancel)
+    internal static async Task<IReadOnlyList<(Document Document, Project Project)>> DocumentsOfAsync(Solution solution, string path, bool razor, CancellationToken cancel)
     {
         if (!razor)
         {

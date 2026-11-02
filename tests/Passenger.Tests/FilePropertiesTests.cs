@@ -235,7 +235,8 @@ public sealed class FilePropertiesTests : IDisposable
         Assert.Equal("4 spaces, detected", Shown(window, "IndentText"));
 
         Click(window, "IndentButton");
-        Assert.Equal(["Tab", "2 spaces", "4 spaces", "8 spaces", "Automatic: 4 spaces, detected (checked)"], Items(window.OpenContextMenu!));
+        Assert.Equal(["Tab", "2 spaces", "4 spaces", "8 spaces", "Automatic: 4 spaces, detected (checked)", "Convert Indentation to Tabs", "Convert Indentation to Spaces"],
+            Items(window.OpenContextMenu!));
         Choose(window, "Tab");
         Assert.Equal("Tab, chosen", Shown(window, "IndentText"));
         Assert.Equal("Indent: Tab, chosen for this file", Tip(window, "IndentButton"));
@@ -245,13 +246,73 @@ public sealed class FilePropertiesTests : IDisposable
         Assert.Contains("\n\tint a;\n", Text(window), StringComparison.Ordinal);
 
         Click(window, "IndentButton");
-        Assert.Equal(["Tab (checked)", "2 spaces", "4 spaces", "8 spaces", "Automatic: 4 spaces, detected"], Items(window.OpenContextMenu!));
+        Assert.Equal(["Tab (checked)", "2 spaces", "4 spaces", "8 spaces", "Automatic: 4 spaces, detected", "Convert Indentation to Tabs", "Convert Indentation to Spaces"],
+            Items(window.OpenContextMenu!));
         Choose(window, "Automatic: 4 spaces, detected");
         Assert.Equal("4 spaces, detected", Shown(window, "IndentText"));
         editor.Selections = Passenger.Text.SelectionSet.Single(Text(window).IndexOf("int b;", StringComparison.Ordinal));
         Ui.Press(window, "TAB");
         Assert.Contains("\n\tint a;\n    int b;\n", Text(window), StringComparison.Ordinal);
         Assert.Equal(Spaced, File.ReadAllText(path));
+        window.Close();
+    }
+
+    /// <summary>The indent widget converts a file's lines: to tabs at its four spaces a level, the spaces aligning a
+    /// line's rest and a comment's left as they are, the file then indenting with a tab and the status bar saying so; Undo
+    /// puts the spaces and the indentation detected back as one step, and from tabs to spaces converts them again, the file
+    /// never written.</summary>
+    [AvaloniaFact]
+    public void The_indent_widget_converts_a_files_lines_to_tabs_and_back_each_one_step_of_undo()
+    {
+        const string Spaced = "class Spaced\n{\n    void Run()\n    {\n        int a  = 1; // a\n          // aligned two past\n    }\n}\n";
+        const string Tabbed = "class Spaced\n{\n\tvoid Run()\n\t{\n\t\tint a  = 1; // a\n\t\t  // aligned two past\n\t}\n}\n";
+        string path = Write("Spaced.cs", Spaced);
+        MainWindow window = Open("Spaced.cs");
+        Assert.Equal("4 spaces, detected", Shown(window, "IndentText"));
+
+        Click(window, "IndentButton");
+        Choose(window, "Convert Indentation to Tabs");
+        Assert.Equal(Tabbed, Text(window));
+        Assert.Equal("Tab, chosen", Shown(window, "IndentText"));
+        Assert.Equal("Converted the indentation of 5 lines of Spaced.cs to tabs, a tab a level", window.Status);
+
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal(Spaced, Text(window));
+        Assert.Equal("4 spaces, detected", Shown(window, "IndentText"));
+        Ui.Run(window, EditorActions.Redo);
+        Assert.Equal(Tabbed, Text(window));
+
+        Click(window, "IndentButton");
+        Choose(window, "Convert Indentation to Spaces");
+        Assert.Equal(Spaced, Text(window));
+        Assert.Equal("4 spaces, chosen", Shown(window, "IndentText"));
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal(Tabbed, Text(window));
+        Assert.Equal(Spaced, File.ReadAllText(path));
+        window.Close();
+    }
+
+    /// <summary>The indent widget's conversion leaves alone the lines that begin inside a string, whose whitespace is the
+    /// string's: a C# verbatim string's and a raw string's, its closing line with them, and an XML file's CDATA section's;
+    /// the status bar says how many it left.</summary>
+    [AvaloniaFact]
+    public void Converting_indentation_leaves_the_lines_inside_strings_and_says_how_many()
+    {
+        const string Code = "class Strings\n{\n    string Verbatim = @\"one\n    two\";\n    string Raw = \"\"\"\n        three\n        \"\"\";\n    void Run()\n    {\n    }\n}\n";
+        Write("Strings.cs", Code);
+        MainWindow window = Open("Strings.cs");
+        Click(window, "IndentButton");
+        Choose(window, "Convert Indentation to Tabs");
+        Assert.Equal("class Strings\n{\n\tstring Verbatim = @\"one\n    two\";\n\tstring Raw = \"\"\"\n        three\n        \"\"\";\n\tvoid Run()\n\t{\n\t}\n}\n", Text(window));
+        Assert.Equal("Converted the indentation of 5 lines of Strings.cs to tabs, a tab a level; 3 lines inside strings left as they are", window.Status);
+
+        Write("page.xml", "<root>\n    <script><![CDATA[\n        keep();\n    ]]></script>\n    <item />\n</root>\n");
+        window.OpenFile("page.xml");
+        Ui.Settle();
+        Click(window, "IndentButton");
+        Choose(window, "Convert Indentation to Tabs");
+        Assert.Equal("<root>\n\t<script><![CDATA[\n        keep();\n    ]]></script>\n\t<item />\n</root>\n", Text(window));
+        Assert.Equal("Converted the indentation of 2 lines of page.xml to tabs, a tab a level; 2 lines inside strings left as they are", window.Status);
         window.Close();
     }
 

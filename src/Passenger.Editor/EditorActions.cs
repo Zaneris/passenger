@@ -105,16 +105,19 @@ public enum KeymapPreset
 
     /// <summary>Rider's VS Code keymaps.</summary>
     VSCode,
+
+    /// <summary>IntelliJ IDEA's keymaps as Rider carries them: $default on Windows and Linux, Mac OS X 10.5+ on macOS.</summary>
+    IntelliJ,
 }
 
-/// <summary>The keymaps Passenger has: Rider's Visual Studio keymap on Windows and its Visual Studio OSX keymap on
-/// macOS, for the actions Passenger has, plus the few platform staples those leave out (Cmd+/ to comment, with the
-/// keypad's / as $default has it, Cmd+W to close, Cmd+Up and Down to the text's ends); and Rider's VSCode and VSCode
-/// OSX keymaps. A key IntelliJ gives two actions told apart by where it is pressed is given to one (the editor's own).
-/// The keypad's keys (DIVIDE, SUBTRACT) are bound where Rider binds them, beside the main keys'. The mouse's gestures
-/// are theirs too, the Mac's from $default with its Ctrl as Cmd; Shift+Alt-click, which they give a column from the
-/// caret and a column drag both, is the first, a drag going on with it, and Alt-click's Quick Evaluate Expression (the
-/// debugger's) and Linux's middle-click paste are left out.</summary>
+/// <summary>The keymaps Passenger has, for the actions it has: Rider's Visual Studio keymap on Windows and its Visual
+/// Studio OSX keymap on macOS, plus the few platform staples those leave out (Cmd+/ to comment, with the keypad's / as
+/// $default has it, Cmd+W to close, Cmd+Up and Down to the text's ends); Rider's VSCode and VSCode OSX keymaps; and
+/// IntelliJ IDEA's $default and Mac OS X 10.5+, the Mac's with Cmd+Up and Down too. A key IntelliJ gives two actions told
+/// apart by where it is pressed is given to one (the editor's own). The keypad's keys (DIVIDE, SUBTRACT) are bound where
+/// Rider binds them, beside the main keys'. The mouse's gestures are theirs too, the Mac's from $default with its Ctrl as
+/// Cmd; Shift+Alt-click, which they give a column from the caret and a column drag both, is the first, a drag going on with
+/// it, and Alt-click's Quick Evaluate Expression (the debugger's) and Linux's middle-click paste are left out.</summary>
 public static class DefaultKeymaps
 {
     public static Keymap ForPlatform() => OperatingSystem.IsMacOS() ? VisualStudioMac() : VisualStudio();
@@ -123,6 +126,7 @@ public static class DefaultKeymaps
     public static Keymap For(KeymapPreset preset) => preset switch
     {
         KeymapPreset.VSCode => OperatingSystem.IsMacOS() ? VSCodeMac() : VSCode(),
+        KeymapPreset.IntelliJ => OperatingSystem.IsMacOS() ? IntelliJMac() : IntelliJ(),
         _ => ForPlatform(),
     };
 
@@ -131,6 +135,8 @@ public static class DefaultKeymaps
     {
         (KeymapPreset.VSCode, true) => "VS Code (macOS)",
         (KeymapPreset.VSCode, false) => "VS Code",
+        (KeymapPreset.IntelliJ, true) => "IntelliJ IDEA (macOS)",
+        (KeymapPreset.IntelliJ, false) => "IntelliJ IDEA",
         (_, true) => "Visual Studio (macOS)",
         _ => "Visual Studio",
     };
@@ -369,5 +375,114 @@ public static class DefaultKeymaps
         .Bind(EditorActions.AddOrRemoveCaret, "alt button1")
         .Bind(EditorActions.ColumnSelectionFromCaret, "shift alt button1")
         .Bind(EditorActions.ColumnSelectionDrag, "button2")
+        .Bind(EditorActions.AddColumnSelectionDrag, "control alt shift button1");
+
+    // IntelliJ IDEA's Mac OS X 10.5+ keymap with what it takes from $default, its Ctrl as Cmd; it gives Scroll Up and Down
+    // no keys. Its middle-click is Go to Declaration's, which the keymap gives it over the column drag it inherits.
+    public static Keymap IntelliJMac() => new Keymap(NameOf(KeymapPreset.IntelliJ))
+        .Bind(EditorActions.Left, "LEFT", "control B")
+        .Bind(EditorActions.Right, "RIGHT", "control F")
+        .Bind(EditorActions.Up, "UP", "control P")
+        .Bind(EditorActions.Down, "DOWN", "control N")
+        .Bind(EditorActions.WordLeft, "alt LEFT", "control alt B")
+        .Bind(EditorActions.WordRight, "alt RIGHT", "control alt F")
+        .Bind(EditorActions.LineStart, "meta LEFT", "control A", "HOME")
+        .Bind(EditorActions.LineEnd, "meta RIGHT", "control E", "END")
+        .Bind(EditorActions.TextStart, "meta HOME", "meta UP")
+        .Bind(EditorActions.TextEnd, "meta END", "meta DOWN")
+        .Bind(EditorActions.PageUp, "PAGE_UP")
+        .Bind(EditorActions.PageDown, "PAGE_DOWN")
+        .Bind(EditorActions.Backspace, "BACK_SPACE", "shift BACK_SPACE")
+        .Bind(EditorActions.Delete, "DELETE")
+        .Bind(EditorActions.DeleteWordLeft, "alt BACK_SPACE")
+        .Bind(EditorActions.DeleteWordRight, "alt DELETE")
+        .Bind(EditorActions.NewLine, "ENTER")
+        .Bind(EditorActions.StartNewLine, "shift ENTER")
+        .Bind(EditorActions.StartNewLineBefore, "meta alt ENTER")
+        .Bind(EditorActions.Indent, "TAB")
+        .Bind(EditorActions.Outdent, "shift TAB")
+        .Bind(EditorActions.Duplicate, "meta D")
+        .Bind(EditorActions.DeleteLine, "meta BACK_SPACE")
+        .Bind(EditorActions.MoveLineUp, "alt shift UP")
+        .Bind(EditorActions.MoveLineDown, "alt shift DOWN")
+        .Bind(EditorActions.ToggleLineComment, "meta SLASH", "meta DIVIDE")
+        .Bind(EditorActions.ToggleBlockComment, "meta alt SLASH", "meta alt DIVIDE", "control shift SLASH", "control shift DIVIDE", "meta shift SLASH", "meta shift DIVIDE")
+        .Bind(EditorActions.JoinLines, "control shift J")
+        .Bind(EditorActions.ToggleCase, "meta shift U")
+        .Bind(EditorActions.CutToLineEnd, "control K")
+        .Bind(EditorActions.Undo, "meta Z")
+        .Bind(EditorActions.Redo, "meta shift Z", "alt shift BACK_SPACE")
+        .Bind(EditorActions.Cut, "meta X", "shift DELETE")
+        .Bind(EditorActions.Copy, "meta C", "meta INSERT")
+        .Bind(EditorActions.Paste, "meta V", "shift INSERT")
+        .Bind(EditorActions.SelectAll, "meta A")
+        .Bind(EditorActions.SelectNextOccurrence, "control G")
+        .Bind(EditorActions.UnselectOccurrence, "control shift G")
+        .Bind(EditorActions.SelectAllOccurrences, "control meta G")
+        .Bind(EditorActions.CaretPerLine, "alt shift G")
+        .Bind(EditorActions.Fold, "meta MINUS", "meta SUBTRACT")
+        .Bind(EditorActions.Unfold, "meta EQUALS", "meta ADD")
+        .Bind(EditorActions.FoldAll, "meta shift MINUS", "meta shift SUBTRACT")
+        .Bind(EditorActions.UnfoldAll, "meta shift EQUALS", "meta shift ADD")
+        .Bind(EditorActions.MatchBrace, "control M")
+        .Bind(EditorActions.Escape, "ESCAPE")
+        .Bind(EditorActions.AddOrRemoveCaret, "alt shift button1")
+        .Bind(EditorActions.ColumnSelectionFromCaret, "alt shift button2")
+        .Bind(EditorActions.ColumnSelectionDrag, "alt button1")
+        .Bind(EditorActions.AddColumnSelectionDrag, "meta alt shift button1");
+
+    // IntelliJ IDEA's $default keymap, which gives Clone Caret, Toggle Folding, Collapse to Definitions and the doc
+    // comments' folds no keys (on macOS either).
+    public static Keymap IntelliJ() => new Keymap(NameOf(KeymapPreset.IntelliJ))
+        .Bind(EditorActions.Left, "LEFT")
+        .Bind(EditorActions.Right, "RIGHT")
+        .Bind(EditorActions.Up, "UP")
+        .Bind(EditorActions.Down, "DOWN")
+        .Bind(EditorActions.WordLeft, "control LEFT")
+        .Bind(EditorActions.WordRight, "control RIGHT")
+        .Bind(EditorActions.LineStart, "HOME")
+        .Bind(EditorActions.LineEnd, "END")
+        .Bind(EditorActions.TextStart, "control HOME")
+        .Bind(EditorActions.TextEnd, "control END")
+        .Bind(EditorActions.PageUp, "PAGE_UP")
+        .Bind(EditorActions.PageDown, "PAGE_DOWN")
+        .Bind(EditorActions.ScrollUp, "control UP")
+        .Bind(EditorActions.ScrollDown, "control DOWN")
+        .Bind(EditorActions.Backspace, "BACK_SPACE", "shift BACK_SPACE")
+        .Bind(EditorActions.Delete, "DELETE")
+        .Bind(EditorActions.DeleteWordLeft, "control BACK_SPACE")
+        .Bind(EditorActions.DeleteWordRight, "control DELETE")
+        .Bind(EditorActions.NewLine, "ENTER")
+        .Bind(EditorActions.StartNewLine, "shift ENTER")
+        .Bind(EditorActions.StartNewLineBefore, "control alt ENTER")
+        .Bind(EditorActions.Indent, "TAB")
+        .Bind(EditorActions.Outdent, "shift TAB")
+        .Bind(EditorActions.Duplicate, "control D")
+        .Bind(EditorActions.DeleteLine, "control Y")
+        .Bind(EditorActions.MoveLineUp, "alt shift UP")
+        .Bind(EditorActions.MoveLineDown, "alt shift DOWN")
+        .Bind(EditorActions.ToggleLineComment, "control SLASH", "control DIVIDE")
+        .Bind(EditorActions.ToggleBlockComment, "control shift SLASH", "control shift DIVIDE")
+        .Bind(EditorActions.JoinLines, "control shift J")
+        .Bind(EditorActions.ToggleCase, "control shift U")
+        .Bind(EditorActions.Undo, "control Z", "alt BACK_SPACE")
+        .Bind(EditorActions.Redo, "control shift Z", "alt shift BACK_SPACE")
+        .Bind(EditorActions.Cut, "control X", "shift DELETE")
+        .Bind(EditorActions.Copy, "control C", "control INSERT")
+        .Bind(EditorActions.Paste, "control V", "shift INSERT")
+        .Bind(EditorActions.SelectAll, "control A")
+        .Bind(EditorActions.SelectNextOccurrence, "alt J")
+        .Bind(EditorActions.UnselectOccurrence, "alt shift J")
+        .Bind(EditorActions.SelectAllOccurrences, "control alt shift J")
+        .Bind(EditorActions.CaretPerLine, "alt shift G")
+        .Bind(EditorActions.Fold, "control MINUS", "control SUBTRACT")
+        .Bind(EditorActions.Unfold, "control EQUALS", "control ADD")
+        .Bind(EditorActions.FoldAll, "control shift MINUS", "control shift SUBTRACT")
+        .Bind(EditorActions.UnfoldAll, "control shift EQUALS", "control shift ADD")
+        .Bind(EditorActions.MatchBrace, "control shift M")
+        .Bind(EditorActions.Escape, "ESCAPE")
+        .Bind(EditorActions.AddOrRemoveCaret, "alt shift button1")
+        .Bind(EditorActions.ColumnSelectionFromCaret, "alt shift button2")
+        .Bind(EditorActions.ColumnSelectionDrag, "alt button1", "button2")
         .Bind(EditorActions.AddColumnSelectionDrag, "control alt shift button1");
 }

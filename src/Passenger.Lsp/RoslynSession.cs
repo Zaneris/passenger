@@ -280,10 +280,9 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     public async Task<IReadOnlyList<Roslyn.Extension.TextHeld>> HeldTextsAsync(IReadOnlyList<string> paths, CancellationToken cancel = default) =>
         (await ExtensionAsync<Roslyn.Extension.TextsHeld>(Roslyn.Extension.Handlers.DocumentTexts, new Roslyn.Extension.TextsAsked(paths), cancel).ConfigureAwait(false)).Texts;
 
-    /// <summary>The solution's documents written on disk at or after a time (UTC), or gone from it since, which the server
-    /// may hold as they were.</summary>
-    public async Task<IReadOnlyList<Roslyn.Extension.DocumentWritten>> WrittenSinceAsync(DateTime since, CancellationToken cancel = default) =>
-        (await ExtensionAsync<Roslyn.Extension.WrittenFound>(Roslyn.Extension.Handlers.DocumentsWritten, new Roslyn.Extension.WrittenAsked(since), cancel).ConfigureAwait(false)).Documents;
+    /// <summary>The solution's documents written on disk at or after a time (UTC), or gone from it since, and those heard
+    /// changed that no command has seen the server read since, which it may hold as they were.</summary>
+    public Task<WrittenLately> WrittenSinceAsync(DateTime since, CancellationToken cancel = default) => WrittenLately.AskAsync(Server, since, cancel);
 
     /// <summary>A message to Passenger's extension about the solution that nothing waits on, as a debugging session ends.</summary>
     public void TellExtension(string handler, object message) => RoslynExtension.TellWorkspace(Server, handler, message);
@@ -700,10 +699,9 @@ public sealed class LspDocument : IDisposable
     public async Task<IReadOnlyList<Roslyn.Extension.TextHeld>> HeldTextsAsync(IReadOnlyList<string> paths, CancellationToken cancel = default) =>
         (await RoslynExtension.AskWorkspaceAsync<Roslyn.Extension.TextsHeld>(Server, Roslyn.Extension.Handlers.DocumentTexts, new Roslyn.Extension.TextsAsked(paths), cancel).ConfigureAwait(false)).Texts;
 
-    /// <summary>The documents of the solution written on disk at or after a time (UTC), or gone from it since, which the
-    /// document's server may hold as they were.</summary>
-    public async Task<IReadOnlyList<Roslyn.Extension.DocumentWritten>> WrittenSinceAsync(DateTime since, CancellationToken cancel = default) =>
-        (await RoslynExtension.AskWorkspaceAsync<Roslyn.Extension.WrittenFound>(Server, Roslyn.Extension.Handlers.DocumentsWritten, new Roslyn.Extension.WrittenAsked(since), cancel).ConfigureAwait(false)).Documents;
+    /// <summary>The documents of the solution written on disk at or after a time (UTC), or gone from it since, and those
+    /// heard changed that no command has seen the document's server read since, which it may hold as they were.</summary>
+    public Task<WrittenLately> WrittenSinceAsync(DateTime since, CancellationToken cancel = default) => WrittenLately.AskAsync(Server, since, cancel);
 
     /// <summary>The symbol at an offset, the one a name there refers to or a declaration there declares, with its
     /// documentation id; none where there is no symbol.</summary>
@@ -901,6 +899,13 @@ public sealed class LspDocument : IDisposable
     {
         ServerLines before = ServerLines.Of(e.Before);
         ServerLines.After(e);
+        if (Server.TakesWholeTexts)
+        {
+            // A server that takes only whole texts (Godot's) reads a change's text as the document's.
+            Sent(e.Version, changed: !session.Pushes.EachText || Changes(e));
+            Server.Notify(LspMethods.DidChange, new DidChangeTextDocumentParams(new VersionedTextDocumentIdentifier(Uri, e.Version), [new(null, e.After.ToString())]));
+            return;
+        }
         List<TextDocumentContentChangeEvent> changes = [];
         for (int last = e.Edits.Count - 1; last >= 0;)
         {

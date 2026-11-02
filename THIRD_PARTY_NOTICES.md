@@ -220,13 +220,17 @@ Packages the build or the tests use that no app carries.
 | `Mono.TextTemplating` | the EF Core Design package's template engine, restored for the tests' local feed | MIT | no copyright line; its author: Mikayla Hutchinson |
 | `SQLitePCLRaw.bundle_e_sqlite3`, `SQLitePCLRaw.lib.e_sqlite3`, `SQLitePCLRaw.provider.e_sqlite3` | SQLite for EF Core's SQLite provider, restored for the tests' local feed | Apache-2.0 | Copyright 2014-2024 SourceGear, LLC |
 | `SQLitePCLRaw.config.e_sqlite3` | SQLite's configuration for EF Core 11's SQLite provider, restored for the tests' local feed (tests/EfGraphs) | Apache-2.0 | Copyright 2014-2026 SourceGear, LLC |
+| `gdUnit4.api`, `gdUnit4.test.adapter` | GdUnit4's API and its VSTest adapter: the graph of the GdUnit4 tests the Godot tests write into a game, restored for the tests' package cache (tests/GodotGraphs); Passenger never carries them | MIT | © 2026 Mike Schulze |
+| `GodotSharp` | Godot's C# API at the version GdUnit4's API names, restored for the tests' package cache (tests/GodotGraphs); a test's game takes the Godot found's own | MIT | Copyright (c) Godot Engine contributors |
+| `Mono.Cecil` | GdUnit4's dependency, restored for the tests' package cache (tests/GodotGraphs) | MIT | no copyright line; its author: Jb Evain |
+| `Microsoft.TestPlatform.AdapterUtilities` | GdUnit4's adapter's dependency, restored for the tests' package cache (tests/GodotGraphs) | MIT | © Microsoft Corporation. All rights reserved. |
 | `SQLite` | SQLite's native builds under EF Core 11's SQLite provider, restored for the tests' local feed (tests/EfGraphs) | public domain (the package's LICENSE.txt: "SQLite is Public Domain", https://sqlite.org/copyright.html) | Copyright 2014-2026 SourceGear, LLC (the package's builds) |
 | `Npgsql.EntityFrameworkCore.PostgreSQL`, `Npgsql` | EF Core's PostgreSQL provider and the driver under it: the graph of the web app the Migrations window's compose run test writes, restored for the tests' local feed (tests/EfGraphs); Passenger never carries them | PostgreSQL | Copyright 2025 © The Npgsql Development Team |
 | `Polly.Extensions` | starters' resilience dependency, restored for the tests' local feed | BSD-3-Clause | Copyright (c) 2024, App vNext |
 | `System.Drawing.Common` | Aspire hosting's dependency, restored for the tests' local feed | MIT | © Microsoft Corporation. All rights reserved. |
 | `QRCoder` | Aspire hosting's dependency, restored for the tests' local feed | MIT | Copyright © 2013-2025 Raffael Herrmann. Copyright © 2024-2025 Shane Krueger. All rights reserved. |
 | `YamlDotNet` | Aspire hosting's dependency, restored for the tests' local feed | MIT | Copyright (c) Antoine Aubry and contributors |
-| `Microsoft.AspNetCore.Components.WebAssembly`, `Microsoft.AspNetCore.Components.WebAssembly.DevServer`, `Microsoft.AspNetCore.Components`, `Microsoft.AspNetCore.Components.Analyzers`, `Microsoft.AspNetCore.Components.Forms`, `Microsoft.AspNetCore.Components.Web`, `Microsoft.AspNetCore.Authorization`, `Microsoft.AspNetCore.Metadata`, `Microsoft.Extensions.Validation`, `Microsoft.JSInterop`, `Microsoft.JSInterop.WebAssembly`, `Microsoft.NET.ILLink.Tasks`, `Microsoft.NET.Sdk.WebAssembly.Pack` | Blazor's WebAssembly host and development server, what they depend on, and the browser's trimmer and pack the SDK adds: the graph of the app the SDK's blazorwasm template makes, restored for the tests' local feed (tests/BlazorGraphs); Passenger never carries them | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.AspNetCore.Components.WebAssembly`, `Microsoft.AspNetCore.Components.WebAssembly.DevServer`, `Microsoft.AspNetCore.Components.WebAssembly.Server`, `Microsoft.AspNetCore.Components`, `Microsoft.AspNetCore.Components.Analyzers`, `Microsoft.AspNetCore.Components.Forms`, `Microsoft.AspNetCore.Components.Web`, `Microsoft.AspNetCore.Authorization`, `Microsoft.AspNetCore.Metadata`, `Microsoft.Extensions.Validation`, `Microsoft.JSInterop`, `Microsoft.JSInterop.WebAssembly`, `Microsoft.NET.ILLink.Tasks`, `Microsoft.NET.Sdk.WebAssembly.Pack` | Blazor's WebAssembly host, development server and server package, what they depend on, and the browser's trimmer and pack the SDK adds: the graphs of the apps the SDK's blazorwasm and blazor templates make, restored for the tests' local feed (tests/BlazorGraphs); Passenger never carries them | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.WindowsDesktop.App.Ref` | WPF's reference assemblies, downloaded for the tests' local feed, from which the WPF app `WpfXamlTests` make restores off Windows (`WpfApp`); Passenger reads a WPF project's own copy, never carries one | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.NET.Test.Sdk`, `Microsoft.TestPlatform.TestHost`, `Microsoft.CodeCoverage` | the tests' host | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Testing.Platform`, `Microsoft.Testing.Platform.MSBuild`, `Microsoft.Testing.Extensions.Telemetry`, `Microsoft.Testing.Extensions.TrxReport.Abstractions`, `Microsoft.ApplicationInsights` | xunit.v3's test platform | MIT | © Microsoft Corporation. All rights reserved. |
@@ -726,6 +730,12 @@ And one that colours .http and .rest files: `http.tmLanguage.json`, REST Client'
 `syntaxes/http.tmLanguage.json` of Huachao/vscode-restclient (https://github.com/Huachao/vscode-restclient, MIT,
 Copyright (c) 2016 - present Huachao Mao) at commit 0773d56b, unchanged.
 
+And three that colour Godot's files, from the Godot Engine's own VS Code extension, godotengine/godot-vscode-plugin
+(https://github.com/godotengine/godot-vscode-plugin, MIT, Copyright (c) 2016-2022 The Godot Engine community) at its
+tag 2.7.1 (commit 7317ea20), its `syntaxes/` folder, unchanged: `GDScript.tmLanguage.json` (GDScript's .gd files),
+`GDResource.tmLanguage.json` (scenes, resources and project.godot, which embeds the other two) and
+`GDShader.tmLanguage.json` (Godot's shaders).
+
 Reading them, Passenger leaves out what VS Code's reader passes over (a capture that is not a rule) and lets a rule
 that begins with no end never end, as VS Code does, takes YAML's typed scalars (booleans, numbers, null) out of a block
 or flow mapping's keys, so a key such as a workflow's `on` is read as a key, ends a shell heredoc only at a line that is
@@ -748,6 +758,7 @@ Copyright (c) 2019 Jeff Hykin
 Copyright (c) .NET Foundation and Contributors
 Copyright (c) 2016 .NET Foundation
 Copyright (c) 2016 - present Huachao Mao
+Copyright (c) 2016-2022 The Godot Engine community
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

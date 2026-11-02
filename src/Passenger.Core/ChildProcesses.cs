@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Passenger.Core;
@@ -85,9 +86,57 @@ public static class ChildProcesses
     /// says) and with no first-run banner. It builds in its own process and worker nodes, never in MSBuild's server, which
     /// would outlive it; a node left for the next build is the IDE's alone, so it ends with the IDE
     /// (<see cref="Lifeline"/>). A <see cref="FileNotFoundException"/> when there is none.</summary>
-    public static ProcessStartInfo DotnetCommand(IEnumerable<string> arguments, string? folder = null)
+    public static ProcessStartInfo DotnetCommand(IEnumerable<string> arguments, string? folder = null) =>
+        AsDotnet(Command(Dotnet.Host(), arguments, folder));
+
+    /// <summary>The helper host carried beside the app (src/Passenger.Helper), by its name.</summary>
+    public const string HelperHost = "passenger-helper";
+
+    /// <summary>One of Passenger's own helper programs (an assembly the app carries: Roslyn's server, the project host, the
+    /// debug adapter) with these arguments, on the runtime Passenger itself runs on, never the person's dotnet: run by the
+    /// helper host's apphost beside the app, which beside a self-contained app takes its runtime, else by the muxer of the
+    /// runtime this build runs on, at its version, with the .NET command line's environment (<see cref="DotnetCommand"/>).
+    /// A <see cref="FileNotFoundException"/> when the host is missing.</summary>
+    public static ProcessStartInfo HelperCommand(string assembly, IEnumerable<string> arguments, string? folder = null)
     {
-        ProcessStartInfo start = Command(Dotnet.Host(), arguments, folder);
+        string runtime = Path.TrimEndingDirectorySeparator(RuntimeEnvironment.GetRuntimeDirectory());
+        string beside = AppContext.BaseDirectory;
+        string helper = Path.Combine(beside, HelperHost + ".dll");
+        string program = Path.Combine(beside, HelperHost + (OperatingSystem.IsWindows() ? ".exe" : string.Empty));
+        string muxer = Path.GetFullPath(Path.Combine(runtime, "..", "..", "..", OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet"));
+        List<string> words = [];
+        // A runtime with no muxer of its own (one found through DOTNET_ROOT) is found again by the apphost, as the app's was.
+        if (!PathNames.Same(runtime, Path.TrimEndingDirectorySeparator(beside)) && File.Exists(muxer))
+        {
+            program = muxer;
+            words.AddRange(["exec", "--fx-version", Path.GetFileName(runtime), helper]);
+        }
+        if (!File.Exists(program) || !File.Exists(helper))
+        {
+            throw new FileNotFoundException($"Passenger's helper host is missing from {beside}", program);
+        }
+        return AsDotnet(Command(program, [.. words, assembly, .. arguments], folder));
+    }
+
+    /// <summary>A helper's start (<see cref="HelperCommand"/>) naming the person's .NET command line (<see cref="Dotnet.Host"/>)
+    /// as the one MSBuild, its SDK resolvers and its tools take for the installation, as the command line names itself to
+    /// the builds it runs: the helper's own host is none of the person's. Where there is none, none is named.</summary>
+    public static ProcessStartInfo NamingDotnet(ProcessStartInfo start)
+    {
+        try
+        {
+            start.Environment[RuntimeVariables.HostPath] = Dotnet.Host();
+        }
+        catch (FileNotFoundException)
+        {
+            start.Environment.Remove(RuntimeVariables.HostPath);
+        }
+        return start;
+    }
+
+    /// <summary>A start given the .NET command line's environment (<see cref="DotnetCommand"/>).</summary>
+    private static ProcessStartInfo AsDotnet(ProcessStartInfo start)
+    {
         start.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
         start.Environment["DOTNET_NOLOGO"] = "1";
         // MSBuild writes UTF-8, which is how its output is read, on every Windows: by itself it does only from 10 1909 on.
@@ -100,6 +149,11 @@ public static class ChildProcesses
         start.Environment[MSBuildNames.NodeHandshakeSalt] = $"{salt}passenger-{Environment.ProcessId}";
         // Set by dotnet test for what it runs: each node would hold the command's output open as its own.
         start.Environment.Remove(MSBuildNames.EnsureStdOutForTaskProcesses);
+        // An SDK's own, from a Passenger started under one (dotnet run, dotnet test): the command finds the SDK its folder picks.
+        foreach (string variable in (string[])[MSBuildNames.ExePath, MSBuildNames.ExtensionsPath, MSBuildNames.SdksPath, MSBuildNames.LoadMicrosoftTargetsReadOnly])
+        {
+            start.Environment.Remove(variable);
+        }
         return start;
     }
 

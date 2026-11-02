@@ -11,6 +11,7 @@ namespace Passenger.Lsp;
 /// (<see cref="Tell"/>) goes to the server as one notification of the changes some watcher covers, in the order told,
 /// files gone in one of their own to a server with Passenger's loader (<see cref="HasLoader"/>); one told while the server
 /// loads projects that no watcher covers yet is kept for the registration its load sends, which may arrive after it.
+/// Every file heard changed is kept until a command has seen the server hold it as the disk has it (<see cref="Changing"/>).
 /// Every registration and notification is written in the server's log. Thread-safe; <see cref="Changed"/> is raised on
 /// the thread that registered or unregistered, <see cref="Sent"/> on the telling one.</summary>
 public sealed class WatchedFiles
@@ -21,6 +22,20 @@ public sealed class WatchedFiles
     private readonly Lock gate = new();
     private readonly Dictionary<string, IReadOnlyList<FileWatch>> registered = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FileChangeType> kept = new(PathNames.Comparer);
+
+    /// <summary>How long a changed file the server was found holding otherwise than the disk is waited for, from the first
+    /// time it was: a server that never reads it again would otherwise hold every command that waits for it.</summary>
+    private static readonly TimeSpan UnreadLimit = TimeSpan.FromSeconds(10);
+
+    /// <summary>The files heard changed on disk, told the server or about to be, that no command has yet seen it hold as the
+    /// disk has them: each with the number of its latest change heard, and when the server was first found holding it otherwise.</summary>
+    private readonly Dictionary<string, (long Heard, DateTime? Unread)> changing = new(PathNames.Comparer);
+
+    /// <summary>The number of the latest change heard (<see cref="changing"/>).</summary>
+    private long heard;
+
+    /// <summary>Whether changed files were let go past <see cref="KeptLimit"/>, said once until they are fewer.</summary>
+    private bool changesOverflowed;
     private readonly LanguageServer server;
     private IReadOnlyList<FileWatch> watches = [];
 
@@ -152,6 +167,79 @@ public sealed class WatchedFiles
         }
     }
 
+    /// <summary>Files changed on disk whose change is on its way to the server, kept as <see cref="Changing"/> from now, before
+    /// it is told (<see cref="Tell"/>).</summary>
+    public void Hearing(IEnumerable<string> paths)
+    {
+        lock (gate)
+        {
+            foreach (string path in paths)
+            {
+                Heard(path);
+            }
+        }
+    }
+
+    /// <summary>The files heard changed on disk that no command has seen the server hold as the disk has them since, and the
+    /// number of the latest change among them, to settle them by (<see cref="Settle"/>).</summary>
+    public (IReadOnlyList<string> Paths, long AsOf) Changing()
+    {
+        lock (gate)
+        {
+            return ([.. changing.Keys], heard);
+        }
+    }
+
+    /// <summary>Of the files <see cref="Changing"/> gave as of a number, those not heard changed since let go but those
+    /// <paramref name="behind"/>, which the command waits for; of those, each the server was found holding otherwise than the
+    /// disk (<paramref name="unread"/>) let go once <see cref="UnreadLimit"/> has passed since it first was, said in the log.</summary>
+    public void Settle(IReadOnlyList<string> asked, long asOf, IReadOnlyCollection<string> behind, IReadOnlyCollection<string> unread)
+    {
+        HashSet<string> waited = new(behind, PathNames.Comparer);
+        HashSet<string> notRead = new(unread, PathNames.Comparer);
+        DateTime now = DateTime.UtcNow;
+        lock (gate)
+        {
+            foreach (string path in asked)
+            {
+                if (!changing.TryGetValue(path, out (long Heard, DateTime? Unread) change) || change.Heard > asOf)
+                {
+                    continue;
+                }
+                if (!waited.Contains(path))
+                {
+                    changing.Remove(path);
+                }
+                else if (notRead.Contains(path) && change.Unread is { } first && now - first > UnreadLimit)
+                {
+                    changing.Remove(path);
+                    server.Note($"The server still held {path} otherwise than the disk {UnreadLimit.TotalSeconds:0} s after it was first found so: "
+                        + "commands no longer wait for it to read it");
+                }
+                else if (notRead.Contains(path) && change.Unread is null)
+                {
+                    changing[path] = change with { Unread = now };
+                }
+            }
+            changesOverflowed &= changing.Count >= KeptLimit;
+        }
+    }
+
+    /// <summary>A file heard changed, under the gate.</summary>
+    private void Heard(string path)
+    {
+        if (changing.Count >= KeptLimit && !changing.ContainsKey(path))
+        {
+            if (!changesOverflowed)
+            {
+                changesOverflowed = true;
+                server.Note($"Files changed on disk were let go past {KeptLimit}: commands find those changed since only by the time they were written");
+            }
+            return;
+        }
+        changing[path] = (++heard, null);
+    }
+
     /// <summary>Tells the server of the changes some watcher covers, by their canonical paths, in one notification, keeping
     /// the rest while it loads projects; how many it was told of. Each is matched against every watcher, so the caller
     /// tells a batch from off the UI thread.</summary>
@@ -189,6 +277,10 @@ public sealed class WatchedFiles
         if (changes.Count == 0)
         {
             return;
+        }
+        foreach (FileEvent change in changes)
+        {
+            Heard(change.Path);
         }
         List<FileEvent> gone = HasLoader ? [.. changes.Where(c => c.Change == FileChangeType.Deleted)] : [];
         List<FileEvent> rest = gone.Count == 0 ? changes : [.. changes.Where(c => c.Change != FileChangeType.Deleted)];

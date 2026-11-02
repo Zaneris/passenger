@@ -73,24 +73,74 @@ public static partial class Dotnet
         return string.Empty;
     }
 
+    /// <summary>A test's stand-in for the search <see cref="Host"/> makes, a machine with no .NET's throwing what the search
+    /// throws; null for the search itself.</summary>
+    public static Func<string>? HostSearch { get; set; }
+
+    /// <summary>A test's stand-in for the places the installers put dotnet, its runtime's own dotnet then passed over; null
+    /// for this machine's.</summary>
+    public static IReadOnlyList<string>? PlacesStandIn { get; set; }
+
+    /// <summary>What <see cref="Host"/> throws with no .NET command line found.</summary>
+    public const string NotFound = "No .NET command line found: install the .NET SDK, or set DOTNET_ROOT to where it is.";
+
     /// <summary>The <c>dotnet</c> that runs this app (framework-dependent, its runtime three folders under the host), else
     /// one on DOTNET_ROOT or the PATH, else where the installers put it.</summary>
-    public static string Host()
+    public static string Host() => HostSearch is { } standIn ? standIn() : Find()?.Host ?? throw new FileNotFoundException(NotFound);
+
+    /// <summary>The <c>dotnet</c> <see cref="Host"/> runs and where it was found; null with none.</summary>
+    public static DotnetFound? Find()
     {
+        if (HostSearch is { } standIn)
+        {
+            try
+            {
+                return new DotnetFound(standIn(), DotnetPlace.Path);
+            }
+            catch (FileNotFoundException)
+            {
+                return null;
+            }
+        }
         ShellEnvironment.Ready();
         string name = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
-        string runtime = RuntimeEnvironment.GetRuntimeDirectory();
-        string fromRuntime = Path.GetFullPath(Path.Combine(runtime, "..", "..", "..", name));
-        if (File.Exists(fromRuntime))
+        string fromRuntime = Path.GetFullPath(Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", name));
+        if (PlacesStandIn is null && File.Exists(fromRuntime))
         {
-            return fromRuntime;
+            return new DotnetFound(fromRuntime, DotnetPlace.Runtime);
         }
-        if (Environment.GetEnvironmentVariable("DOTNET_ROOT") is { Length: > 0 } root && File.Exists(Path.Combine(root, name)))
+        if (Environment.GetEnvironmentVariable(RuntimeVariables.Root) is { Length: > 0 } root && File.Exists(Path.Combine(root, name)))
         {
-            return Path.Combine(root, name);
+            return Own(new DotnetFound(Path.Combine(root, name), DotnetPlace.Root));
         }
-        return Programs.OnPath(name) ?? Installed(name).FirstOrDefault(File.Exists)
-            ?? throw new FileNotFoundException("No .NET command line found: install the .NET SDK, or set DOTNET_ROOT to where it is.");
+        if (Programs.OnPath(name) is { } onPath)
+        {
+            return Own(new DotnetFound(onPath, DotnetPlace.Path));
+        }
+        return (PlacesStandIn ?? Installed(name)).FirstOrDefault(File.Exists) is { } installed ? new DotnetFound(installed, DotnetPlace.Installed) : null;
+    }
+
+    /// <summary>One found on DOTNET_ROOT or the PATH as <see cref="Use"/> put it there, as the place it was found before.</summary>
+    private static DotnetFound Own(DotnetFound found) => used is { } own && PathNames.Same(found.Root, own) ? found with { Place = DotnetPlace.Installed } : found;
+
+    /// <summary>The installation <see cref="Use"/> put first, which the shell's own PATH and DOTNET_ROOT did not name.</summary>
+    private static volatile string? used;
+
+    /// <summary>Has this process and every program it starts, the terminal's shell among them, take the .NET installation
+    /// in <paramref name="root"/> (one installed, or found where neither the PATH nor DOTNET_ROOT names it): DOTNET_ROOT
+    /// names it and the PATH has it first. <see cref="Find"/> still finds it as one no PATH names.</summary>
+    public static void Use(string root)
+    {
+        string[] path = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+        bool taken = path.Length > 0 && PathNames.Same(path[0], root) && PathNames.Same(Environment.GetEnvironmentVariable(RuntimeVariables.Root) ?? string.Empty, root);
+        used = PathNames.Canonical(root);
+        if (taken)
+        {
+            return;
+        }
+        OwnEnvironment.Set(RuntimeVariables.Root, root);
+        OwnEnvironment.Set("PATH", string.Join(Path.PathSeparator, [root, .. path.Where(p => !PathNames.Same(p, root))]));
+        ForgetSdks();
     }
 
     /// <summary>The folder <see cref="Host"/> is installed in, its sdk, packs and shared folders beside it: the folder of the
@@ -108,13 +158,15 @@ public static partial class Dotnet
         static string? Set(string name) => Environment.GetEnvironmentVariable(name) is { Length: > 0 } value ? value : null;
     }
 
-    /// <summary>Where Microsoft's installers, the install script and the package managers put the .NET command line.</summary>
+    /// <summary>Where Microsoft's installers, the install script, the package managers and Passenger
+    /// (<see cref="DotnetInstall.Folder"/>) put the .NET command line.</summary>
     private static IEnumerable<string> Installed(string name)
     {
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (OperatingSystem.IsWindows())
         {
             yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet", name);
+            yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "dotnet", name);
         }
         else if (OperatingSystem.IsMacOS())
         {
@@ -129,4 +181,21 @@ public static partial class Dotnet
         }
         yield return Path.Combine(home, ".dotnet", name);
     }
+}
+
+/// <summary>How <see cref="Dotnet.Find"/> found a dotnet: the one running this app, DOTNET_ROOT's, the PATH's, or one where
+/// an installer puts it that neither names.</summary>
+public enum DotnetPlace
+{
+    Runtime,
+    Root,
+    Path,
+    Installed,
+}
+
+/// <summary>A <c>dotnet</c> found, and how.</summary>
+public sealed record DotnetFound(string Host, DotnetPlace Place)
+{
+    /// <summary>The installation's folder, its sdk and shared folders beside the host's real path.</summary>
+    public string Root => Path.GetDirectoryName(PathNames.Canonical(Host))!;
 }

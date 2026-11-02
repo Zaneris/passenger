@@ -1,0 +1,16 @@
+<Project>
+  <!-- The package graph of the GdUnit4 tests the Godot tests write into a Godot 4 C# game (GdUnit4's API and its VSTest
+       adapter) at the tests' own target, TestProjects.Framework, restored with the solution so the package cache holds
+       it: a test's game restores from the Godot found's own packages alone, which finds the rest there (GdUnit4Tests),
+       never on nuget.org. Built as an empty library, never run, under none of the repo's rules, which are for
+       Passenger's code. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <IsPackable>false</IsPackable>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath>$(MSBuildThisFileDirectory)../../artifacts</ArtifactsPath>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+  </PropertyGroup>
+</Project>

@@ -13,11 +13,20 @@ public sealed class TemplateOptions
     private readonly Dictionary<string, string> byPerson = new(StringComparer.Ordinal);
     private readonly List<(TemplateOption Option, Control Row, Control Editor)> shown = [];
 
+    /// <summary>The rest of a template's options where it picked some to show, opened by the person and kept open across
+    /// templates.</summary>
+    private readonly FormFold more = new();
+
     /// <summary>Set while it sets a list's choice itself, so the choice is not taken for the person's.</summary>
     private bool setting;
 
-    /// <summary>Where the options are shown, one row each.</summary>
+    /// <summary>Where the options are shown, one row each, but those under More options.</summary>
     public StackPanel Panel { get; } = new() { Spacing = 10 };
+
+    /// <summary>More options and the rows it opens, shown where a template has some; its dialog places it last.</summary>
+    public StackPanel Folded { get; }
+
+    public TemplateOptions() => Folded = new StackPanel { Spacing = 10, IsVisible = false, Children = { more.Opener, more.Rows } };
 
     /// <summary>A value changed, or what is enabled with it: what the options come to has changed.</summary>
     public event Action? Changed;
@@ -32,6 +41,7 @@ public sealed class TemplateOptions
     public void Show(TemplateVariant variant, IReadOnlySet<string>? asked = null)
     {
         Panel.Children.Clear();
+        more.Rows.Children.Clear();
         shown.Clear();
         values.Clear();
         foreach (TemplateOption option in variant.Options.Where(o => asked?.Contains(o.Name) != true))
@@ -39,6 +49,9 @@ public sealed class TemplateOptions
             string value = byPerson.TryGetValue(option.Name, out string? kept) && (option.Kind != TemplateOptionKind.Choice || option.Choices.Any(c => c.Value == kept))
                 ? kept : option.Default;
             values[option.Name] = value;
+            // One of the rest says what it is under its field, where its switch or name alone may not.
+            TextBlock? said = !option.Picked && option.Description is { Length: > 0 } description ? MutedText.Wrapped(description) : null;
+            string label = option.NamedBySwitch ? option.Label : $"{option.Label}:";
             Control editor;
             Control row;
             switch (option.Kind)
@@ -47,7 +60,7 @@ public sealed class TemplateOptions
                     CheckBox box = new() { Content = option.Label, IsChecked = IsTrue(value) != option.Inverted };
                     box.IsCheckedChanged += (_, _) => Set(option, (box.IsChecked == true) != option.Inverted ? "true" : "false");
                     editor = box;
-                    row = Row(null, box);
+                    row = Row(null, Described(box, said), top: said is not null);
                     break;
                 case TemplateOptionKind.Choice:
                     ComboBox choices = new() { Classes = { StyleClasses.Form }, ItemsSource = option.Choices.Select(c => c.Label).ToList() };
@@ -60,29 +73,49 @@ public sealed class TemplateOptions
                         }
                     };
                     editor = choices;
-                    row = Row($"{option.Label}:", choices);
+                    row = Row(label, Described(choices, said), top: said is not null);
                     break;
                 default:
                     TextBox text = new() { Classes = { StyleClasses.Search }, Text = value, MaxWidth = 360, HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 240 };
                     text.TextChanged += (_, _) => Set(option, text.Text ?? string.Empty);
                     editor = text;
-                    row = Row($"{option.Label}:", text);
+                    row = Row(label, Described(text, said), top: said is not null);
                     break;
             }
-            if (option.Description is { Length: > 0 } said)
+            if (said is null && option.Description is { Length: > 0 } tip)
             {
-                ToolTip.SetTip(row, said);
+                ToolTip.SetTip(row, tip);
             }
-            Panel.Children.Add(row);
+            (option.More ? more.Rows : Panel).Children.Add(row);
             shown.Add((option, row, editor));
         }
+        Folded.IsVisible = more.Rows.Children.Count > 0;
+        more.Title = $"More options ({more.Rows.Children.Count})";
+        // A value the person set among them stays in sight, as it goes to the command line.
+        more.IsOpen |= shown.Any(s => s.Option.More && !string.Equals(values[s.Option.Name], s.Option.Default, StringComparison.OrdinalIgnoreCase));
         Enable();
+    }
+
+    /// <summary>The link that opens the options waiting under More options, while a template has some.</summary>
+    public Button MoreOptions => more.Opener;
+
+    /// <summary>A field with what it is said under it, where it is said.</summary>
+    private static Control Described(Control editor, TextBlock? said)
+    {
+        if (said is null)
+        {
+            return editor;
+        }
+        editor.HorizontalAlignment = HorizontalAlignment.Left;
+        return new StackPanel { Spacing = 4, Children = { editor, said } };
     }
 
     /// <summary>No options, as for a template that has none to show.</summary>
     public void Clear()
     {
         Panel.Children.Clear();
+        more.Rows.Children.Clear();
+        Folded.IsVisible = false;
         shown.Clear();
         values.Clear();
     }
@@ -131,14 +164,15 @@ public sealed class TemplateOptions
         return null;
     }
 
-    /// <summary>A row of a dialog's form: its label (none for a checkbox, which carries its own) and what sets it.</summary>
-    public static Control Row(string? label, Control editor)
+    /// <summary>A row of a dialog's form: its label (none for a checkbox, which carries its own) and what sets it, the label
+    /// at the top of a field with words under it.</summary>
+    public static Control Row(string? label, Control editor, bool top = false)
     {
         if (editor is ComboBox)
         {
             editor.HorizontalAlignment = HorizontalAlignment.Left;
         }
-        return FormRows.Of(label, editor);
+        return FormRows.Of(label, editor, top);
     }
 
     /// <summary>What a project has of an option its template turns off, where that is not the option's value: VSTest for a

@@ -29,16 +29,19 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.Settings, Title = "The IDE's settings", ReadOnly = true), Description(
         "Every setting the Settings dialog has, by its settings.json name (editorFontSize, theme...), with its value, kind, " +
         "choices and range; kept is false for an --mcp Passenger's own defaults, kept nowhere.")]
-    public Task<SettingsInfo> GetSettings(CancellationToken cancel = default) => OnUi(cancel, () =>
+    public Task<SettingsInfo> GetSettings(CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         JsonObject values = SettingsNode(window.Settings);
-        return Task.FromResult(new SettingsInfo(window.SettingsKept, [.. SettingProperties.Select(p =>
+        IReadOnlyList<string> fonts = await FontSetting.ChoicesAsync();
+        return new SettingsInfo(window.SettingsKept, [.. SettingProperties.Select(p =>
         {
             Type type = Nullable.GetUnderlyingType(p.Value.PropertyType) ?? p.Value.PropertyType;
             (double Min, double Max)? range = SettingRange(p.Key, p.Value);
-            return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value),
-                type.IsEnum ? Enum.GetNames(type) : null, range?.Min, range?.Max);
-        })]));
+            IReadOnlyList<string>? choices = type.IsEnum ? Enum.GetNames(type)
+                : Declared.All.OfType<FontSetting>().Any(f => f.Property == p.Value.Name) ? fonts
+                : null;
+            return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value), choices, range?.Min, range?.Max);
+        })]);
     });
 
     [McpServerTool(Name = McpTools.SettingsSet, Title = "Change settings", Destructive = true), Description(
@@ -479,10 +482,11 @@ public sealed partial class PassengerTools
         }
         ToolWindows.ProblemsModel view = window.BottomPanel.Problems;
         return new ProblemsInfo([.. view.ToolsetProblems.Select(Found)], [.. view.Problems.Select(Found)],
-            Session.CSharp?.SolutionProblems is { } solution ? [.. solution.Select(p => new Finding(p.Diagnostic.Severity == Lsp.DiagnosticSeverity.Error ? "error" : "warning", p.Diagnostic.Code,
+            Session.CSharp?.SolutionProblems is { } solution ? [.. solution.Where(p => p.Diagnostic.Severity is Lsp.DiagnosticSeverity.Error or Lsp.DiagnosticSeverity.Warning)
+                .Select(p => new Finding(p.Diagnostic.Severity == Lsp.DiagnosticSeverity.Error ? "error" : "warning", p.Diagnostic.Code,
                 p.Diagnostic.Message, Relative(p.Path), p.At.Line + 1, p.At.Column + 1))] : null);
 
-        Finding Found(Problem p) => new(p.Severity == ProblemSeverity.Error ? "error" : "warning", p.Code, p.Message,
+        Finding Found(Problem p) => new(p.Severity switch { ProblemSeverity.Error => "error", ProblemSeverity.Warning => "warning", _ => "info" }, p.Code, p.Message,
             p.Path is { } at ? Relative(at) : p.Project, p.Position.Line + 1, p.Position.Column + 1);
     });
 }

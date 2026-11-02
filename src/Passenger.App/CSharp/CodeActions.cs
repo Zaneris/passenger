@@ -5,6 +5,7 @@ using Passenger.App.Xaml;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Lsp;
+using Passenger.Roslyn.Extension;
 using Passenger.Text;
 
 namespace Passenger.App.CSharp;
@@ -33,6 +34,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// <summary>Asks the person for a value a fix sets (a title, what is asked, whether it is a secret, masked as typed);
     /// null when they gave none.</summary>
     public Func<string, string, bool, Task<string?>>? AskValue { get; set; }
+
+    /// <summary>Asks the person to agree to a fix (a title, what is asked, the button that agrees); whether they did.</summary>
+    public Func<string, string, string, Task<bool>>? ConfirmFix { get; set; }
 
     internal IReadOnlyList<EditorFix> OwnFixes(OpenDocument? file, int offset) => file is not null && EditorFixes?.Invoke(file, offset) is { } fixes ? fixes : [];
 
@@ -65,6 +69,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             IdeErrors.Observe(AskAndMakeAsync(now.Title.TrimEnd('…'), asks));
             return;
         }
+        if (now.Confirms is { } confirms)
+        {
+            IdeErrors.Observe(ConfirmAndMakeAsync(now.Title.TrimEnd('…'), confirms));
+            return;
+        }
         Editor.ApplyEdits([new TextEdit(now.Range.Start, now.Range.Length, now.Text)], SelectionSet.Single(now.Range.Start + (now.Caret ?? now.Text.Length)));
     }
 
@@ -81,6 +90,38 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             using (BackgroundWork.Scope())
             {
                 RefactorOutcome made = await asks.Make(value, null);
+                context.Say(made.Problem ?? made.Said);
+            }
+        }
+        catch (Exception error)
+        {
+            IdeErrors.Report(error);
+        }
+    }
+
+    /// <summary>A fix's question asked of the person (<see cref="ConfirmFix"/>) as the files stand, then the fix made as
+    /// background work once they agree, what it came to said; nothing when they do not.</summary>
+    private async Task ConfirmAndMakeAsync(string title, FixConfirmed confirms)
+    {
+        try
+        {
+            string? question;
+            using (BackgroundWork.Scope())
+            {
+                question = await confirms.Question();
+            }
+            if (question is null)
+            {
+                context.Say($"{title} was not applied: the file changed, so it no longer fits");
+                return;
+            }
+            if (ConfirmFix is null || !await ConfirmFix(title, question, confirms.Yes))
+            {
+                return;
+            }
+            using (BackgroundWork.Scope())
+            {
+                RefactorOutcome made = await confirms.Make(null);
                 context.Say(made.Problem ?? made.Said);
             }
         }
@@ -453,8 +494,17 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         // The open files as the request went: what is typed meanwhile carries the answer on.
         using Asked asked = WorkspaceEdits.Track(context.Editors);
+        // A Godot script's member by any of Godot's names for it is renamed from the code's own, its other names following.
+        GodotNamesFound? godot = component is null ? await context.Languages.CSharp.GodotNamesAsync(document, context.Now(document), at.Offset, uses: true) : null;
+        (string own, string written, string? misnamed) = godot is null ? (name, name, null) : CSharpAssist.GodotRenamed(godot, name);
+        if (misnamed is not null)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {misnamed}");
+        }
         // Asked of the server running now: one there before may have been started again since.
-        System.Text.Json.JsonElement? renamed = component is null ? await context.Now(document).RenameAsync(at.Offset, name)
+        System.Text.Json.JsonElement? renamed = godot is { Via: not GodotNameVia.Own, Symbol: { Path: { } declaring, At: { } declared } } && context.CSharp?.Session is { } godotServer
+            ? await godotServer.RenameAsync(new UriSpan(DocumentUris.FromPath(declaring), declared, declared), own)
+            : component is null ? await context.Now(document).RenameAsync(at.Offset, name)
             : context.CSharp?.Session is { } session ? await session.RenameAsync(component.Name, name) : null;
         if (renamed is not { } edit)
         {
@@ -463,18 +513,55 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
                 : new RefactorOutcome("This can't be renamed", null, [], []);
         }
         TypeRename.Markup markup = type is null ? new([], null) : await TypeRename.MarkupAsync(context.Xaml?.Invoke(), type, name, renameFiles);
+        NamedSymbol? symbol = component is null && document.Language == Languages.Language.CSharp ? godot?.Symbol ?? await context.Now(document).SymbolAtAsync(at.Offset) : null;
+        // Its uses in XAML, found where it is declared still: a binding's path, x:DataType, x:Static, a handler, a tag.
+        (IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> inXaml, string? unfollowed) = symbol is not null
+            ? await context.Languages.Xaml.CodeRenameAsync(symbol, own, asked) : ([], null);
+        if (unfollowed is not null)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {unfollowed}");
+        }
+        // Its uses in a Godot project's scenes: a connection's method or signal, an exported member's key.
+        (IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> inScenes, string? unscened) = symbol is not null
+            ? await context.Languages.CSharp.GodotRenameAsync(symbol, own) : ([], null);
+        if (unscened is not null)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {unscened}");
+        }
+        // Its uses in the code by Godot's other names for it, which no rename of its own name reaches.
+        if (godot is { Uses.Count: > 0 })
+        {
+            edit = TypeRename.With(edit, CSharpAssist.GodotNameEdits(godot, written));
+        }
         if (await StaleAsync(document, edit, asked, patience) is { } stale)
         {
             return RefactorOutcome.Refused($"Rename was not applied: {stale}");
         }
         Func<string, TextSnapshot?> answered = WorkspaceEdits.Answered(context.Editors, asked);
-        if (markup.ClassFile is { } xaml && type?.FullName is { } fullName && TypeRename.ClassEdit(xaml, answered(xaml), fullName, name) is { } named)
+        if (markup.ClassFile is { } xaml && type?.FullName is { } fullName && TypeRename.ClassEdit(xaml, answered(xaml), fullName, name) is { } named
+            && !inXaml.Any(f => PathNames.Same(f.Path, named.Path) && f.Edits.Any(e => e.Range == named.Edit.Range)))
         {
             edit = TypeRename.With(edit, named.Path, named.Edit);
+        }
+        if (inXaml.Count > 0)
+        {
+            edit = TypeRename.With(edit, inXaml);
+        }
+        if (inScenes.Count > 0)
+        {
+            edit = TypeRename.With(edit, inScenes);
         }
         IReadOnlyList<RefactoredFile> edited = await WorkspaceEdits.FilesAsync(context.Editors, edit, asked);
         List<(string From, string To)> moves = [.. (renameFiles ? type?.Files ?? [] : []).Select(f => (From: f, To: TypeRename.Renamed(f, name))).Concat(markup.Moves)
             .Where(m => m.From != m.To && File.Exists(m.From) && !edited.Any(f => f.Change == "moved" && PathNames.Same(f.Path, m.From))).Distinct()];
+        // A Godot script's file moved: the scenes that load it follow, and its .uid goes beside it.
+        (IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> loading, IReadOnlyList<(string From, string To)> beside) = await context.Languages.CSharp.GodotMovedAsync(moves);
+        if (loading.Count > 0)
+        {
+            edit = TypeRename.With(edit, loading);
+            edited = [.. edited, .. loading.Where(l => !edited.Any(f => PathNames.Same(f.Path, l.Path))).Select(l => new RefactoredFile(l.Path, "changed", [.. l.Edits.Select(e => e.Range.Start.Line + 1)]))];
+        }
+        moves.AddRange(beside);
         List<string> dropped = [];
         string command = $"Rename {old} to {name}";
         using CommandHistory.Recording recording = context.Editors.Commands.Record(command);

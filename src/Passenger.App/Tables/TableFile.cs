@@ -7,7 +7,8 @@ namespace Passenger.App.Tables;
 
 /// <summary>An open CSV, TSV or Excel file as a table: one per open file, shared by the editors that show it. A CSV's table
 /// is read again from its text as typing pauses, so the Text view's edits show in the Table's; a workbook's sheet is read
-/// as it is chosen, and again when the file changed on disk since. Every read is off the UI thread.</summary>
+/// as it is chosen, and again when the file changed on disk since. Its rows sort by a column, in the view alone, and a
+/// table read again is sorted so too. Every read and sort is off the UI thread.</summary>
 public sealed class TableFile
 {
     /// <summary>How long typing in a CSV pauses before its table is read again.</summary>
@@ -29,6 +30,9 @@ public sealed class TableFile
     private bool stale = true;
     private bool header = true;
     private int sheet;
+
+    /// <summary>The column the rows are sorted by and which way, null in the file's order.</summary>
+    private (int Column, bool Descending)? sort;
 
     private TableFile(OpenDocument document)
     {
@@ -88,6 +92,49 @@ public sealed class TableFile
         }
     }
 
+    /// <summary>Sorts the rows by a column one way, or puts them back in the file's order for null. The file is never
+    /// changed.</summary>
+    public void SortBy((int Column, bool Descending)? wanted)
+    {
+        sort = wanted;
+        if (Table is not { } shown)
+        {
+            return;
+        }
+        if (reading > 0 || stale)
+        {
+            // What is read next is sorted so.
+            stale = true;
+            IdeErrors.Observe(ReadAsync());
+            return;
+        }
+        IdeErrors.Observe(SortAsync(shown.Unsorted));
+    }
+
+    /// <summary>The table as read sorted as <see cref="sort"/> asks, off the UI thread; a sort past its columns forgotten.</summary>
+    private async Task SortAsync(Table unsorted)
+    {
+        int read = ++reads;
+        reading++;
+        (int Column, bool Descending)? by = sort;
+        try
+        {
+            Table sorted = await BackgroundWork.Run(() => Sorted(unsorted, by));
+            if (read == reads)
+            {
+                Table = sorted;
+            }
+        }
+        finally
+        {
+            reading--;
+        }
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static Table Sorted(Table table, (int Column, bool Descending)? by) =>
+        by is { } order && order.Column < table.ColumnCount ? TableSort.By(table, order.Column, order.Descending) : table;
+
     /// <summary>The workbook's sheet shown, by its place among <see cref="Sheets"/>.</summary>
     public int Sheet
     {
@@ -97,6 +144,8 @@ public sealed class TableFile
             if (value != sheet && book is not null && value >= 0 && value < book.Sheets.Count)
             {
                 sheet = value;
+                // Another sheet's columns are others.
+                sort = null;
                 stale = true;
                 IdeErrors.Observe(ReadAsync());
             }
@@ -160,6 +209,7 @@ public sealed class TableFile
         Workbook? known = book;
         int chosen = sheet;
         bool named = header;
+        (int Column, bool Descending)? by = sort;
         Passenger.Text.TextSnapshot text = document.Text.Snapshot;
         try
         {
@@ -172,13 +222,13 @@ public sealed class TableFile
                 if (!IsWorkbook)
                 {
                     string all = text.ToString();
-                    return ((Workbook?)null, (Table)CsvTable.Parse(all, CsvTable.SeparatorFor(path, all), named), default(DateTime));
+                    return ((Workbook?)null, Sorted(CsvTable.Parse(all, CsvTable.SeparatorFor(path, all), named), by), default(DateTime));
                 }
                 DateTime written = File.GetLastWriteTimeUtc(path);
                 Workbook workbook = known ?? Workbook.Open(path);
                 int index = Math.Clamp(chosen, 0, Math.Max(0, workbook.Sheets.Count - 1));
                 Table sheetTable = workbook.Sheets.Count == 0 ? CsvTable.Parse(string.Empty, ',', false) : workbook.ReadSheet(index);
-                return (workbook, sheetTable, written);
+                return (workbook, Sorted(sheetTable, by), written);
             });
             // An older read landing after a later one is dropped: the later one's answer is the one that stands.
             if (read == reads)

@@ -53,6 +53,36 @@ public partial class ModuleMetadataReader
         MetadataTokens.EntityHandle(methodToken).Kind == HandleKind.MethodDefinition
         && ((int)_peMetadataReader.GetMethodDefinition(MetadataTokens.MethodDefinitionHandle(methodToken)).ImplAttributes & RuntimeAsyncFlag) != 0;
 
+    /// <summary>Where a method returns what a local holds, as a debug build returns at its closing brace: each ret right
+    /// after a load of one local, by the load's offset and the local's slot.</summary>
+    internal IReadOnlyList<(int Offset, int Local)> ReturnsOfLocals(int methodToken, int? version = null)
+    {
+        if (MethodIL(methodToken, version) is not { } il)
+        {
+            return [];
+        }
+        IReadOnlyList<CilInstruction> instructions = CilInstructionDecoder.Decode(il);
+        List<(int Offset, int Local)> returns = [];
+        for (int i = 1; i < instructions.Count; i++)
+        {
+            CilInstruction load = instructions[i - 1];
+            int? local = load.Code switch
+            {
+                ILOpCode.Ldloc_0 => 0,
+                ILOpCode.Ldloc_1 => 1,
+                ILOpCode.Ldloc_2 => 2,
+                ILOpCode.Ldloc_3 => 3,
+                ILOpCode.Ldloc_s or ILOpCode.Ldloc => load.Index,
+                _ => null,
+            };
+            if (instructions[i].Code is ILOpCode.Ret && local is int slot)
+            {
+                returns.Add((load.Offset, slot));
+            }
+        }
+        return returns;
+    }
+
     /// <summary>MethodImplAttributes.Async, which the metadata reader's enum does not name.</summary>
     private const int RuntimeAsyncFlag = 0x2000;
 

@@ -128,8 +128,8 @@ jobs:
       - name: Build the tests
         run: dotnet build tests/Passenger.Tests
 
-      - name: An agent debugs through the installed Passenger
-        run: dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it" --blame-hang-timeout 10m --blame-hang-dump-type none
+      - name: An agent debugs through the installed Passenger, whose helpers run on its own runtime
+        run: dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpDebuggingTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it|FullyQualifiedName~McpDebuggingTests.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on" --blame-hang-timeout 10m --blame-hang-dump-type none
 
       # Update.exe removes the folder a few seconds after it exits; the person's state and Velopack's own logs
       # (%LocalAppData%\velopack) stay.
@@ -233,10 +233,10 @@ jobs:
               || { echo "::error::Passenger is not among the programs that open .$type"; exit 1; }
           done
 
-      - name: An agent debugs through the Passenger installed for one person
+      - name: An agent debugs through the Passenger installed for one person, whose helpers run on its own runtime
         run: |
           export PASSENGER_EXECUTABLE=$HOME/.local/bin/passenger
-          dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it" --blame-hang-timeout 10m --blame-hang-dump-type none
+          dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpDebuggingTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it|FullyQualifiedName~McpDebuggingTests.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on" --blame-hang-timeout 10m --blame-hang-dump-type none
 
       - name: Uninstall for one person
         if: ${{ !cancelled() }}
@@ -264,10 +264,10 @@ jobs:
           [ -z "$owned" ] || { echo "::error::The install for everyone has files not root's: $owned"; exit 1; }
           desktop-file-validate /usr/share/applications/io.github.zaneris.passenger.desktop
 
-      - name: An agent debugs through the Passenger installed for everyone
+      - name: An agent debugs through the Passenger installed for everyone, whose helpers run on its own runtime
         run: |
           export PASSENGER_EXECUTABLE=/usr/local/bin/passenger
-          dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it" --blame-hang-timeout 10m --blame-hang-dump-type none
+          dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpDebuggingTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it|FullyQualifiedName~McpDebuggingTests.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on" --blame-hang-timeout 10m --blame-hang-dump-type none
 
       - name: Uninstall for everyone
         if: ${{ !cancelled() }}

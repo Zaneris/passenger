@@ -176,12 +176,12 @@ public sealed class DataBreakpointTests : IClassFixture<RestoredFolders>, IDispo
 
         Ui.Run(window, AppActions.ViewBreakpoints);
         BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
-        Assert.Equal(["Program.cs:7", watched.Location, ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError], breakpoints.Listed.Select(b => b.Location));
+        Assert.Equal(["Program.cs:7", watched.Location, ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError, ScriptErrorBreakpoint.AnyScriptError], breakpoints.Listed.Select(b => b.Location));
         Assert.Contains(breakpoints.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Data Breakpoints");
         Ui.Click(Row(breakpoints, watched.Location));
         Assert.Same(watched, breakpoints.Chosen);
         Ui.Press(window, "Delete");
-        Assert.Equal(["Program.cs:7", ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError], breakpoints.Listed.Select(b => b.Location));
+        Assert.Equal(["Program.cs:7", ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError, ScriptErrorBreakpoint.AnyScriptError], breakpoints.Listed.Select(b => b.Location));
         Ui.Press(window, "Escape");
         Assert.Empty(window.Debugger.Breakpoints.Data);
 

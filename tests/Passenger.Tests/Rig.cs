@@ -126,6 +126,8 @@ public sealed class TestRun : IAsyncDisposable
         NuGetHome();
         // No test reaches GitHub: a Passenger that checks for updates without a stand-in asks where nothing listens.
         Environment.SetEnvironmentVariable(Passenger.App.Updates.ReleaseFeed.Variable, "http://127.0.0.1:9/repos/Zaneris/passenger/releases/latest");
+        // Nor Microsoft's .NET release metadata: Install .NET SDK without a stand-in asks where nothing listens.
+        Environment.SetEnvironmentVariable(Passenger.Core.DotnetReleases.Variable, "http://127.0.0.1:9/");
         // Nor NuGet's symbol server: a theme's sources asked for without a stand-in of the test's come from where nothing listens.
         Environment.SetEnvironmentVariable(Passenger.App.Xaml.SourceLink.Variable, "http://127.0.0.1:9/");
         // Nor the web for a JSON schema a file names: those Passenger does not carry are asked of where nothing listens.
@@ -1269,10 +1271,12 @@ public static class Ui
         Settle();
     }
 
-    /// <summary>Two clicks in quick succession at the same place, as a person opens what a row holds.</summary>
+    /// <summary>Two clicks in quick succession at the same place, as a person opens what a row holds, apart from a click or
+    /// a drag's press there before them, so neither is counted a third.</summary>
     public static void DoubleClick(Control control, Point? at = null)
     {
         (TopLevel top, Point point) = Aim(control, at);
+        Apart(top, point);
         for (int i = 0; i < 2; i++)
         {
             top.MouseDown(point, MouseButton.Left);
@@ -2024,12 +2028,16 @@ public static class Restore
 
     /// <summary>The restore, which fails the test at once naming what it means and quoting what dotnet said: a project
     /// not restored (offline, nuget.org down) would show up later as C# unavailable, far from the cause.</summary>
-    public static async Task<Passenger.Core.ChildResult> RunAsync(string target)
+    public static Task<Passenger.Core.ChildResult> RunAsync(string target) => RunAsync(target, null);
+
+    /// <summary>The restore (<see cref="RunAsync(string)"/>) run from <paramref name="from"/> where given, so that
+    /// folder's global.json chooses the SDK rather than the test run's.</summary>
+    public static async Task<Passenger.Core.ChildResult> RunAsync(string target, string? from)
     {
         Passenger.Core.ChildResult restored;
         try
         {
-            restored = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.DotnetCommand(["restore", target]), limit: Limit.Scaled());
+            restored = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.DotnetCommand(["restore", target], from), limit: Limit.Scaled());
         }
         catch (TimeoutException hung)
         {
@@ -2043,8 +2051,8 @@ public static class Restore
     /// <summary>The restore from the UI thread (a window test's constructor or body), run on the thread pool and waited
     /// for with the window's loop running (<see cref="Ui.AwaitPumped{T}"/>), never for its work to land; elsewhere a
     /// test awaits <see cref="RunAsync"/>.</summary>
-    public static Passenger.Core.ChildResult Run(string target) =>
-        Ui.AwaitPumped(Waiting.Apart(() => RunAsync(target)), $"dotnet restore {target}", Limit + TestFolders.Spare);
+    public static Passenger.Core.ChildResult Run(string target, string? from = null) =>
+        Ui.AwaitPumped(Waiting.Apart(() => RunAsync(target, from)), $"dotnet restore {target}", Limit + TestFolders.Spare);
 }
 
 /// <summary>A test class's folders, each made as its constructor would make it and restored at its own path, a few at a
@@ -2666,6 +2674,55 @@ public static partial class NativeStacks
     // "    +   881 main  (in ReadsInputConsoleApp) + 184  [0x1024fa124]"
     [System.Text.RegularExpressions.GeneratedRegex(@"^[\s+!:|]*\d+\s+(.+?)\s+\(in ([^)]+)\)")]
     private static partial System.Text.RegularExpressions.Regex FrameLine();
+}
+
+/// <summary>Where a .NET process's managed threads stand, read through ClrMD with the process held still a moment: each
+/// thread's top frames, those with none of its own left out. On CI, where no one can attach a debugger to a program that
+/// stopped answering, this tells a thread blocked (and where) from one idle while a task waits. Empty on macOS, where
+/// only a debugger the system entitles may read another process.</summary>
+public static class ManagedStacks
+{
+    public static string Describe(string what, int processId, int frames = 24)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            return string.Empty;
+        }
+        try
+        {
+            using Microsoft.Diagnostics.Runtime.DataTarget target = Microsoft.Diagnostics.Runtime.DataTarget.AttachToProcess(processId, suspend: true,
+                new Microsoft.Diagnostics.Runtime.DataTargetOptions { FileLocator = NothingFound.Locator });
+            using Microsoft.Diagnostics.Runtime.ClrRuntime runtime = target.ClrVersions[0].CreateRuntime();
+            List<string> threads = [];
+            foreach (Microsoft.Diagnostics.Runtime.ClrThread thread in runtime.Threads.Where(t => t.IsAlive))
+            {
+                string[] stack = [.. thread.EnumerateStackTrace().Select(f => f.Method?.Signature ?? (f.FrameName is { } name ? $"[{name}]" : null))
+                    .OfType<string>().Take(frames)];
+                if (stack.Any(f => !f.StartsWith('[')))
+                {
+                    threads.Add($"  thread {thread.ManagedThreadId} (system {thread.OSThreadId}){(thread.IsFinalizer ? ", the finalizer" : string.Empty)}\n"
+                        + string.Join('\n', stack.Select(f => $"    {f}")));
+                }
+            }
+            return threads.Count == 0 ? $"\n{what}: no thread had a managed frame" : $"\n{what}:\n{string.Join('\n', threads)}";
+        }
+        catch (Exception failed) when (failed is Microsoft.Diagnostics.Runtime.ClrDiagnosticsException or InvalidOperationException or IOException
+            or UnauthorizedAccessException or ArgumentException or IndexOutOfRangeException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            return $"\n{what}: its threads could not be read ({failed.GetType().Name}: {failed.Message})";
+        }
+    }
+
+    /// <summary>Finds no file it was not given: nothing is downloaded from a symbol server.</summary>
+    private sealed class NothingFound : Microsoft.Diagnostics.Runtime.IFileLocator
+    {
+        public static readonly NothingFound Locator = new();
+
+        public string? FindPEImage(string fileName, int buildTimeStamp, int imageSize, bool checkProperties) => null;
+
+        public string? FindPEImage(string fileName, Microsoft.Diagnostics.Runtime.SymbolProperties archivedUnder, System.Collections.Immutable.ImmutableArray<byte> buildIdOrUUID,
+            System.Runtime.InteropServices.OSPlatform originalPlatform, bool checkProperties) => null;
+    }
 }
 
 /// <summary>A port of the system's choosing, kept from every other program until a program of the test's own is about to

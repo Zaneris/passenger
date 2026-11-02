@@ -7,9 +7,9 @@ using Passenger.Editor;
 namespace Passenger.App.Settings;
 
 /// <summary>The keyboard shortcut panel of the Keyboard Shortcut dialog and the Find Shortcut popup: a field the first
-/// keystroke is pressed into, the Second stroke check box, and the second keystroke's field, which takes keys only
-/// while the box is checked. The keys go on to the second field once the first holds a keystroke and the box is
-/// checked.</summary>
+/// keystroke (or a modifier's double tap) is pressed into, the Second stroke check box, and the second keystroke's field,
+/// which takes keys only while the box is checked. The keys go on to the second field once the first holds a keystroke
+/// and the box is checked.</summary>
 public sealed class ShortcutPanel : StackPanel
 {
     public ShortcutPanel(string secondLabel)
@@ -52,9 +52,11 @@ public sealed class ShortcutPanel : StackPanel
     /// <summary>The second keystroke's field, which takes every key, Escape, Enter and Tab too.</summary>
     public StrokeField Second { get; }
 
-    /// <summary>The shortcut the fields hold: none until the first has a keystroke, and that keystroke alone while the box
-    /// is clear or the second field is empty.</summary>
-    public Shortcut? Shortcut => First.Stroke is { } first ? new Shortcut(first, SecondStroke.IsChecked == true ? Second.Stroke : null) : null;
+    /// <summary>The shortcut the fields hold: none until the first has a keystroke, a double tap where it holds a modifier
+    /// alone, and that keystroke alone while the box is clear or the second field is empty.</summary>
+    public Shortcut? Shortcut => First.Stroke is not { } first ? null
+        : first.IsModifierAlone ? new Shortcut(first, first)
+        : new Shortcut(first, SecondStroke.IsChecked == true ? Second.Stroke : null);
 
     /// <summary>A keystroke was pressed into a field, or the box changed.</summary>
     public event EventHandler? Changed;
@@ -62,11 +64,18 @@ public sealed class ShortcutPanel : StackPanel
 
 /// <summary>A shortcut's text field: a key pressed in it, with the modifiers held, is the keystroke it shows, never
 /// typing. The first stroke's field lets Tab and Shift+Tab move on, plain Escape cancel and plain Enter confirm once it
-/// holds a keystroke, and its + sets those keys instead; the second's takes every key.</summary>
+/// holds a keystroke, and its + sets those keys instead, and it takes a modifier tapped alone twice in quick succession
+/// as that modifier's double tap; the second's takes every key.</summary>
 public sealed class StrokeField : TextBox
 {
     private readonly bool passesDialogKeys;
     private Keystroke? stroke;
+
+    /// <summary>A modifier pressed alone and not yet let go, nothing pressed since.</summary>
+    private Keystroke? held;
+
+    /// <summary>A modifier pressed alone and let go, nothing pressed since, and when, a double tap's first.</summary>
+    private (Keystroke Stroke, long At)? tapped;
 
     public StrokeField(bool passesDialogKeys)
     {
@@ -86,7 +95,7 @@ public sealed class StrokeField : TextBox
         set
         {
             stroke = value;
-            Text = value?.Display() ?? string.Empty;
+            Text = value is { IsModifierAlone: true } alone ? new Shortcut(alone, alone).Display() : value?.Display() ?? string.Empty;
             CaretIndex = Text.Length;
             StrokeChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -109,9 +118,47 @@ public sealed class StrokeField : TextBox
         if (e.Key is Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin
             or Key.None)
         {
+            Tap(e);
             return;
         }
+        held = null;
+        tapped = null;
         Stroke = Keystroke.From(e);
+    }
+
+    /// <summary>A modifier let go with nothing pressed since its press: a tap, a double tap's first.</summary>
+    protected override void OnKeyUp(KeyEventArgs e)
+    {
+        base.OnKeyUp(e);
+        if (held is { } alone && Keystroke.Alone(e.Key, KeyModifiers.None) == alone)
+        {
+            tapped = (alone, Environment.TickCount64);
+        }
+        held = null;
+    }
+
+    /// <summary>A modifier's key pressed in the first field: its double tap once it follows that modifier's tap in time,
+    /// else the start of a tap; a key held down repeats its press, which starts nothing.</summary>
+    private void Tap(KeyEventArgs e)
+    {
+        if (!passesDialogKeys || Keystroke.Alone(e.Key, e.KeyModifiers) is not { } alone)
+        {
+            held = null;
+            tapped = null;
+            return;
+        }
+        if (held == alone)
+        {
+            return;
+        }
+        if (tapped is { } tap && tap.Stroke == alone && Environment.TickCount64 - tap.At <= KeymapDispatcher.DoubleTapMs)
+        {
+            tapped = null;
+            Stroke = alone;
+            return;
+        }
+        tapped = null;
+        held = alone;
     }
 
     protected override void OnTextInput(TextInputEventArgs e) => e.Handled = true;

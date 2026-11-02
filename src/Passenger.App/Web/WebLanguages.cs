@@ -28,15 +28,18 @@ public enum WebServerKind
     /// <summary>Red Hat's yaml-language-server: every YAML file, a compose file checked and completed by the Compose
     /// specification's schema (<see cref="JsonSchemas.ComposeUri"/>).</summary>
     Yaml,
+
+    /// <summary>Godot's own GDScript server, in its editor, reached over TCP (<see cref="Godot.GodotScripts"/>).</summary>
+    GDScript,
 }
 
 /// <summary>A web language server lost, as the status bar says it, with what starts it again when it was left stopped for
 /// ending too often; null when it was started again at once.</summary>
 public sealed record WebServerLost(string Said, Action? StartAgain);
 
-/// <summary>JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles and YAML for the open folder: each kind's language
-/// server (the npm packages carried under <c>web/</c>, run on the machine's Node.js through ChildProcesses) started as
-/// the first file that needs it opens, every open file of its languages kept in step with it (a
+/// <summary>JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles, YAML and GDScript for the open folder: each kind's
+/// language server (the npm packages carried under <c>web/</c>, run on the machine's Node.js through ChildProcesses;
+/// GDScript's in Godot's editor) started as the first file that needs it opens, every open file of its languages kept in step with it (a
 /// <see cref="WebDocument"/> each), and ended with the folder. Without a Node.js to run them (none found, or one too
 /// old), each file says why in its banner and the status bar, keeping its colours. A server that ends (as it starts too)
 /// or stops answering is started again with its files, a few times at most, then left stopped until a person starts it
@@ -102,6 +105,12 @@ public sealed class WebLanguages : IAsyncDisposable
     /// <c>PASSENGER_DOCKER_HUB</c> names, else Docker Hub's own (<see cref="DockerHubTags"/>).</summary>
     public Uri? DockerHub { get; init; }
 
+    /// <summary>The variables a Godot editor started for GDScript runs with beyond the IDE's own: a test's user folders.</summary>
+    public IReadOnlyDictionary<string, string> GodotEnvironment { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>The Godot project GDScript's server answers for: the first GDScript file's (<see cref="Godot.GodotScripts.ProjectOf"/>).</summary>
+    private string? godotProject;
+
     /// <summary>ESLint, for the files it checks.</summary>
     public EslintService Eslint { get; }
 
@@ -147,6 +156,7 @@ public sealed class WebLanguages : IAsyncDisposable
             LanguageService.Json => WebServerKind.Json,
             LanguageService.Dockerfile => WebServerKind.Dockerfile,
             LanguageService.Yaml => WebServerKind.Yaml,
+            LanguageService.GDScript => WebServerKind.GDScript,
             _ => null,
         };
         return kind is { } server ? (server, language.IdOf(path)) : null;
@@ -160,6 +170,7 @@ public sealed class WebLanguages : IAsyncDisposable
         WebServerKind.Css => "CSS",
         WebServerKind.Dockerfile => "Dockerfile",
         WebServerKind.Yaml => "YAML",
+        WebServerKind.GDScript => "GDScript",
         _ => "JSON",
     };
 
@@ -173,6 +184,10 @@ public sealed class WebLanguages : IAsyncDisposable
         }
         WebDocument features = new(document, language.Kind, language.LanguageId);
         documents[document] = features;
+        if (language.Kind == WebServerKind.GDScript)
+        {
+            godotProject ??= Godot.GodotScripts.ProjectOf(document.Path);
+        }
         NodeServer server = ServerFor(language.Kind);
         if (server.Session is { } running)
         {
@@ -466,6 +481,7 @@ public sealed class WebLanguages : IAsyncDisposable
             Package = Path.Combine(Modules, Package(kind), "package.json"),
             Missing = () => Missing(kind),
             Command = node => Starting(kind, node),
+            Elsewhere = kind == WebServerKind.GDScript ? GodotStart : null,
             Configure = language => ConfigureAsync(kind, language),
             Listen = started => started.Server.TypeScriptVersion += (_, _) => UiThread.Post(() => StateChanged?.Invoke(this, EventArgs.Empty)),
             Started = started => Started(kind, started),
@@ -481,6 +497,13 @@ public sealed class WebLanguages : IAsyncDisposable
         };
         servers[kind] = made;
         return made;
+    }
+
+    /// <summary>GDScript's server for the project of its first file, on the Godot Settings names as its start begins.</summary>
+    private Func<CancellationToken, Task<LanguageSession>> GodotStart()
+    {
+        (string? project, string? setting, IReadOnlyDictionary<string, string> environment) = (godotProject, settings().GodotExecutable, GodotEnvironment);
+        return cancel => Godot.GodotScripts.StartAsync(project, setting, environment, LogFolder, cancel);
     }
 
     private void Start(NodeServer server)
@@ -506,7 +529,8 @@ public sealed class WebLanguages : IAsyncDisposable
     /// <summary>Why a server cannot start that this build is to blame for: its package, or the Dockerfile server's preload,
     /// is not beside the app.</summary>
     private static string? Missing(WebServerKind kind) =>
-        !File.Exists(Script(kind)) ? $"its language server is missing from the app's folder ({Script(kind)})"
+        kind == WebServerKind.GDScript ? null
+        : !File.Exists(Script(kind)) ? $"its language server is missing from the app's folder ({Script(kind)})"
         : kind == WebServerKind.Dockerfile && !File.Exists(DockerHubTags.Preload) ? $"Passenger's part of its language server is missing from the app's folder ({DockerHubTags.Preload})"
         : null;
 
@@ -633,6 +657,11 @@ public sealed class WebLanguages : IAsyncDisposable
 
     private async Task ConfigureAsync(WebServerKind kind, LanguageServer server)
     {
+        // Godot's server reads no settings of the client's.
+        if (kind == WebServerKind.GDScript)
+        {
+            return;
+        }
         if (configureHeld is { } hold)
         {
             configureHeld = null;

@@ -361,6 +361,17 @@ public sealed class SheetTable(Workbook book, SheetCell[] cells, int[] rows, int
         return at >= 0 && cells[at].IsNumber;
     }
 
+    /// <summary>A cell as a sort compares it: a number by its value, a date's too (its serial day), so a column of dates
+    /// sorts by when they are; text as shown.</summary>
+    public override CellValue ValueOf(int row, int column)
+    {
+        int at = At(row, column);
+        return at < 0 ? new CellValue(CellKind.Empty)
+            : cells[at].IsNumber ? new CellValue(CellKind.Number, cells[at].Value)
+            : string.IsNullOrEmpty(cells[at].Text) ? new CellValue(CellKind.Empty)
+            : new CellValue(CellKind.Text);
+    }
+
     /// <summary>Where a row's cell in a column is among the cells, or -1 where the row has none there.</summary>
     private int At(int row, int column)
     {

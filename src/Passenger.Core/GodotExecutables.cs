@@ -1,0 +1,368 @@
+using System.Text.RegularExpressions;
+
+namespace Passenger.Core;
+
+/// <summary>A Godot executable found, and where: the person's choice (<see cref="From"/> naming it), GODOT, the PATH, or an
+/// app bundle in Applications. Godot's .NET build carries GodotSharp beside its executable (in a bundle's Resources),
+/// with the packages a project restores (<see cref="Packages"/>); a build without it cannot run C#, and Godot 3's runs it
+/// on Mono.</summary>
+public sealed record GodotFound(string Executable, string From)
+{
+    /// <summary>Whether the executable is there.</summary>
+    public bool Exists { get; init; }
+
+    /// <summary>Its GodotSharp folder, or null for a build without .NET.</summary>
+    public string? Sharp { get; init; }
+
+    /// <summary>Its version ("4.7.2"), as its packages, its bundle or its file's name say it; null where none does.</summary>
+    public string? Version { get; init; }
+
+    /// <summary>The folder of the Godot packages its build carries (Godot.NET.Sdk, GodotSharp), which its editor gives a
+    /// restore as a feed; null for a build without .NET.</summary>
+    public string? Packages => Sharp is null ? null : Path.Combine(Sharp, "Tools", "nupkgs");
+
+    /// <summary>Why it cannot run a Godot 4 project's C#, in words for the person, or null when it can.</summary>
+    public string? WhyNot => !Exists ? $"{From} names {Executable}, which is not there"
+        : Sharp is null ? $"{Executable} is a build of Godot without .NET, which cannot run C#: Godot's .NET build can"
+        : Major < 4 ? $"{Executable} is Godot {Version}, whose C# runs on Mono: Passenger runs C# on Godot 4's .NET build"
+        : null;
+
+    /// <summary>Why it cannot run a Godot 4 project of GDScript alone, which any build of Godot 4 runs, .NET or not: it is not
+    /// there, or it is an older Godot, whose projects and debugger are not Godot 4's; null when it can.</summary>
+    public string? WhyNotScripts => !Exists ? $"{From} names {Executable}, which is not there"
+        : Major < 4 ? $"{Executable} is Godot {Version}: Passenger runs Godot 4's projects"
+        : null;
+
+    /// <summary>Its major version, or null where none is known.</summary>
+    public int? Major => Version?.Split('.')[0] is { } major && int.TryParse(major, System.Globalization.CultureInfo.InvariantCulture, out int number) ? number : null;
+}
+
+/// <summary>Godot found the way the .NET SDK is: the person's choice first, then GODOT, then the PATH as the login shell
+/// gives it (<see cref="ShellEnvironment"/>), then on macOS the app bundles in /Applications and ~/Applications. Among
+/// those the PATH and the bundles offer, the first Godot 4 .NET build is taken, else the first found, which says why it
+/// cannot run C#.</summary>
+public static partial class GodotExecutables
+{
+    /// <summary>The variable naming Godot's executable, as Godot's own tools take it.</summary>
+    public const string Variable = "GODOT";
+
+    /// <summary>What the PATH is called where it holds Godot.</summary>
+    public const string PathWords = "the PATH";
+
+    /// <summary>What the Applications folders are called where they hold Godot.</summary>
+    public const string ApplicationsWords = "Applications";
+
+    /// <summary>The names Godot is installed under on a PATH (a package's, a link made by hand), before the official
+    /// downloads' (<see cref="Downloaded"/>).</summary>
+    private static readonly string[] Names = ["godot", "godot4", "godot-mono", "godot4-mono", "godot-dotnet", "godot4-dotnet"];
+
+    /// <summary>Godot as this computer has it: <paramref name="chosen"/> (a path, with the words for where it is chosen) when
+    /// given, else as GODOT, the PATH and Applications offer it; null when nothing does.</summary>
+    public static GodotFound? Find((string Path, string From)? chosen)
+    {
+        ShellEnvironment.Ready();
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return Find(chosen, Environment.GetEnvironmentVariable(Variable),
+            (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries),
+            OperatingSystem.IsMacOS() ? ["/Applications", Path.Combine(home, "Applications")] : [], OperatingSystem.IsWindows());
+    }
+
+    /// <summary><see cref="Find((string, string)?)"/> over the folders given, as a system of that kind names its programs.</summary>
+    public static GodotFound? Find((string Path, string From)? chosen, string? variable, IReadOnlyList<string> pathFolders, IReadOnlyList<string> applications, bool windows)
+    {
+        if (chosen is ({ Length: > 0 } path, { } from))
+        {
+            return At(path, from, windows);
+        }
+        if (variable is { Length: > 0 } named)
+        {
+            return At(named, Variable, windows);
+        }
+        GodotFound? first = null;
+        foreach (GodotFound found in OnPath(pathFolders, windows).Concat(Bundles(applications)))
+        {
+            if (found.WhyNot is null)
+            {
+                return found;
+            }
+            first ??= found;
+        }
+        return first;
+    }
+
+    /// <summary>Godot at a path: an app bundle is its executable inside, a link the file it links to, and on Windows the
+    /// console wrapper the Godot it starts as a child (which a debugger or profiler of the wrapper would never reach).</summary>
+    public static GodotFound At(string path, string from, bool windows)
+    {
+        string full = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path.Trim().Trim('"')));
+        if (Directory.Exists(full) && full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+        {
+            return InBundle(full, from);
+        }
+        if (!File.Exists(full))
+        {
+            return new GodotFound(full, from);
+        }
+        string file = PathNames.Canonical(full);
+        if (windows && Unwrapped(file) is { } started)
+        {
+            file = started;
+        }
+        // A link into a bundle (a package manager's) has the bundle's Resources beside its MacOS folder.
+        if (BundleOf(file) is { } bundle)
+        {
+            return InBundle(bundle, from) with { Executable = file };
+        }
+        string folder = Path.GetDirectoryName(file)!;
+        string sharp = Path.Combine(folder, "GodotSharp");
+        return Read(new GodotFound(file, from) { Exists = true }, sharp, Path.GetFileName(file));
+    }
+
+    /// <summary>The Godot a Windows console wrapper starts (Godot_v4.7_console.exe starts Godot_v4.7.exe beside it), or
+    /// null for any other file.</summary>
+    private static string? Unwrapped(string file)
+    {
+        string name = Path.GetFileName(file);
+        foreach (string wrapper in (string[])[".console.exe", "_console.exe", " console.exe"])
+        {
+            if (name.EndsWith(wrapper, StringComparison.OrdinalIgnoreCase)
+                && Path.Combine(Path.GetDirectoryName(file)!, name[..^wrapper.Length] + ".exe") is var started && File.Exists(started))
+            {
+                return started;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>What runs a Godot in a terminal: on Windows the console wrapper beside its .exe, where there is one, since
+    /// Godot's own .exe writes to no console it is started in; the executable itself anywhere else.</summary>
+    public static string InTerminal(string executable)
+    {
+        if (!OperatingSystem.IsWindows() || !executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return executable;
+        }
+        string bare = executable[..^".exe".Length];
+        foreach (string wrapper in (string[])[".console.exe", "_console.exe", " console.exe"])
+        {
+            if (File.Exists(bare + wrapper))
+            {
+                return bare + wrapper;
+            }
+        }
+        return executable;
+    }
+
+    /// <summary>The app bundle an executable is the program of (X.app/Contents/MacOS/Godot), or null.</summary>
+    private static string? BundleOf(string file) =>
+        Path.GetDirectoryName(file) is { } macOS && Path.GetFileName(macOS) == "MacOS" && Path.GetDirectoryName(macOS) is { } contents
+        && Path.GetFileName(contents) == "Contents" && Path.GetDirectoryName(contents) is { } bundle && bundle.EndsWith(".app", StringComparison.OrdinalIgnoreCase)
+            ? bundle : null;
+
+    /// <summary>The Godot of an app bundle: Contents/MacOS/Godot, or the one program there, with its Resources' GodotSharp.</summary>
+    private static GodotFound InBundle(string bundle, string from)
+    {
+        string programs = Path.Combine(bundle, "Contents", "MacOS");
+        string executable = Path.Combine(programs, "Godot");
+        if (!File.Exists(executable) && Directory.Exists(programs) && Directory.GetFiles(programs) is [{ } only])
+        {
+            executable = only;
+        }
+        if (!File.Exists(executable))
+        {
+            return new GodotFound(executable, from);
+        }
+        GodotFound found = Read(new GodotFound(executable, from) { Exists = true }, Path.Combine(bundle, "Contents", "Resources", "GodotSharp"), Path.GetFileName(bundle));
+        return found.Version is null && BundleVersion(Path.Combine(bundle, "Contents", "Info.plist")) is { } version ? found with { Version = version } : found;
+    }
+
+    /// <summary>A found Godot with what its GodotSharp folder says: a .NET build where it is Godot 4's or Godot 3's (whose
+    /// Mono runtime lies in it), the version its packages carry, else the one its name gives.</summary>
+    private static GodotFound Read(GodotFound found, string sharp, string name)
+    {
+        bool dotnet = Directory.Exists(Path.Combine(sharp, "Api"));
+        string? version = dotnet ? PackagedVersion(Path.Combine(sharp, "Tools", "nupkgs")) : null;
+        if (version is null && Directory.Exists(Path.Combine(sharp, "Mono")))
+        {
+            version = "3";
+        }
+        return found with { Sharp = dotnet ? sharp : null, Version = version ?? NamedVersion(name) };
+    }
+
+    /// <summary>The version of GodotSharp's package in a .NET build's packages (GodotSharp.4.7.2.nupkg), or null.</summary>
+    private static string? PackagedVersion(string packages)
+    {
+        if (!Directory.Exists(packages))
+        {
+            return null;
+        }
+        try
+        {
+            foreach (string package in Directory.EnumerateFiles(packages, "GodotSharp.*.nupkg"))
+            {
+                if (PackageVersion().Match(Path.GetFileName(package)) is { Success: true } match)
+                {
+                    return match.Groups[1].Value;
+                }
+            }
+        }
+        catch (Exception unlisted) when (unlisted is IOException or UnauthorizedAccessException)
+        {
+            // A folder this user may not list names no version.
+        }
+        return null;
+    }
+
+    /// <summary>The version an official download's name gives (Godot_v4.7.2-stable_mono_linux.x86_64), or null.</summary>
+    private static string? NamedVersion(string name) => DownloadVersion().Match(name) is { Success: true } match ? match.Groups[1].Value : null;
+
+    /// <summary>A bundle's CFBundleShortVersionString, read from its Info.plist as XML; null where it holds none.</summary>
+    private static string? BundleVersion(string plist)
+    {
+        try
+        {
+            return File.Exists(plist) && PlistVersion().Match(File.ReadAllText(plist)) is { Success: true } match ? match.Groups[1].Value : null;
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Each Godot on the PATH, a folder at a time: the names it is installed under, then the official downloads'.</summary>
+    private static IEnumerable<GodotFound> OnPath(IReadOnlyList<string> folders, bool windows)
+    {
+        HashSet<string> seen = new(PathNames.Comparer);
+        foreach (string folder in folders)
+        {
+            if (!Directory.Exists(folder))
+            {
+                continue;
+            }
+            List<string> files = [.. Names.Select(n => Path.Combine(folder, windows ? n + ".exe" : n)).Where(File.Exists)];
+            try
+            {
+                files.AddRange(Directory.EnumerateFiles(folder, "Godot_v*").Where(f => Downloaded(Path.GetFileName(f), windows)).Order(StringComparer.Ordinal));
+            }
+            catch (Exception unlisted) when (unlisted is IOException or UnauthorizedAccessException)
+            {
+                // A folder this user may not list offers no Godot.
+            }
+            foreach (string file in files)
+            {
+                GodotFound found = At(file, PathWords, windows);
+                if (seen.Add(found.Executable))
+                {
+                    yield return found;
+                }
+            }
+        }
+    }
+
+    /// <summary>Whether a file's name is an official download's executable: Godot_v4.7.2-stable_mono_linux.x86_64, and on
+    /// Windows its .exe (the console wrapper beside it taken for the Godot it starts).</summary>
+    private static bool Downloaded(string name, bool windows) => DownloadVersion().IsMatch(name)
+        && (windows ? name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) : !name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && !name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The Godot app bundles in the folders given (Godot.app, Godot_mono.app, Godot_v4.7.2-stable_mono.app), the
+    /// newest .NET build first.</summary>
+    private static IEnumerable<GodotFound> Bundles(IReadOnlyList<string> folders)
+    {
+        List<GodotFound> found = [];
+        foreach (string folder in folders.Where(Directory.Exists))
+        {
+            try
+            {
+                found.AddRange(Directory.EnumerateDirectories(folder, "*.app")
+                    .Where(b => Path.GetFileName(b).StartsWith("Godot", StringComparison.OrdinalIgnoreCase))
+                    .Select(b => InBundle(b, ApplicationsWords)).Where(g => g.Exists));
+            }
+            catch (Exception unlisted) when (unlisted is IOException or UnauthorizedAccessException)
+            {
+                // A folder this user may not list offers no Godot.
+            }
+        }
+        return found.OrderBy(g => g.WhyNot is null ? 0 : 1).ThenByDescending(g => Comparable(g.Version)).ThenBy(g => g.Executable, StringComparer.Ordinal);
+    }
+
+    /// <summary>A version as one to compare ("4.7.2-beta1" as 4.7.2), none the oldest.</summary>
+    private static Version Comparable(string? version) =>
+        System.Version.TryParse(version?.Split('-')[0], out Version? parsed) ? parsed : new Version(0, 0);
+
+    /// <summary>The versions each Godot answered, by its executable and when it was last written.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string, DateTime), Lazy<Task<string?>>> Answered = new();
+
+    /// <summary>The version a Godot's executable answers <c>--version</c> with, asked headless once per executable as it
+    /// is written, else the one its files gave (<see cref="GodotFound.Version"/>).</summary>
+    public static async Task<string?> VersionAsync(GodotFound found, CancellationToken cancel = default)
+    {
+        if (!found.Exists)
+        {
+            return found.Version;
+        }
+        (string, DateTime) key = (found.Executable, File.GetLastWriteTimeUtc(found.Executable));
+        // Not held, every asker's: on the first one's thread, a thread that never runs again would hold the rest.
+        Lazy<Task<string?>> once = Answered.GetOrAdd(key, _ => new Lazy<Task<string?>>(() => BackgroundWork.Unheld(() => AskVersionAsync(found.Executable))));
+        return await once.Value.WaitAsync(cancel).ConfigureAwait(false) ?? found.Version;
+    }
+
+    private static async Task<string?> AskVersionAsync(string executable)
+    {
+        try
+        {
+            ChildAnswer answer = await ChildProcesses.AnswerAsync(ChildProcesses.Command(executable, ["--headless", "--version"]),
+                line => ReadVersion(line) is not null, limit: TimeSpan.FromSeconds(20)).ConfigureAwait(false);
+            return answer.Answer is { } line ? ReadVersion(line)?.Version : null;
+        }
+        catch (Exception unasked) when (unasked is System.ComponentModel.Win32Exception or IOException or TimeoutException or OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>What a Godot's answer to <c>--version</c> says ("4.7.2.stable.mono.official.ed1daf0bf"): its version as
+    /// numbers ("4.7.2"; "4.3" for a first release), and whether it is a .NET build ("mono" among its words); null for a line
+    /// that is no such answer.</summary>
+    public static (string Version, bool Dotnet)? ReadVersion(string answer) =>
+        VersionAnswer().Match(answer.Trim()) is { Success: true } match
+            ? (match.Groups["version"].Value, match.Groups["words"].Value.Split('.').Contains("mono", StringComparer.Ordinal))
+            : null;
+
+    /// <summary>Why a project built with a Godot.NET.Sdk of one version cannot run on a Godot of another, in words naming
+    /// both: an SDK of another major version, or newer than the Godot (whose GodotSharp it then builds against has APIs the
+    /// running engine lacks); null when it can, or where either version cannot be read.</summary>
+    public static string? Mismatch(string sdk, string godot)
+    {
+        if (Numbers(sdk) is not { } built || Numbers(godot) is not { } running)
+        {
+            return null;
+        }
+        return built.Major != running.Major
+            ? $"it builds with Godot.NET.Sdk {sdk}, for Godot {built.Major}, and the Godot that runs it is {godot}"
+            : built > running
+                ? $"it builds with Godot.NET.Sdk {sdk}, newer than the Godot {godot} that runs it: run it on Godot {sdk} or newer, or build it with Godot.NET.Sdk {godot}"
+                : null;
+    }
+
+    /// <summary>A version's numbers ("4.7" as 4.7.0), its words after a dash left out; null for none.</summary>
+    private static Version? Numbers(string version)
+    {
+        string[] parts = version.Split('-')[0].Split('.');
+        return parts.Length is >= 2 and <= 4 && parts.All(p => int.TryParse(p, System.Globalization.CultureInfo.InvariantCulture, out _))
+            ? new Version(int.Parse(parts[0], System.Globalization.CultureInfo.InvariantCulture), int.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture),
+                parts.Length > 2 ? int.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture) : 0)
+            : null;
+    }
+
+    [GeneratedRegex(@"^(?<version>\d+\.\d+(?:\.\d+)?)\.(?<words>[A-Za-z][\w.]*)$")]
+    private static partial Regex VersionAnswer();
+
+    [GeneratedRegex(@"^GodotSharp\.(\d+\.\d+(?:\.\d+)*(?:-[0-9A-Za-z.]+)?)\.nupkg$", RegexOptions.IgnoreCase)]
+    private static partial Regex PackageVersion();
+
+    [GeneratedRegex(@"^Godot_v(\d+\.\d+(?:\.\d+)*)", RegexOptions.IgnoreCase)]
+    private static partial Regex DownloadVersion();
+
+    [GeneratedRegex(@"<key>CFBundleShortVersionString</key>\s*<string>([^<]+)</string>")]
+    private static partial Regex PlistVersion();
+}

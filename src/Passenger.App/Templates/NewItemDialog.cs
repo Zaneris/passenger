@@ -88,7 +88,7 @@ public sealed class NewItemDialog : IdeWindow
         space.Text = target.Namespace;
         options.Changed += ShowCommand;
         TextBlock where = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Text = $"It will be made in {target.Shown}" };
-        details = new StackPanel { Spacing = 10, Children = { nameRow, spaceRow, TemplateOptions.Row(null, where), options.Panel, TemplateOptions.Row(null, command) } };
+        details = new StackPanel { Spacing = 10, Children = { nameRow, spaceRow, TemplateOptions.Row(null, where), options.Panel, options.Folded, TemplateOptions.Row(null, command) } };
         StackPanel right = new()
         {
             Margin = new Thickness(24, 18, 24, 18),
@@ -157,6 +157,9 @@ public sealed class NewItemDialog : IdeWindow
 
     /// <summary>The control that sets an option, by its label, for a click; null when none is shown.</summary>
     public Control? OptionEditor(string label) => options.Editor(label);
+
+    /// <summary>The link that opens the template's options waiting under More options.</summary>
+    public Button MoreOptions => options.MoreOptions;
 
     /// <summary>The list's row for a template by its short name, for a click on it; null when it is not listed.</summary>
     public Control? Row(string shortName)
@@ -429,7 +432,7 @@ public sealed class NewItemDialog : IdeWindow
         working.IsVisible = busy;
         problem.IsVisible = !busy && problem.Text is not null;
         create.IsEnabled = !busy && template is not null;
-        foreach (Control field in (Control[])[search, list, itemName, space, options.Panel])
+        foreach (Control field in (Control[])[search, list, itemName, space, options.Panel, options.Folded])
         {
             field.IsEnabled = !busy;
         }

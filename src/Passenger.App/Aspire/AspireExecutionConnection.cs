@@ -469,13 +469,16 @@ internal sealed class AspireExecutionConnection : IAsyncDisposable
         return tokens.All(value => value.Length != 0 && value.All(IsToken)) && tokens.Contains(token, StringComparer.OrdinalIgnoreCase);
     }
 
-    public async Task<WebSocket> AcceptWebSocketAsync()
+    /// <summary>The connection upgraded to a WebSocket, answering with <paramref name="subProtocol"/> where the peer asked for one.</summary>
+    public async Task<WebSocket> AcceptWebSocketAsync(string? subProtocol = null)
     {
         string accept = Convert.ToBase64String(SHA1.HashData(Encoding.ASCII.GetBytes(Header("Sec-WebSocket-Key")[0] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
         HasResponded = true;
         upgraded = true;
-        await stream.WriteAsync(Encoding.ASCII.GetBytes($"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"), RequestAborted).ConfigureAwait(false);
-        return WebSocket.CreateFromStream(new UpgradeStream(this), true, null, TimeSpan.FromSeconds(30));
+        string protocol = subProtocol is null ? "" : $"Sec-WebSocket-Protocol: {subProtocol}\r\n";
+        await stream.WriteAsync(Encoding.ASCII.GetBytes($"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n{protocol}\r\n"),
+            RequestAborted).ConfigureAwait(false);
+        return WebSocket.CreateFromStream(new UpgradeStream(this), true, subProtocol, TimeSpan.FromSeconds(30));
     }
 
     public Task WriteJsonAsync<T>(T value, JsonSerializerOptions options)
@@ -494,7 +497,7 @@ internal sealed class AspireExecutionConnection : IAsyncDisposable
         string reason = StatusCode switch
         {
             200 => "OK", 201 => "Created", 204 => "No Content", 400 => "Bad Request", 401 => "Unauthorized",
-            404 => "Not Found", 408 => "Request Timeout", 409 => "Conflict", 413 => "Content Too Large",
+            403 => "Forbidden", 404 => "Not Found", 405 => "Method Not Allowed", 408 => "Request Timeout", 409 => "Conflict", 413 => "Content Too Large",
             414 => "URI Too Long", 415 => "Unsupported Media Type", 417 => "Expectation Failed",
             429 => "Too Many Requests", 431 => "Request Header Fields Too Large", _ => "Internal Server Error"
         };

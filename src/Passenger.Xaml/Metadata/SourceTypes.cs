@@ -205,7 +205,7 @@ public sealed class SourceTypes
                             members.Add(new ClrMember(type, variable.Identifier.ValueText, MemberKind.Field, Registered(fieldType, variable, inside), isStatic, visible, !readOnly,
                                 attributes: memberAttributes, place: Place(variable.Identifier)));
                             // The MVVM Toolkit's generator makes a property of a field marked [ObservableProperty]: name from _name.
-                            if (!isStatic && memberAttributes.Any(a => a.ShortName == "ObservableProperty") && Generated(variable.Identifier.ValueText) is { } property)
+                            if (!isStatic && memberAttributes.Any(a => a.ShortName == "ObservableProperty") && ToolkitNames.PropertyOf(variable.Identifier.ValueText) is { } property)
                             {
                                 members.Add(new ClrMember(type, property, MemberKind.Property, fieldType, false, true, true, attributes: memberAttributes, place: Place(variable.Identifier)));
                             }
@@ -218,8 +218,7 @@ public sealed class SourceTypes
                         // And a command of a method marked [RelayCommand]: SaveCommand from Save or SaveAsync.
                         if (memberAttributes.Any(a => a.ShortName == "RelayCommand"))
                         {
-                            string command = method.Identifier.ValueText.EndsWith("Async", StringComparison.Ordinal) ? method.Identifier.ValueText[..^"Async".Length] : method.Identifier.ValueText;
-                            members.Add(new ClrMember(type, command + "Command", MemberKind.Property, TypeRef.Named("CommunityToolkit.Mvvm.Input.IRelayCommand"), false, true, false,
+                            members.Add(new ClrMember(type, ToolkitNames.CommandOf(method.Identifier.ValueText), MemberKind.Property, TypeRef.Named("CommunityToolkit.Mvvm.Input.IRelayCommand"), false, true, false,
                                 attributes: memberAttributes, place: Place(method.Identifier)));
                         }
                         break;
@@ -368,14 +367,6 @@ public sealed class SourceTypes
     }
 
     private static string Arity(string name, int arity) => arity == 0 ? name : $"{name}`{arity}";
-
-    /// <summary>The property the MVVM Toolkit generates for an [ObservableProperty] field: its name without a leading
-    /// <c>_</c> or <c>m_</c>, its first letter upper case; null for a name that leaves nothing.</summary>
-    private static string? Generated(string field)
-    {
-        string bare = field.StartsWith("m_", StringComparison.Ordinal) ? field[2..] : field.TrimStart('_');
-        return bare.Length == 0 ? null : char.ToUpperInvariant(bare[0]) + bare[1..];
-    }
 
     /// <summary>A name as metadata has it: without the <c>global::</c> it may be written with, the <c>@</c> that escapes a
     /// keyword among its parts, or the generic arguments of a written one.</summary>

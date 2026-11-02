@@ -148,13 +148,16 @@ public sealed class DebugAdapter
         connection.Handle<EvaluateArguments, EvaluateResponse>(DapCommands.Evaluate, async arguments =>
         {
             // A hover, or a value the client shows of itself, is an implicit evaluation.
-            VariableInfo value = await Read(() => debugger.Evaluate(arguments.Expression, arguments.FrameId, implicitly: arguments.Context is "hover" or "variables"));
+            VariableInfo value = await Read(() => debugger.Evaluate(arguments.Expression, arguments.FrameId, implicitly: arguments.Context is "hover" or "variables",
+                letThreadsRun: arguments.LetThreadsRun is true));
             return new EvaluateResponse
             {
                 Result = value.Value,
                 Type = value.Type,
                 VariablesReference = value.VariablesReference,
                 PresentationHint = ToProtocol(value.PresentationHint),
+                PassedOver = value.PassedOver,
+                ImplicitOff = value.ImplicitOff,
             };
         });
         // Set Next Statement: a target per line (or column), in the last stopped thread's method, its id the IL offset goto takes.
@@ -181,7 +184,7 @@ public sealed class DebugAdapter
         connection.Handle<SetExpressionArguments, SetExpressionResponse>(DapCommands.SetExpression, async arguments =>
         {
             VariableInfo assigned = await Locked(() => debugger.Assign(arguments.Expression, arguments.Value, arguments.FrameId));
-            if (assigned.PresentationHint?.Attributes == AttributesValue.FailedEvaluation)
+            if (assigned.PresentationHint?.Attributes is AttributesValue.FailedEvaluation or AttributesValue.FailedNeedingThreads)
             {
                 throw new InvalidOperationException(assigned.Value.StartsWith("error: ", StringComparison.Ordinal) ? assigned.Value["error: ".Length..] : assigned.Value);
             }
@@ -377,6 +380,7 @@ public sealed class DebugAdapter
                 LaunchRequestConsoleType = console,
                 HotReload = hotReload,
             };
+            debugger.Present(arguments.Presentations ?? []);
             await Locked(() => debugger.Launch(launch, arguments.JustMyCode ?? true));
         }
         catch (Exception error)
@@ -391,6 +395,7 @@ public sealed class DebugAdapter
         {
             int processId = arguments.ProcessId ?? throw new InvalidOperationException("Missing process ID");
             bool justMyCode = arguments.JustMyCode ?? true;
+            debugger.Present(arguments.Presentations ?? []);
             await Locked(() => debugger.Attach(processId, justMyCode, arguments.HotReload ?? false));
         }
         catch (Exception error)
@@ -686,7 +691,7 @@ public sealed class DebugAdapter
             EndColumn = bound && breakpoint.EndColumn is int endColumn ? ColumnOut(endColumn) : null,
             Offset = isEvent && bound ? 0 : null,
             Message = breakpoint.Message,
-            Reason = breakpoint.Refused ? "failed" : null,
+            Reason = breakpoint.Refused || breakpoint.Unbindable ? "failed" : breakpoint.Verified ? null : "pending",
             Source = source,
         };
     }
@@ -728,6 +733,7 @@ public sealed class DebugAdapter
         {
             null or AttributesValue.None => null,
             AttributesValue.FailedEvaluation => ["failedEvaluation"],
+            AttributesValue.FailedNeedingThreads => ["failedEvaluation", DapAttributes.NeedsThreads],
             AttributesValue.ReadOnly => ["readOnly"],
             _ => throw new ArgumentOutOfRangeException(nameof(hint), h.Attributes, null),
         };

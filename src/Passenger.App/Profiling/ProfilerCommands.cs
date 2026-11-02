@@ -99,7 +99,7 @@ public sealed class ProfilerCommands
         });
         parts.Actions.Add(new IdeAction(AppActions.MemorySnapshot, "Get Memory Snapshot", "Run", context => IdeErrors.Observe(MemorySnapshotAsync()))
         {
-            WhyNot = _ => Session.Profiling is null ? NoneProfiling : Held(ToTakeHeap),
+            WhyNot = _ => Session.Profiling is not { } run ? NoneProfiling : Held(ToTakeHeap) ?? run.WhyNoHeap,
         });
     }
 
@@ -124,6 +124,8 @@ public sealed class ProfilerCommands
         };
         made.OpenRequested += (_, method) => IdeErrors.Observe(OpenMethodAsync(method));
         made.FramesPage.ControlOpened += (_, control) => OpenControl(control);
+        made.GamePage.FunctionOpened += (_, opened) => OpenScript(opened.Function, opened.Folder);
+        made.GamePage.MethodOpened += (_, method) => IdeErrors.Observe(OpenMethodAsync(new ProfiledMethod(method.Name, method.Code)));
         made.OpenSnapshotRequested += (_, _) => IdeErrors.Observe(PickSnapshotAsync());
         made.OpenKeptRequested += (_, path) => IdeErrors.Observe(OpenSnapshotAsync(path));
         made.RevealSnapshotsRequested += (_, _) =>
@@ -292,7 +294,8 @@ public sealed class ProfilerCommands
         }
         OutputView run = parts.RunConsole;
         // An Avalonia app is profiled with the inspector in it, which records its frames into the run's trace.
-        LaunchPlan launched = profiled.InspectedProfile(plan!);
+        (LaunchPlan listened, Godot.GodotGame? game) = profiled.Listened(plan!);
+        LaunchPlan launched = profiled.InspectedProfile(listened);
         LiveApp? inspected = profiled.ProfiledApp;
         using CancellationTokenSource stop = new();
         // The toolbar's Stop ends the start as the window's Kill does.
@@ -300,7 +303,10 @@ public sealed class ProfilerCommands
         work.Say($"Starting {chosen.Name} under the profiler…");
         try
         {
-            ProfileTarget target = new(launched.Program, launched.Arguments, launched.WorkingDirectory, launched.Environment);
+            ProfileTarget target = new(launched.Program, launched.Arguments, launched.WorkingDirectory, launched.Environment)
+            {
+                Called = launched.Godot is not null ? launched.ProgramName : null,
+            };
             run.Clear();
             ConsoleSink console = run.Sink;
             ProfilingSession running;
@@ -311,17 +317,27 @@ public sealed class ProfilerCommands
             // Held until the program has reached the profiler (or never will), not while it runs: that is the person's.
             using (BackgroundWork.Scope())
             {
-                running = await ProfilingSession.StartAsync(target, SnapshotFolder, SocketFolders.Own(State.StateStore.DefaultRoot),
-                    (reader, error, lines) => console.PumpAsync(reader, error ? ConsoleStream.Error : ConsoleStream.Output, lines: lines), stop.Token);
+                ProgramPump pump = (reader, error, lines) => console.PumpAsync(reader, error ? ConsoleStream.Error : ConsoleStream.Output, lines: lines);
+                // A game of GDScript alone runs no .NET code to sample: Godot's own profiler's frames are the whole run.
+                running = launched.ScriptsAlone ? await ProfilingSession.StartFramesAsync(target, SnapshotFolder, pump)
+                    : await ProfilingSession.StartAsync(target, SnapshotFolder, SocketFolders.Own(State.StateStore.DefaultRoot), pump, stop.Token);
             }
             starting = null;
+            if (game is not null)
+            {
+                Record(running, game);
+            }
             profiled.Profiling = running;
             TaskCompletionSource landed = new(TaskCreationOptions.RunContinuationsAsynchronously);
             ProfiledProgram program = new(running, chosen.Name, target.Name, landed.Task);
             profiled.Profiled = program;
             ConsoleInput? input = running.Input is { } writer ? ProgramInput.Of(writer) : null;
             // Only its end puts the run away, however that comes: a snapshot leaves the program running.
-            IdeErrors.Observe(running.ExitedAsync().ContinueWith(_ => UiThread.Post(() => Ended(profiled, program, inspected, input, landed)), TaskScheduler.Default));
+            IdeErrors.Observe(running.ExitedAsync().ContinueWith(_ => UiThread.Post(() =>
+            {
+                game?.Dispose();
+                Ended(profiled, program, inspected, input, landed);
+            }), TaskScheduler.Default));
             if (profiled.IsEnded)
             {
                 // Its folder was left as it started: it ends with the folder's other programs.
@@ -331,13 +347,14 @@ public sealed class ProfilerCommands
             profilingName = chosen.Name;
             run.Input = input;
             View.Running(chosen.Name, () => running.Elapsed);
-            parts.Say($"Profiling {chosen.Name}");
+            parts.Say(running.Samples ? $"Profiling {chosen.Name}" : FramesAloneSaid(chosen.Name));
             return null;
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
         {
             // Killed as it started, or its folder closed: the start ended the program and its port.
             inspected?.Dispose();
+            game?.Dispose();
             if (profiled.IsEnded)
             {
                 // Its Kill goes, unless the next folder's Profile has started since.
@@ -357,6 +374,7 @@ public sealed class ProfilerCommands
             or TimeoutException or System.ComponentModel.Win32Exception or DiagnosticsClientException)
         {
             inspected?.Dispose();
+            game?.Dispose();
             profiled.Profiling = null;
             View.Stopped(error.Message);
             return error.Message;
@@ -433,7 +451,7 @@ public sealed class ProfilerCommands
         profilingName = name;
         View.Running(name, () => running.Elapsed, killable);
         parts.Dock.Show(ToolWindowIds.Profiler);
-        parts.Say($"Profiling {name} from now: Get Snapshot when it has done what is to be measured");
+        parts.Say(running.Samples ? $"Profiling {name} from now: Get Snapshot when it has done what is to be measured" : FramesAloneSaid(name));
         IdeErrors.Observe(running.ExitedAsync().ContinueWith(_ => UiThread.Post(() =>
         {
             if (profiled.Profiling == running && profiled == Session)
@@ -446,6 +464,18 @@ public sealed class ProfilerCommands
                 BackgroundWork.Track(running.DisposeAsync().AsTask());
             }
         }), TaskScheduler.Default));
+    }
+
+    /// <summary>What Profile says of a Godot game of GDScript alone it runs, whose run is Godot's own frames.</summary>
+    public static string FramesAloneSaid(string name) =>
+        $"Profiling {name} with Godot's own profiler: a game of GDScript alone runs no .NET code, so its run is its frames and scripts as Godot measures them, with no samples";
+
+    /// <summary>A Godot game's own frame profile recorded beside the run's samples, ended as the run is read.</summary>
+    private static void Record(ProfilingSession running, Godot.GodotGame game)
+    {
+        Passenger.Profiler.GameRecording recording = new(game.Framework, game.Folder, !game.Headless);
+        running.Game = recording;
+        game.Profile(recording);
     }
 
     /// <summary>A program Profile started has ended (by itself, killed, or with its folder) and the Run console has the last
@@ -652,13 +682,15 @@ public sealed class ProfilerCommands
                 return paused;
             }
             ProfilingSession running;
+            Godot.GodotGame? game = target.Elsewhere is null ? profiled.Games.FirstOrDefault(g => g.ProcessId == target.ProcessId) : null;
             Action unfollow = SayPauses(work, target.ProcessId, target.Elsewhere?.Container, target.Name, ToProfile);
             try
             {
                 using (BackgroundWork.Scope())
                 {
-                    running = target.Elsewhere is not null
-                        ? await AttachElsewhereAsync(target, snapshotFolder, work)
+                    // A game of GDScript alone runs no .NET code to sample: Godot's own profiler's frames are the whole run.
+                    running = target.Elsewhere is not null ? await AttachElsewhereAsync(target, snapshotFolder, work)
+                        : game is { ScriptsAlone: true } ? ProfilingSession.AttachFrames(target.ProcessId, target.File, snapshotFolder)
                         : await ProfilingSession.AttachAsync(target.ProcessId, target.File, snapshotFolder, work.Stopping);
                 }
             }
@@ -679,6 +711,10 @@ public sealed class ProfilerCommands
             {
                 await running.DisposeAsync();
                 return profiled.IsEnded || profiled != Session ? Refusals.SolutionClosed : "A run is already being profiled";
+            }
+            if (game is not null)
+            {
+                Record(running, game);
             }
             // Profile's own program, profiled again, is still Kill's to end.
             Follow(profiled, running, target.Name, killable: target.Elsewhere is null && profiled.Profiled?.Run.ProcessId == target.ProcessId);
@@ -901,7 +937,9 @@ public sealed class ProfilerCommands
         {
             // Held by the scope, and back on no thread of the window's, which may be gone by then.
             Snapshot snapshot = await BackgroundWork.Unheld(() => run.StopAsync()).ConfigureAwait(false);
-            string read = $"Snapshot of {name}: {snapshot.Samples:N0} samples, kept in {Path.GetDirectoryName(snapshot.TracePath)}";
+            string read = snapshot.FramesAlone
+                ? $"Snapshot of {name}: {Plural.Of(snapshot.GameFrames.Count, "frame")} as Godot's profiler measured them, no samples (GDScript alone), kept in {Path.GetDirectoryName(snapshot.TracePath)}"
+                : $"Snapshot of {name}: {snapshot.Samples:N0} samples, kept in {Path.GetDirectoryName(snapshot.TracePath)}";
             if (closing.IsCancellationRequested)
             {
                 // Its folder was left as it was read: it is that folder's to list when it opens again.
@@ -1001,6 +1039,11 @@ public sealed class ProfilerCommands
         {
             parts.Say(paused);
             return (null, paused);
+        }
+        if (run.WhyNoHeap is { } unreadable)
+        {
+            parts.Say($"No memory snapshot: {unreadable}");
+            return (null, unreadable);
         }
         string name = profilingName;
         if (parts.Actions.Work.Begin(AppActions.MemorySnapshot, $"Taking a memory snapshot of {name}…") is not { } work)
@@ -1109,6 +1152,20 @@ public sealed class ProfilerCommands
         {
             parts.Say(problem);
         }
+    }
+
+    /// <summary>A Godot script function opened at its line, its <c>res://</c> path under the game's folder.</summary>
+    private void OpenScript(ScriptFunction function, string folder)
+    {
+        string file = function.File.StartsWith("res://", StringComparison.Ordinal) && folder.Length > 0
+            ? Path.GetFullPath(Path.Combine(folder, function.File["res://".Length..]))
+            : function.File;
+        if (!File.Exists(file))
+        {
+            parts.Say($"{function.Name}'s script {function.File} is not among the game's files");
+            return;
+        }
+        parts.Navigate(PathNames.Canonical(file), new TextPosition(Math.Max(0, function.Line - 1), 0));
     }
 
     /// <summary>A method a row names opened at its source: by its module's PDB where it has one (read in its container for

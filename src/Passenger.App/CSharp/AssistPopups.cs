@@ -95,12 +95,11 @@ internal sealed partial class InfoCard : Border, IHoverCard
     public void AddCode(string code) => parts.Children.Add(new TextBlock
     {
         Text = code,
-        FontFamily = CodeEditor.CodeFont,
         FontFeatures = Fonts.NoLigatures,
         FontSize = 12.5,
         TextWrapping = TextWrapping.Wrap,
         Foreground = Brush(TokenKeys.Text),
-    });
+    }.InCodeFont());
 
     public void AddText(string text, IBrush? colour = null) => parts.Children.Add(new TextBlock
     {
@@ -360,12 +359,11 @@ internal sealed class CompletionRowView : DockPanel
         };
         label = new TextBlock
         {
-            FontFamily = CodeEditor.CodeFont,
             FontFeatures = Fonts.NoLigatures,
             FontSize = 12.5,
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
-        };
+        }.InCodeFont();
         Children.Add(badge);
         Children.Add(detail);
         Children.Add(label);
@@ -463,10 +461,11 @@ internal sealed class ChoicePopup : Border
     /// <summary>A choice's row: its digit when the list has them, its words, and its detail muted, in code's font for code.</summary>
     private static Control ChoiceRow(bool numbered)
     {
-        TextBlock digit = new() { FontFamily = CodeEditor.CodeFont, Width = 10, IsVisible = numbered, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock digit = new TextBlock { Width = 10, IsVisible = numbered, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new() { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 460, VerticalAlignment = VerticalAlignment.Center };
         StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 10, Height = ListRow.Height, Children = { digit, text, detail } };
+        string? detailFont = null;
         return row.Showing<Choice>(choice =>
         {
             digit.Text = choice.Mnemonic?.ToString();
@@ -474,7 +473,7 @@ internal sealed class ChoicePopup : Border
             text.Text = choice.Text;
             detail.Text = choice.Detail;
             detail.Foreground = InfoCard.Brush(TokenKeys.TextMuted);
-            detail.FontFamily = choice.DetailIsCode ? CodeEditor.CodeFont : FontFamily.Default;
+            detail.Resource(TextBlock.FontFamilyProperty, ref detailFont, choice.DetailIsCode ? CodeFonts.Key : null);
         });
     }
 
@@ -514,7 +513,7 @@ internal sealed class RenameBox : Border
     {
         Classes.Add(StyleClasses.Popup);
         Padding = new Thickness(8, 6);
-        name = new TextBox { Text = current, Classes = { StyleClasses.Search }, MinWidth = 220, FontFamily = CodeEditor.CodeFont };
+        name = new TextBox { Text = current, Classes = { StyleClasses.Search }, MinWidth = 220 }.InCodeFont();
         body = new StackPanel
         {
             Spacing = 4,

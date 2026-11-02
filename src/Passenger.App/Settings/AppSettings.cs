@@ -37,6 +37,8 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// them.</summary>
     public bool MainMenuBar { get; init; }
 
+    /// <summary>The code font by its family's name, or null for the one Passenger carries.</summary>
+    public string? EditorFontFamily { get; init; }
     public double EditorFontSize { get; init; } = 13;
     public double EditorLineSpacing { get; init; } = 1.2;
     public bool Ligatures { get; init; }
@@ -44,6 +46,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
 
     /// <summary>Rainbow braces: brackets coloured by how deeply they nest.</summary>
     public bool RainbowBraces { get; init; } = true;
+
+    /// <summary>In XAML, XML, MSBuild's files and HTML, a start tag's '>' writes its end tag after the caret, and "&lt;/"
+    /// the open element's name.</summary>
+    public bool CloseTags { get; init; } = true;
 
     /// <summary>Parameter name hints: an argument's parameter shown before it where the call does not say it.</summary>
     public bool ParameterHints { get; init; } = true;
@@ -72,6 +78,11 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// scrolls.</summary>
     public bool WheelZoom { get; init; }
     public double TerminalFontSize { get; init; } = 13;
+    /// <summary>The terminal's own font by its family's name, or null for the code font in force.</summary>
+    public string? TerminalFontFamily { get; init; }
+    public bool TerminalCopyOnSelection { get; init; }
+    public bool TerminalCursorBlinking { get; init; }
+    public Passenger.Terminal.CursorShape TerminalCursorStyle { get; init; } = Passenger.Terminal.CursorShape.Block;
 
     /// <summary>Code Folding, Fold by default: the comments a file begins with fold as it opens (a file keeps the folds
     /// it closed with instead, once it has some).</summary>
@@ -167,12 +178,24 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// one keymap is never put over the other.</summary>
     public Dictionary<string, string[]> VSCodeShortcuts { get; init; } = [];
 
+    /// <summary>The person's shortcuts over the IntelliJ IDEA keymap's, kept apart from the others' as VS Code's are.</summary>
+    public Dictionary<string, string[]> IntelliJShortcuts { get; init; } = [];
+
     /// <summary>The person's shortcuts over the keymap they chose (a method, so the settings agents list leave it out).</summary>
-    public Dictionary<string, string[]> OwnShortcuts() => Keymap == Passenger.Editor.KeymapPreset.VSCode ? VSCodeShortcuts : Shortcuts;
+    public Dictionary<string, string[]> OwnShortcuts() => Keymap switch
+    {
+        Passenger.Editor.KeymapPreset.VSCode => VSCodeShortcuts,
+        Passenger.Editor.KeymapPreset.IntelliJ => IntelliJShortcuts,
+        _ => Shortcuts,
+    };
 
     /// <summary>These settings with these as the person's shortcuts over the keymap they chose.</summary>
-    public AppSettings WithOwnShortcuts(Dictionary<string, string[]> shortcuts) =>
-        Keymap == Passenger.Editor.KeymapPreset.VSCode ? this with { VSCodeShortcuts = shortcuts } : this with { Shortcuts = shortcuts };
+    public AppSettings WithOwnShortcuts(Dictionary<string, string[]> shortcuts) => Keymap switch
+    {
+        Passenger.Editor.KeymapPreset.VSCode => this with { VSCodeShortcuts = shortcuts },
+        Passenger.Editor.KeymapPreset.IntelliJ => this with { IntelliJShortcuts = shortcuts },
+        _ => this with { Shortcuts = shortcuts },
+    };
 
     /// <summary>The live templates as the person left them, by template: a built-in one's changes (its key the shortcut
     /// it ships with), and the whole of each they added (<see cref="TemplateChange"/>).</summary>
@@ -194,6 +217,14 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>The Node.js the JavaScript, TypeScript, HTML, CSS and JSON language servers run on, or null for the
     /// first on the PATH as the login shell finds it.</summary>
     public string? NodeInterpreter { get; init; }
+
+    /// <summary>The Chromium browser a Blazor app's WebAssembly half is debugged in, with arguments given every start of it,
+    /// as one command line; null for the one found (<see cref="Passenger.Core.ChromiumBrowsers"/>).</summary>
+    public string? DebugBrowser { get; init; }
+
+    /// <summary>The Godot a Godot project's game and editor run on, with arguments given every start of it, as one command
+    /// line; null for the one found (<see cref="Passenger.Core.GodotExecutables"/>).</summary>
+    public string? GodotExecutable { get; init; }
 
     /// <summary>ESLint's "Run for files" at first.</summary>
     public const string DefaultEslintFiles = "**/*.{js,ts,jsx,tsx,cjs,cts,mjs,mts,html,vue}";
@@ -293,6 +324,14 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// (Counter.razor.cs under Counter.razor), on until the Explorer's File Nesting... turns it off.</summary>
     public bool NestFiles { get; init; } = true;
 
+    /// <summary>The Explorer's Always Select Opened File: the file shown chosen in it as another is shown or opened, on
+    /// until its options turn it off.</summary>
+    public bool AlwaysSelectOpenedFile { get; init; } = true;
+
+    /// <summary>The Explorer's Open Files with Single Click: a plain click on a file's row opens it, the keys left on the
+    /// row; off until its options turn it on.</summary>
+    public bool OpenFilesWithSingleClick { get; init; }
+
     /// <summary>The code style for XAML (the XML formatter's options, with an attribute order and empty-element style),
     /// which Reformat Code lays out Avalonia's and WPF's XAML by, a file's .editorconfig over it.</summary>
     public Passenger.Xaml.Features.XamlFormatSettings XamlFormat { get; init; } = new();
@@ -307,7 +346,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <see cref="Clamped"/> reads them: written so, the former id leaves the file, and an action's shortcuts reset stay so.</summary>
     public static void Renamed(JsonObject settings)
     {
-        foreach (string property in new[] { nameof(Shortcuts), nameof(VSCodeShortcuts) })
+        foreach (string property in new[] { nameof(Shortcuts), nameof(VSCodeShortcuts), nameof(IntelliJShortcuts) })
         {
             if (settings[StateFile.Options.PropertyNamingPolicy!.ConvertName(property)] is not JsonObject shortcuts)
             {
@@ -347,6 +386,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
         {
             Shortcuts = Readable(Shortcuts),
             VSCodeShortcuts = Readable(VSCodeShortcuts),
+            IntelliJShortcuts = Readable(IntelliJShortcuts),
             LiveTemplates = (LiveTemplates ?? []).Where(t => t.Value is not null).ToDictionary(t => t.Key, t => t.Value.Clamped()),
             PostfixTemplates = PostfixTemplates ?? [],
             NodeInterpreter = string.IsNullOrWhiteSpace(NodeInterpreter) ? null : NodeInterpreter.Trim(),

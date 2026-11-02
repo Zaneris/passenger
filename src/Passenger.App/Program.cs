@@ -58,6 +58,12 @@ internal static class Program
         Options = options;
         // Before anything starts, so nothing started reads it; a relay keeps its own, which the updated app it becomes reads.
         Stream? input = options.Mcp == McpMode.Attach ? null : StandardInput.Take();
+        // Before the shell's environment or a look for leftovers: Main's thread waits here for a running Passenger's answer.
+        if (LaunchHandOff.HandsOff(options) && Synchronously.Run(() => LaunchHandOff.HandOffAsync(LaunchHandOff.Of(options), CancellationToken.None)))
+        {
+            input?.Dispose();
+            return 0;
+        }
         Core.ShellEnvironment.Load();
         if (options.Mcp != McpMode.Attach && options.Screenshot is null)
         {
@@ -72,6 +78,11 @@ internal static class Program
                 return Mcp.McpHost.RunStdio(options, input!);
         }
         if (options.Headless)
+        {
+            return Mcp.McpHost.RunHeadless(options, input!);
+        }
+        // A test run's launch that no running Passenger took starts this build headless, never a window on the person's screen.
+        if (Mcp.McpProxy.StartsHeadless && options.Screenshot is null)
         {
             return Mcp.McpHost.RunHeadless(options, input!);
         }

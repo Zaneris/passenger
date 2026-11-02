@@ -77,7 +77,10 @@ public static partial class McpHost
         "build, run, tests_list and tests_run build (and publish), run and test. To debug: breakpoint_set, then debug_start (or debug_attach), debug_step, " +
         "debug_evaluate, debug_state and debug_continue, each waiting for the program to stop and saying where, with the locals " +
         "where it stopped. An Avalonia or WPF app that run or debug_start starts is looked at and used as a person tests it: app_windows, app_tree, " +
-        "app_screenshot, app_click, app_type, app_key, app_scroll, app_binding_errors. Also version control (vcs_status, " +
+        "app_screenshot, app_click, app_type, app_key, app_scroll, app_binding_errors. A Godot game the same, Passenger its remote debugger: its " +
+        "nodes are the elements, input reaching it through a helper node Passenger adds under its root; ide_action app.godot.pauseLoop " +
+        "and app.godot.nextFrame pause its loop and step it a frame, and with app.liveTree.selectElement on, app_click picks the node at " +
+        "a point. Also version control (vcs_status, " +
         "vcs_commit), NuGet (nuget_search, nuget_install), Problems and Local History (diagnostics with no path, local_history), the settings (settings, " +
         "settings_set), the container engine (containers, container_exec, container_action) and Passenger's own " +
         "window (the app_ tools with app ide, ide_action).\n\n" +
@@ -265,7 +268,7 @@ public static partial class McpHost
             .SetupWithoutStarting();
 
         // The agent's own IDE, which no other agent joins.
-        MainWindow window = new() { Width = 1600, Height = 1000, AgentsAllowed = false, AgentsOwn = true, StartsLanguageServer = StartsLanguageServer, HeadStart = ahead };
+        MainWindow window = new() { Width = 1600, Height = 1000, AgentsAllowed = false, AgentsOwn = true, TakesLaunches = false, StartsLanguageServer = StartsLanguageServer, HeadStart = ahead };
         IdeErrors.Write($"Passenger {Product.Version} ({Product.Commit ?? "no commit"}) for an agent, with no window shown: its window built "
             + $"{System.Diagnostics.Stopwatch.GetElapsedTime(Program.StartedAt).TotalSeconds:0.00} s after launch");
         window.SetRenderScaling(2);
@@ -282,8 +285,9 @@ public static partial class McpHost
     }
 
     /// <summary><c>--headless [PATH]</c>: a person's window on the headless platform, which <c>--mcp-attach</c> starts
-    /// in place of the installed app under <see cref="McpProxy.StartVariable"/>: it listens for agents and asks before
-    /// letting them in, as any window does, until the input given ends (<see cref="StandardInput.Take"/>).</summary>
+    /// in place of the installed app under <see cref="McpProxy.StartVariable"/>, as does a launch no running Passenger
+    /// took there: it listens for agents and asks before letting them in, as any window does, and takes launches, until
+    /// the input given ends (<see cref="StandardInput.Take"/>).</summary>
     public static int RunHeadless(LaunchOptions launch, Stream input)
     {
         IsHeadless = true;
@@ -297,7 +301,7 @@ public static partial class McpHost
             .AfterSetup(builder => Program.ApplyTheme(builder.Instance!, launch))
             .SetupWithoutStarting();
 
-        MainWindow window = new() { Width = 1600, Height = 1000 };
+        MainWindow window = new() { Width = 1600, Height = 1000, AgentsAllowed = launch.ListenForAgents };
         window.SetRenderScaling(2);
         window.Show();
         window.Start(launch);

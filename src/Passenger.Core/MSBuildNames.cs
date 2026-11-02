@@ -66,12 +66,16 @@ public static class MSBuildNames
     public const string TargetFileName = "TargetFileName";
     public const string ProjectDepsFileName = "ProjectDepsFileName";
     public const string ProjectRuntimeConfigFileName = "ProjectRuntimeConfigFileName";
+    public const string IntermediateOutputPath = "IntermediateOutputPath";
 
     /// <summary>The Design assembly a project names for dotnet ef in place of EF Core's.</summary>
     public const string DesignAssembly = "DesignAssembly";
 
     /// <summary>The program dotnet run starts.</summary>
     public const string RunCommand = "RunCommand";
+
+    /// <summary>The version of Godot.NET.Sdk a Godot project builds with, as the SDK sets it.</summary>
+    public const string GodotSdkVersion = "PackageVersion_Godot_NET_Sdk";
 
     /// <summary>The arguments dotnet run gives it (StartArguments' too).</summary>
     public const string RunArguments = "RunArguments";
@@ -121,4 +125,9 @@ public static class MSBuildNames
 
     /// <summary>The target that works out the SDK container's base image, after which ContainerBaseImage holds it.</summary>
     public const string ComputeContainerBaseImage = "ComputeContainerBaseImage";
+
+    /// <summary>The targets that make a web app's static web assets made by its build again, its scoped CSS's bundle among
+    /// them, with no compile.</summary>
+    public const string GenerateComputedBuildStaticWebAssets = "GenerateComputedBuildStaticWebAssets";
+    public const string ResolveReferencedProjectsStaticWebAssets = "ResolveReferencedProjectsStaticWebAssets";
 }

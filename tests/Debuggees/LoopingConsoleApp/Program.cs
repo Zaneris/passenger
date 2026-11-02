@@ -10,7 +10,16 @@
 // together, either first; with "race throws" the second throws and catches an exception there too, and the call runs on
 // a while longer each turn, so over the turns the step's end meets the exception's handler found. With "returns" it calls
 // a method that returns a value each turn, which a debugger attaches to (LoopingConsoleAppOptimized is it built optimized).
-// With "asleep" it writes its numbers in a culture of its own and a value by its own ToString, then sleeps for good.
+// With "asleep" it writes its numbers in a culture of its own and a value by its own ToString, then sleeps for good. With
+// "locked" a second thread, Holder, holds a lock a property is read under, letting it go only as it runs on, then starts a
+// third, Let go, and waits.
+if (args is ["locked"])
+{
+    Locked locked = new();
+    Locked.Hold();
+    Console.WriteLine("locked"); // stop while the lock is held
+    return;
+}
 if (args is ["count"])
 {
     Thread counting = new(() =>
@@ -128,6 +137,58 @@ internal static class Returning
     public static long Twice(long turn)
     {
         return turn * 2; // returns twice the turn
+    }
+}
+
+// A property read under a lock a second thread holds for a second once it has taken it: an evaluation of it never ends
+// while that thread is held still.
+internal sealed class Locked
+{
+    private static readonly object Gate = new();
+
+    // Set once the holder has let go of the lock, read with no code run.
+    public static bool LetGo;
+
+    // Set by the holder in its wait once it has let go, and by the thread it starts then once that runs.
+    public static volatile bool Waiting;
+    public static volatile bool Started;
+
+    public string Value
+    {
+        get
+        {
+            lock (Gate)
+            {
+                // With every thread let go, read once the holder waits past the lock and the thread it started runs.
+                SpinWait.SpinUntil(() => Waiting && Started);
+                return "read under the lock";
+            }
+        }
+    }
+
+    public static void Hold()
+    {
+        using ManualResetEventSlim held = new();
+        Thread holder = new(() =>
+        {
+            lock (Gate)
+            {
+                held.Set();
+                Thread.Sleep(1000); // the holder sleeps holding the lock
+            }
+            LetGo = true;
+            new Thread(() =>
+            {
+                Started = true;
+                Thread.Sleep(Timeout.Infinite);
+            }) { IsBackground = true, Name = "Let go" }.Start();
+            while (true)
+            {
+                Waiting = true; Thread.Sleep(50); // the holder waits once it has let go
+            }
+        }) { IsBackground = true, Name = "Holder" };
+        holder.Start();
+        held.Wait();
     }
 }
 

@@ -7,7 +7,7 @@ Windows, macOS and Linux ([how to install it there](https://passenger-ide.net/li
 <p align="center">
   <a href="https://passenger-ide.net">Website</a> •
   <a href="https://passenger-ide.net/#download">Download</a> •
-  <a href="https://github.com/Zaneris/passenger/releases/tag/v0.2.3">What's new in 0.2.3</a> •
+  <a href="https://github.com/Zaneris/passenger/releases/tag/v0.2.4">What's new in 0.2.4</a> •
   <a href="#what-it-does">What it does</a> •
   <a href="#your-coding-agent-using-the-ide-as-you-do">Your coding agent</a> •
   <a href="#building">Building</a> •
@@ -188,7 +188,7 @@ A text control of its own over an immutable rope: multiple carets, folding, soft
 and surround templates, inlay hints, the symbol at the caret lit through the file, and splits and tabs in windows of
 their own. A key costs what it changed, not the file's size. Visual Studio's keys are the default, chords included,
 as Rider's Visual Studio keymap has them (Visual Studio OSX's on a Mac), so a Rider user finds them too; coming from VS
-Code, Settings, Keymap switches to VS Code's.
+Code or IntelliJ IDEA, Settings, Keymap switches to its keys, Search Everywhere's double Shift included.
 
 C# comes from Roslyn: its parser colours as you type, then the language server gives diagnostics, completion, hovers,
 signature help, quick fixes and refactorings (Change Signature, Extract Interface, Move, Pull Members Up, Safe Delete

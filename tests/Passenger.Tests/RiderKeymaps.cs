@@ -91,6 +91,8 @@ internal static class RiderKeymaps
     {
         (KeymapPreset.VSCode, true) => "VSCode OSX",
         (KeymapPreset.VSCode, false) => "VSCode",
+        (KeymapPreset.IntelliJ, true) => MacOS,
+        (KeymapPreset.IntelliJ, false) => Default,
         (_, true) => "Visual Studio OSX",
         _ => "Visual Studio",
     };

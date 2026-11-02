@@ -52,12 +52,13 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     {
         if (XamlPreview.Output(inputs) is not { } built)
         {
-            preview.Say($"Build {Path.GetFileNameWithoutExtension(inputs.ProjectPath)} to preview its XAML: the previewer draws its last build");
+            preview.Say(XamlPreview.Unbuilt(inputs));
             return null;
         }
-        if (HostApp(inputs) is not { } designer)
+        string? runs = await BackgroundWork.Run(() => XamlPreview.FrameworkOfBuild(built)) ?? inputs.TargetFramework;
+        if (HostApp(inputs, runs) is not { } designer)
         {
-            string why = NoHostApp(inputs);
+            string why = NoHostApp(inputs, runs);
             IdeLog.Write(IdeLog.Ide, $"Preview of {Path.GetFileName(preview.Document.Document.Path)}: {why}");
             preview.Say(why);
             return null;
@@ -273,14 +274,14 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     }
 
     /// <summary>Avalonia's previewer host in the project's Avalonia package: the newest of its tools/ frameworks that is not
-    /// newer than the project's.</summary>
-    private static string? HostApp(ProjectInputs inputs)
+    /// newer than the one the build runs on (<paramref name="runs"/>).</summary>
+    private static string? HostApp(ProjectInputs inputs, string? runs)
     {
         if (!inputs.PackageFolders.TryGetValue("Avalonia", out string? package) || !Directory.Exists(Path.Combine(package, "tools")))
         {
             return null;
         }
-        Version target = XamlPreview.Framework(inputs.TargetFramework) ?? new Version(99, 0);
+        Version target = XamlPreview.Framework(runs) ?? new Version(99, 0);
         return Directory.EnumerateDirectories(Path.Combine(package, "tools"))
             .Select(d => (Folder: d, Version: ToolsFramework(Path.GetFileName(d))))
             .Where(d => d.Version is not null && d.Version <= target)
@@ -289,8 +290,8 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
             .FirstOrDefault(File.Exists);
     }
 
-    /// <summary>Why the project has no previewer host, naming where it was looked for.</summary>
-    private static string NoHostApp(ProjectInputs inputs)
+    /// <summary>Why the project has no previewer host for the framework its build runs on, naming where it was looked for.</summary>
+    private static string NoHostApp(ProjectInputs inputs, string? runs)
     {
         string project = Path.GetFileNameWithoutExtension(inputs.ProjectPath);
         if (!inputs.PackageFolders.TryGetValue("Avalonia", out string? package))
@@ -301,7 +302,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         }
         string tools = Path.Combine(package, "tools");
         string[] frameworks = Directory.Exists(tools) ? [.. Directory.EnumerateDirectories(tools).Select(Path.GetFileName).OfType<string>().Order(StringComparer.Ordinal)] : [];
-        return $"No previewer for {inputs.TargetFramework ?? project} in {PathNames.Shown(tools, null)} (it has {(frameworks.Length == 0 ? "none" : string.Join(", ", frameworks))}): designer/Avalonia.Designer.HostApp.dll is looked for in each";
+        return $"No previewer for {runs ?? project} in {PathNames.Shown(tools, null)} (it has {(frameworks.Length == 0 ? "none" : string.Join(", ", frameworks))}): designer/Avalonia.Designer.HostApp.dll is looked for in each";
     }
 
     /// <summary>A tools/ folder's framework: net5.0 and later as themselves, and netstandard or netcoreapp (Avalonia 11's

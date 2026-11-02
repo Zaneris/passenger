@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
 using System.Runtime.InteropServices;
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Core;
@@ -46,7 +47,8 @@ public partial class ManagedDebugger
             (ICorDebugModule? module, string proxyName) = FindProxyType(debuggerProxyTypeName, valueToProxy.ExactType.Class.Module);
             if (module is not null)
             {
-                proxyInstance = await CreateDebuggerProxyInstance(valueToProxy, threadId, module, proxyName, valueToProxy.ExactType.TypeParameters);
+                proxyInstance = await CreateDebuggerProxyInstance(valueToProxy, threadId, module, proxyName,
+                    ProxyTypeArguments(debuggerProxyTypeName, valueToProxy.ExactType.Class.Module) ?? valueToProxy.ExactType.TypeParameters);
             }
             else
             {
@@ -66,9 +68,9 @@ public partial class ManagedDebugger
         (string? friendlyTypeName, string? value, CorDebugValueFormatKind formatKind, string? debuggerProxyTypeName, DebuggerDisplay? display) = GetValueForCorDebugValue(valueToFormat, escapeStringValue);
         friendlyTypeName = resolvedValue.FriendlyTypeNameOverride ?? friendlyTypeName;
         bool resultIsError = false;
-        if (EvalStatus.ImplicitOff is not null && !EvalStatus.Explicit && formatKind is CorDebugValueFormatKind.ToString or CorDebugValueFormatKind.DebuggerDisplay)
+        if (EvalStatus.ImplicitOff is not null && !EvalStatus.Explicit && formatKind is CorDebugValueFormatKind.ToString)
         {
-            // Neither its ToString nor its [DebuggerDisplay] runs while implicit evaluation is off: its type in braces.
+            // Its ToString does not run while implicit evaluation is off: its type in braces.
             return new FormattedValue(friendlyTypeName, $"{{{friendlyTypeName}}}", debuggerProxyTypeName, false);
         }
         string? displayName = null;
@@ -115,6 +117,11 @@ public partial class ManagedDebugger
             else
             {
                 (value, resultIsError) = await RenderDebuggerDisplayAsync(display.Value, valueToFormat, threadId, frameStackDepth, nesting);
+                if (resultIsError && EvalStatus.ImplicitOff is not null && !EvalStatus.Explicit)
+                {
+                    // While implicit evaluation is off a display reads only fields, which run no code: one needing more is its type in braces.
+                    return new FormattedValue(friendlyTypeName, $"{{{friendlyTypeName}}}", debuggerProxyTypeName, false);
+                }
                 if (display.Name is { } nameFormat)
                 {
                     (displayName, _) = await RenderDebuggerDisplayAsync(nameFormat, valueToFormat, threadId, frameStackDepth, nesting);
@@ -138,12 +145,15 @@ public partial class ManagedDebugger
             comma = proxyTypeName[at] == ',' && depth == 0 ? at : -1;
         }
         string typeName = (comma < 0 ? proxyTypeName : proxyTypeName[..comma]).Trim();
-        // A generic proxy is found by its definition; the value's own type arguments instantiate it.
+        // A generic proxy is found by its definition, made with the type arguments its name gives, else the value's own.
         typeName = typeName.IndexOf('[', StringComparison.Ordinal) is var arguments and >= 0 ? typeName[..arguments] : typeName;
         string? assemblyName = comma < 0 ? null : proxyTypeName[(comma + 1)..].Split(',')[0].Trim();
+        ModuleInfo? coreLib = CoreLib;
+        // One a reference assembly names (System.Runtime) is defined where it forwards to, which is CoreLib or another loaded.
         IEnumerable<ICorDebugModule> candidates = assemblyName is null
-            ? [shownModule, .. CoreLib is { } coreLib ? [coreLib.Module] : Array.Empty<ICorDebugModule>()]
-            : _modules.Values.Where(module => string.Equals(AssemblyNameOf(module), assemblyName, StringComparison.OrdinalIgnoreCase)).Select(module => module.Module);
+            ? [shownModule, .. coreLib is not null ? [coreLib.Module] : Array.Empty<ICorDebugModule>()]
+            : _modules.Values.OrderBy(module => string.Equals(AssemblyNameOf(module), assemblyName, StringComparison.OrdinalIgnoreCase) ? 0 : module == coreLib ? 1 : 2)
+                .Select(module => module.Module);
         foreach (ICorDebugModule candidate in candidates)
         {
             if (candidate.GetMetaDataInterface<IMetaDataImport>().FindMaybeNestedTypeDefByNameOrNull(typeName) is not null)
@@ -152,6 +162,62 @@ public partial class ManagedDebugger
             }
         }
         return (null, typeName);
+    }
+
+    /// <summary>The type arguments a [DebuggerTypeProxy] names for its generic type (typeof(View&lt;Variant&gt;) on a type that
+    /// is not generic), each found as <see cref="FindProxyType"/> finds the proxy: View`1[Variant] where it is the attribute's
+    /// assembly's, View`1[[Int32, System.Runtime]] where another's. Null for a name that gives none, or one no module the
+    /// program has loaded holds, where the value's own type arguments instantiate it.</summary>
+    private ICorDebugType[]? ProxyTypeArguments(string proxyTypeName, ICorDebugModule shownModule)
+    {
+        int open = proxyTypeName.IndexOf('[', StringComparison.Ordinal);
+        if (open < 0 || !proxyTypeName.Contains('`', StringComparison.Ordinal))
+        {
+            return null;
+        }
+        List<ICorDebugType> arguments = [];
+        int depth = 0;
+        int start = open + 1;
+        for (int at = open + 1; at < proxyTypeName.Length; at++)
+        {
+            char c = proxyTypeName[at];
+            if (c == '[')
+            {
+                depth++;
+            }
+            else if ((c is ',' or ']') && depth == 0)
+            {
+                string argument = proxyTypeName[start..at].Trim();
+                if (ProxyTypeArgument(argument.StartsWith('[') && argument.EndsWith(']') ? argument[1..^1] : argument, shownModule) is not { } found)
+                {
+                    return null;
+                }
+                arguments.Add(found);
+                start = at + 1;
+                if (c == ']')
+                {
+                    break;
+                }
+            }
+            else if (c == ']')
+            {
+                depth--;
+            }
+        }
+        return [.. arguments];
+    }
+
+    /// <summary>One type argument of a proxy's name, as an attribute writes it, with its own arguments.</summary>
+    private ICorDebugType? ProxyTypeArgument(string name, ICorDebugModule shownModule)
+    {
+        (ICorDebugModule? module, string typeName) = FindProxyType(name, shownModule);
+        if (module?.GetMetaDataInterface<IMetaDataImport>().FindMaybeNestedTypeDefByNameOrNull(typeName) is not { } definition)
+        {
+            return null;
+        }
+        ICorDebugType[] arguments = ProxyTypeArguments(name, module) ?? [];
+        bool valueType = EvaluationMetadataResolver.IsValueType(new ResolvedRuntimeType(GetModuleInfoForModule(module), MetadataTokens.TypeDefinitionHandle(definition.Rid)));
+        return ((ICorDebugClass2)module.GetClassFromToken(definition)).GetParameterizedType(valueType ? CorElementType.VALUETYPE : CorElementType.CLASS, arguments.Length, arguments);
     }
 
     private static string? AssemblyNameOf(ModuleInfo module) =>
@@ -179,7 +245,7 @@ public partial class ManagedDebugger
         }
     }
 
-    private static CorDebugValueValueResult GetValueForCorDebugValue(ICorDebugValue corDebugValue, bool escapeStringValue)
+    private CorDebugValueValueResult GetValueForCorDebugValue(ICorDebugValue corDebugValue, bool escapeStringValue)
     {
         return corDebugValue switch
         {
@@ -224,14 +290,14 @@ public partial class ManagedDebugger
         return new(typeName, value, CorDebugValueFormatKind.None, null);
     }
 
-    public static CorDebugValueValueResult GetCorDebugBoxValue_Value_AsString(ICorDebugBoxValue corDebugBoxValue, bool escapeStringValue)
+    private CorDebugValueValueResult GetCorDebugBoxValue_Value_AsString(ICorDebugBoxValue corDebugBoxValue, bool escapeStringValue)
     {
         ICorDebugObjectValue unboxedValue = corDebugBoxValue.Object;
         CorDebugValueValueResult value = GetValueForCorDebugValue(unboxedValue, escapeStringValue);
         return value;
     }
 
-    public static CorDebugValueValueResult GetCorDebugObjectValue_Value_AsString(ICorDebugObjectValue corDebugObjectValue, bool escapeStringValue)
+    private CorDebugValueValueResult GetCorDebugObjectValue_Value_AsString(ICorDebugObjectValue corDebugObjectValue, bool escapeStringValue)
     {
         ICorDebugModule module = corDebugObjectValue.Class.Module;
         IMetaDataImport metaDataImport = module.GetMetaDataInterface<IMetaDataImport>();
@@ -317,7 +383,7 @@ public partial class ManagedDebugger
         mdFieldDef valueFieldDef = metaDataImport.FindField(corDebugObjectValue.Class.Token, "value", 0, 0);
 
         ICorDebugValue hasValueDebugObjectValue = corDebugObjectValue.GetFieldValue(corDebugObjectValue.Class, hasValueFieldDef);
-        CorDebugValueValueResult hasValueValue = GetValueForCorDebugValue(hasValueDebugObjectValue, false);
+        CorDebugValueValueResult hasValueValue = GetCorDebugGenericValue_Value_AsString((ICorDebugGenericValue)hasValueDebugObjectValue.UnwrapDebugValue());
         if (hasValueValue.Value is "false")
         {
             return null;
@@ -387,7 +453,7 @@ public partial class ManagedDebugger
     /// <summary>The field a compiler-made union keeps its value in, its Value property's.</summary>
     private const string UnionValueField = "<Value>k__BackingField";
 
-    public static CorDebugValueValueResult GetCorDebugReferenceValue_Value_AsString(ICorDebugReferenceValue corDebugReferenceValue, bool escapeStringValue)
+    private CorDebugValueValueResult GetCorDebugReferenceValue_Value_AsString(ICorDebugReferenceValue corDebugReferenceValue, bool escapeStringValue)
     {
         if (corDebugReferenceValue.Type is CorElementType.PTR)
         {

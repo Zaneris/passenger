@@ -180,6 +180,10 @@ public sealed record TestOutcome(TestItem Test, TestState State, TimeSpan Durati
     /// AddTestAttachment), and the frames of a failing headless test's windows (<see cref="TestFrames"/>).</summary>
     public IReadOnlyList<TestAttachment> Attachments { get; init; } = [];
 
+    /// <summary>When the run it is kept from began, a run of an earlier session (<see cref="TestResultsState"/>); null for
+    /// a result of this one's.</summary>
+    public DateTimeOffset? Earlier { get; init; }
+
     /// <summary>The row this result is of, the test's own or one its run made; null for the method itself.</summary>
     public string? Row => Test.Row ?? (DisplayName is { } shown ? TestItem.RowOf(Test.FullyQualifiedName, shown) : null);
 }
@@ -201,8 +205,10 @@ public sealed record TestAttachment(string Name, string Path)
     }
 }
 
-/// <summary>A test host a runner would start, to be started under the debugger instead.</summary>
-public sealed record TestHostStart(string FileName, IReadOnlyList<string> Arguments, string? WorkingDirectory, IReadOnlyDictionary<string, string> Environment);
+/// <summary>A test host a runner would start, to be started under the debugger instead, with the framework it runs on
+/// ("net10.0") where the runner knows it.</summary>
+public sealed record TestHostStart(string FileName, IReadOnlyList<string> Arguments, string? WorkingDirectory, IReadOnlyDictionary<string, string> Environment,
+    string? Framework = null);
 
 /// <summary>Debugging for a runner: it hands over the test host it would start, or names the one it started.</summary>
 public interface ITestDebugLauncher
@@ -212,6 +218,10 @@ public interface ITestDebugLauncher
 
     /// <summary>Attaches the debugger to a test host the runner started; true once the debugger has hold of it.</summary>
     Task<bool> AttachAsync(int processId);
+
+    /// <summary>Starts a Godot run of a project's GDScript tests (GUT's) under the GDScript debugger, the debugger's own
+    /// arguments after the first <paramref name="leading"/>; done once it has started, with the run's end.</summary>
+    Task<Task> DebugScriptsAsync(TestHostStart start, string folder, int leading);
 }
 
 /// <summary>What finds and runs a folder's tests: VSTest's vstest.console (<see cref="VsTestRunner"/>), Microsoft.Testing.Platform's

@@ -58,11 +58,14 @@ internal abstract class LanguageAssist
 }
 
 /// <summary>The languages' own answers, asked in one order by every command: an .http file's routes, an MSBuild file's,
-/// XAML's, a compose file's, a settings file's configuration, a web language's, then C#'s, Razor's and any file
-/// left; the first that answers is the command's.</summary>
-internal sealed class LanguageAssists(HttpAssist http, MSBuildAssist msbuild, XamlAssist xaml, ComposeAssist compose, SettingsAssist settings, WebAssist web, CSharpAssist csharp)
+/// XAML's, a compose file's, a settings file's configuration, a web language's, a Godot scene's, then C#'s, Razor's and
+/// any file left; the first that answers is the command's.</summary>
+internal sealed class LanguageAssists(HttpAssist http, MSBuildAssist msbuild, XamlAssist xaml, ComposeAssist compose, SettingsAssist settings, WebAssist web,
+    GodotAssist godot, CSharpAssist csharp)
 {
-    private readonly IReadOnlyList<LanguageAssist> ladder = [http, msbuild, xaml, compose, settings, web, csharp];
+    private readonly IReadOnlyList<LanguageAssist> ladder = [http, msbuild, xaml, compose, settings, web, godot, csharp];
+
+    public GodotAssist Godot => godot;
 
     public HttpAssist Http => http;
 

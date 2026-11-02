@@ -27,4 +27,19 @@ public sealed class FrameworkNamesTests
         Assert.True(FrameworkNames.IsWindowsDesktop(FrameworkNames.Wpf), "WPF's profile was not read as the Windows desktop's");
         Assert.False(FrameworkNames.IsWindowsDesktop("Microsoft.AspNetCore.App"), "ASP.NET Core's shared framework was read as the Windows desktop's");
     }
+
+    [Theory]
+    [InlineData("net48", true)]
+    [InlineData("net472", true)]
+    [InlineData("NET462", true)]
+    [InlineData(".NETFramework,Version=v4.8", true)]
+    [InlineData("net8.0", false)]
+    [InlineData("net10.0-windows", false)]
+    [InlineData("netstandard2.0", false)]
+    [InlineData("netcoreapp3.1", false)]
+    [InlineData("net", false)]
+    public void A_net_framework_target_is_told_from_the_ones_coreclr_runs(string framework, bool netFramework)
+    {
+        Assert.Equal(netFramework, FrameworkNames.IsNetFramework(framework));
+    }
 }

@@ -340,7 +340,7 @@ public abstract class McpRig : IDisposable
     /// <summary>A tool's whole result, an error's included, within the time the tool may take, or until the test gives up
     /// on it; with <paramref name="heard"/>, the call asks for progress and keeps what it is told.</summary>
     protected Task<CallToolResult> Result(McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null, CancellationTokenSource? giveUp = null, Heard? heard = null) =>
-        Exchange($"The {tool} call", Limit(tool, arguments), cancel => client.CallToolAsync(tool, arguments, heard, cancellationToken: cancel).AsTask(), giveUp);
+        Exchange($"The {tool} call", Limit(tool, arguments), cancel => client.CallToolAsync(tool, arguments, heard, cancellationToken: cancel).AsTask(), giveUp, heard);
 
     /// <summary>The progress an agent's call was told, as the SDK hands it over, on any thread.</summary>
     protected sealed class Heard : IProgress<ModelContextProtocol.ProgressNotificationValue>
@@ -380,6 +380,17 @@ public abstract class McpRig : IDisposable
 
         /// <summary>What it was told, as a failure quotes it.</summary>
         public override string ToString() => Told.Count == 0 ? "nothing" : string.Join(" | ", Told.Select(t => $"{t.Progress}: {t.Message}"));
+
+        /// <summary>The last of the different things it was told, as a call that never answered quotes them.</summary>
+        public string Last(int count)
+        {
+            List<string> said = [];
+            foreach (string message in Told.Select(t => t.Message ?? string.Empty).Where(m => said.Count == 0 || said[^1] != m))
+            {
+                said.Add(message);
+            }
+            return said.Count == 0 ? "nothing" : string.Join(" | ", said.TakeLast(count));
+        }
     }
 
     /// <summary>A tool call the agent gives up on as the protocol has it: sent under an id of its own, and on giving up a
@@ -433,7 +444,7 @@ public abstract class McpRig : IDisposable
 
     /// <summary>One exchange with Passenger, given up after a limit: one that runs out of time or fails ends the test naming
     /// it, with what Passenger said meanwhile, so a hang fails saying why rather than stopping the run in silence.</summary>
-    protected async Task<T> Exchange<T>(string what, TimeSpan limit, Func<CancellationToken, Task<T>> exchange, CancellationTokenSource? giveUp = null)
+    protected async Task<T> Exchange<T>(string what, TimeSpan limit, Func<CancellationToken, Task<T>> exchange, CancellationTokenSource? giveUp = null, Heard? heard = null)
     {
         CancellationToken given = giveUp?.Token ?? default;
         using CancellationTokenSource timer = CancellationTokenSource.CreateLinkedTokenSource(Cancel, given);
@@ -446,12 +457,24 @@ public abstract class McpRig : IDisposable
         catch (Exception error) when (!Cancel.IsCancellationRequested && !given.IsCancellationRequested
             && (error is TimeoutException || (error is OperationCanceledException && timer.IsCancellationRequested)))
         {
-            throw new TimeoutException($"{what} had no answer in {limit.TotalSeconds:0} s.{Said()}", error);
+            string told = heard is null ? string.Empty : $"\nWhat the call was told to say, last: {heard.Last(5)}";
+            throw new TimeoutException($"{what} had no answer in {limit.TotalSeconds:0} s.{told}{Said()}{Stacks()}", error);
         }
         catch (Exception error) when (!Cancel.IsCancellationRequested && !given.IsCancellationRequested)
         {
             throw new InvalidOperationException($"{what} failed: {error.Message}{Said()}", error);
         }
+    }
+
+    /// <summary>Where the managed threads of the Passenger the test started last stood, as a call it never answered says.</summary>
+    private string Stacks()
+    {
+        Process? last;
+        lock (passengers)
+        {
+            last = passengers.Count == 0 ? null : passengers[^1];
+        }
+        return last is null || !DotnetProcesses.Runs(last.Id) ? string.Empty : ManagedStacks.Describe("Where Passenger's threads were", last.Id);
     }
 
     /// <summary>What Passenger said before something went wrong: its standard error, and the end of its log and of the

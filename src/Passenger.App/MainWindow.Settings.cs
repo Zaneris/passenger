@@ -93,6 +93,11 @@ public partial class MainWindow
         FollowTitleBar(next);
         FollowMainMenu(next);
         Explorer.NestFiles = next.NestFiles;
+        Explorer.OpensOnClick = next.OpenFilesWithSingleClick;
+        if (next.AlwaysSelectOpenedFile && !before.AlwaysSelectOpenedFile && Editors.Active?.Path is { } shown)
+        {
+            Explorer.Reveal(shown);
+        }
         assist.Templates = CSharp.TemplateSet.Of(next);
         assist.XamlFormat = next.XamlFormat;
         if (terminal is { } panel)
@@ -132,6 +137,7 @@ public partial class MainWindow
         editor.ShowParameterHints = with.ParameterHints;
         editor.ShowTypeHints = with.TypeHints;
         editor.RainbowBraces = with.RainbowBraces;
+        editor.ClosesTags = with.CloseTags;
         editor.WrapIndent = with.SoftWrapIndent;
         editor.ZoomsWithWheel = with.WheelZoom;
         editor.InvalidateVisual();

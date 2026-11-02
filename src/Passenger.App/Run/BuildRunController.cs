@@ -133,6 +133,7 @@ public sealed partial class BuildRunController
         this.parts = parts;
         // A Debug tab that comes or goes brings its app's failed bindings to Problems, or takes them away.
         session.InspectedChanged += (_, _) => ShowBindings();
+        session.GameStarted += (_, game) => FollowGame(game);
         session.Builder.Line += (_, line) =>
         {
             (Problem? next, bool continued) = BuildOutput.Next(reading, line, builtPaths);
@@ -695,7 +696,8 @@ public sealed partial class BuildRunController
     {
         try
         {
-            return (await LaunchPlan.ResolveAsync(arguments is null ? chosen : chosen with { Arguments = arguments }, session.Projects, session.Workspace, parts.StateFolder(), stop), null);
+            return (await LaunchPlan.ResolveAsync(arguments is null ? chosen : chosen with { Arguments = arguments }, session.Projects, session.Workspace, parts.StateFolder(), stop,
+                parts.Settings().GodotExecutable, parts.Editors.Active?.Path), null);
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
         {
@@ -705,6 +707,32 @@ public sealed partial class BuildRunController
         {
             return (null, error.Message);
         }
+    }
+
+    /// <summary>Why Run Current Scene cannot run now: the file open is in no Godot project of the folder's.</summary>
+    public string? WhyNotRunScene() => parts.Editors.Active?.Path is { } path && session.RunProjects.Any(p => p.GodotFolder is { } folder && PathNames.IsUnder(path, folder))
+        ? null : Refusals.NoGodotScene;
+
+    /// <summary>Run Current Scene: the Godot game of the project the open scene (or script) is in, run from that scene (or the
+    /// one the script is attached in, <see cref="Passenger.Workspace.GodotProject.SceneOf"/>), its configuration chosen (the
+    /// one chosen when it runs that game, else its generated one). Null once it runs, else why not.</summary>
+    public async Task<string?> RunCurrentSceneAsync()
+    {
+        UiThread.Check();
+        string? path = parts.Editors.Active?.Path;
+        ProjectModel? project = path is null ? null : session.RunProjects.FirstOrDefault(p => p.GodotFolder is { } folder && PathNames.IsUnder(path, folder));
+        if (project is null)
+        {
+            return Said(Refusals.NoGodotScene);
+        }
+        RunConfiguration? configuration = session.Configurations.Chosen is { GodotEditor: false, IsContainer: false } chosen && PathNames.Same(chosen.Project, project.Path)
+            && chosen.Program.Length == 0 ? chosen
+            : session.Configurations.All.FirstOrDefault(c => c.Generated && !c.GodotEditor && PathNames.Same(c.Project, project.Path));
+        if (configuration is null || !session.Configurations.Select(configuration.Name))
+        {
+            return Said($"{project.Name} has no configuration that runs its game");
+        }
+        return await RunAsync(scene: RunConfiguration.CurrentScene);
     }
 
     /// <summary>What a start Stop ended says, every kind's: a program's, a container run's, an AppHost's.</summary>
@@ -859,11 +887,16 @@ public sealed partial class BuildRunController
     /// uses the terminal; under dotnet watch as Settings' Hot Reload says, or as <paramref name="hotReload"/> does (an agent's
     /// run, whose headless IDE keeps the default settings). Null once it runs (<see cref="RunEnd"/> is its end), else why it
     /// could not (a program Profile started has the Run console, say), which the status bar says too.</summary>
-    public async Task<string?> RunAsync(string? arguments = null, bool? hotReload = null, CancellationToken cancellation = default)
+    public async Task<string?> RunAsync(string? arguments = null, bool? hotReload = null, CancellationToken cancellation = default, string? scene = null)
     {
         if (session.Configurations.Chosen is not { } chosen)
         {
             return Said(session.NothingTo("run"));
+        }
+        // Run Current Scene's: this start of a Godot game begins in the scene open.
+        if (scene is not null)
+        {
+            chosen = chosen with { GodotScene = scene };
         }
         if (session.Aspire.IsAspire(chosen))
         {
@@ -898,6 +931,8 @@ public sealed partial class BuildRunController
             }
         }
         using IDisposable held = BackgroundWork.Scope();
+        // The edits made since its build saved the files, followed for a Godot game's Hot Reload.
+        BuiltEdits? edits = null;
         try
         {
             if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
@@ -907,9 +942,19 @@ public sealed partial class BuildRunController
             parts.Views.Run.Clear();
             UnfollowWatched();
             // dotnet watch builds the project itself, and runs it again after an edit it cannot apply.
-            bool watched = (hotReload ?? parts.Settings().HotReload) && chosen.Program.Length == 0;
+            bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.Program.Length == 0;
+            bool godot = chosen.RunsGodot(session.Projects);
+            // A game's errors, which Godot writes every frame they happen, folded in its console.
+            parts.Views.Run.Fold = godot && !chosen.GodotEditor ? new Godot.GodotConsoleFold() : null;
+            bool watched = wanted && !godot;
+            // A Godot game takes its edits through the debugger, attached quietly as it starts held; Godot's editor loads its builds itself.
+            bool reloaded = wanted && godot && !chosen.GodotEditor;
             watching = watched;
-            (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, arguments, work, build: !watched);
+            (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, arguments, work, build: !watched, reading: reloaded ? () =>
+            {
+                edits?.Dispose();
+                edits = session.Debug.Building(hotReload: true);
+            } : null);
             if (plan is null)
             {
                 return Said(problem!);
@@ -922,18 +967,37 @@ public sealed partial class BuildRunController
             {
                 return Said(unmade);
             }
+            // A game of GDScript alone takes its saved scripts over its own connection: no debugger holds its start for C#'s edits.
+            bool heldStart = reloaded && !plan.ScriptsAlone;
             work.Say($"Starting {chosen.Name}…");
             ran = chosen.Name;
             RunProject = Path.GetDirectoryName(plan.Project);
+            // A Godot game's, with Passenger as its remote debugger.
+            (plan, Godot.GodotGame? game) = session.Listened(plan);
+            game?.ReloadsScripts = reloaded;
             session.RunPlan = plan;
-            string running = watched ? $"Running {chosen.Name} with Hot Reload: a save applies its changes" : $"Running {chosen.Name}";
+            string running = watched || reloaded ? $"Running {chosen.Name} with Hot Reload: a save applies its changes"
+                : wanted && godot && !plan.ScriptsAlone ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.EditorReloads}"
+                : $"Running {chosen.Name}";
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
             LaunchPlan launched = session.InspectedRun(plan, watched);
             LiveApp? inspected = session.RunApp;
             ShowBindings();
+            // dotnet watch opens no browser of its own: the plan's opens through the window once the program listens.
             Dictionary<string, string> variables = watched
-                ? new Dictionary<string, string>(launched.Environment) { ["DOTNET_WATCH_SUPPRESS_EMOJIS"] = "1", ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "true" }
+                ? new Dictionary<string, string>(launched.Environment)
+                {
+                    ["DOTNET_WATCH_SUPPRESS_EMOJIS"] = "1", ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "true", ["DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER"] = "1",
+                }
                 : new Dictionary<string, string>(launched.Environment);
+            if (heldStart)
+            {
+                // Held at its runtime's start until the debugger attaches, so each of its modules takes Edit and Continue as it loads.
+                foreach ((string name, string value) in HeldStart.Variables(changeable: true))
+                {
+                    variables[name] = value;
+                }
+            }
             if (plan.Console == ConsoleKind.Terminal)
             {
                 // The terminal's text is the program's own: its failed bindings are in Problems alone.
@@ -942,8 +1006,13 @@ public sealed partial class BuildRunController
                 if (refused is null && session.InTerminal is { } inTerminal)
                 {
                     parts.OpenBrowser(plan, inTerminal.Ended);
+                    if (heldStart)
+                    {
+                        await AttachForHotReloadAsync(chosen.Name, inTerminal.ProcessId, null, work, Take(ref edits), running);
+                    }
                 }
                 EndWith(inspected, refused is null && session.InTerminal is { } run ? run.Ended : Task.CompletedTask);
+                EndWith(game, refused is null && session.InTerminal is { } played ? played.Ended : Task.CompletedTask);
                 return refused;
             }
             session.InTerminal = null;
@@ -964,12 +1033,64 @@ public sealed partial class BuildRunController
                 parts.OpenBrowser(plan, session.Runner.Ended);
             }
             EndWith(inspected, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
+            EndWith(game, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
+            if (notStarted is null && heldStart && session.Runner.ProcessId is int id)
+            {
+                await AttachForHotReloadAsync(chosen.Name, id, parts.Views.Run.Sink, work, Take(ref edits), running);
+            }
             return notStarted;
         }
         finally
         {
+            edits?.Dispose();
             work.Dispose();
         }
+    }
+
+    /// <summary>Whether Run runs the Godot game of configuration <paramref name="name"/> with Hot Reload through the debugger.</summary>
+    public bool RunsGameWithHotReload(string name) => RunsOwnProgram(name) && session.RunPlan is { Godot: not null, GodotEditor: false }
+        && session.Debug.Running.Any(r => r.Name == name);
+
+    /// <summary>Restarts the Godot game Run runs with Hot Reload so the edits Hot Reload could not apply run: built and started
+    /// again, held and attached to again, while its configuration is still the one chosen. True once it runs again.</summary>
+    public async Task<bool> RestartGameForEditAsync(string name)
+    {
+        if (!RunsGameWithHotReload(name) || session.Configurations.Chosen?.Name != name)
+        {
+            return false;
+        }
+        parts.Say($"Hot Reload: restarting {name} to apply the changes");
+        return await RunAsync(hotReload: true) is null;
+    }
+
+    /// <summary>Edits followed for a session, handed over once: the session that takes them lets them go.</summary>
+    private static BuiltEdits? Take(ref BuiltEdits? edits)
+    {
+        BuiltEdits? taken = edits;
+        edits = null;
+        return taken;
+    }
+
+    /// <summary>A Godot game Run started held for Hot Reload, attached to quietly (<see cref="DebugController.AttachForHotReloadAsync"/>),
+    /// which lets it go: what its applies come to is said in <paramref name="console"/> (null for the terminal's tab, whose
+    /// text is the game's own) and the status bar, which says <paramref name="running"/> once attached. One the debugger
+    /// cannot reach is let go and runs without Hot Reload, saying why.</summary>
+    private async Task AttachForHotReloadAsync(string name, int processId, ConsoleSink? console, Working work, BuiltEdits? edits, string running)
+    {
+        work.Say($"Attaching to {name} for Hot Reload…");
+        string? refused = await session.Debug.AttachForHotReloadAsync(processId, name, (line, error) =>
+        {
+            console?.Write($"{line}\n", error ? ConsoleStream.Error : ConsoleStream.Output);
+            parts.Say(line);
+        }, cancellation: work.Stopping, edits: edits);
+        if (refused is null)
+        {
+            parts.Say(running);
+            return;
+        }
+        // Held at its start, it would wait for good for a debugger that is not coming.
+        await HeldStart.LetGoAsync(processId);
+        parts.Say($"Running {name} without Hot Reload: {refused}");
     }
 
     /// <summary>The Run console (or the terminal's tab) for a start of a configuration: free; the same configuration's program
@@ -1617,31 +1738,219 @@ public sealed partial class BuildRunController
         // Before the session clears the Debug window's console, which forgets the links the last one's output had.
         DebugProject = Path.GetDirectoryName(plan.Project);
         DebugController debug = session.Debug;
+        // A Godot game's GDScript is debugged from its first line, beside its C#.
+        (LaunchPlan listened, Godot.GodotGame? game) = session.Listened(plan, plan.Godot is { } folder ? debug.ScriptStart(folder) : null);
+        if (plan.ScriptsAlone && game is not null)
+        {
+            return await LaunchScriptsAsync(listened, game);
+        }
+        // A Blazor app's code in the browser is debugged in a Chromium browser, where one is found.
+        IReadOnlyList<ProjectModel> projects = session.Projects;
+        string? browserSetting = parts.Settings().DebugBrowser;
+        (Debugging.BrowserDebugging? inBrowser, string? notInBrowser) = await BackgroundWork.Run(() => Debugging.BrowserDebugging.For(listened, projects, browserSetting));
+        listened = listened with { Browser = inBrowser, BrowserWhyNot = notInBrowser };
+        if (inBrowser is not null && PathNames.Same(listened.InBrowser[0], listened.Project!))
+        {
+            // A standalone app's browser session runs its development server itself, no engine beside it.
+            return await debug.LaunchBrowserAsync(listened, inBrowser);
+        }
         // An Avalonia or WPF app is launched with the Live Visual Tree's inspector, held by its tab, ending with this debugging.
-        (LaunchPlan launched, LiveApp? inspected) = session.Inspected(plan);
+        (LaunchPlan launched, LiveApp? inspected) = session.Inspected(listened);
         Task<string?> starting = debug.StartAsync(launched, app: inspected, edits: edits);
+        if (game is not null && debug.Chosen?.Console is { } gameConsole)
+        {
+            gameConsole.Fold = new Godot.GodotConsoleFold();
+        }
         // Its tab, chosen as the start began, has the console its failed bindings are written to.
         WatchBindings(inspected, debug.Chosen?.Console);
         string? refused = await starting;
+        if (game is not null && refused is null)
+        {
+            game.Debugged = debug.SessionNamed(launched.Name);
+            game.ReloadsScripts = debug.HotReloadOn();
+            EndsWithGame(game);
+            IdeErrors.Observe(DebugScriptsAsync(game, launched.Name));
+        }
+        else
+        {
+            game?.LetScriptsGo();
+        }
         Task ended = refused is null ? DebugEnded(debug.SessionNamed(launched.Name)) : Task.CompletedTask;
         EndWith(inspected, ended);
-        if (refused is null)
+        EndWith(game, ended);
+        if (refused is null && inBrowser is not null)
+        {
+            IdeErrors.Observe(DebugBrowserAsync(launched, inBrowser, ended));
+        }
+        else if (refused is null)
         {
             parts.OpenBrowser(plan, ended);
         }
         return refused;
     }
 
-    /// <summary>An app's inspector let go once its run or debugging ends: one that never connected (startup hooks turned off
-    /// in the app) waits no longer. Its failed bindings stay in Problems until the next launch of its kind.</summary>
-    private static void EndWith(LiveApp? app, Task ended)
+    /// <summary>A Blazor Web App's WebAssembly half debugged beside its server, in a tab of its own
+    /// (<see cref="DebugController.DebugBrowserAsync"/>), ended as the server's session ends; one whose browser could not
+    /// start says why, the server debugged on.</summary>
+    private async Task DebugBrowserAsync(LaunchPlan plan, Debugging.BrowserDebugging browser, Task serverEnded)
+    {
+        DebugController debug = session.Debug;
+        if (await debug.DebugBrowserAsync(plan, browser) is { } refused)
+        {
+            parts.Say($"{plan.Name}'s components in the browser are not debugged: {refused}");
+            return;
+        }
+        await serverEnded;
+        if (debug.SessionNamed(DebugController.BrowserTab(plan.Name)) is { State: not DebugState.Ended })
+        {
+            await debug.StopAsync(DebugController.BrowserTab(plan.Name));
+        }
+    }
+
+    /// <summary>Debug of a Godot game of GDScript alone: its GDScript session launches it, no C# engine beside it, Hot Reload
+    /// of its saved scripts as Settings' Hot Reload while debugging says. Null once its session is open, else why not.</summary>
+    private async Task<string?> LaunchScriptsAsync(LaunchPlan plan, Godot.GodotGame game)
+    {
+        DebugController debug = session.Debug;
+        string? refused = await debug.LaunchScriptsAsync(plan, game);
+        if (refused is null)
+        {
+            game.Debugged = debug.SessionNamed(plan.Name);
+            game.ReloadsScripts = debug.HotReloadOn();
+        }
+        EndWith(game, refused is null ? DebugEnded(debug.SessionNamed(plan.Name)) : Task.CompletedTask);
+        return refused;
+    }
+
+    /// <summary>What Godot's reload of a saved script keeps and what it does not, said once a game in its console.</summary>
+    public const string ScriptReloadKeeps = "Godot reloads a saved GDScript file in place: each node running it keeps its members' values and runs "
+        + "the new code from its next call; _init and _ready do not run again, and a member the edit adds starts as null, its initializer unrun";
+
+    /// <summary>Has each Godot game that runs with Hot Reload (Run's with it on, Debug's while Hot Reload while debugging is)
+    /// reload a GDScript file of its project just saved, through its debugger's <c>reload_scripts</c>: the GDScript sessions'
+    /// breakpoints follow the file's lines as saved. Said in the status bar, and once a game in its console what the reload keeps.</summary>
+    public async Task ReloadScriptAsync(string path)
+    {
+        UiThread.Check();
+        if (!Godot.GodotScriptAdapter.Takes(path))
+        {
+            return;
+        }
+        List<string> reloaded = [];
+        foreach (Godot.GodotGame game in session.Games.Where(g => g is { State: LiveAppState.Connected, ReloadsScripts: true }).ToList())
+        {
+            if (Passenger.Workspace.GodotScenes.ResPathOf(game.Folder, path) is not { } resource)
+            {
+                continue;
+            }
+            try
+            {
+                await game.SendToAsync(Godot.GodotWords.ReloadScripts, Godot.GodotMessage.MainThread, resource);
+            }
+            catch (LiveAppException lost)
+            {
+                parts.Say($"Hot Reload: {Path.GetFileName(path)} did not reach {game.Name}: {lost.Message}");
+                continue;
+            }
+            reloaded.Add(game.Name);
+            if (!game.ToldReload)
+            {
+                game.ToldReload = true;
+                OutputView console = game.Debugged is { } debugged && session.Debug.TabOf(debugged) is { } tab ? tab.Console : parts.Views.Run;
+                console.Append($"Hot Reload: {ScriptReloadKeeps}\n");
+            }
+        }
+        if (reloaded.Count > 0)
+        {
+            await session.Debug.ScriptReloadedAsync(path);
+            parts.Say($"Hot Reload: {Path.GetFileName(path)} reloaded in {Plural.Listed(reloaded)}");
+        }
+    }
+
+    /// <summary>A Godot game's GDScript debugged beside its C#, in a tab of its own (<see cref="DebugController.DebugScriptsAsync"/>);
+    /// one whose debugger could not start lets the game go on past its script stops, as a game Run runs does.</summary>
+    private async Task DebugScriptsAsync(Godot.GodotGame game, string name)
+    {
+        if (await session.Debug.DebugScriptsAsync(game, name) is not null)
+        {
+            game.LetScriptsGo();
+        }
+    }
+
+    /// <summary>The errors and warnings the last Godot game launched raised, in Problems' Godot tab as they come, each at the
+    /// first place of its stack in the project (a script's frame, else where the engine says it was raised), the newest
+    /// game's alone.</summary>
+    private void FollowGame(Godot.GodotGame game)
+    {
+        List<Problem> raised = [];
+        parts.Views.Problems.ShowGodot(raised);
+        game.Raised += (_, error) =>
+        {
+            if (session.Game != game || session.IsEnded)
+            {
+                return;
+            }
+            raised.Add(Godot.GodotProblems.Of(error, game));
+            parts.Views.Problems.ShowGodot([.. raised]);
+        };
+    }
+
+    /// <summary>An app's inspector (or a Godot game's debugger) let go once its run or debugging ends: one that never
+    /// connected (startup hooks turned off in the app, a game that failed first) waits no longer. Its failed bindings stay in
+    /// Problems until the next launch of its kind.</summary>
+    /// <summary>A debugged Godot game's session is shown ended as the game ends, its connection and then its process gone,
+    /// whatever its debugger is still doing.</summary>
+    private static void EndsWithGame(Godot.GodotGame game)
+    {
+        if (game.Debugged is not { } debugged)
+        {
+            return;
+        }
+        void Changed(object? sender, EventArgs e)
+        {
+            if (game.State != LiveTree.LiveAppState.Ended)
+            {
+                return;
+            }
+            game.StateChanged -= Changed;
+            // A session over already (Stop, Detach) let the game go: nothing is to be waited for.
+            if (debugged.State != DebugState.Ended)
+            {
+                IdeErrors.Observe(GoneAsync());
+            }
+        }
+        async Task GoneAsync()
+        {
+            if (game.ProcessId is int id && await BackgroundWork.Run(() => Exits(id, TimeSpan.FromSeconds(5))))
+            {
+                debugged.ProgramGone();
+            }
+        }
+        game.StateChanged += Changed;
+
+        static bool Exits(int id, TimeSpan limit)
+        {
+            try
+            {
+                using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
+                process.WaitForExit(limit);
+            }
+            catch (Exception gone) when (gone is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                // Gone already, or not to be waited on: whether it runs says which.
+            }
+            return !DotnetProcesses.Runs(id);
+        }
+    }
+
+    private static void EndWith(IDisposable? app, Task ended)
     {
         if (app is not null)
         {
             IdeErrors.Observe(EndWithAsync(app, ended));
         }
 
-        static async Task EndWithAsync(LiveApp app, Task ended)
+        static async Task EndWithAsync(IDisposable app, Task ended)
         {
             await ended;
             app.Dispose();

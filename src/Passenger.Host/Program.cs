@@ -39,12 +39,10 @@ public static class Sdks
     {
         try
         {
-            VisualStudioInstance? found = MSBuildLocator.QueryVisualStudioInstances(new VisualStudioInstanceQueryOptions
-            {
-                DiscoveryTypes = DiscoveryType.DotNetSdk,
-                WorkingDirectory = folder,
-            }).FirstOrDefault();
-            problem = found is null ? $"no .NET SDK this host's runtime ({Environment.Version}) can load was found for {folder}" : null;
+            VisualStudioInstance? found = Query(folder, everyRuntime: false);
+            problem = found is not null ? null
+                : Query(folder, everyRuntime: true) is { } newer ? $"the .NET SDK {newer.Version} {HostWords.NewerSdk} ({Environment.Version}), for {folder}"
+                : $"no .NET SDK this host's runtime ({Environment.Version}) can load was found for {folder}";
             return found;
         }
         catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or ArgumentException)
@@ -53,4 +51,13 @@ public static class Sdks
             return null;
         }
     }
+
+    /// <summary>The SDK the folder picks, among those this runtime loads, or among every one installed.</summary>
+    private static VisualStudioInstance? Query(string folder, bool everyRuntime) =>
+        MSBuildLocator.QueryVisualStudioInstances(new VisualStudioInstanceQueryOptions
+        {
+            DiscoveryTypes = DiscoveryType.DotNetSdk,
+            WorkingDirectory = folder,
+            AllowAllRuntimeVersions = everyRuntime,
+        }).FirstOrDefault();
 }

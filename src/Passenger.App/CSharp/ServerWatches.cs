@@ -101,6 +101,7 @@ public sealed class ServerWatches : IDisposable
         }
         if (changes.Lost || changes.Paths.Count > 0)
         {
+            watched.Hearing(changes.Paths);
             InTurn(() => Tell(changes, open, recursive: true, IgnoredFolders.Is));
         }
         List<string> outputs = [.. changes.ComeOrGone.Where(IgnoredFolders.Is)];
@@ -472,13 +473,17 @@ public sealed class ServerWatches : IDisposable
         }
 
         /// <summary>Told the server in turn, unless the watcher was disposed meanwhile.</summary>
-        protected override void Hand(FolderChanges changes) => owner.InTurn(() =>
+        protected override void Hand(FolderChanges changes)
         {
-            if (!IsDisposed)
+            owner.watched.Hearing(changes.Paths);
+            owner.InTurn(() =>
             {
-                owner.Tell(changes, Top, Recursive, _ => false);
-            }
-        });
+                if (!IsDisposed)
+                {
+                    owner.Tell(changes, Top, Recursive, _ => false);
+                }
+            });
+        }
 
         /// <summary>Said of the folder itself, and of any the system's watches ran out for; a folder under it gone as it was
         /// walked is no failure.</summary>

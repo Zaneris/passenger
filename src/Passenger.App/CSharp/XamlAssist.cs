@@ -598,6 +598,34 @@ internal sealed partial class XamlAssist : LanguageAssist
         })];
     }
 
+    /// <summary>The edits the XAML of the projects that can use a C# symbol the server named takes as it is renamed to
+    /// <paramref name="name"/> (<see cref="XamlService.RenamesAsync"/>), each open file's in its text as the rename's request
+    /// found it (<paramref name="asked"/>), by path; or why the rename cannot follow its uses. None for a symbol XAML never
+    /// names, or with no XAML Passenger reads.</summary>
+    internal async Task<(IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> Files, string? Problem)> CodeRenameAsync(Roslyn.Extension.NamedSymbol? named,
+        string name, Asked asked)
+    {
+        if (named is not { Id: { } id, Path: { } declared, At: { } at } || context.Xaml?.Invoke() is not { } xaml || context.CSharp is not { } csharp
+            || CodeSymbol.Of(id, new SourcePlace(PathNames.Canonical(declared), at.Line, at.Character)) is not { } symbol
+            || csharp.ProjectsUsing(declared) is not { Count: > 0 } projects)
+        {
+            return ([], null);
+        }
+        Dictionary<string, TextSnapshot> held = new(PathNames.Comparer);
+        foreach ((OpenDocument document, ChangeTracker tracker) in asked.Trackers)
+        {
+            held[document.Path] = tracker.Snapshot;
+        }
+        Func<string, TextSnapshot?> open = xaml.OpenSnapshots();
+        (IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextEdit> Edits)> files, string? problem) =
+            await xaml.RenamesAsync(projects, symbol, name, path => held.TryGetValue(path, out TextSnapshot? text) ? text : open(path));
+        return ([.. files.Select(f =>
+        {
+            ServerLines lines = ServerLines.Of(f.Text);
+            return (f.Path, (IReadOnlyList<LspTextEdit>)[.. f.Edits.Select(e => new LspTextEdit(lines.RangeOf(new TextRange(e.Start, e.Length)), e.Text))]);
+        })], problem);
+    }
+
     /// <summary>The code-behind's uses of the field Avalonia's generator or WPF's MarkupCompile makes for a named element:
     /// the server's references from a mention of the name in a file of the <c>x:Class</c> whose definition is that
     /// generated field, its generated declaration and uses left out; with the version of the open file's text both

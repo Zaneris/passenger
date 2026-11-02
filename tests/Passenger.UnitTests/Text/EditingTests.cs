@@ -87,6 +87,47 @@ public class EditingTests
     }
 
     [Theory]
+    [InlineData("<StackPanel>\n    <Grid>|\n</StackPanel>", ">", MarkupKind.Xml, "<StackPanel>\n    <Grid>|</Grid>\n</StackPanel>")]
+    [InlineData("<Grid.RowDefinitions>|", ">", MarkupKind.Xml, "<Grid.RowDefinitions>|</Grid.RowDefinitions>")]
+    [InlineData("<local:Card Title=\"a > b\">|", ">", MarkupKind.Xml, "<local:Card Title=\"a > b\">|</local:Card>")]
+    [InlineData("<StackPanel><Grid>|<Grid></Grid></StackPanel>", ">", MarkupKind.Xml, "<StackPanel><Grid>|</Grid><Grid></Grid></StackPanel>")]
+    [InlineData("<a>|\n<b>|", ">", MarkupKind.Xml, "<a>|</a>\n<b>|</b>")]
+    [InlineData("<div>|", ">", MarkupKind.Html, "<div>|</div>")]
+    [InlineData("<ul>\n    <li>|\n    <li>Two</li>\n</ul>", ">", MarkupKind.Html, "<ul>\n    <li>|</li>\n    <li>Two</li>\n</ul>")]
+    [InlineData("<StackPanel>\n    <Grid>\n    </|", "/", MarkupKind.Xml, "<StackPanel>\n    <Grid>\n    </Grid>|")]
+    [InlineData("<Grid><Button /></|>", "/", MarkupKind.Xml, "<Grid><Button /></Grid>|")]
+    [InlineData("<Grid><Border></|</Border></Grid>", "/", MarkupKind.Xml, "<Grid><Border></Border>|</Grid>")]
+    [InlineData("<div><p>One</|", "/", MarkupKind.Html, "<div><p>One</p>|")]
+    public void Typing_a_start_tags_close_writes_its_end_tag_after_the_caret_and_an_end_tags_slash_the_open_elements_name(string before, string typed,
+        MarkupKind markup, string after)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(before);
+        Assert.Equal(after, Marked.After(text, TextEditing.CloseTag(text, selections, typed, markup)));
+    }
+
+    [Theory]
+    [InlineData("<Grid />|", ">", MarkupKind.Xml)]
+    [InlineData("<StackPanel></Grid>|", ">", MarkupKind.Xml)]
+    [InlineData("<Grid>|\n    <Button />\n</Grid>", ">", MarkupKind.Xml)]
+    [InlineData("<!-- <Grid>| -->", ">", MarkupKind.Xml)]
+    [InlineData("<Grid Tag=\"<b>|\"", ">", MarkupKind.Xml)]
+    [InlineData("<Root><![CDATA[ <Grid>| ]]></Root>", ">", MarkupKind.Xml)]
+    [InlineData("<?xml version=\"1.0\"?>|", ">", MarkupKind.Xml)]
+    [InlineData("<Grid>|", ">", MarkupKind.None)]
+    [InlineData("<br>|", ">", MarkupKind.Html)]
+    [InlineData("<!DOCTYPE html>|", ">", MarkupKind.Html)]
+    [InlineData("<script>if (a <b>|", ">", MarkupKind.Html)]
+    [InlineData("<div>|<p>Text</div>", ">", MarkupKind.Html)]
+    [InlineData("</|", "/", MarkupKind.Xml)]
+    [InlineData("<Grid></|Grid>", "/", MarkupKind.Xml)]
+    [InlineData("<Grid>|", "x", MarkupKind.Xml)]
+    public void No_end_tag_is_written_for_a_self_closed_or_empty_element_one_closed_already_or_a_comment_value_cdata_or_script(string before, string typed, MarkupKind markup)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(before);
+        Assert.Null(Marked.After(text, TextEditing.CloseTag(text, selections, typed, markup)));
+    }
+
+    [Theory]
     [InlineData("one\ntw|o", "on|e")]
     [InlineData("|one\r\ntwo", "|two")]
     [InlineData("one\n|two\nthree", "one\n|three")]

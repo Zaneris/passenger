@@ -233,34 +233,7 @@ internal sealed partial class CodeActions
                 return RefactorOutcome.Refused($"{name} was not applied: {document.Name} changed while the C# language server took in the files just made; try again");
             }
             LspDocument lsp = context.Now(document);
-            using Asked asked = WorkspaceEdits.Track(context.Editors);
-            Refactored made = await ask(lsp);
-            if (made.Problem is { } problem)
-            {
-                return RefactorOutcome.Refused(problem);
-            }
-            if (made.Changes.Count == 0)
-            {
-                return new RefactorOutcome($"{name} changed nothing", null, [], []);
-            }
-            System.Text.Json.JsonElement edit = RoslynExtension.WorkspaceEdit(made);
-            if (await WorkspaceEdits.StaleAsync(context.Editors, lsp, edit, asked.Since, patience) is { } stale)
-            {
-                return RefactorOutcome.Refused($"{name} was not applied: {stale}");
-            }
-            List<string> dropped = [];
-            Func<string, TextSnapshot?> texts = WorkspaceEdits.Answered(context.Editors, asked);
-            IReadOnlyList<RefactoredFile> files = await WorkspaceEdits.FilesAsync(context.Editors, edit, asked);
-            List<UnchangedUse> unchanged = [.. (made.Left ?? []).Select(use => Unchanged(use, texts))];
-            using CommandHistory.Recording recording = context.Editors.Commands.Record(name);
-            await context.ChangeFilesAsync([.. made.Changes.Select(c => c.Path), .. WorkspaceEdits.Paths(edit)], recording,
-                () => WorkspaceEdits.ApplyAsCommand(context.Editors, edit, recording, asked, dropped));
-            await WorkspaceEdits.LandedAsync(recording, context.Say);
-            // Counted by file: a file made is its creation and its text, which the edit counts apart.
-            string said = done(made.Changes.Count - dropped.Count) + (dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty)
-                + (unchanged.Count > 0 ? $", but left {Plural.Of(unchanged.Count, "use")} as {(unchanged.Count == 1 ? "it was" : "they were")}: "
-                    + string.Join("; ", unchanged.Select(use => $"{Path.GetFileName(use.Path)}:{use.Line}, {use.Why}")) : string.Empty);
-            return new RefactorOutcome(said, null, files, dropped) { Unchanged = unchanged };
+            return await MadeAsync(name, lsp, () => ask(lsp), done, patience);
         }
         catch (LanguageServerFailed failed)
         {
@@ -270,6 +243,59 @@ internal sealed partial class CodeActions
         {
             return RefactorOutcome.Refused(failed.Message);
         }
+    }
+
+    /// <summary>As <see cref="MakeAsync(string, OpenDocument, int, Func{LspDocument, Task{Refactored}}, Func{int, string}, Patience?)"/>,
+    /// for a refactoring asked of the solution rather than of a file open (a Godot scene's fix made in its script): every file
+    /// it reaches written as the server read it.</summary>
+    internal async Task<RefactorOutcome> MakeAsync(string name, Func<Task<Refactored>> ask, Func<int, string> done, Patience? patience)
+    {
+        try
+        {
+            return await MadeAsync(name, null, ask, done, patience);
+        }
+        catch (LanguageServerFailed failed)
+        {
+            return RefactorOutcome.Refused($"{name} failed: {failed.Reason}");
+        }
+        catch (WorkspaceEditFailed failed)
+        {
+            return RefactorOutcome.Refused(failed.Message);
+        }
+    }
+
+    /// <summary>The extension's answer applied as one command, held to what the server read of the files it reaches
+    /// (<paramref name="lsp"/>'s texts, where one is open, are told it).</summary>
+    private async Task<RefactorOutcome> MadeAsync(string name, LspDocument? lsp, Func<Task<Refactored>> ask, Func<int, string> done, Patience? patience)
+    {
+        using Asked asked = WorkspaceEdits.Track(context.Editors);
+        Refactored made = await ask();
+        if (made.Problem is { } problem)
+        {
+            return RefactorOutcome.Refused(problem);
+        }
+        if (made.Changes.Count == 0)
+        {
+            return new RefactorOutcome($"{name} changed nothing", null, [], []);
+        }
+        System.Text.Json.JsonElement edit = RoslynExtension.WorkspaceEdit(made);
+        if (await WorkspaceEdits.StaleAsync(context.Editors, lsp, edit, asked.Since, patience) is { } stale)
+        {
+            return RefactorOutcome.Refused($"{name} was not applied: {stale}");
+        }
+        List<string> dropped = [];
+        Func<string, TextSnapshot?> texts = WorkspaceEdits.Answered(context.Editors, asked);
+        IReadOnlyList<RefactoredFile> files = await WorkspaceEdits.FilesAsync(context.Editors, edit, asked);
+        List<UnchangedUse> unchanged = [.. (made.Left ?? []).Select(use => Unchanged(use, texts))];
+        using CommandHistory.Recording recording = context.Editors.Commands.Record(name);
+        await context.ChangeFilesAsync([.. made.Changes.Select(c => c.Path), .. WorkspaceEdits.Paths(edit)], recording,
+            () => WorkspaceEdits.ApplyAsCommand(context.Editors, edit, recording, asked, dropped));
+        await WorkspaceEdits.LandedAsync(recording, context.Say);
+        // Counted by file: a file made is its creation and its text, which the edit counts apart.
+        string said = done(made.Changes.Count - dropped.Count) + (dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty)
+            + (unchanged.Count > 0 ? $", but left {Plural.Of(unchanged.Count, "use")} as {(unchanged.Count == 1 ? "it was" : "they were")}: "
+                + string.Join("; ", unchanged.Select(use => $"{Path.GetFileName(use.Path)}:{use.Line}, {use.Why}")) : string.Empty);
+        return new RefactorOutcome(said, null, files, dropped) { Unchanged = unchanged };
     }
 
     /// <summary>A use the extension left as it was, at the editor's line and column in the file's text as it answered.</summary>

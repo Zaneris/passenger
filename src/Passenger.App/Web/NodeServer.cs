@@ -4,10 +4,10 @@ using Passenger.Lsp;
 
 namespace Passenger.App.Web;
 
-/// <summary>One language server on the web servers' Node.js for the folder open, from its start to its end: started on
-/// the Node.js found unless it cannot run there (none, one too old for its package, the server missing from the app's
-/// folder), which <see cref="Unavailable"/> hears; its log heard; its end (during its start too) or hang told to
-/// <see cref="Lost"/> while it is the one kept. A UI-thread object: what the server says from its threads crosses through
+/// <summary>One language server on the web servers' Node.js for the folder open (or, <see cref="Elsewhere"/>, one that runs
+/// on none: GDScript's, in Godot's editor), from its start to its end: started on the Node.js found unless it cannot run
+/// there (none, one too old for its package, the server missing from the app's folder), which <see cref="Unavailable"/>
+/// hears; its log heard; its end (during its start too) or hang told to <see cref="Lost"/> while it is the one kept. A UI-thread object: what the server says from its threads crosses through
 /// <see cref="UiThread"/>.</summary>
 internal sealed class NodeServer
 {
@@ -36,6 +36,11 @@ internal sealed class NodeServer
 
     /// <summary>How it starts on the Node.js at the path given.</summary>
     public required Func<string, ServerStart> Command { get; init; }
+
+    /// <summary>How a server that runs on no Node.js starts, in place of <see cref="Command"/>: made on the UI thread as its
+    /// start begins, then run off it to the server connected and initialized; a <see cref="Godot.GodotScripts.Unavailable"/>
+    /// says why it cannot.</summary>
+    public Func<Func<CancellationToken, Task<LanguageSession>>>? Elsewhere { get; init; }
 
     /// <summary>Why this build cannot run it (a script missing from the app's folder), null when it can.</summary>
     public Func<string?>? Missing { get; init; }
@@ -106,6 +111,32 @@ internal sealed class NodeServer
         long began = Stopwatch.GetTimestamp();
         try
         {
+            if (Elsewhere is { } elsewhere)
+            {
+                Func<CancellationToken, Task<LanguageSession>> starting = elsewhere();
+                LanguageSession own;
+                try
+                {
+                    own = await BackgroundWork.Run(() => starting(cancelled), cancelled);
+                }
+                catch (Godot.GodotScripts.Unavailable unavailable)
+                {
+                    Fail(unavailable.Message, unavailable.Label);
+                    return null;
+                }
+                if (cancelled.IsCancellationRequested || ended)
+                {
+                    IdeErrors.Observe(BackgroundWork.Unheld(() => own.DisposeAsync().AsTask()));
+                    return null;
+                }
+                Hear(own);
+                Session = own;
+                State = $"{Name} ready";
+                IdeErrors.Write($"{Name} language server ({(own.Server.ProcessId == 0 ? "the person's editor" : $"process {own.Server.ProcessId}")}) started for {folder} "
+                    + $"in {Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s");
+                Started?.Invoke(own);
+                return own;
+            }
             NodeRuntime runtime = await node();
             if (cancelled.IsCancellationRequested || ended)
             {

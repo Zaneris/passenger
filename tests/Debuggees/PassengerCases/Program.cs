@@ -95,6 +95,11 @@ if (args is ["rows"])
 	Rows.Run();
 	return;
 }
+if (args is ["presented"])
+{
+	Library.Presented.Run();
+	return;
+}
 if (args is ["linked"])
 {
 	Linking.Run();
@@ -124,6 +129,11 @@ if (args is ["culture"])
 if (args is ["implemented"])
 {
 	Implemented.Run();
+	return;
+}
+if (args is ["unread", var how])
+{
+	Unread.Run(how);
 	return;
 }
 if (args is ["named main"])
@@ -1003,4 +1013,36 @@ namespace System.Runtime.CompilerServices
 
 	[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false, Inherited = false)]
 	public sealed class UnionAttribute : Attribute;
+}
+
+// An exception whose Message never returns, spinning (which an abort stops) or sleeping (which none does), around an inner
+// exception of its own: a stop names both by the type and the message each was made with.
+internal static class Unread
+{
+	public static void Run(string how)
+	{
+		try
+		{
+			throw new UnreadMessageException(how, "made with this message", new InvalidOperationException("and this inner one"));
+		}
+		catch (UnreadMessageException)
+		{
+			Console.WriteLine("caught");
+		}
+	}
+}
+
+internal sealed class UnreadMessageException(string how, string message, Exception inner) : Exception(message, inner)
+{
+	public override string Message
+	{
+		get
+		{
+			while (how == "spins")
+			{
+			}
+			Thread.Sleep(Timeout.Infinite);
+			return how;
+		}
+	}
 }

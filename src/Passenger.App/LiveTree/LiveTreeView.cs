@@ -12,6 +12,9 @@ using Passenger.App.ToolWindows;
 
 namespace Passenger.App.LiveTree;
 
+/// <summary>A value typed for a property of the element chosen.</summary>
+public sealed record PropertySet(PropertyValue Value, string Text);
+
 /// <summary>A row of the tree: an element at its depth, open or not.</summary>
 public sealed class LiveTreeRow(Element element, int depth, bool expanded) : Observable, ITreeRow
 {
@@ -41,14 +44,16 @@ public enum LiveTreePage
 /// <summary>The Live Visual Tree window: Select Element and Refresh atop the app's windows and their visual trees (a
 /// control's type, #name and .classes; a template's parts dimmed; at first open down to the app's own XAML), and under
 /// them the chosen control: its XAML (a link to it, or why there is none), then its properties with each value's source,
-/// the styles that apply and those that do not with why, and its layout's boxes. The window only shows;
-/// <see cref="LiveTreeController"/> asks the app.</summary>
+/// the styles that apply and those that do not with why, and its layout's boxes; for a Godot game, what Select Element
+/// picks (2D or 3D) and Pause Game Loop and Next Frame beside them. The window only shows; <see cref="LiveTreeController"/>
+/// asks the app.</summary>
 public sealed class LiveTreeView : DockPanel
 {
     private readonly TreeRows<LiveTreeRow> rows = [];
     private readonly ListBox tree;
     private readonly TextBlock placeholder;
     private readonly TextBlock status;
+    private readonly TextBlock monitors;
     private readonly Border banner;
     private readonly TextBlock bannerText;
     private readonly StackPanel heading;
@@ -60,6 +65,7 @@ public sealed class LiveTreeView : DockPanel
     private readonly StackPanel layout;
     private readonly Panel pages;
     private readonly Grid split;
+    private readonly Panel treePane;
 
     /// <summary>Rows the person opened or closed themselves, which keep that over the tree's own choice.</summary>
     private readonly HashSet<long> opened = [];
@@ -71,17 +77,49 @@ public sealed class LiveTreeView : DockPanel
 
     public LiveTreeView()
     {
-        SelectElement = ToolButtons.Toggle(IconKeys.SelectElement, "Select Element: point at a control in the app and click it");
+        SelectElement = ToolButtons.Toggle(IconKeys.SelectElement, "Select Element: point at a control in the app, or a node in the game, and click it");
         SelectElement.Click += (_, _) => PickRequested?.Invoke(this, SelectElement.IsChecked == true);
         Button refresh = ToolButtons.Of(AppActions.LiveTreeRefresh, IconKeys.Rerun, "Refresh", _ => RefreshRequested?.Invoke(this, EventArgs.Empty));
         status = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+        sources = new ComboBox { Classes = { StyleClasses.Compact }, MinWidth = 130, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0), IsVisible = false };
+        ToolTip.SetTip(sources, "The running game whose nodes are shown");
+        sources.SelectionChanged += (_, _) =>
+        {
+            if (!choosingSource && sources.SelectedIndex >= 0)
+            {
+                SourceChosen?.Invoke(this, sources.SelectedIndex);
+            }
+        };
+        PickIn = new ComboBox { Classes = { StyleClasses.Compact }, ItemsSource = PickKinds, SelectedIndex = 0, VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
+        ToolTip.SetTip(PickIn, "What Select Element picks in the game: its 2D nodes and controls, or its 3D nodes");
+        PickIn.SelectionChanged += (_, _) =>
+        {
+            if (!showingPickIn && PickIn.SelectedIndex >= 0)
+            {
+                PickInChosen?.Invoke(this, PicksIn3D);
+            }
+        };
+        PauseLoop = ToolButtons.Toggle(IconKeys.Pause, PauseLoopTip);
+        ActionTips.Set(PauseLoop, AppActions.PauseGameLoop, PauseLoopTip);
+        PauseLoop.IsVisible = false;
+        PauseLoop.Click += (_, _) => LoopRequested?.Invoke(this, AppActions.PauseGameLoop);
+        NextFrame = ToolButtons.Of(AppActions.NextFrame, IconKeys.NextFrame, "Next Frame: run one frame of the game's loop paused", action => LoopRequested?.Invoke(this, action));
+        NextFrame.IsVisible = false;
         DockPanel top = new() { Margin = new Thickness(6, 0) };
-        StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { SelectElement, refresh } };
+        StackPanel buttons = new()
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 2,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children = { SelectElement, PickIn, refresh, PauseLoop, NextFrame, sources },
+        };
         DockPanel.SetDock(buttons, Dock.Left);
         top.Children.Add(buttons);
         top.Children.Add(status);
         Children.Add(ToolBars.Top(top));
 
+        monitors = new TextBlock { [DockProperty] = Dock.Top, Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(10, 4), IsVisible = false };
+        Children.Add(monitors);
         bannerText = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
         banner = new Border { [DockProperty] = Dock.Top, Padding = new Thickness(10, 6), IsVisible = false, Child = bannerText };
         banner.Bind(Border.BackgroundProperty, banner.GetResourceObservable(TokenKeys.Banner));
@@ -144,6 +182,18 @@ public sealed class LiveTreeView : DockPanel
             {
                 GoToRequested?.Invoke(this, place);
             }
+            else if (properties.SelectedItem is PropertyValue value)
+            {
+                Edit(value);
+            }
+        };
+        properties.KeyDown += (_, e) =>
+        {
+            if (e.Key is Key.Enter or Key.F2 && editing is null && properties.SelectedItem is PropertyValue { Place: null } value && WhyNotEdit?.Invoke(value) is null)
+            {
+                e.Handled = true;
+                Edit(value);
+            }
         };
         ToolWindows.ListMenus.Attach(properties, PropertyMenu);
         styles = new StackPanel { Margin = new Thickness(10, 4, 10, 10), Spacing = 10 };
@@ -160,7 +210,7 @@ public sealed class LiveTreeView : DockPanel
         DockPanel details = new() { Children = { heading, tabRow, pages } };
 
         split = new Grid { RowDefinitions = new RowDefinitions("*,1,*") };
-        Panel treePane = new() { Children = { tree, placeholder } };
+        treePane = new Panel { Children = { tree, placeholder } };
         Grid.SetRow(treePane, 0);
         HairlineDivider divider = new(GridResizeDirection.Rows) { [Grid.RowProperty] = 1 };
         Grid.SetRow(details, 2);
@@ -170,8 +220,125 @@ public sealed class LiveTreeView : DockPanel
         Children.Add(split);
         ShowPage(LiveTreePage.Properties);
         ShowDetails(null, null);
-        ShowStatus("Debug an Avalonia or WPF app to see its windows and controls here.", null);
+        ShowStatus(LiveTreeController.NothingShown, null);
     }
+
+    /// <summary>The property whose value is being typed, by its name, or null.</summary>
+    private string? editing;
+
+    /// <summary>The editors the source followed gives its values (a Godot game's), each row's made once from it; null for
+    /// none, every value then shown as its text.</summary>
+    public ILiveValueCells? Cells
+    {
+        get;
+        set
+        {
+            field = value;
+            PropertiesRefreshed?.Invoke();
+        }
+    }
+
+    /// <summary>The rows shown again where they stand, each its editor and note anew, the list kept as it is (a value set
+    /// as the pointer drags, a value kept).</summary>
+    public void RefreshCells() => PropertiesRefreshed?.Invoke();
+
+    private Button? headingLink;
+    private Action? headingRun;
+
+    /// <summary>A link after the chosen element's heading (Keep All), or none for null words.</summary>
+    public void ShowHeadingLink(string? words, Action? run)
+    {
+        headingRun = run;
+        if (words is null)
+        {
+            if (headingLink is not null)
+            {
+                headingLink.IsVisible = false;
+            }
+            return;
+        }
+        if (headingLink is null)
+        {
+            headingLink = new Button { Classes = { StyleClasses.Link }, HorizontalAlignment = HorizontalAlignment.Left, FontSize = 12 };
+            headingLink.Click += (_, _) => headingRun?.Invoke();
+        }
+        if (headingLink.Parent is null && Details is not null)
+        {
+            heading.Children.Add(headingLink);
+        }
+        headingLink.Content = words;
+        headingLink.IsVisible = Details is not null;
+    }
+
+    /// <summary>The link after the heading, while it shows.</summary>
+    public Button? HeadingLink => headingLink is { IsVisible: true } shown ? shown : null;
+
+    private Control? aside;
+
+    /// <summary>What shows over the tree, whatever the tree shows (the values a game that ended changed and did not keep), or
+    /// nothing for null.</summary>
+    public void ShowAside(Control? shown)
+    {
+        if (aside is not null)
+        {
+            treePane.Children.Remove(aside);
+        }
+        aside = shown;
+        if (shown is not null)
+        {
+            treePane.Children.Add(shown);
+        }
+        tree.IsVisible = shown is null;
+        placeholder.IsVisible = shown is null && rows.Count == 0 && placeholder.Text is { Length: > 0 };
+    }
+
+    /// <summary>What shows over the tree, while something does.</summary>
+    public Control? Aside => aside;
+
+    /// <summary>Why a property's value cannot be typed here, or null when it can (a Godot game's).</summary>
+    public Func<PropertyValue, string?>? WhyNotEdit { get; set; }
+
+    /// <summary>A value typed for a property and taken with Enter.</summary>
+    public event EventHandler<PropertySet>? ValueSet;
+
+    /// <summary>Whether an element has properties alone, no styles, layout or defaults (a Godot game's node): the Properties
+    /// page shown, the others' tabs and the Defaults toggle hidden.</summary>
+    public bool PropertiesAlone
+    {
+        get;
+        set
+        {
+            field = value;
+            // Every property of a game's node is its own: none is at a default for the toggle to hide.
+            defaults.IsVisible = !value;
+            foreach ((LiveTreePage page, ToggleButton tab) in tabs)
+            {
+                tab.IsVisible = Details is not null && (!value || page == LiveTreePage.Properties);
+            }
+            if (value)
+            {
+                ShowPage(LiveTreePage.Properties);
+            }
+        }
+    }
+
+    /// <summary>A property's value made a box to type in, where it can be set; <see cref="NotEdited"/> says why where not.</summary>
+    public void Edit(PropertyValue value)
+    {
+        if (WhyNotEdit?.Invoke(value) is { } why)
+        {
+            NotEdited?.Invoke(this, why);
+            return;
+        }
+        editing = value.Name;
+        PropertiesRefreshed?.Invoke();
+    }
+
+    /// <summary>A property could not be edited, saying why.</summary>
+    public event EventHandler<string>? NotEdited;
+
+    /// <summary>The box a property's value is being typed in, while one is.</summary>
+    public TextBox? Editing { get; private set; }
 
     /// <summary>A control chosen in the tree.</summary>
     public event EventHandler<long>? ElementChosen;
@@ -196,6 +363,13 @@ public sealed class LiveTreeView : DockPanel
 
     /// <summary>The Properties page's list, whose rows' menu offers Break When Value Changes.</summary>
     public ListBox PropertyList => properties;
+
+    /// <summary>The box the Properties page's rows are filtered by, by name.</summary>
+    public TextBox PropertyFilter => filter;
+
+    /// <summary>A property's row as the list shows it, while it does.</summary>
+    public Control? PropertyRowOf(string name) =>
+        properties.GetRealizedContainers().FirstOrDefault(c => c.DataContext is PropertyValue value && value.Name == name);
 
     /// <summary>The Properties page's rows again, as their breakpoints changed.</summary>
     public void RefreshProperties()
@@ -235,6 +409,56 @@ public sealed class LiveTreeView : DockPanel
     /// <summary>Select Element, pressed while it is on.</summary>
     public ToggleButton SelectElement { get; }
 
+    /// <summary>What Select Element picks in a game, as <see cref="PickIn"/> offers it.</summary>
+    public static readonly IReadOnlyList<string> PickKinds = ["2D", "3D"];
+
+    /// <summary>What Select Element picks in a game, its 2D nodes or its 3D ones: shown while a game is followed.</summary>
+    public ComboBox PickIn { get; }
+
+    /// <summary>Whether Select Element picks a game's 3D nodes, as <see cref="PickIn"/> is chosen.</summary>
+    public bool PicksIn3D => PickIn.SelectedIndex == 1;
+
+    private bool showingPickIn;
+
+    /// <summary>What Select Element picks shown chosen, without raising the choice back.</summary>
+    public void ShowPickIn(bool in3D)
+    {
+        showingPickIn = true;
+        try
+        {
+            PickIn.SelectedIndex = in3D ? 1 : 0;
+        }
+        finally
+        {
+            showingPickIn = false;
+        }
+    }
+
+    /// <summary>What Select Element picks chosen in <see cref="PickIn"/>: true for a game's 3D nodes.</summary>
+    public event EventHandler<bool>? PickInChosen;
+
+    private const string PauseLoopTip = "Pause Game Loop: hold the game at its frame, the debugger not breaking in";
+
+    /// <summary>Pause Game Loop, pressed while the game's loop is held: shown while a game is followed.</summary>
+    public ToggleButton PauseLoop { get; }
+
+    /// <summary>Next Frame, enabled while the game's loop is held: shown while a game is followed.</summary>
+    public Button NextFrame { get; }
+
+    /// <summary>Pause Game Loop or Next Frame pressed: the action asked for.</summary>
+    public event EventHandler<string>? LoopRequested;
+
+    /// <summary>The game's tools shown while a game is followed (<paramref name="game"/>), Pause Game Loop pressed while its
+    /// loop is held and Next Frame enabled then; hidden for an app.</summary>
+    public void ShowGame(bool game, bool held)
+    {
+        PickIn.IsVisible = game;
+        PauseLoop.IsVisible = game;
+        PauseLoop.IsChecked = held;
+        NextFrame.IsVisible = game;
+        NextFrame.IsEnabled = held;
+    }
+
     /// <summary>The tree as shown, a row a visible element.</summary>
     public IReadOnlyList<LiveTreeRow> Rows => rows;
 
@@ -253,11 +477,52 @@ public sealed class LiveTreeView : DockPanel
     public void ShowStatus(string? message, string? line)
     {
         placeholder.Text = message ?? string.Empty;
-        placeholder.IsVisible = message is not null && rows.Count == 0;
+        placeholder.IsVisible = message is not null && rows.Count == 0 && aside is null;
         status.Text = line ?? string.Empty;
     }
 
     /// <summary>A note over the tree that what it shows is not live (the app paused), or none.</summary>
+    /// <summary>A running game's performance monitors, on a line of their own under the buttons; none for null.</summary>
+    public void ShowMonitors(string? text)
+    {
+        monitors.Text = text;
+        monitors.IsVisible = text is not null;
+    }
+
+    private readonly ComboBox sources;
+    private bool choosingSource;
+
+    /// <summary>The sources the window can show, by their names, the one shown chosen; hidden with fewer than two.</summary>
+    public void ShowSources(IReadOnlyList<string> names, int shown)
+    {
+        choosingSource = true;
+        try
+        {
+            if (!names.SequenceEqual(SourceNames))
+            {
+                sources.ItemsSource = names.ToList();
+            }
+            sources.SelectedIndex = shown;
+            sources.IsVisible = names.Count > 1;
+        }
+        finally
+        {
+            choosingSource = false;
+        }
+    }
+
+    /// <summary>The sources offered, while the chooser shows.</summary>
+    public IReadOnlyList<string> SourceNames => sources.ItemsSource is IEnumerable<string> names ? [.. names] : [];
+
+    /// <summary>The chooser, shown while more than one source runs.</summary>
+    public ComboBox Sources => sources;
+
+    /// <summary>A source chosen in the chooser, by its place among <see cref="SourceNames"/>.</summary>
+    public event EventHandler<int>? SourceChosen;
+
+    /// <summary>The game's monitors as shown, while they are.</summary>
+    public string? MonitorsLine => monitors.IsVisible ? monitors.Text : null;
+
     public void ShowBanner(string? text)
     {
         bannerText.Text = text ?? string.Empty;
@@ -276,7 +541,7 @@ public sealed class LiveTreeView : DockPanel
         shown = tree;
         sourced = tree is not null && tree.Roots.Any(HasSourced);
         Rebuild(Details?.Id);
-        placeholder.IsVisible = rows.Count == 0 && placeholder.Text is { Length: > 0 };
+        placeholder.IsVisible = rows.Count == 0 && placeholder.Text is { Length: > 0 } && aside is null;
         if (tree is null)
         {
             opened.Clear();
@@ -321,6 +586,10 @@ public sealed class LiveTreeView : DockPanel
         layout.Children.Clear();
         if (details is null)
         {
+            if (headingLink is not null)
+            {
+                headingLink.IsVisible = false;
+            }
             heading.Children.Add(new TextBlock { Text = problem ?? "Choose a control in the tree, or with Select Element in the app.", Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap });
             PropertyRows.Clear();
             pages.IsVisible = false;
@@ -331,9 +600,10 @@ public sealed class LiveTreeView : DockPanel
             return;
         }
         pages.IsVisible = true;
-        foreach (ToggleButton tab in tabs.Values)
+        editing = null;
+        foreach ((LiveTreePage page, ToggleButton tab) in tabs)
         {
-            tab.IsVisible = true;
+            tab.IsVisible = !PropertiesAlone || page == LiveTreePage.Properties;
         }
         StackPanel title = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
         title.Children.Add(new TextBlock { Text = details.Type, FontWeight = FontWeight.SemiBold, FontSize = 14 });
@@ -360,6 +630,10 @@ public sealed class LiveTreeView : DockPanel
         {
             GoToSource = null;
             heading.Children.Add(new TextBlock { Text = details.NoSource, Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+        }
+        if (headingLink is { } link)
+        {
+            heading.Children.Add(link);
         }
         ShowProperties();
         foreach (StyleReport style in details.Styles)
@@ -525,8 +799,10 @@ public sealed class LiveTreeView : DockPanel
         dot.Bind(Avalonia.Controls.Shapes.Shape.FillProperty, dot.GetResourceObservable(TokenKeys.Editor_Breakpoint));
         DockPanel.SetDock(dot, Dock.Left);
         DockPanel name = new() { Margin = new Thickness(0, 0, 8, 0), Children = { dot, label } };
-        TextBlock shown = new() { FontFamily = CodeEditor.CodeFont, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock shown = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         Grid.SetColumn(shown, 1);
+        TextBox editor = new TextBox { FontSize = 12, IsVisible = false, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        Grid.SetColumn(editor, 1);
         TextBlock linked = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
         Button link = new() { Classes = { StyleClasses.Link }, Content = linked, HorizontalAlignment = HorizontalAlignment.Left };
         link.Click += (_, _) =>
@@ -544,8 +820,35 @@ public sealed class LiveTreeView : DockPanel
         }
         grid.Children.Add(name);
         grid.Children.Add(shown);
+        grid.Children.Add(editor);
         grid.Children.Add(link);
         grid.Children.Add(source);
+        (ILiveValueCells From, LiveValueCell Cell)? made = null;
+        editor.KeyDown += (_, e) =>
+        {
+            if (grid.DataContext is not PropertyValue value || e.Key is not (Key.Enter or Key.Escape))
+            {
+                return;
+            }
+            e.Handled = true;
+            editing = null;
+            Editing = null;
+            if (e.Key == Key.Enter)
+            {
+                ValueSet?.Invoke(this, new PropertySet(value, editor.Text ?? string.Empty));
+            }
+            Show(value);
+            properties.Focus();
+        };
+        editor.LostFocus += (_, _) =>
+        {
+            if (grid.DataContext is PropertyValue value && editing == value.Name)
+            {
+                editing = null;
+                Editing = null;
+                Show(value);
+            }
+        };
         PropertiesRefreshed += () =>
         {
             if (grid.DataContext is PropertyValue value)
@@ -564,9 +867,51 @@ public sealed class LiveTreeView : DockPanel
             ToolTip.SetTip(label, $"{value.Name} ({value.Type}, from {value.Owner})");
             shown.Text = value.Value;
             ToolTip.SetTip(shown, value.Value);
+            bool typing = editing == value.Name;
+            if (typing && !editor.IsVisible)
+            {
+                editor.Text = value.Value;
+                Editing = editor;
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    editor.Focus();
+                    editor.SelectAll();
+                });
+            }
+            (bool edits, bool notes) = (false, false);
+            if (Cells is { } cells && Details is { } chosen)
+            {
+                if (made is not { } kept || kept.From != cells)
+                {
+                    if (made is { } old)
+                    {
+                        grid.Children.Remove(old.Cell.Editor);
+                        grid.Children.Remove(old.Cell.Note);
+                    }
+                    LiveValueCell cell = cells.Make();
+                    Grid.SetColumn(cell.Editor, 1);
+                    Grid.SetRow(cell.Note, 1);
+                    Grid.SetColumnSpan(cell.Note, 2);
+                    grid.Children.Add(cell.Editor);
+                    grid.Children.Add(cell.Note);
+                    made = (cells, cell);
+                }
+                (edits, notes) = made.Value.Cell.Show(chosen.Id, value);
+                edits &= !typing;
+            }
+            if (made is { } shownCell)
+            {
+                shownCell.Cell.Editor.IsVisible = edits;
+                shownCell.Cell.Note.IsVisible = notes;
+            }
+            // An editor of a game's value takes more of the row than a value's words.
+            grid.ColumnDefinitions[0].Width = new GridLength(made is null ? 11 : 8, GridUnitType.Star);
+            grid.ColumnDefinitions[1].Width = new GridLength(made is null ? 9 : 12, GridUnitType.Star);
+            editor.IsVisible = typing;
+            shown.IsVisible = !typing && !edits;
             string from = value.Detail is { Length: > 0 } detail ? $"{value.Source} · {detail}" : value.Source;
-            link.IsVisible = value.Place is not null;
-            source.IsVisible = value.Place is null;
+            link.IsVisible = value.Place is not null && !notes;
+            source.IsVisible = value.Place is null && !notes;
             if (value.Place is { } place)
             {
                 linked.Text = $"{from} · {Placed(place)}";
@@ -589,7 +934,7 @@ public sealed class LiveTreeView : DockPanel
             DockPanel.SetDock(link, Dock.Right);
             top.Children.Add(link);
         }
-        TextBlock selector = new() { Text = style.Selector, FontFamily = CodeEditor.CodeFont, FontSize = 12.5, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap };
+        TextBlock selector = new TextBlock { Text = style.Selector, FontSize = 12.5, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap }.InCodeFont();
         top.Children.Add(selector);
         block.Children.Add(top);
         block.Children.Add(new TextBlock { Text = $"{style.Kind} · {style.Origin}", Classes = { StyleClasses.Muted }, FontSize = 11, TextWrapping = TextWrapping.Wrap });
@@ -610,7 +955,7 @@ public sealed class LiveTreeView : DockPanel
     private Control Setter(SetterReport setter)
     {
         StackPanel line = new() { Margin = new Thickness(14, 0, 0, 0) };
-        TextBlock text = new() { Text = $"{setter.Property}: {setter.Value}", FontFamily = CodeEditor.CodeFont, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        TextBlock text = new TextBlock { Text = $"{setter.Property}: {setter.Value}", FontSize = 12, TextWrapping = TextWrapping.Wrap }.InCodeFont();
         switch (setter.State)
         {
             case SetterStates.Overridden:
@@ -679,7 +1024,7 @@ public sealed class LiveTreeView : DockPanel
         Border content = new()
         {
             Padding = new Thickness(10, 6),
-            Child = new TextBlock { Text = text, FontFamily = CodeEditor.CodeFont, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center },
+            Child = new TextBlock { Text = text, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center }.InCodeFont(),
         };
         content.Bind(Border.BackgroundProperty, content.GetResourceObservable(TokenKeys.Selected));
         return content;
@@ -689,7 +1034,7 @@ public sealed class LiveTreeView : DockPanel
     {
         Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("140,*") };
         TextBlock label = new() { Text = name, Classes = { StyleClasses.Muted } };
-        TextBlock shown = new() { Text = value, FontFamily = CodeEditor.CodeFont, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock shown = new TextBlock { Text = value, FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         Grid.SetColumn(shown, 1);
         grid.Children.Add(label);
         grid.Children.Add(shown);

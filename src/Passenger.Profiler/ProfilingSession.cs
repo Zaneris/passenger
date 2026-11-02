@@ -9,8 +9,12 @@ namespace Passenger.Profiler;
 /// <summary>A program to profile: what to start, where, with what arguments and environment.</summary>
 public sealed record ProfileTarget(string Program, IReadOnlyList<string> Arguments, string WorkingDirectory, IReadOnlyDictionary<string, string> Environment)
 {
-    /// <summary>What the snapshot is named for: the program, or the assembly the dotnet host runs.</summary>
-    public string Name => Path.GetFileNameWithoutExtension(Program) is "dotnet" && Arguments.Count > 0 ? Path.GetFileNameWithoutExtension(Arguments[0]) : Path.GetFileNameWithoutExtension(Program);
+    /// <summary>What the snapshot is named for, where the program is another's host (Godot, running a game's assembly);
+    /// null for <see cref="Name"/>'s own.</summary>
+    public string? Called { get; init; }
+
+    /// <summary>What the snapshot is named for: <see cref="Called"/>, else the program, or the assembly the dotnet host runs.</summary>
+    public string Name => Called ?? (Path.GetFileNameWithoutExtension(Program) is "dotnet" && Arguments.Count > 0 ? Path.GetFileNameWithoutExtension(Arguments[0]) : Path.GetFileNameWithoutExtension(Program));
 }
 
 /// <summary>How a program's standard output, or its standard error (<paramref name="error"/>), is read into its caller's
@@ -49,9 +53,15 @@ public sealed class ProfilingSession : IAsyncDisposable
     private HeapHistory? heapHistory;
     private ContainerHeap? containerHeap;
 
+    /// <summary>Whether the program ran before the profiler came, where that is not told by how it is reached (a game's frames
+    /// alone, which no port reaches).</summary>
+    private readonly bool? attached;
+
     private ProfilingSession(Process process, DiagnosticsClientConnector? connector, EventPipeSession? session, Task copying, Task reading, string trace, string? port,
-        int? processId = null, ProfilePlace? place = null)
+        int? processId = null, ProfilePlace? place = null, bool samples = true, bool? attached = null)
     {
+        Samples = samples;
+        this.attached = attached;
         this.process = process;
         this.connector = connector;
         this.session = session;
@@ -75,7 +85,14 @@ public sealed class ProfilingSession : IAsyncDisposable
     public bool HasExited => Volatile.Read(ref disposed) != 0 || process.HasExited;
 
     /// <summary>Whether the program was running before the profiler came, and is not the profiler's to end or to type to.</summary>
-    public bool Attached => connector is null;
+    public bool Attached => attached ?? (connector is null && Samples);
+
+    /// <summary>Whether the run samples the program's .NET code; false for a Godot game of GDScript alone, whose run is its
+    /// frames as Godot's own profiler measures them (<see cref="Game"/>), its trace kept empty.</summary>
+    public bool Samples { get; }
+
+    /// <summary>Why a run of a game's frames alone has no heap.</summary>
+    public const string NoHeapOfScripts = "A Godot game of GDScript alone runs no .NET code, so it has no .NET heap to snapshot";
 
     /// <summary>How long it has run.</summary>
     public TimeSpan Elapsed => clock.Elapsed;
@@ -234,6 +251,76 @@ public sealed class ProfilingSession : IAsyncDisposable
             ChildProcesses.Kill(process);
             await StopListeningAsync(connecting, limit, port);
             process.Dispose();
+        }
+    }
+
+    /// <summary>Starts a Godot game of GDScript alone under Godot's own profiler alone (<see cref="Samples"/> false): no .NET code
+    /// runs in it to sample, so no diagnostic port holds it; the run is the frames <see cref="Game"/> records, kept beside an
+    /// empty trace in <paramref name="folder"/> that names the run. Its output and errors are read by <paramref name="pump"/>; a
+    /// start that fails is a <see cref="ProfilingException"/> saying why.</summary>
+    public static async Task<ProfilingSession> StartFramesAsync(ProfileTarget target, string folder, ProgramPump pump)
+    {
+        if (!Directory.Exists(target.WorkingDirectory))
+        {
+            throw new ProfilingException($"Could not profile {target.Name}: its working folder {target.WorkingDirectory} does not exist");
+        }
+        string trace;
+        try
+        {
+            trace = NewTrace(folder, target.Name);
+            new FileStream(trace, FileMode.CreateNew, FileAccess.Write).Dispose();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            throw new ProfilingException($"Could not profile {target.Name}: no snapshot can be written in {folder}: {error.Message}", error);
+        }
+        ProcessStartInfo start = ChildProcesses.Command(target.Program, target.Arguments, target.WorkingDirectory);
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+        start.RedirectStandardInput = true;
+        foreach ((string key, string value) in target.Environment)
+        {
+            start.Environment[key] = value;
+        }
+        Process process;
+        try
+        {
+            process = await ChildProcesses.StartAsync(start);
+        }
+        catch (Exception error) when (error is Win32Exception or InvalidOperationException or IOException)
+        {
+            throw new ProfilingException($"Could not start {Path.GetFileName(target.Program)} to profile {target.Name}: {error.Message}", error);
+        }
+        Task reading = Task.WhenAll(pump(ChildProcesses.Output(process), false, null), pump(ChildProcesses.Errors(process), true, null));
+        return new ProfilingSession(process, null, null, Task.CompletedTask, reading, trace, null, samples: false);
+    }
+
+    /// <summary>Profiles a Godot game of GDScript alone already running under Godot's own profiler alone (<see cref="Samples"/>
+    /// false), from now until <see cref="StopAsync"/> or its end, leaving it as it was: no .NET code runs in it to sample, so
+    /// no diagnostic port is asked of it; the run is the frames <see cref="Game"/> records, beside an empty trace in
+    /// <paramref name="folder"/> that names the run. A game gone, or a snapshot that cannot be written, is a
+    /// <see cref="ProfilingException"/> saying why.</summary>
+    public static ProfilingSession AttachFrames(int processId, string name, string folder)
+    {
+        Process process;
+        try
+        {
+            process = Process.GetProcessById(processId);
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        {
+            throw new ProfilingException($"Could not profile {name}: it has ended", error);
+        }
+        try
+        {
+            string trace = NewTrace(folder, name);
+            new FileStream(trace, FileMode.CreateNew, FileAccess.Write).Dispose();
+            return new ProfilingSession(process, null, null, Task.CompletedTask, Task.CompletedTask, trace, null, samples: false, attached: true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            process.Dispose();
+            throw new ProfilingException($"Could not profile {name}: no snapshot can be written in {folder}: {error.Message}", error);
         }
     }
 
@@ -438,7 +525,7 @@ public sealed class ProfilingSession : IAsyncDisposable
     /// nothing of the profiler's left listening for it.</summary>
     public async Task<Snapshot> StopAsync()
     {
-        if (Interlocked.Exchange(ref stopped, 1) == 0 && !process.HasExited)
+        if (Interlocked.Exchange(ref stopped, 1) == 0 && !process.HasExited && Samples)
         {
             if (session is null)
             {
@@ -461,9 +548,18 @@ public sealed class ProfilingSession : IAsyncDisposable
         return await BackgroundWork.Run(Read);
     }
 
-    /// <summary>The run's trace read, knowing where it ran.</summary>
+    /// <summary>A Godot game's own frame profile, recorded beside the samples for as long as the run lasts: ended as the run
+    /// is read, and kept beside its trace for the snapshot (<see cref="GameProfile"/>); null for any other program.</summary>
+    public GameRecording? Game { get; set; }
+
+    /// <summary>The run's trace read, knowing where it ran, with the game's frames recorded beside it.</summary>
     private Snapshot Read()
     {
+        if (Game is { } game)
+        {
+            game.Stop();
+            game.Write(TracePath);
+        }
         Snapshot snapshot = Snapshot.Read(TracePath);
         snapshot.Place = Place;
         return snapshot;
@@ -491,6 +587,12 @@ public sealed class ProfilingSession : IAsyncDisposable
         return await BackgroundWork.Run(Read, cancellation);
     }
 
+    /// <summary>Why no memory snapshot of the program can be taken whatever is tried (<see cref="DotnetProcesses.WhyUnreadable"/>),
+    /// asked of the program once; null where one may be, or for a program elsewhere, whose snapshots its container's tools take.</summary>
+    public string? WhyNoHeap => !Samples ? NoHeapOfScripts : Place is not null ? null : (whyNoHeap ??= [DotnetProcesses.WhyUnreadable(ProcessId)])[0];
+
+    private string?[]? whyNoHeap;
+
     /// <summary>What the program's heap holds now, comparable object by object with the run's earlier ones; the run
     /// goes on. Where only the program's runtime can write it, putting createdump's lines into the program's output, it
     /// is taken only <paramref name="intoOutput"/>, else a <see cref="DumpIntoOutputException"/> says so first.</summary>
@@ -499,6 +601,10 @@ public sealed class ProfilingSession : IAsyncDisposable
         if (process.HasExited)
         {
             throw new InvalidOperationException("The program has ended; a memory snapshot needs it running");
+        }
+        if (!Samples)
+        {
+            throw new InvalidOperationException(NoHeapOfScripts);
         }
         if (Place is { } place)
         {
@@ -544,7 +650,7 @@ public sealed class ProfilingSession : IAsyncDisposable
             await containerHeap.DisposeAsync();
         }
         session?.Dispose();
-        if (session is null && !process.HasExited)
+        if (session is null && Samples && !process.HasExited)
         {
             // The tools elsewhere stop as their input ends; a CLI that does not go is ended, which closes it there too.
             CloseToolsInput();

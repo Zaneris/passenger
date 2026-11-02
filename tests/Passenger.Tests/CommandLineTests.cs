@@ -72,6 +72,18 @@ public sealed class CommandLineTests : IDisposable
             $"'passenger {arguments}' was to be refused with exit code 2 saying \"{reason}\"; it exited {code} and wrote:\n{error}");
     }
 
+    [Theory]
+    [InlineData("--screenshot out.png --zero-based", "--zero-based says --caret counts its line and column from 0, and no --caret is given")]
+    [InlineData("notes.txt --caret 1:x --zero-based --screenshot out.png", "--caret takes LINE or LINE:COLUMN from 0 with --zero-based, not '1:x'")]
+    [InlineData("notes.txt --caret 0:0 --screenshot out.png", "--caret takes LINE or LINE:COLUMN from 1, not '0:0'")]
+    public async Task A_caret_counted_from_zero_takes_zero_based_and_one_without_it_is_refused_with_exit_code_2(string arguments, string reason)
+    {
+        (int code, string error) = await Run(arguments);
+
+        Assert.True(code == 2 && error.StartsWith($"passenger: {reason}", StringComparison.Ordinal),
+            $"'passenger {arguments}' was to be refused with exit code 2 saying \"{reason}\"; it exited {code} and wrote:\n{error}");
+    }
+
     private const string Milliseconds = "a whole number of milliseconds above 0";
 
     [Theory]

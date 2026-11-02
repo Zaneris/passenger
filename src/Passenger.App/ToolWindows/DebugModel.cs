@@ -57,9 +57,23 @@ public sealed class DebugTab(string name, OutputView console) : Observable, IHot
     /// <summary>The plan Debug launched its program by, where it serves; null for a program attached to.</summary>
     public Run.LaunchPlan? Plan { get; internal set; }
 
+    /// <summary>Passenger's hook in its program, told of each update Hot Reload applied so the program's update handlers run;
+    /// null for a program launched without it.</summary>
+    internal Debugging.UpdateHandlerHook? Handlers { get; set; }
+
+    /// <summary>Whether its console has said once that its program's update handlers are not called.</summary>
+    internal bool ToldUnhandled { get; set; }
+
+    /// <summary>The SDK's browser refresh of its program's pages, a web app's debugged with Hot Reload; null for any other.</summary>
+    internal Debugging.BrowserRefresh? Browser { get; set; }
+
     /// <summary>The programs it is debugged with (a container run's services, by its configuration's name): Hot Reload's
     /// changes go to each of them together.</summary>
     public string? Group { get; internal set; }
+
+    /// <summary>The tab of the program this tab's session debugs another part of (a Godot game's C#, whose GDScript this tab
+    /// debugs): what names no session takes that one while neither is paused, and the two count as one program.</summary>
+    public DebugTab? Companion { get; internal set; }
 
     /// <summary>What follows its program's output from outside into its console (a container's log), while it does.</summary>
     internal System.Diagnostics.Process? Following { get; set; }
@@ -106,6 +120,18 @@ public sealed class DebugModel
     /// view's toolbar holds it once built.</summary>
     public OverlaysButton Overlays { get; } = new();
 
+    /// <summary>Mute Game Audio, shown while the chosen tab's program is a Godot game, pressed while its audio is muted: the
+    /// view's toolbar holds it once built.</summary>
+    public Avalonia.Controls.Primitives.ToggleButton GameAudio { get; } = GameAudioToggle();
+
+    private static Avalonia.Controls.Primitives.ToggleButton GameAudioToggle()
+    {
+        Avalonia.Controls.Primitives.ToggleButton toggle = ToolButtons.Toggle(IconKeys.MuteAudio, "Mute Game Audio");
+        ActionTips.Set(toggle, AppActions.MuteGameAudio, "Mute Game Audio");
+        toggle.IsVisible = false;
+        return toggle;
+    }
+
     public event EventHandler<DapThread>? ThreadChosen;
 
     public event EventHandler<DapStackFrame>? FrameChosen;
@@ -121,6 +147,12 @@ public sealed class DebugModel
 
     /// <summary>Set Data Breakpoint, or Remove Data Breakpoint, chosen on a row.</summary>
     public event EventHandler<VariableNode>? DataBreakpointRequested;
+
+    /// <summary>A row to run again with every thread let go (<see cref="VariablesList.RunWithThreadsRequested"/>).</summary>
+    public event EventHandler<VariableNode>? RunWithThreadsRequested;
+
+    /// <summary>Read Again, over Variables once every thread ran in an evaluation: the frame's values to be read anew.</summary>
+    public event EventHandler? ReadAgainRequested;
 
     /// <summary>A query's SQL, read, to open whole in a read-only editor tab.</summary>
     public event EventHandler<VariableNode>? TextOpened;
@@ -148,6 +180,9 @@ public sealed class DebugModel
 
     /// <summary>Each frame's place to be said again, an edit made while paused perhaps having moved its code.</summary>
     internal event EventHandler? PlacesMoved;
+
+    /// <summary>What Variables says over its rows changed (<see cref="Moved"/>).</summary>
+    internal event EventHandler? MovedChanged;
 
     /// <summary>What Set Data Breakpoint offers on a row, the debugger asked: the menu's item says so once it answers.</summary>
     public Func<VariableNode, Task<DataWatchOffer>>? DataWatch { get; set; }
@@ -179,6 +214,10 @@ public sealed class DebugModel
 
     /// <summary>Whether the Console tab is shown, rather than the Debugger's.</summary>
     public bool IsConsoleShown { get; private set; }
+
+    /// <summary>What Variables says over its rows once every thread ran in an evaluation: that the values read before it
+    /// may have moved; null while it says nothing.</summary>
+    public string? Moved { get; private set; }
 
     /// <summary>What the Evaluate field was last given to evaluate.</summary>
     internal string? EvaluateText { get; private set; }
@@ -317,6 +356,18 @@ public sealed class DebugModel
     /// <summary>Says again the place each frame's row names, whose code an edit made while paused may have moved.</summary>
     public void ShowPlacesAgain() => PlacesMoved?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>Has Variables say <paramref name="said"/> over its rows, or nothing for null.</summary>
+    public void SayMoved(string? said)
+    {
+        if (Moved != said)
+        {
+            Moved = said;
+            MovedChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    internal void ReadAgain() => ReadAgainRequested?.Invoke(this, EventArgs.Empty);
+
     /// <summary>The line (from one) a frame's row names: where its code is in the editor's lines.</summary>
     internal int LineOf(DapStackFrame frame) => PlaceOf?.Invoke(frame) is { } place ? place.Line + 1 : frame.Line;
 
@@ -342,6 +393,8 @@ public sealed class DebugModel
     internal void Unwatch(string expression) => WatchRemoved?.Invoke(this, expression);
 
     internal void SetValue(VariableNode node, string value) => SetValueRequested?.Invoke(this, (node, value));
+
+    internal void RunWithThreads(VariableNode node) => RunWithThreadsRequested?.Invoke(this, node);
 
     internal void ToggleDataBreakpoint(VariableNode node) => DataBreakpointRequested?.Invoke(this, node);
 

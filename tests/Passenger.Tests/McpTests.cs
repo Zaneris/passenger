@@ -54,8 +54,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(wrong.IsError == true && Text(wrong).Contains("there are passed, failed, skipped and notRun", StringComparison.Ordinal), $"tests_list in no state answered: {Text(wrong)}");
     }
 
-    /// <summary>A project whose global.json asks for a .NET SDK that is not installed: workspace says so, and run
-    /// refuses in the same words rather than finding no executable project.</summary>
+    /// <summary>A project whose global.json asks for a .NET SDK that is not installed: workspace says so and how the person
+    /// mends it, and run refuses in the same words rather than finding no executable project.</summary>
     [Fact]
     public async Task An_agent_where_global_json_asks_for_an_SDK_not_installed_hears_so_from_workspace_and_run()
     {
@@ -67,7 +67,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
         const string Missing = "The .NET SDK 1.0.100 that global.json asks for is not installed: install it, or have global.json name one that is";
         JsonElement workspace = await Call(client, McpTools.Workspace);
-        Assert.True(workspace.TryGetProperty("sdkMissing", out JsonElement missing) && missing.GetString() == Missing,
+        Assert.True(workspace.TryGetProperty("sdkMissing", out JsonElement missing)
+            && missing.GetString() == $"{Missing}. The person installs it with Install .NET SDK in the banner over Passenger's window; an agent may ask them to, never install it itself",
             $"workspace, where global.json asks for an SDK not installed, answered: {workspace}");
         CallToolResult run = await Result(client, McpTools.Run);
         Assert.True(run.IsError == true && Text(run).Contains(Missing, StringComparison.Ordinal), $"run without the SDK answered: {Text(run)}");
@@ -802,6 +803,26 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         JsonElement shell = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "terminalShell");
         Assert.True(shell.GetProperty("value").ValueKind == JsonValueKind.Null, $"The refused shell path was kept all the same: {shell.GetRawText()}");
         Assert.Contains("gamma", (await Call(client, McpTools.TerminalRun, new() { ["command"] = "echo gamma" })).GetString()!, StringComparison.Ordinal);
+    }
+
+    /// <summary>settings lists the code fonts an agent may give the editor, the carried one first, and settings_set takes one
+    /// of them and refuses a family that is not installed, as Settings does, nothing changed.</summary>
+    [Fact]
+    public async Task Settings_lists_the_code_fonts_an_agent_may_choose_and_settings_set_refuses_one_not_installed()
+    {
+        string folder = TestFolders.Create("mcp-fonts-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement listed = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "editorFontFamily");
+        string[] fonts = [.. listed.GetProperty("choices").EnumerateArray().Select(c => c.GetString()!)];
+        Assert.True(fonts is [_, ..] && fonts[0] == CodeFonts.Carried, $"settings listed the editor's fonts as: {listed.GetRawText()}");
+
+        CallToolResult refused = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["editorFontFamily"] = "Passenger Missing Font" } });
+        Assert.True(refused.IsError == true && Text(refused).Contains("Font family Passenger Missing Font (Settings | Editor) is not a font installed on this computer", StringComparison.Ordinal),
+            $"settings_set of a font family not installed answered: {Text(refused)}");
+        string font = fonts[^1];
+        JsonElement changed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["editorFontFamily"] = font } })).EnumerateArray());
+        Assert.Equal(font, changed.GetProperty("after").GetString());
     }
 
     /// <summary>A rebase stopped on a conflict that the agent resolves is still said by vcs_status, and vcs_commit refuses to
@@ -1603,6 +1624,6 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         ["SHELL"] = File.Exists("/bin/zsh") ? "/bin/zsh" : "/bin/sh",
         ["TERM"] = null,
         ["ZDOTDIR"] = null,
-        ["DOTNET_ROOT"] = null,
+        [RuntimeVariables.Root] = null,
     };
 }

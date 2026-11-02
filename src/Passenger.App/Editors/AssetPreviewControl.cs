@@ -8,10 +8,14 @@ using Passenger.App.Workspace;
 
 namespace Passenger.App.Editors;
 
-/// <summary>A group's own view of a document's shared image or local font face. The control owns its glyph runs,
-/// not the asset, so closing one split leaves the other splits' previews intact.</summary>
-public sealed class AssetPreviewControl : DockPanel, IDisposable
+/// <summary>A group's own view of a document's shared image or local font face: an image in a <see cref="ZoomedPicture"/>,
+/// fitted but never enlarged until it is zoomed, its zoom's buttons and its size in a bar over it and its keys its own. The
+/// control owns its glyph runs, not the asset, so closing one split leaves the other splits' previews intact.</summary>
+public sealed class AssetPreviewControl : DockPanel, IDisposable, IOwnKeys
 {
+    /// <summary>The image's picture, null for a font.</summary>
+    private readonly ZoomedPicture? picture;
+
     private const string Uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     private const string Lowercase = "abcdefghijklmnopqrstuvwxyz";
     private const string Digits = "0123456789";
@@ -46,24 +50,26 @@ public sealed class AssetPreviewControl : DockPanel, IDisposable
         }
         if (asset.Bitmap is { } bitmap)
         {
-            DockPanel picture = new() { Margin = new Thickness(2 * Gap) };
-            TextBlock dimensions = Label($"{bitmap.PixelSize.Width} × {bitmap.PixelSize.Height} pixels"
+            TextBlock dimensions = MutedText.Of($"{bitmap.PixelSize.Width} × {bitmap.PixelSize.Height} pixels"
                 + (asset.Frames > 1 ? $" · the first of its {asset.Frames} frames" : ""));
-            SetDock(dimensions, Dock.Top);
-            picture.Children.Add(dimensions);
-            // Shrunk to fit but never enlarged, so a small icon shows as it is rather than blurred, its bounds the picture's.
-            Image image = new()
-            {
-                Source = bitmap,
-                Stretch = Stretch.Uniform,
-                StretchDirection = StretchDirection.DownOnly,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(Gap),
-            };
-            AutomationProperties.SetName(image, "Image preview");
-            picture.Children.Add(image);
+            dimensions.FontSize = 12;
+            dimensions.Margin = new Thickness(8, 0);
+            dimensions.HorizontalAlignment = HorizontalAlignment.Right;
+            picture = new ZoomedPicture { Picture = bitmap };
+            AutomationProperties.SetName(picture, "Image preview");
+            SetDock(picture.Tools, Dock.Left);
+            Children.Add(ToolWindows.ToolBars.OverEditor(new DockPanel { Children = { picture.Tools, dimensions } }));
             Children.Add(picture);
+            // Shrunk to fit but never enlarged, so a small icon shows as it is rather than blurred.
+            picture.FitDown();
+            KeyDown += (_, e) =>
+            {
+                if (picture.CommandFor(e) is { } zoom)
+                {
+                    zoom();
+                    e.Handled = true;
+                }
+            };
             return;
         }
         if (asset.Typeface is not { } typeface)
@@ -102,6 +108,12 @@ public sealed class AssetPreviewControl : DockPanel, IDisposable
         label.Bind(TextBlock.ForegroundProperty, label.GetResourceObservable(TokenKeys.Text));
         return label;
     }
+
+    /// <summary>The picture's zoom, while it shows an image.</summary>
+    public ZoomedPicture? Picture => picture;
+
+    /// <summary>An image's zoom keys are its own, ahead of the IDE's keymap (whose ⌘- is Back).</summary>
+    public bool TakesKey(Avalonia.Input.KeyEventArgs e) => picture?.CommandFor(e) is not null;
 
     /// <summary>Releases this group's glyph runs and visuals, leaving the document's shared asset alive.</summary>
     public void Dispose()

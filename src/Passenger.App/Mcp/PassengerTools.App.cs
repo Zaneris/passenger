@@ -4,6 +4,7 @@ using Avalonia.Input;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Passenger.App.Debugging;
+using Passenger.App.Godot;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
 using Passenger.Core;
@@ -20,16 +21,24 @@ public sealed partial class PassengerTools
 {
     // app_windows' description says once what every app_ tool's app and window take; app_tree's, the query's syntax.
 
+    /// <summary>An app_ tool's work, on the UI thread as every tool's is, with no wait for the folder's projects: looking at
+    /// an app that runs, or using it, asks nothing of them.</summary>
+    private Task<T> OnApp<T>(CancellationToken cancel, Func<Task<T>> work) => OnUi(cancel, work, projects: false);
+
     /// <summary>How long a tool waits for an app launched a moment ago to show its UI.</summary>
     private static readonly TimeSpan AppUiLimit = TimeSpan.FromSeconds(60);
 
     [McpServerTool(Name = McpTools.AppWindows, Title = "The app's windows", ReadOnly = true), Description(
-        "The windows of the app (an Avalonia 12 app Run or Debug started, a WPF one on Windows; one starting is waited for): " +
+        "The windows of the app (an Avalonia 12 app Run or Debug started, a WPF one on Windows, a Godot game; one starting is waited for): " +
         "each one's @N, type, title, size in units, pixels a unit, whether active and shown, and a popup's owner. Every app_ " +
         "tool's app is run, debug, profile, a debugged program's or an AppHost service's name, or ide for Passenger's own windows, by default the one running; " +
         "its window @N, type or \"title\", by default the first.")]
-    public Task<AppWindows> AppWindowsList(string? app = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
+    public Task<AppWindows> AppWindowsList(string? app = null, CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
+        if (await GameAsync(app, cancel) is { } game)
+        {
+            return await GameWindowsAsync(game);
+        }
         LiveApp live = await InspectedAsync(app, cancel);
         IReadOnlyList<AppWindow> windows = await live.WindowsAsync();
         return new AppWindows(live.Name, live.Framework, live.Avalonia, live.ProcessId, [.. windows.Select(w => new AppWindowInfo(
@@ -37,7 +46,8 @@ public sealed partial class PassengerTools
     });
 
     [McpServerTool(Name = McpTools.AppScreenshot, Title = "A picture of the app", ReadOnly = true), Description(
-        "A PNG of an app window (its popups drawn over it) as the app draws it, hidden, off-screen or headless alike; or of " +
+        "A PNG of an app window (its popups drawn over it) as the app draws it, hidden, off-screen or headless alike (a Godot game's " +
+        "whole window, unless headless, which draws nothing); or of " +
         "control's part of it, or an area (x, y, width, height in its units). At the window's scaling up to 1600 pixels a side, " +
         "or scale pixels a unit (8 at most). Its text maps its pixels to the window's units, which app_click takes.")]
     public Task<CallToolResult> AppScreenshot(
@@ -46,8 +56,12 @@ public sealed partial class PassengerTools
         string? control = null,
         double? scale = null,
         int? x = null, int? y = null, int? width = null, int? height = null,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
+        if (await GameAsync(app, cancel) is { } game)
+        {
+            return await GamePictureAsync(game, control, x is not null || y is not null || width is not null || height is not null);
+        }
         LiveApp live = await InspectedAsync(app, cancel);
         (List<AppNode> nodes, AppNode chosenWindow) = await TreeOf(live, window, cancel);
         AppNode shown = control is { Length: > 0 } query ? AppQuery.One(Within(nodes, window is null ? null : chosenWindow), query) : chosenWindow;
@@ -83,16 +97,18 @@ public sealed partial class PassengerTools
         IReadOnlyList<string>? properties = null,
         bool templates = false,
         bool hidden = false,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
-        LiveApp live = await InspectedAsync(app, cancel);
-        AppTree tree = await live.AgentTreeAsync(properties ?? []);
+        GodotGame? game = await GameAsync(app, cancel);
+        LiveApp? live = game is null ? await InspectedAsync(app, cancel) : null;
+        (AppTree tree, string? unplaced) = game is not null ? await GameTreeAsync(game, properties ?? []) : (await live!.AgentTreeAsync(properties ?? []), null);
+        string name = game?.Name ?? live!.Name;
         List<AppNode> nodes = AppQuery.Flatten(tree.Roots);
         if (nodes.Count == 0)
         {
-            return $"{live.Name} has no window open";
+            return $"{name} has no window open";
         }
-        List<AppNode> scope = window is { Length: > 0 } ? Within(nodes, Window(nodes, window, live)) : nodes;
+        List<AppNode> scope = window is { Length: > 0 } ? Within(nodes, Window(nodes, window, name, own: live is { Plan: null })) : nodes;
         List<AppNode> roots = control is { Length: > 0 } query ? [AppQuery.One(scope, query)] : [.. scope.Where(n => n.Parent is null)];
         if (filter is { Length: > 0 } wanted)
         {
@@ -100,12 +116,13 @@ public sealed partial class PassengerTools
             List<AppNode> found = AppQuery.Find(under, wanted, templates);
             if (found.Count == 0)
             {
-                return $"Nothing in {live.Name} matches {wanted}";
+                return $"Nothing in {name} matches {wanted}";
             }
             return string.Join('\n', found.Take(AppQuery.MostLines).Select(AppQuery.Where))
                 + (found.Count > AppQuery.MostLines ? $"\n... and {found.Count - AppQuery.MostLines} more" : string.Empty);
         }
-        return AppQuery.Write(roots, depth, templates, hidden);
+        // A game's nodes without where they are drawn say why.
+        return AppQuery.Write(roots, depth, templates, hidden) + (unplaced is null ? string.Empty : $"\n(Where its nodes are drawn is unknown: {unplaced})");
     });
 
     [McpServerTool(Name = McpTools.AppDetails, Title = "An element's properties and styles", ReadOnly = true), Description(
@@ -121,8 +138,12 @@ public sealed partial class PassengerTools
         string? window = null,
         string? properties = null,
         bool defaults = false,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
+        if (await GameAsync(app, cancel) is { } game)
+        {
+            return await GameDetailsAsync(game, control, window, properties);
+        }
         LiveApp live = await InspectedAsync(app, cancel);
         (List<AppNode> nodes, AppNode chosenWindow) = await TreeOf(live, window, cancel);
         AppNode element = AppQuery.One(Within(nodes, window is null ? null : chosenWindow), control);
@@ -179,8 +200,12 @@ public sealed partial class PassengerTools
         string button = "left",
         int count = 1,
         IReadOnlyList<string>? modifiers = null,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
+        if (await GameAsync(app, cancel) is { } game)
+        {
+            return await GameClickAsync(game, control, x, y, window, button, count, modifiers);
+        }
         (LiveApp live, AppNode? element, AppNode target) = await Target(app, control, window, needsPoint: true, x, y, cancel);
         (InputDone? sent, string? paused) = await SendAsync(live, new InputAction(InputKinds.Click)
         {
@@ -208,15 +233,27 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.AppType, Title = "Type into the app", Destructive = true), Description(
         "Types text as a keyboard would, a key at a time (a newline Enter, a tab Tab): into control, given the focus first (a " +
         "text box at its end), else into what has the focus; with replace, Select All first. Says what it shows now. With app " +
-        "ide, Passenger's editor types at the caret open put it at, leaving the file unsaved.")]
+        "ide, Passenger's editor types at the caret open put it at, leaving the file unsaved. With property, sets that property " +
+        "of a Godot game's node (control) to text, as the Live Visual Tree's are typed.")]
     public Task<string> AppType(
         string text,
         string? app = null,
         string? control = null,
         bool replace = false,
         string? window = null,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        string? property = null,
+        CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
+        GodotGame? game = await GameAsync(app, cancel);
+        if (property is { Length: > 0 } named)
+        {
+            return game is not null ? await GameSetAsync(game, control, window, named, text)
+                : throw new ArgumentException("property sets a Godot game's node's property as it runs: an Avalonia or WPF app's control is typed into instead");
+        }
+        if (game is not null)
+        {
+            return await GameTypeAsync(game, text, control, replace, window);
+        }
         (LiveApp live, AppNode? element, AppNode target) = await Target(app, control, window, needsPoint: false, null, null, cancel);
         (InputDone? sent, string? paused) = await SendAsync(live, new InputAction(InputKinds.Type)
         {
@@ -242,8 +279,12 @@ public sealed partial class PassengerTools
         string? app = null,
         string? control = null,
         string? window = null,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
+        if (await GameAsync(app, cancel) is { } game)
+        {
+            return await GameKeyAsync(game, keys, control, window);
+        }
         IReadOnlyList<Chord> chords = Chords(keys);
         (LiveApp live, AppNode? element, AppNode target) = await Target(app, control, window, needsPoint: false, null, null, cancel);
         (InputDone? sent, string? paused) = await SendAsync(live, new InputAction(InputKinds.Key)
@@ -272,11 +313,15 @@ public sealed partial class PassengerTools
         double? y = null,
         string? window = null,
         IReadOnlyList<string>? modifiers = null,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
-        (LiveApp live, AppNode? element, AppNode target) = await Target(app, control, window, needsPoint: true, x, y, cancel);
         double down = dy ?? (dx is null ? 3 : 0);
         double across = dx ?? 0;
+        if (await GameAsync(app, cancel) is { } game)
+        {
+            return await GameScrollAsync(game, control, down, across, x, y, window, modifiers);
+        }
+        (LiveApp live, AppNode? element, AppNode target) = await Target(app, control, window, needsPoint: true, x, y, cancel);
         (InputDone? sent, string? paused) = await SendAsync(live, new InputAction(InputKinds.Scroll)
         {
             Window = target.Window.Id,
@@ -294,17 +339,18 @@ public sealed partial class PassengerTools
         string turned = Plural.Listed([.. ((string[])[Notches(down, "down", "up"), Notches(across, "right", "left")]).Where(n => n.Length > 0)]);
         string scrolled = $"Scrolled {turned} over {Aimed(element, done)}{Took(element, done, "wheel")}";
         return done.Shows is { } where ? $"{scrolled}: {where}" : $"{scrolled}, which no scroll viewer holds";
-
-        static string Notches(double notches, string ahead, string back) => notches == 0
-            ? string.Empty
-            : string.Create(CultureInfo.InvariantCulture, $"{Math.Abs(notches):0.#} notch{(Math.Abs(notches) == 1 ? "" : "es")} {(notches < 0 ? back : ahead)}");
     });
+
+    /// <summary>Wheel notches in words: "3 notches down", "1 notch left"; none for none.</summary>
+    private static string Notches(double notches, string ahead, string back) => notches == 0
+        ? string.Empty
+        : string.Create(CultureInfo.InvariantCulture, $"{Math.Abs(notches):0.#} notch{(Math.Abs(notches) == 1 ? "" : "es")} {(notches < 0 ? back : ahead)}");
 
     [McpServerTool(Name = McpTools.AppBindingErrors, Title = "The app's failed bindings", ReadOnly = true), Description(
         "The failed bindings of the apps Run and Debug started last and an AppHost's services (or app's), each once: control, property, path, the " +
         "framework's message (with the nearest members when the source lacks the one named), XAML place and count. An ended " +
         "app's stay until the next of its kind starts; past an app's first 1000, a last entry of level Untold counts the rest.")]
-    public Task<IReadOnlyList<AppBindingError>> AppBindingErrors(string? app = null, CancellationToken cancel = default) => OnUi(cancel, () =>
+    public Task<IReadOnlyList<AppBindingError>> AppBindingErrors(string? app = null, CancellationToken cancel = default) => OnApp(cancel, () =>
     {
         IEnumerable<LiveApp> apps = app switch
         {
@@ -317,7 +363,8 @@ public sealed partial class PassengerTools
         List<LiveApp> chosen = [.. apps];
         if (chosen.Count == 0)
         {
-            throw new InvalidOperationException("No Avalonia or WPF app has been run or debugged in this folder; run or debug_start one");
+            throw new InvalidOperationException(Session.Game is { } game ? $"{game.Name} is a Godot game, which has no bindings: app_tree and app_details read its nodes"
+                : "No Avalonia or WPF app has been run or debugged in this folder; run or debug_start one");
         }
         return Task.FromResult<IReadOnlyList<AppBindingError>>([.. chosen.SelectMany(live =>
         {
@@ -443,7 +490,7 @@ public sealed partial class PassengerTools
         }
         return apps.FirstOrDefault() is { } ended
             ? Ended(ended.App)
-            : "No Avalonia or WPF app is running: run or debug_start one (Avalonia 12, or WPF on Windows), or name app ide for Passenger's own windows";
+            : "No Avalonia or WPF app or Godot game is running: run or debug_start one (Avalonia 12, WPF on Windows, a Godot 4 game in C#), or name app ide for Passenger's own windows";
 
         static string Ended(LiveApp app) => $"{app.Name} has ended: run or debug_start starts it again, or name app ide for Passenger's own windows";
     }
@@ -461,19 +508,21 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException($"{live.Name} has no window open");
         }
-        return (nodes, Window(nodes, window, live));
+        return (nodes, Window(nodes, window, live.Name, own: live.Plan is null));
     }
 
-    private AppNode Window(List<AppNode> nodes, string? named, LiveApp live)
+    /// <summary>The window of an app's tree named, else its first; for Passenger's own (<paramref name="own"/>) the window
+    /// the agent works in.</summary>
+    private AppNode Window(List<AppNode> nodes, string? named, string app, bool own)
     {
         List<AppNode> windows = [.. nodes.Where(n => n.Parent is null)];
         if (named is not { Length: > 0 })
         {
             // Passenger's own: the window the agent works in, whose title is its own.
-            return live.Plan is null && windows.FirstOrDefault(w => w.Element.Text == window.Title) is { } own ? own : windows[0];
+            return own && windows.FirstOrDefault(w => w.Element.Text == window.Title) is { } mine ? mine : windows[0];
         }
         return AppQuery.Find(windows, named).FirstOrDefault(n => n.Parent is null)
-            ?? throw new ArgumentException($"No window of {live.Name} is {named}: {string.Join("; ", windows.Select(w => Titled(w.Element)))}");
+            ?? throw new ArgumentException($"No window of {app} is {named}: {string.Join("; ", windows.Select(w => Titled(w.Element)))}");
     }
 
     /// <summary>A window's elements, the window first.</summary>
@@ -626,9 +675,10 @@ public sealed record AppBindingError(string App, string Level, string Control, s
     IReadOnlyList<string> Nearest);
 
 /// <summary>An element as app_details reads it, as the Live Visual Tree's details show it: what it is, where its XAML is (path:line:column)
-/// or why none, the template it is a part of, its layout, its properties with their sources and its styles with why each applies or not.</summary>
+/// or why none (a Godot node's script), the template it is a part of, its layout (none for a Godot node), its properties with their
+/// sources (a Godot node's, their categories) and its styles with why each applies or not.</summary>
 public sealed record AppElementDetails(string Element, string Type, string FullType, string? Name, IReadOnlyList<string> Classes, IReadOnlyList<string> PseudoClasses,
-    string? Xaml, string? NoXaml, string? TemplatedParent, AppLayout Layout, IReadOnlyList<AppProperty> Properties, IReadOnlyList<AppStyle> Styles);
+    string? Xaml, string? NoXaml, string? TemplatedParent, AppLayout? Layout, IReadOnlyList<AppProperty> Properties, IReadOnlyList<AppStyle> Styles);
 
 /// <summary>Where an element is laid out: its bounds in its parent and in its window (x,y wxh), its desired size, its margin, border and
 /// padding (left,top,right,bottom; none when it has no such property) and its alignment.</summary>

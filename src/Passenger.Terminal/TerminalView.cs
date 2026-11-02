@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Media;
 using Avalonia.Media.Fonts.Tables.Cmap;
+using Avalonia.Threading;
 using Passenger.Editor;
 
 namespace Passenger.Terminal;
@@ -23,6 +24,12 @@ public sealed partial class TerminalView : Control
 
     public static readonly StyledProperty<FontFamily> FontFamilyProperty = CodeEditor.FontFamilyProperty.AddOwner<TerminalView>();
 
+    public static readonly StyledProperty<bool> CursorBlinkingProperty =
+        AvaloniaProperty.Register<TerminalView, bool>(nameof(CursorBlinking));
+
+    public static readonly StyledProperty<CursorShape> CursorStyleProperty =
+        AvaloniaProperty.Register<TerminalView, CursorShape>(nameof(CursorStyle), CursorShape.Block);
+
     private const double Pad = 6;
 
     private readonly Dictionary<int, IBrush> palette = [];
@@ -34,6 +41,11 @@ public sealed partial class TerminalView : Control
     private (long Line, int Column)? anchor;
     private (long Line, int Column)? active;
     private bool selecting;
+    private bool selectedWord;
+    private bool reportedPress;
+    private bool attached;
+    private bool cursorOn = true;
+    private readonly DispatcherTimer blink;
     private IBrush foreground = Brushes.Transparent;
     private IBrush background = Brushes.Transparent;
     private IBrush cursor = Brushes.Transparent;
@@ -55,12 +67,34 @@ public sealed partial class TerminalView : Control
 
     public TerminalView()
     {
+        // Blinking is continuous visual work, so it must not hold screenshots or background-work waits.
+        blink = new DispatcherTimer(TimeSpan.FromMilliseconds(530), DispatcherPriority.Background, (_, _) =>
+        {
+            if (!ShouldBlink)
+            {
+                RestartBlink();
+                return;
+            }
+            cursorOn = !cursorOn;
+            InvalidateVisual();
+        });
+        blink.Stop();
         Focusable = true;
         ClipToBounds = true;
         Cursor = new Cursor(StandardCursorType.Ibeam);
         ActualThemeVariantChanged += (_, _) => Refresh();
-        AttachedToVisualTree += (_, _) => Refresh();
-        DetachedFromVisualTree += (_, _) => ForgetDrawings();
+        AttachedToVisualTree += (_, _) =>
+        {
+            attached = true;
+            Refresh();
+            RestartBlink();
+        };
+        DetachedFromVisualTree += (_, _) =>
+        {
+            attached = false;
+            RestartBlink();
+            ForgetDrawings();
+        };
         // A theme laid over the application's resources (Settings) changes the brushes, not the variant.
         ResourcesChanged += (_, _) =>
         {
@@ -70,6 +104,7 @@ public sealed partial class TerminalView : Control
             }
         };
         ContextMenu = Menu();
+        CodeFonts.Follow(this, FontFamilyProperty);
     }
 
     /// <summary>The terminal's menu: Copy, Paste and Clear Buffer, with their keys.</summary>
@@ -112,7 +147,7 @@ public sealed partial class TerminalView : Control
         session.Screen.ClearBuffer();
         ClearSelection();
         heldTop = null;
-        InvalidateVisual();
+        RestartBlink();
     }
 
     public double FontSize
@@ -127,6 +162,20 @@ public sealed partial class TerminalView : Control
         set => SetValue(FontFamilyProperty, value);
     }
 
+    public bool CopyOnSelection { get; set; }
+
+    public bool CursorBlinking
+    {
+        get => GetValue(CursorBlinkingProperty);
+        set => SetValue(CursorBlinkingProperty, value);
+    }
+
+    public CursorShape CursorStyle
+    {
+        get => GetValue(CursorStyleProperty);
+        set => SetValue(CursorStyleProperty, value);
+    }
+
     /// <summary>The shell drawn and typed to.</summary>
     public TerminalSession? Session
     {
@@ -138,13 +187,14 @@ public sealed partial class TerminalView : Control
                 session.Output -= OnOutput;
             }
             session = value;
+            reportedPress = false;
             if (session is not null)
             {
                 session.Output += OnOutput;
                 FitSize();
             }
             heldTop = null;
-            InvalidateVisual();
+            RestartBlink();
         }
     }
 
@@ -221,7 +271,7 @@ public sealed partial class TerminalView : Control
         TerminalScreen screen = session.Screen;
         long to = Math.Clamp(TopLine - lines, screen.FirstLine, screen.ScreenTop);
         heldTop = to < screen.ScreenTop ? to : null;
-        InvalidateVisual();
+        RestartBlink();
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -232,6 +282,10 @@ public sealed partial class TerminalView : Control
             Measure();
             FitSize();
             InvalidateVisual();
+        }
+        else if (change.Property == CursorBlinkingProperty || change.Property == CursorStyleProperty || change.Property == IsVisibleProperty)
+        {
+            RestartBlink();
         }
     }
 
@@ -244,12 +298,27 @@ public sealed partial class TerminalView : Control
     protected override void OnGotFocus(FocusChangedEventArgs e)
     {
         base.OnGotFocus(e);
-        InvalidateVisual();
+        RestartBlink();
     }
 
     protected override void OnLostFocus(FocusChangedEventArgs e)
     {
         base.OnLostFocus(e);
+        RestartBlink();
+    }
+
+    private bool ShouldBlink => attached && IsEffectivelyVisible && IsFocused
+        && session is { IsRunning: true, Screen.CursorVisible: true }
+        && TopLine == session.Screen.ScreenTop && (session.Screen.RequestedCursorBlinking ?? CursorBlinking);
+
+    private void RestartBlink()
+    {
+        cursorOn = true;
+        blink.Stop();
+        if (ShouldBlink)
+        {
+            blink.Start();
+        }
         InvalidateVisual();
     }
 
@@ -312,7 +381,7 @@ public sealed partial class TerminalView : Control
         {
             HoverLink(held);
         }
-        InvalidateVisual();
+        RestartBlink();
     }
 
     /// <summary>Whether a cell is drawn in a run with its neighbours: one code point a column wide that the terminal's
@@ -421,6 +490,8 @@ public sealed partial class TerminalView : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
+        selectedWord = false;
+        reportedPress = false;
         Focus();
         if (session is null)
         {
@@ -439,6 +510,7 @@ public sealed partial class TerminalView : Control
         if (session.Screen.MouseTracking != MouseTracking.None && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
         {
             SendMouse(e.GetPosition(this), pressed.IsRightButtonPressed ? 2 : pressed.IsMiddleButtonPressed ? 1 : 0, release: false);
+            reportedPress = true;
             e.Handled = true;
             return;
         }
@@ -449,7 +521,15 @@ public sealed partial class TerminalView : Control
         (long line, int column) = CellAt(e.GetPosition(this));
         if (e.ClickCount == 2)
         {
+            ClearSelection();
+            if (e.KeyModifiers == KeyModifiers.None && session.Screen.MouseTracking == MouseTracking.None
+                && LinkAt(e.GetPosition(this)) is { Hidden: false })
+            {
+                e.Handled = true;
+                return;
+            }
             SelectWord(line, column);
+            selectedWord = SelectedText.Length > 0;
             e.Handled = true;
             return;
         }
@@ -512,10 +592,12 @@ public sealed partial class TerminalView : Control
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        if (session is not null && session.Screen.MouseTracking != MouseTracking.None && !selecting)
+        bool copy = e.InitialPressMouseButton == MouseButton.Left && (selectedWord || (selecting && anchor != active));
+        if (session is not null && reportedPress)
         {
             SendMouse(e.GetPosition(this), e.InitialPressMouseButton switch { MouseButton.Middle => 1, MouseButton.Right => 2, _ => 0 }, release: true);
         }
+        reportedPress = false;
         selecting = false;
         e.Pointer.Capture(null);
         if (pressedLink is { } link && anchor == active && LinkAt(e.GetPosition(this)) == link)
@@ -524,6 +606,11 @@ public sealed partial class TerminalView : Control
             LinkClicked?.Invoke(this, link.Target);
         }
         pressedLink = null;
+        selectedWord = false;
+        if (copy && CopyOnSelection)
+        {
+            Core.UnawaitedWork.Observe(CopyAsync());
+        }
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -675,7 +762,7 @@ public sealed partial class TerminalView : Control
         {
             ClearSelection();
         }
-        InvalidateVisual();
+        RestartBlink();
     }
 
     /// <summary>Windows sends AltGr as Ctrl+Alt: a key the layout gives a character to with them (AltGr+Q's @ on a German

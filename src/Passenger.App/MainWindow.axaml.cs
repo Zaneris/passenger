@@ -87,6 +87,8 @@ public partial class MainWindow : IdeWindow
         AddBreadcrumbs();
         AddBookmarks();
         AddEndpoints();
+        AddGodotEditor();
+        AddDotnet();
         AddRoutes();
         AddRequestMarks();
         AddRequests();
@@ -114,6 +116,14 @@ public partial class MainWindow : IdeWindow
         AddPreview();
         AddMarkdownPreview();
         Explorer.FileOpened += (_, path) => OpenFile(path);
+        Explorer.IndexedFiles = IndexedFiles;
+        Explorer.FileClicked += (_, path) =>
+        {
+            if (OpenFile(path) is null)
+            {
+                Explorer.FocusRows();
+            }
+        };
         Editors.ActiveChanged += (_, _) => FollowInExplorer();
         // An unbuilt Structure window asks for the file itself; a C# file's outline waits out the pause.
         Editors.ActiveChanged += (_, _) =>
@@ -258,11 +268,13 @@ public partial class MainWindow : IdeWindow
         assist.DebuggerValue = async (offset, cancel) => Editors.Active is { } shown && Debugging.XamlBreakpoints.Compiled(shown.Path)
             ? bindingValues!.HoverAt(shown, offset)
             : await session.Debug.HoverAt(offset, cancel);
-        // Passenger's own fixes: bindings, compose names, Aspire, configuration and localized keys.
+        assist.GutterWords = line => Editors.Active is { } beside ? session.Debug.GutterWords(beside.Path, line) : null;
+        // Passenger's own fixes: bindings, compose names, Aspire, configuration and localized keys, Godot's checks.
         assist.EditorFixes = (file, offset) => [.. Passenger.App.LiveTree.BindingErrors.Fixes(file, offset, session.FailedBindings.Select(b => b.Failure)),
             .. session.Web?.Checks.Fixes(file, offset) ?? [], .. assist.AspireFixes(file, offset), .. assist.ComposeReadFixes(file, offset), .. MigrationFixes(file, offset),
-            .. assist.ConfigurationFixes(file, offset), .. assist.LocalizationFixes(file, offset)];
+            .. assist.ConfigurationFixes(file, offset), .. assist.LocalizationFixes(file, offset), .. assist.GodotFixes(file, offset, session.GodotMarks)];
         assist.AskValue = AskValueAsync;
+        assist.ConfirmFix = (title, text, yes) => Confirm(title, text, yes);
         // The session as each call finds it.
         assist.ConfigurationOf = path => session.ConfigurationOf(path);
         assist.ConfiguredBy = path => session.ConfiguredBy(path);
@@ -337,12 +349,12 @@ public partial class MainWindow : IdeWindow
 
     private string? followed;
 
-    /// <summary>Chooses the file shown in the Explorer as another is shown, a tab switched to as well as a file opened;
-    /// a row chosen there meanwhile stays chosen until then.</summary>
+    /// <summary>Chooses the file shown in the Explorer as another is shown, a tab switched to as well as a file opened,
+    /// while Always Select Opened File is on; a row chosen there meanwhile stays chosen until then.</summary>
     private void FollowInExplorer()
     {
         string? shown = Editors.Active?.Path;
-        if (shown is not null && shown != followed)
+        if (shown is not null && shown != followed && settings.AlwaysSelectOpenedFile)
         {
             Explorer.Reveal(shown);
         }
@@ -360,7 +372,7 @@ public partial class MainWindow : IdeWindow
         }
         session.Opened(full);
         // Behind the file shown (an agent's), it is not the Explorer's to follow.
-        if (Editors.Active?.Path == full)
+        if (Editors.Active?.Path == full && settings.AlwaysSelectOpenedFile)
         {
             Explorer.Reveal(full);
         }
@@ -387,7 +399,7 @@ public partial class MainWindow : IdeWindow
         {
             if (!shifted)
             {
-                if (!BranchesTake(action))
+                if (!BranchesTake(action) && !PlaceTakes(action))
                 {
                     Request(action);
                 }
@@ -595,7 +607,8 @@ public partial class MainWindow : IdeWindow
         {
             Action = AppActions.FocusExplorer,
             HeaderTools = Explorer.TakeHeaderTools(),
-            Options = Explorer.Options,
+            Options = ExplorerOptions,
+            HeaderAction = (AppActions.SelectOpenedFile, IconKeys.Locate, SelectOpenedFileTitle),
             Chosen = () => Explorer.SelectedNodes,
             // Opening every row would read every folder on disk, build output and packages too: it closes them alone.
             CollapseAll = Explorer.Tree.CollapseAll,
@@ -760,12 +773,14 @@ public partial class MainWindow : IdeWindow
         EditorWindows = Editors.CaptureWindows(),
         RecentFiles = [.. session.RecentFiles],
         UnloadedProjects = [.. session.KeptUnloaded],
+        TargetFrameworks = session.Frameworks.Kept,
         Folds = session.Folds.Capture(Editors.Documents),
     });
 
     /// <summary>The open folder's state as the store kept it, once the window keeps state: its layout (else the one
-    /// changed last in any window), breakpoints, bookmarks, the Unit Tests window's view and the log's favourite branches,
-    /// the session's own (<see cref="ProjectSession.Keep"/>), and its editors, the one shown the latest recent file.</summary>
+    /// changed last in any window), breakpoints, bookmarks, the Unit Tests window's view and its tests' last results, the
+    /// log's favourite branches, the session's own (<see cref="ProjectSession.Keep"/>), and its editors, the one shown the
+    /// latest recent file.</summary>
     private void RestoreWorkspace()
     {
         if (!keepsWorkspace || session.Folder is not { } folder)
@@ -785,6 +800,7 @@ public partial class MainWindow : IdeWindow
         }
         // Before the folder's documents are this window's, so what restoring them changes is not written back.
         RestoreUnitTests(opening.UnitTests.Value);
+        session.Tests.Keep(opening.UnitTestResults.Value.Methods);
         branchFavorites = opening.GitBranches.Value;
         if (gitView?.Log.Branches is { } branches)
         {
@@ -918,7 +934,7 @@ public partial class MainWindow : IdeWindow
             Debugging.LineBreakpoint? inside = session.Debug.OnLambda(document, lambda);
             MenuItem choice = Choice(name, inside is not null, () => session.Debug.ToggleLambda(document, lambda));
             // Its code as the editor draws it.
-            choice.FontFamily = CodeEditor.CodeFont;
+            choice.InCodeFont();
             choice.FontFeatures = CSharp.Fonts.Features(settings.Ligatures);
             items.Add(choice);
             if (inside is not null)

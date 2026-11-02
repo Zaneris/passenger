@@ -21,7 +21,9 @@ public partial class ManagedDebugger
     /// <summary>How deep displays inside displays go, before a value is shown by its type alone.</summary>
     private const int DisplayNesting = 3;
 
-    private static DebuggerDisplay? FindDebuggerDisplay(ICorDebugType type)
+    /// <summary>The display of a type or the nearest type above it with one: its own [DebuggerDisplay], else the value a
+    /// presentation the client gave for it shows (<see cref="PresentationOf"/>).</summary>
+    private DebuggerDisplay? FindDebuggerDisplay(ICorDebugType type)
     {
         for (ICorDebugType? each = type; each is not null; each = each.Base)
         {
@@ -35,6 +37,10 @@ public partial class ManagedDebugger
             if (metadata.TryGetCustomAttributeByName(corClass.Token, "System.Diagnostics.DebuggerDisplayAttribute", out nint blob, out uint size) is Cor.S_OK)
             {
                 return ReadDebuggerDisplay(blob, checked((int)size));
+            }
+            if (PresentationOf(corClass, name) is { Value: { } shown })
+            {
+                return new DebuggerDisplay(shown, null, null);
             }
         }
         return null;

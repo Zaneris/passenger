@@ -363,6 +363,37 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         window.Close();
     }
 
+    /// <summary>A component's scoped stylesheet reads <c>::deep</c> as no problem, and where a selector is written completes the
+    /// elements its markup writes, named as its own, after a '.' the classes it gives and after a '#' its ids.</summary>
+    [AvaloniaFact]
+    public void A_components_scoped_stylesheet_takes_deep_as_no_problem_and_completes_its_markups_elements_classes_and_ids()
+    {
+        SkipWithoutNode();
+        MainWindow window = app.Open("Components/Pages/Bell.razor.css", languageServer: false);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => document.Markers.Any(m => m.Kind == MarkerKind.Warning), "the CSS server's warning of the empty rule");
+        Marker warning = Assert.Single(document.Markers);
+        Assert.Equal("#chime", editor.Document.Snapshot.GetText(warning.Range.Start, warning.Range.Length));
+
+        Ui.PlaceAfter(editor, "#chime {\n}");
+        Ui.Press(window, "ENTER");
+        TypeEach(window, "d");
+        Ui.WaitFor(() => window.Assist.CompletionDetails.Contains(("div", "in Bell.razor")), () => $"the markup's div among the elements; the list has {string.Join(", ", window.Assist.CompletionDetails.Take(8))}");
+        Assert.DoesNotContain(window.Assist.CompletionDetails, d => d.Label == "dd" && d.Detail == "in Bell.razor");
+        Ui.Press(window, "ESCAPE");
+        Ui.Press(window, "ENTER");
+        TypeEach(window, ".r");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "ringing", () => $"the markup's class ringing after a dot; the list has {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+        Ui.Press(window, "ENTER");
+        Assert.Equal(".ringing", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line));
+        Ui.Press(window, "ENTER");
+        TypeEach(window, "#c");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "chime", () => $"the markup's id chime after a hash; the list has {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+        Ui.Press(window, "ESCAPE");
+        window.Close();
+    }
+
     /// <summary>An SCSS and a Less stylesheet go to the CSS server as their own languages, the status bar naming each: a
     /// property completes in either, one the server does not know is warned of, and their variables, mixins and nesting
     /// are no error, as CSS's own reading would mark them.</summary>

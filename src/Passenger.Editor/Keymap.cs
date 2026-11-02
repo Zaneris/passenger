@@ -21,10 +21,38 @@ public readonly record struct Keystroke(Key Key, KeyModifiers Modifiers)
                 key = key is null ? ParseKey(part) : throw new FormatException($"'{text}' names two keys");
             }
         }
-        return new Keystroke(key ?? throw new FormatException($"'{text}' names no key"), modifiers);
+        return new Keystroke(key ?? KeyOf(modifiers) ?? throw new FormatException($"'{text}' names no key"), modifiers);
     }
 
     public static Keystroke From(KeyEventArgs e) => new(e.Key, e.KeyModifiers);
+
+    /// <summary>A modifier's key pressed with no other modifier held ("shift" for either Shift), or null for any other
+    /// press: what a double tap is made of.</summary>
+    public static Keystroke? Alone(Key key, KeyModifiers held)
+    {
+        KeyModifiers? modifier = key switch
+        {
+            Key.LeftShift or Key.RightShift => KeyModifiers.Shift,
+            Key.LeftCtrl or Key.RightCtrl => KeyModifiers.Control,
+            Key.LeftAlt or Key.RightAlt => KeyModifiers.Alt,
+            Key.LWin or Key.RWin => KeyModifiers.Meta,
+            _ => null,
+        };
+        return modifier is { } own && (held & ~own) == KeyModifiers.None ? new Keystroke(KeyOf(own)!.Value, own) : null;
+    }
+
+    /// <summary>Whether this is a modifier's key pressed alone (<see cref="Alone"/>).</summary>
+    public bool IsModifierAlone => KeyOf(Modifiers) == Key;
+
+    /// <summary>The key that stands for one modifier pressed alone, or null for none or several.</summary>
+    private static Key? KeyOf(KeyModifiers modifiers) => modifiers switch
+    {
+        KeyModifiers.Shift => Key.LeftShift,
+        KeyModifiers.Control => Key.LeftCtrl,
+        KeyModifiers.Alt => Key.LeftAlt,
+        KeyModifiers.Meta => Key.LWin,
+        _ => null,
+    };
 
     /// <summary>The modifier a word of the notation names, in any case ("meta", "cmd", "command", "win" or "super";
     /// "control" or "ctrl"; "alt", "option" or "opt"; "shift"), or null for another word: a keymap's words and an
@@ -53,6 +81,7 @@ public readonly record struct Keystroke(Key Key, KeyModifiers Modifiers)
         bool mac = OperatingSystem.IsMacOS();
         string key = Key switch
         {
+            _ when IsModifierAlone => string.Empty,
             _ when Keypad(Key) is { } typed => mac ? $"⌨{typed}" : $"NumPad {typed}",
             Key.OemPeriod => ".",
             Key.OemComma => ",",
@@ -92,7 +121,10 @@ public readonly record struct Keystroke(Key Key, KeyModifiers Modifiers)
         if (Modifiers.HasFlag(KeyModifiers.Alt)) { parts.Add("Alt"); }
         if (Modifiers.HasFlag(KeyModifiers.Shift)) { parts.Add("Shift"); }
         if (Modifiers.HasFlag(KeyModifiers.Meta)) { parts.Add("Win"); }
-        parts.Add(key);
+        if (key.Length > 0)
+        {
+            parts.Add(key);
+        }
         return string.Join('+', parts);
     }
 
@@ -104,6 +136,10 @@ public readonly record struct Keystroke(Key Key, KeyModifiers Modifiers)
         if (Modifiers.HasFlag(KeyModifiers.Control)) { parts.Add("control"); }
         if (Modifiers.HasFlag(KeyModifiers.Alt)) { parts.Add("alt"); }
         if (Modifiers.HasFlag(KeyModifiers.Shift)) { parts.Add("shift"); }
+        if (IsModifierAlone)
+        {
+            return string.Join(' ', parts);
+        }
         parts.Add(Key switch
         {
             Key.OemQuestion => "SLASH",
@@ -180,23 +216,32 @@ public readonly record struct Keystroke(Key Key, KeyModifiers Modifiers)
     };
 }
 
-/// <summary>A binding: one keystroke, or two pressed in turn (a chord, like Cmd+K then Cmd+C).</summary>
+/// <summary>A binding: one keystroke, or two pressed in turn (a chord, like Cmd+K then Cmd+C), or a double tap of one
+/// modifier alone ("shift , shift"), pressed and let go twice in quick succession.</summary>
 public sealed record Shortcut(Keystroke First, Keystroke? Second = null)
 {
-    /// <summary>"meta K , meta C" is a chord; anything else is one keystroke.</summary>
+    /// <summary>"meta K , meta C" is a chord and "shift , shift" a double tap; anything else is one keystroke.</summary>
     public static Shortcut Parse(string text)
     {
         string[] halves = text.Split(',', StringSplitOptions.TrimEntries);
-        return halves.Length switch
+        Shortcut shortcut = halves.Length switch
         {
             1 => new Shortcut(Keystroke.Parse(halves[0])),
             2 => new Shortcut(Keystroke.Parse(halves[0]), Keystroke.Parse(halves[1])),
             _ => throw new FormatException($"'{text}' has more than two keystrokes"),
         };
+        return (shortcut.First.IsModifierAlone || shortcut.Second?.IsModifierAlone == true) && !shortcut.IsDoubleTap
+            ? throw new FormatException($"'{text}' names a modifier alone, which only a double tap of it is (\"shift , shift\")")
+            : shortcut;
     }
 
-    /// <summary>For menus and tooltips: "⌘K, ⌘C" for a chord (Ctrl+K, Ctrl+C elsewhere).</summary>
-    public string Display() => Second is { } second ? $"{First.Display()}, {second.Display()}" : First.Display();
+    /// <summary>Whether this is a double tap of one modifier alone, which a menu cannot show as its keys.</summary>
+    public bool IsDoubleTap => First.IsModifierAlone && Second == First;
+
+    /// <summary>For menus and tooltips: "⌘K, ⌘C" for a chord (Ctrl+K, Ctrl+C elsewhere), "⇧⇧" for a double tap
+    /// ("Double Shift" elsewhere).</summary>
+    public string Display() => IsDoubleTap ? (OperatingSystem.IsMacOS() ? First.Display() + First.Display() : $"Double {First.Display()}")
+        : Second is { } second ? $"{First.Display()}, {second.Display()}" : First.Display();
 
     public string Notation() => Second is { } second ? $"{First.Notation()} , {second.Notation()}" : First.Notation();
 
@@ -366,10 +411,24 @@ public sealed class Keymap
             .Select(s => (pair.Key, s.Second!.Value)));
 }
 
-/// <summary>Turns key presses into actions, holding the first half of a chord until the second.</summary>
-public sealed class KeymapDispatcher(Keymap keymap)
+/// <summary>Turns key presses into actions, holding the first half of a chord until the second, and a modifier tapped
+/// alone until it is tapped again (<see cref="Shortcut.IsDoubleTap"/>) within half a second, a double-click's time.</summary>
+/// <param name="keymap">The keymap the keys run.</param>
+/// <param name="milliseconds">The time the taps are told apart by, the system's tick count unless given.</param>
+public sealed class KeymapDispatcher(Keymap keymap, Func<long>? milliseconds = null)
 {
+    private readonly Func<long> now = milliseconds ?? (static () => Environment.TickCount64);
+
+    /// <summary>The most time between a modifier's two taps that makes them a double tap.</summary>
+    public const long DoubleTapMs = 500;
+
     private Keystroke? pending;
+
+    /// <summary>A modifier pressed alone and not yet let go, nothing pressed since.</summary>
+    private Keystroke? held;
+
+    /// <summary>A modifier pressed alone and let go, nothing pressed since, and when it was let go.</summary>
+    private (Keystroke Stroke, long At)? tapped;
 
     public Keymap Keymap { get; set; } = keymap;
 
@@ -387,8 +446,9 @@ public sealed class KeymapDispatcher(Keymap keymap)
         shifted = false;
         if (IsModifierOnly(stroke.Key))
         {
-            return null;
+            return Tap(e, out consumed);
         }
+        Heard(e);
         if (IsAltGrTyping(e))
         {
             // A character typed, never a shortcut, so it ends a chord as any typing does.
@@ -422,9 +482,59 @@ public sealed class KeymapDispatcher(Keymap keymap)
         return null;
     }
 
-    /// <summary>Forgets a chord's first keystroke, so the next key is a key of its own.</summary>
+    /// <summary>A key pressed, whoever takes it: one that is no modifier ends a double tap begun, as a click does.</summary>
+    public void Heard(KeyEventArgs e)
+    {
+        if (!IsModifierOnly(e.Key))
+        {
+            held = null;
+            tapped = null;
+        }
+    }
+
+    /// <summary>A key let go: a modifier pressed alone and let go with nothing between is a tap, a double tap's first.</summary>
+    public void Release(KeyEventArgs e)
+    {
+        if (held is { } stroke && Keystroke.Alone(e.Key, KeyModifiers.None) == stroke)
+        {
+            tapped = (stroke, now());
+        }
+        held = null;
+    }
+
+    /// <summary>A modifier's key pressed: the double tap's action when it follows its first tap in time, else the start
+    /// of a tap; a key held down repeats its press, which starts nothing.</summary>
+    private string? Tap(KeyEventArgs e, out bool consumed)
+    {
+        consumed = false;
+        if (Keystroke.Alone(e.Key, e.KeyModifiers) is not { } stroke)
+        {
+            held = null;
+            tapped = null;
+            return null;
+        }
+        if (held == stroke)
+        {
+            return null;
+        }
+        (Keystroke Stroke, long At)? first = tapped;
+        tapped = null;
+        if (first is { } tap && tap.Stroke == stroke && now() - tap.At <= DoubleTapMs
+            && Keymap.ActionFor(new Shortcut(stroke, stroke)) is { } action)
+        {
+            held = null;
+            consumed = true;
+            return action;
+        }
+        held = stroke;
+        return null;
+    }
+
+    /// <summary>Forgets a chord's first keystroke and a modifier's first tap, so the next key is a key of its own.</summary>
     public void Reset()
     {
+        held = null;
+        tapped = null;
         if (pending is not null)
         {
             pending = null;

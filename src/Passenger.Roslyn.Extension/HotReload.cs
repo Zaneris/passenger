@@ -64,6 +64,15 @@ internal static class HotReload
                 SourceText now = await document.GetTextAsync(cancel).ConfigureAwait(false);
                 solution = solution.WithDocumentText(ids, SourceText.From(original.Text, now.Encoding, now.ChecksumAlgorithm));
             }
+            // A Razor file is an additional document, whose generator's C# is the code: that code is built from its text before.
+            else if (!ids.IsEmpty && solution.GetAdditionalDocument(ids[0]) is { } markup)
+            {
+                SourceText now = await markup.GetTextAsync(cancel).ConfigureAwait(false);
+                foreach (DocumentId each in ids.Where(i => solution.GetAdditionalDocument(i) is not null))
+                {
+                    solution = solution.WithAdditionalDocumentText(each, SourceText.From(original.Text, now.Encoding, now.ChecksumAlgorithm));
+                }
+            }
         }
         // Every document's text read now: the session compares later snapshots with these.
         await EditAndContinueService.HydrateDocumentsAsync(solution, cancel).ConfigureAwait(false);
@@ -294,6 +303,13 @@ internal static class HotReload
                     solution = solution.WithDocumentText(id, await was.GetTextAsync(cancel).ConfigureAwait(false), PreservationMode.PreserveIdentity);
                 }
             }
+            foreach (DocumentId id in project.GetChangedAdditionalDocuments())
+            {
+                if (before.GetAdditionalDocument(id) is { } was && RazorFiles.Is(was.FilePath))
+                {
+                    solution = solution.WithAdditionalDocumentText(id, await was.GetTextAsync(cancel).ConfigureAwait(false), PreservationMode.PreserveIdentity);
+                }
+            }
             foreach (DocumentId id in project.GetAddedDocuments())
             {
                 solution = solution.RemoveDocument(id);
@@ -323,6 +339,15 @@ internal static class HotReload
             foreach (DocumentId id in project.GetChangedDocuments(onlyGetDocumentsWithTextChanges: true))
             {
                 if (after.GetDocument(id) is { FilePath: { } path } now && before.GetDocument(id) is { } was
+                    && !(await was.GetTextAsync(cancel).ConfigureAwait(false)).ContentEquals(await now.GetTextAsync(cancel).ConfigureAwait(false)))
+                {
+                    paths.Add(path);
+                }
+            }
+            // A Razor file's edit is the code its generator makes of it.
+            foreach (DocumentId id in project.GetChangedAdditionalDocuments())
+            {
+                if (after.GetAdditionalDocument(id) is { FilePath: { } path } now && RazorFiles.Is(path) && before.GetAdditionalDocument(id) is { } was
                     && !(await was.GetTextAsync(cancel).ConfigureAwait(false)).ContentEquals(await now.GetTextAsync(cancel).ConfigureAwait(false)))
                 {
                     paths.Add(path);

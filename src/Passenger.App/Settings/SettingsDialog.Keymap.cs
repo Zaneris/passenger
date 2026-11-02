@@ -9,11 +9,11 @@ using Passenger.Editor;
 
 namespace Passenger.App.Settings;
 
-/// <summary>Settings' Keymap page: the keymap chosen at its top (Visual Studio's or VS Code's), every action with its
-/// shortcuts in it, each in a box of its own (a chord as "⌘K, ⌘C"), an action the person changed in the modified
-/// colour. An action's Edit Shortcuts menu (a double-click, a right-click or its button) has Add Keyboard Shortcut, a
-/// Remove for each shortcut and Reset Shortcuts; Find Actions by Shortcut keeps only the actions a keystroke or chord
-/// pressed into it starts.</summary>
+/// <summary>Settings' Keymap page: the keymap chosen at its top (Visual Studio's, VS Code's or IntelliJ IDEA's), every
+/// action with its shortcuts in it, each in a box of its own (a chord as "⌘K, ⌘C"), an action the person changed in the
+/// modified colour. An action's Edit Shortcuts menu (a double-click, a right-click or its button) has Add Keyboard
+/// Shortcut, a Remove for each shortcut and Reset Shortcuts; Find Actions by Shortcut keeps only the actions a keystroke
+/// or chord pressed into it starts.</summary>
 public sealed partial class SettingsDialog
 {
     private const string ConflictWarning = "This shortcut is already assigned to other actions. Do you want to remove the other assignments?";
@@ -29,10 +29,10 @@ public sealed partial class SettingsDialog
     private Shortcut? shortcutFilter;
 
     /// <summary>The keymaps Settings offers, in its order.</summary>
-    public static readonly KeymapPreset[] KeymapChoices = [KeymapPreset.VisualStudio, KeymapPreset.VSCode];
+    public static readonly KeymapPreset[] KeymapChoices = [KeymapPreset.VisualStudio, KeymapPreset.VSCode, KeymapPreset.IntelliJ];
 
     /// <summary>What a search finds the keymap's choice by, beside the keymaps' names.</summary>
-    private const string KeymapWords = "keymap keymaps preset keyboard shortcuts keys bindings visual studio vs code vscode";
+    private const string KeymapWords = "keymap keymaps preset keyboard shortcuts keys bindings visual studio vs code vscode intellij idea";
 
     /// <summary>The keymap drop-down at the Keymap page's top: the keymap the person's keys follow, their own shortcuts
     /// kept over each apart.</summary>

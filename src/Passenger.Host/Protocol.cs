@@ -106,6 +106,13 @@ public static class HostJson
 /// <summary>The SDK the host loaded: its folder (MSBuild's) and version.</summary>
 public sealed record HostReady(string Sdk, string Version);
 
+/// <summary>What the host's first line says, past the SDK's version, when the SDK a folder picks is newer than the runtime
+/// the host runs on, whose MSBuild only a host on a runtime as new loads.</summary>
+public static class HostWords
+{
+    public const string NewerSdk = "is newer than the runtime the project host runs on";
+}
+
 /// <summary>Projects to evaluate, with the global properties they are evaluated with (the solution's).</summary>
 public sealed record EvaluateParams(IReadOnlyList<string> Projects, IReadOnlyDictionary<string, string> Properties);
 
@@ -214,12 +221,16 @@ public static class CarriedProperties
     /// package management: the nearest above it, or the one the project names; none where the project turns it off.</summary>
     public const string DirectoryPackagesPropsPath = "DirectoryPackagesPropsPath";
 
+    /// <summary>The folder of the Godot project Godot.NET.Sdk builds the project for, which holds its project.godot (the
+    /// project's own folder unless it names another); set by no other SDK.</summary>
+    public const string GodotProjectDir = "GodotProjectDir";
+
     public static readonly IReadOnlyList<string> Names =
     [
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
         NuGetPackageRoot, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
-        DirectoryPackagesPropsPath,
+        DirectoryPackagesPropsPath, GodotProjectDir,
     ];
 }
 
@@ -232,6 +243,9 @@ public sealed record FrameworkDependencies(string? Framework, IReadOnlyList<Pack
     /// <summary>Whether the host evaluated it with EnableWindowsTargeting, which a Windows-only framework needs off Windows,
     /// so a build of it needs it too.</summary>
     public bool WindowsTargeting { get; init; }
+
+    /// <summary>The assembly the framework's build makes, wherever its output folder was moved; null without one.</summary>
+    public string? TargetPath { get; init; }
 }
 
 /// <summary>What a target framework of a project compiles its C# with: its DefineConstants, with the symbols the .NET SDK

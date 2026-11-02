@@ -9,8 +9,8 @@ using Passenger.Editor;
 namespace Passenger.App.Editors;
 
 /// <summary>An editor's gutter columns, fixed and always these: Git blame and the bookmarks left of the line numbers, the
-/// marks (the debugger's, the tests', run icons, colours) and the change bars right of them, each reading the file the
-/// editor shows.</summary>
+/// marks (the debugger's, the tests', run icons, colours), the change bars and a run's errors pinned right of them, each
+/// reading the file the editor shows.</summary>
 public sealed class EditorGutter
 {
     private static readonly ConditionalWeakTable<CodeEditor, EditorGutter> Gutters = [];
@@ -20,7 +20,7 @@ public sealed class EditorGutter
         Editor = editor;
         Bookmarks = new BookmarkColumn(editor);
         Changes = new ChangeColumn(editor);
-        editor.SetGutterColumns([Blame, Bookmarks], [Marks, Changes]);
+        editor.SetGutterColumns([Blame, Bookmarks], [Marks, Changes, Pins]);
         Gutters.AddOrUpdate(editor, this);
     }
 
@@ -34,6 +34,9 @@ public sealed class EditorGutter
 
     public ChangeColumn Changes { get; }
 
+    /// <summary>A run's errors pinned to their lines.</summary>
+    public ErrorPinColumn Pins { get; } = new();
+
     /// <summary>The gutter an editor has, if it has these columns.</summary>
     public static EditorGutter? Of(CodeEditor editor) => Gutters.TryGetValue(editor, out EditorGutter? gutter) ? gutter : null;
 
@@ -43,6 +46,7 @@ public sealed class EditorGutter
     {
         Marks.Show(document);
         Blame.Show(document);
+        Pins.Show(document);
     }
 
     /// <summary>Shows no marks, as an editor showing no file does.</summary>
@@ -50,6 +54,7 @@ public sealed class EditorGutter
     {
         Marks.Show(null);
         Blame.Show(null);
+        Pins.Show(null);
     }
 }
 

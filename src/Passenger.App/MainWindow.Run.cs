@@ -44,10 +44,11 @@ public partial class MainWindow
     public RunConfigurationsDialog ShowRunConfigurations()
     {
         RunConfigurations configurations = session.Configurations;
-        RunConfigurationsDialog dialog = new([.. configurations.All.Where(c => c.Generated)], configurations.Own, [.. Projects.Where(p => p.Exists && p.IsRunnable)],
+        RunConfigurationsDialog dialog = new([.. configurations.All.Where(c => c.Generated)], configurations.Own, [.. session.RunProjects.Where(p => p.Exists && (p.IsRunnable || p.GodotFolder is not null))],
             configurations.Chosen?.Name, (mine, generated, chosen) => configurations.Set(mine, generated, chosen, Projects), buildRun.IsRunningConfiguration)
         {
             Folder = Folder,
+            GodotSetting = settings.GodotExecutable,
             ReadServices = ReadServices(Projects, Engine),
             WriteToProfile = WriteToLaunchProfileAsync,
             Actions = Actions,

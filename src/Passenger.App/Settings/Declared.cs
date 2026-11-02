@@ -40,9 +40,28 @@ public static class Declared
             + "copy built from source says in the status bar that it is out. Nothing is sent but the requests, which name "
             + "Passenger and its version."));
 
+    public static readonly ToggleSetting AlwaysSelectOpenedFile = new(s => s.AlwaysSelectOpenedFile, (s, v) => s with { AlwaysSelectOpenedFile = v },
+        new(D.ExplorerPage, "Always select opened file", "explorer solution view tree follow track sync locate active file tab autoscroll from source",
+            "The Explorer chooses the file shown as a tab is switched to or a file opened. Off, it keeps the row chosen until "
+            + "Select Opened File asks for the file shown. Its options menu turns this on and off too."));
+
+    public static readonly ToggleSetting OpenFilesWithSingleClick = new(s => s.OpenFilesWithSingleClick, (s, v) => s with { OpenFilesWithSingleClick = v },
+        new(D.ExplorerPage, "Open files with single click", "explorer solution view tree one click preview",
+            "A plain click on a file's row opens it, the keys staying in the Explorer. Off, a double-click or Enter opens it. "
+            + "Its options menu turns this on and off too."));
+
+    public static readonly ToggleSetting NestFiles = new(s => s.NestFiles, (s, v) => s with { NestFiles = v },
+        new(D.ExplorerPage, "Show files with the same names as nested", "explorer solution view file nesting nested dependent code-behind group appsettings razor",
+            "A file whose name carries another's, as Counter.razor.cs carries Counter.razor, shows under it in the Solution view. "
+            + "File Nesting… in the Explorer's options lists the rules."));
+
     public static readonly ChoiceSetting<ColourScheme> ColourScheme = new(s => s.ColourScheme, (s, v) => s with { ColourScheme = v }, D.ColourSchemeChoices,
         new(D.EditorPage, "Colour scheme", "colour color scheme syntax highlighting code colours rider keywords strings comments",
             "The colours the code is drawn in: the theme's own, or Rider's, Dark or Light as the theme is. The editor keeps the theme's background."));
+
+    public static readonly FontSetting EditorFontFamily = new(nameof(AppSettings.EditorFontFamily), s => s.EditorFontFamily, (s, v) => s with { EditorFontFamily = v }, null,
+        new(D.EditorPage, "Font family", "font family typeface monospace monospaced code",
+            "The font code is shown in: the editor's, the terminal's unless it has its own, and code's in popups and tool windows."));
 
     public static readonly NumberSetting EditorFontSize = new(s => s.EditorFontSize, (s, v) => s with { EditorFontSize = v },
         AppSettings.MinFontSize, AppSettings.MaxFontSize, 1, new(D.EditorPage, "Font size", "font size text"));
@@ -57,6 +76,9 @@ public static class Declared
 
     public static readonly ToggleSetting RainbowBraces = new(s => s.RainbowBraces, (s, v) => s with { RainbowBraces = v },
         new(D.EditorPage, "Rainbow braces", "brackets parentheses colour color nesting"));
+
+    public static readonly ToggleSetting CloseTags = new(s => s.CloseTags, (s, v) => s with { CloseTags = v },
+        new(D.EditorPage, "Close tags on '>' and '</'", "auto close closing end tags markup xml xaml html msbuild elements"));
 
     public static readonly ToggleSetting SolutionWideAnalysis = new(s => s.SolutionWideAnalysis, (s, v) => s with { SolutionWideAnalysis = v },
         new(D.EditorPage, "Solution-wide analysis", "errors problems whole solution analysis inspections without build"));
@@ -229,8 +251,34 @@ public static class Declared
     public static readonly NumberSetting TerminalFontSize = new(s => s.TerminalFontSize, (s, v) => s with { TerminalFontSize = v },
         AppSettings.MinFontSize, AppSettings.MaxFontSize, 1, new(D.TerminalPage, "Font size", "font size shell"));
 
+    public static readonly FontSetting TerminalFontFamily = new(nameof(AppSettings.TerminalFontFamily), s => s.TerminalFontFamily, (s, v) => s with { TerminalFontFamily = v },
+        "Same as the editor", new(D.TerminalPage, "Font family", "font family typeface monospace monospaced shell"));
+
     public static readonly ProgramSetting TerminalShell = new(s => s.TerminalShell, (s, v) => s with { TerminalShell = v },
         () => Passenger.Terminal.TerminalSession.DefaultShell().App, new(D.TerminalPage, "Shell path", "shell zsh bash powershell program"));
+
+    public static readonly ProgramSetting DebugBrowser = new(s => s.DebugBrowser, (s, v) => s with { DebugBrowser = v },
+        () => Core.ChromiumBrowsers.Find(null) is { } found ? found.Program : "Not found",
+        new(D.RunPage, Debugging.BrowserDebugging.BrowserRow, "browser chrome edge chromium brave blazor webassembly wasm debug debugger page",
+            "The Chromium browser Debug opens a Blazor app's page in, to debug its WebAssembly components, on a profile of Passenger's own, with any arguments "
+            + "to give each start after it. Empty, it is the first of Chrome, Edge, Chromium and Brave found where they install, else on the PATH."));
+
+    public static readonly ProgramSetting GodotExecutable = new(s => s.GodotExecutable, (s, v) => s with { GodotExecutable = v },
+        () => Run.GodotLaunch.Found(null) is { Exists: true } found ? found.Executable : "Not found",
+        new(D.GodotPage, "Godot executable", "godot engine game editor executable path program dotnet mono csharp c# scene",
+            "The Godot a Godot project's game and its editor run on: its .NET build, which runs C#, with any arguments to give each "
+            + $"start after it. Empty, it is the one {Core.GodotExecutables.Variable} names, else the first on the PATH, else on macOS the newest in Applications."),
+        Run.GodotLaunch.DescribedAsync);
+
+    public static readonly ToggleSetting TerminalCopyOnSelection = new(s => s.TerminalCopyOnSelection, (s, v) => s with { TerminalCopyOnSelection = v },
+        new(D.TerminalPage, "Copy on selection", "copy selection clipboard mouse drag word"));
+
+    public static readonly ToggleSetting TerminalCursorBlinking = new(s => s.TerminalCursorBlinking, (s, v) => s with { TerminalCursorBlinking = v },
+        new(D.TerminalPage, "Cursor blinking", "cursor caret blink blinking", "Programs can override this setting until the terminal is reset."));
+
+    public static readonly ChoiceSetting<Passenger.Terminal.CursorShape> TerminalCursorStyle = new(s => s.TerminalCursorStyle, (s, v) => s with { TerminalCursorStyle = v },
+        [(Passenger.Terminal.CursorShape.Block, "Block"), (Passenger.Terminal.CursorShape.Bar, "Line"), (Passenger.Terminal.CursorShape.Underline, "Underline")],
+        new(D.TerminalPage, "Cursor style", "cursor caret type style shape block line bar underline", "Programs can override this setting until the terminal is reset."));
 
     public static readonly ToggleSetting McpServer = new(s => s.McpServer, (s, v) => s with { McpServer = v },
         new(D.McpPage, "Enable MCP Server", D.McpWords,

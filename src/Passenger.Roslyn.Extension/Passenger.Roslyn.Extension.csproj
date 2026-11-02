@@ -22,6 +22,11 @@
     <Compile Include="../Passenger.Core/Plural.cs" Link="Plural.cs" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <!-- Built for this machine whatever platform is published (Passenger.Lsp removes its RuntimeIdentifier), so its
+         restore downloads this machine's server even where a publish for another platform restores it. -->
+    <RoslynServerFor>$([System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier)</RoslynServerFor>
+  </PropertyGroup>
   <Import Project="../Passenger.Lsp/RoslynServer.targets" />
 
   <Target Name="ReferenceRoslynServer" BeforeTargets="ResolveAssemblyReferences" DependsOnTargets="FindRoslynServer">

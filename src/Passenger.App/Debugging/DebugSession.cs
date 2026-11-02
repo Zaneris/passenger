@@ -15,6 +15,16 @@ public enum DebugState
     Ended,
 }
 
+/// <summary>The debugger a session's adapter is: Passenger's own engine, for .NET's code, a Godot game's GDScript, over
+/// the game's own connection (<see cref="Godot.GodotScriptAdapter"/>), or a Blazor app's WebAssembly half, in a Chromium
+/// browser through .NET's browser debug proxy (<see cref="WebAssemblyAdapter"/>).</summary>
+public enum DebugEngine
+{
+    Managed,
+    GDScript,
+    WebAssembly,
+}
+
 /// <summary>One program under the debugger: the adapter's process (debugger/ beside the app), the
 /// conversation with it, and what the program is doing. A UI-thread object: every event and state change
 /// lands on the UI thread. A file's breakpoints go to the adapter whenever what they ask of it changes, while it
@@ -25,9 +35,22 @@ public sealed class DebugSession
     private const int ErrorLines = 40;
 
     /// <summary>Why a breakpoint on a line written since the build is not sent: the program has no code of it.</summary>
-    private const string NotBuilt = "The breakpoint will not currently be hit: its line was written after the program being debugged was built.";
+    private const string NotBuilt = "Its line was written after the program being debugged was built: restart debugging to build it";
 
-    private readonly Process adapter;
+    /// <summary>Why a GDScript breakpoint on a line written since its game loaded the script is not sent.</summary>
+    private const string NotLoaded = "Its line was written after the game loaded its script: save it with Hot Reload on, and the game reloads it";
+
+    /// <summary>The projects of the program debugged whose code runs in the browser on .NET's WebAssembly runtime (their project
+    /// files), and the program's own project, from its plan (<see cref="Run.LaunchPlan.InBrowser"/>): a WebAssembly session
+    /// takes their files' breakpoints; where no browser debugs them, a breakpoint in their files says it stops only where the
+    /// program runs their code itself, or never where the program is their development server.</summary>
+    public (IReadOnlyList<string> Projects, string Program)? InBrowser { get; set; }
+
+    /// <summary>The project of <see cref="InBrowser"/> whose own folders hold a file, if one does.</summary>
+    private string? BrowserProjectOf(string path) =>
+        InBrowser?.Projects.FirstOrDefault(p => ProjectFolders.Holds(System.IO.Path.GetDirectoryName(p)!, path));
+
+    private readonly AdapterEnd adapter;
     private readonly DapConnection connection;
 
     /// <summary>Where the adapter runs when not beside the app, whose path map paths cross at the protocol's edge.</summary>
@@ -72,9 +95,6 @@ public sealed class DebugSession
     /// <summary>Done once the adapter's error stream has been read to its end.</summary>
     private readonly Task errorsHeard;
 
-    /// <summary>Done once the adapter's process has ended, however soon after its start that was.</summary>
-    private readonly TaskCompletionSource exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
     /// <summary>Run to Cursor's place, as the debugger is asked for it (<see cref="Asked"/>), until the next stop.</summary>
     private (string Path, DapSourceBreakpoint At)? runToCursor;
 
@@ -94,13 +114,17 @@ public sealed class DebugSession
     /// <summary>The adapter's one disconnect, once asked: nothing more is asked of it, since it may go before answering.</summary>
     private Task? disconnected;
 
+    /// <summary>Whether the conversation with the adapter is over (<see cref="End"/>): a session shown ended as its program
+    /// ended may still wait for its adapter to go.</summary>
+    private bool closed;
+
     /// <summary>Done once the disconnect is asked, which ends a start's waits.</summary>
     private readonly TaskCompletionSource ending = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>Why a start failed that was stopped (Stop, Detach, the window's close) before it was done.</summary>
     public const string StoppedStarting = "the session was stopped as it started";
 
-    /// <summary>The debug adapter the app carries, beside it in debugger/, which dotnet runs.</summary>
+    /// <summary>The debug adapter the app carries, beside it in debugger/, which the helper host runs.</summary>
     public static string AdapterPath => Path.Combine(AppContext.BaseDirectory, "debugger", "Passenger.DebugAdapter.dll");
 
     /// <summary>How the adapter starts: beside the app, or where the program is (a container's, over docker exec).</summary>
@@ -120,7 +144,7 @@ public sealed class DebugSession
             {
                 throw new FileNotFoundException("The debug adapter is not beside the app", path);
             }
-            List<string> arguments = [path, AdapterFlags.Interpreter, AdapterFlags.SymbolCache + SymbolCache];
+            List<string> arguments = [AdapterFlags.Interpreter, AdapterFlags.SymbolCache + SymbolCache];
             if (AdapterEnvironment.EngineLog is { } engineLog)
             {
                 arguments.Add(AdapterFlags.EngineLogging + engineLog);
@@ -129,7 +153,8 @@ public sealed class DebugSession
             {
                 arguments.Add(AdapterFlags.Remote);
             }
-            start = ChildProcesses.DotnetCommand(arguments);
+            // On the runtime Passenger runs on: the program it debugs may run on another, or carry its own.
+            start = ChildProcesses.HelperCommand(path, arguments);
         }
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
@@ -137,9 +162,10 @@ public sealed class DebugSession
         return start;
     }
 
-    private DebugSession(Process adapter, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output, Func<string, int, string?, int?, int?>? columns,
-        bool elsewhere, AdapterPlace? place, bool quiet = false)
+    private DebugSession(AdapterEnd adapter, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output, Func<string, int, string?, int?, int?>? columns,
+        bool elsewhere, AdapterPlace? place, bool quiet = false, DebugEngine engine = DebugEngine.Managed)
     {
+        Engine = engine;
         Elsewhere = elsewhere || place is not null;
         this.place = place;
         this.breakpoints = breakpoints;
@@ -149,14 +175,14 @@ public sealed class DebugSession
         log = UiThread.Marshal(log);
         this.adapter = adapter;
         // What the adapter and the conversation say goes to the debugger's log as well as the console, so it outlives the session.
-        string name = $"adapter {adapter.Id}";
+        string name = adapter.Name;
         Action<string> console = log;
         log = line =>
         {
             IdeLog.Write(IdeLog.Debugger, $"[{name}] {line}");
             console(line);
         };
-        errorsHeard = ChildProcesses.Hear(adapter, errors: line =>
+        errorsHeard = adapter.HearErrors(line =>
         {
             lock (errors)
             {
@@ -169,15 +195,8 @@ public sealed class DebugSession
             log(line);
         });
         IdeErrors.Observe(errorsHeard);
-        adapter.EnableRaisingEvents = true;
-        adapter.Exited += (_, _) => exited.TrySetResult();
-        // Exited is raised once: an adapter that died as it started may have had it before this thread came to listen.
-        if (adapter.HasExited)
-        {
-            exited.TrySetResult();
-        }
         IdeErrors.Observe(HearEndAsync(log));
-        connection = new DapConnection(adapter.StandardOutput.BaseStream, adapter.StandardInput.BaseStream, log) { Name = name };
+        connection = new DapConnection(adapter.FromAdapter, adapter.ToAdapter, log) { Name = name };
         connection.EventReceived += (name, body) =>
         {
             if (name == DapEvents.Output)
@@ -209,8 +228,8 @@ public sealed class DebugSession
         breakpoints.BindingErrorsChanged += OnFunctionsChanged;
     }
 
-    /// <summary>Attached for Hot Reload alone (a container run's service under Run with Hot Reload): no breakpoint is sent,
-    /// no exception stops it, and the breakpoints never hear of it, until it debugs (<see cref="DebugAsync"/>).</summary>
+    /// <summary>Attached for Hot Reload alone (a container run's service or a Godot game under Run with Hot Reload): no
+    /// breakpoint is sent, no exception stops it, and the breakpoints never hear of it, until it debugs (<see cref="DebugAsync"/>).</summary>
     public bool Quiet { get; private set; }
 
     /// <summary>A quiet session made one that debugs its program as it runs (Attach to a service it runs with Hot Reload):
@@ -231,6 +250,19 @@ public sealed class DebugSession
 
     public event EventHandler? StateChanged;
 
+    /// <summary>Which debugger its adapter is, and so which files' breakpoints it is sent (<see cref="Takes"/>).</summary>
+    public DebugEngine Engine { get; }
+
+    /// <summary>Whether a file's breakpoints go to this session's adapter: a GDScript file's to a GDScript session, a file of
+    /// the projects a WebAssembly session's browser runs to it, every other file's (and a Blazor Web App's client's, whose
+    /// components its server prerenders) to Passenger's engine.</summary>
+    public bool Takes(string path) => Engine switch
+    {
+        DebugEngine.GDScript => Godot.GodotScriptAdapter.Takes(path),
+        DebugEngine.WebAssembly => InBrowser is { } inBrowser && WebAssemblyAdapter.Takes(inBrowser.Projects, path),
+        _ => !Godot.GodotScriptAdapter.Takes(path),
+    };
+
     public DebugState State { get; private set; } = DebugState.Starting;
 
     /// <summary>The thread that stopped, while paused.</summary>
@@ -245,6 +277,10 @@ public sealed class DebugSession
 
     /// <summary>The property breakpoint the program stopped at, while paused there.</summary>
     public PropertyBreakpoint? PropertyStop { get; private set; }
+
+    /// <summary>Why no step goes on from the stop, while paused at one its debugger only continues from (a Godot script
+    /// error); null where steps go on.</summary>
+    public string? NoSteps { get; private set; }
 
     /// <summary>Paused at XAML Binding Errors: a binding of the app failed where it stopped.</summary>
     public bool BindingErrorStop { get; private set; }
@@ -319,7 +355,7 @@ public sealed class DebugSession
         Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal = null, Func<string, int, string?, int?, int?>? columns = null, bool hotReload = false,
         Action<DebugSession>? starting = null, bool elsewhere = false, AdapterPlace? place = null)
     {
-        return StartAsync(plan.Built ?? plan.Program, DapCommands.Launch, new LaunchArguments
+        return StartAsync(OwnAdapter(place, elsewhere), plan.Built ?? plan.Program, DapCommands.Launch, new LaunchArguments
         {
             Program = place?.ToProgram(plan.Program) ?? plan.Program,
             Args = plan.Arguments,
@@ -329,6 +365,7 @@ public sealed class DebugSession
             JustMyCode = true,
             StopAtEntry = false,
             HotReload = hotReload,
+            Presentations = Godot.GodotValues.Presentations,
         }, breakpoints, lines, log, output, runInTerminal, columns, starting, elsewhere, place);
     }
 
@@ -340,21 +377,50 @@ public sealed class DebugSession
     public static Task<DebugSession> AttachAsync(int processId, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
         Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null,
         bool quiet = false) =>
-        StartAsync(place is null ? $"process {processId}" : $"process {processId} in {place.Where}", DapCommands.Attach,
-            new AttachArguments { ProcessId = processId, JustMyCode = true, HotReload = hotReload ? true : null },
+        StartAsync(OwnAdapter(place, elsewhere), place is null ? $"process {processId}" : $"process {processId} in {place.Where}", DapCommands.Attach,
+            new AttachArguments { ProcessId = processId, JustMyCode = true, HotReload = hotReload ? true : null, Presentations = Godot.GodotValues.Presentations },
             breakpoints, lines, log, output, null, columns, starting, elsewhere, place, quiet);
+
+    /// <summary>Attaches an adapter inside the IDE to a program another session runs (a Godot game's GDScript, over the game's
+    /// own connection, <paramref name="engine"/> saying which files' breakpoints it takes), with the store's breakpoints;
+    /// <paramref name="starting"/> is handed the session as it begins.</summary>
+    public static Task<DebugSession> AttachInProcessAsync(InProcessEnd adapter, DebugEngine engine, string program, BreakpointStore breakpoints, BuiltLines lines,
+        Action<string> log, Action<OutputEvent> output, Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null) =>
+        StartAsync(() => Task.FromResult<AdapterEnd>(adapter), program, DapCommands.Attach, new AttachArguments(), breakpoints, lines, log, output, null, columns, starting,
+            elsewhere: false, place: null, engine: engine);
+
+    /// <summary>Has an adapter inside the IDE launch a plan's program itself (a Godot game of GDScript alone, its output told as
+    /// the adapter reads it, or with <paramref name="runInTerminal"/> in the terminal it starts), <paramref name="engine"/>
+    /// saying which files' breakpoints it takes, with the store's breakpoints; <paramref name="starting"/> is handed the
+    /// session as it begins.</summary>
+    public static Task<DebugSession> LaunchInProcessAsync(InProcessEnd adapter, DebugEngine engine, Run.LaunchPlan plan, BreakpointStore breakpoints, BuiltLines lines,
+        Action<string> log, Action<OutputEvent> output, Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal = null,
+        Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null) =>
+        StartAsync(() => Task.FromResult<AdapterEnd>(adapter), plan.Program, DapCommands.Launch, new LaunchArguments
+        {
+            Program = plan.Program,
+            Args = plan.Arguments,
+            Cwd = plan.WorkingDirectory,
+            Env = plan.Environment,
+            Console = runInTerminal is null ? "internalConsole" : "integratedTerminal",
+        }, breakpoints, lines, log, output, runInTerminal, columns, starting, elsewhere: false, place: null, engine: engine);
+
+    /// <summary>Passenger's own adapter, started beside the app or where the program is (<see cref="AdapterStart"/>), forked
+    /// off the window's thread.</summary>
+    private static Func<Task<AdapterEnd>> OwnAdapter(AdapterPlace? place, bool elsewhere) =>
+        async () => new ProcessEnd(await ChildProcesses.StartAsync(AdapterStart(place, elsewhere)));
 
     /// <summary>Opens the session: the adapter told what to start, the breakpoints sent (a quiet session's none, and no
     /// exception to stop at), then configurationDone, whose answer waits for the program's runtime however long it takes. A
     /// session stopped meanwhile ends the start at once, failing it with <see cref="StoppedStarting"/>.</summary>
-    private static async Task<DebugSession> StartAsync(string program, string request, object arguments, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
-        Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal, Func<string, int, string?, int?, int?>? columns, Action<DebugSession>? starting, bool elsewhere, AdapterPlace? place,
-        bool quiet = false)
+    private static async Task<DebugSession> StartAsync(Func<Task<AdapterEnd>> start, string program, string request, object arguments, BreakpointStore breakpoints, BuiltLines lines,
+        Action<string> log, Action<OutputEvent> output, Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal, Func<string, int, string?, int?, int?>? columns,
+        Action<DebugSession>? starting, bool elsewhere, AdapterPlace? place, bool quiet = false, DebugEngine engine = DebugEngine.Managed)
     {
         UiThread.Check();
-        // Forked off the window's thread; a Stop meanwhile finds the tab still opening, which its session closes.
-        Process adapter = await ChildProcesses.StartAsync(AdapterStart(place, elsewhere));
-        DebugSession session = new(adapter, breakpoints, lines, log, output, columns, elsewhere, place, quiet) { Program = program, Attached = request == DapCommands.Attach };
+        // A Stop meanwhile finds the tab still opening, which its session closes.
+        AdapterEnd adapter = await start();
+        DebugSession session = new(adapter, breakpoints, lines, log, output, columns, elsewhere, place, quiet, engine) { Program = program, Attached = request == DapCommands.Attach };
         IdeLog.Write(IdeLog.Debugger, $"[{session.connection.Name}] {request} {program}");
         if (runInTerminal is not null)
         {
@@ -374,7 +440,7 @@ public sealed class DebugSession
             {
                 ClientId = "passenger",
                 ClientName = "Passenger",
-                AdapterId = "coreclr",
+                AdapterId = engine switch { DebugEngine.GDScript => "gdscript", DebugEngine.WebAssembly => "webassembly", _ => "coreclr" },
                 LinesStartAt1 = true,
                 ColumnsStartAt1 = true,
                 PathFormat = "path",
@@ -472,7 +538,8 @@ public sealed class DebugSession
     }
 
     /// <summary>Ends the program and the adapter. A program that will not go is killed with the adapter; one in the terminal
-    /// that is stopped, rather than at its own end, goes with all it started.</summary>
+    /// that is stopped, rather than at its own end, goes with all it started. Once the adapter has said the program ended,
+    /// the session is ended as the window shows it, the adapter's own end waited for after.</summary>
     public async Task StopAsync()
     {
         UiThread.Check();
@@ -493,6 +560,11 @@ public sealed class DebugSession
                 Terminal!.Stopping();
             }
         }
+        // The program has gone: the window shows the session ended at once, the adapter's end waited for behind it.
+        if (programEnded && Terminal?.Ended.IsCompleted != false)
+        {
+            Ended(ExitCode);
+        }
         await EndProcessesAsync(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(3));
         if (Terminal is { } terminal)
         {
@@ -503,6 +575,20 @@ public sealed class DebugSession
             await TerminalEnd(terminal);
         }
         End(ExitCode);
+    }
+
+    /// <summary>The program has gone, heard other than from the adapter (a Godot game's connection, then its process, ended):
+    /// the session is shown ended at once and the adapter asked to end, as when it says so itself, so an adapter slow to go
+    /// leaves no program shown running.</summary>
+    public void ProgramGone()
+    {
+        UiThread.Check();
+        if (State == DebugState.Ended || programEnded)
+        {
+            return;
+        }
+        programEnded = true;
+        IdeErrors.Observe(StopAsync());
     }
 
     /// <summary>Detach: the debugger takes its breakpoints out of the program it attached to and lets go of it, and the
@@ -555,8 +641,8 @@ public sealed class DebugSession
     public Task CloseAsync(bool letGo = true)
     {
         UiThread.Check();
-        return State == DebugState.Ended ? Task.CompletedTask
-            : Attached && letGo ? EndProcessesAsync(ClosingLetGo + TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1.5), terminate: false, letGoWithin: ClosingLetGo)
+        return closed ? Task.CompletedTask
+            : Attached && letGo && State != DebugState.Ended ? EndProcessesAsync(ClosingLetGo + TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1.5), terminate: false, letGoWithin: ClosingLetGo)
             : EndProcessesAsync(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
     }
 
@@ -573,10 +659,10 @@ public sealed class DebugSession
         return BackgroundWork.Unheld(async () =>
         {
             await Task.WhenAny(asked, Task.Delay(answer));
-            if (!adapter.WaitForExit(exit))
+            if (!await adapter.EndsWithinAsync(exit))
             {
                 killed = true;
-                ChildProcesses.Kill(adapter);
+                adapter.Kill();
             }
         });
     }
@@ -598,16 +684,15 @@ public sealed class DebugSession
     /// words reach the console and the log before its end.</summary>
     private async Task HearEndAsync(Action<string> log)
     {
-        await exited.Task.ConfigureAwait(false);
+        int code = await adapter.Exited.ConfigureAwait(false);
         await Task.WhenAny(errorsHeard, Task.Delay(TimeSpan.FromSeconds(2))).ConfigureAwait(false);
-        UiThread.Post(() => OnAdapterExited(log));
+        UiThread.Post(() => OnAdapterExited(code, log));
     }
 
     /// <summary>The adapter's process ended: with exit code 0 as asked, or killed when it would not go; any other end is
     /// a crash, written to the IDE's log with its last words, and told in the console while the session lived.</summary>
-    private void OnAdapterExited(Action<string> log)
+    private void OnAdapterExited(int code, Action<string> log)
     {
-        int code = adapter.ExitCode;
         if (code != 0 && !killed && place?.Running is { } running)
         {
             IdeErrors.Observe(PlaceEndedAsync(running, code, log).ContinueWith(_ => adapterEnded.TrySetResult(), TaskScheduler.Default));
@@ -638,7 +723,7 @@ public sealed class DebugSession
             AdapterExited(code, log);
             return;
         }
-        IdeLog.Write(IdeLog.Debugger, $"[adapter {adapter.Id}] ended with exit code {code} as {place!.Where} stopped, debugging {Program}");
+        IdeLog.Write(IdeLog.Debugger, $"[{adapter.Name}] ended with exit code {code} as {place!.Where} stopped, debugging {Program}");
         if (State != DebugState.Ended && !programEnded)
         {
             Gone = $"{place.Where} stopped";
@@ -658,7 +743,7 @@ public sealed class DebugSession
             {
                 said = string.Join('\n', errors);
             }
-            IdeErrors.Write($"Passenger's debugger (process {adapter.Id}) stopped with exit code {code} debugging {Program}"
+            IdeErrors.Write($"Passenger's debugger ({adapter.Described}) stopped with exit code {code} debugging {Program}"
                 + (said.Length > 0 ? $":\n{said}" : string.Empty));
             if (State != DebugState.Ended && !programEnded)
             {
@@ -717,7 +802,7 @@ public sealed class DebugSession
             }
             log(EndedLeftRunning(Path.GetFileName(Program), program.Id));
             ChildProcesses.Kill(program);
-            ChildProcesses.Kill(adapter);
+            adapter.Kill();
         }
     }
 
@@ -814,7 +899,7 @@ public sealed class DebugSession
     public async Task SendBreakpointsAgainAsync(IEnumerable<string> paths)
     {
         UiThread.Check();
-        foreach (string path in paths.Where(p => breakpoints.In(p).Count > 0 || sent.ContainsKey(p)).ToList())
+        foreach (string path in paths.Where(p => Takes(p) && (breakpoints.In(p).Count > 0 || sent.ContainsKey(p))).ToList())
         {
             if (State is DebugState.Running or DebugState.Paused && disconnected is null)
             {
@@ -824,8 +909,10 @@ public sealed class DebugSession
     }
 
     /// <summary>An expression's value in a frame; context is watch, hover or repl.</summary>
-    public Task<EvaluateResponse> EvaluateAsync(string expression, int? frameId, string context) =>
-        connection.RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, context));
+    /// <summary>An expression's value in a frame; with <paramref name="letThreadsRun"/>, run with every thread of the program
+    /// let go, which only the person asks for.</summary>
+    public Task<EvaluateResponse> EvaluateAsync(string expression, int? frameId, string context, bool letThreadsRun = false) =>
+        connection.RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, context, letThreadsRun ? true : null));
 
     /// <summary>Sets the paused program going (a continue or a step), saying it runs at once, as the adapter takes it ahead
     /// of what the stop still reads: a request it refuses throws its reason, and the stop is shown again as it was, the
@@ -862,8 +949,11 @@ public sealed class DebugSession
     {
         // Muted, none is sent and each is as no debugger has said, though Run to Cursor's place still is.
         IEnumerable<LineBreakpoint> sending = breakpoints.Muted ? [] : breakpoints.In(path).Where(b => b.Enabled);
-        List<LineBreakpoint> built = [.. sending.Where(b => lines.IsBuilt(path, b.Line))];
-        List<LineBreakpoint> unbuilt = [.. sending.Where(b => !lines.IsBuilt(path, b.Line))];
+        // A WebAssembly app's own code never runs where its development server is debugged: none of it is sent.
+        string? browser = Engine == DebugEngine.Managed ? BrowserProjectOf(path) : null;
+        string? neverHit = browser is not null && InBrowser is { } inBrowser && PathNames.Same(browser, inBrowser.Program) ? Run.LaunchPlan.NeverHitInBrowser(browser) : null;
+        List<LineBreakpoint> built = [.. sending.Where(b => neverHit is null && lines.IsBuilt(path, b.Line))];
+        List<LineBreakpoint> unbuilt = [.. sending.Where(b => neverHit is not null || !lines.IsBuilt(path, b.Line))];
         List<DapSourceBreakpoint> requests = [.. built.Select(b => Request(path, b))];
         if (runToCursor is { } target && target.Path == path)
         {
@@ -902,8 +992,9 @@ public sealed class DebugSession
             breakpoints.Report(this, path, [.. breakpoints.In(path).Select(_ => (BreakpointStatus.Unknown, (string?)null, (int?)null))], breakpoints.In(path));
             return;
         }
+        string unbuiltWhy = neverHit ?? (Engine == DebugEngine.GDScript ? NotLoaded : NotBuilt);
         breakpoints.Report(this, path,
-            [.. response.Breakpoints.Take(built.Count).Select(b => Status(path, b)), .. unbuilt.Select(_ => (BreakpointStatus.Invalid, (string?)NotBuilt, (int?)null))],
+            [.. response.Breakpoints.Take(built.Count).Select(b => Status(path, b)), .. unbuilt.Select(_ => (BreakpointStatus.Invalid, (string?)unbuiltWhy, (int?)null))],
             [.. built.Take(response.Breakpoints.Count), .. unbuilt]);
     }
 
@@ -932,7 +1023,7 @@ public sealed class DebugSession
     /// the files taken first, and once configurationDone has answered what changed meanwhile, when no change could go.</summary>
     private async Task SendChangedAsync()
     {
-        foreach (string path in breakpoints.Files.Concat(sent.Keys).Distinct(StringComparer.Ordinal).ToList())
+        foreach (string path in breakpoints.Files.Concat(sent.Keys).Distinct(StringComparer.Ordinal).Where(Takes).ToList())
         {
             if (Open() && (!sent.TryGetValue(path, out string? last) || last != Signature(path)))
             {
@@ -943,7 +1034,7 @@ public sealed class DebugSession
         {
             await SendExceptionBreakpointsAsync();
         }
-        if (Open() && functionsSent != FunctionSignature())
+        if (Open() && Engine == DebugEngine.Managed && functionsSent != FunctionSignature())
         {
             await (functionsAnswered = SendFunctionBreakpointsAsync());
         }
@@ -958,7 +1049,7 @@ public sealed class DebugSession
     private void OnBreakpointsChanged(object? sender, string path)
     {
         // A report from the debugger raises Changed too: only what changes the request goes back to it.
-        if (State is DebugState.Running or DebugState.Paused && disconnected is null && (!sent.TryGetValue(path, out string? last) || last != Signature(path)))
+        if (Takes(path) && State is DebugState.Running or DebugState.Paused && disconnected is null && (!sent.TryGetValue(path, out string? last) || last != Signature(path)))
         {
             Sending(SendBreakpointsAsync(path));
         }
@@ -1003,9 +1094,15 @@ public sealed class DebugSession
             Suspend = e.Suspend,
         }))];
 
-    /// <summary>Sends the exception breakpoints, and records what the debugger made of each.</summary>
+    /// <summary>Sends the exception breakpoints, and records what the debugger made of each; a GDScript session's are its
+    /// errors' (<see cref="SendScriptErrorsAsync"/>).</summary>
     private async Task SendExceptionBreakpointsAsync()
     {
+        if (Engine == DebugEngine.GDScript)
+        {
+            await SendScriptErrorsAsync();
+            return;
+        }
         List<(ExceptionBreakpoint Breakpoint, DapExceptionOptions Option)> sending = ExceptionOptions();
         exceptionsSent = ExceptionSignature();
         SetExceptionBreakpointsResponse response = await connection.RequestAsync<SetExceptionBreakpointsResponse>(
@@ -1020,6 +1117,22 @@ public sealed class DebugSession
             }
         }
         breakpoints.ReportExceptions(this, [.. said.Select(b => (b.Verified ? BreakpointStatus.Bound : BreakpointStatus.Invalid, b.Message))], [.. sending.Select(s => s.Breakpoint)]);
+    }
+
+    /// <summary>GDScript Errors while it is on and nothing is muted: the one filter of a GDScript session's exception
+    /// breakpoints, with its condition, hit count and message.</summary>
+    private ScriptErrorBreakpoint? ScriptErrorsSending() => !breakpoints.Muted && breakpoints.ScriptErrors.Enabled ? breakpoints.ScriptErrors : null;
+
+    /// <summary>Sends GDScript Errors, on or off, and records what the debugger made of it.</summary>
+    private async Task SendScriptErrorsAsync()
+    {
+        ScriptErrorBreakpoint? errors = ScriptErrorsSending();
+        exceptionsSent = ExceptionSignature();
+        SetExceptionBreakpointsResponse response = await connection.RequestAsync<SetExceptionBreakpointsResponse>(DapCommands.SetExceptionBreakpoints,
+            new SetExceptionBreakpointsArguments(errors is null ? [] : [Godot.GodotScriptAdapter.ErrorsFilter], errors is null ? null
+                : [new DapExceptionFilterOptions(Godot.GodotScriptAdapter.ErrorsFilter, errors.Condition) { HitCondition = errors.HitCondition, LogMessage = errors.LogMessage, Suspend = errors.Suspend }]));
+        DapBreakpoint? said = response.Breakpoints is [var first, ..] ? first : null;
+        breakpoints.ReportScriptErrors(this, errors is null || said is null ? BreakpointStatus.Unknown : said.Verified ? BreakpointStatus.Bound : BreakpointStatus.Invalid, said?.Message);
     }
 
     private void OnExceptionsChanged(object? sender, EventArgs e)
@@ -1166,7 +1279,7 @@ public sealed class DebugSession
     private void OnFunctionsChanged(object? sender, EventArgs e)
     {
         // A report from the debugger raises it too: only what changes the request goes back to it.
-        if (State is DebugState.Running or DebugState.Paused && disconnected is null && functionsSent != FunctionSignature())
+        if (Engine == DebugEngine.Managed && State is DebugState.Running or DebugState.Paused && disconnected is null && functionsSent != FunctionSignature())
         {
             functionsAnswered = SendFunctionBreakpointsAsync();
         }
@@ -1190,6 +1303,7 @@ public sealed class DebugSession
         stoppedAt = stopped;
         StoppedThread = stopped.ThreadId;
         StopReason = stopped.Reason;
+        NoSteps = stopped.NoSteps;
         DataStop = stopped.Reason == StopReasons.DataBreakpoint && stopped.HitBreakpointIds?.Select(id => dataById.GetValueOrDefault(id)).FirstOrDefault(d => d is not null) is { } watched
             ? (watched, stopped.Text)
             : null;
@@ -1213,8 +1327,10 @@ public sealed class DebugSession
         return Signatures.Of([.. sending]);
     }
 
-    private string ExceptionSignature() => Signatures.Of([.. ExceptionOptions().Select(s => Signatures.Of(
-        s.Breakpoint.Type, Signatures.Of([.. s.Option.Scenarios ?? []]), s.Option.Condition, s.Option.HitCondition, s.Option.LogMessage, s.Option.Suspend))]);
+    private string ExceptionSignature() => Engine == DebugEngine.GDScript
+        ? ScriptErrorsSending() is { } errors ? Signatures.Of("errors", errors.Condition, errors.HitCondition, errors.LogMessage, errors.Suspend) : "none"
+        : Signatures.Of([.. ExceptionOptions().Select(s => Signatures.Of(
+            s.Breakpoint.Type, Signatures.Of([.. s.Option.Scenarios ?? []]), s.Option.Condition, s.Option.HitCondition, s.Option.LogMessage, s.Option.Suspend))]);
 
     private void OnEvent(string name, JsonElementCopy body)
     {
@@ -1272,6 +1388,10 @@ public sealed class DebugSession
                     processStarted.TrySetResult(processId);
                 }
                 break;
+            case DapEvents.Continued when State == DebugState.Paused:
+                // Gone on from its stop by itself (a Godot game's script, whose debugger did not let it go).
+                SetState(DebugState.Running);
+                break;
             case DapEvents.Exited:
                 ExitCode = body.Read<ExitedEvent>().ExitCode;
                 programEnded = true;
@@ -1291,6 +1411,11 @@ public sealed class DebugSession
     private (BreakpointStatus, string?, int?) Status(string path, DapBreakpoint breakpoint)
     {
         (BreakpointStatus status, string? message, int? line) = Status(breakpoint);
+        // A Blazor Web App's client code stops only where its server runs it, which the debugger cannot tell from the browser's.
+        if (status != BreakpointStatus.Invalid && Engine == DebugEngine.Managed && BrowserProjectOf(path) is { } client && InBrowser is { } inBrowser)
+        {
+            message = Run.LaunchPlan.HitOnlyOnServer(client, inBrowser.Program);
+        }
         return (status, message, line is int bound and >= 0 ? lines.ToCurrent(path, bound) : null);
     }
 
@@ -1304,6 +1429,7 @@ public sealed class DebugSession
         {
             StoppedThread = null;
             StopReason = null;
+            NoSteps = null;
             DataStop = null;
             PropertyStop = null;
             BindingErrorStop = false;
@@ -1312,7 +1438,19 @@ public sealed class DebugSession
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>Ends the session, and the conversation with its adapter, once.</summary>
     private void End(int? exitCode)
+    {
+        Ended(exitCode);
+        if (!closed)
+        {
+            closed = true;
+            IdeErrors.Observe(connection.DisposeAsync().AsTask());
+        }
+    }
+
+    /// <summary>The session has ended as the window shows it, once: its breakpoints' words let go of, its exit code kept.</summary>
+    private void Ended(int? exitCode)
     {
         if (State == DebugState.Ended)
         {
@@ -1331,7 +1469,6 @@ public sealed class DebugSession
             breakpoints.Leave(this);
         }
         SetState(DebugState.Ended);
-        IdeErrors.Observe(connection.DisposeAsync().AsTask());
     }
 
     /// <summary>An event's body, copied off the connection's buffer for reading on the UI thread.</summary>

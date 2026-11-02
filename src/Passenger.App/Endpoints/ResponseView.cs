@@ -16,15 +16,14 @@ public sealed class ResponseView : DockPanel
     private readonly StackPanel criteria = new() { Margin = new Thickness(8, 0, 8, 4) };
     private readonly ToggleButton bodyTab = new() { Classes = { StyleClasses.Segment }, Content = "Body", IsChecked = true, FontSize = 12 };
     private readonly ToggleButton headersTab = new() { Classes = { StyleClasses.Segment }, Content = "Headers", FontSize = 12 };
-    private readonly TextBox text = new()
+    private readonly TextBox text = new TextBox
     {
         IsReadOnly = true,
         AcceptsReturn = true,
         TextWrapping = TextWrapping.NoWrap,
-        FontFamily = CodeEditor.CodeFont,
         FontSize = 12,
         Margin = new Thickness(8, 4, 8, 8),
-    };
+    }.InCodeFont();
     private readonly TextBlock empty;
     private readonly Panel shown;
 
@@ -109,7 +108,7 @@ public sealed class ResponseView : DockPanel
             PathIcon mark = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0) };
             mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(result.Passed ? IconKeys.TestPassed : IconKeys.TestFailed));
             Paint(mark, result.Passed ? TokenKeys.Test_Passed : TokenKeys.Test_Failed);
-            TextBlock what = new() { Text = result.Expectation.ToString(), FontFamily = CodeEditor.CodeFont, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+            TextBlock what = new TextBlock { Text = result.Expectation.ToString(), FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
             TextBlock had = new() { Text = $"  got {result.Actual}", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
             Paint(had, TokenKeys.TextMuted);
             // What the answer had takes what the row leaves, so a narrow pane ends it in an ellipsis rather than cutting it.

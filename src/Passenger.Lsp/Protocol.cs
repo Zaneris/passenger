@@ -67,9 +67,10 @@ public sealed record LspTextEdit(LspRange Range, string NewText);
 public sealed record WorkspaceFolder(string Uri, string Name);
 
 /// <summary>What the client tells a server as it starts; <see cref="InitializationOptions"/> are the server's own (the JSON
-/// server's schema protocols, the TypeScript server's preferences), none for Roslyn.</summary>
+/// server's schema protocols, the TypeScript server's preferences), none for Roslyn; <see cref="RootPath"/> only where the
+/// server reads it (Godot's).</summary>
 public sealed record InitializeParams(int ProcessId, string RootUri, IReadOnlyList<WorkspaceFolder> WorkspaceFolders, JsonElement Capabilities, string Locale = "en",
-    object? InitializationOptions = null);
+    object? InitializationOptions = null, string? RootPath = null);
 
 /// <summary>One project a document is compiled in, as Visual Studio's protocol extension names it: a target framework
 /// of a multi-targeted project each, or Roslyn's Miscellaneous Files for a file in no project it has loaded. A request

@@ -340,7 +340,7 @@ public sealed class FindView : DockPanel
     /// name and count; a usage's line number and code.</summary>
     private Control Row()
     {
-        TextBlock number = new() { MinWidth = 36, FontFamily = CodeEditor.CodeFont, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock number = new TextBlock { MinWidth = 36, FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         number.Classes.Add(StyleClasses.Muted);
         RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 6, 0) };
         RowIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
@@ -348,6 +348,7 @@ public sealed class FindView : DockPanel
         TextBlock count = new() { FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         count.Classes.Add(StyleClasses.Muted);
         StackPanel panel = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { number, chevron, icon, label, count } };
+        string? labelFont = null;
         chevron.PointerPressed += (_, e) =>
         {
             if (panel.DataContext is FindRow row)
@@ -370,14 +371,13 @@ public sealed class FindView : DockPanel
             icon.Foreground = file is { Usage: { } at } ? Explorer.FileIcons.BrushForFile(at.Path) : null;
             label.Text = row.Label;
             label.FontWeight = !usage && row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
+            label.Resource(TextBlock.FontFamilyProperty, ref labelFont, usage ? CodeFonts.Key : null);
             if (usage)
             {
-                label.FontFamily = CodeEditor.CodeFont;
                 label.FontSize = 12;
             }
             else
             {
-                label.ClearValue(TextBlock.FontFamilyProperty);
                 label.ClearValue(TextBlock.FontSizeProperty);
             }
             count.IsVisible = !usage;

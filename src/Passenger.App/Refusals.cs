@@ -12,6 +12,9 @@ public static class Refusals
     /// <summary>No file is shown in the editor.</summary>
     public const string NoFile = "No file is open";
 
+    /// <summary>The file shown is no Godot scene, nor a script a scene runs, of a Godot project the folder builds a game of.</summary>
+    public const string NoGodotScene = "No scene of a Godot game is open: open a .tscn, or a script one of its nodes runs";
+
     /// <summary>The window has no folder open (a solution, a project or a folder of files).</summary>
     public const string NoFolder = "No folder is open";
 
@@ -46,9 +49,42 @@ public static class Refusals
     {
         { Asked: { } asked } => $"The .NET SDK {asked} that {(missing.GlobalJson is { } file ? PathNames.Shown(PathNames.Canonical(file), folder) : "global.json")} "
             + "asks for is not installed: install it, or have global.json name one that is",
-        { NoneInstalled: true } => "No .NET SDK is installed: install one to load, build and run projects",
+        { NoHost: true } => NoDotnet,
+        { NoneInstalled: true } => $"Only the .NET runtime is installed: {NeedsTheSdk}",
         _ => $"No .NET SDK was found for this folder: {ChildResult.FirstLineOf(missing.Said)}",
     };
+
+    /// <summary>No dotnet at all, runtime or SDK, was found.</summary>
+    public const string NoDotnet = $"No .NET is installed: files open and edit, and Git and the terminal work, but {NeedsTheSdk}";
+
+    private const string NeedsTheSdk = "projects need the .NET SDK to load, build, run and test";
+
+    /// <summary>What .NET the machine or the folder lacks, as the banner, an action's refusal and an agent say it; null with
+    /// nothing lacking.</summary>
+    public static string? Dotnet(DotnetWant want, string? folder) => want.Lack switch
+    {
+        DotnetLack.NoDotnet => NoDotnet,
+        DotnetLack.RuntimeOnly => $"Only the .NET runtime is installed{(want.Root is { } root ? $", in {PathNames.Shown(root, null)}" : string.Empty)}: {NeedsTheSdk}",
+        DotnetLack.GlobalJsonSdk or DotnetLack.NoSdk => NoSdk(want.Missing!, folder),
+        DotnetLack.OlderThanProject => $"{want.Newer!.Value.Project} targets .NET {want.Newer.Value.Framework}, which the .NET SDK {want.Sdk} does not build: "
+            + $"it needs the .NET {want.Newer.Value.Framework} SDK",
+        DotnetLack.OffPath => $"Passenger uses the .NET SDK {want.Sdk} in {PathNames.Shown(want.Root!, null)}, which your shell's PATH does not name, "
+            + "so a terminal outside Passenger finds no dotnet",
+        _ => null,
+    };
+
+    /// <summary>What an agent's ide_action of Install .NET SDK or Add .NET to the Shell's PATH is refused with.</summary>
+    public const string AgentInstalls = "An agent never installs software or changes the person's PATH: ask the person, who does it with the banner over "
+        + "Passenger's window, or Tools, Install .NET SDK…";
+
+    /// <summary>Install .NET SDK with nothing lacking: the newest SDK found, and where.</summary>
+    public static string NothingToInstall(DotnetMachine? machine, DotnetWant want) =>
+        machine?.NewestSdk is { } sdk && machine.Found is { } found
+            ? $"The .NET SDK {want.Sdk ?? sdk} is installed, in {PathNames.Shown(found.Root, null)}: nothing is missing"
+            : "Passenger is still looking for .NET";
+
+    /// <summary>Add .NET to the Shell's PATH where the shell's PATH has it already.</summary>
+    public static string OnPathAlready(string root) => $"{PathNames.Shown(root, null)} is on your shell's PATH already";
 
     /// <summary>No run configuration to run, debug or profile (the <paramref name="verb"/>): the folder has no SDK to
     /// load its projects with (<see cref="NoSdk"/>), or no executable project.</summary>
@@ -58,6 +94,12 @@ public static class Refusals
     /// <summary>A build, publish or run (the <paramref name="verb"/>) asked for with no folder open, or once its folder has
     /// closed.</summary>
     public static string NoFolderTo(string verb) => $"Nothing to {verb}: no folder is open";
+
+    /// <summary>An action on a Godot project asked for in a folder that holds none.</summary>
+    public const string NoGodotProject = "The open folder holds no Godot project (project.godot)";
+
+    /// <summary>A build asked of a folder whose one kind of project is a Godot project of GDScript alone, which builds nothing.</summary>
+    public const string NothingToBuildOfScripts = "The open folder's Godot project is GDScript alone, which Godot runs as it is: there is nothing to build (Run, Debug and Profile start its game)";
 
     /// <summary>A build or publish asked for while another of the window's runs: one builds at a time.</summary>
     public const string Building = "Another build is running";
@@ -125,6 +167,9 @@ public static class Refusals
     /// answers nothing in, with what made it and for which project where known (<see cref="CSharp.GeneratedCode.OriginOf"/>).</summary>
     public static string Generated(string name, string? origin = null) =>
         $"{name} is a source generator's code{(origin is null ? string.Empty : $", {origin},")} copied to read: the C# language server answers in the code it is made from";
+
+    /// <summary>A file whose grammar has yet to read it whole, so the lines inside its strings are not yet known.</summary>
+    public static string ReadingStrings(string name) => $"{name} is still being read, to tell the lines inside its strings";
 
     /// <summary>Why the file shown cannot be saved: none is shown, it is read-only, or it has nothing to save.</summary>
     public static string? NeedsUnsaved(ActionContext context) =>

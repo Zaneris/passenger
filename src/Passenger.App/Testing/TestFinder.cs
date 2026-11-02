@@ -9,14 +9,15 @@ namespace Passenger.App.Testing;
 
 /// <summary>The tests the test projects' code declares, found before any build: each test project's C# files read off
 /// the UI thread with Roslyn's parser, an open file from its own parse as it is typed (the gutter's read of it, never a
-/// parse of its own), and a file another program changed read again when the folder watcher says so. What it finds is
-/// told a project at a time, only when it changed. A UI-thread object.</summary>
+/// parse of its own), and a file another program changed read again when the folder watcher says so; and each Godot
+/// project that carries GUT, its GDScript read for GUT's tests (<see cref="GutScripts"/>), stood for by its project.godot.
+/// What it finds is told a project at a time, only when it changed. A UI-thread object.</summary>
 public sealed class TestFinder
 {
     /// <summary>The test frameworks' own packages: a project referencing one holds tests, adapter or not.</summary>
     private static readonly HashSet<string> FrameworkPackages = new(StringComparer.OrdinalIgnoreCase)
     {
-        "xunit", "xunit.core", "xunit.v3", "xunit.v3.core", "NUnit", "MSTest", "MSTest.TestFramework",
+        "xunit", "xunit.core", "xunit.v3", "xunit.v3.core", "NUnit", "MSTest", "MSTest.TestFramework", "gdUnit4.api",
     };
 
     /// <summary>Closed files' reads by path, with the write time and length they were read at: a file read again only
@@ -51,6 +52,9 @@ public sealed class TestFinder
     private static readonly IReadOnlySet<string> NoMethods = new HashSet<string>(StringComparer.Ordinal);
 
     private IReadOnlyList<ProjectModel> every = [];
+
+    /// <summary>The Godot projects' folders, those carrying GUT among <see cref="Projects"/>.</summary>
+    private IReadOnlyList<string> godotFolders = [];
     private int asks;
     private int listings;
 
@@ -73,6 +77,31 @@ public sealed class TestFinder
     /// <summary>A test project's files were found to derive other test attributes: open files are read again with them.</summary>
     public event EventHandler? AttributesChanged;
 
+    /// <summary>A file was read, whose tests' code may have changed (<see cref="CodeOf"/>), told or not.</summary>
+    public event EventHandler? CodeRead;
+
+    /// <summary>A test method's code as its file now reads (<see cref="DeclaredTest.Code"/>), an open file's as typed; null
+    /// where the file has not been read or declares no such test.</summary>
+    public ulong? CodeOf(string path, string fullName)
+    {
+        UiThread.Check();
+        FileTests? read = open.GetValueOrDefault(path) ?? onDisk.Kept(path);
+        int dot = fullName.LastIndexOf('.');
+        if (read is null || dot < 0)
+        {
+            return null;
+        }
+        foreach (DeclaredTest test in read.Tests)
+        {
+            if (test.Method.Length == fullName.Length - dot - 1 && fullName.AsSpan(dot + 1).SequenceEqual(test.Method)
+                && test.Type.Length == dot && fullName.AsSpan(0, dot).SequenceEqual(test.Type))
+            {
+                return test.Code;
+            }
+        }
+        return null;
+    }
+
     /// <summary>The test attributes the project of a file derives from a framework's, its methods tests by them too.</summary>
     public IReadOnlySet<string> AttributesOf(string path)
     {
@@ -81,12 +110,13 @@ public sealed class TestFinder
     }
 
     /// <summary>Whether a project holds tests: it says it is a test project or references a test adapter, or references
-    /// xUnit, NUnit or MSTest itself.</summary>
+    /// xUnit, NUnit, MSTest or GdUnit4 itself.</summary>
     public static bool HoldsTests(ProjectModel project) =>
         project.Exists && (project.IsTestProject || project.Packages.Any(p => FrameworkPackages.Contains(p.Name)));
 
-    /// <summary>Reads the workspace's test projects, those read before again only where their files changed.</summary>
-    public void Scan(string? workspace, IReadOnlyList<ProjectModel> projects)
+    /// <summary>Reads the workspace's test projects, and its Godot projects that carry GUT (<paramref name="godot"/> their
+    /// folders), those read before again only where their files changed.</summary>
+    public void Scan(string? workspace, IReadOnlyList<ProjectModel> projects, IReadOnlyList<string>? godot = null)
     {
         UiThread.Check();
         if (workspace != Folder)
@@ -100,8 +130,9 @@ public sealed class TestFinder
             toldFrom.Clear();
         }
         every = projects;
-        Projects = [.. projects.Where(HoldsTests)];
-        foreach (ProjectModel project in Projects)
+        godotFolders = [.. (godot ?? []).Distinct(PathNames.Comparer)];
+        Projects = [.. projects.Where(HoldsTests), .. godotFolders.Where(GutScripts.Carried).Select(ProjectModel.OfScriptGame)];
+        foreach (ProjectModel project in Projects.Where(p => !p.IsScriptGame))
         {
             CSharpParseOptions symbols = CompilationSymbols.Of(project);
             if (readWith.TryGetValue(project.Path, out CSharpParseOptions? before) && !ReferenceEquals(before, symbols))
@@ -128,11 +159,14 @@ public sealed class TestFinder
     public void OpenRead(string path, FileTests tests)
     {
         UiThread.Check();
-        if (open.TryGetValue(path, out FileTests? was) && was.SameAs(tests))
+        // Kept whatever it says, as its tests' code may have changed where nothing else of them did.
+        bool same = open.TryGetValue(path, out FileTests? was) && was.SameAs(tests);
+        open[path] = tests;
+        CodeRead?.Invoke(this, EventArgs.Empty);
+        if (same)
         {
             return;
         }
-        open[path] = tests;
         if (Owner(path) is not { } project)
         {
             return;
@@ -182,6 +216,13 @@ public sealed class TestFinder
     public void FolderChanged(FolderChanges changes)
     {
         UiThread.Check();
+        // GUT come to a Godot project, or gone from one, makes it a test project, or no longer one.
+        if (changes.Paths.Any(path => godotFolders.Any(folder => PathNames.IsUnder(path, Path.Combine(folder, "addons")))
+            && godotFolders.Any(folder => GutScripts.Carried(folder) != Projects.Any(p => p.IsScriptGame && PathNames.Same(p.Folder, folder)))))
+        {
+            Scan(Folder, every, godotFolders);
+            return;
+        }
         List<string> paths = [.. changes.Paths.Where(p => !open.ContainsKey(p))];
         List<ProjectModel> touched = [.. Projects.Where(project => paths.Any(path => PathNames.Within(path, project.Folder) || PathNames.Within(project.Folder, path)))];
         if (touched.Count == 0)
@@ -207,8 +248,9 @@ public sealed class TestFinder
 
         async Task ReadAsync()
         {
-            (string Path, CSharpParseOptions Symbols, IReadOnlySet<string> Own)[] reads = [.. changed.Select(path => (path, CompilationSymbols.Of(every, path), AttributesOf(path)))];
-            await BackgroundWork.Run(() => Parallel.ForEach(reads, read => ReadFile(read.Path, read.Symbols, read.Own)));
+            (string Path, CSharpParseOptions Symbols, IReadOnlySet<string> Own, string? Gut)[] reads =
+                [.. changed.Select(path => (path, CompilationSymbols.Of(every, path), AttributesOf(path), GutFolder(path)))];
+            await BackgroundWork.Run(() => Parallel.ForEach(reads, read => ReadFile(read.Path, read.Symbols, read.Own, read.Gut)));
             Tell([.. projects.Where(Projects.Contains)]);
         }
     }
@@ -238,8 +280,15 @@ public sealed class TestFinder
     public static bool IsOf(TestNode method, IReadOnlySet<string> projects) =>
         projects.Count == 0 || method.ProjectPath is not { } project || projects.Contains(project);
 
-    /// <summary>The test project a file belongs to: of the projects holding it, the nearest, when that one holds tests.</summary>
-    private ProjectModel? Owner(string path) => ProjectModel.Owning(every, path) is { } owner && Projects.Contains(owner) ? owner : null;
+    /// <summary>The test project a file belongs to: of the projects holding it, the nearest, when that one holds tests; a
+    /// GDScript file's, the Godot project carrying GUT that holds it.</summary>
+    private ProjectModel? Owner(string path) => GutFolder(path) is { } folder ? Projects.First(p => p.IsScriptGame && PathNames.Same(p.Folder, folder))
+        : ProjectModel.Owning(every, path) is { } owner && Projects.Contains(owner) ? owner : null;
+
+    /// <summary>The folder of the nearest Godot project carrying GUT that holds a GDScript file GUT's tests may be in; null
+    /// for any other file.</summary>
+    private string? GutFolder(string path) =>
+        Projects.Where(p => p.IsScriptGame && GutScripts.Holds(p.Folder, path)).MaxBy(p => p.Folder.Length)?.Folder;
 
     /// <summary>Lists the test projects' C# files again and reads those changed on disk since they were read, then tells
     /// what changed: what a run's build took in, ahead of the folder watcher's word of it.</summary>
@@ -300,22 +349,25 @@ public sealed class TestFinder
         IReadOnlyDictionary<string, IReadOnlySet<string>> owns)
     {
         Dictionary<string, IReadOnlyList<string>> found = new(StringComparer.Ordinal);
-        List<(string Path, CSharpParseOptions Symbols, IReadOnlySet<string> Own)> all = [];
+        List<(string Path, CSharpParseOptions Symbols, IReadOnlySet<string> Own, string? Gut)> all = [];
         foreach (ProjectModel project in projects)
         {
-            List<string> files = [.. FolderWalk.ProjectFiles(project, solution, ".cs")];
+            bool gut = project.IsScriptGame;
+            List<string> files = [.. gut ? GutScripts.Files(project.Folder) : FolderWalk.ProjectFiles(project, solution, ".cs")];
             found[project.Path] = files;
-            CSharpParseOptions symbols = CompilationSymbols.Of(project);
-            all.AddRange(files.Select(file => (file, symbols, owns[project.Path])));
+            CSharpParseOptions symbols = gut ? CSharpParseOptions.Default : CompilationSymbols.Of(project);
+            all.AddRange(files.Select(file => (file, symbols, owns[project.Path], gut ? project.Folder : null)));
         }
-        Parallel.ForEach(all, read => ReadFile(read.Path, read.Symbols, read.Own));
+        Parallel.ForEach(all, read => ReadFile(read.Path, read.Symbols, read.Own, read.Gut));
         return found;
     }
 
-    /// <summary>Reads a closed file's tests with its project's symbols and derived test attributes unless it has not changed
-    /// since they were read; one being written is read once the watcher says so again. A worker's.</summary>
-    private void ReadFile(string path, CSharpParseOptions symbols, IReadOnlySet<string> attributes) =>
-        onDisk.Get(path, file => TestsAtCaret.Read(File.ReadAllText(file), symbols, attributes));
+    /// <summary>Reads a closed file's tests with its project's symbols and derived test attributes, or a GDScript file's as
+    /// GUT's of the Godot project in <paramref name="gut"/>, unless it has not changed since they were read; one being
+    /// written is read once the watcher says so again. A worker's.</summary>
+    private void ReadFile(string path, CSharpParseOptions symbols, IReadOnlySet<string> attributes, string? gut) =>
+        onDisk.Get(path, file => gut is not null ? GutScripts.Read(File.ReadAllText(file), GutScripts.TypeOf(gut, file)).Tests
+            : TestsAtCaret.Read(File.ReadAllText(file), symbols, attributes));
 
     /// <summary>Tells the projects' tests as their files now read, open ones from their own parse, for those that changed
     /// (or all of them, once a listing has ended, which may have found none).</summary>
@@ -340,7 +392,7 @@ public sealed class TestFinder
             // A file made in the editor and not yet listed.
             foreach ((string path, FileTests typed) in open)
             {
-                if (!files.ContainsKey(path) && ProjectModel.Owning(every, path) == project)
+                if (!files.ContainsKey(path) && Owner(path) == project)
                 {
                     files[path] = typed;
                 }
@@ -387,6 +439,7 @@ public sealed class TestFinder
         {
             Changed?.Invoke(this, Projects.Where(p => told.ContainsKey(p.Path)).ToDictionary(p => p.Path, p => told[p.Path].Tests, StringComparer.Ordinal));
         }
+        CodeRead?.Invoke(this, EventArgs.Empty);
         if (derived.Count > 0)
         {
             Read(derived, timed: false);

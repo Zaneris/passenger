@@ -8,7 +8,7 @@ using Passenger.Workspace;
 
 namespace Passenger.App;
 
-/// <summary>The command line: <c>passenger [PATH] [--file F]... [--caret L:C] [--theme T] [--look L] [--scheme S]</c>,
+/// <summary>The command line: <c>passenger [PATH] [--file F]... [--caret L:C [--zero-based]] [--theme T] [--look L] [--scheme S]</c>,
 /// PATH a folder, a file, or a solution or project opened as the workspace; a screenshot with the steps before it; or
 /// the Model Context Protocol server: <c>--mcp [PATH]</c> (an IDE with no window, on standard input and output),
 /// <c>--mcp-attach [PID] [FOLDER]</c> (the agent's server, joining the window over the folder at its first call), and
@@ -62,7 +62,8 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         HashSet<string> once = [];
         string? path = null;
         List<string> named = [];
-        TextPosition? caret = null;
+        string? caretText = null;
+        bool zeroBased = false;
         ThemeChoice? theme = null;
         global::Passenger.App.Look? look = null;
         ColourScheme? scheme = null;
@@ -81,6 +82,11 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         for (int i = 0; i < args.Count; i++)
         {
             string flag = args[i];
+            if (flag.Length == 0)
+            {
+                // Names nothing: Godot's editor fills in an empty project for a script outside its project.
+                continue;
+            }
             given.Add(flag);
             if (!flag.StartsWith('-'))
             {
@@ -120,7 +126,10 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                     named.Add(Value(args, ref i, flag));
                     break;
                 case "--caret":
-                    caret = ParseCaret(Value(args, ref i, flag));
+                    caretText = Value(args, ref i, flag);
+                    break;
+                case "--zero-based":
+                    zeroBased = true;
                     break;
                 case "--theme":
                     theme = ParseTheme(Value(args, ref i, flag));
@@ -221,6 +230,8 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         }
 
         CheckMode(given, mcp, shot is not null, listen);
+        TextPosition? caret = caretText is not null ? ParseCaret(caretText, zeroBased)
+            : zeroBased ? throw new FormatException("--zero-based says --caret counts its line and column from 0, and no --caret is given") : null;
         if (headless && (mcp != McpMode.None || shot is not null || !listen))
         {
             throw new FormatException("--headless is a person's window with nobody at it, a test run's: it takes a path, files and a caret, not --mcp, --mcp-attach, --screenshot or --no-mcp");
@@ -407,18 +418,21 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
     }
 
     /// <summary>"12:5" is line 12, column 5, as the status bar shows them (from one).</summary>
-    private static TextPosition ParseCaret(string text)
+    /// <summary>A caret's line and column, counted from 1, or from 0 as Godot's editor fills them in for a C# script
+    /// (<c>--zero-based</c>).</summary>
+    private static TextPosition ParseCaret(string text, bool zeroBased)
     {
+        int first = zeroBased ? 0 : 1;
         string[] parts = text.Split(':');
-        int column = 1;
-        if (parts.Length > 2 || !Counted(parts[0], out int line) || (parts.Length == 2 && !Counted(parts[1], out column)))
+        int column = first;
+        if (parts.Length > 2 || !Counted(parts[0], first, out int line) || (parts.Length == 2 && !Counted(parts[1], first, out column)))
         {
-            throw new FormatException($"--caret takes LINE or LINE:COLUMN from 1, not '{text}'");
+            throw new FormatException($"--caret takes LINE or LINE:COLUMN from {first}{(zeroBased ? " with --zero-based" : string.Empty)}, not '{text}'");
         }
-        return new TextPosition(line - 1, column - 1);
+        return new TextPosition(line - first, column - first);
 
-        static bool Counted(string part, out int value) =>
-            int.TryParse(part, NumberStyles.None, CultureInfo.InvariantCulture, out value) && value >= 1;
+        static bool Counted(string part, int first, out int value) =>
+            int.TryParse(part, NumberStyles.None, CultureInfo.InvariantCulture, out value) && value >= first;
     }
 
     /// <summary>"cmd+shift+L", or "meta shift L" as keymaps write it.</summary>

@@ -297,7 +297,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         OpenDocument props = window.EditorArea.Active!;
         Ui.WaitFor(() => props.Markers.Any(m => m.Message.StartsWith("NU1902", StringComparison.Ordinal)), "the vulnerable version's warning");
         Assert.Equal(MarkerKind.Warning, MarkerOn(editor, props, "1.0.0").Kind);
-        Ui.WaitFor(() => window.BottomPanel.Problems.FileProblems.Count == 1, "Problems listing the vulnerable version");
+        Ui.WaitFor(() => window.BottomPanel.Problems.FileProblems.Count(p => p.Severity != ProblemSeverity.Message) == 1, "Problems listing the vulnerable version");
 
         Ui.PlaceAfter(editor, "<PackageVersion Include=\"Passenger.Vulnerable\" Version=\"");
         Ui.Run(window, AppActions.Complete);

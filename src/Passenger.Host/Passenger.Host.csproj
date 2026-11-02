@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- MSBuild's evaluation of the open folder's projects, in a process of its own: MSBuild needs the JIT and the
        installed SDK's own assemblies, which MSBuildLocator finds by the folder's global.json, and none of it belongs in
-       the UI's process. It runs on the machine's newest runtime, so whichever SDK the folder picks can load, and carries
-       MSBuildLocator alone: MSBuild is compiled against, never copied. -->
+       the UI's process. It runs on the runtime Passenger runs on (Passenger's helper host), and for an SDK newer than that
+       on the machine's newest, so whichever SDK the folder picks can load, and carries MSBuildLocator alone: MSBuild is
+       compiled against, never copied. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- The oldest runtime it needs, Roslyn's server's: it rolls forward to the newest the machine has. -->
+    <!-- The oldest runtime it needs, Roslyn's server's: on the machine's, it rolls forward to the newest there. -->
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Passenger.Host</RootNamespace>
     <RollForward>LatestMajor</RollForward>

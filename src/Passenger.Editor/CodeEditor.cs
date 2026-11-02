@@ -16,8 +16,8 @@ namespace Passenger.Editor;
 /// line it changed.</summary>
 public sealed partial class CodeEditor : Control
 {
-    /// <summary>The code font, JetBrains Mono: the editor's and the terminal's, and code's wherever the window shows
-    /// it.</summary>
+    /// <summary>The code font Passenger carries, JetBrains Mono: the editor's, the terminal's and code's wherever the
+    /// window shows it, unless Settings puts another in force (<see cref="CodeFonts"/>).</summary>
     public static readonly FontFamily CodeFont = new("avares://Passenger.Editor/Fonts#JetBrains Mono");
 
     public static readonly StyledProperty<double> FontSizeProperty =
@@ -111,6 +111,7 @@ public sealed partial class CodeEditor : Control
             RunWith(palette.LineNumberCurrent),
             RunWith(palette.LineNumber));
         annotationRuns = (ItalicRunWith(palette.Annotation), ItalicRunWith(palette.Error));
+        CodeFonts.Follow(this, FontFamilyProperty);
     }
 
     /// <summary>Raised when the view scrolls.</summary>
@@ -128,6 +129,10 @@ public sealed partial class CodeEditor : Control
     public event EventHandler<HoverEventArgs>? Hovered;
 
     public event EventHandler? HoverEnded;
+
+    /// <summary>The pointer has rested on the gutter beside a line (from zero): where it is, for the card of what the
+    /// gutter shows there. Raised once per rest; moving off clears it (<see cref="HoverEnded"/>).</summary>
+    public event EventHandler<GutterClick>? GutterHovered;
 
     /// <summary>The context menu is asked for: by a right-click on the text, at its point, or from the keyboard (the menu
     /// key, Shift+F10), with no point, at the caret.</summary>
@@ -342,6 +347,10 @@ public sealed partial class CodeEditor : Control
     /// <summary>Which markup this document's language is, whose tags Enter's indentation follows; none for code.</summary>
     public MarkupKind Markup { get; set; }
 
+    /// <summary>Whether typing in <see cref="Markup"/> completes end tags: a start tag's '>' writes its end tag after the
+    /// caret, and "&lt;/" the open element's name (<see cref="TextEditing.CloseTag"/>), each a step of Undo of its own.</summary>
+    public bool ClosesTags { get; set; } = true;
+
     public bool IsReadOnly { get; set; }
 
     /// <summary>Whether the gutter shows line numbers; a console's output goes without.</summary>
@@ -482,9 +491,15 @@ public sealed partial class CodeEditor : Control
     {
         int offset = document.Snapshot.GetOffset(position);
         SetSelections(SelectionSet.Single(offset), reveal: false);
+        ScrollToPlace(offset);
+    }
+
+    /// <summary>Scrolls an offset a third of the way down the view, as <see cref="GoTo"/> does; not laid out yet, the
+    /// first arrange does it, leaving the carets as they stand then (a selection made after the GoTo).</summary>
+    private void ScrollToPlace(int offset)
+    {
         if (Bounds.Height <= 0)
         {
-            // Not laid out yet, so there is no view to centre in; the first arrange does it.
             pendingGoTo = offset;
             return;
         }
@@ -627,7 +642,7 @@ public sealed partial class CodeEditor : Control
         if (pendingGoTo is { } offset)
         {
             pendingGoTo = null;
-            Dispatcher.UIThread.Post(() => GoTo(document.Snapshot.GetPosition(Math.Min(offset, document.Snapshot.Length))));
+            Dispatcher.UIThread.Post(() => ScrollToPlace(Math.Min(offset, document.Snapshot.Length)));
         }
         // The gutter's width, and with it the caret's x, follows the text's line count and the font.
         FollowInputMethod();

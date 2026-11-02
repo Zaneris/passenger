@@ -15,6 +15,7 @@ public sealed partial class SettingsDialog : IdeWindow
     public const string Appearance = "Appearance";
     public const string SystemPage = "System Settings";
     public const string UpdatesPage = "Updates";
+    public const string ExplorerPage = "Explorer";
     public const string EditorPage = "Editor";
     public const string CodeFoldingPage = "Code Folding";
     public const string LiveTemplatesPage = "Live Templates";
@@ -29,6 +30,7 @@ public sealed partial class SettingsDialog : IdeWindow
     public const string PrettierPage = "Prettier";
     public const string SchemasPage = "Remote JSON Schemas";
     public const string DockerPage = "Docker";
+    public const string GodotPage = "Godot";
     public const string KeymapPage = "Keymap";
     public const string McpPage = "MCP Server";
     public const string DiscordPage = "Discord";
@@ -54,8 +56,8 @@ public sealed partial class SettingsDialog : IdeWindow
     /// <summary>The names of <see cref="DiscordShown"/>'s choices, in its order.</summary>
     public static readonly string[] DiscordChoices = ["Passenger only", "The solution", "The solution and the file"];
 
-    private static readonly string[] Order = [Appearance, SystemPage, UpdatesPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, LiveTemplatesPage,
-        BuildPage, RunPage, HotReloadPage, NodePage, EslintPage, PrettierPage, SchemasPage, DockerPage, TerminalPage, McpPage, DiscordPage, DiagnosticsPage, KeymapPage];
+    private static readonly string[] Order = [Appearance, SystemPage, UpdatesPage, ExplorerPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, LiveTemplatesPage,
+        BuildPage, RunPage, HotReloadPage, NodePage, EslintPage, PrettierPage, SchemasPage, DockerPage, GodotPage, TerminalPage, McpPage, DiscordPage, DiagnosticsPage, KeymapPage];
 
     /// <summary>The names of Attributes format's choices, in <see cref="Passenger.Xaml.Features.XamlAttributeStyle"/>'s
     /// order.</summary>
@@ -280,12 +282,18 @@ public sealed partial class SettingsDialog : IdeWindow
 
         Add(Declared.CheckForUpdates);
 
+        Add(Declared.AlwaysSelectOpenedFile);
+        Add(Declared.OpenFilesWithSingleClick);
+        Add(Declared.NestFiles);
+
         Add(Declared.ColourScheme);
+        Add(Declared.EditorFontFamily);
         Add(Declared.EditorFontSize);
         Add(Declared.EditorLineSpacing);
         Add(Declared.Ligatures);
         Add(Declared.ShowLineNumbers);
         Add(Declared.RainbowBraces);
+        Add(Declared.CloseTags);
         Add(Declared.SolutionWideAnalysis);
         Add(Declared.ParameterHints);
         Add(Declared.TypeHints);
@@ -338,6 +346,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.HotReloadOnSave);
         Add(Declared.RestartOnRudeEdit);
         Add(Declared.ConsoleBufferKb);
+        Add(Declared.DebugBrowser);
 
         string? onPath = Passenger.Core.Programs.Node();
         TextBox node = new() { Classes = { StyleClasses.Search }, Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = onPath ?? "Not found on the PATH", Width = 320 };
@@ -349,8 +358,13 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.DownloadJsonSchemas);
         Add(Declared.DockerHubTags);
         Add(Declared.BuildKitChecks);
+        Add(Declared.GodotExecutable);
 
         Add(Declared.TerminalFontSize);
+        Add(Declared.TerminalFontFamily);
+        Add(Declared.TerminalCopyOnSelection);
+        Add(Declared.TerminalCursorBlinking);
+        Add(Declared.TerminalCursorStyle);
         Add(Declared.TerminalShell);
 
         AddAgents(agents);

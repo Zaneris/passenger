@@ -27,10 +27,11 @@ public sealed record DotnetProcess(int Id, string Name, string CommandLine, stri
 
     /// <summary>What the program is to a person: the .dll the dotnet host runs ("Shop.Api" for "dotnet Shop.Api.dll"),
     /// else the executable's name without its extension.</summary>
-    public string Program => IsHosted && Assembly is { } dll ? dll[(dll.LastIndexOfAny(['/', '\\']) + 1)..^4] : Executable;
+    public string Program => IsHosted && Assembly is { } dll ? Named(dll) : Executable;
 
     /// <summary>The program's own assembly as its command line names it, a path or a name in its working folder: the
-    /// first .dll after the dotnet host, else the .dll beside its apphost; null where the dotnet host names none.</summary>
+    /// first .dll after the dotnet host or Passenger's helper host (<see cref="ChildProcesses.HelperHost"/>) but the
+    /// helper host's own, else the .dll beside its apphost; null where the host names none.</summary>
     public string? Assembly
     {
         get
@@ -38,7 +39,7 @@ public sealed record DotnetProcess(int Id, string Name, string CommandLine, stri
             List<string> words = Words(CommandLine);
             if (IsHosted)
             {
-                return words.Skip(1).FirstOrDefault(word => word.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));
+                return words.Skip(1).FirstOrDefault(word => word.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) && Named(word) != ChildProcesses.HelperHost);
             }
             return words.Count == 0 ? null : (words[0].EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? words[0][..^4] : words[0]) + ".dll";
         }
@@ -47,8 +48,11 @@ public sealed record DotnetProcess(int Id, string Name, string CommandLine, stri
     /// <summary>The name without Windows' .exe; any other dot is the name's own ("Passenger.Tests").</summary>
     private string Executable => Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? Name[..^4] : Name;
 
-    /// <summary>Whether the dotnet host runs it, the program's .dll among its arguments.</summary>
-    private bool IsHosted => Executable.Equals("dotnet", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Whether the dotnet host or Passenger's helper host runs it, the program's .dll among its arguments.</summary>
+    private bool IsHosted => Executable.Equals("dotnet", StringComparison.OrdinalIgnoreCase) || Executable.Equals(ChildProcesses.HelperHost, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A .dll's name without its folder (of any system's) or its extension.</summary>
+    private static string Named(string dll) => dll[(dll.LastIndexOfAny(['/', '\\']) + 1)..^4];
 
     /// <summary>Whether a search typed into Attach to Process finds it: in its name, its process id, its user, its command
     /// line or its container's name.</summary>
@@ -161,6 +165,37 @@ public static partial class DotnetProcesses
             return false;
         }
     }
+
+    /// <summary>Why macOS lets no other program read a process's memory (a dump, a heap's snapshot), even a program of its
+    /// own user's: its executable is signed with the hardened runtime and without the get-task-allow entitlement, as an app
+    /// notarized for release is (Godot's own builds among them). Null where it may be read, it cannot be asked, or off macOS.</summary>
+    public static unsafe string? WhyUnreadable(int id)
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return null;
+        }
+        uint flags = 0;
+        if (CodeSigning(id, CodeSigningStatus, &flags, sizeof(uint)) != 0 || (flags & HardenedRuntime) == 0 || (flags & GetTaskAllow) != 0)
+        {
+            return null;
+        }
+        string? executable = Libc.ExecutableOf(id);
+        // An app's executable is its bundle's, which is what is signed.
+        int bundle = executable?.IndexOf(".app/Contents/MacOS/", StringComparison.Ordinal) ?? -1;
+        string named = executable is null ? $"process {id}" : PathNames.Shown(bundle > 0 ? executable[..(bundle + ".app".Length)] : executable, null);
+        return $"{named} is signed with macOS's hardened runtime and without the com.apple.security.get-task-allow entitlement, so macOS lets no other "
+            + "program read its memory: signed again with that entitlement (as a native debugger needs), or run on Linux or Windows, it can be";
+    }
+
+    /// <summary>csops' question of a process's code signing flags (CS_OPS_STATUS), and the flags of the hardened runtime
+    /// (CS_RUNTIME) and of get-task-allow (CS_GET_TASK_ALLOW).</summary>
+    private const uint CodeSigningStatus = 0;
+    private const uint HardenedRuntime = 0x10000;
+    private const uint GetTaskAllow = 0x4;
+
+    [LibraryImport("libc", EntryPoint = "csops")]
+    private static unsafe partial int CodeSigning(int pid, uint operation, void* answer, nuint size);
 
     /// <summary>The folder of the CoreCLR a process runs on (its libcoreclr or coreclr.dll, where the runtime's own tools lie
     /// beside it), read from the modules it has mapped; null when it has gone, is not readable, or maps none (a single-file

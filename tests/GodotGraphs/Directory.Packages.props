@@ -1,0 +1,4 @@
+<Project>
+  <!-- The repo's own versions, whose tests' section pins GdUnit4's. -->
+  <Import Project="../../Directory.Packages.props" />
+</Project>

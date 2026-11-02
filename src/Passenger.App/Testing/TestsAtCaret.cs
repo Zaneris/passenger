@@ -14,6 +14,10 @@ public sealed record DeclaredTest(string Type, string Method, int Line, IReadOnl
     /// <summary>The names its cases are given as string literals (NUnit's TestCase TestName), each a runner's test name.</summary>
     public IReadOnlyList<string> Cases { get; init; } = [];
 
+    /// <summary>Its code, attributes to body, as a number that changes with any of it but its whitespace: whether a result
+    /// is of the code there now. A read that differs in it alone is the same (<see cref="SameAs"/>).</summary>
+    public ulong Code { get; init; }
+
     public bool SameAs(DeclaredTest other) => Line == other.Line && SameTest(other);
 
     /// <summary>The same test, on whatever line.</summary>
@@ -180,7 +184,7 @@ public static class TestsAtCaret
                 any = true;
                 typeTraits ??= Traits(type.AttributeLists);
                 tests.Add(new DeclaredTest(name, method.Identifier.ValueText, syntax.Text.GetLineFromOffset(method.Identifier.SpanStart),
-                    [.. typeTraits, .. Traits(method.AttributeLists)], inherited) { Cases = Cases(method.AttributeLists) });
+                    [.. typeTraits, .. Traits(method.AttributeLists)], inherited) { Cases = Cases(method.AttributeLists), Code = Code(syntax.Text, method) });
             }
             if (any)
             {
@@ -203,6 +207,27 @@ public static class TestsAtCaret
         string normalized = name.Replace('+', '.');
         string owner = type.Replace('+', '.');
         return method is null ? normalized.StartsWith(owner + ".", StringComparison.Ordinal) : normalized == $"{owner}.{method}";
+    }
+
+    /// <summary>A method's text but its whitespace, from its attributes to its end, hashed as FNV-1a does (the same in
+    /// every process, unlike <see cref="HashCode"/>).</summary>
+    private static ulong Code(TextSnapshot text, MethodDeclarationSyntax method)
+    {
+        ulong hash = 14695981039346656037;
+        Span<char> chunk = stackalloc char[512];
+        for (int at = method.SpanStart, end = Math.Min(method.Span.End, text.Length); at < end; at += chunk.Length)
+        {
+            Span<char> read = chunk[..Math.Min(chunk.Length, end - at)];
+            text.CopyTo(at, read);
+            foreach (char c in read)
+            {
+                if (!char.IsWhiteSpace(c))
+                {
+                    hash = (hash ^ c) * 1099511628211;
+                }
+            }
+        }
+        return hash;
     }
 
     /// <summary>The types a file declares, nested ones too, found without going into any member's body.</summary>

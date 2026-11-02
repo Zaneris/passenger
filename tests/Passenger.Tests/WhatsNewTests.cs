@@ -17,7 +17,7 @@ namespace Passenger.Tests;
 /// (docs/release-notes/0.2.2.md), so each reads that real file.</summary>
 public sealed class WhatsNewTests : IDisposable
 {
-    private const string Version = "0.2.3";
+    private const string Version = "0.2.4";
 
     private readonly string state = TestFolders.Create("whatsnew-state-");
     private readonly string folder = TestFolders.Create("whatsnew-folder-");
@@ -126,7 +126,8 @@ public sealed class WhatsNewTests : IDisposable
     [AvaloniaFact]
     public void The_keys_that_move_through_a_page_move_through_the_notes()
     {
-        MainWindow window = Started();
+        // The longest notes the build carries, as a hotfix's own can fit one page.
+        MainWindow window = Started(Path.GetFileNameWithoutExtension(Directory.EnumerateFiles(ReleaseNotes.CarriedFolder, "*.md").MaxBy(f => new FileInfo(f).Length)!));
         Assert.Null(window.ShowWhatsNew());
         Ui.Settle();
         ReleaseNotesView view = Rendered(window);
@@ -158,13 +159,13 @@ public sealed class WhatsNewTests : IDisposable
     }
 
     /// <summary>A person's window over the test's state, keeping its layout and settings there, the version whose notes the
-    /// build carries; no C# server, since nothing here asks one.</summary>
-    private MainWindow Started()
+    /// build carries (or another's it carries); no C# server, since nothing here asks one.</summary>
+    private MainWindow Started(string version = Version)
     {
         MainWindow window = new()
         {
             Width = 1200, Height = 800, StateFolder = state, StartsLanguageServer = false,
-            Notes = new ReleaseNotes(ReleaseNotes.CarriedFolder, Version),
+            Notes = new ReleaseNotes(ReleaseNotes.CarriedFolder, version),
         };
         window.Show();
         window.KeepLayout();

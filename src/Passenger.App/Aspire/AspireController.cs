@@ -931,6 +931,22 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                     holding[name] = value;
                 }
                 inspected = inspected with { Environment = holding };
+                // Debugged with Hot Reload, it runs its update handlers as each update lands, through Passenger's hook.
+                bool reloaded = held == RunStart.HotReload || held == RunStart.Debug && workspace.Debug.HotReloadOn();
+                if (reloaded && UpdateHandlerHook.For(inspected) is ({ } hook, { } hooked))
+                {
+                    (resource.Handlers, inspected) = (hook, hooked);
+                }
+                // A web service's pages kept up with its static files and its updates, through the SDK's own browser refresh.
+                if (reloaded)
+                {
+                    (BrowserRefresh? browser, LaunchPlan refreshed, string? unkept) = await BrowserRefresh.ForAsync(inspected);
+                    (resource.Browser, inspected) = (browser, refreshed);
+                    if (unkept is not null)
+                    {
+                        resource.Console.Append($"{unkept}\n");
+                    }
+                }
             }
             if (request.Arguments is { Length: > 0 })
             {
@@ -1069,6 +1085,8 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         // Its own session and recording, as Stop's order ends them: the program has gone by itself.
         BackgroundWork.Track(app.EndSessionsAsync(workspace.Debug, [resource]));
         resource.Inspection?.Dispose();
+        resource.Handlers?.Dispose();
+        resource.Browser?.Dispose();
         resource.Runner?.Dispose();
         app.Resources.Remove(resource.Id);
         if (SelectedService == resource)
@@ -1102,6 +1120,8 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 runner.Dispose();
             }
             resource.Inspection?.Dispose();
+            resource.Handlers?.Dispose();
+            resource.Browser?.Dispose();
             app.Resources.Remove(id);
             if (SelectedService == resource)
             {
@@ -1532,6 +1552,8 @@ public sealed class AspireAppRun : ServiceRun
             {
                 HotReload = running.Held is not null,
                 App = running.Inspection,
+                Handlers = running.Handlers,
+                Browser = running.Browser,
                 WhyNot = DiagnosticsOff(running.Plan.Environment),
             })
             : throw new ServiceUnreachedException($"{service.Name} of {Name} has no program running");
@@ -1759,6 +1781,12 @@ public sealed class AspireResourceRun(string id, string instanceId, string proje
 
     /// <summary>What it started held for (the debugger, quietly for Hot Reload), or null when it started unheld.</summary>
     internal RunStart? Held { get; set; }
+
+    /// <summary>Passenger's hook it started with, held for Hot Reload, which its session takes; ended with it.</summary>
+    internal UpdateHandlerHook? Handlers { get; set; }
+
+    /// <summary>The SDK's browser refresh it started with, a web service's held for Hot Reload, which its session takes; ended with it.</summary>
+    internal BrowserRefresh? Browser { get; set; }
 
     /// <summary>Its start's number in its AppHost's run, the newest of a name its service's program.</summary>
     internal long Sequence { get; set; }

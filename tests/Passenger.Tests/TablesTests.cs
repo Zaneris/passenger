@@ -51,6 +51,73 @@ public sealed class TablesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A CSV sorted by a column's title, as a person clicks its arrow: a column of numbers by their values, then
+    /// the other way, then in the file's order again, each row numbered as in the file; a column of dates by when they are;
+    /// and the file's text never changed.</summary>
+    [AvaloniaFact]
+    public void A_tables_rows_sort_by_a_columns_title_numbers_and_dates_by_value_both_ways_and_back_leaving_the_file_as_it_was()
+    {
+        string path = Path.Combine(folder, "orders.csv");
+        string text = "Name,Total,When\nAda,980,2024-03-01\nAlan,\"1,234.50\",2023-12-31\nGrace,75,2024-01-15\nEdsger,,2024-02-29\n";
+        File.WriteAllText(path, text);
+        MainWindow window = Open(path);
+        CellGrid grid = Grid(window);
+        string[] Names() => [.. Enumerable.Range(0, grid.Table!.RowCount).Select(row => grid.Table.Cell(row, 0))];
+        int[] Numbers() => [.. Enumerable.Range(0, grid.Table!.RowCount).Select(row => grid.Table.RowNumber(row))];
+        void SortBy(int column, (int, bool)? sorted)
+        {
+            Ui.Click(grid, grid.SortArrow(column).Center);
+            Ui.WaitFor(() => grid.Table?.Sort == sorted, $"the table sorted {sorted?.ToString() ?? "in the file's order"}");
+        }
+
+        SortBy(1, (1, false));
+        Assert.Equal(["Grace", "Ada", "Alan", "Edsger"], Names());
+        Assert.Equal([3, 1, 2, 4], Numbers());
+        SortBy(1, (1, true));
+        Assert.Equal(["Alan", "Ada", "Grace", "Edsger"], Names());
+        SortBy(1, null);
+        Assert.Equal(["Ada", "Alan", "Grace", "Edsger"], Names());
+        Assert.Equal([1, 2, 3, 4], Numbers());
+        SortBy(2, (2, false));
+        Assert.Equal(["Alan", "Grace", "Edsger", "Ada"], Names());
+
+        Assert.False(window.EditorArea.Active!.IsModified, "Sorting the table changed the file's text");
+        window.Perform(AppActions.SaveAll);
+        Ui.Settle();
+        window.Close();
+        Assert.Equal(text, File.ReadAllText(path));
+    }
+
+    /// <summary>The keys sort too: the menu key on a table offers the chosen cell's column's sorts, the one in force checked,
+    /// as the header's menu does, and the rows sort as chosen and go back to the file's order.</summary>
+    [AvaloniaFact]
+    public void The_menu_key_sorts_by_the_chosen_cells_column_both_ways_and_back()
+    {
+        string path = Path.Combine(folder, "scores.csv");
+        File.WriteAllText(path, "Name,Score\nAda,7\nAlan,12\nGrace,3\n");
+        MainWindow window = Open(path);
+        CellGrid grid = Grid(window);
+        Ui.Click(grid, grid.SortArrow(1).Center + new Vector(-20, ListRow.Height * 2));
+        Assert.Equal(1, grid.Caret.Column);
+        string[] Names() => [.. Enumerable.Range(0, grid.Table!.RowCount).Select(row => grid.Table.Cell(row, 0))];
+        string[] Offered()
+        {
+            Ui.Run(window, AppActions.ShowContextMenu);
+            ContextMenu menu = grid.Menu ?? throw new Xunit.Sdk.XunitException("The menu key on the table opened no menu");
+            return [.. menu.Items.OfType<MenuItem>().Take(3).Select(i => $"{i.Header}{(i.IsChecked ? " (checked)" : "")}")];
+        }
+
+        Assert.Equal(["Sort Ascending", "Sort Descending", "File Order (checked)"], Offered());
+        Ui.Choose(grid.Menu!, "Sort Descending");
+        Ui.WaitFor(() => grid.Table?.Sort == (1, true), "the table sorted by Score, the most first");
+        Assert.Equal(["Alan", "Ada", "Grace"], Names());
+        Assert.Equal(["Sort Ascending", "Sort Descending (checked)", "File Order"], Offered());
+        Ui.Choose(grid.Menu!, "File Order");
+        Ui.WaitFor(() => grid.Table?.Sort is null, "the table in the file's order again");
+        Assert.Equal(["Ada", "Alan", "Grace"], Names());
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_workbook_shows_each_sheet_with_its_numbers_formatted_as_Excel_shows_them_and_is_never_written()
     {

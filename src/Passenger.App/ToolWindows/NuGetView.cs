@@ -119,14 +119,13 @@ public sealed class NuGetView : DockPanel
         {
             IsReadOnly = true,
             AcceptsReturn = true,
-            FontFamily = CodeEditor.CodeFont,
             FontSize = 11,
             Height = 90,
             BorderThickness = new Thickness(0, 1, 0, 0),
             Background = Brushes.Transparent,
             IsVisible = false,
             [DockProperty] = Dock.Bottom,
-        };
+        }.InCodeFont();
         log.Bind(TextBox.BorderBrushProperty, log.GetResourceObservable(TokenKeys.Divider));
         DockPanel right = new();
         right.Children.Add(log);

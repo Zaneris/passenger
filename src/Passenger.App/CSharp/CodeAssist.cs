@@ -35,6 +35,10 @@ public sealed record EditorFix(string Title, string Detail, TextRange Range, str
     /// edit: what is asked, whether the answer is a secret (masked as it is typed, never said back), and the fix made from it.</summary>
     public ValueAsked? Asks { get; init; }
 
+    /// <summary>A fix the person agrees to before it is made (a setting written into a Godot project's file), in place of
+    /// <see cref="Text"/>'s edit: what it asks, the line it writes among it, then the fix made.</summary>
+    public FixConfirmed? Confirms { get; init; }
+
     /// <summary>The fix to make on a text now, worked out again where it can be; null when it no longer fits.</summary>
     public EditorFix? On(TextSnapshot text) => Again is null ? this : Again(text);
 }
@@ -42,6 +46,10 @@ public sealed record EditorFix(string Title, string Detail, TextRange Range, str
 /// <summary>What a fix asks before it is made: the question, whether the answer is a secret, and the fix made from the
 /// answer, given an agent's call's patience, saying what it came to (never the answer).</summary>
 public sealed record ValueAsked(string Question, bool Secret, Func<string, Patience?, Task<RefactorOutcome>> Make);
+
+/// <summary>What a fix asks the person to agree to before it is made: the question as the files then stand (null once it
+/// no longer fits), the button that agrees, and the fix made, given an agent's call's patience, saying what it came to.</summary>
+public sealed record FixConfirmed(Func<Task<string?>> Question, string Yes, Func<Patience?, Task<RefactorOutcome>> Make);
 
 /// <summary>What the language services add to the editor as you work, for the window to wire once: completion as you type
 /// (<see cref="CodeCompletion"/>), a card when the pointer rests (<see cref="QuickInfo"/>), signature help after an opening
@@ -69,9 +77,10 @@ public sealed class CodeAssist
         navigation = new CodeNavigation(context, popups, quickInfo);
         actions = new CodeActions(context, popups, navigation);
         XamlAssist xaml = new(context, popups, completion);
+        CSharpAssist csharp = new(context, popups, completion, parameterInfo, navigation, actions, xaml);
         context.Languages = new LanguageAssists(new HttpAssist(context, navigation), new MSBuildAssist(context, popups, completion), xaml,
             new ComposeAssist(context, popups, completion, navigation, actions), new SettingsAssist(context, completion, navigation),
-            new WebAssist(context, popups, completion, parameterInfo, actions), new CSharpAssist(context, popups, completion, parameterInfo, navigation, actions, xaml));
+            new WebAssist(context, popups, completion, parameterInfo, actions), new GodotAssist(context, popups, completion, navigation, csharp), csharp);
         // Every editor a split makes is wired the same; what it asks is answered for the active one, which it is.
         editors.ForEachEditor(editor =>
         {
@@ -81,6 +90,13 @@ public sealed class CodeAssist
                 if (editor == Editor && !quickInfo.ValuesInUse)
                 {
                     IdeErrors.Observe(e.Hint is { } hint ? quickInfo.ShowHint(hint, e.Point) : quickInfo.Show(e.Offset, e.Point));
+                }
+            };
+            editor.GutterHovered += (_, e) =>
+            {
+                if (editor == Editor && !quickInfo.ValuesInUse)
+                {
+                    quickInfo.ShowGutter(e.Line, e.Position);
                 }
             };
             editor.HoverEnded += (_, _) => quickInfo.PointerLeft();
@@ -220,6 +236,13 @@ public sealed class CodeAssist
         set => quickInfo.DebuggerValue = value;
     }
 
+    /// <summary>What the gutter's hover says beside a line of the file shown (<see cref="QuickInfo.GutterWords"/>).</summary>
+    public Func<int, IReadOnlyList<string>?>? GutterWords
+    {
+        get => quickInfo.GutterWords;
+        set => quickInfo.GutterWords = value;
+    }
+
     /// <summary>The window's JavaScript, TypeScript, HTML, CSS and JSON, for a web file shown.</summary>
     public Func<WebLanguages?>? Web
     {
@@ -293,6 +316,13 @@ public sealed class CodeAssist
         set => actions.AskValue = value;
     }
 
+    /// <summary>Asks the person to agree to a fix (a title, what is asked, the button that agrees); whether they did.</summary>
+    public Func<string, string, string, Task<bool>>? ConfirmFix
+    {
+        get => actions.ConfirmFix;
+        set => actions.ConfirmFix = value;
+    }
+
     /// <summary>The templates in force, as Settings leaves them.</summary>
     public TemplateSet Templates
     {
@@ -337,7 +367,8 @@ public sealed class CodeAssist
     {
         context.Work = registry.Work;
         WebAssist web = context.Languages.Web;
-        Code(AppActions.Complete, "Basic Completion", context => IdeErrors.Observe(completion.Start(null)), new("Code/Code Completion", 0, 0), xaml: true, msbuild: true);
+        Code(AppActions.Complete, "Basic Completion", context => IdeErrors.Observe(completion.Start(null)), new("Code/Code Completion", 0, 0), xaml: true, msbuild: true,
+            godot: true);
         Code(AppActions.CompleteStatement, "Complete Current Statement", _ => completion.CompleteStatement(), new("Code/Code Completion", 1, 0), server: false, syntax: true);
         // Passenger's own fixes first, which a file the server does not read (a XAML file) may have too.
         registry.Add(new IdeAction(AppActions.QuickFix, "Show Context Actions", "Code", context => IdeErrors.Observe(actions.ShowFixes(AppActions.QuickFix)))
@@ -385,7 +416,8 @@ public sealed class CodeAssist
             WhyNot = context => WhyNotXaml(context),
             Menus = [new("Refactor", 4, 1)],
         });
-        Code(AppActions.GoToDeclaration, "Go to Declaration", context => IdeErrors.Observe(navigation.GoToDefinition(Caret)), new("Navigate", 2, 0), xaml: true, msbuild: true, http: true);
+        Code(AppActions.GoToDeclaration, "Go to Declaration", context => IdeErrors.Observe(navigation.GoToDefinition(Caret)), new("Navigate", 2, 0), xaml: true, msbuild: true, http: true,
+            godot: true);
         Code(AppActions.DerivedSymbols, "Derived Symbols", context => IdeErrors.Observe(navigation.GoToDerivedSymbols(Caret)), new("Navigate", 2, 1));
         Code(AppActions.GoToImplementation, "Go to Implementation", context => IdeErrors.Observe(navigation.GoToImplementation(Caret)), new("Navigate", 2, 2));
         Code(AppActions.GoToTypeDeclaration, "Go to Type Declaration", context => IdeErrors.Observe(navigation.GoToTypeDeclaration(Caret)), new("Navigate", 2, 3));
@@ -397,11 +429,12 @@ public sealed class CodeAssist
         Code(AppActions.QuickDocumentation, "Quick Documentation", context => quickInfo.QuickDocumentation(), new("View", 1, 1), server: false);
 
         void Code(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false,
-            bool http = false) =>
+            bool http = false, bool godot = false) =>
             registry.Add(new IdeAction(id, title, "Code", run)
             {
-                // An .http file's requests go to their routes, with no language server of its own.
-                WhyNot = action => http && this.context.Languages.Http.IsHttpFile(action.File) ? null : WhyNot(action, server, syntax, xaml, markup, msbuild),
+                // An .http file's requests go to their routes, and a Godot scene's paths to their files and code, with no language server of their own.
+                WhyNot = action => http && this.context.Languages.Http.IsHttpFile(action.File) || godot && IsGodotScene(action.File) ? null
+                    : WhyNot(action, server, syntax, xaml, markup, msbuild),
                 Menus = [menu],
             });
     }
@@ -412,7 +445,12 @@ public sealed class CodeAssist
     public void Rename() => actions.Rename();
 
     /// <summary>Why Rename cannot run at the editor's caret; null when it can.</summary>
-    public string? WhyNotRename(ActionContext context) => WhyNot(context, server: true, xaml: true);
+    public string? WhyNotRename(ActionContext context) =>
+        IsGodotScene(context.File) ? (context.Editor.IsReadOnly ? Refusals.ReadOnly(context.File!.Name) : null) : WhyNot(context, server: true, xaml: true);
+
+    /// <summary>Whether a file is a text scene or resource of a Godot project, which Passenger reads itself.</summary>
+    private bool IsGodotScene(OpenDocument? file) =>
+        file is not null && GodotFile.IsText(file.Path) && context.CSharp?.GodotOf?.Invoke(file.Path) is not null;
 
     /// <summary>Why an action of a XAML file's alone cannot run: no file, a file not XAML of a project Passenger reads, or
     /// one that cannot be edited.</summary>
@@ -462,6 +500,9 @@ public sealed class CodeAssist
 
     /// <summary>A file's fixes that give a key a language lacks (<see cref="CSharpAssist.LocalizationFixes"/>).</summary>
     public IReadOnlyList<EditorFix> LocalizationFixes(OpenDocument file, int offset) => context.Languages.CSharp.LocalizationFixes(file, offset);
+
+    /// <summary>A Godot project's C# file's or open scene's fixes of its checks' marks (<see cref="CSharpAssist.GodotFixes"/>).</summary>
+    internal IReadOnlyList<EditorFix> GodotFixes(OpenDocument file, int offset, Godot.GodotSceneMarks marks) => context.Languages.CSharp.GodotFixes(file, offset, marks);
 
     /// <summary>A XAML colour's badge in the completion list: the colour itself, the content's own; null for no colour.</summary>
     internal static IBrush? Swatch(string? colour) =>

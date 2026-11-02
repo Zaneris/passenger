@@ -80,6 +80,8 @@ public sealed class ProfilerView : DockPanel
     private readonly DockPanel garbage;
     private readonly MemoryView memory;
     private readonly FramesView frames;
+    private readonly GameFramesView game;
+    private readonly Panel framesPage;
     private readonly Button heap;
     private readonly FlameGraph flame;
     private readonly ScrollViewer flameScroll;
@@ -165,6 +167,8 @@ public sealed class ProfilerView : DockPanel
         garbage.Children.Add(collections);
         memory = new MemoryView();
         frames = new FramesView();
+        game = new GameFramesView { IsVisible = false };
+        framesPage = new Panel { Children = { frames, game } };
         flame = new FlameGraph();
         flameScroll = new ScrollViewer { Content = flame, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         kept = new ListBox
@@ -237,7 +241,7 @@ public sealed class ProfilerView : DockPanel
         timelineBand = new Border { [DockProperty] = Dock.Top, BorderThickness = new Thickness(0, 0, 0, 1), Child = timeline, IsVisible = false, Padding = new Thickness(0, 4) };
         timelineBand.Bind(Border.BorderBrushProperty, timelineBand.GetResourceObservable(TokenKeys.Divider));
         Children.Add(timelineBand);
-        Children.Add(new Panel { Children = { tree, spots, flameScroll, frames, allocations, garbage, memory, keptPage, placeholder } });
+        Children.Add(new Panel { Children = { tree, spots, flameScroll, framesPage, allocations, garbage, memory, keptPage, placeholder } });
         ticking = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         ticking.Tick += (_, _) => status.Text = $"Profiling {running}: {elapsed?.Invoke().TotalSeconds:0.0} s";
         ShowPage(ProfilerPage.CallTree);
@@ -249,6 +253,9 @@ public sealed class ProfilerView : DockPanel
 
     /// <summary>The Frames page: an Avalonia app's frames and their layout by control.</summary>
     public FramesView FramesPage => frames;
+
+    /// <summary>The Frames page of a Godot game's run: its frames as Godot measured them, joined with the C# samples.</summary>
+    public GameFramesView GamePage => game;
 
     /// <summary>Get Snapshot pressed: end the run and show what it found.</summary>
     public event EventHandler? StopRequested;
@@ -458,7 +465,9 @@ public sealed class ProfilerView : DockPanel
         ProfilerPage current = (ProfilerPage)Math.Max(0, Array.FindIndex(pages, p => p.IsChecked == true));
         Snapshot = snapshot;
         Snapshot whole = snapshot.Whole;
-        status.Text = ReferenceEquals(whole, snapshot)
+        status.Text = snapshot.FramesAlone
+            ? $"{snapshotName}: {snapshot.Duration.TotalSeconds:0.0} s, {Plural.Of(snapshot.GameFrames.Count, "frame")} as Godot's profiler measured them; no samples, as a game of GDScript alone runs no .NET code"
+            : ReferenceEquals(whole, snapshot)
             ? $"{snapshotName}: {snapshot.Duration.TotalSeconds:0.0} s, {Plural.Of(snapshot.Threads.Count, "thread")}, {snapshot.Samples:N0} samples"
             : $"{snapshotName}: {snapshot.StartMs - whole.StartMs:N0} to {snapshot.EndMs - whole.StartMs:N0} ms of {whole.Duration.TotalMilliseconds:N0}, {snapshot.Samples:N0} samples";
         foreach (ToggleButton page in pages)
@@ -489,7 +498,15 @@ public sealed class ProfilerView : DockPanel
         flame.SampleMs = snapshot.SampleMs;
         flame.Root = snapshot.All;
         frames.Show(snapshot.UiFrames, whole.StartMs, snapshot.Place is { } elsewhere ? FramesView.InContainer(elsewhere.Where) : null);
-        ShowPageLater(current);
+        // A Godot game's run shows Godot's own frames on the page, an Avalonia app's (or none) every other's.
+        game.IsVisible = whole.Game is not null;
+        frames.IsVisible = whole.Game is null;
+        if (whole.Game is { } played)
+        {
+            game.Show(played, snapshot.GameFrames, snapshot.Joined, whole.StartMs);
+        }
+        // A run of a game's frames alone has no samples for the pages of calls to show.
+        ShowPageLater(snapshot.FramesAlone && current is ProfilerPage.CallTree or ProfilerPage.HotSpots or ProfilerPage.FlameGraph ? ProfilerPage.Frames : current);
         types.ItemsSource = snapshot.Allocations;
         types.SelectedIndex = snapshot.Allocations.Count > 0 ? 0 : -1;
         ShowBackTraces();
@@ -620,7 +637,7 @@ public sealed class ProfilerView : DockPanel
     /// <summary>Shows a page; the placeholder's words when it has nothing to show.</summary>
     public void ShowPage(ProfilerPage page)
     {
-        Control[] views = [tree, spots, flameScroll, frames, allocations, garbage, memory, keptPage];
+        Control[] views = [tree, spots, flameScroll, framesPage, allocations, garbage, memory, keptPage];
         bool shown = false;
         for (int i = 0; i < views.Length; i++)
         {
@@ -717,7 +734,7 @@ public sealed class ProfilerView : DockPanel
     /// <summary>Words in the code font, at the size of a row's numbers.</summary>
     private static TextBlock Mono(TextBlock block)
     {
-        block.FontFamily = CodeEditor.CodeFont;
+        block.InCodeFont();
         block.FontSize = 12;
         return block;
     }

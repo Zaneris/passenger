@@ -55,6 +55,9 @@ public sealed record ProjectTemplate(string Name, IReadOnlyList<string> ShortNam
     /// <summary>Passenger's own item template it is, which the IDE makes itself; null for dotnet new's.</summary>
     public OwnTemplate? Own { get; init; }
 
+    /// <summary>Whether it is Passenger's own Godot 4 game, whose files the IDE writes itself (<see cref="OwnTemplates.GodotGame"/>).</summary>
+    public bool GodotGame { get; init; }
+
     /// <summary>Whether it makes what it makes by the name given: false for one whose name has no default (.gitignore).</summary>
     public bool TakesName { get; init; } = true;
 
@@ -105,6 +108,16 @@ public enum TemplateOptionKind
 public sealed record TemplateOption(string Name, string Option, string Label, string? Description, TemplateOptionKind Kind, string Default,
     IReadOnlyList<TemplateChoice> Choices, bool Inverted, bool Required, string? EnabledWhen)
 {
+    /// <summary>Whether the template's ide.host.json shows it (HTTPS too), as against one of the rest of its parameters,
+    /// which shows its description under it.</summary>
+    public bool Picked { get; init; }
+
+    /// <summary>Whether it waits under More options: one of the rest where the template picked others, and not needed.</summary>
+    public bool More { get; init; }
+
+    /// <summary>Whether it is named by its switch, the template giving it no name of its own.</summary>
+    public bool NamedBySwitch => Label == $"--{Option}";
+
     /// <summary>Where the template reads the option only from an IDE's host and the command line sets the same through
     /// another (Blazor's Include sample pages, the command line's --empty): that one's name and whether it is the opposite;
     /// null where the command line takes the option itself.</summary>
@@ -430,17 +443,18 @@ public static partial class ProjectTemplates
             foreach (JsonElement symbol in JsonMembers.Items(host, "symbolInfo", AnyCase))
             {
                 if (JsonMembers.Scalar(symbol, "id", AnyCase) is { } id && Bool(symbol, "isVisible") && !NotShown.Contains(id) && parameters.TryGetValue(id, out JsonElement parameter)
-                    && Option(parameter, cli, symbol, inverted: Bool(symbol, "invertBoolean"), label: JsonMembers.Scalar(JsonMembers.Object(symbol, "name", AnyCase), "text", AnyCase)) is { } option)
+                    && Option(parameter, cli, symbol, picked: true, inverted: Bool(symbol, "invertBoolean"), label: JsonMembers.Scalar(JsonMembers.Object(symbol, "name", AnyCase), "text", AnyCase)) is { } option)
                 {
                     options.Add(option);
                 }
             }
             if (JsonMembers.Scalar(host, "disableHttpsSymbol", AnyCase) is { } https && parameters.TryGetValue(https, out JsonElement noHttps) && options.All(o => o.Name != https)
-                && Option(noHttps, cli, null, inverted: true, label: "Configure for HTTPS") is { } configure)
+                && Option(noHttps, cli, null, picked: true, inverted: true, label: "Configure for HTTPS") is { } configure)
             {
                 options.Add(configure);
             }
         }
+        bool folds = options.Count > 0;
         IReadOnlyList<Alike> alike = options.Count > 0 ? Alikes(ide.Computed(template), parameters) : [];
         foreach ((string name, JsonElement parameter) in parameters)
         {
@@ -460,9 +474,9 @@ public static partial class ProjectTemplates
                 }
                 continue;
             }
-            if (Option(parameter, cli, null, inverted: false, label: null) is { } option)
+            if (Option(parameter, cli, null, picked: false, inverted: false, label: null) is { } option)
             {
-                options.Add(option);
+                options.Add(option with { More = folds && !option.Required });
             }
         }
         return new TemplateVariant(JsonMembers.Scalar(template, "Identity", AnyCase)!, Tag(template, "language") is { Length: > 0 } language ? language : null, Int(template, "Precedence"), JsonMembers.Scalar(template, "Description", AnyCase) ?? string.Empty,
@@ -556,7 +570,7 @@ public static partial class ProjectTemplates
         !Regex.IsMatch(framework, @"^net\d+$", RegexOptions.IgnoreCase)
         && (OperatingSystem.IsWindows() || !framework.EndsWith("-windows", StringComparison.OrdinalIgnoreCase));
 
-    private static TemplateOption? Option(JsonElement parameter, Dictionary<string, JsonElement> cli, JsonElement? ide, bool inverted, string? label)
+    private static TemplateOption? Option(JsonElement parameter, Dictionary<string, JsonElement> cli, JsonElement? ide, bool picked, bool inverted, string? label)
     {
         string name = JsonMembers.Scalar(parameter, "Name", AnyCase)!;
         if (JsonMembers.Scalar(parameter, "Type", AnyCase) is { } type && type != "parameter")
@@ -583,12 +597,20 @@ public static partial class ProjectTemplates
         {
             return null;
         }
-        string shown = Plain(label ?? JsonMembers.Scalar(parameter, "DisplayName", AnyCase) ?? JsonMembers.Scalar(parameter, "Description", AnyCase) ?? name);
-        string? description = ide is { } symbol ? JsonMembers.Scalar(JsonMembers.Object(symbol, "description", AnyCase), "text", AnyCase) : null;
+        string? described = Given(ide is { } symbol ? JsonMembers.Scalar(JsonMembers.Object(symbol, "description", AnyCase), "text", AnyCase) : null)
+            ?? Given(JsonMembers.Scalar(parameter, "Description", AnyCase));
+        string? named = Given(label) ?? Given(JsonMembers.Scalar(parameter, "DisplayName", AnyCase));
+        string option = LongName(cli, name);
+        // With no name of its own, one the template picked is labelled by its description, then not told again as its tip.
+        bool byDescription = named is null && picked && described is not null;
+        string shown = named is not null ? Plain(named) : byDescription ? Plain(described!.TrimEnd().TrimEnd('.')) : $"--{option}";
         string fallback = kind switch { TemplateOptionKind.Bool => "false", TemplateOptionKind.Choice => choices[0].Value, _ => string.Empty };
-        return new TemplateOption(name, LongName(cli, name), shown, Plain(description ?? JsonMembers.Scalar(parameter, "Description", AnyCase) ?? string.Empty), kind,
+        return new TemplateOption(name, option, shown, byDescription || described is null ? null : Plain(described), kind,
             JsonMembers.Scalar(parameter, "DefaultValue", AnyCase) ?? fallback, choices, inverted && kind == TemplateOptionKind.Bool,
-            Bool(precedence, "IsRequired"), JsonMembers.Scalar(precedence, "IsEnabledCondition", AnyCase));
+            Bool(precedence, "IsRequired"), JsonMembers.Scalar(precedence, "IsEnabledCondition", AnyCase))
+        {
+            Picked = picked,
+        };
     }
 
     private static IEnumerable<TemplateChoice> Choices(JsonElement parameter)
@@ -599,6 +621,9 @@ public static partial class ProjectTemplates
             yield return new TemplateChoice(choice.Name, string.IsNullOrWhiteSpace(display) ? choice.Name : display, JsonMembers.Scalar(choice.Value, "Description", AnyCase));
         }
     }
+
+    /// <summary>A template's text where it says something: dotnet new's cache keeps a name or description left out as "".</summary>
+    private static string? Given(string? text) => string.IsNullOrWhiteSpace(text) ? null : text;
 
     /// <summary>A label without its access-key underscores ("Do not use _top-level statements").</summary>
     private static string Plain(string text) => Regex.Replace(text, "_(_?)", "$1");

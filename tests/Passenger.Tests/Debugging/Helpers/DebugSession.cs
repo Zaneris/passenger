@@ -46,9 +46,9 @@ public sealed class DebugSession : IAsyncDisposable
         engineLog = kept ?? Path.Combine(TestRun.Root, $"engine-{Guid.NewGuid():N}.log");
         // The symbols it decompiles go where the run's IDE keeps them (its state folder's), unless a test names a folder.
         string symbols = symbolCache ?? Passenger.App.Debugging.DebugSession.SymbolCache;
-        List<string> arguments = [path, AdapterFlags.Interpreter, AdapterFlags.EngineLogging + engineLog, AdapterFlags.SymbolCache + symbols];
+        List<string> arguments = [AdapterFlags.Interpreter, AdapterFlags.EngineLogging + engineLog, AdapterFlags.SymbolCache + symbols];
         // Started as the IDE starts it, so a test run that is killed leaves no adapter or program behind.
-        ProcessStartInfo start = ChildProcesses.DotnetCommand(arguments);
+        ProcessStartInfo start = ChildProcesses.HelperCommand(path, arguments);
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
@@ -272,7 +272,7 @@ public sealed class DebugSession : IAsyncDisposable
     }
 
     public async Task<DebugSession> LaunchAsync(string program, bool stopAtEntry, bool justMyCode, IReadOnlyList<string>? arguments = null, string console = "internalConsole",
-        IReadOnlyDictionary<string, string>? environment = null)
+        IReadOnlyDictionary<string, string>? environment = null, IReadOnlyList<DapTypePresentation>? presentations = null)
     {
         await RequestAsync(DapCommands.Launch, new LaunchArguments
         {
@@ -283,6 +283,7 @@ public sealed class DebugSession : IAsyncDisposable
             Console = console,
             JustMyCode = justMyCode,
             StopAtEntry = stopAtEntry,
+            Presentations = presentations,
         });
         return this;
     }
@@ -355,8 +356,8 @@ public sealed class DebugSession : IAsyncDisposable
     public async Task<List<DapVariable>> VariablesAsync(int variablesReference) =>
         [.. (await RequestAsync<VariablesResponse>(DapCommands.Variables, new VariablesArguments(variablesReference))).Variables];
 
-    public Task<EvaluateResponse> EvaluateAsync(int frameId, string expression) =>
-        RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, "repl"));
+    public Task<EvaluateResponse> EvaluateAsync(int frameId, string expression, bool letThreadsRun = false) =>
+        RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, "repl", letThreadsRun ? true : null));
 
     public async Task<DebugSession> ContinueAsync()
     {
@@ -715,8 +716,9 @@ public static class DebugSessionChain
         await (await chain).AttachAsync(processId, justMyCode);
 
     public static async Task<DebugSession> LaunchAsync(this Task<DebugSession> chain, string program, bool stopAtEntry, bool justMyCode,
-        IReadOnlyList<string>? arguments = null, string console = "internalConsole", IReadOnlyDictionary<string, string>? environment = null) =>
-        await (await chain).LaunchAsync(program, stopAtEntry, justMyCode, arguments, console, environment);
+        IReadOnlyList<string>? arguments = null, string console = "internalConsole", IReadOnlyDictionary<string, string>? environment = null,
+        IReadOnlyList<DapTypePresentation>? presentations = null) =>
+        await (await chain).LaunchAsync(program, stopAtEntry, justMyCode, arguments, console, environment, presentations);
 
     public static async Task<DebugSession> BreakpointsAsync(this Task<DebugSession> chain) => await (await chain).BreakpointsAsync();
 

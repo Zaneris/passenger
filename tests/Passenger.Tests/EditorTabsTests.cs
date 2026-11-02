@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
@@ -207,6 +208,57 @@ public sealed class EditorTabsTests : IDisposable
         Assert.Equal(["Three.cs", "Four.cs", "Two.cs", "One.cs"], Names(joined));
         Assert.Equal(4, area.Documents.Count);
         Assert.Equal(("Four.cs", new TextPosition(3, 6)), (area.Active?.Name, area.CodeEditor.CaretPosition));
+        window.Close();
+    }
+
+    /// <summary>More tabs than the strip shows: the button at its end appears, lists the tabs out of its sight with their
+    /// files' icons, narrows them as a name is typed and goes to the one chosen by Enter or by Down and Enter, which comes
+    /// into the strip's sight; with the tabs fitting again it is gone.</summary>
+    [AvaloniaFact]
+    public void The_button_at_the_strips_end_lists_the_tabs_out_of_its_sight_and_goes_to_the_one_chosen()
+    {
+        string[] many = [.. Enumerable.Range(1, 16).Select(i => $"Component{i:00}.cs")];
+        foreach (string file in many)
+        {
+            File.WriteAllText(Path.Combine(folder, file), $"class {Path.GetFileNameWithoutExtension(file)}\n{{\n}}\n");
+        }
+        MainWindow window = Keeping("One.cs");
+        window.Width = 900;
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        Ui.Settle();
+        Assert.False(group.HiddenTabsButton.IsVisible, "The list of hidden tabs shows with every tab in sight");
+        foreach (string file in many)
+        {
+            window.OpenFile(file);
+        }
+        Ui.Settle();
+        string[] hidden = [.. group.HiddenTabs.Select(t => t.Document.Name)];
+        Assert.True(hidden.Length > 2 && !hidden.Contains("Component16.cs") && group.HiddenTabsButton.IsEffectivelyVisible,
+            $"With {group.Tabs.Count} tabs the strip hides [{string.Join(", ", hidden)}] and the button {(group.HiddenTabsButton.IsEffectivelyVisible ? "shows" : "is hidden")}");
+
+        Ui.Click(group.HiddenTabsButton);
+        HiddenTabsPopup popup = Assert.IsType<HiddenTabsPopup>(window.Popup);
+        Assert.Equal(hidden, popup.Rows.Select(r => r.Name));
+        Assert.True(popup.GetVisualDescendants().OfType<RowIcon>().Any(i => i.IsEffectivelyVisible && i.Data is not null), "The hidden tabs' rows show no file icon");
+        window.KeyTextInput("Component03");
+        Ui.Settle();
+        Ui.Press(window, "ENTER");
+        Assert.False(window.IsPopupOpen, "Enter on a hidden tab left the list open");
+        Assert.Equal("Component03.cs", window.EditorArea.Active?.Name);
+        Assert.DoesNotContain("Component03.cs", group.HiddenTabs.Select(t => t.Document.Name));
+
+        Ui.Click(group.HiddenTabsButton);
+        string second = Assert.IsType<HiddenTabsPopup>(window.Popup).Rows[1].Name;
+        Ui.Press(window, "DOWN");
+        Ui.Press(window, "ENTER");
+        Assert.Equal(second, window.EditorArea.Active?.Name);
+
+        foreach (string file in many)
+        {
+            window.EditorArea.CloseTab(group, window.EditorArea.Documents.First(d => d.Name == file));
+        }
+        Ui.Settle();
+        Assert.False(group.HiddenTabsButton.IsVisible, "The list of hidden tabs still shows once every tab is in sight");
         window.Close();
     }
 

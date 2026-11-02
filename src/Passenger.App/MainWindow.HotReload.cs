@@ -44,11 +44,17 @@ public partial class MainWindow
         }, _ => session.Debug.Running.Count > 0 ? null
             : session.Debug.HotReload is not null || session.Debug.IsDebugging ? session.Debug.WhyNotApply()
             : buildRun.WatchesHotReload ? null
+            : buildRun.IsRunning && session.RunPlan is { GodotEditor: true } editor ? GodotEditorRunsWithout(editor.Name)
             : buildRun.IsRunning ? $"This program runs without Hot Reload: Run it with Hot Reload on ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)}), or Debug it"
             : $"Nothing runs: Debug the program, or Run it with Hot Reload on ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)})", ("Run", 0, 9));
         // What dotnet watch says from now is of the save, not of the one followed.
         Editors.Opened += (_, document) => document.Saved += (_, _) => UnfollowWatch();
+        // A GDScript file saved reaches the Godot game that runs it with Hot Reload.
+        Editors.Opened += (_, document) => document.Saved += (_, _) => IdeErrors.Observe(buildRun.ReloadScriptAsync(document.Path));
     }
+
+    /// <summary>Why Godot's editor Run started takes no Hot Reload (<see cref="GodotLaunch.EditorReloads"/>).</summary>
+    public static string GodotEditorRunsWithout(string name) => $"{name} runs without Hot Reload: {GodotLaunch.EditorReloads}";
 
     /// <summary>The words dotnet watch says an apply came to with, on a line of its own that begins "dotnet watch" (as Run
     /// starts it, its emojis suppressed), what each means, and what it came to.</summary>
@@ -263,8 +269,17 @@ public partial class MainWindow
         {
             return false;
         }
-        // Each run of services restarts its own, a container run's and an Aspire AppHost's the same way.
         bool restarted = names.Count > 0;
+        // A Godot game Run runs with Hot Reload is built and started again, as dotnet watch restarts its program.
+        foreach (string game in names.Where(buildRun.RunsGameWithHotReload).ToList())
+        {
+            restarted &= await buildRun.RestartGameForEditAsync(game);
+            if (session != current || current.IsEnded)
+            {
+                return false;
+            }
+        }
+        // Each run of services restarts its own, a container run's and an Aspire AppHost's the same way.
         foreach (ServiceRun run in session.ServiceRuns.ToList())
         {
             string[] its = [.. names.Where(name => run.Services.Any(service => run.SessionName(service) == name))];

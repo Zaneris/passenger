@@ -392,6 +392,7 @@ public sealed partial class PassengerTools
             Frames = snapshot.Place is { } elsewhere && snapshot.HotSpots.Any(h => h.Module.StartsWith("Avalonia", StringComparison.Ordinal))
                 ? new UiFramesInfo(0, 0, 0, 0, 0, []) { Why = Profiling.FramesView.InContainer(elsewhere.Where) }
                 : UiFramesOf(snapshot.UiFrames, Math.Clamp(top, 1, 200), inspected),
+            Godot = GameFramesOf(snapshot, Math.Clamp(top, 1, 200)),
         };
 
         ProfileFrame Frame(string method, int total, int self) =>
@@ -457,6 +458,31 @@ public sealed partial class PassengerTools
             [] => throw new InvalidOperationException($"No .NET program runs in a container named {container}; debug_state of processes lists those there are"),
             _ => throw new InvalidOperationException($"{reachable.Count} .NET programs run in {container} ({string.Join(", ", reachable.Select(p => p.Program))}): "
                 + "attach the debugger to the one to profile (debug_attach), then profile with attach alone"),
+        };
+    }
+
+    /// <summary>A Godot game's frames as the profile tool says them, as the Frames page does: their times, GDScript's functions
+    /// by their own time, and the C# the engine called sampled in the same frames; null for any other program.</summary>
+    private static GameFramesInfo? GameFramesOf(Passenger.Profiler.Snapshot snapshot, int top)
+    {
+        if (snapshot.Game is not { } game)
+        {
+            return null;
+        }
+        IReadOnlyList<Passenger.Profiler.GameFrame> frames = snapshot.GameFrames;
+        if (frames.Count == 0)
+        {
+            return new GameFramesInfo(0, 0, 0, 0, 0, 0, [], []) { Why = game.Why ?? "Godot sent no frames while the game was profiled" };
+        }
+        Passenger.Profiler.GameJoin joined = snapshot.Joined(frames);
+        double[] times = [.. frames.Select(f => f.FrameMs).Order()];
+        return new GameFramesInfo(frames.Count, Math.Round(Passenger.Profiler.UiFrames.Percentile(times, 0.5), 2), Math.Round(times[^1], 2),
+            Math.Round(frames.Sum(f => Math.Max(0, f.FrameMs - f.ProcessMs)), 1), Math.Round(frames.Sum(f => f.ScriptMs), 1), Math.Round(joined.FrameMs.Sum(), 1),
+            [.. game.Spots(frames).Take(top).Select(s => new ScriptFunctionInfo(s.Function.Name, s.Function.IsEngineCall ? null : $"{s.Function.File}:{s.Function.Line}",
+                s.Calls, Math.Round(s.SelfMs, 2), Math.Round(s.TotalMs, 2)))],
+            [.. joined.CSharp.Take(top).Select(m => new ProfileFrame(m.Name, (int)Math.Round(m.Total * joined.SampleMs), (int)Math.Round(m.Self * joined.SampleMs)))])
+        {
+            Drawn = game.Draws ? null : "The game ran headless, so Godot drew nothing: no render stages",
         };
     }
 
@@ -657,7 +683,29 @@ public sealed record ProfileInfo(double DurationMs, int Samples, int Threads, IR
 
     /// <summary>An Avalonia app's frames, as the Frames page shows them; null for any other program.</summary>
     public UiFramesInfo? Frames { get; init; }
+
+    /// <summary>A Godot game's frames as Godot's own profiler measured them, joined with the samples; null for any other program.</summary>
+    public GameFramesInfo? Godot { get; init; }
 }
+
+/// <summary>A Godot game's frames in a profile: how many, their time at the median and the longest, the time in physics,
+/// GDScript's own and the C# the engine called (sampled) in all, the script functions by their own time (a call into Godot's
+/// API has no source), and the C# methods by their time in all, sampled in the same frames.</summary>
+public sealed record GameFramesInfo(int Count, double MedianMs, double LongestMs, double PhysicsMs, double GDScriptMs, double CSharpMs,
+    IReadOnlyList<ScriptFunctionInfo> GDScript, IReadOnlyList<ProfileFrame> CSharp)
+{
+    /// <summary>How the two languages are joined: by frame, not by call.</summary>
+    public string Joined => Profiling.GameFramesView.Joining;
+
+    /// <summary>Why there are none, when there are none.</summary>
+    public string? Why { get; init; }
+
+    /// <summary>Why it has no render stages, when it drew nothing.</summary>
+    public string? Drawn { get; init; }
+}
+
+/// <summary>A script function in a game's frames: its name, its res:// place, its calls, and its own time and time in all.</summary>
+public sealed record ScriptFunctionInfo(string Name, string? Source, int Calls, double SelfMs, double TotalMs);
 
 /// <summary>An Avalonia app's frames in a profile: how many, their UI thread's time at the median and at the longest, the time
 /// measuring and arranging and recording what to render in all, and the controls heaviest in layout by their own time.</summary>

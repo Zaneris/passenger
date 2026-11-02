@@ -3,12 +3,14 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Editor;
 
 namespace Passenger.App.Xaml;
 
 /// <summary>The design view beside a XAML file: a header naming it and what it is doing, the previewer's error over the
-/// last frame when the XAML did not load, and the frame at its own size on the editor's background, shrunk to fit when
-/// it is larger than the pane. Where the previewer says which element is where (WPF's), a click on the frame chooses
+/// last frame when the XAML did not load, and the frame at its own size on the editor's background. One larger than the
+/// pane is drawn smaller by the previewer itself, never shrunk as a picture, so its text stays as sharp as the IDE's own at
+/// any scale; the frame lands pixel for pixel on the screen. Where the previewer says which element is where (WPF's), a click on the frame chooses
 /// the element under it and the element at the editor's caret is outlined.</summary>
 public sealed class XamlPreviewPane : DockPanel
 {
@@ -21,7 +23,21 @@ public sealed class XamlPreviewPane : DockPanel
     private readonly Border outline;
     private readonly Border edge;
     private readonly TextBlock waiting;
+    private readonly Panel view;
+
+    /// <summary>The frame in its design's units, scaled to the size it is shown at.</summary>
+    private readonly LayoutTransformControl scaled;
+
+    /// <summary>Asks the previewer for the scale the pane's size calls for once a resize pauses, so a splitter's drag
+    /// draws no frame per step.</summary>
+    private readonly Debounce redraw;
     private TopLevel? shownOn;
+
+    /// <summary>The scale the pane's window draws at.</summary>
+    private double windowScale = 1;
+
+    /// <summary>How much of its design's size the frame is shown at: 1 where the pane holds it, less where it does not.</summary>
+    private double fit = 1;
     private Rect? outlined;
 
     public XamlPreviewPane(XamlPreview preview)
@@ -49,19 +65,18 @@ public sealed class XamlPreviewPane : DockPanel
         Panel framed = new() { Children = { image, marks } };
         framed.PointerPressed += OnFramePressed;
         // An edge, so a frame of the editor's own colour still shows where the design ends.
-        edge = new Border { Child = framed, BorderThickness = new Thickness(1), Margin = new Thickness(16), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        scaled = new LayoutTransformControl { Child = framed };
+        edge = new Border { Child = scaled, BorderThickness = new Thickness(1), Margin = new Thickness(16), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         edge.Bind(Border.BorderBrushProperty, edge.GetResourceObservable(TokenKeys.Divider));
         waiting = new TextBlock { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, MaxWidth = 320, TextAlignment = TextAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        // A frame larger than the pane is shrunk to fit it, never one smaller enlarged.
-        Panel view = new()
+        view = new Panel { ClipToBounds = true, Children = { edge, waiting } };
+        view.SizeChanged += (_, _) => Fit();
+        redraw = new Debounce(TimeSpan.FromMilliseconds(150), () =>
         {
-            Children =
-            {
-                new Viewbox { Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly, Child = edge },
-                waiting,
-            },
-        };
+            preview.Scaling = windowScale * fit;
+            return Task.CompletedTask;
+        });
         Children.Add(header);
         Children.Add(errorBar);
         Children.Add(view);
@@ -72,7 +87,8 @@ public sealed class XamlPreviewPane : DockPanel
             shownOn = TopLevel.GetTopLevel(this);
             if (shownOn is not null)
             {
-                preview.Scaling = shownOn.RenderScaling;
+                windowScale = shownOn.RenderScaling;
+                preview.Scaling = windowScale * fit;
                 shownOn.ScalingChanged += Rescaled;
             }
         };
@@ -80,6 +96,7 @@ public sealed class XamlPreviewPane : DockPanel
         {
             shownOn?.ScalingChanged -= Rescaled;
             shownOn = null;
+            redraw.Stop();
         };
         Show();
     }
@@ -131,7 +148,38 @@ public sealed class XamlPreviewPane : DockPanel
     }
 
     /// <summary>The window moved to a screen of another scale: the previewer draws at that one.</summary>
-    private void Rescaled(object? sender, EventArgs e) => preview.Scaling = ((TopLevel)sender!).RenderScaling;
+    private void Rescaled(object? sender, EventArgs e)
+    {
+        windowScale = ((TopLevel)sender!).RenderScaling;
+        Fit();
+    }
+
+    /// <summary>Works out how much of its design's size the frame fits in the pane at, asks the previewer to draw it so once
+    /// the pane's size settles, and shows the frame it has meanwhile.</summary>
+    private void Fit()
+    {
+        Size design = preview.FrameSize;
+        // The edge's margin and border stand outside the frame at every scale.
+        double room = 2 * (edge.Margin.Left + edge.BorderThickness.Left);
+        fit = design.Width > 0 && design.Height > 0 && view.Bounds.Width > room && view.Bounds.Height > room
+            ? Math.Min(1, Math.Min((view.Bounds.Width - room) / design.Width, (view.Bounds.Height - room) / design.Height))
+            : 1;
+        if (Math.Abs(preview.Scaling - (windowScale * fit)) >= 0.01)
+        {
+            redraw.Restart();
+        }
+        double shown = fit;
+        if (preview.Frame is { } frame && design.Width > 0)
+        {
+            // Drawn at the scale shown its pixels land one for one; one drawn larger shrinks until the next frame.
+            double drawn = frame.PixelSize.Width / design.Width / windowScale;
+            shown = drawn <= fit + 0.01 ? drawn : fit;
+        }
+        if (scaled.LayoutTransform is not ScaleTransform { ScaleX: double was } || Math.Abs(was - shown) > 1e-9)
+        {
+            scaled.LayoutTransform = new ScaleTransform(shown, shown);
+        }
+    }
 
     private void Show()
     {
@@ -150,5 +198,6 @@ public sealed class XamlPreviewPane : DockPanel
         {
             outline.IsVisible = false;
         }
+        Fit();
     }
 }

@@ -16,8 +16,10 @@ namespace Passenger.App.Tables;
 /// side, both held in place while the cells scroll, numbers against their cell's right edge. Only the cells on screen are
 /// drawn, each one's text laid out once and kept while it stays there, so a sheet of a million rows scrolls as one of ten.
 /// A click chooses a cell, a drag or Shift a range, the header a column and the side a row; a header's edge is dragged to
-/// size its column, or double-clicked to fit it. Copy writes the chosen cells as tab-separated lines, from the keys or the
-/// cells' menu, which a right-click opens on the cell under it (the chosen ones, when it falls among them).</summary>
+/// size its column, or double-clicked to fit it, and the arrow at a title's end (shown on the column sorted by, and on the
+/// title the pointer is over) sorts by its column, as the header's menu does. Copy writes the chosen cells as
+/// tab-separated lines, from the keys or the cells' menu, which a right-click opens on the cell under it (the chosen ones,
+/// when it falls among them).</summary>
 public sealed class CellGrid : Control
 {
     private const double RowHeight = ListRow.Height;
@@ -31,14 +33,16 @@ public sealed class CellGrid : Control
     /// <summary>How near a header's edge the pointer sizes its column.</summary>
     private const double EdgeReach = 4;
 
+    /// <summary>The sort's arrow at a title's end, and the room the title leaves it inside the column's padding.</summary>
+    private const double ArrowSize = 12;
+    private const double ArrowRoom = ArrowSize + 4;
+
     /// <summary>How many cells are read to fit the columns: enough to see what a column holds, never a whole large file.</summary>
     private const int SampledCells = 200_000;
 
     /// <summary>How many laid-out texts are kept: some screens' worth, after which they are laid out afresh.</summary>
     private const int KeptTexts = 8192;
 
-    private static readonly Typeface Plain = new(CodeEditor.CodeFont);
-    private static readonly Typeface Bold = new(CodeEditor.CodeFont, FontStyle.Normal, FontWeight.SemiBold);
     private static readonly Cursor SizeColumn = new(StandardCursorType.SizeWestEast);
 
     private readonly ScrollBar vertical = new() { Orientation = Orientation.Vertical, AllowAutoHide = true };
@@ -52,6 +56,8 @@ public sealed class CellGrid : Control
 
     private double gutter;
     private double charWidth;
+    private Typeface plain = new(CodeEditor.CodeFont);
+    private Typeface bold = new(CodeEditor.CodeFont, FontStyle.Normal, FontWeight.SemiBold);
     private Vector scroll;
     private bool updatingBars;
     private Palette? palette;
@@ -62,6 +68,9 @@ public sealed class CellGrid : Control
     private int sizing = -1;
 
     private bool choosing;
+
+    /// <summary>The column whose title the pointer is over, which shows its sort's arrow; -1 for none.</summary>
+    private int pointed = -1;
 
     /// <summary>The cells Find matched, by <see cref="Spot"/>, and the one it stands on.</summary>
     private HashSet<long> matched = [];
@@ -84,13 +93,19 @@ public sealed class CellGrid : Control
             ShowMenu(e.TryGetPosition(this, out Point at) ? at : null);
             e.Handled = true;
         };
-        charWidth = CodeEditor.MeasureFont(Plain, FontSize).CharWidth;
+        charWidth = CodeEditor.MeasureFont(plain, FontSize).CharWidth;
     }
 
     /// <summary>The cells' menu while it is open.</summary>
     public ContextMenu? Menu { get; private set; }
 
-    /// <summary>The cells' menu, Copy and Select All with their keys: at the pointer, or from the keys under the caret's cell.</summary>
+    /// <summary>A sort asked for, by a column's arrow or the header's menu, for the file to sort its rows so: a column and
+    /// which way, or null for the file's order.</summary>
+    public event EventHandler<(int Column, bool Descending)?>? SortRequested;
+
+    /// <summary>The cells' menu, Copy and Select All with their keys, at the pointer, or from the keys (the menu key,
+    /// Shift+F10) under the caret's cell; first the sorts of the column it opened on (the pointer's, or the caret's from the
+    /// keys), the one in force checked.</summary>
     private void ShowMenu(Point? at)
     {
         if (table is null)
@@ -107,6 +122,17 @@ public sealed class CellGrid : Control
                 ListMenus.Keyed("Select All", EditorActions.SelectAll, () => Execute(EditorActions.SelectAll), cells),
             },
         };
+        if (cells && (at is not { } place || place.X >= gutter))
+        {
+            int column = at is { } pointer ? ColumnAt(pointer.X - gutter + scroll.X) : caret.Column;
+            (string Title, (int Column, bool Descending)? Sort)[] sorts = [("Sort Ascending", (column, false)), ("Sort Descending", (column, true)), ("File Order", null)];
+            for (int i = 0; i < sorts.Length; i++)
+            {
+                (int Column, bool Descending)? sort = sorts[i].Sort;
+                menu.Items.Insert(i, MenuChoice.Of(sorts[i].Title, sort == table.Sort, () => SortRequested?.Invoke(this, sort)));
+            }
+            menu.Items.Insert(sorts.Length, new Separator());
+        }
         if (at is null)
         {
             Rect body = Body;
@@ -124,9 +150,14 @@ public sealed class CellGrid : Control
         get => table;
         set
         {
+            // The same rows in another order keep the columns as they were sized.
+            bool resorted = value is not null && table is not null && ReferenceEquals(value.Unsorted, table.Unsorted);
             table = value;
             texts.Clear();
-            Fit();
+            if (!resorted)
+            {
+                Fit();
+            }
             caret = Clamp(caret);
             anchor = Clamp(anchor);
             scroll = ClampScroll(scroll);
@@ -275,7 +306,7 @@ public sealed class CellGrid : Control
             widths[column] = FittedWidth(column);
         }
         Place();
-        int last = table is { RowCount: > 0 } ? table.RowNumber(table.RowCount - 1) : 1;
+        int last = table is { RowCount: > 0 } ? table.Unsorted.RowNumber(table.RowCount - 1) : 1;
         gutter = Math.Max(3, last.ToString(CultureInfo.InvariantCulture).Length) * charWidth + 2 * Pad;
     }
 
@@ -285,13 +316,15 @@ public sealed class CellGrid : Control
         {
             return 0;
         }
-        int longest = Shown(table.Header(column)).Length;
+        // The title leaves its sort's arrow room.
+        double title = Math.Min(Shown(table.Header(column)).Length, MostCharacters) * charWidth + ArrowRoom;
+        int longest = 0;
         int rows = Math.Min(table.RowCount, Math.Max(50, SampledCells / Math.Max(1, table.ColumnCount)));
         for (int row = 0; row < rows && longest < MostCharacters; row++)
         {
             longest = Math.Max(longest, Shown(table.Cell(row, column)).Length);
         }
-        return Math.Clamp(longest, FewestCharacters, MostCharacters) * charWidth + 2 * Pad;
+        return Math.Max(Math.Clamp(longest, FewestCharacters, MostCharacters) * charWidth, title) + 2 * Pad;
     }
 
     private void Place()
@@ -389,6 +422,11 @@ public sealed class CellGrid : Control
         }
         (int row, int column) = CellAt(at);
         bool extend = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        if (at.Y < RowHeight && at.X >= gutter && OnArrow(at, column))
+        {
+            SortRequested?.Invoke(this, TableSort.Next(table.Sort, column));
+            return;
+        }
         if (at.Y < RowHeight && at.X >= gutter)
         {
             anchor = extend ? (0, anchor.Column) : (0, column);
@@ -415,6 +453,17 @@ public sealed class CellGrid : Control
             e.Pointer.Capture(this);
         }
         InvalidateVisual();
+    }
+
+    /// <summary>Where a column's sort arrow is drawn on the header, as it is scrolled now.</summary>
+    public Rect SortArrow(int column) =>
+        new(gutter + lefts[column + 1] - scroll.X - Pad - ArrowSize, Math.Round((RowHeight - ArrowSize) / 2), ArrowSize, ArrowSize);
+
+    /// <summary>Whether a point on the header falls on a column's sort arrow, at its title's end.</summary>
+    private bool OnArrow(Point at, int column)
+    {
+        double right = gutter + lefts[column + 1] - scroll.X;
+        return at.X < right - EdgeReach && at.X >= right - Pad - ArrowRoom;
     }
 
     /// <summary>A right-click's cell chosen, unless it falls among the cells chosen already, which its menu then acts on.</summary>
@@ -451,6 +500,23 @@ public sealed class CellGrid : Control
             return;
         }
         Cursor = EdgeAt(at) >= 0 ? SizeColumn : null;
+        Point(table is { ColumnCount: > 0 } && at.Y < RowHeight && at.X >= gutter ? ColumnAt(at.X - gutter + scroll.X) : -1);
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        Point(-1);
+    }
+
+    /// <summary>The title the pointer is over, whose arrow then shows.</summary>
+    private void Point(int column)
+    {
+        if (column != pointed)
+        {
+            pointed = column;
+            InvalidateVisual();
+        }
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -595,7 +661,24 @@ public sealed class CellGrid : Control
     {
         palette = null;
         texts.Clear();
+        FollowFont();
         InvalidateVisual();
+    }
+
+    /// <summary>The code font in force taken for the cells, each column fitted again to its width when it changed.</summary>
+    private void FollowFont()
+    {
+        FontFamily font = this.TryFindResource(CodeFonts.Key, out object? found) && found is FontFamily family ? family : CodeEditor.CodeFont;
+        if (font.Equals(plain.FontFamily))
+        {
+            return;
+        }
+        plain = new Typeface(font);
+        bold = new Typeface(font, FontStyle.Normal, FontWeight.SemiBold);
+        charWidth = CodeEditor.MeasureFont(plain, FontSize).CharWidth;
+        Fit();
+        scroll = ClampScroll(scroll);
+        InvalidateArrange();
     }
 
     public override void Render(DrawingContext context)
@@ -666,9 +749,16 @@ public sealed class CellGrid : Control
                 {
                     context.FillRectangle(colours.HeaderChosen, place);
                 }
-                if (Text(-1, column, place.Width, Bold, colours.HeaderText) is { } name)
+                if (Text(-1, column, place.Width - ArrowRoom, bold, colours.HeaderText) is { } name)
                 {
                     DrawText(context, name, place, number: false);
+                }
+                (int Column, bool Descending)? sort = table.Sort;
+                if (hasCells && (sort?.Column == column || pointed == column))
+                {
+                    bool sorted = sort?.Column == column;
+                    DrawArrow(context, sorted && sort!.Value.Descending ? colours.Down : colours.Up, sorted ? colours.HeaderText : colours.RowNumber,
+                        new Point(place.Right - Pad - ArrowSize, Math.Round((RowHeight - ArrowSize) / 2)));
                 }
                 context.FillRectangle(colours.Grid, new Rect(place.Right - 1, 0, 1, RowHeight));
             }
@@ -685,7 +775,7 @@ public sealed class CellGrid : Control
                 {
                     context.FillRectangle(colours.HeaderChosen, place);
                 }
-                DrawText(context, Text(row, Gutter, gutter, Plain, colours.RowNumber)!, place, number: true);
+                DrawText(context, Text(row, Gutter, gutter, plain, colours.RowNumber)!, place, number: true);
             }
         }
         context.FillRectangle(colours.Edge, new Rect(0, RowHeight - 1, bounds.Width, 1));
@@ -699,9 +789,22 @@ public sealed class CellGrid : Control
             context.FillRectangle(Spot((row, column)) == currentMatch ? colours.SearchCurrent : colours.SearchMatch, place);
         }
         bool number = table!.IsNumber(row, column);
-        if (Text(row, column, place.Width, Plain, number ? colours.Number : colours.Text) is { } text)
+        if (Text(row, column, place.Width, plain, number ? colours.Number : colours.Text) is { } text)
         {
             DrawText(context, text, place, number);
+        }
+    }
+
+    /// <summary>A sort's arrow (an icon of 16 units) drawn <see cref="ArrowSize"/> wide from a point.</summary>
+    private static void DrawArrow(DrawingContext context, Geometry? arrow, IBrush brush, Point at)
+    {
+        if (arrow is null)
+        {
+            return;
+        }
+        using (context.PushTransform(Matrix.CreateScale(ArrowSize / 16, ArrowSize / 16) * Matrix.CreateTranslation(at.X, at.Y)))
+        {
+            context.DrawGeometry(brush, null, arrow);
         }
     }
 
@@ -745,7 +848,8 @@ public sealed class CellGrid : Control
 
     /// <summary>The theme's brushes the table draws with, read once per look.</summary>
     private sealed record Palette(IBrush Background, IBrush Text, IBrush Number, IBrush Header, IBrush HeaderText, IBrush HeaderChosen,
-        IBrush RowNumber, IBrush Grid, IBrush Edge, IBrush Selection, IBrush SelectionInactive, IBrush SearchMatch, IBrush SearchCurrent, IPen CaretPen)
+        IBrush RowNumber, IBrush Grid, IBrush Edge, IBrush Selection, IBrush SelectionInactive, IBrush SearchMatch, IBrush SearchCurrent, IPen CaretPen,
+        Geometry? Up, Geometry? Down)
     {
         public static Palette From(Control control)
         {
@@ -765,7 +869,9 @@ public sealed class CellGrid : Control
                 Brush(TokenKeys.Editor_SelectionInactive),
                 Brush(TokenKeys.Editor_SearchMatch),
                 Brush(TokenKeys.Editor_SearchCurrent),
-                new Pen(Brush(TokenKeys.Accent), 1));
+                new Pen(Brush(TokenKeys.Accent), 1),
+                control.TryFindResource(IconKeys.ArrowUp, out object? up) ? up as Geometry : null,
+                control.TryFindResource(IconKeys.ArrowDown, out object? down) ? down as Geometry : null);
         }
     }
 }

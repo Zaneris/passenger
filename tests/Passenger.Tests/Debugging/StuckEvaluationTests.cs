@@ -59,6 +59,32 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         Assert.Single(await host.LocalsAsync(stop), v => v.Name == "$exception");
     }
 
+    /// <summary>An exception whose Message never returns, spinning past the evaluation's time (aborted) or sleeping (which no
+    /// abort takes, so it is left to run): the stop still names it and its inner exception by the type and the message each
+    /// was made with, read from their fields, and says why no more was read.</summary>
+    [Theory]
+    [InlineData("spins")]
+    [InlineData("sleeps")]
+    public async Task An_exception_whose_Message_never_returns_is_named_by_its_type_and_the_message_it_was_made_with(string how)
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["unread", how])
+            .WaitForInitializedEvent();
+        await host.RequestAsync(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([DapExceptionFilters.All]));
+        await host.ConfigurationDoneAsync();
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.Equal(StopReasons.Exception, stop.Reason);
+
+        ExceptionInfoResponse info = await host.RequestAsync<ExceptionInfoResponse>(DapCommands.ExceptionInfo, new ThreadArguments(stop.ThreadId!.Value));
+        Assert.True(info.Details is { FullTypeName: "UnreadMessageException", Message: "made with this message" },
+            $"The stop named its exception as {info.Details?.FullTypeName}: {info.Details?.Message} ({info.Description}), not by what it was made with");
+        DapExceptionDetails inner = Assert.Single(info.Details!.InnerException ?? []);
+        Assert.Equal(("System.InvalidOperationException", "and this inner one"), (inner.FullTypeName, inner.Message));
+        Assert.Contains("Its Message was not evaluated", info.Description, StringComparison.Ordinal);
+    }
+
     /// <summary>A continue sent while the stop's values are still being read (here by an evaluation that never returns) goes
     /// ahead of them: the evaluation under way is left to the program before its time is up, which goes on with it and has
     /// it aborted once its time is up; a read still waiting finds the stop gone and runs nothing.</summary>

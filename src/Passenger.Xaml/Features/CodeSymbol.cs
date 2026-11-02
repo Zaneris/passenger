@@ -71,6 +71,46 @@ public sealed class CodeSymbol
             && ((member.Name == name && Kind(member.Kind) == kind && Dotted(member.DeclaringType) == type) || IsDeclared(member.Place));
     }
 
+    /// <summary>Whether a use written as <paramref name="written"/> spells the symbol's name (its own, a markup extension's
+    /// without Extension, or the property or command the MVVM Toolkit makes of it), and how once the symbol is named
+    /// <paramref name="name"/> (a C# name, an @ before a keyword): <paramref name="renamed"/>, null where the new name makes
+    /// no such member.</summary>
+    public bool Respells(string written, string name, out string? renamed)
+    {
+        string bare = name.StartsWith('@') ? name[1..] : name;
+        const string Extension = "Extension";
+        renamed = null;
+        if (written == this.name)
+        {
+            renamed = bare;
+        }
+        else if (kind == 'T' && this.name.EndsWith(Extension, StringComparison.Ordinal) && written == this.name[..^Extension.Length])
+        {
+            renamed = bare.EndsWith(Extension, StringComparison.Ordinal) && bare.Length > Extension.Length ? bare[..^Extension.Length] : bare;
+        }
+        else if (kind == 'F' && written == ToolkitNames.PropertyOf(this.name))
+        {
+            renamed = ToolkitNames.PropertyOf(bare);
+        }
+        else if (kind == 'M' && written == ToolkitNames.CommandOf(this.name))
+        {
+            renamed = ToolkitNames.CommandOf(bare);
+        }
+        else if (string.Equals(written, this.name, StringComparison.OrdinalIgnoreCase))
+        {
+            // A name XAML matches in any case (an enum's member) takes the new name's.
+            renamed = bare;
+        }
+        else
+        {
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>Whether a member is declared where the symbol is: the symbol itself, or a member the MVVM Toolkit makes of it.</summary>
+    public bool IsDeclaredAs(ClrMember member) => IsDeclared(member.Place);
+
     /// <summary>The type a member is declared in, its nested types' names joined with '+' as metadata joins them where a
     /// documentation id joins them with '.'.</summary>
     private ClrType? Owner(TypeSystem types)

@@ -51,6 +51,7 @@ public partial class MainWindow
     {
         ContainerTools = () => ContainerToolsFrom ?? Containers.ContainerToolsSource.Default(Releases),
         DockerHub = DockerHub,
+        GodotEnvironment = GodotEnvironment ?? Godot.GodotScripts.UserFoldersOfVariable(),
         StartsLanguageServer = StartsLanguageServer,
         HeadStart = headStart,
     };
@@ -70,6 +71,10 @@ public partial class MainWindow
     /// <summary>Where this window's Dockerfile server asks for image tags in Docker Hub's place: the one given, else
     /// the place <c>PASSENGER_DOCKER_HUB</c> names, else Docker Hub's own.</summary>
     public Uri? DockerHub { get; init; }
+
+    /// <summary>The variables a Godot editor this window starts for GDScript's language server runs with beyond the IDE's
+    /// own: a test's user folders for Godot, so it keeps its settings and caches there.</summary>
+    public IReadOnlyDictionary<string, string>? GodotEnvironment { get; init; }
 
     /// <summary>What the builds and runs of this window's sessions show themselves in and start with.</summary>
     private BuildRunParts BuildRunParts() => new(Bottom, Editors, Dock, () => settings, Say, ShowInTerminal,
@@ -261,12 +266,29 @@ public partial class MainWindow
         liveTree?.Bind(next);
         bindingValues?.Bind(next);
         overlays?.Bind(next);
+        gameAudio?.Bind(next);
         BindVcs(next);
         BindBookmarks(next);
+        BindErrorPins(next);
         BindEndpoints(next);
         BindMigrations(next);
         BindPackages(next);
         BindContainers(next);
+        // The Explorer's filter shows the files the index has, so it follows them as they are walked, come and go.
+        next.Index.Walked += (_, _) =>
+        {
+            if (session == next)
+            {
+                Explorer.Refilter();
+            }
+        };
+        next.Index.Changed += (_, _) =>
+        {
+            if (session == next)
+            {
+                Explorer.Refilter();
+            }
+        };
         // Files open as it binds (a file opened with no folder) are its too.
         foreach (Workspace.OpenDocument document in Editors.Documents)
         {
@@ -350,9 +372,18 @@ public partial class MainWindow
         {
             if (session == next)
             {
+                ShowDotnet();
                 ShowSdk();
             }
         };
+        next.Models.Changed += (_, _) =>
+        {
+            if (session == next)
+            {
+                ShowDotnet();
+            }
+        };
+        ShowDotnet();
         ShowSdk();
         unreadSaid = null;
         next.WorkspaceChanged += (_, _) =>
@@ -410,6 +441,7 @@ public partial class MainWindow
         agentSocket?.Describe(next.Folder);
         OnCSharpChanged(next.CSharp);
         BindPreviews(next);
+        BindTargetFrameworks(next);
     }
 
     /// <summary>A session's debugger in the window: what it asks to run, what it says, where it stops and the toolbar's
@@ -418,6 +450,17 @@ public partial class MainWindow
     {
         Debugging.DebugController debugger = next.Debug;
         BindHotReload(next);
+        // Problems' Breakpoints follows what the debuggers say of each breakpoint, and the sessions coming and going.
+        void ListBreakpoints()
+        {
+            if (session == next && next.Debug == debugger)
+            {
+                Bottom.Problems.ShowBreakpoints(debugger.BreakpointProblems());
+            }
+        }
+        debugger.Breakpoints.Changed += (_, _) => ListBreakpoints();
+        debugger.StateChanged += (_, _) => ListBreakpoints();
+        ListBreakpoints();
         debugger.ActionRequested += (_, action) =>
         {
             if (session == next && next.Debug == debugger)
@@ -525,14 +568,17 @@ public partial class MainWindow
             sdkSaid = null;
             return;
         }
-        Explorer.Tree.ShowSdk($"{Refusals.NoSdk(missing, Folder)}\n\n{missing.Said}");
+        Explorer.Tree.ShowSdk($"{SdkWords(missing)}\n\n{missing.Said}");
         SaySdk(missing);
     }
+
+    /// <summary>The want of a .NET SDK in the banner's words, or dotnet's before the machine's .NET is read.</summary>
+    private string SdkWords(MissingSdk missing) => WithoutSdk() ?? Refusals.NoSdk(missing, Folder);
 
     /// <summary>The want of a .NET SDK said in the status bar as an error, a click there opening its download page.</summary>
     private void SaySdk(MissingSdk missing)
     {
-        sdkSaid = Refusals.NoSdk(missing, Folder);
+        sdkSaid = SdkWords(missing);
         status.Say(sdkSaid, ProblemSeverity.Error, SdkPlace(missing));
     }
 

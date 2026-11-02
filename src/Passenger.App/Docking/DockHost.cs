@@ -33,7 +33,7 @@ public sealed class DockHost : Grid
     private double bottomHeight = DefaultBottom;
 
     /// <summary>The areas' sizes in the layout the IDE starts with.</summary>
-    private const double DefaultLeft = 280;
+    private const double DefaultLeft = 300;
 
     private const double DefaultRight = 300;
     private const double DefaultBottom = 280;

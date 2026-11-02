@@ -241,6 +241,7 @@ internal static class Evaluation
         {
             FrameworkReferences = [.. project.GetItems("FrameworkReference").Select(r => r.EvaluatedInclude).Distinct(StringComparer.OrdinalIgnoreCase)],
             WindowsTargeting = WindowsTargeting.Given(project),
+            TargetPath = NonEmpty(project.GetPropertyValue(CarriedProperties.TargetPath)),
         };
     }
 

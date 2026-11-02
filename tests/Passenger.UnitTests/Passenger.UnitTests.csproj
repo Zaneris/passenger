@@ -37,6 +37,18 @@
     <Compile Include="../../src/Passenger.App/Containers/DockerfileStages.cs" Link="App/DockerfileStages.cs" />
   </ItemGroup>
 
+  <!-- What a launch handed to a running Passenger says, written and read as JSON alone, compiled in since its project is
+       the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/HandedLaunch.cs" Link="App/HandedLaunch.cs" />
+  </ItemGroup>
+
+  <!-- What .NET's browser debug proxy says of a stop and its values, read as JSON alone, compiled in since its project is
+       the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Debugging/WebAssemblyValues.cs" Link="App/WebAssemblyValues.cs" />
+  </ItemGroup>
+
   <!-- Where an AppHost's dashboard is called from where it listens, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Aspire/DashboardAddress.cs" Link="App/DashboardAddress.cs" />
@@ -49,11 +61,12 @@
     <Compile Include="../../src/Passenger.Languages/CSharp/SafeDeletion.cs" Link="Languages/SafeDeletion.cs" />
   </ItemGroup>
 
-  <!-- Where a live template may go and where completion opens on a space, read from Roslyn's syntax alone, compiled in
-       since their project's editor brings Avalonia. -->
+  <!-- Where a live template may go, where completion opens on a space and which lines begin inside a string, read from
+       Roslyn's syntax alone, compiled in since their project's editor brings Avalonia. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.Languages/CSharp/TemplateScope.cs" Link="Languages/TemplateScope.cs" />
     <Compile Include="../../src/Passenger.Languages/CSharp/CompletionTriggers.cs" Link="Languages/CompletionTriggers.cs" />
+    <Compile Include="../../src/Passenger.Languages/CSharp/StringLines.cs" Link="Languages/StringLines.cs" />
   </ItemGroup>
 
   <!-- What an MSBuild file's elements say, read from its markup alone, compiled in since its project is the app's. -->
@@ -78,12 +91,13 @@
     <Compile Include="../../src/Passenger.App/Debugging/XamlBreakpoints.cs" Link="App/XamlBreakpoints.cs" />
   </ItemGroup>
 
-  <!-- How a CSV's records and a workbook's cells are read, from their text and zip alone, compiled in since their
-       project is the app's. -->
+  <!-- How a CSV's records and a workbook's cells are read and sorted, from their text and zip alone, compiled in since
+       their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Tables/Table.cs" Link="App/Table.cs" />
     <Compile Include="../../src/Passenger.App/Tables/Workbook.cs" Link="App/Workbook.cs" />
     <Compile Include="../../src/Passenger.App/Tables/CellFormat.cs" Link="App/CellFormat.cs" />
+    <Compile Include="../../src/Passenger.App/Tables/TableSort.cs" Link="App/TableSort.cs" />
   </ItemGroup>
 
   <!-- How the Endpoints window reads an .http file, holds an answer to its criteria and sends a request to a running app,
@@ -109,6 +123,8 @@
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Run/LaunchProfile.cs" Link="App/LaunchProfile.cs" />
     <Compile Include="../../src/Passenger.App/Web/NpmRange.cs" Link="App/NpmRange.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotServerWords.cs" Link="App/GodotServerWords.cs" />
+    <Compile Include="../../src/Passenger.App/Testing/GutRuns.cs" Link="App/GutRuns.cs" />
     <Compile Include="../../src/Passenger.App/Run/BuiltInputs.cs" Link="App/BuiltInputs.cs" />
   </ItemGroup>
 
@@ -122,6 +138,29 @@
        app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Templates/ProjectNames.cs" Link="App/ProjectNames.cs" />
+  </ItemGroup>
+
+  <!-- Godot's remote debug protocol, its Variant encoding and messages, from their bytes alone, the names Passenger's
+       helper in a game is sent, and what a game's C# and its scenes say of each other, compiled in since their project is
+       the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Godot/GodotVariant.cs" Link="App/GodotVariant.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotMessages.cs" Link="App/GodotMessages.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotScriptStops.cs" Link="App/GodotScriptStops.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotAgent.cs" Link="App/GodotAgent.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotChecks.cs" Link="App/GodotChecks.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotOffer.cs" Link="App/GodotOffer.cs" />
+  </ItemGroup>
+
+  <!-- How the properties pane edits a running game's values and where Keep writes one, from a property's hint and the
+       scenes' and scripts' texts alone, and how a console folds Godot's errors, from their text alone, compiled in since
+       their project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Godot/GodotHints.cs" Link="App/GodotHints.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotText.cs" Link="App/GodotText.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotKeep.cs" Link="App/GodotKeep.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotConsoleFold.cs" Link="App/GodotConsoleFold.cs" />
+    <Compile Include="../../src/Passenger.Languages/CSharp/CSharpParsing.cs" Link="Languages/CSharpParsing.cs" />
   </ItemGroup>
 
   <!-- What a program's output says of its serving, from its lines alone, compiled in since its project is the app's. -->
@@ -151,6 +190,16 @@
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/CSharp/GeneratedCopies.cs" Link="App/GeneratedCopies.cs" />
     <Compile Include="../../src/Passenger.App/CSharp/Declarations.cs" Link="App/Declarations.cs" />
+  </ItemGroup>
+
+  <!-- Which problems Problems' filter shows, from their fields alone, compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/ToolWindows/ProblemFilter.cs" Link="App/ProblemFilter.cs" />
+  </ItemGroup>
+
+  <!-- Which files the Explorer's filter shows, from their paths alone, compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Explorer/ExplorerFilter.cs" Link="App/ExplorerFilter.cs" />
   </ItemGroup>
 
   <!-- The JSON schemas the app carries under web/schemas, compiled in for the checks of what they offer and take. -->

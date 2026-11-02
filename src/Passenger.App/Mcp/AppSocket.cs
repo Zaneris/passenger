@@ -6,12 +6,13 @@ using Passenger.Core;
 
 namespace Passenger.App.Mcp;
 
-/// <summary>The process's socket for agents, beside its windows' in <see cref="McpHost.SocketFolder"/>
-/// (<c>PID.open</c>): an agent's <c>--mcp-attach</c> whose call finds no window over its folder asks the running Passenger
-/// through it to open that folder (<see cref="PassengerApp.OpenProject"/>, a window of its own unless the one in front has
-/// nothing open), then joins that window's own socket, which asks the person first. It reads one line, <c>{"open":
-/// PATH}</c>, and answers one, <c>{"opened": FOLDER}</c> or <c>{"refused": WHY}</c>; nothing else is ever done through it.
-/// Open while a window of the process listens for agents. UI thread only, but for its listening.</summary>
+/// <summary>The process's socket, beside its windows' in <see cref="McpHost.SocketFolder"/> (<c>PID.open</c>), which takes
+/// one line and answers one. An agent's <c>--mcp-attach</c> whose call finds no window over its folder asks through it,
+/// <c>{"open": PATH}</c>, to open that folder (<see cref="PassengerApp.OpenProject"/>, a window of its own unless the one in
+/// front has nothing open), answered <c>{"opened": FOLDER}</c>, then joins that window's own socket, which asks the person
+/// first. A person's launch hands itself over, <c>{"launch": ...}</c> (<see cref="LaunchHandOff"/>), answered <c>{"taken":
+/// FOLDER}</c>. Either may be answered <c>{"refused": WHY}</c>. Open while a window of the process listens for agents or
+/// takes launches. UI thread only, but for its listening.</summary>
 internal sealed class AppSocket : IDisposable
 {
     /// <summary>The process's one, while a window listens for agents.</summary>
@@ -30,11 +31,14 @@ internal sealed class AppSocket : IDisposable
 
     public string Path { get; }
 
+    /// <summary>The file names the processes' sockets have.</summary>
+    internal const string Pattern = "*.open";
+
     /// <summary>The file name a process's socket has.</summary>
     internal static string NameOf(int processId) => $"{processId}.open";
 
-    /// <summary>Listens for agents asking the process to open a folder, unless it does already; a socket that cannot
-    /// open leaves agents to start a Passenger of their own on it.</summary>
+    /// <summary>Listens for agents asking the process to open a folder and for launches, unless it does already; a socket
+    /// that cannot open leaves agents and launches to start a Passenger of their own.</summary>
     internal static void Listen()
     {
         UiThread.Check();
@@ -54,7 +58,7 @@ internal sealed class AppSocket : IDisposable
         catch (Exception error) when (error is IOException or SocketException or UnauthorizedAccessException or ArgumentException)
         {
             listener.Dispose();
-            IdeErrors.Write($"Agents: Passenger cannot listen for agents asking it to open a folder: {error.Message}");
+            IdeErrors.Write($"Agents: Passenger cannot listen for agents asking it to open a folder, nor for launches: {error.Message}");
             return;
         }
         open = new AppSocket(path, listener);
@@ -94,7 +98,7 @@ internal sealed class AppSocket : IDisposable
         {
             return null;
         }
-        foreach (string path in Directory.EnumerateFiles(sockets, "*.open").OrderByDescending(File.GetLastWriteTimeUtc))
+        foreach (string path in Directory.EnumerateFiles(sockets, Pattern).OrderByDescending(File.GetLastWriteTimeUtc))
         {
             using Socket socket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
             try
@@ -138,6 +142,8 @@ internal sealed class AppSocket : IDisposable
         }
     }
 
+    private static readonly string Refused = new JsonObject { ["refused"] = "Passenger takes {\"open\": FOLDER} or {\"launch\": ...} here and nothing else" }.ToJsonString();
+
     private async Task AnswerAsync(Socket client)
     {
         try
@@ -146,19 +152,21 @@ internal sealed class AppSocket : IDisposable
             using StreamReader reader = new(stream, Encoding.UTF8);
             using CancellationTokenSource limit = CancellationTokenSource.CreateLinkedTokenSource(closed.Token);
             limit.CancelAfter(TimeSpan.FromSeconds(10));
-            JsonObject answer;
+            string answer;
             try
             {
                 string? line = await reader.ReadLineAsync(limit.Token);
-                answer = line is not null && line.Length < 8192 && JsonNode.Parse(line) is JsonObject asked && asked["open"]?.GetValue<string>() is { Length: > 0 } path
-                    ? await UiThread.InvokeAsync(() => Open(path))
-                    : new JsonObject { ["refused"] = "Passenger takes {\"open\": FOLDER} here and nothing else" };
+                using JsonDocument? asked = line is not null && line.Length < 65536 ? JsonDocument.Parse(line) : null;
+                answer = asked is null ? Refused
+                    : JsonMembers.Text(asked.RootElement, "open") is { Length: > 0 } path ? (await UiThread.InvokeAsync(() => Open(path))).ToJsonString()
+                    : HandedLaunch.Read(asked.RootElement) is { } launch ? await UiThread.InvokeAsync(() => PassengerApp.TakeLaunch(launch))
+                    : Refused;
             }
-            catch (Exception error) when (error is JsonException or InvalidOperationException or FormatException)
+            catch (Exception error) when (error is JsonException or FormatException)
             {
-                answer = new JsonObject { ["refused"] = error.Message };
+                answer = new JsonObject { ["refused"] = error.Message }.ToJsonString();
             }
-            await stream.WriteAsync(Encoding.UTF8.GetBytes(answer.ToJsonString() + "\n"), limit.Token);
+            await stream.WriteAsync(Encoding.UTF8.GetBytes(answer + "\n"), limit.Token);
         }
         catch (Exception error) when (error is OperationCanceledException or IOException or SocketException or ObjectDisposedException)
         {

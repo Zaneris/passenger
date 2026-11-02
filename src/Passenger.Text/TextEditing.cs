@@ -77,6 +77,75 @@ public static class TextEditing
         return Build(replacements, selections, EditKind.Typing);
     }
 
+    /// <summary>The end tag a character just typed in <paramref name="markup"/> completes, a step of its own after the
+    /// typing: a start tag's '>' writes the element's end tag after the caret, which stays where it was, unless the tag closes
+    /// itself, HTML makes the element empty, or an end tag after it closes the element already; "&lt;/" writes the name of
+    /// the element open there and its '>', over a '>' after it or the very end tag it makes (one a '>' wrote), the caret after
+    /// it. Null where nothing is completed, as in a comment, a quoted value, CDATA, a declaration or a script.</summary>
+    public static EditPlan? CloseTag(TextSnapshot text, SelectionSet selections, string typed, MarkupKind markup)
+    {
+        if (markup == MarkupKind.None || typed is not (">" or "/"))
+        {
+            return null;
+        }
+        List<Replacement> replacements = [];
+        for (int i = 0; i < selections.Count; i++)
+        {
+            Selection s = selections.Items[i];
+            if (!s.IsEmpty)
+            {
+                continue;
+            }
+            int caret = s.Caret;
+            if (typed == ">" && EndTagFor(text, caret, markup) is { } closing)
+            {
+                replacements.Add(new Replacement(caret, caret, closing, 0, 0, i));
+            }
+            else if (typed == "/" && OpenNameAt(text, caret, markup) is { } name)
+            {
+                string end = $"</{name}>";
+                int over = caret < text.Length && text[caret] == '>' ? 1
+                    : caret + end.Length <= text.Length && text.GetText(caret, end.Length) == end ? end.Length : 0;
+                replacements.Add(new Replacement(caret, caret + over, name + ">", name.Length + 1, name.Length + 1, i));
+            }
+        }
+        return replacements.Count == 0 ? null : Build(replacements, selections, EditKind.Other);
+    }
+
+    /// <summary>The end tag a start tag's '>' just before <paramref name="caret"/> takes (<see cref="CloseTag"/>); null for none.</summary>
+    private static string? EndTagFor(TextSnapshot text, int caret, MarkupKind markup)
+    {
+        int gt = caret - 1;
+        if (gt < 2 || text[gt] != '>' || text[gt - 1] == '/' || MarkupIndent.StartTagAt(text, gt, markup) is not { } tag || NameAt(text, tag + 1, gt) is not { } name)
+        {
+            return null;
+        }
+        return (markup == MarkupKind.Html && MarkupNames.IsVoid(name)) || MarkupIndent.ClosedAfter(text, caret, name, markup) ? null : $"</{name}>";
+    }
+
+    /// <summary>The name an end tag begun just before <paramref name="caret"/> closes (<see cref="CloseTag"/>): the innermost
+    /// element's open there; null where none is, or a name follows already.</summary>
+    private static string? OpenNameAt(TextSnapshot text, int caret, MarkupKind markup)
+    {
+        int lt = caret - 2;
+        if (lt < 0 || text[lt] != '<' || text[lt + 1] != '/' || (caret < text.Length && MarkupNames.IsNameChar(text[caret])))
+        {
+            return null;
+        }
+        return MarkupIndent.OpenAt(text, lt, markup) is { } open ? NameAt(text, open + 1, text.Length) : null;
+    }
+
+    /// <summary>The tag name that starts at <paramref name="at"/>, read no further than <paramref name="limit"/>; null for none.</summary>
+    private static string? NameAt(TextSnapshot text, int at, int limit)
+    {
+        int end = at;
+        while (end < limit && end - at < 256 && MarkupNames.IsNameChar(text[end]))
+        {
+            end++;
+        }
+        return end > at && MarkupNames.IsNameStart(text[at]) ? text.GetText(at, end - at) : null;
+    }
+
     public static EditPlan? Backspace(TextSnapshot text, SelectionSet selections, IndentOptions indent)
     {
         List<Replacement> replacements = [];

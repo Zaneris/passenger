@@ -75,25 +75,44 @@ public sealed class DocumentTexts : IExtensionWorkspaceMessageHandler<TextsAsked
         List<TextHeld> held = [];
         foreach (string path in message.Paths)
         {
-            Solution solution = context.Solution;
-            TextDocument? document = solution.GetDocumentIdsWithFilePath(path)
-                .Select(id => (TextDocument?)solution.GetDocument(id) ?? solution.GetAdditionalDocument(id) ?? solution.GetAnalyzerConfigDocument(id))
-                .FirstOrDefault(d => d is not null);
-            held.Add(new TextHeld(path, document is null ? null : TextHash.Of((await document.GetTextAsync(cancellationToken).ConfigureAwait(false)).ToString())));
+            held.Add(new TextHeld(path, await HashOfAsync(context.Solution, path, cancellationToken).ConfigureAwait(false)));
         }
         return new TextsHeld(held);
+    }
+
+    /// <summary>The <see cref="TextHash"/> of the text a solution holds for a path, null where it has no document of it.</summary>
+    internal static async Task<string?> HashOfAsync(Solution solution, string path, CancellationToken cancellationToken)
+    {
+        TextDocument? document = solution.GetDocumentIdsWithFilePath(path)
+            .Select(id => (TextDocument?)solution.GetDocument(id) ?? solution.GetAdditionalDocument(id) ?? solution.GetAnalyzerConfigDocument(id))
+            .FirstOrDefault(d => d is not null);
+        return document is null ? null : TextHash.Of((await document.GetTextAsync(cancellationToken).ConfigureAwait(false)).ToString());
     }
 }
 
 /// <summary>The solution's documents written on disk since a time, or gone from it since, the nearest folder above that is
-/// still there written then: those the server may hold as they were.</summary>
+/// still there written then, and the changed files asked of that are documents, with the texts held of them: those the
+/// server may hold as they were.</summary>
 public sealed class DocumentsWritten : IExtensionWorkspaceMessageHandler<WrittenAsked, WrittenFound>
 {
-    public Task<WrittenFound> ExecuteAsync(WrittenAsked message, ExtensionMessageContext context, CancellationToken cancellationToken)
+    public async Task<WrittenFound> ExecuteAsync(WrittenAsked message, ExtensionMessageContext context, CancellationToken cancellationToken)
+    {
+        List<TextHeld> changed = [];
+        foreach (string path in message.Changed)
+        {
+            if (await DocumentTexts.HashOfAsync(context.Solution, path, cancellationToken).ConfigureAwait(false) is { } hash)
+            {
+                changed.Add(new TextHeld(path, hash));
+            }
+        }
+        return new WrittenFound(Written(message.Since, context.Solution, cancellationToken), changed);
+    }
+
+    private static List<DocumentWritten> Written(DateTime since, Solution solution, CancellationToken cancellationToken)
     {
         List<DocumentWritten> found = [];
         HashSet<string> looked = new(StringComparer.Ordinal);
-        foreach (Project project in context.Solution.Projects)
+        foreach (Project project in solution.Projects)
         {
             foreach (TextDocument document in project.Documents.Concat<TextDocument>(project.AdditionalDocuments).Concat(project.AnalyzerConfigDocuments))
             {
@@ -105,7 +124,7 @@ public sealed class DocumentsWritten : IExtensionWorkspaceMessageHandler<Written
                 try
                 {
                     FileInfo file = new(path);
-                    if (file.Exists ? file.LastWriteTimeUtc >= message.Since : FolderWritten(path) >= message.Since)
+                    if (file.Exists ? file.LastWriteTimeUtc >= since : FolderWritten(path) >= since)
                     {
                         found.Add(new DocumentWritten(path, Gone: !file.Exists));
                     }
@@ -116,7 +135,7 @@ public sealed class DocumentsWritten : IExtensionWorkspaceMessageHandler<Written
                 }
             }
         }
-        return Task.FromResult(new WrittenFound(found));
+        return found;
     }
 
     /// <summary>When the nearest folder above a path that is there was last written: a file taken out of it writes it.</summary>

@@ -199,7 +199,11 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
         }
         try
         {
-            IReadOnlyList<LspLocation> usages = [.. await lsp.ReferencesAsync(offset), .. await context.Languages.Xaml.CodeUsesAsync(shown, lsp, offset)];
+            IReadOnlyList<LspLocation> served = await lsp.ReferencesAsync(offset);
+            HashSet<(string, LspPosition)> found = [.. served.Select(u => (new Uri(u.Uri).LocalPath, u.Range.Start))];
+            // A Godot member's uses by its other names hold those of the generated one the offset may be on, which the server found too.
+            IReadOnlyList<LspLocation> usages = [.. served, .. await context.Languages.Xaml.CodeUsesAsync(shown, lsp, offset),
+                .. (await context.Languages.CSharp.GodotUsesAsync(shown, lsp, offset)).Where(u => !found.Contains((new Uri(u.Uri).LocalPath, u.Range.Start)))];
             if (usages.Count == 0)
             {
                 context.Say("No usages found");

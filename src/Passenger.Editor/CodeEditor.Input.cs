@@ -63,6 +63,10 @@ public sealed partial class CodeEditor
         preedit = string.Empty;
         preeditCursor = null;
         Apply(TextEditing.Type(document.Snapshot, selections, typed));
+        if (ClosesTags && TextEditing.CloseTag(document.Snapshot, selections, typed, Markup) is { } closing)
+        {
+            Apply(closing);
+        }
         e.Handled = true;
         Typed?.Invoke(this, typed);
     }
@@ -321,6 +325,8 @@ public sealed partial class CodeEditor
         }
         hoverTimer.Stop();
         EndHover();
+        // A pointer back where it left rests anew.
+        hoverAt = new Point(double.NaN, double.NaN);
         HideFoldPreview();
         hovered.Release();
     }
@@ -362,8 +368,18 @@ public sealed partial class CodeEditor
     private Avalonia.Threading.DispatcherTimer hoverTimer => hover ??= new Avalonia.Threading.DispatcherTimer(HoverDelay, Avalonia.Threading.DispatcherPriority.Background, (_, _) =>
     {
         hover!.Stop();
-        if (drag.Mode != DragMode.None || hoverAt.X < GutterWidth || !IsPointerOver)
+        if (drag.Mode != DragMode.None || !IsPointerOver)
         {
+            return;
+        }
+        if (hoverAt.X < GutterWidth)
+        {
+            int rested = LineAtY(hoverAt.Y);
+            if (ShowLineNumbers && rested < document.Snapshot.LineCount && GutterHovered is not null)
+            {
+                hovering = true;
+                GutterHovered(this, new GutterClick(rested, KeyModifiers.None, hoverAt, Context: false));
+            }
             return;
         }
         if (PlaceholderAt(hoverAt) is { } placeholder)

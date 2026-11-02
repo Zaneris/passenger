@@ -717,8 +717,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     /// <summary>Every button that runs one of the window's actions, the toolbar's and every tool window's, names in its tip
     /// the keys the keymap in force gives that action (<see cref="ActionTips"/>), and every tool window's Hide names Hide Tool
-    /// Window's keys or none: under Visual Studio's keymap and VS Code's, each chosen in turn, so no tip names a key that
-    /// does not run what it says.</summary>
+    /// Window's keys or none: under every keymap Settings offers, each chosen in turn, so no tip names a key that does not
+    /// run what it says.</summary>
     [AvaloniaFact]
     public void Every_action_buttons_tip_names_the_keys_the_keymap_in_force_gives_its_action()
     {
@@ -726,7 +726,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         try
         {
             window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
-            foreach (Passenger.Editor.KeymapPreset preset in (Passenger.Editor.KeymapPreset[])[Passenger.Editor.KeymapPreset.VisualStudio, Passenger.Editor.KeymapPreset.VSCode])
+            foreach (Passenger.Editor.KeymapPreset preset in SettingsDialog.KeymapChoices)
             {
                 window.ApplySettings(window.Settings with { Keymap = preset });
                 Ui.Settle();
@@ -2089,6 +2089,10 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         (_, "Color.FromArgb" or "new SolidColorBrush(Color.") when path.EndsWith("CSharp/CodeAssist.cs", StringComparison.Ordinal) => true,
         // A colour written in the CSS or HTML being edited, as its server reads it.
         (_, "Color.FromArgb") when path.EndsWith("Web/WebDocument.cs", StringComparison.Ordinal) => true,
+        // A Godot Color's swatch beside its row in the debugger's values: the colour the program holds.
+        (_, "Color.FromArgb") when path.EndsWith("Godot/GodotValues.cs", StringComparison.Ordinal) => true,
+        // A colour a running Godot game's node holds, shown as its swatch in the Live Visual Tree's properties.
+        (_, "Color.FromArgb" or "new SolidColorBrush(Color.") when path.EndsWith("Godot/GodotValueCells.cs", StringComparison.Ordinal) => true,
         // A colour the program in the terminal names: xterm's 24-bit colours, its 256-colour cube and grey ramp.
         (_, "Color.FromRgb" or "new SolidColorBrush(Color.") when path.EndsWith("TerminalView.cs", StringComparison.Ordinal) => true,
         _ => false,

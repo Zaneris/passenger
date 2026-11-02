@@ -33,13 +33,19 @@ public static class Handlers
     public const string WrittenPlaces = "Passenger.Roslyn.Extension.WrittenPlaces";
     public const string ComponentClass = "Passenger.Roslyn.Extension.ComponentClass";
     public const string GeneratedTexts = "Passenger.Roslyn.Extension.GeneratedTexts";
+    public const string JsInteropCalls = "Passenger.Roslyn.Extension.JsInteropCalls";
+    public const string GodotCode = "Passenger.Roslyn.Extension.GodotCode";
+    public const string GodotNames = "Passenger.Roslyn.Extension.GodotNames";
+    public const string GodotPaths = "Passenger.Roslyn.Extension.GodotPaths";
+    public const string GodotKindStrings = "Passenger.Roslyn.Extension.GodotKindStrings";
+    public const string GodotFix = "Passenger.Roslyn.Extension.GodotFix";
 
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
-        ComponentClass, GeneratedTexts,
+        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotFix,
     ];
 }
 
@@ -55,12 +61,19 @@ public sealed record TextHeld(
     [property: JsonPropertyName("path")] string Path,
     [property: JsonPropertyName("hash")] string? Hash);
 
-/// <summary>The solution's documents written on disk at or after a time, or gone from it since, asked for: what the server
-/// worked out a moment after may be from those files as they were, until it reads them again or loads their projects
-/// again without them.</summary>
-public sealed record WrittenAsked([property: JsonPropertyName("since")] DateTime Since);
+/// <summary>The solution's documents written on disk at or after a time, or gone from it since, asked for, and of the files
+/// whose change on disk the server is told of (<paramref name="Changed"/>), those that are documents: what the server worked
+/// out a moment after may be from those files as they were, until it reads them again or loads their projects again
+/// without them.</summary>
+public sealed record WrittenAsked(
+    [property: JsonPropertyName("since")] DateTime Since,
+    [property: JsonPropertyName("changed")] IReadOnlyList<string> Changed);
 
-public sealed record WrittenFound([property: JsonPropertyName("documents")] IReadOnlyList<DocumentWritten> Documents);
+/// <summary>The documents written since the time asked, and each changed file asked of that is a document, with its text's
+/// <see cref="TextHash"/> as the server holds it.</summary>
+public sealed record WrittenFound(
+    [property: JsonPropertyName("documents")] IReadOnlyList<DocumentWritten> Documents,
+    [property: JsonPropertyName("changed")] IReadOnlyList<TextHeld> Changed);
 
 /// <summary>A document of the solution written on disk since the time asked, or gone from it (<paramref name="Gone"/>).</summary>
 public sealed record DocumentWritten(
@@ -280,6 +293,328 @@ public sealed record LocalizedKey(
 public sealed record LocalizedReadsFound(
     [property: JsonPropertyName("keys")] IReadOnlyList<LocalizedKey> Keys,
     [property: JsonPropertyName("resources")] IReadOnlyList<LocalizedResource> Resources);
+
+/// <summary>The identifier JS interop imports a module by, whose argument is the module's path.</summary>
+public static class JsInteropNames
+{
+    public const string Import = "import";
+}
+
+/// <summary>A C# or Razor file whose calls of JavaScript are asked for, by its path.</summary>
+public sealed record JsInteropRequest([property: JsonPropertyName("path")] string Path);
+
+/// <summary>A call of JavaScript a file makes through JS interop: the identifier it calls ("app.greet", or "import" for a
+/// module's import), where its string is written, and the module's path ("./Components/Pages/Map.razor.js") that an
+/// object reference it is called on was imported from, or that an import gives; null where none is known.</summary>
+public sealed record JsInteropCall(
+    [property: JsonPropertyName("identifier")] string Identifier,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("module")] string? Module);
+
+/// <summary>The calls of JavaScript a file makes, and the project files of its projects and those near them (referenced, or
+/// referencing them), its own first, whose scripts they may call.</summary>
+public sealed record JsInteropFound(
+    [property: JsonPropertyName("calls")] IReadOnlyList<JsInteropCall> Calls,
+    [property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);
+
+/// <summary>A C# file of a Godot project asked about, by its path, with what of the project's scenes its answer is read
+/// against: engine classes by Godot's names, scripts by res:// path, and the signals and methods of nodes the scenes
+/// connect, each named on an engine class or a script.</summary>
+public sealed record GodotCodeRequest(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("engine")] IReadOnlyList<string> Engine,
+    [property: JsonPropertyName("scripts")] IReadOnlyList<string> Scripts,
+    [property: JsonPropertyName("signals")] IReadOnlyList<GodotMemberAsked> Signals,
+    [property: JsonPropertyName("methods")] IReadOnlyList<GodotMemberAsked> Methods)
+{
+    /// <summary>The properties the scenes set on nodes of C# scripts, by the names they write, each on its node's script.</summary>
+    [JsonPropertyName("properties")]
+    public IReadOnlyList<GodotMemberAsked> Properties { get; init; } = [];
+}
+
+/// <summary>A signal or method of a node, by its name as a scene writes it, on the node's script (res://) where it has one,
+/// else on its engine class.</summary>
+public sealed record GodotMemberAsked(
+    [property: JsonPropertyName("engine")] string? Engine,
+    [property: JsonPropertyName("script")] string? Script,
+    [property: JsonPropertyName("name")] string Name);
+
+/// <summary>What a Godot project's C# file holds that its scenes speak of: its classes Godot can run, its calls of
+/// GetNode, its res:// paths, the strings Godot's calls take naming signals, methods and properties; and what was asked of
+/// the project's types, each list in the order asked.</summary>
+public sealed record GodotCodeFound(
+    [property: JsonPropertyName("classes")] IReadOnlyList<GodotClassFound> Classes,
+    [property: JsonPropertyName("calls")] IReadOnlyList<GodotNodeCall> Calls,
+    [property: JsonPropertyName("resources")] IReadOnlyList<GodotPathRead> Resources,
+    [property: JsonPropertyName("engine")] IReadOnlyList<GodotChain> Engine,
+    [property: JsonPropertyName("scripts")] IReadOnlyList<GodotChain?> Scripts,
+    [property: JsonPropertyName("signals")] IReadOnlyList<GodotSignature?> Signals,
+    [property: JsonPropertyName("methods")] IReadOnlyList<GodotSignature?> Methods)
+{
+    public static readonly GodotCodeFound None = new([], [], [], [], [], [], []);
+
+    [JsonPropertyName("strings")]
+    public IReadOnlyList<GodotStringRead> Strings { get; init; } = [];
+
+    [JsonPropertyName("kinds")]
+    public IReadOnlyList<GodotKindRead> Kinds { get; init; } = [];
+
+    /// <summary>The names of the file's <see cref="Kinds"/> that a call elsewhere in the project's code adds, so they
+    /// are defined though no file of Godot's says them.</summary>
+    [JsonPropertyName("added")]
+    public IReadOnlyList<GodotKindAdded> Added { get; init; } = [];
+
+    /// <summary>Each property asked for (<see cref="GodotCodeRequest.Properties"/>) as its node's script or engine class has
+    /// it, in the order asked; null for one neither has.</summary>
+    [JsonPropertyName("properties")]
+    public IReadOnlyList<GodotSignature?> Properties { get; init; } = [];
+}
+
+/// <summary>What a string Godot's calls take names that a Godot project defines outside its code: an input action
+/// (project.godot's [input]), a group (its scenes' nodes'), an animation (an animation library of its scenes), an autoload
+/// (project.godot's [autoload], a GetNode path's /root/Name), a shader parameter (a shader's uniform) or a translation's key
+/// (the CSV and PO files project.godot lists).</summary>
+public enum GodotStringKind
+{
+    Action,
+    Group,
+    Animation,
+    Autoload,
+    ShaderParameter,
+    Translation,
+}
+
+/// <summary>A string of a kind as the file gives it to Godot's call (<c>Input.IsActionPressed("jump")</c>): what it names
+/// and where its characters are written (when <paramref name="Exact"/>), whether the call adds it (<c>AddToGroup</c>,
+/// <c>InputMap.AddAction</c>), the class it is written in (by its index in the answer's), and the object the call is made
+/// on where the code tells it: a node by its path from the node the class runs on, or by the <c>[Export]</c> member a scene
+/// sets to it, and for a material the node's property holding it (<c>material</c>); none where it is not told.</summary>
+public sealed record GodotKindRead(
+    [property: JsonPropertyName("kind")] GodotStringKind Kind,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("exact")] bool Exact,
+    [property: JsonPropertyName("adds")] bool Adds,
+    [property: JsonPropertyName("class")] int Class,
+    [property: JsonPropertyName("node")] string? Node,
+    [property: JsonPropertyName("export")] string? Export,
+    [property: JsonPropertyName("member")] string? Member);
+
+public sealed record GodotKindAdded([property: JsonPropertyName("kind")] GodotStringKind Kind, [property: JsonPropertyName("name")] string Name);
+
+/// <summary>Each string of a kind naming the name asked for: its file, where the name's characters lie, and as
+/// <see cref="GodotKindRead"/> tells it, the scripts its class runs as (res://) and the object its call is made on.</summary>
+public sealed record GodotKindUses([property: JsonPropertyName("uses")] IReadOnlyList<GodotKindUse> Uses);
+
+public sealed record GodotKindUse(
+    [property: JsonPropertyName("file")] string File,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("scripts")] IReadOnlyList<string> Scripts,
+    [property: JsonPropertyName("node")] string? Node,
+    [property: JsonPropertyName("export")] string? Export,
+    [property: JsonPropertyName("member")] string? Member);
+
+/// <summary>The strings of a kind naming one name, asked for in the C# of the projects of a Godot project's folder.</summary>
+public sealed record GodotKindAsked(
+    [property: JsonPropertyName("folder")] string Folder,
+    [property: JsonPropertyName("kind")] GodotStringKind Kind,
+    [property: JsonPropertyName("name")] string Name);
+
+/// <summary>A string Godot's calls take naming a signal, a method or a property (<c>EmitSignal("Scored")</c>,
+/// <c>new Callable(this, "OnScored")</c>, <c>Set("Speed", 2)</c>), as the file gives it: what it names, where it is written
+/// (its characters, when <paramref name="Exact"/>), the class of the object it names it on as shown, whether that is a
+/// script's class (whose members the code declares, so one it lacks is known missing), the member found, how many
+/// arguments an EmitSignal gives the signal (null for another call, or one given as an array), and, for a Callable's method
+/// given to a Connect of a signal named by a string, that string's read by its index among these.</summary>
+public sealed record GodotStringRead(
+    [property: JsonPropertyName("kind")] GodotNameKind Kind,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("exact")] bool Exact,
+    [property: JsonPropertyName("on")] string On,
+    [property: JsonPropertyName("script")] bool Script,
+    [property: JsonPropertyName("found")] GodotSignature? Found,
+    [property: JsonPropertyName("given")] int? Given,
+    [property: JsonPropertyName("signal")] int? Signal);
+
+/// <summary>A class of the file that derives from GodotObject: its name, full name and where its name is written, its first
+/// engine class by Godot's name, the scripts its code runs as (res://: its own, and those of the classes deriving from it),
+/// and its <c>[Export]</c> members and <c>[Signal]</c> delegates (by the signal's name, the delegate's less EventHandler).</summary>
+public sealed record GodotClassFound(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("fullName")] string FullName,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("engine")] string? Engine,
+    [property: JsonPropertyName("scripts")] IReadOnlyList<string> Scripts,
+    [property: JsonPropertyName("exports")] IReadOnlyList<GodotMember> Exports,
+    [property: JsonPropertyName("signals")] IReadOnlyList<GodotMember> Signals);
+
+/// <summary>A member a class declares, by the name a scene writes it by: its type or parameters as shown, and where its name
+/// is written, in the file asked of or another.</summary>
+public sealed record GodotMember(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("shown")] string Shown,
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End)
+{
+    /// <summary>For an exported member a scene sets to a node by its path, the type that node must be: a NodePath's any
+    /// node, a node type's that type; null for any other member.</summary>
+    [JsonPropertyName("node")]
+    public GodotTypeRef? Node { get; init; }
+}
+
+/// <summary>A call of GetNode or GetNodeOrNull on the node the code runs on: the path it is given and where its string is
+/// written (its characters, when <paramref name="Exact"/>: a string written as it says, no escape in it), the class it is
+/// called in (by its index in the answer's), and the type it asks for; none for the call that takes no type.</summary>
+public sealed record GodotNodeCall(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("exact")] bool Exact,
+    [property: JsonPropertyName("class")] int Class,
+    [property: JsonPropertyName("type")] GodotTypeRef? Type,
+    [property: JsonPropertyName("orNull")] bool OrNull);
+
+/// <summary>A type as a node's is matched against it: an engine class by Godot's name, else a class or interface of the
+/// code by its full name; with its name as shown.</summary>
+public sealed record GodotTypeRef(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("engine")] bool Engine,
+    [property: JsonPropertyName("shown")] string Shown);
+
+/// <summary>A res:// path or uid:// name a string of the file gives, and where its characters are written.</summary>
+public sealed record GodotPathRead(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End);
+
+/// <summary>An engine class or a script asked for: the types a node of it is, itself first (Godot's names for an engine
+/// class's; full names, its interfaces too, for a script's class), and a script's first engine class by Godot's name.</summary>
+public sealed record GodotChain(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("chain")] IReadOnlyList<string> Chain,
+    [property: JsonPropertyName("engine")] string? Engine,
+    [property: JsonPropertyName("shown")] string Shown);
+
+/// <summary>A signal or method found: its parameters' types as shown, how many a call must give, and, in the code, where its
+/// name is written (its declaring file's path and place); none for an engine class's.</summary>
+public sealed record GodotSignature(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("parameters")] IReadOnlyList<string> Parameters,
+    [property: JsonPropertyName("required")] int Required,
+    [property: JsonPropertyName("path")] string? Path,
+    [property: JsonPropertyName("at")] Place? At,
+    [property: JsonPropertyName("end")] Place? End)
+{
+    /// <summary>The parameters' names, as C# writes them.</summary>
+    [JsonPropertyName("names")]
+    public IReadOnlyList<string> Names { get; init; } = [];
+}
+
+/// <summary>What a fix of a Godot check makes in a script's class (the class whose <c>[ScriptPath]</c> is
+/// <paramref name="Script"/>, declared in the file of <paramref name="Path"/>): a handler named <paramref name="Name"/>
+/// taking what <see cref="GodotFixRequest.Signal"/> gives, less its last <see cref="GodotFixRequest.Unbinds"/> and with
+/// each bound value of <see cref="GodotFixRequest.Binds"/>' types, beside the class's other handlers
+/// (<see cref="GodotFixRequest.Beside"/>); an exported property of that name of a Godot type
+/// (<see cref="GodotFixRequest.Type"/>: a variant's, an engine class's, or a script's res://); or the type a GetNode call whose
+/// path's string is at <see cref="GodotFixRequest.At"/> asks for.</summary>
+public sealed record GodotFixRequest(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("script")] string Script,
+    [property: JsonPropertyName("kind")] GodotFixKind Kind,
+    [property: JsonPropertyName("name")] string Name)
+{
+    [JsonPropertyName("signal")]
+    public GodotMemberAsked? Signal { get; init; }
+
+    [JsonPropertyName("binds")]
+    public IReadOnlyList<string> Binds { get; init; } = [];
+
+    [JsonPropertyName("unbinds")]
+    public int Unbinds { get; init; }
+
+    [JsonPropertyName("beside")]
+    public IReadOnlyList<string> Beside { get; init; } = [];
+
+    [JsonPropertyName("type")]
+    public string? Type { get; init; }
+
+    [JsonPropertyName("at")]
+    public Place? At { get; init; }
+}
+
+/// <summary>What a <see cref="GodotFixRequest"/> makes: a signal's handler, an exported property, or a GetNode call's type.</summary>
+public enum GodotFixKind
+{
+    Handler,
+    Export,
+    NodeType,
+}
+
+/// <summary>The member of a Godot script's code at a caret asked for, with its uses by Godot's other names for it when
+/// <paramref name="Uses"/>.</summary>
+public sealed record GodotNamesAsked([property: JsonPropertyName("at")] Place At, [property: JsonPropertyName("uses")] bool Uses);
+
+/// <summary>What Godot's names for a script's member name: a signal (a <c>[Signal]</c> delegate's), a method, or a
+/// property or field.</summary>
+public enum GodotNameKind
+{
+    Signal,
+    Method,
+    Property,
+}
+
+/// <summary>Which of Godot's names for a member a caret was on: the code's own, the event a signal's delegate makes, a
+/// <c>SignalName</c>, <c>MethodName</c> or <c>PropertyName</c> field, a signal's <c>EmitSignalX</c>, or a string Godot's
+/// calls take.</summary>
+public enum GodotNameVia
+{
+    Own,
+    Event,
+    Name,
+    Emit,
+    String,
+}
+
+/// <summary>A Godot script's member at a caret: the code's own symbol, what it is, the name Godot knows it by (a signal's,
+/// its delegate's less EventHandler), which of its names the caret was on, and, when asked, every use of it by Godot's
+/// other names; none where the caret is on no such member.</summary>
+public sealed record GodotNamesFound(
+    [property: JsonPropertyName("symbol")] NamedSymbol? Symbol,
+    [property: JsonPropertyName("kind")] GodotNameKind Kind,
+    [property: JsonPropertyName("written")] string Written,
+    [property: JsonPropertyName("via")] GodotNameVia Via,
+    [property: JsonPropertyName("uses")] IReadOnlyList<GodotNameUse> Uses)
+{
+    public static readonly GodotNamesFound None = new(null, GodotNameKind.Signal, string.Empty, GodotNameVia.Own, []);
+}
+
+/// <summary>A use of a member by one of Godot's other names for it, in a file of the solution's own: where the name is
+/// written, and what it holds before the member's name (<c>EmitSignal</c> for an EmitSignalX).</summary>
+public sealed record GodotNameUse(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("before")] string Before);
+
+/// <summary>The res:// strings asked for in the C# of the projects of a Godot project's folder: those naming one of the
+/// paths, a folder's (ending in '/') any path inside it.</summary>
+public sealed record GodotPathsAsked([property: JsonPropertyName("folder")] string Folder, [property: JsonPropertyName("paths")] IReadOnlyList<string> Paths);
+
+/// <summary>Each res:// string found, in its file, with what it says and where its characters are written.</summary>
+public sealed record GodotPathsFound([property: JsonPropertyName("uses")] IReadOnlyList<GodotPathUse> Uses);
+
+public sealed record GodotPathUse(
+    [property: JsonPropertyName("file")] string File,
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End);
 
 /// <summary>The projects whose web routes are asked for, by their project files' paths; none asks for every project's.</summary>
 public sealed record RoutesRequest([property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);

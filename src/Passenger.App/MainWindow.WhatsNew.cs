@@ -1,4 +1,5 @@
 using Passenger.App.Updates;
+using Passenger.Core;
 using Passenger.Packages;
 
 namespace Passenger.App;

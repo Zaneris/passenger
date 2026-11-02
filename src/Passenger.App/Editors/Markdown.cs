@@ -870,7 +870,7 @@ public sealed class MarkdownText : SelectableTextBlock
         }
         if (code)
         {
-            run.FontFamily = CodeEditor.CodeFont;
+            run.InCodeFont();
             run.Bind(TextElement.BackgroundProperty, this.GetResourceObservable(TokenKeys.Hover));
         }
         if (link is not null)

@@ -271,7 +271,7 @@ public sealed class InteractiveTestDialog : IdeWindow
 
     private static TextBox Mono(string text, bool multiline)
     {
-        TextBox box = new() { Text = text, FontFamily = CodeEditor.CodeFont, FontSize = 12, AcceptsReturn = multiline, TextWrapping = TextWrapping.NoWrap };
+        TextBox box = new TextBox { Text = text, FontSize = 12, AcceptsReturn = multiline, TextWrapping = TextWrapping.NoWrap }.InCodeFont();
         if (multiline)
         {
             box.VerticalContentAlignment = VerticalAlignment.Top;

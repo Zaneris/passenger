@@ -66,6 +66,7 @@ public static class DapEvents
     public const string Module = "module";
     public const string Process = "process";
     public const string Output = "output";
+    public const string Continued = "continued";
 }
 
 /// <summary>Why the program stopped, the stopped event's reason, by the protocol's names: what the engine reports, what the
@@ -117,6 +118,15 @@ public static class DapRows
     /// <summary>The value the last step's last call returned, as an expression names it; the calls before it are this name
     /// followed by their place from one, in the order they returned.</summary>
     public const string ReturnValue = "$ReturnValue";
+}
+
+/// <summary>Passenger's own attributes of a value's presentation hint, beside the protocol's, written once for both ends.</summary>
+[IdentifierHome]
+public static class DapAttributes
+{
+    /// <summary>A failed evaluation that timed out with every other thread held, which probably needs another thread to run:
+    /// the person may run it again with every thread let go (evaluate's letThreadsRun).</summary>
+    public const string NeedsThreads = "needsThreads";
 }
 
 /// <summary>When an exception stops the program, an exception option's and an exceptionInfo answer's break mode, by the

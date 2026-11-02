@@ -263,15 +263,14 @@ internal sealed partial class CodeActions
             (int line, string used) = preview(path, use.Range.Start);
             rows.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
             TextBlock where = new() { Text = $"{shown}:{line + 1}", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 1, 12, 1) };
-            TextBlock code = new()
+            TextBlock code = new TextBlock
             {
                 Text = used,
-                FontFamily = CodeEditor.CodeFont,
                 FontSize = 12,
                 Foreground = InfoCard.Brush(TokenKeys.TextMuted),
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
-            };
+            }.InCodeFont();
             Grid.SetRow(where, row);
             Grid.SetRow(code, row);
             Grid.SetColumn(code, 1);

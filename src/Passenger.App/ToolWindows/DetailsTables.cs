@@ -148,7 +148,7 @@ public class DetailsTables : DockPanel
         };
         if (code)
         {
-            words.FontFamily = CodeEditor.CodeFont;
+            words.InCodeFont();
             words.FontSize = 12;
         }
         if (brush is not null)

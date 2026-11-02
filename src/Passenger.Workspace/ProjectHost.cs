@@ -23,7 +23,7 @@ public sealed class ProjectHostFailed(string reason, Exception? inner = null, bo
 }
 
 /// <summary>One project host (Passenger.Host, carried under <c>host/</c>): MSBuild's evaluation in a process of its
-/// own, run by the machine's dotnet on its newest runtime (prereleases included), with the SDK a folder picks loaded.
+/// own, on the runtime Passenger runs on (an SDK newer than that, on the machine's newest), with the SDK a folder picks loaded.
 /// Requests go out as lines of JSON and their answers, partial ones first, come back on the reader's thread: whatever a
 /// caller does with them on the UI thread it crosses there itself.</summary>
 public sealed class ProjectHost : IAsyncDisposable
@@ -83,8 +83,23 @@ public sealed class ProjectHost : IAsyncDisposable
     public bool HasExited => gone || process.HasExited;
 
     /// <summary>Starts a host with the SDK a folder picks and waits for it to say which it loaded; a
-    /// <see cref="ProjectHostFailed"/> when it loads none.</summary>
+    /// <see cref="ProjectHostFailed"/> when it loads none. It runs on the runtime Passenger runs on, but for a folder whose
+    /// SDK is newer than that runtime, which the machine's newest runtime loads.</summary>
     public static async Task<ProjectHost> StartAsync(string folder, CancellationToken cancel = default)
+    {
+        try
+        {
+            return await StartOnAsync(folder, onMachine: false, cancel).ConfigureAwait(false);
+        }
+        catch (ProjectHostFailed failed) when (failed.Reason.Contains(HostWords.NewerSdk, StringComparison.Ordinal))
+        {
+            return await StartOnAsync(folder, onMachine: true, cancel).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>A host on the runtime Passenger runs on (<see cref="ChildProcesses.HelperCommand"/>), or on the machine's
+    /// newest, a prerelease too (<paramref name="onMachine"/>).</summary>
+    private static async Task<ProjectHost> StartOnAsync(string folder, bool onMachine, CancellationToken cancel)
     {
         if (!File.Exists(Assembly))
         {
@@ -92,23 +107,30 @@ public sealed class ProjectHost : IAsyncDisposable
         }
         // As it stands before the host reads it, so a change while it starts is a change since.
         string globalJson = Dotnet.GlobalJsonOver(folder);
-        ProcessStartInfo start;
+        string dotnet;
         try
         {
-            // Run in the IDE's folder, not the one it evaluates for, which may be deleted under it.
-            start = ChildProcesses.DotnetCommand([Assembly, "--folder", folder]);
+            // No SDK to load without the person's dotnet, whichever runtime the host runs on.
+            dotnet = Dotnet.Host();
         }
         catch (FileNotFoundException missing)
         {
             throw new ProjectHostFailed(missing.Message, missing) { MissingSdk = MissingSdk.NoDotnet(missing.Message) };
         }
-        // The newest runtime there is, a prerelease too, so the SDK a folder picks can always load in it.
-        start.Environment[RuntimeVariables.RollForwardToPrerelease] = "1";
-        // A build's own, from a Passenger started under one (dotnet run, dotnet test): the host finds its SDK itself.
-        foreach (string variable in (string[])[MSBuildNames.ExePath, MSBuildNames.ExtensionsPath, MSBuildNames.SdksPath, MSBuildNames.LoadMicrosoftTargetsReadOnly])
+        ProcessStartInfo start;
+        try
         {
-            start.Environment.Remove(variable);
+            // Run in the IDE's folder, not the one it evaluates for, which may be deleted under it.
+            start = onMachine ? ChildProcesses.DotnetCommand([Assembly, "--folder", folder]) : ChildProcesses.HelperCommand(Assembly, ["--folder", folder]);
         }
+        catch (FileNotFoundException missing)
+        {
+            throw new ProjectHostFailed($"the project host could not start: {missing.Message}", missing);
+        }
+        // The installation MSBuild's SDK resolvers and tools take, which the helper host is no part of.
+        start.Environment[RuntimeVariables.HostPath] = dotnet;
+        // The newest runtime there is, a prerelease too, for a host on the machine's and for what MSBuild starts.
+        start.Environment[RuntimeVariables.RollForwardToPrerelease] = "1";
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
@@ -620,8 +642,9 @@ public static class ProjectHosts
                     // The host started for the folder says why it loads no SDK.
                     wanted = null;
                 }
-                // A host's SDK is MSBuild's folder, named for its version under the dotnet's sdk folder.
-                if (wanted is not null && Running.FirstOrDefault(h => Path.GetFileName(Path.TrimEndingDirectorySeparator(h.Sdk)) == wanted) is { } same)
+                // A host's SDK is MSBuild's folder, named for its version under the sdk folder of the dotnet the folder takes.
+                string? root = wanted is null ? null : Dotnet.Find()?.Root;
+                if (root is not null && Running.FirstOrDefault(h => PathNames.Same(Path.TrimEndingDirectorySeparator(h.Sdk), Path.Combine(root, "sdk", wanted!))) is { } same)
                 {
                     return same;
                 }
@@ -634,6 +657,26 @@ public static class ProjectHosts
         finally
         {
             Gate.Release();
+        }
+    }
+
+    /// <summary>Ends the hosts whose SDK lies under a folder (an installation that goes), so none is asked again.</summary>
+    public static async Task EndUnderAsync(string folder)
+    {
+        List<ProjectHost> ending;
+        await Gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            ending = [.. Running.Where(h => PathNames.IsUnder(PathNames.Canonical(h.Sdk), PathNames.Canonical(folder)))];
+            Running.RemoveAll(ending.Contains);
+        }
+        finally
+        {
+            Gate.Release();
+        }
+        foreach (ProjectHost host in ending)
+        {
+            await host.DisposeAsync().ConfigureAwait(false);
         }
     }
 }

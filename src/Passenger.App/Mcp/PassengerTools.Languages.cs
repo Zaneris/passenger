@@ -33,12 +33,18 @@ public sealed partial class PassengerTools
     /// <summary>A project, .props or .targets file, read through its project's evaluation.</summary>
     private sealed record MSBuildServed(OpenDocument Document, MSBuild.MSBuildDocument MSBuild) : Served(Document, "MSBuild");
 
+    /// <summary>A Godot project's text scene or resource, which Passenger reads itself.</summary>
+    private sealed record GodotServed(OpenDocument Document) : Served(Document, "Godot scene");
+
     /// <summary>What a tool says of a language that has no such command: plainly, naming the language and what it has instead.</summary>
     private static InvalidOperationException Lacks(Served served, string command, string instead) =>
         new($"{served.Language} files have no {command} in Passenger, so {Path.GetFileName(served.Document.Path)} has none: {instead}");
 
     private const string MSBuildHas = "definition goes to where a property, item, target, import or SDK is defined, symbol_info says a property's "
         + "value and where it was set, outline gives its elements, and diagnostics its evaluation's problems";
+
+    private const string GodotHas = "definition goes from a res:// path or ExtResource to its file, from a node path to its node, and from a "
+        + "connection's method or signal to its C#; rename renames a node's name in its scenes and the code's GetNode paths";
 
     /// <summary>The file opened as the editor would, with the service that answers for it once that can: a XAML file's
     /// project read, the C# server's workspace loaded. A file no service reads is refused at once, saying which do.</summary>
@@ -71,6 +77,10 @@ public sealed partial class PassengerTools
             return web.Lsp is { } server
                 ? new ServerServed(document, LanguageOf(document), server, web)
                 : throw new InvalidOperationException(languages.Unready("Its code help", document));
+        }
+        if (Passenger.Workspace.GodotFile.IsText(document.Path) && Session.GodotOf(document.Path) is not null)
+        {
+            return new GodotServed(document);
         }
         if (document.Language.Service == Languages.LanguageService.CSharp)
         {
@@ -131,13 +141,13 @@ public sealed partial class PassengerTools
             ? served.Name : document.Language.Name;
 
     /// <summary>An AppHost's or a service's C# file's diagnostics pulled and marked now, a file reading what an open compose
-    /// file's service lacks or one that may read configuration or localized strings too, so the fixes Passenger offers on
-    /// Aspire's, Compose's, a configuration key's and a translation's warnings stand on the text as the agent wrote it, not
-    /// on a pull still to come.</summary>
+    /// file's service lacks, one that may read configuration or localized strings, or one of a Godot project too, so the
+    /// fixes Passenger offers on Aspire's, Compose's, a configuration key's, a translation's and Godot's marks stand on the
+    /// text as the agent wrote it, not on a pull still to come.</summary>
     private async Task AspireMarked(Served served, CancellationToken cancel)
     {
         if (served is ServerServed { Web: null } && Session.CSharp?.For(served.Document) is { } csharp
-            && (csharp.AspireRole != Aspire.AspireRole.None || csharp.ReadsForCompose || csharp.MayReadConfiguration || csharp.MayLocalize))
+            && (csharp.AspireRole != Aspire.AspireRole.None || csharp.ReadsForCompose || csharp.MayReadConfiguration || csharp.MayLocalize || csharp.OfGodot))
         {
             await csharp.PullNowAsync(cancel);
         }
@@ -289,6 +299,16 @@ public sealed partial class PassengerTools
         }
     }
 
+    /// <summary>What a scene with no fix at a place says: its fixes are its marks', a line at a time.</summary>
+    private const string SceneFixesHere = "No fix here: a Godot scene's fixes are those of its marks (a connection's missing method, a property its script lacks), and none is on this line";
+
+    /// <summary>The fixes of a scene's marks at a place, once its own checks of its text as it stands are done.</summary>
+    private async Task<IReadOnlyList<EditorFix>> SceneFixes(Served served, int line, int column, CancellationToken cancel)
+    {
+        await Checked(served.Document, cancel);
+        return window.Assist.OwnFixes(served.Document, Offset(served.Document, line, column));
+    }
+
     /// <summary>One of Passenger's own fixes made as choosing it makes it: worked out again on the file's text as it stands,
     /// one undoable edit, the file saved; refused when the text no longer has what it fixes. One made in another file (an
     /// AppHost's WithReference) is that file's command, told the call's <paramref name="patience"/>.</summary>
@@ -307,6 +327,18 @@ public sealed partial class PassengerTools
             }
             await SaveLandedAsync(CancellationToken.None);
             return set.Said;
+        }
+        if (now.Confirms is { } confirms)
+        {
+            // The agent's call is its agreeing; what it wrote is said back.
+            string question = await confirms.Question() ?? throw new InvalidOperationException($"'{fix.Title}' was not applied: the file changed, so it no longer fits");
+            RefactorOutcome agreed = await confirms.Make(patience);
+            if (agreed.Problem is { } declined)
+            {
+                throw new InvalidOperationException(declined);
+            }
+            await SaveLandedAsync(CancellationToken.None);
+            return $"{agreed.Said}: {question.Replace("\n\n", " ", StringComparison.Ordinal)}";
         }
         if (now.Elsewhere is { } elsewhere)
         {

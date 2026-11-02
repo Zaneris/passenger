@@ -86,20 +86,19 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
             {
                 return;
             }
-            Contexts = [.. found.ProjectContexts.Where(c => !c.IsMiscellaneous)];
+            Contexts = CSharpService.Offered([.. found.ProjectContexts.Where(c => !c.IsMiscellaneous)]);
             ProjectContext? kept = lsp.Context is { } chosen ? Contexts.FirstOrDefault(c => c.Label == chosen.Label) : null;
-            if (lsp.Context is not null && kept is null)
+            // Its project's framework chosen, else the one chosen for it alone, else the server's own unless that is one not offered.
+            ProjectContext? now = service.ChosenContext(document.Path, Contexts) ?? kept
+                ?? (found.Default is { } given && !given.IsMiscellaneous && !Contexts.Any(c => c.Label == given.Label) ? Contexts.FirstOrDefault() : null);
+            string? was = lsp.Context?.Label ?? found.Default?.Label;
+            lsp.Context = now;
+            if ((now ?? found.Default)?.Label != was)
             {
-                // The project it was chosen in is gone (a framework no longer targeted): the server's choice from now on.
-                lsp.Context = null;
                 Refresh();
             }
-            else
-            {
-                lsp.Context = kept;
-            }
             document.ProjectContexts = [.. Contexts.Select(c => c.Label)];
-            document.ProjectContext = (kept ?? found.Default)?.Label;
+            document.ProjectContext = (now ?? found.Default)?.Label;
             if (Placed is null && Contexts.Count > 0)
             {
                 Placed = (asked, Stopwatch.GetTimestamp(), document.ProjectContext ?? Contexts[0].Label);
@@ -116,13 +115,29 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     }
 
     /// <summary>Has the server answer for the file in another of its projects (the target framework switcher): its
-    /// colours and diagnostics are asked for again in it.</summary>
+    /// colours and diagnostics are asked for again in it. A framework of its one project is that project's choice, which
+    /// its other files follow.</summary>
     public void Choose(ProjectContext context)
     {
         if (Lsp is not { } lsp)
         {
             return;
         }
+        Answer(lsp, context);
+        service.ChooseFramework(document.Path, Contexts, context);
+    }
+
+    /// <summary>The framework chosen for the file's project followed: the server answers for the file in it from now on.</summary>
+    internal void FollowFramework()
+    {
+        if (Lsp is { } lsp && service.ChosenContext(document.Path, Contexts) is { } chosen && chosen.Label != document.ProjectContext)
+        {
+            Answer(lsp, chosen);
+        }
+    }
+
+    private void Answer(LspDocument lsp, ProjectContext context)
+    {
         lsp.Context = context;
         document.ProjectContext = context.Label;
         Refresh();
@@ -271,11 +286,12 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         IReadOnlyList<Diagnostic> compose = await ComposeFindingsAsync(cancel);
         IReadOnlyList<Diagnostic> configuration = await ConfigurationFindingsAsync([.. aspire, .. compose], cancel);
         IReadOnlyList<Diagnostic> localization = await LocalizationFindingsAsync(cancel);
+        IReadOnlyList<Diagnostic> godot = await GodotFindingsAsync(cancel);
         if (cancel.IsCancellationRequested || version != document.Text.Version || Lsp != lsp)
         {
             return null;
         }
-        IReadOnlyList<Diagnostic> own = [.. found, .. aspire, .. compose, .. configuration, .. localization];
+        IReadOnlyList<Diagnostic> own = [.. found, .. aspire, .. compose, .. configuration, .. localization, .. godot];
         IReadOnlyList<Diagnostic> carried = lsp.PullsProjectWide ? diagnostics.Late : [];
         document.Markers = diagnostics.Take([.. own, .. carried], DiagnosticMarks.Marker, carried.Count);
         service.FileProblemsChanged(document);
@@ -306,12 +322,13 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     };
 
     /// <summary>Passenger's own diagnostics of the file for the text as it stands, as its pull marks them: Aspire's, its reads
-    /// of configuration keys nothing gives (<see cref="ConfigurationFindingsAsync"/>) and of localized strings a language lacks
-    /// (<see cref="LocalizationFindingsAsync"/>); an agent's <c>diagnostics</c> lists them.</summary>
+    /// of configuration keys nothing gives (<see cref="ConfigurationFindingsAsync"/>), of localized strings a language lacks
+    /// (<see cref="LocalizationFindingsAsync"/>) and what its Godot scenes say of it (<see cref="GodotFindingsAsync"/>); an
+    /// agent's <c>diagnostics</c> lists them.</summary>
     internal async Task<IReadOnlyList<Diagnostic>> PassengerFindingsAsync(LspDocument lsp, CancellationToken cancel)
     {
         IReadOnlyList<Diagnostic> aspire = await AspireFindingsAsync(lsp, cancel);
-        return [.. aspire, .. await ConfigurationFindingsAsync(aspire, cancel), .. await LocalizationFindingsAsync(cancel)];
+        return [.. aspire, .. await ConfigurationFindingsAsync(aspire, cancel), .. await LocalizationFindingsAsync(cancel), .. await GodotFindingsAsync(cancel)];
     }
 
     /// <summary>The file's diagnostics pulled and shown now, Aspire's with them, as a typing pause's pull shows them: for an

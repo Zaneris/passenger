@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Runtime.InteropServices;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Etlx;
+using Passenger.Core;
 
 namespace Passenger.Profiler;
 
@@ -154,11 +155,12 @@ public sealed class Snapshot
     private readonly IReadOnlyList<AllocationTick> ticks;
     private readonly IReadOnlyList<Collection> allCollections;
     private readonly IReadOnlyList<UiFrame> allUiFrames;
+    private readonly GameProfile? game;
     private readonly Lazy<IReadOnlyList<ThreadLine>> timeline;
 
     private Snapshot(IReadOnlyList<(int Thread, SampleRun[] Runs)> runs, IReadOnlyList<int[]> stacks, IReadOnlyList<(string Method, string Module)> frames,
         IReadOnlyList<MethodCode?> codes, IReadOnlyDictionary<int, string> threadNames, IReadOnlyList<AllocationTick> ticks, IReadOnlyList<Collection> collections,
-        IReadOnlyList<UiFrame> uiFrames, double startMs, double endMs, string trace, Snapshot? whole)
+        IReadOnlyList<UiFrame> uiFrames, GameProfile? game, double startMs, double endMs, string trace, Snapshot? whole)
     {
         this.runs = runs;
         this.stacks = stacks;
@@ -168,6 +170,7 @@ public sealed class Snapshot
         this.ticks = ticks;
         allCollections = collections;
         allUiFrames = uiFrames;
+        this.game = game;
         StartMs = startMs;
         EndMs = endMs;
         TracePath = trace;
@@ -193,6 +196,7 @@ public sealed class Snapshot
         Threads = All.Ordered;
         Collections = [.. collections.Where(c => c.AtMs >= startMs && c.AtMs <= endMs)];
         UiFrames = whole is null ? uiFrames : [.. uiFrames.Where(f => f.StartMs >= startMs && f.StartMs <= endMs)];
+        GameFrames = game is null ? [] : whole is null ? game.Frames : [.. game.Frames.Where(f => f.EndMs >= startMs && f.StartMs <= endMs)];
         Allocations = Allocated([.. ticks.Where(t => t.AtMs >= startMs && t.AtMs <= endMs)]);
         timeline = new(() => Lines(byId));
     }
@@ -213,6 +217,19 @@ public sealed class Snapshot
     /// <summary>An Avalonia app's frames, in order, as its inspector recorded them (<see cref="Profiler.UiFrames"/>); none for
     /// any other program.</summary>
     public IReadOnlyList<UiFrame> UiFrames { get; }
+
+    /// <summary>A Godot game's own frame profile, the whole run's, recorded beside the samples (<see cref="GameRecording"/>);
+    /// null for any other program.</summary>
+    public GameProfile? Game => game;
+
+    /// <summary>Whether the run is a Godot game's frames alone, no samples taken: a game of GDScript alone, which runs no .NET
+    /// code to sample (its trace kept empty, its name the run's).</summary>
+    public bool FramesAlone => Whole.framesAlone;
+
+    private bool framesAlone;
+
+    /// <summary>A Godot game's frames in the stretch, in order, as Godot's own profiler measured them; none for any other program.</summary>
+    public IReadOnlyList<GameFrame> GameFrames { get; }
 
     /// <summary>Every thread under one root, whose total is every sample: what the flame graph spans.</summary>
     public CallNode All { get; }
@@ -265,7 +282,7 @@ public sealed class Snapshot
         Snapshot whole = Whole;
         double from = Math.Max(whole.StartMs, Math.Min(fromMs, toMs));
         double to = Math.Min(whole.EndMs, Math.Max(fromMs, toMs));
-        return new Snapshot(whole.runs, whole.stacks, whole.frames, whole.codes, whole.threadNames, whole.ticks, whole.allCollections, whole.allUiFrames, from, to, whole.TracePath, whole);
+        return new Snapshot(whole.runs, whole.stacks, whole.frames, whole.codes, whole.threadNames, whole.ticks, whole.allCollections, whole.allUiFrames, whole.game, from, to, whole.TracePath, whole);
     }
 
     /// <summary>A run of one thread built without a trace, from the stacks it was caught at, each frame a method's full name
@@ -283,7 +300,7 @@ public sealed class Snapshot
             taken.Add(new SampleRun(at, at + samples - 1, stacks.Count - 1, samples));
             at += samples;
         }
-        return new Snapshot([(1, [.. taken])], stacks, table.Named, table.Codes, new Dictionary<int, string> { [1] = "Thread 1" }, [], [], [], 0, Math.Max(0, at - 1), string.Empty, null);
+        return new Snapshot([(1, [.. taken])], stacks, table.Named, table.Codes, new Dictionary<int, string> { [1] = "Thread 1" }, [], [], [], null, 0, Math.Max(0, at - 1), string.Empty, null);
     }
 
     /// <summary>When a method was on a sampled stack, first to last, or null when it never was: what the timeline shows
@@ -304,6 +321,59 @@ public sealed class Snapshot
         }
         return first <= last ? (first, last) : null;
     }
+
+    /// <summary>The C# the engine called in some frames of a game, in order and apart, joined to them by time: the samples
+    /// within each frame on a stack the engine entered (<see cref="GameProfile.EntersFromEngine"/>), from the outermost entry to
+    /// where each was caught, as hot spots (a call back into the engine its native frame, which holds the script functions
+    /// that C# called), and each frame's C# time.</summary>
+    public GameJoin Joined(IReadOnlyList<GameFrame> played)
+    {
+        int[] entered = new int[stacks.Count];
+        for (int s = 0; s < stacks.Count; s++)
+        {
+            entered[s] = Array.FindLastIndex(stacks[s], f => GameProfile.EntersFromEngine(frames[f].Method));
+        }
+        double[] perFrame = new double[played.Count];
+        Dictionary<int, int> counted = [];
+        int samples = 0;
+        foreach (SampleRun run in runs.SelectMany(t => t.Runs))
+        {
+            if (entered[run.Stack] < 0)
+            {
+                continue;
+            }
+            for (int at = Sorted.FirstAtOrAfter(played, static f => f.EndMs, run.FromMs); at < played.Count && played[at].StartMs <= run.ToMs; at++)
+            {
+                // A frame's end is the next one's start at the soonest: a sample there is the next one's.
+                int inside = run.Within(played[at].StartMs, played[at].EndMs - Apart);
+                perFrame[at] += inside * SampleMs;
+                counted[run.Stack] = counted.GetValueOrDefault(run.Stack) + inside;
+                samples += inside;
+            }
+        }
+        Dictionary<int, (int Self, int Total)> spots = [];
+        foreach ((int stack, int count) in counted)
+        {
+            int[] caught = stacks[stack];
+            HashSet<int> once = [];
+            for (int i = 0; i <= entered[stack]; i++)
+            {
+                (int Self, int Total) spot = spots.GetValueOrDefault(caught[i]);
+                spots[caught[i]] = (spot.Self + (i == 0 ? count : 0), spot.Total + (once.Add(caught[i]) ? count : 0));
+            }
+        }
+        IReadOnlyList<HotSpot> called = [.. spots
+            .Where(s => !GameProfile.EntersFromEngine(frames[s.Key].Method))
+            .Select(s => new HotSpot(frames[s.Key].Method, frames[s.Key].Module, s.Value.Self, s.Value.Total) { Code = codes[s.Key] })
+            .OrderByDescending(s => s.Self)
+            .ThenByDescending(s => s.Total)
+            .ThenBy(s => s.Name, StringComparer.Ordinal)];
+        return new GameJoin(called, perFrame, samples, SampleMs);
+    }
+
+    /// <summary>How far short of a frame's end its samples stop, in milliseconds: past <see cref="SampleRun.Within"/>'s
+    /// tolerance, far short of a sample's step.</summary>
+    private const double Apart = 1e-6;
 
     /// <summary>The mean time between the busiest thread's samples, which the sampler takes on every pass it makes; a
     /// millisecond, as asked for, when there are too few to measure.</summary>
@@ -495,6 +565,10 @@ public sealed class Snapshot
     /// one run.</summary>
     public static Snapshot Read(string nettrace)
     {
+        if (new FileInfo(nettrace).Length == 0)
+        {
+            return OfFrames(nettrace);
+        }
         string etlx = TraceLog.CreateFromEventPipeDataFile(nettrace, null, new TraceLogOptions { ContinueOnError = true });
         try
         {
@@ -569,13 +643,16 @@ public sealed class Snapshot
             }
             (int Thread, SampleRun[] Runs)[] kept = [.. runs.Select(t => (t.Key, t.Value.ToArray()))];
             IReadOnlyList<UiFrame> drawn = uiFrames.Frames();
+            DateTime began = log.SessionStartTime.ToUniversalTime();
+            GameProfile? game = GameProfile.ReadBeside(nettrace, at => (at - began).TotalMilliseconds);
             // The run spans every kind of event it holds, so one of few samples or none still holds its frames, allocations and GCs.
             IEnumerable<double> marks = ticks.Select(t => t.AtMs).Concat(collections.Select(c => c.AtMs));
-            IEnumerable<double> starts = kept.Select(t => t.Runs.Min(r => r.FromMs)).Concat(drawn.Select(f => f.StartMs)).Concat(marks);
-            IEnumerable<double> ends = kept.Select(t => t.Runs.Max(r => r.ToMs)).Concat(drawn.Select(f => f.EndMs)).Concat(marks);
+            IEnumerable<GameFrame> played = game?.Frames ?? [];
+            IEnumerable<double> starts = kept.Select(t => t.Runs.Min(r => r.FromMs)).Concat(drawn.Select(f => f.StartMs)).Concat(played.Select(f => f.StartMs)).Concat(marks);
+            IEnumerable<double> ends = kept.Select(t => t.Runs.Max(r => r.ToMs)).Concat(drawn.Select(f => f.EndMs)).Concat(played.Select(f => f.EndMs)).Concat(marks);
             double first = starts.DefaultIfEmpty(0).Min();
             double end = ends.DefaultIfEmpty(0).Max();
-            return new Snapshot(kept, stacks, names.Named, names.Codes, threads, ticks, collections, drawn, first, end, nettrace, null);
+            return new Snapshot(kept, stacks, names.Named, names.Codes, threads, ticks, collections, drawn, game, first, end, nettrace, null);
 
             // The event's stack as a number into the table, each the trace numbers named once and each distinct one kept once.
             int Stack(TraceEvent data)
@@ -610,6 +687,17 @@ public sealed class Snapshot
             {
             }
         }
+    }
+
+    /// <summary>A run of a Godot game's frames alone (<see cref="FramesAlone"/>): its trace empty, its frames beside it, timed
+    /// from the first one's arrival.</summary>
+    private static Snapshot OfFrames(string nettrace)
+    {
+        GameProfile? game = GameProfile.ReadBeside(nettrace, null);
+        IReadOnlyList<GameFrame> played = game?.Frames ?? [];
+        double first = played.Select(f => f.StartMs).DefaultIfEmpty(0).Min();
+        double end = played.Select(f => f.EndMs).DefaultIfEmpty(0).Max();
+        return new Snapshot([], [], [], [], new Dictionary<int, string>(), [], [], [], game, first, end, nettrace, null) { framesAlone = true };
     }
 
     /// <summary>Stacks compared by their frames, so one caught again is the one kept, and looked up by a walk's frames

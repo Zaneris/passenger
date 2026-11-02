@@ -34,6 +34,10 @@ public sealed record CreatedProjects(string? Solution, IReadOnlyList<string> Pro
     /// <summary>The files dotnet new wrote outside the folder Create made (a test template's global.json at the solution's
     /// folder), each with its text before, null for one it made.</summary>
     public IReadOnlyList<(string Path, FileText? Before)> Outside { get; init; } = [];
+
+    /// <summary>Whether it is a Godot game (<see cref="OwnTemplates.GodotGame"/>): a GDScript one, no project of a solution,
+    /// opened as its folder; either offered Passenger as Godot's script editor once open.</summary>
+    public bool Game { get; init; }
 }
 
 /// <summary>How a new service runs, set up with it: as its own launch profiles say, in a container its Dockerfile or the
@@ -51,7 +55,8 @@ public enum ProjectSetup
 /// left (<see cref="TemplateFamilies"/>) under a search; on the right the names, where it goes, the family's Type, the
 /// framework, the language and the Type's options (a value set kept by a Type that has it), or a Type's package to
 /// install. A later read fills in, the choice kept. Create refuses a name taken or a folder not empty, saying why; else
-/// it runs dotnet new, takes Accelerate's tools out and closes with it (<see cref="Created"/>), or removes what it made.</summary>
+/// it runs dotnet new, takes Accelerate's tools out and closes with it (<see cref="Created"/>), or removes what it made;
+/// Passenger's own Godot game it writes itself, refusing it, saying how to get Godot, where no Godot is found.</summary>
 public sealed class NewProjectDialog : IdeWindow
 {
     private readonly ProjectTarget? target;
@@ -119,6 +124,13 @@ public sealed class NewProjectDialog : IdeWindow
     private CancellationTokenSource? creating;
     private CancellationTokenSource? installing;
 
+    /// <summary>The Godot a Godot game is made for, found off the window's thread as the dialog opens (<see cref="GodotLaunch.Found"/>).</summary>
+    private readonly Task<GodotFound?> godotFound;
+
+    /// <summary>The runtimes of the .NET found, read off the window's thread as the dialog opens, which a Godot game's
+    /// framework is chosen by (<see cref="GodotGames.Runnable"/>).</summary>
+    private readonly Task<IReadOnlyList<string>> runtimes;
+
     /// <summary>A test's hold of the next Create once dotnet new has made its project: what ends it, and what is told it is held.</summary>
     private (Task Release, TaskCompletionSource Reached)? madeHold;
 
@@ -132,8 +144,11 @@ public sealed class NewProjectDialog : IdeWindow
     /// <param name="folder">The directory offered: where a solution goes, or the project's folder in the solution.</param>
     /// <param name="target">The solution a project is added to; null for New Solution.</param>
     /// <param name="containers">Why no container can be set up here, asked off the window's thread; null for no question.</param>
-    public NewProjectDialog(string folder, ProjectTarget? target, Task<string?>? containers = null)
+    /// <param name="godot">The Godot Settings names for a Godot game, its command line; null for the one found.</param>
+    public NewProjectDialog(string folder, ProjectTarget? target, Task<string?>? containers = null, string? godot = null)
     {
+        godotFound = BackgroundWork.Run(() => GodotLaunch.Found(godot));
+        runtimes = BackgroundWork.Run(() => DotnetMachine.Read().Installation?.Runtimes ?? []);
         create.IsEnabled = false;
         FormRows.Scope(this);
         this.target = target;
@@ -222,7 +237,7 @@ public sealed class NewProjectDialog : IdeWindow
         details = new StackPanel
         {
             Spacing = 10,
-            Children = { Row("Target framework:", framework), languageRow, options.Panel, setupRow, Row(null, new StackPanel { Spacing = 4, Children = { setupNote, installSetup } }), Row(null, command) },
+            Children = { Row("Target framework:", framework), languageRow, options.Panel, setupRow, Row(null, new StackPanel { Spacing = 4, Children = { setupNote, installSetup } }), options.Folded, Row(null, command) },
         };
         options.Changed += ShowCommand;
         install.Click += (_, _) => IdeErrors.Observe(InstallAsync());
@@ -275,6 +290,7 @@ public sealed class NewProjectDialog : IdeWindow
         {
             IdeErrors.Observe(AskEngineAsync(containers));
         }
+        IdeErrors.Observe(ShowGodotAsync());
         // The name has the keys as the dialog opens, its default chosen to be typed over; again once laid out.
         void FocusName()
         {
@@ -375,13 +391,21 @@ public sealed class NewProjectDialog : IdeWindow
         set => framework.SelectedItem = value;
     }
 
-    public string? Language => language.SelectedItem as string;
+    /// <summary>The language chosen; one the template does not offer is not taken.</summary>
+    public string? Language
+    {
+        get => language.SelectedItem as string;
+        set => language.SelectedItem = value;
+    }
 
     /// <summary>The labels of the template's options shown now.</summary>
     public IReadOnlyList<string> OptionLabels => options.Labels;
 
     /// <summary>The control that sets an option, by its label, for a click; null when none is shown.</summary>
     public Control? OptionEditor(string label) => options.Editor(label);
+
+    /// <summary>The link that opens the template's options waiting under More options.</summary>
+    public Button MoreOptions => options.MoreOptions;
 
     /// <summary>How the project made is to run, set up once it is open: none for a template that is no service.</summary>
     public ProjectSetup Setup
@@ -434,12 +458,16 @@ public sealed class NewProjectDialog : IdeWindow
     private bool ProjectNamed => ProjectName.Length > 0 && ProjectName != projectGiven;
 
     /// <summary>The name dotnet new is given: a solution template's is the solution's.</summary>
-    private string NameGiven => template is { IsSolution: true } ? SolutionName : ProjectName;
+    private string NameGiven => template is { IsSolution: true } || ScriptGame ? SolutionName : ProjectName;
+
+    /// <summary>Whether the template chosen makes a Godot game of GDScript, which is its folder alone, no project of a solution.</summary>
+    private bool ScriptGame => template is { GodotGame: true } && Language == OwnTemplates.GDScript;
 
     /// <summary>The Create button, for a click on it.</summary>
     public Button CreateButton => create;
 
-    /// <summary>What the dialog says of a template whose app runs only on Windows, off Windows; null for any other.</summary>
+    /// <summary>What the dialog notes of the template chosen before Create: a Windows-only app's off Windows, a Godot game's
+    /// without the Godot it needs; null for any other.</summary>
     public string? WindowsNote => windowsNote.IsVisible ? windowsNote.Text : null;
 
     /// <summary>What Create made, once it closed the dialog; null until then, and when given up.</summary>
@@ -460,6 +488,10 @@ public sealed class NewProjectDialog : IdeWindow
             {
                 return;
             }
+        }
+        if (template.GodotGame)
+        {
+            await godotFound;
         }
         if (WhyNot() is { } refused)
         {
@@ -487,6 +519,16 @@ public sealed class NewProjectDialog : IdeWindow
                 {
                     return;
                 }
+            }
+            if (template.GodotGame)
+            {
+                if (await MakeGameAsync(plan, writes, cancel.Token) is { } game)
+                {
+                    Created = game;
+                    creating = null;
+                    Close(Created);
+                }
+                return;
             }
             progress.Text = $"Creating {NameGiven} from {template.Name} (dotnet new {template.ShortName})…";
             ChildResult made = await writes.During(() => RunAsync(Arguments(plan.ProjectFolder), plan.Root, cancel.Token));
@@ -576,6 +618,108 @@ public sealed class NewProjectDialog : IdeWindow
         {
             creating = null;
             Busy(false);
+        }
+    }
+
+    /// <summary>A Godot game written as Godot's editor writes a new project (<see cref="GodotGames"/>) in the plan's project
+    /// folder, the solution made already for one in C#, whose project is restored then from the Godot found's own packages;
+    /// what was made, or null, what Create made removed and why said, when it could not be written.</summary>
+    private async Task<CreatedProjects?> MakeGameAsync(Plan plan, Writes writes, CancellationToken cancel)
+    {
+        GodotFound found = (await godotFound)!;
+        bool csharp = !ScriptGame;
+        string name = NameGiven;
+        progress.Text = $"Writing the Godot game {name}…";
+        IReadOnlyList<(string Path, string Text)> files = GodotGames.Files(name, csharp, found.Version ?? string.Empty, Framework, found.Packages);
+        string folder = plan.ProjectFolder;
+        string? unwritten = await writes.During(() => BackgroundWork.Run(() =>
+        {
+            try
+            {
+                Directory.CreateDirectory(folder);
+                foreach ((string path, string text) in files)
+                {
+                    FileText.SaveNew(Path.Combine(folder, path), text);
+                }
+                return null;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return error.Message;
+            }
+        }, cancel));
+        if (unwritten is not null)
+        {
+            await FailedAsync($"{name} could not be created: {unwritten}", writes);
+            return null;
+        }
+        List<string> projects = [];
+        string? unrestored = null;
+        if (csharp)
+        {
+            string project = PathNames.Canonical(Path.Combine(folder, $"{name}.csproj"));
+            projects.Add(project);
+            progress.Text = $"Restoring {name} from Godot {found.Version}'s own packages…";
+            if (await writes.During(() => ProjectTemplates.RestoreAsync(project, plan.Root, cancel), folder) is { } said)
+            {
+                unrestored = $"{name} did not restore: {said}";
+            }
+        }
+        return new CreatedProjects(plan.Solution is null ? null : PathNames.Canonical(plan.Solution), projects, PathNames.Canonical(folder), ProjectSetup.None)
+        {
+            Unrestored = unrestored,
+            Game = true,
+        };
+    }
+
+    /// <summary>Why a Godot game cannot be made here, in words that say how to get Godot: none found, or for C# one that
+    /// cannot run it or names no version for its project's Godot.NET.Sdk; null while the Godot is still looked for, or it can.</summary>
+    private string? GodotWhyNot()
+    {
+        if (template is not { GodotGame: true } || !godotFound.IsCompletedSuccessfully)
+        {
+            return null;
+        }
+        GodotFound? found = godotFound.Result;
+        string how = $"Godot 4 comes from {GodotDownloads}";
+        if (found is not { Exists: true })
+        {
+            return found is null ? $"A Godot game needs Godot, and {GodotLaunch.NotFound}. {how}" : $"A Godot game needs Godot: {found.WhyNot}. {how}";
+        }
+        if (!ScriptGame && found.WhyNot is { } why)
+        {
+            return $"A Godot game in C# needs Godot's .NET build: {why}. {how}";
+        }
+        return !ScriptGame && found.Version is null ? $"{found.Executable} says no version, which its game's Godot.NET.Sdk takes" : null;
+    }
+
+    /// <summary>Godot's download page, where both its builds come from.</summary>
+    private const string GodotDownloads = "godotengine.org/download";
+
+    /// <summary>Passenger's own Godot game beside dotnet new's templates, its C# project on those frameworks the console app
+    /// offers that Godot runs, as far as the runtimes are read yet.</summary>
+    private TemplateFamily GodotFamily(TemplateCatalog read)
+    {
+        TemplateVariant? console = read.Templates.FirstOrDefault(t => t.Pack is null && t.ShortNames.Contains("console"))?.Variant("C#", null);
+        IReadOnlyList<string> offered = console?.Frameworks ?? [];
+        IReadOnlyList<string> runs = runtimes.IsCompletedSuccessfully ? GodotGames.Runnable(offered, runtimes.Result) : offered;
+        ProjectTemplate game = OwnTemplates.GodotGame(runs, runs.FirstOrDefault(), scripts: target is null);
+        return new TemplateFamily(game.Name, [game]);
+    }
+
+    /// <summary>Once the Godot is found and the runtimes read, the Godot game listed again on the frameworks Godot runs, and
+    /// the template chosen shown again for a Godot game's words.</summary>
+    private async Task ShowGodotAsync()
+    {
+        await Task.WhenAll(godotFound, runtimes);
+        if (catalog is not null && creating is null)
+        {
+            families = [.. families.Where(f => !f.Types.Any(t => t.GodotGame)), GodotFamily(catalog)];
+            Filter(searched: false);
+        }
+        if (template is { GodotGame: true })
+        {
+            Retarget();
         }
     }
 
@@ -693,6 +837,7 @@ public sealed class NewProjectDialog : IdeWindow
         string root = Path.Combine(folder, SolutionName);
         string solution = Path.Combine(root, $"{SolutionName}.{SolutionFormat}");
         return template is { IsSolution: true } ? new Plan(root, solution, root)
+            : ScriptGame ? new Plan(root, null, root)
             : new Plan(root, solution, SameDirectory ? root : Path.Combine(root, ProjectName));
     }
 
@@ -713,11 +858,15 @@ public sealed class NewProjectDialog : IdeWindow
         {
             return $"{template.Name} comes with {pack.Id}, which is not installed: Install it first";
         }
+        if (template.GodotGame && GodotWhyNot() is { } godot)
+        {
+            return godot;
+        }
         if (target is null && ProjectNames.Problem(SolutionName, "Solution", namesCode: false) is { } solution)
         {
             return solution;
         }
-        if (!template.IsSolution && ProjectNames.Problem(ProjectName, "Project", namesCode: Variant().Language is not ("F#" or "VB")) is { } project)
+        if (!template.IsSolution && !ScriptGame && ProjectNames.Problem(ProjectName, "Project", namesCode: Variant().Language is not ("F#" or "VB")) is { } project)
         {
             return project;
         }
@@ -971,7 +1120,7 @@ public sealed class NewProjectDialog : IdeWindow
             return;
         }
         catalog = read;
-        families = [.. read.Families.Select(f => target is null ? f : f.Projects()).OfType<TemplateFamily>()];
+        families = [.. read.Families.Select(f => target is null ? f : f.Projects()).OfType<TemplateFamily>(), GodotFamily(read)];
         setting = true;
         string? formatWas = format.SelectedItem as string;
         List<string> formats = [.. read.SolutionFormats.Select(f => $".{f}")];
@@ -1114,8 +1263,13 @@ public sealed class NewProjectDialog : IdeWindow
         languageRow.IsVisible = template.Languages.Count > 1;
         heading.Text = template.Name;
         description.Text = Variant().Description;
-        windowsNote.Text = template.WindowsOnly is { } desktop ? $"{desktop} runs only on Windows: Passenger builds the project here for its code help, and Run, Debug and Profile need Windows" : null;
-        windowsNote.IsVisible = template.WindowsOnly is not null;
+        windowsNote.Text = template.WindowsOnly is { } desktop ? $"{desktop} runs only on Windows: Passenger builds the project here for its code help, and Run, Debug and Profile need Windows"
+            : GodotWhyNot();
+        windowsNote.IsVisible = windowsNote.Text is not null;
+        // A GDScript game is its folder alone: no project to name, nor a solution's format.
+        projectRow.IsVisible = !template.IsSolution && !ScriptGame;
+        sameRow.IsVisible = target is null && !template.IsSolution && !ScriptGame;
+        formatRow?.IsVisible = !template.IsSolution && !ScriptGame;
         options.Show(Variant());
         ShowSetup();
         ShowWhere();
@@ -1215,7 +1369,13 @@ public sealed class NewProjectDialog : IdeWindow
 
     /// <summary>The command line Create runs, as the dialog shows it.</summary>
     private void ShowCommand() =>
-        command.Text = template is null ? string.Empty : $"dotnet new {string.Join(' ', Arguments(null).Select(ChildProcesses.Quote))}";
+        command.Text = template is null ? string.Empty
+            : template.GodotGame ? $"Passenger writes {Plural.Listed([.. GodotGames.Files(NameGiven, !ScriptGame, GodotVersion ?? "4").Select(f => f.Path)])}"
+                + (ScriptGame ? string.Empty : $", the project on Godot.NET.Sdk/{GodotVersion ?? "the Godot found's version"}")
+            : $"dotnet new {string.Join(' ', Arguments(null).Select(ChildProcesses.Quote))}";
+
+    /// <summary>The Godot found's version, once found; null before, or where it says none.</summary>
+    private string? GodotVersion => godotFound.IsCompletedSuccessfully ? godotFound.Result?.Version : null;
 
     /// <summary>A name typed: the project's follows the solution's until the person types one of its own.</summary>
     private void NameChanged(bool solution)
@@ -1310,7 +1470,7 @@ public sealed class NewProjectDialog : IdeWindow
         install.IsEnabled = !busy;
         installSetup.IsEnabled = !busy;
         list.IsEnabled = !busy;
-        foreach (Control field in (Control[])[search, typeChooser, solutionName, projectName, directory, browse, sameDirectory, format, framework, language, options.Panel, setup])
+        foreach (Control field in (Control[])[search, typeChooser, solutionName, projectName, directory, browse, sameDirectory, format, framework, language, options.Panel, options.Folded, setup])
         {
             field.IsEnabled = !busy;
         }
