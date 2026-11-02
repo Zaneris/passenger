@@ -708,8 +708,9 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
   `Answers`, `Bar`, `Page`, `Default`, `Cancel`, `OkCancel`, a step's page `Headed`, a popup's answers `Popup`) in a
   `Border.footerBar`; lists in a page `Border.framed`; rules `Passenger.Separator` (`Passenger.Divider` between panels);
   menus' value in force `MenuChoice` (`Holding` makes its submenu as it opens); a menu the menu key opens
-  `ListMenus.PlaceForKeys`; tool window tabs `ToolTabs.Tab`; popups' widths `PopupFrame`, titles `popupTitle`; every row
-  `ListRow.Height` (24); empty states `TextBlock.emptyText` (with an action's link `EmptyState`); toolbar icon buttons
+  `ListMenus.PlaceForKeys`; tool window tabs `ToolTabs.Tab`; popups' widths `PopupFrame` (the host frames whatever it
+  shows through `PopupFrame.Framed`, measured once in the window), titles `popupTitle`; every row `ListRow.Height` (24);
+  empty states `TextBlock.emptyText` (with an action's link `EmptyState`); toolbar icon buttons
   `ToolButtons.Of`/`Toggle` (never focusable); a table's column titles `ColumnTitles.Of` (its rows `Row`); a bar over an
   editor `ToolBars.OverEditor`; words over what they speak of `Banner`; rows a person checks `CheckRows`; muted words
   `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`, lists `Plural.Listed`; rounded borders `Border.kindBadge`,
