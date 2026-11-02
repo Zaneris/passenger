@@ -497,8 +497,12 @@ site-shots` retakes its images.
   thread carries the thread's id; an `evaluate` in a frame with no instance, or a `break` sent while stopped, leaves the
   debug loop and lets the game go on; an evaluation's errors come after its answer, so each is followed by a
   `get_stack_dump`; `reload_scripts` keeps members by name, an added one null. Stop ends a game a moment before its
-  debug session ends: a test waits for the session too. An agent's input and layout reach a game through Passenger's
-  helper node (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
+  debug session ends: a test waits for the session too, and a session is shown ended once its adapter says the program
+  ended (`DebugSession.Ended`, `ProgramGone`). Windows' Godot .exe writes to no console, so a terminal run goes through
+  its console wrapper (`GodotExecutables.InTerminal`). An agent's call on a game is held to one limit
+  (`GodotGame.Within`, `GameLimit`), app_ tools wait for no evaluation (`PassengerTools.OnApp`), and a typed Godot value
+  has one reader (`GodotVariant.ReadAsync`). An agent's input and layout reach a game through Passenger's helper node
+  (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
