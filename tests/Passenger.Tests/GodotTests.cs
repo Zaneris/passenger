@@ -222,7 +222,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     [AvaloniaFact]
     public void A_debugged_game_that_ends_is_shown_ended_at_once_while_its_debugger_has_yet_to_go()
     {
-        MainWindow window = game.Open(ScriptPath);
+        MainWindow window = game.Open(null, languageServer: false);
         try
         {
             Choose(window, Generated(window, "Spinner"));
