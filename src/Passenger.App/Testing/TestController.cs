@@ -61,6 +61,8 @@ public sealed class TestController : IAsyncDisposable
             Load();
         };
         Finder.Moved += (_, moved) => Tree.Move(moved.Path, moved.Moved);
+        Finder.CodeRead += (_, _) => Tree.CheckCode();
+        Tree.CodeOf = method => method.FromCode is { Path: { } path } declared ? Finder.CodeOf(path, declared.FullyQualifiedName) : null;
         Load();
     }
 
@@ -113,6 +115,18 @@ public sealed class TestController : IAsyncDisposable
 
     /// <summary>A run of tests ended, not stopped: how it ended.</summary>
     public event EventHandler<RunSummary>? Ran;
+
+    /// <summary>A run ended, however: the results of each method it ran that told any, by the method's identity, to keep
+    /// for a later session (<see cref="Keep"/>).</summary>
+    public event EventHandler<IReadOnlyDictionary<string, KeptRun>>? ResultsToKeep;
+
+    /// <summary>An earlier session's results, which the tree shows as an earlier run's until each test runs again.</summary>
+    public void Keep(IReadOnlyDictionary<string, KeptRun> runs)
+    {
+        UiThread.Check();
+        Tree.Keep(runs);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>How the last run ended; null while one is under way, or when the last was stopped or refused.</summary>
     private RunSummary? ended;
@@ -301,6 +315,7 @@ public sealed class TestController : IAsyncDisposable
             RunMethods = methods;
             RunOutcomes = [];
             working?.Say($"{prefix}Running {Plural.Of(tests.Count, "test")}…");
+            DateTimeOffset began = DateTimeOffset.Now;
             Tree.Begin(tests);
             RunSummary? summary = null;
             List<AspireTestRun> aspireRuns = [];
@@ -356,6 +371,7 @@ public sealed class TestController : IAsyncDisposable
             {
                 // However the run ends, a runner's failure included, what it began and never heard of is no longer running.
                 Tree.End();
+                Keep(methods, began);
                 await Task.WhenAll(aspireRuns.Select(aspire => aspire.DisposeAsync().AsTask()));
             }
             RunOutcomes = summary.Outcomes;
@@ -395,6 +411,23 @@ public sealed class TestController : IAsyncDisposable
                 ReleaseWork();
                 Changed?.Invoke(this, EventArgs.Empty);
             }
+        }
+    }
+
+    /// <summary>Tells the results the run's methods told, those of a method shown under two groups once.</summary>
+    private void Keep(IReadOnlyList<TestNode> methods, DateTimeOffset began)
+    {
+        Dictionary<string, KeptRun> runs = new(StringComparer.Ordinal);
+        foreach (TestNode method in methods)
+        {
+            if (method.Identity is { } identity && !runs.ContainsKey(identity) && method.Results.Any(r => r.Earlier is null))
+            {
+                runs[identity] = KeptRun.Of(method.Results, began, method.RanCode);
+            }
+        }
+        if (runs.Count > 0)
+        {
+            ResultsToKeep?.Invoke(this, runs);
         }
     }
 

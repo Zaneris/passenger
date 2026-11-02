@@ -180,6 +180,10 @@ public sealed record TestOutcome(TestItem Test, TestState State, TimeSpan Durati
     /// AddTestAttachment), and the frames of a failing headless test's windows (<see cref="TestFrames"/>).</summary>
     public IReadOnlyList<TestAttachment> Attachments { get; init; } = [];
 
+    /// <summary>When the run it is kept from began, a run of an earlier session (<see cref="TestResultsState"/>); null for
+    /// a result of this one's.</summary>
+    public DateTimeOffset? Earlier { get; init; }
+
     /// <summary>The row this result is of, the test's own or one its run made; null for the method itself.</summary>
     public string? Row => Test.Row ?? (DisplayName is { } shown ? TestItem.RowOf(Test.FullyQualifiedName, shown) : null);
 }

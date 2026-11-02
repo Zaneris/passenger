@@ -170,7 +170,7 @@ public sealed class StateStore
 }
 
 /// <summary>A folder's documents: what its window had open, its layout, breakpoints, bookmarks, run configurations,
-/// Find in Files' scope, the Unit Tests window's grouping and outcomes, the Git log's favourite branches, what its
+/// Find in Files' scope, the Unit Tests window's grouping and outcomes and its tests' last results, the Git log's favourite branches, what its
 /// .http requests may take from the person's computer, the publish profile each project last published with, and its
 /// projects as MSBuild last evaluated and built them at design time.</summary>
 public sealed class ProjectState
@@ -185,6 +185,7 @@ public sealed class ProjectState
         RunConfigurations = new(Path.Combine(Folder, "runConfigurations.json"));
         Find = new(Path.Combine(Folder, "find.json"));
         UnitTests = new(Path.Combine(Folder, "unitTests.json"));
+        UnitTestResults = new(Path.Combine(Folder, "unitTestResults.json"));
         GitBranches = new(Path.Combine(Folder, "gitBranches.json"));
         Endpoints = new(Path.Combine(Folder, "endpoints.json"));
         Publish = new(Path.Combine(Folder, "publish.json"));
@@ -221,6 +222,9 @@ public sealed class ProjectState
     /// <summary>How the Unit Tests window groups the folder's tests and which outcomes it shows.</summary>
     public StateDocument<Testing.UnitTestsState> UnitTests { get; }
 
+    /// <summary>Each test's results as its last run left them, which the Unit Tests window shows until it runs again.</summary>
+    public StateDocument<Testing.TestResultsState> UnitTestResults { get; }
+
     /// <summary>The branches marked and unmarked as favourites in the Git log.</summary>
     public StateDocument<ToolWindows.GitBranchesState> GitBranches { get; }
 
@@ -239,8 +243,8 @@ public sealed class ProjectState
     /// <summary>Reads, off the UI thread and at once, the documents a folder's open restores, so the restore takes them in
     /// with no read of its own. Done at once for those read already.</summary>
     public Task ReadAsync() => Task.WhenAll(Workspace.ValueAsync(), Layout.ValueAsync(), Breakpoints.ValueAsync(), Bookmarks.ValueAsync(),
-        RunConfigurations.ValueAsync(), Find.ValueAsync(), UnitTests.ValueAsync(), GitBranches.ValueAsync(), Endpoints.ValueAsync(),
-        Publish.ValueAsync());
+        RunConfigurations.ValueAsync(), Find.ValueAsync(), UnitTests.ValueAsync(), UnitTestResults.ValueAsync(), GitBranches.ValueAsync(),
+        Endpoints.ValueAsync(), Publish.ValueAsync());
 
     public void Flush()
     {
@@ -253,6 +257,7 @@ public sealed class ProjectState
         RunConfigurations.Flush();
         Find.Flush();
         UnitTests.Flush();
+        UnitTestResults.Flush();
         GitBranches.Flush();
         Endpoints.Flush();
         Publish.Flush();

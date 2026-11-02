@@ -1311,7 +1311,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.TestsList, Title = "The unit tests", ReadOnly = true), Description(
         "The tests the Unit Tests window shows (from code, and their runner once built), each with its full name, state from " +
-        "the last run and file:line: those whose full name contains filter and whose state is state, at most limit.")]
+        "the last run (earlier: when, if an earlier session's) and file:line: those whose full name contains filter and whose state is state, at most limit.")]
     public Task<IReadOnlyList<TestInfoRow>> TestsList(
         [Description("Part of a test's full name (Namespace.Class.Method)")] string? filter = null,
         [Description("passed, failed, skipped or notRun")] string? state = null,
@@ -1327,7 +1327,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return (IReadOnlyList<TestInfoRow>)[.. Session.Tests.Tree.Methods
             .Where(m => (filter is null || (m.FullName ?? m.Name).Contains(filter, StringComparison.Ordinal)) && (only is null || m.State == only))
             .Take(Math.Max(1, limit))
-            .Select(m => new TestInfoRow(TestName(m), StateName(m.State), m.Path is { } at ? $"{Relative(at)}:{m.Line}" : null))];
+            .Select(m => new TestInfoRow(TestName(m), StateName(m.State), m.Path is { } at ? $"{Relative(at)}:{m.Line}" : null)
+            {
+                Earlier = m.EarlierRun is { } ran ? Testing.TestNode.EarlierWords(ran, m.CodeChanged) : null,
+            })];
     });
 
     /// <summary>The states tests_list says and takes, in its description's words.</summary>
@@ -2969,7 +2972,11 @@ public sealed record TestRunInfo(string Summary, IReadOnlyList<TestFailure> Fail
 
 public sealed record TestFailure(string Test, string? Location, string Details);
 
-public sealed record TestInfoRow(string Test, string State, string? Location);
+public sealed record TestInfoRow(string Test, string State, string? Location)
+{
+    /// <summary>When the run its state is from began, where that was an earlier session's, and whether its code changed since.</summary>
+    public string? Earlier { get; init; }
+}
 
 public sealed record SymbolFound(string Name, string Kind, string? Container, string Path, int Line, int Column)
 {

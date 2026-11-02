@@ -73,6 +73,31 @@ public sealed class TestFinder
     /// <summary>A test project's files were found to derive other test attributes: open files are read again with them.</summary>
     public event EventHandler? AttributesChanged;
 
+    /// <summary>A file was read, whose tests' code may have changed (<see cref="CodeOf"/>), told or not.</summary>
+    public event EventHandler? CodeRead;
+
+    /// <summary>A test method's code as its file now reads (<see cref="DeclaredTest.Code"/>), an open file's as typed; null
+    /// where the file has not been read or declares no such test.</summary>
+    public ulong? CodeOf(string path, string fullName)
+    {
+        UiThread.Check();
+        FileTests? read = open.GetValueOrDefault(path) ?? onDisk.Kept(path);
+        int dot = fullName.LastIndexOf('.');
+        if (read is null || dot < 0)
+        {
+            return null;
+        }
+        foreach (DeclaredTest test in read.Tests)
+        {
+            if (test.Method.Length == fullName.Length - dot - 1 && fullName.AsSpan(dot + 1).SequenceEqual(test.Method)
+                && test.Type.Length == dot && fullName.AsSpan(0, dot).SequenceEqual(test.Type))
+            {
+                return test.Code;
+            }
+        }
+        return null;
+    }
+
     /// <summary>The test attributes the project of a file derives from a framework's, its methods tests by them too.</summary>
     public IReadOnlySet<string> AttributesOf(string path)
     {
@@ -128,11 +153,14 @@ public sealed class TestFinder
     public void OpenRead(string path, FileTests tests)
     {
         UiThread.Check();
-        if (open.TryGetValue(path, out FileTests? was) && was.SameAs(tests))
+        // Kept whatever it says, as its tests' code may have changed where nothing else of them did.
+        bool same = open.TryGetValue(path, out FileTests? was) && was.SameAs(tests);
+        open[path] = tests;
+        CodeRead?.Invoke(this, EventArgs.Empty);
+        if (same)
         {
             return;
         }
-        open[path] = tests;
         if (Owner(path) is not { } project)
         {
             return;
@@ -387,6 +415,7 @@ public sealed class TestFinder
         {
             Changed?.Invoke(this, Projects.Where(p => told.ContainsKey(p.Path)).ToDictionary(p => p.Path, p => told[p.Path].Tests, StringComparer.Ordinal));
         }
+        CodeRead?.Invoke(this, EventArgs.Empty);
         if (derived.Count > 0)
         {
             Read(derived, timed: false);

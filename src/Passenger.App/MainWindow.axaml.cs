@@ -776,8 +776,9 @@ public partial class MainWindow : IdeWindow
     });
 
     /// <summary>The open folder's state as the store kept it, once the window keeps state: its layout (else the one
-    /// changed last in any window), breakpoints, bookmarks, the Unit Tests window's view and the log's favourite branches,
-    /// the session's own (<see cref="ProjectSession.Keep"/>), and its editors, the one shown the latest recent file.</summary>
+    /// changed last in any window), breakpoints, bookmarks, the Unit Tests window's view and its tests' last results, the
+    /// log's favourite branches, the session's own (<see cref="ProjectSession.Keep"/>), and its editors, the one shown the
+    /// latest recent file.</summary>
     private void RestoreWorkspace()
     {
         if (!keepsWorkspace || session.Folder is not { } folder)
@@ -797,6 +798,7 @@ public partial class MainWindow : IdeWindow
         }
         // Before the folder's documents are this window's, so what restoring them changes is not written back.
         RestoreUnitTests(opening.UnitTests.Value);
+        session.Tests.Keep(opening.UnitTestResults.Value.Methods);
         branchFavorites = opening.GitBranches.Value;
         if (gitView?.Log.Branches is { } branches)
         {

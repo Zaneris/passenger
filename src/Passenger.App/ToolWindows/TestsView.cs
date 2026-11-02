@@ -470,6 +470,7 @@ public sealed class TestsView : DockPanel
         private readonly RowIcon state;
         private readonly TextBlock label;
         private readonly TextBlock duration;
+        private readonly TextBlock earlier;
         private TestNode? followed;
         private bool attached;
 
@@ -491,10 +492,13 @@ public sealed class TestsView : DockPanel
             label = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
             duration = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0), FontSize = 12 };
             duration.Classes.Add(StyleClasses.Muted);
+            earlier = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0), FontSize = 12 };
+            earlier.Classes.Add(StyleClasses.Muted);
             Children.Add(toggle);
             Children.Add(state);
             Children.Add(label);
             Children.Add(duration);
+            Children.Add(earlier);
         }
 
         protected override void OnDataContextChanged(EventArgs e)
@@ -552,7 +556,7 @@ public sealed class TestsView : DockPanel
             }
             switch (e.PropertyName)
             {
-                case nameof(TestNode.State) or nameof(TestNode.Duration):
+                case nameof(TestNode.State) or nameof(TestNode.Duration) or nameof(TestNode.CodeChanged):
                     ShowState(node);
                     break;
                 case nameof(TestNode.IsExpanded):
@@ -570,7 +574,7 @@ public sealed class TestsView : DockPanel
         private void ShowExpanded(TestNode node) => chevron.Turned = node.IsExpanded;
 
         /// <summary>A test's mark, a grey ring not run, a blue dot running, a green tick passed, a red cross failed, a grey
-        /// dash skipped, and how long it took once it ran.</summary>
+        /// dash skipped, how long it took once it ran, and when, where that was an earlier session's run.</summary>
         private void ShowState(TestNode node)
         {
             // Each mark centred in the same 16 wide: the dot running a size smaller, the tick passed a size larger.
@@ -587,6 +591,13 @@ public sealed class TestsView : DockPanel
             state.Width = state.Height = size;
             state.Margin = new Thickness((16 - size) / 2, 0, ((16 - size) / 2) + 6, 0);
             duration.Text = node.State is TestState.Passed or TestState.Failed && node.Duration > TimeSpan.Zero ? Format(node.Duration) : string.Empty;
+            earlier.Text = node.Kind is TestNodeKind.Method or TestNodeKind.Row && node.EarlierRun is { } ran
+                ? $"earlier run, {Earlier(ran)}{(node.CodeChanged ? "; code changed" : string.Empty)}"
+                : string.Empty;
         }
+
+        /// <summary>When an earlier session's run began, as short as a row can say it: today's by its time alone.</summary>
+        private static string Earlier(DateTimeOffset ran) =>
+            ran.ToLocalTime().Date == DateTime.Today ? ran.ToLocalTime().ToString("t", System.Globalization.CultureInfo.CurrentCulture) : GitLogView.When(ran);
     }
 }

@@ -101,6 +101,14 @@ public partial class MainWindow
                 testHosts.Remove(tab);
             }
         }
+        // The results a run told, kept in the folder's state for its next opening.
+        tests.ResultsToKeep += (_, runs) =>
+        {
+            if (next.State is { } state)
+            {
+                state.UnitTestResults.Set(state.UnitTestResults.Value.With(runs));
+            }
+        };
         // A test run's end, a label in Local History: passed, failed, or broken off (its test host ended mid-run).
         tests.Ran += (_, ended) =>
         {

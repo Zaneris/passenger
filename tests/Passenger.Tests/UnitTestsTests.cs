@@ -1252,6 +1252,49 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Assert.Equal([TestState.NotRun], second.Tests.Tree.Outcomes);
         second.Close();
     }
+
+    /// <summary>A run's results come back when the folder opens again, before any build: each test's outcome, time, data rows
+    /// and failure as they were, marked in its row and its details as an earlier run's with when; a test whose code changed
+    /// while the folder was closed says so, one whose code did not says nothing; and a run makes them this session's.</summary>
+    [AvaloniaFact]
+    public void A_runs_results_come_back_as_an_earlier_runs_when_the_folder_opens_again_until_the_tests_run_again()
+    {
+        string settings = NewFolder();
+        MainWindow first = Keeping(settings, Folder);
+        Assert.True(first.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !first.Tests.IsBusy && Method(first, "Two_and_two_make_four")?.State == TestState.Passed, "the run of every test", TimeSpan.FromSeconds(120));
+        TimeSpan took = Method(first, "Two_and_two_make_five")!.Duration;
+        Assert.Null(Method(first, "Two_and_two_make_five")!.EarlierRun);
+        Assert.DoesNotContain(ShownTexts(first), t => t?.StartsWith("earlier run", StringComparison.Ordinal) == true);
+        first.Close();
+        Write("SumTests.cs", File.ReadAllText(Source).Replace("Assert.Equal(5, 2 + 2);", "Assert.Equal(5, 2 + 3);", StringComparison.Ordinal));
+
+        MainWindow second = Keeping(settings, Folder);
+        Ui.WaitFor(() => Method(second, "Two_and_two_make_five")?.State == TestState.Failed, "the failed test's result from the earlier run, before any build");
+        TestNode five = Method(second, "Two_and_two_make_five")!;
+        Assert.Equal(TestState.Passed, Method(second, "Two_and_two_make_four")!.State);
+        Assert.Equal(TestState.Skipped, Method(second, "Not_yet")!.State);
+        Assert.Equal(["Doubles(value: 1, twice: 2)", "Doubles(value: 2, twice: 4)"], Method(second, "Doubles")!.Children.Select(r => r.Name));
+        Assert.Equal(TestState.Failed, second.Tests.Tree.Roots[0].State);
+        Assert.True(five.Duration == took, $"The failed test took {took} in the earlier run, and is said to have taken {five.Duration}");
+        Assert.NotNull(five.EarlierRun);
+        Assert.StartsWith("From an earlier run, at ", five.Details, StringComparison.Ordinal);
+        Assert.Contains("SumTests.cs:line 17", five.Details, StringComparison.Ordinal);
+        Ui.WaitFor(() => five.CodeChanged, "the failed test, whose code changed while the folder was closed, to say so");
+        Assert.False(Method(second, "Two_and_two_make_four")!.CodeChanged, "A test whose code did not change says it did");
+        Assert.Contains("; the test's code has changed since", five.Details, StringComparison.Ordinal);
+        Ui.Settle();
+        List<string?> said = ShownTexts(second);
+        Assert.True(said.Any(t => t?.StartsWith("earlier run, ", StringComparison.Ordinal) == true && t.EndsWith("; code changed", StringComparison.Ordinal)),
+            $"No row says its result is from an earlier run and its code changed since: the window says {string.Join(" | ", said)}");
+
+        Assert.True(second.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !second.Tests.IsBusy && Method(second, "Two_and_two_make_five")?.State == TestState.Passed, "the second run, in which the changed test passes", TimeSpan.FromSeconds(120));
+        Assert.All(second.Tests.Tree.Methods, m => Assert.True(m.EarlierRun is null && !m.CodeChanged, $"{m.Name} still shows an earlier run's results after this run"));
+        Ui.Settle();
+        Assert.DoesNotContain(ShownTexts(second), t => t?.StartsWith("earlier run", StringComparison.Ordinal) == true);
+        second.Close();
+    }
 }
 
 /// <summary>Debug Tests from the window, on <see cref="UnitTestsFolders"/>' Sums.Tests. Debugged through the window, so the
