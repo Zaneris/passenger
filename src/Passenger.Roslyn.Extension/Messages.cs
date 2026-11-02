@@ -373,9 +373,11 @@ public sealed record GodotCodeFound(
 }
 
 /// <summary>What a string Godot's calls take names that a Godot project defines outside its code: an input action
-/// (project.godot's [input]), a group (its scenes' nodes'), an animation (an animation library of its scenes), an autoload
-/// (project.godot's [autoload], a GetNode path's /root/Name), a shader parameter (a shader's uniform) or a translation's key
-/// (the CSV and PO files project.godot lists).</summary>
+/// (project.godot's [input]), a group (its scenes' nodes'), an animation (an animation library of its scenes, or an animated
+/// sprite's SpriteFrames), an autoload (project.godot's [autoload], a GetNode path's /root/Name), a shader parameter (a
+/// shader's uniform), a translation's key (the CSV and PO files project.godot lists), an AnimationTree's parameter (its tree's
+/// <c>parameters/…</c> path) or a global shader uniform (project.godot's [shader_globals]); or a layer, by its number
+/// (project.godot's [layer_names] names it).</summary>
 public enum GodotStringKind
 {
     Action,
@@ -384,13 +386,17 @@ public enum GodotStringKind
     Autoload,
     ShaderParameter,
     Translation,
+    Layer,
+    TreeParameter,
+    ShaderGlobal,
 }
 
 /// <summary>A string of a kind as the file gives it to Godot's call (<c>Input.IsActionPressed("jump")</c>): what it names
 /// and where its characters are written (when <paramref name="Exact"/>), whether the call adds it (<c>AddToGroup</c>,
 /// <c>InputMap.AddAction</c>), the class it is written in (by its index in the answer's), and the object the call is made
 /// on where the code tells it: a node by its path from the node the class runs on, or by the <c>[Export]</c> member a scene
-/// sets to it, and for a material the node's property holding it (<c>material</c>); none where it is not told.</summary>
+/// sets to it, and for a material the node's property holding it (<c>material</c>); none where it is not told. A layer's
+/// name is its number as written in decimal, and its member the layers Godot numbers it among (<c>2d_physics</c>).</summary>
 public sealed record GodotKindRead(
     [property: JsonPropertyName("kind")] GodotStringKind Kind,
     [property: JsonPropertyName("name")] string Name,

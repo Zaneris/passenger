@@ -87,7 +87,9 @@ internal static partial class GodotSource
         List<(int Signal, int Method)> joined = [];
         foreach (SyntaxToken token in root.DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken)))
         {
-            if (GodotGenerated.NameCall(token, model, cancel) is not { On: INamedTypeSymbol on } call)
+            // An AnimationTree's parameters/… property is its tree's parameter, which GodotKinds reads.
+            if (GodotGenerated.NameCall(token, model, cancel) is not { On: INamedTypeSymbol on } call
+                || call.Kind == GodotNameKind.Property && token.ValueText.StartsWith(GodotKinds.Parameters, StringComparison.Ordinal) && GodotKinds.Of(token, model, cancel) is not null)
             {
                 continue;
             }

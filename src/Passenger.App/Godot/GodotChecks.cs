@@ -606,6 +606,9 @@ internal static class GodotChecks
         GodotStringKind.Animation => "animation",
         GodotStringKind.Autoload => "autoload",
         GodotStringKind.ShaderParameter => "shader parameter",
+        GodotStringKind.Layer => "layer",
+        GodotStringKind.TreeParameter => "AnimationTree parameter",
+        GodotStringKind.ShaderGlobal => "global shader uniform",
         _ => "translation",
     };
 
@@ -614,14 +617,20 @@ internal static class GodotChecks
 
     /// <summary>What a string of a kind may name (<see cref="Candidates"/>), given in a class running as some scripts on an
     /// object the code tells by a node's path from the script's node or an exported member a scene sets to it (and for a
-    /// shader parameter, the node's property holding its material): an animation player's animations, a material's shader's
-    /// uniforms, in each scene the script runs in; the project's for one not told.</summary>
+    /// shader parameter, the node's property holding its material; for a layer, the layers it is among): an animation
+    /// player's or animated sprite's animations, an AnimationTree's parameters, a material's shader's uniforms, in each scene
+    /// the script runs in; the project's for one not told.</summary>
     public static Candidates Named(GodotScenes scenes, GodotStringKind kind, IReadOnlyList<string> scripts, string? node, string? export, string? member)
     {
         GodotDefinitions defined = scenes.Defined;
         bool project = scenes.Texts.ContainsKey(GodotDefinitions.ProjectRes);
         switch (kind)
         {
+            case GodotStringKind.Layer:
+                return member is null ? new Candidates([], "among Godot's layers", false)
+                    : new Candidates(defined.Layers(member), $"among Godot's {GodotDefinitions.LayersShown(member)} layers, numbered 1 to {GodotDefinitions.LayerCount(member)}", true);
+            case GodotStringKind.ShaderGlobal:
+                return new Candidates(defined.ShaderGlobals, "in project.godot's [shader_globals]", project);
             case GodotStringKind.Action:
                 return new Candidates([.. defined.Actions, .. GodotDefinitions.BuiltInActions.Where(b => !defined.Actions.Any(a => a.Name == b)).Select(b => new GodotDefined(b, "Godot's own input action", []))],
                     "in project.godot's [input], nor among Godot's own ui_ actions", project);
@@ -634,6 +643,7 @@ internal static class GodotChecks
                     defined.TranslationFiles.Count > 0 && defined.TranslationsWhole);
         }
         (IReadOnlyList<GodotTreeNode> told, bool whole) = Told(scenes, scripts, node, export);
+        string listed = Core.Plural.Listed([.. told.Select(p => $"{p.Name} ({Place(scenes, p.Declared.Scene, p)})").Distinct()]);
         if (kind == GodotStringKind.Animation)
         {
             if (!whole)
@@ -647,7 +657,20 @@ internal static class GodotChecks
                 whole &= read && GodotDefinitions.IsPlayer(player);
                 names.AddRange(own);
             }
-            return new Candidates(Merged(names), $"in the animation libraries of {Core.Plural.Listed([.. told.Select(p => $"{p.Name} ({Place(scenes, p.Declared.Scene, p)})").Distinct()])}", whole);
+            bool sprites = told.All(t => t.Written.Any(w => w.Node.Section.Property("sprite_frames") is not null));
+            return new Candidates(Merged(names), $"in the {(sprites ? "SpriteFrames" : "animation libraries")} of {listed}", whole);
+        }
+        if (kind == GodotStringKind.TreeParameter)
+        {
+            List<GodotDefined> parameters = [];
+            foreach (GodotTreeNode tree in whole ? told : scenes.Files.Where(f => f.Value.Header?.Tag == "gd_scene").OrderBy(f => f.Key, StringComparer.Ordinal)
+                .SelectMany(f => scenes.Tree(f.Key)?.Below() ?? []).Where(n => n.Type == "AnimationTree"))
+            {
+                (IReadOnlyList<GodotDefined> own, bool read) = defined.TreeParametersOf(tree);
+                whole &= read && tree.Type == "AnimationTree";
+                parameters.AddRange(own);
+            }
+            return new Candidates(Merged(parameters), whole ? $"made by the tree of {listed}" : "made by any AnimationTree of the project's scenes", whole);
         }
         List<string> shaders = [.. whole && member is not null ? told.Select(t => defined.ShaderOf(t, member)).OfType<string>().Distinct(StringComparer.Ordinal) : []];
         if (!whole || member is null || shaders.Count < told.Count)

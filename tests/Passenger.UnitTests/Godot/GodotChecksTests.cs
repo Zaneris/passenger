@@ -451,6 +451,55 @@ public class GodotChecksTests
         Assert.False(GodotChecks.Named(scenes, GodotStringKind.Animation, ["res://Main.cs"], null, null, null).Whole, "a player the code does not tell is never checked");
     }
 
+    /// <summary>A layer's number outside the layers Godot numbers is an error, one inside never; an AnimationTree's parameter
+    /// its tree does not make is one where the code tells the tree; a global shader uniform project.godot lacks is one.</summary>
+    [Fact]
+    public void A_layer_out_of_godots_numbers_an_animation_trees_unmade_parameter_and_an_unknown_global_uniform_are_errors()
+    {
+        const string scene = """
+            [gd_scene format=3]
+
+            [ext_resource type="Script" path="res://Main.cs" id="1"]
+
+            [sub_resource type="AnimationNodeStateMachineTransition" id="AnimationNodeStateMachineTransition_1"]
+            advance_condition = &"is_running"
+
+            [sub_resource type="AnimationNodeStateMachine" id="AnimationNodeStateMachine_1"]
+            transitions = ["Start", "End", SubResource("AnimationNodeStateMachineTransition_1")]
+
+            [node name="Main" type="Node2D"]
+            script = ExtResource("1")
+
+            [node name="Tree" type="AnimationTree" parent="."]
+            tree_root = SubResource("AnimationNodeStateMachine_1")
+
+            """;
+        const string project = "[layer_names]\n\n2d_physics/layer_2=\"enemies\"\n\n[shader_globals]\n\nwind={\n\"type\": \"vec2\"\n}\n";
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) },
+            texts: new Dictionary<string, string> { ["res://project.godot"] = project });
+        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotKindRead Read(GodotStringKind kind, string name, string? node = null, string? member = null) => new(kind, name, At, End, true, false, 0, node, null, member);
+        GodotCodeFound found = Found(asked, []) with
+        {
+            Kinds =
+            [
+                Read(GodotStringKind.Layer, "2", member: "2d_physics"), Read(GodotStringKind.Layer, "33", member: "2d_physics"), Read(GodotStringKind.Layer, "0", member: "3d_render"),
+                Read(GodotStringKind.TreeParameter, "parameters/conditions/is_running", "Tree"), Read(GodotStringKind.TreeParameter, "parameters/conditions/is_runing", "Tree"),
+                Read(GodotStringKind.TreeParameter, "parameters/anything"),
+                Read(GodotStringKind.ShaderGlobal, "wind"), Read(GodotStringKind.ShaderGlobal, "wnd"),
+            ],
+        };
+        Assert.Equal(
+        [
+            "No layer '33' is among Godot's 2D physics layers, numbered 1 to 32",
+            "No layer '0' is among Godot's 3D render layers, numbered 1 to 20",
+            "No AnimationTree parameter 'parameters/conditions/is_runing' is made by the tree of Tree (main.tscn:14)",
+            "No global shader uniform 'wnd' is in project.godot's [shader_globals]",
+        ], GodotChecks.Findings(scenes, asked, found, _ => true).Select(f => f.Message));
+        GodotDefined enemies = GodotChecks.Named(scenes, GodotStringKind.Layer, [], null, null, "2d_physics").Names[1];
+        Assert.Equal(("2", "enemies"), (enemies.Name, enemies.Detail));
+    }
+
     private const string MixedScene = """
         [gd_scene format=3]
 

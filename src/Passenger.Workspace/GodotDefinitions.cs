@@ -15,12 +15,14 @@ public sealed record GodotPlace(string Res, int Start, int End, bool Defines, st
 public sealed record GodotDefined(string Name, string Detail, IReadOnlyList<GodotPlace> Places);
 
 /// <summary>What a Godot project's own files define for the strings its code gives Godot's calls, read as Godot reads them:
-/// project.godot's input actions (<c>[input]</c>, beside Godot's own <c>ui_</c> ones), autoloads (<c>[autoload]</c>) and the
-/// translations it lists (<c>internationalization/locale/translations</c>: a CSV's keys, a PO file's msgids); the groups
-/// its scenes give nodes (<c>groups=[…]</c>); each animation player's animations (its libraries, a scene's own or a
-/// resource's, <c>_data</c>'s keys); and a shader's uniforms (its <c>#include</c>s' too), with the shader a node's material
-/// gives it. Each name with every place its files write it, which its rename edits. Pure, built from
-/// <see cref="GodotScenes"/>, so it is read off the UI thread.</summary>
+/// project.godot's input actions (<c>[input]</c>, beside Godot's own <c>ui_</c> ones), autoloads (<c>[autoload]</c>), global
+/// shader uniforms (<c>[shader_globals]</c>), named layers (<c>[layer_names]</c>) and the translations it lists
+/// (<c>internationalization/locale/translations</c>: a CSV's keys, a PO file's msgids); the groups its scenes give nodes
+/// (<c>groups=[…]</c>); each animation player's animations (its libraries, a scene's own or a resource's, <c>_data</c>'s
+/// keys) and each animated sprite's (its SpriteFrames'); an AnimationTree's parameters (<c>parameters/…</c>, as its tree's
+/// nodes and conditions make them); and a shader's uniforms (its <c>#include</c>s' too), with the shader a node's material
+/// gives it. Each name with every place its files write it, which its rename edits: its GDScripts' strings and words, and
+/// its scenes' node paths, among them. Pure, built from <see cref="GodotScenes"/>, so it is read off the UI thread.</summary>
 public sealed class GodotDefinitions
 {
     /// <summary>The res:// path of the file that makes a folder a Godot project.</summary>
@@ -28,6 +30,12 @@ public sealed class GodotDefinitions
 
     /// <summary>The prefix a ShaderMaterial gives each of its shader's parameters it sets.</summary>
     public const string ShaderParameter = "shader_parameter/";
+
+    /// <summary>The prefix of the property an AnimationTree takes each of its tree's parameters by.</summary>
+    public const string TreeParameters = "parameters/";
+
+    /// <summary>The start of a node path through the tree's root, whose next name is an autoload's or the running scene's.</summary>
+    public const string RootPath = "/root/";
 
     /// <summary>How deep a shader's includes are followed.</summary>
     private const int Deepest = 8;
@@ -55,6 +63,8 @@ public sealed class GodotDefinitions
     private readonly Lazy<IReadOnlyList<GodotDefined>> actions;
     private readonly Lazy<IReadOnlyList<GodotDefined>> autoloads;
     private readonly Lazy<IReadOnlyList<GodotDefined>> groups;
+    private readonly Lazy<IReadOnlyList<GodotDefined>> globals;
+    private readonly Lazy<IReadOnlyList<(string Res, IReadOnlyList<GodotScriptToken> Tokens)>> scripts;
     private readonly Lazy<(IReadOnlyList<GodotDefined> Keys, IReadOnlyList<string> Files, bool Whole)> translations;
     private readonly Lazy<(IReadOnlyList<GodotDefined> Names, bool Whole)> animations;
     private readonly Dictionary<string, (IReadOnlyList<GodotDefined> Names, bool Whole)> uniforms = new(StringComparer.Ordinal);
@@ -65,12 +75,46 @@ public sealed class GodotDefinitions
     {
         this.scenes = scenes;
         project = new(() => scenes.Texts.TryGetValue(ProjectRes, out string? text) ? GodotFile.Parse(text) : null);
-        actions = new(() => Keys("input", "input action"));
-        autoloads = new(() => Keys("autoload", "autoload"));
-        groups = new(ReadGroups);
+        scripts = new(() => [.. scenes.Texts.Where(t => GodotScriptDeclarations.IsScript(t.Key)).OrderBy(t => t.Key, StringComparer.Ordinal)
+            .Select(t => (t.Key, GodotScriptStrings.Read(t.Value)))]);
+        actions = new(() => Scripted(Keys("input", "input action"), ActionCalls));
+        autoloads = new(() => Autoloaded(Keys("autoload", "autoload")));
+        groups = new(() => Scripted(ReadGroups(), GroupCalls));
+        globals = new(() => Scripted(ReadGlobals(), GlobalCalls));
         translations = new(ReadTranslations);
         animations = new(ReadAnimations);
     }
+
+    /// <summary>The functions a GDScript gives an input action's name to, at the arguments that take it.</summary>
+    private static readonly Dictionary<string, int[]> ActionCalls = new(StringComparer.Ordinal)
+    {
+        ["is_action_pressed"] = [0], ["is_action_just_pressed"] = [0], ["is_action_just_released"] = [0], ["is_action_released"] = [0], ["is_action"] = [0],
+        ["get_action_strength"] = [0], ["get_action_raw_strength"] = [0], ["action_press"] = [0], ["action_release"] = [0], ["get_axis"] = [0, 1],
+        ["get_vector"] = [0, 1, 2, 3], ["has_action"] = [0], ["erase_action"] = [0], ["add_action"] = [0], ["action_add_event"] = [0], ["action_erase_event"] = [0],
+        ["action_erase_events"] = [0], ["action_get_events"] = [0], ["action_has_event"] = [0], ["action_set_deadzone"] = [0], ["action_get_deadzone"] = [0],
+        ["event_is_action"] = [1],
+    };
+
+    /// <summary>The functions a GDScript gives a group's name to, at the arguments that take it.</summary>
+    private static readonly Dictionary<string, int[]> GroupCalls = new(StringComparer.Ordinal)
+    {
+        ["add_to_group"] = [0], ["remove_from_group"] = [0], ["is_in_group"] = [0], ["get_nodes_in_group"] = [0], ["get_first_node_in_group"] = [0],
+        ["get_node_count_in_group"] = [0], ["has_group"] = [0], ["call_group"] = [0], ["notify_group"] = [0], ["set_group"] = [0],
+        ["call_group_flags"] = [1], ["notify_group_flags"] = [1], ["set_group_flags"] = [1],
+    };
+
+    /// <summary>The functions a GDScript gives a global shader uniform's name to, at the arguments that take it.</summary>
+    private static readonly Dictionary<string, int[]> GlobalCalls = new(StringComparer.Ordinal)
+    {
+        ["global_shader_parameter_set"] = [0], ["global_shader_parameter_get"] = [0], ["global_shader_parameter_set_override"] = [0],
+        ["global_shader_parameter_remove"] = [0], ["global_shader_parameter_add"] = [0], ["global_shader_parameter_get_type"] = [0],
+    };
+
+    /// <summary>The functions a GDScript gives a translation's key to, at the arguments that take it.</summary>
+    private static readonly Dictionary<string, int[]> TranslationCalls = new(StringComparer.Ordinal)
+    {
+        ["tr"] = [0], ["tr_n"] = [0], ["atr"] = [0], ["atr_n"] = [0], ["translate"] = [0], ["translate_plural"] = [0],
+    };
 
     /// <summary>Whether a file is one of these that is not a scene or resource: project.godot, a shader or shader include,
     /// a CSV or PO translation.</summary>
@@ -92,6 +136,37 @@ public sealed class GodotDefinitions
     /// <summary>The groups the project's scenes give nodes, each with every node's place.</summary>
     public IReadOnlyList<GodotDefined> Groups => groups.Value;
 
+    /// <summary>project.godot's global shader uniforms, each by its key, with each shader's <c>global uniform</c> of it and its uses.</summary>
+    public IReadOnlyList<GodotDefined> ShaderGlobals => globals.Value;
+
+    /// <summary>How many layers of a kind of project.godot's [layer_names] Godot numbers (<c>2d_physics</c>'s 32, a render's 20).</summary>
+    public static int LayerCount(string layers) => layers.EndsWith("_render", StringComparison.Ordinal) ? 20 : 32;
+
+    /// <summary>A kind of layers as its words name it: "2D physics", "3D render", "avoidance".</summary>
+    public static string LayersShown(string layers) => layers.Split('_') is [{ } dimension, { } what] ? $"{dimension.ToUpperInvariant()} {what}" : layers;
+
+    /// <summary>Every layer of a kind by its number (from 1), each with the name project.godot's [layer_names] gives it as its
+    /// detail and the place of its key, or none where it is not named.</summary>
+    public IReadOnlyList<GodotDefined> Layers(string layers)
+    {
+        GodotSection? named = project.Value?.Sections.FirstOrDefault(s => s.Tag == "layer_names");
+        List<GodotDefined> numbered = [];
+        for (int number = 1; number <= LayerCount(layers); number++)
+        {
+            string key = $"{layers}/layer_{number}";
+            string shown = number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (named?.Property(key) is { Value.Text: { Length: > 0 } name } property && project.Value is { } file)
+            {
+                numbered.Add(new GodotDefined(shown, name, [new GodotPlace(ProjectRes, property.KeyStart, property.KeyStart + key.Length, true, $"{GodotProject.FileName}:{file.LineOf(property.KeyStart) + 1}")]));
+            }
+            else
+            {
+                numbered.Add(new GodotDefined(shown, string.Empty, []));
+            }
+        }
+        return numbered;
+    }
+
     /// <summary>The keys of the translations project.godot lists, each with its place in every file.</summary>
     public IReadOnlyList<GodotDefined> Translations => translations.Value.Keys;
 
@@ -107,14 +182,19 @@ public sealed class GodotDefinitions
     /// <summary>Whether every animation library of every scene was read (none a binary resource).</summary>
     public bool AnimationsWhole => animations.Value.Whole;
 
-    /// <summary>Whether a node holds animation libraries, as an AnimationPlayer or AnimationTree whose sections give it some does.</summary>
+    /// <summary>Whether a node holds animations: animation libraries, as an AnimationPlayer or AnimationTree whose sections give it
+    /// some does, or SpriteFrames, as an animated sprite whose sections give it some does.</summary>
     public static bool IsPlayer(GodotTreeNode node) =>
-        node.Written.Any(w => w.Node.Section.Properties.Any(p => p.Key == "libraries" || p.Key.StartsWith("libraries/", StringComparison.Ordinal)));
+        node.Written.Any(w => w.Node.Section.Properties.Any(p => p.Key is "libraries" or "sprite_frames" || p.Key.StartsWith("libraries/", StringComparison.Ordinal)));
 
     /// <summary>An animation player's animations, by their names in it (a library's own after its name and '/'), each with
     /// its key in the library and the player's sections naming it (<c>autoplay</c>); and whether each of its libraries was read.</summary>
     public (IReadOnlyList<GodotDefined> Names, bool Whole) AnimationsOf(GodotTreeNode player)
     {
+        if (player.Written.Select(w => (w.Scene, w.Node.Section.Property("sprite_frames")?.Value)).LastOrDefault(w => w.Value is not null) is ({ } framed, { } frames))
+        {
+            return FramesOf(player, framed, frames);
+        }
         Dictionary<string, (string Res, GodotValue Value)> libraries = new(StringComparer.Ordinal);
         foreach ((string res, GodotNode section) in player.Written)
         {
@@ -170,6 +250,212 @@ public sealed class GodotDefinitions
             }
         }
         return ([.. found.Select(f => new GodotDefined(f.Key, $"animation of {player.Name}", f.Value))], whole);
+    }
+
+    /// <summary>An animated sprite's animations, by the names its SpriteFrames' <c>animations</c> give them, each with the
+    /// sprite's sections naming it (<c>animation</c>, <c>autoplay</c>); and whether its frames were read.</summary>
+    private (IReadOnlyList<GodotDefined> Names, bool Whole) FramesOf(GodotTreeNode sprite, string res, GodotValue frames)
+    {
+        if (Resource(res, frames) is not ({ } at, { } section) || section.Property("animations")?.Value is not { } listed)
+        {
+            return ([], false);
+        }
+        GodotFile file = scenes.Files[at];
+        Dictionary<string, List<GodotPlace>> found = new(StringComparer.Ordinal);
+        foreach (GodotValue item in ItemsOf(file.Text, listed))
+        {
+            if (DictionaryOf(file.Text, item).FirstOrDefault(e => e.Key == "name")?.Value is { Text: { } name } value)
+            {
+                Add(found, name, new GodotPlace(at, value.TextStart, value.TextEnd, true, $"{Path.GetFileName(at)}:{file.LineOf(value.TextStart) + 1}, {sprite.Name}") { Plain = value.Plain });
+            }
+        }
+        foreach ((string written, GodotNode node) in sprite.Written)
+        {
+            foreach (GodotEntry property in node.Section.Properties.Where(p => p.Key is "animation" or "autoplay"))
+            {
+                if (property.Value is { Text: { Length: > 0 } named, Plain: true } value && found.ContainsKey(named))
+                {
+                    Add(found, named, new GodotPlace(written, value.TextStart, value.TextEnd, false, $"{Path.GetFileName(written)}:{scenes.Files[written].LineOf(value.TextStart) + 1}, {sprite.Name}"));
+                }
+            }
+        }
+        return ([.. found.Select(f => new GodotDefined(f.Key, $"animation of {sprite.Name}", f.Value))], true);
+    }
+
+    /// <summary>The parameters an AnimationTree's tree makes (<c>parameters/playback</c>, <c>parameters/conditions/run</c>,
+    /// <c>parameters/Blend2/blend_amount</c>), each by its whole path with where its files write what makes it (a condition's
+    /// value, a node's name, the tree's root); and whether every node of the tree is of a kind whose parameters are known.</summary>
+    public (IReadOnlyList<GodotDefined> Names, bool Whole) TreeParametersOf(GodotTreeNode tree)
+    {
+        (string Res, GodotEntry Property)? root = null;
+        foreach ((string res, GodotNode written) in tree.Written)
+        {
+            if (written.Section.Property("tree_root") is { } property)
+            {
+                root = (res, property);
+            }
+        }
+        if (root is not ({ } at, { } key) || Resource(at, key.Value) is not ({ } file, { } section))
+        {
+            return ([], false);
+        }
+        Dictionary<string, List<GodotPlace>> found = new(StringComparer.Ordinal);
+        Dictionary<string, string> kinds = new(StringComparer.Ordinal);
+        GodotPlace place = new(at, key.KeyStart, key.KeyStart + key.Key.Length, true, $"{Path.GetFileName(at)}:{scenes.Files[at].LineOf(key.KeyStart) + 1}, {tree.Name}");
+        bool whole = TreeNode(file, section, TreeParameters, place, found, kinds, 0);
+        return ([.. found.Select(f => new GodotDefined(f.Key, $"{kinds[f.Key]} parameter of {tree.Name}", f.Value))], whole);
+    }
+
+    /// <summary>The parameters each kind of a tree's node makes of its own, beside those every node does.</summary>
+    private static readonly Dictionary<string, string[]> TreeNodeParameters = new(StringComparer.Ordinal)
+    {
+        ["AnimationNodeAnimation"] = [], ["AnimationNodeOutput"] = [], ["AnimationNodeStartState"] = [], ["AnimationNodeEndState"] = [], ["AnimationNodeBlendTree"] = [],
+        ["AnimationNodeStateMachine"] = ["playback"],
+        ["AnimationNodeBlendSpace1D"] = ["blend_position", "closest", "length_internal"], ["AnimationNodeBlendSpace2D"] = ["blend_position", "closest", "length_internal"],
+        ["AnimationNodeBlend2"] = ["blend_amount"], ["AnimationNodeBlend3"] = ["blend_amount"], ["AnimationNodeAdd2"] = ["add_amount"], ["AnimationNodeAdd3"] = ["add_amount"],
+        ["AnimationNodeSub2"] = ["sub_amount"], ["AnimationNodeTimeScale"] = ["scale"], ["AnimationNodeTimeSeek"] = ["seek_request"],
+        ["AnimationNodeOneShot"] = ["request", "active", "internal_active", "time_to_restart", "fade_in_remaining", "fade_out_remaining"],
+        ["AnimationNodeTransition"] = ["current_state", "transition_request", "current_index", "prev_xfading", "prev_index"],
+    };
+
+    /// <summary>The parameters every node of a tree makes.</summary>
+    private static readonly string[] EveryTreeNode = ["current_length", "current_position", "current_delta"];
+
+    /// <summary>A tree's node's parameters under a path into <paramref name="found"/>, its children's under theirs (a state
+    /// machine's states and its transitions' conditions, a blend tree's nodes); whether every node is of a known kind.</summary>
+    private bool TreeNode(string res, GodotSection node, string path, GodotPlace place, Dictionary<string, List<GodotPlace>> found, Dictionary<string, string> kinds, int depth)
+    {
+        string? type = node.Tag == "sub_resource" ? node.Text("type") : scenes.Files[res].Header?.Text("type");
+        if (type is null || !TreeNodeParameters.TryGetValue(type, out string[]? own) || depth > Deepest)
+        {
+            return false;
+        }
+        string kind = type["AnimationNode".Length..];
+        foreach (string parameter in own.Concat(EveryTreeNode))
+        {
+            Add(found, path + parameter, place);
+            kinds.TryAdd(path + parameter, kind);
+        }
+        GodotFile file = scenes.Files[res];
+        bool whole = true;
+        string children = type == "AnimationNodeStateMachine" ? "states/" : type == "AnimationNodeBlendTree" ? "nodes/" : string.Empty;
+        foreach (GodotEntry property in node.Properties.Where(p => children.Length > 0 && p.Key.StartsWith(children, StringComparison.Ordinal) && p.Key.EndsWith("/node", StringComparison.Ordinal)))
+        {
+            string name = property.Key[children.Length..^"/node".Length];
+            if (name.Length == 0 || name.Contains('/') || type == "AnimationNodeBlendTree" && name == "output")
+            {
+                continue;
+            }
+            int start = property.KeyStart + children.Length;
+            GodotPlace named = new(res, start, start + name.Length, true, $"{Path.GetFileName(res)}:{file.LineOf(start) + 1}") { Plain = file.Text.AsSpan(property.KeyStart).StartsWith(property.Key, StringComparison.Ordinal) };
+            whole &= Resource(res, property.Value) is ({ } at, { } child) && TreeNode(at, child, $"{path}{name}/", named, found, kinds, depth + 1);
+        }
+        if (type == "AnimationNodeStateMachine" && node.Property("transitions")?.Value is { } transitions)
+        {
+            foreach ((string id, _, _) in file.CallsIn(transitions, "SubResource"))
+            {
+                if (file.Sections.FirstOrDefault(s => s.Tag == "sub_resource" && s.Text("id") == id)?.Property("advance_condition")?.Value is { Text: { Length: > 0 } condition } value)
+                {
+                    string parameter = $"{path}conditions/{condition}";
+                    Add(found, parameter, new GodotPlace(res, value.TextStart, value.TextEnd, true, $"{Path.GetFileName(res)}:{file.LineOf(value.TextStart) + 1}") { Plain = value.Plain });
+                    kinds.TryAdd(parameter, "condition");
+                }
+            }
+        }
+        return whole;
+    }
+
+    /// <summary>A name's places with those the project's GDScripts write it at: each string given straight to one of some calls.</summary>
+    private IReadOnlyList<GodotDefined> Scripted(IReadOnlyList<GodotDefined> names, IReadOnlyDictionary<string, int[]> calls)
+    {
+        Dictionary<string, List<GodotPlace>> more = new(StringComparer.Ordinal);
+        foreach ((string res, IReadOnlyList<GodotScriptToken> tokens) in scripts.Value)
+        {
+            foreach (GodotScriptToken token in GodotScriptStrings.GivenTo(tokens, calls))
+            {
+                Add(more, token.Text, ScriptPlace(res, token.Start, token.End, token.Plain));
+            }
+        }
+        return [.. names.Select(n => more.TryGetValue(n.Name, out List<GodotPlace>? places) ? n with { Places = [.. n.Places, .. places] } : n)];
+    }
+
+    /// <summary>The autoloads' places with those each is named at elsewhere: the name in a node path through /root, in a
+    /// GDScript's string or a scene's NodePath, and a GDScript's word naming its node, not after a '.'.</summary>
+    private IReadOnlyList<GodotDefined> Autoloaded(IReadOnlyList<GodotDefined> names)
+    {
+        Dictionary<string, List<GodotPlace>> more = new(StringComparer.Ordinal);
+        HashSet<string> named = [.. names.Select(n => n.Name)];
+        foreach ((string res, IReadOnlyList<GodotScriptToken> tokens) in scripts.Value)
+        {
+            foreach (GodotScriptToken token in tokens)
+            {
+                string? name = token.Word ? token.AfterDot ? null : token.Text : RootName(token.Text);
+                if (name is not null && named.Contains(name))
+                {
+                    int start = token.Word ? token.Start : token.Start + RootPath.Length;
+                    Add(more, name, ScriptPlace(res, start, start + name.Length, token.Plain));
+                }
+            }
+        }
+        foreach ((string res, GodotFile file) in scenes.Files.OrderBy(f => f.Key, StringComparer.Ordinal))
+        {
+            foreach (GodotEntry entry in file.Sections.SelectMany(s => s.Attributes.Concat(s.Properties)))
+            {
+                foreach ((string path, int start, int end) in file.CallsIn(entry.Value, "NodePath"))
+                {
+                    if (RootName(path) is { } name && named.Contains(name) && end - start == path.Length)
+                    {
+                        int at = start + RootPath.Length;
+                        Add(more, name, new GodotPlace(res, at, at + name.Length, false, $"{Path.GetFileName(res)}:{file.LineOf(at) + 1}"));
+                    }
+                }
+            }
+        }
+        return [.. names.Select(n => more.TryGetValue(n.Name, out List<GodotPlace>? places) ? n with { Places = [.. n.Places, .. places] } : n)];
+
+        static string? RootName(string path)
+        {
+            if (!path.StartsWith(RootPath, StringComparison.Ordinal))
+            {
+                return null;
+            }
+            int end = path.IndexOfAny(['/', ':'], RootPath.Length);
+            string name = end < 0 ? path[RootPath.Length..] : path[RootPath.Length..end];
+            return name.Length > 0 ? name : null;
+        }
+    }
+
+    /// <summary>A place in a GDScript, a use of a name, as its words name it ("player.gd:12").</summary>
+    private GodotPlace ScriptPlace(string res, int start, int end, bool plain) =>
+        new(res, start, end, false, $"{Path.GetFileName(res)}:{LineOf(res, start) + 1}") { Plain = plain };
+
+    /// <summary>project.godot's global shader uniforms, each with every shader's <c>global uniform</c> declaring it and its uses there.</summary>
+    private IReadOnlyList<GodotDefined> ReadGlobals()
+    {
+        IReadOnlyList<GodotDefined> keys = Keys("shader_globals", "global shader uniform");
+        if (keys.Count == 0)
+        {
+            return keys;
+        }
+        HashSet<string> named = [.. keys.Select(k => k.Name)];
+        Dictionary<string, List<GodotPlace>> more = new(StringComparer.Ordinal);
+        foreach (string shader in Shaders)
+        {
+            if (CodeOf(shader) is not ({ } res, { } text, int offset, bool plain))
+            {
+                continue;
+            }
+            List<(string Name, int Start, int End)> declared = [];
+            List<(string Name, int Start, int End)> used = [];
+            List<(string Name, int Start, int End)> global = [];
+            ShaderTokens(text, declared, used, global);
+            HashSet<string> own = [.. global.Select(g => g.Name).Where(named.Contains)];
+            foreach ((string name, int start, int end) in global.Where(g => own.Contains(g.Name)).Concat(used.Where(u => own.Contains(u.Name))).OrderBy(p => p.Start))
+            {
+                Add(more, name, new GodotPlace(res, offset + start, offset + end, false, $"{Shown(shader)}:{LineOf(res, offset + start) + 1}") { Plain = plain });
+            }
+        }
+        return [.. keys.Select(k => more.TryGetValue(k.Name, out List<GodotPlace>? places) ? k with { Places = [.. k.Places, .. places] } : k)];
     }
 
     /// <summary>The shader a node's material gives it, by the node's property holding the material (<c>material</c>): its
@@ -342,7 +628,8 @@ public sealed class GodotDefinitions
                 Add(found, key, new GodotPlace(res, start, end, true, $"{Path.GetFileName(res)}:{LineIn(res, text, start) + 1}") { Plain = plain });
             }
         }
-        return ([.. found.Select(f => new GodotDefined(f.Key, "translation", f.Value))], files, whole);
+        IReadOnlyList<GodotDefined> keyed = Scripted([.. found.Select(f => new GodotDefined(f.Key, "translation", f.Value))], TranslationCalls);
+        return (keyed, files, whole);
     }
 
     /// <summary>The CSV a translation Godot imports from one names: <c>res://text.en.translation</c>'s <c>res://text.csv</c>.</summary>
@@ -499,9 +786,11 @@ public sealed class GodotDefinitions
         return scenes.Texts.TryGetValue(shader, out string? text) ? (shader, text, 0, true) : null;
     }
 
-    /// <summary>A shader's uniforms a material sets (into <paramref name="declared"/>) and every other identifier of its
-    /// code not after a '.' (into <paramref name="used"/>), its comments passed over; and each file it includes, by res:// path.</summary>
-    internal static IReadOnlyList<(string Include, bool Read)> ShaderTokens(string text, List<(string Name, int Start, int End)> declared, List<(string Name, int Start, int End)> used)
+    /// <summary>A shader's uniforms a material sets (into <paramref name="declared"/>), its <c>global uniform</c>s (into
+    /// <paramref name="global"/>, where given) and every other identifier of its code not after a '.' (into
+    /// <paramref name="used"/>), its comments passed over; and each file it includes, by res:// path.</summary>
+    internal static IReadOnlyList<(string Include, bool Read)> ShaderTokens(string text, List<(string Name, int Start, int End)> declared, List<(string Name, int Start, int End)> used,
+        List<(string Name, int Start, int End)>? global = null)
     {
         List<(string, bool)> includes = [];
         List<(string Word, int Start, int End)> words = [];
@@ -559,7 +848,8 @@ public sealed class GodotDefinitions
                 }
                 continue;
             }
-            if (i > 0 && words[i - 1].Word is "global" or "instance" && Between(marks, words[i - 1].End, start))
+            bool shared = i > 0 && words[i - 1].Word is "global" or "instance" && Between(marks, words[i - 1].End, start);
+            if (shared && words[i - 1].Word == "instance")
             {
                 continue;
             }
@@ -567,7 +857,7 @@ public sealed class GodotDefinitions
             int last = -1;
             for (int j = i + 1; j < words.Count; j++)
             {
-                if (marks.Any(m => m.At > words[j - 1].End && m.At < words[j].Start && m.Mark is ':' or '=' or ';' or '['))
+                if (marks.Any(m => m.At >= words[j - 1].End && m.At < words[j].Start && m.Mark is ':' or '=' or ';' or '['))
                 {
                     break;
                 }
@@ -575,10 +865,10 @@ public sealed class GodotDefinitions
             }
             if (last > i)
             {
-                declared.Add(words[last]);
+                (shared ? global ?? [] : declared).Add(words[last]);
             }
         }
-        used.RemoveAll(u => declared.Any(d => d.Start == u.Start));
+        used.RemoveAll(u => declared.Any(d => d.Start == u.Start) || global?.Any(g => g.Start == u.Start) == true);
         return includes;
 
         static char Before(List<(int At, char Mark)> marks, int start)
@@ -621,6 +911,32 @@ public sealed class GodotDefinitions
         }
         return value.Call == "ExtResource" && file.External(id)?.Path is { } path && scenes.Files.TryGetValue(path, out GodotFile? other) && other.Resource is { } own
             ? (path, own) : null;
+    }
+
+    /// <summary>The values of an array value at its top, each read as a property's value is.</summary>
+    internal static IReadOnlyList<GodotValue> ItemsOf(string text, GodotValue value)
+    {
+        List<GodotValue> items = [];
+        if (value.Start >= value.End || text[value.Start] != '[')
+        {
+            return items;
+        }
+        int at = value.Start + 1;
+        while (at < value.End)
+        {
+            while (at < value.End && (char.IsWhiteSpace(text[at]) || text[at] == ','))
+            {
+                at++;
+            }
+            if (at >= value.End || text[at] == ']')
+            {
+                break;
+            }
+            int end = ItemEnd(text, at, value.End);
+            items.Add(ValueOf(text, at, end));
+            at = end == at ? end + 1 : end;
+        }
+        return items;
     }
 
     /// <summary>The strings a value holds anywhere in it (an array's, a PackedStringArray's), each with where its characters

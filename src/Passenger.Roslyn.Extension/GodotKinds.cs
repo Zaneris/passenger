@@ -18,18 +18,27 @@ public sealed class GodotKindStrings : IExtensionWorkspaceMessageHandler<GodotKi
 
 /// <summary>The strings Godot's calls take naming what a Godot project defines outside its code (<see cref="GodotStringKind"/>),
 /// as Roslyn binds them against GodotSharp: a string's kind read from the class of the method it is given to and the name of
-/// its parameter (<c>Input</c>'s <c>action</c>, <c>Node</c>'s <c>group</c>, <c>ShaderMaterial</c>'s <c>param</c>), and the
-/// object the call is made on where the code tells it: an animation player or a material's node by its path from the
-/// class's node (<c>GetNode&lt;AnimationPlayer&gt;("Anim")</c>, a field or local only ever given one such path) or by the
-/// <c>[Export]</c> member a scene sets to it. A GetNode path's <c>/root/Name</c> names an autoload.</summary>
+/// its parameter (<c>Input</c>'s <c>action</c>, <c>Node</c>'s <c>group</c>, <c>ShaderMaterial</c>'s <c>param</c>, a
+/// <c>parameters/…</c> property's an AnimationTree's), and the object the call is made on where the code tells it: an
+/// animation player, a tree or a material's node by its path from the class's node (<c>GetNode&lt;AnimationPlayer&gt;("Anim")</c>,
+/// a field or local only ever given one such path) or by the <c>[Export]</c> member a scene sets to it. A GetNode path's
+/// <c>/root/Name</c> names an autoload; a constant a <c>layerNumber</c> takes names a layer.</summary>
 internal static class GodotKinds
 {
     private const string Root = "/root/";
 
+    /// <summary>The prefix of the property an AnimationTree takes each of its tree's parameters by.</summary>
+    internal const string Parameters = "parameters/";
+
+    /// <summary>The string literals each document was last read to give, by its text's version, so a scan of the projects
+    /// for a name reads again only what changed.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<DocumentId, (VersionStamp Version, HashSet<string> Strings)> Written = new();
+
     /// <summary>How far a field's or local's values are followed to the node or material they hold.</summary>
     private const int Deepest = 3;
 
-    /// <summary>The file's strings of a kind, each with the class it is written in and the object its call is made on where told.</summary>
+    /// <summary>The file's strings of a kind, each with the class it is written in and the object its call is made on where
+    /// told; and its layer numbers, each the constant a <c>layerNumber</c> is given.</summary>
     public static IReadOnlyList<GodotKindRead> Read(Solution solution, SyntaxNode root, SemanticModel model, IReadOnlyList<INamedTypeSymbol> declared, SourceText text, CancellationToken cancel)
     {
         List<GodotKindRead> reads = [];
@@ -45,7 +54,75 @@ internal static class GodotKinds
             reads.Add(new GodotKindRead(kind, token.ValueText, PlaceAt(text, exact ? token.SpanStart + 1 : token.SpanStart), PlaceAt(text, exact ? token.Span.End - 1 : token.Span.End),
                 exact, adds, index, node, export, member));
         }
+        foreach (ArgumentSyntax argument in root.DescendantNodes().OfType<ArgumentSyntax>())
+        {
+            if (LayerOf(argument, model, cancel) is ({ } layers, int number))
+            {
+                reads.Add(new GodotKindRead(GodotStringKind.Layer, number.ToString(System.Globalization.CultureInfo.InvariantCulture), PlaceAt(text, argument.Expression.SpanStart),
+                    PlaceAt(text, argument.Expression.Span.End), true, false, ClassOf(declared, argument.Expression.GetFirstToken(), model, cancel), null, null, layers));
+            }
+        }
         return reads;
+    }
+
+    /// <summary>The layers an argument names one of by its number, and that number: the constant given to a GodotSharp
+    /// method's <c>layerNumber</c>, among the layers its class and name say (<see cref="LayersOf"/>); null for any other.</summary>
+    internal static (string Layers, int Number)? LayerOf(ArgumentSyntax argument, SemanticModel model, CancellationToken cancel)
+    {
+        if (argument.Parent?.Parent is not InvocationExpressionSyntax call || model.GetOperation(call, cancel) is not IInvocationOperation { TargetMethod: var method } invocation
+            || !OfGodot(method) || invocation.Arguments.FirstOrDefault(a => a.Syntax == argument)?.Parameter is not { Name: "layerNumber" }
+            || LayersOf(method) is not { } layers || model.GetConstantValue(argument.Expression, cancel) is not { HasValue: true, Value: int number })
+        {
+            return null;
+        }
+        return (layers, number);
+    }
+
+    /// <summary>The layers of project.godot's [layer_names] a GodotSharp method's <c>layerNumber</c> numbers one of, by what its
+    /// name sets (collision, navigation, avoidance, a 3D render mask) and whether its class is of 2D or 3D; null for none known.</summary>
+    private static string? LayersOf(IMethodSymbol method)
+    {
+        string? dimension = null;
+        for (INamedTypeSymbol? type = method.ContainingType; type is not null && dimension is null; type = type.BaseType)
+        {
+            dimension = type.Name switch
+            {
+                "NavigationPolygon" or "TileSet" => "2d",
+                "NavigationMesh" or "GridMap" => "3d",
+                _ when type.Name.EndsWith("2D", StringComparison.Ordinal) => "2d",
+                _ when type.Name.EndsWith("3D", StringComparison.Ordinal) => "3d",
+                _ => null,
+            };
+        }
+        string name = method.Name;
+        return name.Contains("Avoidance", StringComparison.Ordinal) ? "avoidance"
+            : dimension is null ? null
+            : name.Contains("Navigation", StringComparison.Ordinal) ? $"{dimension}_navigation"
+            : name.Contains("Collision", StringComparison.Ordinal) ? $"{dimension}_physics"
+            : dimension == "3d" && (name.Contains("LayerMask", StringComparison.Ordinal) || name.Contains("CullMask", StringComparison.Ordinal) || name.Contains("BakeMask", StringComparison.Ordinal)
+                || name.Contains("HeightfieldMask", StringComparison.Ordinal)) ? "3d_render"
+            : null;
+    }
+
+    /// <summary>The string literals a document's text gives, read again only once its text changes.</summary>
+    private static async Task<HashSet<string>> StringsOfAsync(Document document, CancellationToken cancel)
+    {
+        VersionStamp version = await document.GetTextVersionAsync(cancel).ConfigureAwait(false);
+        if (Written.TryGetValue(document.Id, out (VersionStamp Version, HashSet<string> Strings) kept) && kept.Version == version)
+        {
+            return kept.Strings;
+        }
+        HashSet<string> strings = await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is { } root
+            ? [.. root.DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken)).Select(t => t.ValueText)] : [];
+        Written[document.Id] = (version, strings);
+        return strings;
+    }
+
+    /// <summary>Whether a document's text gives a string literal that one of some names is, or starts with (<paramref name="prefix"/>).</summary>
+    internal static async Task<bool> WritesAsync(Document document, IReadOnlySet<string> names, bool prefix, CancellationToken cancel)
+    {
+        HashSet<string> strings = await StringsOfAsync(document, cancel).ConfigureAwait(false);
+        return prefix ? strings.Any(s => names.Any(n => s.StartsWith(n, StringComparison.Ordinal))) : strings.Overlaps(names);
     }
 
     /// <summary>The names of the file's strings that a call elsewhere in the code of its project, or of one near it, adds
@@ -65,7 +142,7 @@ internal static class GodotKinds
         {
             foreach (Document document in each.Documents)
             {
-                if (await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root)
+                if (!await WritesAsync(document, names, prefix: false, cancel).ConfigureAwait(false) || await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root)
                 {
                     continue;
                 }
@@ -88,17 +165,29 @@ internal static class GodotKinds
 
     /// <summary>Every string of a kind naming a name in the C# of the projects in a Godot project's folder, each once though a
     /// project builds it for several frameworks, told as <see cref="Read"/> tells it: for an autoload, the name in each node
-    /// path through <c>/root/Name</c>.</summary>
+    /// path through <c>/root/Name</c>; for a layer, each constant a <c>layerNumber</c> is given of its number, its layers
+    /// as its member.</summary>
     public static async Task<GodotKindUses> UsesAsync(Solution solution, GodotKindAsked asked, CancellationToken cancel)
     {
         List<GodotKindUse> uses = [];
         HashSet<(string, int)> seen = [];
+        HashSet<string> names = [asked.Kind == GodotStringKind.Autoload ? Root + asked.Name : asked.Name];
         foreach (Project project in solution.Projects.Where(p => System.IO.Path.GetDirectoryName(p.FilePath) is { } home
             && (SamePath(home, asked.Folder) || Passenger.Core.PathNames.IsUnder(home, asked.Folder))))
         {
             foreach (Document document in project.Documents)
             {
-                if (document.FilePath is not { Length: > 0 } path || await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root)
+                if (document.FilePath is not { Length: > 0 } path)
+                {
+                    continue;
+                }
+                if (asked.Kind == GodotStringKind.Layer)
+                {
+                    uses.AddRange(await LayerUsesAsync(document, path, asked.Name, seen, cancel).ConfigureAwait(false));
+                    continue;
+                }
+                if (!await WritesAsync(document, names, prefix: asked.Kind == GodotStringKind.Autoload, cancel).ConfigureAwait(false)
+                    || await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root)
                 {
                     continue;
                 }
@@ -127,11 +216,37 @@ internal static class GodotKinds
         return new GodotKindUses(uses);
     }
 
+    /// <summary>A document's constants given to a <c>layerNumber</c> that are a number, each with the layers it is among.</summary>
+    private static async Task<IReadOnlyList<GodotKindUse>> LayerUsesAsync(Document document, string path, string number, HashSet<(string, int)> seen, CancellationToken cancel)
+    {
+        if (await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root)
+        {
+            return [];
+        }
+        List<ArgumentSyntax> arguments = [.. root.DescendantNodes().OfType<InvocationExpressionSyntax>()
+            .Where(c => NameOf(c.Expression)?.EndsWith("Value", StringComparison.Ordinal) == true).SelectMany(c => c.ArgumentList.Arguments)];
+        if (arguments.Count == 0 || await document.GetSemanticModelAsync(cancel).ConfigureAwait(false) is not { } model)
+        {
+            return [];
+        }
+        SourceText text = await document.GetTextAsync(cancel).ConfigureAwait(false);
+        List<GodotKindUse> uses = [];
+        foreach (ArgumentSyntax argument in arguments)
+        {
+            if (LayerOf(argument, model, cancel) is ({ } layers, int at) && at.ToString(System.Globalization.CultureInfo.InvariantCulture) == number
+                && seen.Add((path, argument.Expression.SpanStart)))
+            {
+                uses.Add(new GodotKindUse(path, PlaceAt(text, argument.Expression.SpanStart), PlaceAt(text, argument.Expression.Span.End), [], null, null, layers));
+            }
+        }
+        return uses;
+    }
+
     /// <summary>The object a string's call is made on, as the code tells it (<see cref="NodeOf"/>, <see cref="MaterialOf"/>).</summary>
     private static (string? Node, string? Export, string? Member) Told(Solution solution, GodotStringKind kind, SyntaxToken token, SemanticModel model, CancellationToken cancel) =>
         Of(token, model, cancel) is (_, _, var instance) ? kind switch
         {
-            GodotStringKind.Animation => NodeOf(solution, instance, model, Deepest, cancel) is var (n, e) ? (n, e, null) : (null, null, null),
+            GodotStringKind.Animation or GodotStringKind.TreeParameter => NodeOf(solution, instance, model, Deepest, cancel) is var (n, e) ? (n, e, null) : (null, null, null),
             GodotStringKind.ShaderParameter => MaterialOf(solution, instance, model, Deepest, cancel) ?? (null, null, null),
             _ => (null, null, null),
         } : (null, null, null);
@@ -195,8 +310,9 @@ internal static class GodotKinds
         }
         if (literal.Parent is AssignmentExpressionSyntax assignment && assignment.Right == literal)
         {
-            return model.GetOperation(assignment, cancel) is ISimpleAssignmentOperation { Target: IPropertyReferenceOperation { Property: var property } target }
-                && OfGodot(property) && property.ContainingType.Name == "AnimationPlayer" && property.Name is "CurrentAnimation" or "AssignedAnimation" or "Autoplay"
+            return model.GetOperation(assignment, cancel) is ISimpleAssignmentOperation { Target: IPropertyReferenceOperation { Property: var property } target } && OfGodot(property)
+                && (property.ContainingType.Name, property.Name) is ("AnimationPlayer", "CurrentAnimation" or "AssignedAnimation" or "Autoplay")
+                    or ("AnimatedSprite2D" or "AnimatedSprite3D", "Animation" or "Autoplay")
                 ? (GodotStringKind.Animation, false, target.Instance) : null;
         }
         if (literal.Parent is not ArgumentSyntax argument || argument.Parent?.Parent is not { } call
@@ -204,6 +320,10 @@ internal static class GodotKinds
             || invocation.Arguments.FirstOrDefault(a => a.Syntax == argument)?.Parameter is not { } parameter)
         {
             return null;
+        }
+        if (parameter.Name == "property" && method.ContainingType.Name == "GodotObject" && token.ValueText.StartsWith(Parameters, StringComparison.Ordinal))
+        {
+            return (GodotStringKind.TreeParameter, false, invocation.Instance);
         }
         return KindOf(method, parameter.Name) is var (kind, adds) ? (kind, adds, invocation.Instance) : null;
     }
@@ -220,10 +340,12 @@ internal static class GodotKinds
         ("SceneTree", "name") when method.Name == "HasGroup" => (GodotStringKind.Group, false),
         ("AnimationMixer", "name") when method.Name is "HasAnimation" or "GetAnimation" or "Capture" => (GodotStringKind.Animation, false),
         ("AnimationPlayer", "name" or "animation" or "animationFrom" or "animationTo") => (GodotStringKind.Animation, false),
+        ("AnimatedSprite2D" or "AnimatedSprite3D", "name") => (GodotStringKind.Animation, false),
         ("AnimationLibrary", "name") when method.Name == "AddAnimation" => (GodotStringKind.Animation, true),
         ("ShaderMaterial", "param") => (GodotStringKind.ShaderParameter, false),
         ("GodotObject" or "TranslationServer", "message") => (GodotStringKind.Translation, false),
         ("Translation", "srcMessage") when method.Name is "AddMessage" or "AddPluralMessage" => (GodotStringKind.Translation, true),
+        ("RenderingServer", "name") when method.Name.StartsWith("GlobalShaderParameter", StringComparison.Ordinal) => (GodotStringKind.ShaderGlobal, method.Name == "GlobalShaderParameterAdd"),
         _ => null,
     };
 

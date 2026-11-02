@@ -191,12 +191,14 @@ internal static class GodotGenerated
     {
         List<GodotKindUse> uses = [];
         HashSet<(string, int)> seen = [];
+        HashSet<string> names = [asked.Name];
         foreach (Project project in solution.Projects.Where(p => System.IO.Path.GetDirectoryName(p.FilePath) is { } home
             && (SamePath(home, asked.Folder) || Passenger.Core.PathNames.IsUnder(home, asked.Folder))))
         {
             foreach (Document document in project.Documents)
             {
-                if (document.FilePath is not { Length: > 0 } path || await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root)
+                if (document.FilePath is not { Length: > 0 } path || !await GodotKinds.WritesAsync(document, names, prefix: false, cancel).ConfigureAwait(false)
+                    || await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root)
                 {
                     continue;
                 }

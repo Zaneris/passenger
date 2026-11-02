@@ -93,6 +93,7 @@ public class GodotDefinitionsTests
         // uniform vec4 commented;
         uniform vec4 tint : source_color = vec4(1.0);
         uniform float amount = 0.5;
+        uniform float fade;
         global uniform vec2 wind;
         instance uniform float glow;
         void fragment() { COLOR = tint * amount + vec4(shade); COLOR.a = COLOR.tint; }
@@ -204,7 +205,7 @@ public class GodotDefinitionsTests
         Assert.Null(defined.ShaderOf(sprite, "material_override"));
         (IReadOnlyList<GodotDefined> uniforms, bool whole) = defined.Uniforms("res://tint.gdshader");
         Assert.True(whole, "the shader and its include are read");
-        Assert.Equal(["shade", "tint", "amount"], uniforms.Select(u => u.Name));
+        Assert.Equal(["shade", "tint", "amount", "fade"], uniforms.Select(u => u.Name));
         GodotDefined tint = uniforms[1];
         Assert.Equal(["tint", "tint", "tint"], tint.Places.Select(p => p.Res == "res://main.tscn" ? At(Main, p) : At(Shader, p)));
         Assert.Equal([true, false, false], tint.Places.Select(p => p.Defines));
@@ -241,5 +242,187 @@ public class GodotDefinitionsTests
     public void A_csv_parted_by_semicolons_gives_its_first_cells()
     {
         Assert.Equal(["A", "B"], GodotDefinitions.CsvKeys("keys;en\r\nA;a\r\nB;b\r\n").Select(k => k.Key));
+    }
+
+    private const string Named = """
+        config_version=5
+
+        [autoload]
+
+        Globals="*res://globals.gd"
+
+        [input]
+
+        jump={
+        "deadzone": 0.2,
+        "events": []
+        }
+
+        [layer_names]
+
+        2d_physics/layer_1="player"
+        2d_physics/layer_3="enemies"
+        3d_render/layer_2="sky"
+
+        [shader_globals]
+
+        wind={
+        "type": "vec2",
+        "value": Vector2(0, 0)
+        }
+
+        """;
+
+    private const string Tree = """
+        [gd_scene format=3]
+
+        [sub_resource type="SpriteFrames" id="SpriteFrames_1"]
+        animations = [{
+        "frames": [],
+        "loop": true,
+        "name": &"default",
+        "speed": 5.0
+        }, {
+        "frames": [],
+        "loop": false,
+        "name": &"run",
+        "speed": 8.0
+        }]
+
+        [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_idle"]
+        animation = &"idle"
+
+        [sub_resource type="AnimationNodeBlendSpace1D" id="AnimationNodeBlendSpace1D_run"]
+
+        [sub_resource type="AnimationNodeBlend2" id="AnimationNodeBlend2_mix"]
+
+        [sub_resource type="AnimationNodeBlendTree" id="AnimationNodeBlendTree_aim"]
+        nodes/Mix/node = SubResource("AnimationNodeBlend2_mix")
+        nodes/Mix/position = Vector2(100, 100)
+        nodes/output/position = Vector2(300, 100)
+
+        [sub_resource type="AnimationNodeStateMachineTransition" id="AnimationNodeStateMachineTransition_go"]
+        advance_mode = 2
+        advance_condition = &"is_running"
+
+        [sub_resource type="AnimationNodeStateMachine" id="AnimationNodeStateMachine_main"]
+        states/Idle/node = SubResource("AnimationNodeAnimation_idle")
+        states/Idle/position = Vector2(300, 100)
+        states/Run/node = SubResource("AnimationNodeBlendSpace1D_run")
+        states/Aim/node = SubResource("AnimationNodeBlendTree_aim")
+        transitions = ["Idle", "Run", SubResource("AnimationNodeStateMachineTransition_go")]
+
+        [sub_resource type="AnimationNodeStateMachine" id="AnimationNodeStateMachine_odd"]
+        states/Strange/node = SubResource("AnimationNodeExtension_1")
+
+        [node name="Main" type="Node2D"]
+
+        [node name="Sprite" type="AnimatedSprite2D" parent="."]
+        sprite_frames = SubResource("SpriteFrames_1")
+        animation = &"run"
+        autoplay = "run"
+
+        [node name="Tree" type="AnimationTree" parent="."]
+        tree_root = SubResource("AnimationNodeStateMachine_main")
+
+        [node name="Odd" type="AnimationTree" parent="."]
+        tree_root = SubResource("AnimationNodeStateMachine_odd")
+
+        [node name="Follow" type="Node" parent="."]
+        target = NodePath("/root/Globals/Score")
+
+        """;
+
+    private const string Script = """
+        extends Node2D
+
+        # Input.is_action_pressed("jump") in a comment names nothing.
+        func _process(_delta: float) -> void:
+        	if Input.is_action_just_pressed("jump") or Input.get_axis("jump", "left") > 0:
+        		Globals.score += 1
+        		get_node("/root/Globals").reset()
+        		self.Globals = null
+        	RenderingServer.global_shader_parameter_set("wind", Vector2.ONE)
+
+        """;
+
+    private const string WindShader = """
+        shader_type canvas_item;
+        global uniform vec2 wind;
+        void fragment() { COLOR.rg += wind; }
+
+        """;
+
+    private static GodotScenes NamedScenes() => new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Tree) },
+        texts: new Dictionary<string, string> { ["res://project.godot"] = Named, ["res://player.gd"] = Script, ["res://wind.gdshader"] = WindShader });
+
+    [Fact]
+    public void Project_godots_layer_names_name_each_layer_by_its_number_among_godots_32_or_20()
+    {
+        GodotDefinitions defined = NamedScenes().Defined;
+        IReadOnlyList<GodotDefined> physics = defined.Layers("2d_physics");
+        Assert.Equal(32, physics.Count);
+        Assert.Equal(("1", "player"), (physics[0].Name, physics[0].Detail));
+        Assert.Empty(physics[1].Places);
+        GodotPlace enemies = Assert.Single(physics[2].Places);
+        Assert.Equal(("2d_physics/layer_3", true, "project.godot:17"), (At(Named, enemies), enemies.Defines, enemies.Shown));
+        Assert.Equal(20, defined.Layers("3d_render").Count);
+        Assert.Equal("sky", defined.Layers("3d_render")[1].Detail);
+        Assert.Equal(("2D physics", "avoidance"), (GodotDefinitions.LayersShown("2d_physics"), GodotDefinitions.LayersShown("avoidance")));
+    }
+
+    [Fact]
+    public void A_global_shader_uniform_is_project_godots_key_with_each_shaders_global_uniform_of_it_and_its_uses()
+    {
+        GodotDefined wind = Assert.Single(NamedScenes().Defined.ShaderGlobals);
+        Assert.Equal("wind", wind.Name);
+        Assert.Equal([("res://project.godot", true), ("res://wind.gdshader", false), ("res://wind.gdshader", false), ("res://player.gd", false)],
+            wind.Places.Select(p => (p.Res, p.Defines)));
+        Assert.All(wind.Places, p => Assert.Equal("wind", (p.Res == "res://project.godot" ? Named : p.Res == "res://player.gd" ? Script : WindShader)[p.Start..p.End]));
+    }
+
+    [Fact]
+    public void An_animation_trees_parameters_are_made_by_its_state_machines_states_and_conditions_and_its_blend_trees_nodes()
+    {
+        GodotScenes scenes = NamedScenes();
+        GodotTreeNode main = scenes.Tree("res://main.tscn")!;
+        (IReadOnlyList<GodotDefined> parameters, bool whole) = scenes.Defined.TreeParametersOf(main.Child("Tree")!);
+        Assert.True(whole, "every node of the tree is of a kind whose parameters are known");
+        List<string> names = [.. parameters.Select(p => p.Name)];
+        Assert.Contains("parameters/playback", names);
+        Assert.Contains("parameters/Run/blend_position", names);
+        Assert.Contains("parameters/Aim/Mix/blend_amount", names);
+        Assert.DoesNotContain("parameters/Aim/output/current_length", names);
+        GodotDefined condition = parameters.Single(p => p.Name == "parameters/conditions/is_running");
+        Assert.Equal(("is_running", "condition parameter of Tree"), (At(Tree, condition.Places.Single()), condition.Detail));
+        Assert.Equal("Run", At(Tree, parameters.Single(p => p.Name == "parameters/Run/blend_position").Places.Single()));
+        Assert.False(scenes.Defined.TreeParametersOf(main.Child("Odd")!).Whole, "a tree holding a node of an unknown kind may make more");
+    }
+
+    [Fact]
+    public void An_animated_sprites_animations_are_its_sprite_frames_with_its_own_settings_of_them()
+    {
+        GodotScenes scenes = NamedScenes();
+        GodotTreeNode sprite = scenes.Tree("res://main.tscn")!.Child("Sprite")!;
+        Assert.True(GodotDefinitions.IsPlayer(sprite), "a node whose sections give it SpriteFrames holds animations");
+        (IReadOnlyList<GodotDefined> animations, bool whole) = scenes.Defined.AnimationsOf(sprite);
+        Assert.True(whole);
+        Assert.Equal(["default", "run"], animations.Select(a => a.Name));
+        Assert.Equal([true, false, false], animations[1].Places.Select(p => p.Defines));
+        Assert.All(animations[1].Places, p => Assert.Equal("run", At(Tree, p)));
+    }
+
+    [Fact]
+    public void A_gdscripts_strings_and_words_and_a_scenes_node_paths_are_places_of_the_names_they_give_godot()
+    {
+        GodotDefinitions defined = NamedScenes().Defined;
+        GodotDefined jump = defined.Actions.Single();
+        Assert.Equal(["res://project.godot", "res://player.gd", "res://player.gd"], jump.Places.Select(p => p.Res));
+        Assert.Equal(["project.godot:9", "player.gd:5", "player.gd:5"], jump.Places.Select(p => p.Shown));
+        Assert.All(jump.Places.Skip(1), p => Assert.Equal("jump", Script[p.Start..p.End]));
+        GodotDefined globals = defined.Autoloads.Single();
+        Assert.Equal(["res://project.godot", "res://player.gd", "res://player.gd", "res://main.tscn"], globals.Places.Select(p => p.Res));
+        Assert.Equal(["Globals", "Globals"], globals.Places.Where(p => p.Res == "res://player.gd").Select(p => Script[p.Start..p.End]));
+        Assert.Equal("Globals", At(Tree, globals.Places[^1]));
     }
 }

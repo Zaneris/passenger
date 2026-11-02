@@ -213,9 +213,14 @@ internal sealed partial class CSharpAssist
     private async Task<Declared?> GodotDeclaredAsync(LspDocument lsp, OpenDocument document, int offset)
     {
         TextSnapshot asked = lsp.Text.Snapshot;
-        if (!InString(asked, offset) || context.CSharp is not { } csharp || csharp.GodotOf?.Invoke(document.Path) is null)
+        if (context.CSharp is not { } csharp || csharp.GodotOf?.Invoke(document.Path) is null)
         {
             return null;
+        }
+        if (!InString(asked, offset))
+        {
+            // A layer's number leads to its name in project.godot.
+            return InLayerArgument(asked, offset) ? await GodotKindDeclaredAsync(document, offset) : null;
         }
         // A string Godot's calls take naming a script's signal, method or property goes to its declaration.
         if (await GodotNamesAsync(document, lsp, offset, uses: false) is { Via: GodotNameVia.String, Symbol: { Path: { } declaring, At: { } place } })

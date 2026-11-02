@@ -135,7 +135,8 @@ internal sealed partial class CSharpAssist
     }
 
     /// <summary>Where the scenes name the C# member at an offset (<see cref="GodotUses"/>) and where the code names it by
-    /// Godot's other names for it (<see cref="GodotNamesAsync"/>), as places for the Find window; none for a member neither does.</summary>
+    /// Godot's other names for it (<see cref="GodotNamesAsync"/>), or every place a name of a kind at it is written
+    /// (<see cref="KindUsesAsync"/>), as places for the Find window; none for a member neither does.</summary>
     internal async Task<IReadOnlyList<LspLocation>> GodotUsesAsync(OpenDocument document, LspDocument lsp, int offset)
     {
         if (GodotScriptDeclarations.IsScript(document.Path))
@@ -145,6 +146,10 @@ internal sealed partial class CSharpAssist
         if (document.Language != Languages.Language.CSharp)
         {
             return [];
+        }
+        if (await GodotKindAtAsync(document, offset) is { } kind)
+        {
+            return await KindUsesAsync(kind);
         }
         GodotNamesFound? names = await GodotNamesAsync(document, lsp, offset, uses: true);
         IReadOnlyList<LspLocation> scenes = GodotLocations(await GodotNamedAsync(names?.Symbol ?? await lsp.SymbolAtAsync(offset)));

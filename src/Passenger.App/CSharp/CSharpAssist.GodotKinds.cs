@@ -11,10 +11,11 @@ using Passenger.Xaml.Features;
 namespace Passenger.App.CSharp;
 
 /// <summary>A Godot project's strings that name what its own files define (<see cref="GodotStringKind"/>: input actions,
-/// groups, animations, autoloads, shader parameters, translations), each completed from where Godot defines it
-/// (<see cref="GodotChecks.Named"/>), led by Go to Declaration to its definition, and renamed in one command of Undo in
-/// those files and every string of the code naming it (<see cref="RenameKindAsync"/>); a GetNode path's <c>/root/Name</c>
-/// is an autoload's.</summary>
+/// groups, animations, autoloads, shader parameters, translations, AnimationTree parameters, global shader uniforms), each
+/// completed from where Godot defines it (<see cref="GodotChecks.Named"/>), led by Go to Declaration to its definition,
+/// listed by Find Usages with every place the project's files and code name it (<see cref="KindUsesAsync"/>), and renamed in
+/// one command of Undo in those files and every string of the code naming it (<see cref="RenameKindAsync"/>); a GetNode
+/// path's <c>/root/Name</c> is an autoload's, and a layer's number its name in project.godot's [layer_names].</summary>
 internal sealed partial class CSharpAssist
 {
     /// <summary>A line up to the caret that ends inside a string given to one of Godot's calls taking such a name, or set
@@ -22,9 +23,12 @@ internal sealed partial class CSharpAssist
     private static readonly Regex KindString = new(
         @"(\b(IsAction\w*|GetAction\w*|ActionPress|ActionRelease|GetAxis|GetVector|HasAction|AddAction|EraseAction|Action\w*Event\w*|Action\w*Deadzone|EventIsAction"
         + @"|IsInGroup|AddToGroup|RemoveFromGroup|\w*InGroup|CallGroup\w*|NotifyGroup\w*|SetGroup\w*|HasGroup"
-        + @"|Play\w*|Queue|HasAnimation|GetAnimation|AnimationSetNext|AnimationGetNext|\w*BlendTime|SetAutoplay|Set(Current|Assigned)Animation|Capture"
-        + @"|\w*ShaderParameter|Tr|TrN|Translate|TranslatePlural)\s*\(([^""()]|""[^""]*"")*|\b(CurrentAnimation|AssignedAnimation|Autoplay)\s*=\s*)""[^""]*$",
+        + @"|Play\w*|Queue|HasAnimation|GetAnimation|AnimationSetNext|AnimationGetNext|\w*BlendTime|SetAutoplay|Set(Current|Assigned)?Animation|Capture"
+        + @"|\w*ShaderParameter\w*|Tr|TrN|Translate|TranslatePlural)\s*\(([^""()]|""[^""]*"")*|\b(CurrentAnimation|AssignedAnimation|Animation|Autoplay)\s*=\s*)""[^""]*$",
         RegexOptions.CultureInvariant);
+
+    /// <summary>A line up to an offset that ends among the arguments of a call setting or reading a layer by its number.</summary>
+    private static readonly Regex LayerArgument = new(@"\b(Set|Get)\w*(Layer|Mask)\w*Value\s*\([^()]*$", RegexOptions.CultureInvariant);
 
     /// <summary>The characters an animation's name holds beyond a word's (a library's own after its '/'), which narrow its
     /// list rather than close it.</summary>
@@ -61,12 +65,32 @@ internal sealed partial class CSharpAssist
         return items.Count == 0 ? null : new CodeCompletion.OwnItems(start, items, tail) { WordCharacters = KindCharacters };
     }
 
+    /// <summary>Whether an offset is among the arguments of a call taking a layer's number, so it may be on one.</summary>
+    private static bool InLayerArgument(TextSnapshot text, int offset)
+    {
+        int line = text.GetLineFromOffset(Math.Min(offset, text.Length));
+        int start = text.GetLineStart(line);
+        string row = text.GetLineText(line);
+        int at = Math.Clamp(offset - start, 0, row.Length);
+        // The number the offset is on, its digits after it too.
+        while (at < row.Length && char.IsAsciiLetterOrDigit(row[at]))
+        {
+            at++;
+        }
+        return LayerArgument.IsMatch(row[..at]);
+    }
+
     /// <summary>What the hover card says of a string of a kind: what it names and each place the project defines it, or
-    /// that Godot defines it itself, or where Godot looks for it.</summary>
+    /// that Godot defines it itself, or where Godot looks for it; of a layer, its name.</summary>
     private static string KindHover(GodotRead read, GodotKindRead kind)
     {
         GodotChecks.Candidates named = GodotChecks.Named(read.Scenes, kind.Kind, GodotChecks.ScriptsOf(read.Found, kind.Class), kind.Node, kind.Export, kind.Member);
         string what = GodotChecks.What(kind.Kind);
+        if (kind.Kind == GodotStringKind.Layer && kind.Member is { } layers && named.Names.FirstOrDefault(n => n.Name == kind.Name) is { } layer)
+        {
+            string shown = $"{GodotDefinitions.LayersShown(layers)} layer {kind.Name}";
+            return layer.Places is [{ } key, ..] ? $"{shown}: {layer.Detail}, named in {key.Shown}" : $"{shown}, which project.godot's [layer_names] leaves unnamed";
+        }
         List<GodotPlace> places = [.. named.Names.Where(n => n.Name == kind.Name).SelectMany(n => n.Places.Where(p => p.Defines))];
         return places.Count > 0 ? string.Join('\n', [$"The {what} {kind.Name}, defined in:", .. places.Select(p => p.Shown)])
             : named.Names.Any(n => n.Name == kind.Name) ? $"{kind.Name} is Godot's own {what}"
@@ -101,21 +125,32 @@ internal sealed partial class CSharpAssist
 
     /// <summary>A name of a kind at an offset of a Godot project's C#: a string of a kind, or an autoload's name in a GetNode
     /// path; with the scenes read, its kind, the name, what it may name, and where its files write it.</summary>
-    internal sealed record KindNamed(GodotRead Read, GodotStringKind Kind, string Name, GodotChecks.Candidates Candidates, IReadOnlyList<GodotPlace> Places);
+    internal sealed record KindNamed(GodotRead Read, GodotStringKind Kind, string Name, GodotChecks.Candidates Candidates, IReadOnlyList<GodotPlace> Places)
+    {
+        /// <summary>For a layer, the layers it is among (<c>2d_physics</c>).</summary>
+        public string? Layers { get; init; }
+    }
 
     /// <summary>The name of a kind at an offset (<see cref="KindNamed"/>); null where the offset is in no such string.</summary>
     internal async Task<KindNamed?> GodotKindAtAsync(OpenDocument document, int offset)
     {
-        if (context.CSharp is not { } csharp || csharp.For(document)?.Lsp is not { } lsp || csharp.GodotOf?.Invoke(document.Path) is null
-            || !InString(lsp.Text.Snapshot, offset) || await csharp.GodotAsync(document.Path, CancellationToken.None) is not { } read)
+        if (context.CSharp is not { } csharp || csharp.For(document)?.Lsp is not { } lsp || csharp.GodotOf?.Invoke(document.Path) is null)
+        {
+            return null;
+        }
+        bool inString = InString(lsp.Text.Snapshot, offset);
+        if (!inString && !InLayerArgument(lsp.Text.Snapshot, offset) || await csharp.GodotAsync(document.Path, CancellationToken.None) is not { } read)
         {
             return null;
         }
         (int start, _) = StringAround(lsp.Text.Snapshot, offset);
-        if (KindAt(lsp, read, offset, start) is { Exact: true } kind)
+        if (KindAt(lsp, read, offset, inString ? start : -1) is { Exact: true } kind && (inString || kind.Kind == GodotStringKind.Layer))
         {
             GodotChecks.Candidates named = GodotChecks.Named(read.Scenes, kind.Kind, GodotChecks.ScriptsOf(read.Found, kind.Class), kind.Node, kind.Export, kind.Member);
-            return new KindNamed(read, kind.Kind, kind.Name, named, [.. named.Names.Where(n => n.Name == kind.Name).SelectMany(n => n.Places)]);
+            return new KindNamed(read, kind.Kind, kind.Name, named, [.. named.Names.Where(n => n.Name == kind.Name).SelectMany(n => n.Places)])
+            {
+                Layers = kind.Kind == GodotStringKind.Layer ? kind.Member : null,
+            };
         }
         if (CallAt(lsp, read, offset, start) is { Exact: true } call && GodotChecks.AutoloadIn(call.Path) is ({ } autoload, int from, int to)
             && offset - OffsetOf(lsp, call.At) is var at && from <= at && at <= to)
@@ -145,7 +180,10 @@ internal sealed partial class CSharpAssist
                 names.Add($"{GodotChecks.What(named.Kind)} {named.Name} in {place.Shown}");
             }
         }
-        return new Declared(places, $"No {GodotChecks.What(named.Kind)} '{named.Name}' is {named.Candidates.Where}") { Names = names, Title = "Definitions" };
+        string none = named.Layers is { } layers && named.Candidates.Names.Any(n => n.Name == named.Name)
+            ? $"{GodotDefinitions.LayersShown(layers)} layer {named.Name} has no name in project.godot's [layer_names]"
+            : $"No {GodotChecks.What(named.Kind)} '{named.Name}' is {named.Candidates.Where}";
+        return new Declared(places, none) { Names = names, Title = "Definitions" };
     }
 
     /// <summary>Rename's box for a name of a kind at the caret; once a name is typed, <see cref="RenameKindAsync"/>. False
@@ -176,6 +214,14 @@ internal sealed partial class CSharpAssist
     {
         string what = GodotChecks.What(named.Kind);
         string old = named.Name;
+        if (named.Kind == GodotStringKind.Layer)
+        {
+            return $"A layer is named by its number, which Rename keeps: its name is project.godot's [layer_names]' to change";
+        }
+        if (named.Kind == GodotStringKind.TreeParameter)
+        {
+            return $"{old} is made by its AnimationTree's nodes and conditions, which Rename does not change";
+        }
         if (name.Length == 0 || name.Trim() != name || name.Any(char.IsControl))
         {
             return $"'{name}' is no {what}'s name";
@@ -199,7 +245,7 @@ internal sealed partial class CSharpAssist
         {
             return $"A{(what[0] is 'a' or 'i' ? "n" : string.Empty)} {what}'s name here never holds '{character}', so {old} keeps its name";
         }
-        if (named.Kind == GodotStringKind.ShaderParameter && !Regex.IsMatch(name, "^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant))
+        if (named.Kind is GodotStringKind.ShaderParameter or GodotStringKind.ShaderGlobal && !Regex.IsMatch(name, "^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant))
         {
             return $"A uniform's name is a word of letters, digits and '_', so {old} keeps its name";
         }
@@ -248,24 +294,17 @@ internal sealed partial class CSharpAssist
         }
         if (context.CSharp?.Session is { } session)
         {
-            GodotKindUses uses;
+            IReadOnlyList<GodotKindUse> uses;
             try
             {
-                uses = await session.ExtensionAsync<GodotKindUses>(Handlers.GodotKindStrings, new GodotKindAsked(named.Read.Folder, named.Kind, old));
+                uses = await CodeUsesAsync(session, named);
             }
             catch (LanguageServerFailed failed)
             {
                 return RefactorOutcome.Refused($"{old} was not renamed: {failed.Message}");
             }
-            HashSet<(string, int)> reached = [.. named.Places.Select(p => (p.Res, p.Start))];
-            foreach (GodotKindUse use in uses.Uses)
+            foreach (GodotKindUse use in uses)
             {
-                if (named.Kind is GodotStringKind.Animation or GodotStringKind.ShaderParameter && reached.Count > 0
-                    && !GodotChecks.Named(scenes, named.Kind, use.Scripts, use.Node, use.Export, use.Member).Names.Where(n => n.Name == old)
-                        .SelectMany(n => n.Places).Any(p => reached.Contains((p.Res, p.Start))))
-                {
-                    continue;
-                }
                 if (context.Editors.TextOf(use.File) is not { } text)
                 {
                     continue;
@@ -304,5 +343,46 @@ internal sealed partial class CSharpAssist
             }
             list.Add(edit);
         }
+    }
+
+    /// <summary>The strings and numbers of the code naming a name of a kind (Passenger's extension's), those of an animation
+    /// player, tree or material told to be another than one whose files write the name left out, a layer's among its own layers.</summary>
+    private static async Task<IReadOnlyList<GodotKindUse>> CodeUsesAsync(RoslynSession session, KindNamed named)
+    {
+        GodotKindUses uses = await session.ExtensionAsync<GodotKindUses>(Handlers.GodotKindStrings, new GodotKindAsked(named.Read.Folder, named.Kind, named.Name));
+        HashSet<(string, int)> reached = [.. named.Places.Select(p => (p.Res, p.Start))];
+        return [.. uses.Uses.Where(use => named.Kind switch
+        {
+            GodotStringKind.Animation or GodotStringKind.ShaderParameter or GodotStringKind.TreeParameter => reached.Count == 0
+                || GodotChecks.Named(named.Read.Scenes, named.Kind, use.Scripts, use.Node, use.Export, use.Member).Names.Where(n => n.Name == named.Name)
+                    .SelectMany(n => n.Places).Any(p => reached.Contains((p.Res, p.Start))),
+            GodotStringKind.Layer => use.Member == named.Layers,
+            _ => true,
+        })];
+    }
+
+    /// <summary>Find Usages of a name of a kind: every place the project's files write it (where they define it, a GDScript's
+    /// strings, a scene's node paths) and every string or number of the code naming it, as places for the Find window.</summary>
+    internal async Task<IReadOnlyList<LspLocation>> KindUsesAsync(KindNamed named)
+    {
+        GodotScenes scenes = named.Read.Scenes;
+        List<LspLocation> places = [.. await BackgroundWork.Run(() => named.Places.GroupBy(p => p.Res, StringComparer.Ordinal).SelectMany(file =>
+            scenes.FileOf(file.Key) is { } path && scenes.Defined.TextOf(file.Key) is { } text
+                ? file.Select(p => new LspLocation(DocumentUris.FromPath(path), ServerLines.Of(TextSnapshot.From(text)).RangeOf(new TextRange(p.Start, p.End - p.Start))))
+                : []).ToList())];
+        if (context.CSharp?.Session is not { } session)
+        {
+            return places;
+        }
+        try
+        {
+            places.AddRange((await CodeUsesAsync(session, named)).Select(u => new LspLocation(DocumentUris.FromPath(u.File),
+                new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character)))));
+        }
+        catch (LanguageServerFailed)
+        {
+            // The code's uses are left out where the server cannot be asked; the project's files still say theirs.
+        }
+        return places;
     }
 }
