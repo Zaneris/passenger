@@ -368,15 +368,17 @@ Projects in `src/`; `find_symbol` finds the rest:
   program run as `dotnet run` runs it, `OtherProgram`; a Blazor Web App's client no program of its own,
   `ProjectModel.IsBrowserClient`; a Passenger it launches keeps its state in the launcher's `sandbox/`; a Godot
   project's game and editor through `GodotLaunch` (one of GDScript alone a `ProjectModel.OfScriptGame` that only Run,
-  Debug and Profile see, `ProjectSession.RunProjects`, never in `Projects`), on the Godot `GodotExecutables` finds, a
-  launched game's remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (its value editors `GodotValueCells`,
-  an `ILiveValueCells`, from `GodotHints`; Keep `GodotKeep`; a run's errors pinned to lines `GodotErrorPins` through
-  `ErrorPinColumn`, its console folded `GodotConsoleFold`; a running game's member values at their lines' ends
-  `GodotLiveValues`, into `OpenDocument.LiveValues` through the helper's `values` call, members from `GodotMembers`;
-  `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's
-  build skipped while what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`;
-  on Windows a build's first step lets go of the Avalonia previewers holding its output
-  (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time (`ConsoleWritten`).
+  Debug and Profile see, `ProjectSession.RunProjects`, never in `Projects`), on the Godot `GodotExecutables` finds, its
+  copies `GameCopies` ("Name #k", Debug tabs grouped as `DebugTab.Copy`, Stop ending the group), the offer of Passenger
+  as Godot's script editor made once per folder (`MainWindow.OfferGodotEditor`), a launched game's remote debugger
+  `GodotGame`, a Live Tree source beside `LiveApp` (its value editors `GodotValueCells`, an `ILiveValueCells`, from
+  `GodotHints`; Keep `GodotKeep`; a run's errors pinned to lines `GodotErrorPins` through `ErrorPinColumn`, its console
+  folded `GodotConsoleFold`; a running game's member values at their lines' ends `GodotLiveValues`, into
+  `OpenDocument.LiveValues` through the helper's `values` call, members from `GodotMembers`; `ILiveTreeSource`,
+  `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's build skipped while
+  what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`; on Windows a build's
+  first step lets go of the Avalonia previewers holding its output (`BuildRunController.LettingGo`); a console's lines
+  are heard one stream at a time (`ConsoleWritten`).
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach,
   Restart and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time
   (`TakeStartAsync`); Stop ends every session and recording before the programs go.
@@ -398,29 +400,34 @@ Projects in `src/`; `find_symbol` finds the rest:
   from the declared type read from metadata (`DeclaredType`). A library's types are shown as the App tells the debugger
   at launch (`DapTypePresentation`; Godot's in `GodotValues`), never by engine code naming a library. An exception's
   description reads its fields first, type and stored messages (`StoredChain`), its getters only adding, never a
-  `ToString`. A Blazor app's WebAssembly half is debugged by `WebAssemblyAdapter` (an `InProcessEnd`) over
-  `Passenger.Dap`'s `CdpConnection`, through .NET's own proxy from the browser project's WebAssembly pack
-  (`BrowserDebugging`), in a Chromium `BrowserRun` starts on the folder's profile (`ChromiumBrowsers`); a Blazor Web
-  App's WebAssembly tab is its server tab's `Companion`. Chrome runs a new-document script only once `Page.enable` came,
-  so a page's conversation enables Page first, or nothing binds; an app-hosted `/_framework/debug/ws-proxy` binds once
-  per app process to its first browser's port; with a fixed `--remote-debugging-port` Chrome writes no
-  DevToolsActivePort. A debugged web app's pages are kept up through the SDK's own browser refresh, what the app serves
-  read from its build's `staticwebassets.development.json` (`DevelopmentAssets`; a Blazor Web App's browser tools and
-  key are its WebAssembly client's) (`BrowserRefresh`, its protocol chosen by the variable the SDK's middleware reads,
-  `LaunchPlan.Web`). A session's built lines and Hot Reload begin at its build's save (`DebugController.Building`,
-  `BuiltEdits`). The debugger's own rows are named in `DapRows`, break modes in `DapBreakModes`; an engine row is built
-  by `ValueRow` (`FailedRow`, `GroupRow`), CoreLib found by `ManagedDebugger.CoreLib`. A breakpoint's words, in the
-  gutter's hover, Problems and MCP alike, come from `BreakpointStates`. Every kind of breakpoint is refused, matched and
-  hit through one pipeline (`IHitBreakpoint`: `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a
-  lambda on its statement's line keeps the lambda's column (`LambdaBreakpoints`).
+  `ToString`; its stack trace is read from what it stores (`TryStoredStackTrace`: frames through
+  `ICorDebugExceptionObjectValue`, written by `StackTraceText`), a getter or `ToString` only where that can't be read. A
+  `[DebuggerDisplay]` naming its row and showing one value gives the row that value's type (a dictionary's rows), and an
+  assembly's `[DebuggerDisplay]`/`[DebuggerTypeProxy]` with `Target` is the type's own, before it (`TargetedAt`). A
+  Blazor app's WebAssembly half is debugged by `WebAssemblyAdapter` (an `InProcessEnd`) over `Passenger.Dap`'s
+  `CdpConnection`, through .NET's own proxy from the browser project's WebAssembly pack (`BrowserDebugging`), in a
+  Chromium `BrowserRun` starts on the folder's profile (`ChromiumBrowsers`); a Blazor Web App's WebAssembly tab is its
+  server tab's `Companion`. Chrome runs a new-document script only once `Page.enable` came, so a page's conversation
+  enables Page first, or nothing binds; an app-hosted `/_framework/debug/ws-proxy` binds once per app process to its
+  first browser's port; with a fixed `--remote-debugging-port` Chrome writes no DevToolsActivePort. A debugged web app's
+  pages are kept up through the SDK's own browser refresh, what the app serves read from its build's
+  `staticwebassets.development.json` (`DevelopmentAssets`; a Blazor Web App's browser tools and key are its WebAssembly
+  client's) (`BrowserRefresh`, its protocol chosen by the variable the SDK's middleware reads, `LaunchPlan.Web`). A
+  session's built lines and Hot Reload begin at its build's save (`DebugController.Building`, `BuiltEdits`). The
+  debugger's own rows are named in `DapRows`, break modes in `DapBreakModes`; an engine row is built by `ValueRow`
+  (`FailedRow`, `GroupRow`), CoreLib found by `ManagedDebugger.CoreLib`. A breakpoint's words, in the gutter's hover,
+  Problems and MCP alike, come from `BreakpointStates`. Every kind of breakpoint is refused, matched and hit through one
+  pipeline (`IHitBreakpoint`: `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a lambda on its
+  statement's line keeps the lambda's column (`LambdaBreakpoints`).
 - **Tests window.** `TestFinder` (tests from code before any build), kept results across restarts `TestResultsState` (a
-  method's code stamp `DeclaredTest.Code`), `TestRunners`; `VsTestRunner` is the only file that knows VSTest's object
-  model (VSTest starts a debugged .NET test host itself and asks to attach, its launcher an `ITestHostLauncher3`:
-  `LaunchTestHost` is never called for one); a Godot game's GdUnit4 tests go through it with `GODOT_BIN` from
-  `GodotTestRuns` (the person's own wins), its GUT tests read from GDScript (`GutScripts`) and run by GUT's command line
-  (`GutRunner`, `GutRuns`), a project not yet imported imported headless first, as GUT needs Godot's class cache. A run
-  from the editor, a filter or the Explorer chooses its tests once its build has ended
-  (`TestController.RunMatchingAsync`); the gutter marks by name or by the runner's file and line (`DeclaredPlace`).
+  method's code stamp `DeclaredTest.Code`; this session's results too, `TestNode.Standing`), `TestRunners`;
+  `VsTestRunner` is the only file that knows VSTest's object model (VSTest starts a debugged .NET test host itself and
+  asks to attach, its launcher an `ITestHostLauncher3`: `LaunchTestHost` is never called for one); a Godot game's
+  GdUnit4 tests go through it with `GODOT_BIN` from `GodotTestRuns` (the person's own wins), its GUT tests read from
+  GDScript (`GutScripts`) and run by GUT's command line (`GutRunner`, `GutRuns`), a project not yet imported imported
+  headless first, as GUT needs Godot's class cache. A run from the editor, a filter or the Explorer chooses its tests
+  once its build has ended (`TestController.RunMatchingAsync`); the gutter marks by name or by the runner's file and
+  line (`DeclaredPlace`).
 - **The rest.** `Packages` (every package change's one path, its files the project, its lock file and
   Directory.Packages.props, one command of Undo, put back when it fails; credentials only to their feed's host),
   `Workspace` (`SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`; a version
@@ -548,9 +555,13 @@ site-shots` retakes its images.
   mesh without a collision shape. Godot reads the debugger's messages between a script's lines, so a call to Passenger's
   helper can run inside its own initialiser, whose defaults then overwrite what it set: the helper comes in only once
   its live-edit path was sent (`GodotGame.AskAsync`), and every call goes through its `asked`, which waits while its
-  members are still being made (`_made`, its last member). Its .NET host rolls forward only to released runtimes, so a
-  new game's framework is one it can run (`GodotGames.Runnable`). An agent's input and layout reach a game through
-  Passenger's helper node (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
+  members are still being made (`_made`, its last member); a tree asked since its last making that lacks it brings it in
+  again (`GodotGame.brought`). A typed member refuses an untyped Array or Dictionary set through the debugger, so a
+  value sent back keeps the element types the game sent (`GodotArray`, `GodotDictionary.KeyType`); a resource loaded
+  from a file comes by its path alone, its id from the helper's `held` (`GodotGame.HeldAsync`). Its .NET host rolls
+  forward only to released runtimes, so a new game's framework is one it can run (`GodotGames.Runnable`). An agent's
+  input and layout reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing;
+  `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
