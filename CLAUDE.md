@@ -350,7 +350,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   `GodotDocs`; a string naming what the project's files define, an input action, group, animation, autoload, shader
   parameter or translation, through the extension's `GodotKinds` and Workspace's `GodotDefinitions`, `GodotChecks.Named`
   the one answer, a C# string naming a member of the node it is on `GodotChecks.Members` (both over `Told`), a GDScript
-  member's C# uses the extension's `GodotNameStrings`; a project.godot of GDScript alone is a scene's project too
+  member's C# uses the extension's `GodotNameStrings`, a GDScript's own strings and words `GodotScriptStrings`, the
+  projects' strings scanned only through the extension's `GodotKinds.WritesAsync` (each document's kept per text
+  version), a scene with no C# checked against the engine's classes read from the found Godot's GodotSharp.dll
+  (`GodotEngineClasses`, `GodotChecks.EngineAnswers`), a GDScript member renamed in its script taking its connections
+  and C# strings along (`GodotScriptRenameAsync`); a project.godot of GDScript alone is a scene's project too
   (`ProjectSession.GodotOf`; the C# service's `BuiltGodotOf` a C# project's only), so scene code reaches the scenes
   through `AssistContext.GodotOf` (`GodotSceneIndex.GameOf`), and a GDScript's class is `GodotScenes.ChainOf` over
   `GodotScriptDeclarations`; their fixes `GodotOffer` over the extension's `GodotFix` (members made by Roslyn so the
