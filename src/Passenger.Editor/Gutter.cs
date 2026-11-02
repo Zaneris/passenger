@@ -135,7 +135,7 @@ public sealed class GutterFrame
     /// <summary>A brush of a colour the text names (a swatch), kept from frame to frame.</summary>
     public IBrush Brush(Color colour) => editor.GutterColour(colour);
 
-    /// <summary>A shape the columns drew in the last frame at the same place and size, kept for this one.</summary>
+    /// <summary>A shape the columns drew in the last frame, of the same kind and size, kept for this one.</summary>
     public bool TryShape(GutterShape key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out StreamGeometry? shape)
     {
         if (shapes.TryGetValue(key, out shape))
@@ -150,13 +150,23 @@ public sealed class GutterFrame
         return false;
     }
 
-    /// <summary>A shape made for this frame, which the next draws again while it stands where it did.</summary>
+    /// <summary>A shape made for this frame at the origin, which the next draws again wherever it stands then
+    /// (<see cref="DrawShape"/>), so a scroll moves the columns' marks without making them again.</summary>
     public StreamGeometry AddShape(GutterShape key)
     {
         StreamGeometry shape = new();
         shapes[key] = shape;
         ShapesMade++;
         return shape;
+    }
+
+    /// <summary>A shape made at the origin, drawn with its origin at a point of the editor.</summary>
+    public void DrawShape(StreamGeometry shape, IBrush? brush, IPen? pen, double x, double y)
+    {
+        using (Context.PushTransform(Matrix.CreateTranslation(x, y)))
+        {
+            Context.DrawGeometry(brush, pen, shape);
+        }
     }
 
     /// <summary>How many shapes the columns have made to draw.</summary>
@@ -207,8 +217,8 @@ public sealed class GutterFrame
     }
 }
 
-/// <summary>A shape a gutter column draws: what it is (the column's own name for it), where and how large.</summary>
-public readonly record struct GutterShape(string Kind, double X, double Y, double Size);
+/// <summary>A shape a gutter column draws, made at the origin: what it is (the column's own name for it) and how large.</summary>
+public readonly record struct GutterShape(string Kind, double Size);
 
 /// <summary>The tints the columns lay behind the text of the lines on screen, one frame at a time: a whole line's, or a
 /// stretch of it, drawn only on a line with no tint of its own.</summary>

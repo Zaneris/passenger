@@ -330,20 +330,20 @@ public sealed partial class CodeEditor
                 double tail = x1 + (metrics.CharWidth * 0.3);
                 double head = Math.Max(tail + 2, x2 - (metrics.CharWidth * 0.3));
                 double barb = Math.Min(3, metrics.CharWidth * 0.35);
-                ShapeKey key = new(ShapeKind.Tab, tail, head, shaft, barb);
+                ShapeKey key = new(ShapeKind.Tab, head - tail, barb, 0, 0);
                 if (!shapes.TryGet(key, out StreamGeometry? shape))
                 {
                     shape = shapes.Add(key, new StreamGeometry());
                     using StreamGeometryContext path = shape.Open();
-                    path.BeginFigure(new Point(tail, shaft), false);
-                    path.LineTo(new Point(head, shaft));
+                    path.BeginFigure(new Point(0, 0), false);
+                    path.LineTo(new Point(head - tail, 0));
                     path.EndFigure(false);
-                    path.BeginFigure(new Point(head - barb, shaft - barb), false);
-                    path.LineTo(new Point(head, shaft));
-                    path.LineTo(new Point(head - barb, shaft + barb));
+                    path.BeginFigure(new Point(head - tail - barb, -barb), false);
+                    path.LineTo(new Point(head - tail, 0));
+                    path.LineTo(new Point(head - tail - barb, barb));
                     path.EndFigure(false);
                 }
-                context.DrawGeometry(null, arrow, shape);
+                DrawShape(context, arrow, shape, tail, shaft);
             }
         }
         finally
@@ -357,25 +357,23 @@ public sealed partial class CodeEditor
     {
         double size = Math.Max(4, Math.Round(metrics.CharWidth * 0.7));
         double left = x + (metrics.CharWidth * 0.4);
-        double right = left + size;
         double top = y + ((metrics.LineHeight - size) / 2);
-        double bottom = top + size;
         double barb = Math.Max(2, size / 3);
-        ShapeKey key = new(ShapeKind.Wrap, left, top, size, barb);
+        ShapeKey key = new(ShapeKind.Wrap, size, barb, 0, 0);
         if (!shapes.TryGet(key, out StreamGeometry? sign))
         {
             sign = shapes.Add(key, new StreamGeometry());
             using StreamGeometryContext path = sign.Open();
-            path.BeginFigure(new Point(right, top), false);
-            path.LineTo(new Point(right, bottom));
-            path.LineTo(new Point(left, bottom));
+            path.BeginFigure(new Point(size, 0), false);
+            path.LineTo(new Point(size, size));
+            path.LineTo(new Point(0, size));
             path.EndFigure(false);
-            path.BeginFigure(new Point(left + barb, bottom - barb), false);
-            path.LineTo(new Point(left, bottom));
-            path.LineTo(new Point(left + barb, bottom + barb));
+            path.BeginFigure(new Point(barb, size - barb), false);
+            path.LineTo(new Point(0, size));
+            path.LineTo(new Point(barb, size + barb));
             path.EndFigure(false);
         }
-        context.DrawGeometry(null, palette.PenOf(palette.SoftWrapSign, 1), sign);
+        DrawShape(context, palette.PenOf(palette.SoftWrapSign, 1), sign, left, top);
     }
 
     /// <summary>Squiggles under errors, warnings and suggestions; unnecessary code is faded by laying
@@ -444,7 +442,8 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>A squiggle from x1 to x2, drawn only where it can be seen: whole waves off either edge are left out, so
-    /// one under a line of a million characters costs the screen's width. Made again only where it moved.</summary>
+    /// one under a line of a million characters costs the screen's width. Made at the origin for its length and placed
+    /// there, so a scroll draws again the squiggles it moved without making them.</summary>
     private void DrawWave(DrawingContext context, IBrush brush, double x1, double x2, double y, double clipLeft, double clipRight)
     {
         const double Step = 2.5;
@@ -458,21 +457,31 @@ public sealed partial class CodeEditor
         {
             return;
         }
-        ShapeKey key = new(ShapeKind.Wave, x1, x2, y, 0);
+        double length = x2 - x1;
+        ShapeKey key = new(ShapeKind.Wave, length, 0, 0, 0);
         if (!shapes.TryGet(key, out StreamGeometry? wave))
         {
             wave = shapes.Add(key, new StreamGeometry());
             using StreamGeometryContext path = wave.Open();
-            path.BeginFigure(new Point(x1, y), false);
+            path.BeginFigure(new Point(0, 0), false);
             bool up = true;
-            for (double x = x1 + Step; x < x2 + Step; x += Step)
+            for (double x = Step; x < length + Step; x += Step)
             {
-                path.LineTo(new Point(Math.Min(x, x2), up ? y - 2 : y));
+                path.LineTo(new Point(Math.Min(x, length), up ? -2 : 0));
                 up = !up;
             }
             path.EndFigure(false);
         }
-        context.DrawGeometry(null, palette.PenOf(brush, 1), wave);
+        DrawShape(context, palette.PenOf(brush, 1), wave, x1, y);
+    }
+
+    /// <summary>A shape made at the origin, drawn with its origin at a point.</summary>
+    private static void DrawShape(DrawingContext context, IPen pen, StreamGeometry shape, double x, double y)
+    {
+        using (context.PushTransform(Matrix.CreateTranslation(x, y)))
+        {
+            context.DrawGeometry(null, pen, shape);
+        }
     }
 
     private readonly ShapeCache shapes = new();

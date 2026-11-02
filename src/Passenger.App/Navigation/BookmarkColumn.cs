@@ -35,23 +35,23 @@ public sealed class BookmarkColumn(CodeEditor editor) : IGutterColumn
 
     public GutterAnswer Press(GutterPress press) => GutterAnswer.Passed;
 
-    /// <summary>A bookmark's ribbon: a strip with a notch cut from its foot, kept while it stands where it did.</summary>
+    /// <summary>A bookmark's ribbon: a strip with a notch cut from its foot, kept while one of its height is drawn.</summary>
     private static void DrawRibbon(GutterFrame frame, double x, double top)
     {
         double height = Math.Min(frame.LineHeight - 4, 12);
         double y = top + ((frame.LineHeight - height) / 2);
-        GutterShape key = new(nameof(DrawRibbon), x, y, height);
+        GutterShape key = new(nameof(DrawRibbon), height);
         if (!frame.TryShape(key, out StreamGeometry? ribbon))
         {
             ribbon = frame.AddShape(key);
             using StreamGeometryContext path = ribbon.Open();
-            path.BeginFigure(new Point(x, y), true);
-            path.LineTo(new Point(x + 8, y));
-            path.LineTo(new Point(x + 8, y + height));
-            path.LineTo(new Point(x + 4, y + height - 3));
-            path.LineTo(new Point(x, y + height));
+            path.BeginFigure(new Point(0, 0), true);
+            path.LineTo(new Point(8, 0));
+            path.LineTo(new Point(8, height));
+            path.LineTo(new Point(4, height - 3));
+            path.LineTo(new Point(0, height));
             path.EndFigure(true);
         }
-        frame.Context.DrawGeometry(frame.Brush(TokenKeys.Editor_Bookmark), null, ribbon);
+        frame.DrawShape(ribbon, frame.Brush(TokenKeys.Editor_Bookmark), null, x, y);
     }
 }

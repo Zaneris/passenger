@@ -213,16 +213,16 @@ public sealed class MarkColumn : IGutterColumn
         double x = left + 5;
         double y = top + ((frame.LineHeight - size) / 2);
         double box = size * 0.42;
-        GutterShape key = new(nameof(SceneMark), x, y, size);
+        GutterShape key = new(nameof(SceneMark), size);
         if (!frame.TryShape(key, out StreamGeometry? tree))
         {
             tree = frame.AddShape(key);
             using StreamGeometryContext path = tree.Open();
-            Square(path, x, y, box);
-            Square(path, x + size - box, y + size - box, box);
+            Square(path, 0, 0, box);
+            Square(path, size - box, size - box, box);
         }
         IBrush brush = frame.Brush(TokenKeys.Icon);
-        frame.Context.DrawGeometry(brush, null, tree);
+        frame.DrawShape(tree, brush, null, x, y);
         IPen joint = frame.Pen(TokenKeys.Icon, 1.2);
         double down = x + (box / 2);
         frame.Context.DrawLine(joint, new Point(down, y + box), new Point(down, y + size - (box / 2)));

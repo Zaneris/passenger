@@ -271,25 +271,25 @@ public sealed partial class CodeEditor
             }
             bool folded = map.Placeholders.ContainsKey(line);
             double middle = TopOf(line) - scroll.Y + metrics.LineHeight / 2;
-            ShapeKey key = new(folded ? ShapeKind.Folded : ShapeKind.Open, x, middle, 0, 0);
+            ShapeKey key = new(folded ? ShapeKind.Folded : ShapeKind.Open, 0, 0, 0, 0);
             if (!shapes.TryGet(key, out StreamGeometry? chevron))
             {
                 chevron = shapes.Add(key, new StreamGeometry());
                 using StreamGeometryContext path = chevron.Open();
                 if (folded)
                 {
-                    path.BeginFigure(new Point(x + 2, middle - 4), false);
-                    path.LineTo(new Point(x + 6, middle));
-                    path.LineTo(new Point(x + 2, middle + 4));
+                    path.BeginFigure(new Point(2, -4), false);
+                    path.LineTo(new Point(6, 0));
+                    path.LineTo(new Point(2, 4));
                 }
                 else
                 {
-                    path.BeginFigure(new Point(x, middle - 2), false);
-                    path.LineTo(new Point(x + 4, middle + 2));
-                    path.LineTo(new Point(x + 8, middle - 2));
+                    path.BeginFigure(new Point(0, -2), false);
+                    path.LineTo(new Point(4, 2));
+                    path.LineTo(new Point(8, -2));
                 }
             }
-            context.DrawGeometry(null, pen, chevron);
+            DrawShape(context, pen, chevron, x, middle);
         }
     }
 

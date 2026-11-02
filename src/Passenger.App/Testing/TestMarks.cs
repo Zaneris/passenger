@@ -38,17 +38,17 @@ public static class TestMarks
             context.DrawEllipse(brush, null, new Point(x + (size / 2), y + (size / 2)), size / 2.6, size / 2.6);
             return;
         }
-        GutterShape key = new(nameof(TestMarks), x, y, size);
+        GutterShape key = new(nameof(TestMarks), size);
         if (!frame.TryShape(key, out StreamGeometry? triangle))
         {
             triangle = frame.AddShape(key);
             using StreamGeometryContext path = triangle.Open();
-            path.BeginFigure(new Point(x, y), true);
-            path.LineTo(new Point(x + (size * 0.9), y + (size / 2)));
-            path.LineTo(new Point(x, y + size));
+            path.BeginFigure(new Point(0, 0), true);
+            path.LineTo(new Point(size * 0.9, size / 2));
+            path.LineTo(new Point(0, size));
             path.EndFigure(true);
         }
-        context.DrawGeometry(brush, null, triangle);
+        frame.DrawShape(triangle, brush, null, x, y);
         if (kind == TestMarkKind.Failed)
         {
             // A failed test: the run icon with a red mark on it.
