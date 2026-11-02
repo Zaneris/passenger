@@ -612,6 +612,43 @@ public class GodotChecksTests
         Assert.Equal(["hit gives 2 (Node, int), but _on_coin_collected takes 1 (coins)"], findings.Select(f => f.Message));
     }
 
+    /// <summary>A connection whose flags have Godot bind the sending node after the signal's own values (16,
+    /// CONNECT_APPEND_SOURCE_OBJECT) gives its handler one more: a handler taking it is no error, and a missing one is made
+    /// taking it.</summary>
+    [Fact]
+    public void A_connection_that_binds_its_sending_node_gives_the_handler_one_more_argument()
+    {
+        const string scene = """
+            [gd_scene format=3]
+
+            [ext_resource type="Script" path="res://settings.gd" id="1"]
+
+            [node name="Settings" type="VBoxContainer"]
+            script = ExtResource("1")
+
+            [node name="Events" type="CheckBox" parent="."]
+
+            [connection signal="toggled" from="Events" to="." method="_on_filter_toggled" flags=18]
+            [connection signal="toggled" from="Events" to="." method="_on_events_toggled" flags=18]
+            [connection signal="toggled" from="Events" to="." method="_on_filter_toggled"]
+
+            """;
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://settings.tscn"] = GodotFile.Parse(scene) },
+            texts: new Dictionary<string, string> { ["res://settings.gd"] = "extends VBoxContainer\n\nfunc _on_filter_toggled(toggled_on: bool, source: BaseButton) -> void:\n\tpass\n" });
+        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/settings.tscn", scenes, "res://settings.tscn");
+        GodotSignature toggled = new("toggled", ["bool"], 1, null, null, null) { Names = ["toggledOn"] };
+        GodotCodeFound found = new([], [], [], [], [], [.. asked.Signals.Select(s => s.Name == "toggled" ? toggled : null)],
+            [.. asked.Methods.Select(_ => (GodotSignature?)null)]);
+        IReadOnlyList<GodotChecks.SceneFinding> findings = GodotChecks.SceneFindings(scenes, "res://settings.tscn", asked, found, _ => true);
+        Assert.Equal(
+        [
+            "Settings, a VBoxContainer (settings.gd), has no method _on_events_toggled",
+            "toggled gives 1 (bool), but _on_filter_toggled takes 2 (toggled_on: bool, source: BaseButton)",
+        ], findings.Select(f => f.Message));
+        Assert.Equal(["toggled_on: bool", "source: CheckBox"], findings[0].Offer!.Function!.Parameters);
+        Assert.Equal([true, true, false], GodotFile.Parse(scene).Connections.Select(c => c.AppendsSource));
+    }
+
     /// <summary>With the engine's answers alone, as a game of GDScript alone has them from GodotSharp: a signal a node of no
     /// script lacks is an error; a handler its GDScript lacks is one, offering to make it with the signal's parameters as
     /// GDScript writes them, a bound value's too; and a handler its script declares taking other than the signal gives is one.</summary>

@@ -58,7 +58,8 @@ public sealed record GodotNode(GodotSection Section)
 
 /// <summary>A signal connection a scene writes (<c>[connection signal="pressed" from="Hud/Start" to="." method="OnStart"]</c>):
 /// the signal, the paths of the node sending it and the one receiving it from the scene's root, the method called, how many
-/// values it binds after the signal's own and how many of those it drops (<c>unbinds</c>).</summary>
+/// values it binds after the signal's own (the sending node first where its flags say so) and how many of those it drops
+/// (<c>unbinds</c>).</summary>
 public sealed record GodotConnection(GodotSection Section)
 {
     public string Signal => Section.Text("signal") ?? string.Empty;
@@ -73,6 +74,15 @@ public sealed record GodotConnection(GodotSection Section)
     public int Binds => Section.Attribute("binds")?.Value.Items ?? 0;
 
     public int Unbinds => Section.Attribute("unbinds")?.Value.Word is { } word && int.TryParse(word, out int count) ? count : 0;
+
+    /// <summary>Whether Godot binds the sending node right after the signal's own values (<c>flags</c> holding
+    /// CONNECT_APPEND_SOURCE_OBJECT, 16).</summary>
+    public bool AppendsSource => Section.Attribute("flags")?.Value.Word is { } word && int.TryParse(word, out int flags) && (flags & AppendSource) != 0;
+
+    /// <summary>The values bound after the signal's own: the sending node where <see cref="AppendsSource"/>, then <see cref="Binds"/>.</summary>
+    public int Bound => (AppendsSource ? 1 : 0) + Binds;
+
+    private const int AppendSource = 16;
 }
 
 /// <summary>An external resource a file names (<c>[ext_resource type="Script" path="res://Main.cs" id="1_x"]</c>).</summary>

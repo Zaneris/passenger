@@ -221,11 +221,11 @@ internal static class GodotChecks
             else if (!methodKnown && connected.To is { } handler && ChainOf(scenes, handler)?.Find(GodotScriptKind.Function, connection.Method) is (_, { Parameters: { } taken } function)
                 && SignalOf(scenes, asked, found, connected) is { } carried && connection.Section.Attribute("method")?.Value is { } handled)
             {
-                int passed = carried.Count + connection.Binds - connection.Unbinds;
+                int passed = carried.Count + connection.Bound - connection.Unbinds;
                 if (passed < function.Required || passed > taken.Count)
                 {
                     findings.Add(new SceneFinding(handled.TextStart, handled.TextEnd, true,
-                        $"{connection.Signal} {Gives(passed, carried.Select(p => p.Type.Length == 0 ? "Variant" : p.Type).Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Binds))))}, but {connection.Method} {Takes(taken)}"));
+                        $"{connection.Signal} {Gives(passed, carried.Select(p => p.Type.Length == 0 ? "Variant" : p.Type).Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Bound))))}, but {connection.Method} {Takes(taken)}"));
                 }
             }
             if (signalKnown && signal is null && connection.Section.Attribute("signal")?.Value is { } emitted)
@@ -240,11 +240,11 @@ internal static class GodotChecks
                     Offer = new GodotOffer { Near = Core.Spelling.Near(connection.Signal, signals) },
                 });
             }
-            int given = (signal?.Parameters.Count ?? 0) + connection.Binds - connection.Unbinds;
+            int given = (signal?.Parameters.Count ?? 0) + connection.Bound - connection.Unbinds;
             if (method is not null && signal is not null && (given < method.Required || given > method.Parameters.Count) && connection.Section.Attribute("method")?.Value is { } called)
             {
                 findings.Add(new SceneFinding(called.TextStart, called.TextEnd, true,
-                    $"{connection.Signal} {Gives(given, signal.Parameters.Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Binds))))}, but {connection.Method} {Takes(method.Parameters)}"));
+                    $"{connection.Signal} {Gives(given, signal.Parameters.Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Bound))))}, but {connection.Method} {Takes(method.Parameters)}"));
             }
         }
         foreach (GodotTreeNode node in root.Below())
@@ -536,14 +536,14 @@ internal static class GodotChecks
                 ? new Finding(type.At, type.End, true, $"{where} connects {from}'s {connection.Signal}, a signal {from} ({Shown(connected.From!)}) has none of, to {connection.Method}")
                 : null;
         }
-        int given = signal.Parameters.Count + connection.Binds - connection.Unbinds;
+        int given = signal.Parameters.Count + connection.Bound - connection.Unbinds;
         if (given >= method.Required && given <= method.Parameters.Count)
         {
             return null;
         }
         bool here = method.At is not null && method.Path is not null && SameFile(method.Path, asked.Path);
         string takes = Takes(method.Parameters);
-        string gives = Gives(given, signal.Parameters.Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Binds))));
+        string gives = Gives(given, signal.Parameters.Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Bound))));
         return new Finding(here ? method.At! : type.At, here ? method.End! : type.End, true, $"{where} connects {from}'s {connection.Signal}, which {gives}, to {connection.Method}, which {takes}");
     }
 
@@ -920,7 +920,8 @@ internal static class GodotChecks
     }
 
     /// <summary>The function a connection's receiving node's GDScript lacks, made in its script: the signal's parameters less those
-    /// the connection unbinds, then one for each value it binds, typed as GDScript writes them; null for a node of no GDScript.</summary>
+    /// the connection unbinds, then the sending node where its flags bind it and one for each value it binds, typed as GDScript
+    /// writes them; null for a node of no GDScript.</summary>
     private static GodotScriptFunction? ScriptHandler(GodotScenes scenes, Connected connected, IReadOnlyList<(string Name, string Type)>? signal, GodotFile file)
     {
         if (connected.To?.Script is not { } script || !GodotScriptDeclarations.IsScript(script) || !scenes.Texts.ContainsKey(script))
@@ -930,7 +931,8 @@ internal static class GodotChecks
         GodotConnection connection = connected.Connection;
         IReadOnlyList<string> binds = connection.Section.Attribute("binds")?.Value is { } bound ? [.. Items(file.Written(bound)).Select(v => TypeOfValue(v) ?? string.Empty)] : [];
         IEnumerable<(string Name, string Type)> given = signal is null ? [] : signal.Take(Math.Max(0, signal.Count - connection.Unbinds));
-        IEnumerable<(string Name, string Type)> extra = binds.Select((type, i) => ($"extra_arg_{i}", type));
+        IEnumerable<(string Name, string Type)> source = connection.AppendsSource ? [("source", connected.From?.Type ?? string.Empty)] : [];
+        IEnumerable<(string Name, string Type)> extra = source.Concat(binds.Select((type, i) => ($"extra_arg_{i}", type)));
         return new GodotScriptFunction(script, connection.Method, [.. given.Concat(extra).Select(p => p.Type.Length == 0 ? p.Name : $"{p.Name}: {p.Type}")]);
     }
 
@@ -964,7 +966,8 @@ internal static class GodotChecks
     }
 
     /// <summary>The handler a connection's receiving C# script lacks, made in its class: the signal's parameters less those the
-    /// connection unbinds, then a parameter for each value it binds, beside the other handlers the scene connects to the script.</summary>
+    /// connection unbinds, then the sending node where its flags bind it and a parameter for each value it binds, beside the
+    /// other handlers the scene connects to the script.</summary>
     private static GodotOffer? HandlerOffer(GodotScenes scenes, Connected connected, GodotSignature? signal, GodotFile file)
     {
         if (connected.To?.Script is not { } script || !IsCSharp(script) || scenes.FileOf(script) is not { } code)
@@ -972,7 +975,8 @@ internal static class GodotChecks
             return null;
         }
         GodotConnection connection = connected.Connection;
-        IReadOnlyList<string> binds = connection.Section.Attribute("binds")?.Value is { } bound ? [.. Items(file.Written(bound)).Select(v => TypeOfValue(v) ?? "Variant")] : [];
+        IEnumerable<string> source = connection.AppendsSource ? [connected.From is { Script: { } sender } && IsCSharp(sender) ? sender : connected.From?.Type ?? "Node"] : [];
+        IReadOnlyList<string> binds = [.. source, .. connection.Section.Attribute("binds")?.Value is { } bound ? Items(file.Written(bound)).Select(v => TypeOfValue(v) ?? "Variant") : []];
         IReadOnlyList<string> given = signal is null ? [] : [.. signal.Parameters.Take(Math.Max(0, signal.Parameters.Count - connection.Unbinds))];
         return new GodotOffer
         {
