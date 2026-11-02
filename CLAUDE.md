@@ -236,9 +236,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   rows, folds, hints and built lines are runs an edit moves only where it reaches, so a key costs what it changed, not
   the file's size: keep it so. Row views are carried so too, a highlighter carrying the colours of lines an edit didn't
   reach (`IHighlighter.Showing`, `KeptColours`). A scroll frame draws only what moved: each row is a retained visual
-  (`CodeEditor.Rows.cs`), drawn again by a change through `Redraw()`, moved by a scroll through `Scrolled()`, the
-  caret's blink drawing only the overlay (`RedrawOverlay()`; the editor's own `InvalidateVisual` draws only its ground),
-  what is looked up from a drawn row kept in its `RowSlot`, a gutter column drawing beside one row, clipped to it
+  (`CodeEditor.Rows.cs`), drawn again by a change through `RedrawChanged()` only where its key changed (`KeyOf`, which
+  takes anything new a row draws; slots carried through edits by `FollowSlots`), by the look, the gutter's columns,
+  change marks, bookmarks and folds through `Redraw()`, moved by a scroll through `Scrolled()`, the caret's blink
+  drawing only the overlay (`RedrawOverlay()`; the editor's own `InvalidateVisual` draws only its ground), what is
+  looked up from a drawn row kept in its `RowSlot`, a gutter column drawing beside one row, clipped to it
   (`IGutterColumn.Draw`); shapes are made at the origin and drawn through a translation (`CodeEditor.DrawShape`,
   `GutterFrame.DrawShape`), the error stripe draws touching marks of one look as one rectangle, and runs of one look go
   to the formatter as one (`ScrollingTests`, `RetainedRowsTests`).
