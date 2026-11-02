@@ -36,20 +36,8 @@ public sealed partial class LiveTreeController : IGodotTuner
         }
     }
 
-    /// <summary>A popup beside what opened it, in the theme's frame of a popup, as wide as the popup asks (its own width, else
-    /// what it measures, and its frame's edges), so it is kept inside the window.</summary>
-    public void ShowPopup(Control popup, Control from)
-    {
-        double width = popup.Width;
-        if (double.IsNaN(width))
-        {
-            popup.Measure(Avalonia.Size.Infinity);
-            width = popup.DesiredSize.Width + 4;
-        }
-        UserControl frame = new() { Width = width, Content = new Border { Classes = { StyleClasses.Popup }, Child = popup } };
-        popup.Width = double.NaN;
-        parts.ShowPopup(frame, from);
-    }
+    /// <summary>A popup beside what opened it, kept inside the window.</summary>
+    public void ShowPopup(Control popup, Control from) => parts.ShowPopup(popup, from);
 
     public void ClosePopup() => parts.ClosePopup();
 

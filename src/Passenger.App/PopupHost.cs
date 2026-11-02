@@ -45,6 +45,10 @@ public sealed class PopupHost
     /// with its item, which have them back as it closes.</summary>
     private (TopLevel Window, Control? Had, RowWithKeys? Row)? over;
 
+    /// <summary>The popup open as it was handed to <see cref="Show(Control, Point?)"/>, which may stand in a frame the host made
+    /// round it.</summary>
+    private Control? handed;
+
     /// <param name="overlay">The main window's layer over everything, and the host in it a popup goes in.</param>
     /// <param name="breakpoints">The open folder's breakpoints, which a breakpoint's popup dismissed keeps its edits in.</param>
     public PopupHost(Panel overlay, ContentControl overlayHost, EditorArea editors, Func<BreakpointStore> breakpoints)
@@ -70,10 +74,11 @@ public sealed class PopupHost
     public bool IsOpenOver(TopLevel window) => IsOpen && TopLevel.GetTopLevel(Layers.Layer) == window;
 
     /// <summary>What the open popup is (Go to File, a breakpoint's properties, the Breakpoints window), or null.</summary>
-    public Control? Open => IsOpen ? Layers.Host.Content as Control : null;
+    public Control? Open => IsOpen ? handed : null;
 
     /// <summary>A popup over the window the person works in: centred under its top, or beside a point of that window (from
-    /// <see cref="PointIn"/>), kept inside it. Another open on another window's layer goes.</summary>
+    /// <see cref="PointIn"/>), kept inside it by the size it measures where it shows, in the popups' frame however it is
+    /// built (<see cref="PopupFrame.Framed"/>). Another open on another window's layer goes.</summary>
     public void Show(Control popup, Point? at = null)
     {
         AgentAsks.Popup();
@@ -90,28 +95,33 @@ public sealed class PopupHost
             over = TopLevel.GetTopLevel(layer) is { } window ? (window, had, RowWithKeys.Of(had)) : null;
         }
         shown = (layer, host);
-        Thickness shadow = MakeRoom(popup, host);
+        handed = popup;
+        Control framed = PopupFrame.Framed(popup);
+        Thickness shadow = MakeRoom(framed, host);
+        // In the window before it is measured: one measured apart takes neither its styles nor its template.
+        host.Content = framed;
         // A layer never shown yet was never laid out: it covers what holds it.
         Size room = layer.Bounds.Size is { Width: > 0 } laid ? laid : (layer.Parent as Visual)?.Bounds.Size ?? default;
         if (at is { } point)
         {
-            popup.Measure(Size.Infinity);
+            Fit(framed, host, room, height: false);
+            framed.Measure(Size.Infinity);
             // The frame's own size: a popup that holds its frame has the room inside it, the host has it round any other.
-            Thickness inside = popup is TemplatedControl ? shadow : default;
-            double width = (popup.Width is double w && !double.IsNaN(w) ? w : popup.DesiredSize.Width) - inside.Left - inside.Right;
-            double height = popup.DesiredSize.Height - inside.Top - inside.Bottom;
+            Thickness inside = framed is TemplatedControl ? shadow : default;
+            double width = framed.DesiredSize.Width - inside.Left - inside.Right;
+            double height = framed.DesiredSize.Height - inside.Top - inside.Bottom;
             host.HorizontalAlignment = HorizontalAlignment.Left;
-            host.Margin = new Thickness(Math.Clamp(point.X, 8, Math.Max(8, room.Width - width - 8)) - shadow.Left,
-                Math.Clamp(point.Y, 8, Math.Max(8, room.Height - height - 8)) - shadow.Top, 0, 0);
+            // The shadow's room past the frame's right and foot runs past the window, or the layer squeezes the frame.
+            host.Margin = new Thickness(Math.Clamp(point.X, Gap, Math.Max(Gap, room.Width - width - Gap)) - shadow.Left,
+                Math.Clamp(point.Y, Gap, Math.Max(Gap, room.Height - height - Gap)) - shadow.Top, -shadow.Right, -shadow.Bottom);
         }
         else
         {
             host.HorizontalAlignment = HorizontalAlignment.Center;
             double top = layer == overlay ? WindowPopupTop : ShowsEditors(TopLevel.GetTopLevel(layer)) ? EditorWindowPopupTop : OtherWindowPopupTop;
-            host.Margin = new Thickness(0, top - shadow.Top, 0, 0);
+            host.Margin = new Thickness(0, top - shadow.Top, 0, -shadow.Bottom);
         }
-        Fit(popup, host, room);
-        host.Content = popup;
+        Fit(framed, host, room);
         layer.IsVisible = true;
     }
 
@@ -131,18 +141,23 @@ public sealed class PopupHost
         Show(shown, at);
     }
 
-    /// <summary>A popup no wider than the window it is over, its frame's shadow inside it, and no taller than the room
-    /// from where it opens to a gap above the window's foot, the shadow under its frame free to run past: so one over a
-    /// window narrower or shorter than the popups' sizes (a floating tool window, the smallest window) shows its frame
-    /// whole, its list or preview giving way; as the window is resized, it follows.</summary>
-    private static void Fit(Control popup, ContentControl host, Size room)
+    /// <summary>A popup no wider than the window it is over, its frame's shadow inside it, and (unless not
+    /// <paramref name="height"/>) no taller than the room from where it opens to a gap above the window's foot, the shadow
+    /// under its frame free to run past: so one over a window narrower or shorter than the popups' sizes (a floating tool
+    /// window, the smallest window) shows its frame whole, its list or preview giving way; as the window is resized, it
+    /// follows.</summary>
+    private static void Fit(Control popup, ContentControl host, Size room, bool height = true)
     {
         Thickness outside = popup is TemplatedControl ? default : host.Padding;
         if (room.Width > 0)
         {
             popup.MaxWidth = Math.Max(0, room.Width - outside.Left - outside.Right);
         }
-        if (room.Height > 0)
+        if (!height)
+        {
+            popup.MaxHeight = double.PositiveInfinity;
+        }
+        else if (room.Height > 0)
         {
             Thickness inside = popup is TemplatedControl framed ? framed.Padding : default;
             popup.MaxHeight = Math.Max(0, room.Height - host.Margin.Top - outside.Top - Gap + inside.Bottom);
@@ -192,6 +207,7 @@ public sealed class PopupHost
     {
         Layers.Layer.IsVisible = false;
         Layers.Host.Content = null;
+        handed = null;
         (TopLevel Window, Control? Had, RowWithKeys? Row)? was = over;
         over = null;
         if (was is { } back && GiveBack(back.Window, back.Had, back.Row))
@@ -225,7 +241,7 @@ public sealed class PopupHost
     /// typed in it.</summary>
     public void Dismiss()
     {
-        switch (Layers.Host.Content)
+        switch (Open)
         {
             case BreakpointPopup breakpoint:
                 breakpoint.Close(breakpoints(), more: false);

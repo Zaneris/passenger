@@ -11,7 +11,7 @@ using Passenger.Editor;
 namespace Passenger.App.Godot;
 
 /// <summary>The project's resources a property may take, each with its thumbnail and path, filtered as a name is typed:
-/// a click, or Enter, chooses one; Escape leaves it. Shown in a popup's frame (<see cref="IGodotTuner.ShowPopup"/>).</summary>
+/// a click, or Enter, chooses one; Escape leaves it. Shown beside its button (<see cref="IGodotTuner.ShowPopup"/>).</summary>
 public sealed class GodotResourcePicker : Border
 {
     private readonly ListBox list;
@@ -23,6 +23,7 @@ public sealed class GodotResourcePicker : Border
     public GodotResourcePicker(string folder, IReadOnlyList<string> classes, string? current)
     {
         this.folder = folder;
+        Classes.Add(StyleClasses.Popup);
         Width = PopupFrame.Narrow;
         Padding = new Thickness(8);
         filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = classes.Count > 0 ? $"Filter {string.Join(", ", classes)}" : "Filter resources" };
@@ -144,6 +145,7 @@ public sealed class GodotKeepPreview : Border
 {
     public GodotKeepPreview(string title, IReadOnlyList<GodotKept> kept, IReadOnlyList<string> refused)
     {
+        Classes.Add(StyleClasses.Popup);
         Width = PopupFrame.Medium;
         Padding = new Thickness(12, 10);
         StackPanel page = new() { Spacing = 8 };

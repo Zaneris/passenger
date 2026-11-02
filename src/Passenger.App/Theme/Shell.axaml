@@ -928,8 +928,8 @@
     </Style>
 
     <!-- A popup over the window (Go to File, Search Everywhere, the code assist popups): the popup's ground, shadow and
-         edge, crowned in Passenger's theme with the title bar's blue-to-teal line. -->
-    <Style Selector="Border.popup">
+         edge, crowned in Passenger's theme with the title bar's blue-to-teal line; a popup of its own Border type too. -->
+    <Style Selector=":is(Border).popup">
         <Setter Property="Background" Value="{DynamicResource Passenger.Popup}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Popup.Edge}" />
         <Setter Property="BorderThickness" Value="{DynamicResource Passenger.PopupEdge}" />

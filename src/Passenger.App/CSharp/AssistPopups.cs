@@ -15,9 +15,6 @@ namespace Passenger.App.CSharp;
 /// members is its row of the stop's values (<see cref="AddValues"/>), which the card then takes the pointer and the keys for.</summary>
 internal sealed partial class InfoCard : Border, IHoverCard
 {
-    // Styled as the Border it is, so the theme's Border.popup reaches it.
-    protected override Type StyleKeyOverride => typeof(Border);
-
     /// <summary>The most a card of words is wide; one of a value's rows takes a width of the popups' (<see cref="PopupFrame"/>).</summary>
     private const double WordsWidth = 640;
 
@@ -298,9 +295,6 @@ internal sealed class CompletionSlot(CompletionRow row) : System.ComponentModel.
 /// changes the words in the rows' controls rather than making them anew: the list's containers and their controls stay.</summary>
 internal sealed class CompletionPopup : Border
 {
-    // Styled as the Border it is, so the theme's Border.popup reaches it.
-    protected override Type StyleKeyOverride => typeof(Border);
-
     private readonly AvaloniaList<CompletionSlot> slots = [];
 
     /// <summary>The item the selection was last said to be on, so a filter that leaves it there says nothing.</summary>
@@ -454,9 +448,6 @@ internal sealed class CompletionRowView : DockPanel
 /// click to choose, a choice's digit to choose it at once.</summary>
 internal sealed class ChoicePopup : Border
 {
-    // Styled as the Border it is, so the theme's Border.popup reaches it.
-    protected override Type StyleKeyOverride => typeof(Border);
-
     private readonly ListBox list;
 
     /// <summary>What is offered, by its words.</summary>
@@ -572,9 +563,6 @@ internal sealed record Choice(string Text, string Detail, object Value, bool Det
 /// files it would rename, clicked while the keys stay with the name.</summary>
 internal sealed class RenameBox : Border
 {
-    // Styled as the Border it is, so the theme's Border.popup reaches it.
-    protected override Type StyleKeyOverride => typeof(Border);
-
     private readonly TextBox name;
     private readonly StackPanel body;
     private CheckBox? renameFiles;

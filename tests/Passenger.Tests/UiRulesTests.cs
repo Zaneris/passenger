@@ -280,6 +280,68 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>The popups' host frames a popup and keeps it inside the window whatever it is handed: a bare frame, a frame
+    /// of its own Border type, a popup of its own template with no width set, the colour picker, or a panel with no frame,
+    /// opened by the window's foot and right edge or centred under its top.</summary>
+    [AvaloniaFact]
+    public void A_popup_is_framed_and_kept_inside_the_window_however_it_is_built()
+    {
+        MainWindow window = Open(900, 600);
+        try
+        {
+            Ui.Settle();
+            UnderEachLook(window, () =>
+            {
+                List<string> wrong = [];
+                Check("A bare Border.popup", () => new Border { Classes = { StyleClasses.Popup }, Padding = new Thickness(10), Child = Words() });
+                Check("A popup of its own Border type", () => new OwnFrame { Classes = { StyleClasses.Popup }, Padding = new Thickness(10), Child = Words() });
+                Check("A UserControl with no width", () => new UserControl { Content = new Border { Classes = { StyleClasses.Popup }, Padding = new Thickness(10), Child = Words() } });
+                Check("The colour picker", () => new Passenger.App.Xaml.ColourPicker(new Passenger.Xaml.Features.Argb(255, 200, 40, 40)));
+                Check("A panel with no frame", () => new StackPanel { Children = { Words() } });
+                Assert.True(wrong.Count == 0, string.Join("\n", wrong));
+
+                void Check(string what, Func<Control> make)
+                {
+                    Color ground = Brush(window, TokenKeys.Popup);
+                    foreach (bool atEdge in (bool[])[true, false])
+                    {
+                        string where = atEdge ? "opened by the window's foot and right edge" : "centred under the window's top";
+                        Control popup = make();
+                        window.Popups.Show(popup, atEdge ? window.Popups.PointIn(window, new Point(window.Bounds.Width - 10, window.Bounds.Height - 10)) : null);
+                        Ui.Settle();
+                        Border? frame = PopupFrame.FrameOf(popup);
+                        Rect placed = frame is null ? default : Placed(window, frame);
+                        Rect inside = new Rect(window.Bounds.Size).Deflate(4);
+                        if (frame is null || frame.Background is not ISolidColorBrush { Color: Color drawn } || drawn != ground)
+                        {
+                            wrong.Add($"{what} {where} shows on {(frame?.Background as ISolidColorBrush)?.Color.ToString() ?? "no ground"}, where every popup stands in the popups' frame on {ground}");
+                        }
+                        else if (frame.GetVisualDescendants().OfType<Border>().Any(b => b.Classes.Contains(StyleClasses.Popup)))
+                        {
+                            wrong.Add($"{what} {where} shows a frame inside its frame, drawing two edges and two shadows");
+                        }
+                        else if (placed.Width < 200 || placed.Height < 20 || !inside.Contains(placed))
+                        {
+                            wrong.Add($"{what} {where} is drawn at {placed} in a window of {window.Bounds.Size}, cut or outside it, where a popup is kept whole inside the window");
+                        }
+                        Assert.True(window.Popup == popup, $"{what} {where} is not the popup the window says is open ({window.Popup?.GetType().Name ?? "none"})");
+                        window.Popups.Close();
+                        Ui.Settle();
+                    }
+                }
+            });
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static TextBlock Words() => new() { Text = "A popup's words, long enough to need room of their own by the edge" };
+    }
+
+    /// <summary>A popup's frame of a type of its own, as the colour picker and the code assist popups are.</summary>
+    private sealed class OwnFrame : Border;
+
     [Gate]
     [AvaloniaFact]
     public void Every_scrollbar_is_Rider_s_thin_and_arrowless_and_a_sideways_one_shows_only_for_what_is_wider()

@@ -20,7 +20,7 @@ public interface IGodotTuner
 
     void Keep(GodotTuned tuned, Control from);
 
-    /// <summary>A popup beside the control that opened it, in a popup's frame.</summary>
+    /// <summary>A popup beside the control that opened it.</summary>
     void ShowPopup(Control popup, Control from);
 
     void ClosePopup();

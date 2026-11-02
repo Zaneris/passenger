@@ -479,6 +479,9 @@ public partial class MainWindow : IdeWindow
 
     public bool IsPopupOpen => popups.IsOpen;
 
+    /// <summary>The popups over this window and the others it opens.</summary>
+    public PopupHost Popups => popups;
+
     /// <summary>What the open popup is (Go to File, a breakpoint's properties, the Breakpoints window), or null.</summary>
     public Control? Popup => popups.Open;
 

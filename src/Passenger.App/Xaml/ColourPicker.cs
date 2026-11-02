@@ -17,9 +17,6 @@ namespace Passenger.App.Xaml;
 /// chrome is the theme's.</summary>
 public sealed class ColourPicker : Border
 {
-    // Styled as the Border it is, so the theme's Border.popup reaches it.
-    protected override Type StyleKeyOverride => typeof(Border);
-
     private readonly ShadeSquare square;
     private readonly HueBar hue;
     private readonly AlphaBar alpha;
@@ -38,6 +35,7 @@ public sealed class ColourPicker : Border
     {
         chooses = unchangeable is null;
         Classes.Add(StyleClasses.Popup);
+        Width = PopupFrame.Narrow;
         Padding = new Thickness(10);
         (h, s, v) = ToHsv(start);
         a = start.A;
@@ -59,7 +57,6 @@ public sealed class ColourPicker : Border
         hex.TextChanged += (_, _) => FromHex();
         Child = new StackPanel
         {
-            Width = 330,
             Spacing = 8,
             Children =
             {
@@ -321,7 +318,8 @@ public sealed class ColourPicker : Border
 
     private static void Marker(DrawingContext context, Rect area, double at)
     {
-        double x = Math.Clamp(at * area.Width, 2, area.Width - 2);
+        // A bar hidden (a colour without alpha) is drawn at no width.
+        double x = Math.Clamp(at * area.Width, 2, Math.Max(2, area.Width - 2));
         context.DrawRectangle(null, new Pen(Token(TokenKeys.Picker_RingInner), 2), new Rect(x - 3, -1, 6, area.Height + 2), 2, 2);
         context.DrawRectangle(null, new Pen(Token(TokenKeys.Picker_RingOuter), 1), new Rect(x - 4.5, -2.5, 9, area.Height + 5), 3, 3);
     }
