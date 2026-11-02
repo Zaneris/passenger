@@ -113,6 +113,7 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotScenes.Changed += (_, _) => CSharp?.GodotScenesChanged();
         GodotMarks = new Godot.GodotSceneMarks(GodotScenes, GodotOf, () => CSharp);
         GodotScenes.Changed += (_, _) => GodotMarks.Changed();
+        GodotScenes.CodeChanged += (_, _) => GodotMarks.Changed();
         Debug = new DebugController(setup.Editors, setup.Views.Debug)
         {
             RunInTerminal = setup.RunForDebugger,

@@ -558,8 +558,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 break;
             case MSBuildServed:
                 throw Lacks(served, "fixes or refactorings", MSBuildHas);
+            case GodotServed when await SceneFixes(served, line, column, cancel) is { Count: > 0 } own:
+                listed = [.. own.Select(f => (f.Title, $"{f.Title} [quickfix]"))];
+                break;
             case GodotServed:
-                throw Lacks(served, "fixes or refactorings", GodotHas);
+                throw new InvalidOperationException(SceneFixesHere);
             default:
                 int offset = Offset(served.Document, line, column);
                 await AspireMarked(served, cancel);
@@ -595,8 +598,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 return await ApplyOwnFix(served.Document, ownFix, patience, name);
             case MSBuildServed:
                 throw Lacks(served, "fixes or refactorings", MSBuildHas);
+            case GodotServed when (await SceneFixes(served, line, column, cancel)).FirstOrDefault(f => f.Title == title) is { } sceneFix:
+                return await ApplyOwnFix(served.Document, sceneFix, patience, name);
             case GodotServed:
-                throw Lacks(served, "fixes or refactorings", GodotHas);
+                throw new InvalidOperationException(SceneFixesHere);
         }
         ServerServed server = (ServerServed)served;
         int offset = Offset(served.Document, line, column);

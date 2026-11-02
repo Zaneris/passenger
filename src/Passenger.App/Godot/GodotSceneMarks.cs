@@ -20,6 +20,9 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
     private const string Checker = "Passenger's reading of its scene";
 
     private readonly HashSet<OpenDocument> documents = [];
+
+    /// <summary>What each open scene's marks offer to mend them, by their words.</summary>
+    private readonly Dictionary<OpenDocument, IReadOnlyDictionary<string, GodotOffer>> offers = [];
     private Debounce? again;
 
     public void Attach(OpenDocument document)
@@ -34,6 +37,7 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
     public void Detach(OpenDocument document)
     {
         UiThread.Check();
+        offers.Remove(document);
         if (documents.Remove(document) && document.Markers.Count > 0)
         {
             document.Markers = [];
@@ -59,7 +63,10 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
         int version = document.Text.Version;
         if (godotOf(document.Path) is not { } folder)
         {
-            Show(document, version, []);
+            if (Show(document, version, []))
+            {
+                offers.Remove(document);
+            }
             return;
         }
         GodotScenes scenes = await index.ScenesAsync(folder);
@@ -74,15 +81,38 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
         GodotCodeRequest asked = await BackgroundWork.Run(() => GodotChecks.SceneAsks(code ?? document.Path, scenes, res));
         GodotCodeFound found = code is not null && csharp() is { } service ? await service.GodotSceneCodeAsync(asked, CancellationToken.None) ?? GodotCodeFound.None : GodotCodeFound.None;
         IReadOnlyList<GodotChecks.SceneFinding> findings = await BackgroundWork.Run(() => GodotChecks.SceneFindings(scenes, res, asked, found, path => File.Exists(path) || Directory.Exists(path)));
-        Show(document, version, [.. findings.Select(f => new Marker(TextRange.FromBounds(f.Start, Math.Max(f.Start, f.End)), f.Error ? MarkerKind.Error : MarkerKind.Warning, f.Message))]);
+        if (Show(document, version, [.. findings.Select(f => new Marker(TextRange.FromBounds(f.Start, Math.Max(f.Start, f.End)), f.Error ? MarkerKind.Error : MarkerKind.Warning, f.Message))]))
+        {
+            offers[document] = findings.Where(f => f.Offer is { Any: true }).DistinctBy(f => f.Message).ToDictionary(f => f.Message, f => f.Offer!, StringComparer.Ordinal);
+        }
     }
 
-    /// <summary>A scene's marks, where it is open still as they were read for.</summary>
-    private void Show(OpenDocument document, int version, IReadOnlyList<Marker> marks)
+    /// <summary>What an open scene's marks on an offset's line offer to mend them (any line for null), each with where its
+    /// mark now lies and its words.</summary>
+    public IReadOnlyList<(TextRange Range, string Message, GodotOffer Offer)> OffersOn(OpenDocument document, int? offset)
     {
-        if (documents.Contains(document) && document.Text.Version == version && (marks.Count > 0 || document.Markers.Count > 0))
+        UiThread.Check();
+        if (!offers.TryGetValue(document, out IReadOnlyDictionary<string, GodotOffer>? kept))
+        {
+            return [];
+        }
+        TextSnapshot text = document.Text.Snapshot;
+        int? line = offset is { } at ? text.GetLineFromOffset(Math.Clamp(at, 0, text.Length)) : null;
+        return [.. document.Markers.Where(m => kept.ContainsKey(m.Message) && (line is not { } on || m.Range.Start <= text.Length && text.GetLineFromOffset(m.Range.Start) == on))
+            .Select(m => (m.Range, m.Message, kept[m.Message]))];
+    }
+
+    /// <summary>A scene's marks, where it is open still as they were read for; whether they stand for its text.</summary>
+    private bool Show(OpenDocument document, int version, IReadOnlyList<Marker> marks)
+    {
+        if (!documents.Contains(document) || document.Text.Version != version)
+        {
+            return false;
+        }
+        if (marks.Count > 0 || document.Markers.Count > 0)
         {
             document.Markers = marks;
         }
+        return true;
     }
 }

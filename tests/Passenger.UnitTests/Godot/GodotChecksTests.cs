@@ -81,6 +81,76 @@ public class GodotChecksTests
     }
 
     [Fact]
+    public void A_path_no_node_answers_offers_the_nearest_of_the_type_asked_and_a_wrong_type_the_nodes_own()
+    {
+        GodotScenes scenes = Scenes();
+        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotTypeRef label = new("Label", true, "Label");
+        GodotTypeRef node2D = new("Node2D", true, "Node2D");
+        GodotCodeFound found = Found(asked, [Call("Hud/Scor", label), Call("Hud/Score", new GodotTypeRef("Button", true, "Button")), Call("Scor", label), Call("Hud/Scor", node2D)],
+            methods: [new GodotSignature("OnPressed", [], 0, null, null, null), new GodotSignature("OnToggled", ["bool", "string"], 2, null, null, null)]);
+        IReadOnlyList<GodotChecks.Finding> findings = GodotChecks.Findings(scenes, asked, found, _ => true);
+        Assert.Equal(["Hud/Score"], findings[0].Offer!.Near);
+        Assert.Equal(["Hud/Score"], findings[2].Offer!.Near);
+        Assert.Empty(findings[3].Offer!.Near);
+        GodotFixRequest typed = findings[1].Offer!.Make!;
+        Assert.Equal((GodotFixKind.NodeType, "Label", "/game/Main.cs", At), (typed.Kind, typed.Type, typed.Path, typed.At));
+        Assert.Equal("Label", findings[1].Offer!.Shown);
+    }
+
+    [Fact]
+    public void A_connection_to_a_missing_method_offers_it_made_with_what_the_signal_gives_less_unbinds_and_with_binds_beside_the_scripts_handlers()
+    {
+        GodotScenes scenes = Scenes();
+        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotCodeFound found = Found(asked, [], methods: [new GodotSignature("OnPressed", [], 0, null, null, null), null]);
+        GodotChecks.Finding finding = Assert.Single(GodotChecks.Findings(scenes, asked, found, _ => true));
+        GodotFixRequest made = finding.Offer!.Make!;
+        Assert.Equal((GodotFixKind.Handler, "res://Main.cs", "OnToggled", "/game/Main.cs"), (made.Kind, made.Script, made.Name, made.Path));
+        Assert.Equal(new GodotMemberAsked("CanvasLayer", "res://Hud.cs", "toggled"), made.Signal);
+        Assert.Equal(["String"], made.Binds);
+        Assert.Equal(["OnPressed"], made.Beside);
+        Assert.Equal("OnToggled(bool, string)", finding.Offer.Shown);
+    }
+
+    [Fact]
+    public void A_property_a_scene_sets_that_the_script_lacks_is_an_error_offering_it_exported_of_its_values_type()
+    {
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Scene.Replace("script = ExtResource(\"1\")\n",
+            "script = ExtResource(\"1\")\nLives = 3\nTint = Color(1, 0, 0, 1)\nTarget = NodePath(\"Hud/Score\")\nposition = Vector2(1, 2)\nmetadata/Note = \"x\"\n", StringComparison.Ordinal)) });
+        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        Assert.Equal(["Lives", "Tint", "Target"], asked.Properties.Select(p => p.Name));
+        GodotCodeFound found = Found(asked, [], methods: [new GodotSignature("OnPressed", [], 0, null, null, null), new GodotSignature("OnToggled", ["bool", "string"], 2, null, null, null)])
+            with { Properties = [null, null, new GodotSignature("Target", ["Label"], 0, null, null, null)] };
+        IReadOnlyList<GodotChecks.Finding> findings = GodotChecks.Findings(scenes, asked, found, _ => true);
+        Assert.Equal(["main.tscn:8 sets Lives on Main, which Main has no property of", "main.tscn:9 sets Tint on Main, which Main has no property of"], findings.Select(f => f.Message));
+        Assert.Equal([(GodotFixKind.Export, "Lives", "int"), (GodotFixKind.Export, "Tint", "Color")], findings.Select(f => (f.Offer!.Make!.Kind, f.Offer.Make.Name, f.Offer.Make.Type!)));
+        GodotChecks.SceneFinding scene = Assert.Single(GodotChecks.SceneFindings(scenes, "res://main.tscn", GodotChecks.SceneAsks("/game/Main.cs", scenes, "res://main.tscn"),
+            found with { Properties = [null, new GodotSignature("Tint", ["Color"], 0, null, null, null), new GodotSignature("Target", ["Label"], 0, null, null, null)] }, _ => true), f => f.Message.Contains("property", StringComparison.Ordinal));
+        Assert.Equal("Main, a Node2D (Main.cs), has no property Lives, so Godot drops its value", scene.Message);
+    }
+
+    [Theory]
+    [InlineData("true", "bool")]
+    [InlineData("-3", "int")]
+    [InlineData("2.5", "float")]
+    [InlineData("1e-05", "float")]
+    [InlineData("\"a\"", "String")]
+    [InlineData("&\"run\"", "StringName")]
+    [InlineData("^\"Hud\"", "NodePath")]
+    [InlineData("[1, 2]", "Array")]
+    [InlineData("Array[int]([1])", "Array")]
+    [InlineData("{}", "Dictionary")]
+    [InlineData("Vector2(1, 2)", "Vector2")]
+    [InlineData("PackedStringArray(\"a\")", "PackedStringArray")]
+    [InlineData("null", null)]
+    public void A_scenes_value_is_of_the_godot_type_its_text_writes(string written, string? type) => Assert.Equal(type, GodotChecks.TypeOfValue(written));
+
+    [Fact]
+    public void An_arrays_items_are_read_at_its_top() =>
+        Assert.Equal(["1", "\"a, b\"", "Vector2(1, 2)", "[3]"], GodotChecks.Items("[1, \"a, b\", Vector2(1, 2), [3]]"));
+
+    [Fact]
     public void A_res_path_no_file_answers_is_an_error_and_a_folder_or_a_path_built_on_is_not()
     {
         GodotScenes scenes = Scenes();

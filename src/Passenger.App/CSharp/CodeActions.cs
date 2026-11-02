@@ -35,6 +35,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// null when they gave none.</summary>
     public Func<string, string, bool, Task<string?>>? AskValue { get; set; }
 
+    /// <summary>Asks the person to agree to a fix (a title, what is asked, the button that agrees); whether they did.</summary>
+    public Func<string, string, string, Task<bool>>? ConfirmFix { get; set; }
+
     internal IReadOnlyList<EditorFix> OwnFixes(OpenDocument? file, int offset) => file is not null && EditorFixes?.Invoke(file, offset) is { } fixes ? fixes : [];
 
     /// <summary>One of Passenger's own fixes made in the file shown, as one undoable edit: worked out again on its text as it
@@ -66,6 +69,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             IdeErrors.Observe(AskAndMakeAsync(now.Title.TrimEnd('…'), asks));
             return;
         }
+        if (now.Confirms is { } confirms)
+        {
+            IdeErrors.Observe(ConfirmAndMakeAsync(now.Title.TrimEnd('…'), confirms));
+            return;
+        }
         Editor.ApplyEdits([new TextEdit(now.Range.Start, now.Range.Length, now.Text)], SelectionSet.Single(now.Range.Start + (now.Caret ?? now.Text.Length)));
     }
 
@@ -82,6 +90,38 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             using (BackgroundWork.Scope())
             {
                 RefactorOutcome made = await asks.Make(value, null);
+                context.Say(made.Problem ?? made.Said);
+            }
+        }
+        catch (Exception error)
+        {
+            IdeErrors.Report(error);
+        }
+    }
+
+    /// <summary>A fix's question asked of the person (<see cref="ConfirmFix"/>) as the files stand, then the fix made as
+    /// background work once they agree, what it came to said; nothing when they do not.</summary>
+    private async Task ConfirmAndMakeAsync(string title, FixConfirmed confirms)
+    {
+        try
+        {
+            string? question;
+            using (BackgroundWork.Scope())
+            {
+                question = await confirms.Question();
+            }
+            if (question is null)
+            {
+                context.Say($"{title} was not applied: the file changed, so it no longer fits");
+                return;
+            }
+            if (ConfirmFix is null || !await ConfirmFix(title, question, confirms.Yes))
+            {
+                return;
+            }
+            using (BackgroundWork.Scope())
+            {
+                RefactorOutcome made = await confirms.Make(null);
                 context.Say(made.Problem ?? made.Said);
             }
         }

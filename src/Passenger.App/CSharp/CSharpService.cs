@@ -1681,6 +1681,12 @@ public sealed partial class CSharpService : IAsyncDisposable
         }
     }
 
+    /// <summary>A fix of a Godot check worked out by Passenger's extension (<see cref="Roslyn.Extension.GodotFixRequest"/>): the
+    /// files it changes, or why it changes none; a server failing throws <see cref="LanguageServerFailed"/>.</summary>
+    internal Task<Roslyn.Extension.Refactored> GodotFixAsync(Roslyn.Extension.GodotFixRequest asked, CancellationToken cancel) =>
+        session is { } roslyn ? roslyn.ExtensionAsync<Roslyn.Extension.Refactored>(Roslyn.Extension.Handlers.GodotFix, asked, cancel)
+            : Task.FromResult(new Roslyn.Extension.Refactored("The C# language server is not running", []));
+
     /// <summary>A Godot scene or resource came, went or was written: each open file of a Godot project pulls again.</summary>
     internal void GodotScenesChanged() => Each(document => document.GodotChanged());
 

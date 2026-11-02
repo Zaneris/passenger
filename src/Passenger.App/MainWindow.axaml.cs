@@ -269,11 +269,12 @@ public partial class MainWindow : IdeWindow
             ? bindingValues!.HoverAt(shown, offset)
             : await session.Debug.HoverAt(offset, cancel);
         assist.GutterWords = line => Editors.Active is { } beside ? session.Debug.GutterWords(beside.Path, line) : null;
-        // Passenger's own fixes: bindings, compose names, Aspire, configuration and localized keys.
+        // Passenger's own fixes: bindings, compose names, Aspire, configuration and localized keys, Godot's checks.
         assist.EditorFixes = (file, offset) => [.. Passenger.App.LiveTree.BindingErrors.Fixes(file, offset, session.FailedBindings.Select(b => b.Failure)),
             .. session.Web?.Checks.Fixes(file, offset) ?? [], .. assist.AspireFixes(file, offset), .. assist.ComposeReadFixes(file, offset), .. MigrationFixes(file, offset),
-            .. assist.ConfigurationFixes(file, offset), .. assist.LocalizationFixes(file, offset)];
+            .. assist.ConfigurationFixes(file, offset), .. assist.LocalizationFixes(file, offset), .. assist.GodotFixes(file, offset, session.GodotMarks)];
         assist.AskValue = AskValueAsync;
+        assist.ConfirmFix = (title, text, yes) => Confirm(title, text, yes);
         // The session as each call finds it.
         assist.ConfigurationOf = path => session.ConfigurationOf(path);
         assist.ConfiguredBy = path => session.ConfiguredBy(path);

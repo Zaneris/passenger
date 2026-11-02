@@ -45,6 +45,9 @@ public sealed class GodotSceneIndex
     /// <summary>A scene or resource of a project asked about came, went or was written, on the UI thread.</summary>
     public event EventHandler? Changed;
 
+    /// <summary>A C# file under a project asked about was written, on the UI thread: what its open scenes are read against.</summary>
+    public event EventHandler? CodeChanged;
+
     /// <summary>A project's scenes and resources as they stand, by its Godot folder (canonical).</summary>
     public async Task<GodotScenes> ScenesAsync(string folder)
     {
@@ -176,14 +179,17 @@ public sealed class GodotSceneIndex
         }
     }
 
-    /// <summary>Files written: a scene or resource of a project asked about is read again when next asked.</summary>
+    /// <summary>Files written: a scene or resource of a project asked about is read again when next asked, and a C# file of
+    /// one is said (<see cref="CodeChanged"/>).</summary>
     public void FilesChanged(IEnumerable<string> paths)
     {
         bool changed = false;
+        bool code = false;
         foreach (string path in paths)
         {
             foreach (Project project in projects.Values.Where(p => PathNames.IsUnder(path, p.Folder)))
             {
+                code |= GodotChecks.IsCSharp(path);
                 if (Read(path))
                 {
                     project.Dirty.Add(path);
@@ -203,6 +209,10 @@ public sealed class GodotSceneIndex
         if (changed)
         {
             Changed?.Invoke(this, EventArgs.Empty);
+        }
+        if (code)
+        {
+            CodeChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 

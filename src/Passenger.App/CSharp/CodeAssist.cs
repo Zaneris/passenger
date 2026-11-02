@@ -35,6 +35,10 @@ public sealed record EditorFix(string Title, string Detail, TextRange Range, str
     /// edit: what is asked, whether the answer is a secret (masked as it is typed, never said back), and the fix made from it.</summary>
     public ValueAsked? Asks { get; init; }
 
+    /// <summary>A fix the person agrees to before it is made (a setting written into a Godot project's file), in place of
+    /// <see cref="Text"/>'s edit: what it asks, the line it writes among it, then the fix made.</summary>
+    public FixConfirmed? Confirms { get; init; }
+
     /// <summary>The fix to make on a text now, worked out again where it can be; null when it no longer fits.</summary>
     public EditorFix? On(TextSnapshot text) => Again is null ? this : Again(text);
 }
@@ -42,6 +46,10 @@ public sealed record EditorFix(string Title, string Detail, TextRange Range, str
 /// <summary>What a fix asks before it is made: the question, whether the answer is a secret, and the fix made from the
 /// answer, given an agent's call's patience, saying what it came to (never the answer).</summary>
 public sealed record ValueAsked(string Question, bool Secret, Func<string, Patience?, Task<RefactorOutcome>> Make);
+
+/// <summary>What a fix asks the person to agree to before it is made: the question as the files then stand (null once it
+/// no longer fits), the button that agrees, and the fix made, given an agent's call's patience, saying what it came to.</summary>
+public sealed record FixConfirmed(Func<Task<string?>> Question, string Yes, Func<Patience?, Task<RefactorOutcome>> Make);
 
 /// <summary>What the language services add to the editor as you work, for the window to wire once: completion as you type
 /// (<see cref="CodeCompletion"/>), a card when the pointer rests (<see cref="QuickInfo"/>), signature help after an opening
@@ -308,6 +316,13 @@ public sealed class CodeAssist
         set => actions.AskValue = value;
     }
 
+    /// <summary>Asks the person to agree to a fix (a title, what is asked, the button that agrees); whether they did.</summary>
+    public Func<string, string, string, Task<bool>>? ConfirmFix
+    {
+        get => actions.ConfirmFix;
+        set => actions.ConfirmFix = value;
+    }
+
     /// <summary>The templates in force, as Settings leaves them.</summary>
     public TemplateSet Templates
     {
@@ -485,6 +500,9 @@ public sealed class CodeAssist
 
     /// <summary>A file's fixes that give a key a language lacks (<see cref="CSharpAssist.LocalizationFixes"/>).</summary>
     public IReadOnlyList<EditorFix> LocalizationFixes(OpenDocument file, int offset) => context.Languages.CSharp.LocalizationFixes(file, offset);
+
+    /// <summary>A Godot project's C# file's or open scene's fixes of its checks' marks (<see cref="CSharpAssist.GodotFixes"/>).</summary>
+    internal IReadOnlyList<EditorFix> GodotFixes(OpenDocument file, int offset, Godot.GodotSceneMarks marks) => context.Languages.CSharp.GodotFixes(file, offset, marks);
 
     /// <summary>A XAML colour's badge in the completion list: the colour itself, the content's own; null for no colour.</summary>
     internal static IBrush? Swatch(string? colour) =>

@@ -12,13 +12,18 @@ internal sealed record GodotRead(string Folder, GodotScenes Scenes, GodotCodeReq
 /// extension of the project's types for the scenes the file's scripts run in (<see cref="Asks"/>), and what is wrong
 /// (<see cref="Findings"/>): a GetNode path no node answers in any scene a script runs in, one whose node is not of the
 /// type asked for, a res:// path no file answers, a scene's connection to a method the script lacks, or that takes other
-/// parameters than its signal gives, a string Godot's calls take naming a member a script lacks or connecting one of
-/// other arguments, and one naming what the project's files do not define (<see cref="Named"/>). Pure: it reads only what
-/// it is given (and whether a file is there).</summary>
+/// parameters than its signal gives, a property a scene sets that the script lacks, a string Godot's calls take naming a
+/// member a script lacks or connecting one of other arguments, and one naming what the project's files do not define
+/// (<see cref="Named"/>); each with what it offers to mend it (<see cref="GodotOffer"/>). Pure: it reads only what it is
+/// given (and whether a file is there).</summary>
 internal static class GodotChecks
 {
-    /// <summary>One finding: where it is in the file (the server's places), whether it is an error, and its words.</summary>
-    public sealed record Finding(Place At, Place End, bool Error, string Message);
+    /// <summary>One finding: where it is in the file (the server's places), whether it is an error, its words, and what it
+    /// offers to mend it.</summary>
+    public sealed record Finding(Place At, Place End, bool Error, string Message)
+    {
+        public GodotOffer? Offer { get; init; }
+    }
 
     /// <summary>A connection a scene writes, with the nodes its tree finds for its ends; null for an end it finds none of.</summary>
     public sealed record Connected(string Scene, GodotConnection Connection, GodotTreeNode? From, GodotTreeNode? To);
@@ -31,11 +36,13 @@ internal static class GodotChecks
         HashSet<string> written = new(StringComparer.Ordinal);
         List<GodotMemberAsked> signals = [];
         List<GodotMemberAsked> methods = [];
+        List<GodotMemberAsked> properties = [];
         HashSet<string> runs = new(StringComparer.Ordinal);
         foreach (string script in scripts.Distinct(StringComparer.Ordinal))
         {
             foreach ((string scene, GodotTreeNode node) in scenes.RunsOf(script))
             {
+                properties.AddRange(Set(node).Select(p => new GodotMemberAsked(node.Type, script, p.Property.Key)));
                 if (!runs.Add(scene))
                 {
                     continue;
@@ -78,7 +85,28 @@ internal static class GodotChecks
                 }
             }
         }
-        return new GodotCodeRequest(path, [.. engine], [.. written], [.. signals.Distinct()], [.. methods.Distinct()]);
+        return new GodotCodeRequest(path, [.. engine], [.. written], [.. signals.Distinct()], [.. methods.Distinct()]) { Properties = [.. properties.Distinct()] };
+    }
+
+    /// <summary>The properties the scenes set on a node of a C# script that are a script's own to give: written by a name that
+    /// begins with a capital (an engine class's properties are snake_case), no path in it; each with the scene and section
+    /// that sets it.</summary>
+    public static IEnumerable<(string Scene, Passenger.Workspace.GodotNode Section, GodotEntry Property)> Set(GodotTreeNode node)
+    {
+        if (!IsCSharp(node.Script))
+        {
+            yield break;
+        }
+        foreach ((string scene, Passenger.Workspace.GodotNode section) in node.Written)
+        {
+            foreach (GodotEntry property in section.Section.Properties)
+            {
+                if (property.Key.Length > 0 && char.IsUpper(property.Key[0]) && !property.Key.Contains('/'))
+                {
+                    yield return (scene, section, property);
+                }
+            }
+        }
     }
 
     /// <summary>What to ask of the extension for a scene's own connections, through a C# file of its project
@@ -89,11 +117,18 @@ internal static class GodotChecks
         List<Connected> connections = [.. Connections(scenes, scene)];
         return new GodotCodeRequest(path, [.. nodes.Select(n => n.Type).OfType<string>().Distinct(StringComparer.Ordinal)],
             [.. nodes.Select(n => n.Script).Where(IsCSharp).OfType<string>().Distinct(StringComparer.Ordinal)],
-            [.. connections.Select(SignalAsked).Distinct()], [.. connections.Select(MethodAsked).Distinct()]);
+            [.. connections.Select(SignalAsked).Distinct()], [.. connections.Select(MethodAsked).Distinct()])
+        {
+            Properties = [.. nodes.SelectMany(n => Set(n).Where(s => s.Scene == scene).Select(s => new GodotMemberAsked(n.Type, n.Script, s.Property.Key))).Distinct()],
+        };
     }
 
-    /// <summary>One finding in a scene's own text: where (offsets of the file), whether it is an error, and its words.</summary>
-    public sealed record SceneFinding(int Start, int End, bool Error, string Message);
+    /// <summary>One finding in a scene's own text: where (offsets of the file), whether it is an error, its words, and what
+    /// it offers to mend it.</summary>
+    public sealed record SceneFinding(int Start, int End, bool Error, string Message)
+    {
+        public GodotOffer? Offer { get; init; }
+    }
 
     /// <summary>What is wrong in a scene or resource as Godot would load it, by what the extension answered of its connections
     /// (<see cref="SceneAsks"/>): an external resource whose file is not there, an ExtResource no external resource of the
@@ -160,7 +195,10 @@ internal static class GodotChecks
             GodotSignature? signal = signalKnown ? found.Signals[signalAt] : null;
             if (methodKnown && method is null && connection.Section.Attribute("method")?.Value is { } named)
             {
-                findings.Add(new SceneFinding(named.TextStart, named.TextEnd, true, $"{connected.To!.Name}, {Article(Shown(connected.To))}, has no method {connection.Method}"));
+                findings.Add(new SceneFinding(named.TextStart, named.TextEnd, true, $"{connected.To!.Name}, {Article(Shown(connected.To))}, has no method {connection.Method}")
+                {
+                    Offer = HandlerOffer(scenes, connected, signal, file),
+                });
             }
             if (signalKnown && signal is null && connection.Section.Attribute("signal")?.Value is { } emitted)
             {
@@ -171,6 +209,21 @@ internal static class GodotChecks
             {
                 findings.Add(new SceneFinding(called.TextStart, called.TextEnd, true,
                     $"{connection.Signal} {Gives(given, signal.Parameters.Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Binds))))}, but {connection.Method} {Takes(method.Parameters)}"));
+            }
+        }
+        foreach (GodotTreeNode node in root.Below())
+        {
+            foreach ((string where, Passenger.Workspace.GodotNode section, GodotEntry property) in Set(node).Where(s => s.Scene == scene))
+            {
+                int at = IndexOf(asked.Properties, new GodotMemberAsked(node.Type, node.Script, property.Key));
+                if (at >= 0 && at < found.Properties.Count && found.Properties[at] is null)
+                {
+                    findings.Add(new SceneFinding(property.KeyStart, property.KeyStart + property.Key.Length, true,
+                        $"{node.Name}, {Article(Shown(node))}, has no property {property.Key}, so Godot drops its value")
+                    {
+                        Offer = ExportOffer(scenes, node, file, property),
+                    });
+                }
             }
         }
         return findings;
@@ -207,7 +260,7 @@ internal static class GodotChecks
         List<Finding> findings = [];
         foreach (GodotNodeCall call in found.Calls)
         {
-            if (Call(scenes, found, call) is { } finding)
+            if (Call(scenes, asked, found, call) is { } finding)
             {
                 findings.Add(finding);
             }
@@ -235,7 +288,7 @@ internal static class GodotChecks
         {
             if (StringFinding(found, read) is { } finding)
             {
-                findings.Add(finding);
+                findings.Add(finding.Error && read.Found is null && read.Kind == GodotNameKind.Method ? finding with { Offer = CallableOffer(scenes, found, read) } : finding);
             }
         }
         HashSet<(GodotStringKind, string)> added = [.. found.Added.Select(a => (a.Kind, a.Name)), .. found.Kinds.Where(k => k.Adds).Select(k => (k.Kind, k.Name))];
@@ -244,7 +297,10 @@ internal static class GodotChecks
             Candidates named = Named(scenes, read.Kind, ScriptsOf(found, read.Class), read.Node, read.Export, read.Member);
             if (named.Whole && !named.Names.Any(n => n.Name == read.Name))
             {
-                findings.Add(new Finding(read.At, read.End, true, $"No {What(read.Kind)} '{read.Name}' is {named.Where}"));
+                findings.Add(new Finding(read.At, read.End, true, $"No {What(read.Kind)} '{read.Name}' is {named.Where}")
+                {
+                    Offer = new GodotOffer { Near = Core.Spelling.Near(read.Name, named.Names.Select(n => n.Name)), Defines = Defines(scenes, read, ScriptsOf(found, read.Class)) },
+                });
             }
         }
         foreach (GodotNodeCall call in found.Calls)
@@ -258,6 +314,10 @@ internal static class GodotChecks
         {
             findings.AddRange(Exports(scenes, asked, found, type));
         }
+        foreach (GodotClassFound type in found.Classes)
+        {
+            findings.AddRange(Properties(scenes, asked, found, type));
+        }
         for (int i = 0; i < found.Classes.Count; i++)
         {
             GodotClassFound type = found.Classes[i];
@@ -268,7 +328,7 @@ internal static class GodotChecks
                 {
                     foreach (Connected connected in Connections(scenes, scene).Where(c => c.To?.Script == script))
                     {
-                        if (Connection(asked, found, type, connected) is { } finding)
+                        if (Connection(scenes, asked, found, type, connected) is { } finding)
                         {
                             findings.Add(finding);
                         }
@@ -281,7 +341,7 @@ internal static class GodotChecks
 
     /// <summary>A GetNode call's finding: no node answers its path in any scene it runs in that says (a GetNodeOrNull's never
     /// counts), or a node it names in one is not of the type asked for; null where every scene's node fits or none says.</summary>
-    private static Finding? Call(GodotScenes scenes, GodotCodeFound found, GodotNodeCall call)
+    private static Finding? Call(GodotScenes scenes, GodotCodeRequest asked, GodotCodeFound found, GodotNodeCall call)
     {
         if (call.Class >= found.Classes.Count)
         {
@@ -306,7 +366,10 @@ internal static class GodotChecks
             string under = resolved.Reached?.Name ?? node.Name;
             string lacking = start == 0 && end == call.Path.Split(':')[0].Length ? string.Empty
                 : $": {under} has no {(name.StartsWith('%') ? $"unique node {name[1..]}" : $"child {name}")}";
-            return new Finding(call.At, call.End, true, $"{Place(scenes, scene, node)} has no node '{call.Path}' under {node.Name}{lacking}");
+            return new Finding(call.At, call.End, true, $"{Place(scenes, scene, node)} has no node '{call.Path}' under {node.Name}{lacking}")
+            {
+                Offer = call.Exact ? new GodotOffer { Near = NearPaths(found, call, [.. said.Select(s => s.Node)]) } : null,
+            };
         }
         if (call.Type is not { } wanted)
         {
@@ -318,7 +381,10 @@ internal static class GodotChecks
             if (Fits(wanted, target, found) == false)
             {
                 string shown = $"'{call.Path}' is {Article(Shown(target))} in {Place(scenes, target.Declared.Scene, target)}, not {Article(wanted.Shown)}";
-                return new Finding(call.At, call.End, !call.OrNull, call.OrNull ? $"GetNodeOrNull<{wanted.Shown}> gives null: {shown}" : shown);
+                return new Finding(call.At, call.End, !call.OrNull, call.OrNull ? $"GetNodeOrNull<{wanted.Shown}> gives null: {shown}" : shown)
+                {
+                    Offer = TypeOffer(asked, found, call, said.Where(s => s.Resolved.Found is not null).Select(s => s.Resolved.Found!)),
+                };
             }
         }
         return null;
@@ -327,7 +393,7 @@ internal static class GodotChecks
     /// <summary>A connection's finding in its receiving script's file: a method the script lacks (at the class's name), one
     /// whose parameters are not as many as the signal gives with its binds (at the method's name, where this file declares
     /// it), or a signal its sending node does not have; null where it holds, or what it needs is not known.</summary>
-    private static Finding? Connection(GodotCodeRequest asked, GodotCodeFound found, GodotClassFound type, Connected connected)
+    private static Finding? Connection(GodotScenes scenes, GodotCodeRequest asked, GodotCodeFound found, GodotClassFound type, Connected connected)
     {
         GodotConnection connection = connected.Connection;
         string where = $"{System.IO.Path.GetFileName(connected.Scene)}:{connection.Section.Line + 1}";
@@ -342,7 +408,10 @@ internal static class GodotChecks
         }
         if (method is null)
         {
-            return new Finding(type.At, type.End, true, $"{where} connects {from}'s {connection.Signal} to {connection.Method}, which {type.Name} has no method of");
+            return new Finding(type.At, type.End, true, $"{where} connects {from}'s {connection.Signal} to {connection.Method}, which {type.Name} has no method of")
+            {
+                Offer = scenes.Files.TryGetValue(connected.Scene, out GodotFile? file) ? HandlerOffer(scenes, connected, signal, file) : null,
+            };
         }
         if (signal is null)
         {
@@ -562,7 +631,15 @@ internal static class GodotChecks
         if (loaded is null)
         {
             bool aRoot = scenes.Files.Where(f => f.Value.Header?.Tag == "gd_scene").Any(f => scenes.Tree(f.Key)?.Name == name);
-            return aRoot ? null : new Finding(call.At, call.End, true, $"No autoload '{name}' is in project.godot's [autoload], nor is a scene's root node so named");
+            int start = AutoloadIn(call.Path)!.Value.Start;
+            return aRoot ? null : new Finding(call.At, call.End, true, $"No autoload '{name}' is in project.godot's [autoload], nor is a scene's root node so named")
+            {
+                Offer = call.Exact ? new GodotOffer
+                {
+                    Near = [.. Core.Spelling.Near(name, scenes.Defined.Autoloads.Select(a => a.Name)).Select(n => call.Path[..start] + n + call.Path[end..])],
+                    Defines = AutoloadDefines(scenes, name),
+                } : null,
+            };
         }
         string rest = call.Path[end..].TrimStart('/');
         if (GodotProject.IsScene(loaded) && scenes.Tree(loaded) is { } tree)
@@ -584,6 +661,288 @@ internal static class GodotChecks
             return new Finding(call.At, call.End, !call.OrNull, $"The autoload {name} is {Article(script.Shown)} ({loaded.Split('/')[^1]}), not {Article(type.Shown)}");
         }
         return null;
+    }
+
+    /// <summary>Each scene's property set on a node a class runs as that its script has none of, a value Godot drops: at the
+    /// class's name, naming the scene and line, said once for each section that sets it.</summary>
+    private static IEnumerable<Finding> Properties(GodotScenes scenes, GodotCodeRequest asked, GodotCodeFound found, GodotClassFound type)
+    {
+        HashSet<(string, int)> said = [];
+        foreach (string script in type.Scripts)
+        {
+            foreach ((_, GodotTreeNode node) in scenes.RunsOf(script))
+            {
+                foreach ((string written, _, GodotEntry property) in Set(node))
+                {
+                    int at = IndexOf(asked.Properties, new GodotMemberAsked(node.Type, script, property.Key));
+                    if (at < 0 || at >= found.Properties.Count || found.Properties[at] is not null || !scenes.Files.TryGetValue(written, out GodotFile? file)
+                        || !said.Add((written, property.KeyStart)))
+                    {
+                        continue;
+                    }
+                    yield return new Finding(type.At, type.End, true,
+                        $"{System.IO.Path.GetFileName(written)}:{file.LineOf(property.KeyStart) + 1} sets {property.Key} on {node.Name}, which {type.Name} has no property of")
+                    {
+                        Offer = ExportOffer(scenes, node, file, property),
+                    };
+                }
+            }
+        }
+    }
+
+    /// <summary>The handler a connection's receiving C# script lacks, made in its class: the signal's parameters less those the
+    /// connection unbinds, then a parameter for each value it binds, beside the other handlers the scene connects to the script.</summary>
+    private static GodotOffer? HandlerOffer(GodotScenes scenes, Connected connected, GodotSignature? signal, GodotFile file)
+    {
+        if (connected.To?.Script is not { } script || !IsCSharp(script) || scenes.FileOf(script) is not { } code)
+        {
+            return null;
+        }
+        GodotConnection connection = connected.Connection;
+        IReadOnlyList<string> binds = connection.Section.Attribute("binds")?.Value is { } bound ? [.. Items(file.Written(bound)).Select(v => TypeOfValue(v) ?? "Variant")] : [];
+        IReadOnlyList<string> given = signal is null ? [] : [.. signal.Parameters.Take(Math.Max(0, signal.Parameters.Count - connection.Unbinds))];
+        return new GodotOffer
+        {
+            Make = new GodotFixRequest(code, script, GodotFixKind.Handler, connection.Method)
+            {
+                Signal = SignalAsked(connected),
+                Binds = binds,
+                Unbinds = connection.Unbinds,
+                Beside = HandlersOf(scenes, script, connection.Method),
+            },
+            Shown = $"{connection.Method}({string.Join(", ", given.Concat(binds.Select(TypeShown)))})",
+        };
+    }
+
+    /// <summary>The method a Callable names by a string that a script's class of the file lacks, made in it: taking what the
+    /// signal a Connect joins it to gives, where its string names one the code knows, else nothing.</summary>
+    private static GodotOffer? CallableOffer(GodotScenes scenes, GodotCodeFound found, GodotStringRead read)
+    {
+        if (!read.Exact || !read.Script || ClassNamed(found, read.On) is not { Scripts: [{ } script, ..] } || scenes.FileOf(script) is not { } code)
+        {
+            return null;
+        }
+        GodotStringRead? joined = read.Signal is { } index && index < found.Strings.Count && found.Strings[index].Found is not null ? found.Strings[index] : null;
+        GodotMemberAsked? sender = joined is null ? null
+            : joined.Script ? ClassNamed(found, joined.On) is { Scripts: [{ } own, ..] } ? new GodotMemberAsked(null, own, joined.Name) : null
+            : new GodotMemberAsked(joined.On == "GodotObject" ? "Object" : joined.On, null, joined.Name);
+        IReadOnlyList<string> given = sender is null ? [] : joined!.Found!.Parameters;
+        return new GodotOffer
+        {
+            Make = new GodotFixRequest(code, script, GodotFixKind.Handler, read.Name) { Signal = sender, Beside = HandlersOf(scenes, script, read.Name) },
+            Shown = $"{read.Name}({string.Join(", ", given)})",
+        };
+
+        static GodotClassFound? ClassNamed(GodotCodeFound found, string name) => found.Classes.FirstOrDefault(c => c.Name == name || c.FullName == name);
+    }
+
+    /// <summary>The methods the scenes connect to a script's nodes but one, which a new handler is put beside.</summary>
+    private static IReadOnlyList<string> HandlersOf(GodotScenes scenes, string script, string but) =>
+        [.. scenes.RunsOf(script).Select(r => r.Scene).Distinct(StringComparer.Ordinal).SelectMany(scene => Connections(scenes, scene))
+            .Where(c => c.To?.Script == script && c.Connection.Method != but).Select(c => c.Connection.Method).Distinct(StringComparer.Ordinal)];
+
+    /// <summary>The exported property a scene sets that a node's C# script lacks, made in its class of the type the scene's value is.</summary>
+    private static GodotOffer? ExportOffer(GodotScenes scenes, GodotTreeNode node, GodotFile file, GodotEntry property)
+    {
+        if (node.Script is not { } script || !IsCSharp(script) || scenes.FileOf(script) is not { } code)
+        {
+            return null;
+        }
+        string type = TypeOfValue(node, file, property.Value) ?? "Variant";
+        return new GodotOffer
+        {
+            Make = new GodotFixRequest(code, script, GodotFixKind.Export, property.Key) { Type = type },
+            Shown = $"{property.Key} ({TypeShown(type)})",
+        };
+    }
+
+    /// <summary>The GetNode type every scene's node is, which a call asking another changes to: a C# script's class (by its
+    /// res://), else the node's engine class; none where the scenes' nodes differ.</summary>
+    private static GodotOffer? TypeOffer(GodotCodeRequest asked, GodotCodeFound found, GodotNodeCall call, IEnumerable<GodotTreeNode> targets)
+    {
+        List<(string? Type, string? Shown)> types = [.. targets.Select(t => IsCSharp(t.Script) && found.Scripts.FirstOrDefault(s => s?.Name == t.Script) is { } script ? (t.Script, script.Shown)
+            : t.Type is { } engine && found.Engine.FirstOrDefault(e => e.Name == engine) is { } chain ? (engine, chain.Shown) : (null, null)).Distinct()];
+        return types is [{ Type: { } type, Shown: { } shown }]
+            ? new GodotOffer { Make = new GodotFixRequest(asked.Path, string.Empty, GodotFixKind.NodeType, call.Path) { Type = type, At = call.At }, Shown = shown }
+            : null;
+    }
+
+    /// <summary>The paths near one no node answers, from the nodes a script runs on: a node's whose name is near the last name
+    /// of the path or whose whole path is near it, of the type it asks for where it asks one; nearest first, three at most.</summary>
+    private static IReadOnlyList<string> NearPaths(GodotCodeFound found, GodotNodeCall call, IReadOnlyList<GodotTreeNode> runners)
+    {
+        string path = call.Path.Split(':')[0];
+        string rest = call.Path[path.Length..];
+        string last = path.TrimEnd('/').Split('/')[^1].TrimStart('%').ToLowerInvariant();
+        string folded = path.ToLowerInvariant();
+        int most = last.Length <= 3 ? 1 : 2;
+        return [.. runners.SelectMany(GodotScenes.PathsFrom)
+            .Where(p => p.Path != path && (call.Type is not { } wanted || Fits(wanted, p.Node, found) != false))
+            .Select(p => (p.Path, Whole: Core.Spelling.Distance(p.Path.ToLowerInvariant(), folded), Named: Core.Spelling.Distance(p.Node.Name.ToLowerInvariant(), last)))
+            .Where(p => Math.Min(p.Whole, p.Named) <= most)
+            .OrderBy(p => Math.Min(p.Whole, p.Named)).ThenBy(p => p.Whole).ThenBy(p => p.Path, StringComparer.Ordinal)
+            .Select(p => p.Path + rest).Distinct(StringComparer.Ordinal).Take(3)];
+    }
+
+    /// <summary>Where a name of a kind the project's files lack would be defined: an input action in project.godot's [input];
+    /// an autoload in its [autoload], of a file named as it is (<see cref="AutoloadDefines"/>); a group given to the node the
+    /// call is made on where the code tells it, else to the script's own, in each scene it runs in (three at most).</summary>
+    private static IReadOnlyList<GodotDefine> Defines(GodotScenes scenes, GodotKindRead read, IReadOnlyList<string> scripts)
+    {
+        bool project = scenes.Texts.ContainsKey(GodotDefinitions.ProjectRes);
+        switch (read.Kind)
+        {
+            case GodotStringKind.Action:
+                return project && read.Name.Length > 0 ? [new GodotDefine(read.Kind, read.Name, GodotDefinitions.ProjectRes) { Section = "input" }] : [];
+            case GodotStringKind.Autoload:
+                return AutoloadDefines(scenes, read.Name);
+            case GodotStringKind.Group:
+                List<GodotDefine> defines = [];
+                foreach ((string scene, GodotTreeNode runner) in scripts.SelectMany(scenes.RunsOf))
+                {
+                    GodotTreeNode? node = read.Node is { } path ? GodotScenes.Resolve(runner, path).Found : read.Export is null ? runner : null;
+                    if (node is null || read.Name.Length == 0)
+                    {
+                        continue;
+                    }
+                    (string written, Passenger.Workspace.GodotNode section) = node.Written.LastOrDefault(w => w.Scene == scene) is { Node: not null } own ? own : node.Declared;
+                    if (!defines.Any(d => d.File == written && d.NodePath == section.PathInScene))
+                    {
+                        defines.Add(new GodotDefine(read.Kind, read.Name, written) { NodePath = section.PathInScene, NodeName = node.Name });
+                    }
+                }
+                return [.. defines.Take(3)];
+            default:
+                return [];
+        }
+    }
+
+    /// <summary>An autoload project.godot lacks defined of each of the project's scripts and scenes named as it is, letter case
+    /// aside: a scene first, then a script.</summary>
+    private static IReadOnlyList<GodotDefine> AutoloadDefines(GodotScenes scenes, string name) =>
+        !scenes.Texts.ContainsKey(GodotDefinitions.ProjectRes) || name.Length == 0 ? []
+            : [.. scenes.Known.Where(res => res.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase) || res.EndsWith(".scn", StringComparison.OrdinalIgnoreCase)
+                    || IsCSharp(res) || res.EndsWith(".gd", StringComparison.OrdinalIgnoreCase))
+                .Where(res => System.IO.Path.GetFileNameWithoutExtension(res.Split('/')[^1]).Replace("_", string.Empty, StringComparison.Ordinal)
+                    .Equals(name.Replace("_", string.Empty, StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase))
+                .OrderBy(res => GodotProject.IsScene(res) ? 0 : 1).ThenBy(res => res, StringComparer.Ordinal).Take(3)
+                .Select(res => new GodotDefine(GodotStringKind.Autoload, name, GodotDefinitions.ProjectRes) { Section = "autoload", Value = res })];
+
+    /// <summary>The Godot type a scene's value is, for a member to hold it: an external or sub-resource's own type, a node
+    /// path's node's (its C# script's res://, else its engine class), else as its text says (<see cref="TypeOfValue(string)"/>).</summary>
+    internal static string? TypeOfValue(GodotTreeNode node, GodotFile file, GodotValue value) => value switch
+    {
+        { Call: "ExtResource", Text: { } id } => file.External(id)?.Type is { Length: > 0 } type ? type : null,
+        { Call: "SubResource", Text: { } id } => file.Sections.FirstOrDefault(s => s.Tag == "sub_resource" && s.Text("id") == id)?.Text("type"),
+        { Call: "NodePath", Text: { Length: > 0 } path } when GodotScenes.Resolve(node, path).Found is { } target =>
+            (IsCSharp(target.Script) ? target.Script : target.Type) ?? "NodePath",
+        _ => TypeOfValue(file.Written(value)),
+    };
+
+    /// <summary>The Godot type a value's text is: bool, int, float, String, StringName, NodePath, Array, Dictionary, or the
+    /// call it is written as (<c>Vector2(1, 2)</c>'s Vector2); null for null, or a text not read.</summary>
+    internal static string? TypeOfValue(string written)
+    {
+        string text = written.Trim();
+        if (text.Length == 0 || text == "null")
+        {
+            return null;
+        }
+        if (text is "true" or "false")
+        {
+            return "bool";
+        }
+        if (text[0] == '"')
+        {
+            return "String";
+        }
+        if (text.StartsWith("&\"", StringComparison.Ordinal))
+        {
+            return "StringName";
+        }
+        if (text.StartsWith("^\"", StringComparison.Ordinal))
+        {
+            return "NodePath";
+        }
+        if (text[0] is '[' or '{')
+        {
+            return text[0] == '[' ? "Array" : "Dictionary";
+        }
+        if (long.TryParse(text, System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out _))
+        {
+            return "int";
+        }
+        if (text is "inf" or "inf_neg" or "nan" || double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+        {
+            return "float";
+        }
+        int open = text.IndexOf('(', StringComparison.Ordinal);
+        string call = open > 0 ? text[..open] : string.Empty;
+        return call.StartsWith("Array[", StringComparison.Ordinal) ? "Array" : call.StartsWith("Dictionary[", StringComparison.Ordinal) ? "Dictionary"
+            : call.Length > 0 && call.All(c => char.IsLetterOrDigit(c) || c == '_') ? call : null;
+    }
+
+    /// <summary>A Godot type as C# names it, for a fix's title: a script's by its file, a variant's as C# writes it.</summary>
+    internal static string TypeShown(string type) => type switch
+    {
+        _ when type.StartsWith("res://", StringComparison.Ordinal) => System.IO.Path.GetFileNameWithoutExtension(type.Split('/')[^1]),
+        "String" => "string",
+        "PackedStringArray" => "string[]",
+        "PackedByteArray" => "byte[]",
+        "PackedInt32Array" => "int[]",
+        "PackedInt64Array" => "long[]",
+        "PackedFloat32Array" => "float[]",
+        "PackedFloat64Array" => "double[]",
+        "AABB" => "Aabb",
+        "RID" => "Rid",
+        _ when type.StartsWith("Packed", StringComparison.Ordinal) && type.EndsWith("Array", StringComparison.Ordinal) && type.Length > "PackedArray".Length =>
+            type["Packed".Length..^"Array".Length] + "[]",
+        _ => type,
+    };
+
+    /// <summary>The values of an array as written, at its top: <c>[1, "a"]</c>'s <c>1</c> and <c>"a"</c>.</summary>
+    internal static IReadOnlyList<string> Items(string written)
+    {
+        string text = written.Trim();
+        if (text.Length < 2 || text[0] != '[')
+        {
+            return [];
+        }
+        List<string> items = [];
+        int depth = 0;
+        int start = 1;
+        for (int at = 1; at < text.Length; at++)
+        {
+            char c = text[at];
+            if (c == '"')
+            {
+                for (at++; at < text.Length && text[at] != '"'; at++)
+                {
+                    at += text[at] == '\\' ? 1 : 0;
+                }
+            }
+            else if (c is '(' or '[' or '{')
+            {
+                depth++;
+            }
+            else if (c is ')' or ']' or '}' && depth > 0)
+            {
+                depth--;
+            }
+            else if (depth == 0 && (c == ',' || c == ']'))
+            {
+                if (text[start..at].Trim() is { Length: > 0 } item)
+                {
+                    items.Add(item);
+                }
+                start = at + 1;
+                if (c == ']')
+                {
+                    break;
+                }
+            }
+        }
+        return items;
     }
 
     /// <summary>Whether a node is of a type: its engine class's chain holds an engine type, its C# script's class's chain a

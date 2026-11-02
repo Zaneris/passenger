@@ -23,7 +23,7 @@ public sealed class GodotCode : IExtensionWorkspaceMessageHandler<GodotCodeReque
 /// code runs on with the type each asks for, the res:// paths and uid:// names its strings give, and its strings naming what the
 /// project's own files define (<see cref="GodotKinds"/>); and of the project's types what the scenes ask: an engine class's chain by Godot's names (<c>[GodotClassName]</c>, else the C# name), a script's class's,
 /// and a node's signal or method by the name a scene writes (an engine one's snake_case, a script's own as declared).</summary>
-internal static class GodotSource
+internal static partial class GodotSource
 {
     private const string Namespace = "Godot";
 
@@ -55,19 +55,22 @@ internal static class GodotSource
         List<GodotChain> chains = [.. asked.Engine.Distinct(StringComparer.Ordinal).Select(name => engine.Type(name) is { } type
             ? new GodotChain(name, [.. engine.Chain(type)], name, type.Name) : null).OfType<GodotChain>()];
         Dictionary<string, INamedTypeSymbol?> scripts = new(StringComparer.Ordinal);
-        foreach (string script in asked.Scripts.Concat(asked.Signals.Select(s => s.Script)).Concat(asked.Methods.Select(m => m.Script)).OfType<string>().Distinct(StringComparer.Ordinal))
+        foreach (string script in asked.Scripts.Concat(asked.Signals.Select(s => s.Script)).Concat(asked.Methods.Select(m => m.Script))
+            .Concat(asked.Properties.Select(p => p.Script)).OfType<string>().Distinct(StringComparer.Ordinal))
         {
             scripts[script] = ScriptClass(compilation, script, cancel);
         }
         List<GodotChain?> scriptChains = [.. asked.Scripts.Select(s => scripts[s] is { } type ? new GodotChain(s, [.. Lineage(type)], engine.First(type) is { } first ? engine.NameOf(first) : null, type.Name) : null)];
         List<GodotSignature?> signals = [.. asked.Signals.Select(s => Signal(engine, s.Script is null ? null : scripts[s.Script], s.Engine, s.Name))];
         List<GodotSignature?> methods = [.. asked.Methods.Select(m => Method(engine, m.Script is null ? null : scripts[m.Script], m.Engine, m.Name))];
+        List<GodotSignature?> properties = [.. asked.Properties.Select(p => Property(engine, p.Script is null ? null : scripts[p.Script], p.Engine, p.Name))];
         IReadOnlyList<GodotKindRead> kinds = GodotKinds.Read(solution, root, model, declared, text, cancel);
         return new GodotCodeFound(classes, calls, resources, chains, scriptChains, signals, methods)
         {
             Strings = Strings(root, model, engine, godotObject, text, cancel),
             Kinds = kinds,
             Added = await GodotKinds.AddedAsync(solution, documents[0].Project, kinds, cancel).ConfigureAwait(false),
+            Properties = properties,
         };
     }
 
@@ -203,13 +206,17 @@ internal static class GodotSource
 
     /// <summary>A signal on a node: its script's <c>[Signal]</c> delegate of the name (in its class or a base of the code's),
     /// else its engine class's event of the name, by the script's first engine class or the node's own.</summary>
-    private static GodotSignature? Signal(Engine engine, INamedTypeSymbol? script, string? engineClass, string name)
+    private static GodotSignature? Signal(Engine engine, INamedTypeSymbol? script, string? engineClass, string name) =>
+        SignalOf(engine, script, engineClass, name) is ({ } invoke, var declared) ? Signature(name, invoke, declared, source: declared is not null) : null;
+
+    /// <summary>A signal's delegate's Invoke, as <see cref="Signal"/> finds it, with the script's delegate where the code declares it.</summary>
+    private static (IMethodSymbol Invoke, INamedTypeSymbol? Declared)? SignalOf(Engine engine, INamedTypeSymbol? script, string? engineClass, string name)
     {
         for (INamedTypeSymbol? type = script; type is not null && !engine.Owns(type); type = type.BaseType)
         {
             if (type.GetTypeMembers(name + "EventHandler").FirstOrDefault(d => d.TypeKind == TypeKind.Delegate && Has(d, "SignalAttribute")) is { DelegateInvokeMethod: { } invoke } signal)
             {
-                return Signature(name, invoke, signal, source: true);
+                return (invoke, signal);
             }
         }
         string wanted = Plain(name);
@@ -217,7 +224,7 @@ internal static class GodotSource
         {
             if (type.GetMembers().OfType<IEventSymbol>().FirstOrDefault(e => Plain(e.Name) == wanted) is { Type: INamedTypeSymbol { DelegateInvokeMethod: { } invoke } })
             {
-                return Signature(name, invoke, null, source: false);
+                return (invoke, null);
             }
         }
         return null;
@@ -274,8 +281,9 @@ internal static class GodotSource
     {
         List<string> parameters = [.. method.Parameters.Select(p => p.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat))];
         int required = source ? parameters.Count : method.Parameters.Count(p => !p.HasExplicitDefaultValue && !p.IsParams);
-        return declared is not null && Declared(declared) is { } at ? new GodotSignature(name, parameters, required, at.Path, at.At, at.End)
-            : new GodotSignature(name, parameters, required, null, null, null);
+        IReadOnlyList<string> names = [.. method.Parameters.Select(p => Written(p.Name))];
+        return declared is not null && Declared(declared) is { } at ? new GodotSignature(name, parameters, required, at.Path, at.At, at.End) { Names = names }
+            : new GodotSignature(name, parameters, required, null, null, null) { Names = names };
     }
 
     /// <summary>Where a symbol's name is written in the code, by its file's path; null for one only a generator writes.</summary>

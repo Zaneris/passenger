@@ -38,13 +38,14 @@ public static class Handlers
     public const string GodotNames = "Passenger.Roslyn.Extension.GodotNames";
     public const string GodotPaths = "Passenger.Roslyn.Extension.GodotPaths";
     public const string GodotKindStrings = "Passenger.Roslyn.Extension.GodotKindStrings";
+    public const string GodotFix = "Passenger.Roslyn.Extension.GodotFix";
 
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
-        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings,
+        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotFix,
     ];
 }
 
@@ -325,7 +326,12 @@ public sealed record GodotCodeRequest(
     [property: JsonPropertyName("engine")] IReadOnlyList<string> Engine,
     [property: JsonPropertyName("scripts")] IReadOnlyList<string> Scripts,
     [property: JsonPropertyName("signals")] IReadOnlyList<GodotMemberAsked> Signals,
-    [property: JsonPropertyName("methods")] IReadOnlyList<GodotMemberAsked> Methods);
+    [property: JsonPropertyName("methods")] IReadOnlyList<GodotMemberAsked> Methods)
+{
+    /// <summary>The properties the scenes set on nodes of C# scripts, by the names they write, each on its node's script.</summary>
+    [JsonPropertyName("properties")]
+    public IReadOnlyList<GodotMemberAsked> Properties { get; init; } = [];
+}
 
 /// <summary>A signal or method of a node, by its name as a scene writes it, on the node's script (res://) where it has one,
 /// else on its engine class.</summary>
@@ -358,6 +364,11 @@ public sealed record GodotCodeFound(
     /// are defined though no file of Godot's says them.</summary>
     [JsonPropertyName("added")]
     public IReadOnlyList<GodotKindAdded> Added { get; init; } = [];
+
+    /// <summary>Each property asked for (<see cref="GodotCodeRequest.Properties"/>) as its node's script or engine class has
+    /// it, in the order asked; null for one neither has.</summary>
+    [JsonPropertyName("properties")]
+    public IReadOnlyList<GodotSignature?> Properties { get; init; } = [];
 }
 
 /// <summary>What a string Godot's calls take names that a Godot project defines outside its code: an input action
@@ -499,7 +510,52 @@ public sealed record GodotSignature(
     [property: JsonPropertyName("required")] int Required,
     [property: JsonPropertyName("path")] string? Path,
     [property: JsonPropertyName("at")] Place? At,
-    [property: JsonPropertyName("end")] Place? End);
+    [property: JsonPropertyName("end")] Place? End)
+{
+    /// <summary>The parameters' names, as C# writes them.</summary>
+    [JsonPropertyName("names")]
+    public IReadOnlyList<string> Names { get; init; } = [];
+}
+
+/// <summary>What a fix of a Godot check makes in a script's class (the class whose <c>[ScriptPath]</c> is
+/// <paramref name="Script"/>, declared in the file of <paramref name="Path"/>): a handler named <paramref name="Name"/>
+/// taking what <see cref="GodotFixRequest.Signal"/> gives, less its last <see cref="GodotFixRequest.Unbinds"/> and with
+/// each bound value of <see cref="GodotFixRequest.Binds"/>' types, beside the class's other handlers
+/// (<see cref="GodotFixRequest.Beside"/>); an exported property of that name of a Godot type
+/// (<see cref="GodotFixRequest.Type"/>: a variant's, an engine class's, or a script's res://); or the type a GetNode call whose
+/// path's string is at <see cref="GodotFixRequest.At"/> asks for.</summary>
+public sealed record GodotFixRequest(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("script")] string Script,
+    [property: JsonPropertyName("kind")] GodotFixKind Kind,
+    [property: JsonPropertyName("name")] string Name)
+{
+    [JsonPropertyName("signal")]
+    public GodotMemberAsked? Signal { get; init; }
+
+    [JsonPropertyName("binds")]
+    public IReadOnlyList<string> Binds { get; init; } = [];
+
+    [JsonPropertyName("unbinds")]
+    public int Unbinds { get; init; }
+
+    [JsonPropertyName("beside")]
+    public IReadOnlyList<string> Beside { get; init; } = [];
+
+    [JsonPropertyName("type")]
+    public string? Type { get; init; }
+
+    [JsonPropertyName("at")]
+    public Place? At { get; init; }
+}
+
+/// <summary>What a <see cref="GodotFixRequest"/> makes: a signal's handler, an exported property, or a GetNode call's type.</summary>
+public enum GodotFixKind
+{
+    Handler,
+    Export,
+    NodeType,
+}
 
 /// <summary>The member of a Godot script's code at a caret asked for, with its uses by Godot's other names for it when
 /// <paramref name="Uses"/>.</summary>

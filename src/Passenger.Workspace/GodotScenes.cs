@@ -202,6 +202,9 @@ public sealed class GodotScenes
     /// <summary>Whether Godot's editor keeps a cache of the project's uids, so one no file has is known to name none.</summary>
     public bool KeepsUids { get; }
 
+    /// <summary>Every res:// path the project's files are known by: its scenes and resources, and the files it keeps a uid of.</summary>
+    public IEnumerable<string> Known => Files.Keys.Concat(named.Value.Values).Distinct(StringComparer.Ordinal);
+
     /// <summary>The res:// path of the file a uid:// names, a scene's own header first; null for one no file has.</summary>
     public string? ResOfUid(string uid) => named.Value.GetValueOrDefault(uid);
 
