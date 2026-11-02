@@ -245,7 +245,14 @@ public sealed partial class BuildRunController
     public bool IsBuilding => building is not null;
 
     /// <summary>Whether a program Run started runs, in the Run window or the terminal, or an AppHost it started.</summary>
-    public bool IsRunning => session.Aspire.IsRunning || RunsInConsole;
+    public bool IsRunning => session.Aspire.IsRunning || RunsInConsole || copyRuns.Any(c => c.Run.IsRunning);
+
+    /// <summary>The copies of a Godot game Run runs side by side, each in a tab of the Terminal window, by its configuration's
+    /// name (<see cref="GameCopies"/>): Stop ends them together.</summary>
+    private readonly List<(string Configuration, TerminalRun Run)> copyRuns = [];
+
+    /// <summary>The copies of a game Run runs now, each in its tab of the Terminal window.</summary>
+    public IReadOnlyList<TerminalRun> CopyRuns => [.. copyRuns.Select(c => c.Run)];
 
     /// <summary>Whether the Run console has a program Run started (a plain run's, or a container run's log), or a tab of the
     /// terminal has: one at a time, which Run and Rerun of a configuration that runs there stop first. An AppHost's is its own.</summary>
@@ -912,6 +919,8 @@ public sealed partial class BuildRunController
         {
             return Said(taken);
         }
+        // Copies of it run beside in the Terminal window end too, as its launch again ends the last.
+        await EndCopyRunsAsync(chosen.Name);
         aspireEnd = null;
         // The Run console is one program's: Profile's writes there too, from its start to its end.
         if (parts.Work.Of(AppActions.Profile) is { } profiling)
@@ -970,6 +979,11 @@ public sealed partial class BuildRunController
             if (watched && MakeWorkingFolder(plan) is { } unmade)
             {
                 return Said(unmade);
+            }
+            // Copies of a game each run in a tab of the Terminal window of their own: the Run console is one program's.
+            if (GameCopies.Count(chosen, plan) is > 1 and int count)
+            {
+                return await RunCopiesAsync(chosen, plan, count, reloaded, work);
             }
             // A game of GDScript alone takes its saved scripts over its own connection: no debugger holds its start for C#'s edits.
             bool heldStart = reloaded && !plan.ScriptsAlone;
@@ -1060,6 +1074,135 @@ public sealed partial class BuildRunController
         }
     }
 
+    /// <summary>Runs copies of a game side by side from one build, each in a tab of the Terminal window named for its place
+    /// (<see cref="GameCopies"/>), its own console, followed in the Live Visual Tree; a saved GDScript file reloads in each
+    /// where Hot Reload is on, C#'s edits only in copies debugged. An earlier run's copies of it end first. Null once every
+    /// one runs, else why the first that could not start did not, the copies before it running on.</summary>
+    private async Task<string?> RunCopiesAsync(RunConfiguration chosen, LaunchPlan plan, int count, bool reloaded, Working work)
+    {
+        await EndCopyRunsAsync(chosen.Name);
+        List<string> started = [];
+        for (int copy = 1; copy <= count; copy++)
+        {
+            work.Say($"Starting {GameCopies.Name(chosen.Name, copy)}, {copy} of {count}…");
+            if (await RunCopyAsync(chosen, plan, copy, reloaded) is { } refused)
+            {
+                return Said(copy == 1 ? refused : $"{GameCopies.Name(chosen.Name, copy)} did not start ({refused}); {Plural.Listed(started)} run on");
+            }
+            started.Add(GameCopies.Name(chosen.Name, copy));
+        }
+        parts.Say($"Running {count} copies of {chosen.Name}, each in a tab of the Terminal window{(reloaded && !plan.ScriptsAlone ? ", without C#'s Hot Reload, which copies debugged take" : string.Empty)}",
+            StatusPlace.Window(parts.Dock, ToolWindowIds.Terminal));
+        return null;
+    }
+
+    /// <summary>Runs one copy of a game (from one) in a tab of the Terminal window of its own, as Run's copies run; null once
+    /// it runs, else why not.</summary>
+    private async Task<string?> RunCopyAsync(RunConfiguration chosen, LaunchPlan plan, int copy, bool reloaded)
+    {
+        (LaunchPlan each, Godot.GodotGame? game) = session.Listened(GameCopies.Plan(chosen, plan, copy));
+        game?.ReloadsScripts = reloaded;
+        ProcessStartInfo start = ChildProcesses.Command(GodotConsole.Program(each, each.Program), each.Arguments, each.WorkingDirectory);
+        foreach ((string variable, string value) in each.Environment)
+        {
+            start.Environment[variable] = value;
+        }
+        TerminalRun run;
+        try
+        {
+            run = await parts.InTerminal(each.Name, start);
+        }
+        catch (LaunchException failed)
+        {
+            game?.Dispose();
+            return failed.Message;
+        }
+        run.StartedBy = Mcp.AgentCall.Current?.Connection;
+        copyRuns.Add((chosen.Name, run));
+        EndWith(game, run.Ended);
+        IdeErrors.Observe(CopyEnded());
+        RunningChanged?.Invoke(this, EventArgs.Empty);
+        return null;
+
+        async Task CopyEnded()
+        {
+            await run.Ended;
+            copyRuns.RemoveAll(c => c.Run == run);
+            RunningChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>Run Another Copy: one more copy of the chosen configuration's game run beside the copies Run runs now (or
+    /// beside its one game in the Run console, the second copy), in a tab of the Terminal window of its own, on the build they
+    /// run; null once it runs, else why not.</summary>
+    public async Task<string?> RunAnotherCopyAsync(CancellationToken cancellation = default)
+    {
+        if (session.Configurations.Chosen is not { } chosen)
+        {
+            return Said(session.NothingTo("run"));
+        }
+        if (WhyNotRunAnotherCopy(chosen) is { } why)
+        {
+            return Said(why);
+        }
+        if (parts.Work.Begin(AppActions.RunProgram, $"Working out how to run another copy of {chosen.Name}…") is not { } work)
+        {
+            return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!));
+        }
+        using (work)
+        using (cancellation.Register(work.Cancel))
+        using (BackgroundWork.Scope())
+        {
+            int next = copyRuns.Where(c => c.Configuration == chosen.Name).Select(c => GameCopies.Of(c.Run.Name).Copy)
+                .Append(RunsOwnProgram(chosen.Name) ? 1 : 0).Max() + 1;
+            (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, null, work, build: false);
+            if (plan is null)
+            {
+                return Said(problem!);
+            }
+            if (WhyNotRunAnotherCopy(chosen) is { } gone)
+            {
+                return Said(gone);
+            }
+            work.Say($"Starting {GameCopies.Name(chosen.Name, next)}…");
+            bool reloaded = parts.Settings().HotReload && chosen.Program.Length == 0;
+            if (await RunCopyAsync(chosen, plan, next, reloaded) is { } refused)
+            {
+                return Said(refused);
+            }
+            parts.Say($"Running {GameCopies.Name(chosen.Name, next)} beside {chosen.Name}, in a tab of the Terminal window", StatusPlace.Window(parts.Dock, ToolWindowIds.Terminal));
+            return null;
+        }
+    }
+
+    /// <summary>How many copies of a configuration's game Run runs in the Terminal window.</summary>
+    private int CopiesRun(string configuration) => copyRuns.Count(c => c.Configuration == configuration);
+
+    /// <summary>Why Run Another Copy cannot run now: the chosen configuration starts no Godot game, or Run runs none of its
+    /// copies, or as many as there may be.</summary>
+    public string? WhyNotRunAnotherCopy(RunConfiguration chosen)
+    {
+        if (chosen.IsContainer || session.Aspire.IsAspire(chosen) || !chosen.RunsGodot(session.Projects) || chosen.GodotEditor)
+        {
+            return $"{chosen.Name} starts no Godot game, of which Run Another Copy runs one more beside those running";
+        }
+        int running = CopiesRun(chosen.Name) + (RunsOwnProgram(chosen.Name) ? 1 : 0);
+        return running == 0 ? $"Run runs no copy of {chosen.Name}: Run starts it, then Run Another Copy one more beside it"
+            : running >= GameCopies.Most ? $"{chosen.Name} runs {GameCopies.Most} copies, the most one configuration runs"
+            : null;
+    }
+
+    /// <summary>Ends the copies Run runs (of one configuration, or every one), done once each has ended.</summary>
+    private Task EndCopyRunsAsync(string? configuration = null)
+    {
+        List<TerminalRun> ending = [.. copyRuns.Where(c => configuration is null || c.Configuration == configuration).Select(c => c.Run)];
+        foreach (TerminalRun run in ending)
+        {
+            run.Stop();
+        }
+        return Task.WhenAll(ending.Select(r => r.Ended));
+    }
+
     /// <summary>Whether Run runs the Godot game of configuration <paramref name="name"/> with Hot Reload through the debugger.</summary>
     public bool RunsGameWithHotReload(string name) => RunsOwnProgram(name) && session.RunPlan is { Godot: not null, GodotEditor: false }
         && session.Debug.Running.Any(r => r.Name == name);
@@ -1132,9 +1275,19 @@ public sealed partial class BuildRunController
     public bool RunsOwnProgram(string name) => RunsInConsole && ran == name && session.ContainerRun is not { IsStopped: false };
 
     /// <summary>Ends the program Run started for a configuration that Debug or Profile (<paramref name="doing"/>) is to start
-    /// in its place: done once its end has landed. Null to go on, else why not (the folder left meanwhile).</summary>
+    /// in its place, and the copies of it Run runs: done once their ends have landed. Null to go on, else why not (the
+    /// folder left meanwhile).</summary>
     public async Task<string?> EndOwnRunAsync(RunConfiguration chosen, Working work, string doing)
     {
+        if (copyRuns.Any(c => c.Configuration == chosen.Name))
+        {
+            work.Say($"Ending the copies of {chosen.Name} Run runs to {doing} it…");
+            await EndCopyRunsAsync(chosen.Name);
+            if (session.IsEnded)
+            {
+                return Refusals.SolutionClosed;
+            }
+        }
         if (!RunsOwnProgram(chosen.Name))
         {
             return null;
@@ -1703,12 +1856,101 @@ public sealed partial class BuildRunController
                 edits?.Dispose();
                 edits = session.Debug.Building(session.Debug.HotReloadOn());
             });
-            return plan is null ? problem : await LaunchDebuggedAsync(chosen, plan, work, edits);
+            if (plan is null)
+            {
+                return problem;
+            }
+            int count = GameCopies.Count(chosen, plan);
+            // An earlier launch's copies past this one's count end with it, as the rest end in their tabs' turn.
+            await Task.WhenAll([.. session.Debug.CopiesOf(chosen.Name).Where(c => c.Copy > count).Select(c => session.Debug.StopAsync(c.Tab))]);
+            return count == 1 ? await LaunchDebuggedAsync(chosen, plan, work, edits) : await LaunchCopiesAsync(chosen, plan, Enumerable.Range(1, count), arguments, work, edits);
         }
         finally
         {
             edits?.Dispose();
         }
+    }
+
+    /// <summary>Copies of a game launched under the debugger one after another from one build, each a session of its own named
+    /// for its place (<see cref="GameCopies"/>), each following its own copy of the edits made since the build; null once
+    /// every one is open, else why the first that could not start did not, the copies before it running on.</summary>
+    private async Task<string?> LaunchCopiesAsync(RunConfiguration chosen, LaunchPlan plan, IEnumerable<int> copies, string? arguments, Working work, BuiltEdits? edits)
+    {
+        List<int> numbers = [.. copies];
+        List<BuiltEdits?> each = [edits, .. numbers.Skip(1).Select(_ => edits is null ? null : session.Debug.Copied(edits))];
+        try
+        {
+            for (int i = 0; i < numbers.Count; i++)
+            {
+                LaunchPlan copy = GameCopies.Plan(chosen, plan, numbers[i]);
+                debugged[copy.Name] = (chosen, arguments);
+                if (await LaunchDebuggedAsync(chosen, copy, work, each[i], copies: chosen.Name) is { } refused)
+                {
+                    return i == 0 ? refused : $"{copy.Name} did not start ({refused}); {Plural.Listed([.. numbers.Take(i).Select(n => GameCopies.Name(chosen.Name, n))])} run on";
+                }
+            }
+            return null;
+        }
+        finally
+        {
+            foreach (BuiltEdits? left in each.Skip(1))
+            {
+                left?.Dispose();
+            }
+        }
+    }
+
+    /// <summary>Debug Another Copy: one more copy of the chosen configuration's game debugged beside its copies debugged now,
+    /// on the build they run, the next in their count with that copy's own arguments; null once its session is open, else
+    /// why not.</summary>
+    public async Task<string?> DebugAnotherCopyAsync(CancellationToken cancellation = default)
+    {
+        if (session.Configurations.Chosen is not { } chosen)
+        {
+            return session.NothingTo("debug");
+        }
+        if (WhyNotAnotherCopy(chosen) is { } why)
+        {
+            return why;
+        }
+        if (parts.Work.Begin(AppActions.Debug, $"Working out how to debug another copy of {chosen.Name}…") is not { } work)
+        {
+            return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!);
+        }
+        using (work)
+        using (cancellation.Register(work.Cancel))
+        using (BackgroundWork.Scope())
+        {
+            IReadOnlyList<(ToolWindows.DebugTab Tab, int Copy)> running = session.Debug.CopiesOf(chosen.Name);
+            int next = running.Max(c => c.Copy) + 1;
+            (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, null, work, build: false);
+            if (plan is null)
+            {
+                return problem;
+            }
+            if (WhyNotAnotherCopy(chosen) is { } gone)
+            {
+                return gone;
+            }
+            session.Debug.JoinCopies(chosen.Name);
+            // The edits since the build the copies run, as the one debugged first follows them.
+            using BuiltEdits? edits = session.Debug.Carried(running.MinBy(c => c.Copy).Tab.Name, session.Debug.HotReloadOn());
+            return await LaunchCopiesAsync(chosen, plan, [next], null, work, edits);
+        }
+    }
+
+    /// <summary>Why Debug Another Copy cannot run now: the chosen configuration starts no Godot game, or none of its copies is
+    /// debugged, or it starts as many as there may be.</summary>
+    public string? WhyNotAnotherCopy(RunConfiguration chosen)
+    {
+        if (chosen.IsContainer || session.Aspire.IsAspire(chosen) || !chosen.RunsGodot(session.Projects) || chosen.GodotEditor)
+        {
+            return $"{chosen.Name} starts no Godot game, of which Debug Another Copy debugs one more beside those debugged";
+        }
+        IReadOnlyList<(ToolWindows.DebugTab Tab, int Copy)> running = session.Debug.CopiesOf(chosen.Name);
+        return running.Count == 0 ? $"No copy of {chosen.Name} is debugged: Debug starts it, then Debug Another Copy one more beside it"
+            : running.Count >= GameCopies.Most ? $"{chosen.Name} runs {GameCopies.Most} copies, the most one configuration runs"
+            : null;
     }
 
     /// <summary>The next Debug's launch held by a test once its build has ended (<see cref="HoldNextLaunch"/>): what it waits
@@ -1726,7 +1968,7 @@ public sealed partial class BuildRunController
 
     /// <summary>Launches a built plan under the debugger, its session taking the <paramref name="edits"/> followed since its
     /// build; null once its session is open, else why not.</summary>
-    private async Task<string?> LaunchDebuggedAsync(RunConfiguration chosen, LaunchPlan plan, Working work, BuiltEdits? edits)
+    private async Task<string?> LaunchDebuggedAsync(RunConfiguration chosen, LaunchPlan plan, Working work, BuiltEdits? edits, string? copies = null)
     {
         if (plan.WhyNot("debug") is { } why)
         {
@@ -1755,7 +1997,7 @@ public sealed partial class BuildRunController
         (LaunchPlan listened, Godot.GodotGame? game) = session.Listened(plan, plan.Godot is { } folder ? debug.ScriptStart(folder) : null);
         if (plan.ScriptsAlone && game is not null)
         {
-            return await LaunchScriptsAsync(listened, game);
+            return await LaunchScriptsAsync(listened, game, copies);
         }
         // A Blazor app's code in the browser is debugged in a Chromium browser, where one is found.
         IReadOnlyList<ProjectModel> projects = session.Projects;
@@ -1769,7 +2011,7 @@ public sealed partial class BuildRunController
         }
         // An Avalonia or WPF app is launched with the Live Visual Tree's inspector, held by its tab, ending with this debugging.
         (LaunchPlan launched, LiveApp? inspected) = session.Inspected(listened);
-        Task<string?> starting = debug.StartAsync(launched, app: inspected, edits: edits);
+        Task<string?> starting = debug.StartAsync(launched, app: inspected, edits: edits, copies: copies);
         if (game is not null && debug.Chosen?.Console is { } gameConsole)
         {
             gameConsole.Fold = new Godot.GodotConsoleFold();
@@ -1822,10 +2064,10 @@ public sealed partial class BuildRunController
 
     /// <summary>Debug of a Godot game of GDScript alone: its GDScript session launches it, no C# engine beside it, Hot Reload
     /// of its saved scripts as Settings' Hot Reload while debugging says. Null once its session is open, else why not.</summary>
-    private async Task<string?> LaunchScriptsAsync(LaunchPlan plan, Godot.GodotGame game)
+    private async Task<string?> LaunchScriptsAsync(LaunchPlan plan, Godot.GodotGame game, string? copies)
     {
         DebugController debug = session.Debug;
-        string? refused = await debug.LaunchScriptsAsync(plan, game);
+        string? refused = await debug.LaunchScriptsAsync(plan, game, copies);
         if (refused is null)
         {
             game.Debugged = debug.SessionNamed(plan.Name);
@@ -2106,9 +2348,10 @@ public sealed partial class BuildRunController
         Task aspire = session.Aspire.StopAllAsync();
         Task ran = session.RunProgram.IsRunning ? session.RunProgram.Ended : Task.CompletedTask;
         session.RunProgram.Stop();
+        Task copies = EndCopyRunsAsync();
         session.Profiled?.Run.Kill();
         session.Builder.Stop();
-        return Task.WhenAll(containers, aspire, ran);
+        return Task.WhenAll(containers, aspire, ran, copies);
     }
 
     /// <summary>Rerun's stop: Run's own start under way and the program it started (in the Run window or the terminal, or its
@@ -2119,6 +2362,7 @@ public sealed partial class BuildRunController
         parts.Work.Of(AppActions.RunProgram)?.Cancel();
         IdeErrors.Observe(session.StopContainersAsync());
         session.RunProgram.Stop();
+        IdeErrors.Observe(EndCopyRunsAsync());
     }
 
     /// <summary>Whether a run of a configuration is up: Run's program (in the Run window or the terminal) or container run,
@@ -2126,7 +2370,8 @@ public sealed partial class BuildRunController
     /// An AppHost's run is said by its own (<see cref="MainWindow.Shown"/>).</summary>
     public bool IsRunningConfiguration(string name) =>
         RunsInConsole && (Containers?.Plan.Name ?? ran) == name
-        || session.Debug.Tabs.Any(t => t.IsLive && t.Name == name && debugged.ContainsKey(name))
+        || copyRuns.Any(c => c.Configuration == name && c.Run.IsRunning)
+        || session.Debug.Tabs.Any(t => t.IsLive && GameCopies.Of(t.Name).Configuration == name && debugged.ContainsKey(t.Name))
         || session.Profiled is { Run.HasExited: false } profiled && profiled.Name == name;
 
     /// <summary>Why Stop cannot run now: nothing it stops is running.</summary>

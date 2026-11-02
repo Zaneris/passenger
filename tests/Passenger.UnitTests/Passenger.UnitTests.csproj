@@ -124,10 +124,11 @@
   </ItemGroup>
 
   <!-- Where a launch profile's browser opens, read from its URLs alone, the Node.js versions a package.json's engines
-       range takes, read from its text alone, and whether a project's inputs changed since a build began, read from a
-       temporary folder, compiled in since their project is the app's. -->
+       range takes, read from its text alone, a game's copies' names and arguments, and whether a project's inputs changed
+       since a build began, read from a temporary folder, compiled in since their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Run/LaunchProfile.cs" Link="App/LaunchProfile.cs" />
+    <Compile Include="../../src/Passenger.App/Run/GameCopies.Names.cs" Link="App/GameCopies.Names.cs" />
     <Compile Include="../../src/Passenger.App/Web/NpmRange.cs" Link="App/NpmRange.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotServerWords.cs" Link="App/GodotServerWords.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GutRuns.cs" Link="App/GutRuns.cs" />

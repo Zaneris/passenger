@@ -21,6 +21,9 @@ public partial class MainWindow
     /// <summary>The program Run last started, when it runs in the terminal; null when the last ran in the Run window.</summary>
     public TerminalRun? RunInTerminal => session.InTerminal;
 
+    /// <summary>The copies of a Godot game Run runs, each in its tab of the Terminal window.</summary>
+    public IReadOnlyList<TerminalRun> RunCopies => buildRun.CopyRuns;
+
     /// <summary>The end of the program Run last started, in the Run window or the terminal, with its exit code.</summary>
     public Task<int> RunEnd => buildRun.RunEnd;
 
@@ -290,6 +293,18 @@ public partial class MainWindow
 
     /// <summary>Debugs the chosen configuration as Debug does: null once its session is open, else what stopped it.</summary>
     public Task<string?> DebugAsync(string? arguments = null) => buildRun.DebugAsync(arguments);
+
+    /// <summary>Debug Another Copy (<see cref="BuildRunController.DebugAnotherCopyAsync"/>): what stopped it, if anything, goes to
+    /// the status bar; null once the copy's session is open.</summary>
+    public async Task<string?> DebugAnotherCopyAsync()
+    {
+        string? problem = await buildRun.DebugAnotherCopyAsync();
+        if (problem is not null)
+        {
+            status.Text = problem;
+        }
+        return problem;
+    }
 
     /// <summary>Starts in a tab of the Terminal window, named for the configuration being debugged, the program the debugger
     /// asks for (its runInTerminal request): held at its start by the variables the debugger gives it until the debugger

@@ -244,6 +244,10 @@ public static class AppActions
     // Run of a Godot game from the scene open (or the scene a script open runs in): no key of Rider's.
     public const string RunCurrentScene = "app.run.currentScene";
 
+    // One more copy of a Godot game run or debugged beside its copies running now: no key of Rider's.
+    public const string RunAnotherCopy = "app.run.anotherCopy";
+    public const string DebugAnotherCopy = "app.debug.anotherCopy";
+
     // Run, Debug and Profile of the program at hand (a gutter icon's, an Explorer row's, the open file's): no keys, Rider's
     // RunClass key being Attach to Process's in its Visual Studio keymap.
     public const string RunHere = "app.run.here";

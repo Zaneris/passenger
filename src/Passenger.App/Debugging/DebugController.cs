@@ -625,11 +625,14 @@ public sealed class DebugController : IDisposable
     /// debugged; the plan's last session, still debugged, is stopped first. With <paramref name="elsewhere"/> the program
     /// runs on another machine (<see cref="DebugSession.Elsewhere"/>). Null once the session is open (the program may have
     /// ended already), else why it could not.</summary>
-    public Task<string?> StartAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, LiveApp? app = null, BuiltEdits? edits = null)
-        => StartInTabAsync(plan, elsewhere, place, app: app, edits: edits);
+    public Task<string?> StartAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, LiveApp? app = null, BuiltEdits? edits = null,
+        string? copies = null)
+        => StartInTabAsync(plan, elsewhere, place, app: app, edits: edits, copies: copies);
 
+    /// <summary>Starts a plan's program in a tab, one of the <paramref name="copies"/> of a game a configuration (named)
+    /// starts where given.</summary>
     private async Task<string?> StartInTabAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, DebugTab? tab = null, LiveApp? app = null,
-        BuiltEdits? edits = null)
+        BuiltEdits? edits = null, string? copies = null)
     {
         Func<RunInTerminalArguments, Task<Run.TerminalRun>>? inTerminal = !elsewhere && place is null && plan.Console == Run.ConsoleKind.Terminal && RunInTerminal is { } run
             ? arguments => Run.GodotConsole.RunAsync(plan, arguments, asked => run(plan.Name, asked))
@@ -644,8 +647,8 @@ public sealed class DebugController : IDisposable
         // A web app's pages kept up with its static files and its updates, through the SDK's own browser refresh.
         (BrowserRefresh? browser, Run.LaunchPlan refreshed, string? unkept) = hotReloadOn && !elsewhere && place is null ? await BrowserRefresh.ForAsync(plan) : (null, plan, null);
         return await OpenAsync((built, log, output, starting) => DebugSession.LaunchAsync(refreshed, Breakpoints, built, log, output, inTerminal, ColumnOf, hotReloadOn, starting, elsewhere, place),
-            plan.Name, launched: true, inTerminal: inTerminal is not null, hotReloadOn: hotReloadOn, tab: tab, app: app, plan: refreshed, edits: edits, hook: hook,
-            browser: browser, unkept: unkept);
+            plan.Name, launched: true, inTerminal: inTerminal is not null, hotReloadOn: hotReloadOn, group: copies, tab: tab, app: app, plan: refreshed, edits: edits, hook: hook,
+            browser: browser, unkept: unkept, copy: copies is not null);
     }
 
     /// <summary>The column (from one) a line (from zero) asks the debugger for, in the file's text (an open file's as it is
@@ -743,7 +746,7 @@ public sealed class DebugController : IDisposable
     /// of the plan's name, launches the game itself (<see cref="Godot.GodotScriptAdapter"/>), its console the game's output, or
     /// a tab of the Terminal window when its configuration uses the terminal, and Stop there ends it. Null once the session is
     /// open, else why not.</summary>
-    public Task<string?> LaunchScriptsAsync(Run.LaunchPlan plan, Godot.GodotGame game)
+    public Task<string?> LaunchScriptsAsync(Run.LaunchPlan plan, Godot.GodotGame game, string? copies = null)
     {
         UiThread.Check();
         Func<RunInTerminalArguments, Task<Run.TerminalRun>>? inTerminal = plan.Console == Run.ConsoleKind.Terminal && RunInTerminal is { } run
@@ -753,7 +756,23 @@ public sealed class DebugController : IDisposable
         Godot.GodotScriptAdapter adapter = new(game, end, null);
         adapter.Start();
         return OpenAsync((built, log, output, starting) => DebugSession.LaunchInProcessAsync(end, DebugEngine.GDScript, plan, Breakpoints, built, log, output, inTerminal,
-            ColumnOf, starting), plan.Name, launched: true, inTerminal: inTerminal is not null, plan: plan);
+            ColumnOf, starting), plan.Name, launched: true, inTerminal: inTerminal is not null, group: copies, plan: plan, copy: copies is not null);
+    }
+
+    /// <summary>The live tabs of a configuration's game, one copy or several (<see cref="Run.GameCopies"/>), each by its place from one.</summary>
+    public IReadOnlyList<(DebugTab Tab, int Copy)> CopiesOf(string configuration) =>
+        [.. view.Sessions.Where(t => t.IsLive && t.Companion is null).Select(t => (Tab: t, Of: Run.GameCopies.Of(t.Name)))
+            .Where(c => c.Of.Configuration == configuration).Select(c => (c.Tab, c.Of.Copy))];
+
+    /// <summary>Makes the live tabs of a configuration's game copies of it, so Stop ends them with one more launched beside them.</summary>
+    public void JoinCopies(string configuration)
+    {
+        UiThread.Check();
+        foreach ((DebugTab tab, _) in CopiesOf(configuration))
+        {
+            tab.Copy = true;
+            tab.Group = configuration;
+        }
     }
 
     /// <summary>What a Blazor app's WebAssembly tab is called after the app's own.</summary>
@@ -885,7 +904,7 @@ public sealed class DebugController : IDisposable
     private async Task<string?> OpenAsync(Func<BuiltLines, Action<string>, Action<OutputEvent>, Action<DebugSession>, Task<DebugSession>> open, string name, bool launched,
         bool inTerminal = false, bool hotReloadOn = false, AdapterPlace? place = null, string? group = null, DebugTab? tab = null, LiveApp? app = null,
         Run.LaunchPlan? plan = null, BuiltEdits? edits = null, UpdateHandlerHook? hook = null, DebugTab? companion = null, string? attachedWords = null,
-        BrowserRefresh? browser = null, string? unkept = null, (IReadOnlyList<string> Projects, string Program)? inBrowser = null)
+        BrowserRefresh? browser = null, string? unkept = null, (IReadOnlyList<string> Projects, string Program)? inBrowser = null, bool copy = false)
     {
         UiThread.Check();
         // A start that opens no session lets go of its update handlers' hook and its pages' refresh with it.
@@ -925,6 +944,7 @@ public sealed class DebugController : IDisposable
         tab ??= Place(name);
         tab.Companion = companion;
         tab.Group = group ?? tab.Group;
+        tab.Copy = copy;
         tab.App = app ?? tab.App;
         tab.Plan = plan;
         tab.Handlers?.Dispose();
@@ -1473,11 +1493,14 @@ public sealed class DebugController : IDisposable
     /// <summary>Input for the program, which a session that has ended, or an adapter gone, may never take: its end says so.</summary>
     private static void Send(Task sending) => UnawaitedWork.Dismiss(sending);
 
-    /// <summary>Stop: the chosen program ends, or, with none chosen that is debugged, every one does (Stop All).</summary>
+    /// <summary>Stop: the chosen program ends, with every copy of it where it is one of a game's copies
+    /// (<see cref="DebugTab.Copy"/>), or, with none chosen that is debugged, every one does (Stop All).</summary>
     public Task StopAsync()
     {
         UiThread.Check();
-        return chosen is { IsLive: true } tab ? StopAsync(tab) : StopAllAsync();
+        return chosen is { IsLive: true } tab
+            ? (tab.Companion ?? tab) is { Copy: true, Group: { } copies } ? Task.WhenAll([.. view.Sessions.Where(t => t.IsLive && t.Copy && t.Group == copies).Select(StopAsync)]) : StopAsync(tab)
+            : StopAllAsync();
     }
 
     /// <summary>Stop All: every program debugged ends, as Stop ends one.</summary>

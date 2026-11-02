@@ -28,6 +28,9 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private readonly Control aspireRow;
     private readonly Control godotRow;
     private readonly Control sceneRow;
+
+    /// <summary>The rows of a Godot game's copies: how many, and each one's own arguments.</summary>
+    private readonly Control[] copyRows = new Control[2];
     private readonly Control[] browserRows;
 
     /// <summary>The rows of what a build makes (its framework, launch profile and build before launch), which a Godot project
@@ -106,6 +109,14 @@ public sealed class RunConfigurationsDialog : IdeWindow
         });
         GodotBox = new ComboBox { Classes = { StyleClasses.Form }, ItemsSource = GodotStarts, Name = "GodotBox" };
         SceneBox = new ComboBox { Classes = { StyleClasses.Form }, ItemsSource = SceneStarts, Name = "SceneBox" };
+        CopiesBox = new NumericUpDown { Minimum = 1, Maximum = GameCopies.Most, Increment = 1, FormatString = "0", Width = 140, Name = "CopiesBox" };
+        ToolTip.SetTip(CopiesBox, "How many copies of the game a launch starts side by side (a server and its clients), each a run of its own with its own console: "
+            + "debugged in a Debug tab of its own, or run in a tab of the Terminal window; Stop ends them together");
+        CopyArgumentsBox = new TextBox
+        {
+            AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, MinHeight = 56, Name = "CopyArgumentsBox",
+            PlaceholderText = "A line each, from the first copy: its own arguments after the configuration's (-- server, then -- client)",
+        };
         ProgramBox = Field(OwnProgram);
         // Named, as the boxes a screenshot's --click-name reaches.
         ArgumentsBox = Field(OwnArguments);
@@ -137,6 +148,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
         {
             GodotScene = SceneBox.SelectedIndex == 1 ? RunConfiguration.CurrentScene : c.GodotScene == RunConfiguration.CurrentScene ? null : c.GodotScene,
         });
+        CopiesBox.ValueChanged += (_, e) => Edit(c => c with { GodotCopies = e.NewValue is { } copies ? (int)copies : 1 }, reshow: true);
+        CopyArgumentsBox.TextChanged += (_, _) => Edit(c => c with { CopyArguments = CopiesOf(CopyArgumentsBox.Text) });
         ProgramBox.TextChanged += (_, _) => Edit(c => c with { Program = ProgramBox.Text?.Trim() ?? string.Empty });
         ArgumentsBox.TextChanged += (_, _) => Edit(c => c with { Arguments = ArgumentsBox.Text ?? string.Empty });
         WorkingDirectoryBox.TextChanged += (_, _) => Edit(c => c with { WorkingDirectory = WorkingDirectoryBox.Text?.Trim() ?? string.Empty });
@@ -212,6 +225,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
         aspireRow = Row("Aspire resources", AspireTable, top: true, fields: ["serviceActions", "serviceProjects"]);
         godotRow = Row("Starts", GodotBox, fields: ["godotEditor"]);
         sceneRow = Row("Scene", SceneBox, fields: ["godotScene"]);
+        copyRows[0] = Row("Copies", CopiesBox, fields: ["godotCopies"]);
+        copyRows[1] = Row("Each copy's arguments", CopyArgumentsBox, top: true, fields: ["copyArguments"]);
         browserRows = [Row("Open browser", BrowserBox, fields: ["launchBrowser"]), Row("URL", BrowserUrlBox, fields: ["browserUrl"])];
         pages =
         [
@@ -220,6 +235,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (aspireRow, [RunKind.Project]),
             (godotRow, [RunKind.Project]),
             (sceneRow, [RunKind.Project]),
+            (copyRows[0], [RunKind.Project]),
+            (copyRows[1], [RunKind.Project]),
             (builtRows[0] = Row("Target framework", FrameworkBox, fields: ["framework"]), [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
             (builtRows[1] = Row("Launch profile", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { ProfileBox, SaveAsProfileButton } }), [RunKind.Project]),
             (Row("Exe path", ProgramBox, fields: ["program"]), [RunKind.Project]),
@@ -399,6 +416,23 @@ public sealed class RunConfigurationsDialog : IdeWindow
 
     /// <summary>The scene a Godot project's game starts in: its main scene, or the one open in the editor as it starts.</summary>
     public ComboBox SceneBox { get; }
+
+    /// <summary>How many copies of a Godot project's game a launch starts.</summary>
+    public NumericUpDown CopiesBox { get; }
+
+    /// <summary>Each copy's own arguments, a line each.</summary>
+    public TextBox CopyArgumentsBox { get; }
+
+    /// <summary>Each copy's arguments from the box's lines, the lines past the last with words left out.</summary>
+    private static List<string> CopiesOf(string? text)
+    {
+        List<string> lines = [.. (text ?? string.Empty).Split('\n').Select(l => l.TrimEnd('\r').Trim())];
+        while (lines.Count > 0 && lines[^1].Length == 0)
+        {
+            lines.RemoveAt(lines.Count - 1);
+        }
+        return lines;
+    }
 
     /// <summary>The choices of <see cref="SceneBox"/>, the main scene's first.</summary>
     public static readonly string[] SceneStarts = ["Its main scene", "The scene open in the editor"];
@@ -977,6 +1011,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
             bool godot = !shown.IsContainer && project?.GodotFolder is not null;
             GodotBox.SelectedIndex = shown.GodotEditor ? 1 : 0;
             SceneBox.SelectedIndex = shown.GodotScene == RunConfiguration.CurrentScene ? 1 : 0;
+            CopiesBox.Value = shown.GodotCopies;
+            CopyArgumentsBox.Text = string.Join(Environment.NewLine, shown.CopyArguments);
             ProgramBox.PlaceholderText = godot ? GodotProgram(project?.IsScriptGame == true) : OwnProgram;
             ArgumentsBox.PlaceholderText = godot ? GodotArguments : OwnArguments;
             WorkingDirectoryBox.PlaceholderText = godot ? GodotWorkingDirectory : OwnWorkingDirectory;
@@ -1007,6 +1043,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
             aspireRow.IsVisible = !shown.IsContainer && shown.Aspire;
             godotRow.IsVisible = godot;
             sceneRow.IsVisible = godot && !shown.GodotEditor;
+            copyRows[0].IsVisible = godot && !shown.GodotEditor;
+            copyRows[1].IsVisible = godot && !shown.GodotEditor && shown.GodotCopies > 1;
             foreach (Control browser in godot ? browserRows : [])
             {
                 browser.IsVisible = false;

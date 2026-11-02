@@ -77,6 +77,13 @@ public sealed record RunConfiguration
     /// <summary>What <see cref="GodotScene"/> is for the scene open in the editor.</summary>
     public const string CurrentScene = "current";
 
+    /// <summary>For a Godot project's game, how many copies of it a launch starts side by side (a server and its clients),
+    /// each a run of its own (<see cref="GameCopies"/>); one for one game.</summary>
+    public int GodotCopies { get; init; } = 1;
+
+    /// <summary>Each copy's own arguments after the configuration's, by its place from the first: a copy past them has none.</summary>
+    public List<string> CopyArguments { get; init; } = [];
+
     /// <summary>The target framework run, for a project with several; empty for the first.</summary>
     public string Framework { get; init; } = string.Empty;
 
@@ -327,6 +334,8 @@ public sealed record RunConfiguration
         LaunchProfile = LaunchProfile ?? string.Empty,
         Program = Program ?? string.Empty,
         Arguments = Arguments ?? string.Empty,
+        GodotCopies = Math.Clamp(GodotCopies, 1, GameCopies.Most),
+        CopyArguments = [.. (CopyArguments ?? []).Select(a => a ?? string.Empty).Take(GameCopies.Most)],
         Environment = (Environment ?? []).Where(v => !string.IsNullOrEmpty(v.Key)).ToDictionary(v => v.Key, v => v.Value ?? string.Empty),
         WorkingDirectory = WorkingDirectory ?? string.Empty,
         BrowserUrl = BrowserUrl ?? string.Empty,
