@@ -15,6 +15,10 @@ public static partial class GodotAgent
     /// or why not.</summary>
     public const string Said = "passenger:said";
 
+    /// <summary>The call every other comes through, by its name, its ask and its other arguments, which waits while the
+    /// helper's own members are still being made.</summary>
+    public const string Asked = "asked";
+
     /// <summary>The name of its script's file.</summary>
     private const string FileName = "passenger_agent.gd";
 

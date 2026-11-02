@@ -760,7 +760,8 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         agentAsked[ask] = asked;
         try
         {
-            await SendAsync(GodotWords.LiveNodeCall, [AgentPath, call, ask, .. arguments]);
+            // Through the one call the helper guards every other with.
+            await SendAsync(GodotWords.LiveNodeCall, AgentPath, GodotAgent.Asked, call, ask, new List<object?>(arguments));
             if (then is not null)
             {
                 await then();

@@ -1,7 +1,7 @@
 extends Node
 ## Passenger's helper in a game it debugs: where the nodes are, input given as a person gives it, the frames the game
-## has run, and the values of its scripts' members. Each call's first argument is its ask, answered by a passenger:said
-## message of the ask, whether it was done, and what it came to.
+## has run, and the values of its scripts' members. Each call comes through asked, its first argument its ask, answered by
+## a passenger:said message of the ask, whether it was done, and what it came to.
 
 const SAID := "passenger:said"
 const SHIFT := 1
@@ -19,6 +19,18 @@ var _indexed = false
 var _stepping := 0
 ## Whether the frame stepped ends the step itself, where no frame is drawn for Godot to end it at.
 var _ends_step := false
+## The last member, so it is set only once every other member's default is (members are made in the order written).
+var _made = true
+
+
+## Every call Passenger makes, by its name, its ask and its other arguments. Godot reads the debugger's messages between a
+## script's lines, its members' defaults among them, so a call can come while those are being made: it waits until they
+## are, or the defaults still to come would overwrite what it set.
+func asked(named: String, ask: int, arguments: Array) -> void:
+    if not _made:
+        asked.call_deferred(named, ask, arguments)
+        return
+    callv(named, [ask] + arguments)
 
 
 func _say(ask: int, done: bool, data: Array) -> void:
@@ -333,7 +345,7 @@ func step(ask: int, ends_step: bool) -> void:
 
 
 func _index(node: Node) -> void:
-    if node == self or typeof(_scripted) != TYPE_DICTIONARY:
+    if node == self:
         return
     var script = node.get_script()
     while script is Script:
@@ -346,8 +358,6 @@ func _index(node: Node) -> void:
 
 
 func _unindex(node: Node) -> void:
-    if typeof(_scripted) != TYPE_DICTIONARY:
-        return
     var script = node.get_script()
     while script is Script:
         if _scripted.has(script.resource_path):
@@ -399,9 +409,7 @@ func _value(node: Node, name: String) -> Array:
 ## For each script asked of (its path, the id of the node chosen or 0, the members named): how many nodes run it, the node
 ## read (the one chosen where it runs the script, else the only one, else none), its name, and each member's value.
 func values(ask: int, asks: Array) -> void:
-    # Godot reads the debugger's messages between a script's lines, so a call can come while this node's members are still
-    # being made, which then makes them again: the nodes are listed again once that is so.
-    if not _indexed or typeof(_scripted) != TYPE_DICTIONARY:
+    if not _indexed:
         _indexed = true
         _scripted = {}
         _index_under(get_tree().root)
@@ -409,20 +417,20 @@ func values(ask: int, asks: Array) -> void:
             get_tree().node_added.connect(_index)
             get_tree().node_removed.connect(_unindex)
     var answers: Array = []
-    for asked in asks:
-        var nodes: Dictionary = _scripted.get(asked[0], {})
+    for wanted in asks:
+        var nodes: Dictionary = _scripted.get(wanted[0], {})
         var found = null
-        if nodes.has(asked[1]):
-            found = nodes[asked[1]]
+        if nodes.has(wanted[1]):
+            found = nodes[wanted[1]]
         elif nodes.size() == 1:
             found = nodes.values()[0]
         var read: Array = []
         if is_instance_valid(found):
-            for name in asked[2]:
+            for name in wanted[2]:
                 read.append(_value(found, name))
             answers.append([nodes.size(), found.get_instance_id(), String(found.name), read])
         else:
-            for name in asked[2]:
+            for name in wanted[2]:
                 read.append([])
             answers.append([nodes.size(), 0, "", read])
     _say(ask, true, [answers])

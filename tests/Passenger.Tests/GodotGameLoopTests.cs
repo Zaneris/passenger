@@ -117,6 +117,33 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
         }
     }
 
+    /// <summary>Passenger's helper, brought into a game by counts of its frames asked the moment its scene is up, several at
+    /// once so they reach the game as its script is set, answers every one, on each of several starts of the game: a call that
+    /// comes while the helper's members are still being made waits for them rather than going unanswered.</summary>
+    [AvaloniaFact]
+    public void The_helper_brought_in_by_counts_asked_at_once_answers_every_one_each_time_the_game_starts()
+    {
+        MainWindow window = Open();
+        try
+        {
+            for (int start = 1; start <= 3; start++)
+            {
+                GodotGame running = Start(window);
+                // The helper comes in beside the game's scene, which a game connects before it loads.
+                Ui.WaitFor(() => running.Monitors is { Nodes: > 1 }, () => $"the game's scene to be up, start {start} ({running.Monitors}; {window.Status})", TimeSpan.FromMinutes(1));
+                Task<long?>[] counts = [.. Enumerable.Range(0, 6).Select(_ => running.TryCountAsync())];
+                long?[] answered = Ui.AwaitPumped(Task.WhenAll(counts), $"the counts asked as the helper came in, start {start}", TimeSpan.FromMinutes(1));
+                Assert.True(answered.All(frame => frame >= 1),
+                    $"On start {start} the helper did not answer every count asked as it came in: {string.Join(", ", answered.Select(frame => frame?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"))} ({window.Status})");
+                Stop(window);
+            }
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>A window on the project, no C# language server, the Godot editors it starts for GDScript keeping the run's user folders.</summary>
     private MainWindow Open()
     {
