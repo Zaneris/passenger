@@ -52,6 +52,19 @@ public partial class MainWindow
             WhyNot = _ => Engine.Known is { IsReady: true } ? null : "The container engine is not running",
             Works = AppActions.ContainerPrune,
         });
+        // A Dockerfile's base images are asked of Docker Scout only as the person asks, which then follows its saves.
+        actions.Add(new IdeAction(AppActions.ScoutBaseImages, "Check Base Images with Docker Scout", "Containers", context =>
+        {
+            if (Editors.Active is { } file && session.Web?.Checks.Scout(file) == true)
+            {
+                status.Text = $"Docker Scout is checking the base images of {Path.GetFileName(file.Path)}, sending their package lists to Docker's Scout service";
+            }
+        })
+        {
+            WhyNot = _ => Editors.Active is not { } file ? Refusals.NoFile
+                : Languages.Language.ForPath(file.Path) != Languages.Language.Dockerfile ? "The file shown is not a Dockerfile" : null,
+            Words = ["docker scout", "CVE", "Vulnerabilities", "Base Image"],
+        });
         actions.Add(new IdeAction(AppActions.ContainerInspect, "Inspect", "Containers", context => IdeErrors.Observe(InspectAsync(Chosen()!)))
         {
             WhyNot = _ => Chosen() is { Kind: not ContainerRowKind.Group and not ContainerRowKind.Project and not ContainerRowKind.AppHost } ? null

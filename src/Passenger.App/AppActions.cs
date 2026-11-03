@@ -163,6 +163,7 @@ public static class AppActions
     public const string ContainerPull = "app.containers.pull";
     public const string ContainerPrune = "app.containers.prune";
     public const string ContainerInspect = "app.containers.inspect";
+    public const string ScoutBaseImages = "app.containers.scoutBaseImages";
     public const string ContainerShell = "app.containers.shell";
 
     // The Containers window's tabs, its log's Find, and its Telemetry's log trace and span logs, as Aspire's are.

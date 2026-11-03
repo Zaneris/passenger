@@ -65,6 +65,7 @@ public sealed class ContainersView : DockPanel
         Stats = new ContainerStatsPane(chosen);
         Files = new ContainerFilesPane(chosen, parts.StateFolder);
         Details = new ContainerDetailsPane(chosen, parts.Browse, () => State?.Endpoint);
+        ImageDetails = new ImageDetailsPane(chosen);
         Telemetry = new TelemetryView(AppActions.ContainersShowTrace, AppActions.ContainersShowRelatedLogs, id =>
         {
             Request(id);
@@ -168,6 +169,9 @@ public sealed class ContainersView : DockPanel
     public ContainerFilesPane Files { get; }
 
     public ContainerDetailsPane Details { get; }
+
+    /// <summary>An image's Details tab, its known vulnerabilities through Docker Scout once asked.</summary>
+    public ImageDetailsPane ImageDetails { get; }
 
     /// <summary>The Telemetry tab's logs and traces, a log's trace and a span's logs the window's actions.</summary>
     public TelemetryView Telemetry { get; }
@@ -355,6 +359,7 @@ public sealed class ContainersView : DockPanel
         Log.Stop();
         Stats.Stop();
         Details.Show(null);
+        ImageDetails.Show(null);
         Telemetry.Watch(null, null);
     }
 
@@ -593,14 +598,22 @@ public sealed class ContainersView : DockPanel
     }
 
     /// <summary>The chosen row's details: a container's Log, Stats, Files and Details, a service's Log, Stats and its
-    /// container's Details, a project's or an AppHost's Log and Stats, nothing for the rest; streamed only while shown.</summary>
+    /// container's Details, a project's or an AppHost's Log and Stats, an image's Details alone, nothing for the rest;
+    /// streamed only while shown.</summary>
     private void ShowChosen()
     {
         ContainerRow? row = Chosen;
         bool container = row?.Container is not null;
-        bool detailed = row is { Kind: ContainerRowKind.Service or ContainerRowKind.Container } && row.Containers.Count > 0;
+        bool image = row is { Kind: ContainerRowKind.Image, Object: not null };
+        bool detailed = row is { Kind: ContainerRowKind.Service or ContainerRowKind.Container } && row.Containers.Count > 0 || image;
         // A service its run left unstarted has no container to stream from: the pane says what starts it.
-        bool streams = shown && row is { Kind: ContainerRowKind.Project or ContainerRowKind.AppHost or ContainerRowKind.Service or ContainerRowKind.Container, LeftUnstarted: false };
+        bool streams = shown && (row is { Kind: ContainerRowKind.Project or ContainerRowKind.AppHost or ContainerRowKind.Service or ContainerRowKind.Container, LeftUnstarted: false } || image);
+        if (image)
+        {
+            shownTab = DetailsTab;
+        }
+        tabs[LogTab].IsVisible = !image;
+        tabs[StatsTab].IsVisible = !image;
         nothingChosen.Text = row is { LeftUnstarted: true } ? ContainerCommands.NotStarted(row) : NothingChosen;
         TelemetrySource? telemetry = (row?.Project?.Name ?? row?.Container?.Project) is { } project ? TelemetryOf?.Invoke(project) : null;
         tabs[FilesTab].IsVisible = container;
@@ -621,14 +634,15 @@ public sealed class ContainersView : DockPanel
         {
             StatsTab => Stats,
             FilesTab => Files,
-            DetailsTab => Details,
+            DetailsTab => image ? ImageDetails : Details,
             TelemetryTab => Telemetry.Both,
             _ => Log,
         };
         Log.Show(streams && shownTab == LogTab ? row : null);
         Stats.Show(streams && shownTab == StatsTab ? row : null);
         Files.Show(streams && shownTab == FilesTab ? row : null);
-        Details.Show(streams && shownTab == DetailsTab ? row : null);
+        Details.Show(streams && shownTab == DetailsTab && !image ? row : null);
+        ImageDetails.Show(streams && image ? row!.Object : null);
         // A service's or container's own records; a project's every service's, as the dashboard's own row's are.
         string? service = row?.Service ?? row?.Container?.Service;
         Telemetry.Watch(streams && shownTab == TelemetryTab ? telemetry : null, Telemetry.Shown, service == ContainerTelemetry.Service ? null : service);

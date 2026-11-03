@@ -49,6 +49,33 @@ public sealed class EngineChecks : IDisposable
     /// <summary>A file's problems changed (<see cref="Problems"/>), on the UI thread.</summary>
     public event EventHandler? Changed;
 
+    /// <summary>The Dockerfiles whose base images the person asked Docker Scout of, checked again with them at each save.</summary>
+    private readonly HashSet<string> scouted = new(PathNames.Comparer);
+
+    /// <summary>What Scout said of each base image asked, by its name: asked again only when the person asks again.</summary>
+    internal System.Collections.Concurrent.ConcurrentDictionary<string, ScoutReport> ScoutReports { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Whether a Dockerfile's base images are checked with Docker Scout, as the person asked.</summary>
+    internal bool Scouts(string path) => scouted.Contains(path);
+
+    /// <summary>Check Base Images with Docker Scout: an open Dockerfile's FROM images asked of Scout now (again, where asked
+    /// before), and with each save from now on. False for a file that is no open Dockerfile.</summary>
+    public bool Scout(OpenDocument document)
+    {
+        UiThread.Check();
+        if (!checks.TryGetValue(document, out EngineCheck? check) || check is not DockerfileCheck dockerfile)
+        {
+            return false;
+        }
+        scouted.Add(document.Path);
+        foreach (string image in DockerfileCheck.BaseImages(document.Text.Snapshot).Select(b => b.Image))
+        {
+            ScoutReports.TryRemove(image, out _);
+        }
+        dockerfile.Run();
+        return true;
+    }
+
     /// <summary>Every open file's problems as the engine last found them, each once: a compose file's may be its override's.</summary>
     public IReadOnlyList<Problem> Problems => [.. checks.Values.SelectMany(c => c.Problems).Distinct()];
 
@@ -475,34 +502,141 @@ internal abstract class EngineCheck : IDisposable
 /// on its text (its syntax directive blanked, <see cref="BuiltIn"/>) as it opens and is saved, no build, no context, on the
 /// context's own builder and frontend (never a builder container or a frontend image started for it). Each rule a line
 /// breaks is a warning, linked to its page; a build error is said too, but not a parse error (the server marks those) nor
-/// a registry out of reach (BuildKit reads each base image's metadata, so offline it checks nothing).</summary>
+/// a registry out of reach (BuildKit reads each base image's metadata, so offline it checks nothing). Once the person asks
+/// (<see cref="EngineChecks.Scout"/>), each FROM's image is asked of Docker Scout too, marked where it has critical or
+/// high vulnerabilities, with the newer tag Scout recommends as its fix.</summary>
 internal sealed class DockerfileCheck(EngineChecks owner, OpenDocument document, WebDocument web) : EngineCheck(owner, document, web)
 {
     /// <summary>How long a check may take: reading a base image's metadata from its registry the first time included.</summary>
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(60);
 
+    private bool buildKit;
+    private bool scouting;
+
     protected override bool AsTyped => false;
 
     protected override bool Hints => false;
 
-    protected override bool Wanted => Owner.BuildKit;
+    protected override bool Wanted => Owner.BuildKit || Owner.Scouts(Document.Path);
+
+    protected override void Starting()
+    {
+        buildKit = Owner.BuildKit;
+        scouting = Owner.Scouts(Document.Path);
+    }
 
     protected override async Task<Outcome> CheckAsync(ContainerEngine engine, string path, TextSnapshot snapshot, string text, CancellationToken cancel)
+    {
+        List<Finding> found = buildKit ? [.. await BuildKitAsync(engine, path, snapshot, text, cancel)] : [];
+        if (scouting)
+        {
+            found.AddRange(await ScoutAsync(engine, path, snapshot, cancel));
+        }
+        return new Outcome(found, []);
+    }
+
+    /// <summary>Each FROM's image as Docker Scout found it: a warning on its line where it has critical or high
+    /// vulnerabilities (its tag's fix the tag Scout recommends), or where Scout could not say why; none for an image that
+    /// is well. Each image is asked once until the person asks again.</summary>
+    private async Task<IReadOnlyList<Finding>> ScoutAsync(ContainerEngine engine, string path, TextSnapshot snapshot, CancellationToken cancel)
+    {
+        List<Finding> found = [];
+        foreach (BaseImage base_ in BaseImages(snapshot))
+        {
+            if (!Owner.ScoutReports.TryGetValue(base_.Image, out ScoutReport? report))
+            {
+                report = await DockerScout.CheckAsync(engine, base_.Image, cancel);
+                Owner.ScoutReports[base_.Image] = report;
+            }
+            TextRange line = Lines(snapshot, base_.Line, base_.Line);
+            if (report.Problem is { } problem)
+            {
+                found.Add(new Finding(ProblemSeverity.Warning, $"Docker Scout: {problem}", path, snapshot.GetPosition(line.Start), line));
+            }
+            else if (report.Grave)
+            {
+                string fixedBy = report.Recommended is { } tag ? $"; Scout recommends {base_.Repository}:{tag}" : string.Empty;
+                found.Add(new Finding(ProblemSeverity.Warning, $"Docker Scout: {base_.Image} has {report.Counts}{fixedBy}", path, snapshot.GetPosition(line.Start), line)
+                {
+                    Fixes = report.Recommended is { } recommended ? now => Fix(now, base_, recommended) : null,
+                });
+            }
+        }
+        return found;
+    }
+
+    /// <summary>The fix of a base image's tag on the text as it stands: its tag (or its name, with none) given the tag Scout
+    /// recommends, one edit; none once the line names another image.</summary>
+    private static IReadOnlyList<CSharp.EditorFix> Fix(TextSnapshot now, BaseImage was, string tag)
+    {
+        if (BaseImages(now).FirstOrDefault(b => b.Image == was.Image) is not { } at)
+        {
+            return [];
+        }
+        string image = $"{at.Repository}:{tag}";
+        return [new CSharp.EditorFix($"Use {image}", $"The base image Docker Scout recommends in place of {at.Image}", at.Range, image)];
+    }
+
+    /// <summary>A FROM's image: its line, its stretch of the text, the image as written and its repository (the image without
+    /// its tag or digest).</summary>
+    internal sealed record BaseImage(int Line, TextRange Range, string Image, string Repository);
+
+    /// <summary>The images a Dockerfile's FROMs name, but scratch, an earlier stage's name, and one an ARG gives
+    /// (<c>$VERSION</c>), which only a build knows.</summary>
+    internal static IReadOnlyList<BaseImage> BaseImages(TextSnapshot text)
+    {
+        List<BaseImage> found = [];
+        HashSet<string> stages = new(StringComparer.OrdinalIgnoreCase);
+        for (int line = 0; line < text.LineCount; line++)
+        {
+            string said = text.GetLineText(line);
+            string trimmed = said.TrimStart();
+            if (trimmed.Length < 5 || !trimmed.StartsWith("FROM", StringComparison.OrdinalIgnoreCase) || trimmed[4] is not (' ' or '\t'))
+            {
+                continue;
+            }
+            int at = said.Length - trimmed.Length + 4;
+            string[] words = said[at..].Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+            int index = Array.FindIndex(words, w => !w.StartsWith("--", StringComparison.Ordinal));
+            if (index < 0)
+            {
+                continue;
+            }
+            string image = words[index];
+            bool named = !image.Equals("scratch", StringComparison.OrdinalIgnoreCase) && !image.Contains('$', StringComparison.Ordinal) && !stages.Contains(image);
+            if (index + 2 < words.Length && words[index + 1].Equals("AS", StringComparison.OrdinalIgnoreCase))
+            {
+                stages.Add(words[index + 2]);
+            }
+            if (!named)
+            {
+                continue;
+            }
+            int start = text.GetLine(line).Start + said.IndexOf(image, at, StringComparison.Ordinal);
+            string bare = image.Split('@')[0];
+            int colon = bare.LastIndexOf(':');
+            found.Add(new BaseImage(line, new TextRange(start, image.Length), image, colon > bare.LastIndexOf('/') ? bare[..colon] : bare));
+        }
+        return found;
+    }
+
+    /// <summary>BuildKit's checks of the text: its rules' warnings and a build error it should say.</summary>
+    private async Task<IReadOnlyList<Finding>> BuildKitAsync(ContainerEngine engine, string path, TextSnapshot snapshot, string text, CancellationToken cancel)
     {
         EngineState state = await engine.StateAsync(cancel: cancel);
         // Podman has no BuildKit of its own: Docker's buildx on it would start one in a container. Said once by the window.
         if (state.IsPodman && state.Status is EngineStatus.Ready or EngineStatus.NoCompose)
         {
             Owner.Limit(state);
-            return Outcome.None;
+            return [];
         }
         if (state.Status is not (EngineStatus.Ready or EngineStatus.NoCompose) || state.BuildxVersion is null)
         {
-            return Outcome.None;
+            return [];
         }
         if (BuiltIn(text) is not { } checkedText)
         {
-            return Outcome.None;
+            return [];
         }
         List<string> words = ["buildx", "build", "--progress=quiet", "--call=check,format=json"];
         if (state.Context is { Length: > 0 } context)
@@ -517,7 +651,7 @@ internal sealed class DockerfileCheck(EngineChecks owner, OpenDocument document,
         {
             // An older buildx (before --call), or a builder that would not start: nothing to show, said in the log.
             IdeErrors.Write($"BuildKit's checks could not run on {path}: {ContainerEngine.Said(result)}");
-            return Outcome.None;
+            return [];
         }
         using JsonDocument read = JsonDocument.Parse(result.Output);
         JsonElement root = read.RootElement;
@@ -534,7 +668,7 @@ internal sealed class DockerfileCheck(EngineChecks owner, OpenDocument document,
         {
             found.Add(At(snapshot, path, error, ProblemSeverity.Error, $"BuildKit: {message}"));
         }
-        return new Outcome(found, []);
+        return found;
     }
 
     /// <summary>The text BuildKit is given: its <c>syntax</c> parser directive (<c># syntax=</c>, or the <c>// syntax=</c>
