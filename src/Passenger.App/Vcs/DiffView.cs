@@ -14,7 +14,8 @@ namespace Passenger.App.Vcs;
 /// between them, the words that changed inside its lines marked stronger, the two kept level as either scrolls. A band's
 /// arrow puts that change back; F7 and Shift+F7 (F8 and Shift+F8 too off the Mac) go to the next and previous one; F4 asks
 /// for its file at the caret's line (Jump to Source); Settings (its keys <see cref="AppActions.DiffSettings"/>'s) chooses
-/// how differences are highlighted, by words at first. Made by <see cref="DiffPanes"/>.</summary>
+/// how differences are highlighted, by words at first; Find searches the side with the caret (<see cref="ShowFind"/>).
+/// Made by <see cref="DiffPanes"/>.</summary>
 public sealed class DiffView : DockPanel, IOwnKeys
 {
     /// <summary>How long editing pauses before the differences are worked out again.</summary>
@@ -32,6 +33,9 @@ public sealed class DiffView : DockPanel, IOwnKeys
     private bool following;
     private string? separators;
     private string? note;
+
+    /// <summary>What each side is, above it.</summary>
+    private readonly (string Left, string Right) named;
 
     /// <summary>Each side's carets and scroll as the view left its window, until it is put back in one.</summary>
     private (SelectionSet Left, Vector LeftScroll, SelectionSet Right, Vector RightScroll)? away;
@@ -55,8 +59,9 @@ public sealed class DiffView : DockPanel, IOwnKeys
         bands = new DiffStrip(Bands, MergeSide.Left, Left, () => IsEditable, ignores: false, (band, _, _) => Revert(Hunks[band.Index])) { Width = 36 };
 
         Grid sides = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto,*"), RowDefinitions = new RowDefinitions("Auto,*") };
-        sides.Children.Add(DiffLines.Title(titles?.Left ?? "HEAD", 0));
-        sides.Children.Add(DiffLines.Title(titles?.Right ?? (editable ? "Your version" : "Your version (read-only)"), 2));
+        named = (titles?.Left ?? "HEAD", titles?.Right ?? (editable ? "Your version" : "Your version (read-only)"));
+        sides.Children.Add(DiffLines.Title(named.Left, 0));
+        sides.Children.Add(DiffLines.Title(named.Right, 2));
         Grid.SetRow(Left, 1);
         Grid.SetRow(bands, 1);
         Grid.SetColumn(bands, 1);
@@ -72,7 +77,12 @@ public sealed class DiffView : DockPanel, IOwnKeys
         Button jump = ToolButtons.Of(IconKeys.Edit, "Jump to Source (F4)", AskForSource);
         jump.Name = AppActions.DiffJumpToSource;
         Children.Add(DiffLines.Bar(name, Step, count, [jump], settings));
+        Find = new Editors.FindBar { [DockProperty] = Dock.Top };
+        Children.Add(Find);
         Children.Add(sides);
+        // An open Find follows the side the person works in.
+        Left.GotFocus += (_, _) => FollowFind(Left, opened: false);
+        Right.GotFocus += (_, _) => FollowFind(Right, opened: false);
 
         Left.ScrollChanged += (_, _) => Follow(Left, Right, toLeft: false);
         Right.ScrollChanged += (_, _) => Follow(Right, Left, toLeft: true);
@@ -82,6 +92,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
         DetachedFromVisualTree += (_, _) =>
         {
             rediff.Stop();
+            Find.Detach();
             mine.Changed -= OnMineChanged;
             comparing++;
             wording++;
@@ -118,6 +129,26 @@ public sealed class DiffView : DockPanel, IOwnKeys
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         Show(diff);
         IdeErrors.Observe(CompareAsync());
+    }
+
+    /// <summary>Find over the diff: it searches the side with the caret, the other side's matches marked too, F3 and Shift+F3
+    /// stepping through those of the side searched.</summary>
+    public Editors.FindBar Find { get; }
+
+    /// <summary>Opens Find on the side with the keys, the file's unless the last commit's has them; a side that is read-only
+    /// greys its replace row, saying so.</summary>
+    public void ShowFind(bool replace)
+    {
+        FollowFind(Left.IsKeyboardFocusWithin ? Left : Right, opened: true);
+        Find.Open(replace);
+    }
+
+    private void FollowFind(CodeEditor side, bool opened)
+    {
+        if (opened || Find.IsVisible)
+        {
+            Find.Attach(side, side == Left ? Right : Left, null, side == Right && IsEditable ? null : Refusals.ReadOnly(side == Left ? named.Left : named.Right));
+        }
     }
 
     /// <summary>The last commit's side.</summary>

@@ -60,9 +60,7 @@ public sealed class Navigator
         {
             if (shownLast is { } left && left != Editors.Active)
             {
-                TextSnapshot text = left.Text.Snapshot;
-                int caret = Math.Min(left.Selections.Primary.Caret, text.Length);
-                HistoryPlace place = new(left.Path, caret, text.GetLineFromOffset(caret));
+                HistoryPlace place = PlaceOf(left, left.Selections.Primary.Caret);
                 if (navigating || Editors.Active is null || !Editors.HasTab(left))
                 {
                     Places.Visited(place);
@@ -100,15 +98,21 @@ public sealed class Navigator
         }
     }
 
-    /// <summary>The caret's place in the file shown, as the navigation history keeps it.</summary>
-    private HistoryPlace? Here()
+    /// <summary>The caret's place in the file shown, as the navigation history keeps it: a diff's tab's in its file's side.</summary>
+    private HistoryPlace? Here() => Editors.Active is { } active ? PlaceOf(active, Editors.CodeEditor.Selections.Primary.Caret) : null;
+
+    /// <summary>A tab's place: a file's at a caret, a diff's at its file's side's caret, in that side's text.</summary>
+    private static HistoryPlace PlaceOf(OpenDocument tab, int caret)
     {
-        if (Editors.Active is not { } active)
+        if (tab.Diff is { } diff)
         {
-            return null;
+            TextSnapshot side = diff.Shown.File?.Text.Snapshot ?? diff.View?.Right.Document.Snapshot ?? tab.Text.Snapshot;
+            int at = Math.Min(diff.Caret, side.Length);
+            return new HistoryPlace(tab.Path, at, side.GetLineFromOffset(at)) { Diff = diff.Shown };
         }
-        int caret = Editors.CodeEditor.Selections.Primary.Caret;
-        return new HistoryPlace(active.Path, caret, active.Text.Snapshot.GetLineFromOffset(caret));
+        TextSnapshot text = tab.Text.Snapshot;
+        int offset = Math.Min(caret, text.Length);
+        return new HistoryPlace(tab.Path, offset, text.GetLineFromOffset(offset));
     }
 
     private bool Reachable(string path) => Editors.Documents.Any(d => d.Path == path) || File.Exists(path);
@@ -136,10 +140,34 @@ public sealed class Navigator
         {
             return;
         }
+        if (target.Diff is { } diff)
+        {
+            ShowDiff(diff, target.Offset);
+            return;
+        }
         Show(target.Path);
         if (Editors.Active is { } active && active.Path == target.Path)
         {
             Editors.CodeEditor.GoTo(active.Text.Snapshot.GetPosition(Math.Min(target.Offset, active.Text.Snapshot.Length)));
+        }
+    }
+
+    /// <summary>Back or Forward to a diff's tab: shown again, or opened afresh where it has closed, its file's side's caret
+    /// put back where it was.</summary>
+    private void ShowDiff(Vcs.DiffContent diff, int offset)
+    {
+        navigating = true;
+        try
+        {
+            Editors.ShowDiffAgain(diff);
+        }
+        finally
+        {
+            navigating = false;
+        }
+        if (Editors.Active is { Diff: { } tab } && tab.Shown.Key == diff.Key && tab.View is { } view)
+        {
+            view.Right.GoTo(view.Right.Document.Snapshot.GetPosition(Math.Min(offset, view.Right.Document.Snapshot.Length)));
         }
     }
 

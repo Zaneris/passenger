@@ -18,6 +18,9 @@ public partial class FindBar : UserControl
     private const string Searching = "Searching…";
 
     private CodeEditor? editor;
+
+    /// <summary>An editor beside the one searched whose own matches are marked too (a diff's other side), or null.</summary>
+    private CodeEditor? beside;
     private TextDocument? document;
     private SearchResult result = SearchResult.None;
 
@@ -65,8 +68,14 @@ public partial class FindBar : UserControl
     /// <summary>Follows whichever document the editor shows, or the table over it when there is one; called when a tab is
     /// activated and when a table file switches between its table and its text. A file shown read-only says why
     /// (<paramref name="readOnly"/>) on its replace row, greyed.</summary>
-    public void Attach(CodeEditor shown, CellGrid? table = null, string? readOnly = null)
+    public void Attach(CodeEditor shown, CellGrid? table = null, string? readOnly = null) => Attach(shown, null, table, readOnly);
+
+    /// <summary>Follows an editor as <see cref="Attach(CodeEditor, CellGrid?, string?)"/> does, the query's matches in
+    /// <paramref name="next"/> (a diff's other side) marked too, unsearched.</summary>
+    public void Attach(CodeEditor shown, CodeEditor? next, CellGrid? table = null, string? readOnly = null)
     {
+        beside?.SetHighlights([], -1);
+        beside = next;
         editor = shown;
         unchangeable = readOnly;
         Follow(table);
@@ -93,6 +102,8 @@ public partial class FindBar : UserControl
         }
         document = null;
         editor = null;
+        beside?.SetHighlights([], -1);
+        beside = null;
         Follow(null);
         result = SearchResult.None;
         searched = null;
@@ -173,6 +184,7 @@ public partial class FindBar : UserControl
         IsVisible = false;
         searching?.Cancel();
         editor?.SetHighlights([], -1);
+        beside?.SetHighlights([], -1);
         if (grid is not null)
         {
             grid.SetMatches([], -1);
@@ -394,8 +406,12 @@ public partial class FindBar : UserControl
     private void Show()
     {
         editor?.SetHighlights(result.Matches, current);
+        beside?.SetHighlights(TextSearch.FindAll(beside.Document.Snapshot, CurrentQuery, TextSearch.AtOnce).Matches, -1);
         ShowCount();
     }
+
+    /// <summary>The matches marked in the editor beside the one searched, as last shown.</summary>
+    public int MarkedBeside => beside?.Highlights.Count ?? 0;
 
     /// <summary>The count, or that a regex too slow for the UI thread is being searched off it.</summary>
     private void ShowCount() =>

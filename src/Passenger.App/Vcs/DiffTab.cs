@@ -38,8 +38,12 @@ public sealed class DiffTab : IDiffHost
     {
         DiffView view = Shown.Make();
         wire(view, this);
+        view.Right.SelectionChanged += (_, _) => Caret = view.Right.Selections.Primary.Caret;
         return view;
     }
+
+    /// <summary>Where the file's side's caret was last, in the file's text: the tab's place, which Back comes back to.</summary>
+    public int Caret { get; private set; }
 
     /// <summary>The diff asked for again: what it is now, which the groups showing it show afresh.</summary>
     public void Take(DiffContent shown)

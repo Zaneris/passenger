@@ -5,7 +5,12 @@ namespace Passenger.App.Vcs;
 /// <summary>A diff to show, whichever way Settings shows it (<see cref="Settings.AppSettings.OpenDiffsIn"/>): its title,
 /// what makes two the same (the versions and files compared), the file its right side is of, the open file whose text that
 /// side is (null where it is a copy, read-only), and its view, made afresh for each window or group that shows it.</summary>
-public sealed record DiffContent(string Title, string Key, string Path, OpenDocument? File, Func<DiffView> Make);
+public sealed record DiffContent(string Title, string Key, string Path, OpenDocument? File, Func<DiffView> Make)
+{
+    /// <summary>The diff asked for afresh, at the versions as they are then (the last commit's, the file's), shown where
+    /// Settings opens diffs; null where its versions are fixed (a commit's), which <see cref="Make"/> shows again.</summary>
+    public Func<Task<IDiffHost?>>? Again { get; init; }
+}
 
 /// <summary>Where a diff is shown: a window of its own over the IDE's (<see cref="DiffWindow"/>) or a tab of the editors
 /// (<see cref="DiffTab"/>), each holding open the file its right side edits.</summary>

@@ -2896,11 +2896,15 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }, cancel);
     }
 
+    /// <summary>A diff's tab as the workspace names it: a diff of its file, never the file's own tab.</summary>
+    private string DiffNamed(OpenDocument tab) => $"diff of {Relative(tab.Path)} ({tab.Diff!.Shown.Title})";
+
     private Workspace Snapshot()
     {
         ProjectSession session = Session;
         OpenDocument? active = Editors.Active;
-        TextPosition? caret = active is null ? null : Editors.CodeEditor.CaretPosition;
+        TextPosition? caret = active is { Diff: { } shown } ? shown.View?.Right.CaretPosition ?? new TextPosition(0, 0)
+            : active is null ? null : Editors.CodeEditor.CaretPosition;
         return new Workspace(
             session.Folder,
             session.Workspace?.Filter?.Path ?? session.Solution?.Path,
@@ -2912,8 +2916,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             [.. session.Configurations.All.Select(c => c.Name)],
             session.Configurations.Chosen?.Name,
             session.CSharp is not { } csharp ? "none" : csharp.IsReady ? "ready" : csharp.State,
-            [.. Editors.Documents.Where(d => d.IsModified || Editors.HasTab(d) || !kept.Keeps(d)).Select(d => Relative(d.Path) + (d.IsModified ? " (unsaved)" : ""))],
-            active is null ? null : $"{Relative(active.Path)}:{caret!.Value.Line + 1}:{caret.Value.Column + 1}",
+            [.. Editors.Documents.Where(d => d.IsModified || Editors.HasTab(d) || !kept.Keeps(d)).Select(d => Relative(d.Path) + (d.IsModified ? " (unsaved)" : "")),
+                .. Editors.Diffs.Select(DiffNamed)],
+            active is null ? null : $"{(active.Diff is null ? Relative(active.Path) : DiffNamed(active))}:{caret!.Value.Line + 1}:{caret.Value.Column + 1}",
             Session.Debug.Session?.State.ToString().ToLowerInvariant() ?? "not debugging")
         {
             SdkMissing = window.DotnetWant is { Install: not null } wanted && Refusals.Dotnet(wanted, session.Folder) is { } lacking

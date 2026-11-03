@@ -104,6 +104,12 @@ public partial class MainWindow
         _ => null,
     };
 
+    /// <summary>The diff of the diff window the keys are in (one of its own over the IDE's), whose Find is its own; null
+    /// elsewhere, a diff's tab among them, whose Find is the editors'.</summary>
+    private static Vcs.DiffView? DiffWindowOf(ActionContext context) =>
+        context.Focused is Avalonia.Visual focused && Avalonia.VisualTree.VisualExtensions.FindAncestorOfType<Vcs.DiffWindow>(focused, includeSelf: true) is { } window
+            ? window.View : null;
+
     /// <summary>The scope of the rows chosen in the Explorer while it has the keys; null elsewhere, for the scope
     /// kept.</summary>
     private Workspace.SearchScope? ExplorerScope(ActionContext context) =>
@@ -158,16 +164,22 @@ public partial class MainWindow
             {
                 console.Open(replace: false);
             }
+            else if (DiffWindowOf(c) is { } window)
+            {
+                window.ShowFind(replace: false);
+            }
             else
             {
                 Editors.ShowFind(replace: false);
             }
         }, c => c.ToolWindow?.Id is ToolWindowIds.Tests or ToolWindowIds.Problems || c.ToolWindow?.Id == ToolWindowIds.Explorer && Explorer.Tree.Root is not null || ConsoleFind(c) is not null
-            ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 0));
-        Add(A.Replace, "Replace", "IDE", _ => Editors.ShowFind(replace: true), Refusals.NeedsFile, ("Edit/Find", 0, 1));
-        Add(A.FindNext, "Find Next", "IDE", c => (ConsoleFind(c) ?? Editors.FindBar).Next(), c => ConsoleFind(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 2));
-        Add(A.FindPrevious, "Find Previous", "IDE", c => (ConsoleFind(c) ?? Editors.FindBar).Previous(), c => ConsoleFind(c) is not null ? null : Refusals.NeedsFile(c),
-            ("Edit/Find", 0, 3));
+            || DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 0));
+        Add(A.Replace, "Replace", "IDE", c => (DiffWindowOf(c) is { } window ? (Action<bool>)window.ShowFind : Editors.ShowFind)(true),
+            c => DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 1));
+        Add(A.FindNext, "Find Next", "IDE", c => (ConsoleFind(c) ?? DiffWindowOf(c)?.Find ?? Editors.FindBar).Next(),
+            c => ConsoleFind(c) is not null || DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 2));
+        Add(A.FindPrevious, "Find Previous", "IDE", c => (ConsoleFind(c) ?? DiffWindowOf(c)?.Find ?? Editors.FindBar).Previous(),
+            c => ConsoleFind(c) is not null || DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 3));
         Add(A.FindInFiles, "Find in Files…", "IDE", c => ShowFindInFiles(replace: false, ExplorerScope(c)), NeedsFolder, ("Edit/Find", 1, 0));
         Add(A.ReplaceInFiles, "Replace in Files…", "IDE", c => ShowFindInFiles(replace: true, ExplorerScope(c)), NeedsFolder, ("Edit/Find", 1, 1));
         Add(A.ExtendSelection, "Extend Selection", "Editor", _ => ExtendSelection(), Refusals.NeedsFile, ("Edit", 2, 1));

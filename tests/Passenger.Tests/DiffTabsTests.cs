@@ -202,6 +202,100 @@ public sealed class DiffTabsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Find in a diff's tab searches the side with the caret, its matches marked there and the other side's matches
+    /// of the same words marked too, Find Next stepping through those of the side searched; with the last commit's side
+    /// chosen, Find searches that side.</summary>
+    [AvaloniaFact]
+    public void Find_in_a_diff_tab_searches_the_side_with_the_caret_marking_the_other_and_find_next_steps_through_it()
+    {
+        MainWindow window = Open();
+        DiffView view = Assert.IsType<DiffView>(DiffFromCommit(window, byEnter: true).View);
+        Ui.Landed(() => view.Right.IsKeyboardFocusWithin, "the diff tab's side of the file to have the keys");
+        FindIn(window, view, view.Right, view.Left);
+        window.Close();
+    }
+
+    /// <summary>Find in a diff's window searches it as in its tab: the window's own Find, the IDE's editor left as it was.</summary>
+    [AvaloniaFact]
+    public void Find_in_a_diff_window_searches_the_side_with_the_caret_marking_the_other_and_find_next_steps_through_it()
+    {
+        MainWindow window = Open();
+        window.ApplySettings(window.Settings with { OpenDiffsIn = DiffPlace.Window });
+        DiffWindow shown = Assert.IsType<DiffWindow>(DiffFromCommit(window, byEnter: true));
+        Ui.Landed(() => shown.View.Right.IsKeyboardFocusWithin, "the diff window's side of the file to have the keys");
+        FindIn(shown, shown.View, shown.View.Right, shown.View.Left);
+        Assert.False(window.EditorArea.FindBar.IsVisible, "Find in the diff's window opened Find over the IDE's editor");
+        shown.Close();
+        window.Close();
+    }
+
+    /// <summary>Back from a file goes to the diff's tab Jump to Source came from, at its caret, and Forward to the file again;
+    /// a closed diff's tab opens again by Reopen Closed Tab, at the versions as they are now: the file's edit since in it.</summary>
+    [AvaloniaFact]
+    public void Back_returns_to_the_diff_tab_a_file_was_opened_from_and_reopen_closed_tab_brings_a_closed_diff_tab_back()
+    {
+        MainWindow window = Open();
+        DiffTab tab = Assert.IsType<DiffTab>(DiffFromCommit(window, byEnter: true));
+        DiffView view = Assert.IsType<DiffView>(tab.View);
+        view.Right.GoTo(new TextPosition(4, 4));
+        Ui.Press(window, "F4");
+        Ui.Settle();
+        Assert.True(window.EditorArea.Active is { Diff: null } file && file.Path.EndsWith("Shop.cs", StringComparison.Ordinal),
+            $"Jump to Source from the diff's tab showed {window.EditorArea.Active?.Title}, not Shop.cs");
+        Ui.Run(window, AppActions.Back);
+        Assert.True(window.EditorArea.Active == tab.Document, $"Back from the file went to {window.EditorArea.Active?.Title}, not the diff's tab it came from");
+        Assert.Equal(4, tab.View!.Right.CaretPosition.Line);
+        Ui.Run(window, AppActions.Forward);
+        Assert.True(window.EditorArea.Active is { Diff: null }, $"Forward from the diff's tab went to {window.EditorArea.Active?.Title}, not the file");
+
+        window.EditorArea.Activate(tab.Document);
+        Ui.Run(window, AppActions.CloseTab);
+        Ui.Settle();
+        Assert.Empty(window.EditorArea.Diffs);
+        Assert.True(window.EditorArea.Active is { Diff: null }, $"Closing the diff's tab showed {window.EditorArea.Active?.Title}, not Shop.cs");
+        // The file changed since the diff closed: the diff opened again shows it as it is now.
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "class Shop");
+        window.KeyTextInput(" // edited");
+        Ui.Run(window, AppActions.ReopenClosedTab);
+        Ui.Landed(() => window.EditorArea.Diffs.Count == 1 && window.EditorArea.Active?.Diff is not null, "the closed diff's tab opened again by Reopen Closed Tab");
+        Assert.Equal("Shop.cs: HEAD and your version", window.EditorArea.Active!.Title);
+        DiffView again = Assert.IsType<DiffView>(window.EditorArea.ActiveGroup.Diff);
+        Ui.WaitFor(() => again.Hunks.Count == 3, () => $"the reopened diff to have the file's new change as its first, where it has {string.Join(", ", again.Hunks)}");
+        Assert.Equal([new DiffHunk(0, 1, 0, 1), new DiffHunk(2, 1, 2, 1), new DiffHunk(4, 1, 4, 1)], again.Hunks);
+        window.Close();
+    }
+
+    /// <summary>Find over a diff's side with the keys, typed into where the keys are: "count" twice on each side.</summary>
+    private static void FindIn(Avalonia.Controls.Window keys, DiffView view, CodeEditor searched, CodeEditor beside)
+    {
+        Ui.Press(keys, Ui.Shortcut(AppActions.Find));
+        Assert.True(view.Find.IsVisible, "Find opened no find bar over the diff");
+        keys.KeyTextInput("count");
+        Ui.Settle();
+        string text = searched.Document.Snapshot.ToString();
+        int first = text.IndexOf("count", StringComparison.Ordinal);
+        int second = text.IndexOf("count", first + 1, StringComparison.Ordinal);
+        Assert.Equal(new Selection(first, first + 5), searched.Selections.Primary with { PreferredX = double.NaN });
+        Assert.Equal("1/2", view.Find.CountText);
+        Assert.True(beside.Highlights.Count == 2, $"The other side marked {beside.Highlights.Count} matches of \"count\", not its two");
+        Ui.Press(keys, Ui.Shortcut(AppActions.FindNext));
+        Assert.Equal(new Selection(second, second + 5), searched.Selections.Primary with { PreferredX = double.NaN });
+        Assert.Equal("2/2", view.Find.CountText);
+        Ui.Press(keys, "ESCAPE");
+        Assert.False(view.Find.IsVisible, "Escape left Find open over the diff");
+        Assert.True(searched.Highlights.Count == 0 && beside.Highlights.Count == 0, "Find closed left its matches marked");
+
+        // The last commit's side chosen, Find searches it.
+        beside.Focus();
+        Ui.Press(keys, Ui.Shortcut(AppActions.Find));
+        keys.KeyTextInput("int");
+        Ui.Settle();
+        int at = beside.Document.Snapshot.ToString().IndexOf("int", StringComparison.Ordinal);
+        Assert.Equal(new Selection(at, at + 3), beside.Selections.Primary with { PreferredX = double.NaN });
+        Assert.Equal("1/1", view.Find.CountText);
+        Ui.Press(keys, "ESCAPE");
+    }
+
     /// <summary>The folder open on Shop.cs, diffs set to open as tabs.</summary>
     private MainWindow Open()
     {

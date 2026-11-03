@@ -34,7 +34,7 @@ public partial class MainWindow
         TextDocument mine = open?.Text ?? new TextDocument(EditorArea.ReadText(right) ?? string.Empty);
         TextSnapshot text = mine.Snapshot;
         FileDiff diff = await BackgroundWork.Run(() => FileDiff.Compare(before, text));
-        return OpenLocalDiff(right, open, mine, diff, InFolder(left), other: left);
+        return OpenLocalDiff(right, open, mine, diff, InFolder(left), other: left, again: async () => await CompareFilesAsync(left, right));
     }
 
     /// <summary>A file by its path in the open folder, as the Explorer shows it; one outside it by its whole path.</summary>

@@ -216,7 +216,7 @@ public sealed partial class EditorArea : UserControl
 
     public EditorGroup ActiveGroup => activeGroup;
 
-    public FindBar FindBar => activeGroup.Find;
+    public FindBar FindBar => activeGroup.Diff?.Find ?? activeGroup.Find;
 
     /// <summary>The layer over the active group's window of editors that completion and the code actions' popups sit on.</summary>
     public Canvas AssistLayer => ActiveFrame.Assist;
@@ -535,12 +535,7 @@ public sealed partial class EditorArea : UserControl
         {
             return false;
         }
-        // A diff's tab is no file to open again.
-        if (document.Diff is not null)
-        {
-            return true;
-        }
-        closedTabs.Add(closing);
+        closedTabs.Add(document.Diff is { } diff ? closing with { Diff = diff.Shown } : closing);
         if (closedTabs.Count > ClosedTabsKept)
         {
             closedTabs.RemoveAt(0);
@@ -597,13 +592,34 @@ public sealed partial class EditorArea : UserControl
     /// goes), its place there, its caret and scroll, and whether it was pinned.</summary>
     private readonly List<ClosedTab> closedTabs = [];
 
-    private sealed record ClosedTab(string Path, WeakReference<EditorGroup> Group, int Index, TextPosition Caret, Vector Scroll, bool Pinned);
+    private sealed record ClosedTab(string Path, WeakReference<EditorGroup> Group, int Index, TextPosition Caret, Vector Scroll, bool Pinned)
+    {
+        /// <summary>For a diff's tab, the diff, opened afresh rather than its file.</summary>
+        public Vcs.DiffContent? Diff { get; init; }
+    }
+
+    /// <summary>Opens a diff again where it has closed (the window's, which knows how a diff is asked for): afresh, at the
+    /// versions as they are now; false when it cannot be (the file its side edited has closed).</summary>
+    public Func<Vcs.DiffContent, bool>? ReopenDiff { get; set; }
+
+    /// <summary>A diff's tab shown again: its own tab where it is open, else the diff opened afresh; false where neither can
+    /// be.</summary>
+    public bool ShowDiffAgain(Vcs.DiffContent diff)
+    {
+        if (Diffs.FirstOrDefault(d => d.Diff!.Shown.Key == diff.Key) is { } open)
+        {
+            Activate(open);
+            return true;
+        }
+        return ReopenDiff?.Invoke(diff) == true;
+    }
 
     /// <summary>Whether Reopen Closed Tab has a tab to bring back.</summary>
     public bool CanReopen => closedTabs.Count > 0;
 
     /// <summary>Reopen Closed Tab: the tab closed last opens again where it stood, in its group if that is still there
-    /// (else the active one), pinned if it was, its caret and scroll as they were. Null once one is open, else why not:
+    /// (else the active one), pinned if it was, its caret and scroll as they were; a diff's opened afresh, at the versions as
+    /// they are now (<see cref="ReopenDiff"/>). Null once one is open, else why not:
     /// none was closed, or none of those closed can be read any more.</summary>
     public string? ReopenClosedTab()
     {
@@ -611,6 +627,14 @@ public sealed partial class EditorArea : UserControl
         {
             ClosedTab closed = closedTabs[^1];
             closedTabs.RemoveAt(closedTabs.Count - 1);
+            if (closed.Diff is { } diff)
+            {
+                if (ShowDiffAgain(diff))
+                {
+                    return null;
+                }
+                continue;
+            }
             if (Load(closed.Path) is not { } document)
             {
                 continue;
@@ -711,13 +735,17 @@ public sealed partial class EditorArea : UserControl
         ActiveChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Opens the find bar over the active text file, with the replace row if asked; never over an asset preview or
-    /// a diff.</summary>
+    /// <summary>Opens the find bar over the active text file, with the replace row if asked, or a diff's own over its sides;
+    /// never over an asset preview.</summary>
     public void ShowFind(bool replace)
     {
         if (Active is { Asset: null, Diff: null })
         {
             activeGroup.Find.Open(replace);
+        }
+        else if (activeGroup.Diff is { } diff)
+        {
+            diff.ShowFind(replace);
         }
     }
 

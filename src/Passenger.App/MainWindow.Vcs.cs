@@ -78,6 +78,21 @@ public partial class MainWindow
 
     private void AddVcs()
     {
+        // A diff's tab brought back (Reopen Closed Tab, Back) is asked for afresh, else shown again while its file is open.
+        Editors.ReopenDiff = shown =>
+        {
+            if (shown.Again is { } again)
+            {
+                IdeErrors.Observe(again());
+                return true;
+            }
+            if (shown.File is not null && !Editors.Documents.Contains(shown.File))
+            {
+                return false;
+            }
+            ShowDiff(shown);
+            return true;
+        };
         // Each built as it is first shown or asked for, over the session's Git then.
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Commit, "Commit", IconKeys.Commit, MakeCommit, Docking.ToolAnchor.LeftTop)
         {
@@ -441,13 +456,14 @@ public partial class MainWindow
             diff = await BackgroundWork.Run(() => FileDiff.Compare(head, text));
         }
         string[] besides = [.. new[] { await encoding, mode?.Said }.OfType<string>()];
-        return OpenLocalDiff(path, open, mine, diff, "HEAD", note: besides.Length == 0 ? null : string.Join("; ", besides));
+        return OpenLocalDiff(path, open, mine, diff, "HEAD", note: besides.Length == 0 ? null : string.Join("; ", besides), again: () => ShowDiffAsync(path));
     }
 
     /// <summary>A version's text (the last commit's, a branch's, a revision's), or another file's (Compare With, named by
     /// <paramref name="other"/>), beside the file's where Settings opens diffs, the right side the open file's own text when
-    /// it is still open, <paramref name="note"/> said after the differences.</summary>
-    private IDiffHost OpenLocalDiff(string path, OpenDocument? open, TextDocument mine, FileDiff diff, string version, string? other = null, string? note = null)
+    /// it is still open, <paramref name="note"/> said after the differences, <paramref name="again"/> how it is asked for afresh.</summary>
+    private IDiffHost OpenLocalDiff(string path, OpenDocument? open, TextDocument mine, FileDiff diff, string version, string? other = null, string? note = null,
+        Func<Task<IDiffHost?>>? again = null)
     {
         // Closed while the differences were read, the file's text is one nothing would save: it is shown, not edited.
         if (open is not null && !Editors.Documents.Contains(open))
@@ -462,7 +478,8 @@ public partial class MainWindow
             DiffView view = Diffs.ForFile(other is null ? Path.GetFileName(path) : title, diff, mine, open, titles, other ?? path, path);
             view.Note = note;
             return view;
-        }));
+        })
+        { Again = again });
     }
 
     /// <summary>How the window's diffs and merges are made: Highlighting Differences as Settings has it, kept when a diff
