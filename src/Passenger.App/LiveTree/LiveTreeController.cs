@@ -236,7 +236,8 @@ public sealed partial class LiveTreeController
     }
 
     /// <summary>The binding failures of a control's own XAML element, as the app last told them: those failed where its
-    /// element is written (the editor's line, as its details have it), in the words Problems shows them in.</summary>
+    /// element is written (the editor's line, as its details have it), each saying what it binds, as the Debug console
+    /// says a failure it stops on (<see cref="BindingErrors.Stopped"/>).</summary>
     private IReadOnlyList<string> FailuresOf(ElementDetails? shown)
     {
         if (shown?.Source is not { Line: > 0 } source || app is not LiveApp live)
@@ -245,7 +246,7 @@ public sealed partial class LiveTreeController
         }
         Func<string, TextSnapshot?> texts = CSharp.ServerPlaces.Texts(parts.Editors);
         return [.. live.Bindings.Where(failure => failure.Place is { } place && Path.GetFileName(place.File) == Path.GetFileName(source.File)
-            && AppPlaces.InEditor(place, texts) is { } at && at.Line == source.Line && PathNames.Same(at.File, source.File)).Select(failure => failure.Message)];
+            && AppPlaces.InEditor(place, texts) is { } at && at.Line == source.Line && PathNames.Same(at.File, source.File)).Select(BindingErrors.Stopped)];
     }
 
     /// <summary>Select Element shown pressed while the app waits for a control to be pointed at.</summary>
