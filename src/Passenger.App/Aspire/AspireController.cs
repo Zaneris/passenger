@@ -146,19 +146,11 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     /// where the folder's session runs none.</summary>
     public AspireAppRun OwnedApp(string appHost) => FindApp(appHost) ?? throw new InvalidOperationException(Refusals.AppHostNotOwned);
 
-    public AspireResourceRun? FindService(AspireSelection selection)
+    /// <summary>The process its AppHost says a resource's program runs as (executable.pid), the last it gives; null for none.</summary>
+    public static int? ProgramOf(AspireResource resource)
     {
-        if (FindApp(selection.AppHostPath) is not { } app || selection.Resource.Source is not { } source || !Path.IsPathFullyQualified(source))
-        {
-            return null;
-        }
-        if (selection.Resource.State is not ("Running" or "Starting"))
-        {
-            return null;
-        }
-        AspireResourceRun[] matching = app.Services.Where(service => PathNames.Same(service.Project, source)).ToArray();
         int? processId = null;
-        foreach (System.Text.Json.JsonProperty property in AspireJson.Properties(selection.Resource.Data, "properties"))
+        foreach (System.Text.Json.JsonProperty property in AspireJson.Properties(resource.Data, "properties"))
         {
             if (property.Name != "executable.pid")
             {
@@ -174,6 +166,21 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 processId = value;
             }
         }
+        return processId;
+    }
+
+    public AspireResourceRun? FindService(AspireSelection selection)
+    {
+        if (FindApp(selection.AppHostPath) is not { } app || selection.Resource.Source is not { } source || !Path.IsPathFullyQualified(source))
+        {
+            return null;
+        }
+        if (selection.Resource.State is not ("Running" or "Starting"))
+        {
+            return null;
+        }
+        AspireResourceRun[] matching = app.Services.Where(service => PathNames.Same(service.Project, source)).ToArray();
+        int? processId = ProgramOf(selection.Resource);
         AspireResourceRun[] named = matching.Where(service => processId is int pid
             ? service.ProcessId == pid && (service.ResourceName is null || service.ResourceName == selection.Resource.Name
                 || AspireResource.IsNameWithSuffix(selection.Resource.Name, service.ResourceName) || service.ResourceName == selection.Resource.DisplayName)

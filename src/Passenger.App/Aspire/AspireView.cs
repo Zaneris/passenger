@@ -24,14 +24,15 @@ public sealed record AspireRow(AspireResource Resource, int Depth, bool Expands,
 
 /// <summary>The Aspire window over an AppHost's resources: an icon toolbar of the window's actions, the resources as rows
 /// (<see cref="RunRows"/>: a chevron over a parent's children, the state's dot, health's tag and addresses as links), the
-/// chosen one's Details (<see cref="AspireDetailsPane"/>), the resources' consoles merged (<see cref="MergedLog"/>), the
-/// dashboard's structured logs and traces (<see cref="TelemetryView"/>'s pages), and the AppHost's own console, on the frame
-/// of a run's windows (<see cref="RunWindowFrame"/>). A view of the session's <see cref="AspireModel"/>, built as the window is
-/// first shown.</summary>
+/// chosen one's metrics (<see cref="MetricsPane"/>) and Details (<see cref="AspireDetailsPane"/>), the resources' consoles
+/// merged (<see cref="MergedLog"/>), the dashboard's structured logs and traces (<see cref="TelemetryView"/>'s pages), and the
+/// AppHost's own console, on the frame of a run's windows (<see cref="RunWindowFrame"/>). A view of the session's
+/// <see cref="AspireModel"/>, built as the window is first shown.</summary>
 public sealed class AspireView : DockPanel, IDisposable
 {
     private const string LogTab = AspireModel.LogTab;
     private const string TelemetryTab = AspireModel.TelemetryTab;
+    private const string StatsTab = AspireModel.StatsTab;
 
     private readonly TextBlock status = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(8, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly TextBlock empty = new() { Classes = { StyleClasses.EmptyText } };
@@ -123,6 +124,7 @@ public sealed class AspireView : DockPanel, IDisposable
         pages = new(StringComparer.Ordinal)
         {
             [LogTab] = Log,
+            [StatsTab] = Metrics,
             [AspireModel.DetailsTab] = Details,
             [TelemetryTab] = Telemetry.Both,
             [AspireModel.AppHostTab] = WithHeader(readiness, appHostConsole),
@@ -147,6 +149,9 @@ public sealed class AspireView : DockPanel, IDisposable
 
     /// <summary>The chosen resource's Details tab.</summary>
     public AspireDetailsPane Details { get; }
+
+    /// <summary>The chosen resource's metrics, the Stats tab, read only while it is shown.</summary>
+    public MetricsPane Metrics { get; } = new();
 
     /// <summary>The resources' consoles merged, a toggle each, with Find.</summary>
     public MergedLog Log { get; }
@@ -241,6 +246,7 @@ public sealed class AspireView : DockPanel, IDisposable
     {
         UpdateConsole();
         UpdateTelemetry();
+        UpdateMetrics();
     }
 
     private void OnReading(object? sender, EventArgs e)
@@ -290,6 +296,7 @@ public sealed class AspireView : DockPanel, IDisposable
         }
         ShowEmpty();
         Details.Show(model.SelectedResource, model.Chosen?.LeftUnstarted == true, model.ResourceSnapshots);
+        UpdateMetrics();
     }
 
     /// <summary>What the window says of its AppHost and resources: beside the toolbar, and in the list's place while it is empty.</summary>
@@ -340,6 +347,7 @@ public sealed class AspireView : DockPanel, IDisposable
         {
             UpdateConsole();
             UpdateTelemetry();
+            UpdateMetrics();
         }
     }
 
@@ -540,6 +548,19 @@ public sealed class AspireView : DockPanel, IDisposable
         Telemetry.Watch(!disposed && !model.IsDisposed && model.IsDisplayed && model.SelectedApp is { } selected ? model.TelemetryProvider?.Invoke(selected.AppHostPath) : null,
             model.ShownPage == TelemetryTab ? Telemetry.Shown : null);
 
+    /// <summary>The chosen resource's metrics read while the Stats tab is shown and the window displayed, else none.</summary>
+    private void UpdateMetrics()
+    {
+        if (disposed || model.IsDisposed || !model.IsDisplayed || model.ShownPage != StatsTab || model.Selection is not { } selected)
+        {
+            Metrics.Show(null, null, model.ShownPage == StatsTab && model.Items.Count > 0 ? "Choose a resource to chart its metrics" : null);
+            return;
+        }
+        AspireResource resource = selected.Resource;
+        string? none = resource.State is "Running" ? null : $"{resource.DisplayName} is not running";
+        Metrics.Show(resource.DisplayName, none is null ? model.ProgramOf?.Invoke(selected) : null, none);
+    }
+
     private void ClearTelemetry()
     {
         Console.Clear();
@@ -629,6 +650,7 @@ public sealed class AspireView : DockPanel, IDisposable
             appHostConsole.Content = null;
             Find.Detach();
             Telemetry.Dispose();
+            Metrics.Stop();
             StopConsole();
         }
     }

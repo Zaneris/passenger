@@ -12,6 +12,7 @@ using Passenger.App;
 using Passenger.App.Aspire;
 using Passenger.App.Aspire.Protocol;
 using Passenger.App.Run;
+using Passenger.App.Telemetry;
 using Passenger.Core;
 using Passenger.Text;
 
@@ -2116,6 +2117,83 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>A web service's metrics are read only while its Stats tab is shown: chosen there, the request duration of the
+    /// requests it serves is charted from its runtime, their rate and median beside the line, and the count its own meter
+    /// keeps once that meter is published; once another tab is shown nothing is read and nothing charted.</summary>
+    [AvaloniaFact]
+    public void A_web_services_request_duration_is_charted_on_its_Stats_tab_while_the_tab_is_shown()
+    {
+        project.Reset();
+        string web = project.WriteWebApp();
+        int port = AspireApp.FreePort();
+        string address = $"http://127.0.0.1:{port.ToString(System.Globalization.CultureInfo.InvariantCulture)}/";
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        using CancellationTokenSource stopAsking = new();
+        Task asking = Task.CompletedTask;
+        try
+        {
+            (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = project.AskToStartApi("web",
+                environment: new Dictionary<string, string> { [AspNetCoreVariables.Urls] = address }, projectPath: web);
+            using System.Net.WebSockets.ClientWebSocket subscribed = notified;
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the run session: {answer}");
+            Ui.WaitFor(() => window.AspireRuntime.Apps.Single().Services.Any(service => service.ProcessId is > 0), "the web service started as DCP asked");
+            int program = window.AspireRuntime.Apps.Single().Services.Single().ProcessId!.Value;
+            backend.PushResource(new Resource
+            {
+                Name = "web", DisplayName = "web", Uid = "web", ResourceType = "Project", State = "Running",
+                Urls = { new Url { EndpointName = "http", FullUrl = address } },
+                Properties =
+                {
+                    new ResourceProperty { Name = "project.path", Value = Google.Protobuf.WellKnownTypes.Value.ForString(web) },
+                    new ResourceProperty { Name = "executable.pid", Value = Google.Protobuf.WellKnownTypes.Value.ForNumber(program) },
+                },
+            });
+            FindAction(window, "Show Aspire Stats");
+            Ui.WaitFor(() => window.Aspire.Rows.Any(row => row.Resource.Name == "web"), "the web service's row");
+            Ui.Click(Words(Row(window, "web"), "web"));
+            // Requests sent all along, as a person tries the service while looking.
+            asking = Waiting.Apart(async () =>
+            {
+                using HttpClient http = new() { Timeout = TimeSpan.FromSeconds(5) };
+                while (!stopAsking.IsCancellationRequested)
+                {
+                    try
+                    {
+                        using HttpResponseMessage _ = await http.GetAsync(address, stopAsking.Token);
+                    }
+                    catch (HttpRequestException)
+                    {
+                        // Not yet listening.
+                    }
+                    catch (OperationCanceledException) when (stopAsking.IsCancellationRequested)
+                    {
+                    }
+                    await Waiting.ForAsync(TimeSpan.FromMilliseconds(100), "a request's pause", stopAsking.Token).Ended();
+                }
+            });
+            MetricsPane metrics = window.AspireWindow.Metrics;
+            Ui.WaitFor(() => metrics.Charted.GetValueOrDefault("http.server.request.duration") >= 2,
+                () => $"the request duration charted (the pane says {metrics.Said}, charting {string.Join(", ", metrics.Charted.Select(c => $"{c.Key} {c.Value}"))})",
+                TimeSpan.FromMinutes(1));
+            Assert.Matches(@"^[0-9.]+/s, median ", metrics.ValueOf("http.server.request.duration") ?? string.Empty);
+            Ui.WaitFor(() => metrics.Charted.GetValueOrDefault("standin.served") >= 2,
+                () => $"the app's own meter charted (charting {string.Join(", ", metrics.Charted.Select(c => $"{c.Key} {c.Value}"))})", TimeSpan.FromSeconds(30));
+            Assert.EndsWith("/s", metrics.ValueOf("standin.served"), StringComparison.Ordinal);
+
+            FindAction(window, "Show Aspire Resources");
+            Assert.True(metrics.Charted.Count == 0 && metrics.Said.Length == 0, $"Details shown, the metrics were still read: {metrics.Said}");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            stopAsking.Cancel();
+            Ui.Await(asking.Ended(), "the requests sent to stop");
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>Every text the details show.</summary>
     private static string[] DetailsWords(AspireDetailsPane details) => [.. details.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? string.Empty)];
 
@@ -3274,6 +3352,34 @@ public sealed class StandInAppHost : SharedProject
             limit: TimeSpan.FromMinutes(4).Scaled()), "the Avalonia service's build");
         Assert.True(result.Succeeded, $"The Avalonia service did not build: {result.Output}{result.Error}");
         return app;
+    }
+
+    /// <summary>Writes an ASP.NET Core app into the stand-in's folder, built by its real path, for the AppHost to start as a web
+    /// service: one route, /, which answers "up" and counts itself on a meter of the app's own (StandIn.Web's standin.served).
+    /// Its project's path; the next test's <see cref="SharedProject.Reset"/> takes it away.</summary>
+    internal string WriteWebApp()
+    {
+        TestFolders.Write(Folder, "StandIn.Web/StandIn.Web.csproj", TestProjects.Web());
+        TestFolders.Write(Folder, "StandIn.Web/Program.cs", """
+            using System.Diagnostics.Metrics;
+            using Microsoft.AspNetCore.Builder;
+
+            Meter meter = new("StandIn.Web");
+            Counter<long> served = meter.CreateCounter<long>("standin.served", "{request}");
+            WebApplication app = WebApplication.CreateBuilder(args).Build();
+            app.MapGet("/", () =>
+            {
+                served.Add(1);
+                return "up";
+            });
+            app.Run();
+
+            """);
+        string web = PathNames.Canonical(PathOf("StandIn.Web/StandIn.Web.csproj"));
+        ChildResult result = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", web, "-nologo", "-v:q"]),
+            limit: TimeSpan.FromMinutes(3).Scaled()), "the web service's build");
+        Assert.True(result.Succeeded, $"The web service did not build: {result.Output}{result.Error}");
+        return web;
     }
 
     /// <summary><see cref="AskToStartApi"/> off the window's thread, as DCP asks again for a resource its AppHost restarts:

@@ -38,7 +38,7 @@ public partial class MainWindow
             _ => aspireView?.Telemetry is { SelectedTrace: not null, SelectedSpan: not null } ? null : "No trace span is selected");
         foreach (string page in AspireModel.Pages)
         {
-            // Details is the chosen resource's, beside every resource listed; each found by its tab's former name too.
+            // Details is the chosen resource's, beside every resource listed; each found by its tab's former name too, Stats by what it charts.
             string id = AspireModel.PageAction(page);
             Add(id, id == A.AspireResources ? "Show Aspire Resources" : $"Show Aspire {page}", "Aspire", _ =>
             {
@@ -49,6 +49,7 @@ public partial class MainWindow
                 A.AspireResources => ["Show Aspire Details"],
                 A.AspireConsole => ["Show Aspire Console"],
                 A.AspireAppHostConsole => ["Show Aspire AppHost console"],
+                A.AspireStats => ["Show Aspire Metrics"],
                 _ => null,
             });
         }

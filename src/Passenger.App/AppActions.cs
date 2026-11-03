@@ -290,6 +290,7 @@ public static class AppActions
     public const string AspireResources = "app.aspire.resources";
     public const string AspireConsole = "app.aspire.console";
     public const string AspireTelemetry = "app.aspire.telemetry";
+    public const string AspireStats = "app.aspire.stats";
     public const string AspireLogs = "app.aspire.logs";
     public const string AspireTraces = "app.aspire.traces";
     public const string AspireAppHostConsole = "app.aspire.appHostConsole";

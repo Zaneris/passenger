@@ -131,6 +131,7 @@ public partial class MainWindow
         };
         model.LeftUnstarted = (path, resource) => next.Aspire.FindApp(path)?.IsLeftUnstarted(resource) == true;
         model.TelemetryProvider = path => next.Aspire.FindApp(path)?.Telemetry;
+        model.ProgramOf = selected => AspireController.ProgramOf(selected.Resource) ?? next.Aspire.FindService(selected)?.ProcessId;
         model.SelectContainer = id => IdeErrors.Observe(ShowAspireContainerAsync(next, id));
         if (aspireDisplayChanged is not null)
         {

@@ -5,12 +5,15 @@ using Avalonia.Media;
 namespace Passenger.App;
 
 /// <summary>A small chart of the last readings of one value, or of a few read together (a vector's parts), each a line in a
-/// colour token of its own, all on one scale: from zero to the highest reading (at least 1) where it counts from zero, else
+/// colour token of its own, all on one scale: from zero to the highest reading (at least <see cref="Least"/>) where it counts from zero, else
 /// from the lowest reading to the highest. Each reading takes one place of <see cref="Kept"/> across, filling from the left
 /// edge, or with the newest at the right edge where it ends at now; past <see cref="Kept"/> the oldest goes.</summary>
 public sealed class Sparkline(int kept, bool fromZero, bool fromRight, params string[] brushes) : Control
 {
     private readonly List<double[]> readings = [];
+
+    /// <summary>The least its scale reaches up to where it counts from zero: 1 for a percentage, nothing for a value of any size.</summary>
+    public double Least { get; init; } = 1;
 
     /// <summary>How many readings it keeps, and so how many places it has across.</summary>
     public int Kept => kept;
@@ -48,7 +51,7 @@ public sealed class Sparkline(int kept, bool fromZero, bool fromRight, params st
             return;
         }
         double low = fromZero ? 0 : double.MaxValue;
-        double high = fromZero ? 1 : double.MinValue;
+        double high = fromZero ? Least : double.MinValue;
         foreach (double[] reading in readings)
         {
             foreach (double value in reading)
