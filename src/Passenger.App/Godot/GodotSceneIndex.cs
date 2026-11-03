@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -59,6 +60,25 @@ public sealed class GodotSceneIndex
         {
             projects[folder] = project = new Project(folder);
         }
+        // One reading at a time, so none is made of a project's files while another is still putting them in.
+        while (project.Reading is { IsCompleted: false } reading)
+        {
+            await reading;
+        }
+        TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        project.Reading = done.Task;
+        try
+        {
+            return await ReadAsync(folder, project);
+        }
+        finally
+        {
+            done.SetResult();
+        }
+    }
+
+    private async Task<GodotScenes> ReadAsync(string folder, Project project)
+    {
         project.Walking ??= BackgroundWork.Run(() => FolderWalk.Files(folder, built: true).Where(Read).ToHashSet(PathNames.Comparer));
         project.Cache ??= BackgroundWork.Run(() => CacheOf(folder));
         HashSet<string> paths = await project.Walking;
@@ -74,83 +94,85 @@ public sealed class GodotSceneIndex
             }
         }
         OpenTexts texts = Texts();
-        List<(string Path, TextSnapshot? Open)> unread = [];
-        foreach (string path in project.Paths)
-        {
-            TextSnapshot? open = texts.Open(path);
-            TextSnapshot? from = project.Read.TryGetValue(path, out (GodotFile File, TextSnapshot? From) read) ? read.From
-                : project.Raw.TryGetValue(path, out (string Text, TextSnapshot? From) other) ? other.From : null;
-            bool known = project.Read.ContainsKey(path) || project.Raw.ContainsKey(path) || project.Beside.ContainsKey(path);
-            if (!known || project.Dirty.Contains(path) || !ReferenceEquals(from, open))
-            {
-                unread.Add((path, open));
-            }
-        }
+        List<(string Path, TextSnapshot? Open)> unread = Unread(project, texts);
         IReadOnlyList<(string Uid, string Res)>? cached = await project.Cache;
-        if (unread.Count == 0 && project.Scenes is { } kept)
+        if (unread.Count == 0 && project.Gone.Count == 0 && ReferenceEquals(cached, project.CacheRead) && project.Scenes is { } kept)
         {
             return kept;
         }
         IReadOnlyList<(string Path, TextSnapshot? Open, GodotFile? File, string? Uid, string? Text)> parsed = await BackgroundWork.Run(
             () => (IReadOnlyList<(string, TextSnapshot?, GodotFile?, string?, string?)>)[.. unread.Select(u => Parsed(u.Path, u.Open))]);
+        bool uidsChanged = !ReferenceEquals(cached, project.CacheRead) || project.Uids is null;
         foreach ((string path, TextSnapshot? open, GodotFile? file, string? uid, string? text) in parsed)
         {
             project.Dirty.Remove(path);
-            project.Beside.Remove(path);
-            project.Raw.Remove(path);
-            if (file is null)
+            if (project.Paths.Contains(path))
             {
-                project.Read.Remove(path);
-            }
-            else
-            {
-                project.Read[path] = (file, open);
-            }
-            if (uid is not null)
-            {
-                project.Beside[path] = uid;
-            }
-            if (text is not null)
-            {
-                project.Raw[path] = (text, open);
+                uidsChanged |= project.Take(path, open, file, uid, text);
             }
         }
-        foreach (string gone in project.Read.Keys.Concat(project.Beside.Keys).Concat(project.Raw.Keys).Where(p => !project.Paths.Contains(p)).ToList())
+        foreach (string gone in project.Gone)
         {
-            project.Read.Remove(gone);
-            project.Beside.Remove(gone);
-            project.Raw.Remove(gone);
+            uidsChanged |= project.Take(gone, null, null, null, null);
         }
-        Dictionary<string, GodotFile> files = new(StringComparer.Ordinal);
-        foreach ((string path, (GodotFile file, _)) in project.Read)
+        project.Gone.Clear();
+        if (uidsChanged)
         {
-            if (GodotScenes.ResPathOf(folder, path) is { } res)
-            {
-                files[res] = file;
-            }
-        }
-        // What the project's own files say now goes over the cache Godot's editor wrote when it last ran.
-        Dictionary<string, string> uids = new(StringComparer.Ordinal);
-        foreach ((string uid, string res) in cached ?? [])
-        {
-            uids[uid] = res;
-        }
-        foreach ((string path, string uid) in project.Beside)
-        {
-            if (GodotScenes.ResPathOf(folder, GodotUids.BesideOf(path)) is { } res)
+            // What the project's own files say now goes over the cache Godot's editor wrote when it last ran.
+            Dictionary<string, string> uids = new(StringComparer.Ordinal);
+            foreach ((string uid, string res) in cached ?? [])
             {
                 uids[uid] = res;
             }
-        }
-        Dictionary<string, string> raw = new(StringComparer.Ordinal);
-        foreach ((string path, (string text, _)) in project.Raw)
-        {
-            if (GodotScenes.ResPathOf(folder, path) is { } res)
+            foreach ((string path, string uid) in project.Beside)
             {
-                raw[res] = text;
+                if (GodotScenes.ResPathOf(folder, GodotUids.BesideOf(path)) is { } res)
+                {
+                    uids[uid] = res;
+                }
+            }
+            project.Uids = uids;
+            project.CacheRead = cached;
+        }
+        return project.Scenes = new GodotScenes(folder, project.Files, project.Uids!, cached is not null, project.Texts);
+    }
+
+    /// <summary>The files of a project to read again: every one the first time, then those written, come or gone, and those
+    /// whose open text is not the one last read (opened, typed in, or closed since), never a walk of every file.</summary>
+    private static List<(string Path, TextSnapshot? Open)> Unread(Project project, OpenTexts texts)
+    {
+        List<(string Path, TextSnapshot? Open)> unread = [];
+        HashSet<string> paths = project.Paths!;
+        if (!project.Primed)
+        {
+            project.Primed = true;
+            foreach (string known in project.Read.Keys.Concat(project.Beside.Keys).Concat(project.Raw.Keys).Where(p => !paths.Contains(p)).ToList())
+            {
+                project.Gone.Add(known);
+            }
+            foreach (string path in paths)
+            {
+                unread.Add((path, texts.Open(path)));
+            }
+            return unread;
+        }
+        HashSet<string> taken = new(PathNames.Comparer);
+        foreach (string path in project.Dirty)
+        {
+            if (paths.Contains(path) && taken.Add(path))
+            {
+                unread.Add((path, texts.Open(path)));
             }
         }
-        return project.Scenes = new GodotScenes(folder, files, uids, cached is not null, raw);
+        foreach (string path in texts.Paths.Concat(project.FromOpen))
+        {
+            TextSnapshot? open = texts.Open(path);
+            if (paths.Contains(path) && !ReferenceEquals(project.ReadFrom(path), open) && taken.Add(path))
+            {
+                unread.Add((path, open));
+            }
+        }
+        return unread;
     }
 
     /// <summary>Whether a file of a Godot project is one the index reads: a text scene or resource, a file beside another
@@ -233,6 +255,7 @@ public sealed class GodotSceneIndex
             {
                 project.Walking = null;
                 project.Paths = null;
+                project.Primed = false;
                 project.Cache = null;
                 project.Scenes = null;
                 changed = true;
@@ -246,7 +269,7 @@ public sealed class GodotSceneIndex
                 }
                 if (Read(path))
                 {
-                    if (File.Exists(path) ? known.Add(path) | project.Dirty.Add(path) : known.Remove(path))
+                    if (File.Exists(path) ? known.Add(path) | project.Dirty.Add(path) : known.Remove(path) && project.Gone.Add(path))
                     {
                         project.Scenes = null;
                         changed = true;
@@ -255,7 +278,11 @@ public sealed class GodotSceneIndex
                 else if (Directory.Exists(path) || known.Any(k => PathNames.IsUnder(k, path)))
                 {
                     // A folder gone takes its files with it; one come is walked for its own as the project is next asked about.
-                    known.RemoveWhere(k => PathNames.IsUnder(k, path));
+                    foreach (string under in known.Where(k => PathNames.IsUnder(k, path)).ToList())
+                    {
+                        known.Remove(under);
+                        project.Gone.Add(under);
+                    }
                     if (Directory.Exists(path))
                     {
                         project.Come.Add(path);
@@ -333,5 +360,73 @@ public sealed class GodotSceneIndex
 
         /// <summary>The scenes last made, kept until a file changes.</summary>
         public GodotScenes? Scenes { get; set; }
+
+        /// <summary>The reading under way, which another waits out.</summary>
+        public Task? Reading { get; set; }
+
+        /// <summary>Whether its files have been read once since its folder was walked, after which only those that changed are.</summary>
+        public bool Primed { get; set; }
+
+        /// <summary>Files taken out since it was last read, whose readings go.</summary>
+        public HashSet<string> Gone { get; } = new(PathNames.Comparer);
+
+        /// <summary>The files last read from an open text, read again from the disk once closed.</summary>
+        public HashSet<string> FromOpen { get; } = new(PathNames.Comparer);
+
+        /// <summary>Its scenes and resources by res:// path, changed a file at a time.</summary>
+        public ImmutableDictionary<string, GodotFile> Files { get; private set; } = ImmutableDictionary.Create<string, GodotFile>(StringComparer.Ordinal);
+
+        /// <summary>The texts of its files kept as text by res:// path, changed a file at a time.</summary>
+        public ImmutableDictionary<string, string> Texts { get; private set; } = ImmutableDictionary.Create<string, string>(StringComparer.Ordinal);
+
+        /// <summary>The uids its files are known by, made again only when a uid changes.</summary>
+        public IReadOnlyDictionary<string, string>? Uids { get; set; }
+
+        /// <summary>The cache of uids the uids were last made from.</summary>
+        public IReadOnlyList<(string Uid, string Res)>? CacheRead { get; set; }
+
+        private readonly Dictionary<string, string?> resOf = new(PathNames.Comparer);
+
+        /// <summary>The open text a file was last read from; null for the disk's or none.</summary>
+        public TextSnapshot? ReadFrom(string path) => Read.TryGetValue(path, out (GodotFile File, TextSnapshot? From) read) ? read.From
+            : Raw.TryGetValue(path, out (string Text, TextSnapshot? From) other) ? other.From : null;
+
+        /// <summary>A file's reading put in its place (or taken out, for none); whether a uid it gives another changed.</summary>
+        public bool Take(string path, TextSnapshot? open, GodotFile? file, string? uid, string? text)
+        {
+            string? res = resOf.TryGetValue(path, out string? known) ? known : resOf[path] = GodotScenes.ResPathOf(folder, path);
+            string? was = Beside.GetValueOrDefault(path);
+            Read.Remove(path);
+            Raw.Remove(path);
+            Beside.Remove(path);
+            if (res is not null)
+            {
+                Files = Files.Remove(res);
+                Texts = Texts.Remove(res);
+            }
+            if (file is not null)
+            {
+                Read[path] = (file, open);
+                Files = res is null ? Files : Files.SetItem(res, file);
+            }
+            if (uid is not null)
+            {
+                Beside[path] = uid;
+            }
+            if (text is not null)
+            {
+                Raw[path] = (text, open);
+                Texts = res is null ? Texts : Texts.SetItem(res, text);
+            }
+            if (open is not null && (file is not null || text is not null))
+            {
+                FromOpen.Add(path);
+            }
+            else
+            {
+                FromOpen.Remove(path);
+            }
+            return was != uid;
+        }
     }
 }
