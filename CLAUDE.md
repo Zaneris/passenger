@@ -249,15 +249,16 @@ Projects in `src/`; `find_symbol` finds the rest:
   `Rows`/`RowSpan` (a place on a line through `WrapOf`), the lines off screen wrapped on the pool (`WrapRest`). Wraps,
   rows, folds, hints and built lines are runs an edit moves only where it reaches, so a key costs what it changed, not
   the file's size: keep it so. Row views are carried so too, a highlighter carrying the colours of lines an edit didn't
-  reach (`IHighlighter.Showing`, `KeptColours`). A scroll frame draws only what moved: each row is a retained visual
-  (`CodeEditor.Rows.cs`), drawn again by a change through `RedrawChanged()` only where its key changed (`KeyOf`, which
-  takes anything new a row draws; slots carried through edits by `FollowSlots`), by the look, the gutter's columns,
-  change marks, bookmarks and folds through `Redraw()`, moved by a scroll through `Scrolled()`, the caret's blink
-  drawing only the overlay (`RedrawOverlay()`; the editor's own `InvalidateVisual` draws only its ground), what is
-  looked up from a drawn row kept in its `RowSlot`, a gutter column drawing beside one row, clipped to it
-  (`IGutterColumn.Draw`); shapes are made at the origin and drawn through a translation (`CodeEditor.DrawShape`,
-  `GutterFrame.DrawShape`), the error stripe draws touching marks of one look as one rectangle, and runs of one look go
-  to the formatter as one (`ScrollingTests`, `RetainedRowsTests`).
+  reach (`IHighlighter.Showing`, `KeptColours`), and saying where its colours changed (`ChangedWithin`, read while
+  `Changed` is raised, null where it can't say), so only those rows are made again (`LineViews.Drop`). A scroll frame
+  draws only what moved: each row is a retained visual (`CodeEditor.Rows.cs`), drawn again by a change through
+  `RedrawChanged()` only where its key changed (`KeyOf`, which takes anything new a row draws; slots carried through
+  edits by `FollowSlots`), by the look, the gutter's columns, change marks, bookmarks and folds through `Redraw()`,
+  moved by a scroll through `Scrolled()`, the caret's blink drawing only the overlay (`RedrawOverlay()`; the editor's
+  own `InvalidateVisual` draws only its ground), what is looked up from a drawn row kept in its `RowSlot`, a gutter
+  column drawing beside one row, clipped to it (`IGutterColumn.Draw`); shapes are made at the origin and drawn through a
+  translation (`CodeEditor.DrawShape`, `GutterFrame.DrawShape`), the error stripe draws touching marks of one look as
+  one rectangle, and runs of one look go to the formatter as one (`ScrollingTests`, `RetainedRowsTests`).
 - `Passenger.Languages`: C# coloured by Roslyn's parser in-process (`CSharpHighlighter`, also each open file's one
   syntax service, `OpenDocument.Syntax`: never a fresh parse; every in-process parse takes its options from
   `CSharpParsing`, a folder's file's through `CompilationSymbols`, `EditorArea.ParseOptions`, the XAML core's through
@@ -384,20 +385,21 @@ Projects in `src/`; `find_symbol` finds the rest:
   `GodotEngineApis`: `GodotEngineClasses` has no member types), its Godot warnings and errors
   `GDScriptAnalysis.Findings` (as project.godot sets them, `GDScriptWarningSettings`) shown until Godot's server has
   pushed the file's own (`WebDocument.ShowPassengers`), fixed by `GDScriptFixes` (several edits as one through
-  `EditorFix.Edits`), and a GDScript function's argument count answered only by `GodotScriptDeclared.Takes`; their fixes
-  `GodotOffer` over the extension's `GodotFix` (members made by Roslyn so the code builds) and Workspace's pure
-  `GodotWrites`, a fix that asks first through `EditorFix.Confirms`; Godot's generator assigns every field in generated
-  code, so a field's values are read from the code's own documents); a C# file read before its project's evaluation
-  landed is pulled again once it does (`CSharpService.GodotProjectsChanged`). A Godot shader is `GodotShaderAssist` over
-  Workspace's `GodotShaderCode`, its language the carried `GodotShaderTypes.json` as the Godot found takes it
-  (`GodotShaderCompiler.TableAsync`, probed per version), its marks Godot's own compiler's through `PassengerShaders.gd`
-  (`GodotShaderMarks`; a scene's own Shader's in `GodotSceneMarks` through `GodotStringPlaces`). A theme item's name is
-  read through `GodotThemeTable` (the carried `GodotDefaultTheme.json`, `just godot-theme`) and the project's themes
-  (`GodotDefinitions.ThemeItems`), and the person's open Godot editor is asked through its IDE messaging server
-  (`GodotIdeLink` over Workspace's `GodotIdeMessaging` and `GodotIdeClient`), never Passenger's own headless editors
-  (`GodotScripts.Headless`). Edits added to a server's workspace edit for a file it already edits join that file's entry
-  (`TypeRename.With`): `documentChanges` apply in order. A server's own command (TypeScript's refactorings, ESLint's
-  fixes) runs through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
+  `EditorFix.Edits`), and a GDScript function's argument count answered only by `GodotScriptDeclared.Takes`, its names
+  coloured by `GDScriptAnalysis.Colours` through `ColourLayer` over the grammar; their fixes `GodotOffer` over the
+  extension's `GodotFix` (members made by Roslyn so the code builds) and Workspace's pure `GodotWrites`, a fix that asks
+  first through `EditorFix.Confirms`; Godot's generator assigns every field in generated code, so a field's values are
+  read from the code's own documents); a C# file read before its project's evaluation landed is pulled again once it
+  does (`CSharpService.GodotProjectsChanged`). A Godot shader is `GodotShaderAssist` over Workspace's `GodotShaderCode`,
+  its language the carried `GodotShaderTypes.json` as the Godot found takes it (`GodotShaderCompiler.TableAsync`, probed
+  per version), its marks Godot's own compiler's through `PassengerShaders.gd` (`GodotShaderMarks`; a scene's own
+  Shader's in `GodotSceneMarks` through `GodotStringPlaces`). A theme item's name is read through `GodotThemeTable` (the
+  carried `GodotDefaultTheme.json`, `just godot-theme`) and the project's themes (`GodotDefinitions.ThemeItems`), and
+  the person's open Godot editor is asked through its IDE messaging server (`GodotIdeLink` over Workspace's
+  `GodotIdeMessaging` and `GodotIdeClient`), never Passenger's own headless editors (`GodotScripts.Headless`). Edits
+  added to a server's workspace edit for a file it already edits join that file's entry (`TypeRename.With`):
+  `documentChanges` apply in order. A server's own command (TypeScript's refactorings, ESLint's fixes) runs through
+  `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
   `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind; an open GDScript
   kept parsed and typed by `GodotScriptTypes`, reparsed off the UI thread through `GDScriptTextChange`, its hints set
