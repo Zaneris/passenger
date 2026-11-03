@@ -20,8 +20,11 @@ public class GDScriptWarningsTests
             { "name": "int", "operators": [{ "name": "/", "right_type": "int", "return_type": "int" }, { "name": "/", "right_type": "float", "return_type": "float" },
               { "name": "+", "right_type": "int", "return_type": "int" }] },
             { "name": "float", "operators": [{ "name": "/", "right_type": "int", "return_type": "float" }, { "name": "/", "right_type": "float", "return_type": "float" }] },
-            { "name": "String", "operators": [], "methods": [{ "name": "num_uint64", "return_type": "String", "is_static": true }] }, { "name": "Array", "methods": [] }, { "name": "Callable", "methods": [] },
+            { "name": "String", "operators": [], "methods": [{ "name": "num_uint64", "return_type": "String", "is_static": true }] }, { "name": "Array", "methods": [] },
+            { "name": "Callable", "methods": [], "constructors": [{ "index": 0 }, { "index": 1, "arguments": [{ "name": "from", "type": "Callable" }] },
+              { "index": 2, "arguments": [{ "name": "object", "type": "Object" }, { "name": "method", "type": "StringName" }] }] },
             { "name": "Signal", "methods": [{ "name": "emit", "return_type": "void" }] },
+            { "name": "StringName", "methods": [] },
             { "name": "Vector2", "members": [{ "name": "x", "type": "float" }] }, { "name": "Vector2i", "members": [{ "name": "x", "type": "int" }] },
             { "name": "Dictionary", "methods": [] },
             { "name": "PackedVector2Array", "indexing_return_type": "Vector2", "methods": [{ "name": "size", "return_type": "int", "is_const": true },
@@ -100,7 +103,7 @@ public class GDScriptWarningsTests
         "10 UNSAFE_CAST: Casting \"Variant\" to \"int\" is unsafe.", "11 UNSAFE_CAST: Casting \"Variant\" to \"Node\" is unsafe.",
         "15 UNSAFE_CAST: Casting \"Variant\" to \"int\" is unsafe.", "16 UNSAFE_CAST: Casting \"Variant\" to \"Node\" is unsafe.",
         "20 UNSAFE_CAST: Casting \"Variant\" to \"int\" is unsafe.", "21 UNSAFE_CAST: Casting \"Variant\" to \"Node\" is unsafe.")]
-    // analyzer/warnings/unsafe_call_argument.gd to its line 43, its constructors' calls after it left out.
+    // analyzer/warnings/unsafe_call_argument.gd to its line 43, its built-in constructors' calls in the row after.
     [InlineData("func variant_func(x: Variant) -> void:\n\tprint(x)\n\nfunc int_func(x: int) -> void:\n\tprint(x)\n\nfunc float_func(x: float) -> void:\n\tprint(x)\n\n"
         + "func node_func(x: Node) -> void:\n\tprint(x)\n\n# We don't want to execute it because of errors, just analyze.\nfunc no_exec_test():\n\tvar variant: Variant = null\n"
         + "\tvar untyped_int = 42\n\tvar untyped_string = \"abc\"\n\tvar variant_int: Variant = 42\n\tvar variant_string: Variant = \"abc\"\n\tvar typed_int: int = 42\n\n"
@@ -118,6 +121,23 @@ public class GDScriptWarningsTests
         "37 UNSAFE_CALL_ARGUMENT: The argument 1 of the function \"float_func()\" requires the subtype \"float\" but the supertype \"Variant\" was provided.",
         "40 UNSAFE_CALL_ARGUMENT: The argument 1 of the function \"node_func()\" requires the subtype \"Node\" but the supertype \"Variant\" was provided.",
         "41 UNSAFE_CALL_ARGUMENT: The argument 1 of the function \"node_func()\" requires the subtype \"Node\" but the supertype \"Object\" was provided.")]
+    [InlineData("func test():\n\tvar variant: Variant = null\n\tprint(Callable(self, \"test\")) # No warning.\n\tprint(Callable(variant, \"test\"))\n\n"
+        + "\tprint(Dictionary(variant))\n\tprint(Vector2(variant))\n\tprint(int(variant))\n\tvar typed: int = 1\n\tprint(Vector2(typed, typed)) # No warning.\n",
+        "4 UNSAFE_CALL_ARGUMENT: The argument 1 of the constructor \"Callable()\" requires the subtype \"Object\" but the supertype \"Variant\" was provided.",
+        "6 UNSAFE_CALL_ARGUMENT: The argument 1 of the constructor \"Dictionary()\" requires the subtype \"Dictionary\" but the supertype \"Variant\" was provided.",
+        "7 UNSAFE_CALL_ARGUMENT: The argument 1 of the constructor \"Vector2()\" requires the subtype \"Vector2\" or \"Vector2i\" but the supertype \"Variant\" was provided.",
+        "8 UNSAFE_CALL_ARGUMENT: The argument 1 of the constructor \"int()\" requires the subtype \"int\", \"bool\", or \"float\" but the supertype \"Variant\" was provided.")]
+    // analyzer/features/allow_void_function_to_return_void.gd's UNSAFE_VOID_RETURN, auto_inferred_type_dont_error.gd's
+    // UNSAFE_METHOD_ACCESS on a parameter of no type, and warning_ignore_targets.gd's getter returning a float as an int.
+    [InlineData("func side_effect(_x):\n\tpass\n\nfunc typed_side_effect(_x) -> void:\n\tpass\n\nfunc return_side_effect() -> void:\n\treturn side_effect(\"x\")\n\n"
+        + "func return_typed() -> void:\n\treturn typed_side_effect(\"x\")\n",
+        "8 UNSAFE_VOID_RETURN: The method \"return_side_effect()\" returns \"void\" but it's trying to return a call to \"side_effect()\" that can't be ensured to also be \"void\".")]
+    [InlineData("func inferred_parameter(param = null):\n\tif param == null:\n\t\tparam = Node.new()\n\tparam.name = \"Ok\"\n\tprint(param.name)\n\tparam.free()\n\n"
+        + "func typed(param: Node):\n\tparam.free()\n",
+        "6 UNSAFE_METHOD_ACCESS: The method \"free()\" is not present on the inferred type \"Variant\" (but may be present on a subtype).")]
+    [InlineData("@warning_ignore(\"narrowing_conversion\")\nvar i: int = f:\n\tget:\n\t\treturn f\n\nvar f: float\n\nfunc whole() -> int:\n\treturn f\n",
+        "4 NARROWING_CONVERSION: Narrowing conversion (float is converted to int and loses precision).",
+        "9 NARROWING_CONVERSION: Narrowing conversion (float is converted to int and loses precision).")]
     // UNSAFE_METHOD_ACCESS and UNSAFE_PROPERTY_ACCESS as Godot's analyzer pushes them (reduce_call, reduce_subscript), on an engine class's value.
     [InlineData("func test():\n\tvar node: Node = null\n\tnode.unsafe_method_access()\n\tprint(node.unsafe_property_access)\n\tprint(node.name)\n"
         + "\t@warning_ignore(\"unsafe_method_access\")\n\tnode.ignored()\n",

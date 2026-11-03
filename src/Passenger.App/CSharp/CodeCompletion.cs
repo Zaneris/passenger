@@ -199,7 +199,14 @@ internal sealed partial class CodeCompletion
     {
         /// <summary>The characters beyond a name's that narrow the list rather than close it (a path's '/').</summary>
         public string? WordCharacters { get; init; }
+
+        /// <summary>Whether a server's item is the same as one of these by its name alone, its label's call parentheses
+        /// (Godot's <c>get_tree()</c>, <c>emit(…)</c>) taken off.</summary>
+        public bool ByName { get; init; }
     }
+
+    /// <summary>A label as its name alone: <c>get_tree()</c>, <c>emit(…)</c> as get_tree, emit.</summary>
+    private static string NameOf(string label) => label.EndsWith(')') && label.IndexOf('(', StringComparison.Ordinal) is > 0 and int open ? label[..open] : label;
 
     /// <summary>The language server's list at the caret: a language's own items first (<paramref name="own"/>), unless
     /// <paramref name="first"/> lists its own alone; then the server's, the live templates that may go here (not in a web
@@ -223,7 +230,7 @@ internal sealed partial class CodeCompletion
             {
                 HashSet<string> labels = [.. mine.Items.Select(i => i.Label)];
                 // A server's item that would replace another stretch than the name's could not go in where the name does.
-                served = [.. served.Where(i => !labels.Contains(i.Label) && (i.TextEdit is not { } replaced || lsp.OffsetOf(replaced.Range.Start) == mine.Start))];
+                served = [.. served.Where(i => !labels.Contains(mine.ByName ? NameOf(i.Label) : i.Label) && (i.TextEdit is not { } replaced || lsp.OffsetOf(replaced.Range.Start) == mine.Start))];
             }
             if (cancel.IsCancellationRequested || (served.Count == 0 && named is null))
             {

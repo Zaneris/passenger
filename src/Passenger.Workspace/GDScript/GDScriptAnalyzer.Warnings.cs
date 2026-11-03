@@ -77,6 +77,7 @@ public sealed partial class GDScriptAnalyzer
         "CONFUSABLE_TEMPORARY_MODIFICATION" => s.Length > 2
             ? $"The built-in property \"{s[1]}\" will not be modified as a result of calling the method \"{s[2]}()\". Consider assigning the desired value to the property instead, or check the \"{s[0]}\" class for a specialized API."
             : $"The built-in property \"{s[1]}\" will not be modified in the assignment chain. Consider using a temporary variable and assigning it back instead, or check the \"{s[0]}\" class for a specialized API.",
+        "UNSAFE_VOID_RETURN" => $"The method \"{s[0]}()\" returns \"void\" but it's trying to return a call to \"{s[1]}()\" that can't be ensured to also be \"void\".",
         "INT_AS_ENUM_WITHOUT_CAST" => "Integer used when an enum value is expected. If this is intended, cast the integer to the enum type using the \"as\" keyword.",
         "STATIC_CALLED_ON_INSTANCE" => $"The function \"{s[0]}()\" is a static function but was called from an instance. Instead, it should be directly called from the type: \"{s[1]}.{s[0]}()\".",
         "INT_AS_ENUM_WITHOUT_MATCH" => $"Cannot {s[0]} {s[1]} as Enum \"{s[2]}\": no enum member has matching value.",

@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
@@ -86,6 +87,57 @@ public sealed class GDScriptTypesTests
             window.Close();
             release.SetResult();
         }
+    }
+
+    /// <summary>A node its scene runs a C# script on (<c>$Player</c>, Player.cs): its dot completes the C# class's members,
+    /// TakeDamage among them, the card on one says it as C# declares it, and Go to Declaration opens the C# file at it.</summary>
+    [AvaloniaFact]
+    public void A_nodes_csharp_scripts_members_complete_hover_and_go_to_their_declaration_from_a_gdscript()
+    {
+        TestFolders.Write(folder, "Player.cs", "using Godot;\n\npublic partial class Player : Node2D\n{\n    [Signal]\n    public delegate void HitEventHandler(int amount);\n\n    public int Health { get; set; } = 3;\n\n    public void TakeDamage(int amount)\n    {\n        Health -= amount;\n    }\n}\n");
+        TestFolders.Write(folder, "main.tscn", "[gd_scene load_steps=3 format=3]\n\n[ext_resource type=\"Script\" path=\"res://main.gd\" id=\"1\"]\n[ext_resource type=\"Script\" path=\"res://Player.cs\" id=\"2\"]\n\n"
+            + "[node name=\"Main\" type=\"Node\"]\nscript = ExtResource(\"1\")\n\n[node name=\"Player\" type=\"Node2D\" parent=\".\"]\nscript = ExtResource(\"2\")\n");
+        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "\tgrow()");
+            editor.Focus();
+            Ui.Press(window, "ENTER", settle: false);
+            window.KeyTextInput("$Player.");
+            Ui.PumpUntil(() => window.Assist.CompletionLabels.Count > 0, "the members after $Player's dot", TimeSpan.FromSeconds(60));
+            window.KeyTextInput("Take");
+            bool listed = Ui.Pumped(() => window.Assist.CompletionLabels.Contains("TakeDamage"), TimeSpan.FromSeconds(30));
+            Assert.True(listed, $"After $Player's dot the list held no TakeDamage of Player.cs: {string.Join(", ", window.Assist.CompletionLabels.Take(20))}");
+            Ui.Press(window, "ENTER", settle: false);
+            Ui.PumpUntil(() => document.Text.Snapshot.ToString().Contains("\t$Player.TakeDamage", StringComparison.Ordinal), "TakeDamage put in", TimeSpan.FromSeconds(10));
+            Ui.Press(window, "ESCAPE", settle: false);
+            string card = Hover(window, editor, "TakeDamage");
+            Assert.Contains("void TakeDamage(int amount)", card, StringComparison.Ordinal);
+            Ui.PlaceAfter(editor, "$Player.Take");
+            Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration), settle: false);
+            Ui.PumpUntil(() => window.EditorArea.Active?.Path.EndsWith("Player.cs", StringComparison.Ordinal) == true
+                && window.EditorArea.CodeEditor.CaretPosition.Line == 9, "Player.cs open at TakeDamage, line 10", TimeSpan.FromSeconds(30));
+            Assert.True(window.Session.Web?.For(document) is not { Serving: true }, "Godot's server answered: the test's hold of its start did not hold");
+        }
+        finally
+        {
+            window.Close();
+            release.SetResult();
+        }
+    }
+
+    /// <summary>The card shown with the pointer resting on some text of the editor's, the window's loop run meanwhile (Godot's
+    /// server's held start keeps it from settling).</summary>
+    private static string Hover(MainWindow window, CodeEditor editor, string text)
+    {
+        window.MouseMove(new Point(0, 0), Avalonia.Input.RawInputModifiers.None);
+        Ui.PumpUntil(() => window.Assist.HoverText is null, "the last card to go", TimeSpan.FromSeconds(30));
+        int at = editor.Document.Snapshot.ToString().IndexOf(text, StringComparison.Ordinal) + 1;
+        Point point = editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value;
+        window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
+        Ui.PumpUntil(() => window.Assist.HoverText is not null, $"the card on {text}", TimeSpan.FromSeconds(30));
+        return window.Assist.HoverText!;
     }
 
     /// <summary>A node path of a script its scene runs: <c>$Title</c>, a Label there, completes the Label's members, its

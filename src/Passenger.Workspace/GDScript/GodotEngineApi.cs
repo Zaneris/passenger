@@ -44,6 +44,9 @@ public sealed class GodotApiClass
     public Dictionary<(string Operator, string Right), string> Operators { get; } = [];
 
     public string? Indexing { get; init; }
+
+    /// <summary>A built-in type's constructors, each its parameters' names and types, as the dump lists them.</summary>
+    public List<IReadOnlyList<(string Name, string Type)>> Constructors { get; } = [];
 }
 
 /// <summary>Godot's API as its own <c>--dump-extension-api</c> writes it (<c>extension_api.json</c>): its engine classes, its
@@ -124,6 +127,10 @@ public sealed class GodotEngineApi
             {
                 GodotApiMethod read = Method(method, Text(method, "return_type"));
                 builtin.Methods[read.Name] = read;
+            }
+            foreach (JsonElement constructor in Array(type, "constructors"))
+            {
+                builtin.Constructors.Add([.. Array(constructor, "arguments").Select(a => (Text(a, "name") ?? string.Empty, Text(a, "type") ?? "Variant"))]);
             }
             Enums(type, builtin.Enums);
             api.Builtins[builtin.Name] = builtin;

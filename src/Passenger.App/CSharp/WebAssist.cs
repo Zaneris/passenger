@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Passenger.App.Editors;
+using Passenger.App.Godot;
 using Passenger.App.Web;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -13,7 +14,7 @@ namespace Passenger.App.CSharp;
 /// <summary>The same popups and commands over a JavaScript, TypeScript, HTML, CSS or JSON file, answered by its
 /// language server (<see cref="WebLanguages"/>): completion after the server's own trigger characters, names that run
 /// on through the language's own characters, a component's scoped stylesheet completing its markup's elements, classes
-/// and ids first (<see cref="ScopedCss"/>), and, where the JSON server has none, Go to Declaration from a package.json
+/// and ids first (<see cref="ScopedCss"/>), a GDScript's node's C# script's members beside Godot's server, and, where the JSON server has none, Go to Declaration from a package.json
 /// dependency to its installed package and Rename of a JSON property, a package.json script's runs with it.</summary>
 internal sealed partial class WebAssist(AssistContext context, PopupPlacement popups, CodeCompletion completion, ParameterInfo parameters, CodeActions actions) : LanguageAssist
 {
@@ -37,10 +38,28 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         }
         if (web.Lsp is { } lsp)
         {
-            string? markup = context.Editors.Active is { } shown ? ScopedCss.MarkupOf(shown.Path) : null;
-            await completion.ServerListAsync(lsp, trigger, incomplete, web, markup is null ? null : (asked, caret, cancel) => ScopedItemsAsync(markup, asked, caret, cancel));
+            OpenDocument? shown = context.Editors.Active;
+            string? markup = shown is null ? null : ScopedCss.MarkupOf(shown.Path);
+            Func<TextSnapshot, int, CancellationToken, Task<CodeCompletion.OwnItems?>>? own = markup is not null ? (asked, caret, cancel) => ScopedItemsAsync(markup, asked, caret, cancel)
+                : shown is not null && GodotScriptTypes.IsScript(shown.Path) ? (asked, caret, _) => CSharpItemsAsync(shown, asked, caret)
+                : null;
+            await completion.ServerListAsync(lsp, trigger, incomplete, web, own);
         }
         return true;
+    }
+
+    /// <summary>What Godot's server cannot list after a node's dot in a GDScript (<c>$Player.</c>): the members of the C# script
+    /// the scenes run on the node, listed first, each once beside the server's; null elsewhere.</summary>
+    private async Task<CodeCompletion.OwnItems?> CSharpItemsAsync(OpenDocument document, TextSnapshot asked, int caret)
+    {
+        int start = context.WordStart(caret);
+        if (start < 2 || asked[start - 1] != '.' || context.GodotScriptTypes?.Invoke() is not { } types || await types.TypedAsync(document) is not { } typed
+            || document.Text.Snapshot != asked)
+        {
+            return null;
+        }
+        IReadOnlyList<Godot.GodotCSharpMember> members = await GDScriptAssist.CSharpMembersAsync(context, document, typed, start - 1);
+        return members.Count == 0 ? null : new CodeCompletion.OwnItems(start, [.. members.Select(GDScriptAssist.ItemOf)], null) { ByName = true };
     }
 
     /// <summary>What a component's scoped stylesheet lists first where a selector is written: the elements its markup writes,
@@ -75,14 +94,50 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         }
         if (web.Lsp is { } lsp)
         {
+            // A node's C# script's member: the server's card where it has one, else Passenger's.
+            if (GodotScriptTypes.IsScript(document.Path) && await GDScriptAssist.CSharpMemberAtAsync(context, document, offset) is { } member)
+            {
+                if (await ServerHoverOrNullAsync(lsp, offset, cancel) is { } said && Shapes.Text(said.Contents).Trim().Length > 0)
+                {
+                    card.AddHover(said);
+                }
+                else
+                {
+                    GDScriptAssist.Describe(card, member);
+                }
+                return true;
+            }
             await QuickInfo.ServerHoverAsync(lsp, card, offset, cancel);
         }
         return true;
     }
 
+    private static async Task<Hover?> ServerHoverOrNullAsync(LspDocument lsp, int offset, CancellationToken cancel)
+    {
+        try
+        {
+            return await lsp.HoverAsync(offset, cancel);
+        }
+        catch (LanguageServerFailed)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Go to Declaration where the server has none (JSON's); the server's own (<see cref="CSharpAssist"/>) otherwise.</summary>
     public override async Task<bool> DefinitionAsync(int offset)
     {
+        // A node's C# script's member, which Godot's server never reads, goes to its C# file.
+        if (context.WebCurrent is { Lsp: not null } served && context.Editors.Active is { } shown && GodotScriptTypes.IsScript(shown.Path)
+            && await GDScriptAssist.CSharpMemberAtAsync(context, shown, offset) is { } member)
+        {
+            (string Path, TextPosition Position) place = await GDScriptAssist.PlaceOfAsync(context, member);
+            if (context.Editors.Active == shown)
+            {
+                context.Navigate(place);
+            }
+            return true;
+        }
         if (context.WebCurrent is not { Lsp: not null } web || web.Provides("definitionProvider"))
         {
             return false;

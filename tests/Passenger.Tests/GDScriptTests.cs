@@ -79,6 +79,36 @@ public sealed class GDScriptTests
         window.Close();
     }
 
+    /// <summary>Once Godot's server serves the script, a node its scene runs a C# script on (<c>$Player</c>) completes the C#
+    /// class's members, each once beside what the server lists, the card on one says it as C# declares it, and Go to
+    /// Declaration opens the C# file at it: what Godot's server, which never built the C# script, cannot answer.</summary>
+    [AvaloniaFact]
+    public void A_nodes_csharp_scripts_members_join_godots_servers_answers_each_said_once()
+    {
+        TestFolders.Write(folder, "Player.cs", "using Godot;\n\npublic partial class Player : Node2D\n{\n    [Signal]\n    public delegate void HitEventHandler(int amount);\n\n    public int Health { get; set; } = 3;\n\n    public void TakeDamage(int amount)\n    {\n        Health -= amount;\n    }\n}\n");
+        TestFolders.Write(folder, "main.tscn", "[gd_scene load_steps=3 format=3]\n\n[ext_resource type=\"Script\" path=\"res://main.gd\" id=\"1\"]\n[ext_resource type=\"Script\" path=\"res://Player.cs\" id=\"2\"]\n\n"
+            + "[node name=\"Main\" type=\"Node2D\"]\nscript = ExtResource(\"1\")\n\n[node name=\"Player\" type=\"Node2D\" parent=\".\"]\nscript = ExtResource(\"2\")\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "\t\tget_tree()");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("$Player");
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Count > 0, "the members after $Player's dot");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("TakeDamage") && window.Assist.CompletionLabels.Contains("Health") && window.Assist.CompletionLabels.Contains("Hit"),
+            () => $"Player.cs's TakeDamage, Health and Hit after $Player's dot; the list has {string.Join(", ", window.Assist.CompletionLabels.Take(12))}");
+        Assert.Equal(1, window.Assist.CompletionLabels.Count(l => l == "TakeDamage" || l.StartsWith("TakeDamage(", StringComparison.Ordinal)));
+        window.KeyTextInput("TakeDamage");
+        Ui.Press(window, "ESCAPE");
+        Assert.Contains("void TakeDamage(int amount)", Hover(window, editor, "TakeDamage"), StringComparison.Ordinal);
+        Ui.PlaceAfter(editor, "$Player.Take");
+        Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
+        Ui.WaitFor(() => window.EditorArea.Active?.Path.EndsWith("Player.cs", StringComparison.Ordinal) == true && window.EditorArea.CodeEditor.CaretPosition.Line == 9,
+            "Player.cs open at TakeDamage, line 10");
+        window.Close();
+    }
+
     /// <summary>Context Help on a call of Godot's engine browses its method's place on its class's page of Godot's class
     /// reference, for the version of the Godot found; on the script's own function it says there is none, browsing nothing.</summary>
     [AvaloniaFact]

@@ -10,7 +10,8 @@ namespace Passenger.App.CSharp;
 
 /// <summary>A GDScript's answers from Passenger's own reading of it (<see cref="GodotScriptTypes"/>) while Godot's server
 /// for it has not started: completion of the names in scope and of a value's members, the hover card's declaration and
-/// type, and Go to Declaration within the project's scripts. Once Godot's server runs, its answers are the file's.</summary>
+/// type, Go to Declaration within the project's scripts, and a node's C# script's members (<see cref="GodotCSharpMembers"/>).
+/// Once Godot's server runs, its answers are the file's, joined by those C# members, which its server never reads.</summary>
 internal sealed class GDScriptAssist(AssistContext context, CodeCompletion completion, CodeNavigation navigation) : LanguageAssist
 {
     private readonly Dictionary<CompletionItem, string> described = [];
@@ -49,15 +50,27 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
         {
             return true;
         }
-        List<GDScriptMemberInfo> members = start > 0 && asked[start - 1] == '.' ? MembersAfterDot(typed, start - 1) : InScope(typed, caret);
-        if (members.Count == 0)
+        bool afterDot = start > 0 && asked[start - 1] == '.';
+        List<GDScriptMemberInfo> members = afterDot ? MembersAfterDot(typed, start - 1) : InScope(typed, caret);
+        IReadOnlyList<GodotCSharpMember> csharp = afterDot ? await CSharpMembersAsync(context, shown, typed, start - 1) : [];
+        if (cancel.IsCancellationRequested || context.Editors.Active != shown || shown.Text.Snapshot != asked)
+        {
+            return true;
+        }
+        if (members.Count == 0 && csharp.Count == 0)
         {
             completion.Close();
             return true;
         }
         described.Clear();
         List<CompletionItem> items = [];
-        foreach (GDScriptMemberInfo member in members)
+        foreach (GodotCSharpMember member in csharp)
+        {
+            CompletionItem item = ItemOf(member);
+            items.Add(item);
+            described[item] = member.Shown;
+        }
+        foreach (GDScriptMemberInfo member in members.Where(m => csharp.All(c => c.Name != m.Name)))
         {
             CompletionItem item = new()
             {
@@ -80,6 +93,68 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
         }
         completion.Open(new CodeCompletion.Completion(items, start, [], false) { Own = this });
         return true;
+    }
+
+    internal static CompletionItem ItemOf(GodotCSharpMember member) => new()
+    {
+        Label = member.Name,
+        Kind = member.Kind switch
+        {
+            "func" => CompletionItemKind.Method,
+            "const" => CompletionItemKind.Constant,
+            "signal" => CompletionItemKind.Event,
+            _ => CompletionItemKind.Variable,
+        },
+        Detail = $"C# · {member.Shown}",
+        FilterText = member.Name,
+        SortText = $"0{member.Name}",
+    };
+
+    /// <summary>The members of the C# script the scenes run on the node before a dot (<c>$Player.</c>), read from its file;
+    /// none where the value is no such node.</summary>
+    internal static async Task<IReadOnlyList<GodotCSharpMember>> CSharpMembersAsync(AssistContext context, OpenDocument document, GodotScriptTypes.Typed typed, int dot)
+    {
+        if (dot < 1 || typed.Analysis.NodeAt(dot - 1) is not ({ } node, _) || node is not GDScriptExpression
+            || typed.Analysis.TypeOf(node) is not { CSharpScript: { } res } || context.GodotOf(document.Path) is not ({ } index, { } folder)
+            || (await index.ScenesAsync(folder)).FileOf(res) is not { } file)
+        {
+            return [];
+        }
+        OpenTexts texts = context.Editors.Texts();
+        return await BackgroundWork.Run(() => texts.Text(file) is { } text ? GodotCSharpMembers.Of(file, text) : (IReadOnlyList<GodotCSharpMember>)[]);
+    }
+
+    /// <summary>The member of a node's C# script a name after the node's dot reads (<c>$Player.TakeDamage</c>); null for any
+    /// other name.</summary>
+    internal static async Task<GodotCSharpMember?> CSharpMemberAtAsync(AssistContext context, OpenDocument document, int offset)
+    {
+        if (context.GodotScriptTypes?.Invoke() is not { } types || await types.TypedAsync(document) is not { } typed
+            || typed.Analysis.NodeAt(offset) is not ({ } node, int from) || node is not GDScriptIdentifier name)
+        {
+            return null;
+        }
+        int start = from + name.Start;
+        TextSnapshot text = document.Text.Snapshot;
+        return start > 1 && start <= text.Length && text[start - 1] == '.'
+            ? (await CSharpMembersAsync(context, document, typed, start - 1)).FirstOrDefault(m => m.Name == name.Name)
+            : null;
+    }
+
+    /// <summary>A C# member's card: its declaration as C# writes it, and the script that declares it.</summary>
+    internal static void Describe(IHoverCard card, GodotCSharpMember member)
+    {
+        card.AddCode(member.Shown);
+        card.AddText($"A member of {Path.GetFileName(member.Path)}, the C# script the scene runs on the node");
+    }
+
+    /// <summary>Where a C# member's name is written, for Go to Declaration.</summary>
+    internal static async Task<(string Path, TextPosition Position)> PlaceOfAsync(AssistContext context, GodotCSharpMember member)
+    {
+        OpenTexts texts = context.Editors.Texts();
+        TextSnapshot snapshot = await BackgroundWork.Run(() => texts.TextOf(member.Path) ?? TextSnapshot.From(string.Empty));
+        int at = Math.Min(member.Start, snapshot.Length);
+        int line = snapshot.GetLineFromOffset(at);
+        return (member.Path, new TextPosition(line, at - snapshot.GetLineStart(line)));
     }
 
     /// <summary>The members of the value before a dot: its type's, through its classes and the engine's.</summary>
@@ -271,6 +346,12 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
         {
             return false;
         }
+        if (await CSharpMemberAtAsync(context, document, offset) is { } csharp)
+        {
+            cancel.ThrowIfCancellationRequested();
+            Describe(card, csharp);
+            return true;
+        }
         GDScriptDeclaration? declared = typed.Analysis.DeclarationOf(name);
         GDScriptType type = declared?.Type ?? typed.Analysis.TypeOf(name);
         card.AddCode(type.IsVariant ? name.Name : $"{name.Name}: {type}");
@@ -306,6 +387,10 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
         if (!Answers(document) || context.GodotScriptTypes?.Invoke() is not { } types)
         {
             return null;
+        }
+        if (await CSharpMemberAtAsync(context, document, offset) is { } csharp)
+        {
+            return new Declared(Declared.Served([await PlaceOfAsync(context, csharp)], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration);
         }
         GodotScriptTypes.Typed? typed = await types.TypedAsync(document);
         if (typed?.Analysis.NodeAt(offset) is not ({ } node, _) || node is not GDScriptIdentifier name

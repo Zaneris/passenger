@@ -36,6 +36,10 @@ public sealed record GDScriptType(GDScriptTypeKind Kind, string Name)
     /// <summary>An enum's values by name.</summary>
     public IReadOnlyDictionary<string, long>? Values { get; init; }
 
+    /// <summary>For a node's engine class, the res:// path of the C# script its scene runs on it, whose members the C# file
+    /// declares; null for none.</summary>
+    public string? CSharpScript { get; init; }
+
     /// <summary>Whether a script enum's values are only partly known, one written as more than a number.</summary>
     public bool ValuesPartial { get; init; }
 

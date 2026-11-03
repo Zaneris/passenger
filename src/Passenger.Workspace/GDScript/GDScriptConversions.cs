@@ -1,0 +1,79 @@
+namespace Passenger.Workspace.GDScript;
+
+/// <summary>Which of Godot's built-in types converts strictly to another, as <c>Variant::can_convert_strict</c> of the Godot
+/// Engine's <c>core/variant/variant.cpp</c> (MIT) has them: what a built-in type's constructor of one argument takes beside
+/// its own type, said in Godot's order of its types. The same at 4.7.2 and at 4.8 beta 2.</summary>
+public static class GDScriptConversions
+{
+    /// <summary>The built-in types in the order of Godot's <c>Variant::Type</c>, as GDScript names them.</summary>
+    private static readonly string[] Order =
+    [
+        "Nil", "bool", "int", "float", "String", "Vector2", "Vector2i", "Rect2", "Rect2i", "Vector3", "Vector3i", "Transform2D", "Vector4",
+        "Vector4i", "Plane", "Quaternion", "AABB", "Basis", "Transform3D", "Projection", "Color", "StringName", "NodePath", "RID", "Object",
+        "Callable", "Signal", "Dictionary", "Array", "PackedByteArray", "PackedInt32Array", "PackedInt64Array", "PackedFloat32Array",
+        "PackedFloat64Array", "PackedStringArray", "PackedVector2Array", "PackedVector3Array", "PackedColorArray", "PackedVector4Array",
+    ];
+
+    private static readonly string[] PackedArrays =
+    [
+        "PackedByteArray", "PackedInt32Array", "PackedInt64Array", "PackedFloat32Array", "PackedFloat64Array", "PackedStringArray",
+        "PackedColorArray", "PackedVector2Array", "PackedVector3Array", "PackedVector4Array",
+    ];
+
+    /// <summary>Each type with the types that convert strictly to it, as can_convert_strict's table lists them.</summary>
+    private static readonly Dictionary<string, string[]> Into = new(StringComparer.Ordinal)
+    {
+        ["bool"] = ["int", "float"],
+        ["int"] = ["bool", "float"],
+        ["float"] = ["bool", "int"],
+        ["String"] = ["NodePath", "StringName"],
+        ["Vector2"] = ["Vector2i"],
+        ["Vector2i"] = ["Vector2"],
+        ["Rect2"] = ["Rect2i"],
+        ["Rect2i"] = ["Rect2"],
+        ["Transform2D"] = ["Transform3D"],
+        ["Vector3"] = ["Vector3i"],
+        ["Vector3i"] = ["Vector3"],
+        ["Vector4"] = ["Vector4i"],
+        ["Vector4i"] = ["Vector4"],
+        ["Quaternion"] = ["Basis"],
+        ["Basis"] = ["Quaternion"],
+        ["Transform3D"] = ["Transform2D", "Quaternion", "Basis", "Projection"],
+        ["Projection"] = ["Transform3D"],
+        ["Color"] = ["String", "int"],
+        ["RID"] = ["Object"],
+        ["StringName"] = ["String"],
+        ["NodePath"] = ["String"],
+        ["Array"] = PackedArrays,
+        ["PackedByteArray"] = ["Array"],
+        ["PackedInt32Array"] = ["Array"],
+        ["PackedInt64Array"] = ["Array"],
+        ["PackedFloat32Array"] = ["Array"],
+        ["PackedFloat64Array"] = ["Array"],
+        ["PackedStringArray"] = ["Array"],
+        ["PackedVector2Array"] = ["Array"],
+        ["PackedVector3Array"] = ["Array"],
+        ["PackedColorArray"] = ["Array"],
+        ["PackedVector4Array"] = ["Array"],
+    };
+
+    /// <summary>Whether a built-in type is one Godot's table knows, so what converts to it can be said.</summary>
+    public static bool Knows(string type) => Array.IndexOf(Order, type) > 0;
+
+    /// <summary>The other types that convert strictly to a built-in type, in Godot's order of its types.</summary>
+    public static IReadOnlyList<string> From(string type) =>
+        Into.TryGetValue(type, out string[]? from) ? [.. Order.Where(o => o != type && from.Contains(o))] : [];
+
+    /// <summary>A constructor's first argument as Godot's reduce_call says what it may be: the type itself, then each that
+    /// converts to it, joined as <c>Vector2" or "Vector2i</c> or <c>int", "bool", or "float</c> between the words' quotes.</summary>
+    public static string Expected(string type)
+    {
+        IReadOnlyList<string> from = From(type);
+        return from.Count switch
+        {
+            0 => type,
+            1 => $"{type}\" or \"{from[0]}",
+            _ => $"{type}\", \"{string.Join("\", \"", from.Take(from.Count - 1))}\", or \"{from[^1]}",
+        };
+    }
+}

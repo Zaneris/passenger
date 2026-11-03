@@ -77,7 +77,12 @@ public sealed partial class GDScriptAnalyzer
         new(GDScriptTypeKind.Class, tree.Class.Identifier?.Name ?? path) { Class = tree.Class, Script = path };
 
     /// <summary>What a function, signal or variable is in its class, with the context it was read in.</summary>
-    private sealed record Context(GDScriptAnalysis Analysis, GDScriptType Class, int Offset, Scope? Scope, GDScriptFunction? Function);
+    private sealed record Context(GDScriptAnalysis Analysis, GDScriptType Class, int Offset, Scope? Scope, GDScriptFunction? Function)
+    {
+        /// <summary>What a return in the function must give, where its type is written: its declared return type, a
+        /// getter's its property's; null for none.</summary>
+        public GDScriptType? Returns { get; init; }
+    }
 
     private sealed class Scope(Scope? parent)
     {
