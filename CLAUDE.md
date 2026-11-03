@@ -34,10 +34,11 @@ just notices               # fail naming any carried package the notices miss
 just mcp [FOLDER]          # Passenger as an MCP server over a folder, from a clone of the last build
 just mcp-call FOLDER TOOL [JSON]  # one MCP tool over a folder (a worktree) from the shell, its server kept
 just site-shots [SCENE...] # site/images/<scene>-<dark|light>.webp retaken (macOS, cwebp)
-just icons | file-icons | themes | unicode-widths | aspire-protocol | app-icon   # regenerate checked-in files
+just icons | file-icons | themes | unicode-widths | aspire-protocol | app-icon | godot-shader-types  # regenerate
 ```
 
-The app icons, generated themes, icon sets, terminal widths and Aspire's protocol code come only from their recipes.
+The app icons, generated themes, icon sets, terminal widths, Aspire's protocol code and Godot's shader table come only
+from their recipes.
 
 **Use Passenger on itself.** `.mcp.json` starts Passenger's MCP server over this repository (`tools/mcp.sh`, an APFS
 clone of the last Debug build: reconnect to pick up a new one). Ask Roslyn with `diagnostics`, `find_symbol`, `outline`
@@ -368,10 +369,13 @@ Projects in `src/`; `find_symbol` finds the rest:
   `GodotScriptDeclarations`; their fixes `GodotOffer` over the extension's `GodotFix` (members made by Roslyn so the
   code builds) and Workspace's pure `GodotWrites`, a fix that asks first through `EditorFix.Confirms`; Godot's generator
   assigns every field in generated code, so a field's values are read from the code's own documents); a C# file read
-  before its project's evaluation landed is pulled again once it does (`CSharpService.GodotProjectsChanged`). Edits
-  added to a server's workspace edit for a file it already edits join that file's entry (`TypeRename.With`):
-  `documentChanges` apply in order. A server's own command (TypeScript's refactorings, ESLint's fixes) runs through
-  `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
+  before its project's evaluation landed is pulled again once it does (`CSharpService.GodotProjectsChanged`). A Godot
+  shader is `GodotShaderAssist` over Workspace's `GodotShaderCode`, its language the carried `GodotShaderTypes.json` as
+  the Godot found takes it (`GodotShaderCompiler.TableAsync`, probed per version), its marks Godot's own compiler's
+  through `PassengerShaders.gd` (`GodotShaderMarks`; a scene's own Shader's in `GodotSceneMarks` through
+  `GodotStringPlaces`). Edits added to a server's workspace edit for a file it already edits join that file's entry
+  (`TypeRename.With`): `documentChanges` apply in order. A server's own command (TypeScript's refactorings, ESLint's
+  fixes) runs through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
   `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
@@ -596,12 +600,15 @@ site-shots` retakes its images.
   its id from the helper's `held` (`GodotGame.HeldAsync`). A node instancing a scene no text says (an imported model, a
   binary scene) keeps the names below it unknown (`GodotTreeNode.NodesUnread`); a GDScript signal's parameters are known
   only where written and its own emits agree, as Godot passes whatever an emit gives; a connection's flags may bind the
-  sender as one more argument (`GodotConnection.Bound`). A launch profile running Godot on the project
-  (`GodotExecutables.NamesGodot`: Chickensoft's `%GODOT%`) is the game's configuration (`RunConfiguration.NamesGodot`),
-  its `--path` the launch's (`WithoutPath`). A macOS export of an arm64 or universal game refuses a project without
-  `textures/vram_compression/import_etc2_astc`. Its .NET host rolls forward only to released runtimes, so a new game's
-  framework is one it can run (`GodotGames.Runnable`). An agent's input and layout reach a game through Passenger's
-  helper node (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
+  sender as one more argument (`GodotConnection.Bound`). Godot compiles a Shader only once its RID is asked for
+  (`get_rid()`), with no warnings, stopping at its first error, and a failed preprocess reaches the compiler as raw
+  text, so a missing include is Passenger's to name (`GodotShaderUnit.NoInclude`). A launch profile running Godot on the
+  project (`GodotExecutables.NamesGodot`: Chickensoft's `%GODOT%`) is the game's configuration
+  (`RunConfiguration.NamesGodot`), its `--path` the launch's (`WithoutPath`). A macOS export of an arm64 or universal
+  game refuses a project without `textures/vram_compression/import_etc2_astc`. Its .NET host rolls forward only to
+  released runtimes, so a new game's framework is one it can run (`GodotGames.Runnable`). An agent's input and layout
+  reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing;
+  `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
