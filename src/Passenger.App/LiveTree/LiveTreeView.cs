@@ -636,6 +636,9 @@ public sealed class LiveTreeView : DockPanel
     /// <summary>The note over the tree, while it shows one.</summary>
     public string? BannerText => banner.IsVisible ? bannerText.Text : null;
 
+    /// <summary>What the window says in place of a tree (why it has none), while it says it.</summary>
+    public string? PlaceholderText => placeholder.IsVisible ? placeholder.Text : null;
+
     /// <summary>The line beside the buttons: what the app runs, or why the last ask of it failed.</summary>
     public string StatusLine => status.Text ?? string.Empty;
 

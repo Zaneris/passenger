@@ -258,6 +258,37 @@ public sealed class LiveTreeTests : IClassFixture<RestoredFolders>, IDisposable
         window.Close();
     }
 
+    /// <summary>An inspector's socket whose path is past what a Unix socket's address holds leaves the app running without
+    /// the inspector: the Live Visual Tree says why it has no tree, the app's own output says the inspector is not in it,
+    /// and the app runs on.</summary>
+    [AvaloniaFact]
+    public void An_inspector_socket_past_what_a_sockets_address_holds_leaves_the_app_running_and_the_tree_saying_why()
+    {
+        string sockets = Directory.CreateDirectory(Path.Combine(TestFolders.Create("sockets-"), new string('s', 120))).FullName;
+        LiveApp.SocketsIn = sockets;
+        try
+        {
+            MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+            Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.LiveApp is { State: LiveAppState.Refused }, () => $"the app's inspector refused for its socket's path, not {window.LiveApp?.State}");
+            Assert.Contains("a Unix socket's address holds", window.LiveApp!.Problem, StringComparison.Ordinal);
+            Ui.WaitFor(() => window.LiveTree.PlaceholderText?.Contains("runs uninspected", StringComparison.Ordinal) == true,
+                () => $"the Live Visual Tree saying why it has no tree, where it says {window.LiveTree.PlaceholderText}");
+            Ui.WaitFor(() => window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("Passenger's inspector is not in this app", StringComparison.Ordinal),
+                () => $"the app's own output saying the inspector is not in it: {window.BottomPanel.Debug.Console.Document.Snapshot}", TimeSpan.FromMinutes(1));
+            Ui.Hold(TimeSpan.FromSeconds(2), "the app a moment to run on past its start");
+            Assert.True(window.Debugger.Session is { State: DebugState.Running }, $"The app did not run on without its inspector: {window.Debugger.Session?.State} ({window.Status})");
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");
+            window.Close();
+        }
+        finally
+        {
+            LiveApp.SocketsIn = null;
+            TestFolders.Delete(Path.GetDirectoryName(sockets)!);
+        }
+    }
+
     /// <summary>The folder opened in a window and its app launched by Debug, its tree shown.</summary>
     private MainWindow Debugged()
     {

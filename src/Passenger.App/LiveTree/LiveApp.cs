@@ -48,7 +48,8 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>The sockets this process has made, which number each one's name apart.</summary>
     private static int made;
 
-    private readonly Socket listener;
+    /// <summary>Where the app's inspector connects; null where Passenger could not listen, the app running uninspected.</summary>
+    private readonly Socket? listener;
     private readonly CancellationTokenSource closing = new();
     private readonly PendingRequests<Request, Reply> asked = new();
     private readonly SemaphoreSlim writing = new(1, 1);
@@ -58,7 +59,8 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     private readonly List<Reply> heard = [];
     private NetworkStream? stream;
 
-    private LiveApp(string name, string socket, Socket listener, LaunchPlan? plan, IReadOnlyList<string> overlays, LiveAppKind kind = LiveAppKind.Avalonia)
+    private LiveApp(string name, string socket, Socket? listener, LaunchPlan? plan, IReadOnlyList<string> overlays, LiveAppKind kind = LiveAppKind.Avalonia,
+        string? uninspected = null)
     {
         this.listener = listener;
         SocketPath = socket;
@@ -86,9 +88,20 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             }
             Plan = plan with { Environment = environment };
         }
+        if (listener is null)
+        {
+            // The app still carries the inspector, which finds no Passenger to serve and lets the app run on, saying why.
+            State = LiveAppState.Refused;
+            Problem = uninspected;
+            return;
+        }
         // Not held: it waits as long as the app runs, which nothing drawn waits for.
         IdeErrors.Observe(BackgroundWork.Unheld(ServeAsync));
     }
+
+    /// <summary>Where the inspectors' sockets are made: the state's socket folder (<see cref="SocketFolders.Own"/>) while null,
+    /// else this folder, a test's own.</summary>
+    public static string? SocketsIn { get; set; }
 
     /// <summary>The inspector beside the app, as its build carries it.</summary>
     public static string InspectorPath => Path.Combine(AppContext.BaseDirectory, "inspector", "Passenger.Inspector.dll");
@@ -134,7 +147,11 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         {
             throw new LiveAppException("This Passenger was started by another Passenger, whose inspector it carries: that one's app tools (app run or debug) look at its windows");
         }
-        (string socket, Socket listener) = Listen("Passenger") ?? throw new LiveAppException("Passenger could not listen for its own inspector");
+        (string socket, Socket? listener, string? problem) = Listen("Passenger");
+        if (listener is null)
+        {
+            throw new LiveAppException(problem ?? "Passenger could not listen for its own inspector");
+        }
         LiveApp app = new("Passenger", socket, listener, plan: null, []);
         try
         {
@@ -202,7 +219,8 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>The live app for a plan whose program is built with Avalonia (Avalonia.Base beside its assembly), showing
     /// these renderer debug overlays from its first window, or, with <paramref name="wpf"/>, on Windows with WPF (its
     /// assembly a WindowsDesktop app's that references WPF's); null for any other program, or when this build of Passenger
-    /// carries no inspector for it.</summary>
+    /// carries no inspector for it. One whose socket could not be made is refused, saying why, its plan still carrying the
+    /// inspector, which lets the app run on without it.</summary>
     public static LiveApp? For(LaunchPlan plan, IReadOnlyList<string>? overlays = null, bool wpf = true)
     {
         if (plan.Built is not { } built)
@@ -222,7 +240,8 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         {
             return null;
         }
-        return Listen(plan.Name) is (string socket, Socket listener) ? new LiveApp(plan.Name, socket, listener, plan, overlays ?? [], kind) : null;
+        (string socket, Socket? listener, string? problem) = Listen(plan.Name);
+        return new LiveApp(plan.Name, socket, listener, plan, overlays ?? [], kind, problem);
     }
 
     /// <summary>The inspector a XAML file's Avalonia previewer loads to say where it draws each element, and what the
@@ -231,7 +250,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     public static (LiveApp Live, Dictionary<string, string> Environment)? ForPreview(string file, IReadOnlyDictionary<string, string> environment)
     {
         string name = $"Preview of {Path.GetFileName(file)}";
-        if (!File.Exists(InspectorPath) || Listen(name) is not (string socket, Socket listener))
+        if (!File.Exists(InspectorPath) || Listen(name) is not (string socket, Socket listener, _))
         {
             return null;
         }
@@ -275,28 +294,33 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         return windows;
     }
 
-    /// <summary>A socket of its own in Passenger's socket folder for one app's inspector to connect to, or null when it cannot
-    /// be made, which the IDE's errors say, the app then launched as it is.</summary>
-    private static (string Socket, Socket Listener)? Listen(string name)
+    /// <summary>A socket of its own in Passenger's socket folder for one app's inspector to connect to; where it cannot be
+    /// made (its path too long for a socket's address, the folder not the user's), no listener and why the app runs
+    /// uninspected.</summary>
+    private static (string Socket, Socket? Listener, string? Problem) Listen(string name)
     {
         string socket = $"{Environment.ProcessId}-{Interlocked.Increment(ref made)}.inspector";
         Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         try
         {
-            socket = Path.Combine(SocketFolders.Own(StateStore.DefaultRoot), socket);
+            socket = Path.Combine(SocketsIn ?? SocketFolders.Own(StateStore.DefaultRoot), socket);
+            if (!SocketFolders.Fits(socket))
+            {
+                listener.Dispose();
+                return (socket, null, $"{name} runs uninspected: the Live Visual Tree's socket for its inspector is too long, as {SocketFolders.TooLong(socket)}");
+            }
             // Only a dead Passenger that had this process's number leaves one by this name.
             File.Delete(socket);
             listener.Bind(new UnixDomainSocketEndPoint(socket));
             listener.Listen(1);
         }
-        // ArgumentException: a path past what a Unix socket's address holds (104 bytes on macOS).
         catch (Exception error) when (error is SocketException or IOException or UnauthorizedAccessException or ArgumentException)
         {
             listener.Dispose();
             IdeErrors.Write($"The Live Visual Tree could not listen for {name} at {socket}, so it runs uninspected: {error.Message}");
-            return null;
+            return (socket, null, $"{name} runs uninspected: the Live Visual Tree could not listen for its inspector at {socket}: {error.Message}");
         }
-        return (socket, listener);
+        return (socket, listener, null);
     }
 
     /// <summary>The app's windows and their visual trees.</summary>
@@ -424,7 +448,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         Socket client;
         try
         {
-            client = await listener.AcceptAsync(closing.Token);
+            client = await listener!.AcceptAsync(closing.Token);
         }
         catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException)
         {
@@ -433,7 +457,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         finally
         {
             // The one app it was made for has come (or will not): nothing else may connect.
-            listener.Dispose();
+            listener!.Dispose();
             Forget(SocketPath);
         }
         NetworkStream network = new(client, ownsSocket: true);
@@ -565,7 +589,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             return;
         }
         closing.Cancel();
-        listener.Dispose();
+        listener?.Dispose();
         stream?.Dispose();
         Forget(SocketPath);
         FailAll();
