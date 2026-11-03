@@ -40,6 +40,7 @@ public sealed partial class GDScriptAnalyzer
             Walk(analysis, member.Node, new Context(analysis, self, member.Offset, null, null));
         }
         ClassWarnings(tree.Members, analysis, Uses(analysis));
+        ClassLevelStrings(tree, new Context(analysis, self, 0, null, null));
         if (tree.Members.Count == 0 && tree.Class.Extends.Count == 0 && tree.Class.ExtendsPath is null && tree.Class.Identifier is null && !tree.Class.IsTool
             && tree.Class.Annotations.Count == 0 && tree.Errors.Count == 0)
         {
@@ -659,11 +660,13 @@ public sealed partial class GDScriptAnalyzer
     {
         if (node.Type is { } declared)
         {
-            if (node.Initializer is { } value)
+            GDScriptType? valued = node.Initializer is { } value ? Reduce(value, context) : null;
+            GDScriptType resolved = ResolveType(declared, context);
+            if (node is not GDScriptParameter && resolved is { Kind: GDScriptTypeKind.Enum, Meta: false } && valued is { Kind: GDScriptTypeKind.Builtin, Name: "int" } && node.Initializer is { } integer)
             {
-                Reduce(value, context);
+                Warn(context, integer, "INT_AS_ENUM_WITHOUT_CAST");
             }
-            return ResolveType(declared, context);
+            return resolved;
         }
         if (node.Initializer is not { } initializer)
         {

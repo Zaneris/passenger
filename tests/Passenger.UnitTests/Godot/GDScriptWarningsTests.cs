@@ -20,7 +20,7 @@ public class GDScriptWarningsTests
             { "name": "int", "operators": [{ "name": "/", "right_type": "int", "return_type": "int" }, { "name": "/", "right_type": "float", "return_type": "float" },
               { "name": "+", "right_type": "int", "return_type": "int" }] },
             { "name": "float", "operators": [{ "name": "/", "right_type": "int", "return_type": "float" }, { "name": "/", "right_type": "float", "return_type": "float" }] },
-            { "name": "String", "operators": [] }, { "name": "Array", "methods": [] }, { "name": "Callable", "methods": [] },
+            { "name": "String", "operators": [], "methods": [{ "name": "num_uint64", "return_type": "String", "is_static": true }] }, { "name": "Array", "methods": [] }, { "name": "Callable", "methods": [] },
             { "name": "Signal", "methods": [{ "name": "emit", "return_type": "void" }] },
             { "name": "Vector2", "members": [{ "name": "x", "type": "float" }] }, { "name": "Vector2i", "members": [{ "name": "x", "type": "int" }] },
             { "name": "Dictionary", "methods": [] },
@@ -55,7 +55,8 @@ public class GDScriptWarningsTests
         GodotEngineApi? engine = null, Func<string, GDScriptTree?>? others = null)
     {
         GDScriptTree tree = GDScriptTree.Parse(text);
-        GDScriptProject project = new(engine ?? Engine, p => p == path ? tree : others?.Invoke(p), new Dictionary<string, string>(), new Dictionary<string, string>());
+        Dictionary<string, string> classNames = tree.Class.Identifier is { } named ? new() { [named.Name] = path } : [];
+        GDScriptProject project = new(engine ?? Engine, p => p == path ? tree : others?.Invoke(p), classNames, new Dictionary<string, string>());
         GDScriptAnalysis analysis = new GDScriptAnalyzer(project).Analyze(tree, path);
         return (analysis, analysis.Findings(settings ?? AsTested(text)));
     }
@@ -163,6 +164,30 @@ public class GDScriptWarningsTests
         "5 INT_AS_ENUM_WITHOUT_MATCH: Cannot cast 2 as Enum \"main.gd.MyEnum\": no enum member has matching value.",
         "6 INT_AS_ENUM_WITHOUT_MATCH: Cannot cast 2 as Enum \"main.gd.MyEnum\": no enum member has matching value.")]
     [InlineData("const BASE = 4\nenum Flags { A = BASE, B }\n\nfunc test():\n\tprint(5 as Flags)\n")]
+    // parser/warnings/static_called_on_instance.gd, return_value_discarded.gd, narrowing_conversion.gd and enum_assign_int_without_casting.gd.
+    [InlineData("class_name TestStaticCalledOnInstance\n\nclass Inner:\n\tstatic func static_func():\n\t\tpass\n\nstatic func static_func():\n\tpass\n\nfunc test():\n"
+        + "\tprint(String.num_uint64(8589934592))\n\tvar some_string := String()\n\tprint(some_string.num_uint64(8589934592))\n\n\tTestStaticCalledOnInstance.static_func()\n"
+        + "\tstatic_func()\n\tself.static_func()\n\tvar other := TestStaticCalledOnInstance.new()\n\tother.static_func()\n\n\tInner.static_func()\n\tvar inner := Inner.new()\n\tinner.static_func()\n",
+        "13 STATIC_CALLED_ON_INSTANCE: The function \"num_uint64()\" is a static function but was called from an instance. Instead, it should be directly called from the type: \"String.num_uint64()\".",
+        "19 STATIC_CALLED_ON_INSTANCE: The function \"static_func()\" is a static function but was called from an instance. Instead, it should be directly called from the type: \"TestStaticCalledOnInstance.static_func()\".",
+        "23 STATIC_CALLED_ON_INSTANCE: The function \"static_func()\" is a static function but was called from an instance. Instead, it should be directly called from the type: \"Inner.static_func()\".")]
+    [InlineData("func i_return_int() -> int:\n\treturn 4\n\n\nfunc test():\n\ti_return_int()\n",
+        "6 RETURN_VALUE_DISCARDED: The function \"i_return_int()\" returns a value that will be discarded if not used.")]
+    [InlineData("func i_accept_ints_only(_i: int):\n\tpass\n\nfunc test():\n\ti_accept_ints_only(12.345)\n",
+        "5 NARROWING_CONVERSION: Narrowing conversion (float is converted to int and loses precision).")]
+    [InlineData("enum MyEnum { ENUM_VALUE_1, ENUM_VALUE_2 }\n\nvar class_var: MyEnum = 0\n\nfunc test():\n\tprint(class_var)\n\tclass_var = 1\n\tprint(class_var)\n"
+        + "\tvar local_var: MyEnum = 0\n\tprint(local_var)\n\tlocal_var = 1\n\tprint(local_var)\n\tlocal_var = MyEnum.ENUM_VALUE_2\n\tprint(local_var)\n",
+        "3 INT_AS_ENUM_WITHOUT_CAST: Integer used when an enum value is expected. If this is intended, cast the integer to the enum type using the \"as\" keyword.",
+        "7 INT_AS_ENUM_WITHOUT_CAST: Integer used when an enum value is expected. If this is intended, cast the integer to the enum type using the \"as\" keyword.",
+        "9 INT_AS_ENUM_WITHOUT_CAST: Integer used when an enum value is expected. If this is intended, cast the integer to the enum type using the \"as\" keyword.",
+        "11 INT_AS_ENUM_WITHOUT_CAST: Integer used when an enum value is expected. If this is intended, cast the integer to the enum type using the \"as\" keyword.")]
+    // parser/warnings/standalone_expression.gd's strings a class holds outside its members, an inner class's too; none for what extends or an annotation takes.
+    [InlineData("\"\"\"\nNot a comment.\n\"\"\"\n\n\"Nor this.\"\n\nextends Node\n\nclass Inner extends \"res://main.gd\":\n\t\"Inside.\"\n\tvar x := 1\n\n"
+        + "@warning_ignore(\"unused_parameter\")\nfunc test(a):\n\tpass\n\n'Still not one...'\n",
+        "1 STANDALONE_EXPRESSION: Standalone expression (the line may have no effect).",
+        "5 STANDALONE_EXPRESSION: Standalone expression (the line may have no effect).",
+        "10 STANDALONE_EXPRESSION: Standalone expression (the line may have no effect).",
+        "17 STANDALONE_EXPRESSION: Standalone expression (the line may have no effect).")]
     // A script that does not parse gives its errors alone, as Godot's analyzer never runs on it.
     [InlineData("func test():\n\tvar unused = 1\n\tvar = 2\n", "3 ERROR: Expected variable name after \"var\".")]
     [InlineData("func test():\n\tprint(\"warn\")\n\nfunc get(_property: StringName) -> Variant:\n\treturn null\n",

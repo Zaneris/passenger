@@ -77,6 +77,8 @@ public sealed partial class GDScriptAnalyzer
         "CONFUSABLE_TEMPORARY_MODIFICATION" => s.Length > 2
             ? $"The built-in property \"{s[1]}\" will not be modified as a result of calling the method \"{s[2]}()\". Consider assigning the desired value to the property instead, or check the \"{s[0]}\" class for a specialized API."
             : $"The built-in property \"{s[1]}\" will not be modified in the assignment chain. Consider using a temporary variable and assigning it back instead, or check the \"{s[0]}\" class for a specialized API.",
+        "INT_AS_ENUM_WITHOUT_CAST" => "Integer used when an enum value is expected. If this is intended, cast the integer to the enum type using the \"as\" keyword.",
+        "STATIC_CALLED_ON_INSTANCE" => $"The function \"{s[0]}()\" is a static function but was called from an instance. Instead, it should be directly called from the type: \"{s[1]}.{s[0]}()\".",
         "INT_AS_ENUM_WITHOUT_MATCH" => $"Cannot {s[0]} {s[1]} as Enum \"{s[2]}\": no enum member has matching value.",
         "MISSING_TOOL" => "The base class script has the \"@tool\" annotation, but this script does not have it.",
         "CONFUSABLE_LOCAL_DECLARATION" => $"The {s[0]} \"{s[1]}\" is declared below in the parent block.",
@@ -190,6 +192,57 @@ public sealed partial class GDScriptAnalyzer
         if (!returns && !function.IsAbstract && function.ReturnType is { IsVoid: false } declared && (function.IsLambda || function.Identifier?.Name is not ("_init" or "_static_init")))
         {
             Error(context, declared, "Not all code paths return a value.");
+        }
+    }
+
+    /// <summary>Each string a class holds outside its members (a script's first lines, between its members, an inner
+    /// class's body), which Godot's parse_standalone_string lets stand for a comment and warns of as STANDALONE_EXPRESSION;
+    /// a string an annotation or <c>extends</c> takes is none.</summary>
+    private static void ClassLevelStrings(GDScriptTree tree, Context context)
+    {
+        Strings(tree.Text, 0, tree.Text.Length, [.. tree.Members.Select(m => (m.Offset + m.Node.Start, m.Offset + m.Node.End))], context);
+        foreach (GDScriptMember member in tree.Members)
+        {
+            InnerStrings(tree.Text, member.Node, member.Offset, context);
+        }
+    }
+
+    private static void InnerStrings(string text, GDScriptNode node, int offset, Context context)
+    {
+        if (node is not GDScriptClass inner)
+        {
+            return;
+        }
+        Strings(text, offset + inner.Start, offset + inner.End, [.. inner.Members.Select(m => (offset + m.Start, offset + m.End))], context);
+        foreach (GDScriptNode nested in inner.Members)
+        {
+            InnerStrings(text, nested, offset, context);
+        }
+    }
+
+    /// <summary>The strings written in a stretch of a class's text outside its members' spans.</summary>
+    private static void Strings(string text, int from, int to, List<(int Start, int End)> members, Context context)
+    {
+        int at = from;
+        foreach ((int start, int end) in members.Where(m => m.Start < to && m.End > from).OrderBy(m => m.Start).Append((to, to)))
+        {
+            if (start > at)
+            {
+                GDScriptTokenizer tokens = new(text, at);
+                int depth = 0;
+                GDScriptTokenKind before = GDScriptTokenKind.Newline;
+                for (GDScriptToken token = tokens.Scan(); token.Kind != GDScriptTokenKind.Eof && token.Start < start; token = tokens.Scan())
+                {
+                    depth += token.Kind is GDScriptTokenKind.ParenthesisOpen or GDScriptTokenKind.BracketOpen or GDScriptTokenKind.BraceOpen ? 1
+                        : token.Kind is GDScriptTokenKind.ParenthesisClose or GDScriptTokenKind.BracketClose or GDScriptTokenKind.BraceClose ? -1 : 0;
+                    if (token is { Kind: GDScriptTokenKind.Literal, Literal: GDScriptLiteralKind.String } && depth == 0 && before != GDScriptTokenKind.Extends)
+                    {
+                        Warn(context, token.Start, token.End, "STANDALONE_EXPRESSION");
+                    }
+                    before = token.Kind;
+                }
+            }
+            at = Math.Max(at, end);
         }
     }
 

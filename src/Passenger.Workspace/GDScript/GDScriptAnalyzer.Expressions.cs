@@ -12,9 +12,10 @@ public sealed partial class GDScriptAnalyzer
             case GDScriptVariable variable:
                 GDScriptType type = variable.IsStatic || variable.Identifier is null ? AssignableType(variable, context, false) : MemberType(variable, context.Class, context.Offset);
                 Record(analysis, variable, type, context);
-                if (variable.Initializer is { } value)
+                if (variable.Initializer is { } value
+                    && Reduce(value, context) is { Kind: GDScriptTypeKind.Builtin, Name: "int" } && variable.Type is not null && type is { Kind: GDScriptTypeKind.Enum, Meta: false })
                 {
-                    Reduce(value, context);
+                    Warn(context, value, "INT_AS_ENUM_WITHOUT_CAST");
                 }
                 Declaring(variable, type, "variable", local: false, context);
                 MemberVariableWarnings(variable, context);
@@ -723,10 +724,17 @@ public sealed partial class GDScriptAnalyzer
         {
             context.Analysis.SignalsNamed.Add(constructed);
         }
-        if (root && call.Callee is GDScriptSubscript { IsAttribute: true } && !call.IsSuper && returned is { IsVoid: false, IsVariant: false }
-            && returned is not { Kind: GDScriptTypeKind.Builtin, Name: "Nil" })
+        bool ofMethod = call.Callee is GDScriptSubscript { IsAttribute: true }
+            || call.Callee is GDScriptIdentifier own && context.Scope?.Find(own.Name) is null && !(Engine?.Builtins.ContainsKey(own.Name) == true || IsBuiltinName(own.Name))
+                && Member(context.Class, own.Name) is { Kind: "func" };
+        if (root && ofMethod && !call.IsSuper && returned is { IsVoid: false, IsVariant: false } && returned is not { Kind: GDScriptTypeKind.Builtin, Name: "Nil" })
         {
             Warn(context, call, "RETURN_VALUE_DISCARDED", call.FunctionName ?? string.Empty);
+        }
+        if (call.Callee is GDScriptSubscript { IsAttribute: true, Base: { } instance and not GDScriptSelf, Attribute: { } named }
+            && context.Analysis.Types.GetValueOrDefault(instance) is { Meta: false } caller && IsStaticOn(caller, named.Name))
+        {
+            Warn(context, call, "STATIC_CALLED_ON_INSTANCE", named.Name, caller.ToString());
         }
         return returned;
     }
@@ -763,7 +771,30 @@ public sealed partial class GDScriptAnalyzer
                 Warn(context, argument, "UNSAFE_CALL_ARGUMENT", (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), "function", call.FunctionName ?? string.Empty,
                     wanted.ToString(), supertype);
             }
+            else if (wanted is { Kind: GDScriptTypeKind.Builtin, Name: "int" } && given is { Kind: GDScriptTypeKind.Builtin, Name: "float", Hard: true })
+            {
+                Warn(context, argument, "NARROWING_CONVERSION");
+            }
         }
+    }
+
+    /// <summary>Whether a method a value of a type is called by is static: a script class's <c>static func</c>, or a built-in
+    /// type's static method; an engine class's is left, as an engine singleton's every method reads as static.</summary>
+    private bool IsStaticOn(GDScriptType type, string name)
+    {
+        if (type.Kind == GDScriptTypeKind.Builtin)
+        {
+            return Engine?.Builtins.GetValueOrDefault(type.Name)?.Methods.GetValueOrDefault(name) is { IsStatic: true };
+        }
+        GDScriptType? at = type.Instance;
+        for (int depth = 0; at is { Kind: GDScriptTypeKind.Class } && depth < 64; depth++, at = BaseOf(at))
+        {
+            if (OwnNames(at).TryGetValue(name, out (GDScriptNode Node, int Offset) owned))
+            {
+                return owned.Node is GDScriptFunction { IsStatic: true };
+            }
+        }
+        return false;
     }
 
     /// <summary>Whether a local or parameter is declared with no type written nor inferred, or as Variant.</summary>
@@ -904,6 +935,10 @@ public sealed partial class GDScriptAnalyzer
             assigned.Usages--;
         }
         GDScriptType target = Reduce(assignment.Assignee, context);
+        if (assignment.Operator == K.Equal && target is { Kind: GDScriptTypeKind.Enum, Meta: false } && value is { Kind: GDScriptTypeKind.Builtin, Name: "int" } && assignment.Value is { } integer)
+        {
+            Warn(context, integer, "INT_AS_ENUM_WITHOUT_CAST");
+        }
         CaptureReassignment(assignment, context);
         TemporaryModification(assignment, assignment.Assignee, context);
         if (target is { Hard: true, Kind: GDScriptTypeKind.Builtin, Name: "int" } && value is { Kind: GDScriptTypeKind.Builtin, Name: "float" } && assignment.Value is { } narrowed)
