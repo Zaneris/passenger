@@ -70,6 +70,7 @@ public sealed class GodotAddonTests : IDisposable
                 int answer = 6 * 7;
                 GD.Print($"ready {answer}");
                 GD.PushError("Spinner fell over");
+                GetNode<Button>("Plain").Pressed += () => System.IO.File.WriteAllText(ProjectSettings.GlobalizePath("res://plain.txt"), "plain");
                 System.IO.File.WriteAllText(ProjectSettings.GlobalizePath("res://ready.txt"), $"ready {answer}");
                 // The instance asked to end, among several Godot's Play starts, quits a moment after it began.
                 if (System.Array.IndexOf(OS.GetCmdlineUserArgs(), "ends") >= 0)
@@ -117,6 +118,13 @@ public sealed class GodotAddonTests : IDisposable
         offset_bottom = 40.0
         toggle_mode = true
         text = "Press"
+
+        [node name="Plain" type="Button" parent="."]
+        offset_left = 120.0
+        offset_top = 10.0
+        offset_right = 220.0
+        offset_bottom = 40.0
+        text = "Plain"
 
         [connection signal="toggled" from="Ui/Press" to="." method="OnToggled"]
 
@@ -424,6 +432,10 @@ public sealed class GodotAddonTests : IDisposable
             string clicked = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).AppClick(app: "Spinner in Godot", control: "#Press"), "an agent's click on the game's button",
                 TimeSpan.FromMinutes(1));
             Ui.WaitFor(() => File.Exists(Path.Combine(folder, "pressed.txt")), () => $"the click to press the game's button (the tool said: {clicked})", TimeSpan.FromSeconds(30));
+            // A plain button under the bare root, beyond the 64 by 64 the headless display gives the game.
+            clicked = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).AppClick(app: "Spinner in Godot", control: "#Plain"), "an agent's click on the plain button",
+                TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => File.Exists(Path.Combine(folder, "plain.txt")), () => $"the click to press the plain button (the tool said: {clicked})", TimeSpan.FromSeconds(30));
             TestFolders.Write(folder, "stop.txt", "stop\n");
             Ui.WaitFor(() => window.Session.Games.Count == 0, () => $"the game to end with Godot's Stop ({Games(window)}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
         }

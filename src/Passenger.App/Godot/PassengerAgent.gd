@@ -19,6 +19,8 @@ var _indexed = false
 var _stepping := 0
 ## Whether the frame stepped ends the step itself, where no frame is drawn for Godot to end it at.
 var _ends_step := false
+## Whether a headless game's window was given its size, which the first call gives it.
+var _sized := false
 ## The last member, so it is set only once every other member's default is (members are made in the order written).
 var _made = true
 
@@ -30,7 +32,20 @@ func asked(named: String, ask: int, arguments: Array) -> void:
     if not _made:
         asked.call_deferred(named, ask, arguments)
         return
+    if not _sized:
+        _sized = true
+        _size_headless()
     callv(named, [ask] + arguments)
+
+
+## A game run headless lays out in the size its project gives its window, where the headless display gives it 64 by 64, so
+## what a person would see of it is in view, and where it would be.
+func _size_headless() -> void:
+    if DisplayServer.get_name() != "headless":
+        return
+    var size := Vector2i(int(ProjectSettings.get_setting("display/window/size/viewport_width", 1152)), int(ProjectSettings.get_setting("display/window/size/viewport_height", 648)))
+    var over := Vector2i(int(ProjectSettings.get_setting("display/window/size/window_width_override", 0)), int(ProjectSettings.get_setting("display/window/size/window_height_override", 0)))
+    get_tree().root.size = over if over.x > 0 and over.y > 0 else size
 
 
 func _say(ask: int, done: bool, data: Array) -> void:
@@ -149,7 +164,8 @@ func _named(node: Node) -> String:
     return "%s %s" % [node.get_class(), node.name]
 
 
-## The point a pointer goes to in the viewport, or null once why not is said: a Control's centre, or x, y from its top left.
+## The point a pointer goes to in the viewport, or null once why not is said: the middle of what is in view of a Control, or
+## x, y from its top left.
 func _aim(ask: int, id: int, has_point: bool, x: float, y: float) -> Variant:
     if id == 0:
         return Vector2(x, y)
@@ -167,10 +183,14 @@ func _aim(ask: int, id: int, has_point: bool, x: float, y: float) -> Variant:
         _say(ask, false, ["%s is disabled" % _named(node)])
         return null
     var rect: Rect2 = node.get_global_rect()
-    if not get_viewport().get_visible_rect().intersects(rect, true):
+    var view := get_viewport().get_visible_rect()
+    if not view.intersects(rect, true):
         _say(ask, false, ["%s is out of view" % _named(node)])
         return null
-    return rect.position + (Vector2(x, y) if has_point else rect.size / 2)
+    if has_point:
+        return rect.position + Vector2(x, y)
+    # The middle of what is in view of it: its own middle may be out of view, where no click lands.
+    return rect.intersection(view).get_center() if view.intersects(rect) else rect.get_center()
 
 
 ## What input came to: the point, what was under it, what has the focus and what that shows (else what is under it).
@@ -201,6 +221,10 @@ func click(ask: int, id: int, has_point: bool, x: float, y: float, button: int, 
     var target := _node(id)
     if target != null and under != null and under != target and not target.is_ancestor_of(under):
         _say(ask, false, ["%s is covered by %s at %d,%d" % [_named(target), _named(under), at.x, at.y]])
+        return
+    if target != null and under == null:
+        _say(ask, false, ["%s takes no pointer at %d,%d%s" % [_named(target), at.x, at.y,
+            ": its mouse_filter is Ignore" if target is Control and target.mouse_filter == Control.MOUSE_FILTER_IGNORE else ", nor does anything there"]])
         return
     var screen: Vector2 = get_viewport().get_final_transform() * at
     for i in count:

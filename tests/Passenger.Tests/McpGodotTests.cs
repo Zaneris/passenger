@@ -36,6 +36,10 @@ public sealed class GodotGameFolder : IAsyncLifetime
             {
                 string greeted = Greeting;
                 GD.Print($"ready to say {greeted}");
+                foreach (string pressing in (string[])["Plain", "Ui/Pressing", "Covered"])
+                {
+                    GetNode<Button>(pressing).Pressed += () => GD.Print($"pressed {pressing}");
+                }
             }
 
             public override void _Process(double delta)
@@ -100,8 +104,37 @@ public sealed class GodotGameFolder : IAsyncLifetime
         offset_right = 210.0
         offset_bottom = 90.0
 
+        [node name="Pressing" type="Button" parent="Ui"]
+        layout_mode = 0
+        offset_left = 120.0
+        offset_top = 60.0
+        offset_right = 220.0
+        offset_bottom = 90.0
+        action_mode = 0
+        text = "Pressing"
+
         [node name="Ticker" type="Node" parent="."]
         script = ExtResource("2")
+
+        [node name="Plain" type="Button" parent="."]
+        offset_left = 120.0
+        offset_top = 10.0
+        offset_right = 220.0
+        offset_bottom = 40.0
+        text = "Plain"
+
+        [node name="Covered" type="Button" parent="."]
+        offset_left = 240.0
+        offset_top = 10.0
+        offset_right = 340.0
+        offset_bottom = 40.0
+        text = "Covered"
+
+        [node name="Cover" type="Panel" parent="."]
+        offset_left = 230.0
+        offset_top = 0.0
+        offset_right = 350.0
+        offset_bottom = 50.0
 
         """;
 
@@ -191,6 +224,27 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
         CallToolResult picture = await Result(client, McpTools.AppScreenshot);
         Assert.True(picture.IsError == true && Text(picture).Contains("runs headless", StringComparison.Ordinal)
             && Text(picture).Contains("draws nothing", StringComparison.Ordinal), $"A headless game's picture was answered with: {Text(picture)}");
+        await Call(client, McpTools.Stop);
+    }
+
+    /// <summary>An agent's click presses a plain button under a bare Node and one under a Control that acts as it is pressed,
+    /// both beyond the 64 by 64 the headless display gives a game, which Passenger's helper gives its project's size; one a
+    /// panel covers is refused, naming the panel.</summary>
+    [Fact]
+    public async Task An_agents_click_presses_plain_buttons_under_a_node_or_a_control_and_names_what_covers_one()
+    {
+        await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false);
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
+        Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"The game ended as it started: {ran}");
+        foreach ((string control, string said) in (ValueTuple<string, string>[])[("#Plain", "pressed Plain"), ("#Pressing", "pressed Ui/Pressing")])
+        {
+            string clicked = await Game(client, McpTools.AppClick, new() { ["control"] = control });
+            await Until(async () => Text(await Call(client, McpTools.Output)).Contains(said, StringComparison.Ordinal), $"the game to hear {control} pressed ({clicked})");
+        }
+        CallToolResult covered = await Result(client, McpTools.AppClick, new() { ["control"] = "#Covered" });
+        Assert.True(covered.IsError == true && Text(covered).Contains("Button Covered is covered by Panel Cover", StringComparison.Ordinal),
+            $"A click on a button a panel covers was answered with: {Text(covered)}");
+        Assert.DoesNotContain("pressed Covered", Text(await Call(client, McpTools.Output)), StringComparison.Ordinal);
         await Call(client, McpTools.Stop);
     }
 
