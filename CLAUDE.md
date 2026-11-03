@@ -530,7 +530,11 @@ site-shots` retakes its images.
   an update that leaves loaded code calling a deleted body. The runtime offers a frame left in old code a remap at every
   statement, unstoppable: a running program is held through an update so Roslyn maps its frames, which move only at a
   statement's start (`RemapTarget`) and only where they hold the new code's closures
-  (`ModuleMetadataReader.HoldsClosuresOf`).
+  (`ModuleMetadataReader.HoldsClosuresOf`). A XAML edit reaches a running app through its inspector (`XamlHotReload`,
+  the protocol's `reload`), after C#'s (`DebugController.ApplyTargetAsync`): Avalonia's runtime loader (carried under
+  `inspector/`) or WPF's `WpfXamlLoader.LoadBaml` fills each x:Class instance again, whose Styles, Resources and root
+  handlers `Held` clears first, as filling adds to them (a duplicate key throws); WPF's `x:Name` fields are found
+  through `IComponentConnector`, its `SuppressMessage` compiled out; Run under dotnet watch carries no inspector.
 - **dotnet watch takes Ctrl+R only from a console's keys**, never from redirected input: the Run window's restart under
   it is Rerun, and when it waits after the program ends it says so (`BuildRunController.WatchedEnd`). A save's temporary
   file ends in `.user` (`FileText.SaveSuffix`), which every project's `DefaultItemExcludes` leaves out, so dotnet watch
@@ -565,33 +569,37 @@ site-shots` retakes its images.
   data]` messages, its packed strings end with a NUL, `scene:inspect_objects` answers a few objects at most (inspect one
   at a time), a warning comes as an error with its flag set, and a headless game has no picture. Its language server
   takes whole texts only, reads `Content-Length` at a fixed offset of the header, needs `rootPath` and has no shutdown;
-  a headless editor writes `editor_layout.cfg` and `ide_messaging_meta.txt` into the project, which `GodotScripts` puts
-  back (`PASSENGER_GODOT_HOME` gives that editor the run's user folders). Its script debugger: a message to a stopped
-  thread carries the thread's id; an `evaluate` in a frame with no instance, or a `break` sent while stopped, leaves the
-  debug loop and lets the game go on; an evaluation's errors come after its answer, so each is followed by a
-  `get_stack_dump`; `reload_scripts` keeps members by name, an added one null. Stop ends a game a moment before its
-  debug session ends: a test waits for the session too, and a session is shown ended once its adapter says the program
-  ended (`DebugSession.Ended`, `ProgramGone`). Windows' Godot .exe writes to no console, so every terminal run of a
-  game, Run and Debug, C# and GDScript, goes through its console wrapper (`GodotConsole`), the debugger taking the
-  game's own process the wrapper starts (`TerminalRun.Debuggee`). An agent's call on a game is held to one limit
-  (`GodotGame.Within`, `GameLimit`), app_ tools wait for no evaluation (`PassengerTools.OnApp`), and a typed Godot value
-  has one reader (`GodotVariant.ReadAsync`). Godot's frame counter runs on while a game is paused, so the frame count is
-  the helper's (`GodotGame.Frame`); in a headless game Next Frame never pauses again, so the helper's `step` ends it;
-  node selection, once set up, starts picking and takes the game's clicks until turned off; a headless game picks no 3D
-  mesh without a collision shape. Godot reads the debugger's messages between a script's lines, so a call to Passenger's
-  helper can run inside its own initialiser, whose defaults then overwrite what it set: the helper comes in only once
-  its live-edit path was sent (`GodotGame.AskAsync`), and every call goes through its `asked`, which waits while its
-  members are still being made (`_made`, its last member); a tree asked since its last making that lacks it brings it in
-  again (`GodotGame.brought`). A typed member refuses an untyped Array or Dictionary set through the debugger, so a
-  value sent back keeps the element types the game sent (`GodotArray`, `GodotDictionary.KeyType`); a resource loaded
-  from a file comes by its path alone, its id from the helper's `held` (`GodotGame.HeldAsync`). A node instancing a
-  scene no text says (an imported model, a binary scene) keeps the names below it unknown (`GodotTreeNode.NodesUnread`);
-  a GDScript signal's parameters are known only where written and its own emits agree, as Godot passes whatever an emit
-  gives; a connection's flags may bind the sender as one more argument (`GodotConnection.Bound`). A macOS export of an
-  arm64 or universal game refuses a project without `textures/vram_compression/import_etc2_astc`. Its .NET host rolls
-  forward only to released runtimes, so a new game's framework is one it can run (`GodotGames.Runnable`). An agent's
-  input and layout reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing;
-  `PassengerTools.Godot.cs`).
+  a headless editor writes project.godot (a plugin's `ProjectSettings.save()` writes all it holds), `editor_layout.cfg`,
+  `script_editor_cache.cfg` and `ide_messaging_meta.txt` into the project, which `GodotScripts` puts back (`Kept`, a
+  Passenger save meanwhile staying the person's), an import's and an export's too (`PuttingBackAsync`;
+  `PASSENGER_GODOT_HOME` gives that editor the run's user folders). Its script debugger: a message to a stopped thread
+  carries the thread's id; an `evaluate` in a frame with no instance, or a `break` sent while stopped, leaves the debug
+  loop and lets the game go on; an evaluation's errors come after its answer, so each is followed by a `get_stack_dump`;
+  `reload_scripts` keeps members by name, an added one null. Stop ends a game a moment before its debug session ends: a
+  test waits for the session too, and a session is shown ended once its adapter says the program ended
+  (`DebugSession.Ended`, `ProgramGone`). Windows' Godot .exe writes to no console, so every terminal run of a game, Run
+  and Debug, C# and GDScript, goes through its console wrapper (`GodotConsole`), the debugger taking the game's own
+  process the wrapper starts (`TerminalRun.Debuggee`). An agent's call on a game is held to one limit
+  (`GodotGame.Within`, `GameLimit`), app_ tools wait for no evaluation (`PassengerTools.OnApp`) but for the game's first
+  scene (`GodotGame.FirstSceneAsync`), and a typed Godot value has one reader (`GodotVariant.ReadAsync`). Godot's frame
+  counter runs on while a game is paused, so the frame count is the helper's (`GodotGame.Frame`); in a headless game
+  Next Frame never pauses again, so the helper's `step` ends it; node selection, once set up, starts picking and takes
+  the game's clicks until turned off; a headless game picks no 3D mesh without a collision shape. Godot reads the
+  debugger's messages between a script's lines, so a call to Passenger's helper can run inside its own initialiser,
+  whose defaults then overwrite what it set: the helper comes in only once its live-edit path was sent
+  (`GodotGame.AskAsync`), and every call goes through its `asked`, which waits while its members are still being made
+  (`_made`, its last member); a tree asked since its last making that lacks it brings it in again (`GodotGame.brought`).
+  A typed member refuses an untyped Array or Dictionary set through the debugger, so a value sent back keeps the element
+  types the game sent (`GodotArray`, `GodotDictionary.KeyType`); a resource loaded from a file comes by its path alone,
+  its id from the helper's `held` (`GodotGame.HeldAsync`). A node instancing a scene no text says (an imported model, a
+  binary scene) keeps the names below it unknown (`GodotTreeNode.NodesUnread`); a GDScript signal's parameters are known
+  only where written and its own emits agree, as Godot passes whatever an emit gives; a connection's flags may bind the
+  sender as one more argument (`GodotConnection.Bound`). A launch profile running Godot on the project
+  (`GodotExecutables.NamesGodot`: Chickensoft's `%GODOT%`) is the game's configuration (`RunConfiguration.NamesGodot`),
+  its `--path` the launch's (`WithoutPath`). A macOS export of an arm64 or universal game refuses a project without
+  `textures/vram_compression/import_etc2_astc`. Its .NET host rolls forward only to released runtimes, so a new game's
+  framework is one it can run (`GodotGames.Runnable`). An agent's input and layout reach a game through Passenger's
+  helper node (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
