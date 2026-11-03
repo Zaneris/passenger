@@ -919,7 +919,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             // Held as the run decides from its first start (FirstHold); the one Profile records, for the profiler.
             RunStart? chosen = app.Starting(resource, () => FirstHold(app, resource, request));
             RunStart? held = profiling ? RunStart.Profile : chosen;
-            resource.Inspection = held != RunStart.HotReload ? LiveApp.For(plan, workspace.Overlays) : null;
+            resource.Inspection = LiveApp.For(plan, workspace.Overlays);
             if (resource.Inspection is { } inspection)
             {
                 inspection.BindingFailed += (_, _) => BindingsFailed();

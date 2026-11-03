@@ -1090,8 +1090,10 @@ public sealed partial class BuildRunController
             }
         }
         using IDisposable held = BackgroundWork.Scope();
-        // The edits made since its build saved the files, followed for a Godot game's Hot Reload.
+        // The edits made since its build saved the files, followed for a Godot game's or a XAML app's Hot Reload.
         BuiltEdits? edits = null;
+        // A XAML app's update handlers' hook, its debugger's once attached.
+        UpdateHandlerHook? handlers = null;
         // Its logs and traces' dashboard, ended with its program once handed over, else with the start.
         RunDashboard? dashboard = null;
         try
@@ -1108,9 +1110,11 @@ public sealed partial class BuildRunController
             bool godot = chosen.RunsGodot(session.Projects);
             // A game's errors, which Godot writes every frame they happen, folded in its console.
             parts.Views.Run.Fold = godot && !chosen.GodotEditor ? new Godot.GodotConsoleFold() : null;
-            bool watched = wanted && !godot;
-            // A Godot game takes its edits through the debugger, attached quietly as it starts held; Godot's editor loads its builds itself.
-            bool reloaded = wanted && godot && !chosen.GodotEditor;
+            // An Avalonia or WPF app's XAML edits reach it through the inspector, which the app dotnet watch starts never carries.
+            bool markup = wanted && !godot && RunsXamlApp(chosen);
+            bool watched = wanted && !godot && !markup;
+            // A Godot game and a XAML app take their edits through the debugger, attached quietly as each starts held; Godot's editor loads its builds itself.
+            bool reloaded = wanted && (godot && !chosen.GodotEditor || markup);
             watching = watched;
             (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, arguments, work, build: !watched, reading: reloaded ? () =>
             {
@@ -1165,6 +1169,11 @@ public sealed partial class BuildRunController
                 {
                     variables[name] = value;
                 }
+                // A XAML app's update handlers run as each update lands, through Passenger's hook, as a debugged one's do.
+                if (markup && UpdateHandlerHook.For(launched with { Environment = variables }) is ({ } hook, { } hooked))
+                {
+                    (handlers, variables) = (hook, new Dictionary<string, string>(hooked.Environment));
+                }
             }
             if (plan.Console == ConsoleKind.Terminal)
             {
@@ -1187,7 +1196,7 @@ public sealed partial class BuildRunController
                         {
                             return Said(unfollowed.Message);
                         }
-                        await AttachForHotReloadAsync(chosen.Name, inTerminal.Debuggee, null, work, Take(ref edits), running);
+                        await AttachForHotReloadAsync(chosen.Name, inTerminal.Debuggee, null, work, Take(ref edits), running, Take(ref handlers), inspected);
                     }
                 }
                 EndWith(inspected, refused is null && session.InTerminal is { } run ? run.Ended : Task.CompletedTask);
@@ -1228,13 +1237,14 @@ public sealed partial class BuildRunController
             }
             if (notStarted is null && heldStart && session.Runner.ProcessId is int id)
             {
-                await AttachForHotReloadAsync(chosen.Name, id, parts.Views.Run.Sink, work, Take(ref edits), running);
+                await AttachForHotReloadAsync(chosen.Name, id, parts.Views.Run.Sink, work, Take(ref edits), running, Take(ref handlers), inspected);
             }
             return notStarted;
         }
         finally
         {
             edits?.Dispose();
+            handlers?.Dispose();
             dashboard?.Dispose();
             work.Dispose();
         }
@@ -1393,18 +1403,27 @@ public sealed partial class BuildRunController
         return taken;
     }
 
-    /// <summary>A Godot game Run started held for Hot Reload, attached to quietly (<see cref="DebugController.AttachForHotReloadAsync"/>),
-    /// which lets it go: what its applies come to is said in <paramref name="console"/> (null for the terminal's tab, whose
-    /// text is the game's own) and the status bar, which says <paramref name="running"/> once attached. One the debugger
-    /// cannot reach is let go and runs without Hot Reload, saying why.</summary>
-    private async Task AttachForHotReloadAsync(string name, int processId, ConsoleSink? console, Working work, BuiltEdits? edits, string running)
+    /// <summary>Whether a configuration runs an Avalonia or WPF app of its project, whose XAML edits reach it through
+    /// Passenger's inspector, which the app dotnet watch starts never carries: Run's Hot Reload takes it through the debugger.</summary>
+    private bool RunsXamlApp(RunConfiguration chosen) =>
+        !chosen.IsContainer && chosen.Program.Length == 0 && session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, chosen.Project)) is { } project
+        && (project.Packages.Any(p => p.Name.Equals("Avalonia", StringComparison.OrdinalIgnoreCase))
+            || project.Evaluated?.Dependencies.Any(d => FrameworkNames.UsesWpf(d.FrameworkReferences)) == true);
+
+    /// <summary>A Godot game or a XAML app (its inspector in <paramref name="app"/>, its update handlers' hook <paramref name="handlers"/>)
+    /// Run started held for Hot Reload, attached to quietly (<see cref="DebugController.AttachForHotReloadAsync"/>), which
+    /// lets it go: what its applies come to is said in <paramref name="console"/> (null for the terminal's tab, whose text is
+    /// the program's own) and the status bar, which says <paramref name="running"/> once attached. One the debugger cannot
+    /// reach is let go and runs without Hot Reload, saying why.</summary>
+    private async Task AttachForHotReloadAsync(string name, int processId, ConsoleSink? console, Working work, BuiltEdits? edits, string running,
+        UpdateHandlerHook? handlers = null, LiveApp? app = null)
     {
         work.Say($"Attaching to {name} for Hot Reload…");
         string? refused = await session.Debug.AttachForHotReloadAsync(processId, name, (line, error) =>
         {
             console?.Write($"{line}\n", error ? ConsoleStream.Error : ConsoleStream.Output);
             parts.Say(line);
-        }, cancellation: work.Stopping, edits: edits);
+        }, cancellation: work.Stopping, edits: edits, handlers: handlers, app: app);
         if (refused is null)
         {
             parts.Say(running);

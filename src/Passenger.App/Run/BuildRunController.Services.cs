@@ -139,7 +139,7 @@ public sealed partial class BuildRunController
             using BuiltEdits? edits = builtEdits.Remove(service.Name, out BuiltEdits? built) ? built : run.KeptFor(service) is { } kept ? session.Debug.Copied(kept) : null;
             refused = purpose == RunStart.HotReload
                 ? await session.Debug.AttachForHotReloadAsync(program.Id, name, (line, error) => run.Say(service, line, error), program.Place, stop, edits, program.Handlers,
-                    program.Browser)
+                    program.Browser, program.App)
                 : await session.Debug.AttachAsync(program.Id, name, hotReload: program.HotReload, place: program.Place, group: run.Group, app: program.App, edits: edits,
                     handlers: program.Handlers, browser: program.Browser);
             if (refused is null)

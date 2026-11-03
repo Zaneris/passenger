@@ -558,7 +558,8 @@ public sealed class DebugController : IDisposable
     /// its XAML names is there, then its app's XAML (<see cref="LiveTree.XamlHotReload"/>).</summary>
     private static async Task<HotReloadOutcome> ApplyTargetAsync(IHotReloadTarget target, bool xamlOnly)
     {
-        LiveTree.XamlHotReload? xaml = target is DebugTab { App.Xaml: { Changed: true } edited } ? edited : null;
+        LiveTree.XamlHotReload? xaml = (target as DebugTab)?.App?.Xaml ?? (target as RunningReload)?.App?.Xaml;
+        xaml = xaml is { Changed: true } ? xaml : null;
         HotReloadOutcome? code = !xamlOnly && target.HotReload is { } reload && (xaml is null || (reload.Changed && reload.WhyNot is null))
             ? await reload.ApplyAsync()
             : null;
@@ -1204,6 +1205,9 @@ public sealed class DebugController : IDisposable
         /// <summary>The SDK's browser refresh of its pages, a web service's; null for any other.</summary>
         internal BrowserRefresh? Browser { get; init; }
 
+        /// <summary>The Avalonia or WPF app it is, its inspector in it, whose XAML edits apply after its C#; null for any other.</summary>
+        internal LiveTree.LiveApp? App { get; init; }
+
         HotReload? IHotReloadTarget.HotReload => Reload;
 
         bool IHotReloadTarget.Quiet => true;
@@ -1224,7 +1228,8 @@ public sealed class DebugController : IDisposable
     /// <paramref name="says"/>, where its output is, each told to <paramref name="handlers"/> it started with. Null once
     /// attached, else why not.</summary>
     public async Task<string?> AttachForHotReloadAsync(int processId, string name, Action<string, bool> says, AdapterPlace? place = null,
-        CancellationToken cancellation = default, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null)
+        CancellationToken cancellation = default, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null,
+        LiveTree.LiveApp? app = null)
     {
         UiThread.Check();
         if (disposed)
@@ -1256,7 +1261,7 @@ public sealed class DebugController : IDisposable
             {
                 throw new OperationCanceledException("The workspace ended during Hot Reload attach");
             }
-            RunningReload reload = new(name, session, tracked, built, says) { Handlers = handlers, Browser = browser };
+            RunningReload reload = new(name, session, tracked, built, says) { Handlers = handlers, Browser = browser, App = app };
             if (handlers is not null)
             {
                 handlers.Says = says;
@@ -2056,10 +2061,10 @@ public sealed class DebugController : IDisposable
     private void OnSaved(object? sender, EventArgs e)
     {
         // A program run with Hot Reload takes a save's edits, whatever else is debugged.
-        bool run = running.Any(r => r.Reload.Changed);
+        bool xamlSaved = sender is OpenDocument saved && Xaml.XamlService.IsXaml(saved.Path) && XamlOnSave();
+        bool run = running.Any(r => r.Reload.Changed || (xamlSaved && r.App?.Xaml is { Changed: true }));
         bool debugged = HotReload is { Changed: true } && HotReloadOnSave() && WhyNotApply() is null;
-        bool xaml = sender is OpenDocument saved && Xaml.XamlService.IsXaml(saved.Path) && XamlOnSave()
-            && view.Sessions.Any(t => t.IsLive && t.App?.Xaml is { Changed: true });
+        bool xaml = xamlSaved && view.Sessions.Any(t => t.IsLive && t.App?.Xaml is { Changed: true });
         ApplyOnSave(run, debugged, xaml);
     }
 
@@ -2068,7 +2073,7 @@ public sealed class DebugController : IDisposable
     public void XamlWritten()
     {
         UiThread.Check();
-        ApplyOnSave(false, false, XamlOnSave() && view.Sessions.Any(t => t.IsLive && t.App?.Xaml is { Changed: true }));
+        ApplyOnSave(XamlOnSave() && running.Any(r => r.App?.Xaml is { Changed: true }), false, XamlOnSave() && view.Sessions.Any(t => t.IsLive && t.App?.Xaml is { Changed: true }));
     }
 
     /// <summary>An apply a save asked for: of the programs run with Hot Reload, of the session debugged, of the XAML of the apps debugged.</summary>

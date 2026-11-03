@@ -112,9 +112,9 @@ public partial class MainWindow
     private bool RunXamlEdited => !buildRun.WatchesHotReload && session.RunApp is { Xaml.Changed: true, State: not Passenger.App.LiveTree.LiveAppState.Ended };
 
     /// <summary>The apps a XAML file's save applies its edits to, beside the debugger's: Run's, and each service an AppHost
-    /// runs undebugged, those with edits they have not taken.</summary>
+    /// runs undebugged, those with edits they have not taken; one run with Hot Reload through the debugger takes them there, after its C#.</summary>
     private IReadOnlyList<InspectedApp> XamlSaveTakers => [.. session.Inspecting.Where(a => a.Kind is RunningKind.Run or RunningKind.Service
-        && a.App is { Xaml.Changed: true, State: not Passenger.App.LiveTree.LiveAppState.Ended })];
+        && a.App is { Xaml.Changed: true, State: not Passenger.App.LiveTree.LiveAppState.Ended } && !session.Debug.Running.Any(r => r.App == a.App))];
 
     /// <summary>An apply a XAML file's save asked of Run's app, run once the saves of one Save All are done.</summary>
     private bool xamlOnSave;

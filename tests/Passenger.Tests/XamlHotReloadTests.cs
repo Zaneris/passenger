@@ -14,7 +14,7 @@ namespace Passenger.Tests;
 /// Debug, its MainWindow.axaml edited in the editor (a text, a colour, a control added) and saved, and the app's own window,
 /// the same object, showing the edit in its live visual tree; an edit the app's XAML compiler refuses said with its line,
 /// the app left as it was; a handler added in C# with the button that names it in XAML, applied together, C#'s first; the
-/// XAML written on disk while not open, and App.axaml's styles and resources.
+/// XAML written on disk while not open, App.axaml's styles and resources, and Run with Hot Reload through the debugger.
 /// The app is headless, so nothing shows on the screen. It runs and is debugged through the window, so the tests run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDisposable
@@ -212,6 +212,54 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
         {
             End(window);
         }
+    }
+
+    /// <summary>Under Run with Hot Reload, an Avalonia app runs held at its start and attached to quietly for its C#, never under
+    /// dotnet watch, whose app carries no inspector: a handler added in C# and the button naming it in XAML, saved, apply
+    /// together, C#'s first, said in the Run window, and a click on the new button runs the handler.</summary>
+    [AvaloniaFact]
+    public void Run_with_hot_reload_applies_an_apps_csharp_and_xaml_saved_together_through_the_debugger_not_dotnet_watch()
+    {
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900);
+        window.ApplySettings(window.Settings with { HotReload = true });
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the app to build and start with Hot Reload", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected } && window.Debugger.Running.Count == 1,
+                () => $"the app's inspector to say hello and the debugger to attach for Hot Reload ({window.Status})", TimeSpan.FromMinutes(2));
+            Assert.False(window.Debugger.IsDebugging, "Run with Hot Reload showed a debugging session");
+            LiveApp app = window.Session.RunApp!;
+
+            window.OpenFile(Path.Combine(folder, "MainWindow.axaml.cs"));
+            Typing.Replace(window, "public MainWindow() => InitializeComponent();",
+                "public MainWindow() => InitializeComponent();\n\npublic void OnAdded(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Greeting.Text = \"Clicked\";");
+            window.OpenFile(Xaml);
+            Typing.Replace(window, Pin, $"<Button x:Name=\"Added\" Content=\"Added\" Click=\"OnAdded\" />\n{Pin}");
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() => RunSays(window, "XAML changes applied: MainWindow.axaml (MainWindow)"), () => $"the Run window to say the XAML applied ({window.Status})",
+                TimeSpan.FromMinutes(1));
+            Assert.DoesNotContain("dotnet watch", Run(window), StringComparison.Ordinal);
+
+            Element added = Find(Ui.Await(app.TreeAsync(), "the app's tree").Roots, "Added") ?? throw new InvalidOperationException("The app has no button Added");
+            Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = added.Id }), "the click on the button added");
+            Ui.WaitFor(() => Text(app, "Greeting") == "Clicked", () => $"the click to run the handler added in C# ({Text(app, "Greeting")}; {Run(window)})");
+        }
+        finally
+        {
+            if (window.Runner.IsRunning)
+            {
+                Ui.Run(window, AppActions.Stop);
+                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
+            }
+            window.Close();
+        }
+    }
+
+    /// <summary>What the Run window says.</summary>
+    private static string Run(MainWindow window)
+    {
+        window.BottomPanel.Run.Flush();
+        return window.BottomPanel.Run.Document.Snapshot.ToString();
     }
 
     /// <summary>The window's XAML edited as a person types: the greeting's text, Delete's colour, and a button added.</summary>
