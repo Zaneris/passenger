@@ -420,7 +420,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   `GodotAddon`, `MainWindow.GodotAddon`) reaching the window over `GodotEditorLink` (a listing in the state's
   `godot-editors/`, a token, then a reply, then JSON lines both ways: `GodotEditorWire`), a game its Play starts relayed
   through it into the same `GodotGame` (`GodotGame.Relay`, `GodotRelay`, taken in by `ProjectSession.TakeGame`) and held
-  at its runtime's start until attached or let go (`HeldStart.DebuggerOffAsync`, `LetGoAsync`), its Publish its export
+  at its runtime's start until attached or let go (`HeldStart.DebuggerOffAsync`, `LetGoAsync`), a game played in the
+  person's Godot editor (`RunConfiguration.GodotInEditor`, `MainWindow.GodotEditorPlay`: the addon's play where it is
+  connected, else IDE messaging's `DebugPlay` through `GodotIdeLink.RequestAsync`), its Publish its export
   (`GodotExportDialog`, `BuildRunController.ExportGodotAsync`), templates installed only from a `.tpz` the person picks
   (`GodotExports.Install`; a test's named by `PASSENGER_TEST_GODOT_TEMPLATES`, into the run's own Godot folders), its
   page a view of its project.godot (`GodotProjectPages`, `GodotPageViewer`) over Workspace's readers, a launched game's
@@ -648,8 +650,11 @@ site-shots` retakes its images.
   editor's stdout; an `EditorDebuggerPlugin` never captures Godot's own messages, which `ScriptEditorDebugger`'s
   `debug_data` gives; the editor hears a game's `set_pid` before its session's `started`; `var_to_bytes` writes an
   object the editor holds by id (`EncodedObjectAsID`) as its holder's own id, so the addon sends it as
-  `{"passenger:object": id}`; and a script can show no progress while `_build` blocks. An agent's input and layout reach
-  a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
+  `{"passenger:object": id}`; and a script can show no progress while `_build` blocks. IDE messaging's `Play` plays only
+  the main scene, `DebugPlay`'s debugger fields are dead in Godot 4 (Godot 3's Mono agent's), and `ReloadScripts`
+  reloads the running games' scripts, the editor's own assemblies reloaded by GodotTools' watcher every 0.5 s; Godot's
+  JSON reads every number as a float. An agent's input and layout reach a game through Passenger's helper node
+  (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
