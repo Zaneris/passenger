@@ -254,16 +254,18 @@ public sealed class ProjectSession : IAsyncDisposable
     private volatile IReadOnlyDictionary<string, ProjectEvaluation> evaluations =
         new Dictionary<string, ProjectEvaluation>(PathNames.Comparer);
 
-    /// <summary>The projects' evaluations taken anew, and the XAML of a project whose evaluation moved something, changed
-    /// what its C# is parsed with, or whose framework chosen changed, read again. A multi-targeted project's is the
-    /// framework chosen's (<see cref="Frameworks"/>): its build's assembly and its C#'s symbols.</summary>
+    /// <summary>The projects' evaluations taken anew, an open file in a package folder they name made read-only, and the
+    /// XAML of a project whose evaluation moved something, changed what its C# is parsed with, or whose framework chosen
+    /// changed, read again. A multi-targeted project's is the framework chosen's (<see cref="Frameworks"/>).</summary>
     private void FollowEvaluations()
     {
         Dictionary<string, ProjectEvaluation> now = new(PathNames.Comparer);
+        bool packageFolders = false;
         foreach (ProjectModel project in workspace?.Projects ?? [])
         {
             if (project.Evaluated is { } evaluated)
             {
+                packageFolders |= PackageFolders.Learn(project);
                 string? framework = Frameworks.Of(project);
                 string? built = framework is null
                     ? evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.TargetPath)?.Value
@@ -278,6 +280,13 @@ public sealed class ProjectSession : IAsyncDisposable
                     Parsing = CompilationSymbols.Of(project, framework),
                     TargetFramework = framework,
                 };
+            }
+        }
+        if (packageFolders)
+        {
+            foreach (OpenDocument document in setup.Editors.Documents)
+            {
+                document.FollowPackageFolders();
             }
         }
         IReadOnlyDictionary<string, ProjectEvaluation> was = evaluations;

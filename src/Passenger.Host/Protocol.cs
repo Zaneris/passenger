@@ -201,6 +201,10 @@ public static class CarriedProperties
     /// <summary>The package folder the project restores into.</summary>
     public const string NuGetPackageRoot = "NuGetPackageRoot";
 
+    /// <summary>The package folders the project's restore resolved packages from, separated by ';': its root, then its
+    /// fallback folders.</summary>
+    public const string NuGetPackageFolders = "NuGetPackageFolders";
+
     /// <summary>The assembly the project's build makes, wherever its output folder was moved.</summary>
     public const string TargetPath = "TargetPath";
 
@@ -229,7 +233,7 @@ public static class CarriedProperties
     [
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
-        NuGetPackageRoot, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
+        NuGetPackageRoot, NuGetPackageFolders, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
         DirectoryPackagesPropsPath, GodotProjectDir,
     ];
 }

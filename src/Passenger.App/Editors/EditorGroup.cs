@@ -703,6 +703,10 @@ public sealed class EditorGroup : DockPanel
             case nameof(OpenDocument.ProjectContext):
                 Editor.ContextLabel = ContextShown(document);
                 break;
+            case nameof(OpenDocument.IsReadOnly):
+                Editor.IsReadOnly = document.IsReadOnly;
+                ShowBanner(document);
+                break;
             case nameof(OpenDocument.Path):
                 ShowTable(document);
                 Editor.IsReadOnly = document.IsReadOnly;

@@ -17,8 +17,9 @@ namespace Passenger.Tests;
 /// stylesheet on a CDN (a local stand-in, never a real one) only once Settings allow its download and never fetched
 /// before, its link's integrity checked; a package's static web asset under <c>_content/Kit/</c>, read from the package
 /// folder its restore resolved; the component's own scoped stylesheet; a class's rules on the hover card and Go to
-/// Declaration to its rule in the downloaded copy, read-only; and a class no stylesheet defines marked, quietly, once every
-/// stylesheet linked was read. On a Blazor app made by <c>dotnet new blazor</c>, its warm server shared (<see cref="SharedProject"/>).</summary>
+/// Declaration to its rule in the downloaded copy or in the package folder's, read-only; and a class no stylesheet
+/// defines marked, quietly, once every stylesheet linked was read. On a Blazor app made by <c>dotnet new blazor</c>, its
+/// warm server shared (<see cref="SharedProject"/>).</summary>
 public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
 {
     private readonly StyledShop app;
@@ -88,6 +89,32 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         Assert.True(copy.IsReadOnly, "the downloaded copy can be typed into, though nothing typed reaches the CDN");
         CodeEditor shown = window.EditorArea.CodeEditor;
         Assert.StartsWith("btn-primary{", shown.Document.Snapshot.ToString()[shown.Selections.Primary.Caret..], StringComparison.Ordinal);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Go_to_declaration_of_a_packages_class_opens_its_stylesheet_in_the_package_folder_read_only_naming_the_package()
+    {
+        MainWindow window = app.Open("Components/Pages/Styled.razor");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "btn-primry kit-c");
+        Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
+        Ui.WaitFor(() => window.EditorArea.Active?.Name == "kit.css", () => $"the package's stylesheet opened at its rule; the window shows {window.EditorArea.Active?.Name}, and said {window.Status}");
+        OpenDocument sheet = window.EditorArea.Active!;
+        string written = File.ReadAllText(sheet.Path);
+        string root = window.Projects.Single(p => p.Name == "Shop").Property(Passenger.Host.CarriedProperties.NuGetPackageRoot)!;
+        Assert.True(PathNames.IsUnder(sheet.Path, PathNames.Canonical(root)), $"{sheet.Path} is not the package's copy in {root}");
+        Assert.True(sheet.IsReadOnly && sheet.Text.IsReadOnly && window.EditorArea.CodeEditor.IsReadOnly,
+            $"{sheet.Path} opened writable, so a key typed there would change every project's copy of Kit 1.0.0");
+
+        window.KeyTextInput("x");
+        Ui.Settle();
+        Assert.False(sheet.IsModified, "A key typed into the package's stylesheet changed its text");
+        Assert.Equal(written, sheet.Text.Snapshot.ToString());
+        Assert.True(window.EditorArea.ActiveGroup.BannerText?.Contains("A file of the package Kit 1.0.0", StringComparison.Ordinal) == true,
+            $"The bar over the package's stylesheet says '{window.EditorArea.ActiveGroup.BannerText}', not which package it is part of");
+        Ui.Press(window, Ui.Shortcut(AppActions.Save));
+        Assert.Equal("kit.css is read-only", window.Status);
+        Assert.Equal(written, File.ReadAllText(sheet.Path));
         window.Close();
     }
 
