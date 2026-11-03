@@ -2,13 +2,12 @@
 """Writes src/Passenger.Workspace/GodotDefaultTheme.json, the table of Godot's default theme Passenger carries, from Godot's
 own sources at one commit (MIT, named in THIRD_PARTY_NOTICES.md):
 
-- scene/theme/default_theme.cpp: each theme type's items by their kind (colors, constants, fonts, font_sizes, icons,
-  styles, as a theme resource names them) and the type variations it makes (HeaderSmall of Label);
+- scene/theme/default_theme.cpp: each theme type's items by kind (colors, constants, fonts, font_sizes, icons, styles)
+  and the type variations it makes (HeaderSmall of Label);
 - scene/scene_string_names.h and core/core_string_names.h: the names its StringName constants stand for;
-- the headers of scene/gui and scene/main: each class's base (GDCLASS), kept for the classes deriving from Control or
-  Window, whose theme items a node of a class looks up along its bases.
-The sources are fetched once into artifacts/godot-theme/<commit>/; COMMIT is Godot 4.8 beta 2's (godotengine/godot-builds
-names it), as tools/godot-shader-types.py's.
+- scene/gui's and scene/main's headers: the base (GDCLASS) of each class deriving from Control or Window, along which a
+  node looks its theme items up.
+Fetched once into artifacts/godot-theme/<commit>/; COMMIT is Godot 4.8 beta 2's, as tools/godot-shader-types.py's.
 """
 import json
 import os

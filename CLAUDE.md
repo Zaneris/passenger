@@ -374,10 +374,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   (`ProjectSession.GodotOf`; the C# service's `BuiltGodotOf` a C# project's only), so scene code reaches the scenes
   through `AssistContext.GodotOf` (`GodotSceneIndex.GameOf`), and a GDScript's class is `GodotScenes.ChainOf` over
   `GodotScriptDeclarations`, read from `GDScriptTree` (Godot's own parser, ported: members are runs between clean member
-  starts, `Reparse` parsing only the edited run); their fixes `GodotOffer` over the extension's `GodotFix` (members made
-  by Roslyn so the code builds) and Workspace's pure `GodotWrites`, a fix that asks first through `EditorFix.Confirms`;
-  Godot's generator assigns every field in generated code, so a field's values are read from the code's own documents);
-  a C# file read before its project's evaluation landed is pulled again once it does
+  starts, `Reparse` parsing only the edited run), typed by `GDScriptAnalyzer` (Godot's analyzer, ported), the engine's
+  types from the found Godot's extension_api.json (`GodotEngineApi`, dumped once per version into the state's cache by
+  `GodotEngineApis`: `GodotEngineClasses` has no member types); their fixes `GodotOffer` over the extension's `GodotFix`
+  (members made by Roslyn so the code builds) and Workspace's pure `GodotWrites`, a fix that asks first through
+  `EditorFix.Confirms`; Godot's generator assigns every field in generated code, so a field's values are read from the
+  code's own documents); a C# file read before its project's evaluation landed is pulled again once it does
   (`CSharpService.GodotProjectsChanged`). A Godot shader is `GodotShaderAssist` over Workspace's `GodotShaderCode`, its
   language the carried `GodotShaderTypes.json` as the Godot found takes it (`GodotShaderCompiler.TableAsync`, probed per
   version), its marks Godot's own compiler's through `PassengerShaders.gd` (`GodotShaderMarks`; a scene's own Shader's
@@ -389,9 +391,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   `documentChanges` apply in order. A server's own command (TypeScript's refactorings, ESLint's fixes) runs through
   `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
-  `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind), `JsonSchemas`
-  (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
-  runs one tsserver (`useSyntaxServer` never): a syntax server answers rename and usages from the open files alone.
+  `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind; an open GDScript
+  kept parsed and typed by `GodotScriptTypes`, reparsed off the UI thread through `GDScriptTextChange`, its hints set
+  only where they changed, and `GDScriptAssist` answering before Godot's server serves; a test holds that server's
+  start, as a Node.js server's, with `WebLanguages.HoldNextConfigure`), `JsonSchemas` (downloads only while Settings
+  allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript runs one tsserver
+  (`useSyntaxServer` never): a syntax server answers rename and usages from the open files alone.
   typescript-language-server keeps a file's first `formattingOptions` answer while it runs, so each open file tells
   tsserver how it indents itself (`WebDocument`'s `configure`). A page's stylesheets' classes have one finder,
   `PageStylesheets` (links as the app serves them, packages' `_content` from project.assets.json, one on the web through
