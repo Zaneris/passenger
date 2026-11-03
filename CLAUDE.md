@@ -405,17 +405,19 @@ Projects in `src/`; `find_symbol` finds the rest:
   project's game and editor through `GodotLaunch` (one of GDScript alone a `ProjectModel.OfScriptGame` that only Run,
   Debug and Profile see, `ProjectSession.RunProjects`, never in `Projects`), on the Godot `GodotExecutables` finds, its
   copies `GameCopies` ("Name #k", Debug tabs grouped as `DebugTab.Copy`, Stop ending the group), the offer of Passenger
-  as Godot's script editor made once per folder (`MainWindow.OfferGodotEditor`), its Publish its export
-  (`GodotExportDialog`, `BuildRunController.ExportGodotAsync`), templates installed only from a `.tpz` the person picks
-  (`GodotExports.Install`; a test's named by `PASSENGER_TEST_GODOT_TEMPLATES`, into the run's own Godot folders), its
-  page a view of its project.godot (`GodotProjectPages`, `GodotPageViewer`) over Workspace's readers, a launched game's
-  remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (its value editors `GodotValueCells`, an
-  `ILiveValueCells`, from `GodotHints`; Keep `GodotKeep`; a run's errors pinned to lines `GodotErrorPins` through
-  `ErrorPinColumn`, its console folded `GodotConsoleFold`; a running game's member values at their lines' ends
-  `GodotLiveValues`, into `OpenDocument.LiveValues` through the helper's `values` call, members from `GodotMembers`;
-  `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's
-  build skipped while what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`;
-  on Windows a build's first step lets go of the Avalonia previewers holding its output
+  as Godot's script editor made once per folder (`MainWindow.OfferGodotEditor`), Passenger's addon in the person's Godot
+  editor (`Godot/Addon/passenger.gd`, `GodotAddon`, `MainWindow.GodotAddon`) reaching the window over `GodotEditorLink`
+  (a listing in the state's `godot-editors/`, a token, then a reply, then JSON lines both ways: `GodotEditorWire`), its
+  Publish its export (`GodotExportDialog`, `BuildRunController.ExportGodotAsync`), templates installed only from a
+  `.tpz` the person picks (`GodotExports.Install`; a test's named by `PASSENGER_TEST_GODOT_TEMPLATES`, into the run's
+  own Godot folders), its page a view of its project.godot (`GodotProjectPages`, `GodotPageViewer`) over Workspace's
+  readers, a launched game's remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (its value editors
+  `GodotValueCells`, an `ILiveValueCells`, from `GodotHints`; Keep `GodotKeep`; a run's errors pinned to lines
+  `GodotErrorPins` through `ErrorPinColumn`, its console folded `GodotConsoleFold`; a running game's member values at
+  their lines' ends `GodotLiveValues`, into `OpenDocument.LiveValues` through the helper's `values` call, members from
+  `GodotMembers`; `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`),
+  `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build under way waited out
+  first), `TogetherBuild`; on Windows a build's first step lets go of the Avalonia previewers holding its output
   (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time (`ConsoleWritten`).
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach,
   Restart and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time
@@ -621,9 +623,13 @@ site-shots` retakes its images.
   project (`GodotExecutables.NamesGodot`: Chickensoft's `%GODOT%`) is the game's configuration
   (`RunConfiguration.NamesGodot`), its `--path` the launch's (`WithoutPath`). A macOS export of an arm64 or universal
   game refuses a project without `textures/vram_compression/import_etc2_astc`. Its .NET host rolls forward only to
-  released runtimes, so a new game's framework is one it can run (`GodotGames.Runnable`). An agent's input and layout
-  reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing;
-  `PassengerTools.Godot.cs`).
+  released runtimes, so a new game's framework is one it can run (`GodotGames.Runnable`). GodotTools' `_Build` runs
+  before any addon's, so Passenger's addon sets its `SkipBuildBeforePlaying` while Passenger builds; a game the editor's
+  Play starts inherits the editor's environment, names its editor by `--editor-pid`, is headless under a headless editor
+  only through `editor/run/main_run_args`, and on Windows writes nothing to the editor's stdout; an
+  `EditorDebuggerPlugin` never captures Godot's own messages, which `ScriptEditorDebugger`'s `debug_data` gives. An
+  agent's input and layout reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live
+  editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
