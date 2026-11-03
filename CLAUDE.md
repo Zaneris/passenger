@@ -439,17 +439,19 @@ Projects in `src/`; `find_symbol` finds the rest:
   through it into the same `GodotGame` (`GodotGame.Relay`, `GodotRelay`, taken in by `ProjectSession.TakeGame`) and held
   at its runtime's start until attached or let go (`HeldStart.DebuggerOffAsync`, `LetGoAsync`), a game played in the
   person's Godot editor (`RunConfiguration.GodotInEditor`, `MainWindow.GodotEditorPlay`: the addon's play where it is
-  connected, else IDE messaging's `DebugPlay` through `GodotIdeLink.RequestAsync`), its Publish its export
-  (`GodotExportDialog`, `BuildRunController.ExportGodotAsync`), templates installed only from a `.tpz` the person picks
-  (`GodotExports.Install`; a test's named by `PASSENGER_TEST_GODOT_TEMPLATES`, into the run's own Godot folders), its
-  page a view of its project.godot (`GodotProjectPages`, `GodotPageViewer`) over Workspace's readers, a launched game's
-  remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (its value editors `GodotValueCells`, an
-  `ILiveValueCells`, from `GodotHints`; Keep `GodotKeep`; a run's errors pinned to lines `GodotErrorPins` through
-  `ErrorPinColumn`, its console folded `GodotConsoleFold`; a running game's member values at their lines' ends
-  `GodotLiveValues`, into `OpenDocument.LiveValues` through the helper's `values` call, members from `GodotMembers`;
-  `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's
-  build skipped while what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`;
-  on Windows a build's first step lets go of the Avalonia previewers holding its output
+  connected, else IDE messaging's `DebugPlay` through `GodotIdeLink.RequestAsync`), Open in Godot Editor through the
+  addon (`scene_select`) where an editor runs, else the Godot Editor configuration on the scene, selecting once it
+  connects (`selectOnConnect`; a selection Passenger asked for never followed back, `GodotEditorPeer.SelectionAsked`),
+  its Publish its export (`GodotExportDialog`, `BuildRunController.ExportGodotAsync`), templates installed only from a
+  `.tpz` the person picks (`GodotExports.Install`; a test's named by `PASSENGER_TEST_GODOT_TEMPLATES`, into the run's
+  own Godot folders), its page a view of its project.godot (`GodotProjectPages`, `GodotPageViewer`) over Workspace's
+  readers, a launched game's remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (its value editors
+  `GodotValueCells`, an `ILiveValueCells`, from `GodotHints`; Keep `GodotKeep`; a run's errors pinned to lines
+  `GodotErrorPins` through `ErrorPinColumn`, its console folded `GodotConsoleFold`; a running game's member values at
+  their lines' ends `GodotLiveValues`, into `OpenDocument.LiveValues` through the helper's `values` call, members from
+  `GodotMembers`; `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`),
+  `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build under way waited out
+  first), `TogetherBuild`; on Windows a build's first step lets go of the Avalonia previewers holding its output
   (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time (`ConsoleWritten`).
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach, Restart
   and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time (`TakeStartAsync`);
@@ -689,7 +691,9 @@ site-shots` retakes its images.
   perhaps unsaved, and no Godot says whether a resource is unsaved, so one its inspector shows counts as held; the addon
   reloads a scene only where Godot has it open and saved. A static function in an addon's script named after one of
   Object's virtuals (`_set`) fails the whole script to compile; `remove_child` clears the owner of every node of the
-  branch whose owner is outside it, so a move, or an undo of a remove, sets the owners again. IDE messaging's `Play`
+  branch whose owner is outside it, so a move, or an undo of a remove, sets the owners again. A headless game's window
+  is 64×64, so Passenger's helper gives it the project's `display/window/size` as it first comes in; on Windows a test's
+  Godot editor is two processes, the `_console.exe` wrapper and the editor, both with `--editor`. IDE messaging's `Play`
   plays only the main scene, `DebugPlay`'s debugger fields are dead in Godot 4 (Godot 3's Mono agent's), and
   `ReloadScripts` reloads the running games' scripts, the editor's own assemblies reloaded by GodotTools' watcher every
   0.5 s; Godot's JSON reads every number as a float. An agent's input and layout reach a game through Passenger's helper
