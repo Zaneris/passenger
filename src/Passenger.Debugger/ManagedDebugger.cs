@@ -84,7 +84,25 @@ public partial class ManagedDebugger
     /// <summary>When the launched program's output was last read (a <see cref="Stopwatch"/> timestamp).</summary>
     private long _lastOutputAt;
     private int _exitReported;
+    private int _terminatedReported;
     private TaskCompletionSource _exitTold = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Tells the client its debugging has ended, once, after the program's end was told: for a launched program as
+    /// its process ends, whatever became of the runtime's word of it, which mscordbi may lose tearing down.</summary>
+    private void ReportTerminated()
+    {
+        if (Interlocked.Exchange(ref _terminatedReported, 1) == 0)
+        {
+            OnTerminated?.Invoke();
+        }
+    }
+
+    /// <summary>A launched program's process has ended: its end told, then the end of its debugging.</summary>
+    private async Task EndedLaunchAsync(Task<int?> ended)
+    {
+        await ReportExitAsync(await ended.ConfigureAwait(false)).ConfigureAwait(false);
+        ReportTerminated();
+    }
 
     /// <summary>Tells the client the program has ended, once, after the last of its output, and why its exit code is lost
     /// where it is. A second caller (the runtime's word of the end, after the wait's) ends only once it has been told, so

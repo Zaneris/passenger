@@ -18,8 +18,14 @@ public partial class ManagedDebugger
     private async Task HandleProcessExited(ExitProcessCorDebugManagedCallbackEventArgs exitProcessCorDebugManagedCallbackEventArgs)
     {
         _logger?.Invoke($"Process exited");
+        // A launched program's end is its process's, told by the launch's wait: a Godot game tears down past its runtime's.
+        if (_launchExit is { IsCompleted: false })
+        {
+            _logger?.Invoke("Its runtime has shut down before its process ended: its end is told as the process ends");
+            return;
+        }
         await ReportExitAsync(await EndedWithAsync().ConfigureAwait(false)).ConfigureAwait(false);
-        OnTerminated?.Invoke();
+        ReportTerminated();
     }
 
     private void HandleThreadCreated(object? sender, CreateThreadCorDebugManagedCallbackEventArgs createThreadCorDebugManagedCallbackEventArgs)

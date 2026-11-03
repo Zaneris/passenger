@@ -104,6 +104,7 @@ public partial class ManagedDebugger
         _pendingLaunchInfo = null;
 
         _exitReported = 0;
+        _terminatedReported = 0;
         _exitTold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         SuspendedLaunch launch;
         try
@@ -122,7 +123,7 @@ public partial class ManagedDebugger
         Task<int?> launchExit = Core.BackgroundWork.Unheld(launch.WaitForExit);
         _launchExit = launchExit;
         // Told as the program goes, not when the runtime's word of it is handled, which mscordbi may lose tearing down.
-        Core.UnawaitedWork.Observe(launchExit.ContinueWith(ended => ReportExitAsync(ended.Result), TaskScheduler.Default).Unwrap());
+        Core.UnawaitedWork.Observe(EndedLaunchAsync(launchExit));
         int processId = launch.ProcessId;
 
         _logger?.Invoke($"Process created suspended with PID: {processId}");

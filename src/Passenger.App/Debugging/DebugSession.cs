@@ -581,8 +581,9 @@ public sealed class DebugSession
     }
 
     /// <summary>The program has gone, heard other than from the adapter (a Godot game's connection, then its process, ended):
-    /// the session is shown ended at once and the adapter asked to end, as when it says so itself, so an adapter slow to go,
-    /// or one that said the program exited and never that its debugging ended, leaves no program shown running.</summary>
+    /// the adapter says its debugging ended itself once the last of the program's output is read; one that has not within
+    /// <see cref="AdapterSilence"/> has the session ended without it, the adapter asked to end, and the log says so, so an
+    /// adapter that said the program exited and never that its debugging ended leaves no program shown running.</summary>
     public void ProgramGone()
     {
         UiThread.Check();
@@ -591,9 +592,46 @@ public sealed class DebugSession
             return;
         }
         goneHeard = true;
-        programEnded = true;
-        IdeErrors.Observe(StopAsync());
+        IdeErrors.Observe(GoneAsync());
     }
+
+    /// <summary>How long the adapter is waited for to say its debugging ended once its program has gone: past the 10 s its
+    /// engine gives the program's last output.</summary>
+    public static TimeSpan AdapterSilence => Waits.Of(TimeSpan.FromSeconds(15));
+
+    private async Task GoneAsync()
+    {
+        TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Changed(object? sender, EventArgs e)
+        {
+            if (State == DebugState.Ended)
+            {
+                ended.TrySetResult();
+            }
+        }
+        StateChanged += Changed;
+        try
+        {
+            Changed(this, EventArgs.Empty);
+            await Task.WhenAny(ended.Task, Task.Delay(AdapterSilence));
+        }
+        finally
+        {
+            StateChanged -= Changed;
+        }
+        if (State == DebugState.Ended)
+        {
+            return;
+        }
+        IdeLog.Write(IdeLog.Debugger, $"[{adapter.Name}] {Program} has gone, and its adapter did not say its debugging ended within {AdapterSilence.TotalSeconds:0} s: "
+            + "the session ends without it");
+        FallbackUsed = true;
+        programEnded = true;
+        await StopAsync();
+    }
+
+    /// <summary>Whether the session ended without its adapter saying its debugging had (<see cref="ProgramGone"/>).</summary>
+    public bool FallbackUsed { get; private set; }
 
     /// <summary>Detach: the debugger takes its breakpoints out of the program it attached to and lets go of it, and the
     /// program runs on, from where it was paused if it was; the session ends with the adapter.</summary>

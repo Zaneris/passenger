@@ -261,6 +261,50 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         }
     }
 
+    /// <summary>A debugged game that quits by itself (its GDScript's get_tree().quit(), its tree's exit held a moment, so
+    /// Godot's teardown outlasts what its .NET does) ends its session through its debugger's word that its debugging ended,
+    /// with the game's own exit code: the session's fallback for an adapter that never says so is not used, and nothing is
+    /// left running for Passenger to end.</summary>
+    [AvaloniaFact]
+    public void A_debugged_game_that_quits_ends_its_session_through_its_debuggers_word_with_its_own_exit_code()
+    {
+        string quitter = Path.Combine(game.Folder, "quitter.gd");
+        File.WriteAllText(quitter, "extends Node\n\nvar frames := 0\n\n\nfunc _process(_delta: float) -> void:\n\tframes += 1\n\tif frames == 60:\n"
+            + "\t\tprint(\"quitting\")\n\t\tget_tree().quit()\n\n\nfunc _exit_tree() -> void:\n\tOS.delay_msec(2500)\n");
+        File.WriteAllText(Path.Combine(game.Folder, "main.tscn"), """
+            [gd_scene load_steps=3 format=3]
+
+            [ext_resource type="Script" path="res://Main.cs" id="1"]
+            [ext_resource type="Script" path="res://quitter.gd" id="2"]
+
+            [node name="Main" type="Node"]
+            script = ExtResource("1")
+
+            [node name="Quitter" type="Node" parent="."]
+            script = ExtResource("2")
+
+            """);
+        MainWindow window = game.Open(null, languageServer: false);
+        try
+        {
+            Choose(window, Generated(window, "Spinner"));
+            Ui.Launched(window, window.DebugAsync(), "the game's build and start under the debugger", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => window.Debugger.SessionNamed("Spinner on Godot") is not null, () => $"the game's session ({Debugged(window)}; {Ui.Said(window)})", TimeSpan.FromMinutes(1));
+            DebugSession session = window.Debugger.SessionNamed("Spinner on Godot")!;
+            Ui.WaitFor(() => session.State == DebugState.Ended, () => $"the game to quit and its session to end ({Debugged(window)}; {window.Debugger.Output()})", TimeSpan.FromMinutes(2));
+            string said = window.Debugger.Output().ToString();
+            Assert.True(said.Contains("quitting", StringComparison.Ordinal), $"The game's session ended before it quit by itself:\n{said}");
+            Assert.False(session.FallbackUsed, $"The game's session was ended without its debugger saying its debugging ended:\n{said}");
+            Assert.True(session.ExitCode == 0, $"The game's exit code was {session.ExitCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "never said"}, not its own 0:\n{said}");
+            Assert.False(said.Contains("was left running by the debugger", StringComparison.Ordinal), $"Passenger ended the game as it tore down:\n{said}");
+        }
+        finally
+        {
+            End(window);
+            File.Delete(quitter);
+        }
+    }
+
     /// <summary>Run and Debug with the configuration's external console run the game in a tab of the Terminal window, which
     /// shows what its script prints rather than the Run and Debug windows' consoles (on Windows, where Godot's own .exe writes
     /// to no console, through Godot's console wrapper); under Debug a breakpoint in _Process still stops the game, the
