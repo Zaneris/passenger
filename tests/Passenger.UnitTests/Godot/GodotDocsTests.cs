@@ -26,6 +26,8 @@ public class GodotDocsTests
     [InlineData("Node", GodotDocs.Enum, "ProcessMode", "class_node.html#enum-node-processmode")]
     [InlineData("@GlobalScope", GodotDocs.Method, "print", "class_@globalscope.html#class-globalscope-method-print")]
     [InlineData("CharacterBody2D", null, null, "class_characterbody2d.html")]
+    [InlineData("Label", "theme_color", "font_color", "class_label.html#class-label-theme-color-font-color")]
+    [InlineData("Button", "theme_style", "normal", "class_button.html#class-button-theme-style-normal")]
     public void A_member_is_at_its_place_on_its_classs_page(string type, string? kind, string? member, string page) =>
         Assert.Equal($"https://docs.godotengine.org/en/4.7/classes/{page}", GodotDocs.Page("4.7", new GodotDocItem(type, kind, member)).AbsoluteUri);
 

@@ -7,12 +7,12 @@ using Passenger.Workspace;
 namespace Passenger.Tests;
 
 /// <summary>A Godot 4 C# game's strings completed from the person's Godot editor open on it, through its IDE messaging
-/// protocol, and from Godot's default theme where no editor runs: a Label's theme color completes from the carried table and
-/// a name the table lacks is marked; with a headless Godot editor of the test's open on the project (its user folders the
-/// test's own), an input action only that editor holds, added by its own plugin and never saved, completes in
-/// IsActionPressed, a theme color of the Label node the edited scene runs a Control's script on completes as the editor
-/// answers it, and once the editor is gone neither is offered. Its project restores from the packages the Godot found
-/// carries, so without a Godot 4 .NET build each test skips saying why. Run alone: one starts a Godot of its own.</summary>
+/// protocol, and from Godot's default theme where no editor runs: a Label's theme color completes from the carried table, a
+/// name the table lacks is marked, and the script's own node, a Control's class its scene runs on a Label, completes the
+/// Label's; with a headless Godot editor of the test's open on the project (its user folders the test's own), an input
+/// action only that editor holds, added by its own plugin and never saved, completes in IsActionPressed, and once the editor
+/// is gone it is not offered. Its project restores from the packages the Godot found carries, so without a Godot 4 .NET
+/// build each test skips saying why. Run alone: one starts a Godot of its own.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotEditorCompletionTests : IClassFixture<GodotEditorCompletionTests.Game>
 {
@@ -102,7 +102,7 @@ public sealed class GodotEditorCompletionTests : IClassFixture<GodotEditorComple
     }
 
     /// <summary>With no Godot editor open, a Label's theme color completes from Godot's default theme Passenger carries, and a
-    /// name it lacks is an error naming the class; the script's own Control is offered none, its node being any control.</summary>
+    /// name it lacks is an error naming the class; the script's own Control completes the Label's, the node its scene runs it on.</summary>
     [AvaloniaFact]
     public void With_no_editor_a_labels_theme_colors_complete_from_godots_default_theme_and_a_name_it_lacks_is_marked()
     {
@@ -114,6 +114,7 @@ public sealed class GodotEditorCompletionTests : IClassFixture<GodotEditorComple
             Assert.DoesNotContain(GodotSceneTests.Marked(window), m => m.Contains("'font_color'", StringComparison.Ordinal));
             List<string> labels = Completed(window, "score.GetThemeColor(\"", "font_color");
             Assert.Contains("font_outline_color", labels);
+            Assert.Contains("font_color", OwnColors(window));
             Completed(window, "IsActionPressed(\"", "jump");
         }
         finally
@@ -123,8 +124,8 @@ public sealed class GodotEditorCompletionTests : IClassFixture<GodotEditorComple
     }
 
     /// <summary>With a headless Godot editor of the test's open on the project and its scene, the input action only that
-    /// editor holds completes, project.godot never naming it, and the script's own node's theme colors complete as the
-    /// editor answers them for the Label the scene runs it on; the editor ended, neither is offered.</summary>
+    /// editor holds completes, project.godot never naming it, and the script's own node's theme colors complete for the
+    /// Label the scene runs it on; the editor ended, the action is not offered, the Label's colors still are, as its scene says.</summary>
     [AvaloniaFact]
     public void An_open_editors_unsaved_input_action_and_its_nodes_theme_colors_complete_until_it_ends()
     {
@@ -161,7 +162,7 @@ public sealed class GodotEditorCompletionTests : IClassFixture<GodotEditorComple
             Ui.WaitFor(() => !DotnetProcesses.Runs(editor.Id), () => "Godot's editor to end", TimeSpan.FromMinutes(1));
             List<string> after = Completed(window, "IsActionPressed(\"", "jump");
             Assert.DoesNotContain("editor_dash", after);
-            Assert.DoesNotContain("font_color", OwnColors(window));
+            Assert.Contains("font_color", OwnColors(window));
         }
         finally
         {

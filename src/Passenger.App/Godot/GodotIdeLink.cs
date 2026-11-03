@@ -17,9 +17,6 @@ internal sealed class GodotIdeLink : IAsyncDisposable
     /// <summary>How long a connection's handshake, and an answer kept for a later list, are waited for.</summary>
     private static readonly TimeSpan Patience = Waits.Of(TimeSpan.FromSeconds(5));
 
-    /// <summary>How long a meta file whose editor did not answer is passed over before it is tried again: an editor busy
-    /// importing as it opens shakes no hands until it is done.</summary>
-    private static readonly TimeSpan Again = TimeSpan.FromSeconds(10);
 
     private readonly SemaphoreSlim connecting = new(1, 1);
     private readonly Lock gate = new();
@@ -28,7 +25,7 @@ internal sealed class GodotIdeLink : IAsyncDisposable
     private bool ended;
 
     /// <summary>A project's editor as last found: what its meta file said, the connection made to it (null where none
-    /// answered, not tried again until the file changes or <see cref="Again"/> has passed), and when it was tried.</summary>
+    /// answered, not tried again until the file changes or <see cref="GodotIdeRetry.Again"/> has passed), and when it was tried.</summary>
     private sealed record Linked(string Meta, GodotIdeClient? Client, long Tried);
 
     /// <summary>The names the editor open on a project answers for a kind of string in a script (res://); none where no
@@ -122,7 +119,7 @@ internal sealed class GodotIdeLink : IAsyncDisposable
                 }
                 linked.TryGetValue(project, out before);
             }
-            if (before is { } same && same.Meta == meta && (same.Client is { Open: true } || same.Client is null && System.Diagnostics.Stopwatch.GetElapsedTime(same.Tried) < Again))
+            if (before is { } same && GodotIdeRetry.Stands(same.Meta, same.Client is not null, same.Client is { Open: true }, System.Diagnostics.Stopwatch.GetElapsedTime(same.Tried), meta))
             {
                 return same.Client;
             }

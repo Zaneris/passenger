@@ -72,7 +72,7 @@ public sealed class GodotDefinitions
     private readonly Lazy<IReadOnlyList<(string Res, IReadOnlyList<GodotScriptToken> Tokens)>> scripts;
     private readonly Lazy<(IReadOnlyList<GodotDefined> Keys, IReadOnlyList<string> Files, bool Whole)> translations;
     private readonly Lazy<(IReadOnlyList<GodotDefined> Names, bool Whole)> animations;
-    private readonly Lazy<(IReadOnlyList<GodotThemeItem> Defined, IReadOnlyList<GodotThemeItem> Overridden)> themes;
+    private readonly Lazy<(IReadOnlyList<GodotThemeItem> Defined, IReadOnlyList<GodotThemeItem> Overridden, IReadOnlyDictionary<string, string> Variations)> themes;
     private readonly Dictionary<string, (IReadOnlyList<GodotDefined> Names, bool Whole)> uniforms = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int[]> lines = new(StringComparer.Ordinal);
     private readonly Lock reading = new();
@@ -258,12 +258,33 @@ public sealed class GodotDefinitions
     /// node's class.</summary>
     public IReadOnlyList<GodotThemeItem> ThemeOverrides => themes.Value.Overridden;
 
-    private (IReadOnlyList<GodotThemeItem>, IReadOnlyList<GodotThemeItem>) ReadThemes()
+    /// <summary>The type variations the project's themes declare (<c>TitleLabel/base_type = &amp;"Label"</c>), each with the
+    /// type it varies, the custom theme's first.</summary>
+    public IReadOnlyDictionary<string, string> ThemeVariations => themes.Value.Variations;
+
+    /// <summary>The theme types Godot looks an item up in for a node's class and the type variation its scene gives it, as
+    /// a theme's type dependencies go: the variation, each type it varies in turn (the project's themes' declarations
+    /// before the default theme's) until the class, then the class and its bases; a type named alone, its own chain.</summary>
+    public IReadOnlyList<string> ThemeChain(string type, string? variation = null)
+    {
+        GodotThemeTable table = GodotThemeTable.Carried;
+        List<string> chain = [];
+        for (string? at = variation; at is { Length: > 0 } && at != type && !chain.Contains(at);
+            at = ThemeVariations.TryGetValue(at, out string? varied) || table.Variations.TryGetValue(at, out varied) ? varied : null)
+        {
+            chain.Add(at);
+        }
+        chain.AddRange(table.Chain(type).Where(t => !chain.Contains(t)));
+        return chain;
+    }
+
+    private (IReadOnlyList<GodotThemeItem>, IReadOnlyList<GodotThemeItem>, IReadOnlyDictionary<string, string>) ReadThemes()
     {
         const string Override = "theme_override_";
         string? custom = CustomTheme;
         List<GodotThemeItem> defined = [];
         List<GodotThemeItem> overridden = [];
+        Dictionary<string, string> variations = new(StringComparer.Ordinal);
         foreach ((string res, GodotFile file) in scenes.Files.OrderBy(f => f.Key != custom).ThenBy(f => f.Key, StringComparer.Ordinal))
         {
             foreach (GodotSection section in file.Sections)
@@ -273,6 +294,11 @@ public sealed class GodotDefinitions
                 foreach (GodotEntry property in theme || section.Tag == "node" ? section.Properties : [])
                 {
                     string[] parts = property.Key.Split('/');
+                    if (theme && parts is [{ Length: > 0 } varied, "base_type"] && property.Value.Text is { Length: > 0 } based)
+                    {
+                        variations.TryAdd(varied, based);
+                        continue;
+                    }
                     bool named = theme ? parts.Length == 3 && parts[0].Length > 0 : parts.Length == 2 && parts[0].StartsWith(Override, StringComparison.Ordinal);
                     string kind = named ? theme ? parts[1] : parts[0][Override.Length..] : string.Empty;
                     if (!named || !GodotThemeTable.Kinds.Contains(kind) || parts[^1].Length == 0)
@@ -288,7 +314,7 @@ public sealed class GodotDefinitions
                 }
             }
         }
-        return (defined, overridden);
+        return (defined, overridden, variations);
     }
 
     /// <summary>The keys of the translations project.godot lists, each with its place in every file.</summary>

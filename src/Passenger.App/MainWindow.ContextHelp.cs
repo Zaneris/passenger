@@ -45,6 +45,7 @@ public partial class MainWindow
         try
         {
             GodotDocItem? item = script ? (await lsp.HoverAsync(offset)) is { } card ? GodotDocs.OfScriptCard(Shapes.Text(card.Contents)) : null
+                : await assist.GodotThemeDocAsync(file, offset) is { } themed ? themed
                 : (await lsp.ExtensionAsync<GodotNamesFound>(Handlers.GodotNames, new GodotNamesAsked(lsp.PlaceOf(offset), false))).Engine is { } engine
                     ? new GodotDocItem(engine.Class, engine.Kind switch
                     {

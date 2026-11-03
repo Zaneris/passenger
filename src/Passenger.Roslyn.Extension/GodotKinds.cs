@@ -41,8 +41,8 @@ internal static class GodotKinds
     private static readonly System.Text.RegularExpressions.Regex ThemeCall = new("^(Get|Has|Add|Remove)Theme(Color|Constant|FontSize|Font|Icon|Stylebox)(Override)?$",
         System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
-    /// <summary>A Theme resource's call setting an item of a kind, its kind the first group.</summary>
-    private static readonly System.Text.RegularExpressions.Regex ThemeSet = new("^Set(Color|Constant|FontSize|Font|Icon|Stylebox)$",
+    /// <summary>A Theme resource's call setting, reading or asking for an item of a kind, its kind the second group.</summary>
+    private static readonly System.Text.RegularExpressions.Regex ThemeSet = new("^(Set|Get|Has|Clear)(Color|Constant|FontSize|Font|Icon|Stylebox)$",
         System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     /// <summary>The file's strings of a kind, each with the class it is written in and the object its call is made on where
@@ -256,13 +256,14 @@ internal static class GodotKinds
         {
             GodotStringKind.Animation or GodotStringKind.TreeParameter => NodeOf(solution, instance, model, Deepest, cancel) is var (n, e) ? (n, e, null) : (null, null, null),
             GodotStringKind.ShaderParameter => MaterialOf(solution, instance, model, Deepest, cancel) ?? (null, null, null),
-            >= GodotStringKind.ThemeColor and <= GodotStringKind.ThemeStyle => ThemeTold(token, instance, model, cancel),
+            >= GodotStringKind.ThemeColor and <= GodotStringKind.ThemeStyle => ThemeTold(solution, token, instance, model, cancel),
             _ => (null, null, null),
         } : (null, null, null);
 
     /// <summary>The theme type a theme item's call looks its name up in, as its member: the type it names (<c>themeType</c>),
-    /// else the engine class of the control or window it is made on; and "." as its node where that is the class's own.</summary>
-    private static (string? Node, string? Export, string? Member) ThemeTold(SyntaxToken token, IOperation? instance, SemanticModel model, CancellationToken cancel)
+    /// else the engine class of the control or window it is made on; and as its node "." where that is the class's own, else
+    /// the node the code tells it is (<see cref="NodeOf"/>), whose scenes may give it a type variation.</summary>
+    private static (string? Node, string? Export, string? Member) ThemeTold(Solution solution, SyntaxToken token, IOperation? instance, SemanticModel model, CancellationToken cancel)
     {
         if (token.Parent?.Parent?.Parent?.Parent is not InvocationExpressionSyntax call || model.GetOperation(call, cancel) is not IInvocationOperation invocation)
         {
@@ -280,7 +281,8 @@ internal static class GodotKinds
         {
             if (OfGodot(type))
             {
-                return (own ? "." : null, null, type.Name == "GodotObject" ? "Object" : type.Name);
+                (string? node, string? export) = own ? (".", null) : NodeOf(solution, instance, model, Deepest, cancel) ?? (null, null);
+                return (node, export, type.Name == "GodotObject" ? "Object" : type.Name);
             }
         }
         return (null, null, null);
@@ -289,7 +291,7 @@ internal static class GodotKinds
     /// <summary>The theme item kind a control's, window's or Theme's method takes the name of; null for any other.</summary>
     private static GodotStringKind? ThemeKindOf(IMethodSymbol method) =>
         (method.ContainingType.Name is "Control" or "Window" ? ThemeCall.Match(method.Name) is { Success: true } call ? call.Groups[2].Value : null
-            : method.ContainingType.Name == "Theme" && ThemeSet.Match(method.Name) is { Success: true } set ? set.Groups[1].Value : null) switch
+            : method.ContainingType.Name == "Theme" && ThemeSet.Match(method.Name) is { Success: true } set ? set.Groups[2].Value : null) switch
         {
             "Color" => GodotStringKind.ThemeColor,
             "Constant" => GodotStringKind.ThemeConstant,

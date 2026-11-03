@@ -5,8 +5,8 @@ namespace Passenger.Workspace;
 
 /// <summary>Godot's default theme as the table Passenger carries says it (<c>GodotDefaultTheme.json</c>, written by
 /// <c>just godot-theme</c> from Godot's own sources): each theme type's items by their kind as a theme resource names it
-/// (<see cref="Kinds"/>), the type variations it makes, and each class deriving from Control or Window with its base, along
-/// which a node looks its theme items up. Pure.</summary>
+/// (<see cref="Kinds"/>), the type variations it makes, each class deriving from Control or Window with its base, along
+/// which a node looks its theme items up, and the class reference's words for each item a class documents. Pure.</summary>
 public sealed class GodotThemeTable
 {
     /// <summary>The kinds of theme items, as a theme resource writes them in its keys (<c>Label/colors/font_color</c>).</summary>
@@ -24,13 +24,15 @@ public sealed class GodotThemeTable
 
     private readonly IReadOnlyDictionary<string, string> bases;
     private readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>> types;
+    private readonly IReadOnlyDictionary<(string Type, string Kind, string Name), string> docs;
 
     private GodotThemeTable(IReadOnlyDictionary<string, string> bases, IReadOnlyDictionary<string, string> variations,
-        IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>> types)
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>> types, IReadOnlyDictionary<(string, string, string), string> docs)
     {
         this.bases = bases;
         Variations = variations;
         this.types = types;
+        this.docs = docs;
     }
 
     /// <summary>The table Passenger carries.</summary>
@@ -51,8 +53,22 @@ public sealed class GodotThemeTable
         {
             types[type.Name] = Kinds.ToDictionary(k => k, k => JsonMembers.Texts(type.Value, k), StringComparer.Ordinal);
         }
-        return new GodotThemeTable(Strings("bases"), Strings("variations"), types);
+        Dictionary<(string, string, string), string> docs = [];
+        foreach (JsonProperty type in JsonMembers.Properties(root, "docs").Where(p => p.Value.ValueKind == JsonValueKind.Object))
+        {
+            foreach (JsonProperty kind in type.Value.EnumerateObject().Where(k => k.Value.ValueKind == JsonValueKind.Object))
+            {
+                foreach (JsonProperty item in kind.Value.EnumerateObject().Where(i => i.Value.ValueKind == JsonValueKind.String))
+                {
+                    docs[(type.Name, kind.Name, item.Name)] = item.Value.GetString()!;
+                }
+            }
+        }
+        return new GodotThemeTable(Strings("bases"), Strings("variations"), types, docs);
     }
+
+    /// <summary>The class reference's words for a class's theme item of a kind (<see cref="Kinds"/>); null where it documents none.</summary>
+    public string? Described(string type, string kind, string name) => docs.GetValueOrDefault((type, kind, name));
 
     /// <summary>Whether a theme type is known: a class the table names, or a type or variation of the default theme.</summary>
     public bool Knows(string type) => bases.ContainsKey(type) || types.ContainsKey(type) || Variations.ContainsKey(type);

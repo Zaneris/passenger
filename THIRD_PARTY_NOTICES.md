@@ -752,8 +752,9 @@ offered only where the Godot found takes it.
 `src/Passenger.Workspace/GodotDefaultTheme.json` is a table of Godot's default theme, written by `just godot-theme`
 (`tools/godot-theme.py`) from files of the Godot Engine at the same commit: `scene/theme/default_theme.cpp` (each theme
 type's items by their kind, and its type variations), `scene/scene_string_names.h` and `core/core_string_names.h` (the
-names its constants stand for), and the headers of `scene/gui` and `scene/main` (each control's and window's base class).
-The app embeds it to complete and check the theme items a Godot game's C# names.
+names its constants stand for), the headers of `scene/gui` and `scene/main` (each control's and window's base class),
+and `doc/classes` (the class reference's description of each theme item a class documents). The app embeds it to
+complete, check and describe the theme items a Godot game's C# names.
 
 ```
 Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md).

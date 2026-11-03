@@ -5,14 +5,16 @@ own sources at one commit (MIT, named in THIRD_PARTY_NOTICES.md):
 - scene/theme/default_theme.cpp: each theme type's items by kind (colors, constants, fonts, font_sizes, icons, styles)
   and the type variations it makes (HeaderSmall of Label);
 - scene/scene_string_names.h and core/core_string_names.h: the names its StringName constants stand for;
-- scene/gui's and scene/main's headers: the base (GDCLASS) of each class deriving from Control or Window, along which a
-  node looks its theme items up.
+- scene/gui's and scene/main's headers: each Control's or Window's class's base (GDCLASS), along which it looks items up;
+- doc/classes/<class>.xml: the class reference's description of each theme item a class documents, its BBCode made words.
 Fetched once into artifacts/godot-theme/<commit>/; COMMIT is Godot 4.8 beta 2's, as tools/godot-shader-types.py's.
 """
 import json
 import os
 import re
+import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ElementTree
 
 COMMIT = "cafc17a192acf67903910a68aeb3c076c0907a4b"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,6 +27,31 @@ SET = re.compile(r'theme->set_(color|constant|font_size|font|icon|stylebox)\(\s*
 VARIATION = re.compile(r'theme->set_type_variation\(\s*' + NAME + r'\s*,\s*' + NAME + r'\s*\)')
 CONSTANT = re.compile(r'const StringName (\w+) = "([^"]*)";')
 CLASS = re.compile(r'\bGDCLASS\(\s*(\w+)\s*,\s*(\w+)\s*\)')
+DOCUMENTED = {"color": "colors", "constant": "constants", "font": "fonts", "font_size": "font_sizes", "icon": "icons", "style": "styles"}
+TAG = re.compile(r"\[(?:/?(?:code|b|i|kbd|codeblock|codeblocks|gdscript|csharp|url[^\]]*|center|br))\]")
+REFERENCE = re.compile(r"\[(?:(?:member|method|signal|constant|enum|theme_item|param|annotation|constructor|operator) )?([\w.@]+)\]")
+
+
+def words(text):
+    """A class reference's BBCode as plain words: tags dropped, a reference ([Color], [member text]) its name, one line."""
+    said = REFERENCE.sub(lambda m: m[1], TAG.sub("", text or ""))
+    return " ".join(said.split())
+
+
+def documented(name):
+    """The theme items a class's reference describes, by kind and name; none where the class has no page."""
+    try:
+        root = ElementTree.fromstring(fetch(f"doc/classes/{name}.xml"))
+    except urllib.error.HTTPError as missing:
+        if missing.code == 404:
+            return {}
+        raise
+    items = {}
+    for item in root.iter("theme_item"):
+        kind = DOCUMENTED.get(item.get("data_type", ""))
+        if kind and item.get("name") and words(item.text):
+            items.setdefault(kind, {})[item.get("name")] = words(item.text)
+    return items
 
 
 def fetch(path):
@@ -90,21 +117,28 @@ def main():
             while at in bases and at not in kept:
                 kept[at] = bases[at]
                 at = bases[at]
+    docs = {}
+    for name in sorted(set(kept) | {"Control", "Window"}):
+        if items := documented(name):
+            docs[name] = {k: dict(sorted(v.items())) for k, v in sorted(items.items())}
     table = {
         "source": f"https://github.com/godotengine/godot/tree/{COMMIT}",
         "bases": dict(sorted(kept.items())),
         "variations": dict(sorted(variations.items())),
         "types": {t: {k: sorted(v) for k, v in sorted(kinds.items())} for t, kinds in sorted(types.items())},
+        "docs": docs,
     }
     with open(OUT, "w", encoding="utf-8", newline="\n") as out:
         out.write("{\n")
         out.write(f' "source": {json.dumps(table["source"])},\n')
         out.write(' "bases": {\n' + ",\n".join(f"  {json.dumps(k)}: {json.dumps(v)}" for k, v in table["bases"].items()) + "\n },\n")
         out.write(' "variations": {\n' + ",\n".join(f"  {json.dumps(k)}: {json.dumps(v)}" for k, v in table["variations"].items()) + "\n },\n")
-        out.write(' "types": {\n' + ",\n".join(f"  {json.dumps(t)}: {json.dumps(kinds)}" for t, kinds in table["types"].items()) + "\n }\n")
+        out.write(' "types": {\n' + ",\n".join(f"  {json.dumps(t)}: {json.dumps(kinds)}" for t, kinds in table["types"].items()) + "\n },\n")
+        out.write(' "docs": {\n' + ",\n".join(f"  {json.dumps(t)}: {json.dumps(kinds, ensure_ascii=False)}" for t, kinds in table["docs"].items()) + "\n }\n")
         out.write("}\n")
     count = sum(len(v) for kinds in table["types"].values() for v in kinds.values())
-    print(f"Wrote {os.path.relpath(OUT, ROOT)}: {count} items of {len(table['types'])} theme types, {len(table['bases'])} classes")
+    described = sum(len(v) for kinds in table["docs"].values() for v in kinds.values())
+    print(f"Wrote {os.path.relpath(OUT, ROOT)}: {count} items of {len(table['types'])} theme types, {len(table['bases'])} classes, {described} described")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,24 @@ public class GodotThemesTests
         Assert.False(table.Knows("Sprite2D"));
     }
 
+    /// <summary>A node's type variation leads its class's chain, through each type it varies (a project theme's declaration
+    /// before the default theme's); a type named alone is looked in alone; and the class reference describes a Label's
+    /// font_color, not a project's own item.</summary>
+    [Fact]
+    public void A_variation_leads_its_nodes_class_and_the_class_reference_describes_a_labels_font_color()
+    {
+        const string theme = "[gd_resource type=\"Theme\" format=3]\n\n[resource]\nTitle/base_type = &\"Label\"\nTitle/colors/glow = Color(1, 1, 0, 1)\nBig/base_type = &\"Title\"\n";
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://ui/theme.tres"] = GodotFile.Parse(theme) }, texts: new Dictionary<string, string>());
+        GodotDefinitions defined = scenes.Defined;
+        Assert.Equal([("Big", "Title"), ("Title", "Label")], defined.ThemeVariations.OrderBy(v => v.Key, StringComparer.Ordinal).Select(v => (v.Key, v.Value)));
+        Assert.Equal(["Big", "Title", "Label", "Control", "CanvasItem", "Node", "Object"], defined.ThemeChain("Label", "Big"));
+        Assert.Equal(["HeaderSmall", "Label", "Control", "CanvasItem", "Node", "Object"], defined.ThemeChain("Label", "HeaderSmall"));
+        Assert.Equal(["Title"], defined.ThemeChain("Title"));
+        Assert.Equal(["glow"], defined.ThemeItems.Where(i => i.Type == "Title").Select(i => i.Name));
+        Assert.Equal("Default text Color of the Label.", GodotThemeTable.Carried.Described("Label", "colors", "font_color"));
+        Assert.Null(GodotThemeTable.Carried.Described("Label", "colors", "glow"));
+    }
+
     [Fact]
     public void A_project_s_themes_and_its_scenes_overrides_are_read_with_the_places_of_their_names()
     {

@@ -197,6 +197,9 @@ public sealed class CodeAssist
     /// <summary>Where Godot's shading reference describes what is at an offset of a shader (<see cref="GodotShaderAssist.HelpAsync"/>).</summary>
     internal Task<(Uri Page, string Name)?> ShaderHelpAsync(OpenDocument shader, int offset, string version) => context.Languages.Shaders.HelpAsync(shader, offset, version);
 
+    /// <summary>The class reference's place of a theme item a Godot game's C# names at an offset (<see cref="CSharpAssist.GodotThemeDocAsync"/>).</summary>
+    internal Task<Godot.GodotDocItem?> GodotThemeDocAsync(OpenDocument file, int offset) => context.Languages.CSharp.GodotThemeDocAsync(file, offset);
+
     public bool IsCompletionOpen => completion.IsOpen;
 
     /// <summary>What the card beside the completion list says about the chosen item while it shows, null otherwise.</summary>

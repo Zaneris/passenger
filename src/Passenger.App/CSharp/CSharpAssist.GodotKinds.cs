@@ -26,7 +26,7 @@ internal sealed partial class CSharpAssist
         @"(\b(IsAction\w*|GetAction\w*|ActionPress|ActionRelease|GetAxis|GetVector|HasAction|AddAction|EraseAction|Action\w*Event\w*|Action\w*Deadzone|EventIsAction"
         + @"|IsInGroup|AddToGroup|RemoveFromGroup|\w*InGroup|CallGroup\w*|NotifyGroup\w*|SetGroup\w*|HasGroup"
         + @"|Play\w*|Queue|HasAnimation|GetAnimation|AnimationSetNext|AnimationGetNext|\w*BlendTime|SetAutoplay|Set(Current|Assigned)?Animation|Capture"
-        + @"|\w*ShaderParameter\w*|Tr|TrN|Translate|TranslatePlural|(Get|Has|Add|Remove)Theme\w+|Set(Color|Constant|Font|FontSize|Icon|Stylebox)"
+        + @"|\w*ShaderParameter\w*|Tr|TrN|Translate|TranslatePlural|(Get|Has|Add|Remove)Theme\w+|(Set|Get|Has|Clear)(Color|Constant|Font|FontSize|Icon|Stylebox)"
         + @"|Call|CallDeferred|Callv|Connect|Disconnect|IsConnected|EmitSignal|HasMethod|HasSignal|Get|Set|SetDeferred|ToSignal|Callable)\s*\(([^""()]|""[^""]*"")*"
         + @"|\b(CurrentAnimation|AssignedAnimation|Animation|Autoplay)\s*=\s*)""[^""]*$",
         RegexOptions.CultureInvariant);
@@ -116,8 +116,10 @@ internal sealed partial class CSharpAssist
             return layer.Places is [{ } key, ..] ? $"{shown}: {layer.Detail}, named in {key.Shown}" : $"{shown}, which project.godot's [layer_names] leaves unnamed";
         }
         List<GodotPlace> places = [.. named.Names.Where(n => n.Name == kind.Name).SelectMany(n => n.Places.Where(p => p.Defines))];
-        return places.Count > 0 ? string.Join('\n', [$"The {what} {kind.Name}, defined in:", .. places.Select(p => p.Shown)])
-            : GodotChecks.IsTheme(kind.Kind) && named.Names.FirstOrDefault(n => n.Name == kind.Name) is { } item ? $"{kind.Name}: {item.Detail}"
+        string described = GodotChecks.IsTheme(kind.Kind) && GodotChecks.ThemeDocumented(read.Scenes, kind.Kind, GodotChecks.ScriptsOf(read.Found, kind.Class), kind.Node, kind.Export,
+            kind.Member, kind.Name) is ({ } documenting, { } words) ? $"\n{words} ({documenting}'s, in Godot's class reference)" : string.Empty;
+        return places.Count > 0 ? string.Join('\n', [$"The {what} {kind.Name}, defined in:", .. places.Select(p => p.Shown)]) + described
+            : GodotChecks.IsTheme(kind.Kind) && named.Names.FirstOrDefault(n => n.Name == kind.Name) is { } item ? $"{kind.Name}: {item.Detail}{described}"
             : named.Names.Any(n => n.Name == kind.Name) ? $"{kind.Name} is Godot's own {what}"
             : named.Others.Contains(kind.Name) ? $"{kind.Name} is a {what} of a class deriving from {kind.Member}, or one the project's themes or scenes give"
             : $"No {what} '{kind.Name}' is {named.Where}";
@@ -159,7 +161,19 @@ internal sealed partial class CSharpAssist
     {
         /// <summary>For a layer, the layers it is among (<c>2d_physics</c>).</summary>
         public string? Layers { get; init; }
+
+        /// <summary>For a theme item, whether Godot's default theme gives it to a type the call looks in.</summary>
+        public bool InDefaultTheme { get; init; }
+
+        /// <summary>For a theme item, the class whose page of Godot's class reference describes it; null for none.</summary>
+        public string? Documented { get; init; }
     }
+
+    /// <summary>The place in Godot's class reference of the theme item a string at an offset names, for Context Help; null
+    /// for an offset on none, or one the reference describes for no class the call looks in.</summary>
+    internal async Task<GodotDocItem?> GodotThemeDocAsync(OpenDocument document, int offset) =>
+        await GodotKindAtAsync(document, offset) is { Documented: { } documented } named && GodotChecks.IsTheme(named.Kind)
+            ? new GodotDocItem(documented, GodotChecks.ThemeDocKind(named.Kind), named.Name) : null;
 
     /// <summary>The name of a kind at an offset (<see cref="KindNamed"/>); null where the offset is in no such string.</summary>
     internal async Task<KindNamed?> GodotKindAtAsync(OpenDocument document, int offset)
@@ -176,10 +190,15 @@ internal sealed partial class CSharpAssist
         (int start, _) = StringAround(lsp.Text.Snapshot, offset);
         if (KindAt(lsp, read, offset, inString ? start : -1) is { Exact: true } kind && (inString || kind.Kind == GodotStringKind.Layer))
         {
-            GodotChecks.Candidates named = GodotChecks.Named(read.Scenes, kind.Kind, GodotChecks.ScriptsOf(read.Found, kind.Class), kind.Node, kind.Export, kind.Member);
-            return new KindNamed(read, kind.Kind, kind.Name, named, [.. named.Names.Where(n => n.Name == kind.Name).SelectMany(n => n.Places)])
+            IReadOnlyList<string> scripts = GodotChecks.ScriptsOf(read.Found, kind.Class);
+            GodotChecks.Candidates named = GodotChecks.Named(read.Scenes, kind.Kind, scripts, kind.Node, kind.Export, kind.Member);
+            IReadOnlyList<GodotPlace> places = [.. named.Names.Where(n => n.Name == kind.Name).SelectMany(n => n.Places)];
+            bool theme = GodotChecks.IsTheme(kind.Kind);
+            return new KindNamed(read, kind.Kind, kind.Name, named, theme ? [.. places, .. GodotChecks.ThemeOverridesOf(read.Scenes, kind.Kind, kind.Name, places)] : places)
             {
                 Layers = kind.Kind == GodotStringKind.Layer ? kind.Member : null,
+                InDefaultTheme = theme && GodotChecks.InDefaultTheme(read.Scenes, kind.Kind, scripts, kind.Node, kind.Export, kind.Member, kind.Name),
+                Documented = theme ? GodotChecks.ThemeDocumented(read.Scenes, kind.Kind, scripts, kind.Node, kind.Export, kind.Member, kind.Name)?.Class : null,
             };
         }
         if (CallAt(lsp, read, offset, start) is { Exact: true } call && GodotChecks.AutoloadIn(call.Path) is ({ } autoload, int from, int to)
@@ -254,9 +273,10 @@ internal sealed partial class CSharpAssist
         {
             return $"{old} is made by its AnimationTree's nodes and conditions, which Rename does not change";
         }
-        if (GodotChecks.IsTheme(named.Kind))
+        if (GodotChecks.IsTheme(named.Kind) && (named.InDefaultTheme || !named.Places.Any(p => p.Defines)))
         {
-            return $"{old} is the name a control looks its {GodotChecks.What(named.Kind)} up by, which Rename does not change";
+            return named.InDefaultTheme ? $"{old} is a {what} of Godot's default theme, whose names Rename does not change"
+                : $"No theme of the project defines the {what} {old}, so Rename has nothing to change";
         }
         if (name.Length == 0 || name.Trim() != name || name.Any(char.IsControl))
         {
@@ -275,6 +295,7 @@ internal sealed partial class CSharpAssist
             GodotStringKind.Action or GodotStringKind.Autoload => " =\"[];\\" + GodotScenes.Unnamable,
             GodotStringKind.Animation => ":,[\"\\" + (old.Contains('/') ? string.Empty : "/"),
             GodotStringKind.Translation => named.Places.Any(p => p.Res.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)) ? "\"\\,;\t" : "\"\\",
+            >= GodotStringKind.ThemeColor and <= GodotStringKind.ThemeStyle => "\"\\/ =[]:",
             _ => "\"\\",
         };
         if (name.FirstOrDefault(c => refused.Contains(c)) is var character and not '\0')
@@ -290,7 +311,7 @@ internal sealed partial class CSharpAssist
         {
             return $"{old} is the animation {old[(slash + 1)..]} of the library {old[..slash]}, whose name a rename keeps: give it as {old[..(slash + 1)]}…";
         }
-        if (named.Candidates.Names.Any(n => n.Name == name && n.Places.Count > 0))
+        if (named.Candidates.Names.Any(n => n.Name == name && (n.Places.Count > 0 || GodotChecks.IsTheme(named.Kind))))
         {
             return $"There is {Article(what)} {name} already";
         }
@@ -389,7 +410,7 @@ internal sealed partial class CSharpAssist
         HashSet<(string, int)> reached = [.. named.Places.Select(p => (p.Res, p.Start))];
         return [.. uses.Uses.Where(use => named.Kind switch
         {
-            GodotStringKind.Animation or GodotStringKind.ShaderParameter or GodotStringKind.TreeParameter => reached.Count == 0
+            GodotStringKind.Animation or GodotStringKind.ShaderParameter or GodotStringKind.TreeParameter or (>= GodotStringKind.ThemeColor and <= GodotStringKind.ThemeStyle) => reached.Count == 0
                 || GodotChecks.Named(named.Read.Scenes, named.Kind, use.Scripts, use.Node, use.Export, use.Member).Names.Where(n => n.Name == named.Name)
                     .SelectMany(n => n.Places).Any(p => reached.Contains((p.Res, p.Start))),
             GodotStringKind.Layer => use.Member == named.Layers,
