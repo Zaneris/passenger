@@ -1,6 +1,7 @@
 using Passenger.App.Editors;
 using Passenger.App.Godot;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Text;
 using Passenger.Workspace.GDScript;
@@ -124,6 +125,53 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
     }
 
     public override string? Describe(CompletionItem item) => described.GetValueOrDefault(item);
+
+    /// <summary>Reformat Code on a GDScript, the window's and an agent's alike, by Passenger's formatter (Godot's style guide),
+    /// off the window's thread, only the lines <paramref name="within"/> takes when given, as one undoable edit fitted to the
+    /// file's line endings and indentation: its .editorconfig's (or the person's choice), else Godot's tabs, a selection
+    /// the file's own. Refused, said, where laying it out would change what it says or it does not parse.</summary>
+    public override async Task<CodeActions.Reformatted?> FormatAsync(OpenDocument document, TextRange? within)
+    {
+        if (!GodotScriptTypes.IsScript(document.Path))
+        {
+            return null;
+        }
+        using ChangeTracker asked = new(document.Text);
+        TextSnapshot snapshot = asked.Snapshot;
+        // A selection keeps the file's own indentation, which Godot reads as one throughout the file.
+        IndentOptions indent = within is not null || document.Indentation.Source is IndentSource.EditorConfig or IndentSource.Chosen
+            ? document.Indentation.Options : new IndentOptions(document.Indentation.Options.TabWidth, UseTabs: true, document.Indentation.Options.TabWidth);
+        GDScriptFormatOptions options = new(indent.UseTabs, indent.Size, indent.TabWidth);
+        GDScriptFormatted formatted = await BackgroundWork.Run(() => GDScriptFormatter.Format(snapshot.ToString(), options));
+        if (formatted.Refused is { } why)
+        {
+            return new CodeActions.Reformatted(false, false, $"Reformat Code was not applied: {why}");
+        }
+        IEnumerable<TextEdit> kept = formatted.Edits;
+        if (within is { } range)
+        {
+            int first = snapshot.GetLineStart(snapshot.GetLineFromOffset(range.Start));
+            int last = snapshot.GetLine(snapshot.GetLineFromOffset(range.End)).EndIncludingBreak;
+            kept = kept.Where(e => e.End >= first && e.Start <= last);
+        }
+        List<TextEdit> fitted = [.. Indentation.Fit(snapshot, LineEndings.Fit(snapshot, kept, document.LineEnding), indent)
+            .Where(e => e.Text != snapshot.GetText(e.Start, e.Length))];
+        if (within is not null && fitted.Count > 0
+            && await BackgroundWork.Run(() => GDScriptFormatter.Differs(snapshot.ToString(), snapshot.Apply(fitted).ToString())) is { } partly)
+        {
+            return new CodeActions.Reformatted(false, false, $"Reformat Code was not applied: laying out only the selection would change what the script says ({partly}); reformat the whole file");
+        }
+        if (fitted.Count == 0 || !context.Editors.Documents.Contains(document))
+        {
+            return new CodeActions.Reformatted(true, false, "Already formatted");
+        }
+        if (asked.Map(fitted) is not { } edits)
+        {
+            return new CodeActions.Reformatted(false, false, "Reformat Code was not applied: the code it changes was edited meanwhile");
+        }
+        WorkspaceEdits.ApplyTo(context.Editors, document, edits);
+        return new CodeActions.Reformatted(true, true, "Reformatted");
+    }
 
     /// <summary>The fixes of Godot's findings on an offset's line, from Passenger's reading of the script as it stands
     /// (whoever's marks are shown there): each made as one edit of the text it was offered for.</summary>

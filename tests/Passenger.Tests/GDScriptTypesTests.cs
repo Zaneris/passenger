@@ -3,6 +3,7 @@ using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Workspace;
 using Passenger.Editor;
+using Passenger.Text;
 using Passenger.Core;
 using Passenger.Workspace;
 
@@ -127,6 +128,39 @@ public sealed class GDScriptTypesTests
             Ui.PumpUntil(() => !document.Markers.Any(m => m.Message == marked[0]), "the error gone once the function returns", TimeSpan.FromSeconds(30));
             Assert.Equal("extends Node\n\n\nfunc coroutine() -> int:\n\tawait get_tree().process_frame\n\tprint(\"waited\")\n\treturn 0\n\n\n"
                 + "func _ready() -> void:\n\tvar unused: int = 1\n\tawait coroutine()\n", document.Text.Snapshot.ToString());
+        }
+        finally
+        {
+            window.Close();
+            release.SetResult();
+        }
+    }
+
+    private const string Unformatted = "extends Node\nvar speed:=2.0\nfunc _ready():\n    var party = [\n        \"Godot\",\n        \"Godette\"\n    ]\n"
+        + "    print (party,speed*2)\nfunc heal(amount):\n    speed+=amount\n";
+
+    [AvaloniaFact]
+    public void Reformat_code_lays_a_gdscript_out_by_godots_style_guide_as_one_command_a_selection_only_its_lines()
+    {
+        TestFolders.Write(folder, "unformatted.gd", Unformatted);
+        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open("unformatted.gd");
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            string heal = "func heal(amount):\n    speed+=amount\n";
+            int start = Unformatted.IndexOf(heal, StringComparison.Ordinal);
+            editor.Selections = SelectionSet.Single(new Selection(start, start + heal.Length));
+            Ui.Run(window, AppActions.Reformat, settle: false);
+            string selected = Unformatted.Replace("\nfunc heal(amount):\n    speed+=amount\n", "\n\n\nfunc heal(amount):\n    speed += amount\n", StringComparison.Ordinal);
+            Ui.PumpUntil(() => document.Text.Snapshot.ToString() == selected, "only the selected function laid out", TimeSpan.FromSeconds(30));
+
+            editor.Selections = SelectionSet.Single(0);
+            Ui.Run(window, AppActions.Reformat, settle: false);
+            string laid = "extends Node\nvar speed := 2.0\n\n\nfunc _ready():\n\tvar party = [\n\t\t\"Godot\",\n\t\t\"Godette\",\n\t]\n\tprint(party, speed * 2)\n\n\n"
+                + "func heal(amount):\n\tspeed += amount\n";
+            Ui.PumpUntil(() => document.Text.Snapshot.ToString() == laid, "the script laid out by the style guide", TimeSpan.FromSeconds(30));
+            Ui.Run(window, EditorActions.Undo, settle: false);
+            Ui.PumpUntil(() => document.Text.Snapshot.ToString() == selected, "Undo to take the reformat back whole", TimeSpan.FromSeconds(30));
         }
         finally
         {

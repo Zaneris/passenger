@@ -440,7 +440,8 @@ public sealed class CodeAssist
         // A file Prettier formats (Run on 'Reformat Code' action) needs no language server.
         registry.Add(new IdeAction(AppActions.Reformat, "Reformat Code", "Code", context => IdeErrors.Observe(actions.Reformat()))
         {
-            WhyNot = context => context.File is { } file && web.PrettierReformats(file) ? (context.Editor.IsReadOnly ? Refusals.ReadOnly(file.Name) : null) : WhyNot(context, server: true, markup: true),
+            WhyNot = context => context.File is { } file && (web.PrettierReformats(file) || Godot.GodotScriptTypes.IsScript(file.Path))
+                ? (context.Editor.IsReadOnly ? Refusals.ReadOnly(file.Name) : null) : WhyNot(context, server: true, markup: true),
             Menus = [new("Code", 1, 0)],
         });
         web.AddLintingActions(registry);

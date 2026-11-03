@@ -25,6 +25,35 @@ public static class Program
             Console.WriteLine(JsonSerializer.Serialize(Warnings(Path.GetFullPath(tests), GodotEngineApi.Read(File.ReadAllBytes(engine)))));
             return 0;
         }
+        if (args is ["--format-time", var timed] && File.Exists(timed))
+        {
+            string script = File.ReadAllText(timed).ReplaceLineEndings("\n");
+            double least = double.MaxValue;
+            double parse = double.MaxValue;
+            for (int round = 0; round < 20; round++)
+            {
+                Stopwatch clock = Stopwatch.StartNew();
+                GDScriptFormatter.Format(script, new GDScriptFormatOptions());
+                least = Math.Min(least, clock.Elapsed.TotalMilliseconds);
+                clock.Restart();
+                GDScriptTree.Parse(script);
+                parse = Math.Min(parse, clock.Elapsed.TotalMilliseconds);
+            }
+            Console.WriteLine($"{Path.GetFileName(timed)}: format {least:F1} ms, one parse {parse:F1} ms");
+            return 0;
+        }
+        if (args is ["--format-one", var one] && File.Exists(one))
+        {
+            GDScriptFormatted laid = GDScriptFormatter.Format(File.ReadAllText(one).ReplaceLineEndings("\n"), new GDScriptFormatOptions());
+            Console.Error.WriteLine(laid.Refused ?? "formatted");
+            Console.Write(laid.Attempted ?? laid.Text);
+            return 0;
+        }
+        if (args is ["--format", var formatted] && Directory.Exists(formatted))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(Formats(Path.GetFullPath(formatted))));
+            return 0;
+        }
         if (args.Length != 1 || !Directory.Exists(args[0]))
         {
             Console.Error.WriteLine("Passenger.GodotSweep: takes one argument, a folder whose .gd files to parse");
@@ -174,6 +203,32 @@ public static class Program
         Levels = GDScriptWarnings.Names.ToDictionary(n => n, n => n is "UNTYPED_DECLARATION" or "INFERRED_DECLARATION" && !text.Contains($"# enable {n}", StringComparison.Ordinal)
             ? GDScriptWarnLevel.Ignore : GDScriptWarnLevel.Warn, StringComparer.Ordinal),
     };
+
+    /// <summary>Each script under a folder laid out by Passenger's formatter (tabs, as Godot writes them): whether it changed,
+    /// why it was refused, whether a second pass changes it again, and how long the first took.</summary>
+    private static object Formats(string folder)
+    {
+        List<string> scripts = [];
+        Walk(folder, scripts);
+        return scripts.Select(path =>
+        {
+            string text = File.ReadAllText(path).ReplaceLineEndings("\n");
+            Stopwatch clock = Stopwatch.StartNew();
+            GDScriptFormatted once = GDScriptFormatter.Format(text, new GDScriptFormatOptions());
+            double took = clock.Elapsed.TotalMilliseconds;
+            GDScriptFormatted twice = GDScriptFormatter.Format(once.Text, new GDScriptFormatOptions());
+            return new
+            {
+                path,
+                lines = text.Count(c => c == '\n'),
+                changed = once.Text != text,
+                refused = once.Refused,
+                stable = twice.Text == once.Text,
+                again = twice.Refused,
+                milliseconds = Math.Round(took, 2),
+            };
+        });
+    }
 
     private static void Walk(string folder, List<string> into)
     {

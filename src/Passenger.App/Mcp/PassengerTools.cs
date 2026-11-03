@@ -730,13 +730,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     }
 
     [McpServerTool(Name = McpTools.Format, Title = "Reformat a file", Destructive = true), Description(
-        "Reformats a file as Reformat Code does, and saves it: XAML by its .editorconfig, a web language by the project's " +
-        "Prettier where it formats it, else the language server. MSBuild files have none.")]
+        "Reformats a file as Reformat Code does, and saves it: XAML by its .editorconfig, GDScript by Godot's style guide, a web " +
+        "language by the project's Prettier where it formats it, else the language server. MSBuild files have none.")]
     public Task<string> Format(string path, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         OpenDocument document;
         LspDocument? lsp = null;
-        if (Passenger.App.Xaml.XamlService.IsXaml(Resolve(path)))
+        if (Passenger.App.Xaml.XamlService.IsXaml(Resolve(path)) || Godot.GodotScriptTypes.IsScript(Resolve(path)))
         {
             document = await DocumentAsync(path, cancel);
         }
