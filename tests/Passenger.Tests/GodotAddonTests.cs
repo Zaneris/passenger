@@ -65,18 +65,23 @@ public sealed class GodotAddonTests : IDisposable
         {
             private int frames;
 
+            private bool ending;
+
             public override void _Ready()
             {
                 int answer = 6 * 7;
                 GD.Print($"ready {answer}");
                 GD.PushError("Spinner fell over");
                 GetNode<Button>("Plain").Pressed += () => System.IO.File.WriteAllText(ProjectSettings.GlobalizePath("res://plain.txt"), "plain");
-                System.IO.File.WriteAllText(ProjectSettings.GlobalizePath("res://ready.txt"), $"ready {answer}");
-                // The instance asked to end, among several Godot's Play starts, quits a moment after it began.
-                if (System.Array.IndexOf(OS.GetCmdlineUserArgs(), "ends") >= 0)
+                try
                 {
-                    GetTree().CreateTimer(4.0).Timeout += () => GetTree().Quit();
+                    System.IO.File.WriteAllText(ProjectSettings.GlobalizePath("res://ready.txt"), $"ready {answer}");
                 }
+                catch (System.IO.IOException)
+                {
+                    // Instances Godot's Play starts at once write it together, which Windows refuses all but one.
+                }
+                ending = System.Array.IndexOf(OS.GetCmdlineUserArgs(), "ends") >= 0;
             }
 
             public void OnToggled(bool on)
@@ -87,6 +92,12 @@ public sealed class GodotAddonTests : IDisposable
             public override void _Process(double delta)
             {
                 frames++;
+                // The instance asked to end, among several Godot's Play starts, quits once the test says so.
+                if (ending && System.IO.File.Exists(ProjectSettings.GlobalizePath("res://end.txt")))
+                {
+                    ending = false;
+                    GetTree().Quit();
+                }
                 if (GetNode<Button>("Ui/Press").ButtonPressed && !System.IO.File.Exists(ProjectSettings.GlobalizePath("res://pressed.txt")))
                 {
                     System.IO.File.WriteAllText(ProjectSettings.GlobalizePath("res://pressed.txt"), "pressed");
@@ -454,7 +465,7 @@ public sealed class GodotAddonTests : IDisposable
         MainWindow window = Opened();
         try
         {
-            // Run Multiple Instances comes from the project's metadata; the second's argument has it quit soon after.
+            // Run Multiple Instances comes from the project's metadata; the second's argument has it quit once told.
             TestFolders.Write(folder, ".godot/editor/project_metadata.cfg", "[debug_options]\n\nmultiple_instances_enabled=true\nrun_instance_count=3\n"
                 + "run_instances_config=[{\"arguments\": \"\", \"features\": \"\", \"override_args\": false, \"override_features\": false}, "
                 + "{\"arguments\": \"++ ends\", \"features\": \"\", \"override_args\": false, \"override_features\": false}, "
@@ -471,6 +482,7 @@ public sealed class GodotAddonTests : IDisposable
             int ending = processes.Single(p => DotnetProcesses.Describe(p.Value)?.CommandLine.Contains(" ends", StringComparison.Ordinal) == true).Value;
             string ended = processes.Single(p => p.Value == ending).Key;
             string[] others = [.. names.Where(n => n != ended)];
+            TestFolders.Write(folder, "end.txt", "end\n");
             Ui.WaitFor(() => !window.Session.Games.Any(g => g.Name == ended) && !window.Debugger.Tabs.Any(t => t.Name == ended && t.IsLive),
                 () => $"the second instance to end here ({Games(window)}; tabs {Tabs(window)}; its process {(DotnetProcesses.Runs(ending) ? "runs" : "has gone")}; Godot said: {Said()})",
                 TimeSpan.FromMinutes(1));
