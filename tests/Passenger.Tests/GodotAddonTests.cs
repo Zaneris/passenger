@@ -727,6 +727,51 @@ public sealed class GodotAddonTests : IDisposable
         }
     }
 
+    /// <summary>An agent's godot_editor moves a node another's NodePath leads to, the path written again in the same step of
+    /// Godot's undo, one undo putting both back; and its read of an instance lists only what the scene instancing it
+    /// changes, not what the scene it instances sets.</summary>
+    [AvaloniaFact]
+    public void An_agents_move_rewrites_the_node_paths_to_the_node_and_its_read_of_an_instance_lists_only_its_own_changes()
+    {
+        MainWindow window = Opened();
+        using Agent agent = new();
+        try
+        {
+            TestFolders.Write(folder, "badge.tscn", "[gd_scene format=3]\n\n[node name=\"Badge\" type=\"Label\"]\ntext = \"Badge\"\nhorizontal_alignment = 1\n");
+            window.ApplySettings(window.Settings with { McpServer = true });
+            StartEditor([]);
+            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            McpClient client = agent.Attach();
+            agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "open", ["scene"] = "main.tscn" });
+            agent.Asked(window, client, McpTools.GodotEditor, "act in Godot's editor", new() { ["action"] = "add", ["node"] = ".", ["type"] = "Label", ["name"] = "Score" });
+            agent.Unasked(window, client, McpTools.GodotEditor,
+                new() { ["action"] = "set", ["node"] = "Ui/Press", ["properties"] = new Dictionary<string, object?> { ["focus_neighbor_bottom"] = "../../Score" } });
+            Assert.Equal("NodePath(\"../../Score\")", Stored(agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" }), "Ui/Press", "focus_neighbor_bottom"));
+
+            agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "move", ["node"] = "Score", ["to"] = "Ui" });
+            JsonElement read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
+            Assert.NotNull(Node(read, "Ui/Score"));
+            Assert.Equal("NodePath(\"../Score\")", Stored(read, "Ui/Press", "focus_neighbor_bottom"));
+            TestFolders.Write(folder, "undo.txt", "undo\n");
+            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: undid Passenger: move Score", StringComparison.Ordinal)), () => $"Godot's undo of the move (Godot said: {Said()})");
+            read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
+            Assert.NotNull(Node(read, "Score"));
+            Assert.Equal("NodePath(\"../../Score\")", Stored(read, "Ui/Press", "focus_neighbor_bottom"));
+
+            agent.Unasked(window, client, McpTools.GodotEditor,
+                new() { ["action"] = "add", ["node"] = ".", ["type"] = "res://badge.tscn", ["name"] = "Badge", ["properties"] = new Dictionary<string, object?> { ["text"] = "Mine" } });
+            JsonElement badge = Node(agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" }), "Badge")!.Value;
+            Assert.Equal("res://badge.tscn", badge.GetProperty("instance").GetString());
+            Assert.Equal(["text"], badge.GetProperty("properties").EnumerateObject().Select(p => p.Name));
+            Assert.Equal("\"Mine\"", badge.GetProperty("properties").GetProperty("text").GetString());
+            Assert.DoesNotContain(said, l => l.Contains("SCRIPT ERROR", StringComparison.Ordinal));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>The connections of the edited scene godot_editor read.</summary>
     private static IEnumerable<string> Connections(JsonElement read) =>
         read.TryGetProperty("connections", out JsonElement connections) ? connections.EnumerateArray().Select(c => c.GetString()!) : [];

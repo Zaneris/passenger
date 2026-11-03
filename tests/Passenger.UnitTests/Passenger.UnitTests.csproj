@@ -72,6 +72,11 @@
     <Compile Include="../../src/Passenger.App/Aspire/DashboardAddress.cs" Link="App/DashboardAddress.cs" />
   </ItemGroup>
 
+  <!-- What godot_editor tells an agent of the scene Godot's editor edits, compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Mcp/GodotEditedScenes.cs" Link="App/GodotEditedScenes.cs" />
+  </ItemGroup>
+
   <!-- What tells a program to send a dashboard its logs and traces over what it sets itself, compiled in since its project is
        the app's. -->
   <ItemGroup>

@@ -38,7 +38,7 @@ static func _read(root: Node) -> Dictionary:
 	var nodes := []
 	var connections := []
 	for node in _nodes(root):
-		var entry := {"path": _path(root, node), "type": node.get_class(), "properties": _stored(node)}
+		var entry := {"path": _path(root, node), "type": node.get_class(), "properties": _stored(root, node)}
 		if node.get_script() != null:
 			entry["script"] = node.get_script().resource_path
 		if node != root and node.scene_file_path != "":
@@ -161,9 +161,17 @@ static func _move(root: Node, node: Node, params: Dictionary, undo: EditorUndoRe
 	if to == node or node.is_ancestor_of(to):
 		return "%s cannot go under itself" % _path(root, node)
 	var from := node.get_parent()
+	if to != from and to.has_node(NodePath(str(node.name))):
+		return "%s has a node named %s already" % [_path(root, to), node.name]
 	var at := node.get_index()
 	var owned := _owned(root, node)
+	var before := _path(root, node)
+	var after := ("" if to == root else _path(root, to) + "/") + str(node.name)
 	undo.create_action("Passenger: move %s" % node.name, UndoRedo.MERGE_DISABLE, root)
+	# The scene's paths to the node and below it, and theirs to elsewhere, as Godot's own reparent writes them again.
+	for each in _repathed(root, before, after):
+		undo.add_do_property(each[0], each[1], each[3])
+		undo.add_undo_property(each[0], each[1], each[2])
 	undo.add_do_method(from, "remove_child", node)
 	undo.add_do_method(to, "add_child", node, true)
 	if params.has("index"):
@@ -178,6 +186,83 @@ static func _move(root: Node, node: Node, params: Dictionary, undo: EditorUndoRe
 		undo.add_undo_method(each, "set_owner", root)
 	undo.commit_action()
 	return {"said": "Moved %s under %s" % [_path(root, node), _path(root, to)], "node": _path(root, node)}
+
+
+## Each NodePath property of the scene's nodes a move from one path to another changes, with its value before and after:
+## those leading to the node moved or below it, and those of it and below it leading elsewhere.
+static func _repathed(root: Node, before: String, after: String) -> Array:
+	var changed := []
+	if before == after:
+		return changed
+	for holder in _nodes(root):
+		var from := _path(root, holder)
+		for property in holder.get_property_list():
+			if property["usage"] & PROPERTY_USAGE_STORAGE == 0:
+				continue
+			var value = holder.get(property["name"])
+			var now = _repath(value, from, _moved(from, before, after), before, after)
+			if typeof(now) != TYPE_NIL:
+				changed.append([holder, property["name"], value, now])
+	return changed
+
+
+## A value, a NodePath or an array of them, as the move makes it; null where it changes nothing.
+static func _repath(value: Variant, from: String, from_after: String, before: String, after: String) -> Variant:
+	if value is NodePath:
+		var path: NodePath = value
+		if path.is_empty() or path.is_absolute() or str(path).begins_with("%"):
+			return null
+		var target = _joined(from, path)
+		if target == null:
+			return null
+		var subnames := path.get_concatenated_subnames()
+		var made := NodePath(_relative(from_after, _moved(target, before, after)) + (":" + subnames if subnames != "" else ""))
+		return made if str(made) != str(path) else null
+	if value is Array:
+		var copy = value.duplicate()
+		var any := false
+		for index in copy.size():
+			var now = _repath(copy[index], from, from_after, before, after)
+			if typeof(now) != TYPE_NIL:
+				copy[index] = now
+				any = true
+		return copy if any else null
+	return null
+
+
+## A scene path (. the root) as a move of a node from one path to another leaves it.
+static func _moved(path: String, before: String, after: String) -> String:
+	if path == before:
+		return after
+	return after + path.substr(before.length()) if path.begins_with(before + "/") else path
+
+
+## The scene path a NodePath leads to from a node's; null for one above the root.
+static func _joined(from: String, path: NodePath) -> Variant:
+	var names: Array = [] if from == "." else Array(from.split("/"))
+	for index in path.get_name_count():
+		var name := str(path.get_name(index))
+		if name == "..":
+			if names.is_empty():
+				return null
+			names.pop_back()
+		elif name != ".":
+			names.append(name)
+	return "." if names.is_empty() else "/".join(PackedStringArray(names))
+
+
+## The NodePath from one scene path to another.
+static func _relative(from: String, to: String) -> String:
+	var here: Array = [] if from == "." else Array(from.split("/"))
+	var there: Array = [] if to == "." else Array(to.split("/"))
+	var common := 0
+	while common < here.size() and common < there.size() and here[common] == there[common]:
+		common += 1
+	var parts := []
+	for index in here.size() - common:
+		parts.append("..")
+	parts.append_array(there.slice(common))
+	return "." if parts.is_empty() else "/".join(PackedStringArray(parts))
 
 
 static func _remove(root: Node, node: Node, undo: EditorUndoRedoManager) -> Variant:
@@ -249,7 +334,7 @@ static func _parsed(text: String, type: int) -> Variant:
 			return [load(text)]
 		return "takes a resource by its res:// path, or null, not %s" % text
 	var words := [TYPE_STRING, TYPE_STRING_NAME, TYPE_NODE_PATH]
-	if type in words and not (text.begins_with("\"") or text.begins_with("&\"") or text.begins_with("^\"")):
+	if type in words and not (text.begins_with("\"") or text.begins_with("&\"") or text.begins_with("^\"") or text.begins_with("NodePath(") or text.begins_with("StringName(")):
 		return [type_convert(text, type)]
 	var value = str_to_var(text)
 	if typeof(value) == TYPE_NIL and text.strip_edges() != "null":
@@ -263,9 +348,11 @@ static func _parsed(text: String, type: int) -> Variant:
 	return [value]
 
 
-## The values a node holds that its scene's file stores: those not its class's or script's own.
-static func _stored(node: Node) -> Dictionary:
+## The values a node holds that its scene's file stores: those not its class's or script's own, nor, for an instance, those
+## of the scene it instances.
+static func _stored(root: Node, node: Node) -> Dictionary:
 	var stored := {}
+	var instanced := _scene_values(node.scene_file_path, 0) if node != root and node.scene_file_path != "" else {}
 	var script: Script = node.get_script()
 	var scripted := {}
 	if script != null:
@@ -276,11 +363,25 @@ static func _stored(node: Node) -> Dictionary:
 		if property["usage"] & PROPERTY_USAGE_STORAGE == 0 or name == "script":
 			continue
 		var value = node.get(name)
-		var own = script.get_property_default_value(name) if scripted.has(name) else _default(node.get_class(), name)
+		var own = instanced[name] if instanced.has(name) else script.get_property_default_value(name) if scripted.has(name) else _default(node.get_class(), name)
 		if typeof(value) == typeof(own) and value == own:
 			continue
 		stored[name] = _text(value)
 	return stored
+
+
+## The values a scene's own file gives its root, after those of a scene it inherits.
+static func _scene_values(path: String, depth: int) -> Dictionary:
+	var values := {}
+	var packed = load(path) if depth < 8 and ResourceLoader.exists(path) else null
+	if not packed is PackedScene or packed.get_state().get_node_count() == 0:
+		return values
+	var state: SceneState = packed.get_state()
+	if state.get_node_instance(0) is PackedScene:
+		values = _scene_values(state.get_node_instance(0).resource_path, depth + 1)
+	for index in state.get_node_property_count(0):
+		values[state.get_node_property_name(0, index)] = state.get_node_property_value(0, index)
+	return values
 
 
 static func _default(type: String, name: String) -> Variant:
