@@ -183,7 +183,8 @@ App and the tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collecti
   and a key a later build renamed moves in `IStateDocument.Renamed`; a value of the wrong kind is passed over alone
   (`StateFile.Read`). A new setting: an `AppSettings` property, its row and range declared in `Declared` (a value it
   refuses as `Refused`, which Settings and `settings_set` both ask) and `Add`ed in its place in `SettingsDialog`, a line
-  in `MainWindow.Follow` or `SettingsStore.InForce`.
+  in `MainWindow.Follow` or `SettingsStore.InForce`; a row another setting leaves without effect says so through
+  `SettingRow.When`.
 - **Every action is an `IdeAction`** in the window's `ActionRegistry` (ids and keymaps in `AppActions.cs`): keys, menus,
   Find Action, context menus and MCP's `ide_action` all run it, `WhyNot` greys it with why, titles come from the
   registry (`TitleWhere`), a title that asks more ends in "…", and what's missing is said in `Refusals`' words
@@ -387,21 +388,24 @@ Projects in `src/`; `find_symbol` finds the rest:
   `GodotScriptDeclarations`, read from `GDScriptTree` (Godot's own parser, ported: members are runs between clean member
   starts, `Reparse` parsing only the edited run), typed by `GDScriptAnalyzer` (Godot's analyzer, ported), the engine's
   types from the found Godot's extension_api.json (`GodotEngineApi`, dumped once per version into the state's cache by
-  `GodotEngineApis`: `GodotEngineClasses` has no member types), its Godot warnings and errors
+  `GodotEngineApis`: `GodotEngineClasses` has no member types, and Object's `free` is in no dump; a warning only a newer
+  Godot gives gated on the dump's version, `GodotEngineApi.Version`), a node path typed from the scenes running the
+  script (`GDScriptProject.NodeAt`, `GodotScriptTypes.NodesOf`), else Node, its Godot warnings and errors
   `GDScriptAnalysis.Findings` (as project.godot sets them, `GDScriptWarningSettings`) shown until Godot's server has
   pushed the file's own (`WebDocument.ShowPassengers`), fixed by `GDScriptFixes` (several edits as one through
   `EditorFix.Edits`), and a GDScript function's argument count answered only by `GodotScriptDeclared.Takes`, its names
   coloured by `GDScriptAnalysis.Colours` through `ColourLayer` over the grammar, its Reformat Code `GDScriptFormatter`
   (by the style guide's sections), refused unless `GDScriptFormatter.Differs` finds the same tokens, comments and tree,
   wrapping only inside brackets (`GDScriptFormatter.Wrapping`), its options `GDScriptFormatSettings` (Settings › Code
-  Style › GDScript, a file's .editorconfig over each), reformat on save in `CodeAssist.BeforeSave`, its refactorings
-  `GDScriptRefactorings` over `GodotScriptTypes.ProjectReadAsync` (made by `CodeActions.GDScriptRefactorAsync`, a use
-  Passenger can't see refusing, `GDScriptUses.Unsure`; C#'s calls by a GDScript member's name come with their arguments
-  after it, `GodotKindUse.Rest`, which Change Signature rewrites, `CSharpAssist.GodotScriptCallEditsAsync`, a signal's
-  scene handlers from `CSharpAssist.GodotSignalHandlersAsync`); their fixes `GodotOffer` over the extension's `GodotFix`
-  (members made by Roslyn so the code builds) and Workspace's pure `GodotWrites`, a fix that asks first through
-  `EditorFix.Confirms`; Godot's generator assigns every field in generated code, so a field's values are read from the
-  code's own documents); a C# file read before its project's evaluation landed is pulled again once it does
+  Style › GDScript, a file's .editorconfig over each), reformat on save in `CodeAssist.BeforeSave`, Order Script's Parts
+  `GDScriptFormatter.OrderParts`, never run by Reformat Code, its refactorings `GDScriptRefactorings` over
+  `GodotScriptTypes.ProjectReadAsync` (made by `CodeActions.GDScriptRefactorAsync`, a use Passenger can't see refusing,
+  `GDScriptUses.Unsure`; C#'s calls by a GDScript member's name come with their arguments after it, `GodotKindUse.Rest`,
+  which Change Signature rewrites, `CSharpAssist.GodotScriptCallEditsAsync`, a signal's scene handlers from
+  `CSharpAssist.GodotSignalHandlersAsync`); their fixes `GodotOffer` over the extension's `GodotFix` (members made by
+  Roslyn so the code builds) and Workspace's pure `GodotWrites`, a fix that asks first through `EditorFix.Confirms`;
+  Godot's generator assigns every field in generated code, so a field's values are read from the code's own documents);
+  a C# file read before its project's evaluation landed is pulled again once it does
   (`CSharpService.GodotProjectsChanged`), and the open scenes are checked again whenever the server says it loaded
   projects (`CSharpService.ProjectsLoaded`), as a script moved or added changes what their code reads as. A Godot shader
   is `GodotShaderAssist` over Workspace's `GodotShaderCode`, its language the carried `GodotShaderTypes.json` as the
