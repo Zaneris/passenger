@@ -717,12 +717,16 @@ site-shots` retakes its images.
   reloads a scene only where Godot has it open and saved. A static function in an addon's script named after one of
   Object's virtuals (`_set`) fails the whole script to compile; `remove_child` clears the owner of every node of the
   branch whose owner is outside it, so a move, or an undo of a remove, sets the owners again. A headless game's window
-  is 64×64, so Passenger's helper gives it the project's `display/window/size` as it first comes in; on Windows a test's
-  Godot editor is two processes, the `_console.exe` wrapper and the editor, both with `--editor`. IDE messaging's `Play`
-  plays only the main scene, `DebugPlay`'s debugger fields are dead in Godot 4 (Godot 3's Mono agent's), and
-  `ReloadScripts` reloads the running games' scripts, the editor's own assemblies reloaded by GodotTools' watcher every
-  0.5 s; Godot's JSON reads every number as a float. An agent's input and layout reach a game through Passenger's helper
-  node (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
+  is 64×64, so Passenger's helper gives it the project's `display/window/size` as it first comes in; Godot's project
+  script templates (`script_templates/`) are C# the game's build compiles unless removed
+  (`GodotScriptTemplates.Excluded`, `ProjectEdits.RemoveCompiled`), and without a .sln Godot writes the csproj again as
+  it makes a C# script; `PASSENGER_ADDON_TRACE` has the addon print each scene act it is asked for (the addon tests'
+  editors run with it); on Windows a test's Godot editor is two processes, the `_console.exe` wrapper and the editor,
+  both with `--editor`. IDE messaging's `Play` plays only the main scene, `DebugPlay`'s debugger fields are dead in
+  Godot 4 (Godot 3's Mono agent's), and `ReloadScripts` reloads the running games' scripts, the editor's own assemblies
+  reloaded by GodotTools' watcher every 0.5 s; Godot's JSON reads every number as a float. An agent's input and layout
+  reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing;
+  `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
