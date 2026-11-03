@@ -457,9 +457,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   asks to attach, its launcher an `ITestHostLauncher3`: `LaunchTestHost` is never called for one); a Godot game's
   GdUnit4 tests go through it with `GODOT_BIN` from `GodotTestRuns` (the person's own wins), its GUT tests read from
   GDScript (`GutScripts`) and run by GUT's command line (`GutRunner`, `GutRuns`), a project not yet imported imported
-  headless first, as GUT needs Godot's class cache. A run from the editor, a filter or the Explorer chooses its tests
-  once its build has ended (`TestController.RunMatchingAsync`); the gutter marks by name or by the runner's file and
-  line (`DeclaredPlace`).
+  headless first, as GUT needs Godot's class cache, its GoDotTest tests read from C# (`GoDotTests`) and run in the game
+  (`GoDotTestRunner`), their outcomes read from Godot's `--log-file`; a Godot test run is debugged as Debug starts the
+  game (`ITestDebugLauncher.DebugGameAsync`, `MainWindow.DebugTestGame`), Settings' Godot arguments given through
+  `GodotStart`, and GdUnit4's runner folder is build output (`IgnoredFolders.GdUnit4Runner`). A run from the editor, a
+  filter or the Explorer chooses its tests once its build has ended (`TestController.RunMatchingAsync`); the gutter
+  marks by name or by the runner's file and line (`DeclaredPlace`).
 - **The rest.** `Packages` (every package change's one path, its files the project, its lock file and
   Directory.Packages.props, one command of Undo, put back when it fails; credentials only to their feed's host),
   `Workspace` (`SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`; a version
@@ -583,11 +586,14 @@ site-shots` retakes its images.
   loop and lets the game go on; an evaluation's errors come after its answer, so each is followed by a `get_stack_dump`;
   `reload_scripts` keeps members by name, an added one null. Stop ends a game a moment before its debug session ends: a
   test waits for the session too, and a session is shown ended once its adapter says the program ended
-  (`DebugSession.Ended`, `ProgramGone`). Windows' Godot .exe writes to no console, so every terminal run of a game, Run
-  and Debug, C# and GDScript, goes through its console wrapper (`GodotConsole`), the debugger taking the game's own
-  process the wrapper starts (`TerminalRun.Debuggee`). An agent's call on a game is held to one limit
-  (`GodotGame.Within`, `GameLimit`), app_ tools wait for no evaluation (`PassengerTools.OnApp`) but for the game's first
-  scene (`GodotGame.FirstSceneAsync`), and a typed Godot value has one reader (`GodotVariant.ReadAsync`). Godot's frame
+  (`DebugSession.Ended`), or once its process has gone where the adapter said Exited and never Terminated
+  (`ProgramGone`). Godot's own GodotSharp packages differ from nuget.org's of the same version, so `tests/GodotGraphs`
+  never restores GodotSharp at a version a Godot ships (the next locked restore fails NU1403): GoDotTest's packages are
+  `PackageDownload`s. Windows' Godot .exe writes to no console, so every terminal run of a game, Run and Debug, C# and
+  GDScript, goes through its console wrapper (`GodotConsole`), the debugger taking the game's own process the wrapper
+  starts (`TerminalRun.Debuggee`). An agent's call on a game is held to one limit (`GodotGame.Within`, `GameLimit`),
+  app_ tools wait for no evaluation (`PassengerTools.OnApp`) but for the game's first scene
+  (`GodotGame.FirstSceneAsync`), and a typed Godot value has one reader (`GodotVariant.ReadAsync`). Godot's frame
   counter runs on while a game is paused, so the frame count is the helper's (`GodotGame.Frame`); in a headless game
   Next Frame never pauses again, so the helper's `step` ends it; node selection, once set up, starts picking and takes
   the game's clicks until turned off; a headless game picks no 3D mesh without a collision shape. Godot reads the
