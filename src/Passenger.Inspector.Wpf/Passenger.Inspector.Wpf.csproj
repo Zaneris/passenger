@@ -31,6 +31,9 @@
     <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
     <!-- The serve loop, the request switch and the words both inspectors answer in, and where the debugger stops them. -->
     <Compile Include="../Passenger.Inspector/Serving.cs" Link="Serving.cs" />
+    <!-- XAML Hot Reload's reading of a XAML file's two texts and what it refuses, as both inspectors read them. -->
+    <Compile Include="../Passenger.Inspector/XamlRoot.cs" Link="XamlRoot.cs" />
+    <Compile Include="../Passenger.Inspector/XamlReloading.cs" Link="XamlReloading.cs" />
     <Compile Include="../Passenger.Inspector/Breaks.cs" Link="Breaks.cs" />
     <!-- The failed bindings told and counted, and a failure's nearest names, one definition for both inspectors. -->
     <Compile Include="../Passenger.Inspector/BindingFailures.cs" Link="BindingFailures.cs" />

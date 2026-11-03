@@ -11,9 +11,9 @@ namespace Passenger.Inspector.Wpf;
 
 /// <summary>The inspector's work on a WPF app's UI thread: the windows and their visual trees, an element looked at
 /// closely, Select Element and the outline over the element chosen, a word to Passenger as elements come and go, and
-/// for an agent the windows' pictures and input to them (<see cref="Pictures"/>, <see cref="Driver"/>). Elements are
-/// named by ids that last as long as the element does. A top level is a window or a popup's root, each the root visual
-/// of a presentation source of the app's.</summary>
+/// for an agent the windows' pictures and input to them (<see cref="Pictures"/>, <see cref="Driver"/>), and XAML Hot
+/// Reload (<see cref="XamlReloads"/>). Elements are named by ids that last as long as the element does. A top level is a
+/// window or a popup's root, each the root visual of a presentation source of the app's.</summary>
 internal sealed class Inspector : Inspecting<DependencyObject>
 {
     /// <summary>The inspector the class handlers below speak for; WPF's class handlers last as long as the app does.</summary>
@@ -22,16 +22,22 @@ internal sealed class Inspector : Inspecting<DependencyObject>
     private readonly Picker picker;
     private readonly Driver driver;
     private readonly PropertyBreaks breaks = new();
+    private readonly XamlReloads reloads;
 
     public Inspector(Connection connection) : base(connection)
     {
         picker = new Picker(this, connection);
         driver = new Driver(this);
+        reloads = new XamlReloads(TopLevels);
         bool first = current is null;
         current = this;
         if (first)
         {
-            EventManager.RegisterClassHandler(typeof(FrameworkElement), FrameworkElement.LoadedEvent, new RoutedEventHandler((sender, _) => current?.Changed(sender)), handledEventsToo: true);
+            EventManager.RegisterClassHandler(typeof(FrameworkElement), FrameworkElement.LoadedEvent, new RoutedEventHandler((sender, _) =>
+            {
+                current?.reloads.Loaded(sender);
+                current?.Changed(sender);
+            }), handledEventsToo: true);
             EventManager.RegisterClassHandler(typeof(FrameworkElement), FrameworkElement.UnloadedEvent, new RoutedEventHandler((sender, _) => current?.Changed(sender)), handledEventsToo: true);
         }
     }
@@ -75,7 +81,7 @@ internal sealed class Inspector : Inspecting<DependencyObject>
 
     protected override List<AppWindow> SetOverlays(Request request) => throw new Refusal("Renderer debug overlays are Avalonia's: a WPF app has none");
 
-    protected override XamlReloaded Reload(XamlChange change) => throw new Refusal("XAML Hot Reload does not reach a WPF app yet");
+    protected override XamlReloaded Reload(XamlChange change) => reloads.Reload(change);
 
     protected override void Later(TimeSpan delay, Action action)
     {
