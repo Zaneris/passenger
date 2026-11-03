@@ -228,6 +228,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// <summary>Its performance monitors as it last sent them, or null before.</summary>
     public GodotMonitors? Monitors { get; private set; }
 
+    /// <summary>The ids of the custom monitors the game last said it has, whose values end each monitors message.</summary>
+    private IReadOnlyList<string> customMonitors = [];
+
     /// <summary>The Debug session the game runs under, while one does: its stops pause the game's answers.</summary>
     public Debugging.DebugSession? Debugged
     {
@@ -531,7 +534,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             case GodotAgent.Said when message.Data is List<object?> { Count: >= 2 } said && said[0] is long ask:
                 agentAsked.GetValueOrDefault(ask)?.TrySetResult(said);
                 break;
-            case GodotWords.Monitors when GodotMonitors.Read(message.Data) is { } monitors:
+            case GodotWords.MonitorNames:
+                customMonitors = GodotMonitors.Names(message.Data);
+                break;
+            case GodotWords.Monitors when GodotMonitors.Read(message.Data, customMonitors) is { } monitors:
                 bool moved = Monitors is { } was && was.Nodes != monitors.Nodes;
                 Monitors = monitors;
                 MonitorsChanged?.Invoke(this, EventArgs.Empty);
@@ -1005,6 +1011,27 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
 
     /// <summary>The node the last pick found, as Godot sent it; null for none, or before a pick.</summary>
     public GodotObjectState? LastPick { get; private set; }
+
+    /// <summary>The ids of the game's custom monitors asked of Passenger's helper, where the game said them before Passenger
+    /// heard it (a game Godot's Play started, relayed from its next message): its monitors' values name them from then.</summary>
+    public async Task NameMonitorsAsync()
+    {
+        if (customMonitors.Count > 0)
+        {
+            return;
+        }
+        try
+        {
+            if (await AskAsync("monitors") is [List<object?> names] && names.Count > 0 && customMonitors.Count == 0)
+            {
+                customMonitors = [.. names.Select(name => GodotVariant.Shown(name))];
+            }
+        }
+        catch (LiveAppException)
+        {
+            // A game the helper cannot answer for charts its engine's monitors alone.
+        }
+    }
 
     /// <summary>What the game's 3D physics space holds under the last press Passenger's helper gave, where Godot's node
     /// selection casts its ray: a body's or area's words ("StaticBody3D Crate"), "" for none, null where no press of the

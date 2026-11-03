@@ -58,6 +58,7 @@ public static class GodotWords
     public const string Error = "error";
     public const string ProcessId = "set_pid";
     public const string Monitors = "performance:profile_frame";
+    public const string MonitorNames = "performance:profile_names";
     public const string SkipBreakpoints = "set_skip_breakpoints";
     public const string IgnoreErrorBreaks = "set_ignore_error_breaks";
     public const string DebugEnter = "debug_enter";
@@ -301,20 +302,68 @@ public sealed record GodotError(long Milliseconds, string File, string Function,
 }
 
 /// <summary>A game's performance monitors as it last sent them, once a second: frames a second, the time a frame's process and
-/// physics took (seconds), static memory (bytes), and its counts of objects, resources, nodes and orphan nodes.</summary>
+/// physics took (seconds), static memory (bytes), its counts of objects, resources, nodes and orphan nodes, and the custom
+/// monitors its code added (<c>Performance.add_custom_monitor</c>), each by its id ("Game/Score") with its value, null for
+/// one that gave no number.</summary>
 public sealed record GodotMonitors(double Fps, double Process, double Physics, double Memory, double Objects, double Resources, double Nodes, double Orphans)
 {
-    /// <summary>The monitors a <c>performance:profile_frame</c> message holds, by the place Godot's Performance gives each;
-    /// null for data too short.</summary>
-    public static GodotMonitors? Read(IReadOnlyList<object?> data)
+    /// <summary>The meter the engine's own monitors are charted under.</summary>
+    public const string Engine = "Godot";
+
+    public IReadOnlyList<(string Id, double? Value)> Custom { get; init; } = [];
+
+    /// <summary>The monitors a <c>performance:profile_frame</c> message holds, by the place Godot's Performance gives each,
+    /// the custom ones last, one a name the game last said (<see cref="Names"/>); null for data too short.</summary>
+    public static GodotMonitors? Read(IReadOnlyList<object?> data, IReadOnlyList<string> custom)
     {
-        double At(int i) => data[i] switch
+        double? Number(object? value) => value switch
         {
             double real => real,
             long whole => whole,
-            _ => 0,
+            _ => null,
         };
-        return data.Count < 11 ? null : new GodotMonitors(At(0), At(1), At(2), At(4), At(7), At(8), At(9), At(10));
+        double At(int i) => Number(data[i]) ?? 0;
+        if (data.Count < 11)
+        {
+            return null;
+        }
+        int first = data.Count - custom.Count;
+        return new GodotMonitors(At(0), At(1), At(2), At(4), At(7), At(8), At(9), At(10))
+        {
+            Custom = first < 11 ? [] : [.. custom.Select((id, i) => (id, Number(data[first + i])))],
+        };
+    }
+
+    /// <summary>The ids of the custom monitors a <c>performance:profile_names</c> message holds, in the order the frames give
+    /// their values: its first array (the types after it a newer Godot sends), else the message's own strings.</summary>
+    public static IReadOnlyList<string> Names(IReadOnlyList<object?> data) =>
+        data is [List<object?> names, ..] ? [.. names.Select(name => GodotVariant.Shown(name))] : [.. data.Select(name => GodotVariant.Shown(name))];
+
+    /// <summary>The monitors as readings a metrics chart takes (the Aspire window's Stats pane takes a program's): the engine's under
+    /// <see cref="Engine"/>, a custom one under its id's category (before its last /, "Custom" where it has none).</summary>
+    public IReadOnlyList<Passenger.Profiler.MetricReading> Readings()
+    {
+        List<Passenger.Profiler.MetricReading> readings =
+        [
+            Reading(Engine, "Frames a second", string.Empty, Fps),
+            Reading(Engine, "Frame time", "s", Process),
+            Reading(Engine, "Physics time", "s", Physics),
+            Reading(Engine, "Static memory", "By", Memory),
+            Reading(Engine, "Objects", string.Empty, Objects),
+            Reading(Engine, "Nodes", string.Empty, Nodes),
+        ];
+        foreach ((string id, double? value) in Custom)
+        {
+            if (value is double number)
+            {
+                int slash = id.LastIndexOf('/');
+                readings.Add(Reading(slash > 0 ? id[..slash] : "Custom", slash > 0 ? id[(slash + 1)..] : id, string.Empty, number));
+            }
+        }
+        return readings;
+
+        static Passenger.Profiler.MetricReading Reading(string meter, string name, string unit, double value) =>
+            new(meter, name, unit, Passenger.Profiler.MetricKind.Gauge, string.Empty, value, null);
     }
 
     /// <summary>The monitors in a line of words: "60 FPS · 1.2 ms process · 41.7 MB · 1,500 objects · 2 nodes".</summary>

@@ -160,6 +160,12 @@ public sealed partial class LiveTreeController
         made.ShowStatus(status.Message, status.Line);
         made.ShowBanner(banner);
         made.ShowMonitors(monitorsShown);
+        made.ShowCharts(charting && app is Godot.GodotGame ? monitorCharts : null);
+        made.ChartsRequested += (_, _) =>
+        {
+            charting = !charting;
+            FollowCharts();
+        };
         made.SelectElement.IsChecked = picking;
         made.ShowGame(app is Godot.GodotGame, app is Godot.GodotGame { LoopHeld: true });
         made.ShowPickIn(pickIn3D);
@@ -491,6 +497,7 @@ public sealed partial class LiveTreeController
             view.DraggedSplit = splits.SplitOf(next);
         }
         ShowMonitors(MonitorsOf(next as Godot.GodotGame));
+        FollowCharts();
         Choose(null);
         treeAsks++;
         detailAsks++;
@@ -557,14 +564,45 @@ public sealed partial class LiveTreeController
     /// <summary>What the window says while it follows nothing.</summary>
     public const string NothingShown = "Debug an Avalonia or WPF app to see its windows and controls here, or run a Godot game to see its nodes.";
 
-    /// <summary>A game's monitors came, once a second: its status line says them, and while the window is shown its tree
-    /// is asked again, so a node the game renames, moves, adds or frees shows without Refresh; nothing is asked while it is
-    /// hidden or the game paused.</summary>
+    /// <summary>Whether the person asked for the game's monitors charted (<see cref="LiveTreeView.ChartsLink"/>).</summary>
+    private bool charting;
+
+    /// <summary>The monitors' charts, made as they are first asked for.</summary>
+    private Telemetry.MetricsPane? monitorCharts;
+
+    /// <summary>The game's monitors charted while the person asked for them and the window shows them, its connected game's
+    /// fed each second its monitors come; else let go, nothing kept.</summary>
+    private void FollowCharts()
+    {
+        if (charting && window.IsShown && app is Godot.GodotGame { State: LiveAppState.Connected } game)
+        {
+            if (monitorCharts?.Feeding != game.Name)
+            {
+                IdeErrors.Observe(game.NameMonitorsAsync());
+            }
+            monitorCharts ??= new Telemetry.MetricsPane();
+            monitorCharts.ShowFed(game.Name, $"Waiting for {game.Name}'s monitors, which it sends every second");
+        }
+        else
+        {
+            monitorCharts?.Stop();
+        }
+        view?.ShowCharts(charting && app is Godot.GodotGame ? monitorCharts : null);
+    }
+
+    /// <summary>A game's monitors came, once a second: its status line says them, its charts take them while shown, and
+    /// while the window is shown its tree is asked again, so a node the game renames, moves, adds or frees shows without
+    /// Refresh; nothing is asked while it is hidden or the game paused.</summary>
     private void OnMonitors(object? sender, EventArgs e)
     {
         if (sender == app && app is Godot.GodotGame { State: LiveAppState.Connected } game)
         {
             ShowMonitors(MonitorsOf(game));
+            if (charting && window.IsShown && game.Monitors is { } monitors)
+            {
+                FollowCharts();
+                monitorCharts?.Feed(monitors.Readings());
+            }
             ShowSources();
             if (window.IsShown && !Paused && !following)
             {
@@ -794,6 +832,7 @@ public sealed partial class LiveTreeController
         {
             return;
         }
+        FollowCharts();
         if (window.IsShown && stale)
         {
             IdeErrors.Observe(RefreshAsync());

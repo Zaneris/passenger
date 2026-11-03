@@ -12,10 +12,10 @@ namespace Passenger.App.Telemetry;
 
 /// <summary>A running .NET program's System.Diagnostics.Metrics instruments charted over its run (<see cref="LiveMetrics"/>),
 /// read only while its host shows it (<see cref="Show"/>): the meters .NET and ASP.NET Core ship, and each meter of the
-/// program's own as it is published. An instrument is a row under its meter, its latest value beside a line of its last
-/// minutes, a histogram's median with its 95th percentile and how many it measured a second; an interval's series of one
-/// instrument are one value, a counter's rates and a gauge's values summed, a histogram's quantiles its highest series'. A
-/// program with none to read says why.</summary>
+/// program's own as it is published; or what another source feeds it (<see cref="ShowFed"/>, a Godot game's monitors). An
+/// instrument is a row under its meter, its latest value beside a line of its last minutes, a histogram's median with its
+/// 95th percentile and how many it measured a second; an interval's series of one instrument are one value, a counter's
+/// rates and a gauge's values summed, a histogram's quantiles its highest series'. A program with none to read says why.</summary>
 public sealed class MetricsPane : DockPanel
 {
     /// <summary>How many readings a line keeps: two minutes of the runtime's one a second.</summary>
@@ -100,6 +100,48 @@ public sealed class MetricsPane : DockPanel
         Say($"Waiting for {shown}'s first metrics…");
         IdeErrors.Observe(FollowAsync(++follows, again: false));
     }
+
+    /// <summary>Charts what a source of its own feeds it (<see cref="Feed"/>: a Godot game's monitors), or nothing
+    /// (<paramref name="shown"/> null), saying <paramref name="waiting"/> until the first readings come. The same source again
+    /// leaves its charts as they are.</summary>
+    public void ShowFed(string? shown, string waiting)
+    {
+        UiThread.Check();
+        if (shown is null)
+        {
+            if (key is not null)
+            {
+                Stop();
+            }
+            return;
+        }
+        string next = $"{shown}\nfed";
+        if (next == key)
+        {
+            return;
+        }
+        Stop();
+        key = next;
+        name = shown;
+        fed = true;
+        Say(waiting);
+    }
+
+    /// <summary>Readings a source of its own gave (<see cref="ShowFed"/>), each instrument's added to its line.</summary>
+    public void Feed(IReadOnlyList<MetricReading> readings)
+    {
+        UiThread.Check();
+        if (fed)
+        {
+            Take(readings);
+        }
+    }
+
+    /// <summary>Whether its readings are fed it (<see cref="ShowFed"/>) rather than read from a program's runtime.</summary>
+    private bool fed;
+
+    /// <summary>The source whose readings it is fed, while it is.</summary>
+    public string? Feeding => fed ? name : null;
 
     /// <summary>Begins reading, in place of the session before (<paramref name="again"/>, with the meters published since),
     /// asked again for a few seconds while the runtime has yet to open its port.</summary>
@@ -188,6 +230,7 @@ public sealed class MetricsPane : DockPanel
             IdeErrors.Observe(session.DisposeAsync().AsTask());
         }
         key = null;
+        fed = false;
         said = string.Empty;
         meters.Clear();
         charts.Clear();
@@ -274,7 +317,8 @@ public sealed class MetricsPane : DockPanel
         }
         if (first && charts.Count > 0)
         {
-            Say($"{name}, process {process.ToString(CultureInfo.InvariantCulture)}{(place is null ? string.Empty : " in its container")}: read every second");
+            Say(fed ? $"{name}: sent every second"
+                : $"{name}, process {process.ToString(CultureInfo.InvariantCulture)}{(place is null ? string.Empty : " in its container")}: read every second");
         }
     }
 
@@ -335,7 +379,14 @@ public sealed class MetricsPane : DockPanel
             Value.FontSize = 11;
             StackPanel words = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0), Children = { title, Value } };
             Border frame = new() { Classes = { StyleClasses.Framed }, Child = Line, [Grid.ColumnProperty] = 1 };
-            Row = new Grid { ColumnDefinitions = new ColumnDefinitions("280,*"), Height = 44, Margin = new Thickness(0, 2), Children = { words, frame } };
+            // The words a third of a narrow pane's width (a tool window's), at most 280 of a wide one's, the line the rest.
+            Row = new Grid
+            {
+                ColumnDefinitions = { new ColumnDefinition(1, GridUnitType.Star) { MaxWidth = 280 }, new ColumnDefinition(2, GridUnitType.Star) },
+                Height = 44,
+                Margin = new Thickness(0, 2),
+                Children = { words, frame },
+            };
         }
 
         public Sparkline Line { get; }

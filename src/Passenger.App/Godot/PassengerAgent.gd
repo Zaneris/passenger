@@ -377,6 +377,11 @@ func count(ask: int) -> void:
     _say(ask, true, [_frame])
 
 
+## The ids of the custom monitors the game's code added, in the order its monitors' messages give their values.
+func monitors(ask: int) -> void:
+    _say(ask, true, [Array(Performance.get_custom_monitor_names()).map(func(id): return str(id))])
+
+
 ## Answers once the next frame the game runs has run, with the count; where the game draws nothing (headless), that frame
 ## holds the loop again itself, as Godot does at a drawn frame's end.
 func step(ask: int, ends_step: bool) -> void:

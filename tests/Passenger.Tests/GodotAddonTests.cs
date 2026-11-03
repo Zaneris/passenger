@@ -86,6 +86,7 @@ public sealed class GodotAddonTests : IDisposable
                     // Instances Godot's Play starts at once write it together, which Windows refuses all but one.
                 }
                 ending = System.Array.IndexOf(OS.GetCmdlineUserArgs(), "ends") >= 0;
+                Performance.AddCustomMonitor("Spinner/Answer", Callable.From(() => answer));
             }
 
             public void OnToggled(bool on)
@@ -470,7 +471,7 @@ public sealed class GodotAddonTests : IDisposable
     }
 
     /// <summary>A game Godot's Play starts, relayed here, shows its members' values at their lines as one Passenger starts does,
-    /// and an agent's click through app_click reaches its button.</summary>
+    /// its monitors charted with its own custom one, and an agent's click through app_click reaches its button.</summary>
     [AvaloniaFact]
     public void A_relayed_games_values_show_at_their_lines_and_an_agents_click_reaches_it()
     {
@@ -488,6 +489,14 @@ public sealed class GodotAddonTests : IDisposable
             Ui.WaitFor(() => script.LiveValues.Any(v => v.Line == frames - 1 && v.Text.StartsWith("frames: ", StringComparison.Ordinal)),
                 () => $"the frame count's value at its line ({string.Join("; ", script.LiveValues.Select(v => $"line {v.Line + 1}: {v.Text}"))}; the last read: {window.GodotValues.Unread ?? "answered"}; "
                     + $"IDE: {string.Join(" | ", Ui.Shared(IdeLog.PathOf(IdeLog.Ide)).Split('\n').Where(l => l.Contains("Godot:", StringComparison.Ordinal) || l.Contains("xception", StringComparison.Ordinal)).TakeLast(10))}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
+            // Its monitors, its own custom one among them, charted as one Passenger starts has them.
+            window.ShowToolWindow(ToolWindowIds.LiveTree);
+            Ui.WaitFor(() => window.LiveTree.MonitorsLine is not null, () => $"the relayed game's monitors' line ({window.Status})", TimeSpan.FromMinutes(1));
+            Ui.Click(window.LiveTree.ChartsLink);
+            Ui.WaitFor(() => window.LiveTree.Charts?.ValueOf("Answer") == "42" && window.LiveTree.Charts.Charted.GetValueOrDefault("Frame time") >= 1,
+                () => $"the relayed game's Answer monitor and frame time charted ({string.Join(", ", window.LiveTree.Charts?.Charted.Select(c => $"{c.Key} {c.Value}") ?? [])}; {window.LiveTree.Charts?.Said})",
+                TimeSpan.FromMinutes(1));
+            Ui.Click(window.LiveTree.ChartsLink);
             string clicked = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).AppClick(app: "Spinner in Godot", control: "#Press"), "an agent's click on the game's button",
                 TimeSpan.FromMinutes(1));
             Ui.WaitFor(() => File.Exists(Path.Combine(folder, "pressed.txt")), () => $"the click to press the game's button (the tool said: {clicked})", TimeSpan.FromSeconds(30));

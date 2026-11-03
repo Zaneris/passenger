@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using Passenger.App.Aspire;
+using Passenger.App.Godot;
+using Passenger.App.LiveTree;
 using Passenger.App.Run;
 using Passenger.App.Telemetry;
 using Passenger.Core;
@@ -14,7 +16,8 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.Telemetry, Title = "Logs, traces and metrics", ReadOnly = true), Description(
         "A run's structured logs or traces (kind) from its dashboard: an Aspire AppHost's, or a container or project run's when its "
         + "configuration collects them; a resource's, Compose service's or project's (resource) or one trace's (traceId) alone. "
-        + "kind metrics: a resource's .NET program's instruments read from its runtime a few seconds, each one's latest value and rate.")]
+        + "kind metrics: a resource's .NET program's instruments read from its runtime a few seconds, each one's latest value and rate; "
+        + "or a running Godot game's monitors, its own custom ones among them (resource the game's name, the chosen game when none is given).")]
     public Task<TelemetryInfo> GetTelemetry(string kind = "logs", string? appHost = null,
         string? resource = null, string? traceId = null, int limit = 200,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
@@ -118,11 +121,32 @@ public sealed partial class PassengerTools
         return (app, app.Telemetry, selected?.Resource.Name);
     }
 
+    /// <summary>A running Godot game's monitors for an agent, as the Live Visual Tree charts them: the next it sends (once a
+    /// second), else the last, the engine's and its own custom ones, at most <paramref name="limit"/>.</summary>
+    private static async Task<TelemetryInfo> GameMetricsAsync(GodotGame game, int limit, CancellationToken cancel)
+    {
+        if (game.State != LiveAppState.Connected)
+        {
+            throw new InvalidOperationException(game.State == LiveAppState.Waiting ? $"{game.Name} has not connected to Passenger yet" : $"{game.Name} has ended: run or debug_start starts it again");
+        }
+        GodotMonitors? before = game.Monitors;
+        await When(() => game.Monitors is not null && !ReferenceEquals(game.Monitors, before), Waits.Of(TimeSpan.FromSeconds(3)), cancel,
+            On(h => game.MonitorsChanged += h, h => game.MonitorsChanged -= h));
+        GodotMonitors monitors = game.Monitors ?? throw new InvalidOperationException($"{game.Name} sent no monitors in 3 s: it sends them once a second as it runs");
+        MetricInfo[] heard = [.. MetricsPane.Combined(monitors.Readings()).Select(v => new MetricInfo(v.Meter, v.Instrument, v.Unit, v.Shown))];
+        (IReadOnlyList<MetricInfo> kept, string? more) = AgentAnswers.Listed(heard, Math.Max(1, limit), "monitor", "a larger limit gives them");
+        return new TelemetryInfo([], []) { Metrics = kept, More = more };
+    }
+
     /// <summary>A resource's .NET program's metrics for an agent, as the Aspire window's Stats tab reads them: its runtime's
     /// instruments heard for a few collections (the meters it publishes itself read in a second session), each one's latest
     /// value and rate, at most <paramref name="limit"/>, saying how many more there were.</summary>
     private async Task<TelemetryInfo> MetricsOfAsync(ProjectSession current, string? appHost, string? resource, int limit, CancellationToken cancel)
     {
+        if (appHost is null && (resource is null ? current.Game : current.Games.FirstOrDefault(g => g.Name.Equals(resource, StringComparison.OrdinalIgnoreCase))) is { } game)
+        {
+            return await GameMetricsAsync(game, limit, cancel);
+        }
         if (resource is null)
         {
             throw new ArgumentException("kind metrics reads one resource's program: give resource, as workspace lists them");

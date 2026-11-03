@@ -119,8 +119,16 @@ public sealed class LiveTreeView : DockPanel
         top.Children.Add(status);
         Children.Add(ToolBars.Top(top));
 
-        monitors = new TextBlock { [DockProperty] = Dock.Top, Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(10, 4), IsVisible = false };
-        Children.Add(monitors);
+        monitors = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        ChartsLink = new Button { Classes = { StyleClasses.Link }, Content = ShowChartsWords, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        ToolTip.SetTip(ChartsLink, "The game's frame time, frames a second and its own monitors over the last minutes, read while they show");
+        ChartsLink.Click += (_, _) => ChartsRequested?.Invoke(this, EventArgs.Empty);
+        DockPanel.SetDock(ChartsLink, Dock.Right);
+        monitorsRow = new DockPanel { [DockProperty] = Dock.Top, Margin = new Thickness(10, 4), IsVisible = false, Children = { ChartsLink, monitors } };
+        Children.Add(monitorsRow);
+        // The charts take the rows they have, up to a bound, the tree keeping the rest.
+        charts = new ContentControl { [DockProperty] = Dock.Top, MaxHeight = 240, IsVisible = false };
+        Children.Add(charts);
         bannerText = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
         banner = new Border { [DockProperty] = Dock.Top, Padding = new Thickness(10, 6), IsVisible = false, Child = bannerText };
         banner.Bind(Border.BackgroundProperty, banner.GetResourceObservable(TokenKeys.Banner));
@@ -559,8 +567,31 @@ public sealed class LiveTreeView : DockPanel
     public void ShowMonitors(string? text)
     {
         monitors.Text = text;
-        monitors.IsVisible = text is not null;
+        monitorsRow.IsVisible = text is not null;
+        charts.IsVisible = text is not null && charts.Content is not null;
     }
+
+    private const string ShowChartsWords = "Show charts";
+
+    private readonly DockPanel monitorsRow;
+    private readonly ContentControl charts;
+
+    /// <summary>The link after the monitors' line that shows or hides their charts.</summary>
+    public Button ChartsLink { get; }
+
+    /// <summary>The monitors' charts were asked shown or hidden, by their link.</summary>
+    public event EventHandler? ChartsRequested;
+
+    /// <summary>The monitors' charts under their line (a <see cref="Telemetry.MetricsPane"/>), or none.</summary>
+    public void ShowCharts(Control? chart)
+    {
+        charts.Content = chart;
+        charts.IsVisible = chart is not null && monitorsRow.IsVisible;
+        ChartsLink.Content = chart is null ? ShowChartsWords : "Hide charts";
+    }
+
+    /// <summary>The monitors' charts shown, while they are.</summary>
+    public Telemetry.MetricsPane? Charts => charts.IsVisible ? charts.Content as Telemetry.MetricsPane : null;
 
     private readonly ComboBox sources;
     private bool choosingSource;
@@ -594,7 +625,7 @@ public sealed class LiveTreeView : DockPanel
     public event EventHandler<int>? SourceChosen;
 
     /// <summary>The game's monitors as shown, while they are.</summary>
-    public string? MonitorsLine => monitors.IsVisible ? monitors.Text : null;
+    public string? MonitorsLine => monitorsRow.IsVisible ? monitors.Text : null;
 
     public void ShowBanner(string? text)
     {

@@ -2,6 +2,7 @@ using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Godot;
 using Passenger.App.LiveTree;
+using Passenger.App.Telemetry;
 using Passenger.App.Run;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -189,6 +190,43 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
         }
     }
 
+    /// <summary>The game's monitors charted in the Live Visual Tree once asked for: its frame time and frames a second, and
+    /// the custom monitor its script adds, each a line under its heading with its latest value, more coming each second; an
+    /// agent's telemetry of kind metrics reads the same; hidden again, nothing is charted.</summary>
+    [AvaloniaFact]
+    public void A_games_frame_time_and_its_custom_monitor_are_charted_as_they_come_and_an_agent_reads_them()
+    {
+        MainWindow window = Open();
+        try
+        {
+            GodotGame running = Start(window);
+            LiveTreeView tree = window.LiveTree;
+            Ui.WaitFor(() => tree.MonitorsLine is not null, () => $"the game's monitors' line ({window.Status})", TimeSpan.FromMinutes(1));
+            Assert.Null(tree.Charts);
+            Ui.Click(tree.ChartsLink);
+            Ui.WaitFor(() => tree.Charts is { } charts && charts.Charted.GetValueOrDefault("Frames") >= 2 && charts.Charted.GetValueOrDefault("Frame time") >= 2,
+                () => $"the frame time and the game's Frames monitor to be charted, two readings each ({string.Join(", ", tree.Charts?.Charted.Select(c => $"{c.Key} {c.Value}") ?? [])}; {tree.Charts?.Said})",
+                TimeSpan.FromMinutes(1));
+            MetricsPane shown = tree.Charts!;
+            Assert.True(double.TryParse(shown.ValueOf("Frames")?.Replace(",", string.Empty, StringComparison.Ordinal), System.Globalization.CultureInfo.InvariantCulture, out double frames) && frames > 0,
+                $"The Frames monitor's value was to be the game's count of frames: {shown.ValueOf("Frames")}");
+            Assert.EndsWith(" ms", shown.ValueOf("Frame time"), StringComparison.Ordinal);
+            Assert.Contains("Frames a second", shown.Charted.Keys);
+
+            Passenger.App.Mcp.TelemetryInfo read = Ui.AwaitPumped(new Passenger.App.Mcp.PassengerTools(window).GetTelemetry("metrics"), "an agent's read of the game's monitors", TimeSpan.FromMinutes(1));
+            Assert.True(read.Metrics is { } metrics && metrics.Any(m => m is { Meter: "Game", Instrument: "Frames" }) && metrics.Any(m => m is { Meter: GodotMonitors.Engine, Instrument: "Frame time" }),
+                $"An agent's metrics were to hold the game's Frames monitor and its frame time: {string.Join(", ", read.Metrics?.Select(m => $"{m.Meter}/{m.Instrument} {m.Value}") ?? [])}");
+
+            Ui.Click(tree.ChartsLink);
+            Assert.True(tree.Charts is null && shown.Charted.Count == 0, "Hidden, the charts were to be let go");
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>The frame count main.gd's line (from zero) shows, or null.</summary>
     private static long? Frames(OpenDocument document, int line) =>
         document.LiveValues.Where(a => a.Line == line).Select(a => a.Text).FirstOrDefault() is { } hint && hint.StartsWith("frames: ", StringComparison.Ordinal)
@@ -270,7 +308,9 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
             Homes = GodotTests.Game.Home(Path.Combine(Folder, "..", Path.GetFileName(Folder) + "-home"));
             File.WriteAllText(Path.Combine(Folder, "project.godot"), "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Arena\"\n"
                 + "run/main_scene=\"res://main.tscn\"\nconfig/features=PackedStringArray(\"4.7\")\nrun/max_fps=20\n");
-            File.WriteAllText(Path.Combine(Folder, "main.gd"), "extends Node\n\nvar frames := 0\nvar free_helper := false\n\n\nfunc _process(_delta: float) -> void:\n\tframes += 1\n"
+            File.WriteAllText(Path.Combine(Folder, "main.gd"), "extends Node\n\nvar frames := 0\nvar free_helper := false\n\n\n"
+                + "func _ready() -> void:\n\tPerformance.add_custom_monitor(\"Game/Frames\", func(): return frames)\n\n\n"
+                + "func _process(_delta: float) -> void:\n\tframes += 1\n"
                 + "\tprint(\"frame \", frames)\n\tif free_helper:\n\t\tfree_helper = false\n\t\tvar helper := get_tree().root.get_node_or_null(\"PassengerAgent\")\n"
                 + "\t\tif helper != null:\n\t\t\thelper.queue_free()\n\t\t\tprint(\"helper freed\")\n");
             File.WriteAllText(Path.Combine(Folder, "box.gd"), "extends ColorRect\n");

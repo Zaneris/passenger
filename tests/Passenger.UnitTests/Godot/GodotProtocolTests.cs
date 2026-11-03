@@ -103,9 +103,22 @@ public class GodotProtocolTests
         GodotMessage output = Message(Output);
         Assert.True(output is { Name: GodotWords.Output, Data: [string[] lines, int[] kinds] } && lines.SequenceEqual(["frame 10"]) && kinds.SequenceEqual([0]),
             $"The game's output read as {GodotVariant.Shown(output.Data.ToList())}");
-        GodotMonitors? monitors = GodotMonitors.Read(Message(Monitors).Data);
-        Assert.True(monitors is { Fps: 1, Memory: 41726031, Objects: 1500, Resources: 1, Nodes: 2, Orphans: 0 }, $"The monitors read as {monitors}");
+        GodotMonitors? monitors = GodotMonitors.Read(Message(Monitors).Data, []);
+        Assert.True(monitors is { Fps: 1, Memory: 41726031, Objects: 1500, Resources: 1, Nodes: 2, Orphans: 0, Custom: [] }, $"The monitors read as {monitors}");
         Assert.StartsWith("1 FPS · 0.0 ms process · 39.8 MB · 1,500 objects · 2 nodes", monitors!.Said, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_games_custom_monitors_are_named_as_it_said_them_and_charted_under_their_category()
+    {
+        IReadOnlyList<string> names = GodotMonitors.Names([new List<object?> { new GodotName("Game/Score"), "Speed" }, new List<object?> { 0L, 0L }]);
+        Assert.Equal(["Game/Score", "Speed"], names);
+        List<object?> frame = [60.0, 0.016, 0.002, .. Enumerable.Repeat<object?>(0L, 20), 42L, "not a number"];
+        GodotMonitors? monitors = GodotMonitors.Read(frame, names);
+        Assert.True(monitors is { Fps: 60, Custom: [("Game/Score", 42), ("Speed", null)] }, $"The monitors read as {monitors} with {string.Join(", ", monitors?.Custom ?? [])}");
+        Assert.Equal([("Godot", "Frames a second", 60.0), ("Godot", "Frame time", 0.016), ("Game", "Score", 42.0)],
+            monitors!.Readings().Where(r => r.Instrument is "Frames a second" or "Frame time" or "Score").Select(r => (r.Meter, r.Instrument, r.Value)));
+        Assert.DoesNotContain(monitors.Readings(), r => r.Instrument == "Speed");
     }
 
     [Fact]
