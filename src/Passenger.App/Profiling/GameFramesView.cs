@@ -86,7 +86,7 @@ public sealed class GameFramesView : DockPanel
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
         };
-        StackPanel legend = new() { Orientation = Orientation.Horizontal, Spacing = 14, Margin = new Thickness(12, 2, 12, 0) };
+        StackPanel legend = new() { [DockProperty] = Dock.Left, Orientation = Orientation.Horizontal, Spacing = 14, Margin = new Thickness(12, 2, 12, 0) };
         foreach ((string label, string brush) in new[] { ("Physics", TokenKeys.Graph_1), ("GDScript", TokenKeys.Graph_0), ("C# (sampled)", TokenKeys.Graph_2), ("Godot", TokenKeys.TextMuted) })
         {
             Border swatch = new() { Width = 9, Height = 9, VerticalAlignment = VerticalAlignment.Center, Opacity = brush == TokenKeys.TextMuted ? 0.35 : 1 };
@@ -99,7 +99,8 @@ public sealed class GameFramesView : DockPanel
         TextBlock joining = Muted(Joining);
         joining.Margin = new Thickness(12, 0, 12, 6);
         joining.TextWrapping = TextWrapping.Wrap;
-        frameLink = new Button { Classes = { StyleClasses.Link }, Margin = new Thickness(12, 0, 12, 6), HorizontalAlignment = HorizontalAlignment.Left };
+        // On the legend's line, so the table under the band keeps its room in a short panel.
+        frameLink = new Button { Classes = { StyleClasses.Link }, Margin = new Thickness(12, 2, 12, 0), HorizontalAlignment = HorizontalAlignment.Right };
         ToolTip.SetTip(frameLink, "The call tree of the frame alone, both languages together, its costliest function chosen");
         frameLink.Click += (_, _) =>
         {
@@ -112,7 +113,7 @@ public sealed class GameFramesView : DockPanel
         {
             [DockProperty] = Dock.Top,
             BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = new StackPanel { Children = { legend, strip, summary, frameLink, joining } },
+            Child = new StackPanel { Children = { new DockPanel { Children = { legend, frameLink } }, strip, summary, joining } },
             Padding = new Thickness(0, 4, 0, 0),
         };
         band.Bind(Border.BorderBrushProperty, band.GetResourceObservable(TokenKeys.Divider));

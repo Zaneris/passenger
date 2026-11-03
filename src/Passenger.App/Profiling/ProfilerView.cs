@@ -655,8 +655,10 @@ public sealed class ProfilerView : DockPanel
         {
             return;
         }
+        // Up to its top row: a thread's node has the whole run's above it, which no row shows.
+        HashSet<CallNode> tops = [.. rows.Where(r => r.Depth == 0).Select(r => r.Node)];
         List<CallNode> path = [];
-        for (CallNode? at = costliest; at is not null; at = at.Parent)
+        for (CallNode? at = costliest; at is not null; at = tops.Contains(at) ? null : at.Parent)
         {
             path.Insert(0, at);
         }
