@@ -53,6 +53,19 @@ public static class Program
             Console.Write(laid.Attempted ?? laid.Text);
             return 0;
         }
+        if (args is ["--order", var orderedFolder] && Directory.Exists(orderedFolder))
+        {
+            List<string> ordering = [];
+            Walk(Path.GetFullPath(orderedFolder), ordering);
+            Console.WriteLine(JsonSerializer.Serialize(ordering.Select(path =>
+            {
+                string text = File.ReadAllText(path).ReplaceLineEndings("\n");
+                GDScriptFormatted once = GDScriptFormatter.OrderParts(text);
+                GDScriptFormatted twice = GDScriptFormatter.OrderParts(once.Text);
+                return new { path, changed = once.Text != text, refused = once.Refused, stable = twice.Edits.Count == 0 && twice.Refused is null };
+            })));
+            return 0;
+        }
         if (args is ["--format", var formatted] && Directory.Exists(formatted))
         {
             Console.WriteLine(JsonSerializer.Serialize(Formats(Path.GetFullPath(formatted))));

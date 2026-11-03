@@ -112,6 +112,34 @@ public class GDScriptFormatterTests
     }
 
     [Fact]
+    public void A_line_opening_a_bracket_that_closes_lines_on_wraps_at_its_commas_and_one_gdlint_ignores_is_left()
+    {
+        GDScriptFormatOptions options = new GDScriptFormatOptions() with { LineLength = 60 };
+        Assert.Equal("func f():\n\tadd_edit(\"argument_type\", ValueType.FIXED_OPTIONS,\n\t\t\t{\"left\": \"Type:\", \"options\": [\n\t\t\t\t1,\n\t\t\t]})\n",
+            Formatted("func f():\n\tadd_edit(\"argument_type\", ValueType.FIXED_OPTIONS, {\"left\": \"Type:\", \"options\": [\n\t\t1,\n\t]})\n", options));
+        string ignored = "func f():\n\t# gdlint: ignore=max-line-length\n\tprint(\"a\", \"b\", \"c\", \"d\", \"e\", \"f\", \"g\", \"h\", \"i\", \"j\")\n"
+            + "\tprint(\"a\", \"b\", \"c\", \"d\", \"e\", \"f\", \"g\", \"h\", \"i\", \"j\") # gdlint: ignore = max-line-length\n";
+        Assert.Equal(ignored, Formatted(ignored, options));
+    }
+
+    [Fact]
+    public void Order_parts_follows_the_guides_code_order_and_refuses_a_value_reading_a_member_that_would_come_after_it()
+    {
+        string script = "class_name Mover\nextends Node\n\n\nfunc _private():\n\tpass\n\n\nfunc go():\n\tpass\n\n## The speed.\nvar speed := 1\n"
+            + "@onready var label := $Label\nstatic var count := 0\nconst LIMIT := 3\nenum State { IDLE }\nsignal moved\n\n\nfunc _ready():\n\tpass\n\n\nstatic func make():\n\tpass\n\n\n"
+            + "class Inner:\n\tvar x := 1\n\n\nfunc _init():\n\tpass\n";
+        GDScriptFormatted ordered = GDScriptFormatter.OrderParts(script);
+        Assert.Null(ordered.Refused);
+        Assert.Equal("class_name Mover\nextends Node\n\nsignal moved\n\nenum State { IDLE }\n\nconst LIMIT := 3\n\nstatic var count := 0\n\n## The speed.\nvar speed := 1\n\n"
+            + "@onready var label := $Label\n\n\nstatic func make():\n\tpass\n\n\nfunc _init():\n\tpass\n\n\nfunc _ready():\n\tpass\n\n\nfunc go():\n\tpass\n\n\n"
+            + "func _private():\n\tpass\n\n\nclass Inner:\n\tvar x := 1\n", ordered.Text);
+        Assert.Empty(GDScriptFormatter.OrderParts(ordered.Text).Edits);
+        Assert.Contains("'size''s value reads 'speed', which would come after it",
+            GDScriptFormatter.OrderParts("extends Node\n\nvar speed := 2.0\n@export var size := speed * 2\n").Refused);
+        Assert.Contains("export groups", GDScriptFormatter.OrderParts("extends Node\n\nvar a := 1\n@export_group(\"G\")\n@export var b := 2\n").Refused);
+    }
+
+    [Fact]
     public void A_long_line_with_nothing_to_wrap_safely_is_left_as_written()
     {
         // A string, a comment, a subscript, a lambda's brackets and a line no shorter for wrapping are left alone.

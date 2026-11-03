@@ -455,6 +455,12 @@ public sealed class CodeAssist
         web.AddLintingActions(registry);
         Code(AppActions.CodeCleanup, "Code Cleanup", context => IdeErrors.Observe(actions.Cleanup()), new("Code", 1, 1), markup: true);
         Code(AppActions.OptimizeUsings, "Optimize Imports", context => IdeErrors.Observe(actions.OptimizeUsings()), new("Code", 1, 2));
+        registry.Add(new IdeAction(AppActions.OrderScriptParts, "Order Script's Parts", "Code", context => IdeErrors.Observe(OrderScriptParts()))
+        {
+            WhyNot = context => context.File is not { } file ? Refusals.NoFile : !Godot.GodotScriptTypes.IsScript(file.Path) ? "The file is not a GDScript"
+                : context.Editor.IsReadOnly ? Refusals.ReadOnly(file.Name) : null,
+            Menus = [new("Code", 1, 3)],
+        });
         Code(AppActions.RefactorThis, "Refactor This…", context => IdeErrors.Observe(actions.ShowFixes(AppActions.RefactorThis, a => a.Kind?.StartsWith("refactor", StringComparison.Ordinal) == true, "Refactor This")),
             new("Refactor", 0, 0), xaml: true);
         // A GDScript's are Passenger's own, over its reading of the project's scripts (CodeActions.GDScriptRefactor).
@@ -516,6 +522,18 @@ public sealed class CodeAssist
     }
 
     private int Caret => Editor.Selections.Primary.Caret;
+
+    /// <summary>Order Script's Parts on the GDScript shown, as one command of Undo, said in the status bar.</summary>
+    private async Task OrderScriptParts()
+    {
+        if (context.Editors.Active is { } document)
+        {
+            using (Passenger.Core.BackgroundWork.Scope())
+            {
+                context.Say(await context.Languages.GDScript.OrderPartsAsync(document));
+            }
+        }
+    }
 
     /// <summary>Rename at the editor's caret: a C# symbol through the server, a XAML name and a compose file's of its own.</summary>
     public void Rename() => actions.Rename();

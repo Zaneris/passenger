@@ -152,10 +152,11 @@ public static partial class GDScriptFormatter
         }
         int unit = options.UseTabs ? options.TabWidth : options.IndentSize;
         List<int> before = [];
+        HashSet<int> ignored = Ignored(text, lines);
         for (int l = 0; l < lines.Length; l++)
         {
             int length = (l + 1 < lines.Length ? lines[l + 1] - 1 : text.Length) - lines[l];
-            if (firstOn[l] >= 0 && !runOn[l] && length > options.LineLength / options.TabWidth)
+            if (firstOn[l] >= 0 && !runOn[l] && !ignored.Contains(l) && length > options.LineLength / options.TabWidth)
             {
                 Wrap(new Run(firstOn[l], lastOn[l], Columns(text, lines[l], t[firstOn[l]].Start, options.TabWidth)));
             }
@@ -191,6 +192,19 @@ public static partial class GDScriptFormatter
                 if (made is not null && made.Widest < width)
                 {
                     plan = made;
+                    break;
+                }
+            }
+            // A bracket the line opens and a later line closes runs on at its commas, as many to a line as fit.
+            foreach (int o in Enumerable.Range(run.First, run.Last - run.First + 1).Where(o => plan is null && partner[o] > run.Last && !inLambda[o] && Wraps(t, o)).OrderBy(o => depth[o]))
+            {
+                bool commas = t[o].Kind != K.ParenthesisOpen || IsCall(t, o);
+                List<int> starts = [.. Enumerable.Range(o + 1, run.Last - o).Where(k => depth[k] == depth[o] + 1
+                    && (commas ? t[k - 1].Kind == K.Comma : t[k].Kind is K.And or K.Or or K.AmpersandAmpersand or K.PipePipe or K.Else))];
+                if (starts.Count > 0 && Filling(run, [run.First, .. starts], run.Indent, run.Indent + (t[o].Kind == K.ParenthesisOpen ? 2 : 1) * unit, always: false) is { } opened
+                    && opened.Widest < width)
+                {
+                    plan = opened;
                     break;
                 }
             }
@@ -295,6 +309,40 @@ public static partial class GDScriptFormatter
             List<Run> made = [new Run(run.First, o, run.Indent), .. contents, new Run(c, run.Last, run.Indent)];
             return new Plan(made, made.Max(Width));
         }
+    }
+
+    /// <summary>The lines gdlint is told to leave long: the one after a <c># gdlint: ignore=max-line-length</c> line, one that
+    /// ends with it, and those between <c># gdlint: disable=max-line-length</c> and <c>enable=</c>, as gdtoolkit reads them.</summary>
+    private static HashSet<int> Ignored(string text, int[] lines)
+    {
+        HashSet<int> ignored = [];
+        bool disabled = false;
+        for (int l = 0; l < lines.Length; l++)
+        {
+            int end = l + 1 < lines.Length ? lines[l + 1] - 1 : text.Length;
+            string line = text[lines[l]..end];
+            int hash = line.IndexOf('#', StringComparison.Ordinal);
+            string said = hash < 0 ? string.Empty : line[(hash + 1)..].Replace(" ", string.Empty, StringComparison.Ordinal);
+            bool names = said.StartsWith("gdlint:", StringComparison.Ordinal) && said.Contains("max-line-length", StringComparison.Ordinal);
+            if (names && said.StartsWith("gdlint:disable=", StringComparison.Ordinal))
+            {
+                disabled = true;
+            }
+            else if (names && said.StartsWith("gdlint:enable=", StringComparison.Ordinal))
+            {
+                disabled = false;
+            }
+            if (disabled || names && said.StartsWith("gdlint:ignore=", StringComparison.Ordinal))
+            {
+                ignored.Add(l);
+                // A comment of its own line is said of the line after it.
+                if (!disabled && line[..hash].Trim().Length == 0)
+                {
+                    ignored.Add(l + 1);
+                }
+            }
+        }
+        return ignored;
     }
 
     /// <summary>A line's tokens from the first to the last, at its indentation's columns.</summary>

@@ -331,6 +331,9 @@ public static class AppActions
     public const string Reformat = "app.code.reformat";
     public const string CodeCleanup = "app.code.cleanup";
 
+    // Passenger's own, for a GDScript: the style guide's Code order, kept out of Reformat Code; no keymap gives it keys.
+    public const string OrderScriptParts = "app.code.orderScriptParts";
+
     // Rider's ReformatWithPrettierAction (its Visual Studio keymaps give its keys to VcsShowPrevChangeMarker) and
     // Javascript.Linters.EsLint.Fix, which it names Fix ESLint Problems; both in the editor's menu.
     public const string ReformatWithPrettier = "app.code.reformatWithPrettier";

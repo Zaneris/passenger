@@ -205,6 +205,10 @@ public sealed partial class SettingsDialog : IdeWindow
     {
         Working = change(Working);
         ok.IsEnabled = applyButton.IsEnabled = Refused is null;
+        foreach ((_, Control editor, SettingWhen when) in dependents)
+        {
+            Follow(editor, when);
+        }
     }
 
     private void Filter()
@@ -429,8 +433,30 @@ public sealed partial class SettingsDialog : IdeWindow
     private void Add(Setting setting)
     {
         SettingRow row = setting.Row ?? throw new ArgumentException("A setting with no row of its own goes in a row the dialog builds", nameof(setting));
-        Add(row.Page, row.Label, setting.Editor(Working, Change), row.Words, row.Note);
+        Control editor = setting.Editor(Working, Change);
+        Add(row.Page, row.Label, editor, row.Words, row.Note);
+        if (row.When is { } when)
+        {
+            // Greyed, saying why, while the setting it follows leaves it no effect.
+            ToolTip.SetShowOnDisabled(editor, true);
+            dependents.Add((row.Label, editor, when));
+            Follow(editor, when);
+        }
     }
+
+    /// <summary>The rows another setting greys, each with what it takes effect under.</summary>
+    private readonly List<(string Label, Control Editor, SettingWhen When)> dependents = [];
+
+    private void Follow(Control editor, SettingWhen when)
+    {
+        bool holds = when.Holds(Working);
+        editor.IsEnabled = holds;
+        ToolTip.SetTip(editor, holds ? null : when.Why);
+    }
+
+    /// <summary>Why a row is greyed as the settings stand; null where it takes effect, or is no row another greys.</summary>
+    public string? WhyGreyed(string label) =>
+        dependents.FirstOrDefault(d => d.Label == label) is { Editor: { } editor, When: { } when } && !when.Holds(Working) && !editor.IsEnabled ? when.Why : null;
 
     /// <summary>A page that is one control of its own (the live templates' list and editor), the whole of its width, found
     /// by a search for any of its words.</summary>

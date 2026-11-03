@@ -192,7 +192,10 @@ public static class Declared
 
     public static readonly NumberSetting RightMargin = new(s => s.XamlFormat.RightMargin, (s, v) => s with { XamlFormat = s.XamlFormat with { RightMargin = (int)v } },
         0, XamlFormatSettings.WidestMargin, 1,
-        new(D.XamlCodeStylePage, "Right margin (columns)", $"{D.XamlWords} right margin columns wrap hard max line length"));
+        new(D.XamlCodeStylePage, "Right margin (columns)", $"{D.XamlWords} right margin columns wrap hard max line length")
+        {
+            When = new(s => s.XamlFormat.WrapTags || s.XamlFormat.WrapAroundElements, "Wrap tags and processing instructions and Wrap before and after elements are both off"),
+        });
 
     public static readonly ToggleSetting CollapseEmptyElements = new(s => s.XamlFormat.CollapseEmptyElements,
         (s, v) => s with { XamlFormat = s.XamlFormat with { CollapseEmptyElements = v } },
@@ -209,7 +212,10 @@ public static class Declared
         (s, v) => s with { GDScriptFormat = s.GDScriptFormat with { LineLength = (int)v } },
         GDScriptFormatSettings.ShortestLine, GDScriptFormatSettings.LongestLine, 1,
         new(D.GDScriptCodeStylePage, "Line length (columns)", $"{D.GDScriptWords} line length columns max right margin hard wrap 100 80",
-            "The style guide's is 100. A file's .editorconfig says over this by max_line_length."));
+            "The style guide's is 100. A file's .editorconfig says over this by max_line_length.")
+        {
+            When = new(s => s.GDScriptFormat.WrapLongLines, "Wrap long lines inside brackets is off, so no line is wrapped"),
+        });
 
     public static readonly NumberSetting GDScriptBlankLines = new(s => s.GDScriptFormat.BlankLinesAroundFunctions,
         (s, v) => s with { GDScriptFormat = s.GDScriptFormat with { BlankLinesAroundFunctions = (int)v } }, 1, 2, 1,

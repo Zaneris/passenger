@@ -8,7 +8,15 @@ namespace Passenger.App.Settings;
 
 /// <summary>Where a setting's own row stands in Settings and what finds it: its page, its label, the words a search
 /// matches beside those, and a note under its editor where what it does needs saying.</summary>
-public sealed record SettingRow(string Page, string Label, string Words, string? Note = null);
+public sealed record SettingRow(string Page, string Label, string Words, string? Note = null)
+{
+    /// <summary>Whether its row takes effect under the settings as they stand, and why not where not: a row another greys
+    /// while it is off (a line length while wrapping is off).</summary>
+    public SettingWhen? When { get; init; }
+}
+
+/// <summary>What a row takes effect under, and the words said on it while it does not.</summary>
+public sealed record SettingWhen(Func<AppSettings, bool> Holds, string Why);
 
 /// <summary>A setting of one value, declared once in <see cref="Declared"/>: how it is read and written, what it allows (a
 /// number's range, an enum's values) and its own row in Settings, where it has one. Its editor and its clamp come from

@@ -661,6 +661,33 @@ public sealed class SettingsTests : IDisposable
 
     private static TextBlock RegexToggle(Visual within) => within.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == ".*");
 
+    /// <summary>A row another setting leaves no effect greys, saying why, as that setting goes off and comes back as it goes
+    /// on again: GDScript's Line length with its wrapping, XAML's Right margin with both its wraps.</summary>
+    [AvaloniaFact]
+    public void A_line_length_greys_while_its_pages_wrapping_is_off_on_both_code_style_pages()
+    {
+        MainWindow window = Open();
+        SettingsDialog dialog = window.ShowSettings();
+        dialog.Page = SettingsDialog.GDScriptCodeStylePage;
+        Ui.Settle();
+        Assert.Null(dialog.WhyGreyed("Line length (columns)"));
+        Ui.Click(Editor<CheckBox>(dialog, "Wrap long lines inside brackets"));
+        Assert.Equal("Wrap long lines inside brackets is off, so no line is wrapped", dialog.WhyGreyed("Line length (columns)"));
+        Assert.False(Editor<NumericUpDown>(dialog, "Line length (columns)").IsEnabled, "Line length stayed editable with wrapping off");
+        Ui.Click(Editor<CheckBox>(dialog, "Wrap long lines inside brackets"));
+        Assert.Null(dialog.WhyGreyed("Line length (columns)"));
+
+        dialog.Page = SettingsDialog.XamlCodeStylePage;
+        Ui.Settle();
+        Ui.Click(Editor<CheckBox>(dialog, "Wrap tags and processing instructions"));
+        Assert.Null(dialog.WhyGreyed("Right margin (columns)"));
+        Ui.Click(Editor<CheckBox>(dialog, "Wrap before and after elements"));
+        Assert.NotNull(dialog.WhyGreyed("Right margin (columns)"));
+        Assert.False(Editor<NumericUpDown>(dialog, "Right margin (columns)").IsEnabled, "Right margin stayed editable with both wraps off");
+        dialog.Close();
+        window.Close();
+    }
+
     internal static SettingsDialog TerminalDialog(MainWindow window)
     {
         SettingsDialog dialog = window.ShowSettings();

@@ -81,6 +81,46 @@ public sealed class GDScriptFormatTests
         }
     }
 
+    private const string Unordered = "extends Node\n\nfunc _process(delta):\n\tpass\n\n# Its speed.\nvar speed := 2.0\n\nfunc helper():\n\tpass\n\nsignal hit\n"
+        + "@export var size := 3\n\nfunc _ready():\n\tpass\n\nconst LIMIT := 10\n";
+
+    private const string Ordered = "extends Node\n\nsignal hit\n\nconst LIMIT := 10\n\n@export var size := 3\n\n# Its speed.\nvar speed := 2.0\n\n\n"
+        + "func _ready():\n\tpass\n\n\nfunc _process(delta):\n\tpass\n\n\nfunc helper():\n\tpass\n";
+
+    /// <summary>Order Script's Parts puts a script's parts in the style guide's Code order, each with its comment, as one
+    /// command of Undo; a script whose variable's value reads a constant that would come after it is refused, saying so.</summary>
+    [AvaloniaFact]
+    public void Order_script_parts_lays_out_the_guides_code_order_and_refuses_a_value_reading_what_would_come_after_it()
+    {
+        string folder = TestFolders.Create("gdscript-order-");
+        string script = TestFolders.Write(folder, "order.gd", Unordered);
+        string reads = TestFolders.Write(folder, "reads.gd", "extends Node\n\nconst LIMIT := 4\nenum Size { SMALL = LIMIT }\n");
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        try
+        {
+            Assert.Null(window.OpenFile(script));
+            Ui.Settle();
+            OpenDocument document = window.EditorArea.Active!;
+            Assert.True(window.RunFromMenu(AppActions.OrderScriptParts), window.Status);
+            Ui.PumpUntil(() => document.Text.Snapshot.ToString() == Ordered, "the parts in the guide's order", TimeSpan.FromSeconds(30));
+            Ui.Run(window, EditorActions.Undo, settle: false);
+            Ui.PumpUntil(() => document.Text.Snapshot.ToString() == Unordered, "one Undo taking the order back", TimeSpan.FromSeconds(30));
+
+            Assert.Null(window.OpenFile(reads));
+            Ui.Settle();
+            Assert.True(window.RunFromMenu(AppActions.OrderScriptParts), window.Status);
+            Ui.WaitFor(() => window.Status?.StartsWith("Order Script's Parts was not applied", StringComparison.Ordinal) == true, () => $"the order refused ({window.Status})");
+            Assert.Contains("'Size''s value reads 'LIMIT', which would come after it", window.Status ?? string.Empty, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static void Reformat(MainWindow window, OpenDocument document, string laid, string what)
     {
         Ui.Run(window, AppActions.Reformat, settle: false);

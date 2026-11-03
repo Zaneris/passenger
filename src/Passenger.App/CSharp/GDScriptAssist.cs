@@ -202,6 +202,36 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
         return new CodeActions.Reformatted(true, true, "Reformatted");
     }
 
+    /// <summary>A script's top-level parts put in the style guide's Code order (<see cref="GDScriptFormatter.OrderParts"/>) off
+    /// the window's thread, as one undoable edit in the file's line endings; what came of it, or why not.</summary>
+    public async Task<string> OrderPartsAsync(OpenDocument document)
+    {
+        const string what = "Order Script's Parts";
+        if (document.IsReadOnly)
+        {
+            return $"{what} was not applied: {Refusals.ReadOnly(document.Name)}";
+        }
+        using ChangeTracker asked = new(document.Text);
+        TextSnapshot snapshot = asked.Snapshot;
+        string text = snapshot.ToString();
+        GDScriptFormatted ordered = await BackgroundWork.Run(() => GDScriptFormatter.OrderParts(text.ReplaceLineEndings("\n")));
+        if (ordered.Refused is { } why)
+        {
+            return $"{what} was not applied: {why}";
+        }
+        if (ordered.Edits.Count == 0)
+        {
+            return "The script's parts are already in order";
+        }
+        IReadOnlyList<TextEdit> edits = LineEndings.Fit(snapshot, [new TextEdit(0, snapshot.Length, ordered.Text)], document.LineEnding);
+        if (!context.Editors.Documents.Contains(document) || asked.Map(edits) is not { } mapped)
+        {
+            return $"{what} was not applied: the script was edited meanwhile";
+        }
+        WorkspaceEdits.ApplyTo(context.Editors, document, mapped);
+        return "The script's parts are in order";
+    }
+
     /// <summary>The fixes of Godot's findings on an offset's line, from Passenger's reading of the script as it stands
     /// (whoever's marks are shown there): each made as one edit of the text it was offered for.</summary>
     public IReadOnlyList<EditorFix> Fixes(OpenDocument file, int offset)
