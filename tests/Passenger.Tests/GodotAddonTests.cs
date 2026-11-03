@@ -471,7 +471,8 @@ public sealed class GodotAddonTests : IDisposable
     }
 
     /// <summary>A game Godot's Play starts, relayed here, shows its members' values at their lines as one Passenger starts does,
-    /// its monitors charted with its own custom one, and an agent's click through app_click reaches its button.</summary>
+    /// its monitors charted with its own custom one, an agent's click through app_click reaches its button, and Attach
+    /// Profiler records its C# with Godot's own frames, relayed by the addon.</summary>
     [AvaloniaFact]
     public void A_relayed_games_values_show_at_their_lines_and_an_agents_click_reaches_it()
     {
@@ -504,6 +505,14 @@ public sealed class GodotAddonTests : IDisposable
             clicked = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).AppClick(app: "Spinner in Godot", control: "#Plain"), "an agent's click on the plain button",
                 TimeSpan.FromMinutes(1));
             Ui.WaitFor(() => File.Exists(Path.Combine(folder, "plain.txt")), () => $"the click to press the plain button (the tool said: {clicked})", TimeSpan.FromSeconds(30));
+
+            // Profiled as it plays, its C# sampled and Godot's own frames relayed by the addon.
+            Ui.Launched(window, window.AttachProfilerAsync(), "the profiler to attach to the relayed game");
+            Ui.WaitFor(() => window.Profiling?.Game is { } recording && recording.Count > 30, () => $"Godot's frames of the relayed game to come ({window.Profiling?.Game?.Count ?? 0}; Godot said: {Said()})",
+                TimeSpan.FromMinutes(1));
+            Passenger.App.Profiling.SnapshotRead read = Ui.Await(window.SnapshotAsync(), "the relayed game's snapshot", TimeSpan.FromMinutes(2));
+            Assert.True(read.Snapshot is { Game: not null, GameFrames.Count: > 30, Samples: > 0 },
+                $"The relayed game's profile lacks Godot's frames or its samples: {read.Message}, {read.Snapshot?.GameFrames.Count} frames, {read.Snapshot?.Samples} samples");
             TestFolders.Write(folder, "stop.txt", "stop\n");
             Ui.WaitFor(() => window.Session.Games.Count == 0, () => $"the game to end with Godot's Stop ({Games(window)}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
         }

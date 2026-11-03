@@ -125,6 +125,7 @@ public sealed class ProfilerCommands
         made.OpenRequested += (_, method) => IdeErrors.Observe(OpenMethodAsync(method));
         made.FramesPage.ControlOpened += (_, control) => OpenControl(control);
         made.GamePage.FunctionOpened += (_, opened) => OpenScript(opened.Function, opened.Folder);
+        made.ScriptOpened += (_, opened) => OpenScript(opened.Function, opened.Folder);
         made.GamePage.MethodOpened += (_, method) => IdeErrors.Observe(OpenMethodAsync(new ProfiledMethod(method.Name, method.Code)));
         made.OpenSnapshotRequested += (_, _) => IdeErrors.Observe(PickSnapshotAsync());
         made.OpenKeptRequested += (_, path) => IdeErrors.Observe(OpenSnapshotAsync(path));
@@ -846,6 +847,11 @@ public sealed class ProfilerCommands
             string program = ran.App?.Plan?.Built is { } built ? Path.GetFileNameWithoutExtension(built) : plan.ProgramName;
             // Under Hot Reload the process Run started is dotnet watch's own, and the app one it started in turn.
             return new(run, name, FileName(program), parts.Builds().WatchesHotReload ? program : null);
+        }
+        // A game Godot's editor plays, heard through Passenger's addon there: its process sampled, Godot's frames relayed.
+        if (current.Game is { Relayed: true, State: LiveTree.LiveAppState.Connected, ProcessId: int played } game)
+        {
+            return new(played, game.Name, FileName(game.Name));
         }
         return null;
     }

@@ -493,7 +493,21 @@ public sealed partial class PassengerTools
             [.. joined.CSharp.Take(top).Select(m => new ProfileFrame(m.Name, (int)Math.Round(m.Total * joined.SampleMs), (int)Math.Round(m.Self * joined.SampleMs)))])
         {
             Drawn = game.Draws ? null : "The game ran headless, so Godot drew nothing: no render stages",
+            Slowest = SlowestOf(snapshot, game, frames.MaxBy(f => f.FrameMs)!),
         };
+    }
+
+    /// <summary>A game's slowest frame as the Frames page's link opens it: its number and time, and the function that spent
+    /// the most time in itself in it, GDScript's or C#'s, as the call tree of the frame alone chooses it.</summary>
+    private static SlowFrameInfo SlowestOf(Passenger.Profiler.Snapshot snapshot, Passenger.Profiler.GameProfile game, Passenger.Profiler.GameFrame frame)
+    {
+        Passenger.Profiler.Snapshot within = snapshot.Within(frame.StartMs, frame.EndMs);
+        double period = within.SampleMs > 0 ? within.SampleMs : 1;
+        IReadOnlyList<Passenger.Profiler.CallNode> roots = [.. within.Threads,
+            .. game.CallRoots(within.GameFrames, within.Samples > 0 ? within.Joined(within.GameFrames).FrameMs : [], period)];
+        Passenger.Profiler.CallNode? costliest = Profiling.ProfilerView.Costliest(roots);
+        return new SlowFrameInfo(frame.Number, Math.Round(frame.FrameMs, 2), costliest?.Name, costliest is null ? null : costliest.Script is not null ? "GDScript" : "C#",
+            costliest is null ? 0 : Math.Round(costliest.Self * period, 2), costliest?.Script is { } function ? $"{function.File}:{function.Line}" : null);
     }
 
     /// <summary>An Avalonia app's frames as the profile tool says them, the heaviest controls first; for an app the
@@ -717,7 +731,14 @@ public sealed record GameFramesInfo(int Count, double MedianMs, double LongestMs
 
     /// <summary>Why it has no render stages, when it drew nothing.</summary>
     public string? Drawn { get; init; }
+
+    /// <summary>The slowest frame, on what it spent.</summary>
+    public SlowFrameInfo? Slowest { get; init; }
 }
+
+/// <summary>A game's slowest frame: its number and time, and the function, GDScript's or C#'s (its language), that spent the
+/// most time in itself in it, with that time and a GDScript function's res:// place; none where the frame held none.</summary>
+public sealed record SlowFrameInfo(int Frame, double Ms, string? Costliest, string? Language, double CostliestMs, string? Source);
 
 /// <summary>A script function in a game's frames: its name, its res:// place, its calls, and its own time and time in all.</summary>
 public sealed record ScriptFunctionInfo(string Name, string? Source, int Calls, double SelfMs, double TotalMs);

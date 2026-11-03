@@ -480,6 +480,99 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         }
     }
 
+    /// <summary>The GDScript of <see cref="Profile_puts_GDScripts_and_CSharps_functions_in_one_call_tree_and_opens_the_slowest_frame_on_its_costliest_function"/>:
+    /// each frame it spins in wander, then has the C# Ledger spin, which calls back into its crawl.</summary>
+    private const string Crawler = "extends Node\n\nvar ledger\nvar total := 0\n\nfunc _ready():\n\tledger = load(\"res://Ledger.cs\").new()\n\n"
+        + "func _process(_delta):\n\twander()\n\ttotal += ledger.Tally(200000, self)\n\nfunc wander():\n\tvar sum := 0\n\tfor i in 60000:\n\t\tsum += i\n\ttotal = sum\n\n"
+        + "func crawl():\n\tvar sum := 0\n\tfor i in 40000:\n\t\tsum += i\n\treturn sum\n";
+
+    /// <summary>Profile of a game whose GDScript calls C# and whose C# calls GDScript back puts both languages' functions in
+    /// the one call tree beside the threads, GDScript's as Godot measured them, each with its own time and opening its script,
+    /// and the C# sampled; the Frames page's link opens the slowest frame alone on the call tree, its costliest function chosen.</summary>
+    [AvaloniaFact]
+    public void Profile_puts_GDScripts_and_CSharps_functions_in_one_call_tree_and_opens_the_slowest_frame_on_its_costliest_function()
+    {
+        string crawler = Path.Combine(game.Folder, "wander.gd");
+        string ledger = Path.Combine(game.Folder, "Ledger.cs");
+        File.WriteAllText(crawler, Crawler);
+        File.WriteAllText(ledger, """
+            using Godot;
+
+            public partial class Ledger : RefCounted
+            {
+                public long Tally(int rounds, GodotObject back)
+                {
+                    long sum = 0;
+                    for (int i = 0; i < rounds; i++)
+                    {
+                        sum += i ^ rounds;
+                    }
+                    return sum + back.Call("crawl").AsInt64();
+                }
+            }
+
+            """);
+        File.WriteAllText(Path.Combine(game.Folder, "main.tscn"), """
+            [gd_scene load_steps=3 format=3]
+
+            [ext_resource type="Script" path="res://Main.cs" id="1"]
+            [ext_resource type="Script" path="res://wander.gd" id="2"]
+
+            [node name="Main" type="Node"]
+            script = ExtResource("1")
+
+            [node name="Wanderer" type="Node" parent="."]
+            script = ExtResource("2")
+
+            """);
+        MainWindow window = game.Open(null, languageServer: false);
+        try
+        {
+            Choose(window, Generated(window, "Spinner"));
+            Ui.Launched(window, window.ProfileAsync(), "the game's build and start under the profiler", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => Run(window).Contains("frame 300", StringComparison.Ordinal), () => $"the profiled game to run its scripts ({Run(window)})", TimeSpan.FromMinutes(1));
+            Passenger.App.Profiling.SnapshotRead read = Ui.Await(window.SnapshotAsync(), "the game's snapshot", TimeSpan.FromMinutes(2));
+            Assert.True(read.Snapshot is { Game: not null, GameFrames.Count: > 100 }, $"{read.Message}: {read.Snapshot?.GameFrames.Count} of Godot's frames, {read.Snapshot?.Game?.Why}");
+
+            Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
+            view.ShowPage(Passenger.App.Profiling.ProfilerPage.CallTree);
+            Passenger.Profiler.CallNode scripts = view.Rows.Select(r => r.Node).FirstOrDefault(n => n.Name == Passenger.Profiler.GameProfile.GDScriptRoot)
+                ?? throw new Xunit.Sdk.XunitException($"The call tree has no GDScript beside its threads: {string.Join(", ", view.Rows.Where(r => r.Depth == 0).Select(r => r.Node.Name))}");
+            string named = string.Join("; ", scripts.Ordered.Select(n => $"{n.Name} {n.Module} {n.Self}/{n.Total}"));
+            foreach ((string function, string line) in new[] { ("wander", "func wander"), ("crawl", "func crawl") })
+            {
+                Assert.True(scripts.Ordered.FirstOrDefault(n => n.Name == function) is { Script: not null, Self: > 0 } node && node.Module == $"wander.gd:{LineOf(Crawler, line) + 1}",
+                    $"The call tree's GDScript lacks {function} at its line with its own time: {named}");
+            }
+            Assert.True(Nodes(view.Rows.Where(r => r.Depth == 0 && r.Node != scripts).Select(r => r.Node)).Any(n => n.Name.Contains("Ledger.Tally", StringComparison.Ordinal) && n.Self > 0),
+                "The call tree beside the GDScript names no time of the C# method the GDScript called");
+
+            view.ShowPage(Passenger.App.Profiling.ProfilerPage.Frames);
+            Passenger.App.Profiling.GameFramesView frames = view.GamePage;
+            Ui.WaitFor(() => frames.IsEffectivelyVisible && frames.FrameLink.IsEffectivelyVisible, "the Frames page's link to the slowest frame");
+            Passenger.Profiler.GameFrame slowest = frames.Opened!;
+            Assert.Equal(frames.Frames.Max(f => f.FrameMs), slowest.FrameMs);
+            Assert.StartsWith("Open the slowest frame's calls in the call tree", frames.FrameLink.Content as string, StringComparison.Ordinal);
+            Ui.Click(frames.FrameLink);
+            Ui.WaitFor(() => view.Page == Passenger.App.Profiling.ProfilerPage.CallTree && view.Snapshot is { } shown && !ReferenceEquals(shown, shown.Whole) && view.ChosenCall is not null,
+                () => $"the slowest frame's calls on the call tree ({view.Page}, {view.ChosenCall?.Node.Name})", TimeSpan.FromMinutes(1));
+            Passenger.Profiler.CallNode chosen = view.ChosenCall!.Node;
+            Passenger.Profiler.CallNode? costliest = Passenger.App.Profiling.ProfilerView.Costliest(view.Rows.Where(r => r.Depth == 0).Select(r => r.Node));
+            Assert.True(costliest is not null && chosen == costliest && (chosen.Script is not null || chosen.Code is not null),
+                $"The slowest frame opened on {chosen.Name} ({chosen.Self}), not its costliest function {costliest?.Name} ({costliest?.Self})");
+            Assert.True(view.Snapshot!.GameFrames.Any(f => f.Number == slowest.Number), $"The call tree shows frames {string.Join(", ", view.Snapshot.GameFrames.Select(f => f.Number))}, not frame {slowest.Number}");
+        }
+        finally
+        {
+            End(window);
+            File.Delete(crawler);
+            File.Delete(ledger);
+        }
+
+        // Every node under some roots, the roots among them.
+        static IEnumerable<Passenger.Profiler.CallNode> Nodes(IEnumerable<Passenger.Profiler.CallNode> roots) => roots.SelectMany(r => Nodes(r.Children).Prepend(r));
+    }
+
     /// <summary>Run makes Passenger the game's remote debugger: the Live Visual Tree shows its scene tree, the Main node's
     /// script property typed there is what the game then prints, the error the script raises is in Problems at its line and
     /// linked from Godot's words in the Run console, and the window's status line reads the game's monitors.</summary>

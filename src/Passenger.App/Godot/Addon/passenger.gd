@@ -9,7 +9,7 @@ extends EditorPlugin
 ## Passenger listening, or one that refuses, it does nothing, and Godot plays as it always did.
 
 ## The addon's version, which Passenger reads to update an older one in place.
-const VERSION := 10
+const VERSION := 11
 ## How long a build may take to be answered.
 const BUILD_LIMIT_MS := 30 * 60 * 1000
 ## How long any other request may take to be answered.
@@ -41,6 +41,8 @@ var holding := {}
 var godot_build_skipped = null
 ## The editor's debugger of each session whose messages are relayed, by session id.
 var relayed := {}
+## The sessions whose game Passenger has Godot's profiler on in, whose frames are relayed too.
+var profiled := {}
 ## The tab Passenger's addon adds to each session's debugger, by session id, by which its debugger is found.
 var tabs := {}
 ## The sessions told to Passenger as begun, by id, until they stop.
@@ -174,6 +176,7 @@ func started(session_id: int) -> void:
 func stopped(session_id: int) -> void:
 	announced.erase(session_id)
 	holding.erase(session_id)
+	profiled.erase(session_id)
 	tell("stopped", {"session": session_id})
 
 
@@ -190,8 +193,8 @@ func relay(session_id: int) -> void:
 
 
 func _heard_game(message: String, data: Array, session_id: int) -> void:
-	# The profilers' frames, many a second, are this editor's alone.
-	if not welcomed or message.begins_with("servers:") or message.begins_with("visual:"):
+	# The profilers' frames, many a second, are this editor's alone unless Passenger profiles the game.
+	if not welcomed or (message.begins_with("servers:") or message.begins_with("visual:")) and not profiled.has(session_id):
 		return
 	started(session_id)
 	tell("game", {"session": session_id, "message": Marshalls.raw_to_base64(var_to_bytes([message, 1, _plain(data)]))})
@@ -375,6 +378,11 @@ func _heard(message: Dictionary) -> void:
 		var session: EditorDebuggerSession = sessions.get_session(int(params.get("session", -1))) if tabs.has(int(params.get("session", -1))) else null
 		var sent = bytes_to_var(Marshalls.base64_to_raw(str(params.get("message", ""))))
 		if session != null and session.is_active() and sent is Array and sent.size() == 3 and sent[2] is Array:
+			if str(sent[0]) == "profiler:servers":
+				if sent[2].size() > 0 and sent[2][0] == true:
+					profiled[int(params.get("session", -1))] = true
+				else:
+					profiled.erase(int(params.get("session", -1)))
 			session.send_message(str(sent[0]), sent[2])
 	elif method == "released":
 		holding.erase(int(params.get("session", -1)))

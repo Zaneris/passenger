@@ -99,11 +99,20 @@ public sealed class GameFramesView : DockPanel
         TextBlock joining = Muted(Joining);
         joining.Margin = new Thickness(12, 0, 12, 6);
         joining.TextWrapping = TextWrapping.Wrap;
+        frameLink = new Button { Classes = { StyleClasses.Link }, Margin = new Thickness(12, 0, 12, 6), HorizontalAlignment = HorizontalAlignment.Left };
+        ToolTip.SetTip(frameLink, "The call tree of the frame alone, both languages together, its costliest function chosen");
+        frameLink.Click += (_, _) =>
+        {
+            if (Opened is { } frame)
+            {
+                FrameOpened?.Invoke(this, frame);
+            }
+        };
         Border band = new()
         {
             [DockProperty] = Dock.Top,
             BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = new StackPanel { Children = { legend, strip, summary, joining } },
+            Child = new StackPanel { Children = { legend, strip, summary, frameLink, joining } },
             Padding = new Thickness(0, 4, 0, 0),
         };
         band.Bind(Border.BorderBrushProperty, band.GetResourceObservable(TokenKeys.Divider));
@@ -137,6 +146,17 @@ public sealed class GameFramesView : DockPanel
 
     /// <summary>A GDScript function's row opened: its script, at its line.</summary>
     public event EventHandler<(ScriptFunction Function, string Folder)>? FunctionOpened;
+
+    /// <summary>A frame asked opened on what it spent (<see cref="FrameLink"/>): the frame chosen, else the slowest shown.</summary>
+    public event EventHandler<GameFrame>? FrameOpened;
+
+    private readonly Button frameLink;
+
+    /// <summary>The link that opens the chosen frame's calls, or the slowest frame's while none is chosen.</summary>
+    public Button FrameLink => frameLink;
+
+    /// <summary>The frame the link opens: the one chosen on the chart, else the slowest of those shown; none without frames.</summary>
+    public GameFrame? Opened => Chosen ?? (frames.Count > 0 ? frames.MaxBy(f => f.FrameMs) : null);
 
     /// <summary>A C# method's row opened: its source.</summary>
     public event EventHandler<HotSpot>? MethodOpened;
@@ -219,6 +239,10 @@ public sealed class GameFramesView : DockPanel
         IReadOnlyList<GameFrame> over = Chosen is { } frame ? [frame] : frames;
         GameJoin within = Chosen is not null ? join(over) : joined;
         summary.Text = Said(game, over, within);
+        frameLink.Content = Opened is not { } opened ? null
+            : Chosen is not null ? $"Open frame {opened.Number}'s calls in the call tree"
+            : $"Open the slowest frame's calls in the call tree (frame {opened.Number}, {opened.FrameMs:N1} ms)";
+        frameLink.IsVisible = Opened is not null;
         foreach (GameRow kind in Kinds(game, over, within))
         {
             rows.Add(kind);

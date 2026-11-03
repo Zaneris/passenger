@@ -42,6 +42,28 @@ public sealed class GameFramesTests
     }
 
     [Fact]
+    public void A_games_frames_give_the_call_tree_its_GDScript_functions_with_their_own_times_and_Godots_own_work_beside_the_threads()
+    {
+        GameProfile game = new("Godot 4.7.2", "/games/spinner", draws: false, null,
+            [ScriptFunction.Of("res://wander.gd::6::_process"), ScriptFunction.Of("res://wander.gd::10::wander"), ScriptFunction.Of("res://wander.gd::0::Node.get_parent")], []);
+        GameFrame[] frames =
+        [
+            Frame(1, 10, new ScriptWork(0, 1, 0.5, 4.5, 0), new ScriptWork(1, 1, 3, 3, 0), new ScriptWork(2, 2, 1, 1, 0)) with { ScriptMs = 4.5 },
+            Frame(2, 12, new ScriptWork(0, 1, 0.5, 4.5, 0), new ScriptWork(1, 1, 3, 3, 0)) with { ScriptMs = 3.5 },
+        ];
+
+        // Each time in samples of half a millisecond; the C# the engine called took 2 and 3 ms of the frames.
+        IReadOnlyList<CallNode> roots = game.CallRoots(frames, [2, 3], 0.5);
+
+        Assert.Equal([(GameProfile.GDScriptRoot, 0, 16), (GameProfile.EngineRoot, 18, 18)], roots.Select(r => (r.Name, r.Self, r.Total)));
+        Assert.Equal([("_process", "wander.gd:6", 2, 18), ("wander", "wander.gd:10", 12, 12), (GameProfile.ApiRoot, "Godot", 0, 2)],
+            roots[0].Ordered.Select(n => (n.Name, n.Module, n.Self, n.Total)));
+        Assert.Equal(game.FunctionAt(1), roots[0].Ordered[1].Script);
+        Assert.Equal([("Node.get_parent", "from wander.gd", 2, 2)], roots[0].Ordered[2].Ordered.Select(n => (n.Name, n.Module, n.Self, n.Total)));
+        Assert.True(roots[0].Ordered[2].Script is null && roots[1].Script is null, "A row of Godot's API or of its own work was taken for a GDScript function");
+    }
+
+    [Fact]
     public void The_CSharp_the_engine_called_is_joined_to_each_frame_by_its_samples_there_and_other_threads_work_is_left_out()
     {
         const string Bridge = "Godot.Bridge.CSharpInstanceBridge.Call(int, int, int, int, int, int)";

@@ -113,7 +113,7 @@ public sealed class ProfilerView : DockPanel
         {
             if (tree.SelectedItem is CallRow row)
             {
-                Open(row.Node.Name, row.Node.Code);
+                OpenRow(row);
             }
         };
         TreeKeys.Attach<CallRow>(tree, Toggle, OpenRow);
@@ -168,6 +168,7 @@ public sealed class ProfilerView : DockPanel
         memory = new MemoryView();
         frames = new FramesView();
         game = new GameFramesView { IsVisible = false };
+        game.FrameOpened += (_, frame) => IdeErrors.Observe(OpenFrameAsync(frame));
         framesPage = new Panel { Children = { frames, game } };
         flame = new FlameGraph();
         flameScroll = new ScrollViewer { Content = flame, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -475,9 +476,19 @@ public sealed class ProfilerView : DockPanel
             page.IsEnabled = true;
         }
         rows.Clear();
+        // A Godot game's frames give its GDScript and Godot's own work, counted as samples of the run's period, beside the threads.
+        double period = snapshot.SampleMs > 0 ? snapshot.SampleMs : 1;
+        IReadOnlyList<CallNode> gameRoots = whole.Game is { } profile && snapshot.GameFrames.Count > 0
+            ? profile.CallRoots(snapshot.GameFrames, snapshot.Samples > 0 ? snapshot.Joined(snapshot.GameFrames).FrameMs : [], period)
+            : [];
+        int counted = snapshot.Samples > 0 ? snapshot.Samples : Math.Max(1, gameRoots.Sum(r => r.Total));
         foreach (CallNode thread in snapshot.Threads)
         {
-            rows.Add(new CallRow(thread, 0, rows, "ms", snapshot.Samples, snapshot.SampleMs));
+            rows.Add(new CallRow(thread, 0, rows, "ms", counted, period));
+        }
+        foreach (CallNode root in gameRoots)
+        {
+            rows.Add(new CallRow(root, 0, rows, "ms", counted, period));
         }
         if (rows.Count > 0)
         {
@@ -613,8 +624,78 @@ public sealed class ProfilerView : DockPanel
         row.List.Close(row);
     }
 
-    /// <summary>A row's method opened at its source; false for a thread or a type, at the top, which stand for no method.</summary>
-    private bool OpenRow(CallRow row) => row.Depth > 0 && Open(row.Node.Name, row.Node.Code);
+    /// <summary>A row's method opened at its source, a GDScript function's at its script's line; false for a thread or a
+    /// type, at the top, which stand for no method.</summary>
+    private bool OpenRow(CallRow row)
+    {
+        if (row.Node.Script is { } function && Snapshot?.Whole.Game is { } game)
+        {
+            ScriptOpened?.Invoke(this, (function, game.Folder));
+            return true;
+        }
+        return row.Depth > 0 && Open(row.Node.Name, row.Node.Code);
+    }
+
+    /// <summary>The page last asked shown.</summary>
+    public ProfilerPage Page { get; private set; }
+
+    /// <summary>The call tree's row chosen, or null.</summary>
+    public CallRow? ChosenCall => tree.SelectedItem as CallRow;
+
+    /// <summary>A GDScript function's row of the call tree opened: its script, at its line.</summary>
+    public event EventHandler<(ScriptFunction Function, string Folder)>? ScriptOpened;
+
+    /// <summary>A frame of a Godot game opened on what it spent: the window narrowed to the frame, the call tree shown with
+    /// the frame's costliest function chosen, a GDScript function's or a C# method's by its own time.</summary>
+    public async Task OpenFrameAsync(GameFrame frame)
+    {
+        await ChooseAsync((frame.StartMs, frame.EndMs));
+        ShowPage(ProfilerPage.CallTree);
+        if (Costliest(rows.Where(r => r.Depth == 0).Select(r => r.Node)) is not { } costliest)
+        {
+            return;
+        }
+        List<CallNode> path = [];
+        for (CallNode? at = costliest; at is not null; at = at.Parent)
+        {
+            path.Insert(0, at);
+        }
+        CallRow? row = null;
+        foreach (CallNode node in path)
+        {
+            if (row is not null)
+            {
+                Expand(row);
+            }
+            row = rows.FirstOrDefault(r => r.Node == node);
+            if (row is null)
+            {
+                return;
+            }
+        }
+        tree.SelectedItem = row;
+        tree.ScrollIntoView(row!);
+    }
+
+    /// <summary>The function under some roots that spent the most time in itself: a GDScript function, or a C# method with
+    /// its source; the runtime's and Godot's native frames left aside.</summary>
+    public static CallNode? Costliest(IEnumerable<CallNode> roots)
+    {
+        CallNode? best = null;
+        Stack<CallNode> left = new(roots);
+        while (left.TryPop(out CallNode? node))
+        {
+            if ((node.Script is not null || node.Code is not null) && (best is null || node.Self > best.Self))
+            {
+                best = node;
+            }
+            foreach (CallNode child in node.Children)
+            {
+                left.Push(child);
+            }
+        }
+        return best;
+    }
 
     /// <summary>Goes to a method's source; false for a row no source has (a thread, the runtime's own frames).</summary>
     private bool Open(string method, MethodCode? code)
@@ -637,6 +718,7 @@ public sealed class ProfilerView : DockPanel
     /// <summary>Shows a page; the placeholder's words when it has nothing to show.</summary>
     public void ShowPage(ProfilerPage page)
     {
+        Page = page;
         Control[] views = [tree, spots, flameScroll, framesPage, allocations, garbage, memory, keptPage];
         bool shown = false;
         for (int i = 0; i < views.Length; i++)

@@ -114,6 +114,50 @@ public sealed class GameProfile
             .ThenBy(s => s.Function.Name, StringComparer.Ordinal)];
     }
 
+    /// <summary>The roots a call tree shows beside a run's threads for some frames, each time as the run's samples count it
+    /// (<paramref name="sampleMs"/> a sample): GDScript as Godot measured it, each function with its own time and its time
+    /// with what it called, beside one another as Godot measures them, without their callers, and its calls into Godot's API;
+    /// and Godot's own work, the frames' time beyond their scripts and the C# the engine called in each (<paramref name="csharpMs"/>).</summary>
+    public IReadOnlyList<CallNode> CallRoots(IReadOnlyList<GameFrame> frames, IReadOnlyList<double> csharpMs, double sampleMs)
+    {
+        int Counted(double ms) => (int)Math.Round(Math.Max(0, ms) / sampleMs);
+        IReadOnlyList<ScriptSpot> spots = Spots(frames);
+        CallNode scripts = new(GDScriptRoot, "Godot", null) { Total = Counted(frames.Sum(f => f.ScriptMs)) };
+        foreach (ScriptSpot spot in spots.Where(s => !s.Function.IsEngineCall))
+        {
+            CallNode function = scripts.Child(spot.Function.Name, Placed(spot.Function), null);
+            function.Script = spot.Function;
+            function.Self = Counted(spot.SelfMs);
+            function.Total = Math.Max(function.Self, Counted(spot.TotalMs));
+        }
+        List<ScriptSpot> calls = [.. spots.Where(s => s.Function.IsEngineCall)];
+        if (calls.Count > 0)
+        {
+            CallNode api = scripts.Child(ApiRoot, "Godot", null);
+            foreach (ScriptSpot call in calls)
+            {
+                CallNode called = api.Child(call.Function.Name, $"from {Path.GetFileName(call.Function.File)}", null);
+                called.Self = called.Total = Counted(call.SelfMs);
+                api.Total += called.Total;
+            }
+        }
+        double own = frames.Select((f, i) => f.FrameMs - f.ScriptMs - (i < csharpMs.Count ? csharpMs[i] : 0)).Where(ms => ms > 0).Sum();
+        CallNode engine = new(EngineRoot, "Godot", null) { Self = Counted(own), Total = Counted(own) };
+        return [scripts, engine];
+    }
+
+    /// <summary>The call tree's root of the frames' GDScript.</summary>
+    public const string GDScriptRoot = "GDScript, as Godot's profiler measured it";
+
+    /// <summary>The call tree's row of the frames' scripts' calls into Godot's API, under <see cref="GDScriptRoot"/>.</summary>
+    public const string ApiRoot = "Scripts' calls into Godot's API";
+
+    /// <summary>The call tree's root of the time the frames took in Godot's own work.</summary>
+    public const string EngineRoot = "Godot's own work in its frames";
+
+    /// <summary>Where a script function is, as a row says it: its file's name and its line ("wander.gd:10").</summary>
+    public static string Placed(ScriptFunction function) => function.Line > 0 ? $"{Path.GetFileName(function.File)}:{function.Line}" : Path.GetFileName(function.File);
+
     /// <summary>A function by its number, or one standing for a number the frames name that no signature told.</summary>
     public ScriptFunction FunctionAt(int number) => number >= 0 && number < Functions.Count ? Functions[number] : new ScriptFunction(string.Empty, 0, $"function #{number}");
 

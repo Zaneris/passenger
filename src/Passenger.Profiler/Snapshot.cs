@@ -26,6 +26,10 @@ public sealed class CallNode(string name, string module, CallNode? parent, Metho
 
     /// <summary>Where its method is, as <see cref="HotSpot.Code"/> says it; none for a thread, a type or a native frame.</summary>
     public MethodCode? Code { get; } = code;
+
+    /// <summary>The GDScript function it stands for, as Godot's profiler measured it beside the samples
+    /// (<see cref="GameProfile.CallRoots"/>); none for a sampled frame.</summary>
+    public ScriptFunction? Script { get; internal set; }
     public CallNode? Parent { get; } = parent;
     public int Total { get; internal set; }
     public int Self { get; internal set; }
