@@ -486,13 +486,18 @@ Projects in `src/`; `find_symbol` finds the rest:
   registry (`RegistryLogins`, server names only), the image the person's own, labelled by nothing of Passenger's; it is
   judged by the SDK's "Pushed image" line, as an unreachable base image is only a warning while dotnet exits 0, and the
   SDK's registry client tries HTTPS first even on localhost. An AppHost publishes through its own publishers into the
-  state, landed by `MainWindow.LandFilesAsync`.
+  state, landed by `MainWindow.LandFilesAsync`. An image's vulnerabilities come from the person's `docker scout`
+  (`DockerScout`) only when asked, in its Details (`ImageDetailsPane`) and at a Dockerfile's `FROM`
+  (`EngineChecks.Scout`); without the plugin docker answers `scout … --format` with "unknown flag", so a missing one is
+  found by `docker scout version`. A container's .NET service's metrics come through `passenger-tools trace --metrics`.
 - **Aspire.** `AspireController` (the IDE execution protocol on loopback, bearer tokens checked first),
   `AspireInteractions` (gRPC, its C# checked in), `AspireClient` (the CLI, for an AppHost Passenger didn't start); a
   resource's relationships both ways are `AspireDetailsPane`'s (chosen by `AspireModel.ChooseNamed`), its program
   `AspireController.ProgramOf` (`executable.pid`), its metrics read from its runtime by the Profiler's `LiveMetrics` and
-  charted by `Telemetry/MetricsPane` on the Stats tab only while shown. MetricsEventSource's CollectionStart and Stop
-  reach TraceEvent as `Collection/Start` and `Collection/Stop`, and a histogram's count is the interval's.
+  charted by `Telemetry/MetricsPane` on the Stats tab only while shown (one value an instrument, `MetricsPane.Combined`,
+  which `telemetry` kind metrics answers too), the AppHost's graph `AspireGraph`, built from the snapshot's
+  relationships. MetricsEventSource's CollectionStart and Stop reach TraceEvent as `Collection/Start` and
+  `Collection/Stop`, and a histogram's count is the interval's.
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
   environment only; Endpoints sends nothing but on Test or Send (an app's OpenAPI document, `OpenApiDocument` and
   `OpenApiSchemas`, Passenger's own reader, comes from a loopback app the folder runs or the build alone,
