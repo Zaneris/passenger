@@ -1499,10 +1499,16 @@ public static class Ui
 
     /// <summary>A click on a console line's link to a file, at its first character, as a person clicks it: the pointer
     /// rested there first, failing unless that underlines the link.</summary>
-    public static void ClickLink(Passenger.App.ToolWindows.OutputView console, string line)
+    public static void ClickLink(Passenger.App.ToolWindows.OutputView console, string line) =>
+        ClickLink(console, line, link => link.Target is Passenger.App.ToolWindows.FileLink);
+
+    /// <summary>A click on a console line's link the given one names (a file's place, the folder a publish landed in), at
+    /// its first character, as a person clicks it: the pointer rested there first, failing unless that underlines the
+    /// link.</summary>
+    public static void ClickLink(Passenger.App.ToolWindows.OutputView console, string line, Func<Passenger.App.ToolWindows.FoundLink, bool> which)
     {
         CodeEditor editor = console.Editor;
-        Passenger.App.ToolWindows.FoundLink link = console.Links.In(line).Single(l => l.Target is Passenger.App.ToolWindows.FileLink);
+        Passenger.App.ToolWindows.FoundLink link = console.Links.In(line).Single(which);
         int offset = editor.Document.Snapshot.ToString().IndexOf(line, StringComparison.Ordinal) + link.Start;
         editor.GoTo(editor.Document.Snapshot.GetPosition(offset));
         Settle();
@@ -1510,7 +1516,7 @@ public static class Ui
         TopLevel top = TopLevel.GetTopLevel(editor)!;
         top.MouseMove(editor.TranslatePoint(within, top)!.Value);
         Settle();
-        Assert.True(editor.HoveredLink is { Target: Passenger.App.ToolWindows.FileLink }, $"The pointer rests on the line's place but nothing is underlined:\n{line}");
+        Assert.True(editor.HoveredLink is { } hovered && Equals(hovered.Target, link.Target), $"The pointer rests on the line's place but nothing is underlined:\n{line}");
         Click(editor, within);
     }
 

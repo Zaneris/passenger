@@ -8,6 +8,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Explorer;
 using Passenger.App.Run;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
 
@@ -71,6 +72,25 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
             Button said = window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StatusMessage");
             Ui.Click(said);
             Assert.Equal([landing], window.ShownInFileManager);
+
+            // The Build window's own line links the folder too: a click there shows it in the file manager.
+            window.ShowToolWindow(ToolWindowIds.Build);
+            Ui.Settle();
+            OutputView build = window.BottomPanel.Build;
+            build.Flush();
+            string published = build.Document.Snapshot.ToString().Split('\n').Single(l => l.StartsWith("Published Hello (FolderProfile) to ", StringComparison.Ordinal));
+            FoundLink link = Assert.Single(build.Links.In(published), l => l.Target is FolderLink);
+            Assert.Equal(landing, published[link.Start..(link.Start + link.Length)]);
+            Ui.ClickLink(build, published, link => link.Target is FolderLink);
+            Assert.Equal([landing, landing], window.ShownInFileManager);
+
+            // A long build pushes the console's scan answers out; the IDE's own claim is kept and still opens the folder.
+            for (int i = 0; i < 5000; i++)
+            {
+                build.Links.In($"line {i}");
+            }
+            Ui.ClickLink(build, published, link => link.Target is FolderLink);
+            Assert.Equal([landing, landing, landing], window.ShownInFileManager);
         }
         finally
         {

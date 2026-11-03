@@ -1,11 +1,13 @@
 using System.Text.RegularExpressions;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 
 namespace Passenger.App.Run;
 
 /// <summary>Publish: dotnet publish of one project with its profile, as a build of the Build window's (its output there,
 /// its problems in Problems, Stop ending it, the Build window's Rerun publishing again), its folder resolved by MSBuild
-/// before it starts and said once it has landed there, the status bar's word a way to open it.</summary>
+/// before it starts and said once it has landed there, a link in the Build window's line and the status bar's word each
+/// a way to open it.</summary>
 public sealed partial class BuildRunController
 {
     /// <summary>The publish under way, from its start to <see cref="FinishBuild"/>.</summary>
@@ -94,7 +96,10 @@ public sealed partial class BuildRunController
         string? folder = publish.Folder is { } named && Directory.Exists(named) ? PathNames.Canonical(named) : null;
         if (folder is not null)
         {
-            parts.Views.Build.Append($"Published {publish.Shown} to {folder}\n");
+            string line = $"Published {publish.Shown} to {folder}";
+            parts.Views.Build.Append($"{line}\n");
+            // The folder is the IDE's own word, not a path a program's output printed: a click shows it in the file manager.
+            parts.Views.Build.Links.Claim(line, line.Length - folder.Length, folder.Length, new FolderLink(folder));
         }
         if (publish.Profile is { } profile)
         {
