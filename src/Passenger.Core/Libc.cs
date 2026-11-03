@@ -32,10 +32,21 @@ public static partial class Libc
     [LibraryImport("libc", EntryPoint = "dup2", SetLastError = true)]
     public static partial int DuplicateTo(int from, int to);
 
-    /// <summary>A process's executable on macOS, through proc_pidpath; null when it cannot be read (gone, or not the
-    /// caller's to ask of).</summary>
+    /// <summary>A process's executable, through proc_pidpath on macOS and /proc's link on Linux; null when it cannot be
+    /// read (gone, or not the caller's to ask of).</summary>
     public static unsafe string? ExecutableOf(int process)
     {
+        if (OperatingSystem.IsLinux())
+        {
+            try
+            {
+                return new FileInfo($"/proc/{process}/exe").LinkTarget;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
         byte* path = stackalloc byte[LongestPath];
         int length = ProcPidPath(process, path, LongestPath);
         return length > 0 ? Encoding.UTF8.GetString(path, length) : null;

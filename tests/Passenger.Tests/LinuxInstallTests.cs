@@ -141,11 +141,47 @@ public sealed class LinuxInstallTests
             $"The update left {string.Join(", ", Directory.EnumerateFileSystemEntries(opt).Select(Path.GetFileName))} in ~/.local/opt");
     }
 
-    /// <summary>Runs an unpacked folder's install.sh for one person, <paramref name="home"/> theirs, with a folder of
-    /// programs before the PATH's own where one is given.</summary>
-    private static async Task<ChildResult> Install(string script, string home, string? programs = null)
+    /// <summary>The installed install.sh given another unpacked release with <c>--from</c> installs that one in its place,
+    /// and run again with nothing given refreshes the menu entry where it is, leaving the install as it is.</summary>
+    [Fact]
+    public async Task An_installed_install_sh_installs_the_release_from_names_and_run_again_refreshes_the_menu_entry()
     {
-        ProcessStartInfo start = ChildProcesses.Command("/bin/sh", [script], home);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip(NoShell);
+            return;
+        }
+        string root = PathNames.Canonical(TestFolders.Create("install-"));
+        string home = Directory.CreateDirectory(Path.Combine(root, "home")).FullName;
+        string installed = Path.Combine(home, ".local", "opt", "passenger");
+        string entry = Path.Combine(home, ".local", "share", "applications", App + ".desktop");
+        ChildResult install = await Install(Unpacked(Path.Combine(root, "first"), "1"), home);
+        Assert.True(install.Succeeded, $"The first release's install failed: {install.Said}");
+        string second = Path.GetDirectoryName(Unpacked(Path.Combine(root, "second"), "2"))!;
+
+        install = await Install(Path.Combine(installed, "install.sh"), home, from: second);
+
+        Assert.True(install.Succeeded, $"The installed install.sh given --from {second} refused: {install.Said}");
+        Assert.True(File.ReadAllText(Path.Combine(installed, "app", "release.txt")) == "2",
+            $"The installed install.sh given --from the second release left ~/.local/opt/passenger {Held(installed)}");
+        Assert.True(Directory.EnumerateFileSystemEntries(Path.GetDirectoryName(installed)!).Select(Path.GetFileName).SequenceEqual(["passenger"]),
+            $"The install --from left {string.Join(", ", Directory.EnumerateFileSystemEntries(Path.GetDirectoryName(installed)!).Select(Path.GetFileName))} in ~/.local/opt");
+
+        File.Delete(entry);
+        string before = Held(installed);
+        install = await Install(Path.Combine(installed, "install.sh"), home);
+
+        Assert.True(install.Succeeded, $"The installed install.sh run again refused: {install.Said}");
+        Assert.True(File.ReadAllText(entry).Contains($"Exec=\"{installed}/passenger\" %f", StringComparison.Ordinal),
+            $"The installed install.sh run again did not make the menu entry naming the install's launcher: {Held(entry)}");
+        Assert.True(Held(installed) == before, $"The installed install.sh run again changed the install, to {Held(installed)} from {before}");
+    }
+
+    /// <summary>Runs an unpacked folder's install.sh for one person, <paramref name="home"/> theirs, with a folder of
+    /// programs before the PATH's own where one is given, installing another unpacked folder where one is.</summary>
+    private static async Task<ChildResult> Install(string script, string home, string? programs = null, string? from = null)
+    {
+        ProcessStartInfo start = ChildProcesses.Command("/bin/sh", from is null ? [script] : [script, "--from", from], home);
         start.Environment["HOME"] = home;
         start.Environment["XDG_DATA_HOME"] = Path.Combine(home, ".local", "share");
         start.Environment.Remove("SUDO_USER");

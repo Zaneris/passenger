@@ -5,7 +5,9 @@
 #                                        your applications menu with its icon and file types (~/.local/share)
 #   sudo ./install.sh --system           for everyone: /opt/passenger, /usr/local/bin/passenger, /usr/share/applications
 #   ./install.sh --uninstall [--system]  removes what that install added, and leaves the settings (~/.local/share/Passenger)
-# Installing a newer release's folder the same way replaces the old files and keeps the settings.
+#   ./install.sh --from FOLDER [--system] installs the unpacked passenger/ folder FOLDER rather than this script's own
+# Installing a newer release's folder the same way replaces the old files and keeps the settings; the installed script
+# run again refreshes the menu entry, icons and command.
 set -eu
 
 app=io.github.zaneris.passenger
@@ -16,24 +18,35 @@ fail() {
 }
 
 usage() {
-    sed -n '2,8s/^# \{0,1\}//p' "$0"
+    sed -n '2,11s/^# \{0,1\}//p' "$0"
 }
 
 system=
 uninstall=
-for arg in "$@"; do
-    case $arg in
+from=
+while [ $# -gt 0 ]; do
+    case $1 in
         --system) system=1 ;;
         --uninstall) uninstall=1 ;;
+        --from)
+            [ $# -gt 1 ] || fail "--from names the unpacked passenger/ folder to install: --from FOLDER"
+            from=$2
+            shift
+            ;;
         -h | --help)
             usage
             exit 0
             ;;
-        *) fail "'$arg' is neither --system, --uninstall nor --help" ;;
+        *) fail "'$1' is neither --system, --uninstall, --from FOLDER nor --help" ;;
     esac
+    shift
 done
 
-here=$(dirname "$(readlink -f "$0")")
+if [ -n "$from" ]; then
+    here=$(readlink -f "$from") || fail "$from is no folder to install from"
+else
+    here=$(dirname "$(readlink -f "$0")")
+fi
 if [ -n "$system" ]; then
     [ "$(id -u)" = 0 ] || fail "--system installs for everyone, under /opt and /usr: run it with sudo"
     dest=/opt/passenger
@@ -127,7 +140,7 @@ elif [ -e "$link" ]; then
 fi
 
 # The new files beside the old, then swapped in, so a Passenger still running keeps the files it has open.
-if [ "$here" != "$dest" ]; then
+if [ "$here" != "$(readlink -f "$dest" 2> /dev/null || echo "$dest")" ]; then
     if [ -e "$dest" ] && ! is_passenger "$dest"; then
         fail "$dest is there and is not a Passenger install: move it away first"
     fi

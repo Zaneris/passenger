@@ -8,10 +8,11 @@ using Passenger.Packages;
 namespace Passenger.App;
 
 /// <summary>The check for updates, and the update: the person's window asks for the latest release as it starts and
-/// once a day while Check for updates is on. A copy its installer or disk image put in place downloads a newer one in
-/// the background, saying so in the status bar, checks it, offers Restart to Update and installs it as Passenger ends;
-/// any other copy says once per version that one is out, linking this system's download. Help, Check for Updates asks
-/// when a person wants. Every answer is logged; only one a person asked for, or a download that did not land, is
+/// once a day while Check for updates is on. A copy its installer, disk image or archive put in place downloads a newer
+/// one in the background, saying so in the status bar, checks it, offers Restart to Update and installs it as Passenger
+/// ends (or says the command that installs it); any other copy says once per version that one is out, linking this
+/// system's download, or, for a package manager's copy, that the package manager updates it. Help, Check for Updates
+/// asks when a person wants. Every answer is logged; only one a person asked for, or a download that did not land, is
 /// said.</summary>
 public partial class MainWindow
 {
@@ -62,6 +63,10 @@ public partial class MainWindow
     /// <summary>The release downloaded and checked, which installs as Passenger ends, or null.</summary>
     public LatestRelease? UpdateReady => readyRelease;
 
+    /// <summary>The command that installs the release downloaded and checked where this copy cannot install it itself,
+    /// which the notice's click copies; or null.</summary>
+    public string? UpdateByHand { get; private set; }
+
     private void AddUpdates()
     {
         actions!.Add(new IdeAction(AppActions.CheckForUpdates, "Check for Updates…", "Help",
@@ -89,7 +94,8 @@ public partial class MainWindow
             if (readyRelease is { } ready && !HandsOnUpdates())
             {
                 IdeErrors.Write($"Updates: closing with Passenger {ready.Version} ready to install{(restartToUpdate ? ", to start it again" : string.Empty)}");
-                if (keepsSettings)
+                // An install that asks for a password is left for Restart to Update: closing alone installs nothing.
+                if (keepsSettings && (restartToUpdate || selfUpdate?.Asks is null))
                 {
                     state!.Updates.Set(state.Updates.Value with { Installing = ready.Version });
                     state.Updates.Flush();
@@ -106,6 +112,11 @@ public partial class MainWindow
         PassengerApp.WatchUpdatesIn(this);
         watchesUpdates = true;
         SayInstalled();
+        if (selfUpdate is { } tidying)
+        {
+            // Not held: removing a release replaced is the disk's work, which nothing drawn waits for.
+            IdeErrors.Observe(BackgroundWork.Unheld(tidying.TidyAsync));
+        }
         if (!settings.CheckForUpdates)
         {
             // Off: nothing left from a session it was on in installs.
@@ -156,6 +167,11 @@ public partial class MainWindow
         if (readyRelease is not null && SelfUpdate is { } updater)
         {
             updater.Install(restartToUpdate);
+            // As the process ends, with no window left to keep the state: the next start says why.
+            if (updater.NotInstalled is { } why && keepsSettings)
+            {
+                state!.Updates.ChangeNow(kept => kept with { NotInstalled = why });
+            }
             IdeErrors.Flush();
         }
     }
@@ -198,9 +214,29 @@ public partial class MainWindow
             return;
         }
         IdeErrors.Write($"Updates: {answer.Said}");
+        UpdatedElsewhere? elsewhere = null;
+        if (answer is ReleaseAnswer.Newer && SelfUpdate is { } installs && settings.CheckForUpdates)
+        {
+            try
+            {
+                elsewhere = await BackgroundWork.Run(() => installs.ElsewhereAsync(end));
+            }
+            catch (OperationCanceledException) when (end.IsCancellationRequested)
+            {
+                return;
+            }
+            if (end.IsCancellationRequested)
+            {
+                return;
+            }
+            if (elsewhere is not null)
+            {
+                IdeErrors.Write($"Updates: this copy does not install it: {elsewhere.Why}");
+            }
+        }
         switch (answer)
         {
-            case ReleaseAnswer.Newer { Release: var release } when SelfUpdate is { } updater && settings.CheckForUpdates:
+            case ReleaseAnswer.Newer { Release: var release } when SelfUpdate is { } updater && settings.CheckForUpdates && elsewhere is null:
                 Announced = release.Version;
                 if (readyRelease?.Version == release.Version)
                 {
@@ -226,7 +262,7 @@ public partial class MainWindow
                 bool told = Announced is { } before && VersionOrder.Instance.Compare(release.Version, before) <= 0;
                 if (asked || !told)
                 {
-                    ShowUpdate(release, release.Link);
+                    ShowUpdate(release, elsewhere is { Download: false } ? release.Page : release.Link, elsewhere?.Why);
                 }
                 if (!told)
                 {
@@ -256,6 +292,7 @@ public partial class MainWindow
         downloading = mine;
         downloadingRelease = release;
         readyRelease = null;
+        UpdateByHand = null;
         ShowDownloading(release, 0);
         CancellationToken cancel = mine.Token;
         // Progress posted before the download ended can land after its outcome, which it must not cover.
@@ -307,6 +344,10 @@ public partial class MainWindow
             case UpdateOutcome.Ready:
                 readyRelease = release;
                 ShowReady(release);
+                break;
+            case UpdateOutcome.ByHand { Command: var command }:
+                UpdateByHand = command;
+                ShowByHand(release, command);
                 break;
             case UpdateOutcome.Refused { Reason: var reason }:
                 ShowRefused(release, $"Passenger {release.Version} was not installed: {reason}");
@@ -362,11 +403,12 @@ public partial class MainWindow
         {
             return;
         }
-        if (notice is UpdateNotice.Downloading or UpdateNotice.Ready or UpdateNotice.Blocked && UpdateShown is { } shown)
+        if (notice is UpdateNotice.Downloading or UpdateNotice.Ready or UpdateNotice.Blocked or UpdateNotice.ByHand && UpdateShown is { } shown)
         {
             ShowUpdate(shown, shown.Link);
         }
         readyRelease = null;
+        UpdateByHand = null;
         // Once the download stopped has let go of its files. Not drawn: removing hundreds of megabytes is the disk's work.
         Task? stopping = downloadTask;
         IdeErrors.Observe(BackgroundWork.Unheld(async () =>
@@ -386,7 +428,8 @@ public partial class MainWindow
         {
             return;
         }
-        state.Updates.Set(state.Updates.Value with { Installing = null });
+        string? why = state.Updates.Value.NotInstalled;
+        state.Updates.Set(state.Updates.Value with { Installing = null, NotInstalled = null });
         if (installing == Product.Version)
         {
             status.Text = $"Passenger was updated to {installing}";
@@ -394,8 +437,8 @@ public partial class MainWindow
         }
         else
         {
-            Say($"Passenger {installing} did not install: Help, Show Log says why", LogPlace);
-            IdeErrors.Write($"Updates: Passenger {installing} was to install as the last session ended, but this is {Product.Version}");
+            Say(why is null ? $"Passenger {installing} did not install: Help, Show Log says why" : $"Passenger {installing} did not install: {why}", LogPlace);
+            IdeErrors.Write($"Updates: Passenger {installing} was to install as the last session ended, but this is {Product.Version}{(why is null ? string.Empty : $": {why}")}");
         }
     }
 
@@ -435,8 +478,21 @@ public partial class MainWindow
     private void ShowReady(LatestRelease release)
     {
         UpdateShown = release;
+        string how = SelfUpdate?.Asks is { } asks
+            ? $"Click to restart into it.\n{asks}, and only Restart to Update installs it."
+            : "Click to restart into it;\notherwise it installs when Passenger closes.";
         Notice(UpdateNotice.Ready, IconKeys.Rerun, TokenKeys.Link, $"Restart to update to Passenger {release.Version}",
-            $"Passenger {release.Version} is downloaded and checked. Click to restart into it;\notherwise it installs when Passenger closes.{RelaysEnded()}");
+            $"Passenger {release.Version} is downloaded and checked. {how}{RelaysEnded()}");
+    }
+
+    /// <summary>A release downloaded and checked that this copy cannot install itself: the command that does, which a
+    /// click copies.</summary>
+    private void ShowByHand(LatestRelease release, string command)
+    {
+        UpdateShown = release with { Link = release.Page };
+        Notice(UpdateNotice.ByHand, IconKeys.ArrowDown, TokenKeys.Link, $"Passenger {release.Version} ready to install",
+            $"Passenger {release.Version} is downloaded and checked, but this user cannot write {SelfUpdate?.Installed}, where it is installed for everyone.\n"
+            + $"To install it, run this in a terminal, then start Passenger again:\n{command}\nClick to copy the command.");
     }
 
     /// <summary>What installing does to the agents connected through relays of this install, said before, with the folders
@@ -498,10 +554,24 @@ public partial class MainWindow
         {
             Request(AppActions.RestartToUpdate);
         }
+        else if (notice == UpdateNotice.ByHand && UpdateByHand is { } command && UpdateShown is { } ready)
+        {
+            IdeErrors.Observe(CopyCommandAsync(command, ready.Version));
+        }
         else if (UpdateShown is { } shown)
         {
             Browse(notice == UpdateNotice.Downloading ? shown.Page : shown.Link);
         }
+    }
+
+    /// <summary>The command that installs a release, on the clipboard for the person to paste into a terminal.</summary>
+    private async Task CopyCommandAsync(string command, string version)
+    {
+        if (Clipboard is { } clipboard)
+        {
+            await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clipboard, command);
+        }
+        status.Text = $"Copied the command that installs Passenger {version}: paste it into a terminal";
     }
 
     private enum UpdateNotice
@@ -511,5 +581,6 @@ public partial class MainWindow
         Ready,
         Blocked,
         Refused,
+        ByHand,
     }
 }
