@@ -604,17 +604,25 @@ public sealed class ProjectSession : IAsyncDisposable
         (LaunchPlan listened, Godot.GodotGame? game) = Godot.GodotGame.Listen(plan, scripts);
         if (game is not null)
         {
-            if (Game is { State: LiveAppState.Ended } ended && !games.Contains(ended))
-            {
-                ended.Dispose();
-            }
-            games.Add(game);
-            game.StateChanged += (_, _) => OnGameState(game);
-            Game = game;
-            GameStarted?.Invoke(this, game);
-            LiveAppChanged?.Invoke(this, EventArgs.Empty);
+            TakeGame(game);
         }
         return (listened, game);
+    }
+
+    /// <summary>A game taken among <see cref="Games"/> and chosen: one a launch listens for, or one Godot's editor plays, heard
+    /// through Passenger's addon there (<see cref="Godot.GodotGame.Relay"/>).</summary>
+    public void TakeGame(Godot.GodotGame game)
+    {
+        UiThread.Check();
+        if (Game is { State: LiveAppState.Ended } ended && !games.Contains(ended))
+        {
+            ended.Dispose();
+        }
+        games.Add(game);
+        game.StateChanged += (_, _) => OnGameState(game);
+        Game = game;
+        GameStarted?.Invoke(this, game);
+        LiveAppChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>A game that ended leaves <see cref="Games"/>; where it was chosen and another runs, the newest of those is.</summary>

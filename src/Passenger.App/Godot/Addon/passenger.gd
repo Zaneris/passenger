@@ -3,18 +3,23 @@ extends EditorPlugin
 ## Passenger's addon for Godot's editor (MIT, Copyright (c) 2026 Ted L; written here by Passenger when asked). It finds
 ## the Passenger window open on this project through the file that window keeps in Passenger's state, which only this
 ## user may read, naming its loopback port and two secrets: it says the first, and talks on only once Passenger has said
-## the second. While Passenger answers, Play builds the game's C# there, its errors in Passenger's Problems, and
-## Passenger's debugger attaches to each game Play starts, held at its start until it has. With no Passenger listening,
-## or one that refuses, it does nothing, and Godot plays as it always did.
+## the second. While Passenger answers, Play builds the game's C# there, its errors in Passenger's Problems, Passenger's
+## debugger attaches to each game Play starts, held at its start until it has, and what each game tells this editor is
+## relayed to Passenger, which answers through the game's session here; this editor keeps the game's debugger. With no
+## Passenger listening, or one that refuses, it does nothing, and Godot plays as it always did.
 
 ## The addon's version, which Passenger reads to update an older one in place.
-const VERSION := 1
+const VERSION := 2
 ## How long a build may take to be answered.
 const BUILD_LIMIT_MS := 30 * 60 * 1000
 ## How long any other request may take to be answered.
 const ANSWER_LIMIT_MS := 5000
 ## How often a Passenger is looked for while none answers.
 const LOOK_EVERY_MS := 2000
+## How long a game held at its start waits for Passenger to take it before Play is stopped, rather than leave it waiting.
+const HOLD_LIMIT_MS := 60 * 1000
+## The one key of a dictionary that stands for an object the game sent by its id, which Passenger reads back as that id.
+const OBJECT_KEY := "passenger:object"
 
 var sessions := Sessions.new()
 var peer: StreamPeerTCP = null
@@ -26,6 +31,16 @@ var answers := {}
 var looked_at := -LOOK_EVERY_MS
 ## The variables a game is started with, as the editor had them before: each name's value, or null where it had none.
 var held := {}
+## Whether the games of this Play were started held for Passenger, until Play ends.
+var play_held := false
+## The sessions of games held at their start that Passenger has yet to take or let go, each by when it began.
+var holding := {}
+## GodotTools' own setting of whether Play skips its build, as it was before Passenger built instead; null while untaken.
+var godot_build_skipped = null
+## The editor's debugger of each session whose messages are relayed, by session id.
+var relayed := {}
+## The sessions told to Passenger as begun, by id, until they stop.
+var announced := {}
 
 
 ## Each game session Godot's editor holds, told to Passenger as it starts and stops.
@@ -34,13 +49,16 @@ class Sessions extends EditorDebuggerPlugin:
 
 	func _setup_session(session_id: int) -> void:
 		var session := get_session(session_id)
-		session.started.connect(func(): addon.tell("started", {"session": session_id}))
-		session.stopped.connect(func(): addon.tell("stopped", {"session": session_id}))
+		session.started.connect(func(): addon.started(session_id))
+		session.stopped.connect(func(): addon.stopped(session_id))
+		# Its debugger is in the editor's tree only once the session is set up.
+		addon.relay.call_deferred(session_id)
 
 
 func _enter_tree() -> void:
 	sessions.addon = self
 	add_debugger_plugin(sessions)
+	scene_changed.connect(func(_root): _tell_scene())
 
 
 func _exit_tree() -> void:
@@ -50,6 +68,12 @@ func _exit_tree() -> void:
 
 
 func _process(_delta: float) -> void:
+	if play_held and holding.is_empty() and not EditorInterface.is_playing_scene():
+		play_held = false
+	for session_id in holding.keys():
+		if Time.get_ticks_msec() - holding[session_id] > HOLD_LIMIT_MS:
+			_stop_held("Passenger did not take the game within %d s" % (HOLD_LIMIT_MS / 1000))
+			break
 	if peer == null:
 		if Time.get_ticks_msec() - looked_at >= LOOK_EVERY_MS:
 			looked_at = Time.get_ticks_msec()
@@ -63,6 +87,8 @@ func _process(_delta: float) -> void:
 func _build() -> bool:
 	if not welcomed:
 		return true
+	# Godot draws nothing while a build callback runs: Passenger's window shows the build as it goes.
+	print("Passenger: building the game's C# in Passenger, whose window shows the build as it goes")
 	var answer = _ask("build", {"editor": OS.get_process_id()}, BUILD_LIMIT_MS)
 	if not (answer is Dictionary and answer.get("result") is Dictionary):
 		_lost()
@@ -73,6 +99,69 @@ func _build() -> bool:
 		return false
 	_hold(result.get("variables", {}))
 	return true
+
+
+## A game's session began, told to Passenger, and one held at its start waited for. The editor hears the game's first
+## message, its process, before the session says it began, so whichever comes first tells it.
+func started(session_id: int) -> void:
+	if not welcomed or announced.has(session_id):
+		return
+	announced[session_id] = true
+	if play_held:
+		holding[session_id] = Time.get_ticks_msec()
+	tell("started", {"session": session_id, "held": play_held})
+
+
+func stopped(session_id: int) -> void:
+	announced.erase(session_id)
+	holding.erase(session_id)
+	tell("stopped", {"session": session_id})
+
+
+## Every message a session's game tells this editor, as its debugger hears it, sent on to Passenger from now.
+func relay(session_id: int) -> void:
+	var debuggers := EditorInterface.get_base_control().find_children("*", "ScriptEditorDebugger", true, false)
+	if session_id >= debuggers.size() or relayed.get(session_id) == debuggers[session_id]:
+		return
+	relayed[session_id] = debuggers[session_id]
+	debuggers[session_id].connect("debug_data", _heard_game.bind(session_id))
+
+
+func _heard_game(message: String, data: Array, session_id: int) -> void:
+	# The profilers' frames, many a second, are this editor's alone.
+	if not welcomed or message.begins_with("servers:") or message.begins_with("visual:"):
+		return
+	started(session_id)
+	tell("game", {"session": session_id, "message": Marshalls.raw_to_base64(var_to_bytes([message, 1, _plain(data)]))})
+
+
+## A value with each object sent by its id as a dictionary of OBJECT_KEY, which Godot's encoding would write as the id of
+## the editor's own holder instead; a container holding none is the same container, its element types kept.
+func _plain(value: Variant) -> Variant:
+	if value is EncodedObjectAsID:
+		return {OBJECT_KEY: value.get_object_id()}
+	if value is Array:
+		var items := []
+		var changed := false
+		for item in value:
+			var plain = _plain(item)
+			changed = changed or not is_same(plain, item)
+			items.append(plain)
+		return items if changed else value
+	if value is Dictionary:
+		var entries := {}
+		var changed := false
+		for key in value:
+			var plain = _plain(value[key])
+			changed = changed or not is_same(plain, value[key])
+			entries[key] = plain
+		return entries if changed else value
+	return value
+
+
+func _tell_scene() -> void:
+	var root := EditorInterface.get_edited_scene_root()
+	tell("scene", {"path": root.scene_file_path if root != null else ""})
 
 
 ## A message for Passenger that asks no answer, while it is connected.
@@ -104,6 +193,13 @@ func _connect() -> void:
 				welcomed = true
 				_skip_godot_build(true)
 				print("Passenger: ", str(hello["result"].get("said", "Play builds and debugs in Passenger")))
+				_tell_scene()
+				# Games playing already are relayed from now, none of them held.
+				var all := sessions.get_sessions()
+				for session_id in all.size():
+					relay(session_id)
+					if all[session_id].is_active():
+						started(session_id)
 				return
 		peer.disconnect_from_host()
 		peer = null
@@ -209,14 +305,31 @@ func _read() -> void:
 		end = received.find(10)
 
 
-## A request of Passenger's: this version answers none, saying so.
+## Passenger's messages: one for a game sent on through its session, a held game taken or let go; a request this version
+## does not answer refused, saying so.
 func _heard(message: Dictionary) -> void:
-	if message.has("id"):
-		_send({"id": message["id"], "error": "Passenger's addon %d takes no %s" % [VERSION, str(message["method"])]})
+	var method := str(message["method"])
+	var params: Dictionary = message.get("params") if message.get("params") is Dictionary else {}
+	if method == "send":
+		var session: EditorDebuggerSession = null
+		var all := sessions.get_sessions()
+		var session_id := int(params.get("session", -1))
+		if session_id >= 0 and session_id < all.size():
+			session = all[session_id]
+		var sent = bytes_to_var(Marshalls.base64_to_raw(str(params.get("message", ""))))
+		if session != null and session.is_active() and sent is Array and sent.size() == 3 and sent[2] is Array:
+			session.send_message(str(sent[0]), sent[2])
+	elif method == "released":
+		holding.erase(int(params.get("session", -1)))
+		if str(params.get("said", "")) != "":
+			print("Passenger: ", str(params["said"]))
+	elif message.has("id"):
+		_send({"id": message["id"], "error": "Passenger's addon %d takes no %s" % [VERSION, method]})
 
 
 ## The variables Passenger gives the game Play starts now, in the editor's environment until it has started.
 func _hold(variables: Dictionary) -> void:
+	play_held = not variables.is_empty()
 	for name in variables.keys():
 		if not held.has(name):
 			held[name] = OS.get_environment(name) if OS.has_environment(name) else null
@@ -240,7 +353,19 @@ func _lost() -> void:
 	peer = null
 	welcomed = false
 	answers.clear()
+	announced.clear()
 	_skip_godot_build(false)
+	if play_held:
+		_stop_held("Passenger went before it took the game")
+
+
+## Play stopped where a game held at its start would wait for good for a Passenger that will not take it.
+func _stop_held(why: String) -> void:
+	holding.clear()
+	play_held = false
+	if EditorInterface.is_playing_scene():
+		push_warning("Passenger: %s, which waited at its start for Passenger's debugger: Play stopped; play again" % why)
+		EditorInterface.stop_playing_scene()
 
 
 ## Godot's .NET plugin, whose own build before Play is skipped while Passenger builds the game.
@@ -253,10 +378,18 @@ func _godot_sharp() -> Object:
 	return null
 
 
+## GodotTools' build before Play skipped while Passenger builds, its setting put back as it was found once Passenger goes.
 func _skip_godot_build(skip: bool) -> void:
 	var godot_sharp := _godot_sharp()
-	if godot_sharp != null:
-		godot_sharp.set("SkipBuildBeforePlaying", skip)
+	if godot_sharp == null:
+		return
+	if skip:
+		if godot_build_skipped == null:
+			godot_build_skipped = godot_sharp.get("SkipBuildBeforePlaying")
+		godot_sharp.set("SkipBuildBeforePlaying", true)
+	elif godot_build_skipped != null:
+		godot_sharp.set("SkipBuildBeforePlaying", godot_build_skipped)
+		godot_build_skipped = null
 
 
 func _built_by_godot() -> bool:

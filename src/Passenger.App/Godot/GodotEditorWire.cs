@@ -4,8 +4,8 @@ using System.Text.Json.Nodes;
 
 namespace Passenger.App.Godot;
 
-/// <summary>What Passenger's addon and the window say to each other before anything else, and what tells a game of Godot's
-/// Play: the listing the addon reads, the secret it says first and the one it is answered with, and a game's command line.</summary>
+/// <summary>What Passenger's addon and the window say to each other before anything else: the listing the addon reads, and
+/// the secret it says first and the one it is answered with.</summary>
 public static class GodotEditorWire
 {
     /// <summary>The longest first line read before it is refused.</summary>
@@ -61,20 +61,5 @@ public static class GodotEditorWire
         }
         await stream.WriteAsync(Encoding.UTF8.GetBytes(reply + "\n"), cancel);
         return true;
-    }
-
-    /// <summary>Whether a command line is of a game Godot's editor of this process started: it names the editor after
-    /// <c>--editor-pid</c>.</summary>
-    public static bool IsGameOf(string commandLine, int editor)
-    {
-        string[] words = commandLine.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        for (int i = 0; i + 1 < words.Length; i++)
-        {
-            if (words[i] == "--editor-pid" && words[i + 1].Trim('"') == editor.ToString(System.Globalization.CultureInfo.InvariantCulture))
-            {
-                return true;
-            }
-        }
-        return false;
     }
 }

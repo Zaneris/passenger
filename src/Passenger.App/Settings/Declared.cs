@@ -292,6 +292,11 @@ public static class Declared
             "Off, Godot runs a game's GUT and GoDotTest tests headless, with no window; on, it shows the game's window as they run. "
             + "GdUnit4 runs Godot as its run settings' parameters say. A Passenger nobody sees runs every Godot headless."));
 
+    public static readonly ToggleSetting GodotDebugPlays = new(s => s.GodotDebugPlays, (s, v) => s with { GodotDebugPlays = v },
+        new(D.GodotPage, "Debug what Godot's Play starts", "godot editor play addon debug attach breakpoint held start",
+            "With Passenger's addon in a project, each game Play starts in Godot's editor waits at its start for this Passenger's "
+            + "debugger, which attaches to it, so a breakpoint set here stops it. Off, Play still builds here, and the game runs undebugged."));
+
     public static readonly ToggleSetting TerminalCopyOnSelection = new(s => s.TerminalCopyOnSelection, (s, v) => s with { TerminalCopyOnSelection = v },
         new(D.TerminalPage, "Copy on selection", "copy selection clipboard mouse drag word"));
 

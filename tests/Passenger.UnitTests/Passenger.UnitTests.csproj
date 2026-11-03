@@ -165,6 +165,7 @@
     <Compile Include="../../src/Passenger.App/Godot/GodotScriptStops.cs" Link="App/GodotScriptStops.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotAgent.cs" Link="App/GodotAgent.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotEditorWire.cs" Link="App/GodotEditorWire.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotRelay.cs" Link="App/GodotRelay.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotChecks.cs" Link="App/GodotChecks.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotOffer.cs" Link="App/GodotOffer.cs" />
   </ItemGroup>

@@ -16,13 +16,20 @@ namespace Passenger.App.Godot;
 /// tree and a node's properties, and it takes a property's new value; its loop is held and stepped a frame at a time, and a
 /// click in its window picks a node, through Godot's own messages. So it is a source of the Live Visual Tree. Under Debug
 /// its GDScript stops go to its script debugger (<see cref="Scripts"/>); under Run and Profile its breakpoints are skipped and
-/// its errors never stop it. Events are raised on the UI thread; it ends with its connection, or once disposed.</summary>
+/// its errors never stop it. A game Godot's editor plays is heard the same way through Passenger's addon in that editor
+/// (<see cref="Relay"/>), the editor keeping its debugger. Events are raised on the UI thread; it ends with its connection,
+/// or once disposed.</summary>
 public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
 {
     /// <summary>The flag that gives a game its debugger.</summary>
     public const string RemoteDebug = "--remote-debug";
 
-    private readonly TcpListener listener;
+    private readonly TcpListener? listener;
+
+    /// <summary>Where a relayed game's messages go (<see cref="Relay"/>): each message's bytes, as a frame holds them after its
+    /// length, sent on through the editor that holds its debugger; null for a game Passenger is the debugger of.</summary>
+    private readonly Func<byte[], CancellationToken, Task>? relay;
+
     private readonly CancellationTokenSource ending = new();
     private readonly SemaphoreSlim writing = new(1, 1);
     private NetworkStream? stream;
@@ -65,7 +72,8 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     /// <summary>The id under which the game's live editing knows the path of Passenger's helper (<see cref="GodotAgent"/>).</summary>
     private const long AgentPath = 7046;
 
-    private GodotGame(string name, string folder, string? version, bool headless, bool unseen, bool scriptsAlone, TcpListener listener, GodotScriptStart? scripts)
+    private GodotGame(string name, string folder, string? version, bool headless, bool unseen, bool scriptsAlone, TcpListener? listener, GodotScriptStart? scripts,
+        Func<byte[], CancellationToken, Task>? relay = null)
     {
         Name = name;
         ScriptsAlone = scriptsAlone;
@@ -75,6 +83,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         Unseen = unseen;
         Tuning = new GodotTuning(folder);
         this.listener = listener;
+        this.relay = relay;
         ScriptsDebugged = scripts is not null;
         StartBreakpoints = scripts?.Breakpoints ?? [];
     }
@@ -108,6 +117,41 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         IdeErrors.Observe(BackgroundWork.Unheld(game.ServeAsync));
         return (plan with { Arguments = arguments, Leading = plan.Leading + debugging.Count }, game);
     }
+
+    /// <summary>A game Godot's editor plays, heard through Passenger's addon there: what the game tells the editor comes in by
+    /// <see cref="Take"/>, what Passenger tells it goes out through <paramref name="send"/>, and the editor keeps its
+    /// debugger, its script stops, its loop and its picking (<see cref="EditorHolds"/>). It connects with <see cref="RelayConnected"/>
+    /// and ends with <see cref="RelayEnded"/>.</summary>
+    public static GodotGame Relay(string name, string folder, string? version, Func<byte[], CancellationToken, Task> send) =>
+        new(name, folder, version, headless: false, unseen: false, scriptsAlone: false, listener: null, scripts: null, relay: send);
+
+    /// <summary>Whether Godot's editor holds the game's debugger, Passenger hearing it through its addon (<see cref="Relay"/>).</summary>
+    public bool Relayed => relay is not null;
+
+    /// <summary>Why Passenger leaves the game's loop and picking alone: Godot's editor holds them, for a game it plays; null for
+    /// a game Passenger is the debugger of.</summary>
+    public string? EditorHolds => Relayed ? $"Godot's editor holds {Name}'s loop and its picking: pause, step and pick nodes in its Game view" : null;
+
+    /// <summary>Whether a relayed game is stopped in a script, its editor's to let go on.</summary>
+    private bool stoppedInEditor;
+
+    /// <summary>A relayed game's editor began its session with it.</summary>
+    public void RelayConnected()
+    {
+        UiThread.Check();
+        if (taken || disposed)
+        {
+            return;
+        }
+        taken = true;
+        Connected();
+    }
+
+    /// <summary>A message a relayed game told its editor, its bytes as a frame holds them after its length; any thread.</summary>
+    public void Take(byte[] body) => Heard(body, GodotRelay.Objects);
+
+    /// <summary>A relayed game's session with its editor ended.</summary>
+    public void RelayEnded() => UiThread.Post(Ended);
 
     /// <summary>Whether a GDScript file of its project saved is reloaded in it (Hot Reload is on for its run).</summary>
     public bool ReloadsScripts { get; set; }
@@ -214,6 +258,12 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     /// <summary>An error or warning it raised.</summary>
     public event EventHandler<GodotError>? Raised;
 
+    /// <summary>The game said its process, as it does first of all, before its .NET runtime starts.</summary>
+    public event EventHandler<int>? ProcessFound;
+
+    /// <summary>The scene Godot's editor edits, for a relayed game: what its live editing is set back to after Passenger's.</summary>
+    public string EditorScene { get; set; } = string.Empty;
+
     /// <summary>A <c>res://</c> path as a path on this machine, under the project's folder; another path as it is.</summary>
     public string PathOf(string path) => path.StartsWith("res://", StringComparison.Ordinal)
         ? Path.GetFullPath(Path.Combine(Folder, path["res://".Length..]))
@@ -223,7 +273,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     {
         try
         {
-            using TcpClient client = await listener.AcceptTcpClientAsync(ending.Token);
+            using TcpClient client = await listener!.AcceptTcpClientAsync(ending.Token);
             listener.Stop();
             client.NoDelay = true;
             stream = client.GetStream();
@@ -240,23 +290,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
                 }
                 byte[] body = new byte[length];
                 await stream.ReadExactlyAsync(body, ending.Token);
-                Interlocked.Exchange(ref lastHeard, System.Diagnostics.Stopwatch.GetTimestamp());
-                GodotMessage message;
-                try
-                {
-                    message = GodotMessage.Read(body);
-                }
-                catch (GodotVariantException unread)
-                {
-                    IdeErrors.Write($"Godot: a message of {Name} could not be read: {unread.Message}");
-                    continue;
-                }
-                // Many a second while profiled, each kept as it comes, when it came: the window's thread never hears them.
-                if (recording is { } profile && Recorded(profile, message, DateTime.UtcNow))
-                {
-                    continue;
-                }
-                UiThread.Post(() => Heard(message));
+                Heard(body, null);
             }
         }
         catch (Exception gone) when (gone is IOException or SocketException or OperationCanceledException or ObjectDisposedException or EndOfStreamException)
@@ -269,6 +303,30 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         }
     }
 
+    /// <summary>A message's bytes read, the objects a relay sent as ids put back as they were (<paramref name="relayed"/>), and
+    /// handed to the window's thread; a profile's frames kept as they come.</summary>
+    private void Heard(byte[] body, Func<GodotMessage, GodotMessage>? relayed)
+    {
+        Interlocked.Exchange(ref lastHeard, System.Diagnostics.Stopwatch.GetTimestamp());
+        GodotMessage message;
+        try
+        {
+            message = GodotMessage.Read(body);
+        }
+        catch (GodotVariantException unread)
+        {
+            IdeErrors.Write($"Godot: a message of {Name} could not be read: {unread.Message}");
+            return;
+        }
+        message = relayed?.Invoke(message) ?? message;
+        // Many a second while profiled, each kept as it comes, when it came: the window's thread never hears them.
+        if (recording is { } profile && Recorded(profile, message, DateTime.UtcNow))
+        {
+            return;
+        }
+        UiThread.Post(() => Heard(message));
+    }
+
     private void Connected()
     {
         if (disposed)
@@ -276,7 +334,8 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             return;
         }
         State = LiveAppState.Connected;
-        if (!ScriptsDebugged)
+        // A relayed game's breakpoints and error stops are its editor's own.
+        if (!ScriptsDebugged && !Relayed)
         {
             // A GDScript breakpoint or error would stop the game waiting for a debugger that shows no GDScript stop.
             Send(GodotWords.SkipBreakpoints, true);
@@ -394,6 +453,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         {
             case GodotWords.ProcessId when message.Data is [long id]:
                 ProcessId = (int)id;
+                ProcessFound?.Invoke(this, ProcessId.Value);
                 break;
             case GodotWords.SceneTree:
                 GodotNode? told = GodotNode.Tree(message.Data);
@@ -465,6 +525,12 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
                     besideScene = null;
                     TreeChanged?.Invoke(this, EventArgs.Empty);
                 }
+                break;
+            case GodotWords.DebugEnter or GodotWords.DebugExit when Relayed:
+                // Its editor's script debugger shows its stops, and lets it go on.
+                stoppedInEditor = message.Name == GodotWords.DebugEnter;
+                break;
+            case GodotWords.StackDump or GodotWords.StackFrameVars or GodotWords.StackFrameVar or GodotWords.EvaluationReturn when Relayed:
                 break;
             case GodotWords.DebugEnter when Scripts is { } scripts:
                 scripts.Heard(message);
@@ -539,7 +605,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     /// part sent ends the connection, which no later message could be read on.</summary>
     public async Task SendToAsync(string name, long thread, params object?[] data)
     {
-        if (stream is not { } open || disposed)
+        if ((stream is null && relay is null) || !taken || disposed)
         {
             throw new LiveAppException($"{Name} is not connected");
         }
@@ -561,7 +627,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         using CancellationTokenSource writes = CancellationTokenSource.CreateLinkedTokenSource(ending.Token, giveUp);
         try
         {
-            ValueTask written = open.WriteAsync(frame, writes.Token);
+            Task written = relay is { } through ? through(frame[4..], writes.Token) : stream!.WriteAsync(frame, writes.Token).AsTask();
             if (!written.IsCompleted)
             {
                 Mcp.AgentCall.Say($"Telling {Name} {name}, which its connection has not yet taken");
@@ -570,7 +636,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         }
         catch (OperationCanceledException) when (giveUp.IsCancellationRequested)
         {
-            open.Dispose();
+            stream?.Dispose();
             throw new LiveAppException(GivenUp(asking!, $"for its connection to take {name}, which it would not: Passenger let go of the connection"));
         }
         catch (Exception lost) when (lost is IOException or SocketException or ObjectDisposedException or OperationCanceledException)
@@ -705,6 +771,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             {
                 throw new LiveAppException($"{Name} is paused, and answers once it runs");
             }
+            if (stoppedInEditor)
+            {
+                throw new LiveAppException($"{Name} is stopped at a GDScript breakpoint in Godot's editor, and answers once it goes on there");
+            }
             long heard = Interlocked.Read(ref lastHeard);
             string meanwhile = heard > since
                 ? $", though it went on sending its other messages, the last {System.Diagnostics.Stopwatch.GetElapsedTime(heard).TotalSeconds:0.#} s ago"
@@ -831,6 +901,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             {
                 await then();
             }
+            await GiveBackLiveRootAsync();
             List<object?> said;
             try
             {
@@ -936,6 +1007,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     public async Task PickAsync(GodotPicking picking, (double Red, double Green, double Blue) outline)
     {
         UiThread.Check();
+        if (EditorHolds is { } held)
+        {
+            throw new LiveAppException(held);
+        }
         await SetUpSelectionAsync(outline);
         await SendAsync(GodotWords.SelectType, (long)picking);
         Picking = picking;
@@ -945,6 +1020,11 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     public async Task OutlineAsync(ulong? node, (double Red, double Green, double Blue) outline)
     {
         UiThread.Check();
+        // A relayed game's selection outline is its editor's.
+        if (Relayed)
+        {
+            return;
+        }
         await SetUpSelectionAsync(outline);
         if (node is ulong id)
         {
@@ -1019,6 +1099,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     public async Task<long?> HoldLoopAsync(bool held)
     {
         UiThread.Check();
+        if (EditorHolds is { } holds)
+        {
+            throw new LiveAppException(holds);
+        }
         if (held && Frame is null)
         {
             // Counted from before the hold, so the count is of every frame the game has run.
@@ -1063,6 +1147,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     public async Task<long> StepAsync()
     {
         UiThread.Check();
+        if (EditorHolds is { } held)
+        {
+            throw new LiveAppException(held);
+        }
         if (!LoopHeld)
         {
             throw new LiveAppException($"{Name}'s loop runs: hold it to step it a frame");
@@ -1193,6 +1281,17 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         await SendAsync(GodotWords.LiveSetRoot, GodotAgent.PathOf("/root"), place.Chain[root].Scene);
         await SendAsync(GodotWords.LiveNodePath, GodotAgent.PathOf(below.Length == 0 ? "." : below), TunedPath);
         await SendAsync(GodotWords.LiveNodePropertyResource, TunedPath, name, resource);
+        await GiveBackLiveRootAsync();
+    }
+
+    /// <summary>A relayed game's live editing set back to the scene its editor edits, as the editor sets it, once Passenger's
+    /// own live editing has been sent: the editor's next live edit then reaches the scene it means.</summary>
+    private async Task GiveBackLiveRootAsync()
+    {
+        if (Relayed)
+        {
+            await SendAsync(GodotWords.LiveSetRoot, GodotAgent.PathOf("/root"), EditorScene);
+        }
     }
 
     public void Dispose()
@@ -1203,7 +1302,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         }
         disposed = true;
         ending.Cancel();
-        listener.Stop();
+        listener?.Stop();
         stream?.Dispose();
         Ended();
     }

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Avalonia.Controls;
@@ -14,20 +13,12 @@ namespace Passenger.App;
 /// <summary>Passenger's addon for Godot's editor (<see cref="GodotAddonFiles"/>): written into the open Godot project and
 /// enabled in its project.godot once the person agrees, one command of Undo, an earlier Passenger's copy updated where
 /// it is. A person's window on a Godot project listens for it (<see cref="GodotEditorLink"/>); an editor running it then
-/// builds through this window as Play begins, the build's errors in Problems and an up-to-date build skipped, and each
-/// game Play starts is held at its runtime's start by the variables the build's answer gives, found by its command line
-/// naming the editor, and attached to in a Debug tab of its own, which Stop lets go of, the game running on in Godot.</summary>
+/// builds through this window as Play begins, the build's errors in Problems and an up-to-date build skipped; each game
+/// Play starts is relayed here as a game of the window's (Live Visual Tree, error pins, live values), and while Settings
+/// debugs what Godot plays it is held at its runtime's start, taken by the process it says, and attached to in a Debug tab
+/// of its own, which Stop lets go of, the game running on in Godot.</summary>
 public partial class MainWindow
 {
-    /// <summary>How long after a build Play is given to start its games.</summary>
-    private static readonly TimeSpan PlayStarts = TimeSpan.FromSeconds(30);
-
-    /// <summary>How long after a game is found its siblings (Godot's several instances) are looked for.</summary>
-    private static readonly TimeSpan SiblingsStart = TimeSpan.FromSeconds(2);
-
-    /// <summary>The games of Godot's Play attached to, by process, so none is taken twice.</summary>
-    private readonly HashSet<int> godotPlayed = [];
-
     private void AddGodotAddon()
     {
         actions!.Add(new IdeAction(AppActions.GodotAddon, "Install Passenger's Godot Addon…", "Godot", _ => IdeErrors.Observe(InstallGodotAddonAsync()))
@@ -144,8 +135,9 @@ public partial class MainWindow
 
     /// <summary>What the addon gives, said before it is written.</summary>
     private string AddonDoes(string folder) =>
-        $"With Passenger's addon in {Path.GetFileName(folder)}, Godot's Play builds the game's C# in this window, its errors in Problems, and this Passenger's "
-        + "debugger attaches to each game Play starts, so a breakpoint set here stops it; Stop here lets the game go on. With Passenger closed, Godot plays as it always did.";
+        $"With Passenger's addon in {Path.GetFileName(folder)}, Godot's Play builds the game's C# in this window, its errors in Problems; each game Play starts "
+        + "shows in the Live Visual Tree, its errors pinned to their lines, and this Passenger's debugger attaches to it, so a breakpoint set here stops it; "
+        + "Stop here lets the game go on. With Passenger closed, Godot plays as it always did.";
 
     /// <summary>Listens for Godot's editors on the open folder's Godot project where a person's window keeps it.</summary>
     private void ListenForGodotEditors()
@@ -159,7 +151,8 @@ public partial class MainWindow
         IdeErrors.Observe(listening.GodotEditors.ListenAsync(PathNames.Canonical(godot), [godot]));
     }
 
-    /// <summary>The handlers of a session's link to Godot's editors, wired once as the session is bound.</summary>
+    /// <summary>The handlers of a session's link to Godot's editors, wired once as the session is bound: Play's build, and each
+    /// game the editor plays relayed into the session as a game of its own (<see cref="GodotGame.Relay"/>).</summary>
     private void FollowGodotEditors(ProjectSession next)
     {
         GodotEditorLink link = next.GodotEditors;
@@ -168,15 +161,51 @@ public partial class MainWindow
             if (session == next)
             {
                 status.Text = link.Editors.Count > 0
-                    ? $"Godot's editor on {Path.GetFileName(link.Project)} is connected: its Play builds here, and this Passenger debugs what it plays"
+                    ? $"Godot's editor on {Path.GetFileName(link.Project)} is connected: its Play builds here, and this Passenger shows what it plays"
                     : "Godot's editor let go of this window";
             }
         };
         link.Handle("build", (peer, _) => session == next ? GodotPlayBuildAsync(peer) : throw new GodotEditorRefused(Refusals.SolutionClosed));
+        link.Hear("started", (peer, told) =>
+        {
+            if (session == next && JsonMembers.Number(told, "session") is int id)
+            {
+                RelayGodotGame(next, peer, id, JsonMembers.Bool(told, "held") == true);
+            }
+        });
+        link.Hear("game", (peer, told) =>
+        {
+            if (JsonMembers.Number(told, "session") is int id && peer.Games.GetValueOrDefault(id) is { } game && JsonMembers.Text(told, "message") is { } message)
+            {
+                game.Take(Convert.FromBase64String(message));
+            }
+        });
+        link.Hear("stopped", (peer, told) =>
+        {
+            if (JsonMembers.Number(told, "session") is int id && peer.Games.Remove(id, out GodotGame? game))
+            {
+                game.RelayEnded();
+            }
+        });
+        link.Hear("scene", (peer, told) =>
+        {
+            peer.EditedScene = JsonMembers.Text(told, "path") ?? string.Empty;
+            foreach (GodotGame game in peer.Games.Values)
+            {
+                game.EditorScene = peer.EditedScene;
+            }
+        });
+        link.EditorGone += (_, peer) =>
+        {
+            foreach (GodotGame game in peer.Games.Values)
+            {
+                game.RelayEnded();
+            }
+            peer.Games.Clear();
+            peer.Kept?.Dispose();
+            peer.Kept = null;
+        };
     }
-
-    /// <summary>The editors whose games are being looked for now.</summary>
-    private readonly HashSet<int> godotLooking = [];
 
     /// <summary>The name of the open Godot project's game: its C# project's, else its folder's.</summary>
     private string GodotGameName() => GodotGameProject()?.Name ?? Path.GetFileName(GodotFolder() ?? Folder ?? "Godot");
@@ -184,29 +213,23 @@ public partial class MainWindow
     private ProjectModel? GodotGameProject() =>
         GodotFolder() is { } folder ? Projects.FirstOrDefault(p => p.GodotFolder is { } game && PathNames.Same(game, folder)) : null;
 
-    /// <summary>Godot's Play built here: the game's project built as a launch builds it (saved first, skipped while its last
-    /// build stands), answered with whether it built and the variables that hold each game at its start for the debugger,
-    /// whose games are then looked for and attached to.</summary>
+    /// <summary>Godot's Play built here: the game's project built for its chosen framework as a launch builds it (saved first,
+    /// skipped while its last build stands), answered with whether it built and, while Settings debugs what Godot plays, the
+    /// variables that hold each game at its start until the debugger takes it, the edits since the build kept for it.</summary>
     private async Task<JsonObject> GodotPlayBuildAsync(GodotEditorPeer peer)
     {
         UiThread.Check();
         string name = GodotGameName();
         if (GodotGameProject() is not { } project)
         {
-            return new JsonObject { ["built"] = true, ["said"] = $"{name} has no C# project to build", ["variables"] = Held() };
+            // A game of GDScript alone runs no .NET to hold.
+            return new JsonObject { ["built"] = true, ["said"] = $"{name} has no C# project to build", ["variables"] = new JsonObject() };
         }
-        HashSet<int> known = await BackgroundWork.Run(() => Process.GetProcesses().Select(p =>
-        {
-            using (p)
-            {
-                return p.Id;
-            }
-        }).ToHashSet());
         BuiltEdits? edits = null;
         BuildOutcome built;
         using (Working? working = work.Begin(AppActions.GodotAddon, $"Building {project.Name} for Godot's Play"))
         {
-            BuildStep step = new(project.Path, null);
+            BuildStep step = new(project.Path, session.Frameworks.Of(project));
             void Reading()
             {
                 edits?.Dispose();
@@ -215,69 +238,95 @@ public partial class MainWindow
             built = working is null ? await buildRun.BuildForAsync(step, CancellationToken.None, Reading) : await buildRun.BuildForAsync(step, working, Reading);
             working?.Tell(built.Succeeded, built.Succeeded ? $"{project.Name} is built for Godot's Play" : built.Message);
         }
+        peer.Kept?.Dispose();
+        peer.Kept = null;
         if (!built.Succeeded)
         {
             edits?.Dispose();
             status.Text = $"Godot's Play stopped: {built.Message}";
             return new JsonObject { ["built"] = false, ["said"] = built.Message };
         }
-        IdeErrors.Observe(AttachGodotPlaysAsync(peer.Editor, edits, project.Name, known));
-        return new JsonObject { ["built"] = true, ["said"] = built.Message, ["variables"] = Held() };
-
-        static JsonObject Held()
+        JsonObject variables = [];
+        if (settings.GodotDebugPlays)
         {
-            JsonObject variables = [];
+            peer.Kept = edits;
             foreach ((string variable, string value) in HeldStart.Variables(changeable: true))
             {
                 variables[variable] = value;
             }
-            return variables;
         }
+        else
+        {
+            edits?.Dispose();
+        }
+        return new JsonObject { ["built"] = true, ["said"] = built.Message, ["variables"] = variables };
     }
 
-    /// <summary>The games an editor's Play starts, looked for until one is found and its siblings have had their moment, or
-    /// Play's time is up, each attached to in a Debug tab of its own, held at its start until then; one the debugger cannot
-    /// reach is let go, running on, saying why. <paramref name="kept"/> holds the edits since the build, each game's own copy.</summary>
-    private async Task AttachGodotPlaysAsync(int editor, BuiltEdits? kept, string name, HashSet<int> known)
+    /// <summary>A game the editor's session began with, relayed into the window's session as a game of its own, named after
+    /// the project ("Spinner in Godot", then "Spinner in Godot #2" beside it); one Play started held is attached to once it
+    /// says its process (<see cref="TakeHeldGameAsync"/>).</summary>
+    private void RelayGodotGame(ProjectSession into, GodotEditorPeer peer, int id, bool held)
     {
         UiThread.Check();
-        if (!godotLooking.Add(editor))
+        if (peer.Games.Remove(id, out GodotGame? before))
         {
-            kept?.Dispose();
-            return;
+            before.RelayEnded();
         }
-        ProjectSession looking = session;
-        HashSet<int> looked = known;
+        string named = $"{GodotGameName()} in Godot";
+        string name = peer.Games.Count == 0 ? named : $"{named} #{peer.Games.Count + 1}";
+        GodotGame game = GodotGame.Relay(name, GodotFolder() ?? into.Folder ?? string.Empty, peer.Godot,
+            (body, _) => peer.TellAsync("send", new JsonObject { ["session"] = id, ["message"] = Convert.ToBase64String(body) }));
+        game.EditorScene = peer.EditedScene;
+        peer.Games[id] = game;
+        if (held)
+        {
+            void Found(object? sender, int process)
+            {
+                game.ProcessFound -= Found;
+                IdeErrors.Observe(TakeHeldGameAsync(into, peer, id, game, process));
+            }
+            game.ProcessFound += Found;
+        }
+        into.TakeGame(game);
+        game.RelayConnected();
+    }
+
+    /// <summary>A game held at its start for the debugger, taken by its process as it said it: attached to in a Debug tab of its
+    /// own, or, where its runtime turns the debugger off or the attach is refused, let go to run on undebugged, saying why.
+    /// Either way the addon is told it was released, so it stops no Play for it.</summary>
+    private async Task TakeHeldGameAsync(ProjectSession into, GodotEditorPeer peer, int id, GodotGame game, int process)
+    {
+        UiThread.Check();
+        string? undebugged = null;
         try
         {
-            long began = Stopwatch.GetTimestamp();
-            long? lastFound = null;
-            int found = 0;
-            while (session == looking && !looking.IsEnded && Stopwatch.GetElapsedTime(began) < Waits.Of(PlayStarts)
-                && (lastFound is not long last || Stopwatch.GetElapsedTime(last) < SiblingsStart))
+            if (await BackgroundWork.Run(() => HeldStart.DebuggerOffAsync(process)) is { } off)
             {
-                IReadOnlyList<int> games = await BackgroundWork.Run(() => GodotEditorLink.GamesOf(editor, looked));
-                foreach (int game in games.Where(godotPlayed.Add))
+                undebugged = off;
+            }
+            else if (await into.Debug.AttachAsync(process, game.Name, hotReload: true, edits: peer.Kept is { } kept ? into.Debug.Copied(kept) : null,
+                startedElsewhere: $"{game.Name} is played by Godot's editor, whose Output shows what it prints; Stop here lets it go on in Godot") is { } refused)
+            {
+                undebugged = refused;
+            }
+            else
+            {
+                game.Debugged = into.Debug.SessionNamed(game.Name);
+                BuildRunController.EndsWithGame(game);
+            }
+            if (undebugged is not null)
+            {
+                // Held at its start, it would wait for good for a debugger that is not coming.
+                await HeldStart.LetGoAsync(process);
+                if (session == into)
                 {
-                    found++;
-                    lastFound = Stopwatch.GetTimestamp();
-                    string tab = found == 1 ? $"{name} in Godot" : $"{name} in Godot #{found}";
-                    string? refused = await looking.Debug.AttachAsync(game, tab, hotReload: true, edits: kept is null ? null : looking.Debug.Copied(kept),
-                        startedElsewhere: $"{name} is played by Godot's editor, whose Output shows what it prints; Stop here lets it go on in Godot");
-                    if (refused is not null)
-                    {
-                        // Held at its start, it would wait for good for a debugger that is not coming.
-                        await HeldStart.LetGoAsync(game);
-                        status.Text = $"{tab} runs undebugged: {refused}";
-                    }
+                    status.Text = $"{game.Name} runs undebugged: {undebugged}";
                 }
-                await Task.Delay(TimeSpan.FromMilliseconds(50));
             }
         }
         finally
         {
-            godotLooking.Remove(editor);
-            kept?.Dispose();
+            await peer.TellAsync("released", new JsonObject { ["session"] = id, ["said"] = undebugged is null ? string.Empty : $"{game.Name} runs undebugged: {undebugged}" });
         }
     }
 }

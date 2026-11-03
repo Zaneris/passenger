@@ -7,8 +7,7 @@ namespace Passenger.UnitTests.Godot;
 
 /// <summary>What Passenger's addon and the window say before anything else: the listing the addon reads (the folders,
 /// port, both secrets and the process listening), the addon's secret taken only as a whole first line, before anything
-/// after it is read, and then answered with Passenger's own; a game of Godot's Play told by its command line naming its
-/// editor.</summary>
+/// after it is read, and then answered with Passenger's own.</summary>
 public class GodotEditorWireTests
 {
     private const string Token = "A1B2C3";
@@ -52,15 +51,6 @@ public class GodotEditorWireTests
         Assert.False(await GodotEditorWire.GreetedAsync(wire, TokenHash, Reply, TimeSpan.FromSeconds(5), CancellationToken.None));
         Assert.True(wire.Unread.Length > 3000, $"Only the longest secret's bytes and one more were to be read; {wire.Unread.Length} left");
     }
-
-    [Theory]
-    [InlineData("/Godot --path /games/spinner --remote-debug tcp://127.0.0.1:6007 --editor-pid 4242 --scene res://main.tscn", 4242, true)]
-    [InlineData("\"C:\\Godot\\Godot.exe\" --editor-pid \"4242\" --headless", 4242, true)]
-    [InlineData("/Godot --editor-pid 42420", 4242, false)]
-    [InlineData("/Godot --editor --path /games/spinner", 4242, false)]
-    [InlineData("/Godot --editor-pid", 4242, false)]
-    public void A_game_of_Godots_Play_names_its_editor(string commandLine, int editor, bool game) =>
-        Assert.Equal(game, GodotEditorWire.IsGameOf(commandLine, editor));
 
     /// <summary>A connection's two directions: what the addon said, read a byte at a time, and what it is answered.</summary>
     private sealed class Wire(byte[] said) : Stream

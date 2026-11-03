@@ -236,6 +236,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>Whether the game GUT's and GoDotTest's tests run in shows its window, where it runs headless otherwise.</summary>
     public bool GodotTestsWindowed { get; init; }
 
+    /// <summary>Whether a game Godot's editor plays through Passenger's addon is held at its start and debugged here.</summary>
+    public bool GodotDebugPlays { get; init; } = true;
+
     /// <summary>ESLint's "Run for files" at first.</summary>
     public const string DefaultEslintFiles = "**/*.{js,ts,jsx,tsx,cjs,cts,mjs,mts,html,vue}";
 

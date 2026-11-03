@@ -34,6 +34,38 @@ public static class HeldStart
             ? $"Its runtime was started with {off}=0, which turns its debugger off: nothing can attach to it"
             : null;
 
+    /// <summary>Why no debugger can reach a program held at its start (<see cref="DebuggerOff"/>), its environment read through
+    /// its diagnostic port, which answers while the runtime is held; null where it can, or where its port cannot be asked.</summary>
+    public static async Task<string?> DebuggerOffAsync(int processId)
+    {
+        Process process;
+        try
+        {
+            process = Process.GetProcessById(processId);
+        }
+        catch (Exception gone) when (gone is ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+        using (process)
+        {
+            Dictionary<string, string>? environment = null;
+            try
+            {
+                await AtPortAsync(process, client =>
+                {
+                    environment = client.GetProcessEnvironment();
+                    return Task.CompletedTask;
+                }, sinceItStarted: true).ConfigureAwait(false);
+            }
+            catch (Exception unread) when (unread is DiagnosticsClientException or IOException or TimeoutException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                return null;
+            }
+            return environment is null ? null : DebuggerOff(environment.GetValueOrDefault);
+        }
+    }
+
     /// <summary>Whether a runtime started with this environment waits at its start: asked to, with its diagnostic port on.</summary>
     public static bool Holds(Func<string, string?> variable) => variable(RuntimeVariables.DefaultDiagnosticPortSuspend) == "1"
         && variable("DOTNET_EnableDiagnostics") != "0" && variable("DOTNET_EnableDiagnostics_IPC") != "0";

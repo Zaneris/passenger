@@ -69,7 +69,7 @@ public sealed partial class LiveTreeController
         window.PropertyChanged += OnWindowChanged;
         parts.Actions.Add(new IdeAction(AppActions.SelectElement, "Select Element", "Debug", context => IdeErrors.Observe(PickAsync(!picking)))
         {
-            WhyNot = _ => WhyNotAsk(),
+            WhyNot = _ => WhyNotAsk() ?? (app as Godot.GodotGame)?.EditorHolds,
         });
         parts.Actions.Add(new IdeAction(AppActions.LiveTreeRefresh, "Refresh Live Visual Tree", "Debug", context => IdeErrors.Observe(RefreshAsync()))
         {
@@ -78,7 +78,7 @@ public sealed partial class LiveTreeController
         parts.Actions.Add(new IdeAction(AppActions.SelectIn3D, "Select Element Among 3D Nodes", "Debug", context => IdeErrors.Observe(PickInAsync(!pickIn3D)))
         {
             IsChecked = _ => pickIn3D,
-            WhyNot = _ => app is Godot.GodotGame ? null : "Select Element picks among 3D nodes in a Godot game: Run or Debug one",
+            WhyNot = _ => app is Godot.GodotGame game ? game.EditorHolds : "Select Element picks among 3D nodes in a Godot game: Run or Debug one",
         });
         parts.Actions.Add(new IdeAction(AppActions.PauseGameLoop, "Pause Game Loop", "Debug", context => IdeErrors.Observe(HoldLoopAsync()))
         {
@@ -617,9 +617,11 @@ public sealed partial class LiveTreeController
         }
     }
 
-    /// <summary>Why the game's loop cannot be paused or stepped now: no game followed, not up, gone, or paused in the debugger.</summary>
+    /// <summary>Why the game's loop cannot be paused or stepped now: no game followed, not up, gone, paused in the debugger, or
+    /// held by the Godot editor that plays it.</summary>
     private string? WhyNotLoop() => app switch
     {
+        Godot.GodotGame { EditorHolds: { } held } => held,
         Godot.GodotGame { State: LiveAppState.Waiting } game => $"{game.Name} has not connected to Passenger yet",
         Godot.GodotGame { State: LiveAppState.Ended } game => $"{game.Name} has ended",
         Godot.GodotGame game when Paused => $"{game.Name} is paused in the debugger, which holds its loop already",

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -58,6 +57,9 @@ internal sealed class GodotEditorLink : IAsyncDisposable
 
     /// <summary>An editor taken or gone, on the window's thread.</summary>
     public event EventHandler? EditorsChanged;
+
+    /// <summary>An editor taken went, on the window's thread: what it relayed ends with it.</summary>
+    public event EventHandler<GodotEditorPeer>? EditorGone;
 
     /// <summary>Where every window listening is listed: Passenger's own state, as the addon finds it.</summary>
     public static string Listings => Path.Combine(State.StateStore.DefaultRoot, ListingFolder);
@@ -173,7 +175,11 @@ internal sealed class GodotEditorLink : IAsyncDisposable
                 peer.Dispose();
                 if (welcomed)
                 {
-                    UiThread.Post(() => EditorsChanged?.Invoke(this, EventArgs.Empty));
+                    UiThread.Post(() =>
+                    {
+                        EditorGone?.Invoke(this, peer);
+                        EditorsChanged?.Invoke(this, EventArgs.Empty);
+                    });
                 }
             }
             client.Dispose();
@@ -262,24 +268,6 @@ internal sealed class GodotEditorLink : IAsyncDisposable
         };
     }
 
-    /// <summary>The new processes of a Godot editor's games: those whose command line names it as their editor, as Godot's
-    /// Play gives each game it starts; <paramref name="known"/> holds every process looked at, which is looked at once.</summary>
-    public static IReadOnlyList<int> GamesOf(int editor, HashSet<int> known)
-    {
-        List<int> games = [];
-        foreach (Process process in Process.GetProcesses())
-        {
-            using (process)
-            {
-                if (known.Add(process.Id) && DotnetProcesses.Describe(process.Id) is { } described && GodotEditorWire.IsGameOf(described.CommandLine, editor))
-                {
-                    games.Add(process.Id);
-                }
-            }
-        }
-        return games;
-    }
-
     /// <summary>Stops listening: its listing deleted, every editor's connection ended.</summary>
     private void Stop()
     {
@@ -347,6 +335,15 @@ internal sealed class GodotEditorPeer : IDisposable
 
     /// <summary>Whether its hello named the window's project.</summary>
     public bool Welcomed { get; set; }
+
+    /// <summary>The games its sessions play, relayed into the window by session id, on the window's thread.</summary>
+    public Dictionary<int, GodotGame> Games { get; } = [];
+
+    /// <summary>The scene the editor edits, as it last said, which its games' live editing is set back to.</summary>
+    public string EditedScene { get; set; } = string.Empty;
+
+    /// <summary>The edits made since Play's last build, kept for each game it starts held, which takes its own copy.</summary>
+    public Debugging.BuiltEdits? Kept { get; set; }
 
     /// <summary>Each line read handed on, until the connection ends.</summary>
     public async Task ReadAsync(Func<JsonElement, Task> heard, CancellationToken cancel)
