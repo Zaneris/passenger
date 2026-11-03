@@ -9,8 +9,9 @@ public static class GodotRelay
     /// <summary>The one key of the dictionary that stands for an object sent by its id.</summary>
     public const string ObjectKey = "passenger:object";
 
-    /// <summary>The message with each object the addon sent by its id put back as that id.</summary>
-    public static GodotMessage Objects(GodotMessage message) => message with { Data = [.. message.Data.Select(Object)] };
+    /// <summary>The message with each object the addon sent by its id put back as that id, its data still the list a message
+    /// read holds.</summary>
+    public static GodotMessage Objects(GodotMessage message) => message with { Data = message.Data.Select(Object).ToList() };
 
     private static object? Object(object? value) => value switch
     {

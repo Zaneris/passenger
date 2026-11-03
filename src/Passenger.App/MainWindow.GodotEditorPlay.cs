@@ -59,10 +59,12 @@ public partial class MainWindow
         if (session.GodotEditors.Editors.FirstOrDefault(e => e.Addon >= AddonPlays) is { } peer)
         {
             peer.Debugs = debug;
+            peer.Builds = chosen.BuildBeforeLaunch;
             peer.PlayAsked = true;
             if (await peer.AskAsync("play", new JsonObject { ["scene"] = scene ?? string.Empty }, Waits.Of(PlayTaken), cancel) is null)
             {
                 peer.Debugs = null;
+                peer.Builds = null;
                 peer.PlayAsked = false;
                 return $"Godot's editor on {name} did not take the play within {Waits.Of(PlayTaken).TotalSeconds:0} s";
             }

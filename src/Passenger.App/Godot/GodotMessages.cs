@@ -33,6 +33,20 @@ public sealed record GodotMessage(string Name, long Thread, IReadOnlyList<object
     }
 }
 
+/// <summary>The ids under which a game's live editing knows the nodes Passenger's own live edits reach: below zero, where the
+/// ids Godot's editor gives the nodes it edits live, counted up from one, never come, so neither side's are the other's.</summary>
+public static class GodotLiveEditIds
+{
+    /// <summary>The path of Passenger's helper (<see cref="GodotAgent"/>).</summary>
+    public const long Agent = -7046;
+
+    /// <summary>The path of a node a resource is set on.</summary>
+    public const long Tuned = -7047;
+
+    /// <summary>Whether an id is one Godot's editor may give a node it edits live.</summary>
+    public static bool IsEditors(long id) => id > 0;
+}
+
 /// <summary>The names of the messages Passenger sends and reads, as Godot's debugger names them.</summary>
 public static class GodotWords
 {

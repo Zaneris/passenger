@@ -9,7 +9,7 @@ extends EditorPlugin
 ## Passenger listening, or one that refuses, it does nothing, and Godot plays as it always did.
 
 ## The addon's version, which Passenger reads to update an older one in place.
-const VERSION := 3
+const VERSION := 4
 ## How long a build may take to be answered.
 const BUILD_LIMIT_MS := 30 * 60 * 1000
 ## How long any other request may take to be answered.
@@ -39,6 +39,8 @@ var holding := {}
 var godot_build_skipped = null
 ## The editor's debugger of each session whose messages are relayed, by session id.
 var relayed := {}
+## The tab Passenger's addon adds to each session's debugger, by session id, by which its debugger is found.
+var tabs := {}
 ## The sessions told to Passenger as begun, by id, until they stop.
 var announced := {}
 
@@ -47,11 +49,23 @@ var announced := {}
 class Sessions extends EditorDebuggerPlugin:
 	var addon: EditorPlugin
 
+	# Passenger's helper answers it through the game's debugger, which the editor would warn of as a message it does not know.
+	func _has_capture(capture: String) -> bool:
+		return capture == "passenger"
+
+	func _capture(_message: String, _data: Array, _session_id: int) -> bool:
+		return true
+
 	func _setup_session(session_id: int) -> void:
 		var session := get_session(session_id)
 		session.started.connect(func(): addon.started(session_id))
 		session.stopped.connect(func(): addon.stopped(session_id))
-		# Its debugger is in the editor's tree only once the session is set up.
+		var tab := Label.new()
+		tab.name = "Passenger"
+		tab.text = "While Passenger is open on this project, this session's game is shown there: its tree, errors and values."
+		session.add_session_tab(tab)
+		addon.tabs[session_id] = tab
+		# Its debugger holds the tab once the session is set up.
 		addon.relay.call_deferred(session_id)
 
 
@@ -62,6 +76,11 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
+	for session_id in tabs.keys():
+		if sessions.get_session(session_id) != null and is_instance_valid(tabs[session_id]):
+			sessions.get_session(session_id).remove_session_tab(tabs[session_id])
+			tabs[session_id].queue_free()
+	tabs.clear()
 	remove_debugger_plugin(sessions)
 	_let_go()
 	_lost()
@@ -118,13 +137,16 @@ func stopped(session_id: int) -> void:
 	tell("stopped", {"session": session_id})
 
 
-## Every message a session's game tells this editor, as its debugger hears it, sent on to Passenger from now.
+## Every message a session's game tells this editor, as its debugger hears it, sent on to Passenger from now: the
+## session's own debugger, the one holding the tab added to the session, whatever its place among the editor's.
 func relay(session_id: int) -> void:
-	var debuggers := EditorInterface.get_base_control().find_children("*", "ScriptEditorDebugger", true, false)
-	if session_id >= debuggers.size() or relayed.get(session_id) == debuggers[session_id]:
+	var debugger: Node = tabs.get(session_id)
+	while debugger != null and not debugger.is_class("ScriptEditorDebugger"):
+		debugger = debugger.get_parent()
+	if debugger == null or relayed.get(session_id) == debugger:
 		return
-	relayed[session_id] = debuggers[session_id]
-	debuggers[session_id].connect("debug_data", _heard_game.bind(session_id))
+	relayed[session_id] = debugger
+	debugger.connect("debug_data", _heard_game.bind(session_id))
 
 
 func _heard_game(message: String, data: Array, session_id: int) -> void:
@@ -195,10 +217,9 @@ func _connect() -> void:
 				print("Passenger: ", str(hello["result"].get("said", "Play builds and debugs in Passenger")))
 				_tell_scene()
 				# Games playing already are relayed from now, none of them held.
-				var all := sessions.get_sessions()
-				for session_id in all.size():
+				for session_id in tabs.keys():
 					relay(session_id)
-					if all[session_id].is_active():
+					if sessions.get_session(session_id) != null and sessions.get_session(session_id).is_active():
 						started(session_id)
 				return
 		peer.disconnect_from_host()
@@ -311,11 +332,7 @@ func _heard(message: Dictionary) -> void:
 	var method := str(message["method"])
 	var params: Dictionary = message.get("params") if message.get("params") is Dictionary else {}
 	if method == "send":
-		var session: EditorDebuggerSession = null
-		var all := sessions.get_sessions()
-		var session_id := int(params.get("session", -1))
-		if session_id >= 0 and session_id < all.size():
-			session = all[session_id]
+		var session: EditorDebuggerSession = sessions.get_session(int(params.get("session", -1))) if tabs.has(int(params.get("session", -1))) else null
 		var sent = bytes_to_var(Marshalls.base64_to_raw(str(params.get("message", ""))))
 		if session != null and session.is_active() and sent is Array and sent.size() == 3 and sent[2] is Array:
 			session.send_message(str(sent[0]), sent[2])

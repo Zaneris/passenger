@@ -349,6 +349,10 @@ internal sealed class GodotEditorPeer : IDisposable
     /// Play, which Settings decides.</summary>
     public bool? Debugs { get; set; }
 
+    /// <summary>Whether the next Play Passenger asked for builds first, as its configuration says; null for the editor's own
+    /// Play, which always does.</summary>
+    public bool? Builds { get; set; }
+
     /// <summary>Whether Passenger asked the editor to play, its game yet to begin.</summary>
     public bool PlayAsked { get; set; }
 

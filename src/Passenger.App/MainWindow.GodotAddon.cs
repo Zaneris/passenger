@@ -230,8 +230,17 @@ public partial class MainWindow
         }
         BuiltEdits? edits = null;
         BuildOutcome built;
-        using (Working? working = work.Begin(AppActions.GodotAddon, $"Building {project.Name} for Godot's Play"))
+        bool builds = peer.Builds ?? true;
+        peer.Builds = null;
+        if (!builds)
         {
+            // A configuration Passenger played that builds nothing first: the game runs as it was last built.
+            edits = session.Debug.Kept();
+            built = new BuildOutcome(BuildStatus.Succeeded, $"{project.Name} was not built: its configuration builds nothing first");
+        }
+        else
+        {
+            using Working? working = work.Begin(AppActions.GodotAddon, $"Building {project.Name} for Godot's Play");
             BuildStep step = new(project.Path, session.Frameworks.Of(project));
             void Reading()
             {

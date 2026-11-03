@@ -19,6 +19,7 @@ public class GodotRelayTests
 
         GodotMessage read = GodotRelay.Objects(relayed);
 
+        Assert.IsType<List<object?>>(read.Data, exactMatch: false);
         Assert.Equal(new GodotObjectId(42), read.Data[0]);
         Assert.Equal(["parent", new GodotObjectId(43)], (List<object?>)read.Data[1]!);
         GodotArray array = Assert.IsType<GodotArray>(read.Data[2]);

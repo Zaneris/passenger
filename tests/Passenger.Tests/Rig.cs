@@ -387,7 +387,7 @@ public static partial class Nice
 /// test, every window it left open is closed (one that failed before its own close) and what its windows started (a
 /// language server, a build, a debugger, a program) is waited out, those it closed itself too, then the folders the test
 /// made as it ran are removed, the windows that used them gone first. Any test fails where the person's Godot user folders
-/// were written as it ran (<see cref="PersonsGodot"/>).</summary>
+/// were written as it ran (<see cref="PersonsGodot"/>), or left a game running of a Godot editor it ended (<see cref="TestGodotEditors"/>).</summary>
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
 {
@@ -420,6 +420,10 @@ public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
         if (PersonsGodot.Written($"as {test.TestDisplayName} ran") is { } written)
         {
             throw new InvalidOperationException(written);
+        }
+        if (TestGodotEditors.LeftGames() is [_, ..] left)
+        {
+            throw new InvalidOperationException($"{test.TestDisplayName} left games of a Godot editor it ended running, ended now: {string.Join("; ", left)}");
         }
     }
 

@@ -4,6 +4,7 @@ using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Editors;
+using Passenger.App.Godot;
 using Passenger.App.Run;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -33,12 +34,23 @@ public sealed class GodotAddonTests : IDisposable
 
     public void Dispose()
     {
-        if (editor is { } running)
-        {
-            ChildProcesses.Kill(running);
-            running.Dispose();
-        }
+        EndEditor();
         TestFolders.Delete(folder);
+    }
+
+    /// <summary>The test's Godot editor ended, then any game it was starting as it went, which may outlive it.</summary>
+    private void EndEditor()
+    {
+        if (editor is not { } running)
+        {
+            return;
+        }
+        editor = null;
+        int id = running.Id;
+        ChildProcesses.Kill(running);
+        Assert.True(Processes.Gone(id), $"The test's Godot editor (process {id}) still runs after it was ended");
+        running.Dispose();
+        TestGodotEditors.EndGamesOf(id);
     }
 
     private const string Script = """
@@ -46,12 +58,28 @@ public sealed class GodotAddonTests : IDisposable
 
         public partial class Main : Node
         {
+            private int frames;
+
             public override void _Ready()
             {
                 int answer = 6 * 7;
                 GD.Print($"ready {answer}");
                 GD.PushError("Spinner fell over");
                 System.IO.File.WriteAllText(ProjectSettings.GlobalizePath("res://ready.txt"), $"ready {answer}");
+                // The instance asked to end, among several Godot's Play starts, quits a moment after it began.
+                if (System.Array.IndexOf(OS.GetCmdlineUserArgs(), "ends") >= 0)
+                {
+                    GetTree().CreateTimer(4.0).Timeout += () => GetTree().Quit();
+                }
+            }
+
+            public override void _Process(double delta)
+            {
+                frames++;
+                if (GetNode<Button>("Ui/Press").ButtonPressed && !System.IO.File.Exists(ProjectSettings.GlobalizePath("res://pressed.txt")))
+                {
+                    System.IO.File.WriteAllText(ProjectSettings.GlobalizePath("res://pressed.txt"), "pressed");
+                }
             }
         }
 
@@ -64,6 +92,21 @@ public sealed class GodotAddonTests : IDisposable
 
         [node name="Main" type="Node"]
         script = ExtResource("1")
+
+        [node name="Ui" type="Control" parent="."]
+        layout_mode = 3
+        anchors_preset = 0
+        offset_right = 400.0
+        offset_bottom = 300.0
+
+        [node name="Press" type="Button" parent="Ui"]
+        layout_mode = 0
+        offset_left = 10.0
+        offset_top = 10.0
+        offset_right = 110.0
+        offset_bottom = 40.0
+        toggle_mode = true
+        text = "Press"
 
         """;
 
@@ -316,6 +359,108 @@ public sealed class GodotAddonTests : IDisposable
         }
     }
 
+    /// <summary>A game Godot's Play starts, relayed here, shows its members' values at their lines as one Passenger starts does,
+    /// and an agent's click through app_click reaches its button.</summary>
+    [AvaloniaFact]
+    public void A_relayed_games_values_show_at_their_lines_and_an_agents_click_reaches_it()
+    {
+        MainWindow window = Opened();
+        try
+        {
+            OpenDocument script = window.EditorArea.Active!;
+            int frames = Line(window.EditorArea.CodeEditor, "private int frames;");
+            StartEditor([]);
+            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            TestFolders.Write(folder, "play.txt", "play\n");
+            Ui.WaitFor(() => File.Exists(Ready) && window.Session.Game is { Relayed: true, State: Passenger.App.LiveTree.LiveAppState.Connected },
+                () => $"the played game to be relayed here ({Games(window)}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+
+            Ui.WaitFor(() => script.LiveValues.Any(v => v.Line == frames - 1 && v.Text.StartsWith("frames: ", StringComparison.Ordinal)),
+                () => $"the frame count's value at its line ({string.Join("; ", script.LiveValues.Select(v => $"line {v.Line + 1}: {v.Text}"))}; the last read: {window.GodotValues.Unread ?? "answered"}; "
+                    + $"IDE: {string.Join(" | ", Ui.Shared(IdeLog.PathOf(IdeLog.Ide)).Split('\n').Where(l => l.Contains("Godot:", StringComparison.Ordinal) || l.Contains("xception", StringComparison.Ordinal)).TakeLast(10))}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
+            string clicked = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).AppClick(app: "Spinner in Godot", control: "#Press"), "an agent's click on the game's button",
+                TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => File.Exists(Path.Combine(folder, "pressed.txt")), () => $"the click to press the game's button (the tool said: {clicked})", TimeSpan.FromSeconds(30));
+            TestFolders.Write(folder, "stop.txt", "stop\n");
+            Ui.WaitFor(() => window.Session.Games.Count == 0, () => $"the game to end with Godot's Stop ({Games(window)}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Three instances Godot's Play starts at once (its Run Multiple Instances) are each relayed and debugged through
+    /// their own session; the one given a user argument to quit ended, the other two are still relayed and debugged, each by
+    /// its own session's debugger, whatever place the editor now gives their debuggers.</summary>
+    [AvaloniaFact]
+    public void Three_instances_played_are_each_relayed_and_debugged_and_the_others_stay_so_once_the_second_ends()
+    {
+        MainWindow window = Opened();
+        try
+        {
+            // Godot's editor keeps its Run Multiple Instances in the project's metadata, which it reads as it opens.
+            // The second is given a user argument that has it quit itself a moment after it began.
+            TestFolders.Write(folder, ".godot/editor/project_metadata.cfg", "[debug_options]\n\nmultiple_instances_enabled=true\nrun_instance_count=3\n"
+                + "run_instances_config=[{\"arguments\": \"\", \"features\": \"\", \"override_args\": false, \"override_features\": false}, "
+                + "{\"arguments\": \"++ ends\", \"features\": \"\", \"override_args\": false, \"override_features\": false}, "
+                + "{\"arguments\": \"\", \"features\": \"\", \"override_args\": false, \"override_features\": false}]\n");
+            StartEditor([]);
+            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            TestFolders.Write(folder, "play.txt", "play\n");
+            string[] names = ["Spinner in Godot", "Spinner in Godot #2", "Spinner in Godot #3"];
+            Ui.WaitFor(() => names.All(n => window.Session.Games.Any(g => g.Name == n && g.State == Passenger.App.LiveTree.LiveAppState.Connected && g.ProcessId is int))
+                && names.All(n => window.Debugger.Tabs.Any(t => t.Name == n && t.Session is { State: DebugState.Running })),
+                () => $"three instances relayed and debugged ({Games(window)}; tabs {Tabs(window)}; Godot said: {Said()})", TimeSpan.FromMinutes(3));
+            Dictionary<string, int> processes = window.Session.Games.ToDictionary(g => g.Name, g => g.ProcessId!.Value);
+            Assert.Equal(3, processes.Values.Distinct().Count());
+            int ending = processes.Single(p => DotnetProcesses.Describe(p.Value)?.CommandLine.Contains(" ends", StringComparison.Ordinal) == true).Value;
+            string ended = processes.Single(p => p.Value == ending).Key;
+            string[] others = [.. names.Where(n => n != ended)];
+            Ui.WaitFor(() => !window.Session.Games.Any(g => g.Name == ended) && !window.Debugger.Tabs.Any(t => t.Name == ended && t.IsLive),
+                () => $"the second instance to end here ({Games(window)}; tabs {Tabs(window)}; its process {(DotnetProcesses.Runs(ending) ? "runs" : "has gone")}; Godot said: {Said()})",
+                TimeSpan.FromMinutes(1));
+            // Long enough for a message of each of the others to come through its own session again.
+            Ui.Hold(TimeSpan.FromSeconds(3), "the first and third instances' monitors to come again, once a second each");
+            foreach (string name in others)
+            {
+                GodotGame game = Assert.Single(window.Session.Games, g => g.Name == name);
+                Assert.True(game.State == Passenger.App.LiveTree.LiveAppState.Connected && game.ProcessId == processes[name] && Processes.IsRunning(processes[name]),
+                    $"{name} is no longer relayed as the game it was ({Games(window)})");
+                Assert.True(window.Debugger.Tabs.Any(t => t.Name == name && t.IsLive), $"{name} is no longer debugged");
+            }
+            Assert.NotNull(Ui.Await(window.Session.Games.Single(g => g.Name == others[^1]).SceneTreeAsync(), "the last instance's tree through its own session"));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>The editor ended while it plays leaves no game behind: every process naming it as its editor ends with it.</summary>
+    [AvaloniaFact]
+    public void An_editor_ended_while_it_plays_leaves_no_game_naming_it()
+    {
+        MainWindow window = Opened();
+        try
+        {
+            StartEditor([]);
+            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            TestFolders.Write(folder, "play.txt", "play\n");
+            Ui.WaitFor(() => window.Session.Game is { Relayed: true, ProcessId: int }, () => $"the editor to play the game ({Games(window)}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            int editorId = editor!.Id;
+            int game = window.Session.Game!.ProcessId!.Value;
+
+            EndEditor();
+            Assert.True(Processes.Gone(game), $"The game (process {game}) still runs after its editor ended");
+            Assert.Empty(TestGodotEditors.EndGamesOf(editorId));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>The window's configuration made the generated game's, played in Godot's editor.</summary>
     private static void InEditor(MainWindow window)
     {
@@ -323,14 +468,15 @@ public sealed class GodotAddonTests : IDisposable
         window.SetConfigurations([generated with { Name = "Spinner in Godot's editor", Generated = false, GodotInEditor = true }], "Spinner in Godot's editor");
     }
 
-    private static void End(MainWindow window)
+    private void End(MainWindow window)
     {
         if (window.Debugger.IsDebugging)
         {
-            Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugger to let the game go");
+            Assert.Null(window.Actions.Run(AppActions.StopAll));
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugger to let every game go");
         }
         window.Close();
+        EndEditor();
     }
 
     /// <summary>A headless Godot editor on the project, its user folders the run's and Passenger's state the IDE's, with the
@@ -348,10 +494,15 @@ public sealed class GodotAddonTests : IDisposable
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         editor = ChildProcesses.Start(start);
+        TestGodotEditors.Began(editor.Id);
         UnawaitedWork.Dismiss(ChildProcesses.Hear(editor, said.Enqueue, said.Enqueue));
     }
 
     private string Said() => string.Join(" | ", said.TakeLast(40));
+
+    /// <summary>Each Debug tab, with its session's state.</summary>
+    private static string Tabs(MainWindow window) =>
+        string.Join(", ", window.Debugger.Tabs.Select(t => $"{t.Name} {(t.IsLive ? t.Session?.State.ToString() ?? "opening" : "ended")}"));
 
     /// <summary>Each game the window has, with its state and the process it said.</summary>
     private static string Games(MainWindow window) => window.Session.Games.Count == 0 ? "no game"

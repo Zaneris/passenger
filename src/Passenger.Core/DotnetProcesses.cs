@@ -158,9 +158,30 @@ public static partial class DotnetProcesses
         try
         {
             using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
-            return !process.HasExited;
+            return !process.HasExited && !Zombie(id);
         }
         catch (Exception gone) when (gone is ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Whether a process has ended and waits for its parent to take its exit: one of another's, which .NET still finds
+    /// running then.</summary>
+    private static unsafe bool Zombie(int id)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            // A zombie's task is gone, so the system gives no BSD side for it at all, where it gives every live process's.
+            byte* info = stackalloc byte[BsdInfoSize];
+            return ProcPidInfo(id, ProcPidTbsdInfo, 0, info, BsdInfoSize) != BsdInfoSize || *(uint*)(info + BsdStatusOffset) == ZombieStatus;
+        }
+        try
+        {
+            string stat = File.ReadAllText($"/proc/{id}/stat");
+            return stat.LastIndexOf(')') is int end and >= 0 && end + 2 < stat.Length && stat[end + 2] == 'Z';
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
         {
             return false;
         }
@@ -424,6 +445,10 @@ public static partial class DotnetProcesses
     private const int ProcPidTbsdInfo = 3;
     private const int BsdInfoSize = 136;
     private const int BsdParentOffset = 16;
+    private const int BsdStatusOffset = 4;
+
+    /// <summary>The BSD side's status of a process that has ended and waits for its parent (SZOMB).</summary>
+    private const uint ZombieStatus = 5;
     private const int BsdUidOffset = 20;
     private const int BsdStartOffset = 120;
 

@@ -69,8 +69,6 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     /// predate it, so only one asked since says the helper is gone.</summary>
     private int brought;
 
-    /// <summary>The id under which the game's live editing knows the path of Passenger's helper (<see cref="GodotAgent"/>).</summary>
-    private const long AgentPath = 7046;
 
     private GodotGame(string name, string folder, string? version, bool headless, bool unseen, bool scriptsAlone, TcpListener? listener, GodotScriptStart? scripts,
         Func<byte[], CancellationToken, Task>? relay = null)
@@ -872,7 +870,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
                 ?? throw new LiveAppException($"{Name} has no scene open once under its root, beside which Passenger's helper comes into the game");
         }
         await SendAsync(GodotWords.LiveSetRoot, GodotAgent.PathOf("/root"), scene);
-        await SendAsync(GodotWords.LiveNodePath, GodotAgent.PathOf($"../{GodotAgent.NodeName}"), AgentPath);
+        await SendAsync(GodotWords.LiveNodePath, GodotAgent.PathOf($"../{GodotAgent.NodeName}"), GodotLiveEditIds.Agent);
         // Brought in only once the game knows the path its script is set through, or the script goes nowhere.
         if (asked is ({ } lacking, int since) && !lacking.Children.Any(GodotAgent.Is) && (bringing is null || (bringing.IsCompleted && since == brought)))
         {
@@ -896,7 +894,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         try
         {
             // Through the one call the helper guards every other with.
-            await SendAsync(GodotWords.LiveNodeCall, AgentPath, GodotAgent.Asked, call, ask, new List<object?>(arguments));
+            await SendAsync(GodotWords.LiveNodeCall, GodotLiveEditIds.Agent, GodotAgent.Asked, call, ask, new List<object?>(arguments));
             if (then is not null)
             {
                 await then();
@@ -967,7 +965,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         {
             await SendAsync(GodotWords.LiveCreateNode, GodotAgent.PathOf(".."), "Node", GodotAgent.NodeName);
             // Godot's own paths part their folders with '/' on every system.
-            await SendAsync(GodotWords.LiveNodePropertyResource, AgentPath, "script", script.Replace('\\', '/'));
+            await SendAsync(GodotWords.LiveNodePropertyResource, GodotLiveEditIds.Agent, "script", script.Replace('\\', '/'));
         }
         finally
         {
@@ -1256,9 +1254,6 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         await SetPropertyAsync((ulong)element, name, value);
     }
 
-    /// <summary>The id under which the game's live editing knows a node set a resource.</summary>
-    private const long TunedPath = 7047;
-
     /// <summary>Sets a node's resource to a file of the project's (<c>res://</c>), which the game loads: through live editing
     /// of the scene the node is nearest the root of, which reaches it in every copy of that scene.</summary>
     public async Task SetResourceAsync(long element, string name, string resource)
@@ -1279,8 +1274,8 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         string below = string.Join('/', place.Chain.Skip(root + 1).Select(c => c.Name));
         Tuning.Set((ulong)element, place, property, resource);
         await SendAsync(GodotWords.LiveSetRoot, GodotAgent.PathOf("/root"), place.Chain[root].Scene);
-        await SendAsync(GodotWords.LiveNodePath, GodotAgent.PathOf(below.Length == 0 ? "." : below), TunedPath);
-        await SendAsync(GodotWords.LiveNodePropertyResource, TunedPath, name, resource);
+        await SendAsync(GodotWords.LiveNodePath, GodotAgent.PathOf(below.Length == 0 ? "." : below), GodotLiveEditIds.Tuned);
+        await SendAsync(GodotWords.LiveNodePropertyResource, GodotLiveEditIds.Tuned, name, resource);
         await GiveBackLiveRootAsync();
     }
 

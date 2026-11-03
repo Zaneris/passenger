@@ -4,10 +4,22 @@ namespace Passenger.UnitTests.Godot;
 
 /// <summary>Godot's remote debug protocol as Passenger reads and writes it: the messages a running Godot 4.7 game sent
 /// (their bytes taken from one, after their length), its scene tree, an inspected node, its output and its monitors, and an
-/// error encoded as Godot encodes one; what Passenger sends read back as sent; and a property's value read from the text a
-/// person types.</summary>
+/// error encoded as Godot encodes one; what Passenger sends read back as sent; a property's value read from the text a
+/// person types; and Passenger's live-edit ids apart from the editor's.</summary>
 public class GodotProtocolTests
 {
+    [Fact]
+    public void Passengers_live_edit_ids_are_apart_from_every_id_the_editor_gives_its_live_edits()
+    {
+        long[] ours = [GodotLiveEditIds.Agent, GodotLiveEditIds.Tuned];
+
+        Assert.Equal(ours.Length, ours.Distinct().Count());
+        Assert.DoesNotContain(ours, GodotLiveEditIds.IsEditors);
+        // The editor counts its ids up from one, as far as an int goes.
+        Assert.True(GodotLiveEditIds.IsEditors(1) && GodotLiveEditIds.IsEditors(int.MaxValue) && ours.All(id => id >= int.MinValue),
+            "Passenger's ids are to fit the int the game reads them as, below every id the editor gives");
+    }
+
     private const string Tree =
         "HAAAAAMAAAAEAAAAEAAAAHNjZW5lOnNjZW5lX3RyZWUCAAAAAQAAABwAAAAMAAAAAgAAAAEAAAAEAAAABAAAAHJvb3QEAAAABgAAAFdpbmRvdwAA"
         + "AgABAM0FAFIGAAAABAAAAAAAAAACAAAAAAAAAAIAAAAAAAAABAAAAAQAAABNYWluBAAAAA0AAAByZXM6Ly9NYWluLmNzAAAAAgABANkFAG0GAAAA"
