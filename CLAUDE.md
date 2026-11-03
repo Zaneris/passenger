@@ -34,6 +34,8 @@ just notices               # fail naming any carried package the notices miss
 just mcp [FOLDER]          # Passenger as an MCP server over a folder, from a clone of the last build
 just mcp-call FOLDER TOOL [JSON]  # one MCP tool over a folder (a worktree) from the shell, its server kept
 just site-shots [SCENE...] # site/images/<scene>-<dark|light>.webp retaken (macOS, cwebp)
+just godot-sweep [NAME...] # tools/godot-projects.json's Godot projects swept by a headless Passenger (report.md),
+                           # cloned outside any repository, whose Directory.*.props MSBuild would take in
 just icons | file-icons | themes | unicode-widths | aspire-protocol | app-icon | godot-shader-types  # regenerate
 ```
 
@@ -370,16 +372,18 @@ Projects in `src/`; `find_symbol` finds the rest:
   and C# strings along (`GodotScriptRenameAsync`); a project.godot of GDScript alone is a scene's project too
   (`ProjectSession.GodotOf`; the C# service's `BuiltGodotOf` a C# project's only), so scene code reaches the scenes
   through `AssistContext.GodotOf` (`GodotSceneIndex.GameOf`), and a GDScript's class is `GodotScenes.ChainOf` over
-  `GodotScriptDeclarations`; their fixes `GodotOffer` over the extension's `GodotFix` (members made by Roslyn so the
-  code builds) and Workspace's pure `GodotWrites`, a fix that asks first through `EditorFix.Confirms`; Godot's generator
-  assigns every field in generated code, so a field's values are read from the code's own documents); a C# file read
-  before its project's evaluation landed is pulled again once it does (`CSharpService.GodotProjectsChanged`). A Godot
-  shader is `GodotShaderAssist` over Workspace's `GodotShaderCode`, its language the carried `GodotShaderTypes.json` as
-  the Godot found takes it (`GodotShaderCompiler.TableAsync`, probed per version), its marks Godot's own compiler's
-  through `PassengerShaders.gd` (`GodotShaderMarks`; a scene's own Shader's in `GodotSceneMarks` through
-  `GodotStringPlaces`). Edits added to a server's workspace edit for a file it already edits join that file's entry
-  (`TypeRename.With`): `documentChanges` apply in order. A server's own command (TypeScript's refactorings, ESLint's
-  fixes) runs through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
+  `GodotScriptDeclarations`, read from `GDScriptTree` (Godot's own parser, ported: members are runs between clean member
+  starts, `Reparse` parsing only the edited run); their fixes `GodotOffer` over the extension's `GodotFix` (members made
+  by Roslyn so the code builds) and Workspace's pure `GodotWrites`, a fix that asks first through `EditorFix.Confirms`;
+  Godot's generator assigns every field in generated code, so a field's values are read from the code's own documents);
+  a C# file read before its project's evaluation landed is pulled again once it does
+  (`CSharpService.GodotProjectsChanged`). A Godot shader is `GodotShaderAssist` over Workspace's `GodotShaderCode`, its
+  language the carried `GodotShaderTypes.json` as the Godot found takes it (`GodotShaderCompiler.TableAsync`, probed per
+  version), its marks Godot's own compiler's through `PassengerShaders.gd` (`GodotShaderMarks`; a scene's own Shader's
+  in `GodotSceneMarks` through `GodotStringPlaces`). Edits added to a server's workspace edit for a file it already
+  edits join that file's entry (`TypeRename.With`): `documentChanges` apply in order. A server's own command
+  (TypeScript's refactorings, ESLint's fixes) runs through `ServerCommands`, the edits it sends back
+  (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
   `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
@@ -581,23 +585,24 @@ site-shots` retakes its images.
   says: a test gives it HOME/APPDATA of its own and always `--headless`. Its debug peer takes only `[name, thread id 1,
   data]` messages, its packed strings end with a NUL, `scene:inspect_objects` answers a few objects at most (inspect one
   at a time), a warning comes as an error with its flag set, and a headless game has no picture. Its language server
-  takes whole texts only, reads `Content-Length` at a fixed offset of the header, needs `rootPath` and has no shutdown;
-  a headless editor writes project.godot (a plugin's `ProjectSettings.save()` writes all it holds), `editor_layout.cfg`,
-  `script_editor_cache.cfg` and `ide_messaging_meta.txt` into the project, which `GodotScripts` puts back (`Kept`, a
-  Passenger save meanwhile staying the person's), an import's and an export's too (`PuttingBackAsync`;
-  `PASSENGER_GODOT_HOME` gives that editor the run's user folders). Its script debugger: a message to a stopped thread
-  carries the thread's id; an `evaluate` in a frame with no instance, or a `break` sent while stopped, leaves the debug
-  loop and lets the game go on; an evaluation's errors come after its answer, so each is followed by a `get_stack_dump`;
-  `reload_scripts` keeps members by name, an added one null. Stop ends a game a moment before its debug session ends: a
-  test waits for the session too, and a session is shown ended once its adapter says the program ended
-  (`DebugSession.Ended`), or once its process has gone where the adapter said Exited and never Terminated
-  (`ProgramGone`). Godot's own GodotSharp packages differ from nuget.org's of the same version, so `tests/GodotGraphs`
-  never restores GodotSharp at a version a Godot ships (the next locked restore fails NU1403): GoDotTest's packages are
-  `PackageDownload`s. Windows' Godot .exe writes to no console, so every terminal run of a game, Run and Debug, C# and
-  GDScript, goes through its console wrapper (`GodotConsole`), the debugger taking the game's own process the wrapper
-  starts (`TerminalRun.Debuggee`). An agent's call on a game is held to one limit (`GodotGame.Within`, `GameLimit`),
-  app_ tools wait for no evaluation (`PassengerTools.OnApp`) but for the game's first scene
-  (`GodotGame.FirstSceneAsync`), and a typed Godot value has one reader (`GodotVariant.ReadAsync`). Godot's frame
+  takes whole texts only, reads `Content-Length` at a fixed offset of the header, needs `rootPath`, has no shutdown, and
+  names a warning by `(NAME): ` before its message up to 4.7, by the diagnostic's `code` from 4.8
+  (`GodotServerWords.Warning` reads both); a headless editor writes project.godot (a plugin's `ProjectSettings.save()`
+  writes all it holds), `editor_layout.cfg`, `script_editor_cache.cfg` and `ide_messaging_meta.txt` into the project,
+  which `GodotScripts` puts back (`Kept`, a Passenger save meanwhile staying the person's), an import's and an export's
+  too (`PuttingBackAsync`; `PASSENGER_GODOT_HOME` gives that editor the run's user folders). Its script debugger: a
+  message to a stopped thread carries the thread's id; an `evaluate` in a frame with no instance, or a `break` sent
+  while stopped, leaves the debug loop and lets the game go on; an evaluation's errors come after its answer, so each is
+  followed by a `get_stack_dump`; `reload_scripts` keeps members by name, an added one null. Stop ends a game a moment
+  before its debug session ends: a test waits for the session too, and a session is shown ended once its adapter says
+  the program ended (`DebugSession.Ended`), or once its process has gone where the adapter said Exited and never
+  Terminated (`ProgramGone`). Godot's own GodotSharp packages differ from nuget.org's of the same version, so
+  `tests/GodotGraphs` never restores GodotSharp at a version a Godot ships (the next locked restore fails NU1403):
+  GoDotTest's packages are `PackageDownload`s. Windows' Godot .exe writes to no console, so every terminal run of a
+  game, Run and Debug, C# and GDScript, goes through its console wrapper (`GodotConsole`), the debugger taking the
+  game's own process the wrapper starts (`TerminalRun.Debuggee`). An agent's call on a game is held to one limit
+  (`GodotGame.Within`, `GameLimit`), app_ tools wait for no evaluation (`PassengerTools.OnApp`) but for the game's first
+  scene (`GodotGame.FirstSceneAsync`), and a typed Godot value has one reader (`GodotVariant.ReadAsync`). Godot's frame
   counter runs on while a game is paused, so the frame count is the helper's (`GodotGame.Frame`); in a headless game
   Next Frame never pauses again, so the helper's `step` ends it; node selection, once set up, starts picking and takes
   the game's clicks until turned off; a headless game picks no 3D mesh without a collision shape. Godot reads the
