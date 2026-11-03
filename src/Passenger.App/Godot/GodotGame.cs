@@ -1006,6 +1006,34 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     /// <summary>The node the last pick found, as Godot sent it; null for none, or before a pick.</summary>
     public GodotObjectState? LastPick { get; private set; }
 
+    /// <summary>What the game's 3D physics space holds under the last press Passenger's helper gave, where Godot's node
+    /// selection casts its ray: a body's or area's words ("StaticBody3D Crate"), "" for none, null where no press of the
+    /// helper's or no camera is known.</summary>
+    public async Task<string?> ShapeAtPressAsync() => await AskAsync("shapes") is [bool known, string held] && known ? held : null;
+
+    /// <summary>What a 3D pick that found nothing says of the point, from the helper's own ray (<see cref="ShapeAtPressAsync"/>),
+    /// in a game drawing nothing, whose pick takes only nodes with a collision shape: null where it cannot say.</summary>
+    public async Task<string?> MissedAsync()
+    {
+        if (!Headless)
+        {
+            return null;
+        }
+        try
+        {
+            return await ShapeAtPressAsync() switch
+            {
+                "" => "no collision shape at this point: a headless game picks only nodes with one",
+                { } held => $"{held}'s shape is at this point, which Godot's pick did not take",
+                null => null,
+            };
+        }
+        catch (LiveAppException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>A click in the game picked a node (as Godot sent it), or none Godot could pick there (null), while it picked.</summary>
     public event EventHandler<GodotObjectState?>? Picked;
 

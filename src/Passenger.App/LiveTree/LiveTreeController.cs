@@ -1086,7 +1086,12 @@ public sealed partial class LiveTreeController
         }
         if (picked is null)
         {
-            parts.Say($"Select Element: {game.Name} has no node there that Godot picks");
+            string said = $"Select Element: {game.Name} has no node there that Godot picks";
+            parts.Say(said);
+            if (game.Picking == Godot.GodotPicking.In3D)
+            {
+                IdeErrors.Observe(SayMissedAsync(game, said));
+            }
             return;
         }
         Picking(false);
@@ -1094,6 +1099,15 @@ public sealed partial class LiveTreeController
         Choose((long)picked.Id);
         parts.Dock.Show(window.Id);
         IdeErrors.Observe(RefreshAsync());
+    }
+
+    /// <summary>What a 3D pick that found nothing says once the helper looked at the point: why, where it can say.</summary>
+    private async Task SayMissedAsync(Godot.GodotGame game, string said)
+    {
+        if (await game.MissedAsync() is { } missed && app == game)
+        {
+            parts.Say($"{said}: {missed}");
+        }
     }
 
     /// <summary>Chooses a control by the inspector's id for it, when the app the window follows is that process: the tree,

@@ -21,6 +21,8 @@ var _stepping := 0
 var _ends_step := false
 ## Whether a headless game's window was given its size, which the first call gives it.
 var _sized := false
+## Where in the viewport the last press this helper gave landed, which a pick that found nothing is looked at again at.
+var _pressed_at := Vector2(INF, INF)
 ## The last member, so it is set only once every other member's default is (members are made in the order written).
 var _made = true
 
@@ -217,6 +219,7 @@ func click(ask: int, id: int, has_point: bool, x: float, y: float, button: int, 
     var at = _aim(ask, id, has_point, x, y)
     if at == null:
         return
+    _pressed_at = at
     var under: Control = await _hover(at, modifiers)
     var target := _node(id)
     if target != null and under != null and under != target and not target.is_ancestor_of(under):
@@ -247,6 +250,20 @@ func click(ask: int, id: int, has_point: bool, x: float, y: float, button: int, 
         _send(up)
     await _frames(2)
     _say(ask, true, _after(at, under, null, false))
+
+
+## The body or area the game's 3D physics space holds under the last press this helper gave, as Godot's node selection
+## casts its ray there: [whether a press and a camera are known, the node's words or "" for none].
+func shapes(ask: int) -> void:
+    var camera := get_viewport().get_camera_3d()
+    if camera == null or not _pressed_at.is_finite():
+        _say(ask, true, [false, ""])
+        return
+    var from := camera.project_ray_origin(_pressed_at)
+    var query := PhysicsRayQueryParameters3D.create(from, from + camera.project_ray_normal(_pressed_at) * camera.far)
+    query.collide_with_areas = true
+    var hit := get_viewport().find_world_3d().direct_space_state.intersect_ray(query)
+    _say(ask, true, [true, _named(hit["collider"]) if hit.get("collider") is Node else ""])
 
 
 func scroll(ask: int, id: int, has_point: bool, x: float, y: float, dx: float, dy: float, modifiers: int) -> void:

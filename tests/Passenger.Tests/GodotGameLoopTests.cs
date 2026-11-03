@@ -28,7 +28,7 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
 
     /// <summary>Select Element in 2D picks the control at a point, the tree choosing it with its script a link, and is off
     /// once it has; in 3D it picks the body at the middle of the camera's view, its group in Godot's editor picked for the
-    /// shape under the point; a point with no node Godot picks there (the view's corner) is said so.</summary>
+    /// shape under the point; a point with no node Godot picks there (the view's corner) is said so, with no collision shape there.</summary>
     [AvaloniaFact]
     public void Select_Element_picks_the_node_at_a_point_in_2D_and_in_3D_the_tree_choosing_it_with_its_scripts_link()
     {
@@ -59,6 +59,9 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
             Ui.WaitFor(() => running.Picks > picks, () => $"the game to say it picked nothing at the view's corner ({window.Status})", TimeSpan.FromMinutes(1));
             Assert.True(running.LastPick is null && running.Picking == GodotPicking.In3D && window.Status?.Contains("has no node there", StringComparison.Ordinal) == true,
                 $"A point with no node to pick chose {running.LastPick?.Class}, or turned Select Element off, or was not said ({running.Picking}; {window.Status})");
+            // The helper's own ray finds no shape there either, which a headless game's pick needs.
+            Ui.WaitFor(() => window.Status?.Contains("no collision shape at this point: a headless game picks only nodes with one", StringComparison.Ordinal) == true,
+                () => $"the miss to say the point held no collision shape ({window.Status})");
             (double width, double height) = View(running);
             Click(running, width / 2, height / 2);
             Ui.WaitFor(() => tree.Details is { Name: "Crate" } crate && crate.Source is { } script && PathNames.Same(script.File, Path.Combine(game.Folder, "crate.gd")),

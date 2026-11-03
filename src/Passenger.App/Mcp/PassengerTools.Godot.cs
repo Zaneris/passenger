@@ -318,12 +318,12 @@ public sealed partial class PassengerTools
             >= 3 => "Triple-clicked",
             _ => button == "left" ? "Clicked" : $"{char.ToUpperInvariant(button[0])}{button[1..]}-clicked",
         };
-        return $"{clicked} {Aimed(element, done)}{Took(element, done, "click")}{Said(done)}{Picked(game, picking, picks, nodes)}";
+        return $"{clicked} {Aimed(element, done)}{Took(element, done, "click")}{Said(done)}{await PickedAsync(game, picking, picks, nodes)}";
     }
 
     /// <summary>What a click given while Select Element picks in the game came to: the node Godot picked, which the Live
     /// Visual Tree chose (its pick comes before the helper's answer on the one connection), or that it picked none there.</summary>
-    private static string Picked(GodotGame game, GodotPicking picking, int picks, List<AppNode> nodes)
+    private static async Task<string> PickedAsync(GodotGame game, GodotPicking picking, int picks, List<AppNode> nodes)
     {
         if (picking == GodotPicking.Off)
         {
@@ -331,8 +331,7 @@ public sealed partial class PassengerTools
         }
         if (game.Picks == picks || game.LastPick is not { } picked)
         {
-            string why = picking == GodotPicking.In3D && game.Headless ? ", where a game drawing nothing has Godot pick a 3D node by its collision shape alone" : string.Empty;
-            return $"; Select Element picked no node there{why}";
+            return picking == GodotPicking.In3D && await game.MissedAsync() is { } missed ? $"; Select Element picked no node there: {missed}" : "; Select Element picked no node there";
         }
         string named = nodes.FirstOrDefault(n => n.Element.Id == (long)picked.Id) is { } node ? AppQuery.Short(node.Element) : $"{picked.Class} {Id((long)picked.Id)}";
         return $"; Select Element picked {named}, which the Live Visual Tree chose";
