@@ -259,11 +259,12 @@ public static class GodotScripts
     /// project written (<see cref="Before.Scanned"/>).</summary>
     private static readonly TimeSpan Starting = TimeSpan.FromSeconds(10);
 
-    /// <summary>The longest a headless editor's first scan is waited for once its server answers.</summary>
+    /// <summary>The longest a headless editor's first scan is waited for once its server answers, and its start work watched
+    /// once it has scanned.</summary>
     private static readonly TimeSpan Scanning = TimeSpan.FromMinutes(5);
 
     /// <summary>The files a headless editor writes over put back as it writes them, and those it makes taken away, through its
-    /// start work and <see cref="Starting"/> after, another program's writes meanwhile kept (<see cref="Before.PutBack"/>).
+    /// start work and until it has been quiet <see cref="Starting"/>, another program's writes meanwhile kept (<see cref="Before.PutBack"/>).
     /// Past then nothing more is put back, so no later write of another's is taken for the editor's: in recovery mode
     /// (<see cref="GodotExecutables.RecoveryMode"/>) no plugin or tool script runs in it to write later. It ends early once
     /// the project has gone (a test's, deleted under it), said once.</summary>
@@ -274,8 +275,9 @@ public static class GodotScripts
             long? answered = null;
             long? settled = null;
             HashSet<string> told = [];
-            // A change found late is decided, but an editor that writes on and on is not waited out for good.
-            while (settled is not { } at || Stopwatch.GetElapsedTime(at) < Starting || before.Deciding && Stopwatch.GetElapsedTime(at) < Starting + Starting)
+            // Quiet for a while after its start work, what it last made decided, but an editor that writes on and on is not waited out for good.
+            while (settled is not { } at
+                || (Stopwatch.GetElapsedTime(Math.Max(at, before.LastFound)) < Starting || before.Deciding) && Stopwatch.GetElapsedTime(at) < Scanning)
             {
                 if (!before.PutBack(told))
                 {
@@ -309,7 +311,10 @@ public static class GodotScripts
 
     /// <summary>Whether the person's own Godot editor runs on a project, which makes its own files there and writes its own
     /// settings: a Godot started on its folder as an editor, not Passenger's (whose server it is, given its port).</summary>
-    private static bool PersonsEditorOn(string project)
+    private static bool PersonsEditorOn(string project) => PersonsEditorOf(project) is not null;
+
+    /// <summary>The process of the person's own Godot editor on a project (<see cref="PersonsEditorOn"/>), or null.</summary>
+    private static int? PersonsEditorOf(string project)
     {
         foreach (Process process in Process.GetProcesses())
         {
@@ -319,11 +324,11 @@ public static class GodotScripts
                     && !running.CommandLine.Contains("--lsp-port", StringComparison.Ordinal)
                     && running.CommandLine.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Any(w => w is "--editor" or "-e"))
                 {
-                    return true;
+                    return process.Id;
                 }
             }
         }
-        return false;
+        return null;
     }
 
     /// <summary>The files of <see cref="Kept"/> as they were before a headless editor ran (null for one not there), with
@@ -465,14 +470,16 @@ public static class GodotScripts
             }
         }
 
-        /// <summary>A batch the folder's watcher handed over: a kept file's change or a made file that came with other files
-        /// of the project's (not Godot's cache or what it writes beside them, nor Passenger's saves), as a checkout or a pull
-        /// brings them, is that operation's, never put back or taken away; one whose changes were lost, every change waiting.</summary>
+        /// <summary>A batch the folder's watcher handed over: a kept file's change or a made file that came with another file of
+        /// the project's, as a checkout or a pull brings them, is that operation's, never put back or taken away. Godot's own
+        /// writes are not counted (its cache, what it makes beside the project's files, many at a time as it scans, a safe
+        /// save's file), nor Git's folder, a folder's own change, or Passenger's saves; a batch whose changes the watcher
+        /// lost leaves the kept files' changes waiting the other's, never what Godot made.</summary>
         public void Heard(Workspace.FolderChanges changes)
         {
             long now = Stopwatch.GetTimestamp();
             List<string> theirs = [];
-            int other = 0;
+            string? another = null;
             lock (gate)
             {
                 // A project gone, deleted whole, is let go of by the next look, which says so.
@@ -495,30 +502,36 @@ public static class GodotScripts
                     {
                         theirs.Add(path);
                     }
-                    else if (!relative.StartsWith(IgnoredFolders.GodotCache + Path.DirectorySeparatorChar, StringComparison.Ordinal)
-                        && !relative.StartsWith(".git" + Path.DirectorySeparatorChar, StringComparison.Ordinal) && !GodotWrites.Contains(Path.GetExtension(path))
-                        && !(savedAt.TryGetValue(path, out long at) && Stopwatch.GetElapsedTime(at, now) < OwnSave))
+                    else if (another is null && !Within(relative, IgnoredFolders.GodotCache) && !Within(relative, ".git") && !GodotWrites.Contains(Path.GetExtension(path))
+                        && !(savedAt.TryGetValue(path, out long at) && Stopwatch.GetElapsedTime(at, now) < OwnSave) && !Directory.Exists(path))
                     {
-                        other++;
+                        another = relative;
                     }
                 }
-                if (other == 0 && !changes.Lost && !changes.Overflowed)
+                if (another is null)
                 {
+                    if (changes.Lost || changes.Overflowed)
+                    {
+                        foreach (string name in pending.Keys.Where(files.ContainsKey).ToList())
+                        {
+                            Theirs(name, $"GDScript: {Path.Combine(Project, name)} changed as the folder's watcher lost what changed with it, so it is kept as written");
+                        }
+                    }
                     return;
-                }
-                if (changes.Lost || changes.Overflowed)
-                {
-                    theirs.AddRange(pending.Keys);
                 }
                 foreach (string mine in theirs.Distinct(StringComparer.Ordinal))
                 {
                     pending.Remove(mine);
                     if (unmade.Remove(mine) || files.ContainsKey(mine) && others.Add(mine))
                     {
-                        IdeErrors.Write($"GDScript: {Path.Combine(Project, mine)} came with {(other > 0 ? Plural.Of(other, "other file") : "changes the watcher lost")}, as one operation, so it is kept as it came");
+                        IdeErrors.Write($"GDScript: {Path.Combine(Project, mine)} came with {another}, as one operation, so it is kept as it came");
                     }
                 }
             }
+
+            // Whether a path of the project's is a folder or lies in it.
+            static bool Within(string relative, string folder) =>
+                relative == folder || relative.StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.Ordinal);
         }
 
         /// <summary>No .import the editor makes is taken away from now on: another run on the project makes them for what follows it.</summary>
@@ -606,12 +619,16 @@ public static class GodotScripts
             IdeErrors.Write(said);
         }
 
+        /// <summary>When a change was last first found, a <see cref="Stopwatch"/> timestamp (0 for none yet).</summary>
+        public long LastFound { get; private set; }
+
         /// <summary>Whether a change found now waits still: first found now, or less than <see cref="Settle"/> before.</summary>
         private bool Waits(string key, long now)
         {
             if (!pending.TryGetValue(key, out long first))
             {
                 pending[key] = now;
+                LastFound = now;
                 return true;
             }
             return Stopwatch.GetElapsedTime(first, now) < Settle;
@@ -648,13 +665,15 @@ public static class GodotScripts
             {
                 return;
             }
-            if (PersonsEditorOn(Project))
+            if (PersonsEditorOf(Project) is { } editor)
             {
                 lock (gate)
                 {
                     unmade.Clear();
                     pending.Clear();
                 }
+                IdeErrors.Write($"GDScript: the person's own Godot editor (process {editor}) runs on {Project}, so {Plural.Listed([.. made.Select(p => Path.GetRelativePath(Project, p))])} "
+                    + "and what else is made there are its, kept");
                 return;
             }
             foreach (string path in made)

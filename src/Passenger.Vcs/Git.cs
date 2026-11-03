@@ -1765,11 +1765,13 @@ public sealed partial class Git
         return ran with { Output = output ?? string.Empty };
     }
 
-    /// <summary>git's commands that write a work tree's files.</summary>
-    private static readonly HashSet<string> WorkTreeWriters = new(StringComparer.Ordinal)
+    /// <summary>git's commands that write a work tree's files, each with its words that leave the files as they are (a stash's
+    /// list, an apply's check or one into the index alone).</summary>
+    private static readonly Dictionary<string, string[]> WorkTreeWriters = new(StringComparer.Ordinal)
     {
-        "checkout", "switch", "restore", "reset", "merge", "rebase", "pull", "stash", "cherry-pick", "revert", "am", "apply", "rm", "mv", "clean",
-        "read-tree", "checkout-index", "submodule", "worktree",
+        ["checkout"] = [], ["switch"] = [], ["restore"] = ["--staged"], ["reset"] = [], ["merge"] = [], ["rebase"] = [], ["pull"] = [],
+        ["stash"] = ["list", "show"], ["cherry-pick"] = [], ["revert"] = [], ["am"] = [], ["apply"] = ["--cached", "--check", "--stat", "--numstat", "--summary"],
+        ["rm"] = ["--cached"], ["mv"] = [], ["clean"] = ["-n", "--dry-run"], ["read-tree"] = [], ["checkout-index"] = [],
     };
 
     /// <summary>How many of Passenger's git commands writing a work tree run now, and when the last one ended (a
@@ -1781,8 +1783,9 @@ public sealed partial class Git
     /// runs now or has ended since a <see cref="Stopwatch"/> timestamp: what changed meanwhile may be its.</summary>
     public static bool WroteWorkTreeSince(long since) => Volatile.Read(ref writingWorkTree) > 0 || Volatile.Read(ref wroteWorkTree) >= since;
 
-    /// <summary>The command a git command line runs: its first word past the options before it (-c and -C take a value).</summary>
-    private static string? CommandOf(IReadOnlyList<string> arguments)
+    /// <summary>Whether a git command line writes the work tree's files: its command, the first word past the options before
+    /// it (-c and -C take a value), is one that does, and none of its words leaves them as they are.</summary>
+    private static bool WritesWorkTree(IReadOnlyList<string> arguments)
     {
         for (int i = 0; i < arguments.Count; i++)
         {
@@ -1792,10 +1795,10 @@ public sealed partial class Git
             }
             else if (!arguments[i].StartsWith('-'))
             {
-                return arguments[i];
+                return WorkTreeWriters.TryGetValue(arguments[i], out string[]? leaving) && !arguments.Skip(i + 1).Any(leaving.Contains);
             }
         }
-        return null;
+        return false;
     }
 
     /// <summary>Runs git to its end, the one way every call but a clone runs it: <paramref name="input"/> written to it, what
@@ -1809,7 +1812,7 @@ public sealed partial class Git
     {
         // What git answers is what the window shows next (the branch, the bars, the log, a blame): a screenshot waits for it.
         using GitHold held = new();
-        bool writes = CommandOf(arguments) is { } command && WorkTreeWriters.Contains(command);
+        bool writes = WritesWorkTree(arguments);
         if (writes)
         {
             Interlocked.Increment(ref writingWorkTree);

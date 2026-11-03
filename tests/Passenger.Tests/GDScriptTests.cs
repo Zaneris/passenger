@@ -270,7 +270,7 @@ public sealed class GDScriptTests
         Replace(settings, File.ReadAllText(settings) + "\n[passenger_test]\n\nchecked_out=true\n");
         Replace(Path.Combine(folder, "README.md"), "# Turns\n");
         string Log() => Ui.Shared(IdeLog.PathOf(IdeLog.Ide));
-        Ui.WaitFor(() => Log().Contains($"{Path.Combine(project, "project.godot")} came with 1 other file, as one operation", StringComparison.Ordinal),
+        Ui.WaitFor(() => Log().Contains($"{Path.Combine(project, "project.godot")} came with README.md, as one operation", StringComparison.Ordinal),
             () => $"project.godot taken for the checkout's, as the watcher saw README.md come with it:\n{File.ReadAllText(settings)}", TimeSpan.FromSeconds(30));
         Ui.WaitFor(() => window.Session.Web?.For(document)?.Lsp is not null && window.Session.Web.StateOf(document) is null,
             () => $"Godot's server for {document.Name}: {window.Session.Web?.StateOf(document)} {document.Notice}", TimeSpan.FromSeconds(90));
