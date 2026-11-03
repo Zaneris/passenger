@@ -361,7 +361,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   tools on one answer from its text, `PassengerTools.NotGenerated`), never opened in the server, which would freeze its
   text into the compilation. A C# symbol's uses in XAML come from one finder, `XamlService.UsesAsync` over
   `XamlNavigation.Uses` (Go to Declaration's resolver) and `CodeSymbol`, a C# rename's edits there from it too
-  (`XamlService.RenamesAsync`). A JS interop call's function comes from Roslyn's binding in the extension
+  (`XamlService.RenamesAsync`), and a rename started in XAML is C#'s from its declaration
+  (`XamlAssist.DeclaredRenameAsync`), the MVVM Toolkit's generated members following through the extension's
+  `ToolkitRenames`; what must read the C# as it stands awaits `XamlService.CurrentAsync`. A build problem carries its
+  inner build's framework (`Problem.Framework`), so a XAML file's marks are the chosen framework's; an agent chooses it
+  through `ide_action app.targetFramework`. A JS interop call's function comes from Roslyn's binding in the extension
   (`JsInteropCalls`) over `JsFunctions`. A multi-targeted project's framework is one choice (`TargetFrameworkChoices`,
   kept in `WorkspaceState`) that the XAML preview's build (`XamlPreview.Output`), XAML's restore target and C#'s context
   (`CSharpService.ChosenContext`) follow: never a framework's output taken by its newest write. A Godot game's C# is
