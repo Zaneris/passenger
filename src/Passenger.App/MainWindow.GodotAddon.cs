@@ -166,6 +166,10 @@ public partial class MainWindow
         {
             if (session == next)
             {
+                foreach (GodotEditorPeer editor in link.Editors)
+                {
+                    SelectOnConnect(editor);
+                }
                 status.Text = link.Editors.Count > 0
                     ? $"Godot's editor on {Path.GetFileName(link.Project)} is connected: its Play builds here, and this Passenger shows what it plays"
                     : "Godot's editor let go of this window";
@@ -203,11 +207,19 @@ public partial class MainWindow
             peer.SaysUnsaved = JsonMembers.Bool(told, "sure") == true;
             peer.Inspected = JsonMembers.Text(told, "inspected") is { Length: > 0 } inspected ? inspected : null;
         });
-        link.Hear("selected", (_, told) =>
+        link.Hear("selected", (peer, told) =>
         {
+            string? scene = JsonMembers.Text(told, "scene");
+            string? node = JsonMembers.Text(told, "node");
+            // What Passenger asked the editor to select is no selection of the person's to follow here.
+            if (peer.SelectionAsked is (string asked, string at) && asked == scene && at == node)
+            {
+                peer.SelectionAsked = null;
+                return;
+            }
             if (session == next)
             {
-                ShowGodotSelection(JsonMembers.Text(told, "scene"), JsonMembers.Text(told, "node"));
+                ShowGodotSelection(scene, node);
             }
         });
         link.Hear("scene", (peer, told) =>

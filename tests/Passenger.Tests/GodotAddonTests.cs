@@ -134,6 +134,13 @@ public sealed class GodotAddonTests : IDisposable
 
         func _ready() -> void:
         	print("TEST: ready")
+        	EditorInterface.get_selection().selection_changed.connect(_selected)
+
+
+        func _selected() -> void:
+        	var root := EditorInterface.get_edited_scene_root()
+        	for node in EditorInterface.get_selection().get_selected_nodes():
+        		print("TEST: selection ", root.scene_file_path, " ", "." if node == root else str(root.get_path_to(node)))
 
 
         func _process(_delta: float) -> void:
@@ -752,6 +759,95 @@ public sealed class GodotAddonTests : IDisposable
 
         public new JsonElement Unasked(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null) =>
             base.Unasked(window, client, tool, arguments);
+    }
+
+    /// <summary>Open in Godot Editor, with the editor running through the addon: on the script, its scene's node it is on; on
+    /// the node path at the caret, the node it names; in the scene, the node whose section the caret is in; each shown in
+    /// that one editor, no second one started, and the window here staying on the file it was on.</summary>
+    [AvaloniaFact]
+    public void Open_in_Godot_Editor_shows_the_scripts_node_the_caret_paths_node_and_the_scenes_in_the_editor_running()
+    {
+        MainWindow window = Opened();
+        try
+        {
+            StartEditor([]);
+            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            CodeEditor code = window.EditorArea.CodeEditor;
+            string script = window.EditorArea.Active!.Path;
+            code.GoTo(new TextPosition(1, 1));
+            Assert.Null(window.Actions.Run(AppActions.GodotOpenInEditor));
+            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: selection res://main.tscn .", StringComparison.Ordinal)),
+                () => $"Godot's editor to show the script's node ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
+
+            Ui.PlaceAfter(code, "GetNode<Button>(\"Ui/Pr");
+            Assert.Null(window.Actions.Run(AppActions.GodotOpenInEditor));
+            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: selection res://main.tscn Ui/Press", StringComparison.Ordinal)),
+                () => $"Godot's editor to show the node the caret's path names ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
+            Assert.Contains("shows Ui/Press in main.tscn", window.Status, StringComparison.Ordinal);
+            Ui.Settle();
+            Assert.True(PathNames.Same(window.EditorArea.Active!.Path, script), $"The window left the script for {window.EditorArea.Active.Path}, following what it asked Godot to select");
+
+            window.OpenFile(ScenePath);
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "[node name=\"Ui\" type=");
+            Assert.Null(window.Actions.Run(AppActions.GodotOpenInEditor));
+            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: selection res://main.tscn Ui", StringComparison.Ordinal) && !l.Contains("Ui/", StringComparison.Ordinal)),
+                () => $"Godot's editor to show the scene's node at the caret ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
+            Assert.Equal(1, EditorsOn(folder));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Open in Godot Editor with no editor open: the folder's Godot Editor configuration starts one on the scene the
+    /// caret's node path leads to, Godot's command line naming the scene alone, and the addon there, once it connects,
+    /// selects the node.</summary>
+    [AvaloniaFact]
+    public void Open_in_Godot_Editor_with_none_open_starts_one_on_the_scene_and_the_addon_there_selects_the_node()
+    {
+        MainWindow window = Opened();
+        try
+        {
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "GetNode<Button>(\"Ui/Pr");
+            Assert.Null(window.Actions.Run(AppActions.GodotOpenInEditor));
+            Ui.WaitFor(() => window.Status?.Contains("where Passenger's addon selects Ui/Press once it is up", StringComparison.Ordinal) == true,
+                () => $"the action to say the editor starts on the scene ({window.Status})", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"the editor started to connect through the addon ({window.Status}; {RunText(window)})", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => RunText(window).Contains("TEST: selection res://main.tscn Ui/Press", StringComparison.Ordinal),
+                () => $"the addon to select the node once connected ({window.Status}; {RunText(window)})", TimeSpan.FromMinutes(1));
+            Assert.Equal(1, EditorsOn(folder));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    private static string RunText(MainWindow window)
+    {
+        window.BottomPanel.Run.Flush();
+        return window.BottomPanel.Run.Document.Snapshot.ToString();
+    }
+
+    /// <summary>How many Godot editors run on a folder: processes started with --editor that name it, but Windows' console
+    /// wrapper, which starts the editor itself with the same words.</summary>
+    private static int EditorsOn(string project)
+    {
+        int found = 0;
+        foreach (Process process in Process.GetProcesses())
+        {
+            using (process)
+            {
+                if (process.Id != Environment.ProcessId && DotnetProcesses.Describe(process.Id) is { } running
+                    && running.CommandLine.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Contains("--editor")
+                    && running.CommandLine.Contains(project, StringComparison.Ordinal) && !running.CommandLine.Contains("_console.exe", StringComparison.OrdinalIgnoreCase))
+                {
+                    found++;
+                }
+            }
+        }
+        return found;
     }
 
     /// <summary>The window's configuration made the generated game's, played in Godot's editor.</summary>

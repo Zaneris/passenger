@@ -9,7 +9,7 @@ extends EditorPlugin
 ## Passenger listening, or one that refuses, it does nothing, and Godot plays as it always did.
 
 ## The addon's version, which Passenger reads to update an older one in place.
-const VERSION := 6
+const VERSION := 7
 ## How long a build may take to be answered.
 const BUILD_LIMIT_MS := 30 * 60 * 1000
 ## How long any other request may take to be answered.

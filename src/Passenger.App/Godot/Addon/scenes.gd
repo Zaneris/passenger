@@ -28,7 +28,7 @@ static func asked(method: String, params: Dictionary) -> Variant:
 		"scene_read":
 			return _read(root)
 		"scene_select":
-			return _select(root, str(params.get("node", ".")))
+			return _select(root, str(params.get("node", ".")), bool(params.get("front", false)))
 		"scene_change":
 			return _change(root, params)
 	return "Passenger's addon takes no %s" % method
@@ -59,13 +59,18 @@ static func _read(root: Node) -> Dictionary:
 	return said
 
 
-static func _select(root: Node, path: String) -> Variant:
+static func _select(root: Node, path: String, front: bool) -> Variant:
 	var node = _node(root, path)
 	if node is String:
 		return node
 	EditorInterface.get_selection().clear()
 	EditorInterface.get_selection().add_node(node)
 	EditorInterface.edit_node(node)
+	if front:
+		# The person's own ask from Passenger, who goes on here.
+		var window := EditorInterface.get_base_control().get_window()
+		window.grab_focus()
+		DisplayServer.window_move_to_foreground(window.get_window_id())
 	return {"said": "Selected %s in %s" % [_path(root, node), root.scene_file_path]}
 
 

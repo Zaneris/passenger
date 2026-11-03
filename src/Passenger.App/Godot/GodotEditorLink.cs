@@ -365,6 +365,10 @@ internal sealed class GodotEditorPeer : IDisposable
     /// <summary>The resource file its inspector shows, by res:// path, or null.</summary>
     public string? Inspected { get; set; }
 
+    /// <summary>The scene and node Passenger last asked the editor to select, whose selection the editor then tells back and
+    /// Passenger does not follow; null once told or for none.</summary>
+    public (string Scene, string Node)? SelectionAsked { get; set; }
+
     /// <summary>Whether Passenger asked the editor to play, its game yet to begin.</summary>
     public bool PlayAsked { get; set; }
 

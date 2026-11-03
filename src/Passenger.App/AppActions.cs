@@ -106,6 +106,9 @@ public static class AppActions
     // Passenger made the script editor of the Godot found, in its editor settings: no key of Rider's.
     public const string GodotScriptEditor = "app.godot.scriptEditor";
 
+    // Godot's editor on the scene at hand, at its node, through Passenger's addon where it runs: no key of Rider's.
+    public const string GodotOpenInEditor = "app.godot.openInEditor";
+
     // Passenger's addon written into a Godot project, so Godot's Play builds and debugs here: no key of Rider's.
     public const string GodotAddon = "app.godot.addon";
 
