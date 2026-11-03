@@ -111,6 +111,7 @@
     <!-- OpenTelemetry's, which the AspireGraphs' ServiceDefaults restore puts in the package cache, for ContainerTelemetryTests' app. -->
     <AssemblyMetadata Include="OpenTelemetryVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'OpenTelemetry.Extensions.Hosting')->'%(Version)')" />
     <AssemblyMetadata Include="AspNetCoreOpenApiVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'Microsoft.AspNetCore.OpenApi')->'%(Version)')" />
+    <AssemblyMetadata Include="ApiDescriptionServerVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'Microsoft.Extensions.ApiDescription.Server')->'%(Version)')" />
   </ItemGroup>
 
   <!-- WPF's reference pack, likewise, for the WPF app WpfXamlTests make (WpfApp.Feed), with the target they make it for

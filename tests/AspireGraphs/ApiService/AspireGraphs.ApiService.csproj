@@ -6,5 +6,7 @@
   <ItemGroup>
     <ProjectReference Include="../ServiceDefaults/AspireGraphs.ServiceDefaults.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <!-- Restored for the tests' feed alone: its targets, which would write this service's document at build, are left out. -->
+    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" ExcludeAssets="build;buildTransitive" PrivateAssets="all" />
   </ItemGroup>
 </Project>

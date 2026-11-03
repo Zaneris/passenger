@@ -1,6 +1,7 @@
 using System.Globalization;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.Run;
 using Passenger.App.Endpoints;
 using Passenger.App.Explorer;
 using Passenger.Core;
@@ -11,8 +12,9 @@ namespace Passenger.Tests;
 /// <summary>A minimal API that describes itself with MapOpenApi, its document read from the running app on this machine:
 /// Generate Requests from OpenAPI writes a request per operation into its project's .http file, bodies from the request
 /// schemas, one Undo taking them back; a request's answer is held to its response schema, a member that breaks it said at
-/// that member; and Interactive Test completes a request's empty body from its schema. Its packages come from the package
-/// cache alone, Microsoft.AspNetCore.OpenApi from the AspireGraphs restore.</summary>
+/// that member; and Interactive Test completes a request's empty body from its schema; and a document the build writes
+/// makes the requests of an app not running. Its packages come from the package cache alone, Microsoft.AspNetCore.OpenApi's
+/// and Microsoft.Extensions.ApiDescription.Server's from the AspireGraphs restore.</summary>
 public sealed class OpenApiEndpointsTests
 {
     [AvaloniaFact]
@@ -75,6 +77,54 @@ public sealed class OpenApiEndpointsTests
         {
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => !window.IsRunning, "Stop to end the shop");
+            window.Close();
+        }
+    }
+
+    /// <summary>A minimal API that serves no document of its own but whose build writes one (Microsoft.Extensions.ApiDescription.Server):
+    /// built, never run, Generate Requests from OpenAPI reads the document the build wrote and makes its requests.</summary>
+    [AvaloniaFact]
+    public void A_document_the_build_writes_makes_the_requests_of_an_app_that_is_not_running()
+    {
+        string folder = TestFolders.Create("openapi-built-");
+        TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Web/Web.csproj\" />\n</Solution>\n");
+        TestFolders.Write(folder, "Web/Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>").With($"""
+              <ItemGroup>
+                <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="{AvaloniaApp.Metadata("AspNetCoreOpenApiVersion")}" />
+                <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="{AvaloniaApp.Metadata("ApiDescriptionServerVersion")}" />
+              </ItemGroup>
+
+            """));
+        TestFolders.Write(folder, "Web/Program.cs", """
+            WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+            builder.Services.AddOpenApi();
+            WebApplication app = builder.Build();
+            app.MapGet("/items/{id}", (int id) => new Item($"item {id}", 2.5m)).WithName("GetItem");
+            app.MapPost("/items", (Item item) => Results.Created("/items/1", item)).WithName("AddItem");
+            app.Run();
+
+            record Item(string Name, decimal Price);
+
+            """);
+        AvaloniaApp.UseFeed(folder);
+        folder = PathNames.Canonical(folder);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            BuildOutcome built = Ui.Landed(window.BuildAsync(), "the build that writes the document");
+            Assert.True(built.Succeeded, $"{built.Message}{Ui.BuildErrors(window)}");
+            Assert.True(File.Exists(Path.Combine(folder, "Web", "obj", "Web.json")), "The build wrote no OpenAPI document where its OpenApiDocumentsDirectory says");
+            string http = Path.Combine(folder, "Web", "Web.http");
+            window.Perform(AppActions.GenerateOpenApiRequests);
+            Ui.WaitFor(() => File.Exists(http) && window.Status?.StartsWith("Wrote 2 requests", StringComparison.Ordinal) == true,
+                () => $"the requests the build's OpenAPI document makes: {window.Status}", TimeSpan.FromMinutes(1));
+            string written = File.ReadAllText(http);
+            Assert.Contains("# OpenAPI: GetItem\n@id = 0\nGET {{Web_HostAddress}}/items/{{id}}\n", written, StringComparison.Ordinal);
+            Assert.Contains("# OpenAPI: AddItem\nPOST {{Web_HostAddress}}/items\nAccept: application/json\nContent-Type: application/json\n\n{\n  \"name\": \"string\",\n  \"price\": 0\n}\n",
+                written, StringComparison.Ordinal);
+        }
+        finally
+        {
             window.Close();
         }
     }
