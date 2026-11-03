@@ -287,6 +287,11 @@ public static class Declared
             + "second for the lines shown, from the node chosen in the Live Visual Tree where several run the script. Hovering a value "
             + "shows its last minute."));
 
+    public static readonly ToggleSetting GodotTestsWindowed = new(s => s.GodotTestsWindowed, (s, v) => s with { GodotTestsWindowed = v },
+        new(D.GodotPage, "Show the game's window as GUT and GoDotTest run its tests", "godot tests gut godottest window headless visible run unit",
+            "Off, Godot runs a game's GUT and GoDotTest tests headless, with no window; on, it shows the game's window as they run. "
+            + "GdUnit4 runs Godot as its run settings' parameters say. A Passenger nobody sees runs every Godot headless."));
+
     public static readonly ToggleSetting TerminalCopyOnSelection = new(s => s.TerminalCopyOnSelection, (s, v) => s with { TerminalCopyOnSelection = v },
         new(D.TerminalPage, "Copy on selection", "copy selection clipboard mouse drag word"));
 

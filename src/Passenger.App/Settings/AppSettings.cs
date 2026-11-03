@@ -233,6 +233,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>Whether a running Godot game's values show after its scripts' members in the code.</summary>
     public bool GodotLiveValues { get; init; } = true;
 
+    /// <summary>Whether the game GUT's and GoDotTest's tests run in shows its window, where it runs headless otherwise.</summary>
+    public bool GodotTestsWindowed { get; init; }
+
     /// <summary>ESLint's "Run for files" at first.</summary>
     public const string DefaultEslintFiles = "**/*.{js,ts,jsx,tsx,cjs,cts,mjs,mts,html,vue}";
 

@@ -14,7 +14,8 @@ namespace Passenger.Tests;
 /// engine on the Godot Passenger found (given as GODOT_BIN), a failure shown at its assertion's line, and debugged, a
 /// breakpoint in such a test stopping in the Godot the adapter starts. Its packages come from the Godot's own and the
 /// package cache tests/GodotGraphs fills, never nuget.org; Godot runs headless (the run settings' GdUnit4 parameters),
-/// its user folders the run's. Without a Godot 4 .NET build each test skips saying why. Debugged, so run alone.</summary>
+/// its user folders the run's, and what the headless editor GdUnit4's adapter starts writes over of the person's editor
+/// is put back. Without a Godot 4 .NET build each test skips saying why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GdUnit4Tests : IDisposable
 {
@@ -55,9 +56,15 @@ public sealed class GdUnit4Tests : IDisposable
 
     private string TestsPath => Path.Combine(folder, "test", "SpinnerTest.cs");
 
+    /// <summary>The person's editor layout, as Godot's editor keeps it in the project.</summary>
+    private const string Layout = "[docks]\n\ndock_split_1=0\ndock_filesystem_split=1234\n";
+
+    private string LayoutPath => Path.Combine(folder, ".godot", "editor", "editor_layout.cfg");
+
     /// <summary>Both tests are in the tree before any build; Run All Tests passes the one without the engine and fails the
-    /// one Godot ran at its assertion's line, which its details link; Debug of it stops at a breakpoint inside it in
-    /// Godot's process, then at its failed assertion, and the run ends with its failure.</summary>
+    /// one Godot ran at its assertion's line, which its details link, leaving the person's editor layout as it was; Debug of
+    /// it stops at a breakpoint inside it in Godot's process, then at its failed assertion, and the run ends with its
+    /// failure.</summary>
     [AvaloniaFact]
     public void A_GdUnit4_test_is_found_from_code_runs_on_the_Godot_found_fails_at_its_line_and_stops_at_a_breakpoint_in_Godot()
     {
@@ -82,6 +89,8 @@ public sealed class GdUnit4Tests : IDisposable
             int assertion = Line("AssertThat(turns).IsEqual(3);");
             Assert.Contains($"SpinnerTest.cs:line {assertion + 1}", spins.Details, StringComparison.Ordinal);
             Assert.Contains("'3' but is '2'", spins.Details, StringComparison.Ordinal);
+            Assert.True(File.Exists(GdUnit4Settings.RunnerScene(folder)), "GdUnit4's adapter wrote no test runner into the game, so its headless editor never ran");
+            Assert.True(File.ReadAllText(LayoutPath) == Layout, $"GdUnit4's headless editor left the person's editor layout written over:\n{File.ReadAllText(LayoutPath)}");
 
             Assert.Null(window.OpenFile(TestsPath));
             Ui.Settle();
@@ -140,6 +149,8 @@ public sealed class GdUnit4Tests : IDisposable
             "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<RunSettings>\n  <GdUnit4>\n    <Parameters>--headless</Parameters>\n  </GdUnit4>\n</RunSettings>\n");
         Directory.CreateDirectory(Path.GetDirectoryName(TestsPath)!);
         File.WriteAllText(TestsPath, Tests);
+        Directory.CreateDirectory(Path.GetDirectoryName(LayoutPath)!);
+        File.WriteAllText(LayoutPath, Layout);
         Restore.Run(Path.Combine(folder, "Spinner.csproj"));
     }
 }

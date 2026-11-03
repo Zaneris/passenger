@@ -53,6 +53,7 @@ public partial class MainWindow
         DockerHub = DockerHub,
         GodotEnvironment = GodotFolders,
         StartsLanguageServer = StartsLanguageServer,
+        Unseen = Unseen,
         HeadStart = headStart,
     };
 

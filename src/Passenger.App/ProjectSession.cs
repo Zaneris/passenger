@@ -51,6 +51,9 @@ public sealed record SessionSetup(
     /// <summary>Whether the session starts the C# language server: the window's <see cref="MainWindow.StartsLanguageServer"/>.</summary>
     public bool StartsLanguageServer { get; init; } = true;
 
+    /// <summary>Whether nobody sees the window, whose Godot then runs headless: the window's <see cref="MainWindow.Unseen"/>.</summary>
+    public bool Unseen { get; init; }
+
     /// <summary>Where the container tools come from that reach a program in a container: the window's.</summary>
     public required Func<Containers.ContainerToolsSource> ContainerTools { get; init; }
 
@@ -106,7 +109,7 @@ public sealed class ProjectSession : IAsyncDisposable
             Work = setup.Work,
             // The Godot Run starts the game on, found off the window's thread, with the window's user folders for Godot.
             GodotVariables = cancel => BackgroundWork.Run(() => GodotTestRuns.Variables(setup.Settings().GodotExecutable,
-                setup.GodotEnvironment ?? new Dictionary<string, string>()), cancel),
+                setup.GodotEnvironment ?? new Dictionary<string, string>(), setup.Settings().GodotTestsWindowed && !setup.Unseen), cancel),
             GodotFolders = () => [.. Workspace?.GodotGames ?? [], .. Projects.Select(p => p.GodotFolder).OfType<string>()],
         };
         Containers = new Containers.FolderContainers(folder, setup.Engine());

@@ -137,7 +137,7 @@ public sealed class VsTestRunner : ITestRunner
                     games.Remove(assembly.Path);
                 }
             }
-            string settings = await BackgroundWork.Run(() => Settings(null, log, group.Key, false), cancel);
+            string settings = await BackgroundWork.Run(() => Settings(null, log, group.Key, [], false), cancel);
             found.AddRange(await DiscoverWith([.. group.Select(a => a.Path)], settings, log, cancel));
         }
         return await BackgroundWork.Run(() => Tell(assemblies, found));
@@ -195,11 +195,12 @@ public sealed class VsTestRunner : ITestRunner
             }
         }
         RunSummary? summary = null;
-        // A Godot game's tests run apart from the rest, its GdUnit4 told to run Godot headless where nobody sees Passenger.
+        // A Godot game's tests run apart, its GdUnit4's Godot given Settings' arguments, and headless where nobody sees Passenger.
         foreach (IGrouping<(string? File, bool Game), TestCase> group in chosen.GroupBy(c => (settingsOf.GetValueOrDefault(cases.Canonical(c.Source)), games.Contains(cases.Canonical(c.Source)))))
         {
             bool headless = group.Key.Game && PassengerApp.ShowsNoWindow;
-            string settings = await BackgroundWork.Run(() => Settings(environment, log, group.Key.File, headless), cancel);
+            IReadOnlyList<string> arguments = group.Key.Game ? godot?.Arguments ?? [] : [];
+            string settings = await BackgroundWork.Run(() => Settings(environment, log, group.Key.File, arguments, headless), cancel);
             RunSummary part = await RunWith([.. group], settings, running, outcomes, log, debugger, environment, cancel);
             summary = summary is null ? part : summary.And(part);
             if (part.Canceled)
@@ -306,11 +307,12 @@ public sealed class VsTestRunner : ITestRunner
 
     /// <summary>A run's settings: the project's run settings file's, if it names one, with VSTest's design mode, as an IDE
     /// runs it, and the environment, each variable an element as VSTest reads them, over the file's of the same name; a name
-    /// XML cannot hold is left out and said, as is a file that cannot be read; GdUnit4's Godot run headless where
-    /// <paramref name="headless"/> says. A worker's: it reads the file.</summary>
-    private static string Settings(IReadOnlyDictionary<string, string>? environment, Action<string>? log, string? file, bool headless)
+    /// XML cannot hold is left out and said, as is a file that cannot be read; GdUnit4's Godot given <paramref name="godot"/>
+    /// ahead of the settings' own parameters, and run headless where <paramref name="headless"/> says. A worker's: it reads
+    /// the file.</summary>
+    private static string Settings(IReadOnlyDictionary<string, string>? environment, Action<string>? log, string? file, IReadOnlyList<string> godot, bool headless)
     {
-        if (environment is not { Count: > 0 } && file is null && !headless)
+        if (environment is not { Count: > 0 } && file is null && !headless && godot.Count == 0)
         {
             return RunSettings;
         }
@@ -348,9 +350,9 @@ public sealed class VsTestRunner : ITestRunner
                 }
             }
         }
-        if (headless)
+        if (headless || godot.Count > 0)
         {
-            GdUnit4Settings.Headless(root);
+            GdUnit4Settings.Given(root, godot, headless);
         }
         return root.ToString(SaveOptions.DisableFormatting);
 

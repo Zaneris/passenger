@@ -17,13 +17,13 @@ public static class GodotTestRuns
     /// each Godot a run starts is started.</summary>
     public sealed record Given(IReadOnlyDictionary<string, string> Variables, string? NoCSharp, GodotStart Start);
 
-    /// <summary>What a Godot project's test hosts are given (<see cref="Given"/>), Godot shown in a window only where
-    /// <paramref name="windowed"/> asks and someone sees Passenger. A worker's: finding Godot reads the disk and the login
-    /// shell's PATH.</summary>
+    /// <summary>What a Godot project's test hosts are given (<see cref="Given"/>), the tests GUT and GoDotTest run in a game
+    /// shown in its window only where <paramref name="windowed"/> says. A worker's: finding Godot reads the disk and the
+    /// login shell's PATH.</summary>
     public static Given Variables(string? setting, IReadOnlyDictionary<string, string> userFolders, bool windowed = false)
     {
         Dictionary<string, string> variables = new(userFolders, StringComparer.Ordinal);
-        GodotStart start = new(GodotLaunch.Chosen(setting)?.Arguments ?? [], windowed && !PassengerApp.ShowsNoWindow);
+        GodotStart start = new(GodotLaunch.Chosen(setting)?.Arguments ?? [], windowed);
         if (Environment.GetEnvironmentVariable(BinaryVariable) is { Length: > 0 })
         {
             return new Given(variables, null, start);
@@ -50,17 +50,4 @@ public static class GodotTestRuns
         }
         return merged;
     }
-}
-
-/// <summary>How a test run starts Godot: the arguments Settings gives each start of it, ahead of the project's, and whether
-/// the tests GUT and GoDotTest run in a game show its window (the person asked, and someone sees Passenger), else it runs
-/// headless.</summary>
-public sealed record GodotStart(IReadOnlyList<string> Arguments, bool Windowed)
-{
-    /// <summary>A start with no arguments of the setting's, headless.</summary>
-    public static readonly GodotStart Headless = new([], false);
-
-    /// <summary>The arguments ahead of the project's for GUT's and GoDotTest's Godot: the setting's, then --headless unless
-    /// it shows a window or they run it headless already.</summary>
-    public IReadOnlyList<string> Leading => Windowed || GodotExecutables.RunsHeadless(Arguments) ? Arguments : [.. Arguments, GodotExecutables.Headless];
 }

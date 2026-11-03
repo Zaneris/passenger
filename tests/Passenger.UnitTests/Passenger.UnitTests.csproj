@@ -140,6 +140,7 @@
     <Compile Include="../../src/Passenger.App/Testing/GutRuns.cs" Link="App/GutRuns.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GoDotTests.cs" Link="App/GoDotTests.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GdUnit4Settings.cs" Link="App/GdUnit4Settings.cs" />
+    <Compile Include="../../src/Passenger.App/Testing/GodotStart.cs" Link="App/GodotStart.cs" />
     <Compile Include="../../src/Passenger.App/Run/BuiltInputs.cs" Link="App/BuiltInputs.cs" />
   </ItemGroup>
 

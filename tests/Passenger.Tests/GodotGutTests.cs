@@ -12,9 +12,10 @@ namespace Passenger.Tests;
 /// <summary>A Godot 4 game's GUT tests in the Unit Tests window: found in its GDScript before any run, run through GUT's
 /// command line on the Godot found, the project imported first (GutTest is a global class), each test's outcome read back
 /// from GUT's JUnit XML, a failure shown at its line, the gutter marking the tests by how they ran, and debugged, a
-/// breakpoint in a test stopping in the GDScript debugger. GUT here is a stand-in the test writes, which takes GUT's
-/// command line and writes its results and output as GUT does, so the test fetches nothing and carries none of GUT.
-/// Godot runs headless, its user folders the run's. Without a Godot 4 each test skips saying why. Debugged, so run alone.</summary>
+/// breakpoint in a test stopping in the GDScript debugger, and in a C# game a breakpoint in the C# a test calls stopping
+/// in .NET's. GUT here is a stand-in the test writes, which takes GUT's command line and writes its results and output as
+/// GUT does, so the test fetches nothing and carries none of GUT. Godot runs headless, its user folders the run's. Without
+/// a Godot 4 (a .NET build for C#) each test skips saying why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotGutTests : IDisposable
 {
@@ -22,7 +23,11 @@ public sealed class GodotGutTests : IDisposable
 
     private readonly GodotFound? godot = GodotExecutables.Find(null);
 
-    public void Dispose() => TestFolders.Delete(folder);
+    public void Dispose()
+    {
+        TestFolders.Delete(folder);
+        TestFolders.Delete(folder + "-home");
+    }
 
     private const string Tests = """
         extends GutTest
@@ -162,6 +167,73 @@ public sealed class GodotGutTests : IDisposable
             Ui.Run(window, AppActions.Resume);
             Ui.Launched(window, debugged, "the debugged run to end", TimeSpan.FromMinutes(2));
             Assert.True(spins.State == TestState.Failed, $"The debugged test did not fail at its assertion:\n{spins.Details}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A C# class of the game's, which the GUT test below calls.</summary>
+    private const string Turner = """
+        using Godot;
+
+        public partial class Turner : RefCounted
+        {
+            public int Turns(int count)
+            {
+                int twice = count * 2;
+                return twice;
+            }
+        }
+
+        """;
+
+    private const string CallsCSharp = """
+        extends GutTest
+
+
+        func test_turns_twice():
+        	var turner = load("res://Turner.cs").new()
+        	assert_eq(turner.Turns(2), 4, "two turns twice are four")
+
+        """;
+
+    /// <summary>In a Godot 4 C# game, Debug of a GUT test that calls the game's C# stops at a breakpoint in that C# under
+    /// .NET's debugger, in the Godot GUT's run starts, and going on lets the test pass.</summary>
+    [AvaloniaFact]
+    public void A_GUT_test_of_a_CSharp_game_stops_at_a_breakpoint_in_the_CSharp_it_calls()
+    {
+        Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
+        GodotTests.Game.Make(folder, godot!.Version!, godot.Packages!, "using Godot;\n\npublic partial class Main : Node\n{\n}\n",
+            "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://Main.cs\" id=\"1\"]\n\n[node name=\"Main\" type=\"Node\"]\nscript = ExtResource(\"1\")\n");
+        TestFolders.Write(folder, "Turner.cs", Turner);
+        TestFolders.Write(folder, "addons/gut/gut_cmdln.gd", CommandLine);
+        TestFolders.Write(folder, "addons/gut/test.gd", GutTest);
+        TestFolders.Write(folder, "test/test_turner.gd", CallsCSharp);
+        Restore.Run(Path.Combine(folder, "Spinner.csproj"));
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        window.Show();
+        try
+        {
+            window.OpenFolder(folder);
+            Ui.WaitFor(() => Method(window, "test_turns_twice") is not null,
+                () => $"the test shown from the GDScript before any run ({string.Join(", ", window.Tests.Tree.Methods.Select(m => m.Name))}; {window.Tests.Tree.EmptyText})");
+            TestNode turns = Method(window, "test_turns_twice")!;
+            Assert.Null(window.OpenFile(Path.Combine(folder, "Turner.cs")));
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            int twice = Turner.Split('\n').ToList().FindIndex(l => l.Contains("int twice", StringComparison.Ordinal));
+            editor.GoTo(new TextPosition(twice, 8));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Task<string?> debugged = window.Tests.RunAsync(window.Folder!, [turns], debug: true);
+            Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.Managed, State: DebugState.Paused } && editor.LineMarks.Contains(new LineMark(twice, LineMarkKind.ExecutionPoint)),
+                () => $"the stop in the C# the GUT test calls ({window.Debugger.Session?.Engine} {window.Debugger.Session?.State}; {window.BottomPanel.Tests.Status}; "
+                    + $"{window.BottomPanel.Build.Document.Snapshot}; {window.Debugger.Output()})", TimeSpan.FromMinutes(5));
+            Assert.Contains("Turns", window.BottomPanel.Debug.Frames[0].Name, StringComparison.Ordinal);
+            Ui.Run(window, AppActions.Resume);
+            Ui.Launched(window, debugged, "the debugged run to end", TimeSpan.FromMinutes(2));
+            Assert.True(turns.State == TestState.Passed, $"The test that calls C# did not pass once let go:\n{turns.Details}\n{window.BottomPanel.Tests.Status}");
         }
         finally
         {

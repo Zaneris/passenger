@@ -26,11 +26,29 @@ public static class IgnoredFolders
     /// <c>mono/temp</c> bin and obj).</summary>
     public const string GodotCache = ".godot";
 
+    /// <summary>The test runner GdUnit4's adapter writes into a Godot project as its tests run, build output to the person,
+    /// whose files Git's view leaves out too while git leaves them unversioned (<see cref="InToolOutput"/>).</summary>
+    public const string GdUnit4Runner = "gdunit4_testadapter_v5";
+
     /// <summary>The names passed over wherever they are, whatever they hold: a project's build output and dependencies
     /// (<see cref="ProjectFolders.Passed"/>) among them.</summary>
     public static IReadOnlySet<string> Names => Named;
 
-    private static readonly HashSet<string> Named = [.. ProjectFolders.Passed, ".git", ".hg", ".svn", "artifacts", ".vs", ".idea", "TestResults", GodotCache];
+    private static readonly HashSet<string> Named = [.. ProjectFolders.Passed, ".git", ".hg", ".svn", "artifacts", ".vs", ".idea", "TestResults", GodotCache, GdUnit4Runner];
+
+    /// <summary>Whether a file lies in a folder a test framework writes into the person's project as its own output
+    /// (<see cref="GdUnit4Runner"/>), which no one means to commit.</summary>
+    public static bool InToolOutput(string path)
+    {
+        for (string? folder = Path.GetDirectoryName(path); folder is { Length: > 0 }; folder = Path.GetDirectoryName(folder))
+        {
+            if (Path.GetFileName(folder) == GdUnit4Runner)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /// <summary><see cref="Names"/> asked of a name inside a path, which takes no string of it.</summary>
     private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> NamedIn = Named.GetAlternateLookup<ReadOnlySpan<char>>();

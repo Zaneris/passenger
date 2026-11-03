@@ -4,11 +4,13 @@ using Passenger.Core;
 
 namespace Passenger.App.Testing;
 
-/// <summary>GUT's tests run as GUT's command line runs them: headless Godot on the project (the one its test hosts' GODOT_BIN
-/// names, <see cref="GodotTestRuns"/>), the chosen scripts given, GUT's JUnit XML read back for each test's outcome, its
+/// <summary>GUT's tests run as GUT's command line runs them: Godot on the project (the one its test hosts' GODOT_BIN names,
+/// <see cref="GodotTestRuns"/>), with the arguments Settings gives each start of it, headless unless the person asks for its
+/// window (<see cref="GodotStart"/>), the chosen scripts given, GUT's JUnit XML read back for each test's outcome, its
 /// failure's line linked, and what it printed under each test as its output; a project whose global classes Godot has yet
-/// to import (GutTest among them) imported first, headless. Debugged, the run starts under the GDScript debugger instead,
-/// its breakpoints set from the run's start. Its tests are those the code declares (<see cref="GutScripts"/>).</summary>
+/// to import (GutTest among them) imported first, headless. Debugged, the run starts under the GDScript debugger, its
+/// breakpoints set from the run's start, and in a C# game under .NET's too, so the C# a test calls stops at its
+/// breakpoints. Its tests are those the code declares (<see cref="GutScripts"/>).</summary>
 public sealed class GutRunner : ITestRunner
 {
     public bool IsUsable => true;
@@ -24,7 +26,8 @@ public sealed class GutRunner : ITestRunner
         RunSummary? summary = null;
         foreach (IGrouping<string, TestItem> project in tests.GroupBy(t => t.Project, StringComparer.Ordinal))
         {
-            RunSummary part = await RunProjectAsync(Path.GetDirectoryName(project.Key)!, [.. project], outcomes, log, debugger, environment ?? new Dictionary<string, string>(), cancel);
+            RunSummary part = await RunProjectAsync(Path.GetDirectoryName(project.Key)!, [.. project], outcomes, log, debugger, environment ?? new Dictionary<string, string>(),
+                godot ?? GodotStart.Headless, cancel);
             summary = summary is null ? part : summary.And(part);
             if (part.Canceled)
             {
@@ -35,7 +38,7 @@ public sealed class GutRunner : ITestRunner
     }
 
     private static async Task<RunSummary> RunProjectAsync(string folder, IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log,
-        ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string> environment, CancellationToken cancel)
+        ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string> environment, GodotStart start, CancellationToken cancel)
     {
         long began = Stopwatch.GetTimestamp();
         string? godot = environment.GetValueOrDefault(GodotTestRuns.BinaryVariable) ?? Environment.GetEnvironmentVariable(GodotTestRuns.BinaryVariable);
@@ -50,13 +53,15 @@ public sealed class GutRunner : ITestRunner
             return new RunSummary(Stopwatch.GetElapsedTime(began), false, true, unimported);
         }
         string results = Path.Combine(Path.GetTempPath(), $"passenger-gut-{Guid.NewGuid():N}.xml");
-        List<string> arguments = [GodotExecutables.Headless, "--path", folder, .. Arguments(folder, tests, results)];
+        List<string> leading = [.. start.Leading, "--path", folder];
+        List<string> arguments = [.. leading, .. Arguments(folder, tests, results)];
         string output = string.Empty;
         try
         {
             if (debugger is not null)
             {
-                Task ended = await debugger.DebugGameAsync(new TestHostStart(godot, arguments, folder, environment), folder, Leading, csharp: false);
+                bool csharp = await BackgroundWork.Run(() => Directory.EnumerateFiles(folder, "*.csproj").Any(), cancel);
+                Task ended = await debugger.DebugGameAsync(new TestHostStart(godot, arguments, folder, environment), folder, leading.Count, csharp);
                 await ended.WaitAsync(cancel);
                 if (!File.Exists(results))
                 {
@@ -67,12 +72,12 @@ public sealed class GutRunner : ITestRunner
             }
             else
             {
-                ProcessStartInfo start = ChildProcesses.Command(godot, arguments, folder);
+                ProcessStartInfo run = ChildProcesses.Command(godot, arguments, folder);
                 foreach ((string name, string value) in environment)
                 {
-                    start.Environment[name] = value;
+                    run.Environment[name] = value;
                 }
-                ChildResult ran = await ChildProcesses.RunAsync(start, cancel: cancel);
+                ChildResult ran = await ChildProcesses.RunAsync(run, cancel: cancel);
                 output = ran.Output;
                 if (!File.Exists(results))
                 {
@@ -104,9 +109,6 @@ public sealed class GutRunner : ITestRunner
         outcomes(told);
         return new RunSummary(Stopwatch.GetElapsedTime(began), false, false, null) { Outcomes = told };
     }
-
-    /// <summary>How many of a run's arguments come before GUT's script: the debugger's go there.</summary>
-    private const int Leading = 3;
 
     /// <summary>A test's script, inner class and function.</summary>
     private static GutRuns.Chosen Parts(string folder, TestItem test)

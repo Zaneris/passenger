@@ -11,7 +11,8 @@ namespace Passenger.Tests;
 
 /// <summary>A Godot project's .godot folder (its imports, its editor's state, Godot.NET.Sdk's build) is build output, as
 /// bin and obj are: the Explorer dims it, Go to File and Find in Files pass over it, and a file made in it later is heard
-/// as nothing of the person's, watched each folder on its own as on Linux or as a whole tree.</summary>
+/// as nothing of the person's, watched each folder on its own as on Linux or as a whole tree; and so is the test runner
+/// GdUnit4's adapter writes into the project, which Git's view leaves out too.</summary>
 public sealed class GodotFolderTests
 {
     [AvaloniaTheory]
@@ -56,6 +57,26 @@ public sealed class GodotFolderTests
         Assert.True(!window.FileIndex.Files.Any(f => f.StartsWith(IgnoredFolders.GodotCache, StringComparison.Ordinal)),
             $"Go to File took in what Godot wrote under .godot: {string.Join(", ", window.FileIndex.Files.Where(f => f.StartsWith(IgnoredFolders.GodotCache, StringComparison.Ordinal)))}");
         Assert.True(File.Exists(source), "The project's own script went");
+        window.Close();
+    }
+
+    /// <summary>The test runner GdUnit4's adapter writes into a game, which git leaves unversioned there, is dimmed in the
+    /// Explorer and left out of Git's view, where a script of the person's made beside it is listed.</summary>
+    [AvaloniaFact]
+    public void GdUnit4s_test_runner_in_a_game_is_build_output_to_the_explorer_and_gits_view()
+    {
+        string folder = TestFolders.Create("godot-gdunit4-");
+        TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n");
+        TestGit.Init(folder);
+        TestFolders.Write(folder, Path.Combine(IgnoredFolders.GdUnit4Runner, "GdUnit4TestRunnerScene.cs"), "public partial class GdUnit4TestRunnerScene { }\n");
+        TestFolders.Write(folder, Path.Combine("Scripts", "Mine.cs"), "public class Mine { }\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        string root = PathNames.Canonical(folder);
+        Ui.Landed(() => window.Vcs.Changes.Any(c => c.Name == "Mine.cs"), "the person's new script listed in Git's view");
+        Assert.True(!window.Vcs.Changes.Any(c => c.Path.Contains(IgnoredFolders.GdUnit4Runner, StringComparison.Ordinal)),
+            $"Git's view offers GdUnit4's test runner for a commit: {string.Join(", ", window.Vcs.Changes.Select(c => c.Path))}");
+        ExplorerNode runner = window.ExplorerView.Tree.Rows.Single(r => r.Path == Path.Combine(root, IgnoredFolders.GdUnit4Runner));
+        Assert.True(runner.IsDimmed, "The Explorer shows GdUnit4's test runner as the person's code, though GdUnit4's adapter wrote it");
         window.Close();
     }
 }

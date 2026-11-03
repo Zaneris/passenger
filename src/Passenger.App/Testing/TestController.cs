@@ -383,14 +383,16 @@ public sealed class TestController : IAsyncDisposable
                     {
                         break;
                     }
-                    RunSummary part = await runner!.RunAsync(
-                        [.. group.Select(t => t.Test)],
+                    List<TestItem> its = [.. group.Select(t => t.Test)];
+                    Task<RunSummary> Run() => runner!.RunAsync(
+                        its,
                         UiThread.Marshal<IReadOnlyList<TestOutcome>>(Apply),
                         log: UiThread.Marshal(log),
                         debugger: debug ? new DebugLauncher(this) : null,
                         environment: group.First().Environment,
                         godot: godotStart,
                         cancel: stop.Token);
+                    RunSummary part = await PuttingBackAsync(GdUnit4Installs(its), Run);
                     summary = summary is null ? part : summary.And(part);
                 }
                 // A runner may tell an outcome on another thread behind the run's end: every one is in before the end is.
@@ -441,6 +443,27 @@ public sealed class TestController : IAsyncDisposable
                 Changed?.Invoke(this, EventArgs.Empty);
             }
         }
+    }
+
+    /// <summary>The Godot projects GdUnit4's adapter will write its test runner into for these tests, its headless editor
+    /// run on each then: the C# games' whose tests VSTest runs where the runner is not there yet. A worker's look at each.</summary>
+    private Task<List<string>> GdUnit4Installs(IReadOnlyList<TestItem> tests)
+    {
+        List<string> games = [.. projects().Where(p => p is { IsTestProject: true, IsScriptGame: false, GodotFolder: not null } && tests.Any(t => t.Project == p.Path))
+            .Select(p => p.GodotFolder!).Distinct(PathNames.Comparer)];
+        return games.Count == 0 ? Task.FromResult(games) : BackgroundWork.Run(() => games.Where(g => !File.Exists(GdUnit4Settings.RunnerScene(g))).ToList());
+    }
+
+    /// <summary>A run, what a headless editor writes over in each of these Godot projects as it runs put back once it ends.</summary>
+    private static async Task<RunSummary> PuttingBackAsync(Task<List<string>> projects, Func<Task<RunSummary>> run)
+    {
+        Func<Task<RunSummary>> kept = run;
+        foreach (string project in await projects)
+        {
+            Func<Task<RunSummary>> inner = kept;
+            kept = () => Godot.GodotScripts.PuttingBackAsync(project, inner);
+        }
+        return await kept();
     }
 
     /// <summary>Tells the results the run's methods told, those of a method shown under two groups once.</summary>

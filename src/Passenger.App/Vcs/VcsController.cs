@@ -106,7 +106,8 @@ public sealed class VcsController : IDisposable
     /// <summary>The branch checked out, or null on a detached head or outside a working tree.</summary>
     public string? Branch { get; private set; }
 
-    /// <summary>The changed and new files, as the last status read them.</summary>
+    /// <summary>The changed and new files, as the last status read them, but the unversioned files a test framework wrote
+    /// as its own output (<see cref="IgnoredFolders.InToolOutput"/>).</summary>
     public IReadOnlyList<FileChange> Changes { get; private set; } = [];
 
     /// <summary>The files in conflict, as the last status read them (each also among <see cref="Changes"/>).</summary>
@@ -516,7 +517,8 @@ public sealed class VcsController : IDisposable
         if (status is not null)
         {
             Branch = status.Branch;
-            Changes = status.Changes;
+            Changes = status.Changes.Any(c => c.Kind is ChangeKind.Unversioned && IgnoredFolders.InToolOutput(c.Path))
+                ? [.. status.Changes.Where(c => c.Kind is not ChangeKind.Unversioned || !IgnoredFolders.InToolOutput(c.Path))] : status.Changes;
             Conflicts = status.Conflicts;
             Merge = merge ?? MergeState.Idle;
             if (Conflicts.Count == 0 && begun > readsBeforeUnstash)
