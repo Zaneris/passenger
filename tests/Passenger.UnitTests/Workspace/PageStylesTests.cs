@@ -120,4 +120,41 @@ public class PageStylesTests
         Assert.True(PageLinks.Matches("md5-whatever", content));
         Assert.True(PageLinks.Matches(null, content));
     }
+
+    [Fact]
+    public void A_class_after_deep_is_marked_deep_in_its_selector_alone_the_next_selector_of_a_list_beginning_again()
+    {
+        CssSheet sheet = CssRules.Read(".panel ::deep .child, .plain .other { color: red; }\n.top::DEEP .nested { }\n.lone { }\n");
+        Assert.Equal([("panel", false), ("child", true), ("plain", false), ("other", false), ("top", false), ("nested", true), ("lone", false)],
+            sheet.Rules.Select(r => (r.Name, r.Deep)));
+    }
+
+    [Fact]
+    public void A_pages_links_are_read_as_the_app_serves_them_under_its_base_href()
+    {
+        const string Page = "<base href=\"/app/\" />\n<link rel=\"stylesheet\" href=\"css/site.css\" />\n<link rel=\"stylesheet\" href=\"/app/css/based.css\" />\n"
+            + "<link rel=\"stylesheet\" href=\"/other/x.css\" />\n<link rel=\"stylesheet\" href=\"https://cdn.example/x.css\" />\n<link rel=\"stylesheet\" href=\"@Assets[\"app.css\"]\" />";
+        Assert.Equal(["/css/site.css", "/css/based.css", "/other/x.css", "https://cdn.example/x.css", "/app.css"], PageLinks.Stylesheets(Page, razor: true).Select(l => l.Href));
+        // At the root, as written.
+        Assert.Equal(["css/site.css"], PageLinks.Stylesheets("<base href=\"/\" /><link rel=\"stylesheet\" href=\"css/site.css\" />", razor: false).Select(l => l.Href));
+    }
+
+    [Fact]
+    public void A_pages_style_blocks_read_as_a_stylesheet_at_the_pages_own_places()
+    {
+        const string Page = "<head>\n<style>\n.inline-note { color: red; }\n</style>\n</head>\n<p class=\"inline-note\">x</p>\n";
+        string text = PageLinks.StyleText(Page, razor: true)!;
+        Assert.Equal(Page.Length, text.Length);
+        CssClassRule rule = Assert.Single(CssRules.Read(text).Rules);
+        Assert.Equal("inline-note", rule.Name);
+        Assert.Equal(Page.IndexOf(".inline-note", StringComparison.Ordinal) + 1, rule.At);
+        Assert.Null(PageLinks.StyleText("<p class=\"x\">no style</p>", razor: false));
+    }
+
+    [Fact]
+    public void A_packages_own_static_web_asset_base_path_is_read_from_its_build_props()
+    {
+        Assert.Equal("lamp", PageLinks.AssetBasePath("<Project><ItemGroup><StaticWebAsset Include=\"x\"><BasePath>/lamp/</BasePath></StaticWebAsset></ItemGroup></Project>"));
+        Assert.Null(PageLinks.AssetBasePath("<Project />"));
+    }
 }

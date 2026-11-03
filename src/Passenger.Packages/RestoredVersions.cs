@@ -21,6 +21,11 @@ public sealed class RestoredVersions
         return packages?.GetValueOrDefault(id);
     }
 
+    /// <summary>The packages a framework's restore resolved, with their versions (a project of one framework names none).</summary>
+    public IReadOnlyDictionary<string, string> All(string? framework) =>
+        (framework is not null ? byFramework.GetValueOrDefault(framework) : byFramework.Count == 1 ? byFramework.Values.First() : null)
+        ?? new Dictionary<string, string>();
+
     /// <summary>An assets file's targets read (a runtime's own targets passed over); none where it does not read as one.</summary>
     public static RestoredVersions Read(Stream assets)
     {

@@ -2,9 +2,10 @@ using System.Text;
 
 namespace Passenger.Workspace;
 
-/// <summary>A class a stylesheet's rule names in its selector: the class, where its name is written, and the rule's
-/// selector and declarations as places in the text.</summary>
-public readonly record struct CssClassRule(string Name, int At, int RuleStart, int BodyStart, int BodyEnd);
+/// <summary>A class a stylesheet's rule names in its selector: the class, where its name is written, the rule's selector
+/// and declarations as places in the text, and whether it is named after CSS isolation's <c>::deep</c>, which a scoped
+/// stylesheet's rule reaches the components its component renders with.</summary>
+public readonly record struct CssClassRule(string Name, int At, int RuleStart, int BodyStart, int BodyEnd, bool Deep = false);
 
 /// <summary>What a stylesheet gives the markup that links it: every class its rules' selectors name, a rule nested in an
 /// at-rule (<c>@media</c>, <c>@supports</c>, <c>@layer</c>) included, and the stylesheets its <c>@import</c>s name.</summary>
@@ -220,10 +221,21 @@ public static class CssRules
         }
         HashSet<string>? named = null;
         int bracket = 0;
+        // Past a ::deep in this selector of the list: each ',' begins another.
+        bool deep = false;
         for (int i = ruleStart; i < brace; i++)
         {
             char c = css[i];
-            if (c is '"' or '\'')
+            if (c == ',' && bracket == 0)
+            {
+                deep = false;
+            }
+            else if (c == ':' && bracket == 0 && css.AsSpan(i, brace - i).StartsWith("::deep", StringComparison.OrdinalIgnoreCase))
+            {
+                deep = true;
+                i += 5;
+            }
+            else if (c is '"' or '\'')
             {
                 i = StringEnd(css, i) - 1;
             }
@@ -248,7 +260,7 @@ public static class CssRules
             {
                 if ((named ??= new HashSet<string>(StringComparer.Ordinal)).Add(name))
                 {
-                    rules.Add(new CssClassRule(name, i + 1, ruleStart, bodyStart, bodyEnd));
+                    rules.Add(new CssClassRule(name, i + 1, ruleStart, bodyStart, bodyEnd, deep));
                 }
                 i = end - 1;
             }

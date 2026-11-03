@@ -10,10 +10,15 @@ public sealed record LinkedSheet(string Href, string? Integrity);
 /// a link's <c>integrity</c> says, as a browser checks them: one of the strongest hashes it gives matches. Pure.</summary>
 public static class PageLinks
 {
+    /// <summary>Each stylesheet a page links, its address as the app serves it: a relative one taken from the page's
+    /// <c>&lt;base href&gt;</c>, and one under that base read from the app's root, as an app served under that path base
+    /// (<c>UsePathBase</c>) serves it.</summary>
     public static IReadOnlyList<LinkedSheet> Stylesheets(string markup, bool razor)
     {
         List<LinkedSheet> found = [];
-        foreach (MarkupTag tag in MarkupTags.Read(markup, razor))
+        IReadOnlyList<MarkupTag> tags = MarkupTags.Read(markup, razor);
+        string? based = BasePath(markup, tags);
+        foreach (MarkupTag tag in tags)
         {
             if (!tag.Name.Equals("link", StringComparison.OrdinalIgnoreCase) || tag.Attribute("rel") is not { } rel || tag.Attribute("href") is not { } href
                 || !markup.AsSpan(rel.ValueStart, rel.ValueEnd - rel.ValueStart).ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries)
@@ -21,13 +26,78 @@ public static class PageLinks
             {
                 continue;
             }
-            if (Address(markup[href.ValueStart..href.ValueEnd]) is { } address)
+            if (Address(markup[href.ValueStart..href.ValueEnd]) is { } written && Served(written, based) is { } address)
             {
                 string? integrity = tag.Attribute("integrity") is { } hashes ? markup[hashes.ValueStart..hashes.ValueEnd].Trim() : null;
                 found.Add(new LinkedSheet(address, integrity is { Length: > 0 } ? integrity : null));
             }
         }
         return found;
+    }
+
+    /// <summary>The path a page's <c>&lt;base href&gt;</c> names when it is another than the root (<c>/app/</c>, ending in
+    /// '/'); null for none, the root, or one on another host.</summary>
+    private static string? BasePath(string markup, IReadOnlyList<MarkupTag> tags)
+    {
+        if (tags.FirstOrDefault(t => t.Name.Equals("base", StringComparison.OrdinalIgnoreCase) && t.Attribute("href") is not null) is not { } tag)
+        {
+            return null;
+        }
+        MarkupAttribute href = tag.Attribute("href")!.Value;
+        string value = markup[href.ValueStart..href.ValueEnd].Trim();
+        if (value.Contains("://", StringComparison.Ordinal) || value.StartsWith("//", StringComparison.Ordinal) || value.Contains('@', StringComparison.Ordinal))
+        {
+            return null;
+        }
+        string path = "/" + value.Trim('/');
+        return path == "/" ? null : path + "/";
+    }
+
+    /// <summary>An address as the app serves it under a page's base: a relative one after the base, then one under the base
+    /// from the app's root; as written for one on the web, or with no base.</summary>
+    private static string? Served(string address, string? based)
+    {
+        if (based is null || address.Contains("://", StringComparison.Ordinal) || address.StartsWith("//", StringComparison.Ordinal))
+        {
+            return address;
+        }
+        string full = address.StartsWith('/') ? address : based + address;
+        return full.StartsWith(based, StringComparison.OrdinalIgnoreCase) ? full[(based.Length - 1)..] : full;
+    }
+
+    /// <summary>A page's <c>&lt;style&gt;</c> blocks as a stylesheet's text: the page's text with everything outside them
+    /// blank (its line breaks kept), so a rule's places are the page's own; null for a page with none.</summary>
+    public static string? StyleText(string markup, bool razor)
+    {
+        char[]? kept = null;
+        foreach (MarkupTag tag in MarkupTags.Read(markup, razor))
+        {
+            if (!tag.Name.Equals("style", StringComparison.OrdinalIgnoreCase) || markup.IndexOf('>', tag.Start) is not (> 0 and int open))
+            {
+                continue;
+            }
+            int close = markup.IndexOf("</style", open, StringComparison.OrdinalIgnoreCase);
+            close = close < 0 ? markup.Length : close;
+            if (kept is null)
+            {
+                kept = new char[markup.Length];
+                for (int i = 0; i < markup.Length; i++)
+                {
+                    kept[i] = markup[i] is '\n' or '\r' ? markup[i] : ' ';
+                }
+            }
+            markup.AsSpan(open + 1, close - open - 1).CopyTo(kept.AsSpan(open + 1));
+        }
+        return kept is null ? null : new string(kept);
+    }
+
+    /// <summary>The base path a package's static web assets are served under, as its <c>build</c> props give its assets
+    /// (Microsoft.AspNetCore.StaticWebAssets.props' <c>BasePath</c>); null where they give none.</summary>
+    public static string? AssetBasePath(string props)
+    {
+        int at = props.IndexOf("<BasePath>", StringComparison.Ordinal);
+        int end = at < 0 ? -1 : props.IndexOf("</BasePath>", at, StringComparison.Ordinal);
+        return end < 0 ? null : props[(at + "<BasePath>".Length)..end].Trim().Trim('/') is { Length: > 0 } path ? path : null;
     }
 
     /// <summary>The address an href's value names; null for one an expression makes.</summary>

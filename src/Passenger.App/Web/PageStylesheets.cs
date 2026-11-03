@@ -21,13 +21,13 @@ public sealed record PageClasses(IReadOnlyDictionary<string, IReadOnlyList<Defin
 }
 
 /// <summary>The stylesheets a markup file's pages link, found as the app serves them: a Razor file's are those every page of
-/// its project links (and of the projects that reference it, a Blazor Web App's host page linking its client's components'),
-/// an HTML file's its own links; a component's own scoped stylesheet always. An address is the app's own <c>wwwroot</c>, a
-/// package's static web assets (<c>_content/Name/…</c>, from the package folder its restore resolved) or a referenced
-/// project's <c>wwwroot</c>, the CSS isolation bundle (<c>App.styles.css</c>, each component's <c>.razor.css</c>), or a
-/// stylesheet on the web (<see cref="RemoteStylesheets"/>), and each <c>@import</c> is followed. What is read from disk is
-/// kept until the folder's watcher says it was written; an open file is read as the editor has it. Asked on the UI thread;
-/// every read is made off it.</summary>
+/// its project links (and of the projects that reference it), an HTML file's its own; each page's <c>&lt;style&gt;</c>
+/// blocks; a component's own scoped stylesheet always, another's <c>::deep</c> rules where that one renders it. An address
+/// (after the page's <c>&lt;base href&gt;</c>) is the app's own <c>wwwroot</c>, a package's static web assets (under its
+/// own base path, <c>_content/Name/…</c> unless its build gives another) or a referenced project's <c>wwwroot</c>, the
+/// CSS isolation bundle, or a stylesheet on the web (<see cref="RemoteStylesheets"/>); each <c>@import</c> is followed.
+/// What is read from disk is kept until the folder's watcher says it was written; an open file is read as the editor has
+/// it. Asked on the UI thread; every read is made off it.</summary>
 public sealed class PageStylesheets
 {
     /// <summary>How deep <c>@import</c>s are followed.</summary>
@@ -36,6 +36,16 @@ public sealed class PageStylesheets
     private readonly ConcurrentDictionary<string, CssSheet> sheets = new(PathNames.Comparer);
     private readonly ConcurrentDictionary<string, IReadOnlyList<LinkedSheet>> links = new(PathNames.Comparer);
     private readonly ConcurrentDictionary<string, RestoredVersions> restored = new(PathNames.Comparer);
+
+    /// <summary>A page's <c>&lt;style&gt;</c> blocks' rules, by the page (none for a page without).</summary>
+    private readonly ConcurrentDictionary<string, CssSheet?> styles = new(PathNames.Comparer);
+
+    /// <summary>A component's markup, for which components it renders.</summary>
+    private readonly ConcurrentDictionary<string, string> markup = new(PathNames.Comparer);
+
+    /// <summary>The base path each package's static web assets are served under (<c>_content/Id</c> unless its build says
+    /// another), by its folder.</summary>
+    private readonly ConcurrentDictionary<string, string> bases = new(PathNames.Comparer);
 
     /// <summary>Each project folder's own files, by the index's list they were taken from, taken again once it changes.</summary>
     private readonly ConcurrentDictionary<string, (IReadOnlyList<string> From, IReadOnlyList<string> Files)> owned = new(PathNames.Comparer);
@@ -67,14 +77,16 @@ public sealed class PageStylesheets
             sheets.Clear();
             links.Clear();
             restored.Clear();
+            styles.Clear();
+            markup.Clear();
             Changed?.Invoke(this, EventArgs.Empty);
             return;
         }
         bool touched = false;
         foreach (string path in paths)
         {
-            touched |= sheets.TryRemove(path, out _) | links.TryRemove(path, out _) | restored.TryRemove(path, out _)
-                || path.EndsWith(".css", StringComparison.OrdinalIgnoreCase);
+            touched |= sheets.TryRemove(path, out _) | links.TryRemove(path, out _) | restored.TryRemove(path, out _) | styles.TryRemove(path, out _)
+                | markup.TryRemove(path, out _) || path.EndsWith(".css", StringComparison.OrdinalIgnoreCase);
         }
         if (touched)
         {
@@ -124,13 +136,23 @@ public sealed class PageStylesheets
         if (razor && ScopedSheetOf(path) is { } own && File.Exists(own))
         {
             count++;
-            Take(own, Path.GetFileName(own), Read(own, texts), offered: true);
+            Take(own, Path.GetFileName(own), Read(own, texts), _ => true);
             seen.Add(own);
         }
-        foreach ((string page, ProjectModel? serving, LinkedSheet link) in Linked(path, razor, project, projects, texts, root, files))
+        // The components that render this one, whose scoped rules' ::deep classes reach it.
+        HashSet<string>? parents = null;
+        foreach ((string page, ProjectModel? serving) in Pages(path, razor, project, projects, root, files))
         {
             cancel.ThrowIfCancellationRequested();
-            await FollowAsync(link.Href, link.Integrity, page, serving, 0);
+            if (StyleOf(page, texts) is { } inline)
+            {
+                count++;
+                Take(page, $"<style> in {Path.GetFileName(page)}", inline, _ => true);
+            }
+            foreach (LinkedSheet link in LinksOf(page, texts))
+            {
+                await FollowAsync(link.Href, link.Integrity, page, serving, 0);
+            }
         }
         return new PageClasses(classes.ToDictionary(c => c.Key, c => (IReadOnlyList<DefinedClass>)c.Value, StringComparer.Ordinal), unread, count);
 
@@ -151,7 +173,7 @@ public sealed class PageStylesheets
                 }
                 // A copy never changes once kept: its rules are read once.
                 CssSheet sheet = sheets.GetOrAdd(copy, _ => CssRules.Read(text));
-                Take(copy, Path.GetFileName(address.AbsolutePath) is { Length: > 0 } name ? name : address.Host, sheet, offered: true);
+                Take(copy, Path.GetFileName(address.AbsolutePath) is { Length: > 0 } name ? name : address.Host, sheet, _ => true);
                 foreach (string imported in sheet.Imports)
                 {
                     await FollowAsync(new Uri(address, imported).AbsoluteUri, null, from, serving, depth + 1);
@@ -163,7 +185,9 @@ public sealed class PageStylesheets
                 foreach (string scoped in bundled.Where(s => seen.Add(s)))
                 {
                     count++;
-                    Take(scoped, Path.GetFileName(scoped), Read(scoped, texts), offered: false);
+                    string component = Path.GetFileNameWithoutExtension(scoped[..^4]);
+                    Take(scoped, Path.GetFileName(scoped), Read(scoped, texts),
+                        rule => rule.Deep && razor && (parents ??= Parents(path, bundled, texts)).Contains(component));
                 }
                 return;
             }
@@ -178,14 +202,14 @@ public sealed class PageStylesheets
                 return;
             }
             CssSheet local = Read(file, texts);
-            Take(file, Path.GetFileName(file), local, offered: true);
+            Take(file, Path.GetFileName(file), local, _ => true);
             foreach (string imported in local.Imports)
             {
                 await FollowAsync(imported, null, file, serving, depth + 1);
             }
         }
 
-        void Take(string file, string name, CssSheet sheet, bool offered)
+        void Take(string file, string name, CssSheet sheet, Func<CssClassRule, bool> offered)
         {
             foreach (CssClassRule rule in sheet.Rules)
             {
@@ -193,8 +217,8 @@ public sealed class PageStylesheets
                 {
                     classes[rule.Name] = defined = [];
                 }
-                // Another component's scoped class is known, so never said to be missing, but offered nowhere else.
-                defined.Add(new DefinedClass(rule.Name, name, file, sheet, rule, offered));
+                // Another component's scoped class is known, so never said to be missing, but offered only where ::deep takes it.
+                defined.Add(new DefinedClass(rule.Name, name, file, sheet, rule, offered(rule)));
             }
         }
     }
@@ -202,16 +226,14 @@ public sealed class PageStylesheets
     /// <summary>What a link from a page names, told apart so each is followed once.</summary>
     private static string Key(string href, string from) => Uri.TryCreate(href, UriKind.Absolute, out Uri? absolute) && !absolute.IsFile ? absolute.AbsoluteUri : $"{from}|{href}";
 
-    /// <summary>Each stylesheet the pages of a markup file link, with the page and the project that serves it.</summary>
-    private IEnumerable<(string Page, ProjectModel? Serving, LinkedSheet Link)> Linked(string path, bool razor, ProjectModel? project, IReadOnlyList<ProjectModel> projects,
-        OpenTexts texts, string? root, IReadOnlyList<string> files)
+    /// <summary>The pages a markup file's classes are styled by, with the project that serves each: an HTML file itself, a
+    /// Razor file's every page of its project and of the projects that reference it.</summary>
+    private IEnumerable<(string Page, ProjectModel? Serving)> Pages(string path, bool razor, ProjectModel? project, IReadOnlyList<ProjectModel> projects,
+        string? root, IReadOnlyList<string> files)
     {
         if (!razor)
         {
-            foreach (LinkedSheet link in LinksOf(path, texts))
-            {
-                yield return (path, project is { IsWeb: true } && PathNames.IsUnder(path, Path.Combine(project.Folder, "wwwroot")) ? project : null, link);
-            }
+            yield return (path, project is { IsWeb: true } && PathNames.IsUnder(path, Path.Combine(project.Folder, "wwwroot")) ? project : null);
             yield break;
         }
         if (project is null || root is null)
@@ -223,12 +245,89 @@ public sealed class PageStylesheets
         {
             foreach (string page in PagesOf(each, OwnFiles(each.Folder, root, files)))
             {
-                foreach (LinkedSheet link in LinksOf(page, texts))
+                yield return (page, each);
+            }
+        }
+    }
+
+    /// <summary>A page's <c>&lt;style&gt;</c> blocks' rules, as the editor has it, else as last read from disk; null for none.</summary>
+    private CssSheet? StyleOf(string page, OpenTexts texts)
+    {
+        if (texts.Open(page) is { } open)
+        {
+            return PageLinks.StyleText(open.ToString(), RazorFiles.Is(page)) is { } text ? CssRules.Read(text) : null;
+        }
+        return styles.GetOrAdd(page, file =>
+        {
+            try
+            {
+                string text = File.ReadAllText(file);
+                return text.Contains("<style", StringComparison.OrdinalIgnoreCase) && PageLinks.StyleText(text, RazorFiles.Is(file)) is { } css ? CssRules.Read(css) : null;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        });
+    }
+
+    /// <summary>The components that render a component, directly or through others, by name: among those of the scoped
+    /// stylesheets a bundle takes in and the rest of their folders' components, each whose markup writes one's tag.</summary>
+    private HashSet<string> Parents(string component, IReadOnlyList<string> bundled, OpenTexts texts)
+    {
+        HashSet<string> folders = new(bundled.Select(s => Path.GetDirectoryName(s)!).Append(Path.GetDirectoryName(component)!), PathNames.Comparer);
+        List<string> components = [.. bundled.Select(s => s[..^4]).Concat(folders.SelectMany(f => Directory.Exists(f) ? Directory.EnumerateFiles(f, "*.razor") : []))
+            .Distinct(PathNames.Comparer)];
+        HashSet<string> rendered = [Path.GetFileNameWithoutExtension(component)];
+        HashSet<string> found = new(StringComparer.Ordinal);
+        bool grew = true;
+        while (grew)
+        {
+            grew = false;
+            foreach (string each in components)
+            {
+                string name = Path.GetFileNameWithoutExtension(each);
+                if (!found.Contains(name) && rendered.Any(child => Renders(MarkupOf(each, texts), child)))
                 {
-                    yield return (page, each, link);
+                    grew |= found.Add(name) & rendered.Add(name);
                 }
             }
         }
+        return found;
+    }
+
+    /// <summary>Whether markup writes a component's tag (<c>&lt;Child</c>, then a space, '/' or '&gt;').</summary>
+    private static bool Renders(string text, string component)
+    {
+        for (int at = text.IndexOf("<" + component, StringComparison.Ordinal); at >= 0; at = text.IndexOf("<" + component, at + 1, StringComparison.Ordinal))
+        {
+            int after = at + 1 + component.Length;
+            if (after >= text.Length || char.IsWhiteSpace(text[after]) || text[after] is '/' or '>')
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>A component's markup, as the editor has it, else as last read from disk.</summary>
+    private string MarkupOf(string component, OpenTexts texts)
+    {
+        if (texts.Open(component) is { } open)
+        {
+            return open.ToString();
+        }
+        return markup.GetOrAdd(component, file =>
+        {
+            try
+            {
+                return File.ReadAllText(file);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return string.Empty;
+            }
+        });
     }
 
     /// <summary>A project's files that may link stylesheets: its Razor files, and the HTML pages of its wwwroot.</summary>
@@ -368,19 +467,82 @@ public sealed class PageStylesheets
             }
             return PackageAsset(serving, name, below);
         }
-        return System.IO.Path.Combine(serving.Folder, "wwwroot", System.IO.Path.Combine(parts));
+        string own = System.IO.Path.Combine(serving.Folder, "wwwroot", System.IO.Path.Combine(parts));
+        return File.Exists(own) ? own : PackageAssetUnder(serving, parts) ?? own;
     }
 
     /// <summary>A package's static web asset in the package folder the project's restore resolved it to; null where its
     /// restore resolved no such package.</summary>
     private string? PackageAsset(ProjectModel project, string package, string below)
     {
-        if (project.Property(Host.CarriedProperties.NuGetPackageRoot) is not { Length: > 0 } root
-            || (project.Property(Host.CarriedProperties.ProjectAssetsFile) ?? Passenger.Xaml.Projects.ProjectInputs.FindAssets(project.Path)) is not { } assets)
+        if (project.Property(Host.CarriedProperties.NuGetPackageRoot) is not { Length: > 0 } root || Restored(project) is not { } versions)
         {
             return null;
         }
-        RestoredVersions versions = restored.GetOrAdd(assets, file =>
+        string? version = versions.Of(project.TargetFrameworks.Count == 1 ? null : project.TargetFrameworks.FirstOrDefault(), package);
+        return version is null ? null : System.IO.Path.Combine(root, package.ToLowerInvariant(), version.ToLowerInvariant(), "staticwebassets", below);
+    }
+
+    /// <summary>The static web asset an address names in a package whose own base path (its <c>StaticWebAssetBasePath</c>,
+    /// as its build's props give it) begins the address; null where no package the project's restore resolved serves it.</summary>
+    private string? PackageAssetUnder(ProjectModel project, string[] parts)
+    {
+        if (project.Property(Host.CarriedProperties.NuGetPackageRoot) is not { Length: > 0 } root || Restored(project) is not { } versions)
+        {
+            return null;
+        }
+        string address = string.Join('/', parts);
+        foreach ((string package, string version) in versions.All(project.TargetFrameworks.Count == 1 ? null : project.TargetFrameworks.FirstOrDefault()))
+        {
+            string folder = System.IO.Path.Combine(root, package.ToLowerInvariant(), version.ToLowerInvariant());
+            string served = bases.GetOrAdd(folder, at => BasePathOf(at) ?? $"_content/{package}");
+            if (address.StartsWith(served + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                return System.IO.Path.Combine(folder, "staticwebassets", System.IO.Path.Combine(address[(served.Length + 1)..].Split('/')));
+            }
+        }
+        return null;
+    }
+
+    /// <summary>The base path a package folder's build props give its static web assets; null where they give none.</summary>
+    private static string? BasePathOf(string folder)
+    {
+        if (!Directory.Exists(System.IO.Path.Combine(folder, "staticwebassets")))
+        {
+            return null;
+        }
+        foreach (string build in (string[])["build", "buildTransitive", "buildMultiTargeting"])
+        {
+            string props = System.IO.Path.Combine(folder, build);
+            if (!Directory.Exists(props))
+            {
+                continue;
+            }
+            foreach (string file in Directory.EnumerateFiles(props, "*.props"))
+            {
+                try
+                {
+                    if (PageLinks.AssetBasePath(File.ReadAllText(file)) is { } path)
+                    {
+                        return path;
+                    }
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>The package versions a project's restore resolved, as its assets file last read says them.</summary>
+    private RestoredVersions? Restored(ProjectModel project)
+    {
+        if ((project.Property(Host.CarriedProperties.ProjectAssetsFile) ?? Passenger.Xaml.Projects.ProjectInputs.FindAssets(project.Path)) is not { } assets)
+        {
+            return null;
+        }
+        return restored.GetOrAdd(assets, file =>
         {
             try
             {
@@ -392,7 +554,5 @@ public sealed class PageStylesheets
                 return RestoredVersions.None;
             }
         });
-        string? version = versions.Of(project.TargetFrameworks.Count == 1 ? null : project.TargetFrameworks.FirstOrDefault(), package);
-        return version is null ? null : System.IO.Path.Combine(root, package.ToLowerInvariant(), version.ToLowerInvariant(), "staticwebassets", below);
     }
 }

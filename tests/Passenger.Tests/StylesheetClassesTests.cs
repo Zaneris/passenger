@@ -15,11 +15,11 @@ namespace Passenger.Tests;
 
 /// <summary>The classes a Blazor component's pages link, completed where a class is written, through the window: a
 /// stylesheet on a CDN (a local stand-in, never a real one) only once Settings allow its download and never fetched
-/// before, its link's integrity checked; a package's static web asset under <c>_content/Kit/</c>, read from the package
-/// folder its restore resolved; the component's own scoped stylesheet; a class's rules on the hover card and Go to
-/// Declaration to its rule in the downloaded copy or in the package folder's, read-only; and a class no stylesheet
-/// defines marked, quietly, once every stylesheet linked was read. On a Blazor app made by <c>dotnet new blazor</c>, its
-/// warm server shared (<see cref="SharedProject"/>).</summary>
+/// before, its link's integrity checked; a package's static web asset under <c>_content/Kit/</c>, or under its own base
+/// path, read from the package folder its restore resolved; the component's own scoped stylesheet, a parent's ::deep
+/// classes in its child; the host page's style block and a link under its base href; an HTML file's; a class's rules on
+/// the hover card and Go to Declaration to its rule, read-only; and a class no stylesheet defines marked, quietly, once
+/// every stylesheet linked was read. On a Blazor app made by <c>dotnet new blazor</c>, its warm server shared.</summary>
 public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
 {
     private readonly StyledShop app;
@@ -136,6 +136,54 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void A_parents_deep_class_is_offered_in_the_child_it_renders_and_its_own_scoped_class_is_not()
+    {
+        MainWindow window = app.Open("Components/Pages/Child.razor");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<p class=\"");
+        Ui.Run(window, AppActions.Complete);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("from-parent"), () => $"the parent's ::deep class among {Listed(window)}");
+        Assert.Contains(("from-parent", "Parent.razor.css"), window.Assist.CompletionDetails);
+        Assert.DoesNotContain("parent-own", window.Assist.CompletionLabels);
+        Assert.DoesNotContain("halo", window.Assist.CompletionLabels);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_style_blocks_class_a_link_under_the_pages_base_href_and_a_packages_own_base_path_are_offered_as_the_app_serves_them()
+    {
+        MainWindow window = app.Open("Components/Pages/Styled.razor");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<p class=\"");
+        Ui.Run(window, AppActions.Complete);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("lamp-glow") && window.Assist.CompletionLabels.Contains("based-note")
+            && window.Assist.CompletionLabels.Contains("inline-note"), () => $"the style block's, the based link's and the package's classes among {Listed(window)}");
+        Assert.Contains(("inline-note", "<style> in App.razor"), window.Assist.CompletionDetails);
+        Assert.Contains(("based-note", "based.css"), window.Assist.CompletionDetails);
+        Assert.Contains(("lamp-glow", "lamp.css"), window.Assist.CompletionDetails);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_html_files_class_completes_from_the_stylesheet_it_links_and_a_misspelt_one_is_marked()
+    {
+        Assert.SkipWhen(Programs.Node() is null, "Node.js is not on the PATH, and an HTML file's language server runs on it");
+        MainWindow window = app.Open("wwwroot/plain.html");
+        OpenDocument document = window.EditorArea.Active!;
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<p class=\"");
+        Ui.Run(window, AppActions.Complete);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("based-note"), () => $"the linked stylesheet's class among {Listed(window)}");
+        Assert.Contains(("based-note", "based.css"), window.Assist.CompletionDetails);
+        Ui.Press(window, "ESCAPE");
+        Ui.WaitFor(() => document.Markers.Any(m => m.Message.Contains("based-nte", StringComparison.Ordinal)),
+            () => $"the misspelt class marked; the markers say {string.Join("; ", document.Markers.Select(m => m.Message))}", TimeSpan.FromMinutes(1));
+        Marker marked = Assert.Single(document.Markers, m => m.Message.Contains("defines the class", StringComparison.Ordinal));
+        Assert.Equal("based-nte", document.Text.Snapshot.GetText(marked.Range.Start, marked.Range.Length));
+        window.Close();
+    }
+
     /// <summary>No copy of a stylesheet on the web is kept: one another test downloaded would be used without asking the CDN.</summary>
     private static void NoCopies()
     {
@@ -190,12 +238,25 @@ public sealed class StyledShop : SharedProject
             string page = await File.ReadAllTextAsync(PathOf("Components/App.razor"));
             page = page.Replace("<link rel=\"stylesheet\" href=\"@Assets[\"lib/bootstrap/dist/css/bootstrap.min.css\"]\" />",
                 $"<link rel=\"stylesheet\" href=\"{cdn.Root}/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css\" integrity=\"{integrity}\" crossorigin=\"anonymous\" />\n"
-                + "    <link rel=\"stylesheet\" href=\"_content/Kit/kit.css\" />", StringComparison.Ordinal);
+                + "    <link rel=\"stylesheet\" href=\"_content/Kit/kit.css\" />\n"
+                + "    <link rel=\"stylesheet\" href=\"/app/css/based.css\" />\n"
+                + "    <link rel=\"stylesheet\" href=\"lamp/lamp.css\" />\n"
+                + "    <style>\n        .inline-note { color: teal; }\n    </style>", StringComparison.Ordinal);
             Assert.Contains("_content/Kit/kit.css", page, StringComparison.Ordinal);
+            // Served under a path base: its relative links after it, its links under it from the app's root.
+            page = page.Replace("<base href=\"/\" />", "<base href=\"/app/\" />", StringComparison.Ordinal);
+            Assert.Contains("<base href=\"/app/\" />", page, StringComparison.Ordinal);
             File.WriteAllText(PathOf("Components/App.razor"), page);
             Directory.Delete(PathOf("wwwroot/lib"), recursive: true);
             File.WriteAllText(PathOf("Components/Pages/Styled.razor"), Component);
             File.WriteAllText(PathOf("Components/Pages/Styled.razor.css"), ".halo {\n    color: gold;\n}\n");
+            File.WriteAllText(PathOf("Components/Pages/Parent.razor"), "@page \"/parent\"\n\n<div class=\"parent-own\">\n    <Child />\n</div>\n");
+            File.WriteAllText(PathOf("Components/Pages/Parent.razor.css"), ".parent-own {\n    margin: 0;\n}\n\n.parent-own ::deep .from-parent {\n    color: plum;\n}\n");
+            File.WriteAllText(PathOf("Components/Pages/Child.razor"), "<p class=\"\">Child</p>\n");
+            Directory.CreateDirectory(PathOf("wwwroot/css"));
+            File.WriteAllText(PathOf("wwwroot/css/based.css"), ".based-note {\n    color: navy;\n}\n");
+            File.WriteAllText(PathOf("wwwroot/plain.html"), "<!DOCTYPE html>\n<html>\n<head>\n    <link rel=\"stylesheet\" href=\"css/based.css\" />\n</head>\n"
+                + "<body>\n    <p class=\"\"></p>\n    <div class=\"based-nte\"></div>\n</body>\n</html>\n");
             Directory.CreateDirectory(PathOf("feed"));
             using (ZipArchive package = ZipFile.Open(PathOf("feed/kit.1.0.0.nupkg"), ZipArchiveMode.Create))
             {
@@ -204,10 +265,22 @@ public sealed class StyledShop : SharedProject
                     + "  </metadata>\n</package>\n");
                 Entry(package, "staticwebassets/kit.css", ".kit-card {\n    border: 1px solid #ccc;\n}\n");
             }
+            // A package whose assets its own StaticWebAssetBasePath serves, as its build's props say.
+            using (ZipArchive package = ZipFile.Open(PathOf("feed/lamp.1.0.0.nupkg"), ZipArchiveMode.Create))
+            {
+                Entry(package, "Lamp.nuspec", "<?xml version=\"1.0\"?>\n<package xmlns=\"http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd\">\n"
+                    + "  <metadata>\n    <id>Lamp</id>\n    <version>1.0.0</version>\n    <authors>Passenger</authors>\n    <description>A stylesheet</description>\n"
+                    + "  </metadata>\n</package>\n");
+                Entry(package, "staticwebassets/lamp.css", ".lamp-glow {\n    color: orange;\n}\n");
+                Entry(package, "build/Microsoft.AspNetCore.StaticWebAssets.props", "<Project>\n  <ItemGroup>\n"
+                    + "    <StaticWebAsset Include=\"$([System.IO.Path]::GetFullPath($(MSBuildThisFileDirectory)..\\staticwebassets\\lamp.css))\">\n"
+                    + "      <SourceType>Package</SourceType>\n      <SourceId>Lamp</SourceId>\n      <BasePath>lamp</BasePath>\n      <RelativePath>lamp.css</RelativePath>\n"
+                    + "    </StaticWebAsset>\n  </ItemGroup>\n</Project>\n");
+            }
             File.WriteAllText(PathOf("nuget.config"), "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<configuration>\n  <packageSources>\n    <clear />\n"
                 + "    <add key=\"kit\" value=\"feed\" />\n  </packageSources>\n</configuration>\n");
             string project = await File.ReadAllTextAsync(PathOf("Shop.csproj"));
-            File.WriteAllText(PathOf("Shop.csproj"), project.Replace("</Project>", "  <ItemGroup>\n    <PackageReference Include=\"Kit\" Version=\"1.0.0\" />\n  </ItemGroup>\n\n</Project>", StringComparison.Ordinal));
+            File.WriteAllText(PathOf("Shop.csproj"), project.Replace("</Project>", "  <ItemGroup>\n    <PackageReference Include=\"Kit\" Version=\"1.0.0\" />\n    <PackageReference Include=\"Lamp\" Version=\"1.0.0\" />\n  </ItemGroup>\n\n</Project>", StringComparison.Ordinal));
             Directory.CreateDirectory(PathOf("bin"));
         }, Folder);
         await PrepareAsync();
