@@ -38,11 +38,16 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
 
         public Task<Typed?>? Current { get; set; }
 
+        /// <summary>What names are, coloured over the grammar's colours, while the script is followed.</summary>
+        public Languages.ColourLayer? Layer { get; set; }
+
+        /// <summary>The colours last given the layer, for the text the tree was read from.</summary>
+        public SyntaxSpan[] Colours { get; set; } = [];
     }
 
     /// <summary>A script's types for a version of its text: its tree, its analysis, and the analyzer that read them.</summary>
     public sealed record Typed(int Version, GDScriptTree Tree, GDScriptAnalysis Analysis, GDScriptAnalyzer Analyzer, string Text, HintList Hints,
-        IReadOnlyList<GDScriptFinding> Findings);
+        IReadOnlyList<GDScriptFinding> Findings, SyntaxSpan[] Colours, bool ColoursDiffer);
 
     public static bool IsScript(string path) => GodotScriptDeclarations.IsScript(path);
 
@@ -60,6 +65,11 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
             kept.Pending = kept.Pending is { } before ? before.Then(change) : change;
             kept.Pause.Restart();
         };
+        if (document.Highlighter is { } grammar)
+        {
+            kept.Layer = new Languages.ColourLayer(grammar, document.Text);
+            document.Highlighter = kept.Layer;
+        }
         documents[document] = kept;
         document.Text.Changed += kept.Typed;
         IdeErrors.Observe(TypeAsync(document));
@@ -72,6 +82,14 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         {
             document.Text.Changed -= gone.Typed;
             gone.Pause.Stop();
+            if (gone.Layer is { } layer)
+            {
+                if (document.Highlighter == layer)
+                {
+                    document.Highlighter = layer.Syntax;
+                }
+                layer.Dispose();
+            }
         }
     }
 
@@ -144,7 +162,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         TextSnapshot snapshot = document.Text.Snapshot;
         GDScriptTextChange? change = kept.Pending;
         kept.Pending = null;
-        Typed? typed = await TypeOffAsync(document, snapshot, document.Text.Version, kept.Tree, kept.TreeText, change);
+        Typed? typed = await TypeOffAsync(document, snapshot, document.Text.Version, kept.Tree, kept.TreeText, change, kept.Colours);
         if (typed is null || !documents.ContainsKey(document))
         {
             return typed;
@@ -158,6 +176,8 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
                 document.InlayHints = typed.Hints;
             }
             Mark(document, typed.Findings);
+            kept.Colours = typed.Colours;
+            kept.Layer?.Set(typed.Colours, typed.Version, typed.ColoursDiffer);
         }
         return typed;
     }
@@ -188,7 +208,8 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         }
     }
 
-    private async Task<Typed?> TypeOffAsync(OpenDocument document, TextSnapshot snapshot, int version, GDScriptTree? tree, string? treeText, GDScriptTextChange? change)
+    private async Task<Typed?> TypeOffAsync(OpenDocument document, TextSnapshot snapshot, int version, GDScriptTree? tree, string? treeText, GDScriptTextChange? change,
+        SyntaxSpan[] coloured)
     {
         string path = document.Path;
         GodotEngineApi? api = await apis.ApiAsync();
@@ -196,8 +217,8 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         return await BackgroundWork.Run(() =>
         {
             string text = snapshot.ToString();
-            GDScriptTree parsed = tree is not null && treeText is not null && change is { } edit && edit.Fits(treeText.Length, text.Length)
-                ? tree.Reparse(text, edit.Edit(text)) : GDScriptTree.Parse(text);
+            TextEdit? made = tree is not null && treeText is not null && change is { } edit && edit.Fits(treeText.Length, text.Length) ? edit.Edit(text) : null;
+            GDScriptTree parsed = made is { } one ? tree!.Reparse(text, one) : GDScriptTree.Parse(text);
             string res = scenes?.ResPathOf(path) ?? "res://" + Path.GetFileName(path);
             GDScriptProject project = ProjectOf(scenes, api, res, parsed);
             GDScriptAnalyzer analyzer = new(project);
@@ -205,9 +226,27 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
             HintList hints = HintList.Of([.. analysis.Inferred().Select(i => new InlayHint(i.Offset, $": {i.Type}", Kind: InlayHintKind.Type))]);
             GDScriptWarningSettings settings = GDScriptWarningSettings.Of(scenes?.Texts.GetValueOrDefault("res://" + GodotProject.FileName));
             IReadOnlyList<GDScriptFinding> findings = [.. analysis.Findings(settings).Where(f => f.End <= text.Length)];
-            return (Typed?)new Typed(version, parsed, analysis, analyzer, text, hints, findings);
+            SyntaxSpan[] colours = [.. analysis.Colours().Select(c => new SyntaxSpan(c.Start, c.Length, KindOf(c.Colour)))];
+            bool differ = !Languages.ColourLayer.Same(coloured, made is { } carried ? [carried] : [], colours);
+            return (Typed?)new Typed(version, parsed, analysis, analyzer, text, hints, findings, colours, differ);
         });
     }
+
+    /// <summary>The editor's colour of what a name is: C#'s for its like.</summary>
+    private static TokenKind KindOf(GDScriptColour colour) => colour switch
+    {
+        GDScriptColour.Method => TokenKind.Method,
+        GDScriptColour.Field => TokenKind.Field,
+        GDScriptColour.Property => TokenKind.Property,
+        GDScriptColour.Constant => TokenKind.Constant,
+        GDScriptColour.EnumMember => TokenKind.EnumMember,
+        GDScriptColour.Event => TokenKind.Event,
+        GDScriptColour.Enum => TokenKind.Enum,
+        GDScriptColour.Class => TokenKind.Class,
+        GDScriptColour.Struct => TokenKind.Struct,
+        GDScriptColour.Parameter => TokenKind.Parameter,
+        _ => TokenKind.Local,
+    };
 
     /// <summary>Whether the hints shown, carried through the edits since, say what the new ones say where they say it: a
     /// pause that changed no inferred type sets none, so typing in a long script costs the window no list of its hints.</summary>

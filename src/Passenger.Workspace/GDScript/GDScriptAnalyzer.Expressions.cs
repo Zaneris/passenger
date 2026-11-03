@@ -18,6 +18,10 @@ public sealed partial class GDScriptAnalyzer
                 }
                 Declaring(variable, type, "variable", local: false, context);
                 MemberVariableWarnings(variable, context);
+                if (variable.Type is { } memberType)
+                {
+                    ResolveType(memberType, context);
+                }
                 if (variable.Getter is { Body: { } getter } get)
                 {
                     WalkSuite(getter, context with { Scope = new Scope(null), Function = get });
@@ -47,12 +51,15 @@ public sealed partial class GDScriptAnalyzer
                 break;
             case GDScriptClass inner when inner.Identifier is not null:
                 GDScriptType innerType = new(GDScriptTypeKind.Class, inner.Identifier.Name) { Class = inner, Script = context.Analysis.Path, Offset = context.Offset };
+                Paint(context, inner.Identifier, GDScriptColour.Class);
+                PaintExtends(inner, context);
                 foreach (GDScriptNode innerMember in inner.Members)
                 {
                     Walk(analysis, innerMember, context with { Class = innerType });
                 }
                 break;
             case GDScriptSignal signal:
+                Paint(context, signal.Identifier, GDScriptColour.Event);
                 foreach (GDScriptParameter parameter in signal.Parameters)
                 {
                     Record(analysis, parameter, parameter.Type is { } written ? ResolveType(written, context) : GDScriptType.Variant.Soft, context);
@@ -65,7 +72,15 @@ public sealed partial class GDScriptAnalyzer
             case GDScriptEnum { Identifier: null } named:
                 foreach ((GDScriptIdentifier enumValue, _) in named.Values)
                 {
+                    Paint(context, enumValue, GDScriptColour.Constant);
                     Shadowing(enumValue, "enum member", local: false, context);
+                }
+                break;
+            case GDScriptEnum enumerated:
+                Paint(context, enumerated.Identifier, GDScriptColour.Enum);
+                foreach ((GDScriptIdentifier enumValue, _) in enumerated.Values)
+                {
+                    Paint(context, enumValue, GDScriptColour.EnumMember);
                 }
                 break;
             default:
@@ -84,6 +99,7 @@ public sealed partial class GDScriptAnalyzer
             {
                 context.Analysis.Declared[named] = new GDScriptDeclaration(context.Analysis.Path, context.Offset + named.Start, named.Name, context.Analysis.Types[function]);
                 context.Analysis.Declaring.Add(named);
+                Paint(context, named, GDScriptColour.Method);
             }
         }
         List<Local> parameters = [];
@@ -99,6 +115,10 @@ public sealed partial class GDScriptAnalyzer
                 Declaring(parameter, type, "parameter", local: true, inside);
                 Shadowing(name, "function parameter", local: true, inside);
             }
+        }
+        if (function.ReturnType is { } returned && !returned.IsVoid)
+        {
+            ResolveType(returned, inside);
         }
         if (function.ReturnType is null && !function.IsLambda && context.Analysis.Tree is not null)
         {
@@ -167,6 +187,7 @@ public sealed partial class GDScriptAnalyzer
                 {
                     GDScriptType element = loop.Type is { } declaredType ? ResolveType(declaredType, context) : Element(list, loop.List);
                     analysis.Types[loop.Variable] = element;
+                    Paint(context, variableName, GDScriptColour.Local);
                     iteration.Add(variableName.Name, element, new GDScriptDeclaration(analysis.Path, context.Offset + variableName.Start, variableName.Name, element), new Local(loop, variableName, LocalKind.Iterator));
                     if (loop.Type is null)
                     {
@@ -253,6 +274,7 @@ public sealed partial class GDScriptAnalyzer
         if (pattern.Bind is { } name)
         {
             context.Analysis.Types[name] = GDScriptType.Variant.Soft;
+            Paint(context, name, GDScriptColour.Local);
             binds.Add(name.Name, GDScriptType.Variant.Soft, new GDScriptDeclaration(context.Analysis.Path, context.Offset + name.Start, name.Name, GDScriptType.Variant.Soft), new Local(name, name, LocalKind.Bind));
             Shadowing(name, "pattern bind", local: true, context);
         }
@@ -279,6 +301,13 @@ public sealed partial class GDScriptAnalyzer
             analysis.Types[name] = type;
             analysis.Declared[name] = new GDScriptDeclaration(analysis.Path, context.Offset + name.Start, name.Name, type);
             analysis.Declaring.Add(name);
+            Paint(context, name, node switch
+            {
+                GDScriptParameter => GDScriptColour.Parameter,
+                GDScriptConstant => GDScriptColour.Constant,
+                _ when context.Function is not null || context.Scope is not null => GDScriptColour.Local,
+                _ => GDScriptColour.Field,
+            });
             if (node.Type is { Chain: [{ Name: "Variant" }] })
             {
                 analysis.WrittenVariant.Add(context.Offset + name.Start);
@@ -432,6 +461,7 @@ public sealed partial class GDScriptAnalyzer
         if (context.Scope?.Find(identifier.Name) is { } local)
         {
             analysis.Declared[identifier] = local.Declaration;
+            Paint(context, identifier, local.Local is { } named ? ColourOf(named) : GDScriptColour.Local);
             if (local.Local is { } counted && analysis.Tree is not null)
             {
                 counted.Usages++;
@@ -448,14 +478,17 @@ public sealed partial class GDScriptAnalyzer
             {
                 analysis.Declared[identifier] = declared;
             }
+            Paint(context, identifier, ColourOf(member));
             return member.Kind == "func" ? GDScriptType.Builtin("Callable") : member.Type;
         }
         if (Engine?.Singletons.GetValueOrDefault(identifier.Name) is { } engineSingleton)
         {
+            Paint(context, identifier, GDScriptColour.Class);
             return GDScriptType.Native(engineSingleton);
         }
         if (GlobalOrScopedType(identifier.Name, context.Class) is { } type)
         {
+            Paint(context, identifier, ColourOf(type));
             if (type is { Kind: GDScriptTypeKind.Class, Script: { } script, Class: { } node })
             {
                 analysis.Declared[identifier] = new GDScriptDeclaration(script, type.Offset + (node.Identifier?.Start ?? 0), identifier.Name, type);
@@ -464,24 +497,29 @@ public sealed partial class GDScriptAnalyzer
         }
         if (project.Autoload(identifier.Name) is { } autoload)
         {
+            Paint(context, identifier, GDScriptColour.Class);
             GDScriptType loaded = Tree(autoload) is { } tree ? ScriptClass(tree, autoload) : GDScriptType.Native("Node");
             analysis.Declared[identifier] = new GDScriptDeclaration(autoload, 0, identifier.Name, loaded);
             return loaded;
         }
         if (Engine?.Functions.ContainsKey(identifier.Name) == true)
         {
+            Paint(context, identifier, GDScriptColour.Method);
             return GDScriptType.Builtin("Callable");
         }
         if (identifier.Name is "PI" or "TAU" or "INF" or "NAN")
         {
+            Paint(context, identifier, GDScriptColour.Constant);
             return GDScriptType.Builtin("float");
         }
         if (Engine?.GlobalEnumValues.GetValueOrDefault(identifier.Name) is { } owning && Engine.GlobalEnums.GetValueOrDefault(owning) is { } global)
         {
+            Paint(context, identifier, GDScriptColour.EnumMember);
             return new GDScriptType(GDScriptTypeKind.Enum, owning) { Values = global.Values };
         }
         if (Engine?.GlobalConstants.Contains(identifier.Name) == true)
         {
+            Paint(context, identifier, GDScriptColour.Constant);
             return GDScriptType.Builtin("int");
         }
         return GDScriptType.Variant.Soft;
@@ -491,21 +529,30 @@ public sealed partial class GDScriptAnalyzer
     /// built-in type's constant or member, a class's or engine class's member; a method read as a value is a Callable.</summary>
     private GDScriptType Attribute(GDScriptType owner, GDScriptIdentifier name, Context context)
     {
-        GDScriptType found = MemberOf(owner, name.Name, context.Analysis, name);
+        GDScriptType found = MemberOf(owner, name.Name, context, name);
         return found with { Hard = found.Hard && (owner.Hard || owner.Meta) };
     }
 
-    private GDScriptType MemberOf(GDScriptType owner, string name, GDScriptAnalysis analysis, GDScriptIdentifier? at)
+    private GDScriptType MemberOf(GDScriptType owner, string name, Context context, GDScriptIdentifier? at)
     {
+        GDScriptAnalysis analysis = context.Analysis;
         switch (owner.Kind)
         {
             case GDScriptTypeKind.Enum:
-                return owner.Meta && owner.Values?.ContainsKey(name) == true ? owner.Instance : GDScriptType.Variant.Soft;
+                if (owner.Meta && owner.Values?.ContainsKey(name) == true)
+                {
+                    Paint(context, at, GDScriptColour.EnumMember);
+                    return owner.Instance;
+                }
+                return GDScriptType.Variant.Soft;
             case GDScriptTypeKind.Builtin:
                 if (Engine?.Builtins.GetValueOrDefault(owner.Name) is not { } builtin || owner.Name == "Dictionary" && !owner.Meta)
                 {
                     return GDScriptType.Variant.Soft;
                 }
+                Paint(context, at, builtin.Methods.ContainsKey(name) ? GDScriptColour.Method : owner.Meta && builtin.Enums.ContainsKey(name) ? GDScriptColour.Enum
+                    : owner.Meta && builtin.Enums.Values.Any(e => e.Values.ContainsKey(name)) ? GDScriptColour.EnumMember : owner.Meta && builtin.Constants.ContainsKey(name) ? GDScriptColour.Constant
+                    : builtin.Properties.ContainsKey(name) ? GDScriptColour.Property : null);
                 if (owner.Meta)
                 {
                     return builtin.Constants.TryGetValue(name, out string? constant) ? FromApi(constant)
@@ -524,6 +571,7 @@ public sealed partial class GDScriptAnalyzer
                 {
                     analysis.Declared[at] = declared;
                 }
+                Paint(context, at, ColourOf(member));
                 return member.Kind == "func" ? GDScriptType.Builtin("Callable") : member.Type;
             default:
                 return GDScriptType.Variant.Soft;
@@ -543,8 +591,6 @@ public sealed partial class GDScriptAnalyzer
         return element with { Hard = element.Hard && indexed.Hard };
     }
 
-    /// <summary>What a call gives (Godot's reduce_call): a built-in type's constructor its type, a function's or method's
-    /// return type, the script's own, its base classes', the engine's or a utility function's; <c>new()</c> an instance.</summary>
     /// <summary>A call's type, and Godot's warnings of it: a coroutine called without <c>await</c> (a warning as a statement,
     /// else an error), a value a method returns left unused, and a signal of the class named by its string.</summary>
     private GDScriptType Call(GDScriptCall call, Context context, bool root, bool awaited)
@@ -592,6 +638,8 @@ public sealed partial class GDScriptAnalyzer
         return returned;
     }
 
+    /// <summary>What a call gives (Godot's reduce_call): a built-in type's constructor its type, a function's or method's
+    /// return type, the script's own, its base classes', the engine's or a utility function's; <c>new()</c> an instance.</summary>
     private GDScriptType CallOnce(GDScriptCall call, Context context)
     {
         foreach (GDScriptExpression argument in call.Arguments)
@@ -605,6 +653,7 @@ public sealed partial class GDScriptAnalyzer
             if (call.Callee is GDScriptIdentifier superName && method?.Declaration is { } declared)
             {
                 context.Analysis.Declared[superName] = declared;
+                Paint(context, superName, GDScriptColour.Method);
             }
             return method is { Kind: "func" } ? method.Type : GDScriptType.Variant.Soft;
         }
@@ -615,6 +664,7 @@ public sealed partial class GDScriptAnalyzer
                 {
                     context.Analysis.Declared[name] = local.Declaration;
                     context.Analysis.Types[name] = local.Type;
+                    Paint(context, name, local.Local is { } named ? ColourOf(named) : GDScriptColour.Local);
                     if (local.Local is { } counted)
                     {
                         counted.Usages++;
@@ -623,6 +673,7 @@ public sealed partial class GDScriptAnalyzer
                 }
                 if (Engine?.Builtins.ContainsKey(name.Name) == true && name.Name != "Nil" || IsBuiltinName(name.Name))
                 {
+                    Paint(context, name, ColourOf(GDScriptType.Builtin(name.Name)));
                     return GDScriptType.Builtin(name.Name);
                 }
                 if (Member(context.Class, name.Name) is { Kind: "func" } own)
@@ -632,11 +683,13 @@ public sealed partial class GDScriptAnalyzer
                         context.Analysis.Declared[name] = declared;
                     }
                     context.Analysis.Types[name] = GDScriptType.Builtin("Callable");
+                    Paint(context, name, GDScriptColour.Method);
                     return own.Type;
                 }
                 if (Engine?.Functions.GetValueOrDefault(name.Name) is { } function)
                 {
                     context.Analysis.Types[name] = GDScriptType.Builtin("Callable");
+                    Paint(context, name, GDScriptColour.Method);
                     return FromApi(function.Returns);
                 }
                 Reduce(name, context);
@@ -644,7 +697,12 @@ public sealed partial class GDScriptAnalyzer
             case GDScriptSubscript { IsAttribute: true, Attribute: { } method } attribute:
                 GDScriptType owner = Reduce(attribute.Base, context);
                 context.Analysis.Types[method] = GDScriptType.Builtin("Callable");
-                return MethodCall(owner, method, context);
+                GDScriptType called = MethodCall(owner, method, context);
+                if (owner.Kind is not GDScriptTypeKind.Variant)
+                {
+                    Paint(context, method, GDScriptColour.Method);
+                }
+                return called;
             default:
                 Reduce(call.Callee, context);
                 return GDScriptType.Variant.Soft;

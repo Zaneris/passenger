@@ -38,6 +38,9 @@ public sealed class GDScriptAnalysis
     /// <summary>The declarations (by their names' offsets) whose type is written as <c>Variant</c>.</summary>
     internal HashSet<int> WrittenVariant { get; } = [];
 
+    /// <summary>Each name's colour as it was resolved, with the offset its positions count from.</summary>
+    internal Dictionary<GDScriptIdentifier, (GDScriptColour Colour, int Offset)> Coloured { get; } = [];
+
     /// <summary>The calls of functions that wait (coroutines).</summary>
     internal HashSet<GDScriptCall> CoroutineCalls { get; } = [];
 
@@ -284,6 +287,14 @@ public sealed class GDScriptAnalysis
             GDScriptClass @class => @class.Annotations.Select(a => End(a, a)).Append(LineOf(lines, offset + @class.Start)).Max(),
             _ => node.End >= 0 ? LineOf(lines, offset + Math.Max(node.Start, node.End - 1)) : start,
         };
+    }
+
+    /// <summary>Every name's colour the analysis knows, in the order of their places.</summary>
+    public GDScriptColoured[] Colours()
+    {
+        GDScriptColoured[] colours = [.. Coloured.Select(c => new GDScriptColoured(c.Value.Offset + c.Key.Start, c.Key.End - c.Key.Start, c.Value.Colour)).Where(c => c.Length > 0)];
+        Array.Sort(colours, static (a, b) => a.Start.CompareTo(b.Start));
+        return colours;
     }
 
     /// <summary>A function's declared return type as read in its class; Variant where none is written.</summary>

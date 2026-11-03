@@ -173,6 +173,25 @@ public class GDScriptAnalyzerTests
         static string Shape(GDScriptTree tree) => string.Join("\n", tree.Members.Select(m => $"{m.Start}-{m.End}").Concat(tree.Errors.Select(e => $"{e.Start} {e.Message}")));
     }
 
+    [Fact]
+    public void Each_name_is_coloured_as_what_it_is_where_it_is_declared_and_where_it_is_read()
+    {
+        string script = "class_name Hero\nextends Node2D\n\nsignal hit(amount)\nenum Mood { CALM, ANGRY }\nconst LIMIT = 3\nvar health := 10\n\n\n"
+            + "func heal(by: int) -> void:\n\tvar gained := by * LIMIT\n\thealth += gained\n\thit.emit(gained)\n\tvar mood := Mood.ANGRY\n\tposition.x = sin(1.0)\n\tprint(mood, Hero, get_tree(), Vector2(1, 2))\n";
+        (GDScriptAnalysis analysis, _) = Analyze(script);
+        Dictionary<string, HashSet<GDScriptColour>> colours = [];
+        foreach (GDScriptColoured coloured in analysis.Colours())
+        {
+            string name = script.Substring(coloured.Start, coloured.Length);
+            (colours.TryGetValue(name, out HashSet<GDScriptColour>? kinds) ? kinds : colours[name] = []).Add(coloured.Colour);
+        }
+        Assert.Equal(
+        [
+            "ANGRY EnumMember", "CALM EnumMember", "Hero Class", "LIMIT Constant", "Mood Enum", "Node2D Class", "Vector2 Struct", "amount Parameter", "by Parameter", "gained Local",
+            "get_tree Method", "heal Method", "health Field", "hit Event", "mood Local", "position Property", "sin Method", "x Property",
+        ], colours.Where(c => c.Key is not ("emit" or "print")).OrderBy(c => c.Key, StringComparer.Ordinal).Select(c => $"{c.Key} {string.Join("/", c.Value)}"));
+    }
+
     private static Dictionary<string, string> Locals(GDScriptAnalysis analysis) =>
         analysis.Tree!.Members.SelectMany(m => analysis.LocalsAt(m.End - 1)).GroupBy(l => l.Name).ToDictionary(g => g.Key, g => g.First().Type.ToString(), StringComparer.Ordinal);
 }

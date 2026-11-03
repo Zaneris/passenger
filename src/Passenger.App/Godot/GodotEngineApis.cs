@@ -20,10 +20,28 @@ internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDicti
 
     private static string Folder => Path.Combine(State.StateStore.DefaultRoot, "cache", "godot", "extension-api");
 
+    /// <summary>How long the Godot found for a setting is taken as found before it is looked for again: a typing pause
+    /// asks for the API, and looking walks the PATH and the applications' folders.</summary>
+    private static readonly TimeSpan Refound = TimeSpan.FromMinutes(1);
+
+    /// <summary>The API last asked for, by the setting it was asked with and when. A UI-thread field.</summary>
+    private (string? Setting, long At, Task<GodotEngineApi?> Api)? latest;
+
     /// <summary>The API of the Godot Settings name or found; null where none is, or its dump failed.</summary>
-    public async Task<GodotEngineApi?> ApiAsync()
+    public Task<GodotEngineApi?> ApiAsync()
     {
         string? chosen = setting();
+        if (latest is { } kept && kept.Setting == chosen && Stopwatch.GetElapsedTime(kept.At) < Refound && !kept.Api.IsFaulted)
+        {
+            return kept.Api;
+        }
+        Task<GodotEngineApi?> api = FindAsync(chosen);
+        latest = (chosen, Stopwatch.GetTimestamp(), api);
+        return api;
+    }
+
+    private async Task<GodotEngineApi?> FindAsync(string? chosen)
+    {
         GodotFound? found = await BackgroundWork.Run(() => GodotLaunch.Found(chosen));
         if (found is not { Exists: true })
         {

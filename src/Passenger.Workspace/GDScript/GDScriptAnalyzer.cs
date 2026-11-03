@@ -33,6 +33,7 @@ public sealed partial class GDScriptAnalyzer
         {
             WrittenVariants(member.Node, member.Offset, analysis);
         }
+        PaintExtends(tree.Class, new Context(analysis, self, 0, null, null));
         foreach (GDScriptMember member in tree.Members)
         {
             Walk(analysis, member.Node, new Context(analysis, self, member.Offset, null, null));
@@ -571,6 +572,7 @@ public sealed partial class GDScriptAnalyzer
             return GDScriptType.Variant.Soft;
         }
         GDScriptType type = found.Instance with { Hard = true };
+        PaintType(node, found, context);
         return node.Elements.Count > 0 ? type with { Elements = [.. node.Elements.Select(e => ResolveType(e, context))] } : type;
     }
 

@@ -192,8 +192,9 @@ public sealed class GDScriptTypesTests
     private static string Generated(int functions) =>
         "extends Node\n\nvar total := 0\n\n" + string.Concat(Enumerable.Range(0, functions).Select(i => $"func step_{i}(by: int) -> int:\n\tvar next := total + by * {i}\n\treturn next\n\n"));
 
-    /// <summary>What four keys in the middle function's body (at its return, which changes no inferred type) allocate on the
-    /// window's thread with the pause after each, the least of three rounds.</summary>
+    /// <summary>What four keys in the middle function's body (at its return, which changes no inferred type; the first leaves
+    /// <c>next</c> unused, its warning marked and its name's colour gone, the last puts both back) allocate on the window's
+    /// thread with the pause after each, the least of three rounds.</summary>
     private static long KeyBytes(MainWindow window, string path)
     {
         Assert.Null(window.OpenFile(path));
