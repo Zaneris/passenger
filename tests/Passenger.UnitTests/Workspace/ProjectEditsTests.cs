@@ -105,6 +105,39 @@ public sealed class ProjectEditsTests : IDisposable
         Assert.Equal(["A&B.cs", "A.Designer.cs", "Cartoons/Tom&Jerry.cs", "Tom&Jerry.json", "A&B.cs", "Cartoons/Tom&Jerry.cs"], Named(project));
     }
 
+    [Fact]
+    public void Files_left_out_of_a_projects_build_are_removed_once_in_an_item_group_of_their_own()
+    {
+        const string Game = """
+            <Project Sdk="Godot.NET.Sdk/4.7.2">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+              </PropertyGroup>
+              <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+                <Compile Remove="script_templates/**" />
+              </ItemGroup>
+            </Project>
+
+            """;
+        Write("Game.csproj", Game);
+        string project = Path.Combine(root, "Game.csproj");
+
+        Assert.Null(ProjectEdits.RemoveCompiled(project, "script_templates/**"));
+        string removed = Game.Replace("""
+              </ItemGroup>
+            </Project>
+            """, """
+              </ItemGroup>
+              <ItemGroup>
+                <Compile Remove="script_templates/**" />
+              </ItemGroup>
+            </Project>
+            """, StringComparison.Ordinal);
+        Assert.Equal(removed, File.ReadAllText(project));
+        Assert.Null(ProjectEdits.RemoveCompiled(project, "script_templates/**"));
+        Assert.True(removed == File.ReadAllText(project), "The files were removed again, so each write of the templates adds an item group to the project");
+    }
+
     /// <summary>The paths a project's items name, as XML reads them: each Include, then each DependentUpon.</summary>
     private static string[] Named(string project)
     {

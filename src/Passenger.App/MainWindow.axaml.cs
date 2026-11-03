@@ -814,6 +814,7 @@ public partial class MainWindow : IdeWindow
         TargetFrameworks = session.Frameworks.Kept,
         Folds = session.Folds.Capture(Editors.Documents),
         GodotEditorOffered = godotEditorOffered,
+        GodotTemplatesStyle = godotTemplatesStyle,
     });
 
     /// <summary>The open folder's state as the store kept it, once the window keeps state: its layout (else the one
@@ -858,6 +859,7 @@ public partial class MainWindow : IdeWindow
             session.Opened(shown.Path);
         }
         godotEditorOffered = kept.GodotEditorOffered;
+        godotTemplatesStyle = kept.GodotTemplatesStyle;
         OfferGodotEditor();
         ListenForGodotEditors();
     }

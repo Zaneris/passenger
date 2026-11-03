@@ -106,6 +106,9 @@ public static class AppActions
     // Passenger made the script editor of the Godot found, in its editor settings: no key of Rider's.
     public const string GodotScriptEditor = "app.godot.scriptEditor";
 
+    // C# script templates for Godot's Attach Script dialog written in the project's style: no key of Rider's.
+    public const string GodotScriptTemplates = "app.godot.scriptTemplates";
+
     // Godot's editor on the scene at hand, at its node, through Passenger's addon where it runs: no key of Rider's.
     public const string GodotOpenInEditor = "app.godot.openInEditor";
 

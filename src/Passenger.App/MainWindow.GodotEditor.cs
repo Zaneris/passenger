@@ -35,6 +35,7 @@ public partial class MainWindow
         });
         AddGodotAddon();
         AddGodotOpenInEditor();
+        AddGodotTemplates();
         GodotBanner.Link(actions[AppActions.GodotAddon]!.Title, () =>
         {
             GodotEditorOffered();

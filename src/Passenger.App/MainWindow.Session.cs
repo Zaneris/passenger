@@ -404,6 +404,7 @@ public partial class MainWindow
             {
                 ShowDotnet();
                 OfferGodotEditor();
+                IdeErrors.Observe(OfferGodotTemplatesAsync());
                 ListenForGodotEditors();
             }
         };

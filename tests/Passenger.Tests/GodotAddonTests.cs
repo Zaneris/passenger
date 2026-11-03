@@ -156,6 +156,37 @@ public sealed class GodotAddonTests : IDisposable
         	EditorInterface.get_selection().selection_changed.connect(_selected)
 
 
+        ## A C# script made by Godot's own Attach Script dialog, from the template of a base class Passenger wrote, and attached
+        ## to the main scene's node of that path, the scene saved.
+        func _attach(base: String, path: String, node: String) -> void:
+        	var dialog := ScriptCreateDialog.new()
+        	EditorInterface.get_base_control().add_child(dialog)
+        	dialog.config(base, path, false, false)
+        	# Shown, as Attach Script shows it, the dialog checks what it is given and lists its templates.
+        	dialog.popup_centered()
+        	for menu in dialog.find_children("*", "OptionButton", true, false):
+        		for i in menu.item_count:
+        			if menu.get_item_text(i) == "C#":
+        				menu.select(i)
+        				menu.item_selected.emit(i)
+        	# The dialog lists the language's templates as its checks next run.
+        	await get_tree().process_frame
+        	await get_tree().process_frame
+        	for menu in dialog.find_children("*", "OptionButton", true, false):
+        		for i in menu.item_count:
+        			if menu.get_item_text(i) == base + ": Passenger (this project's style)":
+        				menu.select(i)
+        				menu.item_selected.emit(i)
+        				print("TEST: template ", menu.get_item_text(i))
+        	dialog.script_created.connect(func(script: Script) -> void:
+        		EditorInterface.open_scene_from_path("res://main.tscn")
+        		EditorInterface.get_edited_scene_root().get_node(node).set_script(script)
+        		EditorInterface.save_scene()
+        		print("TEST: attached ", script.resource_path))
+        	await get_tree().process_frame
+        	dialog.get_ok_button().pressed.emit()
+
+
         func _selected() -> void:
         	var root := EditorInterface.get_edited_scene_root()
         	for node in EditorInterface.get_selection().get_selected_nodes():
@@ -180,6 +211,10 @@ public sealed class GodotAddonTests : IDisposable
         		EditorInterface.get_selection().clear()
         		EditorInterface.get_selection().add_node(root.get_node(node))
         		print("TEST: selected ", node)
+        	if FileAccess.file_exists("res://attach.txt") and FileAccess.get_file_as_string("res://attach.txt").ends_with("\n"):
+        		var words := FileAccess.get_file_as_string("res://attach.txt").strip_edges().split(" ")
+        		DirAccess.remove_absolute(ProjectSettings.globalize_path("res://attach.txt"))
+        		_attach(words[0], words[1], words[2])
         	if FileAccess.file_exists("res://undo.txt"):
         		DirAccess.remove_absolute(ProjectSettings.globalize_path("res://undo.txt"))
         		var undo := EditorInterface.get_editor_undo_redo()
@@ -944,6 +979,62 @@ public sealed class GodotAddonTests : IDisposable
     {
         window.BottomPanel.Run.Flush();
         return window.BottomPanel.Run.Document.Snapshot.ToString();
+    }
+
+    /// <summary>C# script templates written for Godot in a project with a root namespace and file-scoped namespaces: Godot's own
+    /// Attach Script dialog in a headless editor makes a Control's script from Passenger's template and attaches it to the
+    /// scene's Ui, the script in the project's namespace as the project writes its C#, and the project builds with no warning;
+    /// the project's .editorconfig changed, the window offers to write them again, writing nothing until that is taken.</summary>
+    [AvaloniaFact]
+    public void Csharp_script_templates_for_godot_give_a_script_its_dialog_makes_the_projects_namespace_and_style()
+    {
+        // The solution beside the project, as Godot makes one with its game: without it, Godot writes both again as it makes a C# script.
+        MainWindow window = Opened(addon: false, files:
+        [
+            (".editorconfig", "root = true\n\n[*.cs]\nindent_style = space\nindent_size = 4\ncsharp_style_namespace_declarations = file_scoped:warning\n"),
+            ("Spinner.sln", "Microsoft Visual Studio Solution File, Format Version 12.00\n# Visual Studio 2012\nProject(\"{9A19103F-16F7-4668-BE54-9A1E7A4F7556}\") = \"Spinner\", "
+                + "\"Spinner.csproj\", \"{2B1D8A1E-6E43-4C4A-9F5B-3F0E1C2D4A5B}\"\nEndProject\nGlobal\nEndGlobal\n"),
+        ]);
+        try
+        {
+            string csproj = Path.Combine(folder, "Spinner.csproj");
+            TestFolders.Write(folder, "Spinner.csproj", File.ReadAllText(csproj).Replace("<EnableDynamicLoading>", "<RootNamespace>Spin.Game</RootNamespace>\n    <EnableDynamicLoading>", StringComparison.Ordinal));
+            Ui.WaitFor(() => window.Projects.Any(p => p.Property(Passenger.Host.CarriedProperties.RootNamespace) == "Spin.Game"),
+                () => $"the project's evaluation to take its root namespace ({window.Status})", TimeSpan.FromMinutes(2));
+            window.Confirm = (title, _, _) => Task.FromResult(title == "Write C# Script Templates for Godot?");
+            Assert.Null(window.Actions.Run(AppActions.GodotScriptTemplates));
+            string template = Path.Combine(folder, GodotScriptTemplates.Folder, "Control", GodotScriptTemplates.FileName);
+            Ui.WaitFor(() => File.Exists(template), () => $"the templates to be written ({window.Status})", TimeSpan.FromMinutes(1));
+            Assert.All(GodotScriptTemplates.Bases, b => Assert.True(File.Exists(GodotScriptTemplates.PathOf(folder, b)), $"No template was written for {b}"));
+            Assert.Contains("namespace Spin.Game;", File.ReadAllText(template), StringComparison.Ordinal);
+            Assert.Contains("<Compile Remove=\"script_templates/**\" />", File.ReadAllText(csproj), StringComparison.Ordinal);
+
+            StartEditor([]);
+            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: ready", StringComparison.Ordinal)), () => $"the test's plugin in Godot's editor (Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            TestFolders.Write(folder, "attach.txt", "Control res://Panel.cs Ui\n");
+            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: attached res://Panel.cs", StringComparison.Ordinal)), () => $"Godot's dialog to make and attach the script (Godot said: {Said()})", TimeSpan.FromMinutes(1));
+            string made = File.ReadAllText(Path.Combine(folder, "Panel.cs"));
+            Assert.True(made.Contains("namespace Spin.Game;\n", StringComparison.Ordinal) && made.Contains("public partial class Panel : Control\n{\n    public override void _Ready()\n", StringComparison.Ordinal),
+                $"The script Godot made from the template is not in the project's namespace and style:\n{made}\nGodot said: {Said()}");
+            Assert.Contains("res://Panel.cs", File.ReadAllText(ScenePath), StringComparison.Ordinal);
+            ChildResult built = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", csproj, "-nologo", "-v:q"]), limit: Restore.Limit.Scaled())),
+                "the game's build", Restore.Limit + TestFolders.Spare);
+            Assert.True(built.ExitCode == 0 && built.Output.Contains(" 0 Warning(s)", StringComparison.Ordinal) && !built.Output.Contains(": warning ", StringComparison.Ordinal), $"The game built with the script made from the template said:\n{built.Output}\nits project:\n{File.ReadAllText(csproj)}");
+
+            // The project's style changed: the window offers to write the templates again, leaving them as they were until asked.
+            TestFolders.Write(folder, ".editorconfig", "root = true\n\n[*.cs]\nindent_style = tab\ncsharp_style_namespace_declarations = file_scoped:warning\n");
+            const string Offer = "Passenger's C# script templates for Godot no longer fit the project's style";
+            Ui.WaitFor(() => window.Status == Offer, () => $"the offer to write the templates in the project's new style ({window.Status})", TimeSpan.FromMinutes(1));
+            Assert.True(File.ReadAllText(template).Contains("// meta-space-indent: 0", StringComparison.Ordinal), "The templates were written in the new style unasked");
+            Assert.Equal("write them again", window.StatusPlace?.Name);
+            window.StatusPlace!.Go();
+            Ui.WaitFor(() => File.ReadAllText(template).Contains("\tpublic override void _Ready()", StringComparison.Ordinal),
+                () => $"the templates to be written again with tabs ({window.Status}):\n{File.ReadAllText(template)}", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            End(window);
+        }
     }
 
     /// <summary>How many Godot editors run on a folder: processes started with --editor that name it, but Windows' console
