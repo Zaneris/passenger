@@ -530,7 +530,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   itself as `PID.relay` in the socket folder (`McpProxy.RelayAt`), which an update has follow it
   (`Updater.FollowRelays`: it execs itself from the updated app as the same session, `McpProxy.Follow`) or, on Windows,
   ends (`EndRelays`), signalling the relay alone, never its agent's process group. `app_details` with `members` reads a
-  Godot game's script members (`PassengerTools.GameMembersAsync`).
+  Godot game's script members (`PassengerTools.GameMembersAsync`); `godot_editor` acts in the person's Godot editor
+  through the addon's `scenes.gd`, each change one `EditorUndoRedoManager` action, a person's window alone listening for
+  editors; a tool whose actions differ in whether they ask names its reading ones for `ConnectedTool.ChangesNothing`.
 
 Releases and the site: `ci.yml` and `release.yml` (from a `vX.Y.Z` tag, its body `docs/release-notes/X.Y.Z.md`, refused
 while it is the stand-in) call `test.yml`: the gate on every system in two shards, and for CI the report lane too. `site/` is passenger-ide.net, plain HTML
@@ -680,11 +682,13 @@ site-shots` retakes its images.
   message's data stays a `List<object?>`, as every reader matches one; Passenger's live-edit ids are negative, the
   editor's counting up from one. `get_unsaved_scenes` exists only from 4.7, so an older Godot's open scenes count as
   perhaps unsaved, and no Godot says whether a resource is unsaved, so one its inspector shows counts as held; the addon
-  reloads a scene only where Godot has it open and saved. IDE messaging's `Play` plays only the main scene,
-  `DebugPlay`'s debugger fields are dead in Godot 4 (Godot 3's Mono agent's), and `ReloadScripts` reloads the running
-  games' scripts, the editor's own assemblies reloaded by GodotTools' watcher every 0.5 s; Godot's JSON reads every
-  number as a float. An agent's input and layout reach a game through Passenger's helper node (`PassengerAgent.gd`,
-  brought in by live editing; `PassengerTools.Godot.cs`).
+  reloads a scene only where Godot has it open and saved. A static function in an addon's script named after one of
+  Object's virtuals (`_set`) fails the whole script to compile; `remove_child` clears the owner of every node of the
+  branch whose owner is outside it, so a move, or an undo of a remove, sets the owners again. IDE messaging's `Play`
+  plays only the main scene, `DebugPlay`'s debugger fields are dead in Godot 4 (Godot 3's Mono agent's), and
+  `ReloadScripts` reloads the running games' scripts, the editor's own assemblies reloaded by GodotTools' watcher every
+  0.5 s; Godot's JSON reads every number as a float. An agent's input and layout reach a game through Passenger's helper
+  node (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
