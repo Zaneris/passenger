@@ -214,7 +214,7 @@ public sealed class VcsTests : IDisposable
         Assert.True(Marks(window) is [{ Line: 2, Count: 1, Kind: ChangeMarkKind.Modified }],
             $"Store.cs, git mv'd from Shop.cs with one line changed, shows the bars [{string.Join(", ", Marks(window))}]: compared with nothing, every line is new");
 
-        DiffWindow diff = Ui.Landed(window.ShowDiffAsync(PathNames.Canonical(store)), "Store.cs's diff")!;
+        DiffWindow diff = (DiffWindow)Ui.Landed(window.ShowDiffAsync(PathNames.Canonical(store)), "Store.cs's diff")!;
         Assert.Equal(Original, diff.View.Left.Document.Snapshot.ToString());
         Assert.True(diff.View.Hunks.Count == 1, $"Show Diff of the renamed Store.cs found {diff.View.Hunks.Count} differences from the last commit's Shop.cs, not its one line");
         diff.Close();
@@ -606,8 +606,8 @@ public sealed class VcsTests : IDisposable
         _ = window.Vcs.RefreshAsync();
         Ui.Landed(() => window.Vcs.Changes.Count == 1, "Shop.cs listed as changed");
 
-        Task<DiffWindow?> opening = window.ShowDiffAsync(window.Vcs.Changes[0].Path);
-        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
+        Task<IDiffHost?> opening = window.ShowDiffAsync(window.Vcs.Changes[0].Path);
+        DiffWindow diff = (DiffWindow)Ui.Landed(opening, "the diff open")!;
         Assert.Same(diff, window.Frontmost);
         DiffView view = diff.View;
         Assert.Equal(Original, view.Left.Document.Snapshot.ToString());
@@ -637,8 +637,8 @@ public sealed class VcsTests : IDisposable
         window.KeyTextInput("long ");
         window.Perform(AppActions.Save);
         editor.GoTo(new TextPosition(0, 0));
-        Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
+        Task<IDiffHost?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
+        DiffWindow diff = (DiffWindow)Ui.Landed(opening, "the diff open")!;
         DiffView view = diff.View;
         Ui.Landed(() => view.Right.IsFocused, "the diff's side of the file to have the keys");
 
@@ -675,7 +675,7 @@ public sealed class VcsTests : IDisposable
         window.OpenFile(Path.Combine(folder, "Notes.txt"));
         Ui.Settle();
 
-        DiffWindow diff = Ui.Landed(window.ShowDiffAsync(shop), "the diff open")!;
+        DiffWindow diff = (DiffWindow)Ui.Landed(window.ShowDiffAsync(shop), "the diff open")!;
         Ui.Landed(() => diff.View.Right.IsFocused, "the diff's side of the file to have the keys");
         Button jump = diff.View.GetVisualDescendants().OfType<Button>().Single(b => b.Name == AppActions.DiffJumpToSource);
         Assert.Equal("Jump to Source (F4)", ToolTip.GetTip(jump));
@@ -687,7 +687,7 @@ public sealed class VcsTests : IDisposable
 
         window.OpenFile(Path.Combine(folder, "Notes.txt"));
         Ui.Settle();
-        diff = Ui.Landed(window.ShowDiffAsync(shop), "the diff open again")!;
+        diff = (DiffWindow)Ui.Landed(window.ShowDiffAsync(shop), "the diff open again")!;
         diff.View.Left.Focus();
         diff.View.Left.GoTo(new TextPosition(2, 4));
         Ui.Press(diff, "F4");
@@ -710,8 +710,8 @@ public sealed class VcsTests : IDisposable
         window.KeyTextInput("public ");
         window.Perform(AppActions.Save);
         editor.GoTo(new TextPosition(0, 0));
-        Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
+        Task<IDiffHost?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
+        DiffWindow diff = (DiffWindow)Ui.Landed(opening, "the diff open")!;
         DiffView view = diff.View;
         Ui.Landed(() => view.Right.IsFocused, "the diff's side of the file to have the keys");
         Assert.Equal([2, 4], view.Hunks.Select(h => h.NewStart));
@@ -741,8 +741,8 @@ public sealed class VcsTests : IDisposable
     {
         TestFolders.Write(folder, "Shop.cs", string.Concat(Enumerable.Range(0, 400).Select(i => $"// Note {i}\n")) + Original);
         MainWindow window = Open();
-        Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
+        Task<IDiffHost?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
+        DiffWindow diff = (DiffWindow)Ui.Landed(opening, "the diff open")!;
         CodeEditor side = diff.View.Right;
         Assert.Equal([new DiffHunk(0, 0, 0, 400)], diff.View.Hunks);
         CodeEditor.StripeMark change = Assert.Single(side.StripeMarks, m => m.Kind == StripeMarkKind.Change);
@@ -771,8 +771,8 @@ public sealed class VcsTests : IDisposable
         window.OpenFile(Path.Combine(folder, "Shop.cs"));
         Passenger.App.Workspace.OpenDocument shop = window.EditorArea.Active!;
         Ui.PumpUntil(() => window.Vcs.Repository is not null, "the working tree found");
-        Task<DiffWindow?> opening = window.ShowDiffAsync(shop.Path);
-        DiffWindow diff = Ui.AwaitPumped(opening, "the diff open")!;
+        Task<IDiffHost?> opening = window.ShowDiffAsync(shop.Path);
+        DiffWindow diff = (DiffWindow)Ui.AwaitPumped(opening, "the diff open")!;
         CodeEditor right = diff.View.Right;
         Assert.True(right.Highlighter is not Passenger.Languages.CSharp.SemanticHighlighter, "The language server answered before the diff opened, so it had nothing to follow");
 
@@ -816,8 +816,8 @@ public sealed class VcsTests : IDisposable
     {
         MainWindow window = Open();
         string shop = window.EditorArea.Active!.Path;
-        Task<DiffWindow?> opening = window.ShowDiffAsync(shop);
-        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
+        Task<IDiffHost?> opening = window.ShowDiffAsync(shop);
+        DiffWindow diff = (DiffWindow)Ui.Landed(opening, "the diff open")!;
 
         window.Perform(AppActions.CloseTab);
         Ui.Settle();
@@ -935,8 +935,8 @@ public sealed class VcsTests : IDisposable
         Assert.Equal(Original + "\n\n", Text(window));
         // The first Enter's bar can land before the second's: the wait is for the bar over both.
         Ui.Landed(() => Marks(window).SequenceEqual([new ChangeMark(6, 2, ChangeMarkKind.Added)]), "a bar over both blank lines");
-        Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
+        Task<IDiffHost?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
+        DiffWindow diff = (DiffWindow)Ui.Landed(opening, "the diff open")!;
         Assert.Equal([new DiffHunk(6, 0, 6, 2)], diff.View.Hunks);
         diff.Close();
 
@@ -999,8 +999,8 @@ public sealed class VcsTests : IDisposable
         FileChange changed = Assert.Single(log.Files);
         Assert.Equal((PathNames.Canonical(shop), ChangeKind.Modified), (changed.Path, changed.Kind));
         Assert.Contains("Twice", log.Details, StringComparison.Ordinal);
-        Task<DiffWindow?> opening = window.ShowCommitDiffAsync(twice, changed);
-        DiffWindow shown = Ui.Landed(opening, "the commit's diff")!;
+        Task<IDiffHost?> opening = window.ShowCommitDiffAsync(twice, changed);
+        DiffWindow shown = (DiffWindow)Ui.Landed(opening, "the commit's diff")!;
         DiffView diff = shown.View;
         Assert.Equal(Original, diff.Left.Document.Snapshot.ToString());
         Assert.Contains("count += 2", diff.Right.Document.Snapshot.ToString(), StringComparison.Ordinal);
@@ -2498,8 +2498,8 @@ public sealed class VcsTests : IDisposable
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
     private static WeakReference<DiffView> DiffAndClose(MainWindow window)
     {
-        Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
+        Task<IDiffHost?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
+        DiffWindow diff = (DiffWindow)Ui.Landed(opening, "the diff open")!;
         Assert.Same(window.EditorArea.Active!.Text, diff.View.Right.Document);
         diff.View.Right.Focus();
         diff.KeyTextInput("// ");

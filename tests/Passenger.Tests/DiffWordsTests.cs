@@ -40,8 +40,8 @@ public sealed class DiffWordsTests : IDisposable
         Ui.Landed(() => Marks(window).Count == 1, "a change bar on the changed line");
         string now = Text(window);
 
-        Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
+        Task<IDiffHost?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
+        DiffWindow diff = (DiffWindow)Ui.Landed(opening, "the diff open")!;
         DiffView view = diff.View;
         Assert.Equal(DiffHighlighting.Words, view.Highlighting);
         Assert.Equal([new DiffHunk(2, 1, 2, 1)], view.Hunks);
@@ -84,8 +84,8 @@ public sealed class DiffWordsTests : IDisposable
         Ui.Landed(() => Marks(window).Count == 1, "a change bar on the changed line");
         string now = Text(window);
 
-        Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        DiffWindow diff = Ui.Landed(opening, "the diff open")!;
+        Task<IDiffHost?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
+        DiffWindow diff = (DiffWindow)Ui.Landed(opening, "the diff open")!;
         DiffView view = diff.View;
         // "public " is new (green, on the file's side alone); "++" became " += 2".
         Assert.Equal(["++"], Marked(Original, view.Words.Left));
@@ -111,7 +111,7 @@ public sealed class DiffWordsTests : IDisposable
 
         // The next diff opens as chosen last; Ctrl+Shift+D (Cmd+Shift+D), Rider's key, opens its settings.
         opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        diff = Ui.Landed(opening, "the diff open again")!;
+        diff = (DiffWindow)Ui.Landed(opening, "the diff open again")!;
         Assert.Equal(DiffHighlighting.None, diff.View.Highlighting);
         diff.View.Right.Focus();
         Ui.Press(diff, OperatingSystem.IsMacOS() ? "meta shift D" : "control shift D");
@@ -170,8 +170,8 @@ public sealed class DiffWordsTests : IDisposable
         Ui.Landed(() => Marks(window).Count == 1667, "a bar for each line changed");
 
         // The comparison the bars came from is the diff's; its 1,667 changes' words are worked out off the window's thread.
-        Task<DiffWindow?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        DiffWindow shown = Ui.Landed(opening, "the diff open")!;
+        Task<IDiffHost?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
+        DiffWindow shown = (DiffWindow)Ui.Landed(opening, "the diff open")!;
         DiffView view = shown.View;
         Ui.Settle();
         Assert.True(view.Words.Right.Count == 1667, $"Once its work had landed the diff marked {view.Words.Right.Count} words of the 1,667 changed");
@@ -183,7 +183,7 @@ public sealed class DiffWordsTests : IDisposable
         window.OpenFile(generated);
         Ui.Landed(() => Marks(window).Count == 1, "one bar over the whole rewrite");
         opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        shown = Ui.Landed(opening, "the rewrite's diff open")!;
+        shown = (DiffWindow)Ui.Landed(opening, "the rewrite's diff open")!;
         Assert.Empty(shown.View.Words.Right);
         shown.Close();
         window.Close();

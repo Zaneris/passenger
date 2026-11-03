@@ -33,6 +33,9 @@ public sealed class DiffView : DockPanel, IOwnKeys
     private string? separators;
     private string? note;
 
+    /// <summary>Each side's carets and scroll as the view left its window, until it is put back in one.</summary>
+    private (SelectionSet Left, Vector LeftScroll, SelectionSet Right, Vector RightScroll)? away;
+
     /// <param name="diff">The last commit's text (empty for a file it does not have) compared with the file's.</param>
     /// <param name="mine">The file's text now: the open file's document, or a copy when it is not open.</param>
     /// <param name="editable">Whether the right side is the open file, which can be edited and have changes put back.</param>
@@ -45,7 +48,8 @@ public sealed class DiffView : DockPanel, IOwnKeys
         this.highlighting = highlighting;
         IsEditable = editable;
         Left = new CodeEditor { IsReadOnly = true, ChangeBackgrounds = true };
-        Left.Show(new TextDocument(diff.Head), SelectionSet.Single(0), default);
+        TextDocument head = new(diff.Head);
+        Left.Show(head, SelectionSet.Single(0), default);
         Right = new CodeEditor { IsReadOnly = !editable, ChangeBackgrounds = true };
         Right.Show(mine, SelectionSet.Single(0), default);
         bands = new DiffStrip(Bands, MergeSide.Left, Left, () => IsEditable, ignores: false, (band, _, _) => Revert(Hunks[band.Index])) { Width = 36 };
@@ -65,7 +69,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
         count = new TextBlock();
         settings = ToolButtons.Of(AppActions.DiffSettings, IconKeys.Settings, "Settings", _ => ShowSettings());
         settings.ContextMenu = SettingsMenu();
-        Button jump = ToolButtons.Of(IconKeys.Edit, "Jump to Source (F4)", () => SourceRequested?.Invoke(this, EventArgs.Empty));
+        Button jump = ToolButtons.Of(IconKeys.Edit, "Jump to Source (F4)", AskForSource);
         jump.Name = AppActions.DiffJumpToSource;
         Children.Add(DiffLines.Bar(name, Step, count, [jump], settings));
         Children.Add(sides);
@@ -74,15 +78,30 @@ public sealed class DiffView : DockPanel, IOwnKeys
         Right.ScrollChanged += (_, _) => Follow(Right, Left, toLeft: true);
         rediff = new Debounce(RediffDelay, CompareAsync);
         mine.Changed += OnMineChanged;
-        // Closed, the diff lets go of the file's text and colours, which may outlive it by far, and drops a late comparison.
+        // Out of its window, the diff lets go of the file's text, which may outlive it by far, and drops a late comparison.
         DetachedFromVisualTree += (_, _) =>
         {
             rediff.Stop();
             mine.Changed -= OnMineChanged;
             comparing++;
             wording++;
+            away = (Left.Selections, Left.ScrollOffset, Right.Selections, Right.ScrollOffset);
             Left.Detach();
             Right.Detach();
+        };
+        // Put back in one (its tab's group moved by a split), it shows the texts again where it left them.
+        AttachedToVisualTree += (_, _) =>
+        {
+            if (away is not { } left)
+            {
+                return;
+            }
+            away = null;
+            Left.Show(head, left.Left, left.LeftScroll);
+            Right.Show(mine, left.Right, left.RightScroll);
+            mine.Changed += OnMineChanged;
+            Show(shown);
+            IdeErrors.Observe(CompareAsync());
         };
         AddHandler(KeyDownEvent, (_, e) =>
         {
@@ -93,7 +112,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
             }
             else if (IsJump(e))
             {
-                SourceRequested?.Invoke(this, EventArgs.Empty);
+                AskForSource();
                 e.Handled = true;
             }
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
@@ -116,8 +135,11 @@ public sealed class DiffView : DockPanel, IOwnKeys
     /// <summary>The file the right side is a version of, which Jump to Source opens.</summary>
     public string? Source { get; init; }
 
-    /// <summary>Jump to Source asked for, by F4 or the toolbar's button.</summary>
+    /// <summary>Jump to Source asked for, by F4, the toolbar's button or its action.</summary>
     public event EventHandler? SourceRequested;
+
+    /// <summary>Jump to Source: asks whoever shows the diff for its file at the caret.</summary>
+    public void AskForSource() => SourceRequested?.Invoke(this, EventArgs.Empty);
 
     /// <summary>Where Jump to Source lands in the file: the right side's caret, or the left's carried across the
     /// differences above it while the left has the keys.</summary>
@@ -282,13 +304,15 @@ public sealed class DiffView : DockPanel, IOwnKeys
         }
     }
 
+    /// <summary>Highlighting Differences' ways, as the diff's Settings and Settings' Version Control page name them.</summary>
+    public static readonly IReadOnlyList<(DiffHighlighting Value, string Name)> HighlightingWays =
+        [(DiffHighlighting.Lines, "Lines"), (DiffHighlighting.Words, "Words"), (DiffHighlighting.Characters, "Characters"), (DiffHighlighting.None, "None")];
+
     /// <summary>The diff's settings: Highlighting Differences, the way in use ticked.</summary>
     private ContextMenu SettingsMenu()
     {
         List<Control> items = [new MenuItem { Header = "Highlighting Differences", IsEnabled = false }];
-        (DiffHighlighting Way, string Title)[] ways =
-            [(DiffHighlighting.Lines, "Lines"), (DiffHighlighting.Words, "Words"), (DiffHighlighting.Characters, "Characters"), (DiffHighlighting.None, "None")];
-        foreach ((DiffHighlighting way, string title) in ways)
+        foreach ((DiffHighlighting way, string title) in HighlightingWays)
         {
             MenuItem item = new() { Header = title, ToggleType = MenuItemToggleType.Radio, IsChecked = way == highlighting };
             item.Click += (_, _) => Highlighting = way;

@@ -212,7 +212,7 @@ public partial class MainWindow
     /// <summary>A version of a file beside the file as it is now: <paramref name="revision"/>'s text of it at
     /// <paramref name="then"/> (where it was in that version), else at <paramref name="origin"/> (where the last commit has a
     /// file renamed since), the right side the open file's own text when it is open.</summary>
-    public async Task<DiffWindow?> CompareWithAsync(string path, string revision, string version, string then, string? origin = null)
+    public async Task<IDiffHost?> CompareWithAsync(string path, string revision, string version, string then, string? origin = null)
     {
         if (session.Vcs.Repository is null)
         {

@@ -133,6 +133,24 @@ public sealed class OpenDocument : Observable
         return document;
     }
 
+    /// <summary>A diff's tab (<see cref="Vcs.DiffTab"/>): named by the file its right side is of, as plain text with no
+    /// text of its own, which its groups show as the diff in the editor's place.</summary>
+    public static OpenDocument OfDiff(Vcs.DiffTab diff)
+    {
+        OpenDocument tab = new(diff.Shown.Path, new FileText(string.Empty, new UTF8Encoding(false), false), Language.PlainText, null) { Diff = diff };
+        tab.FollowReadOnly();
+        return tab;
+    }
+
+    /// <summary>The diff this tab shows in the editor's place, for a diff's tab (<see cref="OfDiff"/>); null for a file's.</summary>
+    public Vcs.DiffTab? Diff { get; private init; }
+
+    /// <summary>What Save saves with this tab shown: the file, or the open file a diff's tab edits (itself where it edits none).</summary>
+    public OpenDocument Saves => Diff?.Shown.File ?? this;
+
+    /// <summary>The diff its tab shows was asked for again, for its groups to show what it is now.</summary>
+    internal void DiffChanged() => Raise(nameof(Diff));
+
     /// <summary>The file's length and last write time as found just before the editor last read all of it, with the version of
     /// the text it then held: while both hold, the editor holds what the disk does (<see cref="TakeDiskTextAsync"/>).</summary>
     private (DiskStamp Stamp, int Version)? readAt;
@@ -210,6 +228,11 @@ public sealed class OpenDocument : Observable
     /// <summary>Opens text with the encoding and line endings read from disk, and the conventions its path supplies.</summary>
     /// <param name="options">A C# file's preprocessor symbols (<see cref="CSharpParsing"/>), a Debug build's when not given.</param>
     public OpenDocument(string path, FileText file, CSharpParseOptions? options = null)
+        : this(path, file, file.IsBinary ? Language.PlainText : Language.ForPath(path), options)
+    {
+    }
+
+    private OpenDocument(string path, FileText file, Language language, CSharpParseOptions? options)
     {
         Path = path;
         Text = new TextDocument(file.Text);
@@ -219,7 +242,7 @@ public sealed class OpenDocument : Observable
         EncodingName = file.EncodingName;
         crBreaks = file.CrBreaks;
         IsBinary = file.IsBinary;
-        Language = IsBinary ? Language.PlainText : Language.ForPath(path);
+        Language = language;
         detected = Language.Detect(file.Text);
         Conventions = EditorConfig.For(path);
         Indentation = Choose();
@@ -715,6 +738,7 @@ public sealed class OpenDocument : Observable
     public void Close()
     {
         closed = true;
+        Diff?.LetGo();
         Asset?.Dispose();
         (Highlighter as IDisposable)?.Dispose();
         (finder as FoldScan)?.Dispose();
@@ -723,8 +747,9 @@ public sealed class OpenDocument : Observable
     public string Path { get; private set; }
     public string Name => System.IO.Path.GetFileName(Path);
 
-    /// <summary>What its tab is called: its name, or for release notes the app carries what they are ("What's New in 0.2.0").</summary>
-    public string Title => Updates.ReleaseNotes.VersionOf(Path) is { } version ? Updates.ReleaseNotes.TitleOf(version) : Name;
+    /// <summary>What its tab is called: its name, a diff's title ("Shop.cs: HEAD and your version"), or for release notes the
+    /// app carries what they are ("What's New in 0.2.0").</summary>
+    public string Title => Diff?.Shown.Title ?? (Updates.ReleaseNotes.VersionOf(Path) is { } version ? Updates.ReleaseNotes.TitleOf(version) : Name);
 
     /// <summary>Whether this is release notes the app carries, which its tab shows rendered (What's New), read-only.</summary>
     public bool IsReleaseNotes => Updates.ReleaseNotes.VersionOf(Path) is not null;
@@ -1199,10 +1224,10 @@ public sealed class OpenDocument : Observable
     public bool IsDecompiled => Path.Contains($"{System.IO.Path.DirectorySeparatorChar}MetadataAsSource{System.IO.Path.DirectorySeparatorChar}", StringComparison.Ordinal);
 
     /// <summary>Whether the editor shows it read-only, under a bar that says why: decompiled, the licence, notices or release
-    /// notes the app carries, a workbook, an asset preview, a binary file shown as its bytes, an MSBuild file of the .NET
+    /// notes the app carries, a workbook, an asset preview, a diff's tab, a binary file shown as its bytes, an MSBuild file of the .NET
     /// SDK or any file of a package as NuGet restored it, a copy of a container's file or of what the engine says of one, a
     /// copy of a source generator's code, or a stylesheet a page links on the web as it was downloaded.</summary>
-    public bool IsReadOnly => Asset is not null || IsDecompiled || IsWorkbook || IsBinary || Product.Carries(Path) || IsReleaseNotes
+    public bool IsReadOnly => Asset is not null || Diff is not null || IsDecompiled || IsWorkbook || IsBinary || Product.Carries(Path) || IsReleaseNotes
         || MSBuild.MSBuildFiles.IsInstalled(Path) || Packages.PackageFolders.Holds(Path) || Containers.ContainerFilesPane.IsCopy(Path)
         || Endpoints.RequestLog.IsCommandCopy(Path) || CSharp.GeneratedCode.IsCopy(Path) || Web.RemoteStylesheets.IsCopy(Path);
 
@@ -1228,16 +1253,17 @@ public sealed class OpenDocument : Observable
     public bool IsBinary { get; }
 
     /// <summary>Whether its tab holds the file's text: an asset preview's and a workbook's hold an empty stand-in, a
-    /// binary file's its bytes drawn as signs and release notes' their Markdown shown rendered, so nothing searches, reads,
+    /// binary file's its bytes drawn as signs, release notes' their Markdown shown rendered and a diff's none, so nothing searches, reads,
     /// edits or writes it as the file's (<see cref="ShownAs"/> says what the file is instead).</summary>
-    public bool HoldsText => Asset is null && !IsWorkbook && !IsBinary && !IsReleaseNotes;
+    public bool HoldsText => Asset is null && Diff is null && !IsWorkbook && !IsBinary && !IsReleaseNotes;
 
     /// <summary>What a file whose tab holds no text is shown as, for what refuses its text to say; null for text.</summary>
     public string? ShownAs => Asset is { Kind: AssetKind.Image } ? "an image, shown as a read-only preview"
         : Asset is not null ? "a font, shown as a read-only preview"
         : IsWorkbook ? "an Excel workbook, shown as its sheets' cells"
         : IsBinary ? "a binary file, shown as its bytes' text"
-        : IsReleaseNotes ? "Passenger's release notes, shown rendered" : null;
+        : IsReleaseNotes ? "Passenger's release notes, shown rendered"
+        : Diff is not null ? "shown here as a diff" : null;
 
     /// <summary>What the bar over a read-only file says it is and where it came from.</summary>
     public string Origin => Asset is { Kind: AssetKind.Image } ? "An image, shown as its pixels, read-only"
@@ -1245,6 +1271,7 @@ public sealed class OpenDocument : Observable
         : IsWorkbook ? "An Excel workbook, shown as its sheets' cells, read-only"
         : IsBinary ? "A binary file, shown as its bytes' text, read-only"
         : IsReleaseNotes ? "Passenger's release notes, as the app carries them, read-only"
+        : Diff is not null ? "A diff of two versions of the file, side by side"
         : Product.Carries(Path) ? "Passenger's own file, as the app carries it, read-only"
         : MSBuild.MSBuildFiles.IsInstalled(Path) ? "An MSBuild file of the .NET SDK or a package, as installed, read-only"
         : Packages.PackageFolders.PackageOf(Path) is { } package ? $"A file of the package {package}, as NuGet restored it for every project, read-only"
@@ -1267,7 +1294,7 @@ public sealed class OpenDocument : Observable
 
     /// <summary>Whether text has unsaved changes; a read-only asset is never considered modified.</summary>
     public bool IsModified => Asset is null && Text.IsModified;
-    public Avalonia.Media.Geometry Icon => Explorer.FileIcons.ForFile(Path);
+    public Avalonia.Media.Geometry Icon => Diff is not null ? Explorer.FileIcons.ForDiff : Explorer.FileIcons.ForFile(Path);
     public Avalonia.Media.IBrush IconBrush => Explorer.FileIcons.BrushForFile(Path);
 
     /// <summary>The carets: the editor's while the file is shown there, as left otherwise, moved by every change to the text.</summary>

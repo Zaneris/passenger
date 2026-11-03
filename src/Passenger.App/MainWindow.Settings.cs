@@ -90,6 +90,10 @@ public partial class MainWindow
             ApplyTo(group.Editor, next);
         }
         FollowViewSettings(before, next);
+        if (next.OpenDiffsIn != before.OpenDiffsIn)
+        {
+            MoveDiffs(next.OpenDiffsIn);
+        }
         FollowTitleBar(next);
         FollowMainMenu(next);
         Explorer.NestFiles = next.NestFiles;

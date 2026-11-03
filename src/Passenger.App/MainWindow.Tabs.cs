@@ -27,9 +27,9 @@ public partial class MainWindow
         Avalonia.Point? under = popups.PointIn(button, new Avalonia.Point(button.Bounds.Width - PopupFrame.Medium, button.Bounds.Height));
         popups.Show(new HiddenTabsPopup(hidden, Folder), chosen =>
         {
-            if (chosen is not null && hidden.FirstOrDefault(d => d.Path == chosen.FullPath) is { } document && group.Has(document))
+            if (chosen is not null && group.Has(chosen.Document))
             {
-                group.GoTo(document);
+                group.GoTo(chosen.Document);
             }
         }, under);
     }

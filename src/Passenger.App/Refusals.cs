@@ -183,9 +183,10 @@ public static class Refusals
     /// <summary>A file whose grammar has yet to read it whole, so the lines inside its strings are not yet known.</summary>
     public static string ReadingStrings(string name) => $"{name} is still being read, to tell the lines inside its strings";
 
-    /// <summary>Why the file shown cannot be saved: none is shown, it is read-only, or it has nothing to save.</summary>
+    /// <summary>Why the file shown cannot be saved (the one a diff's tab edits, <see cref="Workspace.OpenDocument.Saves"/>): none is
+    /// shown, it is read-only, or it has nothing to save.</summary>
     public static string? NeedsUnsaved(ActionContext context) =>
-        context.File is not { } file ? NoFile : file.IsReadOnly ? ReadOnly(file.Name) : file.IsModified ? null : $"{file.Name} is saved";
+        context.File?.Saves is not { } file ? NoFile : file.IsReadOnly ? ReadOnly(file.Name) : file.IsModified ? null : $"{file.Name} is saved";
 
     /// <summary>Why an action on the file shown cannot run: none is shown.</summary>
     public static string? NeedsFile(ActionContext context) => context.File is null ? NoFile : null;

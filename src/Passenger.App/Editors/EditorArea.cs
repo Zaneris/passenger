@@ -61,6 +61,10 @@ public sealed partial class EditorArea : UserControl
     public event EventHandler<OpenDocument>? Opened;
 
     public event EventHandler<OpenDocument>? Closed;
+
+    /// <summary>A file's last tab closed while something else holds it open (<see cref="Hold"/>, a save still landing).</summary>
+    public event EventHandler<OpenDocument>? TabsGone;
+
     public event EventHandler? CaretMoved;
 
     /// <summary>A file that could not be written, and why: it stays open with its edits.</summary>
@@ -201,6 +205,9 @@ public sealed partial class EditorArea : UserControl
 
     /// <summary>Every file open, in any group, once each.</summary>
     public IReadOnlyList<OpenDocument> Documents => documents;
+
+    /// <summary>Every diff's tab open (<see cref="OpenDocument.Diff"/>), in any group, once each: none of them a file's.</summary>
+    public IReadOnlyList<OpenDocument> Diffs => [.. AllGroups.SelectMany(g => g.Tabs).Select(t => t.Document).Where(d => d.Diff is not null).Distinct()];
 
     /// <summary>Every group of tabs: the main window's, then each editor window's.</summary>
     public IReadOnlyList<EditorGroup> Groups => [.. AllGroups];
@@ -394,12 +401,19 @@ public sealed partial class EditorArea : UserControl
         }
         else if (!held.ContainsKey(document))
         {
-            documents.Remove(document);
-            Closed?.Invoke(this, document);
+            // A diff's tab is no file opened, whose close anything would hear.
+            if (documents.Remove(document))
+            {
+                Closed?.Invoke(this, document);
+            }
             document.Close();
         }
         Collapse();
         ActiveChanged?.Invoke(this, EventArgs.Empty);
+        if (!forGood && documents.Contains(document) && !HasTab(document))
+        {
+            TabsGone?.Invoke(this, document);
+        }
         return true;
     }
 
@@ -481,6 +495,11 @@ public sealed partial class EditorArea : UserControl
         else if (!Close(document))
         {
             return false;
+        }
+        // A diff's tab is no file to open again.
+        if (document.Diff is not null)
+        {
+            return true;
         }
         closedTabs.Add(closing);
         if (closedTabs.Count > ClosedTabsKept)
@@ -653,10 +672,11 @@ public sealed partial class EditorArea : UserControl
         ActiveChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Opens the find bar over the active text file, with the replace row if asked; never over an asset preview.</summary>
+    /// <summary>Opens the find bar over the active text file, with the replace row if asked; never over an asset preview or
+    /// a diff.</summary>
     public void ShowFind(bool replace)
     {
-        if (Active is { Asset: null })
+        if (Active is { Asset: null, Diff: null })
         {
             activeGroup.Find.Open(replace);
         }
@@ -895,14 +915,16 @@ public sealed partial class EditorArea : UserControl
             };
         }
         EditorGroup group = ((EditorFrame.Leaf)node).Group;
+        // A diff's tab is not kept: what it compared may be gone by the next time, and the folder opens on its files.
+        List<EditorTab> kept = [.. group.Tabs.Where(t => t.Document.Diff is null)];
         return new EditorLayout
         {
-            Tabs = [.. group.Tabs.Select(t =>
+            Tabs = [.. kept.Select(t =>
             {
                 TextPosition caret = t.Document.Text.Snapshot.GetPosition(Math.Min(group.SelectionsOf(t.Document).Primary.Caret, t.Document.Text.Snapshot.Length));
                 return new KeptTab(t.Document.Path, caret.Line, caret.Column) { Pinned = t.IsPinned };
             })],
-            Shown = group.Active is { } shown ? group.Tabs.Select(t => t.Document).ToList().IndexOf(shown) : 0,
+            Shown = Math.Max(0, kept.FindIndex(t => t.Document == group.Active)),
             Current = group == current,
         };
     }
@@ -1036,10 +1058,15 @@ public sealed partial class EditorArea : UserControl
         }
     }
 
-    /// <summary>Closes every file, those held too, each saved first; false when one could not be, and stays open. The
-    /// editor windows go with their last tabs, and the tabs Reopen Closed Tab had, which were the folder's.</summary>
+    /// <summary>Closes every file, those held too, each saved first, and every diff's tab; false when a file could not be
+    /// saved, and stays open. The editor windows go with their last tabs, and the tabs Reopen Closed Tab had, which were
+    /// the folder's.</summary>
     public bool CloseAll()
     {
+        foreach (OpenDocument diff in Diffs)
+        {
+            Close(diff, forGood: true);
+        }
         foreach (OpenDocument document in documents.ToList())
         {
             if (!Close(document, forGood: true))

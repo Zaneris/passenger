@@ -34,39 +34,60 @@ public sealed class DiffPanes(Func<DiffHighlighting> chosen, Action<DiffHighligh
         return view;
     }
 
-    private static void Colour(Control view, IEnumerable<(CodeEditor Pane, string Path, OpenDocument? Open)> panes)
+    /// <summary>Colours each pane while the view is in a window: let go as it leaves one, made again as it is put back
+    /// (after the view shows its texts again, whose handler runs first).</summary>
+    private static void Colour(Control view, IReadOnlyList<(CodeEditor Pane, string Path, OpenDocument? Open)> panes)
     {
         List<Action> letGo = [];
-        foreach ((CodeEditor pane, string path, OpenDocument? open) in panes)
+        bool coloured = false;
+        void Paint()
         {
-            if (open is not null && ReferenceEquals(pane.Document, open.Text))
+            coloured = true;
+            foreach ((CodeEditor pane, string path, OpenDocument? open) in panes)
             {
-                pane.Highlighter = open.Highlighter;
-                void OnOpenChanged(object? sender, PropertyChangedEventArgs e)
-                {
-                    if (e.PropertyName == nameof(OpenDocument.Highlighter))
-                    {
-                        pane.Highlighter = open.Highlighter;
-                    }
-                }
-                open.PropertyChanged += OnOpenChanged;
-                letGo.Add(() => open.PropertyChanged -= OnOpenChanged);
-            }
-            // Colours alone, of a revision the project may have compiled otherwise: a file in no project's options are guess enough.
-            else if (Languages.Highlighters.For(Languages.Language.ForPath(path), pane.Document) is { } colours)
-            {
-                pane.Highlighter = colours;
-                if (colours is IDisposable owned)
-                {
-                    letGo.Add(owned.Dispose);
-                }
+                ColourPane(pane, path, open, letGo);
             }
         }
-        void OnLeft(object? sender, Avalonia.VisualTreeAttachmentEventArgs e)
+        Paint();
+        view.DetachedFromVisualTree += (_, _) =>
         {
-            view.DetachedFromVisualTree -= OnLeft;
+            coloured = false;
             letGo.ForEach(go => go());
+            letGo.Clear();
+        };
+        view.AttachedToVisualTree += (_, _) =>
+        {
+            if (!coloured)
+            {
+                Paint();
+            }
+        };
+    }
+
+    /// <summary>A pane's colours: the open file's own as they change, else a highlighter of its own, each let go by <paramref name="letGo"/>.</summary>
+    private static void ColourPane(CodeEditor pane, string path, OpenDocument? open, List<Action> letGo)
+    {
+        if (open is not null && ReferenceEquals(pane.Document, open.Text))
+        {
+            pane.Highlighter = open.Highlighter;
+            void OnOpenChanged(object? sender, PropertyChangedEventArgs e)
+            {
+                if (e.PropertyName == nameof(OpenDocument.Highlighter))
+                {
+                    pane.Highlighter = open.Highlighter;
+                }
+            }
+            open.PropertyChanged += OnOpenChanged;
+            letGo.Add(() => open.PropertyChanged -= OnOpenChanged);
         }
-        view.DetachedFromVisualTree += OnLeft;
+        // Colours alone, of a revision the project may have compiled otherwise: a file in no project's options are guess enough.
+        else if (Languages.Highlighters.For(Languages.Language.ForPath(path), pane.Document) is { } colours)
+        {
+            pane.Highlighter = colours;
+            if (colours is IDisposable owned)
+            {
+                letGo.Add(owned.Dispose);
+            }
+        }
     }
 }

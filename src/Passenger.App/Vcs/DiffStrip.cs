@@ -21,6 +21,16 @@ public sealed class DiffStrip(Func<IEnumerable<DiffBand>> bands, MergeSide iconS
 {
     private const double IconSize = 9;
 
+    /// <summary>Its colours are the theme's as it draws, so a change of theme draws it again.</summary>
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == ThemeVariantScope.ActualThemeVariantProperty)
+        {
+            InvalidateVisual();
+        }
+    }
+
     public override void Render(DrawingContext context)
     {
         context.FillRectangle(Find(TokenKeys.Editor_Background), new Rect(Bounds.Size));

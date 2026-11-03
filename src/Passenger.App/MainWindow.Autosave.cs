@@ -127,7 +127,7 @@ public partial class MainWindow
     /// never does, each one undoable edit. The files are saved whatever came of those.</summary>
     private async Task SaveExplicitly(bool all)
     {
-        OpenDocument? pressed = all ? null : Editors.Active;
+        OpenDocument? pressed = all ? null : Editors.Active?.Saves;
         List<OpenDocument> saving = all ? [.. Editors.Documents.Where(d => d.IsModified)] : pressed is { IsModified: true } ? [pressed] : [];
         BackgroundWork.Begin();
         try

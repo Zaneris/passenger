@@ -129,23 +129,27 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 Open(row.Change);
             }
         };
+        // Ahead of the rows, which take Enter before a handler of the list hears it.
+        list.AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (list.SelectedItem is not CommitRow shown)
+            {
+                return;
+            }
+            bool plain = e.KeyModifiers == KeyModifiers.None;
+            if (plain && e.Key == Key.F4 && shown.Change.Kind is not ChangeKind.Deleted)
+            {
+                OpenRequested?.Invoke(this, shown.Change.Path);
+                e.Handled = true;
+            }
+            else if ((plain && e.Key == Key.Enter) || AppActions.Presses(AppActions.ShowDiff, e))
+            {
+                Open(shown.Change);
+                e.Handled = true;
+            }
+        }, RoutingStrategies.Tunnel);
         list.KeyDown += (_, e) =>
         {
-            if (list.SelectedItem is CommitRow shown)
-            {
-                if (e.Key == Key.F4 && shown.Change.Kind is not ChangeKind.Deleted)
-                {
-                    OpenRequested?.Invoke(this, shown.Change.Path);
-                    e.Handled = true;
-                    return;
-                }
-                if (e.Key == Key.Enter || AppActions.Presses(AppActions.ShowDiff, e))
-                {
-                    Open(shown.Change);
-                    e.Handled = true;
-                    return;
-                }
-            }
             if (e.Key == Key.Space && e.KeyModifiers == KeyModifiers.None)
             {
                 // Space flips the chosen rows' boxes.

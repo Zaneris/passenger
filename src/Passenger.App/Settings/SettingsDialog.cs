@@ -22,6 +22,7 @@ public sealed partial class SettingsDialog : IdeWindow
     public const string PostfixPage = "Postfix Completion";
     public const string XamlCodeStylePage = "Code Style: XAML";
     public const string TerminalPage = "Terminal";
+    public const string VersionControlPage = "Version Control";
     public const string BuildPage = "Build";
     public const string RunPage = "Run";
     public const string HotReloadPage = "Hot Reload";
@@ -58,7 +59,7 @@ public sealed partial class SettingsDialog : IdeWindow
     public static readonly string[] DiscordChoices = ["Passenger only", "The solution", "The solution and the file"];
 
     private static readonly string[] Order = [Appearance, SystemPage, UpdatesPage, ExplorerPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, LiveTemplatesPage,
-        BuildPage, RunPage, HotReloadPage, NodePage, EslintPage, PrettierPage, SchemasPage, StylesheetsPage, DockerPage, GodotPage, TerminalPage, McpPage, DiscordPage, DiagnosticsPage, KeymapPage];
+        VersionControlPage, BuildPage, RunPage, HotReloadPage, NodePage, EslintPage, PrettierPage, SchemasPage, StylesheetsPage, DockerPage, GodotPage, TerminalPage, McpPage, DiscordPage, DiagnosticsPage, KeymapPage];
 
     /// <summary>The names of Attributes format's choices, in <see cref="Passenger.Xaml.Features.XamlAttributeStyle"/>'s
     /// order.</summary>
@@ -328,6 +329,9 @@ public sealed partial class SettingsDialog : IdeWindow
         Templates = new LiveTemplatesPane(TemplateChange.Applied(Working.LiveTemplates), list => Change(s => s with { LiveTemplates = TemplateChange.Of(list) }));
         AddPage(LiveTemplatesPage, Templates, "live templates c# shortcut abbreviation snippet expand tab surround with generation availability mnemonic variables macros "
             + string.Join(' ', CSharp.LiveTemplates.BuiltIn.Select(t => $"{t.Abbreviation} {t.Description}")));
+
+        Add(Declared.OpenDiffsIn);
+        Add(Declared.DiffHighlighting);
 
         CheckBox implicitly = Check(Working.OpenBuildWindowOnImplicitBuild, v => Change(s => s with { OpenBuildWindowOnImplicitBuild = v }));
         implicitly.IsEnabled = Working.OpenBuildWindowOnBuild;

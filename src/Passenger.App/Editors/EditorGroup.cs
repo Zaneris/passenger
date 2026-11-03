@@ -67,8 +67,8 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The Godot project page over a project.godot's editor, made as the group first shows one.</summary>
     private Godot.GodotPageViewer? godotPage;
 
-    /// <summary>This group's view of the active asset (its bitmap or face belongs to the document, not this control) or of
-    /// release notes the app carries, rendered, in the editor's place.</summary>
+    /// <summary>This group's view of the active asset (its bitmap or face belongs to the document, not this control), of
+    /// release notes the app carries, rendered, or of a diff's tab, in the editor's place.</summary>
     private Control? preview;
 
     public EditorGroup(EditorArea area)
@@ -391,9 +391,13 @@ public sealed class EditorGroup : DockPanel
         }
     }
 
-    /// <summary>What shows in the editor's place for a file that is no text to edit: an asset's preview, or release notes rendered.</summary>
+    /// <summary>What shows in the editor's place for a tab that is no text to edit: a diff, an asset's preview, or release
+    /// notes rendered.</summary>
     private Control PreviewOf(OpenDocument document) =>
-        document.Asset is { } asset ? new AssetPreviewControl(asset) : new ReleaseNotesView(document, area.Browse);
+        document.Diff is { } diff ? diff.Make() : document.Asset is { } asset ? new AssetPreviewControl(asset) : new ReleaseNotesView(document, area.Browse);
+
+    /// <summary>The diff this group shows while it shows a diff's tab, else null.</summary>
+    public Vcs.DiffView? Diff => preview as Vcs.DiffView;
 
     /// <summary>The active tab scrolled into the strip's sight once it is laid out, however many tabs crowd the strip.</summary>
     private void RevealActive() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -405,13 +409,17 @@ public sealed class EditorGroup : DockPanel
     }, Avalonia.Threading.DispatcherPriority.Loaded);
 
     /// <summary>Whether the editor shows the file, rather than a view of its own in the editor's place.</summary>
-    private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes;
+    private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes && document.Diff is null;
 
-    /// <summary>Gives the keys to what shows the file: its preview or rendered notes, which its keys move through, else the
-    /// editor.</summary>
+    /// <summary>Gives the keys to what shows the file: a diff's file's side, its preview or rendered notes, which its keys
+    /// move through, else the editor.</summary>
     public void FocusShown()
     {
-        if (preview is not null)
+        if (preview is Vcs.DiffView diff)
+        {
+            diff.Right.Focus();
+        }
+        else if (preview is not null)
         {
             preview.Focus();
         }
@@ -421,7 +429,7 @@ public sealed class EditorGroup : DockPanel
         }
     }
 
-    /// <summary>Shows a file's text, or its asset preview or rendered release notes, keeping the carets and scroll of the
+    /// <summary>Shows a file's text, its asset preview or rendered release notes, or a diff, keeping the carets and scroll of the
     /// text it replaces. A preview detaches the hidden text editor so editing commands cannot change the previous file.</summary>
     public void Show(OpenDocument document)
     {
@@ -441,7 +449,7 @@ public sealed class EditorGroup : DockPanel
         RevealActive();
         document.PropertyChanged += OnDocumentChanged;
         ClearPreview();
-        if (document.Asset is not null || document.IsReleaseNotes)
+        if (!InEditor(document))
         {
             Find.Detach();
             Editor.Detach();
@@ -556,7 +564,8 @@ public sealed class EditorGroup : DockPanel
     /// does to how it is stored.</summary>
     private void ShowBanner(OpenDocument document)
     {
-        string[] said = [.. new[] { document.IsReadOnly ? document.Origin : null, document.Notice, document.EncodingWarning }.OfType<string>()];
+        // A diff's own bar says what it is.
+        string[] said = [.. new[] { document.IsReadOnly && document.Diff is null ? document.Origin : null, document.Notice, document.EncodingWarning }.OfType<string>()];
         banner.Say(said.Length > 0 ? string.Join("  ·  ", said) : null);
         bannerLink.IsVisible = document.Notice is not null && document.NoticeAction is not null;
         bannerLink.Content = document.NoticeAction?.Text;
@@ -691,6 +700,16 @@ public sealed class EditorGroup : DockPanel
                     {
                         preview.Focus();
                     }
+                }
+                break;
+            case nameof(OpenDocument.Diff):
+                bool keys = preview?.IsKeyboardFocusWithin == true;
+                ClearPreview();
+                preview = PreviewOf(document);
+                body.Children.Add(preview);
+                if (keys)
+                {
+                    FocusShown();
                 }
                 break;
             case nameof(OpenDocument.Highlighter):

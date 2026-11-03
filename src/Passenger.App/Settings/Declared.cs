@@ -327,7 +327,16 @@ public static class Declared
 
     public static readonly ChoiceSetting<Passenger.Editor.KeymapPreset> Keymap = new(s => s.Keymap, (s, v) => s with { Keymap = v });
 
-    public static readonly ChoiceSetting<DiffHighlighting> DiffHighlighting = new(s => s.DiffHighlighting, (s, v) => s with { DiffHighlighting = v });
+    public static readonly ChoiceSetting<DiffPlace> OpenDiffsIn = new(s => s.OpenDiffsIn, (s, v) => s with { OpenDiffsIn = v },
+        [(DiffPlace.Window, "A separate window"), (DiffPlace.Tab, "An editor tab")],
+        new(D.VersionControlPage, "Open diffs in", "diff diffs show diff compare with revision branch commit log files window tab editor separate git vcs",
+            "Where Show Diff, Compare With, a commit's file in the Git log and Compare Files show the two versions. Changed, the "
+            + "diffs open now move there."));
+
+    public static readonly ChoiceSetting<DiffHighlighting> DiffHighlighting = new(s => s.DiffHighlighting, (s, v) => s with { DiffHighlighting = v },
+        Vcs.DiffView.HighlightingWays,
+        new(D.VersionControlPage, "Highlighting differences", "diff highlight highlighting differences words characters lines inline changed git vcs",
+            "What a diff marks inside the lines that changed. A diff's own Settings changes it too."));
 
     /// <summary>An enum's values with the names Settings gives them, in the enum's order.</summary>
     private static (T Value, string Name)[] Named<T>(string[] names) where T : struct, Enum => [.. Enum.GetValues<T>().Zip(names)];

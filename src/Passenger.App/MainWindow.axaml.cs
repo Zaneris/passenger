@@ -1086,8 +1086,9 @@ public partial class MainWindow : IdeWindow
     /// reports under way (its projects loading, and how far) whenever there is some.</summary>
     private string LanguageLabel()
     {
-        string language = Editors.Active?.Language.Name ?? string.Empty;
-        if (Editors.Active is { } active && Web.WebLanguages.LanguageOf(active.Path) is not null)
+        // A diff's tab names no language of its own.
+        string language = Editors.Active is { Diff: null } file ? file.Language.Name : string.Empty;
+        if (Editors.Active is { Diff: null } active && Web.WebLanguages.LanguageOf(active.Path) is not null)
         {
             // A web file's server, not C#'s, is what it waits on.
             return (session.Web?.StateOf(active) ?? session.Web?.DetailOf(active)) is { Length: > 0 } said ? $"{language} · {said}" : language;

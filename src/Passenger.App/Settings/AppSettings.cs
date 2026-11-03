@@ -331,6 +331,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// diff's Settings changes it for every diff after.</summary>
     public DiffHighlighting DiffHighlighting { get; init; } = DiffHighlighting.Words;
 
+    /// <summary>Where a diff opens (Show Diff, Compare With, a commit's file in the log, Compare Files): a window of its
+    /// own over the IDE's at first, or a tab of the editors.</summary>
+    public DiffPlace OpenDiffsIn { get; init; } = DiffPlace.Window;
+
     /// <summary>Highlight Words in a change bar's popup: the words that changed marked in what the lines were and in
     /// the file while the popup is open; the popup's toggle changes it.</summary>
     public bool ChangePopupWords { get; init; } = true;
@@ -541,6 +545,13 @@ public enum OpenProjectIn
     NewWindow,
     CurrentWindow,
     Ask,
+}
+
+/// <summary>Where a diff opens, in the order Settings lists them.</summary>
+public enum DiffPlace
+{
+    Window,
+    Tab,
 }
 
 /// <summary>What Discord's activity names beyond Passenger, in the order Settings lists them.</summary>

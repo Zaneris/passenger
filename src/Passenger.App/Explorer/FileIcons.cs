@@ -36,6 +36,9 @@ public static class FileIcons
 
     public static IBrush BrushForFile(string path) => Tint(FileIconSet.ForFile(Path.GetFileName(path)));
 
+    /// <summary>A diff's tab's icon, in its file's tint.</summary>
+    public static Geometry ForDiff => Find<Geometry>(IconKeys.Diff);
+
     /// <summary>A row's look in the set, or null for what it draws as a folder or a link: a plain folder, a solution
     /// folder and a target framework.</summary>
     private static FileIconLook? Look(ExplorerNode node) => node.Kind switch
