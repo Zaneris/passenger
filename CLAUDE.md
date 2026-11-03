@@ -478,7 +478,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   `AspNetCoreVariables.EnvironmentOf`, HTTPS `ServesHttps`), the engine's in `EngineVariables`; a compose file is
   `ComposeFiles.IsCompose`. The person's `docker` CLI and context only, never the Engine API or a Docker package; a
   service's name always after `--`. Compose's own model is the plan, Passenger's override goes to the state, and the
-  tools downloaded from the release are SHA256-checked. Podman works both ways it's set up (`EngineState.IsPodman`).
+  tools downloaded from the release are SHA256-checked. Podman works both ways it's set up (`EngineState.IsPodman`). A
+  container publish is the SDK's container profile with `-t:PublishContainer`, a push needing docker's login for its
+  registry (`RegistryLogins`, server names only), the image the person's own, labelled by nothing of Passenger's; it is
+  judged by the SDK's "Pushed image" line, as an unreachable base image is only a warning while dotnet exits 0, and the
+  SDK's registry client tries HTTPS first even on localhost. An AppHost publishes through its own publishers into the
+  state, landed by `MainWindow.LandFilesAsync`.
 - **Aspire.** `AspireController` (the IDE execution protocol on loopback, bearer tokens checked first),
   `AspireInteractions` (gRPC, its C# checked in), `AspireClient` (the CLI, for an AppHost Passenger didn't start); a
   resource's relationships both ways are `AspireDetailsPane`'s (chosen by `AspireModel.ChooseNamed`), its program
