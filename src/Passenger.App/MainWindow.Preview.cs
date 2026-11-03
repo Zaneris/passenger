@@ -11,7 +11,7 @@ namespace Passenger.App;
 
 /// <summary>The XAML previewer beside the editor: View, XAML Preview shows each editor group's XAML file of an Avalonia
 /// or WPF project with its design view to its right, drawn from the project's last build by its framework's previewer
-/// and following the text as typing pauses. Where the previewer places the file's elements (WPF's), a click on one
+/// and following the text as typing pauses. Where the previewer places the file's elements, a click on one
 /// selects its start tag in the editor and the element at the caret is outlined. A file's preview is kept while the file
 /// is open and the preview on, and ends as either goes; its previewer runs while the preview is shown, or was the last
 /// hidden. On or off is kept in the store's previews.json.</summary>

@@ -205,7 +205,8 @@ public sealed class LiveTreeTests : IClassFixture<RestoredFolders>, IDisposable
     /// <summary>The XAML workspace, off, leaves MainWindow.axaml alone beside the debugged app's tree, its caret choosing
     /// nothing there; turned on, the file opens beside its preview and the tree, and one element is chosen across them: the
     /// caret rested in Save's tag chooses Save in the tree, Greeting chosen in the tree puts the caret on its tag (the tree
-    /// keeping Greeting), and the caret on the window's own tag chooses the window, which Avalonia knows by its x:Class.</summary>
+    /// keeping Greeting) and is outlined in the preview, Delete clicked in the preview is chosen in the tree, and the caret
+    /// on the window's own tag chooses the window, which Avalonia knows by its x:Class.</summary>
     [AvaloniaFact]
     public void In_the_xaml_workspace_the_caret_and_the_live_tree_choose_the_same_element_each_way()
     {
@@ -235,6 +236,20 @@ public sealed class LiveTreeTests : IClassFixture<RestoredFolders>, IDisposable
         Assert.Equal(xaml, window.EditorArea.Active?.Path);
         Ui.Settle();
         Assert.True(tree.Details?.Name == "Greeting", $"The caret put on Greeting's tag chose {tree.Details?.Name} in the tree after it");
+
+        // The preview places the file's elements as Avalonia's designer draws them, through Passenger's inspector in it.
+        Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(window.EditorArea.Active!)!;
+        Passenger.App.Xaml.XamlPreviewPane pane = window.PreviewPaneOf(window.EditorArea.Active!)!;
+        Passenger.App.Xaml.PreviewElement? Placed(string tag) =>
+            preview.Elements.FirstOrDefault(e => e.Tag.Start == editor.Document.Snapshot.ToString().IndexOf(tag, StringComparison.Ordinal));
+        Ui.WaitFor(() => Placed("<TextBlock x:Name=\"Greeting\"") is { } placed && pane.Outlined == placed.Box,
+            () => $"Greeting outlined in the preview as it was chosen in the tree ({preview.Status}; {preview.Elements.Count} elements placed)", TimeSpan.FromMinutes(1));
+        Rect delete = Placed("<Button x:Name=\"Delete\"")?.Box ?? throw new InvalidOperationException("The preview placed no Delete");
+        Point at = pane.Frame.TranslatePoint(delete.Center, window) ?? throw new InvalidOperationException("The preview's frame is not on the window");
+        window.MouseDown(at, Avalonia.Input.MouseButton.Left);
+        window.MouseUp(at, Avalonia.Input.MouseButton.Left);
+        Ui.WaitFor(() => tree.Details?.Name == "Delete", () => $"Delete chosen in the tree as it was clicked in the preview, where the tree chose {tree.Details?.Name}");
+        Assert.Equal(delete, pane.Outlined);
 
         Ui.PlaceAfter(editor, "<Wind");
         Ui.WaitFor(() => tree.Details?.Type == "MainWindow", () => $"the window chosen in the tree as the caret rested in its own tag, not {tree.Details?.Type}");

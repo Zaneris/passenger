@@ -10,8 +10,9 @@ namespace Passenger.App.Xaml;
 /// <summary>The design view beside a XAML file: a header naming it and what it is doing, the previewer's error over the
 /// last frame when the XAML did not load, and the frame at its own size on the editor's background. One larger than the
 /// pane is drawn smaller by the previewer itself, never shrunk as a picture, so its text stays as sharp as the IDE's own at
-/// any scale; the frame lands pixel for pixel on the screen. Where the previewer says which element is where (WPF's), a click on the frame chooses
-/// the element under it and the element at the editor's caret is outlined.</summary>
+/// any scale; the frame lands pixel for pixel on the screen. Where the previewer says which element is where, a click on the frame chooses
+/// the element under it and the element at the editor's caret is outlined; under the frame, what an element sets itself, as
+/// its XAML says it (<see cref="ShowProperties"/>).</summary>
 public sealed class XamlPreviewPane : DockPanel
 {
     private readonly XamlPreview preview;
@@ -24,6 +25,11 @@ public sealed class XamlPreviewPane : DockPanel
     private readonly Border edge;
     private readonly ToolWindows.EmptyState waiting;
     private readonly Panel view;
+
+    /// <summary>The chosen element's own values, under the frame, while it shows them.</summary>
+    private readonly Border properties;
+    private readonly TextBlock propertiesTitle;
+    private readonly StackPanel propertyRows;
 
     /// <summary>The frame in its design's units, scaled to the size it is shown at.</summary>
     private readonly LayoutTransformControl scaled;
@@ -77,8 +83,29 @@ public sealed class XamlPreviewPane : DockPanel
             preview.Scaling = windowScale * fit;
             return Task.CompletedTask;
         });
+        propertiesTitle = new TextBlock { FontWeight = FontWeight.SemiBold, FontSize = 12 };
+        propertyRows = new StackPanel();
+        TextBlock unknown = new()
+        {
+            Text = "What a style, theme or template gives it, what it inherits and its defaults show in the Live Visual Tree once its app runs.",
+            Classes = { StyleClasses.Muted },
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        properties = new Border
+        {
+            [DockProperty] = Dock.Bottom,
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Padding = new Thickness(10, 6),
+            // One height for every element, so the frame above stays where it is as the caret moves.
+            Height = 200,
+            IsVisible = false,
+            Child = new ScrollViewer { Content = new StackPanel { Spacing = 4, Children = { propertiesTitle, propertyRows, unknown } } },
+        };
+        properties.Bind(Border.BorderBrushProperty, properties.GetResourceObservable(TokenKeys.Divider));
         Children.Add(header);
         Children.Add(errorBar);
+        Children.Add(properties);
         Children.Add(view);
         this.Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Editor_Background));
         preview.Changed += (_, _) => Show();
@@ -124,6 +151,40 @@ public sealed class XamlPreviewPane : DockPanel
 
     /// <summary>The error shown over the frame; null while there is none.</summary>
     public string? ErrorShown => errorBar.IsVisible ? error.Text : null;
+
+    /// <summary>The element whose own values show under the frame, and each value as its row shows it (property, value,
+    /// where it comes from); none while they are hidden.</summary>
+    public (string? Element, IReadOnlyList<(string Property, string Value, string From)> Values) PropertiesShown { get; private set; } = (null, []);
+
+    /// <summary>Shows what an element of the file sets itself under the frame, as its XAML says it, or hides them (null).</summary>
+    public void ShowProperties(string? element, IReadOnlyList<(string Property, string Value, string From)> values)
+    {
+        if (PropertiesShown.Element == element && PropertiesShown.Values.SequenceEqual(values))
+        {
+            return;
+        }
+        PropertiesShown = (element, values);
+        properties.IsVisible = element is not null;
+        propertiesTitle.Text = element;
+        propertyRows.Children.Clear();
+        foreach ((string property, string value, string from) in values)
+        {
+            propertyRows.Children.Add(new DockPanel
+            {
+                Height = ListRow.Height,
+                Children =
+                {
+                    new TextBlock { [DockProperty] = Dock.Right, Text = from, Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) },
+                    new TextBlock { [DockProperty] = Dock.Left, Text = property, Width = 130, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis },
+                    new TextBlock { Text = value, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis }.InCodeFont(),
+                },
+            });
+        }
+        if (values.Count == 0)
+        {
+            propertyRows.Children.Add(new TextBlock { Text = "Its XAML sets nothing itself.", Classes = { StyleClasses.Muted }, FontSize = 12 });
+        }
+    }
 
     /// <summary>Outlines an element's box in the frame, or none.</summary>
     public void ShowOutline(PreviewElement? element)

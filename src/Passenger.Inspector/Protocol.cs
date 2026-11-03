@@ -30,6 +30,11 @@ public static class Wire
     [IdentifierHome]
     public const string ProjectVariable = "PASSENGER_INSPECTOR_PROJECT";
 
+    /// <summary>The app's environment: the XAML file Avalonia's designer previews, whose each load the inspector has record
+    /// where in the file it made each element, for <see cref="Placed"/>.</summary>
+    [IdentifierHome]
+    public const string PreviewVariable = "PASSENGER_INSPECTOR_PREVIEW";
+
     /// <summary>The app's environment: a file the inspector traces its start and its answers to.</summary>
     [IdentifierHome]
     public const string TraceVariable = "PASSENGER_INSPECTOR_TRACE";
@@ -46,6 +51,7 @@ public static class Wire
     public const string Overlays = "overlays";
     public const string Reload = "reload";
     public const string Made = "made";
+    public const string Placed = "placed";
 
     /// <summary>Avalonia's renderer debug overlays, by the names of its RendererDebugOverlays flags, in its order.</summary>
     public static readonly IReadOnlyList<string> OverlayNames = ["Fps", "DirtyRects", "LayoutTimeGraph", "RenderTimeGraph"];
@@ -79,7 +85,8 @@ public static class Wire
 /// <summary>What Passenger asks: the windows' tree, an element's details, Select Element on or off, an element outlined in
 /// the app (none to take the outline away), the windows alone, a picture of a window (or of the element's part of it),
 /// input to the app, a property breakpoint's watch on an element's property (On false to end it), a XAML file's text
-/// applied, or the elements the app made at places of a XAML file (Made, with <see cref="Xaml"/>).</summary>
+/// applied, the elements the app made at places of a XAML file (Made, with <see cref="Xaml"/>), or where it shows each element
+/// made from a XAML file (Placed).</summary>
 public sealed record Request(int Id, string Method, long? Element = null, bool? On = null)
 {
     /// <summary>With Watch: the property, by the name the element's details list it under (Owner.Name when attached).</summary>
@@ -287,6 +294,9 @@ public sealed record Reply
     /// <summary>What a XAML file's text came to, with Reload.</summary>
     public XamlReloaded? Reloaded { get; init; }
 
+    /// <summary>Where the app shows each element of a XAML file it made, with Placed.</summary>
+    public IReadOnlyList<PlacedBox>? Placed { get; init; }
+
     /// <summary>What the app could not tell, with Untold.</summary>
     public Untold? Untold { get; init; }
 }
@@ -348,6 +358,10 @@ public sealed record Element(long Id, string Type, string? Name, IReadOnlyList<s
 
     public IReadOnlyDictionary<string, string>? Values { get; init; }
 }
+
+/// <summary>An element shown that was made from a XAML file: where its name starts in the file, as the app's XAML compiler
+/// counted (from one), and its box in its window's units.</summary>
+public sealed record PlacedBox(int Line, int Column, Box Box);
 
 /// <summary>A place in a XAML file, as Avalonia records it under a Debug build: the file's full path, the line and column of
 /// the element's start, both from one.</summary>

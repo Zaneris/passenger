@@ -225,6 +225,25 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         return Listen(plan.Name) is (string socket, Socket listener) ? new LiveApp(plan.Name, socket, listener, plan, overlays ?? [], kind) : null;
     }
 
+    /// <summary>The inspector a XAML file's Avalonia previewer loads to say where it draws each element, and what the
+    /// previewer's environment adds for it (the inspector first among its startup hooks, the socket, the file previewed);
+    /// null when this build carries no inspector, or no socket could be made.</summary>
+    public static (LiveApp Live, Dictionary<string, string> Environment)? ForPreview(string file, IReadOnlyDictionary<string, string> environment)
+    {
+        string name = $"Preview of {Path.GetFileName(file)}";
+        if (!File.Exists(InspectorPath) || Listen(name) is not (string socket, Socket listener))
+        {
+            return null;
+        }
+        Dictionary<string, string> added = new(StringComparer.Ordinal)
+        {
+            [Wire.SocketVariable] = socket,
+            [RuntimeVariables.StartupHooks] = StartupHooks.First(environment, InspectorPath),
+            [Wire.PreviewVariable] = file,
+        };
+        return (new LiveApp(name, socket, listener, null, []), added);
+    }
+
     /// <summary>Whether an assembly is a WPF app's: it runs on the WindowsDesktop framework (its runtimeconfig.json names it)
     /// and references WPF's assemblies, as a Windows Forms app does not.</summary>
     private static bool IsWpf(string built)
@@ -325,6 +344,10 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// several made at one, the one nearest the element chosen.</summary>
     public async Task<XamlValues> MadeAsync(XamlRead read) =>
         (await AskAsync(new Request(0, Wire.Made) { Xaml = read })).Values ?? throw new LiveAppException($"{Name} did not say what it made there");
+
+    /// <summary>Where the app shows each element it made from a XAML file of this name, in the newest window showing any.</summary>
+    public async Task<IReadOnlyList<PlacedBox>> PlacedAsync(string file) =>
+        (await AskAsync(new Request(0, Wire.Placed) { Xaml = new XamlRead(file, [], null) })).Placed ?? [];
 
     /// <summary>A XAML file's text applied to what the app made from it (XAML Hot Reload), answered with what it came to.</summary>
     public async Task<XamlReloaded> ReloadAsync(XamlChange change) =>

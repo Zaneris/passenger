@@ -2097,6 +2097,80 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>The Avalonia preview places the file's elements as Avalonia's designer draws them, through Passenger's
+    /// inspector loaded into it: the element at the caret is outlined from its first placing, a click on an element in the
+    /// frame selects its start tag and outlines it, a caret in the panel's tag outlines the panel, and one in the window's
+    /// own tag the window.</summary>
+    [AvaloniaFact]
+    public void An_avalonia_preview_outlines_the_carets_element_and_a_click_on_one_selects_its_start_tag()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        Ui.PlaceAfter(editor, "<Button Name=\"G");
+        Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
+        Ui.Settle();
+        Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document) ?? throw new InvalidOperationException("XAML Preview showed no preview beside the file");
+        Passenger.App.Xaml.XamlPreviewPane pane = window.PreviewPaneOf(document)!;
+        Passenger.App.Xaml.PreviewElement? Placed(string tag) =>
+            preview.Elements.FirstOrDefault(e => e.Tag.Start == editor.Document.Snapshot.ToString().IndexOf(tag, StringComparison.Ordinal));
+        Ui.WaitFor(() => Placed("<Button Name=\"Go\"") is { } placed && pane.Outlined == placed.Box,
+            () => $"the Go button outlined at the caret once the preview placed its elements ({preview.Status}; {preview.Elements.Count} placed)", TimeSpan.FromSeconds(60));
+        Assert.True(Placed("<Button Name=\"Go\"")!.Box is { Width: > 0, Height: > 0 }, $"The Go button was placed at {Placed("<Button Name=\"Go\"")!.Box}");
+
+        Passenger.App.Xaml.PreviewElement title = Placed("<TextBlock Name=\"Title\"") ?? throw new InvalidOperationException("The preview placed no Title");
+        Point at = pane.Frame.TranslatePoint(new Point(title.Box.X + 4, title.Box.Center.Y), window) ?? throw new InvalidOperationException("The preview's frame is not on the window");
+        window.MouseDown(at, MouseButton.Left);
+        window.MouseUp(at, MouseButton.Left);
+        Ui.Settle();
+        string text = editor.Document.Snapshot.ToString();
+        int start = text.IndexOf("<TextBlock Name=\"Title\"", StringComparison.Ordinal);
+        int end = text.IndexOf("/>", start, StringComparison.Ordinal) + 2;
+        Assert.Equal(new Selection(end, start), editor.Selections.Primary with { PreferredX = double.NaN });
+        Assert.Equal(title.Box, pane.Outlined);
+
+        Ui.PlaceAfter(editor, "<StackPanel Margin");
+        Ui.Settle();
+        Assert.Equal(Placed("<StackPanel Margin")?.Box, pane.Outlined);
+        Ui.PlaceAfter(editor, "<Wind");
+        Ui.Settle();
+        Assert.True(Placed("<Window") is { } root && pane.Outlined == root.Box && root.Box.Width > 0, $"The window's tag outlined {pane.Outlined}, not the window");
+        Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(document) is null, "XAML Preview stayed on");
+        window.Close();
+    }
+
+    /// <summary>In the XAML workspace, with no app running, the preview shows under its frame what the caret's element sets
+    /// itself, as its XAML says it: the title's binding with its path, the button's own content and its resource with its key,
+    /// and the Name each takes as a property; turned off, it shows none.</summary>
+    [AvaloniaFact]
+    public void In_the_xaml_workspace_the_preview_shows_what_the_carets_element_sets_itself_while_no_app_runs()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.PlaceAfter(editor, "<TextBlock Name=\"T");
+        window.ApplySettings(window.Settings with { XamlWorkspace = true });
+        Ui.WaitFor(() => window.PreviewPaneOf(document) is { PropertiesShown.Element: "TextBlock #Title" },
+            () => $"the title's own values under the preview, where it shows {window.PreviewPaneOf(document)?.PropertiesShown.Element}");
+        Passenger.App.Xaml.XamlPreviewPane pane = window.PreviewPaneOf(document)!;
+        Assert.Equal([("Name", "Title", "Local"), ("Text", "{Binding Greeting}", "Binding · Greeting")], pane.PropertiesShown.Values);
+
+        Ui.PlaceAfter(editor, "<Button Name=\"G");
+        Ui.WaitFor(() => pane.PropertiesShown.Element == "Button #Go", () => $"the button's own values under the preview, not {pane.PropertiesShown.Element}'s");
+        Assert.Equal([("Name", "Go", "Local"), ("Content", "Go", "Local"), ("Background", "{StaticResource Accent}", "Resource · Accent")], pane.PropertiesShown.Values);
+
+        window.ApplySettings(window.Settings with { XamlWorkspace = false });
+        Ui.Settle();
+        Assert.Null(pane.PropertiesShown.Element);
+        if (window.PreviewOf(document) is not null)
+        {
+            Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(document) is null, "XAML Preview stayed on");
+        }
+        window.Close();
+    }
+
     /// <summary>A window wider than the preview's pane is drawn smaller by the previewer itself, at the scale the pane has
     /// room for, and its frame lands pixel for pixel on the window: shrunk as a picture, its text smeared (on Windows at
     /// 100%, ClearType's colour fringes into blotches).</summary>

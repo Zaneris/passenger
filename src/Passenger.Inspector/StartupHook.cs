@@ -18,6 +18,7 @@ internal static class StartupHook
     {
         string? socket = Environment.GetEnvironmentVariable(Wire.SocketVariable);
         string? overlays = Environment.GetEnvironmentVariable(Wire.OverlaysVariable);
+        string? preview = Environment.GetEnvironmentVariable(Wire.PreviewVariable);
         Unlist();
         if (socket is not { Length: > 0 })
         {
@@ -44,9 +45,12 @@ internal static class StartupHook
             inside.GetType("Passenger.Inspector.FrameRecorder", throwOnError: true)!
                 .GetMethod("Start", BindingFlags.Public | BindingFlags.Static)!
                 .Invoke(null, null);
-            inside.GetType("Passenger.Inspector.Agent", throwOnError: true)!
-                .GetMethod("Start", BindingFlags.Public | BindingFlags.Static)!
-                .Invoke(null, [socket, main, avalonia!.ToString(), overlays]);
+            Type agent = inside.GetType("Passenger.Inspector.Agent", throwOnError: true)!;
+            if (preview is { Length: > 0 })
+            {
+                agent.GetMethod("Preview", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [preview]);
+            }
+            agent.GetMethod("Start", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [socket, main, avalonia!.ToString(), overlays]);
         }
         catch (Exception error)
         {
@@ -55,11 +59,13 @@ internal static class StartupHook
         }
     }
 
-    /// <summary>This hook, the socket and the overlays, out of the environment the app's own programs inherit; other hooks stay.</summary>
+    /// <summary>This hook, the socket, the overlays and the file previewed, out of the environment the app's own programs inherit;
+    /// other hooks stay.</summary>
     private static void Unlist()
     {
         OwnEnvironment.Set(Wire.SocketVariable, null);
         OwnEnvironment.Set(Wire.OverlaysVariable, null);
+        OwnEnvironment.Set(Wire.PreviewVariable, null);
         StartupHooks.TakeOut(typeof(StartupHook).Assembly.Location);
     }
 }

@@ -132,6 +132,7 @@ internal abstract class Inspecting<T>(Connection connection) where T : class
                 Wire.Watch => Done(request, () => Watch(request)),
                 Wire.Values => new Reply { Id = request.Id, Values = ValuesOf(request) },
                 Wire.Made => new Reply { Id = request.Id, Values = MadeAt(request.Xaml ?? throw new Refusal("No XAML file was named")) },
+                Wire.Placed => new Reply { Id = request.Id, Placed = PlacedIn(request.Xaml?.File ?? throw new Refusal("No XAML file was named")) },
                 Wire.Overlays => new Reply { Id = request.Id, Windows = SetOverlays(request) },
                 Wire.Reload => new Reply { Id = request.Id, Reloaded = Reload(request.Change ?? throw new Refusal("No XAML file was given")) },
                 _ => new Reply { Id = request.Id, Error = $"The inspector does not know '{request.Method}'" },
@@ -189,6 +190,10 @@ internal abstract class Inspecting<T>(Connection connection) where T : class
     /// <summary>The element made at each place of a XAML file asked of, by its id, no bindings read: of several made there,
     /// the one nearest the element chosen, else the first; a place the app made nothing at is left out.</summary>
     protected abstract XamlValues MadeAt(XamlRead read);
+
+    /// <summary>Where each shown element made from a XAML file of this name is, in the newest window that shows any;
+    /// refused by a framework whose previewer says it itself.</summary>
+    protected virtual List<PlacedBox> PlacedIn(string file) => throw new Refusal("This app's inspector does not place its XAML's elements");
 
     /// <summary>The renderer debug overlays asked for set, and the windows as they are then; refused by a framework with none.</summary>
     protected abstract List<AppWindow> SetOverlays(Request request);

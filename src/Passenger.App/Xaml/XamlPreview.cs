@@ -4,6 +4,7 @@ using Passenger.Core;
 using Passenger.Text;
 using Passenger.Xaml.Dialects;
 using Passenger.Xaml.Projects;
+using Passenger.Xaml.Syntax;
 
 namespace Passenger.App.Xaml;
 
@@ -68,7 +69,7 @@ public sealed class XamlPreview : IDisposable
     public string? Error { get; internal set; }
 
     /// <summary>The file's elements the frame draws, parents before children, each with its XAML (carried through what was
-    /// typed since) and its box in the frame; empty when the previewer gives none (Avalonia's) or the text drawn is gone.</summary>
+    /// typed since) and its box in the frame; empty when the previewer gives none or the text drawn is gone.</summary>
     public IReadOnlyList<PreviewElement> Elements
     {
         get
@@ -461,6 +462,30 @@ public sealed class XamlPreview : IDisposable
         {
             return null;
         }
+    }
+
+    /// <summary>A previewer's boxes on the elements of the text it drew: a box's line and column (from one) are its element's
+    /// name, or its '&lt;', as an XML reader places it, a lone '\r' ending a line (<see cref="Lsp.ServerLines.OfXml"/>).</summary>
+    internal static List<PreviewElement> Placed(TextSnapshot text, IReadOnlyList<(int Line, int Column, Rect Box)> boxes)
+    {
+        XmlTree tree = XmlTree.Parse(text.ToString());
+        Lsp.ServerLines lines = Lsp.ServerLines.OfXml(text);
+        List<PreviewElement> placed = [];
+        foreach ((int line, int column, Rect box) in boxes)
+        {
+            if (line < 1 || line > lines.LineCount)
+            {
+                continue;
+            }
+            int offset = lines.OffsetOf(line - 1, Math.Max(0, column - 1));
+            XmlElement? element = tree.Elements.Where(e => e.Start <= offset && offset <= e.NameEnd).MaxBy(e => e.Start);
+            if (element is not null)
+            {
+                placed.Add(new PreviewElement(TextRange.FromBounds(element.Start, element.StartTagEnd), TextRange.FromBounds(element.Start, element.End),
+                    new Rect(box.X, box.Y, Math.Max(0, box.Width), Math.Max(0, box.Height))));
+            }
+        }
+        return placed;
     }
 
     /// <summary>Where a previewer says the XAML it was sent did not load, " (line N, column M)" from one, as the editor counts

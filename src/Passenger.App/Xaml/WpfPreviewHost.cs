@@ -9,7 +9,6 @@ using Passenger.Core;
 using Passenger.Text;
 using Passenger.WpfPreview;
 using Passenger.Xaml.Projects;
-using Passenger.Xaml.Syntax;
 
 namespace Passenger.App.Xaml;
 
@@ -224,7 +223,7 @@ internal sealed class WpfPreviewHost : IPreviewHost
                 {
                     using MemoryStream bytes = new(png);
                     frame = new Bitmap(bytes);
-                    elements = sent is null ? [] : Place(sent, reply.Elements ?? []);
+                    elements = sent is null ? [] : XamlPreview.Placed(sent, [.. (reply.Elements ?? []).Select(b => (b.Line, b.Column, new Rect(b.X, b.Y, b.Width, b.Height)))]);
                 }
                 UiThread.Post(() => Received(reply, frame, sent, elements));
             }
@@ -278,30 +277,6 @@ internal sealed class WpfPreviewHost : IPreviewHost
             preview.Let();
         }
         preview.Tell();
-    }
-
-    /// <summary>The previewer's boxes on the elements of the text it drew: a box's line and column are its element's name
-    /// (or its '&lt;'), as an XML reader places it, a lone '\r' ending a line (<see cref="Lsp.ServerLines.OfXml"/>).</summary>
-    private static List<PreviewElement> Place(TextSnapshot text, IReadOnlyList<WpfPreviewBox> boxes)
-    {
-        XmlTree tree = XmlTree.Parse(text.ToString());
-        Lsp.ServerLines lines = Lsp.ServerLines.OfXml(text);
-        List<PreviewElement> placed = [];
-        foreach (WpfPreviewBox box in boxes)
-        {
-            if (box.Line < 1 || box.Line > lines.LineCount)
-            {
-                continue;
-            }
-            int offset = lines.OffsetOf(box.Line - 1, Math.Max(0, box.Column - 1));
-            XmlElement? element = tree.Elements.Where(e => e.Start <= offset && offset <= e.NameEnd).MaxBy(e => e.Start);
-            if (element is not null)
-            {
-                placed.Add(new PreviewElement(TextRange.FromBounds(element.Start, element.StartTagEnd), TextRange.FromBounds(element.Start, element.End),
-                    new Rect(box.X, box.Y, Math.Max(0, box.Width), Math.Max(0, box.Height))));
-            }
-        }
-        return placed;
     }
 
     /// <summary>A file's pack URI in the project's assembly, which relative URIs in it resolve against as in the build.</summary>

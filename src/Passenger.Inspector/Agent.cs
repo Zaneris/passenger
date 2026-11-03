@@ -26,6 +26,13 @@ public static class Agent
     /// would reach. Set before <see cref="Start"/>, on the app's UI thread.</summary>
     public static void Guard(Func<object, string?> refusing) => Refusing = refusing;
 
+    /// <summary>The file the program previews, as Avalonia's designer (<see cref="Wire.PreviewVariable"/>), whose loads are
+    /// made to record where they make each element; null for an app.</summary>
+    internal static string? Previewed { get; private set; }
+
+    /// <summary>Marks the program the designer of a XAML file; called before <see cref="Start"/>.</summary>
+    public static void Preview(string file) => Previewed = file;
+
     /// <param name="overlays">The renderer debug overlays the launch named (<see cref="Wire.OverlaysVariable"/>), or null.</param>
     public static void Start(string socket, Thread main, string avalonia, string? overlays) =>
         Serving.Start(socket, new AvaloniaUi(main, avalonia, overlays));
@@ -66,13 +73,24 @@ public static class Agent
         private Dispatcher? dispatcher;
         private Inspector? inspector;
 
-        public void Listen(Connection connection) => Bindings.Start(connection);
+        public void Listen(Connection connection)
+        {
+            // A designer's bindings fail for want of the data the app gives them, which no one is told of.
+            if (Previewed is null)
+            {
+                Bindings.Start(connection);
+            }
+        }
 
         public void Open(Connection connection)
         {
             dispatcher = WaitForUi(main);
             Ui = dispatcher;
             inspector = dispatcher.Invoke(() => Current = new Inspector(connection, overlays));
+            if (Previewed is { } file)
+            {
+                dispatcher.Invoke(() => DesignLoads.Wrap(file));
+            }
         }
 
         public Hello Hello(string? problem) => new(Wire.Version, Environment.ProcessId, avalonia, problem);
