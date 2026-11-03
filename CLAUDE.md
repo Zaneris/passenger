@@ -272,8 +272,10 @@ Projects in `src/`; `find_symbol` finds the rest:
   lock, `EndOfLong`). A new language: one `Language` entry, its grammar file and a notices entry; compare entries, never
   names. A finder never tells its answer inside a document's `Changed` (the open file moves its regions in a later
   handler).
-- `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a binding's
-  path is read once (`BindingPath`, `XamlFile.Walk`) for the check, Go to Declaration, uses and completion.
+- `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a
+  binding's path is read once (`BindingPath`, `XamlFile.Walk`) for the check, Go to Declaration, uses and completion;
+  the element at an offset is `XamlFile.ObjectAt`, and the XAML workspace (`MainWindow.XamlWorkspace.cs`) finds a
+  running app's control by its place through the inspector's `made` request (`LiveTreeController.ChooseMadeAsync`).
 - `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project; `JsonRpcPeer` for any other
   JSON-RPC peer, the Testing Platform's test hosts; both cancel through `ToldCancellation`), `LanguageIds` (C#'s and
   Razor's), Roslyn's server downloaded per platform (`RoslynServer.targets`), `LspDocument` (answers that grow with the
