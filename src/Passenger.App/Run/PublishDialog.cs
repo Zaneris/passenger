@@ -38,7 +38,8 @@ public sealed class PublishDialog : IdeWindow
     private readonly ComboBox profileBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly ComboBox targetBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = new[] { FolderTarget, ImageTarget }, SelectedItem = FolderTarget };
     private readonly TextBox repositoryBox = new() { Classes = { StyleClasses.Search } };
-    private readonly TextBox tagBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "latest" };
+    private readonly TextBox tagBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "latest (several between semicolons)" };
+    private readonly TextBox runtimesBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "The SDK's own (several between semicolons: linux-x64;linux-arm64)" };
     private readonly TextBox registryBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "None: the engine on this machine" };
     private readonly TextBlock imageSaid = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
     private readonly Control folderRows;
@@ -108,7 +109,11 @@ public sealed class PublishDialog : IdeWindow
         imageRows = new StackPanel
         {
             Spacing = 10,
-            Children = { Row("Image:", repositoryBox), Row("Tag:", tagBox), new StackPanel { Children = { Row("Registry:", registryBox), FormRows.Of(null, imageSaid) } } },
+            Children =
+            {
+                Row("Image:", repositoryBox), Row("Tags:", tagBox), Row("Platforms:", runtimesBox),
+                new StackPanel { Children = { Row("Registry:", registryBox), FormRows.Of(null, imageSaid) } },
+            },
         };
         Closing += (_, _) => reads?.Cancel();
 
@@ -160,7 +165,7 @@ public sealed class PublishDialog : IdeWindow
                 Changed();
             }
         };
-        foreach (TextBox box in (TextBox[])[repositoryBox, tagBox, registryBox])
+        foreach (TextBox box in (TextBox[])[repositoryBox, tagBox, runtimesBox, registryBox])
         {
             box.TextChanged += (_, _) => Changed();
         }
@@ -254,6 +259,13 @@ public sealed class PublishDialog : IdeWindow
     {
         get => registryBox.Text ?? string.Empty;
         set => registryBox.Text = value;
+    }
+
+    /// <summary>A container profile's runtimes as typed, several between semicolons; empty for the SDK's own.</summary>
+    public string Runtimes
+    {
+        get => runtimesBox.Text ?? string.Empty;
+        set => runtimesBox.Text = value;
     }
 
     /// <summary>What the dialog says under the registry of where the image goes.</summary>
@@ -388,7 +400,10 @@ public sealed class PublishDialog : IdeWindow
     /// <summary>The options as the dialog shows them, the folder null while it is MSBuild's default or an image's.</summary>
     private PublishOptions Options() => new(Configuration, Framework, Runtime, SelfContained && Runtime is not null, !Container && SingleFile, ReadyToRun, Trimmed,
         !Container && folderNamed && OutputFolder.Trim() is { Length: > 0 } folder ? folder : null,
-        Container ? new ContainerImage(ImageName.Trim(), ImageTag.Trim(), Registry.Trim() is { Length: > 0 } registry ? registry : null) : null);
+        Container ? new ContainerImage(ImageName.Trim(), Several(ImageTag), Registry.Trim() is { Length: > 0 } registry ? registry : null, Several(Runtimes)) : null);
+
+    /// <summary>A field's values between semicolons as the SDK reads them: trimmed, none empty.</summary>
+    private static string Several(string typed) => string.Join(';', typed.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
     private string? WhyNot()
     {
@@ -416,9 +431,14 @@ public sealed class PublishDialog : IdeWindow
         {
             return "An output folder is needed";
         }
-        if (Container && (ImageName.Trim().Contains(' ', StringComparison.Ordinal) || ImageTag.Trim().Contains(' ', StringComparison.Ordinal) || Registry.Trim().Contains(' ', StringComparison.Ordinal)))
+        if (Container && (ImageName.Trim().Contains(' ', StringComparison.Ordinal) || Several(ImageTag).Contains(' ', StringComparison.Ordinal)
+            || Several(Runtimes).Contains(' ', StringComparison.Ordinal) || Registry.Trim().Contains(' ', StringComparison.Ordinal)))
         {
-            return "An image's name, tag and registry take no spaces";
+            return "An image's name, tags, platforms and registry take no spaces";
+        }
+        if (Container && Several(Runtimes).Split(';', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(r => !r.StartsWith("linux-", StringComparison.Ordinal)) is { } other)
+        {
+            return $"A container runs Linux: {other} is no platform of one (linux-x64, linux-arm64…)";
         }
         return null;
     }
@@ -546,6 +566,7 @@ public sealed class PublishDialog : IdeWindow
             }
             repositoryBox.Text = options.Image?.Repository ?? string.Empty;
             tagBox.Text = options.Image?.Tag ?? string.Empty;
+            runtimesBox.Text = options.Image?.Runtimes ?? string.Empty;
             registryBox.Text = options.Image?.Registry ?? string.Empty;
             if (answer.Values.GetValueOrDefault(MSBuildNames.AssemblyName) is { Length: > 0 } assembly)
             {
@@ -586,10 +607,13 @@ public sealed class PublishDialog : IdeWindow
         {
             Kind = Container ? PublishKind.Container : PublishKind.Folder,
         };
-        string image = $"{(ImageName.Trim() is { Length: > 0 } named ? named : repositoryBox.PlaceholderText)}:{(ImageTag.Trim() is { Length: > 0 } tag ? tag : "latest")}";
+        string repository = ImageName.Trim() is { Length: > 0 } named ? named : repositoryBox.PlaceholderText ?? string.Empty;
+        string[] tags = Several(ImageTag) is { Length: > 0 } given ? given.Split(';') : ["latest"];
+        string[] platforms = Several(Runtimes) is { Length: > 0 } runtimes ? runtimes.Split(';') : [];
+        string made = Plural.Listed([.. tags.Select(tag => $"{repository}:{tag}")]) + (platforms.Length > 0 ? $" for {Plural.Listed(platforms)}" : string.Empty);
         imageSaid.Text = Registry.Trim() is { Length: > 0 } registry
-            ? $"Pushes {RegistryLogins.HostOf(registry)}/{image} with docker's login for {RegistryLogins.HostOf(registry)} (docker login)"
-            : $"Makes {image} in the engine on this machine";
+            ? $"Pushes {RegistryLogins.HostOf(registry)}/{made} with docker's login for {RegistryLogins.HostOf(registry)} (docker login)"
+            : $"Makes {made} in the engine on this machine";
         command.Text = $"dotnet publish {ChildProcesses.Quote(System.IO.Path.GetRelativePath(open, project.Path))} {string.Join(' ', request.Command().Select(ChildProcesses.Quote))}";
         if (folderNamed)
         {
@@ -645,7 +669,7 @@ public sealed class PublishDialog : IdeWindow
     private void Enable()
     {
         bool idle = !reading && !saving && loaded is not null;
-        foreach (Control control in (Control[])[configurationBox, frameworkBox, deploymentBox, runtimeBox, folderBox, browse, nameBox, repositoryBox, tagBox, registryBox])
+        foreach (Control control in (Control[])[configurationBox, frameworkBox, deploymentBox, runtimeBox, folderBox, browse, nameBox, repositoryBox, tagBox, runtimesBox, registryBox])
         {
             control.IsEnabled = idle;
         }

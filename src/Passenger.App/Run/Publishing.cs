@@ -108,6 +108,7 @@ public static partial class PublishProfiles
         MSBuildNames.PublishReadyToRun, MSBuildNames.PublishTrimmed, MSBuildNames.PublishAot, MSBuildNames.PublishDir, MSBuildNames.PublishUrl,
         MSBuildNames.WebPublishMethod, CarriedProperties.PublishProfileRootFolder, MSBuildNames.NETCoreSdkRuntimeIdentifier,
         CarriedProperties.ContainerRepository, MSBuildNames.ContainerImageTag, MSBuildNames.ContainerRegistry, MSBuildNames.AssemblyName,
+        MSBuildNames.ContainerImageTags, MSBuildNames.ContainerRuntimeIdentifier, MSBuildNames.ContainerRuntimeIdentifiers,
     ];
 
     /// <summary>What a profile's file names a folder publish by: Visual Studio's WebPublishMethod or PublishProtocol, or none.</summary>
@@ -322,13 +323,15 @@ public static partial class PublishProfiles
     }
 
     /// <summary>A container publish's image as the SDK names it: its repository (the assembly's name, lower case, where the
-    /// project and profile name none) and tag (latest where they name none).</summary>
+    /// project and profile name none) with its tag (latest where they name none), or with each of its several, by commas.</summary>
     public static string ImageOf(IReadOnlyDictionary<string, string> evaluated, string project)
     {
         string repository = evaluated.GetValueOrDefault(CarriedProperties.ContainerRepository) is { Length: > 0 } named ? named.Trim()
             : (evaluated.GetValueOrDefault(MSBuildNames.AssemblyName) is { Length: > 0 } assembly ? assembly : project).ToLowerInvariant().Replace(' ', '-');
-        string tag = evaluated.GetValueOrDefault(MSBuildNames.ContainerImageTag) is { Length: > 0 } given ? given.Trim() : "latest";
-        return $"{repository}:{tag}";
+        string[] tags = evaluated.GetValueOrDefault(MSBuildNames.ContainerImageTags) is { Length: > 0 } several
+            ? several.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            : [evaluated.GetValueOrDefault(MSBuildNames.ContainerImageTag) is { Length: > 0 } given ? given.Trim() : "latest"];
+        return string.Join(", ", tags.Select(tag => $"{repository}:{tag}"));
     }
 
     /// <summary>Where a profile of a project is, by its name.</summary>

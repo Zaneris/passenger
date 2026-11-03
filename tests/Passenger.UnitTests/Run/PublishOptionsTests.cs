@@ -65,6 +65,25 @@ public class PublishOptionsTests
             $"A container profile whose registry is cleared writes [{Shown(written)}], which would still push it to ghcr.io");
     }
 
+    [Fact]
+    public void A_container_profile_of_two_tags_and_platforms_writes_the_sdks_plural_properties_and_restores_both()
+    {
+        PublishOptions image = Project with { Image = new ContainerImage("web", "t1;t2", null, "linux-x64;linux-arm64") };
+        IReadOnlyList<(string Name, string? Value)> written = PublishProfiles.Properties(image, Project, new Dictionary<string, string>(), multiTargeted: false, fresh: true);
+        Assert.True((Value(written, "ContainerImageTags"), Value(written, "ContainerRuntimeIdentifiers"), Value(written, "RuntimeIdentifiers"))
+            == ("t1;t2", "linux-x64;linux-arm64", "linux-x64;linux-arm64") && written.All(p => p.Name is not ("ContainerImageTag" or "ContainerRuntimeIdentifier")),
+            $"A container profile of two tags and platforms writes [{Shown(written)}], which the SDK would not publish or restore as both");
+
+        Dictionary<string, string> raw = new() { ["WebPublishMethod"] = "Container", ["ContainerImageTags"] = "t1;t2", ["ContainerRuntimeIdentifiers"] = "linux-x64;linux-arm64",
+            ["RuntimeIdentifiers"] = "linux-x64;linux-arm64" };
+        IReadOnlyList<(string Name, string? Value)> one = PublishProfiles.Properties(image with { Image = new ContainerImage("web", "t1", null, "linux-arm64") }, image, raw,
+            multiTargeted: false, fresh: false);
+        Assert.True((Value(one, "ContainerImageTag"), Value(one, "ContainerRuntimeIdentifier")) == ("t1", "linux-arm64")
+            && one.Any(p => p.Name == "ContainerImageTags" && p.Value is null) && one.Any(p => p.Name == "ContainerRuntimeIdentifiers" && p.Value is null)
+            && one.Any(p => p.Name == "RuntimeIdentifiers" && p.Value is null),
+            $"Made one tag and platform again, the profile writes [{Shown(one)}], leaving the several in place");
+    }
+
     private static string? Value(IReadOnlyList<(string Name, string? Value)> written, string name) => written.LastOrDefault(p => p.Name == name).Value;
 
     private static string Shown(IReadOnlyList<(string Name, string? Value)> written) => string.Join(", ", written.Select(p => $"{p.Name}={p.Value ?? "(removed)"}"));

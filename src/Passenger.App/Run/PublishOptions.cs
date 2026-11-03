@@ -18,9 +18,10 @@ public sealed record PublishOptions(
     string? Folder,
     ContainerImage? Image = null);
 
-/// <summary>A container profile's image as its profile names it: its repository and tag (empty where it leaves them to the
-/// SDK: the assembly's name, latest) and the registry it is pushed to (null for the engine on this machine).</summary>
-public sealed record ContainerImage(string Repository, string Tag, string? Registry);
+/// <summary>A container profile's image as its profile names it: its repository and tag, several tags between semicolons
+/// (empty where it leaves them to the SDK: the assembly's name, latest), the registry it is pushed to (null for the engine
+/// on this machine), and the runtime it is made for, several for an image of more than one platform (empty: the SDK's own).</summary>
+public sealed record ContainerImage(string Repository, string Tag, string? Registry, string Runtimes = "");
 
 /// <summary>What a profile's evaluation and the Publish dialog's options make of each other, from their values alone.</summary>
 public static partial class PublishProfiles
@@ -39,12 +40,16 @@ public static partial class PublishProfiles
         string? folder = raw.GetValueOrDefault(MSBuildNames.PublishDir);
         ContainerImage? image = string.Equals(raw.GetValueOrDefault(MSBuildNames.WebPublishMethod) ?? raw.GetValueOrDefault(MSBuildNames.PublishProtocol), ContainerMethod,
             StringComparison.OrdinalIgnoreCase)
-            ? new ContainerImage(evaluated.GetValueOrDefault(CarriedProperties.ContainerRepository) ?? string.Empty, evaluated.GetValueOrDefault(MSBuildNames.ContainerImageTag) ?? string.Empty,
-                evaluated.GetValueOrDefault(MSBuildNames.ContainerRegistry) is { Length: > 0 } registry ? registry : null)
+            ? new ContainerImage(evaluated.GetValueOrDefault(CarriedProperties.ContainerRepository) ?? string.Empty,
+                Given(evaluated.GetValueOrDefault(MSBuildNames.ContainerImageTags)) ?? evaluated.GetValueOrDefault(MSBuildNames.ContainerImageTag) ?? string.Empty,
+                evaluated.GetValueOrDefault(MSBuildNames.ContainerRegistry) is { Length: > 0 } registry ? registry : null,
+                Given(evaluated.GetValueOrDefault(MSBuildNames.ContainerRuntimeIdentifiers)) ?? evaluated.GetValueOrDefault(MSBuildNames.ContainerRuntimeIdentifier) ?? string.Empty)
             : null;
         return new PublishOptions(configuration, framework, runtime, selfContained, True(evaluated, MSBuildNames.PublishSingleFile) && runtime is not null,
             True(evaluated, MSBuildNames.PublishReadyToRun) && runtime is not null, True(evaluated, MSBuildNames.PublishTrimmed) && selfContained, image is null ? folder : null, image);
     }
+
+    private static string? Given(string? value) => value?.Trim() is { Length: > 0 } given ? given : null;
 
     private static bool True(IReadOnlyDictionary<string, string> values, string name) =>
         string.Equals(values.GetValueOrDefault(name), "true", StringComparison.OrdinalIgnoreCase);
@@ -91,8 +96,11 @@ public static partial class PublishProfiles
         if (options.Image is { } image)
         {
             Changed(CarriedProperties.ContainerRepository, Given(image.Repository), Given(before?.Image?.Repository));
-            Changed(MSBuildNames.ContainerImageTag, Given(image.Tag), Given(before?.Image?.Tag));
+            Either(MSBuildNames.ContainerImageTag, MSBuildNames.ContainerImageTags, Given(image.Tag), Given(before?.Image?.Tag));
             Changed(MSBuildNames.ContainerRegistry, Given(image.Registry), Given(before?.Image?.Registry));
+            Either(MSBuildNames.ContainerRuntimeIdentifier, MSBuildNames.ContainerRuntimeIdentifiers, Given(image.Runtimes), Given(before?.Image?.Runtimes));
+            // An image of several platforms is restored for each: the restore reads RuntimeIdentifiers, never the container's.
+            Changed(MSBuildNames.RuntimeIdentifiers, Several(image.Runtimes), Several(before?.Image?.Runtimes));
         }
         if (fresh && options.Image is not null)
         {
@@ -105,7 +113,16 @@ public static partial class PublishProfiles
         }
         return set;
 
-        static string? Given(string? value) => value?.Trim() is { Length: > 0 } given ? given : null;
+        static string? Several(string? value) => Given(value) is { } given && given.Contains(';', StringComparison.Ordinal) ? given : null;
+
+        // One value in the property of one, several between semicolons in the property of several, the other taken out.
+        void Either(string one, string several, string? value, string? was)
+        {
+            bool many = value?.Contains(';', StringComparison.Ordinal) == true;
+            bool wasMany = was?.Contains(';', StringComparison.Ordinal) == true;
+            Changed(one, many ? null : value, wasMany ? null : was);
+            Changed(several, many ? value : null, wasMany ? was : null);
+        }
 
         void Changed(string name, string? value, string? was)
         {

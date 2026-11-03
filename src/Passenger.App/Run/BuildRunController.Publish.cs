@@ -193,8 +193,11 @@ public sealed partial class BuildRunController
         }
         if (publish.Kind == PublishKind.Container)
         {
-            string image = publish.Registry is { } registry ? $"{RegistryLogins.HostOf(registry)}/{publish.Image}" : publish.Image ?? publish.Name;
-            string said = publish.Registry is null ? $"Published {publish.Shown} as the image {image}, into the engine" : $"Published {publish.Shown}: pushed the image {image}";
+            string image = publish.Registry is { } registry
+                ? string.Join(", ", (publish.Image ?? publish.Name).Split(", ").Select(each => $"{RegistryLogins.HostOf(registry)}/{each}"))
+                : publish.Image ?? publish.Name;
+            string noun = image.Contains(", ", StringComparison.Ordinal) ? "images" : "image";
+            string said = publish.Registry is null ? $"Published {publish.Shown} as the {noun} {image}, into the engine" : $"Published {publish.Shown}: pushed the {noun} {image}";
             parts.Views.Build.Append($"{said}\n");
             if (publish.Profile is { } kept)
             {

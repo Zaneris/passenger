@@ -100,6 +100,13 @@ public static class MSBuildNames
     /// <summary>The registry an SDK container's image is pushed to; none for the engine on this machine.</summary>
     public const string ContainerRegistry = "ContainerRegistry";
 
+    /// <summary>An SDK container's several tags, the one tag's place where it has more than one.</summary>
+    public const string ContainerImageTags = "ContainerImageTags";
+
+    /// <summary>The runtime an SDK container is made for, and the several of an image of more than one platform.</summary>
+    public const string ContainerRuntimeIdentifier = "ContainerRuntimeIdentifier";
+    public const string ContainerRuntimeIdentifiers = "ContainerRuntimeIdentifiers";
+
     // A Docker Compose project's (.dcproj).
     public const string DockerComposeBaseFilePath = "DockerComposeBaseFilePath";
     public const string AdditionalComposeFilePaths = "AdditionalComposeFilePaths";

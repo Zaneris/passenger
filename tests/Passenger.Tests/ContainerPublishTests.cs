@@ -62,6 +62,55 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
         }
     }
 
+    /// <summary>A container profile of two platforms and two tags, as the SDK reads them (ContainerRuntimeIdentifiers,
+    /// ContainerImageTags), makes one image of both platforms under each tag in the engine, on a base the stand-in
+    /// registry serves for both; an engine without containerd's image store holds no such image, and the test skips.</summary>
+    [AvaloniaFact]
+    public void A_two_platform_image_with_two_tags_is_published_into_the_engine_through_its_profile()
+    {
+        string? noEngine = Docker.WhyNot;
+        Assert.SkipWhen(noEngine is not null, noEngine ?? string.Empty);
+        Assert.SkipWhen(Docker.Said("info", "--format", "{{json .DriverStatus}}")?.Contains("io.containerd.snapshotter", StringComparison.Ordinal) != true,
+            "The engine keeps its images without containerd's image store, which alone holds an image of more than one platform");
+        using StandInRegistry registry = new("amd64", "arm64");
+        // No app host, which a runtime's publish would take from a package of each platform's: framework-dependent, it needs none.
+        string project = WriteApp(registry.BaseImage, "<UseAppHost>false</UseAppHost>");
+        string image = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}platforms";
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            PublishDialog dialog = Show(window, project);
+            dialog.Container = true;
+            dialog.ImageName = image;
+            dialog.ImageTag = "t1; t2";
+            dialog.Runtimes = "linux-x64;linux-arm64";
+            Ui.Settle();
+            Assert.Equal($"Makes {image}:t1 and {image}:t2 for linux-x64 and linux-arm64 in the engine on this machine", dialog.ImageSaid);
+
+            BuildOutcome ended = Publish(window, dialog.PublishAsync);
+            Assert.True(ended.Succeeded, $"The image was not published: {ended.Message}\n{string.Join('\n', ended.Output)}");
+            Assert.Equal($"{image}:t1, {image}:t2", ended.Image);
+            string profile = File.ReadAllText(Path.Combine(folder, "Shipped", "Properties", "PublishProfiles", "ContainerProfile.pubxml"));
+            Assert.True(profile.Contains("<ContainerImageTags>t1;t2</ContainerImageTags>", StringComparison.Ordinal)
+                && profile.Contains("<ContainerRuntimeIdentifiers>linux-x64;linux-arm64</ContainerRuntimeIdentifiers>", StringComparison.Ordinal)
+                && !profile.Contains("<ContainerImageTag>", StringComparison.Ordinal), $"The container profile says:\n{profile}");
+            (string key, string value) = (Docker.RunLabel.Split('=', 2)[0], Docker.RunLabel.Split('=', 2)[1]);
+            foreach (string tag in (string[])["t1", "t2"])
+            {
+                foreach (string platform in (string[])["linux/amd64", "linux/arm64"])
+                {
+                    string? labelled = Docker.Said("image", "inspect", "--platform", platform, "--format", $"{{{{index .Config.Labels \"{key}\"}}}}", $"{image}:{tag}");
+                    Assert.True(labelled == value, $"The engine holds no {image}:{tag} for {platform} labelled for the run ({labelled}); the publish said:\n{string.Join('\n', ended.Output)}");
+                }
+            }
+        }
+        finally
+        {
+            window.Close();
+            RemoveImages();
+        }
+    }
+
     [AvaloniaFact]
     public void A_push_to_a_registry_with_no_docker_login_is_refused_saying_how_to_log_in()
     {
@@ -132,10 +181,10 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
     }
 
     /// <summary>A console app in the test's folder whose image builds on the base given and carries the run's label.</summary>
-    private string WriteApp(string baseImage)
+    private string WriteApp(string baseImage, params string[] properties)
     {
         (string key, string value) = (Docker.RunLabel.Split('=', 2)[0], Docker.RunLabel.Split('=', 2)[1]);
-        TestFolders.Write(folder, "Shipped/Shipped.csproj", TestProjects.Console($"<ContainerBaseImage>{baseImage}</ContainerBaseImage>")
+        TestFolders.Write(folder, "Shipped/Shipped.csproj", TestProjects.Console([$"<ContainerBaseImage>{baseImage}</ContainerBaseImage>", .. properties])
             .With($"  <ItemGroup>\n    <ContainerLabel Include=\"{key}\" Value=\"{value}\" />\n  </ItemGroup>\n"));
         TestFolders.Write(folder, "Shipped/Program.cs", "System.Console.WriteLine(\"shipped\");\n");
         return PathNames.Canonical(Path.Combine(folder, "Shipped", "Shipped.csproj"));

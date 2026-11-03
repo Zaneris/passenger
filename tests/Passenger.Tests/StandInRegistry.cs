@@ -9,37 +9,60 @@ namespace Passenger.Tests;
 
 /// <summary>An OCI registry on a loopback port of its own that serves one small base image, standin/base:1, for the SDK's
 /// container publish to build on: a manifest, its config for this machine's processor on Linux, and one layer of a single
-/// file, so no test pulls a real base image. The SDK reaches localhost's registries over HTTP, with no login. Its image
-/// name, for a project's ContainerBaseImage, is <see cref="BaseImage"/>.</summary>
+/// file, so no test pulls a real base image; given several processors, an index of a manifest for each. The SDK reaches
+/// localhost's registries over HTTP, with no login. Its image name, for a project's ContainerBaseImage, is <see cref="BaseImage"/>.</summary>
 public sealed class StandInRegistry : IDisposable, IAsyncDisposable
 {
     private const string ManifestType = "application/vnd.oci.image.manifest.v1+json";
+    private const string IndexType = "application/vnd.oci.image.index.v1+json";
 
     private readonly StandInHttp http;
     private readonly Dictionary<string, byte[]> blobs = new(StringComparer.Ordinal);
     private readonly byte[] manifest;
+    private readonly string manifestType;
+    private readonly Dictionary<string, byte[]> manifests = new(StringComparer.Ordinal);
 
-    public StandInRegistry()
+    /// <param name="architectures">Docker's names of the processors it serves (amd64, arm64); none, this machine's.</param>
+    public StandInRegistry(params string[] architectures)
     {
         byte[] layer = Layer(out byte[] tar);
-        string architecture = RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "amd64";
-        byte[] config = JsonSerializer.SerializeToUtf8Bytes(new
-        {
-            architecture,
-            os = "linux",
-            config = new { Env = new[] { "PATH=/usr/local/bin:/usr/bin:/bin" }, WorkingDir = "/" },
-            rootfs = new { type = "layers", diff_ids = new[] { Digest(tar) } },
-            history = new[] { new { created_by = "stand-in" } },
-        });
-        blobs[Digest(config)] = config;
         blobs[Digest(layer)] = layer;
-        manifest = JsonSerializer.SerializeToUtf8Bytes(new
+        string[] served = architectures.Length > 0 ? architectures : [RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "amd64"];
+        foreach (string architecture in served)
         {
-            schemaVersion = 2,
-            mediaType = ManifestType,
-            config = new { mediaType = "application/vnd.oci.image.config.v1+json", digest = Digest(config), size = config.Length },
-            layers = new[] { new { mediaType = "application/vnd.oci.image.layer.v1.tar+gzip", digest = Digest(layer), size = layer.Length } },
-        });
+            byte[] config = JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                architecture,
+                os = "linux",
+                config = new { Env = new[] { "PATH=/usr/local/bin:/usr/bin:/bin" }, WorkingDir = "/" },
+                rootfs = new { type = "layers", diff_ids = new[] { Digest(tar) } },
+                history = new[] { new { created_by = "stand-in" } },
+            });
+            blobs[Digest(config)] = config;
+            byte[] one = JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                schemaVersion = 2,
+                mediaType = ManifestType,
+                config = new { mediaType = "application/vnd.oci.image.config.v1+json", digest = Digest(config), size = config.Length },
+                layers = new[] { new { mediaType = "application/vnd.oci.image.layer.v1.tar+gzip", digest = Digest(layer), size = layer.Length } },
+            });
+            manifests[architecture] = one;
+        }
+        if (served.Length == 1)
+        {
+            manifest = manifests[served[0]];
+            manifestType = ManifestType;
+        }
+        else
+        {
+            manifest = JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                schemaVersion = 2,
+                mediaType = IndexType,
+                manifests = served.Select(a => new { mediaType = ManifestType, digest = Digest(manifests[a]), size = manifests[a].Length, platform = new { architecture = a, os = "linux" } }).ToArray(),
+            });
+            manifestType = IndexType;
+        }
         http = new StandInHttp(AnswerAsync, keepAlive: true);
     }
 
@@ -59,7 +82,8 @@ public sealed class StandInRegistry : IDisposable, IAsyncDisposable
         requests.Enqueue(exchange.Line);
         string path = exchange.Path.Split('?')[0];
         (byte[] Body, string Type)? found = path is "/v2/" or "/v2" ? ("{}"u8.ToArray(), "application/json")
-            : path.EndsWith("/manifests/1", StringComparison.Ordinal) || path.EndsWith($"/manifests/{Digest(manifest)}", StringComparison.Ordinal) ? (manifest, ManifestType)
+            : path.EndsWith("/manifests/1", StringComparison.Ordinal) || path.EndsWith($"/manifests/{Digest(manifest)}", StringComparison.Ordinal) ? (manifest, manifestType)
+            : manifests.Values.FirstOrDefault(one => path.EndsWith($"/manifests/{Digest(one)}", StringComparison.Ordinal)) is { } platform ? (platform, ManifestType)
             : blobs.FirstOrDefault(blob => path.EndsWith($"/blobs/{blob.Key}", StringComparison.Ordinal)) is { Value: { } bytes } ? (bytes, "application/octet-stream")
             : null;
         if (found is not { } answer)
