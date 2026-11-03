@@ -32,18 +32,21 @@ public sealed partial class PassengerTools
     public Task<SettingsInfo> GetSettings(CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         JsonObject values = SettingsNode(window.Settings);
-        Dictionary<string, IReadOnlyList<string>> fonts = [];
+        // A font's own names alone: the families installed (hundreds) are said by their count, each taken by its name.
+        Dictionary<string, (IReadOnlyList<string> Choices, string? Note)> fonts = [];
         foreach (FontSetting font in Declared.All.OfType<FontSetting>())
         {
-            fonts[font.Property] = await font.ChoicesAsync();
+            IReadOnlyList<string> installed = await font.InstalledAsync();
+            fonts[font.Property] = (font.Offered, installed.Count == 0 ? null
+                : AgentAnswers.More(installed.Count, "installed family", "settings_set takes any by its name, and refuses one not installed here"));
         }
         return new SettingsInfo(window.SettingsKept, [.. SettingProperties.Select(p =>
         {
             Type type = Nullable.GetUnderlyingType(p.Value.PropertyType) ?? p.Value.PropertyType;
             (double Min, double Max)? range = SettingRange(p.Key, p.Value);
-            IReadOnlyList<string>? choices = type.IsEnum ? Enum.GetNames(type)
-                : fonts.GetValueOrDefault(p.Value.Name);
-            return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value), choices, range?.Min, range?.Max);
+            (IReadOnlyList<string> Choices, string? Note)? font = fonts.TryGetValue(p.Value.Name, out (IReadOnlyList<string>, string?) offered) ? offered : null;
+            IReadOnlyList<string>? choices = type.IsEnum ? Enum.GetNames(type) : font?.Choices;
+            return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value), choices, range?.Min, range?.Max) { Note = font?.Note };
         })]);
     });
 
@@ -506,7 +509,11 @@ public sealed partial class PassengerTools
 public sealed record SettingsInfo(bool Kept, IReadOnlyList<SettingInfo> Settings);
 
 /// <summary>A setting by its name in settings.json: its value, its kind, the choices it takes or the range it is brought into.</summary>
-public sealed record SettingInfo(string Name, JsonElement Value, string Kind, IReadOnlyList<string>? Choices, double? Min, double? Max);
+public sealed record SettingInfo(string Name, JsonElement Value, string Kind, IReadOnlyList<string>? Choices, double? Min, double? Max)
+{
+    /// <summary>What its choices leave out and how to ask for it: a font's installed families.</summary>
+    public string? Note { get; init; }
+}
 
 /// <summary>A setting an agent changed: as it was, as it is now in force, and why that is not what was asked, when it is not.</summary>
 public sealed record SettingChange(string Name, JsonElement Before, JsonElement After, string? Note);

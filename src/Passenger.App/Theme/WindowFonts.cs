@@ -50,8 +50,14 @@ public static class WindowFonts
     /// <summary>How Settings names the system's own choice here: "System font (Segoe UI)".</summary>
     public static string SystemShown() => WindowFontNames.SystemShown(SystemFamily());
 
-    /// <summary>Puts a family in force as the window's typeface, for every window and popup.</summary>
-    public static void Use(Application app, FontFamily family) => app.Resources[Key] = family;
+    /// <summary>Puts a family in force as the window's typeface, for every window and popup, with its own tracking where macOS
+    /// would set it (<see cref="WindowTracking"/>).</summary>
+    public static void Use(Application app, FontFamily family)
+    {
+        // Its tracking first, which what draws words takes as their face changes to it.
+        WindowTracking.Follow(app, family);
+        app.Resources[Key] = family;
+    }
 
     /// <summary>The system's own UI family here; a name the font manager does not know gives its default's face, so the
     /// macOS family draws only where its face is another.</summary>

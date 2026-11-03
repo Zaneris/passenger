@@ -14,7 +14,7 @@ namespace Passenger.Tests;
 
 /// <summary>The window's typeface: the Inter Passenger carries, its hinted faces, until Settings › Appearance chooses
 /// another, which then draws every window's and popup's words, the Git log's commits and the Explorer's rows among them.</summary>
-public sealed class WindowFontTests : IDisposable
+public sealed partial class WindowFontTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("windowfont-"));
 
@@ -77,6 +77,121 @@ public sealed class WindowFontTests : IDisposable
             window.Close();
         }
     }
+
+    /// <summary>Both font lists, the window's in Settings › Appearance and the editor's in Settings › Editor, show each name
+    /// in its own face in a row of one height, a list row's, whatever that face's lines need.</summary>
+    [AvaloniaFact]
+    public void Both_font_lists_show_each_name_in_its_own_face_in_rows_of_one_list_rows_height()
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            SettingsDialog dialog = window.ShowSettings();
+            foreach (string page in (string[])[SettingsDialog.Appearance, SettingsDialog.EditorPage])
+            {
+                dialog.Page = page;
+                Ui.Settle();
+                ComboBox family = SettingsTests.Editor<ComboBox>(dialog, "Font family");
+                family.IsDropDownOpen = true;
+                Ui.Settle();
+                ComboBoxItem[] rows = [.. family.GetRealizedContainers().OfType<ComboBoxItem>()];
+                Assert.True(rows.Length > 0, $"The font list of {page} showed no rows");
+                Assert.True(rows.All(r => Math.Abs(r.Bounds.Height - ListRow.Height) < 0.01),
+                    $"The font list of {page} has rows of other heights than {ListRow.Height}: {string.Join(", ", rows.Select(r => $"{r.Content} {r.Bounds.Height:0.##}"))}");
+                family.IsDropDownOpen = false;
+                Ui.Settle();
+            }
+            dialog.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>On macOS the system's own UI font chosen sets the window's words as tight as the system's own apps do: the
+    /// Explorer's row as wide as CoreText sets its words in the system font at the row's size, within a pixel, the font's own
+    /// tracking at that size its letter spacing; Inter chosen again has none.</summary>
+    [AvaloniaFact]
+    public void On_macos_the_system_font_sets_the_windows_words_as_wide_as_the_systems_own_apps_within_a_pixel()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The tracking the system's own apps set is macOS's text drawing's");
+        File.WriteAllText(Path.Combine(folder, "Element.cs"), "class Element { }\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ApplySettings(window.Settings with { WindowFontFamily = WindowFontNames.SystemUi });
+            Ui.Settle();
+            TextBlock row = Words(window.ExplorerView.Rows(), "Element.cs");
+            Ui.WaitFor(() => Family(Face(row)) == FamilyOf(WindowFonts.Named(WindowFontNames.SystemUi)!), "the Explorer's row drawn in the system font");
+            double native = NativeWidth(row.Text!, row.FontSize);
+            double drawn = row.TextLayout.WidthIncludingTrailingWhitespace;
+            Assert.True(row.LetterSpacing != 0, $"The system font's words at {row.FontSize} px have no tracking, where macOS sets {WindowTracking.At(row.FontSize):0.###} px");
+            Assert.True(Math.Abs(drawn - native) <= 1, $"'{row.Text}' at {row.FontSize} px is {drawn:0.##} wide in the window and {native:0.##} as the system's own apps set it");
+
+            window.ApplySettings(window.Settings with { WindowFontFamily = null });
+            Ui.Settle();
+            row = Words(window.ExplorerView.Rows(), "Element.cs");
+            Assert.True(row.LetterSpacing == 0, $"Inter's words kept the system font's tracking, {row.LetterSpacing}");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { WindowFontFamily = null });
+            window.Close();
+        }
+    }
+
+    /// <summary>How wide CoreText sets words in the system's UI font at a size, as the system's own apps draw them.</summary>
+    private static double NativeWidth(string words, double size)
+    {
+        IntPtr coreText = System.Runtime.InteropServices.NativeLibrary.Load(CoreText);
+        IntPtr coreFoundation = System.Runtime.InteropServices.NativeLibrary.Load(CoreFoundation);
+        IntPtr fontKey = System.Runtime.InteropServices.Marshal.ReadIntPtr(System.Runtime.InteropServices.NativeLibrary.GetExport(coreText, "kCTFontAttributeName"));
+        IntPtr font = CTFontCreateUIFontForLanguage(SystemUiFont, size, IntPtr.Zero);
+        IntPtr text = CFStringCreateWithCharacters(IntPtr.Zero, words, words.Length);
+        IntPtr attributes = CFDictionaryCreate(IntPtr.Zero, [fontKey], [font], 1, System.Runtime.InteropServices.NativeLibrary.GetExport(coreFoundation, "kCFTypeDictionaryKeyCallBacks"),
+            System.Runtime.InteropServices.NativeLibrary.GetExport(coreFoundation, "kCFTypeDictionaryValueCallBacks"));
+        IntPtr attributed = CFAttributedStringCreate(IntPtr.Zero, text, attributes);
+        IntPtr line = CTLineCreateWithAttributedString(attributed);
+        try
+        {
+            return CTLineGetTypographicBounds(line, out _, out _, out _);
+        }
+        finally
+        {
+            foreach (IntPtr made in (IntPtr[])[line, attributed, attributes, text, font])
+            {
+                CFRelease(made);
+            }
+        }
+    }
+
+    private const string CoreText = "/System/Library/Frameworks/CoreText.framework/CoreText";
+    private const string CoreFoundation = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
+
+    /// <summary>kCTFontUIFontSystem: the font of the system's own UI.</summary>
+    private const uint SystemUiFont = 2;
+
+    [System.Runtime.InteropServices.LibraryImport(CoreText)]
+    private static partial IntPtr CTFontCreateUIFontForLanguage(uint type, double size, IntPtr language);
+
+    [System.Runtime.InteropServices.LibraryImport(CoreFoundation, StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
+    private static partial IntPtr CFStringCreateWithCharacters(IntPtr allocator, string characters, nint length);
+
+    [System.Runtime.InteropServices.LibraryImport(CoreFoundation)]
+    private static partial IntPtr CFDictionaryCreate(IntPtr allocator, IntPtr[] keys, IntPtr[] values, nint count, IntPtr keyCallBacks, IntPtr valueCallBacks);
+
+    [System.Runtime.InteropServices.LibraryImport(CoreFoundation)]
+    private static partial IntPtr CFAttributedStringCreate(IntPtr allocator, IntPtr text, IntPtr attributes);
+
+    [System.Runtime.InteropServices.LibraryImport(CoreText)]
+    private static partial IntPtr CTLineCreateWithAttributedString(IntPtr text);
+
+    [System.Runtime.InteropServices.LibraryImport(CoreText)]
+    private static partial double CTLineGetTypographicBounds(IntPtr line, out double ascent, out double descent, out double leading);
+
+    [System.Runtime.InteropServices.LibraryImport(CoreFoundation)]
+    private static partial void CFRelease(IntPtr made);
 
     /// <summary>The log's commits, the Explorer's rows and Find Action's rows are drawn in the family named.</summary>
     private static void Drawn(MainWindow window, string family)

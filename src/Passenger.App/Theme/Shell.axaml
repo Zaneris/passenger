@@ -126,6 +126,12 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
+    <!-- A list whose rows each show in a face of their own (the font lists): every row one height, whatever its face's lines. -->
+    <Style Selector="ComboBox.faces ComboBoxItem">
+        <Setter Property="Height" Value="{x:Static app:ListRow.Height}" />
+        <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+
     <!-- A dialog's buttons at its foot (DialogFooter), each as wide as the others at the least. -->
     <Style Selector="StackPanel.footer">
         <Setter Property="Orientation" Value="Horizontal" />

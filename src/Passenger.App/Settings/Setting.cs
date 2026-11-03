@@ -191,12 +191,18 @@ public sealed class FontSetting(string property, Func<AppSettings, string?> get,
     public string Property => property;
 
     /// <summary>The names it takes, the carried font's first.</summary>
-    public async Task<IReadOnlyList<string>> ChoicesAsync() => [fonts.Carried, .. fonts.Own().Select(own => own.Name), .. await fonts.InstalledAsync()];
+    public async Task<IReadOnlyList<string>> ChoicesAsync() => [.. Offered, .. await InstalledAsync()];
+
+    /// <summary>The names it offers of its own: the carried font's, then its own choices (the system's UI font).</summary>
+    public IReadOnlyList<string> Offered => [fonts.Carried, .. fonts.Own().Select(own => own.Name)];
+
+    /// <summary>The installed families it takes, by name in order.</summary>
+    public Task<IReadOnlyList<string>> InstalledAsync() => fonts.InstalledAsync();
 
     public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change)
     {
         string? chosen = Trimmed(get(now));
-        ComboBox box = new() { Classes = { StyleClasses.Form }, MaxDropDownHeight = 360 };
+        ComboBox box = new() { Classes = { StyleClasses.Form, StyleClasses.Faces }, MaxDropDownHeight = 360 };
         ReusedRows.Use(box, () =>
         {
             TextBlock shown = new() { VerticalAlignment = VerticalAlignment.Center };
