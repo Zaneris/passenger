@@ -27,7 +27,6 @@ public static class TestApp
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<Passenger.App.App>()
         .UseSkia()
         .UseHarfBuzz()
-        .WithInterFont()
         .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
 }
 

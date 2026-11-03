@@ -17,6 +17,8 @@
     <AvaloniaResource Include="Assets/Passenger.ico" />
     <!-- The mark About, the Welcome page and What's New show, drawn from Assets/passenger.svg. -->
     <AvaloniaResource Include="Assets/passenger.png" />
+    <!-- The window's typeface (Theme/WindowFonts.cs): Inter 4.1's hinted faces as rsms/inter's release gives them. -->
+    <AvaloniaResource Include="Fonts/*.ttf" />
     <!-- MSBuild's own schemas (dotnet/msbuild, MIT), which the .NET SDK does not carry: the elements, properties, items,
          metadata and tasks the code help in project files offers and describes (MSBuild/MSBuildSchema.cs). -->
     <EmbeddedResource Include="MSBuild/Schemas/*.xsd" LogicalName="MSBuild/%(Filename)%(Extension)" />
@@ -37,7 +39,9 @@
   <ItemGroup>
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Desktop" />
-    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <!-- Avalonia.Headless names this package, though nothing of it is read: the window draws in Passenger's own Inter
+         (Fonts/), so its assets stay out of the app. -->
+    <PackageReference Include="Avalonia.Fonts.Inter" ExcludeAssets="all" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
     <!-- The screenshot mode's off-screen platform (Screenshot.cs). -->
     <PackageReference Include="Avalonia.HarfBuzz" />
@@ -172,7 +176,7 @@
       <NoticesServerPackage Include="@(NoticesServer->WithMetadataValue('Kind', 'package'))" />
       <NoticeServerDeps Include="%(NoticesServerPackage.Folder)**/*.deps.json" />
       <NoticeWebStamp Include="@(NoticesWeb->'%(Stamp)')" />
-      <NoticeText Include="$(NoticesRepository)THIRD_PARTY_NOTICES.md;$(NoticesRepository)LICENSE;$(NoticesRepository)tools/Passenger.Notices/Licenses/*.txt;$(NoticesRepository)src/Passenger.Editor/Fonts/OFL.txt" />
+      <NoticeText Include="$(NoticesRepository)THIRD_PARTY_NOTICES.md;$(NoticesRepository)LICENSE;$(NoticesRepository)tools/Passenger.Notices/Licenses/*.txt;$(NoticesRepository)src/Passenger.Editor/Fonts/OFL.txt;$(NoticesRepository)src/Passenger.App/Fonts/OFL.txt" />
     </ItemGroup>
     <RemoveDuplicates Inputs="@(NoticePackage)">
       <Output TaskParameter="Filtered" ItemName="NoticePackageOnce" />
@@ -190,7 +194,8 @@
       <NoticeLine Include="@(NoticesServerPackage->'serverFolder=%(Folder)')" />
       <NoticeLine Include="@(NoticesServer->WithMetadataValue('Kind', 'leftOut')->'serverLeftOut=%(Identity)')" />
       <NoticeLine Include="@(NoticesWeb->'node=%(Identity)node_modules')" />
-      <NoticeLine Include="text=JetBrains Mono, the editor's typeface, and Inter, the window's (in Avalonia.Fonts.Inter, Copyright (c) 2016 The Inter Project Authors, https://github.com/rsms/inter), are under the SIL Open Font License 1.1, as JetBrains Mono gives it|$(NoticesRepository)src/Passenger.Editor/Fonts/OFL.txt" />
+      <NoticeLine Include="text=JetBrains Mono, the editor's typeface, is under the SIL Open Font License 1.1, as JetBrains Mono gives it|$(NoticesRepository)src/Passenger.Editor/Fonts/OFL.txt" />
+      <NoticeLine Include="text=Inter, the window's typeface, is under the SIL Open Font License 1.1, as Inter gives it|$(NoticesRepository)src/Passenger.App/Fonts/OFL.txt" />
     </ItemGroup>
     <WriteLinesToFile File="$(NoticesArguments)" Lines="@(NoticeLine)" Overwrite="true" WriteOnlyWhenDifferent="true" />
   </Target>

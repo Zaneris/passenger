@@ -172,18 +172,18 @@ public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSetti
         : null;
 }
 
-/// <summary>A font family to show code in, by name (<paramref name="property"/>'s), chosen from a drop-down of the carried
-/// font and the installed ones whose characters take one width (<see cref="CodeFonts"/>), each named in its own face, the
-/// list filled once they are found off the UI thread; null for the first choice, <paramref name="none"/>'s (the carried
-/// font where it names none). A name not installed or not monospaced is refused, saying why.</summary>
-public sealed class FontSetting(string property, Func<AppSettings, string?> get, Func<AppSettings, string?, AppSettings> set, string? none, SettingRow row)
-    : Setting(row)
+/// <summary>A font family by name (<paramref name="property"/>'s), chosen from a drop-down of what <paramref name="fonts"/>
+/// offers (the carried font, any choices of its own, the installed families it takes), each named in its own face, the
+/// list filled once the installed ones are found off the UI thread; null for the first choice, <paramref name="none"/>'s
+/// (the carried font where it names none). A name the fonts refuse is refused, saying why.</summary>
+public sealed class FontSetting(string property, Func<AppSettings, string?> get, Func<AppSettings, string?, AppSettings> set, string? none,
+    FontChoices fonts, SettingRow row) : Setting(row)
 {
     /// <summary>The AppSettings property it reads.</summary>
     public string Property => property;
 
     /// <summary>The names it takes, the carried font's first.</summary>
-    public static async Task<IReadOnlyList<string>> ChoicesAsync() => [CodeFonts.Carried, .. await CodeFonts.InstalledAsync()];
+    public async Task<IReadOnlyList<string>> ChoicesAsync() => [fonts.Carried, .. fonts.Own().Select(own => own.Name), .. await fonts.InstalledAsync()];
 
     public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change)
     {
@@ -211,22 +211,27 @@ public sealed class FontSetting(string property, Func<AppSettings, string?> get,
         IdeErrors.Observe(FillAsync());
         return box;
 
-        async Task FillAsync() => Fill(await CodeFonts.InstalledAsync());
+        async Task FillAsync() => Fill(await fonts.InstalledAsync());
 
-        // Before the installed fonts are found, the list holds the first choice and the one in force.
+        // Before the installed fonts are found, the list holds the first choice, the fonts' own and the one in force.
         void Fill(IReadOnlyList<string>? installed)
         {
-            List<Choice> choices = [none is null ? new(null, CodeFonts.Carried, CodeEditor.CodeFont) : new(null, none, FontFamily.Default)];
+            List<Choice> choices = [none is null ? new(null, fonts.Carried, fonts.Face) : new(null, none, FontFamily.Default)];
             if (none is not null)
             {
-                choices.Add(new(CodeFonts.Carried, CodeFonts.Carried, CodeEditor.CodeFont));
+                choices.Add(new(fonts.Carried, fonts.Carried, fonts.Face));
             }
+            choices.AddRange(fonts.Own().Select(own => new Choice(own.Name, own.Shown, own.Face)));
             choices.AddRange((installed ?? []).Select(name => new Choice(name, name, new FontFamily(name))));
             int at = choices.FindIndex(c => string.Equals(c.Name, chosen, StringComparison.OrdinalIgnoreCase));
+            if (at < 0 && none is null && string.Equals(chosen, fonts.Carried, StringComparison.OrdinalIgnoreCase))
+            {
+                at = 0;
+            }
             if (at < 0 && chosen is not null)
             {
-                string shown = installed is null ? chosen : $"{chosen} ({(CodeFonts.IsInstalled(chosen) ? "not monospaced" : "not installed")})";
-                choices.Insert(1, new(chosen, shown, CodeFonts.Named(chosen) ?? FontFamily.Default));
+                string shown = installed is null ? chosen : $"{chosen} ({fonts.Unusable(chosen)})";
+                choices.Insert(1, new(chosen, shown, fonts.Named(chosen) ?? FontFamily.Default));
                 at = 1;
             }
             filling = true;
@@ -239,7 +244,7 @@ public sealed class FontSetting(string property, Func<AppSettings, string?> get,
     public override AppSettings Clamp(AppSettings settings) => set(settings, Trimmed(get(settings)));
 
     public override string? Refused(AppSettings was, AppSettings now) =>
-        Trimmed(get(now)) is { } name && !string.Equals(name, Trimmed(get(was)), StringComparison.OrdinalIgnoreCase) && CodeFonts.WhyNot(name) is { } why
+        Trimmed(get(now)) is { } name && !string.Equals(name, Trimmed(get(was)), StringComparison.OrdinalIgnoreCase) && fonts.WhyNot(name) is { } why
             ? $"{Row!.Label} {name} ({SettingsDialog.PlaceOfPage(Row.Page)}) {why}"
             : null;
 
@@ -249,5 +254,71 @@ public sealed class FontSetting(string property, Func<AppSettings, string?> get,
     private sealed record Choice(string? Name, string Shown, FontFamily Face)
     {
         public override string ToString() => Shown;
+    }
+}
+
+/// <summary>What a font setting offers and takes: the font Passenger carries, by its name and face, any choices of its
+/// own after it, the installed families it takes, and why it refuses a name.</summary>
+public abstract class FontChoices
+{
+    /// <summary>Code's: the carried JetBrains Mono or an installed monospaced family (<see cref="CodeFonts"/>).</summary>
+    public static readonly FontChoices Code = new CodeChoices();
+
+    /// <summary>The window's: the carried Inter, the system's own UI font or any installed family (<see cref="WindowFonts"/>).</summary>
+    public static readonly FontChoices Window = new WindowChoices();
+
+    /// <summary>The carried font's name.</summary>
+    public abstract string Carried { get; }
+
+    /// <summary>The carried font.</summary>
+    public abstract FontFamily Face { get; }
+
+    /// <summary>The choices after the carried font and before the installed families: each the name it sets, the words
+    /// shown and its face.</summary>
+    public virtual IReadOnlyList<(string Name, string Shown, FontFamily Face)> Own() => [];
+
+    /// <summary>The installed families it takes, by name in order.</summary>
+    public abstract Task<IReadOnlyList<string>> InstalledAsync();
+
+    /// <summary>The family a name gives, or null for one it refuses.</summary>
+    public abstract FontFamily? Named(string name);
+
+    /// <summary>Why a name gives no font, as words after it; null where it gives one.</summary>
+    public abstract string? WhyNot(string name);
+
+    /// <summary>A name it refuses, as the list says so after it: "not installed".</summary>
+    public abstract string Unusable(string name);
+
+    private sealed class CodeChoices : FontChoices
+    {
+        public override string Carried => CodeFonts.Carried;
+
+        public override FontFamily Face => CodeEditor.CodeFont;
+
+        public override Task<IReadOnlyList<string>> InstalledAsync() => CodeFonts.InstalledAsync();
+
+        public override FontFamily? Named(string name) => CodeFonts.Named(name);
+
+        public override string? WhyNot(string name) => CodeFonts.WhyNot(name);
+
+        public override string Unusable(string name) => CodeFonts.IsInstalled(name) ? "not monospaced" : "not installed";
+    }
+
+    private sealed class WindowChoices : FontChoices
+    {
+        public override string Carried => WindowFontNames.Carried;
+
+        public override FontFamily Face => WindowFonts.Carried;
+
+        public override IReadOnlyList<(string Name, string Shown, FontFamily Face)> Own() =>
+            [(WindowFontNames.SystemUi, WindowFonts.SystemShown(), WindowFonts.Named(WindowFontNames.SystemUi) ?? FontFamily.Default)];
+
+        public override Task<IReadOnlyList<string>> InstalledAsync() => WindowFonts.InstalledAsync();
+
+        public override FontFamily? Named(string name) => WindowFonts.Named(name);
+
+        public override string? WhyNot(string name) => WindowFonts.WhyNot(name);
+
+        public override string Unusable(string name) => "not installed";
     }
 }

@@ -32,14 +32,17 @@ public sealed partial class PassengerTools
     public Task<SettingsInfo> GetSettings(CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         JsonObject values = SettingsNode(window.Settings);
-        IReadOnlyList<string> fonts = await FontSetting.ChoicesAsync();
+        Dictionary<string, IReadOnlyList<string>> fonts = [];
+        foreach (FontSetting font in Declared.All.OfType<FontSetting>())
+        {
+            fonts[font.Property] = await font.ChoicesAsync();
+        }
         return new SettingsInfo(window.SettingsKept, [.. SettingProperties.Select(p =>
         {
             Type type = Nullable.GetUnderlyingType(p.Value.PropertyType) ?? p.Value.PropertyType;
             (double Min, double Max)? range = SettingRange(p.Key, p.Value);
             IReadOnlyList<string>? choices = type.IsEnum ? Enum.GetNames(type)
-                : Declared.All.OfType<FontSetting>().Any(f => f.Property == p.Value.Name) ? fonts
-                : null;
+                : fonts.GetValueOrDefault(p.Value.Name);
             return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value), choices, range?.Min, range?.Max);
         })]);
     });

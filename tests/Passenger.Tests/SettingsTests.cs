@@ -154,8 +154,11 @@ public sealed class SettingsTests : IDisposable
         dialog.Query = "font";
         Ui.Settle();
         // The Keymap page has Increase, Decrease and Reset Font Size.
-        Assert.Equal([SettingsDialog.EditorPage, SettingsDialog.TerminalPage, SettingsDialog.KeymapPage], dialog.Pages);
-        Assert.Equal(SettingsDialog.EditorPage, dialog.Page);
+        Assert.Equal([SettingsDialog.Appearance, SettingsDialog.EditorPage, SettingsDialog.TerminalPage, SettingsDialog.KeymapPage], dialog.Pages);
+        Assert.Equal(SettingsDialog.Appearance, dialog.Page);
+        Assert.Equal(["Font family"], dialog.Shown);
+        dialog.Page = SettingsDialog.EditorPage;
+        Ui.Settle();
         Assert.Contains("Font size", dialog.Shown);
         Assert.DoesNotContain("Show line numbers", dialog.Shown);
 

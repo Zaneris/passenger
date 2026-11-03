@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
@@ -18,7 +19,6 @@ public sealed class FlameGraph : Control
     private const double RowHeight = 20;
     private const double Dim = 0.3;
     private const double Lit = 0.55;
-    private static readonly Typeface Face = new("Inter");
     private static readonly string[] Colours = [TokenKeys.Graph_0, TokenKeys.Graph_1, TokenKeys.Graph_2, TokenKeys.Graph_3, TokenKeys.Graph_4, TokenKeys.Graph_5];
 
     /// <summary>What the tooltip was last set for when its words no longer stand: no bar is it.</summary>
@@ -38,6 +38,15 @@ public sealed class FlameGraph : Control
         ClipToBounds = true;
         ActualThemeVariantChanged += (_, _) => Restyle();
         ResourcesChanged += (_, _) => Restyle();
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == TextElement.FontFamilyProperty)
+        {
+            Restyle();
+        }
     }
 
     /// <summary>The tree drawn: its root spans the width.</summary>
@@ -155,7 +164,7 @@ public sealed class FlameGraph : Control
             return;
         }
         double room = Math.Max(1, bar.Width - 8);
-        TextLayout text = look.Text is { } laid && look.Room == room ? laid : look.LayOut(colours.Text, room);
+        TextLayout text = look.Text is { } laid && look.Room == room ? laid : look.LayOut(colours.Text, colours.Face, room);
         // Trimmed to its room, the label stays inside the bar's 4 pixels each side without a clip.
         Point at = new(bar.X + 4, bar.Y + ((RowHeight - 1 - text.Height) / 2));
         if (look.Run is { } run)
@@ -299,10 +308,10 @@ public sealed class FlameGraph : Control
         public GlyphRun? Run { get; private set; }
         public double Room { get; private set; }
 
-        public TextLayout LayOut(IBrush brush, double room)
+        public TextLayout LayOut(IBrush brush, Typeface face, double room)
         {
             Forget();
-            TextLayout text = Labels.Of(Label, Face, 11, brush, room);
+            TextLayout text = Labels.Of(Label, face, 11, brush, room);
             Text = text;
             Run = Labels.Run(text);
             Room = room;
@@ -320,19 +329,21 @@ public sealed class FlameGraph : Control
 
     /// <summary>The theme's brushes a frame draws with, each graph colour also faded as a bar is, where its brush is a
     /// solid colour that can carry the fade itself.</summary>
-    private sealed class Palette(IBrush background, IBrush text, IBrush[] graph)
+    private sealed class Palette(IBrush background, IBrush text, IBrush[] graph, Typeface face)
     {
         private readonly IBrush?[] faded = [.. graph.SelectMany(g => (IBrush?[])[Faded(g, Lit), Faded(g, Dim)])];
 
         public IBrush Background { get; } = background;
         public IBrush Text { get; } = text;
+        public Typeface Face { get; } = face;
         public IBrush[] Graph { get; } = graph;
 
         /// <summary>A graph colour faded for a bar, or null where it must be faded by the frame's opacity.</summary>
         public IBrush? Fill(int colour, bool dim) => faded[(colour * 2) + (dim ? 1 : 0)];
 
         public static Palette From(Control control) =>
-            new(Brush(control, TokenKeys.Editor_Background), Brush(control, TokenKeys.Text), [.. Colours.Select(key => Brush(control, key))]);
+            new(Brush(control, TokenKeys.Editor_Background), Brush(control, TokenKeys.Text), [.. Colours.Select(key => Brush(control, key))],
+                new Typeface(TextElement.GetFontFamily(control)));
 
         private static IBrush? Faded(IBrush brush, double opacity) =>
             brush is ISolidColorBrush solid ? new ImmutableSolidColorBrush(solid.Color, solid.Opacity * opacity) : null;

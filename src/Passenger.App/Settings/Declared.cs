@@ -19,6 +19,11 @@ public static class Declared
         [(ThemeChoice.System, "System"), (ThemeChoice.Dark, "Dark"), (ThemeChoice.Light, "Light")],
         new(D.Appearance, "Dark or light", "colour color theme dark light system sync os appearance mode"));
 
+    public static readonly FontSetting WindowFontFamily = new(nameof(AppSettings.WindowFontFamily), s => s.WindowFontFamily, (s, v) => s with { WindowFontFamily = v }, null,
+        FontChoices.Window, new(D.Appearance, "Font family", "font family typeface ui interface window words system segoe san francisco inter",
+            "The font of the window's words: menus, tool windows, tabs, dialogs and popups. The system font is Segoe UI on Windows, "
+            + "San Francisco on macOS and the desktop's sans-serif on Linux. Code keeps the editor's font."));
+
     public static readonly ToggleSetting MainMenuBar = new(s => s.MainMenuBar, (s, v) => s with { MainMenuBar = v },
         new(D.Appearance, "Show main menu as a menu bar", "main menu bar hamburger file edit view toolbar ribbon menus",
             "File, Edit, View and the rest side by side on the toolbar rather than behind its button. Those the toolbar has no room for go behind the button after them."));
@@ -60,7 +65,7 @@ public static class Declared
             "The colours the code is drawn in: the theme's own, or Rider's, Dark or Light as the theme is. The editor keeps the theme's background."));
 
     public static readonly FontSetting EditorFontFamily = new(nameof(AppSettings.EditorFontFamily), s => s.EditorFontFamily, (s, v) => s with { EditorFontFamily = v }, null,
-        new(D.EditorPage, "Font family", "font family typeface monospace monospaced code",
+        FontChoices.Code, new(D.EditorPage, "Font family", "font family typeface monospace monospaced code",
             "The font code is shown in: the editor's, the terminal's unless it has its own, and code's in popups and tool windows."));
 
     public static readonly NumberSetting EditorFontSize = new(s => s.EditorFontSize, (s, v) => s with { EditorFontSize = v },
@@ -263,7 +268,7 @@ public static class Declared
         AppSettings.MinFontSize, AppSettings.MaxFontSize, 1, new(D.TerminalPage, "Font size", "font size shell"));
 
     public static readonly FontSetting TerminalFontFamily = new(nameof(AppSettings.TerminalFontFamily), s => s.TerminalFontFamily, (s, v) => s with { TerminalFontFamily = v },
-        "Same as the editor", new(D.TerminalPage, "Font family", "font family typeface monospace monospaced shell"));
+        "Same as the editor", FontChoices.Code, new(D.TerminalPage, "Font family", "font family typeface monospace monospaced shell"));
 
     public static readonly ProgramSetting TerminalShell = new(s => s.TerminalShell, (s, v) => s with { TerminalShell = v },
         () => Passenger.Terminal.TerminalSession.DefaultShell().App, new(D.TerminalPage, "Shell path", "shell zsh bash powershell program"));

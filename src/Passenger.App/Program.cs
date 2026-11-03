@@ -167,7 +167,6 @@ internal static class Program
         AppBuilder.Configure<App>()
             .UsePlatformDetect()
 #pragma warning disable AVALONIA_X11_CSD // X11 extends a window into its frame only with this on: the merged title bar (TitleBars).
-            .With(new X11PlatformOptions { EnableDrawnDecorations = true })
+            .With(new X11PlatformOptions { EnableDrawnDecorations = true });
 #pragma warning restore AVALONIA_X11_CSD
-            .WithInterFont();
 }

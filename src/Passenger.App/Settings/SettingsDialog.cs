@@ -253,6 +253,7 @@ public sealed partial class SettingsDialog : IdeWindow
         {
             Add(Declared.MainMenuBar);
         }
+        Add(Declared.WindowFontFamily);
 
         Add(Declared.ReopenProjectsOnStartup);
         StackPanel openIn = new() { Orientation = Orientation.Horizontal, Spacing = 16 };

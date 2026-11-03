@@ -37,6 +37,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// them.</summary>
     public bool MainMenuBar { get; init; }
 
+    /// <summary>The window's typeface by its family's name, <see cref="WindowFontNames.SystemUi"/> for the system's own UI
+    /// font, or null for the Inter Passenger carries.</summary>
+    public string? WindowFontFamily { get; init; }
+
     /// <summary>The code font by its family's name, or null for the one Passenger carries.</summary>
     public string? EditorFontFamily { get; init; }
     public double EditorFontSize { get; init; } = 13;

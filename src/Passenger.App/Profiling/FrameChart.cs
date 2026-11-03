@@ -1,6 +1,7 @@
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Media;
 using Passenger.Profiler;
@@ -25,6 +26,8 @@ public sealed class FrameChart : Control
 
     private IReadOnlyList<IReadOnlyList<FramePart>> frames = [];
     private int? chosen;
+
+    static FrameChart() => AffectsRender<FrameChart>(TextElement.FontFamilyProperty);
 
     public FrameChart()
     {
@@ -77,7 +80,7 @@ public sealed class FrameChart : Control
         double span = Math.Max(Budget * 2, Math.Min(totals[^1], UiFrames.Percentile(totals, 0.9) * 1.5));
         double scale = (bottom - top) / span;
         IBrush muted = Brush(TokenKeys.TextMuted, Brushes.Transparent);
-        Typeface face = new("Inter");
+        Typeface face = new(TextElement.GetFontFamily(this));
 
         double budget = bottom - (Budget * scale);
         context.DrawLine(new Pen(muted, 0.5, new DashStyle([3, 3], 0)), new Point(Axis - 4, budget), new Point(Bounds.Width, budget));

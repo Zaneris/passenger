@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
@@ -19,7 +20,6 @@ public sealed class Timeline : Control
     private const double CollectionsRow = 12;
     private const double Axis = 16;
     private const int MostThreads = 8;
-    private static readonly Typeface Face = new("Inter");
 
     private readonly Stretch stretch;
     private Snapshot? whole;
@@ -36,6 +36,15 @@ public sealed class Timeline : Control
         VisualChildren.Add(stretch);
         ActualThemeVariantChanged += (_, _) => Restyle();
         ResourcesChanged += (_, _) => Restyle();
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == TextElement.FontFamilyProperty)
+        {
+            Restyle();
+        }
     }
 
     /// <summary>A stretch was chosen (null for the whole run again).</summary>
@@ -201,7 +210,7 @@ public sealed class Timeline : Control
         for (int row = 0; row < threads; row++)
         {
             ThreadLine line = run.Timeline[row];
-            names[row] = Text(Short(line.Name), colours.Text, Label - 10);
+            names[row] = Text(Short(line.Name), colours, Label - 10);
             double[] counts = new double[(int)Math.Ceiling(width) + 1];
             foreach (SampleRun samples in line.Runs)
             {
@@ -234,9 +243,9 @@ public sealed class Timeline : Control
         List<(double At, TextLayout Text)> ticks = [];
         for (double at = 0; at <= span; at += step)
         {
-            ticks.Add((at, Text(at >= 1000 ? $"{at / 1000:0.#} s" : $"{at:0} ms", colours.Text, null)));
+            ticks.Add((at, Text(at >= 1000 ? $"{at / 1000:0.#} s" : $"{at:0} ms", colours, null)));
         }
-        Drawn made = new(run, width, colours, Text("GC", colours.Text, Label - 10), names, rows, shades, [.. ticks]);
+        Drawn made = new(run, width, colours, Text("GC", colours, Label - 10), names, rows, shades, [.. ticks]);
         drawn?.Dispose();
         drawn = made;
         return made;
@@ -245,7 +254,7 @@ public sealed class Timeline : Control
     /// <summary>A column's shade for its samples: one a millisecond, a column whose every millisecond was sampled, is solid.</summary>
     private static double Shade(double count, double msPerPixel) => Math.Clamp(0.25 + (0.75 * count / Math.Max(1, msPerPixel)), 0.25, 1);
 
-    private static TextLayout Text(string words, IBrush brush, double? room) => Labels.Of(words, Face, 10, brush, room);
+    private static TextLayout Text(string words, Palette colours, double? room) => Labels.Of(words, colours.Face, 10, colours.Text, room);
 
     private void Restyle()
     {
@@ -297,15 +306,15 @@ public sealed class Timeline : Control
         }
     }
 
-    /// <summary>The theme's brushes and pens.</summary>
-    private sealed record Palette(IBrush Background, IBrush Text, IBrush Collections, IBrush Busy, IBrush Accent, IPen Tick, IPen Edge)
+    /// <summary>The theme's brushes and pens, and the window's typeface.</summary>
+    private sealed record Palette(IBrush Background, IBrush Text, IBrush Collections, IBrush Busy, IBrush Accent, IPen Tick, IPen Edge, Typeface Face)
     {
         public static Palette From(Control control)
         {
             IBrush text = Brush(TokenKeys.TextMuted);
             IBrush accent = Brush(TokenKeys.Accent);
             return new Palette(Brush(TokenKeys.Editor_Background), text, Brush(TokenKeys.Graph_2), Brush(TokenKeys.Graph_0), accent, new Pen(text, 0.5),
-                new Pen(accent, 1));
+                new Pen(accent, 1), new Typeface(TextElement.GetFontFamily(control)));
 
             IBrush Brush(string key) =>
                 control.TryFindResource(key, control.ActualThemeVariant, out object? found) && found is IBrush brush ? brush : Brushes.Transparent;

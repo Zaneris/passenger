@@ -805,10 +805,11 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("gamma", (await Call(client, McpTools.TerminalRun, new() { ["command"] = "echo gamma" })).GetString()!, StringComparison.Ordinal);
     }
 
-    /// <summary>settings lists the code fonts an agent may give the editor, the carried one first, and settings_set takes one
-    /// of them and refuses a family that is not installed, as Settings does, nothing changed.</summary>
+    /// <summary>settings lists the code fonts an agent may give the editor, the carried one first, and the window's, the
+    /// carried Inter and the system's own first; settings_set takes one of them and refuses a family that is not installed,
+    /// as Settings does, nothing changed.</summary>
     [Fact]
-    public async Task Settings_lists_the_code_fonts_an_agent_may_choose_and_settings_set_refuses_one_not_installed()
+    public async Task Settings_lists_the_fonts_an_agent_may_choose_and_settings_set_refuses_one_not_installed()
     {
         string folder = TestFolders.Create("mcp-fonts-");
         DeleteAtEnd(folder);
@@ -823,6 +824,15 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         string font = fonts[^1];
         JsonElement changed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["editorFontFamily"] = font } })).EnumerateArray());
         Assert.Equal(font, changed.GetProperty("after").GetString());
+
+        JsonElement window = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "windowFontFamily");
+        string[] faces = [.. window.GetProperty("choices").EnumerateArray().Select(c => c.GetString()!)];
+        Assert.True(faces is [WindowFontNames.Carried, WindowFontNames.SystemUi, ..], $"settings listed the window's fonts as: {window.GetRawText()}");
+        CallToolResult missing = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["windowFontFamily"] = "Passenger Missing Font" } });
+        Assert.True(missing.IsError == true && Text(missing).Contains("Font family Passenger Missing Font (Settings | Appearance) is not a font installed on this computer", StringComparison.Ordinal),
+            $"settings_set of a window font not installed answered: {Text(missing)}");
+        JsonElement system = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["windowFontFamily"] = WindowFontNames.SystemUi } })).EnumerateArray());
+        Assert.Equal(WindowFontNames.SystemUi, system.GetProperty("after").GetString());
     }
 
     /// <summary>vcs_log gives each signed commit's signature as the Git log's details say it: a good one by its signer

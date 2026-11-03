@@ -29,7 +29,6 @@ public static class Screenshot
         AppBuilder.Configure<App>()
             .UseSkia()
             .UseHarfBuzz()
-            .WithInterFont()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
             .AfterSetup(builder => Program.ApplyTheme(builder.Instance!, launch))
             .SetupWithoutStarting();
