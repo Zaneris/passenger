@@ -327,10 +327,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   is bound, `Bind`), `StatusBar` (`StatusPlace` makes its words a link; a message naming a Settings page takes it from
   `SettingsDialog.PlaceOfPage`), `IdeKeys` (the one keymap in every window but a dialog; a part with keys of its own is
   an `IOwnKeys`). A Passenger nobody sees (`PassengerApp.ShowsNoWindow`: `--mcp`, `--headless`, a screenshot; a window's
-  `MainWindow.Unseen`) runs every Godot game, editor and GdUnit4 Godot headless (`LaunchPlan`, `GdUnit4Settings`) and
-  its browsers headless, and plays no sound. The toolbar is the title bar: anything new on it goes inside `ToolbarStart`
-  or `ToolbarEnd`, or Windows takes a press on it for the caption's. Logs are `logs/` under the state root (`IdeLog`;
-  Settings › Diagnostics turns on protocol traces).
+  `MainWindow.Unseen`) runs every Godot game, editor and GdUnit4 Godot headless (`LaunchPlan`, `GdUnit4Settings`; but an
+  agent's own `--mcp` Passenger on macOS with Godot 4.5 or newer runs its games through Godot's embedded display, which
+  draws no window, so `app_screenshot` gives their frames: `GodotExecutables.EmbeddedArguments`, needing a debugger
+  connection) and its browsers headless, and plays no sound. The toolbar is the title bar: anything new on it goes
+  inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press on it for the caption's. Logs are `logs/` under the
+  state root (`IdeLog`; Settings › Diagnostics turns on protocol traces).
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; wire every editor through `ForEachEditor`;
   `CloseTab` is the one close); a file's outline is `ProjectSession.OutlineOf` (a `FileOutline`: a server's symbols, a
   Godot scene's tree, `GodotSceneOutline`, or a Markdown file's headings as Passenger reads them, `MarkdownOutline`),
@@ -409,19 +411,20 @@ Projects in `src/`; `find_symbol` finds the rest:
   `CSharpAssist.GodotSignalHandlersAsync`); their fixes `GodotOffer` over the extension's `GodotFix` (members made by
   Roslyn so the code builds) and Workspace's pure `GodotWrites`, a fix that asks first through `EditorFix.Confirms`;
   Godot's generator assigns every field in generated code, so a field's values are read from the code's own documents);
-  a C# file read before its project's evaluation landed is pulled again once it does
-  (`CSharpService.GodotProjectsChanged`), and the open scenes are checked again whenever the server says it loaded
-  projects (`CSharpService.ProjectsLoaded`), as a script moved or added changes what their code reads as. A Godot shader
-  is `GodotShaderAssist` over Workspace's `GodotShaderCode`, its language the carried `GodotShaderTypes.json` as the
-  Godot found takes it (`GodotShaderCompiler.TableAsync`, probed per version), its marks Godot's own compiler's through
-  `PassengerShaders.gd` (`GodotShaderMarks`; a scene's own Shader's in `GodotSceneMarks` through `GodotStringPlaces`). A
-  theme item's name is read through `GodotThemeTable` (the carried `GodotDefaultTheme.json`, `just godot-theme`) and the
-  project's themes (`GodotDefinitions.ThemeItems`), and the person's open Godot editor is asked through its IDE
-  messaging server (`GodotIdeLink` over Workspace's `GodotIdeMessaging` and `GodotIdeClient`), never Passenger's own
-  headless editors (`GodotScripts.Headless`). Edits added to a server's workspace edit for a file it already edits join
-  that file's entry (`TypeRename.With`): `documentChanges` apply in order. A server's own command (TypeScript's
-  refactorings, ESLint's fixes) runs through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one
-  command of Undo.
+  a C# file no tab shows is pulled when shown or asked, never at a refresh (`CSharpService.Unseen`/`Shown`,
+  `CSharpDocument.Stale`); a node's C# script's members reach GDScript through `GodotCSharpMembers`; a C# file read
+  before its project's evaluation landed is pulled again once it does (`CSharpService.GodotProjectsChanged`), and the
+  open scenes are checked again whenever the server says it loaded projects (`CSharpService.ProjectsLoaded`), as a
+  script moved or added changes what their code reads as. A Godot shader is `GodotShaderAssist` over Workspace's
+  `GodotShaderCode`, its language the carried `GodotShaderTypes.json` as the Godot found takes it
+  (`GodotShaderCompiler.TableAsync`, probed per version), its marks Godot's own compiler's through `PassengerShaders.gd`
+  (`GodotShaderMarks`; a scene's own Shader's in `GodotSceneMarks` through `GodotStringPlaces`). A theme item's name is
+  read through `GodotThemeTable` (the carried `GodotDefaultTheme.json`, `just godot-theme`) and the project's themes
+  (`GodotDefinitions.ThemeItems`), and the person's open Godot editor is asked through its IDE messaging server
+  (`GodotIdeLink` over Workspace's `GodotIdeMessaging` and `GodotIdeClient`), never Passenger's own headless editors
+  (`GodotScripts.Headless`). Edits added to a server's workspace edit for a file it already edits join that file's entry
+  (`TypeRename.With`): `documentChanges` apply in order. A server's own command (TypeScript's refactorings, ESLint's
+  fixes) runs through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
   `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind; an open GDScript
   kept parsed and typed by `GodotScriptTypes`, reparsed off the UI thread through `GDScriptTextChange`, its hints set
@@ -501,9 +504,10 @@ Projects in `src/`; `find_symbol` finds the rest:
   resource's relationships both ways are `AspireDetailsPane`'s (chosen by `AspireModel.ChooseNamed`), its program
   `AspireController.ProgramOf` (`executable.pid`), its metrics read from its runtime by the Profiler's `LiveMetrics` and
   charted by `Telemetry/MetricsPane` on the Stats tab only while shown (one value an instrument, `MetricsPane.Combined`,
-  which `telemetry` kind metrics answers too), the AppHost's graph `AspireGraph`, built from the snapshot's
-  relationships. MetricsEventSource's CollectionStart and Stop reach TraceEvent as `Collection/Start` and
-  `Collection/Stop`, and a histogram's count is the interval's.
+  the pane fed by a source of its own as a Godot game's monitors are, `ShowFed`/`Feed`, which `telemetry` kind metrics
+  answers too), the AppHost's graph `AspireGraph`, built from the snapshot's relationships. MetricsEventSource's
+  CollectionStart and Stop reach TraceEvent as `Collection/Start` and `Collection/Stop`, and a histogram's count is the
+  interval's.
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
   environment only; Endpoints sends nothing but on Test or Send (an app's OpenAPI document, `OpenApiDocument` and
   `OpenApiSchemas`, Passenger's own reader, comes from a loopback app the folder runs or the build alone,
@@ -571,10 +575,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   through its installed `install.sh --from` as root by pkexec or a command given, a package's copy
   (`app/package-manager`, or the package database's answer) left to its package manager; What's New from
   `docs/release-notes/X.Y.Z.md`).
-- **MCP.** `PassengerTools` (every tool, run on the UI thread, answering with what its operation returned), `McpHost`
-  (`--mcp FOLDER`, a window's socket, `--mcp-attach` through `McpProxy`), `HeadStart` (an `--mcp` folder's opening begun
-  before its window, which its first session takes up), `AgentConnection` (admission and questions). A relay records
-  itself as `PID.relay` in the socket folder (`McpProxy.RelayAt`), which an update has follow it
+- **MCP.** `PassengerTools` (every tool, run on the UI thread, answering with what its operation returned; an agent's
+  calls keep their last few files open, `KeptFiles`, `FilesKept`, let go when it leaves, `AgentConnection.WhenLeft`, a
+  document's last pull answering while `LanguageServer.Changes` and its text stand, `LspDocument.LastDiagnosticsAsync`),
+  `McpHost` (`--mcp FOLDER`, a window's socket, `--mcp-attach` through `McpProxy`), `HeadStart` (an `--mcp` folder's
+  opening begun before its window, which its first session takes up), `AgentConnection` (admission and questions). A
+  relay records itself as `PID.relay` in the socket folder (`McpProxy.RelayAt`), which an update has follow it
   (`Updater.FollowRelays`: it execs itself from the updated app as the same session, `McpProxy.Follow`) or, on Windows,
   ends (`EndRelays`), signalling the relay alone, never its agent's process group. `app_details` with `members` reads a
   Godot game's script members (`PassengerTools.GameMembersAsync`); `godot_editor` acts in the person's Godot editor
