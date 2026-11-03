@@ -33,7 +33,7 @@ internal sealed partial class CSharpAssist
     }
 
     /// <summary>Razor's own answer to a start tag's '>' at each caret, made once each has come if the text and carets
-    /// are as they were; one caret's, typed on since, mapped through what was typed (<see cref="Late"/>).</summary>
+    /// are as they were; typed on since, mapped through what was typed at each caret (<see cref="Late"/>).</summary>
     private async Task EndTagAsync(OpenDocument shown, LspDocument lsp)
     {
         CodeEditor editor = context.Editor;
@@ -45,8 +45,8 @@ internal sealed partial class CSharpAssist
         }
         IndentOptions indent = shown.Indentation.Options;
         TextSnapshot before = lsp.Text.Snapshot;
-        // Where the '>' was typed, carried through what is typed while Razor answers: typing there goes after it.
-        Anchor place = lsp.Text.AnchorAt(asked.Primary.Caret, AnchorGravity.Before);
+        // Where each '>' was typed, carried through what is typed while Razor answers: typing there goes after it.
+        Anchor[] places = [.. asked.Items.Select(s => lsp.Text.AnchorAt(s.Caret, AnchorGravity.Before))];
         try
         {
             AutoInserted?[] answers = await Task.WhenAll(asked.Items.Select(s => lsp.AutoInsertAsync(s.Caret, ">", indent, shown.Conventions)));
@@ -58,14 +58,17 @@ internal sealed partial class CSharpAssist
             {
                 Apply(editor, lsp, shown, indent, asked, answers);
             }
-            else if (asked.Count == 1 && answers[0] is { } answer)
+            else
             {
-                Late(editor, lsp, shown, indent, before, asked.Primary.Caret, answer, place);
+                Late(editor, lsp, shown, indent, before, asked, answers, places);
             }
         }
         finally
         {
-            place.Remove();
+            foreach (Anchor place in places)
+            {
+                place.Remove();
+            }
         }
     }
 
@@ -99,38 +102,69 @@ internal sealed partial class CSharpAssist
         }
     }
 
-    /// <summary>Razor's end tag for a '>' it answered after more was typed: written at the caret, after what was typed since,
-    /// where it still fits: the start tag it closes still there before the place the '>' was typed (carried through the
-    /// typing, <paramref name="place"/>), one caret after that place with no tag begun or ended between, and the end tag not
-    /// already there. A step of Undo of its own.</summary>
-    private void Late(CodeEditor editor, LspDocument lsp, OpenDocument shown, IndentOptions indent, TextSnapshot before, int asked, AutoInserted answer, Anchor place)
+    /// <summary>Razor's end tags for the '>'s it answered after more was typed: each written at its caret, after what was
+    /// typed there since, where it still fits (<see cref="FitsLate"/>), the carets as many as were asked, each after its own
+    /// '>''s place (carried through the typing, <paramref name="places"/>). One step of Undo for every one written.</summary>
+    private void Late(CodeEditor editor, LspDocument lsp, OpenDocument shown, IndentOptions indent, TextSnapshot before, SelectionSet asked, AutoInserted?[] answers,
+        Anchor[] places)
     {
-        if (context.Editor != editor || context.Current?.Lsp != lsp || editor.Selections is not { Count: 1 } now || !now.Primary.IsEmpty
-            || answer is not { TextEdit: { } made }
-            || Placed(before, ServerLines.Of(before), made, answer.TextEditFormat, shown.LineEnding, indent, asked) is not ({ } edit, int into)
+        if (context.Editor != editor || context.Current?.Lsp != lsp || editor.Selections is not { } now || now.Count != asked.Count || now.Items.Any(s => !s.IsEmpty))
+        {
+            return;
+        }
+        TextSnapshot text = lsp.Text.Snapshot;
+        ServerLines lines = ServerLines.Of(before);
+        string written = before.ToString();
+        List<TextEdit> edits = [];
+        List<Selection> carets = [];
+        int shift = 0;
+        int after = 0;
+        for (int i = 0; i < now.Count; i++)
+        {
+            int caret = now.Items[i].Caret;
+            if (answers[i] is { } answer && places[i].Offset >= after
+                && FitsLate(before, written, lines, text, answer, shown.LineEnding, indent, asked.Items[i].Caret, places[i].Offset, caret) is ({ } endTag, int into))
+            {
+                edits.Add(new TextEdit(caret, 0, endTag));
+                carets.Add(Selection.At(caret + shift + into));
+                shift += endTag.Length;
+            }
+            else
+            {
+                carets.Add(Selection.At(caret + shift));
+            }
+            after = caret;
+        }
+        if (edits.Count > 0)
+        {
+            editor.ApplyEdits(edits, SelectionSet.Create(carets, now.PrimaryIndex));
+        }
+    }
+
+    /// <summary>The end tag a caret takes from Razor's answer to the '>' it typed at <paramref name="asked"/>, and where in it
+    /// the caret goes, where it still fits: the start tag it closes still written just before that place now (<paramref name="at"/>),
+    /// the caret after it with no tag begun or ended between (no '&lt;' or '>' typed), and the end tag not already after the
+    /// caret; null where it does not.</summary>
+    private static (string EndTag, int Into)? FitsLate(TextSnapshot before, string written, ServerLines lines, TextSnapshot text, AutoInserted answer, string eol,
+        IndentOptions indent, int asked, int at, int caret)
+    {
+        if (answer is not { TextEdit: { } made } || Placed(before, lines, made, answer.TextEditFormat, eol, indent, asked) is not ({ } edit, int into)
             || edit.Length != 0 || edit.Start != asked || asked < 2 || before[asked - 1] != '>')
         {
-            return;
+            return null;
         }
-        int open = before.ToString().LastIndexOf('<', asked - 1);
+        int open = written.LastIndexOf('<', asked - 1);
         if (open < 0)
         {
-            return;
+            return null;
         }
         string tag = before.GetText(open, asked - open);
-        TextSnapshot text = lsp.Text.Snapshot;
-        int at = place.Offset;
-        int caret = now.Primary.Caret;
-        if (at < tag.Length || caret < at || text.GetText(at - tag.Length, tag.Length) != tag)
+        if (at < tag.Length || caret < at || text.GetText(at - tag.Length, tag.Length) != tag || text.GetText(at, caret - at).IndexOfAny(['<', '>']) >= 0
+            || caret + edit.Text.Length <= text.Length && text.GetText(caret, edit.Text.Length) == edit.Text)
         {
-            return;
+            return null;
         }
-        string typed = text.GetText(at, caret - at);
-        if (typed.IndexOfAny(['<', '>']) >= 0 || caret + edit.Text.Length <= text.Length && text.GetText(caret, edit.Text.Length) == edit.Text)
-        {
-            return;
-        }
-        editor.ApplyEdits([new TextEdit(caret, 0, edit.Text)], SelectionSet.Single(caret + (answer.TextEditFormat == InsertTextFormat.Snippet ? into : 0)));
+        return (edit.Text, answer.TextEditFormat == InsertTextFormat.Snippet ? into : 0);
     }
 
     /// <summary>A Razor answer's edit in the editor's offsets of the text it answered (its server's lines,

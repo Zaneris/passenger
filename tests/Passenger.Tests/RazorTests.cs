@@ -208,6 +208,45 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
         window.Close();
     }
 
+    /// <summary>The same at two carets: the end tags Razor gives each '>' after the person typed on at both are written after
+    /// what was typed at each, and one Undo takes both away.</summary>
+    [AvaloniaFact]
+    public void Start_tags_end_tags_that_come_after_more_was_typed_at_two_carets_go_after_what_was_typed_at_each_as_one_step_of_Undo()
+    {
+        MainWindow window = app.Open("Components/Greeting.razor");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<p>Hello, @Name!</p>\n");
+        int place = editor.Selections.Primary.Caret;
+        editor.ApplyEdits([new TextEdit(place, 0, "\n\n")], SelectionSet.Create([Selection.At(place), Selection.At(place + 1)], 0));
+        Ui.Settle();
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNextAnswer(Passenger.Lsp.LspMethods.OnAutoInsert, _ => true, answered.Task);
+        try
+        {
+            foreach (char c in "<aside>")
+            {
+                window.KeyTextInput(c.ToString());
+            }
+            Ui.AwaitPumped(held, "Razor's end tag for one of the '>'s, held unanswered");
+            window.KeyTextInput("H");
+            window.KeyTextInput("i");
+            Ui.PumpUntil(() => editor.Document.Snapshot.ToString().Contains("<aside>Hi\n<aside>Hi\n", StringComparison.Ordinal), "what was typed at both carets while Razor's answer is held");
+        }
+        finally
+        {
+            answered.TrySetResult();
+        }
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("<aside>Hi</aside>\n<aside>Hi</aside>\n", StringComparison.Ordinal),
+            () => $"Razor's late end tags after what was typed at each caret; the text reads {editor.Document.Snapshot}");
+        Assert.Equal(2, editor.Selections.Count);
+        Ui.Run(window, EditorActions.Undo);
+        Ui.Settle();
+        Assert.Contains("<aside>Hi\n<aside>Hi\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("</aside>", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
     private static void TypeEach(MainWindow window, string text)
     {
         foreach (char c in text)
