@@ -86,7 +86,8 @@ public static class GodotGames
         $"<Project Sdk=\"Godot.NET.Sdk/{version}\">\n  <PropertyGroup>\n    <TargetFramework>{framework}</TargetFramework>\n"
         + "    <EnableDynamicLoading>true</EnableDynamicLoading>\n  </PropertyGroup>\n</Project>\n";
 
-    /// <summary>Godot's packages from its own folder and every other from nuget.org, so a restore asks no network for Godot's.</summary>
+    /// <summary>Godot's packages from its own folder and every other from nuget.org, so a restore asks no network for Godot's;
+    /// a comment says how a feed of the person's is added, as a mapping takes each package only from the feeds it names.</summary>
     private static string NuGetConfig(string packages) => $"""
         <?xml version="1.0" encoding="utf-8"?>
         <configuration>
@@ -94,6 +95,11 @@ public static class GodotGames
             <add key="Godot" value="{Passenger.Text.XmlEntities.Encode(packages, '"')}" />
             <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
           </packageSources>
+          <!-- Each package comes only from the feeds whose patterns below match it, so a feed added above gives nothing
+               until it is mapped too. To add one of your own:
+                 under packageSources:       <add key="MyFeed" value="https://example.com/nuget/v3/index.json" />
+                 under packageSourceMapping: <packageSource key="MyFeed"><package pattern="MyCompany.*" /></packageSource>
+               The most specific pattern wins, so MyCompany.* comes from MyFeed while * still takes nuget.org. -->
           <packageSourceMapping>
             <packageSource key="Godot">
               <package pattern="Godot*" />

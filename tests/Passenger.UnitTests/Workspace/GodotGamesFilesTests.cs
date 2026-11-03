@@ -24,6 +24,22 @@ public class GodotGamesFilesTests
         Assert.Contains("<add key=\"Godot\" value=\"/Godot/nupkgs\" />", files["nuget.config"], StringComparison.Ordinal);
     }
 
+    /// <summary>The C# game's nuget.config reads as XML with the same feeds and mapping, a comment saying how a feed of the
+    /// person's is added and mapped, as a mapping gives each package only from the feeds it names.</summary>
+    [Fact]
+    public void A_csharp_games_nuget_config_says_in_a_comment_how_a_feed_of_ones_own_is_added_and_mapped()
+    {
+        string config = GodotGames.Files("Spinner", csharp: true, "4.7.2", "net10.0", "/Godot/nupkgs").Single(f => f.Path == "nuget.config").Text;
+        System.Xml.Linq.XElement root = System.Xml.Linq.XDocument.Parse(config).Root!;
+        System.Xml.Linq.XComment said = Assert.Single(root.Nodes().OfType<System.Xml.Linq.XComment>());
+        Assert.Contains("under packageSources:       <add key=\"MyFeed\"", said.Value, StringComparison.Ordinal);
+        Assert.Contains("under packageSourceMapping: <packageSource key=\"MyFeed\"><package pattern=\"MyCompany.*\" /></packageSource>", said.Value, StringComparison.Ordinal);
+        Assert.Equal([("Godot", "/Godot/nupkgs"), ("nuget.org", "https://api.nuget.org/v3/index.json")],
+            root.Element("packageSources")!.Elements("add").Select(a => ((string)a.Attribute("key")!, (string)a.Attribute("value")!)));
+        Assert.Equal([("Godot", "Godot*"), ("nuget.org", "*")],
+            root.Element("packageSourceMapping")!.Elements("packageSource").SelectMany(s => s.Elements("package").Select(p => ((string)s.Attribute("key")!, (string)p.Attribute("pattern")!))));
+    }
+
     [Fact]
     public void A_gdscript_game_has_no_project_and_its_scene_runs_its_gdscript()
     {

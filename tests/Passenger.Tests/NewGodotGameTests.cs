@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Run;
@@ -9,9 +10,10 @@ namespace Passenger.Tests;
 
 /// <summary>New Solution's Godot 4 Game, Passenger's own, beside dotnet new's templates: in C# it makes the game and its
 /// solution on the Godot found's Godot.NET.Sdk, restored from that Godot's own packages, opens it built and offers Passenger
-/// as Godot's script editor, and Run starts the game, whose script prints; in GDScript it makes the game's folder alone,
-/// which opens and runs the same. With no Godot found it is refused saying how to get one. Godot runs headless with the
-/// run's user folders; without a Godot 4 .NET build, the tests that run it skip saying why.</summary>
+/// as Godot's script editor, and Run starts the game, whose script prints; by default its solution sits beside
+/// project.godot, where Godot's own editor builds it; in GDScript it makes the game's folder alone, which opens and runs the
+/// same. With no Godot found it is refused saying how to get one. Godot runs headless with the run's user folders; without
+/// a Godot 4 .NET build, the tests that run it skip saying why.</summary>
 public sealed class NewGodotGameTests : IDisposable
 {
     private readonly string settings = TestFolders.Create("settings-");
@@ -60,6 +62,50 @@ public sealed class NewGodotGameTests : IDisposable
         }
         finally
         {
+            End(window);
+        }
+    }
+
+    /// <summary>The Godot 4 Game made in C# with the dialog's defaults keeps its solution beside project.godot and the
+    /// project, as Godot's editor lays a game out, and Godot's own editor, headless with the test's user folders, builds it
+    /// there into its .godot folder.</summary>
+    [AvaloniaFact]
+    public void A_csharp_godot_games_solution_sits_beside_project_godot_by_default_where_godots_editor_builds_it()
+    {
+        SkipWithoutGodot();
+        MainWindow window = Started();
+        Process? editor = null;
+        try
+        {
+            NewProjectDialog dialog = Chosen(window, "C#");
+            Assert.True(dialog.SameDirectory, "A C# Godot game was to put its solution beside project.godot unless told otherwise");
+            Created(dialog);
+            string folder = PathNames.Canonical(Path.Combine(place, "Spinner"));
+            string solution = Path.Combine(folder, $"Spinner.{dialog.SolutionFormat}");
+            Ui.WaitFor(() => window.WorkspaceModel?.OpenedAs == solution, () => $"the new game's solution to open beside project.godot ({window.Status})", TimeSpan.FromMinutes(2));
+            Assert.True(File.Exists(Path.Combine(folder, GodotProject.FileName)) && File.Exists(Path.Combine(folder, "Spinner.csproj")),
+                $"project.godot and the project were to sit beside the solution: {string.Join(", ", Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName))}");
+            Ui.WaitFor(() => !window.IsBuilding && window.Status?.Contains("Make Passenger Godot's Script Editor…", StringComparison.Ordinal) == true,
+                () => $"Passenger's own build of the new game to end ({window.Status})", TimeSpan.FromMinutes(4));
+
+            string log = place + "-editor.log";
+            ProcessStartInfo start = ChildProcesses.Command(godot!.Executable, [GodotExecutables.Headless, "--path", folder, "--build-solutions", "--quit", "--log-file", log], folder);
+            foreach ((string name, string value) in homes)
+            {
+                start.Environment[name] = value;
+            }
+            editor = ChildProcesses.Start(start);
+            Ui.Await(editor.WaitForExitAsync(), "Godot's headless editor to build the game and quit", TimeSpan.FromMinutes(5));
+            string said = File.Exists(log) ? string.Join('\n', File.ReadAllLines(log).TakeLast(30)) : "no log";
+            Assert.True(editor.ExitCode == 0, $"Godot's editor did not build the game where its solution sits ({ExitCodes.Said(editor.ExitCode)}):\n{said}");
+            Assert.True(File.Exists(Path.Combine(folder, ".godot", "mono", "temp", "bin", "Debug", "Spinner.dll")), $"Godot's editor built no Spinner.dll:\n{said}");
+        }
+        finally
+        {
+            if (editor is not null && DotnetProcesses.Runs(editor.Id))
+            {
+                ChildProcesses.Kill(editor);
+            }
             End(window);
         }
     }

@@ -141,6 +141,11 @@ public sealed class NewProjectDialog : IdeWindow
     /// <summary>Set while the dialog fills its lists, so their choice is not taken for the person's.</summary>
     private bool setting;
 
+    /// <summary>Whether the person has ticked or cleared "same directory" (or a caller set it), which a template chosen then
+    /// keeps; until then a Godot game in C# ticks it, as Godot's editor keeps its solution beside project.godot.</summary>
+    private bool sameChosen;
+    private bool sameSetting;
+
     /// <param name="folder">The directory offered: where a solution goes, or the project's folder in the solution.</param>
     /// <param name="target">The solution a project is added to; null for New Solution.</param>
     /// <param name="containers">Why no container can be set up here, asked off the window's thread; null for no question.</param>
@@ -200,7 +205,11 @@ public sealed class NewProjectDialog : IdeWindow
         solutionName.TextChanged += (_, _) => NameChanged(solution: true);
         projectName.TextChanged += (_, _) => NameChanged(solution: false);
         directory.TextChanged += (_, _) => ShowWhere();
-        sameDirectory.IsCheckedChanged += (_, _) => ShowWhere();
+        sameDirectory.IsCheckedChanged += (_, _) =>
+        {
+            sameChosen |= !sameSetting;
+            ShowWhere();
+        };
         format.SelectionChanged += (_, _) => ShowWhere();
         framework.SelectionChanged += (_, _) => Retarget();
         language.SelectionChanged += (_, _) => Retarget();
@@ -1221,6 +1230,12 @@ public sealed class NewProjectDialog : IdeWindow
         }
         lastChosen = chosen;
         typeOf[chosen.Family] = KnownBy(chosen);
+        if (!sameChosen)
+        {
+            sameSetting = true;
+            sameDirectory.IsChecked = chosen.GodotGame;
+            sameSetting = false;
+        }
         setting = true;
         string? languageWas = Language;
         language.ItemsSource = chosen.Languages;
