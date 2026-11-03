@@ -35,7 +35,9 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
 
     /// <summary>Under Debug, a save of the window's XAML puts the edits into the window as it runs: its greeting's new text,
     /// Delete's new colour and a button added, in the Live Visual Tree under the same window; then an element the XAML names
-    /// that Avalonia has not is refused, said with its line in Problems' Hot Reload tab, and the window keeps what it had.</summary>
+    /// that Avalonia has not is refused, said with its line in Problems' Hot Reload tab, and the window keeps what it had; and
+    /// a property Delete has not, refused in its tag, shows among Delete's failures in the Live Visual Tree and not the
+    /// greeting's.</summary>
     [AvaloniaFact]
     public void A_debugged_apps_saved_xaml_shows_in_its_live_tree_and_an_edit_its_compiler_refuses_is_said_at_its_line()
     {
@@ -64,6 +66,19 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
             Refused(window, refused, window.BottomPanel.Problems.HotReloadProblems);
             Shows(app, shell);
             Assert.Contains("TextBlok", window.Status ?? string.Empty, StringComparison.Ordinal);
+
+            // A refused edit in a control's own tag shows among that control's failures in the Live Visual Tree.
+            Typing.Replace(window, "<Button x:Name=\"Delete\"", "<Button x:Name=\"Delete\" Fooo=\"1\"");
+            before = window.Debugger.LastApplied;
+            Ui.Run(window, AppActions.SaveAll);
+            HotReloadOutcome unknown = Said(window, before);
+            LiveTreeView tree = window.LiveTree;
+            tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Delete");
+            Ui.WaitFor(() => tree.Details?.Name == "Delete" && tree.FailuresShown.Any(f => f.StartsWith("XAML Hot Reload error: ", StringComparison.Ordinal) && f.Contains("Fooo", StringComparison.Ordinal)),
+                () => $"Delete's details to show the edit refused in its tag, where they show {string.Join("; ", tree.FailuresShown)} ({unknown.Said})");
+            tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Greeting");
+            Ui.WaitFor(() => tree.Details?.Name == "Greeting", "the greeting's details");
+            Assert.True(tree.FailuresShown.Count == 0, $"The greeting, whose tag has no refused edit, shows {string.Join("; ", tree.FailuresShown)}");
         }
         finally
         {

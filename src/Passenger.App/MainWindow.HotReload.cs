@@ -173,6 +173,7 @@ public partial class MainWindow
             outcome = outcome with { Said = $"{taker.Name}: {outcome.Said}" };
         }
         Bottom.Problems.ShowHotReload(outcome.Said, outcome.Problems);
+        liveTree!.ShowHotReload(outcome.Problems);
         if (outcome.Problems.Any(p => p.Severity == Run.ProblemSeverity.Error))
         {
             Dock.Show(ToolWindowIds.Problems);
@@ -384,6 +385,7 @@ public partial class MainWindow
             if (session == next && next.Debug == debugger)
             {
                 Bottom.Problems.ShowHotReload(outcome.Said, outcome.Problems);
+                liveTree!.ShowHotReload(outcome.Problems);
                 if (outcome.Problems.Any(p => p.Severity == Run.ProblemSeverity.Error))
                 {
                     Dock.Show(ToolWindowIds.Problems);

@@ -237,7 +237,8 @@ public sealed partial class LiveTreeController
 
     /// <summary>The binding failures of a control's own XAML element, as the app last told them: those failed where its
     /// element is written (the editor's line, as its details have it), each saying what it binds, as the Debug console
-    /// says a failure it stops on (<see cref="BindingErrors.Stopped"/>).</summary>
+    /// says a failure it stops on (<see cref="BindingErrors.Stopped"/>); then what the last XAML Hot Reload said in its
+    /// start tag's lines.</summary>
     private IReadOnlyList<string> FailuresOf(ElementDetails? shown)
     {
         if (shown?.Source is not { Line: > 0 } source || app is not LiveApp live)
@@ -245,8 +246,40 @@ public sealed partial class LiveTreeController
             return [];
         }
         Func<string, TextSnapshot?> texts = CSharp.ServerPlaces.Texts(parts.Editors);
-        return [.. live.Bindings.Where(failure => failure.Place is { } place && Path.GetFileName(place.File) == Path.GetFileName(source.File)
+        List<string> failed = [.. live.Bindings.Where(failure => failure.Place is { } place && Path.GetFileName(place.File) == Path.GetFileName(source.File)
             && AppPlaces.InEditor(place, texts) is { } at && at.Line == source.Line && PathNames.Same(at.File, source.File)).Select(BindingErrors.Stopped)];
+        if (reloadProblems.Count > 0 && TagLines(source, texts) is (int first, int last))
+        {
+            failed.AddRange(reloadProblems.Where(p => PathNames.Same(p.Path!, source.File) && p.Position.Line >= first && p.Position.Line <= last)
+                .Select(p => $"XAML Hot Reload {(p.Severity == Run.ProblemSeverity.Error ? "error" : "warning")}: {p.Message}"));
+        }
+        return failed;
+    }
+
+    /// <summary>What the last XAML Hot Reload said of the app's XAML, each problem at the editor's line.</summary>
+    private IReadOnlyList<Run.Problem> reloadProblems = [];
+
+    /// <summary>What the last Hot Reload came to, which the chosen control shows among its own failures where a problem of
+    /// its XAML is in its start tag.</summary>
+    public void ShowHotReload(IReadOnlyList<Run.Problem> problems)
+    {
+        UiThread.Check();
+        reloadProblems = [.. problems.Where(p => p.Path is { } path && CSharp.ServerPlaces.CountedAsXml(path))];
+        view?.ShowFailures(FailuresOf(details.Details));
+    }
+
+    /// <summary>The lines (from zero) a control's element's start tag spans in its file's text as the editor has it.</summary>
+    private static (int First, int Last)? TagLines(SourcePlace source, Func<string, TextSnapshot?> texts)
+    {
+        if (texts(PathNames.Canonical(source.File)) is not { } text || source.Line > text.LineCount)
+        {
+            return null;
+        }
+        int offset = Math.Min(text.GetLineStart(source.Line - 1) + Math.Max(0, source.Column - 1), text.Length);
+        Passenger.Xaml.Syntax.XmlTree tree = Passenger.Xaml.Syntax.XmlTree.Parse(text.ToString());
+        return Passenger.Xaml.XamlFile.ObjectAt(tree, offset) is { } element
+            ? (text.GetLineFromOffset(element.Start), text.GetLineFromOffset(Math.Max(element.Start, element.StartTagEnd - 1)))
+            : null;
     }
 
     /// <summary>Select Element shown pressed while the app waits for a control to be pointed at.</summary>
