@@ -476,7 +476,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   service's name always after `--`. Compose's own model is the plan, Passenger's override goes to the state, and the
   tools downloaded from the release are SHA256-checked. Podman works both ways it's set up (`EngineState.IsPodman`).
 - **Aspire.** `AspireController` (the IDE execution protocol on loopback, bearer tokens checked first),
-  `AspireInteractions` (gRPC, its C# checked in), `AspireClient` (the CLI, for an AppHost Passenger didn't start).
+  `AspireInteractions` (gRPC, its C# checked in), `AspireClient` (the CLI, for an AppHost Passenger didn't start); a
+  resource's relationships both ways are `AspireDetailsPane`'s (chosen by `AspireModel.ChooseNamed`), its program
+  `AspireController.ProgramOf` (`executable.pid`), its metrics read from its runtime by the Profiler's `LiveMetrics` and
+  charted by `Telemetry/MetricsPane` on the Stats tab only while shown. MetricsEventSource's CollectionStart and Stop
+  reach TraceEvent as `Collection/Start` and `Collection/Stop`, and a histogram's count is the interval's.
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
   environment only; Endpoints sends nothing but on Test or Send (an app's OpenAPI document, `OpenApiDocument` and
   `OpenApiSchemas`, Passenger's own reader, comes from a loopback app the folder runs or the build alone,
