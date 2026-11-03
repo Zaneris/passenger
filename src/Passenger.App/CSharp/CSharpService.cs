@@ -988,7 +988,18 @@ public sealed partial class CSharpService : IAsyncDisposable
             });
             EventHandler onDiagnostics = (_, _) => UiThread.Post(() =>
             {
-                Each(document => document.RefreshDiagnostics());
+                foreach ((OpenDocument open, CSharpDocument features) in documents)
+                {
+                    // A file no tab shows (one an agent's calls keep open) is pulled once shown or asked, not at each refresh.
+                    if (Unseen(open))
+                    {
+                        features.Stale = true;
+                    }
+                    else
+                    {
+                        features.RefreshDiagnostics();
+                    }
+                }
                 Generated.Changed();
             });
             // Projects loaded (the file shown's first, then the rest, or one loaded again): the files' projects may be others.
@@ -1588,6 +1599,19 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <summary>The configuration of the project a C# file is of (the session's <see cref="ProjectSession.ConfigurationOf(string)"/>),
     /// against which its reads of keys nothing gives are warned of; none without a session, which warns of none.</summary>
     public Func<string, Workspace.ConfigurationProject?>? ConfigurationOf { get; init; }
+
+    /// <summary>Whether no tab shows an open file, which the server's refresh leaves to be pulled once shown or asked.</summary>
+    public Func<OpenDocument, bool> Unseen { get; init; } = _ => false;
+
+    /// <summary>A file shown: one a refresh passed over while unseen is pulled now.</summary>
+    public void Shown(OpenDocument? document)
+    {
+        UiThread.Check();
+        if (document is not null && documents.TryGetValue(document, out CSharpDocument? features) && features.Stale)
+        {
+            features.RefreshDiagnostics();
+        }
+    }
 
     /// <summary>The open files' texts as the editor has them now, for work off the UI thread (<see cref="Editors.EditorArea.Texts"/>);
     /// the disk's alone without a session.</summary>

@@ -372,9 +372,19 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
     }
 
     /// <summary>The connection ended: the window stops counting it.</summary>
+    /// <summary>Something of the agent's session that ends as it goes (the files its calls keep open), on the UI thread.</summary>
+    internal void WhenLeft(Action ending) => leaving.Add(ending);
+
+    private readonly List<Action> leaving = [];
+
     internal void Left(MainWindow window)
     {
         UiThread.Check();
+        foreach (Action ending in leaving)
+        {
+            ending();
+        }
+        leaving.Clear();
         if (Admitted)
         {
             Admitted = false;

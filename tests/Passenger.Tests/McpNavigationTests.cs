@@ -180,11 +180,12 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("Suppress CS0219 → in Source", listed, StringComparison.Ordinal);
     }
 
-    /// <summary>A call holds its files open only while it runs and a moment after: once reads of many files pause, the IDE
-    /// has open, and the language server was last told open, only the file the agent opened in the editor and the one its
-    /// edit could not save (a read-only file), so a long session holds no more than it is working on.</summary>
+    /// <summary>A call holds its files open while it runs, then keeps the last few the agent asked about: after reads of
+    /// many files the IDE lists open only the file the agent opened in the editor and the one its edit could not save (a
+    /// read-only file), and the language server holds those and at most <see cref="PassengerTools.FilesKept"/> more, the
+    /// most recently asked, so a long session holds no more than it is working on.</summary>
     [Fact]
-    public async Task An_agents_calls_on_many_files_leave_open_only_the_file_it_opened_and_the_one_its_edit_left_unsaved()
+    public async Task An_agents_calls_on_many_files_leave_open_only_the_file_it_opened_the_one_its_edit_left_unsaved_and_the_last_few_asked()
     {
         await TakeFolderAsync();
         string[] parts = [.. Enumerable.Range(1, 12).Select(i => $"Part{i:00}.cs")];
@@ -212,18 +213,53 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         string edited = Text(await Call(client, McpTools.Edit, new() { ["path"] = "Locked.cs", ["oldText"] = "=> value;", ["newText"] = "=> value + 1;" }));
         Assert.Contains("not saved: Locked.cs is read-only", edited, StringComparison.Ordinal);
 
-        // The last call's files are let go once calls pause.
-        string[] open = [];
-        Assert.True(await Waiting.UntilAsync(async () =>
-            {
-                open = [.. (await Call(client, McpTools.Workspace)).GetProperty("openFiles").EnumerateArray().Select(f => f.GetString()!)];
-                return open.SequenceEqual(["Program.cs", "Locked.cs (unsaved)"]);
-            }, TimeSpan.FromSeconds(10).Scaled(), Cancel),
-            $"The IDE has open {string.Join(", ", open)}, where the agent left open only Program.cs and the unsaved Locked.cs");
-        string[] kept = ["Locked.cs", "Program.cs"];
+        string[] open = [.. (await Call(client, McpTools.Workspace)).GetProperty("openFiles").EnumerateArray().Select(f => f.GetString()!)];
+        Assert.True(open.SequenceEqual(["Program.cs", "Locked.cs (unsaved)"]),
+            $"The IDE lists open {string.Join(", ", open)}, where the agent left open only Program.cs and the unsaved Locked.cs");
         string trace = Path.Combine(OwnState, "logs", "lsp.log");
-        Assert.True(await Waiting.UntilAsync(() => ServerOpen(trace).SequenceEqual(kept), TimeSpan.FromSeconds(10).Scaled(), Cancel),
-            $"The language server was last told open {string.Join(", ", ServerOpen(trace))}, where the agent left open only {string.Join(", ", kept)}");
+        string[] server = [];
+        Assert.True(await Waiting.UntilAsync(() =>
+            {
+                server = ServerOpen(trace);
+                return server.Contains("Program.cs") && server.Contains("Locked.cs") && server.Contains("Helper.cs") && server.Length <= 2 + PassengerTools.FilesKept
+                    && !server.Contains(parts[0]);
+            }, TimeSpan.FromSeconds(10).Scaled(), Cancel),
+            $"The language server was last told open {string.Join(", ", server)}, where the agent left open Program.cs, Locked.cs and at most {PassengerTools.FilesKept} of the files it asked about last, Helper.cs among them");
+    }
+
+    /// <summary>A file an agent asks diagnostics of stays open in the language server after the call, so a second ask of it,
+    /// unchanged, answers what the first did from the server's last pull, sending none (the protocol trace).</summary>
+    [Fact]
+    public async Task A_second_diagnostics_of_an_unchanged_file_answers_from_the_servers_last_pull_sending_none()
+    {
+        await TakeFolderAsync();
+        await using McpClient client = await Start(["--mcp", Folder]);
+        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["traceProtocols"] = true } });
+        string first = Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" }));
+        Assert.Contains("unused", first, StringComparison.Ordinal);
+        string trace = Path.Combine(OwnState, "logs", "lsp.log");
+        // The window's own pulls of the file just opened, and one a refresh of the server's as it read the file brings, come first.
+        await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" });
+        int pulls = -1;
+        for (int round = 0; round < 20 && Pulls(trace, "Helper.cs") != pulls; round++)
+        {
+            pulls = Pulls(trace, "Helper.cs");
+            Waiting.For(TimeSpan.FromSeconds(1), "the trace of the first calls' pulls to settle");
+        }
+        string second = Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" }));
+        Assert.Equal(first, second);
+        Assert.True(Pulls(trace, "Helper.cs") == pulls,
+            $"The second ask of Helper.cs, unchanged, sent the language server {Pulls(trace, "Helper.cs") - pulls} pulls of its diagnostics, where its last pull answered");
+        Assert.Contains("Helper.cs", ServerOpen(trace));
+    }
+
+    /// <summary>How many pulls of a file's diagnostics lsp.log's trace says the language server was sent.</summary>
+    private static int Pulls(string trace, string file)
+    {
+        using FileStream read = new(trace, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using StreamReader reader = new(read);
+        return reader.ReadToEnd().Split('\n').Count(l => l.Contains("] --> ", StringComparison.Ordinal)
+            && l.Contains($"\"method\":\"{Passenger.Lsp.LspMethods.DocumentDiagnostic}\"", StringComparison.Ordinal) && l.Contains("/" + file + "\"", StringComparison.Ordinal));
     }
 
     /// <summary>The names of the files the language server was told open and not since closed, by lsp.log's trace of what it

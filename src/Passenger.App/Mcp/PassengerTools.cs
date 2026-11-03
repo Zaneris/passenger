@@ -239,7 +239,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }), .. missing];
         }
         (OpenDocument document, LspDocument lsp) = await Code(path, cancel);
-        (IReadOnlyList<Diagnostic> found, _) = await lsp.DiagnosticsAsync(cancel);
+        (IReadOnlyList<Diagnostic> found, _) = await lsp.LastDiagnosticsAsync(Session.CSharp?.SolutionWide == true, cancel);
         // Passenger's own markers too: a service's missing references, unset AppHost parameters and configuration keys.
         if (Session.CSharp?.For(document) is { } csharp)
         {
@@ -2144,7 +2144,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 // Ended while it waited its turn (its agent shut out as the window left the folder): it does nothing in the next.
                 cancel.ThrowIfCancellationRequested();
                 // A tool run inside another's call reads its files into that call's, let go as that one ends.
-                CallFiles? own = Files.Value is null ? new CallFiles(Editors, Beside) : null;
+                CallFiles? own = Files.Value is null ? new CallFiles(Editors, Beside, kept) : null;
                 if (Beside)
                 {
                     AgentAsks.Call();
@@ -2532,12 +2532,29 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         ? (Resolve(path), at - 1)
         : throw new InvalidOperationException("Name a path and a line for a line breakpoint, or an exception type for an exception breakpoint");
 
+    /// <summary>A C# file no tab shows, whose marks the server's refresh or its opening left unpulled, pulled now, so the
+    /// actions asked with them stand on the text as it is; a pull a later one overtook leaves the later one's.</summary>
+    private static async Task MarkedNowAsync(CSharpDocument? csharp)
+    {
+        if (csharp is { Stale: true })
+        {
+            try
+            {
+                await csharp.PullNowAsync(CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+    }
+
     /// <summary>The server's actions at a place or over a selection, asked with the diagnostics on the place's line.</summary>
     private async Task<IReadOnlyList<CodeAction>> Actions(ServerServed served, int line, int column, int? endLine, int? endColumn)
     {
         OpenDocument document = served.Document;
         int offset = Offset(document, line, column);
         int end = endLine is { } last ? Offset(document, last, endColumn ?? 1) : offset;
+        await MarkedNowAsync(served.Web is null ? Session.CSharp?.For(document) : null);
         IReadOnlyList<Diagnostic> marked = served.Web?.Diagnostics ?? Session.CSharp?.For(document)?.Diagnostics ?? [];
         int at = served.Lsp.PositionOf(offset).Line;
         IReadOnlyList<Diagnostic> here = [.. marked.Where(d => d.Range.Start.Line <= at && at <= d.Range.End.Line)];
@@ -2658,10 +2675,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     private static readonly AsyncLocal<CallFiles?> Files = new();
 
     /// <summary>The files one call read or changed, held open while it runs so no other call's end closes them under it, and
-    /// let go after it (<see cref="Lingering"/>): one with no tab closes then, unless the call left it unsaved, or changed it
-    /// in a person's window (<paramref name="keepChanged"/>), where its Undo is the person's, which keeps it in a tab. So an
-    /// agent's session never holds open every file it read, nor a person's window a tab they never opened.</summary>
-    private sealed class CallFiles(Passenger.App.Editors.EditorArea editors, bool keepChanged)
+    /// kept a while after it (<see cref="KeptFiles"/>): one with no tab closes then, unless the call left it unsaved, or
+    /// changed it in a person's window (<paramref name="keepChanged"/>), where its Undo is the person's, which keeps it in a
+    /// tab. So an agent's session never holds open every file it read, nor a person's window a tab they never opened.</summary>
+    private sealed class CallFiles(Passenger.App.Editors.EditorArea editors, bool keepChanged, KeptFiles kept)
     {
         private readonly Dictionary<OpenDocument, (IDisposable Hold, int Version)> held = [];
 
@@ -2689,53 +2706,107 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         public void LetGo()
         {
             Ended = true;
-            List<IDisposable> holds = [];
+            List<(OpenDocument, IDisposable)> holds = [];
             foreach ((OpenDocument document, (IDisposable hold, int version)) in held)
             {
-                bool kept = document.IsModified || (keepChanged && document.Text.Version != version);
-                if (kept && editors.Documents.Contains(document) && !editors.HasTab(document))
+                bool shown = document.IsModified || (keepChanged && document.Text.Version != version);
+                if (shown && editors.Documents.Contains(document) && !editors.HasTab(document))
                 {
                     editors.Activate(document);
                 }
-                holds.Add(hold);
+                holds.Add((document, hold));
             }
             held.Clear();
-            Lingering.Of(editors).Take(holds);
+            kept.Take(holds);
         }
     }
 
-    /// <summary>The files of the call that ended last, held a moment more: an agent's next call is often on the same file,
-    /// which then keeps what its servers worked out as it opened (a linter's findings, a compose file's names). Let go as
-    /// the next call ends, or once the window's calls pause for <see cref="Pause"/>.</summary>
-    private sealed class Lingering
+    /// <summary>How many files of an agent's calls stay open after them, so its next ask of one finds what its servers
+    /// worked out as it opened (the C# server's diagnostics, a linter's findings, a compose file's names).</summary>
+    public const int FilesKept = 4;
+
+    private readonly KeptFiles kept = KeptFiles.For(connection);
+
+    /// <summary>The files an agent's session asked about last, held open after their calls: at most <see cref="FilesKept"/>,
+    /// the least recently asked let go first, every one once its calls pause for <see cref="Idle"/> or the agent goes. Its
+    /// holds count beside every other's, so letting one go never closes a file a person has open in a tab.</summary>
+    private sealed class KeptFiles
     {
-        private static readonly TimeSpan Pause = TimeSpan.FromSeconds(2);
+        private static readonly TimeSpan Idle = TimeSpan.FromMinutes(2);
 
-        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Passenger.App.Editors.EditorArea, Lingering> Windows = new();
+        private readonly List<(OpenDocument Document, IDisposable Hold)> held = [];
+        private CancellationTokenSource? later;
 
-        private readonly Debounce later;
-        private List<IDisposable> holds = [];
-
-        private Lingering() => later = new Debounce(Pause, () =>
+        /// <summary>Lets every file go once no call has come for <see cref="Idle"/>.</summary>
+        private void LetGoLater()
         {
-            Take([]);
-            return Task.CompletedTask;
-        });
+            later?.Cancel();
+            CancellationTokenSource waiting = later = new();
+            // Unheld: what settles on an agent's call waits for what the call did, never for files kept for its next one.
+            IdeErrors.Observe(BackgroundWork.Unheld(async () =>
+            {
+                try
+                {
+                    await Task.Delay(Idle, waiting.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                UiThread.Post(() =>
+                {
+                    if (later == waiting)
+                    {
+                        LetGo();
+                    }
+                });
+            }));
+        }
 
-        public static Lingering Of(Passenger.App.Editors.EditorArea editors) => Windows.GetValue(editors, _ => new Lingering());
-
-        /// <summary>Holds the files of the call that ended, then lets go of those of the one before, so a file both held stays open.</summary>
-        public void Take(List<IDisposable> next)
+        /// <summary>The kept files of an agent's session, let go when its agent goes.</summary>
+        public static KeptFiles For(AgentConnection? connection)
         {
-            List<IDisposable> before = holds;
-            holds = next;
-            foreach (IDisposable hold in before)
+            KeptFiles files = new();
+            connection?.WhenLeft(files.LetGo);
+            return files;
+        }
+
+        /// <summary>The files of a call that ended, kept as the most recently asked, their earlier holds let go after.</summary>
+        public void Take(List<(OpenDocument Document, IDisposable Hold)> files)
+        {
+            foreach ((OpenDocument document, IDisposable hold) in files)
+            {
+                int at = held.FindIndex(k => k.Document == document);
+                held.Add((document, hold));
+                if (at >= 0)
+                {
+                    held[at].Hold.Dispose();
+                    held.RemoveAt(at);
+                }
+            }
+            while (held.Count > FilesKept)
+            {
+                held[0].Hold.Dispose();
+                held.RemoveAt(0);
+            }
+            if (held.Count > 0)
+            {
+                LetGoLater();
+            }
+        }
+
+        /// <summary>Whether a file is kept, so open for the agent's next call alone where no tab shows it.</summary>
+        public bool Keeps(OpenDocument document) => held.Any(k => k.Document == document);
+
+        public void LetGo()
+        {
+            List<(OpenDocument Document, IDisposable Hold)> going = [.. held];
+            held.Clear();
+            later?.Cancel();
+            later = null;
+            foreach ((_, IDisposable hold) in going)
             {
                 hold.Dispose();
-            }
-            if (next.Count > 0)
-            {
-                later.Restart();
             }
         }
     }
@@ -2824,7 +2895,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             [.. session.Configurations.All.Select(c => c.Name)],
             session.Configurations.Chosen?.Name,
             session.CSharp is not { } csharp ? "none" : csharp.IsReady ? "ready" : csharp.State,
-            [.. Editors.Documents.Select(d => Relative(d.Path) + (d.IsModified ? " (unsaved)" : ""))],
+            [.. Editors.Documents.Where(d => d.IsModified || Editors.HasTab(d) || !kept.Keeps(d)).Select(d => Relative(d.Path) + (d.IsModified ? " (unsaved)" : ""))],
             active is null ? null : $"{Relative(active.Path)}:{caret!.Value.Line + 1}:{caret.Value.Column + 1}",
             Session.Debug.Session?.State.ToString().ToLowerInvariant() ?? "not debugging")
         {

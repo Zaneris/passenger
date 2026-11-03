@@ -48,6 +48,23 @@ public sealed class LanguageServer : IAsyncDisposable
     private readonly List<Hold> holding = [];
     private readonly Timer watch;
     private long requests;
+    private long changes;
+
+    /// <summary>A count of what may have changed the server's answers since it started: each notification it was sent (an
+    /// open, a change or close of a document, files changed on disk, options), each of Passenger's own project
+    /// requests, and each time it said its projects loaded or its diagnostics changed. Roslyn's server watches nothing
+    /// itself, so an answer pulled at one count stands while the count does.</summary>
+    public long Changes => Interlocked.Read(ref changes);
+
+    /// <summary>Counts one more of what may change the server's answers (<see cref="Changes"/>): a method of the protocol's
+    /// own ($/cancelRequest, $/progress) is none.</summary>
+    private void Changing(string method)
+    {
+        if (!method.StartsWith("$/", StringComparison.Ordinal))
+        {
+            Interlocked.Increment(ref changes);
+        }
+    }
     private long partialResults;
     private long checkedAt;
     private int checking;
@@ -711,6 +728,10 @@ public sealed class LanguageServer : IAsyncDisposable
     public async Task<T?> RequestAsync<T>(string method, object parameters, CancellationToken cancel = default)
     {
         long id = Interlocked.Increment(ref requests);
+        if (method.StartsWith("passenger/", StringComparison.Ordinal))
+        {
+            Changing(method);
+        }
         lock (waiting)
         {
             waiting[id] = (method, Stopwatch.GetTimestamp());
@@ -733,6 +754,7 @@ public sealed class LanguageServer : IAsyncDisposable
     /// when the server can no longer take it.</summary>
     public async Task NotifyAsync(string method, object parameters)
     {
+        Changing(method);
         try
         {
             await rpc.NotifyWithParameterObjectAsync(method, parameters);
@@ -897,7 +919,11 @@ public sealed class LanguageServer : IAsyncDisposable
 
     /// <summary>Sends a notification nothing waits on (a document's change, its closing). One the server can no longer
     /// take, having ended or been ended, is dropped: a server started again is sent the open documents afresh.</summary>
-    public void Notify(string method, object parameters) => UnawaitedWork.Observe(NotifyOrDropAsync(method, parameters));
+    public void Notify(string method, object parameters)
+    {
+        Changing(method);
+        UnawaitedWork.Observe(NotifyOrDropAsync(method, parameters));
+    }
 
     private async Task NotifyOrDropAsync(string method, object parameters)
     {
@@ -1572,6 +1598,7 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.ProjectInitializationComplete)]
         public void ProjectsLoaded(JsonElement? message = null)
         {
+            Owner?.Changing(LspMethods.ProjectInitializationComplete);
             Owner?.WatchedFiles.Loaded();
             Owner?.ProjectsLoaded?.Invoke(Owner, EventArgs.Empty);
         }
@@ -1587,6 +1614,7 @@ public sealed class LanguageServer : IAsyncDisposable
                 return new Roslyn.Extension.ProjectInfoResult(null, "Passenger has no design-time builds to give");
             }
             DateTime at = DateTime.UtcNow;
+            owner.Changing(Roslyn.Extension.ProjectMethods.Info);
             FedProject fed = await feed.InfoAsync(asked.Path, CancellationToken.None).ConfigureAwait(false);
             owner.WatchedFiles.Tell(fed.Changed);
             owner.ProjectGiven?.Invoke(owner, new ProjectGiven(asked.Path, at));
@@ -1604,6 +1632,7 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.DiagnosticRefresh)]
         public object? RefreshDiagnostics(JsonElement? request = null)
         {
+            Owner?.Changing(LspMethods.DiagnosticRefresh);
             Owner?.DiagnosticsRefreshRequested?.Invoke(Owner, EventArgs.Empty);
             return null;
         }

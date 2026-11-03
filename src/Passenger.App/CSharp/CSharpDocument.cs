@@ -52,7 +52,15 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         }
         Lsp = session.Open(document.Path, document.Text);
         Colour(Lsp, session.Server);
-        Pull(TimeSpan.Zero);
+        // A file no tab shows (an agent's) is pulled as its tool asks, or once a tab shows it.
+        if (service.Unseen(document))
+        {
+            Stale = true;
+        }
+        else
+        {
+            Pull(TimeSpan.Zero);
+        }
         FindContexts();
         return true;
     }
@@ -183,7 +191,14 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
 
     /// <summary>The server's word that diagnostics may have changed: asked for again, Aspire's warnings with them, whose
     /// answer replaces those shown.</summary>
-    public void RefreshDiagnostics() => Pull(TimeSpan.Zero);
+    public void RefreshDiagnostics()
+    {
+        Stale = false;
+        Pull(TimeSpan.Zero);
+    }
+
+    /// <summary>Whether a refresh of the server's passed the file over while no tab showed it, so its marks wait for a pull.</summary>
+    public bool Stale { get; set; }
 
     public void Dispose()
     {
@@ -339,6 +354,7 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     /// agent's call that reads Passenger's own fixes, which stand on them.</summary>
     internal async Task PullNowAsync(CancellationToken cancel)
     {
+        Stale = false;
         if (Lsp is { } lsp && await ShowPulledAsync(lsp, cancel) is { } own)
         {
             await ShowProjectWideAsync(lsp, own, cancel);

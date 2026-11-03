@@ -1330,6 +1330,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 ComposeGaps = () => Web?.Checks.Gaps ?? [],
                 ConfigurationOf = ConfigurationOf,
                 Texts = setup.Editors.Texts,
+                Unseen = document => !setup.Editors.HasTab(document),
                 GodotOf = BuiltGodotOf,
                 GodotScenes = GodotScenes,
                 GodotIde = GodotIde,

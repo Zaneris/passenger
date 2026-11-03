@@ -398,6 +398,13 @@ public sealed class LspDocument : IDisposable
     private (long Asked, long Came) coloured;
     private (long Asked, long Came) diagnosed;
 
+    /// <summary>A pull of the document's diagnostics, with the text's version and the server's count of changes it was
+    /// asked at (<see cref="LastDiagnosticsAsync"/>).</summary>
+    private sealed record Pulled(IReadOnlyList<Diagnostic> Items, int Version, long Changes);
+
+    /// <summary>The last pull of each part (<see cref="DiagnosticPull"/>, by its value).</summary>
+    private readonly Pulled?[] pulled = new Pulled?[3];
+
     internal LspDocument(IDocumentHost session, string uri, TextDocument text, [IdentifierOf(typeof(LanguageIds))] string? languageId = null)
     {
         this.session = session;
@@ -871,6 +878,29 @@ public sealed class LspDocument : IDisposable
     public Task<(IReadOnlyList<Diagnostic> Diagnostics, int Version)> DiagnosticsAsync(CancellationToken cancel = default) =>
         DiagnosticsAsync(DiagnosticPull.All, cancel);
 
+    /// <summary>Every diagnostic the server has for the document as <see cref="DiagnosticsAsync(CancellationToken)"/> pulls
+    /// them, answered from the last such pull where neither the text nor anything the server was told has changed since
+    /// (<see cref="LanguageServer.Changes"/>): an agent's second ask of a file costs the server nothing. Pulled afresh
+    /// for a Razor file, another server's, and with solution-wide analysis on (<paramref name="wholeSolution"/>), whose
+    /// project-wide part comes later.</summary>
+    public async Task<(IReadOnlyList<Diagnostic> Diagnostics, int Version)> LastDiagnosticsAsync(bool wholeSolution, CancellationToken cancel = default)
+    {
+        int version = Text.Version;
+        long changes = Server.Changes;
+        bool Stands(Pulled? last) => last is not null && last.Version == version && last.Changes == changes;
+        if (!wholeSolution && Stands(pulled[(int)DiagnosticPull.All]))
+        {
+            return (pulled[(int)DiagnosticPull.All]!.Items, version);
+        }
+        // The window's own pull of the file's sources, then of its project-wide one, answers as one of every source would.
+        if (!wholeSolution && Stands(pulled[(int)DiagnosticPull.Own]) && (!PullsProjectWide || Stands(pulled[(int)DiagnosticPull.ProjectWide])))
+        {
+            IEnumerable<Diagnostic> wide = PullsProjectWide ? pulled[(int)DiagnosticPull.ProjectWide]!.Items : [];
+            return ([.. pulled[(int)DiagnosticPull.Own]!.Items.Concat(wide).DistinctBy(d => (d.Range, d.Message, d.Code))], version);
+        }
+        return await DiagnosticsAsync(DiagnosticPull.All, cancel);
+    }
+
     /// <summary>The document's diagnostics from the sources <paramref name="part"/> names, as
     /// <see cref="DiagnosticsAsync(CancellationToken)"/> pulls every one; the project-wide part of a server that pushes them,
     /// or has no such source, is empty.</summary>
@@ -884,6 +914,8 @@ public sealed class LspDocument : IDisposable
         TextSnapshot text = Text.Snapshot;
         TextDocumentIdentifier identifier = Identifier;
         long asked = System.Diagnostics.Stopwatch.GetTimestamp();
+        // Counted before the pull is sent, so a change sent while it runs leaves the answer stale.
+        long changes = Server.Changes;
         List<Diagnostic> all = [];
         IReadOnlyList<string?> sources = IsRazor || session is not RoslynSession ? (part == DiagnosticPull.ProjectWide ? [] : [null])
             : [.. Server.DiagnosticSources.Where(s => part == DiagnosticPull.All || (s == ProjectWideSource) == (part == DiagnosticPull.ProjectWide))];
@@ -904,6 +936,10 @@ public sealed class LspDocument : IDisposable
             .DistinctBy(d => (d.Range, d.Message, d.Code))
             .ToList();
         Came(ref diagnosed, asked);
+        if (session is RoslynSession && !IsRazor)
+        {
+            pulled[(int)part] = new Pulled(distinct, version, changes);
+        }
         return (distinct, version);
     }
 

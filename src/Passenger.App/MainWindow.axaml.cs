@@ -157,6 +157,7 @@ public partial class MainWindow : IdeWindow
         };
         Editors.ActiveChanged += (_, _) => UpdateStatus();
         Editors.ActiveChanged += (_, _) => session.CSharp?.FollowIndent(Editors.Active);
+        Editors.ActiveChanged += (_, _) => session.CSharp?.Shown(Editors.Active);
         // The indent widget and the line break follow a file's .editorconfig changed, or its save.
         Editors.Opened += (_, document) => document.PropertyChanged += (_, e) =>
         {
