@@ -275,7 +275,11 @@ Projects in `src/`; `find_symbol` finds the rest:
 - `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a
   binding's path is read once (`BindingPath`, `XamlFile.Walk`) for the check, Go to Declaration, uses and completion;
   the element at an offset is `XamlFile.ObjectAt`, and the XAML workspace (`MainWindow.XamlWorkspace.cs`) finds a
-  running app's control by its place through the inspector's `made` request (`LiveTreeController.ChooseMadeAsync`).
+  running app's control by its place through the inspector's `made` request (`LiveTreeController.ChooseMadeAsync`); what
+  an element sets itself is `XamlSetValues`, and Avalonia's preview places its elements through Passenger's inspector in
+  the designer (`PASSENGER_INSPECTOR_PREVIEW`, `DesignLoads`, the `placed` request), wrapping the internal
+  `IRuntimeXamlLoader` with a `DispatchProxy` so each load sets `CreateSourceInfo` and names its document by its path
+  (it would be `runtimexaml0`); an app the previewer loads needs `BuildAvaloniaApp()`, or HostApp aborts.
 - `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project; `JsonRpcPeer` for any other
   JSON-RPC peer, the Testing Platform's test hosts; both cancel through `ToldCancellation`), `LanguageIds` (C#'s and
   Razor's), Roslyn's server downloaded per platform (`RoslynServer.targets`), `LspDocument` (answers that grow with the
