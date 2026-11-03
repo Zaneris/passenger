@@ -36,12 +36,19 @@ public sealed partial class PassengerTools
     /// <summary>A Godot project's text scene or resource, which Passenger reads itself.</summary>
     private sealed record GodotServed(OpenDocument Document) : Served(Document, "Godot scene");
 
+    /// <summary>A Godot shader or shader include, read against Godot's shading language and checked by Godot's compiler.</summary>
+    private sealed record ShaderServed(OpenDocument Document) : Served(Document, "Godot shader");
+
     /// <summary>What a tool says of a language that has no such command: plainly, naming the language and what it has instead.</summary>
     private static InvalidOperationException Lacks(Served served, string command, string instead) =>
         new($"{served.Language} files have no {command} in Passenger, so {Path.GetFileName(served.Document.Path)} has none: {instead}");
 
     private const string MSBuildHas = "definition goes to where a property, item, target, import or SDK is defined, symbol_info says a property's "
         + "value and where it was set, outline gives its elements, and diagnostics its evaluation's problems";
+
+    private const string ShaderHas = "definition goes to a uniform, varying, function, struct or constant, an include's too, and from an #include to "
+        + "its file; symbol_info says what a built-in, mode, hint or declaration is; usages lists a uniform's uses, the scenes and C# naming it; "
+        + "outline gives its declarations; diagnostics Godot's compiler's errors";
 
     private const string GodotHas = "definition goes from a res:// path or ExtResource to its file, from a node path to its node, and from a "
         + "connection's method or signal to its code; rename renames a node's name in its scenes and the code's GetNode paths; outline gives its nodes";
@@ -82,13 +89,17 @@ public sealed partial class PassengerTools
         {
             return new GodotServed(document);
         }
+        if (Godot.GodotShaderMarks.IsShader(document.Path))
+        {
+            return new ShaderServed(document);
+        }
         if (document.Language.Service == Languages.LanguageService.CSharp)
         {
             (_, LspDocument lsp) = await Code(path, cancel, takenIn);
             return new ServerServed(document, document.Language.Name, lsp);
         }
         throw new InvalidOperationException($"Passenger has no code help for {LanguageOf(document)} files such as {name}: the code tools answer C#, Razor, "
-            + "XAML, JavaScript, TypeScript, HTML, CSS, SCSS, Less, JSON, YAML, Dockerfiles and MSBuild files");
+            + "XAML, JavaScript, TypeScript, HTML, CSS, SCSS, Less, JSON, YAML, Dockerfiles, MSBuild files and Godot's scenes and shaders");
     }
 
     /// <summary>An MSBuild file's elements, indented, each with its line: a property or metadata with its value as written,

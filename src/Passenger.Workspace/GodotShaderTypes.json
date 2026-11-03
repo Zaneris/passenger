@@ -1,0 +1,6175 @@
+{
+ "source": "https://github.com/godotengine/godot/tree/cafc17a192acf67903910a68aeb3c076c0907a4b",
+ "types": [
+  {
+   "name": "spatial",
+   "functions": [
+    {
+     "name": "global",
+     "builtIns": [
+      {"name": "TIME", "type": "float", "constant": true},
+      {"name": "EXPOSURE", "type": "float", "constant": true},
+      {"name": "IN_SHADOW_PASS", "type": "bool", "constant": true}
+     ],
+     "stageFunctions": []
+    },
+    {
+     "name": "constants",
+     "builtIns": [
+      {"name": "PI", "type": "float", "constant": true},
+      {"name": "TAU", "type": "float", "constant": true},
+      {"name": "E", "type": "float", "constant": true},
+      {"name": "OUTPUT_IS_SRGB", "type": "bool", "constant": true},
+      {"name": "CLIP_SPACE_FAR", "type": "float", "constant": true},
+      {"name": "IS_MULTIVIEW", "type": "bool", "constant": true}
+     ],
+     "stageFunctions": []
+    },
+    {
+     "name": "vertex",
+     "builtIns": [
+      {"name": "VERTEX", "type": "vec3", "constant": false},
+      {"name": "NORMAL", "type": "vec3", "constant": false},
+      {"name": "TANGENT", "type": "vec3", "constant": false},
+      {"name": "BINORMAL", "type": "vec3", "constant": false},
+      {"name": "POSITION", "type": "vec4", "constant": false},
+      {"name": "UV", "type": "vec2", "constant": false},
+      {"name": "UV2", "type": "vec2", "constant": false},
+      {"name": "COLOR", "type": "vec4", "constant": false},
+      {"name": "POINT_SIZE", "type": "float", "constant": false},
+      {"name": "Z_CLIP_SCALE", "type": "float", "constant": false},
+      {"name": "INSTANCE_ID", "type": "int", "constant": true},
+      {"name": "INSTANCE_CUSTOM", "type": "vec4", "constant": true},
+      {"name": "VERTEX_ID", "type": "int", "constant": true},
+      {"name": "ROUGHNESS", "type": "float", "constant": false},
+      {"name": "BONE_INDICES", "type": "uvec4", "constant": true},
+      {"name": "BONE_WEIGHTS", "type": "vec4", "constant": true},
+      {"name": "CUSTOM0", "type": "vec4", "constant": true},
+      {"name": "CUSTOM1", "type": "vec4", "constant": true},
+      {"name": "CUSTOM2", "type": "vec4", "constant": true},
+      {"name": "CUSTOM3", "type": "vec4", "constant": true},
+      {"name": "MODEL_MATRIX", "type": "mat4", "constant": true},
+      {"name": "MODEL_NORMAL_MATRIX", "type": "mat3", "constant": true},
+      {"name": "VIEW_MATRIX", "type": "mat4", "constant": true},
+      {"name": "INV_VIEW_MATRIX", "type": "mat4", "constant": true},
+      {"name": "PROJECTION_MATRIX", "type": "mat4", "constant": false},
+      {"name": "INV_PROJECTION_MATRIX", "type": "mat4", "constant": true},
+      {"name": "MODELVIEW_MATRIX", "type": "mat4", "constant": false},
+      {"name": "MODELVIEW_NORMAL_MATRIX", "type": "mat3", "constant": false},
+      {"name": "VIEWPORT_SIZE", "type": "vec2", "constant": true},
+      {"name": "MAIN_CAM_INV_VIEW_MATRIX", "type": "mat4", "constant": true},
+      {"name": "NODE_POSITION_WORLD", "type": "vec3", "constant": true},
+      {"name": "CAMERA_POSITION_WORLD", "type": "vec3", "constant": true},
+      {"name": "CAMERA_DIRECTION_WORLD", "type": "vec3", "constant": true},
+      {"name": "CAMERA_VISIBLE_LAYERS", "type": "uint", "constant": true},
+      {"name": "NODE_POSITION_VIEW", "type": "vec3", "constant": true},
+      {"name": "VIEW_INDEX", "type": "int", "constant": true},
+      {"name": "VIEW_MONO_LEFT", "type": "int", "constant": true},
+      {"name": "VIEW_RIGHT", "type": "int", "constant": true},
+      {"name": "EYE_OFFSET", "type": "vec3", "constant": true}
+     ],
+     "stageFunctions": [],
+     "discards": false,
+     "main": true
+    },
+    {
+     "name": "fragment",
+     "builtIns": [
+      {"name": "VERTEX", "type": "vec3", "constant": true},
+      {"name": "LIGHT_VERTEX", "type": "vec3", "constant": false},
+      {"name": "FRAGCOORD", "type": "vec4", "constant": true},
+      {"name": "FRONT_FACING", "type": "bool", "constant": true},
+      {"name": "NORMAL", "type": "vec3", "constant": false},
+      {"name": "TANGENT", "type": "vec3", "constant": false},
+      {"name": "BINORMAL", "type": "vec3", "constant": false},
+      {"name": "VIEW", "type": "vec3", "constant": true},
+      {"name": "NORMAL_MAP", "type": "vec3", "constant": false},
+      {"name": "NORMAL_MAP_DEPTH", "type": "float", "constant": false},
+      {"name": "BENT_NORMAL_MAP", "type": "vec3", "constant": false},
+      {"name": "UV", "type": "vec2", "constant": true},
+      {"name": "UV2", "type": "vec2", "constant": true},
+      {"name": "COLOR", "type": "vec4", "constant": true},
+      {"name": "ALBEDO", "type": "vec3", "constant": false},
+      {"name": "PREMUL_ALPHA_FACTOR", "type": "float", "constant": false},
+      {"name": "ALPHA", "type": "float", "constant": false},
+      {"name": "METALLIC", "type": "float", "constant": false},
+      {"name": "SPECULAR", "type": "float", "constant": false},
+      {"name": "ROUGHNESS", "type": "float", "constant": false},
+      {"name": "RIM", "type": "float", "constant": false},
+      {"name": "RIM_TINT", "type": "float", "constant": false},
+      {"name": "CLEARCOAT", "type": "float", "constant": false},
+      {"name": "CLEARCOAT_ROUGHNESS", "type": "float", "constant": false},
+      {"name": "ANISOTROPY", "type": "float", "constant": false},
+      {"name": "ANISOTROPY_FLOW", "type": "vec2", "constant": false},
+      {"name": "SSS_STRENGTH", "type": "float", "constant": false},
+      {"name": "SSS_TRANSMITTANCE_COLOR", "type": "vec4", "constant": false},
+      {"name": "SSS_TRANSMITTANCE_DEPTH", "type": "float", "constant": false},
+      {"name": "SSS_TRANSMITTANCE_BOOST", "type": "float", "constant": false},
+      {"name": "BACKLIGHT", "type": "vec3", "constant": false},
+      {"name": "AO", "type": "float", "constant": false},
+      {"name": "AO_LIGHT_AFFECT", "type": "float", "constant": false},
+      {"name": "EMISSION", "type": "vec3", "constant": false},
+      {"name": "DEPTH", "type": "float", "constant": false},
+      {"name": "SCREEN_UV", "type": "vec2", "constant": true},
+      {"name": "POINT_COORD", "type": "vec2", "constant": true},
+      {"name": "NODE_POSITION_WORLD", "type": "vec3", "constant": true},
+      {"name": "CAMERA_POSITION_WORLD", "type": "vec3", "constant": true},
+      {"name": "CAMERA_DIRECTION_WORLD", "type": "vec3", "constant": true},
+      {"name": "CAMERA_VISIBLE_LAYERS", "type": "uint", "constant": true},
+      {"name": "NODE_POSITION_VIEW", "type": "vec3", "constant": true},
+      {"name": "VIEW_INDEX", "type": "int", "constant": true},
+      {"name": "VIEW_MONO_LEFT", "type": "int", "constant": true},
+      {"name": "VIEW_RIGHT", "type": "int", "constant": true},
+      {"name": "EYE_OFFSET", "type": "vec3", "constant": true},
+      {"name": "MODEL_MATRIX", "type": "mat4", "constant": true},
+      {"name": "MODEL_NORMAL_MATRIX", "type": "mat3", "constant": true},
+      {"name": "VIEW_MATRIX", "type": "mat4", "constant": true},
+      {"name": "INV_VIEW_MATRIX", "type": "mat4", "constant": true},
+      {"name": "PROJECTION_MATRIX", "type": "mat4", "constant": true},
+      {"name": "INV_PROJECTION_MATRIX", "type": "mat4", "constant": true},
+      {"name": "VIEWPORT_SIZE", "type": "vec2", "constant": true},
+      {"name": "FOG", "type": "vec4", "constant": false},
+      {"name": "RADIANCE", "type": "vec4", "constant": false},
+      {"name": "IRRADIANCE", "type": "vec4", "constant": false},
+      {"name": "ALPHA_SCISSOR_THRESHOLD", "type": "float", "constant": false},
+      {"name": "ALPHA_HASH_SCALE", "type": "float", "constant": false},
+      {"name": "ALPHA_ANTIALIASING_EDGE", "type": "float", "constant": false},
+      {"name": "ALPHA_TEXTURE_COORDINATE", "type": "vec2", "constant": false},
+      {"name": "STREAMING_LOD", "type": "float", "constant": false}
+     ],
+     "stageFunctions": [],
+     "discards": true,
+     "main": true
+    },
+    {
+     "name": "light",
+     "builtIns": [
+      {"name": "MODEL_MATRIX", "type": "mat4", "constant": true},
+      {"name": "VIEW_MATRIX", "type": "mat4", "constant": true},
+      {"name": "INV_VIEW_MATRIX", "type": "mat4", "constant": true},
+      {"name": "PROJECTION_MATRIX", "type": "mat4", "constant": true},
+      {"name": "INV_PROJECTION_MATRIX", "type": "mat4", "constant": true},
+      {"name": "VIEWPORT_SIZE", "type": "vec2", "constant": true},
+      {"name": "FRAGCOORD", "type": "vec4", "constant": true},
+      {"name": "NORMAL", "type": "vec3", "constant": true},
+      {"name": "UV", "type": "vec2", "constant": true},
+      {"name": "UV2", "type": "vec2", "constant": true},
+      {"name": "VIEW", "type": "vec3", "constant": true},
+      {"name": "SPECULAR_AMOUNT", "type": "float", "constant": true},
+      {"name": "LIGHT", "type": "vec3", "constant": true},
+      {"name": "LIGHT_COLOR", "type": "vec3", "constant": true},
+      {"name": "LIGHT_IS_DIRECTIONAL", "type": "bool", "constant": true},
+      {"name": "LIGHT_IS_AREA", "type": "bool", "constant": true},
+      {"name": "LIGHT_AREA_DIFFUSE_MULTIPLIER", "type": "vec3", "constant": true},
+      {"name": "LIGHT_AREA_SPECULAR_MULTIPLIER", "type": "vec3", "constant": true},
+      {"name": "ATTENUATION", "type": "float", "constant": true},
+      {"name": "ALBEDO", "type": "vec3", "constant": true},
+      {"name": "BACKLIGHT", "type": "vec3", "constant": true},
+      {"name": "METALLIC", "type": "float", "constant": true},
+      {"name": "ROUGHNESS", "type": "float", "constant": true},
+      {"name": "DIFFUSE_LIGHT", "type": "vec3", "constant": false},
+      {"name": "SPECULAR_LIGHT", "type": "vec3", "constant": false},
+      {"name": "ALPHA", "type": "float", "constant": false},
+      {"name": "SCREEN_UV", "type": "vec2", "constant": true}
+     ],
+     "stageFunctions": [],
+     "discards": true,
+     "main": true
+    }
+   ],
+   "modes": [
+    {
+     "name": "blend",
+     "options": ["mix", "add", "sub", "mul", "premul_alpha"]
+    },
+    {
+     "name": "depth_draw",
+     "options": ["opaque", "always", "never"]
+    },
+    {"name": "depth_prepass_alpha", "options": []},
+    {
+     "name": "depth_test",
+     "options": ["default", "disabled", "inverted"]
+    },
+    {"name": "sss_mode_skin", "options": []},
+    {
+     "name": "cull",
+     "options": ["back", "front", "disabled"]
+    },
+    {"name": "unshaded", "options": []},
+    {"name": "wireframe", "options": []},
+    {
+     "name": "diffuse",
+     "options": ["lambert", "lambert_wrap", "burley", "toon"]
+    },
+    {
+     "name": "specular",
+     "options": ["schlick_ggx", "toon", "disabled"]
+    },
+    {"name": "skip_vertex_transform", "options": []},
+    {"name": "world_vertex_coords", "options": []},
+    {"name": "ensure_correct_normals", "options": []},
+    {"name": "shadows_disabled", "options": []},
+    {"name": "ambient_light_disabled", "options": []},
+    {"name": "shadow_to_opacity", "options": []},
+    {"name": "vertex_lighting", "options": []},
+    {"name": "particle_trails", "options": []},
+    {"name": "alpha_to_coverage", "options": []},
+    {"name": "alpha_to_coverage_and_one", "options": []},
+    {"name": "debug_shadow_splits", "options": []},
+    {"name": "fog_disabled", "options": []},
+    {"name": "specular_occlusion_disabled", "options": []}
+   ],
+   "stencilModes": [
+    {"name": "read", "options": []},
+    {"name": "write", "options": []},
+    {"name": "write_depth_fail", "options": []},
+    {
+     "name": "compare",
+     "options": ["always", "less", "equal", "less_or_equal", "greater", "not_equal", "greater_or_equal"]
+    }
+   ]
+  },
+  {
+   "name": "canvas_item",
+   "functions": [
+    {
+     "name": "global",
+     "builtIns": [
+      {"name": "TIME", "type": "float", "constant": true}
+     ],
+     "stageFunctions": []
+    },
+    {
+     "name": "constants",
+     "builtIns": [
+      {"name": "PI", "type": "float", "constant": true},
+      {"name": "TAU", "type": "float", "constant": true},
+      {"name": "E", "type": "float", "constant": true}
+     ],
+     "stageFunctions": []
+    },
+    {
+     "name": "vertex",
+     "builtIns": [
+      {"name": "VERTEX", "type": "vec2", "constant": false},
+      {"name": "UV", "type": "vec2", "constant": false},
+      {"name": "COLOR", "type": "vec4", "constant": false},
+      {"name": "POINT_SIZE", "type": "float", "constant": false},
+      {"name": "MODEL_MATRIX", "type": "mat4", "constant": true},
+      {"name": "CANVAS_MATRIX", "type": "mat4", "constant": true},
+      {"name": "SCREEN_MATRIX", "type": "mat4", "constant": true},
+      {"name": "INSTANCE_CUSTOM", "type": "vec4", "constant": true},
+      {"name": "INSTANCE_ID", "type": "int", "constant": true},
+      {"name": "VERTEX_ID", "type": "int", "constant": true},
+      {"name": "AT_LIGHT_PASS", "type": "bool", "constant": true},
+      {"name": "TEXTURE_PIXEL_SIZE", "type": "vec2", "constant": true},
+      {"name": "CUSTOM0", "type": "vec4", "constant": true},
+      {"name": "CUSTOM1", "type": "vec4", "constant": true}
+     ],
+     "stageFunctions": [],
+     "discards": false,
+     "main": true
+    },
+    {
+     "name": "fragment",
+     "builtIns": [
+      {"name": "VERTEX", "type": "vec2", "constant": false},
+      {"name": "SHADOW_VERTEX", "type": "vec2", "constant": false},
+      {"name": "LIGHT_VERTEX", "type": "vec3", "constant": false},
+      {"name": "FRAGCOORD", "type": "vec4", "constant": true},
+      {"name": "NORMAL", "type": "vec3", "constant": false},
+      {"name": "NORMAL_MAP", "type": "vec3", "constant": false},
+      {"name": "NORMAL_MAP_DEPTH", "type": "float", "constant": false},
+      {"name": "UV", "type": "vec2", "constant": true},
+      {"name": "COLOR", "type": "vec4", "constant": false},
+      {"name": "TEXTURE", "type": "sampler2D", "constant": true},
+      {"name": "TEXTURE_PIXEL_SIZE", "type": "vec2", "constant": true},
+      {"name": "NORMAL_TEXTURE", "type": "sampler2D", "constant": true},
+      {"name": "SPECULAR_SHININESS_TEXTURE", "type": "sampler2D", "constant": true},
+      {"name": "SPECULAR_SHININESS", "type": "vec4", "constant": true},
+      {"name": "SCREEN_UV", "type": "vec2", "constant": true},
+      {"name": "REGION_RECT", "type": "vec4", "constant": true},
+      {"name": "SCREEN_PIXEL_SIZE", "type": "vec2", "constant": true},
+      {"name": "POINT_COORD", "type": "vec2", "constant": true},
+      {"name": "AT_LIGHT_PASS", "type": "bool", "constant": true}
+     ],
+     "stageFunctions": [
+      {
+       "name": "texture_sdf",
+       "returns": "float",
+       "arguments": [
+        {"name": "sdf_pos", "type": "vec2"}
+       ]
+      },
+      {
+       "name": "sdf_to_screen_uv",
+       "returns": "vec2",
+       "arguments": [
+        {"name": "sdf_pos", "type": "vec2"}
+       ]
+      },
+      {
+       "name": "texture_sdf_normal",
+       "returns": "vec2",
+       "arguments": [
+        {"name": "sdf_pos", "type": "vec2"}
+       ]
+      },
+      {
+       "name": "screen_uv_to_sdf",
+       "returns": "vec2",
+       "arguments": [
+        {"name": "uv", "type": "vec2"}
+       ]
+      }
+     ],
+     "discards": true,
+     "main": true
+    },
+    {
+     "name": "light",
+     "builtIns": [
+      {"name": "FRAGCOORD", "type": "vec4", "constant": true},
+      {"name": "NORMAL", "type": "vec3", "constant": true},
+      {"name": "COLOR", "type": "vec4", "constant": true},
+      {"name": "UV", "type": "vec2", "constant": true},
+      {"name": "SPECULAR_SHININESS", "type": "vec4", "constant": true},
+      {"name": "LIGHT_COLOR", "type": "vec4", "constant": true},
+      {"name": "LIGHT_POSITION", "type": "vec3", "constant": true},
+      {"name": "LIGHT_DIRECTION", "type": "vec3", "constant": true},
+      {"name": "LIGHT_ENERGY", "type": "float", "constant": true},
+      {"name": "LIGHT_IS_DIRECTIONAL", "type": "bool", "constant": true},
+      {"name": "LIGHT_VERTEX", "type": "vec3", "constant": true},
+      {"name": "LIGHT", "type": "vec4", "constant": false},
+      {"name": "SHADOW_MODULATE", "type": "vec4", "constant": false},
+      {"name": "SCREEN_UV", "type": "vec2", "constant": true},
+      {"name": "TEXTURE", "type": "sampler2D", "constant": true},
+      {"name": "TEXTURE_PIXEL_SIZE", "type": "vec2", "constant": true},
+      {"name": "POINT_COORD", "type": "vec2", "constant": true}
+     ],
+     "stageFunctions": [
+      {
+       "name": "texture_sdf",
+       "returns": "float",
+       "arguments": [
+        {"name": "sdf_pos", "type": "vec2"}
+       ]
+      },
+      {
+       "name": "sdf_to_screen_uv",
+       "returns": "vec2",
+       "arguments": [
+        {"name": "sdf_pos", "type": "vec2"}
+       ]
+      },
+      {
+       "name": "texture_sdf_normal",
+       "returns": "vec2",
+       "arguments": [
+        {"name": "sdf_pos", "type": "vec2"}
+       ]
+      },
+      {
+       "name": "screen_uv_to_sdf",
+       "returns": "vec2",
+       "arguments": [
+        {"name": "uv", "type": "vec2"}
+       ]
+      }
+     ],
+     "discards": true,
+     "main": true
+    }
+   ],
+   "modes": [
+    {"name": "skip_vertex_transform", "options": []},
+    {
+     "name": "blend",
+     "options": ["mix", "add", "sub", "mul", "premul_alpha", "disabled"]
+    },
+    {"name": "unshaded", "options": []},
+    {"name": "light_only", "options": []},
+    {"name": "world_vertex_coords", "options": []}
+   ],
+   "stencilModes": []
+  },
+  {
+   "name": "particles",
+   "functions": [
+    {
+     "name": "global",
+     "builtIns": [
+      {"name": "TIME", "type": "float", "constant": true}
+     ],
+     "stageFunctions": []
+    },
+    {
+     "name": "constants",
+     "builtIns": [
+      {"name": "PI", "type": "float", "constant": true},
+      {"name": "TAU", "type": "float", "constant": true},
+      {"name": "E", "type": "float", "constant": true}
+     ],
+     "stageFunctions": []
+    },
+    {
+     "name": "start",
+     "builtIns": [
+      {"name": "COLOR", "type": "vec4", "constant": false},
+      {"name": "VELOCITY", "type": "vec3", "constant": false},
+      {"name": "MASS", "type": "float", "constant": false},
+      {"name": "ACTIVE", "type": "bool", "constant": false},
+      {"name": "CUSTOM", "type": "vec4", "constant": false},
+      {"name": "USERDATA1", "type": "vec4", "constant": false},
+      {"name": "USERDATA2", "type": "vec4", "constant": false},
+      {"name": "USERDATA3", "type": "vec4", "constant": false},
+      {"name": "USERDATA4", "type": "vec4", "constant": false},
+      {"name": "USERDATA5", "type": "vec4", "constant": false},
+      {"name": "USERDATA6", "type": "vec4", "constant": false},
+      {"name": "TRANSFORM", "type": "mat4", "constant": false},
+      {"name": "LIFETIME", "type": "float", "constant": true},
+      {"name": "DELTA", "type": "float", "constant": true},
+      {"name": "NUMBER", "type": "uint", "constant": true},
+      {"name": "INDEX", "type": "uint", "constant": true},
+      {"name": "EMISSION_TRANSFORM", "type": "mat4", "constant": true},
+      {"name": "EMITTER_VELOCITY", "type": "vec3", "constant": true},
+      {"name": "INTERPOLATE_TO_END", "type": "float", "constant": true},
+      {"name": "RANDOM_SEED", "type": "uint", "constant": true},
+      {"name": "FLAG_EMIT_POSITION", "type": "uint", "constant": true},
+      {"name": "FLAG_EMIT_ROT_SCALE", "type": "uint", "constant": true},
+      {"name": "FLAG_EMIT_VELOCITY", "type": "uint", "constant": true},
+      {"name": "FLAG_EMIT_COLOR", "type": "uint", "constant": true},
+      {"name": "FLAG_EMIT_CUSTOM", "type": "uint", "constant": true},
+      {"name": "RESTART_POSITION", "type": "bool", "constant": true},
+      {"name": "RESTART_ROT_SCALE", "type": "bool", "constant": true},
+      {"name": "RESTART_VELOCITY", "type": "bool", "constant": true},
+      {"name": "RESTART_COLOR", "type": "bool", "constant": true},
+      {"name": "RESTART_CUSTOM", "type": "bool", "constant": true},
+      {"name": "AMOUNT_RATIO", "type": "float", "constant": true}
+     ],
+     "stageFunctions": [
+      {
+       "name": "emit_subparticle",
+       "returns": "bool",
+       "arguments": [
+        {"name": "xform", "type": "mat4"},
+        {"name": "velocity", "type": "vec3"},
+        {"name": "color", "type": "vec4"},
+        {"name": "custom", "type": "vec4"},
+        {"name": "flags", "type": "uint"}
+       ]
+      }
+     ],
+     "main": true
+    },
+    {
+     "name": "process",
+     "builtIns": [
+      {"name": "COLOR", "type": "vec4", "constant": false},
+      {"name": "VELOCITY", "type": "vec3", "constant": false},
+      {"name": "MASS", "type": "float", "constant": false},
+      {"name": "ACTIVE", "type": "bool", "constant": false},
+      {"name": "RESTART", "type": "bool", "constant": true},
+      {"name": "CUSTOM", "type": "vec4", "constant": false},
+      {"name": "USERDATA1", "type": "vec4", "constant": false},
+      {"name": "USERDATA2", "type": "vec4", "constant": false},
+      {"name": "USERDATA3", "type": "vec4", "constant": false},
+      {"name": "USERDATA4", "type": "vec4", "constant": false},
+      {"name": "USERDATA5", "type": "vec4", "constant": false},
+      {"name": "USERDATA6", "type": "vec4", "constant": false},
+      {"name": "TRANSFORM", "type": "mat4", "constant": false},
+      {"name": "LIFETIME", "type": "float", "constant": true},
+      {"name": "DELTA", "type": "float", "constant": true},
+      {"name": "NUMBER", "type": "uint", "constant": true},
+      {"name": "INDEX", "type": "uint", "constant": true},
+      {"name": "EMISSION_TRANSFORM", "type": "mat4", "constant": true},
+      {"name": "EMITTER_VELOCITY", "type": "vec3", "constant": true},
+      {"name": "INTERPOLATE_TO_END", "type": "float", "constant": true},
+      {"name": "RANDOM_SEED", "type": "uint", "constant": true},
+      {"name": "FLAG_EMIT_POSITION", "type": "uint", "constant": true},
+      {"name": "FLAG_EMIT_ROT_SCALE", "type": "uint", "constant": true},
+      {"name": "FLAG_EMIT_VELOCITY", "type": "uint", "constant": true},
+      {"name": "FLAG_EMIT_COLOR", "type": "uint", "constant": true},
+      {"name": "FLAG_EMIT_CUSTOM", "type": "uint", "constant": true},
+      {"name": "COLLIDED", "type": "bool", "constant": true},
+      {"name": "COLLISION_NORMAL", "type": "vec3", "constant": true},
+      {"name": "COLLISION_DEPTH", "type": "float", "constant": true},
+      {"name": "ATTRACTOR_FORCE", "type": "vec3", "constant": true},
+      {"name": "AMOUNT_RATIO", "type": "float", "constant": true}
+     ],
+     "stageFunctions": [
+      {
+       "name": "emit_subparticle",
+       "returns": "bool",
+       "arguments": [
+        {"name": "xform", "type": "mat4"},
+        {"name": "velocity", "type": "vec3"},
+        {"name": "color", "type": "vec4"},
+        {"name": "custom", "type": "vec4"},
+        {"name": "flags", "type": "uint"}
+       ]
+      }
+     ],
+     "main": true
+    }
+   ],
+   "modes": [
+    {"name": "collision_use_scale", "options": []},
+    {"name": "disable_force", "options": []},
+    {"name": "disable_velocity", "options": []},
+    {"name": "keep_data", "options": []}
+   ],
+   "stencilModes": []
+  },
+  {
+   "name": "sky",
+   "functions": [
+    {
+     "name": "global",
+     "builtIns": [
+      {"name": "TIME", "type": "float", "constant": true},
+      {"name": "POSITION", "type": "vec3", "constant": true},
+      {"name": "RADIANCE", "type": "samplerCube", "constant": true},
+      {"name": "AT_HALF_RES_PASS", "type": "bool", "constant": true},
+      {"name": "AT_QUARTER_RES_PASS", "type": "bool", "constant": true},
+      {"name": "AT_CUBEMAP_PASS", "type": "bool", "constant": true},
+      {"name": "LIGHT0_ENABLED", "type": "bool", "constant": true},
+      {"name": "LIGHT0_DIRECTION", "type": "vec3", "constant": true},
+      {"name": "LIGHT0_ENERGY", "type": "float", "constant": true},
+      {"name": "LIGHT0_COLOR", "type": "vec3", "constant": true},
+      {"name": "LIGHT0_SIZE", "type": "float", "constant": true},
+      {"name": "LIGHT1_ENABLED", "type": "bool", "constant": true},
+      {"name": "LIGHT1_DIRECTION", "type": "vec3", "constant": true},
+      {"name": "LIGHT1_ENERGY", "type": "float", "constant": true},
+      {"name": "LIGHT1_COLOR", "type": "vec3", "constant": true},
+      {"name": "LIGHT1_SIZE", "type": "float", "constant": true},
+      {"name": "LIGHT2_ENABLED", "type": "bool", "constant": true},
+      {"name": "LIGHT2_DIRECTION", "type": "vec3", "constant": true},
+      {"name": "LIGHT2_ENERGY", "type": "float", "constant": true},
+      {"name": "LIGHT2_COLOR", "type": "vec3", "constant": true},
+      {"name": "LIGHT2_SIZE", "type": "float", "constant": true},
+      {"name": "LIGHT3_ENABLED", "type": "bool", "constant": true},
+      {"name": "LIGHT3_DIRECTION", "type": "vec3", "constant": true},
+      {"name": "LIGHT3_ENERGY", "type": "float", "constant": true},
+      {"name": "LIGHT3_COLOR", "type": "vec3", "constant": true},
+      {"name": "LIGHT3_SIZE", "type": "float", "constant": true}
+     ],
+     "stageFunctions": []
+    },
+    {
+     "name": "constants",
+     "builtIns": [
+      {"name": "PI", "type": "float", "constant": true},
+      {"name": "TAU", "type": "float", "constant": true},
+      {"name": "E", "type": "float", "constant": true}
+     ],
+     "stageFunctions": []
+    },
+    {
+     "name": "sky",
+     "builtIns": [
+      {"name": "COLOR", "type": "vec3", "constant": false},
+      {"name": "ALPHA", "type": "float", "constant": false},
+      {"name": "EYEDIR", "type": "vec3", "constant": true},
+      {"name": "SCREEN_UV", "type": "vec2", "constant": true},
+      {"name": "FRAGCOORD", "type": "vec4", "constant": true},
+      {"name": "SKY_COORDS", "type": "vec2", "constant": true},
+      {"name": "HALF_RES_COLOR", "type": "vec4", "constant": true},
+      {"name": "QUARTER_RES_COLOR", "type": "vec4", "constant": true},
+      {"name": "FOG", "type": "vec4", "constant": false}
+     ],
+     "stageFunctions": [],
+     "main": true
+    }
+   ],
+   "modes": [
+    {"name": "use_half_res_pass", "options": []},
+    {"name": "use_quarter_res_pass", "options": []},
+    {"name": "disable_fog", "options": []},
+    {"name": "use_debanding", "options": []}
+   ],
+   "stencilModes": []
+  },
+  {
+   "name": "fog",
+   "functions": [
+    {
+     "name": "global",
+     "builtIns": [
+      {"name": "TIME", "type": "float", "constant": true}
+     ],
+     "stageFunctions": []
+    },
+    {
+     "name": "constants",
+     "builtIns": [
+      {"name": "PI", "type": "float", "constant": true},
+      {"name": "TAU", "type": "float", "constant": true},
+      {"name": "E", "type": "float", "constant": true}
+     ],
+     "stageFunctions": []
+    },
+    {
+     "name": "fog",
+     "builtIns": [
+      {"name": "WORLD_POSITION", "type": "vec3", "constant": true},
+      {"name": "OBJECT_POSITION", "type": "vec3", "constant": true},
+      {"name": "UVW", "type": "vec3", "constant": true},
+      {"name": "SIZE", "type": "vec3", "constant": true},
+      {"name": "SDF", "type": "float", "constant": true},
+      {"name": "ALBEDO", "type": "vec3", "constant": false},
+      {"name": "DENSITY", "type": "float", "constant": false},
+      {"name": "EMISSION", "type": "vec3", "constant": false}
+     ],
+     "stageFunctions": [],
+     "main": true
+    }
+   ],
+   "modes": [],
+   "stencilModes": []
+  },
+  {
+   "name": "texture_blit",
+   "functions": [
+    {
+     "name": "global",
+     "builtIns": [
+      {"name": "TIME", "type": "float", "constant": true}
+     ],
+     "stageFunctions": []
+    },
+    {
+     "name": "constants",
+     "builtIns": [
+      {"name": "PI", "type": "float", "constant": true},
+      {"name": "TAU", "type": "float", "constant": true},
+      {"name": "E", "type": "float", "constant": true}
+     ],
+     "stageFunctions": []
+    },
+    {
+     "name": "blit",
+     "builtIns": [
+      {"name": "FRAGCOORD", "type": "vec4", "constant": true},
+      {"name": "UV", "type": "vec2", "constant": true},
+      {"name": "MODULATE", "type": "vec4", "constant": true},
+      {"name": "COLOR0", "type": "vec4", "constant": false},
+      {"name": "COLOR1", "type": "vec4", "constant": false},
+      {"name": "COLOR2", "type": "vec4", "constant": false},
+      {"name": "COLOR3", "type": "vec4", "constant": false}
+     ],
+     "stageFunctions": [],
+     "main": true
+    }
+   ],
+   "modes": [
+    {
+     "name": "blend",
+     "options": ["mix", "add", "sub", "mul", "disabled", "premul_alpha"]
+    }
+   ],
+   "stencilModes": []
+  }
+ ],
+ "hints": ["source_color", "color_conversion_disabled", "hint_range", "hint_enum", "instance_index", "hint_normal", "hint_default_white", "hint_default_black", "hint_default_transparent", "hint_anisotropy", "hint_roughness_r", "hint_roughness_g", "hint_roughness_b", "hint_roughness_a", "hint_roughness_normal", "hint_roughness_gray", "hint_screen_texture", "hint_normal_roughness_texture", "hint_depth_texture", "hint_blit_source0", "hint_blit_source1", "hint_blit_source2", "hint_blit_source3", "filter_nearest", "filter_linear", "filter_nearest_mipmap", "filter_linear_mipmap", "filter_nearest_mipmap_anisotropic", "filter_linear_mipmap_anisotropic", "repeat_enable", "repeat_disable", "no_storage", "no_editor"],
+ "functions": [
+  {
+   "name": "radians",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "degrees", "type": "float"}
+   ]
+  },
+  {
+   "name": "radians",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "degrees", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "radians",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "degrees", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "radians",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "degrees", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "degrees",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "radians", "type": "float"}
+   ]
+  },
+  {
+   "name": "degrees",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "radians", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "degrees",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "radians", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "degrees",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "radians", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "sin",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "angle", "type": "float"}
+   ]
+  },
+  {
+   "name": "sin",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "angle", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "sin",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "angle", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "sin",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "angle", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "cos",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "angle", "type": "float"}
+   ]
+  },
+  {
+   "name": "cos",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "angle", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "cos",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "angle", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "cos",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "angle", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "tan",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "angle", "type": "float"}
+   ]
+  },
+  {
+   "name": "tan",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "angle", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "tan",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "angle", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "tan",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "angle", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "asin",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "asin",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "asin",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "asin",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "acos",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "acos",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "acos",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "acos",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "atan",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "y_over_x", "type": "float"}
+   ]
+  },
+  {
+   "name": "atan",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "y_over_x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "atan",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "y_over_x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "atan",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "y_over_x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "atan",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "y", "type": "float"},
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "atan",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "y", "type": "vec2"},
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "atan",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "y", "type": "vec3"},
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "atan",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "y", "type": "vec4"},
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "sinh",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "sinh",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "sinh",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "sinh",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "cosh",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "cosh",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "cosh",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "cosh",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "tanh",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "tanh",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "tanh",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "tanh",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "asinh",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "asinh",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "asinh",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "asinh",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "acosh",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "acosh",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "acosh",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "acosh",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "atanh",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "atanh",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "atanh",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "atanh",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "pow",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"},
+    {"name": "y", "type": "float"}
+   ]
+  },
+  {
+   "name": "pow",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"},
+    {"name": "y", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "pow",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"},
+    {"name": "y", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "pow",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"},
+    {"name": "y", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "exp",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "exp",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "exp",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "exp",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "log",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "log",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "log",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "log",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "exp2",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "exp2",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "exp2",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "exp2",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "log2",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "log2",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "log2",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "log2",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "sqrt",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "sqrt",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "sqrt",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "sqrt",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "inversesqrt",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "inversesqrt",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "inversesqrt",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "inversesqrt",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "abs",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "abs",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "abs",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "abs",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "abs",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "int"}
+   ]
+  },
+  {
+   "name": "abs",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "abs",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "abs",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "sign",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "sign",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "sign",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "sign",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "sign",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "int"}
+   ]
+  },
+  {
+   "name": "sign",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "sign",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "sign",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "floor",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "floor",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "floor",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "floor",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "trunc",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "trunc",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "trunc",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "trunc",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "round",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "round",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "round",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "round",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "roundEven",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "roundEven",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "roundEven",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "roundEven",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "ceil",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "ceil",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "ceil",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "ceil",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "fract",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "fract",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "fract",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "fract",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "mod",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"},
+    {"name": "y", "type": "float"}
+   ]
+  },
+  {
+   "name": "mod",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"},
+    {"name": "y", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "mod",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"},
+    {"name": "y", "type": "float"}
+   ]
+  },
+  {
+   "name": "mod",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"},
+    {"name": "y", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "mod",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"},
+    {"name": "y", "type": "float"}
+   ]
+  },
+  {
+   "name": "mod",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"},
+    {"name": "y", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "mod",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"},
+    {"name": "y", "type": "float"}
+   ]
+  },
+  {
+   "name": "modf",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"},
+    {"name": "i", "type": "float"}
+   ]
+  },
+  {
+   "name": "modf",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"},
+    {"name": "i", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "modf",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"},
+    {"name": "i", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "modf",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"},
+    {"name": "i", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "float"},
+    {"name": "b", "type": "float"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "float"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "float"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "float"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "int"},
+    {"name": "b", "type": "int"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec2"},
+    {"name": "b", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec2"},
+    {"name": "b", "type": "int"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec3"},
+    {"name": "b", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec3"},
+    {"name": "b", "type": "int"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec4"},
+    {"name": "b", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec4"},
+    {"name": "b", "type": "int"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uint"},
+    {"name": "b", "type": "uint"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec2"},
+    {"name": "b", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec2"},
+    {"name": "b", "type": "uint"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec3"},
+    {"name": "b", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec3"},
+    {"name": "b", "type": "uint"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec4"},
+    {"name": "b", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "min",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec4"},
+    {"name": "b", "type": "uint"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "float"},
+    {"name": "b", "type": "float"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "float"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "float"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "float"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "int"},
+    {"name": "b", "type": "int"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec2"},
+    {"name": "b", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec2"},
+    {"name": "b", "type": "int"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec3"},
+    {"name": "b", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec3"},
+    {"name": "b", "type": "int"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec4"},
+    {"name": "b", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec4"},
+    {"name": "b", "type": "int"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uint"},
+    {"name": "b", "type": "uint"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec2"},
+    {"name": "b", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec2"},
+    {"name": "b", "type": "uint"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec3"},
+    {"name": "b", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec3"},
+    {"name": "b", "type": "uint"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec4"},
+    {"name": "b", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "max",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec4"},
+    {"name": "b", "type": "uint"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"},
+    {"name": "minVal", "type": "float"},
+    {"name": "maxVal", "type": "float"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"},
+    {"name": "minVal", "type": "vec2"},
+    {"name": "maxVal", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"},
+    {"name": "minVal", "type": "vec3"},
+    {"name": "maxVal", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"},
+    {"name": "minVal", "type": "vec4"},
+    {"name": "maxVal", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"},
+    {"name": "minVal", "type": "float"},
+    {"name": "maxVal", "type": "float"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"},
+    {"name": "minVal", "type": "float"},
+    {"name": "maxVal", "type": "float"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"},
+    {"name": "minVal", "type": "float"},
+    {"name": "maxVal", "type": "float"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "int"},
+    {"name": "minVal", "type": "int"},
+    {"name": "maxVal", "type": "int"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec2"},
+    {"name": "minVal", "type": "ivec2"},
+    {"name": "maxVal", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec3"},
+    {"name": "minVal", "type": "ivec3"},
+    {"name": "maxVal", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec4"},
+    {"name": "minVal", "type": "ivec4"},
+    {"name": "maxVal", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec2"},
+    {"name": "minVal", "type": "int"},
+    {"name": "maxVal", "type": "int"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec3"},
+    {"name": "minVal", "type": "int"},
+    {"name": "maxVal", "type": "int"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec4"},
+    {"name": "minVal", "type": "int"},
+    {"name": "maxVal", "type": "int"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uint"},
+    {"name": "minVal", "type": "uint"},
+    {"name": "maxVal", "type": "uint"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec2"},
+    {"name": "minVal", "type": "uvec2"},
+    {"name": "maxVal", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec3"},
+    {"name": "minVal", "type": "uvec3"},
+    {"name": "maxVal", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec4"},
+    {"name": "minVal", "type": "uvec4"},
+    {"name": "maxVal", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec2"},
+    {"name": "minVal", "type": "uint"},
+    {"name": "maxVal", "type": "uint"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec3"},
+    {"name": "minVal", "type": "uint"},
+    {"name": "maxVal", "type": "uint"}
+   ]
+  },
+  {
+   "name": "clamp",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec4"},
+    {"name": "minVal", "type": "uint"},
+    {"name": "maxVal", "type": "uint"}
+   ]
+  },
+  {
+   "name": "mix",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "float"},
+    {"name": "b", "type": "float"},
+    {"name": "value", "type": "float"}
+   ]
+  },
+  {
+   "name": "mix",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "vec2"},
+    {"name": "value", "type": "float"}
+   ]
+  },
+  {
+   "name": "mix",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "vec2"},
+    {"name": "value", "type": "bvec2"}
+   ]
+  },
+  {
+   "name": "mix",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "vec2"},
+    {"name": "value", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "mix",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"},
+    {"name": "value", "type": "float"}
+   ]
+  },
+  {
+   "name": "mix",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"},
+    {"name": "value", "type": "bvec3"}
+   ]
+  },
+  {
+   "name": "mix",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"},
+    {"name": "value", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "mix",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "vec4"},
+    {"name": "value", "type": "float"}
+   ]
+  },
+  {
+   "name": "mix",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "vec4"},
+    {"name": "value", "type": "bvec4"}
+   ]
+  },
+  {
+   "name": "mix",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "vec4"},
+    {"name": "value", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "step",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "edge", "type": "float"},
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "step",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "edge", "type": "vec2"},
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "step",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "edge", "type": "vec3"},
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "step",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "edge", "type": "vec4"},
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "step",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "edge", "type": "float"},
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "step",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "edge", "type": "float"},
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "step",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "edge", "type": "float"},
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "smoothstep",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "edge0", "type": "float"},
+    {"name": "edge1", "type": "float"},
+    {"name": "value", "type": "float"}
+   ]
+  },
+  {
+   "name": "smoothstep",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "edge0", "type": "vec2"},
+    {"name": "edge1", "type": "vec2"},
+    {"name": "value", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "smoothstep",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "edge0", "type": "vec3"},
+    {"name": "edge1", "type": "vec3"},
+    {"name": "value", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "smoothstep",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "edge0", "type": "vec4"},
+    {"name": "edge1", "type": "vec4"},
+    {"name": "value", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "smoothstep",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "edge0", "type": "float"},
+    {"name": "edge1", "type": "float"},
+    {"name": "value", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "smoothstep",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "edge0", "type": "float"},
+    {"name": "edge1", "type": "float"},
+    {"name": "value", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "smoothstep",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "edge0", "type": "float"},
+    {"name": "edge1", "type": "float"},
+    {"name": "value", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "isnan",
+   "returns": "bool",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "isnan",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "isnan",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "isnan",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "isinf",
+   "returns": "bool",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "isinf",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "isinf",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "isinf",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "floatBitsToInt",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "floatBitsToInt",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "floatBitsToInt",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "floatBitsToInt",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "floatBitsToUint",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "floatBitsToUint",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "floatBitsToUint",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "floatBitsToUint",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "intBitsToFloat",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "int"}
+   ]
+  },
+  {
+   "name": "intBitsToFloat",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "intBitsToFloat",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "intBitsToFloat",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "uintBitsToFloat",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uint"}
+   ]
+  },
+  {
+   "name": "uintBitsToFloat",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "uintBitsToFloat",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "uintBitsToFloat",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "length",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"}
+   ]
+  },
+  {
+   "name": "length",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "length",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "length",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "distance",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "float"},
+    {"name": "b", "type": "float"}
+   ]
+  },
+  {
+   "name": "distance",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "distance",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "distance",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "dot",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "float"},
+    {"name": "b", "type": "float"}
+   ]
+  },
+  {
+   "name": "dot",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "dot",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "dot",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "cross",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "normalize",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "v", "type": "float"}
+   ]
+  },
+  {
+   "name": "normalize",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "v", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "normalize",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "v", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "normalize",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "v", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "reflect",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "I", "type": "vec2"},
+    {"name": "N", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "reflect",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "I", "type": "vec3"},
+    {"name": "N", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "reflect",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "I", "type": "vec4"},
+    {"name": "N", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "refract",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "I", "type": "vec2"},
+    {"name": "N", "type": "vec2"},
+    {"name": "eta", "type": "float"}
+   ]
+  },
+  {
+   "name": "refract",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "I", "type": "vec3"},
+    {"name": "N", "type": "vec3"},
+    {"name": "eta", "type": "float"}
+   ]
+  },
+  {
+   "name": "refract",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "I", "type": "vec4"},
+    {"name": "N", "type": "vec4"},
+    {"name": "eta", "type": "float"}
+   ]
+  },
+  {
+   "name": "faceforward",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "N", "type": "vec2"},
+    {"name": "I", "type": "vec2"},
+    {"name": "Nref", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "faceforward",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "N", "type": "vec3"},
+    {"name": "I", "type": "vec3"},
+    {"name": "Nref", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "faceforward",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "N", "type": "vec4"},
+    {"name": "I", "type": "vec4"},
+    {"name": "Nref", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "matrixCompMult",
+   "returns": "mat2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "mat2"},
+    {"name": "b", "type": "mat2"}
+   ]
+  },
+  {
+   "name": "matrixCompMult",
+   "returns": "mat3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "mat3"},
+    {"name": "b", "type": "mat3"}
+   ]
+  },
+  {
+   "name": "matrixCompMult",
+   "returns": "mat4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "mat4"},
+    {"name": "b", "type": "mat4"}
+   ]
+  },
+  {
+   "name": "outerProduct",
+   "returns": "mat2",
+   "tag": "global",
+   "arguments": [
+    {"name": "c", "type": "vec2"},
+    {"name": "r", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "outerProduct",
+   "returns": "mat3",
+   "tag": "global",
+   "arguments": [
+    {"name": "c", "type": "vec3"},
+    {"name": "r", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "outerProduct",
+   "returns": "mat4",
+   "tag": "global",
+   "arguments": [
+    {"name": "c", "type": "vec4"},
+    {"name": "r", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "transpose",
+   "returns": "mat2",
+   "tag": "global",
+   "arguments": [
+    {"name": "m", "type": "mat2"}
+   ]
+  },
+  {
+   "name": "transpose",
+   "returns": "mat3",
+   "tag": "global",
+   "arguments": [
+    {"name": "m", "type": "mat3"}
+   ]
+  },
+  {
+   "name": "transpose",
+   "returns": "mat4",
+   "tag": "global",
+   "arguments": [
+    {"name": "m", "type": "mat4"}
+   ]
+  },
+  {
+   "name": "determinant",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "m", "type": "mat2"}
+   ]
+  },
+  {
+   "name": "determinant",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "m", "type": "mat3"}
+   ]
+  },
+  {
+   "name": "determinant",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "m", "type": "mat4"}
+   ]
+  },
+  {
+   "name": "inverse",
+   "returns": "mat2",
+   "tag": "global",
+   "arguments": [
+    {"name": "m", "type": "mat2"}
+   ]
+  },
+  {
+   "name": "inverse",
+   "returns": "mat3",
+   "tag": "global",
+   "arguments": [
+    {"name": "m", "type": "mat3"}
+   ]
+  },
+  {
+   "name": "inverse",
+   "returns": "mat4",
+   "tag": "global",
+   "arguments": [
+    {"name": "m", "type": "mat4"}
+   ]
+  },
+  {
+   "name": "lessThan",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "lessThan",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "lessThan",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "lessThan",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec2"},
+    {"name": "b", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "lessThan",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec3"},
+    {"name": "b", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "lessThan",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec4"},
+    {"name": "b", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "lessThan",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec3"},
+    {"name": "b", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "lessThan",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec4"},
+    {"name": "b", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "lessThan",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec2"},
+    {"name": "b", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "greaterThan",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "greaterThan",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "greaterThan",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "greaterThan",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec2"},
+    {"name": "b", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "greaterThan",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec3"},
+    {"name": "b", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "greaterThan",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec4"},
+    {"name": "b", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "greaterThan",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec2"},
+    {"name": "b", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "greaterThan",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec3"},
+    {"name": "b", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "greaterThan",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec4"},
+    {"name": "b", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "lessThanEqual",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "lessThanEqual",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "lessThanEqual",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "lessThanEqual",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec2"},
+    {"name": "b", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "lessThanEqual",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec3"},
+    {"name": "b", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "lessThanEqual",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec4"},
+    {"name": "b", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "lessThanEqual",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec2"},
+    {"name": "b", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "lessThanEqual",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec3"},
+    {"name": "b", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "lessThanEqual",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec4"},
+    {"name": "b", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "greaterThanEqual",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "greaterThanEqual",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "greaterThanEqual",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "greaterThanEqual",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec2"},
+    {"name": "b", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "greaterThanEqual",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec3"},
+    {"name": "b", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "greaterThanEqual",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec4"},
+    {"name": "b", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "greaterThanEqual",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec2"},
+    {"name": "b", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "greaterThanEqual",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec3"},
+    {"name": "b", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "greaterThanEqual",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec4"},
+    {"name": "b", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "equal",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "equal",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "equal",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "equal",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec2"},
+    {"name": "b", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "equal",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec3"},
+    {"name": "b", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "equal",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec4"},
+    {"name": "b", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "equal",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec2"},
+    {"name": "b", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "equal",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec3"},
+    {"name": "b", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "equal",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec4"},
+    {"name": "b", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "equal",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "bvec2"},
+    {"name": "b", "type": "bvec2"}
+   ]
+  },
+  {
+   "name": "equal",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "bvec3"},
+    {"name": "b", "type": "bvec3"}
+   ]
+  },
+  {
+   "name": "equal",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "bvec4"},
+    {"name": "b", "type": "bvec4"}
+   ]
+  },
+  {
+   "name": "notEqual",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "notEqual",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "notEqual",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "notEqual",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec2"},
+    {"name": "b", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "notEqual",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec3"},
+    {"name": "b", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "notEqual",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "ivec4"},
+    {"name": "b", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "notEqual",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec2"},
+    {"name": "b", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "notEqual",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec3"},
+    {"name": "b", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "notEqual",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "uvec4"},
+    {"name": "b", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "notEqual",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "bvec2"},
+    {"name": "b", "type": "bvec2"}
+   ]
+  },
+  {
+   "name": "notEqual",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "bvec3"},
+    {"name": "b", "type": "bvec3"}
+   ]
+  },
+  {
+   "name": "notEqual",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "bvec4"},
+    {"name": "b", "type": "bvec4"}
+   ]
+  },
+  {
+   "name": "any",
+   "returns": "bool",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "bvec2"}
+   ]
+  },
+  {
+   "name": "any",
+   "returns": "bool",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "bvec3"}
+   ]
+  },
+  {
+   "name": "any",
+   "returns": "bool",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "bvec4"}
+   ]
+  },
+  {
+   "name": "all",
+   "returns": "bool",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "bvec2"}
+   ]
+  },
+  {
+   "name": "all",
+   "returns": "bool",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "bvec3"}
+   ]
+  },
+  {
+   "name": "all",
+   "returns": "bool",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "bvec4"}
+   ]
+  },
+  {
+   "name": "not",
+   "returns": "bvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "bvec2"}
+   ]
+  },
+  {
+   "name": "not",
+   "returns": "bvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "bvec3"}
+   ]
+  },
+  {
+   "name": "not",
+   "returns": "bvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "bvec4"}
+   ]
+  },
+  {
+   "name": "textureSize",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureSize",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureSize",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureSize",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2DArray"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureSize",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2DArray"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureSize",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2DArray"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureSize",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler3D"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureSize",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler3D"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureSize",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler3D"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureSize",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerCube"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureSize",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerCubeArray"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec2"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec2"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec2"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2DArray"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2DArray"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2DArray"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2DArray"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2DArray"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2DArray"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler3D"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler3D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler3D"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler3D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler3D"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler3D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerCube"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerCube"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerCubeArray"},
+    {"name": "coords", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerCubeArray"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerExternalOES"},
+    {"name": "coords", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "texture",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerExternalOES"},
+    {"name": "coords", "type": "vec2"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler3D"},
+    {"name": "coords", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler3D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler3D"},
+    {"name": "coords", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler3D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler3D"},
+    {"name": "coords", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "textureProj",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler3D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "bias", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureLod",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec2"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureLod",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec2"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureLod",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec2"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureLod",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2DArray"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureLod",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2DArray"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureLod",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2DArray"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureLod",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler3D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureLod",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler3D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureLod",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler3D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureLod",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerCube"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureLod",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerCubeArray"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "texelFetch",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "ivec2"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "texelFetch",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "ivec2"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "texelFetch",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "ivec2"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "texelFetch",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2DArray"},
+    {"name": "coords", "type": "ivec3"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "texelFetch",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2DArray"},
+    {"name": "coords", "type": "ivec3"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "texelFetch",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2DArray"},
+    {"name": "coords", "type": "ivec3"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "texelFetch",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler3D"},
+    {"name": "coords", "type": "ivec3"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "texelFetch",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler3D"},
+    {"name": "coords", "type": "ivec3"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "texelFetch",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler3D"},
+    {"name": "coords", "type": "ivec3"},
+    {"name": "lod", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureProjLod",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProjLod",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProjLod",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProjLod",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProjLod",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProjLod",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProjLod",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler3D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProjLod",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler3D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureProjLod",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler3D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "lod", "type": "float"}
+   ]
+  },
+  {
+   "name": "textureGrad",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec2"},
+    {"name": "dPdx", "type": "vec2"},
+    {"name": "dPdy", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureGrad",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec2"},
+    {"name": "dPdx", "type": "vec2"},
+    {"name": "dPdy", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureGrad",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec2"},
+    {"name": "dPdx", "type": "vec2"},
+    {"name": "dPdy", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureGrad",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2DArray"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "dPdx", "type": "vec2"},
+    {"name": "dPdy", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureGrad",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2DArray"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "dPdx", "type": "vec2"},
+    {"name": "dPdy", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureGrad",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2DArray"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "dPdx", "type": "vec2"},
+    {"name": "dPdy", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureGrad",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler3D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "dPdx", "type": "vec3"},
+    {"name": "dPdy", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureGrad",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler3D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "dPdx", "type": "vec3"},
+    {"name": "dPdy", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureGrad",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler3D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "dPdx", "type": "vec3"},
+    {"name": "dPdy", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureGrad",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerCube"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "dPdx", "type": "vec3"},
+    {"name": "dPdy", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureGrad",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerCubeArray"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "dPdx", "type": "vec3"},
+    {"name": "dPdy", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureProjGrad",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "dPdx", "type": "vec2"},
+    {"name": "dPdy", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureProjGrad",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "dPdx", "type": "vec2"},
+    {"name": "dPdy", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureProjGrad",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "dPdx", "type": "vec2"},
+    {"name": "dPdy", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureProjGrad",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "dPdx", "type": "vec2"},
+    {"name": "dPdy", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureProjGrad",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "dPdx", "type": "vec2"},
+    {"name": "dPdy", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureProjGrad",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "dPdx", "type": "vec2"},
+    {"name": "dPdy", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureProjGrad",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler3D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "dPdx", "type": "vec3"},
+    {"name": "dPdy", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureProjGrad",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler3D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "dPdx", "type": "vec3"},
+    {"name": "dPdy", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureProjGrad",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler3D"},
+    {"name": "coords", "type": "vec4"},
+    {"name": "dPdx", "type": "vec3"},
+    {"name": "dPdy", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureGather",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureGather",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureGather",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureGather",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec2"},
+    {"name": "comp", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureGather",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec2"},
+    {"name": "comp", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureGather",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec2"},
+    {"name": "comp", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureGather",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2DArray"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureGather",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2DArray"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureGather",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2DArray"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureGather",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2DArray"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "comp", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureGather",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2DArray"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "comp", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureGather",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2DArray"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "comp", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureGather",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerCube"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureGather",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerCube"},
+    {"name": "coords", "type": "vec3"},
+    {"name": "comp", "type": "int"}
+   ]
+  },
+  {
+   "name": "textureQueryLod",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"},
+    {"name": "coords", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureQueryLod",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"},
+    {"name": "coords", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureQueryLod",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"},
+    {"name": "coords", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureQueryLod",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2DArray"},
+    {"name": "coords", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureQueryLod",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2DArray"},
+    {"name": "coords", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureQueryLod",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2DArray"},
+    {"name": "coords", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "textureQueryLod",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler3D"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureQueryLod",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler3D"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureQueryLod",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler3D"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureQueryLod",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerCube"},
+    {"name": "coords", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "textureQueryLevels",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2D"}
+   ]
+  },
+  {
+   "name": "textureQueryLevels",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2D"}
+   ]
+  },
+  {
+   "name": "textureQueryLevels",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2D"}
+   ]
+  },
+  {
+   "name": "textureQueryLevels",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler2DArray"}
+   ]
+  },
+  {
+   "name": "textureQueryLevels",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler2DArray"}
+   ]
+  },
+  {
+   "name": "textureQueryLevels",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler2DArray"}
+   ]
+  },
+  {
+   "name": "textureQueryLevels",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "sampler3D"}
+   ]
+  },
+  {
+   "name": "textureQueryLevels",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "isampler3D"}
+   ]
+  },
+  {
+   "name": "textureQueryLevels",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "usampler3D"}
+   ]
+  },
+  {
+   "name": "textureQueryLevels",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "sampler", "type": "samplerCube"}
+   ]
+  },
+  {
+   "name": "dFdx",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "float"}
+   ]
+  },
+  {
+   "name": "dFdx",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "dFdx",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "dFdx",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "dFdxCoarse",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "float"}
+   ]
+  },
+  {
+   "name": "dFdxCoarse",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "dFdxCoarse",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "dFdxCoarse",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "dFdxFine",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "float"}
+   ]
+  },
+  {
+   "name": "dFdxFine",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "dFdxFine",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "dFdxFine",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "dFdy",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "float"}
+   ]
+  },
+  {
+   "name": "dFdy",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "dFdy",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "dFdy",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "dFdyCoarse",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "float"}
+   ]
+  },
+  {
+   "name": "dFdyCoarse",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "dFdyCoarse",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "dFdyCoarse",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "dFdyFine",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "float"}
+   ]
+  },
+  {
+   "name": "dFdyFine",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "dFdyFine",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "dFdyFine",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "fwidth",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "float"}
+   ]
+  },
+  {
+   "name": "fwidth",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "fwidth",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "fwidth",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "fwidthCoarse",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "float"}
+   ]
+  },
+  {
+   "name": "fwidthCoarse",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "fwidthCoarse",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "fwidthCoarse",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "fwidthFine",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "float"}
+   ]
+  },
+  {
+   "name": "fwidthFine",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "fwidthFine",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "fwidthFine",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "p", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "fma",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "float"},
+    {"name": "b", "type": "float"},
+    {"name": "c", "type": "float"}
+   ]
+  },
+  {
+   "name": "fma",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec2"},
+    {"name": "b", "type": "vec2"},
+    {"name": "c", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "fma",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec3"},
+    {"name": "b", "type": "vec3"},
+    {"name": "c", "type": "vec3"}
+   ]
+  },
+  {
+   "name": "fma",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "a", "type": "vec4"},
+    {"name": "b", "type": "vec4"},
+    {"name": "c", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "packHalf2x16",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "v", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "packUnorm2x16",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "v", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "packSnorm2x16",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "v", "type": "vec2"}
+   ]
+  },
+  {
+   "name": "packUnorm4x8",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "v", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "packSnorm4x8",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "v", "type": "vec4"}
+   ]
+  },
+  {
+   "name": "unpackHalf2x16",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "v", "type": "uint"}
+   ]
+  },
+  {
+   "name": "unpackUnorm2x16",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "v", "type": "uint"}
+   ]
+  },
+  {
+   "name": "unpackSnorm2x16",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "v", "type": "uint"}
+   ]
+  },
+  {
+   "name": "unpackUnorm4x8",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "v", "type": "uint"}
+   ]
+  },
+  {
+   "name": "unpackSnorm4x8",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "v", "type": "uint"}
+   ]
+  },
+  {
+   "name": "bitfieldExtract",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "int"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldExtract",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec2"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldExtract",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec3"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldExtract",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec4"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldExtract",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uint"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldExtract",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec2"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldExtract",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec3"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldExtract",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec4"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldInsert",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "base", "type": "int"},
+    {"name": "insert", "type": "int"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldInsert",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "base", "type": "ivec2"},
+    {"name": "insert", "type": "ivec2"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldInsert",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "base", "type": "ivec3"},
+    {"name": "insert", "type": "ivec3"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldInsert",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "base", "type": "ivec4"},
+    {"name": "insert", "type": "ivec4"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldInsert",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "base", "type": "uint"},
+    {"name": "insert", "type": "uint"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldInsert",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "base", "type": "uvec2"},
+    {"name": "insert", "type": "uvec2"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldInsert",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "base", "type": "uvec3"},
+    {"name": "insert", "type": "uvec3"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldInsert",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "base", "type": "uvec4"},
+    {"name": "insert", "type": "uvec4"},
+    {"name": "offset", "type": "int"},
+    {"name": "bits", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldReverse",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitfieldReverse",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "bitfieldReverse",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "bitfieldReverse",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "bitfieldReverse",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uint"}
+   ]
+  },
+  {
+   "name": "bitfieldReverse",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "bitfieldReverse",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "bitfieldReverse",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "bitCount",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "int"}
+   ]
+  },
+  {
+   "name": "bitCount",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "bitCount",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "bitCount",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "bitCount",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uint"}
+   ]
+  },
+  {
+   "name": "bitCount",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "bitCount",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "bitCount",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "findLSB",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "int"}
+   ]
+  },
+  {
+   "name": "findLSB",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "findLSB",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "findLSB",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "findLSB",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uint"}
+   ]
+  },
+  {
+   "name": "findLSB",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "findLSB",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "findLSB",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "findMSB",
+   "returns": "int",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "int"}
+   ]
+  },
+  {
+   "name": "findMSB",
+   "returns": "ivec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "findMSB",
+   "returns": "ivec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "findMSB",
+   "returns": "ivec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "findMSB",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uint"}
+   ]
+  },
+  {
+   "name": "findMSB",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "findMSB",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "findMSB",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "value", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "umulExtended",
+   "returns": "void",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uint"},
+    {"name": "y", "type": "uint"},
+    {"name": "msb", "type": "uint"},
+    {"name": "lsb", "type": "uint"}
+   ]
+  },
+  {
+   "name": "umulExtended",
+   "returns": "void",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec2"},
+    {"name": "y", "type": "uvec2"},
+    {"name": "msb", "type": "uvec2"},
+    {"name": "lsb", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "umulExtended",
+   "returns": "void",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec3"},
+    {"name": "y", "type": "uvec3"},
+    {"name": "msb", "type": "uvec3"},
+    {"name": "lsb", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "umulExtended",
+   "returns": "void",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec4"},
+    {"name": "y", "type": "uvec4"},
+    {"name": "msb", "type": "uvec4"},
+    {"name": "lsb", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "imulExtended",
+   "returns": "void",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "int"},
+    {"name": "y", "type": "int"},
+    {"name": "msb", "type": "int"},
+    {"name": "lsb", "type": "int"}
+   ]
+  },
+  {
+   "name": "imulExtended",
+   "returns": "void",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec2"},
+    {"name": "y", "type": "ivec2"},
+    {"name": "msb", "type": "ivec2"},
+    {"name": "lsb", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "imulExtended",
+   "returns": "void",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec3"},
+    {"name": "y", "type": "ivec3"},
+    {"name": "msb", "type": "ivec3"},
+    {"name": "lsb", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "imulExtended",
+   "returns": "void",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "ivec4"},
+    {"name": "y", "type": "ivec4"},
+    {"name": "msb", "type": "ivec4"},
+    {"name": "lsb", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "uaddCarry",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uint"},
+    {"name": "y", "type": "uint"},
+    {"name": "carry", "type": "uint"}
+   ]
+  },
+  {
+   "name": "uaddCarry",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec2"},
+    {"name": "y", "type": "uvec2"},
+    {"name": "carry", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "uaddCarry",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec3"},
+    {"name": "y", "type": "uvec3"},
+    {"name": "carry", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "uaddCarry",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec4"},
+    {"name": "y", "type": "uvec4"},
+    {"name": "carry", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "usubBorrow",
+   "returns": "uint",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uint"},
+    {"name": "y", "type": "uint"},
+    {"name": "borrow", "type": "uint"}
+   ]
+  },
+  {
+   "name": "usubBorrow",
+   "returns": "uvec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec2"},
+    {"name": "y", "type": "uvec2"},
+    {"name": "borrow", "type": "uvec2"}
+   ]
+  },
+  {
+   "name": "usubBorrow",
+   "returns": "uvec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec3"},
+    {"name": "y", "type": "uvec3"},
+    {"name": "borrow", "type": "uvec3"}
+   ]
+  },
+  {
+   "name": "usubBorrow",
+   "returns": "uvec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "uvec4"},
+    {"name": "y", "type": "uvec4"},
+    {"name": "borrow", "type": "uvec4"}
+   ]
+  },
+  {
+   "name": "ldexp",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"},
+    {"name": "exp", "type": "int"}
+   ]
+  },
+  {
+   "name": "ldexp",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"},
+    {"name": "exp", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "ldexp",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"},
+    {"name": "exp", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "ldexp",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"},
+    {"name": "exp", "type": "ivec4"}
+   ]
+  },
+  {
+   "name": "frexp",
+   "returns": "float",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "float"},
+    {"name": "exp", "type": "int"}
+   ]
+  },
+  {
+   "name": "frexp",
+   "returns": "vec2",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec2"},
+    {"name": "exp", "type": "ivec2"}
+   ]
+  },
+  {
+   "name": "frexp",
+   "returns": "vec3",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec3"},
+    {"name": "exp", "type": "ivec3"}
+   ]
+  },
+  {
+   "name": "frexp",
+   "returns": "vec4",
+   "tag": "global",
+   "arguments": [
+    {"name": "x", "type": "vec4"},
+    {"name": "exp", "type": "ivec4"}
+   ]
+  }
+ ]
+}

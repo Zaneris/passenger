@@ -15,11 +15,15 @@ namespace Passenger.App.Godot;
 /// (<see cref="GodotChecks.EngineAnswers"/>): as it opens, again a moment after what it is read against changes (its
 /// project's scenes as typed or written, the code a pull read, the server loaded), and at once as a C# file of its project
 /// is written on disk, read once the server holds as the disk has them the scene's scripts heard changed
-/// (<see cref="CodeAsync"/>). A UI-thread object.</summary>
+/// (<see cref="CodeAsync"/>); and each Shader it writes itself marked with what Godot's own compiler says of its code
+/// (<see cref="ShaderMarksAsync"/>). A UI-thread object.</summary>
 internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string?> godotOf, Func<CSharp.CSharpService?> csharp, CommandHistory commands)
 {
     /// <summary>The Godot the person's settings name (their command line for it), whose GodotSharp tells the engine's classes.</summary>
     public Func<string?> Godot { get; init; } = () => null;
+
+    /// <summary>Godot's shader compiler, which a scene's own Shaders are compiled by; none leaves them unmarked.</summary>
+    public GodotShaderCompiler? Shaders { get; init; }
 
     /// <summary>How long a change waits for the next before the open scenes are read again.</summary>
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(300);
@@ -122,7 +126,8 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
             : await BackgroundWork.Run(() => Run.GodotLaunch.Found(setting)?.Sharp is { } sharp && Path.Combine(sharp, "Api", "Release", "GodotSharp.dll") is var api && File.Exists(api)
                 ? GodotChecks.EngineAnswers(asked, GodotEngineClasses.Of(api)) : GodotCodeFound.None);
         IReadOnlyList<GodotChecks.SceneFinding> findings = await BackgroundWork.Run(() => GodotChecks.SceneFindings(scenes, res, asked, found, path => File.Exists(path) || Directory.Exists(path)));
-        if (Show(document, version, [.. findings.Select(f => new Marker(TextRange.FromBounds(f.Start, Math.Max(f.Start, f.End)), f.Error ? MarkerKind.Error : MarkerKind.Warning, f.Message))]))
+        IReadOnlyList<Marker> shaders = await ShaderMarksAsync(scenes, res, file);
+        if (Show(document, version, [.. findings.Select(f => new Marker(TextRange.FromBounds(f.Start, Math.Max(f.Start, f.End)), f.Error ? MarkerKind.Error : MarkerKind.Warning, f.Message)), .. shaders]))
         {
             offers[document] = findings.Where(f => f.Offer is { Any: true }).DistinctBy(f => f.Message).ToDictionary(f => f.Message, f => f.Offer!, StringComparer.Ordinal);
         }
@@ -145,6 +150,41 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
             return (await service.GodotSceneCodeAsync(asked, CancellationToken.None), Behind: false);
         }, read => read.Behind, _ => { }, CancellationToken.None);
         return found;
+    }
+
+    /// <summary>The marks Godot's compiler gives each Shader a scene or resource writes itself (a sub_resource's <c>code</c>,
+    /// or a Shader resource's own), each place in its code's value mapped to where the file writes it, escapes and all.</summary>
+    private async Task<IReadOnlyList<Marker>> ShaderMarksAsync(GodotScenes scenes, string res, GodotFile file)
+    {
+        if (Shaders is not { } compiler)
+        {
+            return [];
+        }
+        List<Marker> marks = [];
+        bool resource = file.Header?.Text("type") == "Shader";
+        foreach (GodotSection section in file.Sections.Where(s => s.Tag == "sub_resource" && s.Text("type") == "Shader" || resource && s.Tag == "resource"))
+        {
+            if (section.Property("code")?.Value is not { Text: { } code } value)
+            {
+                continue;
+            }
+            string shader = section.Tag == "sub_resource" ? $"{res}::{section.Text("id")}" : res;
+            GodotShaderUnit unit = await BackgroundWork.Run(() => GodotShaderUnit.Of(shader, code, path => scenes.Texts.GetValueOrDefault(path)));
+            if (await compiler.CompileAsync(unit) is not { } compiled)
+            {
+                return marks;
+            }
+            marks.AddRange(await BackgroundWork.Run(() =>
+            {
+                int[] places = GodotStringPlaces.Of(file.Text, value.TextStart, value.TextEnd);
+                return unit.MarksIn(null, compiled.Messages).Select(m =>
+                {
+                    (int start, int end) = GodotStringPlaces.RangeOf(places, m.Start, m.End);
+                    return new Marker(TextRange.FromBounds(start, end), m.Error ? MarkerKind.Error : MarkerKind.Warning, m.Message);
+                }).ToList();
+            }));
+        }
+        return marks;
     }
 
     /// <summary>What an open scene's marks on an offset's line offer to mend them (any line for null), each with where its

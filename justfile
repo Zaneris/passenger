@@ -106,6 +106,11 @@ app-icon:
 themes:
     python3 -I tools/themes.py
 
+# Rewrite src/Passenger.Workspace/GodotShaderTypes.json, Godot's shading language as its sources at one commit say it
+# (tools/godot-shader-types.py).
+godot-shader-types:
+    python3 -I tools/godot-shader-types.py
+
 # Rewrite Theme/Icons.axaml from the list in tools/icons.py (fetches any icon not yet cached).
 icons:
     python3 -I tools/icons.py

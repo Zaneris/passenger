@@ -81,7 +81,7 @@ public sealed class CodeAssist
         context.Languages = new LanguageAssists(new HttpAssist(context, navigation), new MSBuildAssist(context, popups, completion), xaml,
             new ComposeAssist(context, popups, completion, navigation, actions), new SettingsAssist(context, completion, navigation),
             new CssClassAssist(context, completion, navigation), new WebAssist(context, popups, completion, parameterInfo, actions),
-            new GodotAssist(context, popups, completion, navigation, csharp), csharp);
+            new GodotShaderAssist(context, completion, navigation, csharp), new GodotAssist(context, popups, completion, navigation, csharp), csharp);
         // Every editor a split makes is wired the same; what it asks is answered for the active one, which it is.
         editors.ForEachEditor(editor =>
         {
@@ -190,6 +190,9 @@ public sealed class CodeAssist
     /// <summary>The languages' own answers, which an agent's tools ask as the window's commands do.</summary>
     internal LanguageAssists Languages => context.Languages;
 
+    /// <summary>Where Godot's shading reference describes what is at an offset of a shader (<see cref="GodotShaderAssist.HelpAsync"/>).</summary>
+    internal Task<(Uri Page, string Name)?> ShaderHelpAsync(OpenDocument shader, int offset, string version) => context.Languages.Shaders.HelpAsync(shader, offset, version);
+
     public bool IsCompletionOpen => completion.IsOpen;
 
     /// <summary>What the card beside the completion list says about the chosen item while it shows, null otherwise.</summary>
@@ -295,6 +298,12 @@ public sealed class CodeAssist
     }
 
     /// <summary>The scenes of the window's Godot projects, for a scene shown.</summary>
+    internal Func<Godot.GodotShaderMarks?>? GodotShaders
+    {
+        get => context.GodotShaders;
+        set => context.GodotShaders = value;
+    }
+
     public Func<Godot.GodotSceneIndex?>? GodotScenes
     {
         get => context.GodotScenes;
@@ -405,7 +414,7 @@ public sealed class CodeAssist
         context.Work = registry.Work;
         WebAssist web = context.Languages.Web;
         Code(AppActions.Complete, "Basic Completion", context => IdeErrors.Observe(completion.Start(null)), new("Code/Code Completion", 0, 0), xaml: true, msbuild: true,
-            godot: true);
+            godot: true, shader: true);
         Code(AppActions.CompleteStatement, "Complete Current Statement", _ => completion.CompleteStatement(), new("Code/Code Completion", 1, 0), server: false, syntax: true);
         // Passenger's own fixes first, which a file the server does not read (a XAML file) may have too.
         registry.Add(new IdeAction(AppActions.QuickFix, "Show Context Actions", "Code", context => IdeErrors.Observe(actions.ShowFixes(AppActions.QuickFix)))
@@ -454,24 +463,25 @@ public sealed class CodeAssist
             Menus = [new("Refactor", 4, 1)],
         });
         Code(AppActions.GoToDeclaration, "Go to Declaration", context => IdeErrors.Observe(navigation.GoToDefinition(Caret)), new("Navigate", 2, 0), xaml: true, msbuild: true, http: true,
-            godot: true);
+            godot: true, shader: true);
         Code(AppActions.DerivedSymbols, "Derived Symbols", context => IdeErrors.Observe(navigation.GoToDerivedSymbols(Caret)), new("Navigate", 2, 1));
         Code(AppActions.GoToImplementation, "Go to Implementation", context => IdeErrors.Observe(navigation.GoToImplementation(Caret)), new("Navigate", 2, 2));
         Code(AppActions.GoToTypeDeclaration, "Go to Type Declaration", context => IdeErrors.Observe(navigation.GoToTypeDeclaration(Caret)), new("Navigate", 2, 3));
         Code(AppActions.BaseSymbols, "Base Symbols", context => IdeErrors.Observe(navigation.GoToBaseSymbols(Caret)), new("Navigate", 2, 4));
-        Code(AppActions.FindUsages, "Find Usages", context => IdeErrors.Observe(navigation.FindUsages(Caret)), new("Navigate", 2, 5), xaml: true);
-        Code(AppActions.ShowUsages, "Show Usages", context => IdeErrors.Observe(navigation.FindUsages(Caret, inPopup: true)), new("Navigate", 2, 8), xaml: true);
+        Code(AppActions.FindUsages, "Find Usages", context => IdeErrors.Observe(navigation.FindUsages(Caret)), new("Navigate", 2, 5), xaml: true, shader: true);
+        Code(AppActions.ShowUsages, "Show Usages", context => IdeErrors.Observe(navigation.FindUsages(Caret, inPopup: true)), new("Navigate", 2, 8), xaml: true, shader: true);
         Code(AppActions.ParameterInfo, "Parameter Info", context => IdeErrors.Observe(parameterInfo.Show()), new("View", 1, 2));
         Code(AppActions.NextError, "Next Highlighted Error", _ => navigation.StepToMarker(forward: true), new("Navigate", 3, 0), server: false);
         Code(AppActions.PreviousError, "Previous Highlighted Error", _ => navigation.StepToMarker(forward: false), new("Navigate", 3, 1), server: false);
         Code(AppActions.QuickDocumentation, "Quick Documentation", context => quickInfo.QuickDocumentation(), new("View", 1, 1), server: false);
 
         void Code(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false,
-            bool http = false, bool godot = false) =>
+            bool http = false, bool godot = false, bool shader = false) =>
             registry.Add(new IdeAction(id, title, "Code", run)
             {
-                // An .http file's requests go to their routes, and a Godot scene's paths to their files and code, with no language server of their own.
-                WhyNot = action => http && this.context.Languages.Http.IsHttpFile(action.File) || godot && IsGodotScene(action.File) ? null
+                // An .http file's requests, a Godot scene's paths and a shader's names are each read with no language server.
+                WhyNot = action => http && this.context.Languages.Http.IsHttpFile(action.File) || godot && IsGodotScene(action.File)
+                    || shader && action.File is { } file && Godot.GodotShaderMarks.IsShader(file.Path) ? null
                     : WhyNot(action, server, syntax, xaml, markup, msbuild),
                 Menus = [menu],
             });

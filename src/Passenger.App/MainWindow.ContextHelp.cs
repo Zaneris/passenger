@@ -10,13 +10,15 @@ namespace Passenger.App;
 /// <summary>Context Help: the page of Godot's class reference for the Godot class or member at the caret, browsed, of the
 /// version of the Godot found (<see cref="GodotDocs"/>): from C#, the engine's class and member by GodotSharp's own names
 /// (asked of Passenger's extension, <see cref="GodotNamesFound.Engine"/>); from GDScript, by what Godot's server's card for
-/// it names (<see cref="GodotDocs.OfScriptCard"/>). What has no page there is said.</summary>
+/// it names (<see cref="GodotDocs.OfScriptCard"/>); from a shader, the place of its built-in, mode, hint or function in
+/// Godot's shading reference (<see cref="CSharp.GodotShaderAssist.HelpAsync"/>). What has no page there is said.</summary>
 public partial class MainWindow
 {
     private void AddContextHelp() =>
         actions!.Add(new IdeAction(AppActions.ContextHelp, "Context Help", "Help", _ => IdeErrors.Observe(ContextHelpAsync()))
         {
-            WhyNot = _ => Editors.Active is not { } file ? Refusals.NoFile : HelpServer(file) is null ? Refusals.NoContextHelp(file.Name) : null,
+            WhyNot = _ => Editors.Active is not { } file ? Refusals.NoFile
+                : HelpServer(file) is null && !GodotShaderMarks.IsShader(file.Path) ? Refusals.NoContextHelp(file.Name) : null,
             Menus = [new MenuPlace("Help", 0, 1)],
         });
 
@@ -28,6 +30,11 @@ public partial class MainWindow
 
     private async Task ContextHelpAsync()
     {
+        if (Editors.Active is { } shader && GodotShaderMarks.IsShader(shader.Path))
+        {
+            await ShaderHelpAsync(shader);
+            return;
+        }
         if (Editors.Active is not { } file || HelpServer(file) is not ({ } lsp, bool script))
         {
             return;
@@ -66,5 +73,24 @@ public partial class MainWindow
             Say(said);
             ActionWork.Tell(succeeded, said);
         }
+    }
+
+    /// <summary>Context Help in a shader: the place in Godot's shading reference of what is at the caret, browsed.</summary>
+    private async Task ShaderHelpAsync(OpenDocument shader)
+    {
+        using Working? work = actions!.Work.Begin(AppActions.ContextHelp, "Finding the caret's built-in in Godot's shading reference");
+        int offset = Editors.CodeEditor.Selections.Primary.Caret;
+        string? godot = settings.GodotExecutable;
+        string version = GodotDocs.VersionOf((await BackgroundWork.Run(() => GodotLaunch.Found(godot)))?.Version);
+        if (await assist.ShaderHelpAsync(shader, offset, version) is not ({ } page, { } name))
+        {
+            Say(Refusals.NoShaderDocumentation);
+            ActionWork.Tell(false, Refusals.NoShaderDocumentation);
+            return;
+        }
+        Browse(page);
+        string said = $"Opened {name} in Godot's shading reference: {page}";
+        Say(said);
+        ActionWork.Tell(true, said);
     }
 }

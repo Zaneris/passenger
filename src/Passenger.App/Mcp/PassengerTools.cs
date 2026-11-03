@@ -335,6 +335,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 throw Lacks(served, "Find Usages", MSBuildHas);
             case GodotServed:
                 throw Lacks(served, "Find Usages", GodotHas);
+            case ShaderServed shader:
+                return await window.Assist.Languages.Shaders.UsesAsync(shader.Document, offset) is (_, { } shaderUses)
+                    ? ByFile(null, await Places(shaderUses, cancel))
+                    : throw new InvalidOperationException($"No uniform, varying, function, struct or constant the shader declares is at {place}");
             case ServerServed unfound when !unfound.Provides("referencesProvider"):
                 throw new InvalidOperationException($"{unfound.Language} has no usages: its language server finds none, so Find Usages finds nothing in {Path.GetFileName(unfound.Document.Path)}");
         }
@@ -489,6 +493,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 return await JsonRename(json, offset, newName);
             case MSBuildServed:
                 throw Lacks(served, "Rename", MSBuildHas);
+            case ShaderServed:
+                throw Lacks(served, "Rename", ShaderHas);
         }
         ServerServed server = (ServerServed)served;
         string? resource = null;
@@ -564,6 +570,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 break;
             case GodotServed:
                 throw new InvalidOperationException(SceneFixesHere);
+            case ShaderServed:
+                throw Lacks(served, "fixes or refactorings", ShaderHas);
             default:
                 int offset = Offset(served.Document, line, column);
                 await AspireMarked(served, cancel);
@@ -603,6 +611,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 return await ApplyOwnFix(served.Document, sceneFix, patience, name);
             case GodotServed:
                 throw new InvalidOperationException(SceneFixesHere);
+            case ShaderServed:
+                throw Lacks(served, "fixes or refactorings", ShaderHas);
         }
         ServerServed server = (ServerServed)served;
         int offset = Offset(served.Document, line, column);
@@ -732,7 +742,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         else
         {
             Served file = await Serve(path, cancel);
-            ServerServed served = file as ServerServed ?? throw Lacks(file, "Reformat Code", file is GodotServed ? GodotHas : MSBuildHas);
+            ServerServed served = file as ServerServed ?? throw Lacks(file, "Reformat Code", file switch { GodotServed => GodotHas, ShaderServed => ShaderHas, _ => MSBuildHas });
             (document, lsp) = (served.Document, served.Lsp);
         }
         CSharp.CodeActions.Reformatted done = await window.Assist.Actions.ReformatAsync(document, null, () => lsp)
@@ -1048,6 +1058,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 return MSBuildOutline(msbuild);
             case GodotServed scene:
                 return await SceneOutline(scene, cancel);
+            case ShaderServed shader:
+                return CSharp.GodotShaderAssist.Outline(shader.Document.Text.Snapshot.ToString()) is { Count: > 0 } declared
+                    ? string.Join('\n', declared.Select(d => $"{d.Written} ({d.Kind}, line {d.Line})")) : "Nothing is declared in this file";
         }
         LspDocument lsp = ((ServerServed)served).Lsp;
         System.Text.StringBuilder text = new();

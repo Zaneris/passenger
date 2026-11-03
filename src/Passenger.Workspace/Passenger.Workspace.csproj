@@ -16,6 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Godot's shading language as its sources say it, written by just godot-shader-types (GodotShaderTable). -->
+    <EmbeddedResource Include="GodotShaderTypes.json" LogicalName="Passenger.Workspace.GodotShaderTypes.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../Passenger.Core/Passenger.Core.csproj" />
     <ProjectReference Include="../Passenger.Text/Passenger.Text.csproj" />
     <!-- The host's messages, one definition for both ends. -->

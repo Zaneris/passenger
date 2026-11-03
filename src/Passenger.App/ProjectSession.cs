@@ -130,8 +130,15 @@ public sealed class ProjectSession : IAsyncDisposable
             Web?.StylesheetsChanged();
         };
         GodotScenes.Changed += (_, _) => CSharp?.GodotScenesChanged();
-        GodotMarks = new Godot.GodotSceneMarks(GodotScenes, GodotOf, () => CSharp, setup.Editors.Commands) { Godot = () => setup.Settings().GodotExecutable };
+        GodotShaderCompiler = new Godot.GodotShaderCompiler(() => setup.Settings().GodotExecutable, () => setup.GodotEnvironment);
+        GodotShaders = new Godot.GodotShaderMarks(GodotScenes, GodotOf, GodotShaderCompiler);
+        GodotMarks = new Godot.GodotSceneMarks(GodotScenes, GodotOf, () => CSharp, setup.Editors.Commands)
+        {
+            Godot = () => setup.Settings().GodotExecutable,
+            Shaders = GodotShaderCompiler,
+        };
         GodotScenes.Changed += (_, _) => GodotMarks.Changed();
+        GodotScenes.Changed += (_, _) => GodotShaders.Changed();
         GodotScenes.CodeChanged += (_, _) => GodotMarks.CodeWritten();
         Debug = new DebugController(setup.Editors, setup.Views.Debug)
         {
@@ -299,6 +306,7 @@ public sealed class ProjectSession : IAsyncDisposable
         // A Godot project's C# is read against its scenes once its evaluation says which folder they are in.
         CSharp?.GodotProjectsChanged();
         GodotMarks.Changed();
+        GodotShaders.Changed();
 
         static bool Same(ProjectEvaluation a, ProjectEvaluation b) =>
             a.AssetsFile == b.AssetsFile && a.PackageRoot == b.PackageRoot && a.TargetPath == b.TargetPath && ReferenceEquals(a.Parsing, b.Parsing)
@@ -814,6 +822,12 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The marks of the open Godot scenes and resources, read against their project's scenes and code.</summary>
     internal Godot.GodotSceneMarks GodotMarks { get; }
 
+    /// <summary>Godot's own shader compiler, run for the session's shaders and ended with it.</summary>
+    internal Godot.GodotShaderCompiler GodotShaderCompiler { get; }
+
+    /// <summary>The open shaders' marks from Godot's compiler, and what it read of their uniforms.</summary>
+    internal Godot.GodotShaderMarks GodotShaders { get; }
+
     /// <summary>The folder of the Godot project a file is of: the one its project builds a game for, else the Godot project of
     /// GDScript alone it lies in (<see cref="WorkspaceModel.ScriptGames"/>), the innermost; null for a file of none.</summary>
     public string? GodotOf(string path) => ProjectOf(path)?.GodotFolder
@@ -1051,6 +1065,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Xaml.Attach(document);
         GodotScenes.Attach(document);
         GodotMarks.Attach(document);
+        GodotShaders.Attach(document);
         MSBuild.Attach(document);
         FileChecks.Attach(document);
         Debug.Attach(document);
@@ -1067,6 +1082,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Xaml.Detach(document);
         GodotScenes.Detach(document);
         GodotMarks.Detach(document);
+        GodotShaders.Detach(document);
         MSBuild.Detach(document);
         FileChecks.Detach(document);
         Debug.Detach(document);
@@ -1114,6 +1130,8 @@ public sealed class ProjectSession : IAsyncDisposable
             FileChecks.Attach(document);
             GodotMarks.Detach(document);
             GodotMarks.Attach(document);
+            GodotShaders.Detach(document);
+            GodotShaders.Attach(document);
         }
     }
 
@@ -1218,8 +1236,9 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             StartCSharp();
         }
-        // A Godot project of GDScript alone found by the walk is the open scenes' project from now on.
+        // A Godot project of GDScript alone found by the walk is the open scenes' and shaders' project from now on.
         GodotMarks.Changed();
+        GodotShaders.Changed();
         WorkspaceChanged?.Invoke(this, EventArgs.Empty);
         // Each project whose evaluation no longer stands (its file or an import changed) is evaluated again.
         Evaluate();
@@ -1411,6 +1430,8 @@ public sealed class ProjectSession : IAsyncDisposable
         Xaml.Dispose();
         GodotScenes.Stop();
         GodotMarks.Stop();
+        GodotShaders.Stop();
+        parts.Add(("Godot's shader compiler", GodotShaderCompiler.DisposeAsync().AsTask()));
         MSBuild.Dispose();
         FileChecks.Dispose();
         return parts;

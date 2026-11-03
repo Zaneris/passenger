@@ -98,6 +98,7 @@ public sealed partial class PassengerTools
             XamlServed => throw Lacks(served, Titled(kind),
                 "rename renames an element's name, code_actions and apply_code_action extract a resource or a style, and code_cleanup reformats it"),
             MSBuildServed => throw Lacks(served, Titled(kind), MSBuildHas),
+            ShaderServed => throw Lacks(served, Titled(kind), ShaderHas),
             _ => throw Lacks(served, Titled(kind), "rename, code_actions and apply_code_action are its language server's refactorings"),
         };
     }

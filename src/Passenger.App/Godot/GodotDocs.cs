@@ -41,6 +41,23 @@ public static partial class GodotDocs
         return new Uri($"{page}#{IdOf(label)}");
     }
 
+    /// <summary>A place in the reference's shading language pages: a shader type's page (<see cref="ShaderPageOf"/>) or the
+    /// language's own (<c>shading_language</c>, <c>shader_functions</c>), at a section's id where one is named.</summary>
+    public static Uri ShaderPage(string version, string page, string? section) =>
+        new($"https://docs.godotengine.org/en/{version}/tutorials/shaders/shader_reference/{page}.html{(section is null ? string.Empty : $"#{section}")}");
+
+    /// <summary>The page of the reference describing a shader type's built-ins and modes.</summary>
+    public static string ShaderPageOf(string type) => type switch
+    {
+        "spatial" => "spatial_shader",
+        "canvas_item" => "canvas_item_shader",
+        "particles" => "particle_shader",
+        "sky" => "sky_shader",
+        "fog" => "fog_shader",
+        "texture_blit" => "texture_blit_shader",
+        _ => "shading_language",
+    };
+
     /// <summary>A label as the reference's pages make it an id: lower case, each run of characters but letters and digits one
     /// hyphen, none at either end.</summary>
     private static string IdOf(string label)

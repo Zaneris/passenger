@@ -5,7 +5,8 @@ namespace Passenger.App.Godot;
 /// <summary>The user folders a Godot Passenger starts keeps its settings, caches, logs and each project's user:// in: the
 /// person's own, unless the window is given folders of its own or <see cref="HomeVariable"/> names a folder for them (a test
 /// run's), which every Godot the window starts then takes: the game Run, Debug or Profile starts, Godot's editor, GDScript's
-/// headless editor, GdUnit4's and GUT's tests, and the editor settings Passenger writes for Godot.</summary>
+/// headless editor, GdUnit4's and GUT's tests, the shader compiler (else its own in the state's cache, never the person's),
+/// and the editor settings Passenger writes for Godot.</summary>
 public static class GodotUserFolders
 {
     /// <summary>The variable naming a folder under which every Godot Passenger starts keeps its user folders in place of the

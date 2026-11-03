@@ -22,6 +22,8 @@
     <EmbeddedResource Include="MSBuild/Schemas/*.xsd" LogicalName="MSBuild/%(Filename)%(Extension)" />
     <!-- Passenger's own helper in a Godot game it debugs, which Godot loads from the state's cache (Godot/GodotAgent.cs). -->
     <EmbeddedResource Include="Godot/PassengerAgent.gd" LogicalName="Godot/PassengerAgent.gd" />
+    <!-- Passenger's own shader helper, run by a headless Godot on a project in the state's cache (Godot/GodotShaderCompiler.cs). -->
+    <EmbeddedResource Include="Godot/PassengerShaders.gd" LogicalName="Godot/PassengerShaders.gd" />
     <!-- Passenger's own Prettier runner (Web/Prettier.cs), carried beside the web language servers. -->
     <None Include="Web/prettier.cjs" Link="web/passenger/prettier.cjs" CopyToOutputDirectory="PreserveNewest" />
     <!-- Passenger's preload for the Dockerfile server, which keeps it from Docker Hub while Settings says so

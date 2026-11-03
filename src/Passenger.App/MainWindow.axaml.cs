@@ -244,6 +244,7 @@ public partial class MainWindow : IdeWindow
         assist = new CodeAssist(Editors, Editors.AssistLayer, () => session.CSharp)
         {
             Xaml = () => session.Xaml, MSBuild = () => session.MSBuild, Web = () => session.Web, GodotScenes = () => session.GodotScenes,
+            GodotShaders = () => session.GodotShaders,
             Stylesheets = () => session.Stylesheets,
             Projects = () => session.Workspace?.Projects ?? [],
         };
