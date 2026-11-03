@@ -382,7 +382,11 @@ internal static partial class GodotSource
                 continue;
             }
             Optional<object?> constant = model.GetConstantValue(initial, cancel);
-            return !constant.HasValue ? null : constant.Value switch
+            if (!constant.HasValue)
+            {
+                return Created(model.GetOperation(initial, cancel));
+            }
+            return constant.Value switch
             {
                 bool flag => flag ? "true" : "false",
                 string text => SymbolDisplay.FormatLiteral(text, quote: true),
@@ -392,6 +396,40 @@ internal static partial class GodotSource
             };
         }
         return null;
+    }
+
+    /// <summary>Godot's names of the built-in types a C# initializer makes, where its text writes them otherwise.</summary>
+    private static readonly Dictionary<string, string> TextNames = new(StringComparer.Ordinal)
+    {
+        ["Vector2I"] = "Vector2i", ["Vector3I"] = "Vector3i", ["Vector4I"] = "Vector4i", ["Rect2I"] = "Rect2i", ["Aabb"] = "AABB",
+    };
+
+    /// <summary>A Godot built-in value an initializer makes of constants (<c>new Vector2(1, 2)</c>, <c>new Color(1, 0, 0)</c>), as
+    /// Godot's variant text writes it, a colour with its alpha; null for any other.</summary>
+    private static string? Created(IOperation? made)
+    {
+        if (made is IConversionOperation { Operand: var operand })
+        {
+            made = operand;
+        }
+        if (made is not IObjectCreationOperation { Type: INamedTypeSymbol { ContainingNamespace.Name: Namespace } type } creation || !Variants.ContainsKey(type.Name))
+        {
+            return null;
+        }
+        List<string> values = [];
+        foreach (IArgumentOperation argument in creation.Arguments)
+        {
+            if (argument.Value.ConstantValue is not { HasValue: true, Value: { } value } || value is bool or string)
+            {
+                return null;
+            }
+            values.Add(Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture).ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+        }
+        if (type.Name == "Color" && values.Count == 3)
+        {
+            values.Add("1");
+        }
+        return values.Count == 0 ? null : $"{TextNames.GetValueOrDefault(type.Name, type.Name)}({string.Join(", ", values)})";
     }
 
     /// <summary>The node a member of a type names by its path where a scene sets it: a NodePath's any node, a node type's a

@@ -204,6 +204,10 @@ public sealed class GodotAddonTests : IDisposable
         		EditorInterface.open_scene_from_path("res://main.tscn")
         		EditorInterface.mark_scene_as_unsaved()
         		print("TEST: held")
+        	if FileAccess.file_exists("res://save.txt") and FileAccess.get_file_as_string("res://save.txt").ends_with("\n"):
+        		DirAccess.remove_absolute(ProjectSettings.globalize_path("res://save.txt"))
+        		EditorInterface.open_scene_from_path("res://main.tscn")
+        		print("TEST: saved ", EditorInterface.save_scene())
         	if FileAccess.file_exists("res://open.txt"):
         		DirAccess.remove_absolute(ProjectSettings.globalize_path("res://open.txt"))
         		EditorInterface.open_scene_from_path("res://main.tscn")
@@ -1282,8 +1286,8 @@ public sealed class GodotAddonTests : IDisposable
             Ui.Settle();
             Assert.Equal(PacedScene.Replace("Vector2(100, 50)", "Vector2(250, 50)", StringComparison.Ordinal), File.ReadAllText(ScenePath));
             Ui.Click(picker.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Choose")));
-            // A property the node had at its default is written after the node's last line.
-            lines.Insert(7, "modulate = Color(1, 0, 0, 1)");
+            // A property first set goes where Godot's save puts it: CanvasItem's modulate before Node2D's position.
+            lines.Insert(5, "modulate = Color(1, 0, 0, 1)");
             Written(window, lines, "the colour picked");
 
             ComboBox pace = Assert.IsType<ComboBox>(shown().EditorOf("Speed"));
@@ -1326,6 +1330,132 @@ public sealed class GodotAddonTests : IDisposable
             End(window);
         }
     }
+
+    private const string Ranked = """
+        using Godot;
+
+        public partial class Main : Node2D
+        {
+            [Export] public int Speed { get; set; } = 1;
+
+            [Export] public int[] Steps { get; set; } = [1, 2, 3];
+
+            [Export] public Vector2 Aim { get; set; } = new Vector2(1, 2);
+        }
+
+        """;
+
+    private const string RankedScene = """
+        [gd_scene load_steps=3 format=3]
+
+        [ext_resource type="Script" path="res://Main.cs" id="1"]
+        [ext_resource type="PackedScene" path="res://enemy.tscn" id="2"]
+
+        [node name="Main" type="Node2D"]
+        position = Vector2(100, 50)
+        script = ExtResource("1")
+        Speed = 2
+        Steps = PackedInt32Array(1, 2, 3)
+
+        [node name="Foe" parent="." instance=ExtResource("2")]
+
+        """;
+
+    private const string Enemy = """
+        [gd_scene format=3]
+
+        [node name="Enemy" type="Node2D"]
+        position = Vector2(10, 20)
+
+        """;
+
+    /// <summary>A scene's node edited in its outline as Godot's own save writes it: a property set back to its default has its
+    /// line taken out, a new one goes where Godot's save puts it (Godot's next save of the scene changing none of the node's
+    /// lines), an array is edited as text, a C# export whose default is made by its initializer shows it, and an instance's
+    /// property, shown as the scene it instances sets it, is written as the instancing scene's override, that scene untouched.</summary>
+    [AvaloniaFact]
+    public void A_scene_nodes_property_back_to_its_default_loses_its_line_a_new_one_goes_where_Godot_saves_it_and_an_instance_takes_an_override()
+    {
+        MainWindow window = Opened(addon: false, files: [("Main.cs", Ranked), ("main.tscn", RankedScene), ("enemy.tscn", Enemy)]);
+        string enemy = Path.Combine(folder, "enemy.tscn");
+        try
+        {
+            window.OpenFile(ScenePath);
+            window.ShowToolWindow(ToolWindowIds.Structure);
+            Ui.WaitFor(() => window.StructureView.Rows.Any(r => r.Name == "Foe"), () => $"the scene's outline ({window.StructureView.Said})", TimeSpan.FromMinutes(1));
+            Choose(window, "Main");
+            GodotSceneProperties shown() => window.SceneProperties!;
+            Ui.WaitFor(() => shown().Rows.Any(r => r is { Property.Name: "Aim", Text: "Vector2(1, 2)" }),
+                () => $"Main's properties with Aim's default made by its initializer ({string.Join(", ", window.SceneProperties?.Rows.Take(6).Select(r => $"{r.Property.Name} {r.Text}") ?? [])})", TimeSpan.FromMinutes(2));
+
+            TypeValue(window, "position", "Vector2(0, 0)");
+            Lines(window, "Main", ["script = ExtResource(\"1\")", "Speed = 2", "Steps = PackedInt32Array(1, 2, 3)"], "position set back to its default");
+            TypeValue(window, "modulate", "Color(1, 0, 0, 1)");
+            List<string> main = ["modulate = Color(1, 0, 0, 1)", "script = ExtResource(\"1\")", "Speed = 2", "Steps = PackedInt32Array(1, 2, 3)"];
+            Lines(window, "Main", main, "modulate first set, before the script as Godot saves it");
+            TypeValue(window, "Steps", "PackedInt32Array(1, 5, 3)");
+            main[3] = "Steps = PackedInt32Array(1, 5, 3)";
+            Lines(window, "Main", main, "an element of the Steps array typed");
+
+            Choose(window, "Foe");
+            Ui.WaitFor(() => shown().Shown?.Name == "Foe" && shown().Rows.Any(r => r is { Property.Name: "position", Text: "Vector2(10, 20)", Set: false, Source: "Set in enemy.tscn:4" }),
+                () => $"Foe's position as enemy.tscn sets it ({string.Join(", ", window.SceneProperties?.Rows.Where(r => r.Property.Name == "position").Select(r => $"{r.Text} {r.Source}") ?? [])})",
+                TimeSpan.FromMinutes(1));
+            TypeValue(window, "position", "Vector2(30, 20)");
+            Lines(window, "Foe", ["position = Vector2(30, 20)"], "Foe's position written as main.tscn's override");
+            Assert.Equal(Enemy, File.ReadAllText(enemy));
+
+            // Godot's own save of the scene writes the node's lines as they are.
+            Assert.True(window.EditorArea.SaveAll(), "The scene could not be saved");
+            string csproj = Path.Combine(folder, "Spinner.csproj");
+            ChildResult built = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", csproj, "-nologo", "-v:q"]), limit: Restore.Limit.Scaled())),
+                "the game's build", Restore.Limit + TestFolders.Spare);
+            Assert.True(built.ExitCode == 0, $"The game did not build:\n{built.Output}");
+            StartEditor([]);
+            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: ready", StringComparison.Ordinal)), () => $"the test's plugin in Godot's editor (Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            TestFolders.Write(folder, "save.txt", "save\n");
+            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: saved 0", StringComparison.Ordinal)), () => $"Godot's editor to save the scene (Godot said: {Said()})", TimeSpan.FromMinutes(1));
+            // Godot's save may give an external resource an id of its own, which is no line of the node's moved or changed.
+            static string Idless(string line) => System.Text.RegularExpressions.Regex.Replace(line, "ExtResource\\(\"[^\"]*\"\\)", "ExtResource()");
+            Assert.Equal(main.Select(Idless), LinesOf(File.ReadAllText(ScenePath), "Main").Select(Idless));
+            Assert.Equal(["position = Vector2(30, 20)"], LinesOf(File.ReadAllText(ScenePath), "Foe"));
+        }
+        finally
+        {
+            End(window);
+        }
+
+        // The caret on a node's header, which the outline chooses the node by, or the row under it there (an instance's scene).
+        void Choose(MainWindow at, string node) => at.EditorArea.CodeEditor.GoTo(new TextPosition(Array.FindIndex(SceneText(at).Split('\n'), l => l.StartsWith($"[node name=\"{node}\"", StringComparison.Ordinal)), 2));
+    }
+
+    /// <summary>A property's value typed as text in the scene's outline: its row chosen, Enter opening its text, the words typed
+    /// over it and Enter again.</summary>
+    private static void TypeValue(MainWindow window, string property, string text)
+    {
+        GodotSceneProperties properties = window.SceneProperties!;
+        properties.Choose(property);
+        properties.EditText();
+        Ui.WaitFor(() => properties.Typing is { IsFocused: true }, () => $"{property}'s value open as text (chosen {(properties.Chosen?.Property.Name ?? "none")}, "
+            + $"its box {(properties.Typing is { } box ? $"shown for {(box.DataContext as GodotSceneProperty)?.Property.Name}" : "not shown")}, the keys with "
+            + $"{TopLevel.GetTopLevel(window)?.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}; {properties.Shown?.Name}'s rows: "
+            + $"{string.Join(", ", properties.Rows.Select(r => r.Property.Name))}; the outline of {window.StructureView.Outlined} chose {window.StructureView.Selected?.Name} "
+            + $"at {window.StructureView.Selected?.Position.Line} of {string.Join(", ", window.StructureView.Rows.Select(r => $"{r.Name}@{r.Position.Line}"))}, "
+            + $"the caret at {window.EditorArea.CodeEditor.CaretPosition.Line} of {window.EditorArea.Active?.Name}; {window.Status})");
+        properties.Typing!.SelectAll();
+        window.KeyTextInput(text);
+        Ui.Press(window, "ENTER");
+    }
+
+    /// <summary>A node's section's lines in the scene as the window has it are those given.</summary>
+    private void Lines(MainWindow window, string node, IReadOnlyList<string> lines, string what) =>
+        Ui.WaitFor(() => LinesOf(SceneText(window), node).SequenceEqual(lines), () => $"{what} ({window.Status}):\n{SceneText(window)}", TimeSpan.FromMinutes(1));
+
+    /// <summary>The property lines of a node's section in a scene's text, as written.</summary>
+    private static List<string> LinesOf(string text, string node) =>
+        GodotFile.Parse(text).Nodes.FirstOrDefault(n => n.Name == node) is { } found
+            ? [.. found.Section.Properties.Select(p => $"{p.Key} = {text[p.Value.Start..p.Value.End]}")]
+            : [];
 
     /// <summary>The scene as the window has it is the lines given, and so on disk once saved.</summary>
     private void Written(MainWindow window, List<string> lines, string what)

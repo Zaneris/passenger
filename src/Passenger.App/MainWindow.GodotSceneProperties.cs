@@ -40,6 +40,7 @@ public partial class MainWindow
         sceneProperties ??= new GodotSceneProperties((popup, from) => popups.Show(popup, popups.PointIn(from, new Avalonia.Point(0, from.Bounds.Height + 4))),
             () => popups.Close(), words => status.Text = words);
         view.Details = sceneProperties;
+        row = NodeOf(view.Rows, row);
         if (row is not { Kind: SymbolRow.NodeKind } || !PathNames.Same(row.Path, scene) || Editors.TextOf(scene)?.ToString() is not { } text
             || GodotFile.Parse(text).Nodes.FirstOrDefault(n => n.Section.Line == row.Position.Line) is not { } node)
         {
@@ -69,7 +70,56 @@ public partial class MainWindow
         }
         string path = node.PathInScene;
         string? scriptName = script is null ? null : Path.GetFileName(script);
+        IReadOnlyList<GodotBeneath> beneath = Beneath(scenes, res, tree);
         sceneProperties.Show(new GodotSceneValues(scene, path, node.Name, type, file => Editors.TextOf(file)?.ToString(), (name, changes) => Assist.ApplyFileChangesAsync(name, changes),
-            now => GodotKeep.NodeIn(GodotFile.Parse(now), path) is { } section ? GodotSceneValues.Of(scene, now, section, type, classes, exports, scriptName) : []));
+            now => GodotKeep.NodeIn(GodotFile.Parse(now), path) is { } section ? GodotSceneValues.Of(scene, now, section, type, classes, exports, scriptName, beneath) : []));
+    }
+
+    /// <summary>The node a row of a scene's outline stands for: a node's own, or the node a row under it is of (its script,
+    /// the scene it instances, a connection it sends), so the caret on such a line still shows that node's properties.</summary>
+    private static SymbolRow? NodeOf(IReadOnlyList<SymbolRow> rows, SymbolRow? row)
+    {
+        if (row is null or { Kind: SymbolRow.NodeKind })
+        {
+            return row;
+        }
+        for (int at = IndexOf(rows, row) - 1; at >= 0; at--)
+        {
+            if (rows[at].Depth < row.Depth)
+            {
+                return rows[at] is { Kind: SymbolRow.NodeKind } node ? node : row;
+            }
+        }
+        return row;
+
+        static int IndexOf(IReadOnlyList<SymbolRow> rows, SymbolRow row)
+        {
+            for (int i = 0; i < rows.Count; i++)
+            {
+                if (ReferenceEquals(rows[i], row))
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+    }
+
+    /// <summary>The sections of the scenes a node is instanced from, which give it its values beneath the scene's own: each
+    /// scene's that writes it but this one, its declaration first; an instance's root's the instanced scene's root.</summary>
+    private static IReadOnlyList<GodotBeneath> Beneath(GodotScenes scenes, string res, GodotTreeNode? tree)
+    {
+        if (tree is null)
+        {
+            return [];
+        }
+        List<GodotBeneath> beneath = [.. tree.Written.Where(w => w.Scene != res && scenes.Files.ContainsKey(w.Scene))
+            .Select(w => new GodotBeneath(Path.GetFileName(w.Scene["res://".Length..]), scenes.Files[w.Scene].Text, w.Node.Section))];
+        if (tree.Instance is { } instanced && scenes.Files.TryGetValue(instanced, out GodotFile? file) && file.Nodes.FirstOrDefault(n => n.Parent is null) is { } root
+            && !beneath.Any(b => b.Section.Start == root.Section.Start && b.Text == file.Text))
+        {
+            beneath.Insert(0, new GodotBeneath(Path.GetFileName(instanced["res://".Length..]), file.Text, root.Section));
+        }
+        return beneath;
     }
 }

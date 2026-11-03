@@ -6,14 +6,25 @@ using Passenger.Xaml.Features;
 namespace Passenger.App.Godot;
 
 /// <summary>A property of a scene's node as its outline shows it: the property as Godot's inspector takes it, its value
-/// what the scene sets, else its default; its value as Godot's text writes it; where that comes from; and whether the
-/// scene sets it.</summary>
-public sealed record GodotSceneProperty(GodotProperty Property, string Text, string Source, bool Set);
+/// what the scene sets, else what a scene it is instanced from sets, else its default; its value as Godot's text writes it;
+/// where that comes from; and whether the scene sets it. <see cref="Base"/> is what it is where the scene sets nothing,
+/// which a value set back to removes the scene's line; <see cref="Rank"/> its place in Godot's save of the node.</summary>
+public sealed record GodotSceneProperty(GodotProperty Property, string Text, string Source, bool Set)
+{
+    public string? Base { get; init; }
+
+    public int Rank { get; init; } = int.MaxValue;
+}
+
+/// <summary>A section of a scene the node is instanced from, which gives it its values beneath the scene's own: the scene's
+/// file name, its text and the section.</summary>
+public sealed record GodotBeneath(string Name, string Text, GodotSection Section);
 
 /// <summary>A node of a scene as its file writes it, the source of the values its outline's properties show and edit
 /// (<see cref="IGodotValues"/>): what the scene sets, the script's exports and the engine class's properties at their
 /// defaults. A value edited lands in the scene's text once it settles, one edit of its node's lines through the window's
-/// change of files (<see cref="GodotKeep.InScene"/>), one command of Undo; a value moving before is only shown.</summary>
+/// change of files, one command of Undo: its line replaced, removed where the value is back to what it is unset, or added
+/// where Godot's save puts it; a value typed as text is checked as Godot's variant text first. A value moving is only shown.</summary>
 public sealed class GodotSceneValues(string path, string node, string name, string? type, Func<string, string?> textOf,
     Func<string, IReadOnlyList<XamlFileChange>, Task<string?>> change, Func<string, IReadOnlyList<GodotSceneProperty>> read) : IGodotValues
 {
@@ -60,23 +71,90 @@ public sealed class GodotSceneValues(string path, string node, string name, stri
             properties = [.. properties.Select(p => p == shown ? shown with { Property = shown.Property with { Value = value } } : p)];
             return;
         }
+        bool unset = shown.Base is { } beneath && Equals(GodotVariant.OfScene(shown.Property.Type, beneath).Value, value);
+        await WriteAsync(shown, unset ? null : GodotText.Scene(value), value, unset);
+    }
+
+    /// <summary>A property's value written as Godot's variant text (an array, a dictionary, a resource, any value), checked
+    /// as the scene's reader reads it first; text the same as what it is unset removes its line.</summary>
+    public async Task SetTextAsync(string property, string written)
+    {
+        if (properties.FirstOrDefault(p => p.Property.Name == property) is not { } shown)
+        {
+            throw new LiveAppException($"{name} has no {property}");
+        }
+        string trimmed = written.Trim();
+        if (WhyNotText(property, trimmed) is { } why)
+        {
+            throw new LiveAppException(why);
+        }
+        bool unset = shown.Base is { } beneath && beneath.Trim() == trimmed;
+        await WriteAsync(shown, unset ? null : trimmed, null, unset);
+    }
+
+    /// <summary>Why text is no value of Godot's variant text for a property, as the scene's reader reads it; null where it is.</summary>
+    public static string? WhyNotText(string property, string written)
+    {
+        if (written.Length == 0 || written.Contains('\n'))
+        {
+            return $"{property} takes one value on its line";
+        }
+        GodotFile read = GodotFile.Parse($"[node name=\"Node\" type=\"Node\"]\n{property} = {written}\n");
+        int start = $"[node name=\"Node\" type=\"Node\"]\n{property} = ".Length;
+        return read.Nodes is [{ Section: var section }] && section.Property(property) is { Value: var value } && value.Start == start && value.End == start + written.Length
+            ? null : $"{written} is no value Godot reads";
+    }
+
+    /// <summary>Writes a property's value as text into the node's section, or set back to what it is unset
+    /// (<paramref name="unset"/>) takes its line out; a value no text can hold (a resource by its path) is written as Keep
+    /// writes it.</summary>
+    private async Task WriteAsync(GodotSceneProperty shown, string? written, object? value, bool unset)
+    {
+        string property = shown.Property.Name;
         string text = textOf(path) ?? throw new LiveAppException($"{System.IO.Path.GetFileName(path)} cannot be read");
         if (GodotKeep.NodeIn(GodotFile.Parse(text), node) is not { } section)
         {
             throw new LiveAppException($"{System.IO.Path.GetFileName(path)} no longer writes {name}");
         }
-        if (Equals(GodotVariant.OfScene(shown.Property.Type, section.Property(property) is { } entry ? text[entry.Value.Start..entry.Value.End] : shown.Text).Value, value)
-            && section.Property(property) is not null)
+        GodotEntry? entry = section.Property(property);
+        string lineEnding = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        IReadOnlyList<Passenger.Text.TextEdit> edits;
+        if (!unset && written is null)
         {
-            Show(shown with { Property = shown.Property with { Value = value } });
-            return;
+            (GodotKept? kept, string? whyNot) = GodotKeep.InScene(path, text, section, property, value, shown.Property);
+            edits = kept?.Edits ?? throw new LiveAppException(whyNot ?? $"{property} cannot be written");
         }
-        (GodotKept? kept, string? whyNot) = GodotKeep.InScene(path, text, section, property, value, shown.Property);
-        if (kept is null)
+        else if (unset || written is null)
         {
-            throw new LiveAppException(whyNot ?? $"{property} cannot be written");
+            if (entry is null)
+            {
+                Show(shown);
+                return;
+            }
+            int from = LineStart(text, entry.KeyStart);
+            int to = NextLine(text, entry.Value.End);
+            edits = [new Passenger.Text.TextEdit(from, to - from, string.Empty)];
         }
-        if (await change($"Set {name}.{property}", [new XamlFileChange(path, now => now == text ? kept.Edits : [])]) is { } refused)
+        else if (entry is not null)
+        {
+            if (text[entry.Value.Start..entry.Value.End] == written)
+            {
+                Show(shown);
+                return;
+            }
+            edits = [new Passenger.Text.TextEdit(entry.Value.Start, entry.Value.End - entry.Value.Start, written)];
+        }
+        else
+        {
+            // Where Godot's save puts it: before the first line the node writes that Godot saves after it.
+            int rank = shown.Rank;
+            GodotEntry? after = section.Properties.FirstOrDefault(p => RankOf(p.Key) > rank);
+            int at = after is not null ? LineStart(text, after.KeyStart)
+                : NextLine(text, section.Properties.Count > 0 ? Math.Max(section.End, section.Properties[^1].Value.End) : section.End);
+            string line = $"{property} = {written}{lineEnding}";
+            edits = [new Passenger.Text.TextEdit(at, 0, at == text.Length && at > 0 && text[^1] != '\n' ? lineEnding + line : line)];
+        }
+        if (await change($"Set {name}.{property}", [new XamlFileChange(path, now => now == text ? edits : [])]) is { } refused)
         {
             properties = read(textOf(path) ?? string.Empty);
             Changed?.Invoke(this, EventArgs.Empty);
@@ -85,6 +163,18 @@ public sealed class GodotSceneValues(string path, string node, string name, stri
         properties = read(textOf(path) ?? string.Empty);
         Changed?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>A property's place in Godot's save of the node: the script's between its engine class's and its exports, one
+    /// not listed after all that are.</summary>
+    private int RankOf(string property) => property == "script" ? ScriptRank : properties.FirstOrDefault(p => p.Property.Name == property)?.Rank ?? int.MaxValue;
+
+    /// <summary>The script's place in Godot's save of a node: after every property of its engine class, before its exports.</summary>
+    private const int ScriptRank = 1 << 24;
+
+    private static int LineStart(string text, int offset) => text.LastIndexOf('\n', Math.Max(0, offset - 1)) + 1;
+
+    /// <summary>Where the line after the one holding an offset begins (the text's end on its last line).</summary>
+    private static int NextLine(string text, int offset) => text.IndexOf('\n', Math.Min(offset, text.Length)) is var end and >= 0 ? end + 1 : text.Length;
 
     /// <summary>The scene's text read again (an edit of it, an Undo): the rows show what it holds now.</summary>
     public void ReadAgain()
@@ -100,15 +190,33 @@ public sealed class GodotSceneValues(string path, string node, string name, stri
     }
 
     /// <summary>A node's properties as Godot's inspector lists them, each in its place whether the scene sets it or not: its
-    /// script's exports (<paramref name="exports"/>, C#'s or GDScript's, by <paramref name="script"/>), then its engine class's properties the
-    /// inspector shows (<paramref name="classes"/>), its own class's first; then any other the scene sets. A value is the
-    /// scene's where it sets one, else the default, read as its type reads it.</summary>
+    /// script's exports (<paramref name="exports"/>, C#'s or GDScript's, by <paramref name="script"/>), then its engine class's
+    /// properties the inspector shows (<paramref name="classes"/>), its own class's first; then any other set. A value is the
+    /// scene's where it sets one, else the scenes' it is instanced from (<paramref name="beneath"/>, the outermost first),
+    /// else the default; each ranked as Godot saves a node: its engine classes' from the farthest, its script, then its exports.</summary>
     public static IReadOnlyList<GodotSceneProperty> Of(string scene, string text, GodotSection section, string? type, GodotClassDefaults? classes,
-        IReadOnlyList<GodotScriptExport> exports, string? script)
+        IReadOnlyList<GodotScriptExport> exports, string? script, IReadOnlyList<GodotBeneath>? beneath = null)
     {
         string named = System.IO.Path.GetFileName(scene);
+        IReadOnlyList<GodotBeneath> under = beneath ?? [];
         List<(GodotProperty Declared, string? Default, string Source)> declared = [];
         HashSet<string> listed = new(StringComparer.Ordinal);
+        Dictionary<string, int> ranks = new(StringComparer.Ordinal);
+        if (type is not null && classes is not null)
+        {
+            IReadOnlyList<GodotClassProperty> all = classes.PropertiesOf(type);
+            foreach (string owner in classes.Chain(type).Reverse())
+            {
+                foreach (GodotClassProperty property in all.Where(p => p.Owner == owner && !p.IsHeading))
+                {
+                    ranks.TryAdd(property.Name, ranks.Count);
+                }
+            }
+        }
+        foreach (GodotScriptExport export in exports)
+        {
+            ranks.TryAdd(export.Name, ScriptRank + 1 + ranks.Count);
+        }
         foreach (GodotScriptExport export in exports.Where(e => listed.Add(e.Name)))
         {
             declared.Add((new GodotProperty(export.Name, (GodotType)export.Type, export.Hint, export.HintString, 6, null, script ?? "Script"),
@@ -130,14 +238,25 @@ public sealed class GodotSceneValues(string path, string node, string name, stri
                 }
             }
         }
-        foreach (GodotEntry entry in section.Properties.Where(p => p.Key != "script" && section.Property(p.Key) == p && listed.Add(p.Key)))
+        foreach (GodotEntry entry in under.SelectMany(b => b.Section.Properties).Concat(section.Properties).Where(p => p.Key != "script" && listed.Add(p.Key)))
         {
-            string written = text[entry.Value.Start..entry.Value.End];
-            declared.Add((new GodotProperty(entry.Key, GodotVariant.TypeOf(GodotVariant.Guessed(written)), 0, string.Empty, 6, null, named), null, named));
+            declared.Add((new GodotProperty(entry.Key, GodotType.Nil, 0, string.Empty, 6, null, named), null, named));
         }
-        return [.. declared.Select(d => section.Property(d.Declared.Name) is { } entry && text[entry.Value.Start..entry.Value.End] is var written
-            ? new GodotSceneProperty(d.Declared with { Value = GodotVariant.OfScene(d.Declared.Type, written).Value }, written, $"Set in {named}:{TextLine(text, entry.KeyStart) + 1}", true)
-            : new GodotSceneProperty(d.Declared with { Value = d.Default is null ? null : GodotVariant.OfScene(d.Declared.Type, d.Default).Value }, d.Default ?? string.Empty, d.Source, false))];
+        return [.. declared.Select(d =>
+        {
+            // What it is unset here: the last scene beneath that sets it, else its default.
+            (string Text, string Source)? instanced = under.Reverse().Select(b => b.Section.Property(d.Declared.Name) is { } set
+                ? (b.Text[set.Value.Start..set.Value.End], $"Set in {b.Name}:{TextLine(b.Text, set.KeyStart) + 1}") : ((string, string)?)null).FirstOrDefault(i => i is not null);
+            string? unset = instanced?.Text ?? d.Default;
+            GodotProperty typed = d.Declared.Type == GodotType.Nil && (section.Property(d.Declared.Name) is { } own ? text[own.Value.Start..own.Value.End] : unset) is { } guessed
+                ? d.Declared with { Type = GodotVariant.TypeOf(GodotVariant.Guessed(guessed)) } : d.Declared;
+            int rank = ranks.GetValueOrDefault(typed.Name, int.MaxValue);
+            return section.Property(typed.Name) is { } entry && text[entry.Value.Start..entry.Value.End] is var written
+                ? new GodotSceneProperty(typed with { Value = GodotVariant.OfScene(typed.Type, written).Value }, written, $"Set in {named}:{TextLine(text, entry.KeyStart) + 1}", true)
+                    { Base = unset, Rank = rank }
+                : new GodotSceneProperty(typed with { Value = unset is null ? null : GodotVariant.OfScene(typed.Type, unset).Value }, unset ?? string.Empty,
+                    instanced?.Source ?? d.Source, false) { Base = unset, Rank = rank };
+        })];
     }
 
     private static int TextLine(string text, int offset) => text.AsSpan(0, Math.Min(offset, text.Length)).Count('\n');
