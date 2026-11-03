@@ -59,7 +59,7 @@ internal sealed class WpfPreviewHost : IPreviewHost
         ProjectInputs inputs = builder.Current.Inputs;
         if (XamlPreview.Output(inputs, configured: false) is not { } built)
         {
-            preview.Say(XamlPreview.Unbuilt(inputs));
+            preview.SayUnbuilt(inputs);
             return null;
         }
         if (!File.Exists(Previewer))

@@ -18,6 +18,10 @@ public sealed partial record Problem(ProblemSeverity Severity, string Message, s
     /// message then has in it.</summary>
     public string? LinkText { get; init; }
 
+    /// <summary>The target framework of the multi-targeted project's inner build that found it (net9.0); null for a build
+    /// of one framework, or a problem no build found.</summary>
+    public string? Framework { get; init; }
+
     /// <summary>The first web address in a message, less the punctuation ending its sentence; null without one.</summary>
     public static Uri? LinkIn(string message) =>
         Address().Match(message) is { Success: true } found
@@ -242,9 +246,23 @@ public static partial class BuildOutput
         }
         int lineNumber = int.TryParse(match.Groups["line"].Value, out int l) ? l - 1 : 0;
         int column = int.TryParse(match.Groups["column"].Value, out int c) ? c - 1 : 0;
-        string? project = match.Groups["project"].Success ? System.IO.Path.GetFileNameWithoutExtension(match.Groups["project"].Value) : null;
+        (string? project, string? framework) = match.Groups["project"].Success ? ProjectOf(match.Groups["project"].Value) : (null, null);
         string message = match.Groups["message"].Value.Trim();
-        return new Problem(severity, message, match.Groups["code"].Value, path, new TextPosition(lineNumber, column), project) { Link = Problem.LinkIn(message) };
+        return new Problem(severity, message, match.Groups["code"].Value, path, new TextPosition(lineNumber, column), project)
+        {
+            Link = Problem.LinkIn(message),
+            Framework = framework,
+        };
+    }
+
+    /// <summary>The project a problem's line names after it, and the framework of the inner build of a multi-targeted one,
+    /// as MSBuild writes it (<c>/src/App/App.csproj::TargetFramework=net9.0</c>); no framework for a build of one.</summary>
+    private static (string Project, string? Framework) ProjectOf(string named)
+    {
+        const string Inner = "::TargetFramework=";
+        int at = named.IndexOf(Inner, StringComparison.Ordinal);
+        return at < 0 ? (System.IO.Path.GetFileNameWithoutExtension(named), null)
+            : (System.IO.Path.GetFileNameWithoutExtension(named[..at]), named[(at + Inner.Length)..].Trim() is { Length: > 0 } framework ? framework : null);
     }
 
     /// <summary>A compiler's message from a build inside an image, as BuildKit writes it ("#12 3.456 /src/Web/Program.cs(3,1):

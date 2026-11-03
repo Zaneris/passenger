@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Passenger.Core;
 using Passenger.App.Workspace;
 using Passenger.Lsp;
 using Passenger.Workspace;
@@ -86,6 +87,35 @@ public partial class MainWindow
         document.ProjectContext = Label(name, chosen);
 
         static string Label(string project, string framework) => $"{project} ({framework})";
+    }
+
+    /// <summary>Target Framework for an agent, which no menu reaches: <paramref name="input"/> names the framework, after its
+    /// project's name and a colon where more than one project targets several (<c>Shop:net9.0</c>), else the active file's
+    /// project's or the one project's; chosen as the switcher chooses it, and what follows it said. Why not, thrown.</summary>
+    internal string ChooseFrameworkForAgent(string input)
+    {
+        UiThread.Check();
+        int colon = input.LastIndexOf(':');
+        string framework = input[(colon + 1)..].Trim();
+        string? named = colon < 0 ? null : input[..colon].Trim();
+        ProjectModel[] several = [.. session.Projects.Where(p => TargetFrameworkChoices.Offered(p).Count > 1)];
+        ProjectModel? project = named is not null
+            ? several.FirstOrDefault(p => p.Name.Equals(named, StringComparison.OrdinalIgnoreCase) || Path.GetFileName(p.Path).Equals(named, StringComparison.OrdinalIgnoreCase))
+            : Editors.Active is { } active && ProjectModel.Owning(several, active.Path) is { } owning ? owning
+            : several.Length == 1 ? several[0] : null;
+        if (project is null)
+        {
+            throw new InvalidOperationException(several.Length == 0 ? "No project of the folder targets more than one framework Passenger runs"
+                : named is not null ? $"{named} is not a project of the folder that targets several frameworks: {Plural.Listed([.. several.Select(p => p.Name)])} do"
+                : $"Name the project before the framework, as {several[0].Name}:{framework}: {Plural.Listed([.. several.Select(p => p.Name)])} target several");
+        }
+        IReadOnlyList<string> offered = TargetFrameworkChoices.Offered(project);
+        if (offered.FirstOrDefault(f => f.Equals(framework, StringComparison.OrdinalIgnoreCase)) is not { } chosen)
+        {
+            throw new InvalidOperationException($"{project.Name} targets {Plural.Listed(offered)}, not {framework}");
+        }
+        session.Frameworks.Choose(project, chosen);
+        return $"{project.Name}'s framework is {chosen}: its XAML preview draws that framework's build, its XAML is read against it, and the language server answers for its C# in it";
     }
 
     /// <summary>The file's contexts under the editor's switcher, the one the server answers in checked; a XAML file's

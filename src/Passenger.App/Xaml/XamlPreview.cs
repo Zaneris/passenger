@@ -355,8 +355,20 @@ public sealed class XamlPreview : IDisposable
     internal void Say(string status)
     {
         Status = status;
+        WantsBuild = false;
         Tell();
     }
+
+    /// <summary>Says the project has no build to draw (<see cref="Unbuilt(ProjectInputs)"/>), which Build for XAML Preview makes.</summary>
+    internal void SayUnbuilt(ProjectInputs inputs)
+    {
+        Say(Unbuilt(inputs));
+        WantsBuild = true;
+        Tell();
+    }
+
+    /// <summary>Whether what it says is that the project has no build to draw, which Build for XAML Preview makes.</summary>
+    public bool WantsBuild { get; private set; }
 
     internal void Tell() => Changed?.Invoke(this, EventArgs.Empty);
 

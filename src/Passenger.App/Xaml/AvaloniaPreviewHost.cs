@@ -52,7 +52,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     {
         if (XamlPreview.Output(inputs) is not { } built)
         {
-            preview.Say(XamlPreview.Unbuilt(inputs));
+            preview.SayUnbuilt(inputs);
             return null;
         }
         string? runs = await BackgroundWork.Run(() => XamlPreview.FrameworkOfBuild(built)) ?? inputs.TargetFramework;

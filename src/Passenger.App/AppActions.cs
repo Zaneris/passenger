@@ -450,6 +450,9 @@ public static class AppActions
     // The XAML previewer beside the editor, under View: no action of Rider's keymaps.
     public const string XamlPreview = "app.editor.xamlPreview";
 
+    /// <summary>The XAML file's project built for what its preview draws alone: no key of Rider's.</summary>
+    public const string BuildForPreview = "app.editor.buildForPreview";
+
     // A Markdown file's preview beside its editor, under View and on the editor's tab strip: the Visual Studio keymaps and
     // their parents give IntelliJ's Editor and Preview layout (TextEditorWithPreview.Layout.EditorAndPreview) no keys; its
     // VSCode keymaps give it Ctrl+K, V (Cmd+K, V on macOS).

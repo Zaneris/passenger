@@ -22,7 +22,7 @@ public sealed class XamlPreviewPane : DockPanel
     private readonly Canvas marks;
     private readonly Border outline;
     private readonly Border edge;
-    private readonly TextBlock waiting;
+    private readonly ToolWindows.EmptyState waiting;
     private readonly Panel view;
 
     /// <summary>The frame in its design's units, scaled to the size it is shown at.</summary>
@@ -68,8 +68,8 @@ public sealed class XamlPreviewPane : DockPanel
         scaled = new LayoutTransformControl { Child = framed };
         edge = new Border { Child = scaled, BorderThickness = new Thickness(1), Margin = new Thickness(16), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         edge.Bind(Border.BorderBrushProperty, edge.GetResourceObservable(TokenKeys.Divider));
-        waiting = new TextBlock { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, MaxWidth = 320, TextAlignment = TextAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        waiting = new ToolWindows.EmptyState { MaxWidth = 320, HorizontalAlignment = HorizontalAlignment.Center };
+        waiting.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
         view = new Panel { ClipToBounds = true, Children = { edge, waiting } };
         view.SizeChanged += (_, _) => Fit();
         redraw = new Debounce(TimeSpan.FromMilliseconds(150), () =>
@@ -101,6 +101,9 @@ public sealed class XamlPreviewPane : DockPanel
         Show();
     }
 
+    /// <summary>The action the pane's words offer was asked for (Build for XAML Preview), by its id.</summary>
+    public event EventHandler<string>? ActionRequested;
+
     /// <summary>An element of the file was clicked in the frame; raised on the UI thread.</summary>
     public event EventHandler<PreviewElement>? ElementChosen;
 
@@ -112,6 +115,9 @@ public sealed class XamlPreviewPane : DockPanel
 
     /// <summary>The element's box outlined, in the frame's units; null while none is.</summary>
     public Rect? Outlined => outline.IsVisible ? outlined : null;
+
+    /// <summary>Build for XAML Preview's title, which the pane's link shows.</summary>
+    public const string BuildForPreviewTitle = "Build for XAML Preview";
 
     /// <summary>How far the outline stands outside the box it outlines.</summary>
     public const double OutlineWidth = 2;
@@ -191,6 +197,7 @@ public sealed class XamlPreviewPane : DockPanel
         marks.Height = preview.FrameSize.Height;
         edge.IsVisible = preview.Frame is not null;
         waiting.Text = preview.Status;
+        waiting.Offer(preview.WantsBuild ? AppActions.BuildForPreview : null, preview.WantsBuild ? BuildForPreviewTitle : null);
         waiting.IsVisible = preview.Frame is null;
         error.Text = preview.Error;
         errorBar.IsVisible = preview.Error is not null;

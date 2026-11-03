@@ -79,6 +79,10 @@ public sealed class XamlService : IDisposable
     public void EvaluationsChanged(IReadOnlyCollection<string> projectPaths)
     {
         UiThread.Check();
+        foreach (XamlDocument document in documents.Values.Where(d => projectPaths.Contains(d.Loading.ProjectPath, PathNames.Comparer)))
+        {
+            document.Choose(ChosenFramework(document));
+        }
         foreach (XamlLoading loading in projects.Values.Where(l => projectPaths.Contains(l.ProjectPath, PathNames.Comparer)).ToList())
         {
             Reload(loading);
@@ -284,15 +288,19 @@ public sealed class XamlService : IDisposable
         }
     }
 
-    /// <summary>A build ended: each open XAML file takes the XAML compiler's problems in it, in place of the last build's.</summary>
+    /// <summary>A build ended: each open XAML file takes the XAML compiler's problems in it, in place of the last build's,
+    /// those of a multi-targeted project's inner builds shown for the framework chosen alone.</summary>
     public void Built(IReadOnlyList<Run.Problem> problems)
     {
         UiThread.Check();
         foreach (XamlDocument document in documents.Values)
         {
-            document.Built(problems.Where(p => p.Path is { } path && PathNames.Same(path, document.Document.Path)));
+            document.Built(problems.Where(p => p.Path is { } path && PathNames.Same(path, document.Document.Path)), ChosenFramework(document));
         }
     }
+
+    /// <summary>The framework chosen for a XAML file's multi-targeted project (<see cref="ProjectEvaluation.TargetFramework"/>); null for one of one.</summary>
+    private string? ChosenFramework(XamlDocument document) => Evaluations?.Invoke(document.Loading.ProjectPath)?.TargetFramework;
 
     private void OnParsed(object? sender, Languages.CSharp.ParsedText parsed)
     {

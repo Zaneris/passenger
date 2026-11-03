@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Passenger.App;
+using Passenger.App.Run;
 using Passenger.App.Workspace;
 using Passenger.App.Xaml;
 using Passenger.Core;
@@ -17,7 +18,7 @@ namespace Passenger.Tests;
 /// runtime runs that build. One choice of framework per project, the first by default, drives the XAML preview (that
 /// framework's build however the inner builds finished, on its own runtime), XAML's completion and checks (that framework's
 /// C#), and the language server's answers for the project's C# files, from a XAML file's switcher and a C# file's alike, and
-/// is kept with the folder. Avalonia's everywhere (<see cref="MultiTargetedXamlTests"/>); WPF's on Windows alone
+/// is kept with the folder; the XAML file's problems from a build are its framework's. Avalonia's everywhere (<see cref="MultiTargetedXamlTests"/>); WPF's on Windows alone
 /// (<see cref="MultiTargetedWpfPreviewTests"/>).</summary>
 public sealed class MultiTargetedXamlTests : IClassFixture<MultiTargetedXamlTests.Pair>
 {
@@ -38,6 +39,36 @@ public sealed class MultiTargetedXamlTests : IClassFixture<MultiTargetedXamlTest
     [AvaloniaFact]
     public void One_framework_chosen_per_project_drives_the_preview_completion_checks_and_csharp_and_is_kept() =>
         Check(app, "MainWindow.axaml", TestProjects.Framework, Second);
+
+    /// <summary>A XAML error only the first framework's build finds (the marker's Note, which the second's C# alone gives it)
+    /// is the XAML file's only while that framework is chosen: the build lists it as the first framework's, with the second
+    /// chosen the file is marked nowhere and Problems lists nothing of it, and with the first chosen again its line is marked
+    /// once more.</summary>
+    [AvaloniaFact]
+    public void A_xaml_error_of_one_frameworks_build_is_the_files_only_while_that_framework_is_chosen()
+    {
+        app.Rewrite("MainWindow.axaml", AvaloniaWindow.Replace("<local:Marker />", "<local:Marker Note=\"x\" />", StringComparison.Ordinal));
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        OpenDocument document = window.EditorArea.Active!;
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.WaitFor(() => editor.ContextLabel == TestProjects.Framework, () => $"the XAML file's switcher showing {TestProjects.Framework}, the first framework, chosen (it shows {editor.ContextLabel ?? "nothing"})");
+
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        Problem[] inFile = [.. window.BottomPanel.Problems.Problems.Where(p => p.Severity == ProblemSeverity.Error && p.Path is { } path && PathNames.Same(path, document.Path))];
+        Assert.True(inFile.Length > 0 && inFile.All(p => p.Framework == TestProjects.Framework && p.Project == "Pair"),
+            $"The build did not list the Note's error as {TestProjects.Framework}'s alone: {string.Join("; ", inFile.Select(p => $"{p.Project} {p.Framework}: {p.Message}"))}\n{window.Status}");
+        Ui.WaitFor(() => document.Markers.Any(m => m.Kind == MarkerKind.Error), $"the Note's line marked while {TestProjects.Framework}, whose build failed on it, is chosen");
+
+        Choose(window, editor, $"Pair ({Second})");
+        Ui.WaitFor(() => document.Markers.Count == 0 && window.BottomPanel.Problems.FileProblems.Count == 0,
+            () => $"the file marked nowhere with {Second}, whose build found nothing in it, chosen: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+
+        Choose(window, editor, $"Pair ({TestProjects.Framework})");
+        Ui.WaitFor(() => document.Markers.Any(m => m.Kind == MarkerKind.Error) && window.BottomPanel.Problems.FileProblems.Count > 0,
+            $"the Note's line marked again with {TestProjects.Framework} chosen once more");
+        window.Close();
+    }
 
     /// <summary>The one flow of both dialects, on an app of the frameworks <paramref name="first"/> and <paramref name="second"/>:
     /// the app built, its first framework's output made the older of the two, then the preview, completion and checks seen
@@ -152,7 +183,7 @@ public sealed class MultiTargetedXamlTests : IClassFixture<MultiTargetedXamlTest
 
     /// <summary>The marker's code: its left half coloured by the framework compiled, its right half by the runtime that runs
     /// it, and a property only the newer framework compiles.</summary>
-    private const string AvaloniaMarker = """
+    internal const string AvaloniaMarker = """
         using System;
         using Avalonia.Controls;
         using Avalonia.Media;
@@ -182,7 +213,7 @@ public sealed class MultiTargetedXamlTests : IClassFixture<MultiTargetedXamlTest
 
         """;
 
-    private const string AvaloniaWindow = """
+    internal const string AvaloniaWindow = """
         <Window xmlns="https://github.com/avaloniaui"
                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"

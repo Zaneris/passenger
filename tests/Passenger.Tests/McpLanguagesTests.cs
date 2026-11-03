@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Passenger.App;
 using Passenger.App.Mcp;
 using Passenger.Core;
 
@@ -571,6 +572,38 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     }
 
     /// <summary>The test's own restored folder (<see cref="Restored"/>), removed with the test.</summary>
+    /// <summary>A multi-targeted project's framework chosen by an agent through Target Framework, as the XAML file's switcher
+    /// chooses it: workspace names the first, then the one chosen; the XAML file's preview says it waits for that framework's
+    /// build, and Build for XAML Preview builds that framework alone, the other's never built.</summary>
+    [Fact]
+    public async Task An_agent_chooses_a_multi_targeted_projects_framework_and_workspace_the_preview_and_its_build_follow()
+    {
+        string pair = await Taken("mcppair-");
+        string second = MultiTargetedXamlTests.Second;
+        await using McpClient client = await Start(["--mcp", pair], languageServer: false);
+        Assert.Equal(TestProjects.Framework, Chosen(await Call(client, McpTools.Workspace)));
+        await Call(client, McpTools.Open, new() { ["path"] = "MainWindow.axaml" });
+        await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.XamlPreview });
+
+        string chose = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.TargetFramework, ["input"] = second }));
+        Assert.StartsWith($"Pair's framework is {second}", chose, StringComparison.Ordinal);
+        Assert.Equal(second, Chosen(await Call(client, McpTools.Workspace)));
+        string waits = $"to preview its XAML for {second}";
+        string tree = string.Empty;
+        await Waiting.UntilAsync(async () => (tree = Text(await Call(client, McpTools.AppTree, new() { ["app"] = "ide" }))).Contains(waits, StringComparison.Ordinal),
+            TimeSpan.FromSeconds(30), Cancel, TimeSpan.FromMilliseconds(200));
+        Assert.True(tree.Contains(waits, StringComparison.Ordinal), $"The preview did not say it waits for {second}'s build once the agent chose it:\n{tree}");
+
+        string built = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.BuildForPreview }));
+        string bin = Path.Combine(pair, "bin", "Debug");
+        Assert.True(File.Exists(Path.Combine(bin, second, "Pair.dll")), $"Build for XAML Preview did not build {second}, the framework chosen: {built}");
+        Assert.False(File.Exists(Path.Combine(bin, TestProjects.Framework, "Pair.dll")), $"Build for XAML Preview built {TestProjects.Framework} too, which the preview never draws: {built}");
+    }
+
+    /// <summary>The framework workspace says is chosen for the folder's one project.</summary>
+    private static string? Chosen(JsonElement workspace) =>
+        Assert.Single(workspace.GetProperty("projects").EnumerateArray()).TryGetProperty("chosenFramework", out JsonElement chosen) ? chosen.GetString() : null;
+
     private async Task<string> Taken(string name)
     {
         string taken = await restored.Take(name);
@@ -578,8 +611,8 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         return taken;
     }
 
-    /// <summary>The class's restored folders, Avalonia's and WPF's galleries, the Aspire AppHost and its service, and the web
-    /// app of routes, each written as its test needs it: all four are restored at once, begun as the class starts, so the
+    /// <summary>The class's restored folders, Avalonia's and WPF's galleries, the Aspire AppHost and its service, the web
+    /// app of routes and Avalonia's app of two frameworks, each written as its test needs it: all are restored at once, begun as the class starts, so the
     /// tests that take none run meanwhile, rather than each test's in its turn. Each test takes its own; those no test took
     /// go with the class.</summary>
     public sealed class Restored : IAsyncLifetime
@@ -596,7 +629,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
 
         private async Task RestoreAsync()
         {
-            (string Name, Func<string, Task> Write)[] kinds = [("mcpaxaml-", Avalonia), ("mcpaspire-", Aspire), ("mcpwxaml-", Wpf), ("mcproutes-", Routes)];
+            (string Name, Func<string, Task> Write)[] kinds = [("mcpaxaml-", Avalonia), ("mcpaspire-", Aspire), ("mcpwxaml-", Wpf), ("mcproutes-", Routes), ("mcppair-", Pair)];
             try
             {
                 foreach ((string kind, Func<string, Task> write) in kinds)
@@ -667,6 +700,15 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         }
 
         private static Task Wpf(string made) => WpfXamlTests.Gallery.MakeAsync(made);
+
+        /// <summary>Avalonia's app of two frameworks, its window the marker alone (<see cref="MultiTargetedXamlTests.Pair"/>).</summary>
+        private static async Task Pair(string made)
+        {
+            await AvaloniaApp.CreateAsync(made, "Pair");
+            MultiTargetedXamlTests.TargetBoth(Path.Combine(made, "Pair.csproj"), TestProjects.Framework, TestProjects.Framework, MultiTargetedXamlTests.Second);
+            File.WriteAllText(Path.Combine(made, "Marker.cs"), MultiTargetedXamlTests.AvaloniaMarker);
+            File.WriteAllText(Path.Combine(made, "MainWindow.axaml"), MultiTargetedXamlTests.AvaloniaWindow);
+        }
 
         private static Task Routes(string made)
         {

@@ -110,7 +110,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     });
 
     [McpServerTool(Name = McpTools.Workspace, Title = "The workspace", ReadOnly = true), Description(
-        "The open folder and solution (or solution filter), its projects (output type, frameworks, unloaded marked), run " +
+        "The open folder and solution (or solution filter), its projects (output type, frameworks and the one chosen, unloaded marked), run " +
         "configurations (the chosen one marked), the language server's state, the open files (unsaved marked) and the active " +
         "one with its caret, and the Aspire AppHosts and container run under way, each resource with its state, hold, debug " +
         "session and target. routes adds the web projects' routes, read from their code.")]
@@ -2040,7 +2040,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     [McpServerTool(Name = McpTools.IdeAction, Title = "Run an IDE action", Destructive = true), Description(
         "Runs an IDE action by its id (app.build, app.debug.stepOver...; ide_actions lists them) as its shortcut would, waits " +
         "for the work it begins and says what it came to, or says why it cannot. input: app.migrations.add's name, updateTo's " +
-        "target; app.saveAsLaunchProfile's configuration (else the chosen one).")]
+        "target; app.saveAsLaunchProfile's configuration (else the chosen one); app.targetFramework's framework, as " +
+        "Project:net9.0 where several projects target several.")]
     public Task<string> IdeAction(string action, string? input = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         if (action.StartsWith("app.migrations.", StringComparison.Ordinal) && window.Actions[action] is not null)
@@ -2050,6 +2051,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (action == AppActions.SaveAsLaunchProfile)
         {
             return await window.SaveAsLaunchProfileForAgentAsync(input);
+        }
+        if (action == AppActions.TargetFramework && input is not null)
+        {
+            return window.ChooseFrameworkForAgent(input);
         }
         if (input is not null)
         {
@@ -2813,6 +2818,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             [.. (session.Workspace?.Projects ?? []).Select(p => new ProjectInfo(p.Name, Relative(p.Path), p.OutputType, p.TargetFrameworks)
             {
                 Unloaded = session.Unloaded.Contains(p.Path) ? true : null,
+                ChosenFramework = session.Frameworks.Of(p),
             })],
             [.. session.Configurations.All.Select(c => c.Name)],
             session.Configurations.Chosen?.Name,
@@ -2979,6 +2985,10 @@ public sealed record ProjectInfo(string Name, string Path, string? OutputType, I
     /// <summary>True for a project not loaded: one the solution filter opened leaves out, or one the person unloaded; null
     /// for one loaded, which the answer leaves unsaid.</summary>
     public bool? Unloaded { get; init; }
+
+    /// <summary>A multi-targeted project's framework chosen, which its XAML preview, its XAML and the language server's
+    /// answers for its C# follow; null for a project of one.</summary>
+    public string? ChosenFramework { get; init; }
 }
 
 public sealed record Finding(string Severity, string? Code, string Message, string? Path, int Line, int Column);
