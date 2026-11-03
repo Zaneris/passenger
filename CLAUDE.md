@@ -220,12 +220,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   the installation's folder is `Dotnet.Root`, from the host's real path, never the folder of `Dotnet.Host()`),
   `Dotnet.CliHome` (the CLI's home, after the login shell), `OutboundHttp` (every request Passenger makes of a host),
   `PathNames`, `AtomicFile`, `FolderMoves` (a folder moved whole, across volumes too), `SocketFolders` (every Unix
-  socket), `Libc` (a C library call more than one place makes, declared once, the account's own home `Libc.AccountHome`
-  whatever HOME says; the App's `MacObjC` and `Xlib` likewise), `InFlight`, `BackgroundWork`, `DotnetProcesses.Runs`
-  (whether a process runs: never `HasExited`, which on Windows reads one this user may not open as ended),
-  `EnvironmentValues.Milliseconds` (every PASSENGER_*_MS), `ExitCodes` (an exit code said with its signal),
-  `WindowsCommandLine` (the one maker of a Windows command line), `Product` (the one place the version is read),
-  `PassengerLog` (below the App, never `IdeLog`; a line quoting a program's words through `WriteMasked`),
+  socket, its path checked by `SocketFolders.Fits`), `Libc` (a C library call more than one place makes, declared once,
+  the account's own home `Libc.AccountHome` whatever HOME says; the App's `MacObjC` and `Xlib` likewise), `InFlight`,
+  `BackgroundWork`, `DotnetProcesses.Runs` (whether a process runs: never `HasExited`, which on Windows reads one this
+  user may not open as ended), `EnvironmentValues.Milliseconds` (every PASSENGER_*_MS), `ExitCodes` (an exit code said
+  with its signal), `WindowsCommandLine` (the one maker of a Windows command line), `Product` (the one place the version
+  is read), `PassengerLog` (below the App, never `IdeLog`; a line quoting a program's words through `WriteMasked`),
   `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's lines read and messages written as pooled bytes),
   `SharedNames` (a name read from bytes, made once), `ContentLengthHeader` (every LSP and DAP message's header),
   `RazorFiles` (an `[IdentifierHome]`) and `MSBuildNames` (MSBuild's environment variables too) (compiled into the
@@ -242,7 +242,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   `XmlEntities` (every XML value decoded and escaped, never `SecurityElement.Escape` or a hand Replace), `RoslynLines`
   (Roslyn's line breaks, which `ServerLines` takes), and anchors (`AnchorAt`/`RangeAt`/`MarkAt`, `AnchoredList`; moved
   before `Changed`, each handler isolated): hold a place in the text with one, never your own `TextEditing.Map*`.
-- `Passenger.Editor`: the `CodeEditor` control (partials), `Keymap` and `EditorActions` (presets; modifier words read by
+- `Passenger.Editor`: the `CodeEditor` control (partials), a `Marker` (its code apart from its words,
+  `Marker.Coded`/`Said`, as MCP's diagnostics give them), `Keymap` and `EditorActions` (presets; modifier words read by
   `Keystroke.ModifierOf`, an agent's too); the code font in force is the resource `CodeFonts.Key` (Settings › Editor),
   shown through `CodeFonts.InCodeFont` (`Follow` for a control's own property), `CodeEditor.CodeFont` the carried
   fallback, never a `FontFamily` written elsewhere; the terminal takes the editor's font and cell
@@ -430,12 +431,13 @@ Projects in `src/`; `find_symbol` finds the rest:
   cards and declarations through `GodotShaderAssist.SceneCodeAt`), one helper per rendering method
   (`GodotDefinitions.RenderingMethod`), let go when no shader has been open or asked for a while
   (`GodotShaderCompiler.Opened`/`Closed`, `IdleVariable`). A theme item's name is read through `GodotThemeTable` (the
-  carried `GodotDefaultTheme.json`, `just godot-theme`) and the project's themes (`GodotDefinitions.ThemeItems`), and
-  the person's open Godot editor is asked through its IDE messaging server (`GodotIdeLink` over Workspace's
-  `GodotIdeMessaging` and `GodotIdeClient`), never Passenger's own headless editors (`GodotScripts.Headless`). Edits
-  added to a server's workspace edit for a file it already edits join that file's entry (`TypeRename.With`):
-  `documentChanges` apply in order. A server's own command (TypeScript's refactorings, ESLint's fixes) runs through
-  `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
+  carried `GodotDefaultTheme.json`, `just godot-theme`) and the project's themes (`GodotDefinitions.ThemeItems`), looked
+  up along `GodotDefinitions.ThemeChain` (the node's type variation first), and the person's open Godot editor is asked
+  through its IDE messaging server (`GodotIdeLink` over Workspace's `GodotIdeMessaging` and `GodotIdeClient`), never
+  Passenger's own headless editors (`GodotScripts.Headless`). Edits added to a server's workspace edit for a file it
+  already edits join that file's entry (`TypeRename.With`): `documentChanges` apply in order. A server's own command
+  (TypeScript's refactorings, ESLint's fixes) runs through `ServerCommands`, the edits it sends back
+  (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
   `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind; an open GDScript
   kept parsed and typed by `GodotScriptTypes`, reparsed off the UI thread through `GDScriptTextChange`, its hints set
@@ -455,16 +457,17 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **Build and run.** A folder with no usable .NET SDK is `ProjectModels.MissingSdk`, said through `Refusals.NoSdk` and
   the window's banner (`DotnetWant`, `MainWindow.Dotnet`), an SDK a global.json chose that can't build a project through
   `DotnetWant.ChosenBy` and `Builders` (`ProjectModels.SdkAsked`, `GlobalJsonSdk`), its NETSDK1045 placed at global.json
-  (`SdkChosen`); Install .NET SDK… is `DotnetReleases` and `DotnetInstall` (`PASSENGER_DOTNET_RELEASES`, dead in tests),
-  and a `dotnet` no PATH names is taken by `Dotnet.Use`. On Windows a scanner holds just-unpacked files a moment
-  (`DotnetInstall.MoveAsync`). `BuildRunController` (partials), `ConsoleSink` (every console through one `PumpAsync`),
-  `RunConfiguration` (data, edited in place as `ConfigurationEdit`s), `LaunchPlan` (one resolution for Run, Debug,
-  Profile, Hot Reload and a debugged test host; a RunCommand naming another program run as `dotnet run` runs it,
-  `OtherProgram`; a Blazor Web App's client no program of its own, `ProjectModel.IsBrowserClient`; a Passenger it
-  launches keeps its state in the launcher's `sandbox/`; a Godot project's game and editor through `GodotLaunch` (one of
-  GDScript alone a `ProjectModel.OfScriptGame` that only Run, Debug and Profile see, `ProjectSession.RunProjects`, never
-  in `Projects`), on the Godot `GodotExecutables` finds, its copies `GameCopies` ("Name #k", Debug tabs grouped as
-  `DebugTab.Copy`, Stop ending the group), the offer of Passenger as Godot's script editor made once per folder
+  (`SdkChosen`); Install .NET SDK… is `DotnetReleases` and `DotnetInstall` (`PASSENGER_DOTNET_RELEASES`, dead in tests;
+  its steps timed in one log line, `DotnetInstall.Steps`; an agent's the person's question), and a `dotnet` no PATH
+  names is taken by `Dotnet.Use`. On Windows a scanner holds just-unpacked files a moment (`DotnetInstall.MoveAsync`).
+  `BuildRunController` (partials), `ConsoleSink` (every console through one `PumpAsync`), `RunConfiguration` (data,
+  edited in place as `ConfigurationEdit`s), `LaunchPlan` (one resolution for Run, Debug, Profile, Hot Reload and a
+  debugged test host; a RunCommand naming another program run as `dotnet run` runs it, `OtherProgram`; a Blazor Web
+  App's client no program of its own, `ProjectModel.IsBrowserClient`; a Passenger it launches keeps its state in the
+  launcher's `sandbox/`; a Godot project's game and editor through `GodotLaunch` (one of GDScript alone a
+  `ProjectModel.OfScriptGame` that only Run, Debug and Profile see, `ProjectSession.RunProjects`, never in `Projects`),
+  on the Godot `GodotExecutables` finds, its copies `GameCopies` ("Name #k", Debug tabs grouped as `DebugTab.Copy`, Stop
+  ending the group), the offer of Passenger as Godot's script editor made once per folder
   (`MainWindow.OfferGodotEditor`), Passenger's addon in the person's Godot editor (`Godot/Addon/passenger.gd`,
   `GodotAddon`, `MainWindow.GodotAddon`) reaching the window over `GodotEditorLink` (a listing in the state's
   `godot-editors/`, a token, then a reply, then JSON lines both ways: `GodotEditorWire`), a game its Play starts relayed
@@ -610,14 +613,15 @@ site-shots` retakes its images.
   builds since start Visual Studio Telemetry's session even with telemetry off (dotnet/roslyn#86122; #234). After
   lowering it, delete `artifacts/bin/*/debug/roslyn*`, or the copy leaves a mixed server that won't start.
 - **Roslyn's server makes a C# file opened before its project loads a Miscellaneous File** and restores a project of its
-  own for it, so `CSharpService` opens a loading project's files only once the server says that project loaded, and a
-  file come since only once a load of its project that read it has ended (`CSharpService.Arrivals`); a change waits only
-  for such files in the projects it reaches, and Find Usages answers at once naming any not taken in (`UnplacedAsync`'s
-  filter, `ReachOfAsync`); references come from the session's evaluated projects (`CSharpService.ProjectsNow`), never
-  the service's start-time `workspace`. A reload sent while it loads is one more load to wait for (`RoslynSession`): the
-  server's word that a load ended names none. A server that ends during its start is started again within
-  `ServerRestarts`; StreamJsonRpc then drops a faulted answer, which `IdeErrors` passes over
-  (`LanguageServer.IsDroppedAnswer`).
+  own for it (a loose file's only references are that SDK-built `Canonical.csproj`'s, so with no SDK it has none and no
+  option gives others), so `CSharpService` opens a loading project's files only once the server says that project
+  loaded, and a file come since only once a load of its project that read it has ended (`CSharpService.Arrivals`); a
+  change waits only for such files in the projects it reaches, and Find Usages answers at once naming any not taken in
+  (`UnplacedAsync`'s filter, `ReachOfAsync`); references come from the session's evaluated projects
+  (`CSharpService.ProjectsNow`), never the service's start-time `workspace`. A reload sent while it loads is one more
+  load to wait for (`RoslynSession`): the server's word that a load ended names none. A server that ends during its
+  start is started again within `ServerRestarts`; StreamJsonRpc then drops a faulted answer, which `IdeErrors` passes
+  over (`LanguageServer.IsDroppedAnswer`).
 - **Roslyn's server takes file watching all or nothing**: offered it, it watches nothing itself; all it registers is
   ours. A file deleted reaches it only once the projects holding it loaded again without it (`ProjectMethods.Deleted`):
   told first, it reads the missing file for its document, a second each, before any answer needing the compilation
