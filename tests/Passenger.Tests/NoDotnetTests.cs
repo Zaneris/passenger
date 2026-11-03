@@ -82,9 +82,10 @@ public sealed class NoDotnetTests : IAsyncDisposable
 
         Assert.True(!window.Welcome.NewSolutionButton.IsEnabled && ToolTip.GetTip(window.Welcome.NewSolutionButton) as string == Refusals.NoDotnet,
             $"The Welcome screen's New Solution is {(window.Welcome.NewSolutionButton.IsEnabled ? "not greyed" : "greyed")}, its tip saying {ToolTip.GetTip(window.Welcome.NewSolutionButton)}");
-        Ui.Run(window, AppActions.NewSolution);
-        Assert.True(window.Status == Refusals.NoDotnet && !window.OwnedWindows.OfType<NewProjectDialog>().Any(),
-            $"New Solution with no .NET said ({window.OwnedWindows.Count} windows over it): {window.Status}");
+        bool ran = window.Perform(AppActions.NewSolution);
+        Ui.Settle();
+        Assert.True(!ran && window.Actions.WhyNot(AppActions.NewSolution, window.Actions.Context()) == Refusals.NoDotnet && !window.OwnedWindows.OfType<NewProjectDialog>().Any(),
+            $"New Solution with no .NET {(ran ? "ran" : "refused")}, saying {window.Actions.WhyNot(AppActions.NewSolution, window.Actions.Context())} ({window.OwnedWindows.Count} windows over it)");
 
         Ui.ClickButton(window, "Download Page");
         Assert.Equal("https://dotnet.microsoft.com/download", Assert.Single(window.Browsed).AbsoluteUri);
@@ -207,7 +208,9 @@ public sealed class NoDotnetTests : IAsyncDisposable
         Ui.ClickButton(dialog, "Install");
         Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null, "the install to end", TimeSpan.FromMinutes(1));
         Assert.Equal("The .NET SDK 10.0.999's archive is not the one Microsoft publishes (its SHA-512 differs), so nothing was installed", window.Status);
-        Assert.True(!Directory.Exists(Installs), $"A refused install left the folder it made, {Installs}, holding [{string.Join(", ", Directory.EnumerateFileSystemEntries(Installs).Select(Path.GetFileName))}]");
+        Assert.True(!Directory.Exists(Installs), Directory.Exists(Installs)
+            ? $"A refused install left the folder it made, {Installs}, holding [{string.Join(", ", Directory.EnumerateFileSystemEntries(Installs).Select(Path.GetFileName))}]"
+            : string.Empty);
         Assert.Equal(Refusals.NoDotnet, window.DotnetSaid);
         window.Close();
     }
