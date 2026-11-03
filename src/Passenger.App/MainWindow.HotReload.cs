@@ -4,6 +4,7 @@ using Passenger.App.Editors;
 using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
+using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.App;
@@ -33,8 +34,13 @@ public partial class MainWindow
     {
         Add(AppActions.ApplyHotReloadChanges, "Apply Hot Reload Changes", "Run", context =>
         {
+            // A game whose GDScript Godot reloads as each file is saved takes its edits as they are saved.
+            if (UnsavedGameScripts() is { Count: > 0 } unsaved)
+            {
+                IdeErrors.Observe(WorkingAsync(AppActions.ApplyHotReloadChanges, "Saving the game's scripts…", async () => status.Text = await SaveGameScriptsAsync(unsaved)));
+            }
             // A container run's services take the edits through their debuggers, Run's app without dotnet watch its XAML.
-            if (session.Debug.HotReload is not null || session.Debug.Running.Count > 0 || session.Debug.IsDebugging || RunXamlEdited)
+            else if (session.Debug.HotReload is not null || session.Debug.Running.Count > 0 || session.Debug.IsDebugging || RunXamlEdited)
             {
                 IdeErrors.Observe(ApplyHotReloadAsync(session.Debug.SettingsRestart));
             }
@@ -43,7 +49,7 @@ public partial class MainWindow
                 // Done once dotnet watch has said what it made of the save; the status bar follows its later words.
                 IdeErrors.Observe(WorkingAsync(AppActions.ApplyHotReloadChanges, "Applying Hot Reload changes…", () => SaveForWatchAsync(TimeSpan.Zero)));
             }
-        }, _ => session.Debug.Running.Count > 0 ? null
+        }, _ => session.Debug.Running.Count > 0 || UnsavedGameScripts().Count > 0 ? null
             : session.Debug.HotReload is not null || session.Debug.IsDebugging ? session.Debug.WhyNotApply()
             : buildRun.WatchesHotReload ? null
             : RunXamlEdited ? null
@@ -336,6 +342,32 @@ public partial class MainWindow
         : session.Debug.HotReload is not null || session.Debug.IsDebugging ? session.Debug.ReloadedAsSaved
         : buildRun.IsRunning && session.RunPlan is { ScriptsAlone: true, GodotEditor: false } scripts && session.Games.Any(g => g.Name == scripts.Name && g.ReloadsScripts)
             ? DebugController.ScriptsReloadAsSaved(scripts.Name) : null;
+
+    /// <summary>The open scripts with unsaved edits of the game whose GDScript Godot reloads as each file is saved
+    /// (<see cref="ScriptsReloadAsSaved"/>), which only a save brings into it; none for any other run.</summary>
+    internal IReadOnlyList<OpenDocument> UnsavedGameScripts()
+    {
+        if (ScriptsReloadAsSaved() is null)
+        {
+            return [];
+        }
+        List<string> folders = [.. session.Games.Where(g => g.ReloadsScripts).Select(g => g.Folder)];
+        return [.. Editors.Documents.Where(d => d.IsModified && d.Path.EndsWith(".gd", StringComparison.OrdinalIgnoreCase) && folders.Any(f => PathNames.IsUnder(d.Path, f)))];
+    }
+
+    /// <summary>Saves a game's unsaved scripts, their writes landed, as Save All saves: Godot reloads each in the game as it
+    /// is saved. What came of it, in words.</summary>
+    internal async Task<string> SaveGameScriptsAsync(IReadOnlyList<OpenDocument> scripts)
+    {
+        UiThread.Check();
+        string game = session.Games.FirstOrDefault(g => g.ReloadsScripts)?.Name ?? "the game";
+        List<string> refused = [.. scripts.Where(script => !Editors.Save(script)).Select(script => script.Name)];
+        string? unlanded = await EditorArea.LandedAsync(null, CancellationToken.None);
+        List<string> saved = [.. scripts.Select(script => script.Name).Except(refused)];
+        return refused.Count > 0 || unlanded is not null
+            ? $"Not every script of {game} was saved, so not every edit reaches it: {unlanded ?? $"{Plural.Listed(refused)} could not be saved"}"
+            : $"Saved {Plural.Listed(saved)}: Godot reloads {(saved.Count == 1 ? "it" : "them")} in {game}";
+    }
 
     /// <summary>The restart for edits Hot Reload could not apply, as an agent asks it: never the question, which is the
     /// person's; <paramref name="running"/> for the services of a container run with Hot Reload, else the program debugged.</summary>

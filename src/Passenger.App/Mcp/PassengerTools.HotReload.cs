@@ -33,6 +33,12 @@ public sealed partial class PassengerTools
                 : new HotReloadInfo(Result(said.Result), said.Said, [], [], 0, [], said.Result == HotReloadResult.RestartNeeded,
                     said.Result == HotReloadResult.RestartNeeded);
         }
+        if (window.UnsavedGameScripts() is { Count: > 0 } unsaved)
+        {
+            AgentCall.Say("Saving the game's scripts, which Godot reloads in it as each is saved");
+            string saved = await window.SaveGameScriptsAsync(unsaved);
+            return new HotReloadInfo(unsaved.All(d => !d.IsModified) ? "applied" : "failed", saved, [.. unsaved.Select(d => Relative(d.Path))], [], 0, [], false, false);
+        }
         if (window.WhyNoHotReload() is { } why)
         {
             return why == window.ScriptsReloadAsSaved() ? new HotReloadInfo("nothingToApply", why, [], [], 0, [], false, false)

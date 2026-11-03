@@ -130,6 +130,46 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
         }
     }
 
+    /// <summary>A script edited and left unsaved while Run runs the game with Hot Reload: Apply Hot Reload Changes, greyed
+    /// while nothing is unsaved, is offered, and an agent's hot_reload saves the script, saying so, and the game then says
+    /// the edit's words.</summary>
+    [AvaloniaFact]
+    public void An_agents_hot_reload_saves_the_games_unsaved_script_and_the_game_takes_the_edit()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Choose(window);
+            Ui.Launched(window, window.Builds.RunAsync(hotReload: true), "the game's start with Hot Reload on", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => Run(window).Contains("tick 40", StringComparison.Ordinal), () => $"the script to run ({Run(window)})", TimeSpan.FromMinutes(1));
+            Assert.Equal(DebugController.ScriptsReloadAsSaved("Ticker on Godot"), window.Actions.WhyNot(AppActions.ApplyHotReloadChanges, window.Actions.Context()));
+            Typing.Replace(window, "print(word, \" \", counter)", "print(\"unsaved \", counter)");
+            Assert.True(window.EditorArea.Active!.IsModified, "The script's edit was saved as it was typed");
+            Assert.Null(window.Actions.WhyNot(AppActions.ApplyHotReloadChanges, window.Actions.Context()));
+
+            Passenger.App.Mcp.AgentCall call = Passenger.App.Mcp.AgentCall.Begin(null, null, null, Passenger.App.Mcp.McpTools.HotReload, "Hot Reload", "a test's agent", "the test", traced: false);
+            Passenger.App.Mcp.HotReloadInfo answer;
+            try
+            {
+                answer = Ui.AwaitPumped(new Passenger.App.Mcp.PassengerTools(window).HotReload(), "an agent's hot_reload", TimeSpan.FromMinutes(1));
+            }
+            finally
+            {
+                Ui.Await(call.DisposeAsync().AsTask().ContinueWith(_ => true, TaskScheduler.Default), "the agent's call to end");
+            }
+            Assert.True(answer is { Result: "applied", Files: ["ticker.gd"] } && answer.Said == "Saved ticker.gd: Godot reloads it in Ticker on Godot",
+                $"hot_reload with the game's script unsaved answered {answer.Result}: {answer.Said} ({string.Join(", ", answer.Files)})");
+            Assert.False(window.EditorArea.Active!.IsModified, "hot_reload left the game's script unsaved");
+            Ui.WaitFor(() => Run(window).Contains("unsaved ", StringComparison.Ordinal), () => $"the game to say what the saved script says ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
+            Assert.Equal(DebugController.ScriptsReloadAsSaved("Ticker on Godot"), window.Actions.WhyNot(AppActions.ApplyHotReloadChanges, window.Actions.Context()));
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>Profile records the game's frames as Godot's own profiler measures them, its script's _process among them,
     /// and says the run has no samples, a game of GDScript alone running no .NET code.</summary>
     [AvaloniaFact]
