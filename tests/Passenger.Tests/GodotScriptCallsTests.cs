@@ -238,7 +238,8 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
         }
     }
 
-    /// <summary>A C# Connect of enemy.gd's died, which gives nothing, to a C# method taking an int is marked at the signal's
+    /// <summary>A C# Connect of enemy.gd's died, declared giving nothing (<c>signal died()</c>: one written without its
+    /// parentheses gives whatever its emits do, so none is known), to a C# method taking an int is marked at the signal's
     /// string, and one of a C# signal giving nothing to take_damage, which takes an amount, at the function's; died to
     /// OnDied, which takes nothing, is not.</summary>
     [AvaloniaFact]
@@ -251,6 +252,7 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
                 + "    [Signal]\n    public delegate void HitEventHandler();\n", StringComparison.Ordinal);
         Assert.NotEqual(Script, connects);
         File.WriteAllText(game.PathOf("Main.cs"), connects);
+        File.WriteAllText(game.PathOf("enemy.gd"), Enemy.Replace("signal died\n", "signal died()\n", StringComparison.Ordinal));
         MainWindow window = game.Open(game.PathOf("Main.cs"), godot: game.Homes);
         try
         {
