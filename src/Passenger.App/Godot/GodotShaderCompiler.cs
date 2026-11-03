@@ -46,14 +46,26 @@ internal sealed record GodotShaderCompiled(IReadOnlyList<GodotShaderMessage> Mes
 /// headless Godot, the one Settings names or found, which compiles each shader handed to it through its dummy renderer and
 /// answers over loopback with what Godot's logger heard (Godot 4.5's <c>OS.add_logger</c>) and the uniforms read. It runs
 /// on a project of Passenger's own in the state's cache, given the shader's includes as text, so no project of the
-/// person's is touched, with the window's user folders for Godot, else its own beside it; started as first needed through
-/// ChildProcesses, started again after it ends (a few times at most), and ended with the session. The built-ins a Godot
-/// takes are asked of it once per version (<see cref="TableAsync"/>).</summary>
-internal sealed class GodotShaderCompiler(Func<string?> setting, Func<IReadOnlyDictionary<string, string>?> folders) : IAsyncDisposable
+/// person's is touched, with the window's user folders for Godot, else its own beside it; one helper for each rendering
+/// method a project uses (<see cref="GodotDefinitions.RenderingMethod"/>), its project set to it, as Godot's compiler
+/// refuses what the method lacks; started as first needed through ChildProcesses, started again after it ends (a few
+/// times at most), let go once no shader has been open or asked of for <see cref="Idle"/>, and ended with the session.
+/// The built-ins a Godot takes are asked of it once per version and method (<see cref="TableAsync"/>).</summary>
+public sealed class GodotShaderCompiler(Func<string?> setting, Func<IReadOnlyDictionary<string, string>?> folders) : IAsyncDisposable
 {
     /// <summary>The variable the helper reads the token it says back from, so no other program on the machine is taken for it.</summary>
     [IdentifierHome]
     public const string TokenVariable = "PASSENGER_SHADER_TOKEN";
+
+    /// <summary>The variable that shortens how long the helpers wait, no shader open nor asked of, before they are let go.</summary>
+    [IdentifierHome]
+    public const string IdleVariable = "PASSENGER_SHADER_IDLE_MS";
+
+    /// <summary>The rendering method a project names none of compiles under.</summary>
+    public const string DefaultMethod = GodotDefinitions.ForwardPlus;
+
+    /// <summary>How long the helpers wait, no shader open nor asked of, before they are let go: about 160 MB each.</summary>
+    private static TimeSpan Idle => EnvironmentValues.Milliseconds(IdleVariable, TimeSpan.FromMinutes(3));
 
     /// <summary>The first Godot whose scripts can hear its logger.</summary>
     private static readonly Version Logged = new(4, 5);
@@ -76,27 +88,93 @@ internal sealed class GodotShaderCompiler(Func<string?> setting, Func<IReadOnlyD
         return read.ToArray();
     });
 
-    /// <summary>The project the helper runs on: its name, and no log file written for it.</summary>
-    private static readonly byte[] Project = Encoding.UTF8.GetBytes("config_version=5\n\n[application]\n\nconfig/name=\"Passenger Shaders\"\n\n"
-        + "[debug]\n\nfile_logging/enable_file_logging=false\nfile_logging/enable_file_logging.pc=false\n");
+    /// <summary>The project a helper runs on: its name, its rendering method, and no log file written for it.</summary>
+    private static byte[] ProjectOf(string method) => Encoding.UTF8.GetBytes("config_version=5\n\n[application]\n\nconfig/name=\"Passenger Shaders\"\n\n"
+        + "[debug]\n\nfile_logging/enable_file_logging=false\nfile_logging/enable_file_logging.pc=false\n\n"
+        + $"[rendering]\n\nrenderer/rendering_method=\"{method}\"\n");
 
     private readonly SemaphoreSlim turn = new(1, 1);
     private readonly CancellationTokenSource ending = new();
     private readonly Dictionary<string, Task<GodotShaderTable>> tables = new(StringComparer.Ordinal);
-    private Helper? helper;
-    private int starts;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Helper> helpers = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> starts = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyList<GodotShaderUniform>> read = new(StringComparer.Ordinal);
     private volatile bool disposed;
+    private int open;
+    private CancellationTokenSource? idle;
 
     /// <summary>Why Godot compiles no shader now, in words for the person; null while it does, or before it was first asked.</summary>
     public string? Problem { get; private set; }
 
-    /// <summary>Where the helper's project lives: the state's cache.</summary>
+    /// <summary>Where the helpers' projects live: the state's cache, a folder for each rendering method.</summary>
     private static string Folder => Path.Combine(State.StateStore.DefaultRoot, "cache", "godot", "shaders");
 
-    /// <summary>What Godot's compiler says of a shader; null where it cannot be asked (<see cref="Problem"/> says why).</summary>
-    public async Task<GodotShaderCompiled?> CompileAsync(GodotShaderUnit unit, CancellationToken cancel = default)
+    /// <summary>A shader file opened, which keeps the helpers on while it is.</summary>
+    public void Opened() => Interlocked.Increment(ref open);
+
+    /// <summary>A shader file closed: once none is open, the helpers go after <see cref="Idle"/> unasked.</summary>
+    public void Closed()
     {
-        using JsonDocument? answer = await AskAsync(writer =>
+        if (Interlocked.Decrement(ref open) <= 0)
+        {
+            LetGoLater();
+        }
+    }
+
+    /// <summary>The helpers let go once <see cref="Idle"/> passes with no shader open and nothing asked of them.</summary>
+    private void LetGoLater()
+    {
+        CancellationTokenSource waiting = new();
+        Interlocked.Exchange(ref idle, waiting)?.Cancel();
+        // Unheld: no screenshot or settling test waits on helpers kept for a shader yet to come.
+        IdeErrors.Observe(BackgroundWork.Unheld(async () =>
+        {
+            try
+            {
+                await Task.Delay(Idle, waiting.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            if (Volatile.Read(ref open) > 0 || disposed)
+            {
+                return;
+            }
+            await turn.WaitAsync();
+            try
+            {
+                if (Volatile.Read(ref idle) != waiting || helpers.IsEmpty)
+                {
+                    return;
+                }
+                EndHelpers();
+                starts.Clear();
+                IdeErrors.Write($"Godot's shader compiler let go: no shader open nor asked of for {Idle.TotalSeconds:0} s");
+            }
+            finally
+            {
+                turn.Release();
+            }
+        }));
+    }
+
+    /// <summary>Ends every helper, a request under way failing at once.</summary>
+    private void EndHelpers()
+    {
+        foreach (string method in helpers.Keys)
+        {
+            if (helpers.TryRemove(method, out Helper? gone))
+            {
+                gone.Dispose();
+            }
+        }
+    }
+
+    /// <summary>What Godot's compiler says of a shader; null where it cannot be asked (<see cref="Problem"/> says why).</summary>
+    internal async Task<GodotShaderCompiled?> CompileAsync(GodotShaderUnit unit, string method = DefaultMethod, CancellationToken cancel = default)
+    {
+        using JsonDocument? answer = await AskAsync(method, writer =>
         {
             writer.WriteStartObject("compile");
             writer.WriteString("path", unit.Res);
@@ -114,30 +192,41 @@ internal sealed class GodotShaderCompiler(Func<string?> setting, Func<IReadOnlyD
             return null;
         }
         JsonElement root = answer.RootElement;
-        return new GodotShaderCompiled(GodotShaderUnit.MessagesOf(JsonMembers.Items(root, "messages")),
+        GodotShaderCompiled compiled = new(GodotShaderUnit.MessagesOf(JsonMembers.Items(root, "messages")),
             [.. JsonMembers.Items(root, "uniforms").Select(u => new GodotShaderUniform(JsonMembers.Text(u, "name") ?? string.Empty,
                 (GodotType)(JsonMembers.Number(u, "type") ?? 0), JsonMembers.Number(u, "hint") ?? 0, JsonMembers.Text(u, "hint_string") ?? string.Empty))]);
+        // A compile stopped at an error reads no uniform: what the last one read stands until one reads them again.
+        if (compiled.Uniforms.Count > 0 || !compiled.Messages.Any(m => m.Error))
+        {
+            read[unit.Res] = compiled.Uniforms;
+        }
+        return compiled;
     }
+
+    /// <summary>What the last compile of a shader, by its res:// path (a scene's own by its file and id), read of a uniform;
+    /// null where it read none of that name.</summary>
+    internal GodotShaderUniform? UniformOf(string res, string name) =>
+        read.TryGetValue(res, out IReadOnlyList<GodotShaderUniform>? uniforms) ? uniforms.FirstOrDefault(u => u.Name == name) : null;
 
     /// <summary>The carried table of the shading language as the Godot found takes it: each candidate probed by its compiler
     /// once per Godot version and kept in the state's cache; the table as carried where no Godot can be asked.</summary>
-    public async Task<GodotShaderTable> TableAsync(CancellationToken cancel = default)
+    public async Task<GodotShaderTable> TableAsync(string method = DefaultMethod, CancellationToken cancel = default)
     {
         GodotShaderTable carried = GodotShaderTable.Carried;
-        if (await AskAsync(null, cancel) is null || helper is not { } running)
+        if (await AskAsync(method, null, cancel) is null || helpers.GetValueOrDefault(method) is not { } running)
         {
             return carried;
         }
-        string key = $"{running.Version}-{running.Build}-{carried.Fingerprint}";
+        string key = $"{running.Version}-{running.Build}-{method}-{carried.Fingerprint}";
         if (!tables.TryGetValue(key, out Task<GodotShaderTable>? table))
         {
-            tables[key] = table = ProbedAsync(carried, key);
+            tables[key] = table = ProbedAsync(carried, key, method);
         }
         return await table.WaitAsync(cancel);
     }
 
     /// <summary>The table without what the Godot refused: read from the cache, else probed and written there.</summary>
-    private async Task<GodotShaderTable> ProbedAsync(GodotShaderTable carried, string key)
+    private async Task<GodotShaderTable> ProbedAsync(GodotShaderTable carried, string key, string method)
     {
         string kept = Path.Combine(State.StateStore.DefaultRoot, "cache", "godot", "shader-built-ins", $"{string.Concat(key.Select(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' ? c : '_'))}.json");
         if (await BackgroundWork.Run(() => ReadRefused(kept)) is { } known)
@@ -145,7 +234,7 @@ internal sealed class GodotShaderCompiler(Func<string?> setting, Func<IReadOnlyD
             return carried.Without(known);
         }
         IReadOnlyList<GodotShaderProbe> probes = carried.Probes();
-        using JsonDocument? answer = await AskAsync(writer =>
+        using JsonDocument? answer = await AskAsync(method, writer =>
         {
             writer.WriteStartArray("probe");
             foreach (GodotShaderProbe probe in probes)
@@ -186,10 +275,11 @@ internal sealed class GodotShaderCompiler(Func<string?> setting, Func<IReadOnlyD
         }
     }
 
-    /// <summary>A request answered by the helper, started first where none runs; with no body, only that it runs (an empty
-    /// answer). Null where none can run or it did not answer in time, which ends it.</summary>
-    private async Task<JsonDocument?> AskAsync(Action<Utf8JsonWriter>? body, CancellationToken cancel)
+    /// <summary>A request answered by the rendering method's helper, started first where none runs; with no body, only
+    /// that it runs (an empty answer). Null where none can run or it did not answer in time, which ends it.</summary>
+    private async Task<JsonDocument?> AskAsync(string method, Action<Utf8JsonWriter>? body, CancellationToken cancel)
     {
+        Interlocked.Exchange(ref idle, null)?.Cancel();
         await turn.WaitAsync(cancel);
         try
         {
@@ -197,22 +287,27 @@ internal sealed class GodotShaderCompiler(Func<string?> setting, Func<IReadOnlyD
             {
                 return null;
             }
-            if (helper is not { Running: true })
+            if (helpers.GetValueOrDefault(method) is not { Running: true })
             {
-                helper?.Dispose();
-                helper = null;
-                if (starts >= MostStarts)
+                if (helpers.TryRemove(method, out Helper? ended))
+                {
+                    ended.Dispose();
+                }
+                if (starts.GetValueOrDefault(method) >= MostStarts)
                 {
                     return null;
                 }
-                starts++;
-                helper = await StartAsync();
+                starts[method] = starts.GetValueOrDefault(method) + 1;
+                if (await StartAsync(method) is { } started)
+                {
+                    helpers[method] = started;
+                }
                 if (disposed)
                 {
-                    Interlocked.Exchange(ref helper, null)?.Dispose();
+                    EndHelpers();
                 }
             }
-            if (helper is not { } running)
+            if (helpers.GetValueOrDefault(method) is not { } running)
             {
                 return null;
             }
@@ -225,19 +320,23 @@ internal sealed class GodotShaderCompiler(Func<string?> setting, Func<IReadOnlyD
             {
                 IdeErrors.Write($"Godot's shader compiler did not answer within {Waits.Of(Answering).TotalSeconds:0} s, so it is ended");
                 running.Dispose();
-                Interlocked.CompareExchange(ref helper, null, running);
+                helpers.TryRemove(method, out _);
             }
             return answer;
         }
         finally
         {
+            if (Volatile.Read(ref open) <= 0)
+            {
+                LetGoLater();
+            }
             turn.Release();
         }
     }
 
     /// <summary>The helper started on the Godot found and connected, its token said back; null where it cannot be, with
     /// <see cref="Problem"/> saying why.</summary>
-    private async Task<Helper?> StartAsync()
+    private async Task<Helper?> StartAsync(string method)
     {
         string? chosen = setting();
         GodotFound? found = await BackgroundWork.Run(() => GodotLaunch.Found(chosen));
@@ -259,15 +358,16 @@ internal sealed class GodotShaderCompiler(Func<string?> setting, Func<IReadOnlyD
         Process? process = null;
         try
         {
+            string folder = Path.Combine(Folder, method);
             await BackgroundWork.Run(() =>
             {
-                Directory.CreateDirectory(Folder);
-                Kept(Path.Combine(Folder, "project.godot"), Project);
-                Kept(Path.Combine(Folder, "PassengerShaders.gd"), Script.Value);
+                Directory.CreateDirectory(folder);
+                Kept(Path.Combine(folder, "project.godot"), ProjectOf(method));
+                Kept(Path.Combine(folder, "PassengerShaders.gd"), Script.Value);
             });
             int port = ((IPEndPoint)listener.LocalEndpoint).Port;
             ProcessStartInfo start = ChildProcesses.Command(found.Executable, [.. GodotLaunch.Chosen(chosen)?.Arguments ?? [], GodotExecutables.Headless,
-                "--path", Folder, "--script", "res://PassengerShaders.gd", "--", port.ToString(System.Globalization.CultureInfo.InvariantCulture)], Folder);
+                "--path", folder, "--script", "res://PassengerShaders.gd", "--", port.ToString(System.Globalization.CultureInfo.InvariantCulture)], folder);
             foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(State.StateStore.DefaultRoot, "cache", "godot", "shaders-home")))
             {
                 start.Environment[name] = value;
@@ -297,7 +397,7 @@ internal sealed class GodotShaderCompiler(Func<string?> setting, Func<IReadOnlyD
                 started.Dispose();
                 return ending.IsCancellationRequested ? null : Unavailable("Godot's shader compiler did not start: it never said the token it was given");
             }
-            IdeErrors.Write($"Godot's shader compiler runs on Godot {started.Version} ({found.Executable})");
+            IdeErrors.Write($"Godot's shader compiler runs on Godot {started.Version} ({found.Executable}), rendering method {method}");
             Problem = null;
             return started;
         }
@@ -334,13 +434,14 @@ internal sealed class GodotShaderCompiler(Func<string?> setting, Func<IReadOnlyD
         }
     }
 
-    /// <summary>Ends the helper now, a start under way too, and refuses every request from then on; needing no UI thread,
+    /// <summary>Ends the helpers now, a start under way too, and refuses every request from then on; needing no UI thread,
     /// so the process can wait for it once the window's loop has stopped.</summary>
     public async ValueTask DisposeAsync()
     {
         disposed = true;
         await ending.CancelAsync().ConfigureAwait(false);
-        Interlocked.Exchange(ref helper, null)?.Dispose();
+        Volatile.Read(ref idle)?.Cancel();
+        EndHelpers();
     }
 
     /// <summary>A helper running: its process and its connection, each answer read off it by the request's id.</summary>

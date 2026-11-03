@@ -170,7 +170,7 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
             }
             string shader = section.Tag == "sub_resource" ? $"{res}::{section.Text("id")}" : res;
             GodotShaderUnit unit = await BackgroundWork.Run(() => GodotShaderUnit.Of(shader, code, path => scenes.Texts.GetValueOrDefault(path)));
-            if (await compiler.CompileAsync(unit) is not { } compiled)
+            if (await compiler.CompileAsync(unit, scenes.Defined.RenderingMethod) is not { } compiled)
             {
                 return marks;
             }

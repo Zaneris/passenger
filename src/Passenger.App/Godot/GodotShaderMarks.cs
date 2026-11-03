@@ -42,6 +42,7 @@ internal sealed class GodotShaderMarks(GodotSceneIndex index, Func<string, strin
         Debounce pause = new(Settle, () => MarkAsync(document), () => document.Checking(Checker));
         EventHandler<DocumentChangedEventArgs> typed = (_, _) => pause.Restart();
         documents[document] = (pause, typed);
+        compiler.Opened();
         document.Text.Changed += typed;
         IdeErrors.Observe(MarkAsync(document));
     }
@@ -54,6 +55,7 @@ internal sealed class GodotShaderMarks(GodotSceneIndex index, Func<string, strin
         {
             document.Text.Changed -= gone.Typed;
             gone.Pause.Stop();
+            compiler.Closed();
             if (document.Markers.Count > 0)
             {
                 document.Markers = [];
@@ -132,7 +134,7 @@ internal sealed class GodotShaderMarks(GodotSceneIndex index, Func<string, strin
             Show(document, version, [], null);
             return;
         }
-        if (await compiler.CompileAsync(unit) is not { } compiled)
+        if (await compiler.CompileAsync(unit, scenes.Defined.RenderingMethod) is not { } compiled)
         {
             Show(document, version, [], compiler.Problem is { } problem ? $"Godot's compiler does not check this shader: {problem}" : null);
             return;

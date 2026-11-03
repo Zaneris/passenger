@@ -15,7 +15,9 @@ namespace Passenger.App.CSharp;
 /// the Godot found takes them (<see cref="GodotShaderCompiler.TableAsync"/>). The hover card says what a name is, a uniform
 /// with what Godot's compile read of it; Go to Declaration goes to a declaration, in an include too, and from an
 /// <c>#include</c> to its file; Find Usages of a uniform lists its uses in the shader, the scenes setting it and the C#
-/// naming it. Context Help browses a built-in's place in Godot's shading reference (<see cref="HelpAsync"/>).</summary>
+/// naming it. Context Help browses a built-in's place in Godot's shading reference (<see cref="HelpAsync"/>). A scene's or
+/// resource's own Shader completes, hovers, goes to declarations and helps as a file does, its places mapped through its
+/// string's escapes.</summary>
 internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion completion, CodeNavigation navigation, CSharpAssist csharp) : LanguageAssist
 {
     /// <summary>The characters an include's path holds beyond a name's, which narrow its list rather than close it.</summary>
@@ -29,14 +31,23 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
     /// <summary>A name's first letter, or a mode list's, a hint list's or an include path's mark, opens the list.</summary>
     public override bool Typed(string text)
     {
-        if (context.Editors.Active is not { } shown || !IsShader(shown))
+        if (context.Editors.Active is not { } shown)
+        {
+            return false;
+        }
+        int caret = context.Caret;
+        SceneCode? scene = IsShader(shown) ? null : SceneCodeAt(shown, caret);
+        if (!IsShader(shown) && scene is null)
         {
             return false;
         }
         char last = text[^1];
-        int caret = context.Caret;
-        GodotShaderCode code = GodotShaderCode.Read(shown.Text.Snapshot.ToString());
-        GodotShaderSpot spot = code.SpotAt(caret);
+        GodotShaderCode code = GodotShaderCode.Read(scene?.Code ?? shown.Text.Snapshot.ToString());
+        GodotShaderSpot spot = code.SpotAt(scene?.At ?? caret);
+        if (scene is not null && spot == GodotShaderSpot.Include)
+        {
+            return true;
+        }
         bool starts = AssistContext.IsIdentifierChar(last) && !char.IsDigit(last) && context.WordStart(caret) == caret - 1;
         bool marks = last is ',' or ':' && spot is GodotShaderSpot.RenderModes or GodotShaderSpot.StencilModes or GodotShaderSpot.Hints
             || last is '"' or '/' && spot == GodotShaderSpot.Include;
@@ -49,21 +60,28 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
 
     public override async Task<bool> CompleteAsync(string? trigger, bool incomplete)
     {
-        if (context.Editors.Active is not { } shown || !IsShader(shown))
+        if (context.Editors.Active is not { } shown)
+        {
+            return false;
+        }
+        int caret = context.Caret;
+        SceneCode? scene = IsShader(shown) ? null : SceneCodeAt(shown, caret);
+        if (!IsShader(shown) && scene is null)
         {
             return false;
         }
         CancellationTokenSource cancel = completion.Asking();
-        int caret = context.Caret;
         TextSnapshot asked = shown.Text.Snapshot;
-        Shader shader = await ShaderAsync(shown, asked.ToString());
-        GodotShaderSpot spot = shader.Code.SpotAt(caret);
-        if (spot is GodotShaderSpot.None or GodotShaderSpot.Member)
+        Shader shader = scene is null ? await ShaderAsync(shown, asked.ToString()) : await SceneShaderAsync(shown, scene);
+        int at = scene?.At ?? caret;
+        GodotShaderSpot spot = shader.Code.SpotAt(at);
+        // A scene's string would need an include's quotes escaped, so its includes are written by hand.
+        if (spot is GodotShaderSpot.None or GodotShaderSpot.Member || scene is not null && spot == GodotShaderSpot.Include)
         {
             completion.Close();
             return true;
         }
-        GodotShaderTable table = shader.Shaders is { } marks ? await marks.Compiler.TableAsync() : GodotShaderTable.Carried;
+        GodotShaderTable table = await TableAsync(shader);
         int start = context.WordStart(caret);
         string tail = string.Empty;
         List<(CompletionItem Item, string Said)> items;
@@ -75,7 +93,7 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
         }
         else
         {
-            items = Items(table, shader, spot, caret);
+            items = Items(table, shader, spot, at);
         }
         if (cancel.IsCancellationRequested || context.Editors.Active != shown || shown.Text.Snapshot != asked)
         {
@@ -223,8 +241,7 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
         TextSnapshot text = context.Editor.Document.Snapshot;
         int caret = context.Caret;
         int end = caret;
-        GodotShaderCode code = GodotShaderCode.Read(text.ToString());
-        if (code.Includes.FirstOrDefault(i => i.Start <= caret && caret <= i.End) is { } include)
+        if (IsShader(context.Editors.Active) && GodotShaderCode.Read(text.ToString()).Includes.FirstOrDefault(i => i.Start <= caret && caret <= i.End) is { } include)
         {
             end = include.End;
         }
@@ -242,14 +259,15 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
 
     public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
     {
-        if (!IsShader(document))
+        SceneCode? scene = IsShader(document) ? null : SceneCodeAt(document, offset);
+        if (!IsShader(document) && scene is null)
         {
             return false;
         }
-        Shader shader = await ShaderAsync(document, document.Text.Snapshot.ToString());
-        GodotShaderTable table = shader.Shaders is { } marks ? await marks.Compiler.TableAsync(cancel) : GodotShaderTable.Carried;
+        Shader shader = scene is null ? await ShaderAsync(document, document.Text.Snapshot.ToString()) : await SceneShaderAsync(document, scene);
+        GodotShaderTable table = await TableAsync(shader, cancel);
         cancel.ThrowIfCancellationRequested();
-        if (GodotShaderNames.At(table, shader.Code, shader.Type, offset, shader.Others) is not { } name)
+        if (GodotShaderNames.At(table, shader.Code, shader.Type, scene?.At ?? offset, shader.Others) is not { } name)
         {
             return false;
         }
@@ -280,7 +298,9 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
                 string where = name.Include ?? shader.Res ?? Path.GetFileName(shader.Path);
                 if (declaration.Kind == GodotShaderDeclared.Uniform)
                 {
-                    card.AddText(shader.Shaders?.UniformOf(document, declaration.Name) is { } read
+                    GodotShaderUniform? uniform = scene is null ? shader.Shaders?.UniformOf(document, declaration.Name)
+                        : shader.Res is { } res ? shader.Shaders?.Compiler.UniformOf(res, declaration.Name) : null;
+                    card.AddText(uniform is { } read
                         ? $"A uniform of {where}, which Godot reads as {read.Described}" : $"A uniform of {where}");
                 }
                 else if (name.Include is { } include)
@@ -294,7 +314,7 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
 
     public override async Task<bool> DefinitionAsync(int offset)
     {
-        if (context.Editors.Active is not { } shown || !IsShader(shown))
+        if (context.Editors.Active is not { } shown || !InShader(shown, offset))
         {
             return false;
         }
@@ -314,20 +334,22 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
     /// names; null for a built-in, which only Godot declares.</summary>
     public override async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
     {
-        if (!IsShader(document))
+        SceneCode? scene = IsShader(document) ? null : SceneCodeAt(document, offset);
+        if (!IsShader(document) && scene is null)
         {
             return null;
         }
-        Shader shader = await ShaderAsync(document, document.Text.Snapshot.ToString());
-        if (shader.Code.Includes.FirstOrDefault(i => i.Start <= offset && offset <= i.End) is { } include)
+        Shader shader = scene is null ? await ShaderAsync(document, document.Text.Snapshot.ToString()) : await SceneShaderAsync(document, scene);
+        int at = scene?.At ?? offset;
+        if (shader.Code.Includes.FirstOrDefault(i => i.Start <= at && at <= i.End) is { } include)
         {
             string res = GodotShaderUnit.Resolved(shader.Res ?? string.Empty, include.Path);
             return shader.Scenes?.FileOf(res) is { } file && File.Exists(file)
                 ? new Declared([new LspLocation(DocumentUris.FromPath(file), new LspRange(new LspPosition(0, 0), new LspPosition(0, 0)))], string.Empty)
                 : new Declared([], $"No file {res} is in the Godot project");
         }
-        GodotShaderTable table = shader.Shaders is { } marks ? await marks.Compiler.TableAsync() : GodotShaderTable.Carried;
-        if (GodotShaderNames.At(table, shader.Code, shader.Type, offset, shader.Others) is not { Kind: GodotShaderNameKind.Declared, Declaration: { } declaration } name)
+        GodotShaderTable table = await TableAsync(shader);
+        if (GodotShaderNames.At(table, shader.Code, shader.Type, at, shader.Others) is not { Kind: GodotShaderNameKind.Declared, Declaration: { } declaration } name)
         {
             return null;
         }
@@ -337,9 +359,10 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
         {
             return null;
         }
+        int start = name.Include is null && scene is not null ? scene.Places[declaration.Start] : declaration.Start;
         TextSnapshot snapshot = TextSnapshot.From(text);
-        int line = snapshot.GetLineFromOffset(declaration.Start);
-        return new Declared(Declared.Served([(path, new TextPosition(line, declaration.Start - snapshot.GetLineStart(line)))], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
+        int line = snapshot.GetLineFromOffset(start);
+        return new Declared(Declared.Served([(path, new TextPosition(line, start - snapshot.GetLineStart(line)))], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
         {
             Names = [$"{Words(declaration.Kind)} {declaration.Name}{(name.Include is { } shown ? $" in {shown}" : string.Empty)}"],
         };
@@ -371,7 +394,7 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
             return null;
         }
         Shader shader = await ShaderAsync(document, document.Text.Snapshot.ToString());
-        GodotShaderTable table = shader.Shaders is { } marks ? await marks.Compiler.TableAsync() : GodotShaderTable.Carried;
+        GodotShaderTable table = await TableAsync(shader);
         if (GodotShaderNames.At(table, shader.Code, shader.Type, offset, shader.Others) is not { Kind: GodotShaderNameKind.Declared, Declaration: { } declaration } name)
         {
             return null;
@@ -423,13 +446,14 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
     /// for a version of Godot's reference; null for a name with no place there (the shader's own).</summary>
     public async Task<(Uri Page, string Name)?> HelpAsync(OpenDocument document, int offset, string version)
     {
-        if (!IsShader(document))
+        SceneCode? scene = IsShader(document) ? null : SceneCodeAt(document, offset);
+        if (!IsShader(document) && scene is null)
         {
             return null;
         }
-        Shader shader = await ShaderAsync(document, document.Text.Snapshot.ToString());
-        GodotShaderTable table = shader.Shaders is { } marks ? await marks.Compiler.TableAsync() : GodotShaderTable.Carried;
-        if (GodotShaderNames.At(table, shader.Code, shader.Type, offset, shader.Others) is not { } name)
+        Shader shader = scene is null ? await ShaderAsync(document, document.Text.Snapshot.ToString()) : await SceneShaderAsync(document, scene);
+        GodotShaderTable table = await TableAsync(shader);
+        if (GodotShaderNames.At(table, shader.Code, shader.Type, scene?.At ?? offset, shader.Others) is not { } name)
         {
             return null;
         }
@@ -452,6 +476,82 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
     private static string BuiltInsSection(GodotShaderTable table, string? type, GodotShaderName name) =>
         type == "particles" && table.TypeOf(type) is { } particles && particles.Mains.All(f => f.BuiltIns.Any(b => b.Name == name.Name))
             ? "start-and-process-built-ins" : $"{name.Scope}-built-ins";
+
+    /// <summary>Whether an offset of a file lies in shader code: a shader's, or a scene's or resource's own Shader's.</summary>
+    public static bool InShader(OpenDocument document, int offset) => IsShader(document) || SceneCodeAt(document, offset) is not null;
+
+    /// <summary>The built-ins the Godot found takes, under the rendering method of the shader's project.</summary>
+    private static Task<GodotShaderTable> TableAsync(Shader shader, CancellationToken cancel = default) =>
+        shader.Shaders is { } marks ? marks.Compiler.TableAsync(shader.Scenes?.Defined.RenderingMethod ?? GodotShaderCompiler.DefaultMethod, cancel)
+            : Task.FromResult(GodotShaderTable.Carried);
+
+    /// <summary>The Shader a scene or resource writes itself whose code an offset of the file lies in: its code as Godot reads
+    /// the string, the file's offset of each of its characters (<see cref="GodotStringPlaces"/>), the sub_resource's id
+    /// (none for a Shader resource's own), and where the offset lies in the code.</summary>
+    private sealed record SceneCode(string Code, int[] Places, string? Id, int At);
+
+    /// <summary>A scene's or resource's Shader code an offset lies in; null elsewhere. Read from the file only where the
+    /// offset is in a string a <c>code = "</c> line opens.</summary>
+    private static SceneCode? SceneCodeAt(OpenDocument document, int offset)
+    {
+        if (!GodotFile.IsText(document.Path) || !InCodeString(document.Text.Snapshot, offset))
+        {
+            return null;
+        }
+        GodotFile file = GodotFile.Parse(document.Text.Snapshot.ToString());
+        bool resource = file.Header?.Text("type") == "Shader";
+        foreach (GodotSection section in file.Sections.Where(s => s.Tag == "sub_resource" && s.Text("type") == "Shader" || resource && s.Tag == "resource"))
+        {
+            if (section.Property("code")?.Value is { Text: { } code } value && value.TextStart <= offset && offset <= value.TextEnd)
+            {
+                int[] places = GodotStringPlaces.Of(file.Text, value.TextStart, value.TextEnd);
+                int at = Math.Max(0, Sorted.FirstAfter<int>(places, offset) - 1);
+                return new SceneCode(code, places, section.Tag == "sub_resource" ? section.Text("id") : null, at);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Whether an offset lies in a string that a line written <c>code = "</c> opens: the nearest quote before it, not
+    /// escaped, is that line's.</summary>
+    private static bool InCodeString(TextSnapshot text, int offset)
+    {
+        for (int at = Math.Min(offset, text.Length) - 1; at >= 0; at--)
+        {
+            if (text[at] != '"')
+            {
+                continue;
+            }
+            int slashes = 0;
+            while (at - slashes - 1 >= 0 && text[at - slashes - 1] == '\\')
+            {
+                slashes++;
+            }
+            if (slashes % 2 == 1)
+            {
+                continue;
+            }
+            int line = text.GetLineFromOffset(at);
+            return text.GetText(text.GetLineStart(line), at - text.GetLineStart(line)).Trim() == "code =";
+        }
+        return false;
+    }
+
+    /// <summary>A scene's or resource's own Shader as read now, as <see cref="ShaderAsync"/> reads a shader file: its res://
+    /// path the scene's with the sub_resource's id, as its marks are compiled.</summary>
+    private async Task<Shader> SceneShaderAsync(OpenDocument document, SceneCode scene)
+    {
+        GodotShaderCode code = GodotShaderCode.Read(scene.Code);
+        GodotShaderMarks? marks = context.GodotShaders?.Invoke();
+        if (context.GodotOf(document.Path) is not ({ } index, { } folder))
+        {
+            return new Shader(document.Path, code, code.Type, null, null, null, null, marks);
+        }
+        GodotScenes scenes = await index.ScenesAsync(folder);
+        string? res = scenes.ResPathOf(document.Path) is { } file ? scene.Id is { } id ? $"{file}::{id}" : file : null;
+        GodotShaderUnit? unit = res is null ? null : await BackgroundWork.Run(() => GodotShaderUnit.Of(res, scene.Code, path => scenes.Texts.GetValueOrDefault(path)));
+        return new Shader(document.Path, code, code.Type, scenes, folder, res, unit, marks);
+    }
 
     /// <summary>An open shader as read now: its code, its type (an include's, the shader including it's), its project's
     /// scenes, folder and res:// path, the unit Godot is given for it, and the window's shader marks.</summary>

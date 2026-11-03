@@ -238,6 +238,14 @@ public sealed class GodotDefinitions
         return numbered;
     }
 
+    /// <summary>The renderer project.godot names (<c>rendering/renderer/rendering_method</c>), whose shading language Godot's
+    /// compiler takes: <c>forward_plus</c>, <c>mobile</c> or <c>gl_compatibility</c>, Forward+ for none or another.</summary>
+    public string RenderingMethod => SettingOf("rendering", "renderer/rendering_method")?.Text is { } method && method is "mobile" or "gl_compatibility"
+        ? method : ForwardPlus;
+
+    /// <summary>Godot's default renderer, as project.godot names it.</summary>
+    public const string ForwardPlus = "forward_plus";
+
     /// <summary>The res:// path of the project's custom theme (project.godot's <c>gui/theme/custom</c>), which every node of
     /// the game looks its theme items up in before Godot's default theme; null for none.</summary>
     public string? CustomTheme => SettingOf("gui", "theme/custom")?.Text is { Length: > 0 } res ? res : null;

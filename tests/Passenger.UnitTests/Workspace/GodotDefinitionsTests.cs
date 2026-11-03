@@ -4,8 +4,9 @@ namespace Passenger.UnitTests.Workspace;
 
 /// <summary>What a Godot project's files define for the strings its code gives Godot's calls, each read with every place
 /// its files write it: project.godot's input actions, autoloads and listed translations (a CSV's keys, a PO file's
-/// msgids), the groups its scenes give nodes, an animation player's animations from its libraries, and a shader's uniforms
-/// with the shader a node's material gives. The project.godot, scene and library are as Godot 4.7's editor wrote them.</summary>
+/// msgids), the groups its scenes give nodes, an animation player's animations from its libraries, a shader's uniforms with
+/// the shader a node's material gives, and the renderer its shaders compile under. The project.godot, scene and library
+/// are as Godot 4.7's editor wrote them.</summary>
 public class GodotDefinitionsTests
 {
     private const string Project = """
@@ -144,6 +145,21 @@ public class GodotDefinitionsTests
         Assert.Equal("res://Globals.cs", defined.AutoloadFile("Globals"));
         Assert.Null(defined.AutoloadFile("Gone"));
         Assert.Contains("ui_accept", GodotDefinitions.BuiltInActions);
+    }
+
+    /// <summary>The renderer a project names is the one its shaders compile under, Forward+ where it names none Godot knows.</summary>
+    [Theory]
+    [InlineData("", "forward_plus")]
+    [InlineData("[rendering]\n\nrenderer/rendering_method=\"gl_compatibility\"\n", "gl_compatibility")]
+    [InlineData("[rendering]\n\nrenderer/rendering_method=\"mobile\"\nrenderer/rendering_method.mobile=\"gl_compatibility\"\n", "mobile")]
+    [InlineData("[rendering]\n\nrenderer/rendering_method=\"vulkan\"\n", "forward_plus")]
+    public void A_projects_rendering_method_is_the_renderer_project_godot_names(string settings, string method)
+    {
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string>
+        {
+            ["res://project.godot"] = $"config_version=5\n\n[application]\n\nconfig/name=\"Probe\"\n\n{settings}",
+        });
+        Assert.Equal(method, scenes.Defined.RenderingMethod);
     }
 
     [Fact]

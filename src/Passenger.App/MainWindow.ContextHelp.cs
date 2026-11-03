@@ -18,7 +18,7 @@ public partial class MainWindow
         actions!.Add(new IdeAction(AppActions.ContextHelp, "Context Help", "Help", _ => IdeErrors.Observe(ContextHelpAsync()))
         {
             WhyNot = _ => Editors.Active is not { } file ? Refusals.NoFile
-                : HelpServer(file) is null && !GodotShaderMarks.IsShader(file.Path) ? Refusals.NoContextHelp(file.Name) : null,
+                : HelpServer(file) is null && !CSharp.GodotShaderAssist.InShader(file, Editors.CodeEditor.Selections.Primary.Caret) ? Refusals.NoContextHelp(file.Name) : null,
             Menus = [new MenuPlace("Help", 0, 1)],
         });
 
@@ -30,7 +30,7 @@ public partial class MainWindow
 
     private async Task ContextHelpAsync()
     {
-        if (Editors.Active is { } shader && GodotShaderMarks.IsShader(shader.Path))
+        if (Editors.Active is { } shader && CSharp.GodotShaderAssist.InShader(shader, Editors.CodeEditor.Selections.Primary.Caret))
         {
             await ShaderHelpAsync(shader);
             return;

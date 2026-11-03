@@ -14,12 +14,13 @@ using Passenger.Workspace;
 namespace Passenger.Tests;
 
 /// <summary>A Godot project's shaders checked by Godot's own compiler, in the headless helper Passenger runs on a project of
-/// its own (its user folders the run's), the project the test writes left as it was: a misspelt name in a .gdshader and in
-/// a scene's own Shader is marked with Godot's words at its line, an include's own error on it and on the line including
-/// it; VERTEX completes in vertex() and not in light(), and only a Godot taking it offers a built-in; a uniform's card gives its type and hint as Godot reads it; Go to
-/// Declaration reaches an include's function; Find Usages of a uniform lists the shader's uses and the
-/// scene setting it; Context Help on TIME browses its place in Godot's shading reference. Without a Godot of 4.5 or newer
-/// (GODOT, the PATH, Applications) each test skips saying why. Run alone: each starts a Godot of its own.</summary>
+/// its own (its user folders the run's) under the project's rendering method, the project the test writes left as it was:
+/// a misspelt name is marked with Godot's words at its line in a .gdshader, a scene's own Shader and an include; VERTEX
+/// completes in vertex() and not in light(), only a Godot taking it offering a built-in, and a uniform's card gives its type
+/// and hint as Godot reads it, in a scene's own Shader too; Go to Declaration reaches an include's function; Find Usages of
+/// a uniform lists the scene setting it; Context Help browses a built-in's place in the shading reference; a Compatibility
+/// project's Forward+ hint is marked; the helper goes once no shader is open a while, and comes back. Without a Godot of 4.5
+/// or newer (GODOT, the PATH, Applications) each test skips saying why. Run alone: each starts a Godot of its own.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotShaderTests
 {
@@ -77,6 +78,41 @@ public sealed class GodotShaderTests
 
         [node name="Sea" type="MeshInstance3D" parent="."]
         material_override = SubResource("ShaderMaterial_water")
+
+        """;
+
+    /// <summary>A scene whose own Shader declares a uniform and moves its vertices, a quote escaped above them, so the file's
+    /// places and the code's differ.</summary>
+    private const string Ripple = """
+        [gd_scene load_steps=3 format=3]
+
+        [sub_resource type="Shader" id="Shader_ripple"]
+        code = "shader_type canvas_item;
+        // A \"ripple\" over the sprite.
+        uniform float strength : hint_range(0.0, 4.0) = 0.5;
+
+        void vertex() {
+        	VERTEX.x += sin(VERTEX.y) * strength;
+        }
+        "
+
+        [sub_resource type="ShaderMaterial" id="ShaderMaterial_ripple"]
+        shader = SubResource("Shader_ripple")
+
+        [node name="Ripple" type="Sprite2D"]
+        material = SubResource("ShaderMaterial_ripple")
+
+        """;
+
+    /// <summary>A spatial shader reading the normal and roughness buffer, which only Forward+ draws.</summary>
+    private const string Rough = """
+        shader_type spatial;
+
+        uniform sampler2D roughness_buffer : hint_normal_roughness_texture;
+
+        void fragment() {
+        	ALBEDO = texture(roughness_buffer, SCREEN_UV).rgb;
+        }
 
         """;
 
@@ -210,6 +246,132 @@ public sealed class GodotShaderTests
         Assert.Equal([page], window.Browsed);
         window.Close();
     }
+
+    /// <summary>Inside a scene's own Shader a uniform's card gives its type and hint as Godot's compile of the scene read
+    /// them, Go to Declaration on its use reaches its line in the scene, Context Help on VERTEX browses vertex()'s built-ins
+    /// of canvas_item shaders, and VERTEX completes in vertex().</summary>
+    [AvaloniaFact]
+    public void VERTEX_completes_inside_a_scenes_own_shader_and_its_uniforms_card_gives_its_type_and_hint()
+    {
+        TestFolders.Write(folder, "ripple.tscn", Ripple);
+        MainWindow window = Open("ripple.tscn");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.WaitFor(() => !window.EditorArea.Active!.IsChecking, () => $"Godot's compile of the scene's shader: {Said(window)}", TimeSpan.FromSeconds(60));
+        Assert.True(window.EditorArea.Active!.Markers.Count == 0, $"The scene's shader compiles with no error, but is marked: {Said(window)}");
+
+        string card = Hover(window, editor, "strength;");
+        Assert.Contains("uniform float strength : hint_range(0.0, 4.0) = 0.5;", card, StringComparison.Ordinal);
+        Assert.Contains("Godot reads as float, in 0.0 to 4.0, step 0.001", card, StringComparison.Ordinal);
+
+        Ui.PlaceAfter(editor, "* streng");
+        Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
+        Ui.WaitFor(() => editor.CaretPosition.Line == LineOf(Ripple, "uniform float strength"),
+            () => $"the caret at strength's declaration in the scene ({window.Status}): line {editor.CaretPosition.Line + 1}");
+
+        Ui.PlaceAfter(editor, "VERTE");
+        Ui.Press(window, Ui.Shortcut(AppActions.ContextHelp));
+        Uri page = new($"https://docs.godotengine.org/en/{GodotDocs.VersionOf(godot!.Version)}/tutorials/shaders/shader_reference/canvas_item_shader.html#vertex-built-ins");
+        Ui.WaitFor(() => window.Browsed.Contains(page), () => $"VERTEX's place in the shading reference to be browsed ({window.Status}): {string.Join(", ", window.Browsed)}");
+
+        Ui.PlaceAfter(editor, "* strength;");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("V");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("VERTEX"), () => $"VERTEX among the scene's vertex() completions: {string.Join(", ", window.Assist.CompletionLabels.Take(12))}");
+        Ui.Press(window, "ESCAPE");
+        window.Close();
+    }
+
+    /// <summary>A Compatibility project's shader is compiled by a helper of that rendering method, so a hint only Forward+
+    /// gives is marked with Godot's words at its line.</summary>
+    [AvaloniaFact]
+    public void A_compatibility_projects_shader_is_marked_where_it_asks_for_what_only_Forward_plus_draws()
+    {
+        TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n\n[application]\n\nconfig/name=\"Shaded\"\n\n[rendering]\n\nrenderer/rendering_method=\"gl_compatibility\"\n");
+        TestFolders.Write(folder, Path.Combine("fx", "rough.gdshader"), Rough);
+        List<string> helpers = [];
+        EventHandler<ChildStart> started = (_, child) =>
+        {
+            if (IsHelper(child))
+            {
+                lock (helpers)
+                {
+                    helpers.Add(Path.GetFileName(child.Folder));
+                }
+            }
+        };
+        ChildProcesses.Started += started;
+        try
+        {
+            MainWindow window = Open(Path.Combine("fx", "rough.gdshader"));
+            Marker hint = Marked(window, "'hint_normal_roughness_texture' is only available when using the Forward+ renderer.");
+            Assert.Equal(LineOf(Rough, "hint_normal_roughness_texture"), window.EditorArea.CodeEditor.Document.Snapshot.GetLineFromOffset(hint.Range.Start));
+            lock (helpers)
+            {
+                Assert.Equal(["gl_compatibility"], helpers);
+            }
+            window.Close();
+        }
+        finally
+        {
+            ChildProcesses.Started -= started;
+        }
+    }
+
+    /// <summary>The helper keeps running while a shader is open, is let go a while after the last one closes (the while a
+    /// second here), and starts again as one opens, marking it as before.</summary>
+    [AvaloniaFact]
+    public void The_helper_is_let_go_a_while_after_the_last_shader_closes_and_starts_again_as_one_opens()
+    {
+        string? was = Environment.GetEnvironmentVariable(GodotShaderCompiler.IdleVariable);
+        Environment.SetEnvironmentVariable(GodotShaderCompiler.IdleVariable, "1000");
+        List<int> helpers = [];
+        EventHandler<ChildStart> started = (_, child) =>
+        {
+            if (IsHelper(child))
+            {
+                lock (helpers)
+                {
+                    helpers.Add(child.ProcessId);
+                }
+            }
+        };
+        ChildProcesses.Started += started;
+        try
+        {
+            MainWindow window = Open(Path.Combine("fx", "water.gdshader"));
+            Marked(window, "Unknown identifier in expression: 'speedd'.");
+            int first = Helpers(1)[0];
+            Ui.Hold(TimeSpan.FromSeconds(3), "three times the shortened while, in which the open shader keeps its helper");
+            Assert.True(DotnetProcesses.Runs(first), $"The helper (process {first}) was let go while a shader was open");
+
+            Ui.Run(window, AppActions.CloseTab);
+            Ui.WaitFor(() => !DotnetProcesses.Runs(first), () => $"the helper (process {first}) to be let go a second after the last shader closed", TimeSpan.FromSeconds(30));
+
+            Assert.Null(window.OpenFile(Path.Combine(folder, "fx", "water.gdshader")));
+            Marked(window, "Unknown identifier in expression: 'speedd'.");
+            int second = Helpers(2)[1];
+            Assert.True(DotnetProcesses.Runs(second), $"The helper started again (process {second}) has ended though the shader is open");
+            window.Close();
+        }
+        finally
+        {
+            ChildProcesses.Started -= started;
+            Environment.SetEnvironmentVariable(GodotShaderCompiler.IdleVariable, was);
+        }
+
+        int[] Helpers(int count)
+        {
+            lock (helpers)
+            {
+                Assert.True(helpers.Count == count, $"{count} helpers were to have started by now, but {helpers.Count} did: {string.Join(", ", helpers)}");
+                return [.. helpers];
+            }
+        }
+    }
+
+    /// <summary>Whether a process started is the shader compiler's helper, by the script it runs.</summary>
+    private static bool IsHelper(ChildStart child) => child.Start?.ArgumentList.Contains("res://PassengerShaders.gd") == true;
 
     private MainWindow Open(string file)
     {
