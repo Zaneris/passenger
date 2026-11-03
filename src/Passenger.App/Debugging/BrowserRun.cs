@@ -8,8 +8,9 @@ namespace Passenger.App.Debugging;
 
 /// <summary>The browser and debug proxy one debugging of a WebAssembly app runs: Chromium started with remote debugging on a
 /// profile of Passenger's own (the open folder's, kept, so its sign-ins stay; a profile of the moment when another debugging
-/// holds it), never the person's own browser, headless where the IDE is; .NET's proxy pointed at it; and the conversation
-/// with the browser's page through the proxy, which adds .NET's code to what the page says. Ending it ends both programs.</summary>
+/// holds it), its secrets under a key of its own on macOS rather than the person's keychain, never the person's own
+/// browser, headless where the IDE is; .NET's proxy pointed at it; and the conversation with the browser's page through
+/// the proxy, which adds .NET's code to what the page says. Ending it ends both programs.</summary>
 public sealed partial class BrowserRun : IAsyncDisposable
 {
     /// <summary>How long the browser and the proxy each have to say where they listen.</summary>
@@ -92,6 +93,11 @@ public sealed partial class BrowserRun : IAsyncDisposable
         if (PassengerApp.ShowsNoWindow)
         {
             arguments.Add("--headless=new");
+        }
+        if (OperatingSystem.IsMacOS())
+        {
+            // Under a HOME with no keychain, the browser would wait for the person's keychain for good before its first request.
+            arguments.Add("--use-mock-keychain");
         }
         arguments.AddRange(found.Arguments);
         arguments.Add("about:blank");
