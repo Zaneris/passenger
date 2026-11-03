@@ -78,8 +78,9 @@ public sealed class BlazorBrowserDebuggingTests : IDisposable
             window.Debugger.Breakpoints.Set(counter, set, null);
 
             Ui.Launched(window, window.DebugAsync(), "Bwa to build and start under the debugger", TimeSpan.FromMinutes(3));
-            Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.Managed, State: DebugState.Paused } && Stopped(window, layout) == served,
+            Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.Managed, State: DebugState.Paused } && Stopped(window, layout) == served || BrowserRefused(window),
                 () => $"the server to stop in its layout as the browser asks for the page ({Sessions(window)}; {Ui.Said(window)}; {Consoles(window)})", TimeSpan.FromMinutes(3));
+            Assert.False(BrowserRefused(window), $"No browser asks for the page, as none started: {Ui.Said(window)}");
             // The layout renders again for each page the browser asks for (its icon's not-found page too), which would hold the page's own files.
             window.Debugger.Breakpoints.Remove(onServer);
             Ui.Run(window, AppActions.Resume);
@@ -108,6 +109,9 @@ public sealed class BlazorBrowserDebuggingTests : IDisposable
         Profile(Path.Combine(folder, "Properties", "launchSettings.json"));
         Restore.Run(Path.Combine(folder, "Wasm.csproj"));
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        // The browser found, told to keep its own log of every request it makes.
+        string netLog = Path.Combine(folder, "net-log.json");
+        window.ApplySettings(window.Settings with { DebugBrowser = $"\"{ChromiumBrowsers.Find(null)!.Program}\" --log-net-log={netLog}" });
         try
         {
             Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Wasm: http"), () => $"Wasm's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
@@ -127,6 +131,55 @@ public sealed class BlazorBrowserDebuggingTests : IDisposable
         {
             End(window);
         }
+        // Its own log of every connection it made: to this machine alone (the app, the debug proxy, the test run's dead proxy).
+        Ui.WaitFor(() => File.Exists(netLog), "the browser's network log");
+        string[] reached = Reached(netLog);
+        Assert.Contains(reached, address => address.StartsWith("127.0.0.1:", StringComparison.Ordinal) || address.StartsWith("[::1]:", StringComparison.Ordinal));
+        string[] elsewhere = [.. reached.Where(address => !address.StartsWith("127.0.0.1:", StringComparison.Ordinal) && !address.StartsWith("[::1]:", StringComparison.Ordinal))];
+        Assert.True(elsewhere.Length == 0, $"The browser Passenger started for debugging connected beyond this machine: {string.Join(", ", elsewhere)}");
+    }
+
+    /// <summary>The addresses a browser's network log says it sent to: each TCP connect's attempt, and each UDP socket's
+    /// that sent bytes (a UDP connect alone sends nothing: the browser's check that IPv6 has a route makes one). Read an
+    /// event a line, as a browser ended before its log's close leaves its last line cut.</summary>
+    private static string[] Reached(string netLog)
+    {
+        string[] lines = Ui.Shared(netLog).Split('\n');
+        JsonNode constants = JsonNode.Parse(lines[0].TrimEnd().TrimEnd(',') + "}")!["constants"]!["logEventTypes"]!;
+        int attempt = constants["TCP_CONNECT_ATTEMPT"]!.GetValue<int>(), connect = constants["UDP_CONNECT"]!.GetValue<int>(),
+            sent = constants["UDP_BYTES_SENT"]!.GetValue<int>();
+        HashSet<string> reached = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<long, string> sockets = [];
+        HashSet<long> sending = [];
+        foreach (string line in lines.Skip(1).Select(l => l.TrimEnd().TrimEnd(',', ']')).Where(l => l.StartsWith('{') && l.EndsWith('}')))
+        {
+            JsonNode? node;
+            try
+            {
+                node = JsonNode.Parse(line);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                continue;
+            }
+            int type = node!["type"]!.GetValue<int>();
+            long source = node["source"]!["id"]!.GetValue<long>();
+            string? address = node["params"]?["address"]?.GetValue<string>();
+            if (type == attempt && address is not null)
+            {
+                reached.Add(address);
+            }
+            else if (type == connect && address is not null)
+            {
+                sockets[source] = address;
+            }
+            else if (type == sent)
+            {
+                sending.Add(source);
+            }
+        }
+        reached.UnionWith(sockets.Where(s => sending.Contains(s.Key)).Select(s => s.Value));
+        return [.. reached];
     }
 
     /// <summary>With no browser where Settings names one, Debug of a standalone app runs its development server under the
@@ -195,6 +248,52 @@ public sealed class BlazorBrowserDebuggingTests : IDisposable
         }
     }
 
+    /// <summary>A browser that ends as it starts with words of its own (here, that it has no display): Debug ends its session
+    /// within seconds, saying it in the browser's own words and its exit code, rather than waiting for a page.</summary>
+    [AvaloniaFact]
+    public void Debug_in_a_browser_that_ends_as_it_starts_ends_its_session_within_seconds_in_the_browsers_own_words()
+    {
+        Make("blazorwasm", "Wasm");
+        Profile(Path.Combine(folder, "Properties", "launchSettings.json"));
+        Restore.Run(Path.Combine(folder, "Wasm.csproj"));
+        const string Words = "[4242:4242:1102/120000.000000:ERROR:ozone_platform_x11.cc(240)] Missing X server or $DISPLAY";
+        string browser = ExitingBrowser(Words);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ApplySettings(window.Settings with { DebugBrowser = browser });
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Wasm: http"), () => $"Wasm's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
+                TimeSpan.FromMinutes(2));
+            Assert.True(window.SelectConfiguration("Wasm: http"));
+            Task<string?> launch = window.DebugAsync();
+            string Said() => $"{Ui.Said(window)}\n{Consoles(window)}";
+            // Its build and its development server's start first; the browser's end then ends the session at once.
+            Ui.WaitFor(() => launch.IsCompleted && Said().Contains("ended as it started", StringComparison.Ordinal),
+                () => $"Debug to end, saying the browser ended as it started ({Sessions(window)}; it said: {Said()})", TimeSpan.FromMinutes(3));
+            Assert.Contains($"({browser}) ended as it started with exit code 3, saying: {Words}", Said(), StringComparison.Ordinal);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, () => $"the session to end with its browser ({Sessions(window)})", TimeSpan.FromSeconds(20));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>A stand-in browser that writes <paramref name="words"/> to its standard error and ends with exit code 3.</summary>
+    private string ExitingBrowser(string words)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            string script = Path.Combine(folder, "ending.cmd");
+            File.WriteAllText(script, $"@echo off\r\necho {words} 1>&2\r\nexit /b 3\r\n");
+            return script;
+        }
+        string program = Path.Combine(folder, "ending");
+        File.WriteAllText(program, $"#!/bin/sh\necho '{words}' >&2\nexit 3\n");
+        File.SetUnixFileMode(program, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return program;
+    }
+
     /// <summary>A stand-in Chromium that writes each start's arguments to <paramref name="started"/>, then Chromium's fatal
     /// word that it has no usable sandbox, and ends as Chromium's abort does.</summary>
     private string SandboxRefusingBrowser(string started)
@@ -249,6 +348,9 @@ public sealed class BlazorBrowserDebuggingTests : IDisposable
     private static int Stopped(MainWindow window, string path) =>
         window.EditorArea.Active is { } active && PathNames.Same(active.Path, path)
         && window.EditorArea.CodeEditor.LineMarks.FirstOrDefault(m => m.Kind == LineMarkKind.ExecutionPoint) is { } mark ? mark.Line : -1;
+
+    /// <summary>Whether the window said a Blazor Web App's components in the browser are not debugged, as its browser could not start.</summary>
+    private static bool BrowserRefused(MainWindow window) => window.Status?.Contains("components in the browser are not debugged", StringComparison.Ordinal) == true;
 
     private static string Sessions(MainWindow window) =>
         string.Join(", ", window.Debugger.Tabs.Select(t => $"{t.Name}: {t.Session?.State.ToString() ?? "none"}"));

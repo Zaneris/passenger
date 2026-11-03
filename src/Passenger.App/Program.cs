@@ -44,6 +44,7 @@ internal static class Program
             Web.JsonSchemas.CheckVariable();
             Web.DockerHubTags.CheckVariable();
             _ = Containers.BuildKitChecks.ByDefault;
+            _ = Debugging.BrowserRun.Proxy;
             Mcp.McpProxy.CheckVariable();
             _ = Mcp.McpHost.StartsLanguageServer;
             _ = MainWindow.WatchSaysLater;

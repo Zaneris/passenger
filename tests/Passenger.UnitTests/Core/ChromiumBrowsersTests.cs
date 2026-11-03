@@ -65,4 +65,22 @@ public sealed class ChromiumBrowsersTests
         Assert.EndsWith($"an AppArmor profile that allows it user namespaces: {ChromiumBrowsers.SandboxPage}", said, StringComparison.Ordinal);
         Assert.DoesNotContain("--no-sandbox", said, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void A_macs_browsers_are_looked_for_in_the_accounts_own_applications_whatever_HOME_says()
+    {
+        Assert.Equal(["/Applications", "/Users/ada/Applications"], ChromiumBrowsers.MacFolders("/Users/ada", "/private/tmp/run/home"));
+        Assert.Equal(["/Applications", "/private/tmp/run/home/Applications"], ChromiumBrowsers.MacFolders(null, "/private/tmp/run/home"));
+        string chrome = Path.Combine("/Users/ada/Applications", "Google Chrome.app/Contents/MacOS/Google Chrome");
+        Assert.Equal(chrome, ChromiumBrowsers.Find(null, [], ChromiumBrowsers.MacFolders("/Users/ada", "/elsewhere"), windows: false, path => path == chrome)?.Program);
+    }
+
+    [Fact]
+    public void The_accounts_home_is_the_systems_own_for_this_user()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows has no account entry for its home: the profile folder is it");
+        string? home = Libc.AccountHome;
+        Assert.NotNull(home);
+        Assert.True(Directory.Exists(home), $"The account's home {home} is no folder");
+    }
 }

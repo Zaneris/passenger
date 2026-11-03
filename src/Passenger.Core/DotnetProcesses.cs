@@ -475,7 +475,7 @@ public static partial class DotnetProcesses
         string name = Libc.ExecutableOf(id) is { } path ? Path.GetFileName(path)
             : arguments.Count > 0 ? Path.GetFileName(arguments[0])
             : id.ToString(CultureInfo.InvariantCulture);
-        return new DotnetProcess(id, name, Joined(arguments), UserName(uid), uid == GetEffectiveUserId());
+        return new DotnetProcess(id, name, Joined(arguments), UserName(uid), uid == Libc.EffectiveUserId());
     }
 
     /// <summary>A process's arguments from KERN_PROCARGS2: its count, the executable's path, padding, then each argument.</summary>
@@ -531,21 +531,7 @@ public static partial class DotnetProcesses
     }
 
     /// <summary>A user's name, or their number when the system names none.</summary>
-    private static unsafe string UserName(uint uid)
-    {
-        // struct passwd, whose first field is the name, fits in 128 bytes on macOS and Linux alike.
-        byte* entry = stackalloc byte[128];
-        byte[] strings = new byte[4096];
-        IntPtr result;
-        fixed (byte* text = strings)
-        {
-            if (GetPasswordEntry(uid, entry, text, (nuint)strings.Length, &result) == 0 && result != IntPtr.Zero && Marshal.ReadIntPtr((IntPtr)entry) is { } name && name != IntPtr.Zero)
-            {
-                return Marshal.PtrToStringUTF8(name) ?? uid.ToString(CultureInfo.InvariantCulture);
-            }
-        }
-        return uid.ToString(CultureInfo.InvariantCulture);
-    }
+    private static string UserName(uint uid) => Libc.Account(uid).Name ?? uid.ToString(CultureInfo.InvariantCulture);
 
     // Linux: /proc.
 
@@ -578,7 +564,7 @@ public static partial class DotnetProcesses
                 break;
             }
         }
-        return new DotnetProcess(id, name, Joined(arguments), UserName(uid), uid == GetEffectiveUserId());
+        return new DotnetProcess(id, name, Joined(arguments), UserName(uid), uid == Libc.EffectiveUserId());
     }
 
     /// <summary>Arguments as one command line, as a command is shown (<see cref="ChildProcesses.Quote"/>).</summary>
@@ -687,18 +673,12 @@ public static partial class DotnetProcesses
     [LibraryImport("libc", EntryPoint = "sysctl")]
     private static unsafe partial int SysCtl(int* name, uint length, byte* old, nuint* oldLength, byte* value, nuint valueLength);
 
-    [LibraryImport("libc", EntryPoint = "getpwuid_r")]
-    private static unsafe partial int GetPasswordEntry(uint uid, byte* entry, byte* strings, nuint size, IntPtr* result);
-
-    [LibraryImport("libc", EntryPoint = "geteuid")]
-    private static partial uint GetEffectiveUserId();
-
     [LibraryImport("libc", EntryPoint = "getegid")]
     private static partial uint GetEffectiveGroupId();
 
     /// <summary>This process's user and group ids as "uid:gid" on macOS and Linux (a container given them reads what this
     /// user's files allow); null on Windows.</summary>
-    public static string? UserAndGroup => OperatingSystem.IsWindows() ? null : $"{GetEffectiveUserId()}:{GetEffectiveGroupId()}";
+    public static string? UserAndGroup => OperatingSystem.IsWindows() ? null : $"{Libc.EffectiveUserId()}:{GetEffectiveGroupId()}";
 
     [LibraryImport("kernel32.dll", EntryPoint = "OpenProcess", SetLastError = true)]
     private static partial SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint id);

@@ -80,16 +80,45 @@ public sealed partial class BrowserRun : IAsyncDisposable
         }
     }
 
+    /// <summary>The proxy every browser Passenger starts sends what is not for this machine through (<c>host:port</c>), a
+    /// test run's where nothing listens, so its browsers reach no host but this machine; none unless it names one.</summary>
+    [IdentifierHome]
+    public const string ProxyVariable = "PASSENGER_BROWSER_PROXY";
+
+    /// <summary>The proxy <see cref="ProxyVariable"/> names, null for none; a value that is no host and port is fatal.</summary>
+    public static string? Proxy => Environment.GetEnvironmentVariable(ProxyVariable) is { Length: > 0 } named
+        ? Uri.TryCreate($"http://{named}", UriKind.Absolute, out Uri? proxy) && proxy.Host.Length > 0 && !proxy.IsDefaultPort && proxy.AbsolutePath == "/"
+            ? named
+            : throw new FormatException($"{ProxyVariable} takes a proxy's host and port (127.0.0.1:9), not '{named}'")
+        : null;
+
+    /// <summary>What every browser Passenger starts is given beyond its debugging: no first-run pages or questions, its
+    /// background networking, component and extension updates, sync, pings, metrics reports, domain reliability, Safe
+    /// Browsing's own checks and the features that ask Google's servers left off: as little of its own reaching out as its
+    /// flags turn off.</summary>
+    public static readonly IReadOnlyList<string> Quiet =
+    [
+        "--no-first-run", "--no-default-browser-check", "--disable-search-engine-choice-screen", "--disable-background-networking", "--disable-component-update",
+        "--disable-sync", "--no-pings", "--metrics-recording-only", "--disable-domain-reliability", "--disable-client-side-phishing-detection",
+        "--disable-default-apps", "--disable-component-extensions-with-background-pages",
+        "--disable-features=OptimizationHints,MediaRouter,Translate,AutofillServerCommunication,CertificateTransparencyComponentUpdater,InterestFeedContentSuggestions",
+    ];
+
     /// <summary>The browser started on a profile with remote debugging on a port it chooses, once it has written which
-    /// (DevToolsActivePort in the profile); null where it ended first, handing its page to another browser on that profile.
-    /// One that ended saying the system refused its sandbox throws <see cref="InvalidOperationException"/> saying so.</summary>
+    /// (DevToolsActivePort in the profile); null where it ended at once with exit code 0, handing its page to another browser
+    /// on that profile. One that ended otherwise throws <see cref="InvalidOperationException"/> with its own last words, and
+    /// where the system refused its sandbox, what lets Chromium run.</summary>
     private static async Task<(Process Browser, int Port)?> StartBrowserAsync(ChromiumFound found, string profile, CancellationToken cancel)
     {
         Containers.OwnFiles.Folder(profile);
         string written = Path.Combine(profile, "DevToolsActivePort");
         File.Delete(written);
-        List<string> arguments = ["--remote-debugging-port=0", $"--user-data-dir={profile}", "--no-first-run", "--no-default-browser-check",
-            "--disable-search-engine-choice-screen", "--disable-background-timer-throttling", "--disable-renderer-backgrounding"];
+        List<string> arguments = ["--remote-debugging-port=0", $"--user-data-dir={profile}", .. Quiet, "--disable-background-timer-throttling", "--disable-renderer-backgrounding"];
+        if (Proxy is { } proxy)
+        {
+            // This machine's addresses go past it as they always do: the app and its proxy are reached directly.
+            arguments.Add($"--proxy-server={proxy}");
+        }
         if (PassengerApp.ShowsNoWindow)
         {
             arguments.Add("--headless=new");
@@ -114,9 +143,21 @@ public sealed partial class BrowserRun : IAsyncDisposable
             throw new InvalidOperationException($"Could not start {found.Name} ({found.Program}): {error.Message}");
         }
         TaskCompletionSource refused = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Queue<string> last = new();
         void Heard(string line)
         {
             IdeLog.Write(IdeLog.Debugger, $"[{found.Name}] {line}");
+            lock (last)
+            {
+                if (line.Trim().Length > 0)
+                {
+                    last.Enqueue(line.Trim());
+                    while (last.Count > LastLines)
+                    {
+                        last.Dequeue();
+                    }
+                }
+            }
             if (ChromiumBrowsers.RefusesSandbox(line))
             {
                 refused.TrySetResult();
@@ -137,12 +178,44 @@ public sealed partial class BrowserRun : IAsyncDisposable
                 // What it wrote as it ended may still be on its way through its pipes.
                 await Task.WhenAny(refused.Task, heard, Task.Delay(Waits.Of(LastWords), cancel));
                 cancel.ThrowIfCancellationRequested();
-                return refused.Task.IsCompleted ? throw new InvalidOperationException(ChromiumBrowsers.SandboxRefused(found)) : null;
+                if (refused.Task.IsCompleted)
+                {
+                    throw new InvalidOperationException(ChromiumBrowsers.SandboxRefused(found));
+                }
+                string[] words;
+                lock (last)
+                {
+                    words = [.. last];
+                }
+                int? code = await ExitCodeAsync(browser);
+                return code == 0 || (code is null && words.Length == 0) ? null : throw new InvalidOperationException(EndedSaying(found, code, words));
             }
             await Task.Delay(TimeSpan.FromMilliseconds(100), cancel);
         }
         ChildProcesses.Kill(browser);
         throw new InvalidOperationException($"{found.Name} did not start its remote debugging within {Waits.Of(StartLimit).TotalSeconds:0} s");
+    }
+
+    /// <summary>How many of a browser's last lines say why it ended as it started.</summary>
+    private const int LastLines = 4;
+
+    /// <summary>Why a browser ended as it started, in its own words: what it last wrote, and its exit code.</summary>
+    public static string EndedSaying(ChromiumFound found, int? code, IReadOnlyList<string> words) =>
+        $"{found.Name} ({found.Program}) ended as it started{(code is { } exited ? $" with {ExitCodes.Said(exited)}" : string.Empty)}"
+        + (words.Count > 0 ? $", saying: {string.Join(" ", words)}" : ", saying nothing");
+
+    /// <summary>A process's exit code once it has ended, within a moment; null where it cannot be read.</summary>
+    private static async Task<int?> ExitCodeAsync(Process process)
+    {
+        try
+        {
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2));
+            return process.ExitCode;
+        }
+        catch (Exception unread) when (unread is TimeoutException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The port a browser's DevToolsActivePort names, once it is whole; null before.</summary>

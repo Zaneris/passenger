@@ -8,7 +8,8 @@ public sealed record ChromiumFound(string Program, string Name)
 }
 
 /// <summary>The Chromium browsers (Chrome, Edge, Chromium, Brave) a Blazor app's WebAssembly half is debugged in, found as
-/// their installers put them: the one a setting names, else on macOS each app bundle in /Applications and ~/Applications,
+/// their installers put them: the one a setting names, else on macOS each app bundle in /Applications and the account's own
+/// ~/Applications (its home as the system has it, whatever HOME says),
 /// on Windows each under Program Files and the user's local app data, then the first on the PATH as the login shell gives
 /// it (<see cref="ShellEnvironment"/>), Chrome before Edge before the rest. Firefox is no Chromium, and its debugging
 /// protocol is another.</summary>
@@ -31,14 +32,17 @@ public static class ChromiumBrowsers
     public static ChromiumFound? Find((string Program, IReadOnlyList<string> Arguments)? chosen)
     {
         ShellEnvironment.Ready();
-        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         IReadOnlyList<string> roots = OperatingSystem.IsWindows()
             ? [.. new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86, Environment.SpecialFolder.LocalApplicationData }
                 .Select(Environment.GetFolderPath).Where(f => f.Length > 0).Distinct(PathNames.Comparer)]
-            : OperatingSystem.IsMacOS() ? ["/Applications", Path.Combine(home, "Applications")] : [];
+            : OperatingSystem.IsMacOS() ? MacFolders(Libc.AccountHome, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)) : [];
         return Find(chosen, (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries),
             roots, OperatingSystem.IsWindows(), File.Exists);
     }
+
+    /// <summary>The folders macOS's browsers are installed in: /Applications, then the account's own ~/Applications, in its
+    /// home as the system has it (<paramref name="account"/>) whatever HOME (<paramref name="home"/>) a run is given.</summary>
+    public static IReadOnlyList<string> MacFolders(string? account, string home) => ["/Applications", Path.Combine(account ?? home, "Applications")];
 
     /// <summary>The browser among these places: <paramref name="chosen"/> where it names one that is there (null where it is
     /// not); else each known browser in <paramref name="roots"/> (app bundle folders, or on <paramref name="windows"/> its

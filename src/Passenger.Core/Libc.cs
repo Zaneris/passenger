@@ -54,4 +54,35 @@ public static partial class Libc
 
     [LibraryImport("libc", EntryPoint = "proc_pidpath")]
     private static unsafe partial int ProcPidPath(int process, byte* buffer, uint size);
+
+    /// <summary>A user's account entry's name and home folder (getpwuid_r's pw_name and pw_dir), each null where the system
+    /// has none; nulls for a user it knows not.</summary>
+    public static unsafe (string? Name, string? Home) Account(uint uid)
+    {
+        // struct passwd fits in 128 bytes on macOS and Linux alike; its home is its eighth field on macOS, its sixth on Linux.
+        byte* entry = stackalloc byte[128];
+        byte[] strings = new byte[4096];
+        IntPtr result;
+        fixed (byte* text = strings)
+        {
+            if (GetPasswordEntry(uid, entry, text, (nuint)strings.Length, &result) != 0 || result == IntPtr.Zero)
+            {
+                return (null, null);
+            }
+            IntPtr name = Marshal.ReadIntPtr((IntPtr)entry);
+            IntPtr home = Marshal.ReadIntPtr((IntPtr)entry, OperatingSystem.IsMacOS() ? 48 : 32);
+            return (name == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(name), home == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(home));
+        }
+    }
+
+    /// <summary>The home folder of this process's own account, as the system's account entry has it whatever HOME says; null
+    /// on Windows, or where the system names none.</summary>
+    public static string? AccountHome => OperatingSystem.IsWindows() ? null : Account(EffectiveUserId()).Home;
+
+    [LibraryImport("libc", EntryPoint = "getpwuid_r")]
+    private static unsafe partial int GetPasswordEntry(uint uid, byte* entry, byte* strings, nuint size, IntPtr* result);
+
+    /// <summary>geteuid: the user this process acts as.</summary>
+    [LibraryImport("libc", EntryPoint = "geteuid")]
+    public static partial uint EffectiveUserId();
 }
