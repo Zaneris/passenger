@@ -37,6 +37,14 @@ internal static class GodotKinds
     /// <summary>How far a field's or local's values are followed to the node or material they hold.</summary>
     private const int Deepest = 3;
 
+    /// <summary>A control's or window's call taking a theme item's name, its kind the second group.</summary>
+    private static readonly System.Text.RegularExpressions.Regex ThemeCall = new("^(Get|Has|Add|Remove)Theme(Color|Constant|FontSize|Font|Icon|Stylebox)(Override)?$",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>A Theme resource's call setting an item of a kind, its kind the first group.</summary>
+    private static readonly System.Text.RegularExpressions.Regex ThemeSet = new("^Set(Color|Constant|FontSize|Font|Icon|Stylebox)$",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
     /// <summary>The file's strings of a kind, each with the class it is written in and the object its call is made on where
     /// told; and its layer numbers, each the constant a <c>layerNumber</c> is given.</summary>
     public static IReadOnlyList<GodotKindRead> Read(Solution solution, SyntaxNode root, SemanticModel model, IReadOnlyList<INamedTypeSymbol> declared, SourceText text, CancellationToken cancel)
@@ -248,8 +256,49 @@ internal static class GodotKinds
         {
             GodotStringKind.Animation or GodotStringKind.TreeParameter => NodeOf(solution, instance, model, Deepest, cancel) is var (n, e) ? (n, e, null) : (null, null, null),
             GodotStringKind.ShaderParameter => MaterialOf(solution, instance, model, Deepest, cancel) ?? (null, null, null),
+            >= GodotStringKind.ThemeColor and <= GodotStringKind.ThemeStyle => ThemeTold(token, instance, model, cancel),
             _ => (null, null, null),
         } : (null, null, null);
+
+    /// <summary>The theme type a theme item's call looks its name up in, as its member: the type it names (<c>themeType</c>),
+    /// else the engine class of the control or window it is made on; and "." as its node where that is the class's own.</summary>
+    private static (string? Node, string? Export, string? Member) ThemeTold(SyntaxToken token, IOperation? instance, SemanticModel model, CancellationToken cancel)
+    {
+        if (token.Parent?.Parent?.Parent?.Parent is not InvocationExpressionSyntax call || model.GetOperation(call, cancel) is not IInvocationOperation invocation)
+        {
+            return (null, null, null);
+        }
+        string? given = invocation.Arguments.FirstOrDefault(a => a.Parameter?.Name == "themeType") is { ArgumentKind: not ArgumentKind.DefaultValue } typed ? Constant(typed.Value) : null;
+        instance = Unwrapped(instance);
+        bool own = instance is null or IInstanceReferenceOperation;
+        if (given is { Length: > 0 } || invocation.TargetMethod.ContainingType.Name == "Theme")
+        {
+            return (null, null, given is { Length: > 0 } ? given : null);
+        }
+        ITypeSymbol? receiver = own ? model.GetEnclosingSymbol(token.SpanStart, cancel)?.ContainingType : instance!.Type;
+        for (ITypeSymbol? type = receiver; type is not null; type = type.BaseType)
+        {
+            if (OfGodot(type))
+            {
+                return (own ? "." : null, null, type.Name == "GodotObject" ? "Object" : type.Name);
+            }
+        }
+        return (null, null, null);
+    }
+
+    /// <summary>The theme item kind a control's, window's or Theme's method takes the name of; null for any other.</summary>
+    private static GodotStringKind? ThemeKindOf(IMethodSymbol method) =>
+        (method.ContainingType.Name is "Control" or "Window" ? ThemeCall.Match(method.Name) is { Success: true } call ? call.Groups[2].Value : null
+            : method.ContainingType.Name == "Theme" && ThemeSet.Match(method.Name) is { Success: true } set ? set.Groups[1].Value : null) switch
+        {
+            "Color" => GodotStringKind.ThemeColor,
+            "Constant" => GodotStringKind.ThemeConstant,
+            "Font" => GodotStringKind.ThemeFont,
+            "FontSize" => GodotStringKind.ThemeFontSize,
+            "Icon" => GodotStringKind.ThemeIcon,
+            "Stylebox" => GodotStringKind.ThemeStyle,
+            _ => null,
+        };
 
     /// <summary>The scripts a class's code runs as: its own <c>[ScriptPath]</c>'s, and those of the classes deriving from it.</summary>
     internal static async Task<IReadOnlyList<string>> ScriptsOfAsync(INamedTypeSymbol type, Solution solution, CancellationToken cancel)
@@ -346,6 +395,7 @@ internal static class GodotKinds
         ("GodotObject" or "TranslationServer", "message") => (GodotStringKind.Translation, false),
         ("Translation", "srcMessage") when method.Name is "AddMessage" or "AddPluralMessage" => (GodotStringKind.Translation, true),
         ("RenderingServer", "name") when method.Name.StartsWith("GlobalShaderParameter", StringComparison.Ordinal) => (GodotStringKind.ShaderGlobal, method.Name == "GlobalShaderParameterAdd"),
+        ("Control" or "Window" or "Theme", "name") when ThemeKindOf(method) is { } theme => (theme, method.Name.StartsWith("Add", StringComparison.Ordinal) || method.Name.StartsWith("Set", StringComparison.Ordinal)),
         _ => null,
     };
 
@@ -479,11 +529,11 @@ internal static class GodotKinds
         return value;
     }
 
-    /// <summary>A constant string a value is, or the one a NodePath is made of.</summary>
+    /// <summary>A constant string a value is, or the one a NodePath or StringName is made of.</summary>
     private static string? Constant(IOperation value)
     {
         value = Unwrapped(value)!;
-        if (value is IObjectCreationOperation { Type.Name: "NodePath", Arguments: [{ Value: var made }] })
+        if (value is IObjectCreationOperation { Type.Name: "NodePath" or "StringName", Arguments: [{ Value: var made }] })
         {
             value = Unwrapped(made)!;
         }

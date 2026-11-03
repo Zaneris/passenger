@@ -15,7 +15,9 @@ namespace Passenger.App.CSharp;
 /// completed from where Godot defines it (<see cref="GodotChecks.Named"/>), led by Go to Declaration to its definition,
 /// listed by Find Usages with every place the project's files and code name it (<see cref="KindUsesAsync"/>), and renamed in
 /// one command of Undo in those files and every string of the code naming it (<see cref="RenameKindAsync"/>); a GetNode
-/// path's <c>/root/Name</c> is an autoload's, and a layer's number its name in project.godot's [layer_names].</summary>
+/// path's <c>/root/Name</c> is an autoload's, and a layer's number its name in project.godot's [layer_names]. A theme item's
+/// name completes from Godot's default theme and the project's themes for the class it is looked up in; and where the
+/// person's Godot editor is open on the project, its names join those the files give (<see cref="GodotIdeLink"/>).</summary>
 internal sealed partial class CSharpAssist
 {
     /// <summary>A line up to the caret that ends inside a string given to one of Godot's calls taking such a name or a member's,
@@ -24,7 +26,7 @@ internal sealed partial class CSharpAssist
         @"(\b(IsAction\w*|GetAction\w*|ActionPress|ActionRelease|GetAxis|GetVector|HasAction|AddAction|EraseAction|Action\w*Event\w*|Action\w*Deadzone|EventIsAction"
         + @"|IsInGroup|AddToGroup|RemoveFromGroup|\w*InGroup|CallGroup\w*|NotifyGroup\w*|SetGroup\w*|HasGroup"
         + @"|Play\w*|Queue|HasAnimation|GetAnimation|AnimationSetNext|AnimationGetNext|\w*BlendTime|SetAutoplay|Set(Current|Assigned)?Animation|Capture"
-        + @"|\w*ShaderParameter\w*|Tr|TrN|Translate|TranslatePlural"
+        + @"|\w*ShaderParameter\w*|Tr|TrN|Translate|TranslatePlural|(Get|Has|Add|Remove)Theme\w+|Set(Color|Constant|Font|FontSize|Icon|Stylebox)"
         + @"|Call|CallDeferred|Callv|Connect|Disconnect|IsConnected|EmitSignal|HasMethod|HasSignal|Get|Set|SetDeferred|ToSignal|Callable)\s*\(([^""()]|""[^""]*"")*"
         + @"|\b(CurrentAnimation|AssignedAnimation|Animation|Autoplay)\s*=\s*)""[^""]*$",
         RegexOptions.CultureInvariant);
@@ -51,11 +53,31 @@ internal sealed partial class CSharpAssist
     private static GodotKindRead? KindAt(LspDocument lsp, GodotRead read, int offset, int quoted) =>
         read.Found.Kinds.FirstOrDefault(k => OffsetOf(lsp, k.At) <= offset && offset <= OffsetOf(lsp, k.End) || OffsetOf(lsp, k.At) == quoted - 1);
 
-    /// <summary>What completion offers in a string of a kind: every name it may name (Godot's own input actions after the
-    /// project's), each with what it is; null where the list would be empty.</summary>
-    private static CodeCompletion.OwnItems? KindCompletion(GodotRead read, GodotKindRead kind, int start, string tail)
+    /// <summary>What the open Godot editor is asked for a string of a kind: input actions, shader parameters, a theme item
+    /// looked up on the class's own node by its class (the editor answers its node's); null for any other.</summary>
+    private static GodotIdeKind? EditorKindOf(GodotKindRead kind) => kind.Kind switch
     {
-        GodotChecks.Candidates named = GodotChecks.Named(read.Scenes, kind.Kind, GodotChecks.ScriptsOf(read.Found, kind.Class), kind.Node, kind.Export, kind.Member);
+        GodotStringKind.Action => GodotIdeKind.InputActions,
+        GodotStringKind.ShaderParameter => GodotIdeKind.ShaderParams,
+        GodotStringKind.ThemeColor when kind.Node == "." => GodotIdeKind.ThemeColors,
+        GodotStringKind.ThemeConstant when kind.Node == "." => GodotIdeKind.ThemeConstants,
+        GodotStringKind.ThemeFont when kind.Node == "." => GodotIdeKind.ThemeFonts,
+        GodotStringKind.ThemeFontSize when kind.Node == "." => GodotIdeKind.ThemeFontSizes,
+        GodotStringKind.ThemeStyle when kind.Node == "." => GodotIdeKind.ThemeStyles,
+        _ => null,
+    };
+
+    /// <summary>The names the person's Godot editor open on the project answers for a kind of string in a script; none
+    /// where none is open, or for no kind.</summary>
+    private async Task<IReadOnlyList<string>> EditorNamesAsync(GodotRead read, string path, GodotIdeKind? kind, CancellationToken cancel) =>
+        kind is { } asked && context.CSharp?.GodotIde is { } editor && read.Scenes.ResPathOf(path) is { } script
+            ? await editor.AskAsync(read.Folder, script, asked, cancel) : [];
+
+    /// <summary>What completion offers in a string of a kind: every name it may name (Godot's own input actions after the
+    /// project's, then those only the open Godot editor holds), each with what it is; null where the list would be empty.</summary>
+    private static CodeCompletion.OwnItems? KindCompletion(GodotRead read, GodotKindRead kind, int start, string tail, IReadOnlyList<string> editor)
+    {
+        GodotChecks.Candidates named = GodotChecks.Named(read.Scenes, kind.Kind, GodotChecks.ScriptsOf(read.Found, kind.Class), kind.Node, kind.Export, kind.Member, editor);
         IReadOnlyList<CompletionItem> items = [.. named.Names.Select(n => new CompletionItem
         {
             Label = n.Name,
@@ -95,16 +117,22 @@ internal sealed partial class CSharpAssist
         }
         List<GodotPlace> places = [.. named.Names.Where(n => n.Name == kind.Name).SelectMany(n => n.Places.Where(p => p.Defines))];
         return places.Count > 0 ? string.Join('\n', [$"The {what} {kind.Name}, defined in:", .. places.Select(p => p.Shown)])
+            : GodotChecks.IsTheme(kind.Kind) && named.Names.FirstOrDefault(n => n.Name == kind.Name) is { } item ? $"{kind.Name}: {item.Detail}"
             : named.Names.Any(n => n.Name == kind.Name) ? $"{kind.Name} is Godot's own {what}"
+            : named.Others.Contains(kind.Name) ? $"{kind.Name} is a {what} of a class deriving from {kind.Member}, or one the project's themes or scenes give"
             : $"No {what} '{kind.Name}' is {named.Where}";
     }
 
-    /// <summary>What completion offers in a GetNode path from its "/": each autoload by its path under /root, and the nodes of
-    /// an autoload's scene below it.</summary>
-    private static CodeCompletion.OwnItems? AutoloadCompletion(GodotRead read, int start, string tail)
+    /// <summary>What completion offers in a GetNode path from its "/": each autoload by its path under /root (those only the
+    /// open Godot editor holds too), and the nodes of an autoload's scene below it.</summary>
+    private static CodeCompletion.OwnItems? AutoloadCompletion(GodotRead read, int start, string tail, IReadOnlyList<string> editor)
     {
         GodotDefinitions defined = read.Scenes.Defined;
         List<CompletionItem> items = [];
+        foreach (string path in editor.Where(p => GodotChecks.AutoloadIn(p) is { } named && defined.Autoloads.All(a => a.Name != named.Name)).Distinct(StringComparer.Ordinal))
+        {
+            items.Add(new CompletionItem { Label = path, Kind = CompletionItemKind.Module, Detail = "autoload the open Godot editor holds", FilterText = path, SortText = " " + path });
+        }
         foreach (GodotDefined autoload in defined.Autoloads)
         {
             string path = "/root/" + autoload.Name;
@@ -184,6 +212,8 @@ internal sealed partial class CSharpAssist
         }
         string none = named.Layers is { } layers && named.Candidates.Names.Any(n => n.Name == named.Name)
             ? $"{GodotDefinitions.LayersShown(layers)} layer {named.Name} has no name in project.godot's [layer_names]"
+            : GodotChecks.IsTheme(named.Kind) && named.Candidates.Names.FirstOrDefault(n => n.Name == named.Name) is { } item
+                ? $"{named.Name} is {item.Detail}, which no file of the project defines"
             : $"No {GodotChecks.What(named.Kind)} '{named.Name}' is {named.Candidates.Where}";
         return new Declared(places, none) { Names = names, Title = "Definitions" };
     }
@@ -223,6 +253,10 @@ internal sealed partial class CSharpAssist
         if (named.Kind == GodotStringKind.TreeParameter)
         {
             return $"{old} is made by its AnimationTree's nodes and conditions, which Rename does not change";
+        }
+        if (GodotChecks.IsTheme(named.Kind))
+        {
+            return $"{old} is the name a control looks its {GodotChecks.What(named.Kind)} up by, which Rename does not change";
         }
         if (name.Length == 0 || name.Trim() != name || name.Any(char.IsControl))
         {

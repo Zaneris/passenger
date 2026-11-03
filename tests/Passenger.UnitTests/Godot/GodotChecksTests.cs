@@ -477,6 +477,40 @@ public class GodotChecksTests
         Assert.False(GodotChecks.Named(scenes, GodotStringKind.Animation, ["res://Main.cs"], null, null, null).Whole, "a player the code does not tell is never checked");
     }
 
+    /// <summary>A theme item's name that neither Godot's default theme nor the project's themes give the class it is looked
+    /// up in is an error naming the class; one a class deriving from it has (which the node may be), one the code adds, or
+    /// one looked up in a class Passenger does not know, never. Its candidates are the project theme's first, then the
+    /// default theme's along the class's bases, then those only the open Godot editor answered, each name once.</summary>
+    [Fact]
+    public void A_theme_item_its_class_looks_up_in_vain_is_an_error_and_the_editor_s_names_join_the_candidates()
+    {
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>
+        {
+            ["res://main.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[ext_resource type=\"Script\" path=\"res://Main.cs\" id=\"1\"]\n\n[node name=\"Main\" type=\"Control\"]\nscript = ExtResource(\"1\")\n"),
+            ["res://theme.tres"] = GodotFile.Parse("[gd_resource type=\"Theme\" format=3]\n\n[resource]\nLabel/colors/glow = Color(1, 1, 0, 1)\n"),
+        }, texts: new Dictionary<string, string> { ["res://project.godot"] = "[gui]\n\ntheme/custom=\"res://theme.tres\"\n" });
+        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotKindRead Read(GodotStringKind kind, string name, string? type, bool adds = false) => new(kind, name, At, End, true, adds, 0, null, null, type);
+        GodotCodeFound found = Found(asked, []) with
+        {
+            Kinds =
+            [
+                Read(GodotStringKind.ThemeColor, "font_color", "Label"), Read(GodotStringKind.ThemeColor, "glow", "Label"), Read(GodotStringKind.ThemeColor, "font_colr", "Label"),
+                Read(GodotStringKind.ThemeIcon, "checked", "Button"), Read(GodotStringKind.ThemeConstant, "anything", null), Read(GodotStringKind.ThemeStyle, "anything", "Sprite2D"),
+                Read(GodotStringKind.ThemeColor, "made", "Label", adds: true), Read(GodotStringKind.ThemeColor, "made", "Label"),
+            ],
+        };
+        Assert.Equal(["No theme color 'font_colr' is among Label's theme colors in Godot's default theme or the project's themes"],
+            GodotChecks.Findings(scenes, asked, found, _ => true).Select(f => f.Message));
+
+        GodotChecks.Candidates colors = GodotChecks.Named(scenes, GodotStringKind.ThemeColor, [], ".", null, "Label", ["font_color", "editor_only"]);
+        Assert.Equal(("glow", "Label's theme color"), (colors.Names[0].Name, colors.Names[0].Detail));
+        Assert.Contains(colors.Names, n => n.Name == "font_color" && n.Detail == "Label's theme color in Godot's default theme");
+        Assert.Single(colors.Names, n => n.Name == "font_color");
+        Assert.Equal("theme color the open Godot editor holds", colors.Names[^1].Detail);
+        Assert.Equal("editor_only", colors.Names[^1].Name);
+    }
+
     /// <summary>A layer's number outside the layers Godot numbers is an error, one inside never; an AnimationTree's parameter
     /// its tree does not make is one where the code tells the tree; a global shader uniform project.godot lacks is one.</summary>
     [Fact]

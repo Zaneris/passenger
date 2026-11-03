@@ -14,6 +14,11 @@ public sealed record GodotPlace(string Res, int Start, int End, bool Defines, st
 /// <summary>A name a Godot project defines, what it is as shown beside it, and every place its files write it.</summary>
 public sealed record GodotDefined(string Name, string Detail, IReadOnlyList<GodotPlace> Places);
 
+/// <summary>A theme item a project's file writes: its theme type (a node's class, for a scene's override of one), its kind
+/// (<see cref="GodotThemeTable.Kinds"/>), its name and the place of the name in its key (<c>Label/colors/font_color</c>,
+/// <c>theme_override_colors/font_color</c>).</summary>
+public sealed record GodotThemeItem(string Type, string Kind, string Name, GodotPlace Place);
+
 /// <summary>What a Godot project's own files define for the strings its code gives Godot's calls, read as Godot reads them:
 /// project.godot's input actions (<c>[input]</c>, beside Godot's own <c>ui_</c> ones), autoloads (<c>[autoload]</c>), global
 /// shader uniforms (<c>[shader_globals]</c>), named layers (<c>[layer_names]</c>) and the translations it lists
@@ -67,6 +72,7 @@ public sealed class GodotDefinitions
     private readonly Lazy<IReadOnlyList<(string Res, IReadOnlyList<GodotScriptToken> Tokens)>> scripts;
     private readonly Lazy<(IReadOnlyList<GodotDefined> Keys, IReadOnlyList<string> Files, bool Whole)> translations;
     private readonly Lazy<(IReadOnlyList<GodotDefined> Names, bool Whole)> animations;
+    private readonly Lazy<(IReadOnlyList<GodotThemeItem> Defined, IReadOnlyList<GodotThemeItem> Overridden)> themes;
     private readonly Dictionary<string, (IReadOnlyList<GodotDefined> Names, bool Whole)> uniforms = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int[]> lines = new(StringComparer.Ordinal);
     private readonly Lock reading = new();
@@ -83,6 +89,7 @@ public sealed class GodotDefinitions
         globals = new(() => Scripted(ReadGlobals(), GlobalCalls));
         translations = new(ReadTranslations);
         animations = new(ReadAnimations);
+        themes = new(ReadThemes);
     }
 
     /// <summary>The functions a GDScript gives an input action's name to, at the arguments that take it.</summary>
@@ -229,6 +236,51 @@ public sealed class GodotDefinitions
             }
         }
         return numbered;
+    }
+
+    /// <summary>The res:// path of the project's custom theme (project.godot's <c>gui/theme/custom</c>), which every node of
+    /// the game looks its theme items up in before Godot's default theme; null for none.</summary>
+    public string? CustomTheme => SettingOf("gui", "theme/custom")?.Text is { Length: > 0 } res ? res : null;
+
+    /// <summary>Every item the project's themes define: each Theme resource's, a file's own or one a file holds within it,
+    /// the custom theme's first.</summary>
+    public IReadOnlyList<GodotThemeItem> ThemeItems => themes.Value.Defined;
+
+    /// <summary>Every theme item the project's scenes override on a node (<c>theme_override_colors/font_color</c>), by the
+    /// node's class.</summary>
+    public IReadOnlyList<GodotThemeItem> ThemeOverrides => themes.Value.Overridden;
+
+    private (IReadOnlyList<GodotThemeItem>, IReadOnlyList<GodotThemeItem>) ReadThemes()
+    {
+        const string Override = "theme_override_";
+        string? custom = CustomTheme;
+        List<GodotThemeItem> defined = [];
+        List<GodotThemeItem> overridden = [];
+        foreach ((string res, GodotFile file) in scenes.Files.OrderBy(f => f.Key != custom).ThenBy(f => f.Key, StringComparer.Ordinal))
+        {
+            foreach (GodotSection section in file.Sections)
+            {
+                bool theme = section.Tag == "resource" ? file.Header?.Text("type") == "Theme" : section.Tag == "sub_resource" && section.Text("type") == "Theme";
+                string? type = section.Tag == "node" ? new GodotNode(section).Type : null;
+                foreach (GodotEntry property in theme || section.Tag == "node" ? section.Properties : [])
+                {
+                    string[] parts = property.Key.Split('/');
+                    bool named = theme ? parts.Length == 3 && parts[0].Length > 0 : parts.Length == 2 && parts[0].StartsWith(Override, StringComparison.Ordinal);
+                    string kind = named ? theme ? parts[1] : parts[0][Override.Length..] : string.Empty;
+                    if (!named || !GodotThemeTable.Kinds.Contains(kind) || parts[^1].Length == 0)
+                    {
+                        continue;
+                    }
+                    int start = property.KeyStart + property.Key.Length - parts[^1].Length;
+                    GodotPlace place = new(res, start, start + parts[^1].Length, theme, $"{Path.GetFileName(res)}:{file.LineOf(start) + 1}")
+                    {
+                        Plain = file.Text.AsSpan(property.KeyStart).StartsWith(property.Key, StringComparison.Ordinal),
+                    };
+                    (theme ? defined : overridden).Add(new GodotThemeItem(theme ? parts[0] : type ?? string.Empty, kind, parts[^1], place));
+                }
+            }
+        }
+        return (defined, overridden);
     }
 
     /// <summary>The keys of the translations project.godot lists, each with its place in every file.</summary>

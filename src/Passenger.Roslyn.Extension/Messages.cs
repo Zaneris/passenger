@@ -377,7 +377,8 @@ public sealed record GodotCodeFound(
 /// sprite's SpriteFrames), an autoload (project.godot's [autoload], a GetNode path's /root/Name), a shader parameter (a
 /// shader's uniform), a translation's key (the CSV and PO files project.godot lists), an AnimationTree's parameter (its tree's
 /// <c>parameters/…</c> path) or a global shader uniform (project.godot's [shader_globals]); or a layer, by its number
-/// (project.godot's [layer_names] names it).</summary>
+/// (project.godot's [layer_names] names it); or a theme item of each kind a control or window looks up by its class (Godot's
+/// default theme, the project's themes).</summary>
 public enum GodotStringKind
 {
     Action,
@@ -389,6 +390,12 @@ public enum GodotStringKind
     Layer,
     TreeParameter,
     ShaderGlobal,
+    ThemeColor,
+    ThemeConstant,
+    ThemeFont,
+    ThemeFontSize,
+    ThemeIcon,
+    ThemeStyle,
 }
 
 /// <summary>A string of a kind as the file gives it to Godot's call (<c>Input.IsActionPressed("jump")</c>): what it names
@@ -396,7 +403,9 @@ public enum GodotStringKind
 /// <c>InputMap.AddAction</c>), the class it is written in (by its index in the answer's), and the object the call is made
 /// on where the code tells it: a node by its path from the node the class runs on, or by the <c>[Export]</c> member a scene
 /// sets to it, and for a material the node's property holding it (<c>material</c>); none where it is not told. A layer's
-/// name is its number as written in decimal, and its member the layers Godot numbers it among (<c>2d_physics</c>).</summary>
+/// name is its number as written in decimal, and its member the layers Godot numbers it among (<c>2d_physics</c>). A theme
+/// item's member is the theme type it is looked up in (the receiver's engine class, or the type the call names), and its
+/// node "." where the call is made on the class's own node with no type named.</summary>
 public sealed record GodotKindRead(
     [property: JsonPropertyName("kind")] GodotStringKind Kind,
     [property: JsonPropertyName("name")] string Name,

@@ -1662,6 +1662,9 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <summary>The folder's Godot scenes and resources, read once and followed; none without a session.</summary>
     public Godot.GodotSceneIndex? GodotScenes { get; init; }
 
+    /// <summary>The person's Godot editors open on the folder's projects, which completion asks; none without a session.</summary>
+    internal Godot.GodotIdeLink? GodotIde { get; init; }
+
     /// <summary>The stylesheets the folder's pages link, whose classes a Razor file's are checked against; none without a session.</summary>
     public Web.PageStylesheets? Stylesheets { get; init; }
 

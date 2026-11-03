@@ -111,6 +111,11 @@ themes:
 godot-shader-types:
     python3 -I tools/godot-shader-types.py
 
+# Rewrite src/Passenger.Workspace/GodotDefaultTheme.json, Godot's default theme as its sources at one commit say it
+# (tools/godot-theme.py).
+godot-theme:
+    python3 -I tools/godot-theme.py
+
 # Rewrite Theme/Icons.axaml from the list in tools/icons.py (fetches any icon not yet cached).
 icons:
     python3 -I tools/icons.py

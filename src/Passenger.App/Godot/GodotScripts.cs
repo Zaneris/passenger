@@ -24,6 +24,14 @@ public static class GodotScripts
     private static readonly string[] Kept = [GodotProject.FileName, Path.Combine(".godot", "editor", "editor_layout.cfg"),
         Path.Combine(".godot", "editor", "script_editor_cache.cfg"), Path.Combine(".godot", "mono", "metadata", "ide_messaging_meta.txt")];
 
+    /// <summary>The ports the IDE messaging servers of Passenger's own headless editors were heard on, as each wrote its meta
+    /// file over the person's, which is put back.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, bool> HeadlessPorts = new();
+
+    /// <summary>Whether a port is the IDE messaging server's of one of Passenger's own headless editors, never asked as the
+    /// person's editor (<see cref="GodotIdeLink"/>).</summary>
+    public static bool Headless(int port) => HeadlessPorts.ContainsKey(port);
+
     /// <summary>The Godot project a file is in: the nearest folder above it holding a project.godot; null for none.</summary>
     public static string? ProjectOf(string path)
     {
@@ -258,11 +266,13 @@ public static class GodotScripts
                         {
                             if (File.Exists(path))
                             {
+                                Heard(name, path);
                                 File.Delete(path);
                             }
                         }
                         else if (!File.Exists(path) || !File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes))
                         {
+                            Heard(name, path);
                             AtomicFile.Write(path, bytes);
                             File.SetLastWriteTimeUtc(path, written);
                             IdeErrors.Write($"GDScript: {path}, which Godot's headless editor wrote over, is put back as it was");
@@ -278,6 +288,15 @@ public static class GodotScripts
                 }
             }
             return true;
+        }
+
+        /// <summary>The port a headless editor's meta file names, kept as the file is put back.</summary>
+        private static void Heard(string name, string path)
+        {
+            if (name == Kept[^1] && File.Exists(path) && GodotIdeMessaging.MetaOf(File.ReadAllText(path)) is (int port, _))
+            {
+                HeadlessPorts[port] = true;
+            }
         }
 
         public void Dispose() => FileText.Writing -= OnWriting;

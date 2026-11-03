@@ -115,11 +115,15 @@ internal sealed partial class CSharpAssist
         string typed = asked.GetText(start, caret - start);
         if (KindAt(lsp, read, caret, start) is { } kind)
         {
-            return KindCompletion(read, kind, start, tail);
+            return KindCompletion(read, kind, start, tail, await EditorNamesAsync(read, document.Path, EditorKindOf(kind), cancel));
         }
         if (MemberStringAt(lsp, read, caret, start) is { } member)
         {
             return MemberCompletion(read, member, start, tail);
+        }
+        if (OwnSignalAt(lsp, read, caret, start) is { } signal)
+        {
+            return OwnSignalCompletion(read, signal, start, tail, await EditorNamesAsync(read, document.Path, GodotIdeKind.Signals, cancel));
         }
         if (!inPath)
         {
@@ -127,18 +131,24 @@ internal sealed partial class CSharpAssist
         }
         if (typed.StartsWith('/') && CallAt(lsp, read, caret, start) is not null)
         {
-            return AutoloadCompletion(read, start, tail);
+            return AutoloadCompletion(read, start, tail, await EditorNamesAsync(read, document.Path, GodotIdeKind.NodePaths, cancel));
         }
         if (typed.StartsWith("res://", StringComparison.Ordinal) && csharp.GodotScenes is { } index)
         {
-            IReadOnlyList<CompletionItem> files = [.. index.FilesUnder(read.Folder).Select(f => GodotScenes.ResPathOf(read.Folder, f)).OfType<string>()
+            Task<IReadOnlyList<string>> resources = EditorNamesAsync(read, document.Path, GodotIdeKind.ResourcePaths, cancel);
+            Task<IReadOnlyList<string>> scenes = EditorNamesAsync(read, document.Path, GodotIdeKind.ScenePaths, cancel);
+            List<CompletionItem> files = [.. index.FilesUnder(read.Folder).Select(f => GodotScenes.ResPathOf(read.Folder, f)).OfType<string>()
                 .Select(res => new CompletionItem { Label = res, Kind = CompletionItemKind.File, Detail = Path.GetExtension(res), FilterText = res, SortText = " " + res })];
+            HashSet<string> listed = [.. files.Select(f => f.Label)];
+            files.AddRange((await resources).Concat(await scenes).Where(res => res.StartsWith("res://", StringComparison.Ordinal) && listed.Add(res))
+                .Select(res => new CompletionItem { Label = res, Kind = CompletionItemKind.File, Detail = $"{Path.GetExtension(res)} · the open Godot editor's", FilterText = res, SortText = " " + res }));
             return files.Count == 0 ? null : new CodeCompletion.OwnItems(start, files, tail) { WordCharacters = PathCharacters };
         }
         if (CallAt(lsp, read, caret, start) is not { } call || call.Class >= read.Found.Classes.Count)
         {
             return null;
         }
+        Task<IReadOnlyList<string>> edited = EditorNamesAsync(read, document.Path, GodotIdeKind.NodePaths, cancel);
         Dictionary<string, CompletionItem> items = new(StringComparer.Ordinal);
         List<CompletionItem> unfit = [];
         foreach ((string scene, GodotTreeNode node) in read.Found.Classes[call.Class].Scripts.SelectMany(read.Scenes.RunsOf))
@@ -163,8 +173,50 @@ internal sealed partial class CSharpAssist
                 }
             }
         }
-        IReadOnlyList<CompletionItem> offered = items.Count > 0 ? [.. items.Values] : [.. unfit.DistinctBy(i => i.Label)];
+        List<CompletionItem> offered = items.Count > 0 ? [.. items.Values] : [.. unfit.DistinctBy(i => i.Label)];
+        HashSet<string> known = [.. items.Keys, .. unfit.Select(u => u.Label)];
+        // The editor answers its edited scene's nodes as paths from the script's node, the node itself and autoloads too.
+        offered.AddRange((await edited).Where(p => p != "." && !p.StartsWith('/') && known.Add(p)).Select(p => new CompletionItem
+        {
+            Label = p,
+            Kind = CompletionItemKind.Field,
+            Detail = "node of the scene the open Godot editor edits",
+            FilterText = p,
+            SortText = " " + p,
+        }));
         return offered.Count == 0 ? null : new CodeCompletion.OwnItems(start, offered, tail) { WordCharacters = PathCharacters };
+    }
+
+    /// <summary>The string naming a signal of the class's own node that holds an offset (<c>EmitSignal("Scored")</c> in a
+    /// script's class), by the server's places; null for none.</summary>
+    private static GodotStringRead? OwnSignalAt(LspDocument lsp, GodotRead read, int offset, int quoted) =>
+        read.Found.Strings.FirstOrDefault(s => s.Kind == GodotNameKind.Signal && s.Script && s.Node is null && s.Export is null
+            && s.Class >= 0 && s.Class < read.Found.Classes.Count && read.Found.Classes[s.Class].Name == s.On
+            && (OffsetOf(lsp, s.At) <= offset && offset <= OffsetOf(lsp, s.End) || OffsetOf(lsp, s.At) == quoted - 1));
+
+    /// <summary>What completion offers in a string naming a signal of the class's own node: the class's <c>[Signal]</c>
+    /// delegates, then the signals the open Godot editor answers for the script (its engine class's too); null where none.</summary>
+    private static CodeCompletion.OwnItems? OwnSignalCompletion(GodotRead read, GodotStringRead named, int start, string tail, IReadOnlyList<string> editor)
+    {
+        GodotClassFound own = read.Found.Classes[named.Class];
+        List<CompletionItem> items = [.. own.Signals.Select(s => new CompletionItem
+        {
+            Label = s.Name,
+            Kind = CompletionItemKind.Event,
+            Detail = $"signal{s.Shown} · {own.Name}",
+            FilterText = s.Name,
+            SortText = " " + s.Name,
+        })];
+        HashSet<string> listed = [.. items.Select(i => i.Label)];
+        items.AddRange(editor.Where(listed.Add).Select(s => new CompletionItem
+        {
+            Label = s,
+            Kind = CompletionItemKind.Event,
+            Detail = $"signal of {own.Engine ?? own.Name}, as the open Godot editor answers",
+            FilterText = s,
+            SortText = "~" + s,
+        }));
+        return items.Count == 0 ? null : new CodeCompletion.OwnItems(start, items, tail);
     }
 
     /// <summary>What the hover card says of a Godot project's C# (<see cref="GodotWords"/>), and the preview of the file a

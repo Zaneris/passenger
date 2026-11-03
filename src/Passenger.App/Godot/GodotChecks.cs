@@ -411,7 +411,7 @@ internal static class GodotChecks
         foreach (GodotKindRead read in found.Kinds.Where(k => k.Exact && !k.Adds && !added.Contains((k.Kind, k.Name))))
         {
             Candidates named = Named(scenes, read.Kind, ScriptsOf(found, read.Class), read.Node, read.Export, read.Member);
-            if (named.Whole && !named.Names.Any(n => n.Name == read.Name))
+            if (named.Whole && !named.Names.Any(n => n.Name == read.Name) && !named.Others.Contains(read.Name))
             {
                 findings.Add(new Finding(read.At, read.End, true, $"No {What(read.Kind)} '{read.Name}' is {named.Where}")
                 {
@@ -632,7 +632,12 @@ internal static class GodotChecks
     /// <summary>What a string of a kind may name, as Godot looks for it: the names defined, the words saying where Godot looks
     /// (after "No input action 'jump' is"), and whether those are all it may name, so a name none of them is is known
     /// missing (not where the object the call is made on is not told, or what defines its names is not all read).</summary>
-    public sealed record Candidates(IReadOnlyList<GodotDefined> Names, string Where, bool Whole);
+    public sealed record Candidates(IReadOnlyList<GodotDefined> Names, string Where, bool Whole)
+    {
+        /// <summary>The names it may name beside those offered, so none is marked missing: a theme item of a class deriving
+        /// from the one the code knows the node as, or one the project's themes or scenes give another type.</summary>
+        public IReadOnlySet<string> Others { get; init; } = new HashSet<string>();
+    }
 
     /// <summary>A kind as its words name it.</summary>
     public static string What(GodotStringKind kind) => kind switch
@@ -645,7 +650,27 @@ internal static class GodotChecks
         GodotStringKind.Layer => "layer",
         GodotStringKind.TreeParameter => "AnimationTree parameter",
         GodotStringKind.ShaderGlobal => "global shader uniform",
+        GodotStringKind.ThemeColor => "theme color",
+        GodotStringKind.ThemeConstant => "theme constant",
+        GodotStringKind.ThemeFont => "theme font",
+        GodotStringKind.ThemeFontSize => "theme font size",
+        GodotStringKind.ThemeIcon => "theme icon",
+        GodotStringKind.ThemeStyle => "theme stylebox",
         _ => "translation",
+    };
+
+    /// <summary>Whether a kind is a theme item's.</summary>
+    public static bool IsTheme(GodotStringKind kind) => kind is >= GodotStringKind.ThemeColor and <= GodotStringKind.ThemeStyle;
+
+    /// <summary>A theme item's kind as a theme resource names it (<see cref="GodotThemeTable.Kinds"/>).</summary>
+    public static string ThemeKind(GodotStringKind kind) => kind switch
+    {
+        GodotStringKind.ThemeColor => "colors",
+        GodotStringKind.ThemeConstant => "constants",
+        GodotStringKind.ThemeFont => "fonts",
+        GodotStringKind.ThemeFontSize => "font_sizes",
+        GodotStringKind.ThemeIcon => "icons",
+        _ => "styles",
     };
 
     /// <summary>The scripts a class of the file runs as; none for a string written outside its classes.</summary>
@@ -657,9 +682,31 @@ internal static class GodotChecks
     /// player's or animated sprite's animations, an AnimationTree's parameters, a material's shader's uniforms, in each scene
     /// the script runs in; the project's for one not told.</summary>
     public static Candidates Named(GodotScenes scenes, GodotStringKind kind, IReadOnlyList<string> scripts, string? node, string? export, string? member)
+        => Named(scenes, kind, scripts, node, export, member, []);
+
+    /// <summary>What a string of a kind may name (<see cref="Named(GodotScenes, GodotStringKind, IReadOnlyList{string}, string?, string?, string?)"/>),
+    /// with the names the open Godot editor answers for it joined, each the files do not give said to be the editor's.</summary>
+    public static Candidates Named(GodotScenes scenes, GodotStringKind kind, IReadOnlyList<string> scripts, string? node, string? export, string? member, IReadOnlyList<string> editor)
+    {
+        Candidates read = FromFiles(scenes, kind, scripts, node, export, member);
+        HashSet<string> named = [.. read.Names.Select(n => n.Name)];
+        List<string> joined = [.. editor.Where(e => e.Length > 0 && named.Add(e))];
+        // The editor answers Godot's own ui_ actions among the project's, a newer Godot's those Passenger does not list.
+        return joined.Count == 0 ? read : read with
+        {
+            Names = [.. read.Names, .. joined.Select(e => new GodotDefined(e, kind == GodotStringKind.Action && e.StartsWith("ui_", StringComparison.Ordinal)
+                ? "Godot's own input action" : $"{What(kind)} the open Godot editor holds", []))],
+        };
+    }
+
+    private static Candidates FromFiles(GodotScenes scenes, GodotStringKind kind, IReadOnlyList<string> scripts, string? node, string? export, string? member)
     {
         GodotDefinitions defined = scenes.Defined;
         bool project = scenes.Texts.ContainsKey(GodotDefinitions.ProjectRes);
+        if (IsTheme(kind))
+        {
+            return ThemeNamed(defined, kind, member);
+        }
         switch (kind)
         {
             case GodotStringKind.Layer:
@@ -721,6 +768,36 @@ internal static class GodotChecks
             uniforms.AddRange(own);
         }
         return new Candidates(Merged(uniforms), $"a uniform of {Core.Plural.Listed([.. shaders.Select(GodotDefinitions.Shown)])}, the shader of {Core.Plural.Listed([.. told.Select(t => $"{t.Name}'s {member}")])}", whole);
+    }
+
+    /// <summary>What a theme item's name may be in the theme type the call looks it up in (<paramref name="type"/>, a class or
+    /// a type it names): the items of each type Godot looks in (<see cref="GodotThemeTable.Chain"/>) that Godot's default theme
+    /// and the project's themes give, its custom theme's first; beside them, as <see cref="Candidates.Others"/>, the items of
+    /// every class deriving from it, which the node may be, and those the project's themes and scenes give any type. Known
+    /// whole only for a type the carried table knows.</summary>
+    private static Candidates ThemeNamed(GodotDefinitions defined, GodotStringKind kind, string? type)
+    {
+        string what = What(kind);
+        if (type is null)
+        {
+            return new Candidates([], $"among a control's {what}s", false);
+        }
+        GodotThemeTable table = GodotThemeTable.Carried;
+        string items = ThemeKind(kind);
+        IReadOnlyList<string> chain = table.Chain(type);
+        List<GodotDefined> names = [];
+        foreach (GodotThemeItem item in defined.ThemeItems.Where(i => i.Kind == items && chain.Contains(i.Type)))
+        {
+            names.Add(new GodotDefined(item.Name, $"{item.Type}'s {what}", [item.Place]));
+        }
+        foreach (string at in chain)
+        {
+            names.AddRange(table.Items(at, items).Select(n => new GodotDefined(n, $"{at}'s {what} in Godot's default theme", [])));
+        }
+        HashSet<string> others = [.. table.Below(type).SelectMany(b => table.Items(b, items)),
+            .. defined.ThemeItems.Concat(defined.ThemeOverrides).Where(i => i.Kind == items).Select(i => i.Name)];
+        string themes = defined.ThemeItems.Count > 0 ? "Godot's default theme or the project's themes" : "Godot's default theme";
+        return new Candidates(Merged(names), $"among {type}'s {what}s in {themes}", table.Knows(type)) { Others = others };
     }
 
     /// <summary>The nodes an object a string's call is made on is, as the code tells it (by a node's path from the node its

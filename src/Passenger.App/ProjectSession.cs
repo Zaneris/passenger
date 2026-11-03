@@ -828,6 +828,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>Godot's own shader compiler, run for the session's shaders and ended with it.</summary>
     internal Godot.GodotShaderCompiler GodotShaderCompiler { get; }
 
+    /// <summary>The person's Godot editors open on the folder's projects, asked for what completion offers; let go of with it.</summary>
+    internal Godot.GodotIdeLink GodotIde { get; } = new();
+
     /// <summary>The open shaders' marks from Godot's compiler, and what it read of their uniforms.</summary>
     internal Godot.GodotShaderMarks GodotShaders { get; }
 
@@ -1293,6 +1296,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 Texts = setup.Editors.Texts,
                 GodotOf = BuiltGodotOf,
                 GodotScenes = GodotScenes,
+                GodotIde = GodotIde,
                 GodotCodeRead = GodotMarks.Changed,
                 Stylesheets = Stylesheets,
             };
@@ -1440,6 +1444,7 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotShaders.Stop();
         parts.Add(("Godot's shader compiler", GodotShaderCompiler.DisposeAsync().AsTask()));
         parts.Add(("Godot's editors", GodotEditors.DisposeAsync().AsTask()));
+        parts.Add(("the Godot editor's IDE messaging connection", GodotIde.DisposeAsync().AsTask()));
         MSBuild.Dispose();
         FileChecks.Dispose();
         return parts;
