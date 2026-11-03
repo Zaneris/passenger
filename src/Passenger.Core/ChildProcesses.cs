@@ -297,16 +297,17 @@ public static class ChildProcesses
 
     /// <summary><see cref="RunAsync(ProcessStartInfo, string, TimeSpan?, CancellationToken, IReadOnlyCollection{int}, int?)"/>
     /// for a child whose output is bytes: <paramref name="input"/> written to it as they are, what it writes handed to
-    /// <paramref name="read"/> as it comes and the rest passed over, its errors read whole. A read that fails ends the
-    /// child, and the task fails with what the read threw; so it does, with an <see cref="IOException"/>, where something
-    /// the child left running holds its output open past its end.</summary>
+    /// <paramref name="read"/> as it comes and the rest passed over, its errors read whole, the child handed to
+    /// <paramref name="started"/> as it starts. A read that fails ends the child, and the task fails with what the read
+    /// threw; so it does, with an <see cref="IOException"/>, where what the child left running holds its output open.</summary>
     public static async Task<ChildRead<T>> RunAsync<T>(ProcessStartInfo start, Func<Stream, Task<T>> read, ReadOnlyMemory<byte> input = default,
-        IReadOnlyCollection<int>? answers = null, CancellationToken cancel = default)
+        IReadOnlyCollection<int>? answers = null, CancellationToken cancel = default, Action<Process>? started = null)
     {
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         using Process process = await StartOffAsync(start, answers);
+        started?.Invoke(process);
         using CancellationTokenSource ending = CancellationTokenSource.CreateLinkedTokenSource(cancel);
         Reading errors = new(Errors(process));
         Task<T> output = ReadThroughAsync(process, read);

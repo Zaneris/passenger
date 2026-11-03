@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -146,7 +147,71 @@ public sealed record GitAnswer(string? Text, string? Password = null, string? Re
 /// <summary>Who answers what git asks while it reaches a remote, and how git reaches them: <see cref="Helper"/>, the
 /// program git runs to ask (Passenger's own executable), answers over a socket the operation opens in
 /// <see cref="SocketFolder"/> (one only the user reaches), asking <see cref="Ask"/> in turn.</summary>
-public sealed record GitAsker(string Helper, string SocketFolder, Func<GitQuestion, CancellationToken, Task<GitAnswer>> Ask);
+public sealed record GitAsker(string Helper, string SocketFolder, Func<GitQuestion, CancellationToken, Task<GitAnswer>> Ask)
+{
+    /// <summary>The window's gits that may ask, which end together (<see cref="GitQuestions.EndAsync"/>); none where they
+    /// end with nothing else.</summary>
+    public GitQuestions? Questions { get; init; }
+}
+
+/// <summary>The gits a window runs that may ask the person something, ended together as its folder closes
+/// (<see cref="EndAsync"/>): every question then answered as refused, which git takes as no answer and ends on its own,
+/// taking away what it holds (its index.lock), never killed while it still could.</summary>
+public sealed class GitQuestions
+{
+    private readonly CancellationTokenSource refusing = new();
+    private readonly Dictionary<Process, Task> running = [];
+
+    /// <summary>Cancelled once every question is to be refused.</summary>
+    internal CancellationToken Refusing => refusing.Token;
+
+    /// <summary>A git that may ask, its end heard apart from whatever flow waits for it there.</summary>
+    internal void Runs(Process process)
+    {
+        lock (running)
+        {
+            foreach (Process ended in running.Where(r => r.Value.IsCompleted).Select(r => r.Key).ToList())
+            {
+                running.Remove(ended);
+            }
+            running[process] = process.WaitForExitAsync();
+        }
+    }
+
+    /// <summary>Every question asked from now on answered as refused, and done once each git that may ask has ended on its
+    /// own, or at <paramref name="limit"/> ended with all it started; at once where none runs.</summary>
+    public Task EndAsync(TimeSpan limit)
+    {
+        KeyValuePair<Process, Task>[] gits;
+        lock (running)
+        {
+            gits = [.. running.Where(r => !r.Value.IsCompleted)];
+        }
+        if (gits.Length == 0)
+        {
+            refusing.Cancel();
+            return Task.CompletedTask;
+        }
+        // Not held, and off the caller's thread, whose loop may stop before git ends: nothing it does is drawn.
+        return BackgroundWork.Unheld(() => EndingAsync(gits, limit));
+    }
+
+    private async Task EndingAsync(KeyValuePair<Process, Task>[] gits, TimeSpan limit)
+    {
+        await refusing.CancelAsync();
+        try
+        {
+            await Task.WhenAll(gits.Select(g => g.Value)).WaitAsync(limit);
+        }
+        catch (TimeoutException)
+        {
+            foreach ((Process git, _) in gits.Where(g => !g.Value.IsCompleted))
+            {
+                ChildProcesses.Kill(git);
+            }
+        }
+    }
+}
 
 /// <summary>Git's askpass helper, both ends. Git runs with GIT_ASKPASS and SSH_ASKPASS naming Passenger's executable and
 /// <see cref="Variable"/> the operation's socket (<see cref="Prompting.Variables"/>); run with a prompt, the executable sends it
@@ -205,8 +270,9 @@ public static class GitAskPass
 
 /// <summary>An operation's socket for git's helper while git runs (<see cref="GitAskPass"/>): each question put to
 /// <see cref="GitAsker.Ask"/> in turn, a login's password kept for git's next question for the same place and then
-/// forgotten, the operation's background work let go while the person answers. The first question left unanswered is
-/// <see cref="Refused"/>. Disposed as git ends: a question still asked is taken away, and the socket goes.</summary>
+/// forgotten, the operation's background work let go while the person answers, and every question answered as refused
+/// once its <see cref="GitAsker.Questions"/> end. The first question left unanswered is <see cref="Refused"/>. Disposed as
+/// git ends: a question still asked is taken away, and the socket goes.</summary>
 internal sealed class Prompting : IAsyncDisposable
 {
     private static int opened;
@@ -216,6 +282,8 @@ internal sealed class Prompting : IAsyncDisposable
     private readonly string path;
     private readonly Func<IDisposable> apart;
     private readonly CancellationTokenSource ending;
+    private readonly CancellationToken refusing;
+    private readonly CancellationTokenSource asking;
     private readonly Task accepting;
 
     /// <summary>The password git asks for next, by the URL it will name, once a login's user is given.</summary>
@@ -230,6 +298,8 @@ internal sealed class Prompting : IAsyncDisposable
         this.path = path;
         this.apart = apart;
         ending = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        refusing = asker.Questions?.Refusing ?? CancellationToken.None;
+        asking = CancellationTokenSource.CreateLinkedTokenSource(ending.Token, refusing);
         // Not held: it waits for git's questions while git runs, which the operation's own hold covers.
         accepting = BackgroundWork.Unheld(AcceptAsync);
     }
@@ -272,6 +342,9 @@ internal sealed class Prompting : IAsyncDisposable
     /// <summary>Why the first question left unanswered was, in the asker's words; null while each was answered.</summary>
     public string? Refused => refused;
 
+    /// <summary>The operation's git, started, whose end its <see cref="GitAsker.Questions"/> wait for as they end.</summary>
+    public void Runs(Process git) => asker.Questions?.Runs(git);
+
     public async ValueTask DisposeAsync()
     {
         await ending.CancelAsync();
@@ -285,6 +358,7 @@ internal sealed class Prompting : IAsyncDisposable
             // Left for the next start to take away, as a dead process's socket is.
         }
         await accepting;
+        asking.Dispose();
         ending.Dispose();
     }
 
@@ -337,20 +411,33 @@ internal sealed class Prompting : IAsyncDisposable
         {
             return new GitAnswer(login.Password);
         }
-        IDisposable away = apart();
-        Task<GitAnswer> asking = asker.Ask(question, ending.Token);
-        // Taken again on the thread giving the answer, so no wait finds the work quiet before git goes on.
-        Task back = asking.ContinueWith(_ => away.Dispose(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         GitAnswer answer;
-        try
+        if (refusing.IsCancellationRequested)
         {
-            answer = await asking;
+            answer = GitAnswer.No(NotGiven(question));
         }
-        catch (OperationCanceledException) when (ending.IsCancellationRequested)
+        else
         {
-            answer = GitAnswer.No($"{question.Asks} was not given before git ended");
+            IDisposable away = apart();
+            Task<GitAnswer> asked = asker.Ask(question, asking.Token);
+            // Taken again on the thread giving the answer, so no wait finds the work quiet before git goes on.
+            Task back = asked.ContinueWith(_ => away.Dispose(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            try
+            {
+                // Refused apart from the asker, whose answer may need a window's thread that runs no more.
+                answer = await asked.WaitAsync(refusing);
+                await back;
+            }
+            catch (OperationCanceledException) when (refusing.IsCancellationRequested)
+            {
+                answer = GitAnswer.No(NotGiven(question));
+            }
+            catch (OperationCanceledException) when (ending.IsCancellationRequested)
+            {
+                answer = GitAnswer.No($"{question.Asks} was not given before git ended");
+                await back;
+            }
         }
-        await back;
         if (answer.Text is null)
         {
             refused ??= answer.Refused ?? $"{question.Asks} was not given";
@@ -361,6 +448,9 @@ internal sealed class Prompting : IAsyncDisposable
         }
         return answer;
     }
+
+    /// <summary>What a question refused as its folder closes says.</summary>
+    private static string NotGiven(GitQuestion question) => $"{question.Asks} was not given: its folder was closed first";
 }
 
 /// <summary>The background work an operation holds while git runs (<see cref="BackgroundWork.Scope"/>), let go while a

@@ -1354,7 +1354,7 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>What ends at once (the store's documents, the watcher, Local History, the bookmarks', places' and breakpoints'
     /// hold on the files left open, programs, builds, the profiled run and its port, a test run), and what is asked to end:
-    /// the test runner and the language server, with the parts given.</summary>
+    /// a git that may ask, its questions refused, the test runner and the language server, with the parts given.</summary>
     private List<(string What, Task Ending)> End(List<(string What, Task Ending)> parts, Task debuggers)
     {
         closing = true;
@@ -1370,6 +1370,7 @@ public sealed class ProjectSession : IAsyncDisposable
         // A build stopped now says so with nothing of this folder's in Problems, which another folder's take next.
         Problems.Clear();
         parts.Add(("the Aspire applications", Aspire.DisposeAsync().AsTask()));
+        parts.Add(("git", Vcs.EndGitAsync()));
         RunProgram.Stop();
         Builder.Stop();
         Packages.Stop();

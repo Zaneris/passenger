@@ -12,8 +12,9 @@ namespace Passenger.Tests;
 /// <summary>Signing from the Commit window: whether a commit is signed and with which key as git's config says, Sign
 /// turned off for one commit and Sign-off kept for the folder; a key's passphrase asked in Passenger's dialog, a wrong one
 /// and a key not there each saying why the commit was not made and how to mend it; and Commit Signing… setting SSH up in
-/// the repository's config alone, the key listed as an allowed signer. Every key is the test's own (ssh-keygen in a
-/// folder of its own, no agent), the run's empty global git config left as it is.</summary>
+/// the repository's config alone, the key listed as an allowed signer; a quit while the dialog asks refusing the
+/// passphrase, so git ends on its own, its index.lock gone. Every key is the test's own (ssh-keygen in a folder of its
+/// own, no agent), the run's empty global git config left as it is.</summary>
 public sealed class CommitSigningTests : IDisposable
 {
     private readonly List<string> folders = [];
@@ -88,6 +89,32 @@ public sealed class CommitSigningTests : IDisposable
         Assert.True(commit.Unsigned is null, $"The Commit window still says \"{commit.Unsigned}\" once the commit is made");
         Assert.False(Ui.IdeLog().Contains(Passphrase, StringComparison.Ordinal), "The passphrase typed is in the IDE's log");
         window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Quitting_while_git_waits_for_a_keys_passphrase_refuses_it_so_git_ends_on_its_own_leaving_no_index_lock()
+    {
+        Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
+        (string root, _) = Repository("tidal-gate-9");
+        MainWindow window = Open(root);
+        CommitView commit = window.CommitView;
+        Ui.Landed(() => commit.SignWith == "Sign with SSH key own.pub", "the Commit window's Sign with own.pub");
+        File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n    int count;\n}\n");
+        window.Perform(AppActions.CommitRefresh);
+        Ui.Landed(() => commit.Chosen.Count == 1, "Shop.cs's change listed");
+        commit.Message = "Never made";
+        Task<bool> committing = commit.CommitAsync(push: false);
+        Asked(window);
+        string held = Path.Combine(root, ".git", "index.lock");
+        Assert.True(File.Exists(held), "git holds no index.lock while it waits for the passphrase, so its end proves nothing");
+
+        Ui.CloseAsQuit(window);
+        // The process waits for the window's end with its loop stopped, the window's thread running nothing, as Main's end does.
+        Ui.Idle(window.Ended!, "what the closed window started to end", MainWindow.EndLimit + TimeSpan.FromSeconds(5));
+        Assert.False(File.Exists(held), "git still held .git/index.lock once the window's end was over: the process's end kills it holding the lock, "
+            + "and every git after fails until the person deletes it");
+        Assert.True(Show(root, "%s") == "First", $"A commit was made with its passphrase never given: {Show(root, "%s")}");
+        Assert.False(Ui.Await(committing, "the commit's end, heard once the window's thread runs again"), "The commit whose passphrase was refused says it was made");
     }
 
     [AvaloniaFact]

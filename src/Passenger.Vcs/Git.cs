@@ -1787,7 +1787,7 @@ public sealed partial class Git
         await using Prompting? prompting = Asking(start, asker, held, cancel);
         try
         {
-            ChildRead<T> ran = await ChildProcesses.RunAsync(start, read, input, answers, cancel);
+            ChildRead<T> ran = await ChildProcesses.RunAsync(start, read, input, answers, cancel, prompting is null ? null : prompting.Runs);
             return (new GitResult(ran.ExitCode, string.Empty, ran.Error, prompting?.Refused), ran.Output);
         }
         catch (System.ComponentModel.Win32Exception unstarted)

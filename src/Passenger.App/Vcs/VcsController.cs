@@ -1037,7 +1037,23 @@ public sealed class VcsController : IDisposable
             // The change's own hold let go too while the person answers, as its git's is.
             using IDisposable? away = held?.Apart();
             return await UiThread.InvokeAsync(() => ask(question, call, cancel));
-        });
+        }) is { } asker ? asker with { Questions = questions } : null;
+    }
+
+    /// <summary>The gits this folder's operations run that may ask the person something, which end with it.</summary>
+    private readonly GitQuestions questions = new();
+
+    /// <summary>How long a git that may ask is let end on its own as the folder closes, within the window's end
+    /// (<see cref="MainWindow.EndLimit"/>), before it is ended with all it started.</summary>
+    public static readonly TimeSpan GitEndLimit = TimeSpan.FromSeconds(3);
+
+    /// <summary>As the folder closes: every question its gits ask from now on answered as refused, and done once each git
+    /// that may ask has ended on its own, taking away its lock (index.lock), or at <see cref="GitEndLimit"/> been ended; at
+    /// once where none runs, so leaving the folder waits for nothing more.</summary>
+    public Task EndGitAsync()
+    {
+        UiThread.Check();
+        return questions.EndAsync(GitEndLimit);
     }
 
     /// <summary>The hold of the change to the tree under way (<see cref="OneAtATimeAsync"/>), let go while git asks the
