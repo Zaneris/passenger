@@ -25,14 +25,20 @@ public class GDScriptWarningsTests
           ],
           "classes": [
             { "name": "Object", "methods": [{ "name": "emit_signal", "return_value": { "type": "enum::Error" } }, { "name": "connect", "return_value": { "type": "enum::Error" } },
-              { "name": "disconnect" }] },
+              { "name": "disconnect" }, { "name": "get", "return_value": { "type": "Variant" } }] },
             { "name": "RefCounted", "inherits": "Object" },
-            { "name": "Node", "inherits": "Object", "methods": [{ "name": "get_node", "return_value": { "type": "Node" } }], "properties": [{ "name": "name", "type": "StringName" }] }
+            { "name": "Node", "inherits": "Object", "methods": [{ "name": "get_node", "return_value": { "type": "Node" } }, { "name": "_ready", "is_virtual": true }],
+              "properties": [{ "name": "name", "type": "StringName" }] },
+            { "name": "Node2D", "inherits": "Node" }, { "name": "Resource", "inherits": "RefCounted" }, { "name": "Script", "inherits": "Resource" },
+            { "name": "GDScript", "inherits": "Script" }
           ]
         }
         """;
 
     private static readonly GodotEngineApi Engine = GodotEngineApi.Read(Encoding.UTF8.GetBytes(Api));
+
+    /// <summary>The same API as Godot 4.8's dump, which says its version in its header.</summary>
+    private static readonly GodotEngineApi Engine48 = GodotEngineApi.Read(Encoding.UTF8.GetBytes("{ \"header\": { \"version_major\": 4, \"version_minor\": 8 }," + Api.TrimStart()[1..]));
 
     /// <summary>Every warning on, but the two of declarations' types unless the script asks for them, as Godot's test runner.</summary>
     private static GDScriptWarningSettings AsTested(string text) => GDScriptWarningSettings.Every with
@@ -41,10 +47,11 @@ public class GDScriptWarningsTests
             ? GDScriptWarnLevel.Ignore : GDScriptWarnLevel.Warn, StringComparer.Ordinal),
     };
 
-    private static (GDScriptAnalysis Analysis, IReadOnlyList<GDScriptFinding> Found) Read(string text, GDScriptWarningSettings? settings = null, string path = "res://main.gd")
+    private static (GDScriptAnalysis Analysis, IReadOnlyList<GDScriptFinding> Found) Read(string text, GDScriptWarningSettings? settings = null, string path = "res://main.gd",
+        GodotEngineApi? engine = null, Func<string, GDScriptTree?>? others = null)
     {
         GDScriptTree tree = GDScriptTree.Parse(text);
-        GDScriptProject project = new(Engine, p => p == path ? tree : null, new Dictionary<string, string>(), new Dictionary<string, string>());
+        GDScriptProject project = new(engine ?? Engine, p => p == path ? tree : others?.Invoke(p), new Dictionary<string, string>(), new Dictionary<string, string>());
         GDScriptAnalysis analysis = new GDScriptAnalyzer(project).Analyze(tree, path);
         return (analysis, analysis.Findings(settings ?? AsTested(text)));
     }
@@ -88,10 +95,67 @@ public class GDScriptWarningsTests
         "10 UNSAFE_CAST: Casting \"Variant\" to \"int\" is unsafe.", "11 UNSAFE_CAST: Casting \"Variant\" to \"Node\" is unsafe.",
         "15 UNSAFE_CAST: Casting \"Variant\" to \"int\" is unsafe.", "16 UNSAFE_CAST: Casting \"Variant\" to \"Node\" is unsafe.",
         "20 UNSAFE_CAST: Casting \"Variant\" to \"int\" is unsafe.", "21 UNSAFE_CAST: Casting \"Variant\" to \"Node\" is unsafe.")]
+    // analyzer/warnings/unsafe_call_argument.gd to its line 43, its constructors' calls after it left out.
+    [InlineData("func variant_func(x: Variant) -> void:\n\tprint(x)\n\nfunc int_func(x: int) -> void:\n\tprint(x)\n\nfunc float_func(x: float) -> void:\n\tprint(x)\n\n"
+        + "func node_func(x: Node) -> void:\n\tprint(x)\n\n# We don't want to execute it because of errors, just analyze.\nfunc no_exec_test():\n\tvar variant: Variant = null\n"
+        + "\tvar untyped_int = 42\n\tvar untyped_string = \"abc\"\n\tvar variant_int: Variant = 42\n\tvar variant_string: Variant = \"abc\"\n\tvar typed_int: int = 42\n\n"
+        + "\tvariant_func(untyped_int) # No warning.\n\tvariant_func(untyped_string) # No warning.\n\tvariant_func(variant_int) # No warning.\n\tvariant_func(variant_string) # No warning.\n"
+        + "\tvariant_func(typed_int) # No warning.\n\n\tint_func(untyped_int)\n\tint_func(untyped_string)\n\tint_func(variant_int)\n\tint_func(variant_string)\n"
+        + "\tint_func(typed_int) # No warning.\n\n\tfloat_func(untyped_int)\n\tfloat_func(untyped_string)\n\tfloat_func(variant_int)\n\tfloat_func(variant_string)\n"
+        + "\tfloat_func(typed_int) # No warning.\n\n\tnode_func(variant)\n\tnode_func(Object.new())\n\tnode_func(Node.new()) # No warning.\n\tnode_func(Node2D.new()) # No warning.\n\nfunc test():\n\tpass\n",
+        "28 UNSAFE_CALL_ARGUMENT: The argument 1 of the function \"int_func()\" requires the subtype \"int\" but the supertype \"Variant\" was provided.",
+        "29 UNSAFE_CALL_ARGUMENT: The argument 1 of the function \"int_func()\" requires the subtype \"int\" but the supertype \"Variant\" was provided.",
+        "30 UNSAFE_CALL_ARGUMENT: The argument 1 of the function \"int_func()\" requires the subtype \"int\" but the supertype \"Variant\" was provided.",
+        "31 UNSAFE_CALL_ARGUMENT: The argument 1 of the function \"int_func()\" requires the subtype \"int\" but the supertype \"Variant\" was provided.",
+        "34 UNSAFE_CALL_ARGUMENT: The argument 1 of the function \"float_func()\" requires the subtype \"float\" but the supertype \"Variant\" was provided.",
+        "35 UNSAFE_CALL_ARGUMENT: The argument 1 of the function \"float_func()\" requires the subtype \"float\" but the supertype \"Variant\" was provided.",
+        "36 UNSAFE_CALL_ARGUMENT: The argument 1 of the function \"float_func()\" requires the subtype \"float\" but the supertype \"Variant\" was provided.",
+        "37 UNSAFE_CALL_ARGUMENT: The argument 1 of the function \"float_func()\" requires the subtype \"float\" but the supertype \"Variant\" was provided.",
+        "40 UNSAFE_CALL_ARGUMENT: The argument 1 of the function \"node_func()\" requires the subtype \"Node\" but the supertype \"Variant\" was provided.",
+        "41 UNSAFE_CALL_ARGUMENT: The argument 1 of the function \"node_func()\" requires the subtype \"Node\" but the supertype \"Object\" was provided.")]
+    // UNSAFE_METHOD_ACCESS and UNSAFE_PROPERTY_ACCESS as Godot's analyzer pushes them (reduce_call, reduce_subscript), on an engine class's value.
+    [InlineData("func test():\n\tvar node: Node = null\n\tnode.unsafe_method_access()\n\tprint(node.unsafe_property_access)\n\tprint(node.name)\n"
+        + "\t@warning_ignore(\"unsafe_method_access\")\n\tnode.ignored()\n",
+        "3 UNSAFE_METHOD_ACCESS: The method \"unsafe_method_access()\" is not present on the inferred type \"Node\" (but may be present on a subtype).",
+        "4 UNSAFE_PROPERTY_ACCESS: The property \"unsafe_property_access\" is not present on the inferred type \"Node\" (but may be present on a subtype).")]
+    // analyzer/warnings/confusable_local_declaration.gd, confusable_local_usage.gd, its _initializer.gd and _loop.gd.
+    [InlineData("func test():\n\tif true:\n\t\tvar a = 1\n\t\tprint(a)\n\tvar a = 2\n\tprint(a)\n",
+        "3 CONFUSABLE_LOCAL_DECLARATION: The variable \"a\" is declared below in the parent block.")]
+    [InlineData("var a = 1\n\nfunc test():\n\tprint(a)\n\tvar a = 2\n\tprint(a)\n",
+        "4 CONFUSABLE_LOCAL_USAGE: The identifier \"a\" will be shadowed below in the block.",
+        "5 SHADOWED_VARIABLE: The local variable \"a\" is shadowing an already-declared variable at line 1 in the current class.")]
+    [InlineData("var a = 1\n\nfunc test():\n\tprint(a)\n\tvar a = a + 1\n\tprint(a)\n",
+        "4 CONFUSABLE_LOCAL_USAGE: The identifier \"a\" will be shadowed below in the block.",
+        "5 SHADOWED_VARIABLE: The local variable \"a\" is shadowing an already-declared variable at line 1 in the current class.",
+        "5 CONFUSABLE_LOCAL_USAGE: The identifier \"a\" will be shadowed below in the block.")]
+    [InlineData("var a = 1\n\nfunc test():\n\tfor _i in 3:\n\t\tprint(a)\n\t\tvar a = 2\n\t\tprint(a)\n",
+        "5 CONFUSABLE_LOCAL_USAGE: The identifier \"a\" will be shadowed below in the block.",
+        "6 SHADOWED_VARIABLE: The local variable \"a\" is shadowing an already-declared variable at line 1 in the current class.")]
+    // Object's free, which no dump of the API lists, and a script's constant read through a constant typed GDScript (runtime/features/metatypes.gd).
+    [InlineData("class MyClass:\n\tconst TEST = 10\n\nfunc test():\n\tvar node: Node = Node.new()\n\tnode.free()\n\tconst ClassNoMeta: GDScript = MyClass\n\tvar b := ClassNoMeta.TEST\n\tprint(b)\n")]
+    [InlineData("func test():\n\tprint(\"warn\")\n\nfunc get(_property: StringName) -> Variant:\n\treturn null\n",
+        "4 NATIVE_METHOD_OVERRIDE: The method \"get()\" overrides a method from native class \"Object\". This won't be called by the engine and may not work as expected.")]
     public void Godots_own_test_scripts_give_the_warnings_their_expected_output_says(string script, params string[] expected)
     {
         (_, IReadOnlyList<GDScriptFinding> found) = Read(script);
         Assert.Equal(expected, Lines(script, found));
+    }
+
+    [Fact]
+    public void A_virtual_overridden_or_a_method_a_base_script_declares_is_no_native_override_and_onready_casts_are_marked_from_Godot_4_8()
+    {
+        string script = "extends Node\n\nfunc _ready():\n\tpass\n\nfunc _notification(_what):\n\tpass\n\nfunc get(_property: StringName) -> Variant:\n\treturn null\n";
+        Assert.Equal(["9 NATIVE_METHOD_OVERRIDE: The method \"get()\" overrides a method from native class \"Object\". This won't be called by the engine and may not work as expected."],
+            Lines(script, Read(script).Found));
+        GDScriptTree based = GDScriptTree.Parse("extends Node\n\nfunc get(_property: StringName) -> Variant:\n\treturn 1\n");
+        string derived = "extends \"res://base.gd\"\n\nfunc get(_property: StringName) -> Variant:\n\treturn null\n";
+        Assert.Empty(Read(derived, others: p => p == "res://base.gd" ? based : null).Found);
+        string casts = "extends Node\n\n@onready var untyped_cast = $Node as Node2D\n@onready var inferred_cast := $Node as Node2D\n@onready var explicit_cast: Node2D = $Node as Node2D\n\n"
+            + "@onready var untyped_direct = $Node\n@onready var inferred_direct := $Node\n@onready var explicit_direct: Node2D = $Node\n@onready var unique := %Unique as Node2D\n";
+        string message = "\"as\" will silently return \"null\" if the type of \"{0}\" is wrong. Prefer assigning the node directly to an explicitly typed variable to get an error in such cases.";
+        Assert.Equal(new[] { 3, 4, 5 }.Select(l => $"{l} ONREADY_WITH_CAST: {string.Format(System.Globalization.CultureInfo.InvariantCulture, message, "$Node")}")
+            .Append($"10 ONREADY_WITH_CAST: {string.Format(System.Globalization.CultureInfo.InvariantCulture, message, "%%Unique")}"), Lines(casts, Read(casts, engine: Engine48).Found));
+        Assert.Empty(Read(casts).Found);
     }
 
     [Fact]

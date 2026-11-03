@@ -179,7 +179,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
                     autoloads[autoload.Name] = file;
                 }
             }
-            GDScriptAnalyzer analyzer = new(new GDScriptProject(api, p => trees.GetValueOrDefault(p), classNames, autoloads, uids: scenes.ResOfUid));
+            GDScriptAnalyzer analyzer = new(new GDScriptProject(api, p => trees.GetValueOrDefault(p), classNames, autoloads, uids: scenes.ResOfUid, nodes: NodesOf(scenes)));
             return (IReadOnlyList<GDScriptRead>?)[.. trees.Select(t => new GDScriptRead(t.Key, analyzer.Analyze(t.Value, t.Key)))];
         });
     }
@@ -367,7 +367,40 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
                 autoloads[autoload.Name] = file;
             }
         }
-        return new GDScriptProject(api, Tree, classNames, autoloads, uids: scenes.ResOfUid);
+        return new GDScriptProject(api, Tree, classNames, autoloads, uids: scenes.ResOfUid, nodes: NodesOf(scenes));
+    }
+
+    /// <summary>The node a script's node path reaches, as every scene running the script has it: its engine class and the
+    /// script it runs; null where a scene reaches none, one of no class written (an instance), or they differ. Each read once.</summary>
+    private static Func<string, string, GDScriptNodeAt?> NodesOf(GodotScenes scenes)
+    {
+        Dictionary<(string, string), GDScriptNodeAt?> known = [];
+        return (script, path) =>
+        {
+            lock (known)
+            {
+                if (known.TryGetValue((script, path), out GDScriptNodeAt? had))
+                {
+                    return had;
+                }
+            }
+            GDScriptNodeAt? found = null;
+            foreach ((_, GodotTreeNode node) in scenes.RunsOf(script))
+            {
+                GDScriptNodeAt? here = GodotScenes.Resolve(node, path) is { Found: { Type: { } type } reached, Unknown: false } ? new GDScriptNodeAt(type, reached.Script) : null;
+                if (here is null || found is not null && found != here)
+                {
+                    found = null;
+                    break;
+                }
+                found = here;
+            }
+            lock (known)
+            {
+                known[(script, path)] = found;
+            }
+            return found;
+        };
     }
 
     /// <summary>Each other script's tree, parsed once for each text the project reads.</summary>

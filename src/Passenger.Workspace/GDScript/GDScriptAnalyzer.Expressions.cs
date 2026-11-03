@@ -135,7 +135,15 @@ public sealed partial class GDScriptAnalyzer
     /// parser marks a suite (<c>has_return</c>).</summary>
     private bool WalkSuite(GDScriptSuite suite, Context context)
     {
-        Scope scope = new(context.Scope);
+        Dictionary<string, string> declared = new(StringComparer.Ordinal);
+        foreach (GDScriptNode statement in suite.Statements)
+        {
+            if (statement is GDScriptAssignable { Identifier: { } named } assignable and (GDScriptVariable or GDScriptConstant))
+            {
+                declared.TryAdd(named.Name, assignable is GDScriptConstant ? "constant" : "variable");
+            }
+        }
+        Scope scope = new(context.Scope) { Suite = declared };
         Context inside = context with { Scope = scope };
         bool returns = false;
         bool unreachable = false;
@@ -159,6 +167,7 @@ public sealed partial class GDScriptAnalyzer
         switch (statement)
         {
             case GDScriptVariable { Identifier: { } name } variable:
+                ConfusableDeclaration(name, scope, context);
                 GDScriptType type = AssignableType(variable, context, constant: false);
                 Record(analysis, variable, type, context);
                 Local declared = new(variable, name, LocalKind.Variable) { Assignments = variable.Initializer is null ? 0 : 1 };
@@ -166,6 +175,7 @@ public sealed partial class GDScriptAnalyzer
                 Declaring(variable, type, "variable", local: true, context);
                 return false;
             case GDScriptConstant { Identifier: { } name } constant:
+                ConfusableDeclaration(name, scope, context);
                 GDScriptType constantType = AssignableType(constant, context, constant: true);
                 Record(analysis, constant, constantType, context);
                 scope.Add(name.Name, constantType, new GDScriptDeclaration(analysis.Path, context.Offset + name.Start, name.Name, constantType), new Local(constant, name, LocalKind.Constant));
@@ -371,6 +381,10 @@ public sealed partial class GDScriptAnalyzer
                 return Identifier(identifier, context);
             case GDScriptSubscript { IsAttribute: true } attribute:
                 GDScriptType owner = Reduce(attribute.Base, context);
+                if (attribute.Attribute is { } named && Unsafe(owner, named.Name))
+                {
+                    Warn(context, attribute, "UNSAFE_PROPERTY_ACCESS", named.Name, owner.Name);
+                }
                 return attribute.Attribute is { } name ? Attribute(owner, name, context) : GDScriptType.Variant;
             case GDScriptSubscript subscript:
                 GDScriptType indexed = Reduce(subscript.Base, context);
@@ -433,8 +447,8 @@ public sealed partial class GDScriptAnalyzer
                     Reduce(item, context);
                 }
                 return GDScriptType.Builtin("Dictionary");
-            case GDScriptGetNode:
-                return GDScriptType.Native("Node");
+            case GDScriptGetNode get:
+                return NodeTyped(get.Path, context);
             case GDScriptPreload preload:
                 Reduce(preload.Path, context);
                 return preload.Path is GDScriptLiteral { Value: string path } ? Preloaded(Absolute(path, context.Analysis.Path)) : GDScriptType.Native("Resource");
@@ -476,6 +490,10 @@ public sealed partial class GDScriptAnalyzer
                 }
             }
             return local.Type;
+        }
+        if (context.Scope?.InSuites(identifier.Name) is not null)
+        {
+            Warn(context, identifier, "CONFUSABLE_LOCAL_USAGE", identifier.Name);
         }
         if (Member(context.Class, identifier.Name) is { } member)
         {
@@ -529,6 +547,29 @@ public sealed partial class GDScriptAnalyzer
         }
         return GDScriptType.Variant.Soft;
     }
+
+    /// <summary>A node path's node's type as the scenes running the script give it, its script's class where it runs one,
+    /// else its engine class; Node, as Godot's own reduce_get_node types it, where they don't say.</summary>
+    private GDScriptType NodeTyped(string path, Context context)
+    {
+        if (project.NodeAt(context.Analysis.Path, path) is not { } node)
+        {
+            return GDScriptType.Native("Node");
+        }
+        if (node.Script is { } script && project.Script(script) is { } tree)
+        {
+            return ScriptClass(tree, script);
+        }
+        return Engine?.Classes.ContainsKey(node.Class) == true ? GDScriptType.Native(node.Class) : GDScriptType.Native("Node");
+    }
+
+    /// <summary>Whether a member of a name read off a value is one Godot warns of as unsafe (its UNSAFE_PROPERTY_ACCESS and
+    /// UNSAFE_METHOD_ACCESS): the value's type an engine class, known hard, the engine's whole API read, and no member so
+    /// named on it or its bases. A script class's, a script's (whose class Godot reads through it) and a value of no type
+    /// are left, whose members another reading may hold.</summary>
+    private bool Unsafe(GDScriptType owner, string name) =>
+        owner is { Kind: GDScriptTypeKind.Native, Hard: true, Meta: false } && Engine is { } engine && engine.Classes.ContainsKey(owner.Name)
+        && !engine.Extends(owner.Name, "Script") && Member(owner, name) is null;
 
     /// <summary>A member's type read off a value or a type (Godot's reduce_identifier_from_base): an enum's value, a
     /// built-in type's constant or member, a class's or engine class's member; a method read as a value is a Callable.</summary>
@@ -601,6 +642,12 @@ public sealed partial class GDScriptAnalyzer
     private GDScriptType Call(GDScriptCall call, Context context, bool root, bool awaited)
     {
         GDScriptType returned = CallOnce(call, context);
+        // The script's own get_node of a path its scenes give a node of a type.
+        if (call is { Callee: GDScriptIdentifier { Name: "get_node" } or GDScriptSubscript { Base: GDScriptSelf, Attribute.Name: "get_node" }, Arguments: [GDScriptLiteral { Value: string path }] }
+            && context.Scope?.Find("get_node") is null && project.NodeAt(context.Analysis.Path, path) is not null)
+        {
+            returned = NodeTyped(path, context);
+        }
         if (context.Analysis.Tree is null)
         {
             return returned;
@@ -626,6 +673,10 @@ public sealed partial class GDScriptAnalyzer
                 }
             }
         }
+        if (called is not null && context.Analysis.Declared.GetValueOrDefault(called) is { Script: { } script } function)
+        {
+            UnsafeArguments(call, script, function, context);
+        }
         bool self = call.Callee is GDScriptIdentifier || call.Callee is GDScriptSubscript { IsAttribute: true, Base: GDScriptSelf };
         if (self && call.FunctionName is "emit_signal" or "connect" or "disconnect" && call.Arguments is [GDScriptLiteral { Value: string signal }, ..])
         {
@@ -642,6 +693,45 @@ public sealed partial class GDScriptAnalyzer
         }
         return returned;
     }
+
+    /// <summary>A script function's call warned of each argument Godot's validate_call_arg calls unsafe (UNSAFE_CALL_ARGUMENT),
+    /// where its parameter's type is written: a local written with no type or as Variant passed, or an engine class's
+    /// value where it asks for one of that class's subclasses.</summary>
+    private void UnsafeArguments(GDScriptCall call, string script, GDScriptDeclaration declared, Context context)
+    {
+        if (project.Script(script) is not { } tree
+            || tree.Members.FirstOrDefault(m => m.Node is GDScriptFunction { Identifier: { } n } && m.Offset + n.Start == declared.Start).Node is not GDScriptFunction function)
+        {
+            return;
+        }
+        for (int i = 0; i < call.Arguments.Count && i < function.Parameters.Count; i++)
+        {
+            if (function.Parameters[i].Type is not { Chain: [{ } written], Elements.Count: 0 } || Engine is null)
+            {
+                continue;
+            }
+            GDScriptType wanted = FromApi(written.Name);
+            if (wanted.IsVariant || wanted.Kind is not (GDScriptTypeKind.Builtin or GDScriptTypeKind.Native))
+            {
+                continue;
+            }
+            GDScriptExpression argument = call.Arguments[i];
+            GDScriptType given = context.Analysis.TypeOf(argument);
+            string? supertype = argument is GDScriptIdentifier name && context.Scope?.Find(name.Name) is { Local.Node: GDScriptAssignable local } && Untyped(local) ? "Variant"
+                : given is { Kind: GDScriptTypeKind.Native, Hard: true, Meta: false } && wanted.Kind == GDScriptTypeKind.Native && given.Name != wanted.Name
+                    && Engine.Extends(wanted.Name, given.Name) ? given.Name
+                : null;
+            if (supertype is not null)
+            {
+                Warn(context, argument, "UNSAFE_CALL_ARGUMENT", (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), "function", call.FunctionName ?? string.Empty,
+                    wanted.ToString(), supertype);
+            }
+        }
+    }
+
+    /// <summary>Whether a local or parameter is declared with no type written nor inferred, or as Variant.</summary>
+    private static bool Untyped(GDScriptAssignable local) =>
+        local is GDScriptVariable or GDScriptParameter && (local.Type is null && !local.Infers || local.Type is { Chain: [{ Name: "Variant" }] });
 
     /// <summary>What a call gives (Godot's reduce_call): a built-in type's constructor its type, a function's or method's
     /// return type, the script's own, its base classes', the engine's or a utility function's; <c>new()</c> an instance.</summary>
@@ -701,6 +791,10 @@ public sealed partial class GDScriptAnalyzer
                 return GDScriptType.Variant.Soft;
             case GDScriptSubscript { IsAttribute: true, Attribute: { } method } attribute:
                 GDScriptType owner = Reduce(attribute.Base, context);
+                if (attribute.Base is not GDScriptSelf && Unsafe(owner, method.Name))
+                {
+                    Warn(context, call, "UNSAFE_METHOD_ACCESS", method.Name, owner.Name);
+                }
                 context.Analysis.Types[method] = GDScriptType.Builtin("Callable");
                 GDScriptType called = MethodCall(owner, method, context);
                 if (owner.Kind is not GDScriptTypeKind.Variant)

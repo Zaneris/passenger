@@ -88,6 +88,34 @@ public sealed class GDScriptTypesTests
         }
     }
 
+    /// <summary>A node path of a script its scene runs: <c>$Title</c>, a Label there, completes the Label's members, its
+    /// text among them, which Node has not.</summary>
+    [AvaloniaFact]
+    public void A_node_path_completes_the_members_of_the_node_the_scene_running_the_script_gives_it()
+    {
+        TestFolders.Write(folder, "main.tscn", "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://main.gd\" id=\"1\"]\n\n"
+            + "[node name=\"Main\" type=\"Node\"]\nscript = ExtResource(\"1\")\n\n[node name=\"Title\" type=\"Label\" parent=\".\"]\n");
+        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "\tgrow()");
+            editor.Focus();
+            Ui.Press(window, "ENTER", settle: false);
+            window.KeyTextInput("$Title.");
+            Ui.PumpUntil(() => window.Assist.CompletionLabels.Count > 0, "the members after $Title's dot", TimeSpan.FromSeconds(60));
+            window.KeyTextInput("tex");
+            bool listed = Ui.Pumped(() => window.Assist.CompletionLabels.Contains("text"), TimeSpan.FromSeconds(30));
+            Assert.True(listed, $"After $Title's dot the list held no Label's text: {string.Join(", ", window.Assist.CompletionLabels.Take(20))}");
+            Assert.True(window.Session.Web?.For(document) is not { Serving: true }, "Godot's server answered: the test's hold of its start did not hold");
+        }
+        finally
+        {
+            window.Close();
+            release.SetResult();
+        }
+    }
+
     private const string Warned = "extends Node\n\n\nfunc coroutine() -> int:\n\tawait get_tree().process_frame\n\tprint(\"waited\")\n\n\n"
         + "func _ready() -> void:\n\tvar unused := 1\n\tcoroutine()\n";
 

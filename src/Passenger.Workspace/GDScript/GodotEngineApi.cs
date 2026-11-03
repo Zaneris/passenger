@@ -6,7 +6,11 @@ namespace Passenger.Workspace.GDScript;
 /// <summary>A method or function of Godot's API: what it returns as the API writes a type (<c>"void"</c> for nothing,
 /// <c>"enum::Node.ProcessMode"</c>, <c>"typedarray::Node"</c>), its parameters' names and types, how many a call must give,
 /// and whether it takes any number more or is called on its class.</summary>
-public sealed record GodotApiMethod(string Name, string Returns, IReadOnlyList<(string Name, string Type)> Parameters, int Required, bool Varargs, bool IsStatic);
+public sealed record GodotApiMethod(string Name, string Returns, IReadOnlyList<(string Name, string Type)> Parameters, int Required, bool Varargs, bool IsStatic)
+{
+    /// <summary>Whether a script's class overriding it is what the engine calls (<c>_ready</c>), as the dump's is_virtual says.</summary>
+    public bool IsVirtual { get; init; }
+}
 
 /// <summary>An enum of Godot's API with its values by name.</summary>
 public sealed record GodotApiEnum(string Name, IReadOnlyDictionary<string, long> Values, bool IsBitfield);
@@ -64,6 +68,9 @@ public sealed class GodotEngineApi
 
     public HashSet<string> GlobalConstants { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>The Godot that wrote the dump, as its header says (4.8 for 4.8 beta 2); null where it says none.</summary>
+    public Version? Version { get; private set; }
+
     /// <summary>GDScript's own functions, which no dump of the API holds (modules/gdscript/gdscript_utility_functions.cpp).</summary>
     private static readonly (string Name, string Returns, int Required, bool Varargs)[] GDScriptFunctions =
     [
@@ -91,6 +98,10 @@ public sealed class GodotEngineApi
         Utf8JsonReader reader = new(json, new JsonReaderOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
         using JsonDocument document = JsonDocument.ParseValue(ref reader);
         JsonElement root = document.RootElement;
+        if (JsonMembers.Object(root, "header") is { } header && Count(header, "version_major") is int major && Count(header, "version_minor") is int minor)
+        {
+            api.Version = new Version(major, minor);
+        }
         foreach (JsonElement type in Array(root, "builtin_classes"))
         {
             GodotApiClass builtin = new() { Name = Text(type, "name") ?? string.Empty, IsBuiltin = true, Indexing = Text(type, "indexing_return_type") };
@@ -151,8 +162,10 @@ public sealed class GodotEngineApi
         {
             foreach (GodotApiMethod virtualMethod in ObjectVirtuals)
             {
-                baseObject.Methods.TryAdd(virtualMethod.Name, virtualMethod);
+                baseObject.Methods.TryAdd(virtualMethod.Name, virtualMethod with { IsVirtual = true });
             }
+            // Godot's ClassDB holds free among Object's virtuals, with no method bind, so no dump lists it.
+            baseObject.Methods.TryAdd("free", new GodotApiMethod("free", "void", [], 0, false, false) { IsVirtual = true });
         }
         foreach (JsonElement singleton in Array(root, "singletons"))
         {
@@ -196,7 +209,10 @@ public sealed class GodotEngineApi
             required += JsonMembers.Scalar(argument, "default_value") is null ? 1 : 0;
         }
         string returns = type ?? (JsonMembers.Object(method, "return_value") is { } value ? Text(value, "type") ?? "Variant" : "void");
-        return new GodotApiMethod(Text(method, "name") ?? string.Empty, returns, parameters, required, Flag(method, "is_vararg"), Flag(method, "is_static"));
+        return new GodotApiMethod(Text(method, "name") ?? string.Empty, returns, parameters, required, Flag(method, "is_vararg"), Flag(method, "is_static"))
+        {
+            IsVirtual = Flag(method, "is_virtual"),
+        };
     }
 
     private static void Enums(JsonElement owner, Dictionary<string, GodotApiEnum> into, string property = "enums")
@@ -218,4 +234,7 @@ public sealed class GodotEngineApi
     private static string? Text(JsonElement owner, string property) => JsonMembers.Text(owner, property);
 
     private static bool Flag(JsonElement owner, string property) => JsonMembers.Bool(owner, property) == true;
+
+    private static int? Count(JsonElement owner, string property) =>
+        int.TryParse(JsonMembers.Scalar(owner, property), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int read) ? read : null;
 }

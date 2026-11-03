@@ -100,6 +100,13 @@ public sealed partial class GDScriptAnalyzer
 
         /// <summary>Whether a name is declared in it itself, not in a scope it is inside.</summary>
         public bool Holds(string name) => names.ContainsKey(name);
+
+        /// <summary>A suite's own variables and constants, wherever in it each is declared, by name with its kind.</summary>
+        public IReadOnlyDictionary<string, string>? Suite { get; init; }
+
+        /// <summary>What a name is declared as anywhere in this suite or one it is inside, as Godot's has_local reads a suite
+        /// once its parser is done with it; null where none declares it.</summary>
+        public string? InSuites(string name) => Suite?.GetValueOrDefault(name) ?? Parent?.InSuites(name);
     }
 
     /// <summary>A local's uses and assignments as Godot counts them, for its warnings: what declares it (a variable, constant,

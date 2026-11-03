@@ -58,6 +58,9 @@ public sealed partial class GDScriptAnalyzer
         "UNTYPED_DECLARATION" => s[0] == "Function" ? $"{s[0]} \"{s[1]}()\" has no static return type." : $"{s[0]} \"{s[1]}\" has no static type.",
         "INFERRED_DECLARATION" => $"{s[0]} \"{s[1]}\" has an implicitly inferred static type.",
         "UNSAFE_CAST" => $"Casting \"Variant\" to \"{s[0]}\" is unsafe.",
+        "UNSAFE_PROPERTY_ACCESS" => $"The property \"{s[0]}\" is not present on the inferred type \"{s[1]}\" (but may be present on a subtype).",
+        "UNSAFE_METHOD_ACCESS" => $"The method \"{s[0]}()\" is not present on the inferred type \"{s[1]}\" (but may be present on a subtype).",
+        "UNSAFE_CALL_ARGUMENT" => $"The argument {s[0]} of the {s[1]} \"{s[2]}()\" requires the subtype \"{s[3]}\" but the supertype \"{s[4]}\" was provided.",
         "RETURN_VALUE_DISCARDED" => $"The function \"{s[0]}()\" returns a value that will be discarded if not used.",
         "REDUNDANT_AWAIT" => "\"await\" keyword is unnecessary because the expression isn't a coroutine nor a signal.",
         "MISSING_AWAIT" => "\"await\" keyword might be desired because the expression is a coroutine.",
@@ -70,6 +73,10 @@ public sealed partial class GDScriptAnalyzer
         "INFERENCE_ON_VARIANT" => $"The {s[0]} type is being inferred from a Variant value, so it will be typed as Variant.",
         "GET_NODE_DEFAULT_WITHOUT_ONREADY" => $"The default value uses \"{s[0]}\" which won't return nodes in the scene tree before \"_ready()\" is called. Use the \"@onready\" annotation to solve this.",
         "ONREADY_WITH_EXPORT" => "\"@onready\" will set the default value after \"@export\" takes effect and will override it.",
+        "CONFUSABLE_LOCAL_DECLARATION" => $"The {s[0]} \"{s[1]}\" is declared below in the parent block.",
+        "CONFUSABLE_LOCAL_USAGE" => $"The identifier \"{s[0]}\" will be shadowed below in the block.",
+        "ONREADY_WITH_CAST" => $"\"as\" will silently return \"null\" if the type of \"{s[0]}\" is wrong. Prefer assigning the node directly to an explicitly typed variable to get an error in such cases.",
+        "NATIVE_METHOD_OVERRIDE" => $"The method \"{s[0]}()\" overrides a method from native class \"{s[1]}\". This won't be called by the engine and may not work as expected.",
         _ => code,
     };
 
@@ -132,14 +139,18 @@ public sealed partial class GDScriptAnalyzer
         return name is not null && analysis.Declared.GetValueOrDefault(name) is { } declared && declared.Script == analysis.Path && analysis.WrittenVariant.Contains(declared.Start);
     }
 
-    /// <summary>A class variable's warnings of its own: <c>@onready</c> with <c>@export</c>, and a node got as its default
-    /// value before the tree has it, without <c>@onready</c>.</summary>
-    private static void MemberVariableWarnings(GDScriptVariable variable, Context context)
+    /// <summary>A class variable's warnings of its own: <c>@onready</c> with <c>@export</c> or (from Godot 4.8) with a node
+    /// path cast by <c>as</c>, and a node got as its default value before the tree has it, without <c>@onready</c>.</summary>
+    private void MemberVariableWarnings(GDScriptVariable variable, Context context)
     {
         bool onready = variable.Annotations.Any(a => a.Name == "@onready");
         if (onready && variable.Annotations.Any(a => a.Name.StartsWith("@export", StringComparison.Ordinal)))
         {
             Warn(context, variable, "ONREADY_WITH_EXPORT");
+        }
+        if (onready && variable.Initializer is GDScriptCast { Operand: GDScriptGetNode path } cast && Engine?.Version >= new Version(4, 8))
+        {
+            Warn(context, cast, "ONREADY_WITH_CAST", (path.UsesDollar ? "$" : "%") + path.Path);
         }
         if (variable.IsStatic || onready || variable.Initializer is not { } value)
         {
@@ -169,9 +180,51 @@ public sealed partial class GDScriptAnalyzer
                 Warn(context, parameter.Name, "UNUSED_PARAMETER", FunctionName(function), parameter.Name.Name);
             }
         }
+        NativeOverride(function, context);
         if (!returns && !function.IsAbstract && function.ReturnType is { IsVoid: false } declared && (function.IsLambda || function.Identifier?.Name is not ("_init" or "_static_init")))
         {
             Error(context, declared, "Not all code paths return a value.");
+        }
+    }
+
+    /// <summary>A local declared in a block while a block it is inside declares the name further down, as Godot's
+    /// resolve_assignable warns of it.</summary>
+    private static void ConfusableDeclaration(GDScriptIdentifier name, Scope scope, Context context)
+    {
+        if (scope.Parent?.InSuites(name.Name) is { } kind)
+        {
+            Warn(context, name, "CONFUSABLE_LOCAL_DECLARATION", kind, name.Name);
+        }
+    }
+
+    /// <summary>A function named as a method an engine class it extends binds, not a virtual one, which the engine never
+    /// calls in its place; none where a script class on the way declares the name or the way is not known throughout.</summary>
+    private void NativeOverride(GDScriptFunction function, Context context)
+    {
+        if (function.IsLambda || function.Identifier is not { } name)
+        {
+            return;
+        }
+        GDScriptType? at = BaseOf(context.Class);
+        for (int depth = 0; at is { Kind: GDScriptTypeKind.Class } && depth < 64; depth++)
+        {
+            if (at.Class is null || OwnNames(at).ContainsKey(name.Name))
+            {
+                return;
+            }
+            at = BaseOf(at);
+        }
+        for (int depth = 0; at is { Kind: GDScriptTypeKind.Native } && Engine?.Classes.GetValueOrDefault(at.Name) is { } engine && depth < 64; depth++)
+        {
+            if (engine.Methods.TryGetValue(name.Name, out GodotApiMethod? method))
+            {
+                if (!method.IsVirtual)
+                {
+                    Warn(context, name, "NATIVE_METHOD_OVERRIDE", name.Name, engine.Name);
+                }
+                return;
+            }
+            at = engine.Inherits is { } parent ? GDScriptType.Native(parent) : null;
         }
     }
 

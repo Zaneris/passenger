@@ -63,6 +63,23 @@ public class GDScriptAnalyzerTests
         return (analyzer.Analyze(trees["res://main.gd"], "res://main.gd"), analyzer);
     }
 
+    [Fact]
+    public void A_node_path_is_typed_as_the_scenes_running_the_script_give_its_node_else_as_a_node()
+    {
+        GDScriptTree main = GDScriptTree.Parse("extends Node\n\nfunc f():\n\tvar a := $Body\n\tvar b := get_node(\"Body\")\n\tvar c := $Gone\n\tvar d := $Mover\n");
+        GDScriptTree mover = GDScriptTree.Parse("class_name Mover\nextends Node2D\n");
+        Dictionary<string, GDScriptTree> trees = new(StringComparer.Ordinal) { ["res://main.gd"] = main, ["res://mover.gd"] = mover };
+        GDScriptAnalyzer analyzer = new(new GDScriptProject(Engine, path => trees.GetValueOrDefault(path), new Dictionary<string, string> { ["Mover"] = "res://mover.gd" },
+            new Dictionary<string, string>(), nodes: (script, path) => (script, path) switch
+            {
+                ("res://main.gd", "Body") => new GDScriptNodeAt("Node2D", null),
+                ("res://main.gd", "Mover") => new GDScriptNodeAt("Node2D", "res://mover.gd"),
+                _ => null,
+            }));
+        GDScriptAnalysis analysis = analyzer.Analyze(main, "res://main.gd");
+        Assert.Equal([": Node2D", ": Node2D", ": Node", ": Mover"], analysis.Inferred().Select(i => $": {i.Type}"));
+    }
+
     private static string[] Details(GDScriptAnalysis analysis) => [.. analysis.Tree!.Members.Select(m => analysis.Detail(m.Node)).OfType<string>()];
 
     [Fact]

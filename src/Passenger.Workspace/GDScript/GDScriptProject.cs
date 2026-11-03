@@ -1,12 +1,20 @@
 namespace Passenger.Workspace.GDScript;
 
+/// <summary>A node a script's node path reaches in its scenes: its engine class, and the script it runs, where it runs one.</summary>
+public sealed record GDScriptNodeAt(string Class, string? Script);
+
 /// <summary>What a GDScript's types are resolved against: the engine's API (none where no Godot could be asked), each script
 /// of the project by its res:// path, each <c>class_name</c> by the script that gives it, the autoloads by the script each
 /// runs, and a resource's class by its path (a scene's <c>PackedScene</c>, a <c>.tres</c>'s own). Pure; its scripts are
 /// parsed once each where asked.</summary>
 public sealed class GDScriptProject(GodotEngineApi? engine, Func<string, GDScriptTree?> scripts, IReadOnlyDictionary<string, string> classNames,
-    IReadOnlyDictionary<string, string> autoloads, Func<string, string?>? resourceClass = null, Func<string, string?>? uids = null)
+    IReadOnlyDictionary<string, string> autoloads, Func<string, string?>? resourceClass = null, Func<string, string?>? uids = null,
+    Func<string, string, GDScriptNodeAt?>? nodes = null)
 {
+    /// <summary>The node a path names from the node a script runs on (<c>$Title</c>), as every scene running the script has
+    /// it; null where none says or they differ.</summary>
+    public GDScriptNodeAt? NodeAt(string script, string path) => nodes?.Invoke(script, path);
+
     /// <summary>A project of one script alone, with an engine's API or none.</summary>
     public static GDScriptProject Alone(GodotEngineApi? engine) => new(engine, _ => null, new Dictionary<string, string>(), new Dictionary<string, string>());
 
