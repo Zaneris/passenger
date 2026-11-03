@@ -396,7 +396,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   wrapping only inside brackets (`GDScriptFormatter.Wrapping`), its options `GDScriptFormatSettings` (Settings › Code
   Style › GDScript, a file's .editorconfig over each), reformat on save in `CodeAssist.BeforeSave`, its refactorings
   `GDScriptRefactorings` over `GodotScriptTypes.ProjectReadAsync` (made by `CodeActions.GDScriptRefactorAsync`, a use
-  Passenger can't see refusing, `GDScriptUses.Unsure`); their fixes `GodotOffer` over the extension's `GodotFix`
+  Passenger can't see refusing, `GDScriptUses.Unsure`; C#'s calls by a GDScript member's name come with their arguments
+  after it, `GodotKindUse.Rest`, which Change Signature rewrites, `CSharpAssist.GodotScriptCallEditsAsync`, a signal's
+  scene handlers from `CSharpAssist.GodotSignalHandlersAsync`); their fixes `GodotOffer` over the extension's `GodotFix`
   (members made by Roslyn so the code builds) and Workspace's pure `GodotWrites`, a fix that asks first through
   `EditorFix.Confirms`; Godot's generator assigns every field in generated code, so a field's values are read from the
   code's own documents); a C# file read before its project's evaluation landed is pulled again once it does
