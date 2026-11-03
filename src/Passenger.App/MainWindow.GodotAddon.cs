@@ -21,6 +21,12 @@ public partial class MainWindow
 {
     private void AddGodotAddon()
     {
+        Editors.HeldElsewhere = HeldInGodot;
+        Editors.WritingOver = WritingOverGodotAsync;
+        // Saves come from any window of the process: each takes those of its own folder's scenes.
+        Action<string, byte[]?, byte[]> wrote = (path, _, _) => WroteForGodot(path);
+        Text.FileText.Wrote += wrote;
+        Closed += (_, _) => Text.FileText.Wrote -= wrote;
         actions!.Add(new IdeAction(AppActions.GodotAddon, "Install Passenger's Godot Addon…", "Godot", _ => IdeErrors.Observe(InstallGodotAddonAsync()))
         {
             WhyNot = _ => Folder is null ? Refusals.NoFolder : GodotFolder() is null ? Refusals.NoGodotProject : null,
@@ -189,6 +195,20 @@ public partial class MainWindow
                 game.RelayEnded();
             }
             peer.PlaysForPassenger &= peer.Games.Count > 0 || peer.PlayAsked;
+        });
+        link.Hear("scenes", (peer, told) =>
+        {
+            peer.OpenScenes = JsonMembers.Texts(told, "open");
+            peer.UnsavedScenes = JsonMembers.Texts(told, "unsaved");
+            peer.SaysUnsaved = JsonMembers.Bool(told, "sure") == true;
+            peer.Inspected = JsonMembers.Text(told, "inspected") is { Length: > 0 } inspected ? inspected : null;
+        });
+        link.Hear("selected", (_, told) =>
+        {
+            if (session == next)
+            {
+                ShowGodotSelection(JsonMembers.Text(told, "scene"), JsonMembers.Text(told, "node"));
+            }
         });
         link.Hear("scene", (peer, told) =>
         {

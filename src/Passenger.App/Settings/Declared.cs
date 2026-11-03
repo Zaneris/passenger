@@ -302,6 +302,11 @@ public static class Declared
             "With Passenger's addon in a project, each game Play starts in Godot's editor waits at its start for this Passenger's "
             + "debugger, which attaches to it, so a breakpoint set here stops it. Off, Play still builds here, and the game runs undebugged."));
 
+    public static readonly ToggleSetting GodotSelectionFollows = new(s => s.GodotSelectionFollows, (s, v) => s with { GodotSelectionFollows = v },
+        new(D.GodotPage, "Show here the node selected in Godot's editor", "godot editor selection scene dock node outline follow addon",
+            "With Passenger's addon in a project, a node selected in the scene dock of Godot's editor shows here: its scene at the node, "
+            + "which the outline follows, and its script, behind, at its class. The keys stay where they are."));
+
     public static readonly ToggleSetting TerminalCopyOnSelection = new(s => s.TerminalCopyOnSelection, (s, v) => s with { TerminalCopyOnSelection = v },
         new(D.TerminalPage, "Copy on selection", "copy selection clipboard mouse drag word"));
 

@@ -180,6 +180,10 @@ public static class Refusals
     /// saves.</summary>
     public static string ReadOnly(string name) => $"{name} is read-only";
 
+    /// <summary>A change an agent asked for that would write over what the person's Godot editor holds of a file
+    /// (<see cref="Passenger.Workspace.GodotHolds"/>), which only the person may choose to.</summary>
+    public static string HeldInGodot(string held) => $"{held}, which only the person may choose to write over: save it in Godot first";
+
     /// <summary>A source generator's code copied to read (<see cref="CSharp.GeneratedCode"/>), which the C# language server
     /// answers nothing in, with what made it and for which project where known (<see cref="CSharp.GeneratedCode.OriginOf"/>).</summary>
     public static string Generated(string name, string? origin = null) =>

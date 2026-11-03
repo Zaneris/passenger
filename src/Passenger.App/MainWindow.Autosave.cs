@@ -129,6 +129,13 @@ public partial class MainWindow
     {
         OpenDocument? pressed = all ? null : Editors.Active?.Saves;
         List<OpenDocument> saving = all ? [.. Editors.Documents.Where(d => d.IsModified)] : pressed is { IsModified: true } ? [pressed] : [];
+        string? held = await Editors.ClearAsync([.. saving.Select(d => d.Path)]);
+        if (held is not null)
+        {
+            // The rest are saved as asked, those held left as they are.
+            status.Text = held;
+            saving.RemoveAll(d => Editors.HeldElsewhere(d.Path) is not null);
+        }
         BackgroundWork.Begin();
         try
         {
@@ -144,13 +151,16 @@ public partial class MainWindow
                     IdeErrors.Report(error);
                 }
             }
-            if (all)
+            if (all && held is null)
             {
                 Editors.SaveAll(asked: true);
             }
-            else if (pressed is { IsModified: true })
+            else
             {
-                Editors.SaveAsked(pressed);
+                foreach (OpenDocument document in saving.Where(d => d.IsModified))
+                {
+                    Editors.SaveAsked(document);
+                }
             }
         }
         finally

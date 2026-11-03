@@ -234,6 +234,11 @@ public sealed class CommandHistory
     /// asked again; and whether it began, false when refused before it changed anything.</summary>
     public async Task<(string? Why, bool Began)> PutAsync(Command command, bool redo, Func<Func<string?>, string?> moving)
     {
+        // Its open files too, whose saves would go over what another program holds.
+        if (await editors.ClearAsync([.. command.Texts.Select(t => t.Path), .. Writes(command, redo)]) is { } held)
+        {
+            return (held, false);
+        }
         Dictionary<string, Look> looks;
         while (true)
         {
@@ -915,6 +920,8 @@ public sealed class CommandHistory
         private readonly List<Deletion> deletions = [];
         private readonly List<Part> parts = [];
         private List<TextChange>? openTaken;
+        // The files the gate let it write (EditorArea.ClearAsync), never asked of again.
+        private readonly HashSet<string> cleared = new(PathNames.Comparer);
         // Whether it has said it writes a file since the open files were last taken.
         private bool writes = true;
         private bool ended;
@@ -1111,6 +1118,16 @@ public sealed class CommandHistory
         public async Task<(string Path, Exception Refused)?> WriteAsync()
         {
             TakeOpen();
+            // The gate takes the open files it changed too, whose saves would go over what another program holds.
+            List<string> clearing = [.. queued.Select(q => Now(q.Began)), .. (ownWrites ? [.. wrote.Values] : Steps()).Select(t => t.Document!.Path)];
+            clearing.RemoveAll(cleared.Contains);
+            if (clearing.Count > 0 && await editors.ClearAsync(clearing) is { } held)
+            {
+                queued.Clear();
+                Unname();
+                return (clearing.FirstOrDefault(p => editors.HeldElsewhere(p) is not null) ?? clearing[0], new IOException(held));
+            }
+            cleared.UnionWith(clearing);
             if (queued.Count == 0)
             {
                 Unname();

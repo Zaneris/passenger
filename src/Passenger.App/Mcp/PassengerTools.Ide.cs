@@ -226,6 +226,10 @@ public sealed partial class PassengerTools
             return searched.StoppedIn(Relative) is { } stopped ? $"Nothing was replaced: {stopped}" : "Nothing matches, so nothing was replaced";
         }
         List<string> files = [.. searched.Replaceable.Select(m => m.Path).Distinct()];
+        if (await Editors.ClearAsync(files) is { } held)
+        {
+            throw new InvalidOperationException(held);
+        }
         FilesReplaced done = await window.ReplaceInFilesAsync(query, replacement, searched);
         List<string> said = [.. done.Converted];
         // The open files' saves are the replace's, in its change set; what the person saves meanwhile stays theirs.
@@ -282,6 +286,10 @@ public sealed partial class PassengerTools
         if (document.IsReadOnly)
         {
             throw new InvalidOperationException($"{Refusals.ReadOnly(name)}, so nothing changed");
+        }
+        if (await Editors.ClearAsync([document.Path]) is { } held)
+        {
+            throw new InvalidOperationException(held);
         }
         if (found.Count == 0)
         {

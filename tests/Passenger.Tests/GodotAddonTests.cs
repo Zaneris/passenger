@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
@@ -73,6 +74,11 @@ public sealed class GodotAddonTests : IDisposable
                 }
             }
 
+            public void OnToggled(bool on)
+            {
+                GD.Print($"toggled {on}");
+            }
+
             public override void _Process(double delta)
             {
                 frames++;
@@ -108,6 +114,8 @@ public sealed class GodotAddonTests : IDisposable
         toggle_mode = true
         text = "Press"
 
+        [connection signal="toggled" from="Ui/Press" to="." method="OnToggled"]
+
         """;
 
     /// <summary>The test's own plugin: Godot's Play, as its Play button runs it, each time the test asks (a file it writes),
@@ -125,6 +133,23 @@ public sealed class GodotAddonTests : IDisposable
 
 
         func _process(_delta: float) -> void:
+        	if FileAccess.file_exists("res://hold.txt"):
+        		DirAccess.remove_absolute(ProjectSettings.globalize_path("res://hold.txt"))
+        		EditorInterface.open_scene_from_path("res://main.tscn")
+        		EditorInterface.mark_scene_as_unsaved()
+        		print("TEST: held")
+        	if FileAccess.file_exists("res://open.txt"):
+        		DirAccess.remove_absolute(ProjectSettings.globalize_path("res://open.txt"))
+        		EditorInterface.open_scene_from_path("res://main.tscn")
+        		print("TEST: opened")
+        	if FileAccess.file_exists("res://select.txt"):
+        		var node := FileAccess.get_file_as_string("res://select.txt").strip_edges()
+        		DirAccess.remove_absolute(ProjectSettings.globalize_path("res://select.txt"))
+        		EditorInterface.open_scene_from_path("res://main.tscn")
+        		var root := EditorInterface.get_edited_scene_root()
+        		EditorInterface.get_selection().clear()
+        		EditorInterface.get_selection().add_node(root.get_node(node))
+        		print("TEST: selected ", node)
         	if EditorInterface.is_playing_scene() != playing:
         		playing = EditorInterface.is_playing_scene()
         		print("TEST: play began" if playing else "TEST: play ended")
@@ -399,8 +424,7 @@ public sealed class GodotAddonTests : IDisposable
         MainWindow window = Opened();
         try
         {
-            // Godot's editor keeps its Run Multiple Instances in the project's metadata, which it reads as it opens.
-            // The second is given a user argument that has it quit itself a moment after it began.
+            // Run Multiple Instances comes from the project's metadata; the second's argument has it quit soon after.
             TestFolders.Write(folder, ".godot/editor/project_metadata.cfg", "[debug_options]\n\nmultiple_instances_enabled=true\nrun_instance_count=3\n"
                 + "run_instances_config=[{\"arguments\": \"\", \"features\": \"\", \"override_args\": false, \"override_features\": false}, "
                 + "{\"arguments\": \"++ ends\", \"features\": \"\", \"override_args\": false, \"override_features\": false}, "
@@ -454,6 +478,119 @@ public sealed class GodotAddonTests : IDisposable
             EndEditor();
             Assert.True(Processes.Gone(game), $"The game (process {game}) still runs after its editor ended");
             Assert.Empty(TestGodotEditors.EndGamesOf(editorId));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    private string ScenePath => Path.Combine(folder, "main.tscn");
+
+    /// <summary>With Godot's editor holding unsaved edits in the scene, a rename whose edits reach the scene's connection asks
+    /// the person first, saying so, and declined leaves the scene and the code as they were; an agent's is refused, naming
+    /// what Godot holds, and asks nobody.</summary>
+    [AvaloniaFact]
+    public void A_rename_over_a_scene_Godot_holds_unsaved_asks_the_person_and_an_agents_is_refused()
+    {
+        MainWindow window = Opened();
+        try
+        {
+            List<string> asked = [];
+            window.Confirm = (title, text, _) =>
+            {
+                asked.Add($"{title}: {text}");
+                return Task.FromResult(false);
+            };
+            StartEditor([]);
+            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            TestFolders.Write(folder, "hold.txt", "hold\n");
+            Ui.WaitFor(() => window.HeldByGodot(ScenePath)?.Contains("unsaved edits", StringComparison.Ordinal) == true,
+                () => $"Godot's editor to say it holds the scene unsaved ({window.HeldByGodot(ScenePath) ?? "nothing held"}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
+            string scene = File.ReadAllText(ScenePath);
+
+            CodeEditor code = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(code, "void OnTogg");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "OnToggled", () => $"Rename's box on the handler ({window.Assist.Renaming}; {window.Status})", TimeSpan.FromMinutes(1));
+            window.KeyTextInput("OnFlipped");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => asked.Count > 0 && window.Status?.Contains("Godot's editor holds unsaved edits in main.tscn", StringComparison.Ordinal) == true,
+                () => $"the rename to ask first and, declined, say why ({window.Status}; asked: {string.Join(" | ", asked)})", TimeSpan.FromMinutes(1));
+            Assert.Contains("Godot's editor holds unsaved edits in main.tscn", asked[0], StringComparison.Ordinal);
+            Ui.WaitFor(() => code.Document.Snapshot.ToString().Contains("void OnToggled(", StringComparison.Ordinal), "the declined rename's code edit to be taken back");
+            Assert.Equal(scene, File.ReadAllText(ScenePath));
+
+            int questions = asked.Count;
+            AgentRenameRefused(window);
+            Assert.Equal(questions, asked.Count);
+            Assert.Equal(scene, File.ReadAllText(ScenePath));
+
+            // Open here, the scene's edit is its document's, refused the same and taken back, its save never made.
+            Assert.Null(window.EditorArea.Open(ScenePath));
+            OpenDocument open = window.EditorArea.Find(ScenePath)!;
+            AgentRenameRefused(window);
+            Assert.Equal(questions, asked.Count);
+            Ui.WaitFor(() => !open.IsModified && open.Text.Snapshot.ToString().Contains("method=\"OnToggled\"", StringComparison.Ordinal),
+                () => $"the refused rename's edit of the open scene to be taken back ({window.Status})");
+            Assert.Equal(scene, File.ReadAllText(ScenePath));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>An agent's rename of the scene's handler, refused saying what Godot holds.</summary>
+    private static void AgentRenameRefused(MainWindow window)
+    {
+        Passenger.App.Mcp.AgentCall call = Passenger.App.Mcp.AgentCall.Begin(null, null, null, "rename", "Rename", "a test's agent", "the test", traced: false);
+        try
+        {
+            Task<string> renamed = new Passenger.App.Mcp.PassengerTools(window).Rename("OnFlipped", symbol: "Main.OnToggled");
+            Ui.WaitFor(() => renamed.IsCompleted, "an agent's rename to be answered", TimeSpan.FromMinutes(1));
+            Assert.True(renamed.IsFaulted && renamed.Exception!.InnerException!.Message.Contains("save it in Godot first", StringComparison.Ordinal),
+                $"An agent's rename over the scene Godot holds was not refused saying why: {(renamed.IsFaulted ? renamed.Exception!.InnerException!.Message : Ui.Await(renamed, "the rename's answer"))}");
+        }
+        finally
+        {
+            Ui.Await(call.DisposeAsync().AsTask().ContinueWith(_ => true, TaskScheduler.Default), "the agent's call to end");
+        }
+    }
+
+    /// <summary>A scene Godot's editor has open and saved, written by Passenger (a rename reaching its connection), is read
+    /// again there, so no question of a newer file comes; and a node selected in Godot's scene dock shows here, the scene
+    /// shown at its node, which the outline follows.</summary>
+    [AvaloniaFact]
+    public void A_scene_Godot_has_open_is_read_again_after_a_write_here_and_its_selection_shows_in_the_outline()
+    {
+        MainWindow window = Opened();
+        try
+        {
+            StartEditor([]);
+            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            TestFolders.Write(folder, "open.txt", "open\n");
+            Ui.WaitFor(() => window.GodotHasOpen(ScenePath), () => $"Godot's editor to say it has the scene open (Godot said: {Said()})", TimeSpan.FromMinutes(1));
+            Assert.Null(window.HeldByGodot(ScenePath));
+
+            CodeEditor code = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(code, "void OnTogg");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "OnToggled", () => $"Rename's box on the handler ({window.Assist.Renaming}; {window.Status})", TimeSpan.FromMinutes(1));
+            window.KeyTextInput("OnFlipped");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => File.ReadAllText(ScenePath).Contains("method=\"OnFlipped\"", StringComparison.Ordinal),
+                () => $"the rename to reach the scene's connection ({window.Status})", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => said.Any(l => l.Contains("res://main.tscn read again, as Passenger wrote it", StringComparison.Ordinal)),
+                () => $"Godot's editor to read the scene again (Godot said: {Said()})", TimeSpan.FromMinutes(1));
+
+            int press = Array.FindIndex(File.ReadAllText(ScenePath).Split('\n'), l => l.StartsWith("[node name=\"Press\"", StringComparison.Ordinal)) + 1;
+            Ui.Run(window, AppActions.ShowStructure);
+            TestFolders.Write(folder, "select.txt", "Ui/Press\n");
+            Ui.WaitFor(() => window.EditorArea.Active is { } shown && PathNames.Same(shown.Path, ScenePath) && window.EditorArea.CodeEditor.CaretPosition.Line == press,
+                () => $"the scene to show here at the node selected in Godot ({window.EditorArea.Active?.Path}:{window.EditorArea.CodeEditor.CaretPosition.Line}; Godot said: {Said()})",
+                TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => window.StructureView.Selected?.Name == "Press", () => $"the outline to follow to the node ({window.StructureView.Selected?.Name})", TimeSpan.FromSeconds(30));
         }
         finally
         {

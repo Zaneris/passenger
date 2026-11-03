@@ -9,7 +9,7 @@ extends EditorPlugin
 ## Passenger listening, or one that refuses, it does nothing, and Godot plays as it always did.
 
 ## The addon's version, which Passenger reads to update an older one in place.
-const VERSION := 4
+const VERSION := 5
 ## How long a build may take to be answered.
 const BUILD_LIMIT_MS := 30 * 60 * 1000
 ## How long any other request may take to be answered.
@@ -43,6 +43,11 @@ var relayed := {}
 var tabs := {}
 ## The sessions told to Passenger as begun, by id, until they stop.
 var announced := {}
+## What Passenger was last told of the scenes this editor holds, as its JSON, and when it was looked at.
+var scenes_told := ""
+var scenes_looked := 0
+## How often the scenes this editor holds are looked at for a change to tell.
+const SCENES_EVERY_MS := 300
 
 
 ## Each game session Godot's editor holds, told to Passenger as it starts and stops.
@@ -73,9 +78,12 @@ func _enter_tree() -> void:
 	sessions.addon = self
 	add_debugger_plugin(sessions)
 	scene_changed.connect(func(_root): _tell_scene())
+	EditorInterface.get_selection().selection_changed.connect(_selection_changed)
 
 
 func _exit_tree() -> void:
+	if EditorInterface.get_selection().selection_changed.is_connected(_selection_changed):
+		EditorInterface.get_selection().selection_changed.disconnect(_selection_changed)
 	for session_id in tabs.keys():
 		if sessions.get_session(session_id) != null and is_instance_valid(tabs[session_id]):
 			sessions.get_session(session_id).remove_session_tab(tabs[session_id])
@@ -99,6 +107,33 @@ func _process(_delta: float) -> void:
 			_connect()
 		return
 	_read()
+	if welcomed and Time.get_ticks_msec() - scenes_looked >= SCENES_EVERY_MS:
+		scenes_looked = Time.get_ticks_msec()
+		_tell_scenes()
+
+
+## The scenes this editor has open and those it holds unsaved edits in (a Godot before 4.7 cannot say which), and the
+## resource file its inspector shows, told to Passenger as they change, so its writes ask before going over them.
+func _tell_scenes() -> void:
+	var sure := EditorInterface.has_method("get_unsaved_scenes")
+	var inspected := ""
+	var edited := EditorInterface.get_inspector().get_edited_object()
+	if edited is Resource and edited.resource_path.begins_with("res://") and not edited.resource_path.contains("::"):
+		inspected = edited.resource_path
+	var said := {"open": Array(EditorInterface.get_open_scenes()), "unsaved": Array(EditorInterface.call("get_unsaved_scenes")) if sure else [],
+		"sure": sure, "inspected": inspected}
+	var text := JSON.stringify(said)
+	if text != scenes_told:
+		scenes_told = text
+		tell("scenes", said)
+
+
+## The node selected in the scene dock, told to Passenger, which shows its scene there.
+func _selection_changed() -> void:
+	var nodes := EditorInterface.get_selection().get_selected_nodes()
+	var root := EditorInterface.get_edited_scene_root()
+	if welcomed and not nodes.is_empty() and root != null and root.scene_file_path != "":
+		tell("selected", {"scene": root.scene_file_path, "node": str(root.get_path_to(nodes[0]))})
 
 
 ## Godot's Play builds through Passenger: false stops Play where its build failed. Where Passenger has gone, the game is
@@ -344,6 +379,14 @@ func _heard(message: Dictionary) -> void:
 		# Played once this message is read through, as Play's build asks Passenger itself.
 		_play.call_deferred(str(params.get("scene", "")))
 		_send({"id": int(message.get("id", 0)), "result": {}})
+	elif method == "reload":
+		# Passenger wrote a scene this editor has open and saved: read again, so no question of a newer file comes.
+		var path := str(params.get("path", ""))
+		var unsaved = EditorInterface.call("get_unsaved_scenes") if EditorInterface.has_method("get_unsaved_scenes") else [path]
+		if path in EditorInterface.get_open_scenes() and not path in unsaved:
+			EditorInterface.reload_scene_from_path(path)
+			print("Passenger: ", path, " read again, as Passenger wrote it")
+		_send({"id": int(message.get("id", 0)), "result": {}})
 	elif method == "stop":
 		if EditorInterface.is_playing_scene():
 			EditorInterface.stop_playing_scene()
@@ -390,6 +433,7 @@ func _lost() -> void:
 	welcomed = false
 	answers.clear()
 	announced.clear()
+	scenes_told = ""
 	_skip_godot_build(false)
 	if play_held:
 		_stop_held("Passenger went before it took the game")

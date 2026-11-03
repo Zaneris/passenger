@@ -27,6 +27,8 @@ public sealed partial class EditorArea : UserControl
     private readonly TextBlock emptyHint;
     private readonly List<Action<CodeEditor>> editorHooks = [];
     private readonly Dictionary<OpenDocument, int> held = [];
+    // Open files the person let a write go over what another program holds of them, each until its next save.
+    private readonly HashSet<string> writtenOver = new(PathNames.Comparer);
 
     /// <summary>The main window's editors, then each editor window's in the order they opened.</summary>
     private readonly List<EditorFrame> frames = [];
@@ -269,12 +271,16 @@ public sealed partial class EditorArea : UserControl
     /// <summary>Opens text, a read-only asset, or a binary file with no view of its own as its bytes' text, read-only
     /// (<see cref="FileText.Bytes"/>), in the active group (or shows its tab if open), returning why not when the file
     /// cannot be read; an asset whose decode fails once its tab shows it loading says so through <see cref="OpenFailed"/>.</summary>
-    public string? Open(string path)
+    public string? Open(string path) => Open(path, focus: true);
+
+    /// <summary>Opens a file as <see cref="Open(string)"/> does, its editor given the keys only with <paramref name="focus"/>:
+    /// without, shown for what another program said (Godot's editor's selection), the keys staying where they are.</summary>
+    public string? Open(string path, bool focus)
     {
         string full = PathNames.Canonical(path);
         if (Find(full) is { } open)
         {
-            Activate(open);
+            Activate(open, focus);
             return null;
         }
         OpenDocument document;
@@ -290,14 +296,17 @@ public sealed partial class EditorArea : UserControl
         Opened?.Invoke(this, document);
         documents.Add(document);
         activeGroup.Add(document);
-        Activate(document);
+        Activate(document, focus);
         return null;
     }
 
     /// <summary>Shows a file in the window in front: in the active group if it has its tab, else in the group there
     /// that does, else in a new tab of the active group. For an attached agent (<see cref="AgentAsks.Beside"/>), its tab
     /// comes behind the file the person has shown there, which keeps the keys.</summary>
-    public void Activate(OpenDocument document)
+    public void Activate(OpenDocument document) => Activate(document, focus: true);
+
+    /// <summary>Shows a file as <see cref="Activate(OpenDocument)"/> does, its editor taking the keys only with <paramref name="focus"/>.</summary>
+    public void Activate(OpenDocument document, bool focus)
     {
         EditorGroup group = activeGroup.Has(document) ? activeGroup : ActiveFrame.Groups.FirstOrDefault(g => g.Has(document)) ?? activeGroup;
         if (AgentAsks.Beside && group.Active is not null)
@@ -308,7 +317,7 @@ public sealed partial class EditorArea : UserControl
         group.Show(document);
         SetActiveGroup(group);
         Refresh();
-        if (!AgentAsks.Beside)
+        if (focus && !AgentAsks.Beside)
         {
             group.FocusShown();
         }
@@ -381,10 +390,40 @@ public sealed partial class EditorArea : UserControl
     /// the change is made.</summary>
     public Func<History.LocalHistory.Activity?>? Recording { get; set; }
 
+    /// <summary>What another program holds of a file that a write of it would go over (the person's Godot editor's unsaved
+    /// edits), in words, or null.</summary>
+    public Func<string, string?> HeldElsewhere { get; set; } = _ => null;
+
+    /// <summary>The window's answer to a write of files held elsewhere (<see cref="HeldElsewhere"/>): null where the person
+    /// lets it go over them, else why not, an agent's always refused (<see cref="Refusals.HeldInGodot"/>).</summary>
+    public Func<IReadOnlyList<string>, Task<string?>> WritingOver { get; set; } = _ => Task.FromResult<string?>(null);
+
+    /// <summary>The one gate every write of files takes first (a command's files, open or not, Undo's and Redo's, the IDE's
+    /// own writes, a save asked for), where an autosave, a build's save and a close pass a held file by unwritten: null to
+    /// write them, else why not. An open file the person lets a write go over is saved over it once.</summary>
+    public async Task<string?> ClearAsync(IReadOnlyCollection<string> paths)
+    {
+        List<string> holding = [.. paths.Distinct(PathNames.Comparer).Where(p => HeldElsewhere(p) is not null)];
+        if (holding.Count == 0)
+        {
+            return null;
+        }
+        if (await WritingOver(holding) is { } why)
+        {
+            return why;
+        }
+        writtenOver.UnionWith(holding.Select(Find).OfType<OpenDocument>().Select(d => d.Path));
+        return null;
+    }
+
     private bool Close(OpenDocument document, bool forGood)
     {
-        if (document.IsModified && TrySave(document) is not null)
+        if (document.IsModified && TrySave(document) is { } unsaved)
         {
+            if (HeldElsewhere(document.Path) is not null)
+            {
+                SaveFailed?.Invoke(this, $"{document.Name} stays open, unsaved: {unsaved}");
+            }
             return false;
         }
         foreach (EditorGroup group in AllGroups.Where(g => g.Has(document)).ToList())
@@ -874,6 +913,11 @@ public sealed partial class EditorArea : UserControl
         if (document.Asset is not null)
         {
             return null;
+        }
+        // Over what another program holds only as the person asked, or let it (ClearAsync).
+        if (!writtenOver.Remove(document.Path) && !asked && HeldElsewhere(document.Path) is { } elsewhere)
+        {
+            return elsewhere;
         }
         if (!overDisk && document.ChangedOnDisk())
         {

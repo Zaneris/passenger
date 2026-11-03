@@ -171,7 +171,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         List<OpenDocument> left = [.. Editors.Documents.Where(d => d.IsModified)];
         if (left.Count > 0)
         {
-            string names = string.Join(", ", left.Select(d => FileText.IsReadOnly(d.Path) ? $"{Relative(d.Path)} (read-only)" : Relative(d.Path)));
+            string names = string.Join(", ", left.Select(d => FileText.IsReadOnly(d.Path) ? $"{Relative(d.Path)} (read-only)"
+                : Editors.HeldElsewhere(d.Path) is { } held ? $"{Relative(d.Path)} ({Refusals.HeldInGodot(held)})" : Relative(d.Path)));
             throw new InvalidOperationException($"Saved {unsaved - left.Count} of {unsaved} files; not saved: {names}");
         }
         return unsaved == 0 ? "Nothing to save" : $"Saved {Plural.Of(unsaved, "file")}";

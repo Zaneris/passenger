@@ -353,6 +353,18 @@ internal sealed class GodotEditorPeer : IDisposable
     /// Play, which always does.</summary>
     public bool? Builds { get; set; }
 
+    /// <summary>The scenes the editor has open, by res:// path, as it last said.</summary>
+    public IReadOnlyCollection<string> OpenScenes { get; set; } = [];
+
+    /// <summary>The scenes it holds unsaved edits in, as it last said; none from a Godot that cannot say (<see cref="SaysUnsaved"/>).</summary>
+    public IReadOnlyCollection<string> UnsavedScenes { get; set; } = [];
+
+    /// <summary>Whether its Godot says which scenes hold unsaved edits (4.7 and newer).</summary>
+    public bool SaysUnsaved { get; set; }
+
+    /// <summary>The resource file its inspector shows, by res:// path, or null.</summary>
+    public string? Inspected { get; set; }
+
     /// <summary>Whether Passenger asked the editor to play, its game yet to begin.</summary>
     public bool PlayAsked { get; set; }
 

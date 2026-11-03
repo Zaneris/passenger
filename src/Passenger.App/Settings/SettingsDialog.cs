@@ -370,6 +370,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.GodotLiveValues);
         Add(Declared.GodotTestsWindowed);
         Add(Declared.GodotDebugPlays);
+        Add(Declared.GodotSelectionFollows);
 
         Add(Declared.TerminalFontSize);
         Add(Declared.TerminalFontFamily);
