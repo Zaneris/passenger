@@ -291,13 +291,12 @@ public static partial class GDScriptRefactorings
 
     private static string Written(string text, int offset, GDScriptNode? node) => node is null ? string.Empty : text[(offset + node.Start)..(offset + node.End)];
 
-    /// <summary>Change Signature of a function: its name and parameters as given (kept ones by where they were, new ones with
-    /// what each call passes), each call of it and each string a call names it by updated, its body's reads of a renamed
-    /// parameter renamed. Refused where a removed parameter is still read, where another script declares its name, where it
-    /// is Godot's own, or where it is taken as a value, named at run time, read unseen or called from
-    /// <paramref name="elsewhere"/> while its parameters change.</summary>
+    /// <summary>Change Signature of a function: its name and parameters as given, each call and string naming it updated,
+    /// a renamed parameter's reads renamed. Refused where a removed parameter is read, another script declares its name, it
+    /// is Godot's own, or, its parameters changing, it is a value (but one <paramref name="followed"/> names: a signal's
+    /// connection changing with it), named at run time, read unseen or called from <paramref name="elsewhere"/>.</summary>
     public static GDScriptRefactored ChangeSignature(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target, string name, IReadOnlyList<GDScriptParameterChange> parameters,
-        IReadOnlyList<GDScriptPlace> elsewhere)
+        IReadOnlyList<GDScriptPlace> elsewhere, IReadOnlySet<GDScriptNode>? followed = null)
     {
         if (target.Node is not GDScriptFunction { ParametersStart: >= 0, ParametersEnd: > 0 } function || function.IsLambda)
         {
@@ -337,8 +336,9 @@ public static partial class GDScriptRefactorings
         if (reshaped)
         {
             blocking.AddRange(elsewhere);
-            blocking.AddRange(uses.Names.Where(u => u.Call is null).Select(u => GDScriptUses.Place(u.Script, u.Offset, u.Name, "takes it as a value, whose callers can't be followed")));
-            blocking.AddRange(uses.Strings.Where(s => s.Call.FunctionName is not ("call" or "call_deferred" or "rpc" or "rpc_id" or "has_method"))
+            blocking.AddRange(uses.Names.Where(u => u.Call is null && followed?.Contains(u.Name) != true)
+                .Select(u => GDScriptUses.Place(u.Script, u.Offset, u.Name, "takes it as a value, whose callers can't be followed")));
+            blocking.AddRange(uses.Strings.Where(s => s.Call.FunctionName is not ("call" or "call_deferred" or "rpc" or "rpc_id" or "has_method") && followed?.Contains(s.Literal) != true)
                 .Select(s => GDScriptUses.Place(s.Script, s.Offset, s.Call, "names it for a later call")));
         }
         if (blocking.Count > 0)
@@ -454,6 +454,16 @@ public static partial class GDScriptRefactorings
             return null;
         }
         List<string> given = [.. call.Arguments.Skip(kept).Select(a => text[(offset + a.Start)..(offset + a.End)])];
+        IEnumerable<string> before = call.Arguments.Take(kept).Select(a => a == renaming.Literal && renaming.Text is { } renamed ? renamed : text[(offset + a.Start)..(offset + a.End)]);
+        string arguments = string.Join(", ", before.Concat(Rearranged(given, was, parameters)));
+        return new TextEdit(open + 1, close - open - 1, arguments);
+    }
+
+    /// <summary>The arguments a call passes after a signature's change, from those it passed: each kept parameter's where
+    /// it was passed, its old default where it was left out before one passed, a new one's value; none left out at the end
+    /// that a default now covers. A C# call's too.</summary>
+    public static IReadOnlyList<string> Rearranged(IReadOnlyList<string> given, IReadOnlyList<GDScriptParameterChange> was, IReadOnlyList<GDScriptParameterChange> parameters)
+    {
         List<(string Text, bool Left)> made = [];
         foreach (GDScriptParameterChange parameter in parameters)
         {
@@ -465,8 +475,6 @@ public static partial class GDScriptRefactorings
         {
             made.RemoveAt(made.Count - 1);
         }
-        IEnumerable<string> before = call.Arguments.Take(kept).Select(a => a == renaming.Literal && renaming.Text is { } renamed ? renamed : text[(offset + a.Start)..(offset + a.End)]);
-        string arguments = string.Join(", ", before.Concat(made.Select(m => m.Text)));
-        return new TextEdit(open + 1, close - open - 1, arguments);
+        return [.. made.Select(m => m.Text)];
     }
 }

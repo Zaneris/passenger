@@ -472,7 +472,8 @@ public sealed class CodeAssist
         Code(AppActions.Inline, "Inline…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.Inline)
             : actions.Refactor(a => a.Kind == RoslynNames.InlineKind || a.Title.StartsWith(RoslynNames.Inline, StringComparison.Ordinal), "Inline", renameMethod: false, AppActions.Inline)),
             new("Refactor", 1, 7), gdscript: true);
-        Code(AppActions.Move, "Move…", context => IdeErrors.Observe(actions.Move()), new("Refactor", 2, 0));
+        Code(AppActions.Move, "Move…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.Move) : actions.Move()),
+            new("Refactor", 2, 0), gdscript: true);
         Code(AppActions.SafeDelete, "Safe Delete…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.SafeDelete)
             : actions.SafeDelete()), new("Refactor", 2, 1), gdscript: true);
         Code(AppActions.PullMembersUp, "Pull Members Up…", context => IdeErrors.Observe(actions.MoveMembers(up: true)), new("Refactor", 3, 0));

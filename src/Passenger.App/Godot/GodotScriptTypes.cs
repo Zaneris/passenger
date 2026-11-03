@@ -184,6 +184,24 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         });
     }
 
+    /// <summary>The project's autoloads that run a GDScript, by name, the res:// path of each's script; none outside a Godot project.</summary>
+    public async Task<IReadOnlyDictionary<string, string>> AutoloadsAsync(string path)
+    {
+        Dictionary<string, string> autoloads = new(StringComparer.Ordinal);
+        if (godotOf(path) is { } folder)
+        {
+            GodotScenes scenes = await index.ScenesAsync(folder);
+            foreach (GodotDefined autoload in scenes.Defined.Autoloads)
+            {
+                if (scenes.Defined.AutoloadFile(autoload.Name) is { } file && GodotScriptDeclarations.IsScript(file))
+                {
+                    autoloads[autoload.Name] = file;
+                }
+            }
+        }
+        return autoloads;
+    }
+
     /// <summary>The script typed again, after the typing under way: each starts from the tree the last one left.</summary>
     private Task<Typed?> TypeAsync(OpenDocument document)
     {

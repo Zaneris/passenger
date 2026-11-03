@@ -538,7 +538,8 @@ public static partial class GDScriptRefactorings
         }
         string Typed(GDScriptType type) => type.Hard && !type.IsVariant && !type.IsVoid ? $": {type}" : string.Empty;
         string parameters = string.Join(", ", inputs.Select(i => $"{i.Name}{Typed(i.Declaration.Type)}"));
-        string returns = output is null ? " -> void" : output.Type.Hard && !output.Type.IsVariant ? $" -> {output.Type}" : string.Empty;
+        // The type it returns as the analyzer reads the local's, written or inferred from its value.
+        string returns = output is null ? " -> void" : !output.Type.IsVariant && !output.Type.IsVoid ? $" -> {output.Type with { Hard = true }}" : string.Empty;
         string header = $"{functionIndent}{(function.IsStatic ? "static " : string.Empty)}func {name}({parameters}){returns}:\n";
         string call = $"{(awaits ? "await " : string.Empty)}{name}({string.Join(", ", inputs.Select(i => i.Name))})";
         string callLine = output is null ? call : inside.Contains(output.Start) ? $"var {output.Name} = {call}" : $"{output.Name} = {call}";

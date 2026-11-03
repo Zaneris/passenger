@@ -18,6 +18,7 @@ internal enum GDScriptRefactoring
     Inline,
     SafeDelete,
     ChangeSignature,
+    Move,
 }
 
 /// <summary>GDScript's refactorings (<see cref="GDScriptRefactorings"/>) over Passenger's reading of every script of the
@@ -36,6 +37,7 @@ internal sealed partial class CodeActions
         GDScriptRefactoring.IntroduceParameter => "Introduce Parameter",
         GDScriptRefactoring.Inline => "Inline",
         GDScriptRefactoring.SafeDelete => "Safe Delete",
+        GDScriptRefactoring.Move => "Move",
         _ => "Change Signature",
     };
 
@@ -63,6 +65,22 @@ internal sealed partial class CodeActions
                     }
                 });
                 popups.WhenClosed(opened.Dispose);
+                return;
+            case GDScriptRefactoring.Move:
+                if (await GDScriptsAsync(document) is not ({ } scripts, { } own, _) || GDScriptRefactorings.MemberAt(scripts, own, selection.Start) is not { Node: GDScriptFunction } moving)
+                {
+                    context.Say($"{title} is not available here: put the caret on a function");
+                    return;
+                }
+                popups.ShowModal(new ChoicePopup($"Move {moving.Named} to", [.. scripts.Where(s => s.Script != moving.Script).OrderBy(s => s.Script, StringComparer.Ordinal)
+                    .Select(s => new Choice(s.Script, s.Tree.Class.Identifier?.Name ?? string.Empty, s.Script))]), selection.Start, title, async choice =>
+                {
+                    if (choice?.Value is string destination)
+                    {
+                        RefactorOutcome made = await GDScriptRefactorAsync(document, kind, selection, destination, null);
+                        context.Say(made.Problem ?? made.Said);
+                    }
+                });
                 return;
             case GDScriptRefactoring.ChangeSignature:
                 (Signature? signature, string? why) = await GDScriptSignatureAsync(document, selection.Start);
@@ -119,9 +137,16 @@ internal sealed partial class CodeActions
         {
             return (null, "the script is not read yet");
         }
-        if (GDScriptRefactorings.MemberAt(scripts, own, offset) is not { Node: GDScriptFunction function } target)
+        GDScriptTarget? target = GDScriptRefactorings.MemberAt(scripts, own, offset);
+        if (target is { Node: GDScriptSignal })
         {
-            return (null, "put the caret on a function");
+            GDScriptRead signalling = scripts.First(s => s.Script == target.Script);
+            return (new Signature(null, ChangeSignatureDialog.GDScriptSignalKind, Path.GetFileName(target.Script), string.Empty, target.Named, string.Empty,
+                [.. GDScriptRefactorings.SignalParametersOf(signalling, target).Select(p => new Parameter(string.Empty, p.Type, p.Name, string.Empty))], false), null);
+        }
+        if (target is not { Node: GDScriptFunction function })
+        {
+            return (null, "put the caret on a function or a signal");
         }
         GDScriptRead declaring = scripts.First(s => s.Script == target.Script);
         string returns = function.ReturnType is { } written ? declaring.Text[(target.Offset + written.Start)..(target.Offset + written.End)] : string.Empty;
@@ -147,9 +172,12 @@ internal sealed partial class CodeActions
         int caret = selection.Start;
         GDScriptTarget? target = GDScriptRefactorings.MemberAt(scripts, own, caret);
         // A member of this script is asked about at its own name; one of another, at the name here.
-        IReadOnlyList<GDScriptPlace> elsewhere = target is null || folder is null || kind is not (GDScriptRefactoring.Inline or GDScriptRefactoring.SafeDelete or GDScriptRefactoring.ChangeSignature) ? []
-            : await context.Languages.CSharp.GodotScriptElsewhereAsync(document, target.Script == own.Script ? target.Start : caret);
-        IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> beside = [];
+        int asked = target is not null && target.Script == own.Script ? target.Start : caret;
+        IReadOnlyList<GDScriptPlace> elsewhere = target is null || folder is null
+            || kind is not (GDScriptRefactoring.Inline or GDScriptRefactoring.SafeDelete or GDScriptRefactoring.ChangeSignature or GDScriptRefactoring.Move) ? []
+            : await context.Languages.CSharp.GodotScriptElsewhereAsync(document, asked, followingCalls: kind == GDScriptRefactoring.ChangeSignature,
+                withScenes: !(kind == GDScriptRefactoring.ChangeSignature && target.Node is GDScriptSignal));
+        List<(string Path, IReadOnlyList<LspTextEdit> Edits)> beside = [];
         GDScriptRefactored made;
         switch (kind)
         {
@@ -170,18 +198,44 @@ internal sealed partial class CodeActions
                 }
                 break;
             case GDScriptRefactoring.SafeDelete:
-                made = target is null ? GDScriptRefactored.No("put the caret on a member of a script") : GDScriptRefactorings.SafeDelete(scripts, target, elsewhere);
+                // An exported variable a scene sets is named there, by its property.
+                IReadOnlyList<GDScriptPlace> sets = target is { Node: GDScriptVariable exported } && folder is not null
+                    && exported.Annotations.Any(a => a.Name.StartsWith("@export", StringComparison.Ordinal))
+                    ? await context.Languages.CSharp.GodotSetsAsync(document.Path, target.Script, target.Named) : [];
+                made = target is null ? GDScriptRefactored.No("put the caret on a member of a script") : GDScriptRefactorings.SafeDelete(scripts, target, [.. elsewhere, .. sets]);
+                break;
+            case GDScriptRefactoring.Move:
+                made = target is null ? GDScriptRefactored.No("put the caret on a function")
+                    : GDScriptRefactorings.Move(scripts, target, name!, context.GodotScriptTypes?.Invoke() is { } types ? await types.AutoloadsAsync(document.Path) : new Dictionary<string, string>(), elsewhere);
                 break;
             default:
                 if (target is null)
                 {
-                    made = GDScriptRefactored.No("put the caret on a function");
+                    made = GDScriptRefactored.No("put the caret on a function or a signal");
                     break;
                 }
-                made = GDScriptRefactorings.ChangeSignature(scripts, target, name ?? target.Named, parameters ?? GDScriptRefactorings.ParametersOf(own, target), elsewhere);
-                if (made.Refused is null && name is not null && name != target.Named && folder is not null)
+                GDScriptRead declaring = scripts.First(s => s.Script == target.Script);
+                bool signal = target.Node is GDScriptSignal;
+                IReadOnlyList<GDScriptParameterChange> was = signal ? GDScriptRefactorings.SignalParametersOf(declaring, target) : GDScriptRefactorings.ParametersOf(declaring, target);
+                IReadOnlyList<GDScriptParameterChange> asking = parameters ?? was;
+                if (signal)
                 {
-                    beside = await context.Languages.CSharp.GodotScriptRenameAsync(document, target.Script == own.Script ? target.Start : caret, name);
+                    (IReadOnlyList<GDScriptHandler> handlers, IReadOnlyList<GDScriptPlace> unfollowed) = folder is null ? ([], [])
+                        : await context.Languages.CSharp.GodotSignalHandlersAsync(document.Path, target.Script, target.Named);
+                    made = GDScriptRefactorings.ChangeSignalSignature(scripts, target, name ?? target.Named, asking, handlers, [.. elsewhere, .. unfollowed]);
+                }
+                else
+                {
+                    made = GDScriptRefactorings.ChangeSignature(scripts, target, name ?? target.Named, asking, elsewhere);
+                }
+                if (made.Refused is null && folder is not null)
+                {
+                    // C#'s calls and emits by the name, their arguments in the new order; then its name where it is renamed.
+                    beside.AddRange(await context.Languages.CSharp.GodotScriptCallEditsAsync(document, asked, given => GDScriptRefactorings.Rearranged(given, was, asking)));
+                    if (name is not null && name != target.Named)
+                    {
+                        beside.AddRange(await context.Languages.CSharp.GodotScriptRenameAsync(document, asked, name));
+                    }
                 }
                 break;
         }
@@ -206,8 +260,10 @@ internal sealed partial class CodeActions
             TextSnapshot before = TextSnapshot.From(found);
             files.Add(new RefactoredFile(path, "changed", [.. edits.Edits.Select(e => before.GetLineFromOffset(e.Start) + 1).Distinct()]));
         }
-        foreach ((string path, IReadOnlyList<LspTextEdit> edits) in beside)
+        foreach (IGrouping<string, (string Path, IReadOnlyList<LspTextEdit> Edits)> file in beside.GroupBy(b => b.Path, PathNames.Comparer))
         {
+            string path = file.Key;
+            List<LspTextEdit> edits = [.. file.SelectMany(f => f.Edits)];
             changes.Add(new XamlFileChange(path, text =>
             {
                 ServerLines lines = ServerLines.Of(TextSnapshot.From(text));

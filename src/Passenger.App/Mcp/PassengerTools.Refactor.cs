@@ -41,8 +41,9 @@ public sealed partial class PassengerTools
         "answer it (dialog), its defaults as options to change and send back; describe true does so for any kind, changing " +
         "nothing. Applied, it answers each file created, changed, moved or deleted, the lines its edits start on, and what it " +
         "left alone.\nIn a GDScript: extract_variable, extract_function, introduce_parameter ({name}, over a selection), inline, " +
-        "safe_delete and change_signature ({name, parameters: [{from, name?, type?, defaultValue?} | {name, type?, " +
-        "defaultValue?, callValue}]}), its scenes' connections and C# strings followed, refused naming any use it can't see.")]
+        "safe_delete, change_signature of a function or signal ({name, parameters: [{from, name?, type?, defaultValue?} | " +
+        "{name, type?, defaultValue?, callValue}]}) and move ({script}), scenes' connections and C# followed, refused naming any " +
+        "use it can't see.")]
     public Task<RefactorAnswer> Refactor(
         string kind,
         string? path = null,
@@ -113,7 +114,9 @@ public sealed partial class PassengerTools
             "inline" or "inline_variable" or "inline_function" => CSharp.GDScriptRefactoring.Inline,
             "safe_delete" => CSharp.GDScriptRefactoring.SafeDelete,
             "change_signature" => CSharp.GDScriptRefactoring.ChangeSignature,
-            _ => throw new ArgumentException($"No GDScript refactoring '{kind}'; there are extract_variable, extract_function, introduce_parameter, inline, safe_delete and change_signature", nameof(kind)),
+            "move" => CSharp.GDScriptRefactoring.Move,
+            _ => throw new ArgumentException($"No GDScript refactoring '{kind}'; there are extract_variable, extract_function, introduce_parameter, inline, safe_delete, change_signature and move",
+                nameof(kind)),
         };
         if (line is null || column is null)
         {
@@ -143,7 +146,12 @@ public sealed partial class PassengerTools
         {
             return Described(kind, $"{kind} at {Relative(document.Path)}:{line}:{column}", new { Options = new { Name = refactoring == CSharp.GDScriptRefactoring.ExtractFunction ? "new_function" : "value" } });
         }
-        string? name = given is { } options ? JsonMembers.Text(options, "name") : null;
+        string? name = given is { } options ? JsonMembers.Text(options, refactoring == CSharp.GDScriptRefactoring.Move ? "script" : "name") : null;
+        if (refactoring == CSharp.GDScriptRefactoring.Move)
+        {
+            string script = name ?? throw new ArgumentException("move needs options {script}: the script it goes to, as res:// or the folder's path");
+            name = script.StartsWith("res://", StringComparison.Ordinal) ? script : "res://" + script.Replace('\\', '/').TrimStart('/');
+        }
         if (name is null && refactoring is CSharp.GDScriptRefactoring.ExtractVariable or CSharp.GDScriptRefactoring.ExtractFunction or CSharp.GDScriptRefactoring.IntroduceParameter)
         {
             throw new ArgumentException($"{kind} needs options {{name}}: what it makes is called");

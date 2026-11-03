@@ -90,6 +90,14 @@ public class GDScriptRefactoringsTests
     }
 
     [Fact]
+    public void Extract_function_returns_the_type_the_analyzer_reads_of_the_local_it_returns()
+    {
+        string text = "func f() -> void:\n\tvar c = 5\n\tprint(c)\n";
+        Assert.Equal("func f() -> void:\n\tvar c = make_c()\n\tprint(c)\n\n\nfunc make_c() -> int:\n\tvar c = 5\n\treturn c\n",
+            After(GDScriptRefactorings.ExtractFunction(One(text), Over(text, "var c = 5"), "make_c"), "res://main.gd", text));
+    }
+
+    [Fact]
     public void Extract_function_is_refused_where_the_statements_return_or_set_two_locals_read_after()
     {
         string text = "func f(a):\n\tvar b = a + 1\n\tvar c = b * 2\n\tprint(c)\n\tprint(b)\n\treturn b\n";
@@ -159,5 +167,86 @@ public class GDScriptRefactoringsTests
             [new GDScriptParameterChange(1, "amount", string.Empty, "1", string.Empty), new GDScriptParameterChange(0, "target", string.Empty, "null", string.Empty)], []);
         Assert.Contains("can't follow every use", refused.Refused);
         Assert.Equal(2, refused.Places.Count);
+    }
+
+    private const string Signaller = "extends Node\n\nsignal hurt(amount, source)\n\n\nfunc _ready():\n\thurt.connect(on_hurt)\n\tconnect(\"hurt\", Callable(self, \"on_hurt_too\"))\n"
+        + "\thurt.emit(3, self)\n\temit_signal(\"hurt\", 4, null)\n\n\nfunc on_hurt(amount, source):\n\tprint(amount)\n\n\nfunc on_hurt_too(a, b):\n\tprint(b)\n\n\nfunc on_scene(x, y):\n\tprint(x)\n";
+
+    [Fact]
+    public void Change_signature_of_a_signal_reorders_and_adds_through_every_emit_and_every_handler_connected()
+    {
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", Signaller));
+        GDScriptTarget target = GDScriptRefactorings.MemberAt(scripts, scripts[0], Signaller.IndexOf("hurt", StringComparison.Ordinal))!;
+        Assert.Equal(["amount", "source"], GDScriptRefactorings.SignalParametersOf(scripts[0], target).Select(p => p.Name));
+        GDScriptRefactored made = GDScriptRefactorings.ChangeSignalSignature(scripts, target, "damaged",
+            [new GDScriptParameterChange(1, "source", string.Empty, string.Empty, string.Empty), new GDScriptParameterChange(0, "amount", string.Empty, string.Empty, string.Empty),
+                new GDScriptParameterChange(-1, "kind", "String", string.Empty, "\"hit\"")],
+            [new GDScriptHandler("res://main.gd", "on_scene", new GDScriptPlace("main.tscn:9", 0, 0, "a scene's connection names it"))], []);
+        Assert.Equal("extends Node\n\nsignal damaged(source, amount, kind: String)\n\n\nfunc _ready():\n\tdamaged.connect(on_hurt)\n\tconnect(\"damaged\", Callable(self, \"on_hurt_too\"))\n"
+            + "\tdamaged.emit(self, 3, \"hit\")\n\temit_signal(\"damaged\", null, 4, \"hit\")\n\n\nfunc on_hurt(source, amount, kind: String):\n\tprint(amount)\n\n\n"
+            + "func on_hurt_too(b, a, kind: String):\n\tprint(b)\n\n\nfunc on_scene(y, x, kind: String):\n\tprint(x)\n", After(made, "res://main.gd", Signaller));
+    }
+
+    [Fact]
+    public void Change_signature_of_a_signal_is_refused_where_a_handler_can_not_follow()
+    {
+        string bound = Signaller.Replace("hurt.connect(on_hurt)", "hurt.connect(on_hurt.bind(1))", StringComparison.Ordinal);
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", bound));
+        GDScriptTarget target = GDScriptRefactorings.MemberAt(scripts, scripts[0], bound.IndexOf("hurt", StringComparison.Ordinal))!;
+        IReadOnlyList<GDScriptParameterChange> swapped = [new GDScriptParameterChange(1, "source", string.Empty, string.Empty, string.Empty),
+            new GDScriptParameterChange(0, "amount", string.Empty, string.Empty, string.Empty)];
+        Assert.Contains("connects a handler it can't follow", GDScriptRefactorings.ChangeSignalSignature(scripts, target, "hurt", swapped, [], []).Refused);
+        // A rename alone follows every use as it is.
+        Assert.Null(GDScriptRefactorings.ChangeSignalSignature(scripts, target, "harmed",
+            [new GDScriptParameterChange(0, "amount", string.Empty, string.Empty, string.Empty), new GDScriptParameterChange(1, "source", string.Empty, string.Empty, string.Empty)], [], []).Refused);
+        IReadOnlyList<GDScriptRead> csharp = Read(("res://main.gd", Signaller));
+        Assert.Contains("C# connects it", GDScriptRefactorings.ChangeSignalSignature(csharp, GDScriptRefactorings.MemberAt(csharp, csharp[0], Signaller.IndexOf("hurt", StringComparison.Ordinal))!,
+            "hurt", swapped, [], [new GDScriptPlace("Main.cs:12", 0, 0, "C# connects it")]).Refused);
+    }
+
+    private const string Healer = "extends Node\n\n\nstatic func clamp_health(value):\n\treturn value * 2\n\n\nfunc _ready():\n\tprint(clamp_health(120))\n\tvar f = clamp_health\n";
+
+    [Fact]
+    public void Move_takes_a_static_function_to_a_class_named_script_its_calls_and_values_called_by_its_class_name()
+    {
+        string utils = "class_name Utils\nextends RefCounted\n";
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", Healer), ("res://utils.gd", utils));
+        GDScriptRefactored made = GDScriptRefactorings.Move(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], Healer.IndexOf("clamp_health", StringComparison.Ordinal))!,
+            "res://utils.gd", new Dictionary<string, string>(), []);
+        Assert.Equal("extends Node\n\n\nfunc _ready():\n\tprint(Utils.clamp_health(120))\n\tvar f = Utils.clamp_health\n", After(made, "res://main.gd", Healer));
+        Assert.Equal("class_name Utils\nextends RefCounted\n\n\nstatic func clamp_health(value):\n\treturn value * 2\n", After(made, "res://utils.gd", utils));
+    }
+
+    [Fact]
+    public void Move_takes_a_function_to_an_autoloads_script_or_one_its_class_extends_and_refuses_what_can_not_follow()
+    {
+        string player = "extends Node\n\nvar score := 0\nvar lives := 3\n\n\nfunc add(points):\n\tscore += points\n\n\nfunc lose():\n\tlives -= 1\n\n\nfunc _ready():\n\tadd(5)\n\tself.add(1)\n";
+        string game = "extends Node\n\nvar score := 0\n";
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://player.gd", player), ("res://game.gd", game));
+        Dictionary<string, string> autoloads = new() { ["Game"] = "res://game.gd" };
+        GDScriptRefactored made = GDScriptRefactorings.Move(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], player.IndexOf("add", StringComparison.Ordinal))!, "res://game.gd", autoloads, []);
+        Assert.EndsWith("func _ready():\n\tGame.add(5)\n\tGame.add(1)\n", After(made, "res://player.gd", player), StringComparison.Ordinal);
+        Assert.Equal("extends Node\n\nvar score := 0\n\n\nfunc add(points):\n\tscore += points\n", After(made, "res://game.gd", game));
+        Assert.Contains("reads 'lives', which res://game.gd lacks",
+            GDScriptRefactorings.Move(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], player.IndexOf("lose", StringComparison.Ordinal))!, "res://game.gd", autoloads, []).Refused);
+        Assert.Contains("on an object of its own script",
+            GDScriptRefactorings.Move(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], player.IndexOf("add", StringComparison.Ordinal))!, "res://game.gd", new Dictionary<string, string>(), []).Refused);
+
+        string based = "class_name Base\nextends Node\n\nvar score := 0\n";
+        string child = "extends Base\n\n\nfunc add(points):\n\tscore += points\n\n\nfunc _ready():\n\tadd(5)\n";
+        IReadOnlyList<GDScriptRead> family = Read(("res://base.gd", based), ("res://child.gd", child));
+        GDScriptRefactored up = GDScriptRefactorings.Move(family, GDScriptRefactorings.MemberAt(family, family[1], child.IndexOf("add", StringComparison.Ordinal))!, "res://base.gd",
+            new Dictionary<string, string>(), [new GDScriptPlace("main.tscn:7", 0, 0, "a scene's connection names it")]);
+        Assert.Equal("extends Base\n\n\nfunc _ready():\n\tadd(5)\n", After(up, "res://child.gd", child));
+        Assert.Equal("class_name Base\nextends Node\n\nvar score := 0\n\n\nfunc add(points):\n\tscore += points\n", After(up, "res://base.gd", based));
+    }
+
+    [Fact]
+    public void Rearranged_gives_a_csharp_calls_arguments_in_the_new_order()
+    {
+        IReadOnlyList<GDScriptParameterChange> was = [new(0, "target", string.Empty, string.Empty, string.Empty), new(1, "amount", string.Empty, "1", string.Empty)];
+        Assert.Equal(["\"b\"", "2", "3"], GDScriptRefactorings.Rearranged(["\"b\"", "3"], was,
+            [was[0], new GDScriptParameterChange(-1, "times", "int", string.Empty, "2"), was[1]]));
+        Assert.Equal(["\"a\"", "2"], GDScriptRefactorings.Rearranged(["\"a\""], was, [was[0], new GDScriptParameterChange(-1, "times", "int", string.Empty, "2"), was[1]]));
     }
 }

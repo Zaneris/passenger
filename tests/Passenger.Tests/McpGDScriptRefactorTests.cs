@@ -42,4 +42,22 @@ public sealed class McpGDScriptRefactorTests : McpRig
         CallToolResult refused = await Result(client, McpTools.Refactor, new() { ["kind"] = "safe_delete", ["path"] = "main.gd", ["line"] = 4, ["column"] = 7 });
         Assert.True(refused.IsError == true && Text(refused).Contains("'strike' is still used", StringComparison.Ordinal), $"Safe Delete of a used function answered: {Text(refused)}");
     }
+
+    [Fact]
+    public async Task An_agent_changes_a_gdscript_signals_signature_through_its_emits_and_the_handler_connected()
+    {
+        string folder = TestFolders.Create("mcp-gdscript-signal-");
+        string path = TestFolders.Write(folder, "main.gd", "extends Node\n\nsignal scored(points)\n\n\nfunc _ready():\n\tscored.connect(on_scored)\n\tscored.emit(3)\n\n\n"
+            + "func on_scored(points):\n\tprint(points)\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement described = await Call(client, McpTools.Refactor, new() { ["kind"] = "change_signature", ["path"] = "main.gd", ["line"] = 3, ["column"] = 9 });
+        Assert.Equal(["points"], described.GetProperty("dialog").GetProperty("parameters").EnumerateArray().Select(p => p.GetProperty("name").GetString()));
+        await Call(client, McpTools.Refactor, new()
+        {
+            ["kind"] = "change_signature", ["path"] = "main.gd", ["line"] = 3, ["column"] = 9,
+            ["options"] = JsonSerializer.SerializeToElement(new { parameters = new object[] { new { from = "points" }, new { name = "bonus", type = "int", callValue = "0" } } }),
+        });
+        Assert.Equal("extends Node\n\nsignal scored(points, bonus: int)\n\n\nfunc _ready():\n\tscored.connect(on_scored)\n\tscored.emit(3, 0)\n\n\n"
+            + "func on_scored(points, bonus: int):\n\tprint(points)\n", File.ReadAllText(path));
+    }
 }

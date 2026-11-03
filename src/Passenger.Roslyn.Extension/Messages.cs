@@ -432,7 +432,21 @@ public sealed record GodotKindUse(
     [property: JsonPropertyName("scripts")] IReadOnlyList<string> Scripts,
     [property: JsonPropertyName("node")] string? Node,
     [property: JsonPropertyName("export")] string? Export,
-    [property: JsonPropertyName("member")] string? Member);
+    [property: JsonPropertyName("member")] string? Member)
+{
+    /// <summary>For a string a call passes the member's arguments after (<c>Call("f", 1)</c>, <c>CallDeferred</c>,
+    /// <c>Rpc</c>, <c>EmitSignal</c>), those arguments as written; null for any other use.</summary>
+    [JsonPropertyName("rest")]
+    public GodotCallRest? Rest { get; init; }
+}
+
+/// <summary>The arguments a call passes after the string naming a method or signal: which call it is, where the text from
+/// the end of the string's argument to the call's closing parenthesis lies, and each argument as written.</summary>
+public sealed record GodotCallRest(
+    [property: JsonPropertyName("call")] string Call,
+    [property: JsonPropertyName("from")] Place From,
+    [property: JsonPropertyName("to")] Place To,
+    [property: JsonPropertyName("arguments")] IReadOnlyList<string> Arguments);
 
 /// <summary>The strings of a kind naming one name, asked for in the C# of the projects of a Godot project's folder.</summary>
 public sealed record GodotKindAsked(

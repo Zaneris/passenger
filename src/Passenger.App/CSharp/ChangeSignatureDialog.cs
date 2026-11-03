@@ -19,6 +19,9 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
 
     /// <summary>The signature's kind for a GDScript function.</summary>
     public const string GDScriptKind = "gdscript";
+
+    /// <summary>The signature's kind for a GDScript signal, which returns nothing and whose parameters take no defaults.</summary>
+    public const string GDScriptSignalKind = "gdscript signal";
     private static readonly string[] ModifierChoices = ["", "ref", "out", "in", "params"];
 
     private readonly Signature signature;
@@ -34,11 +37,11 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
     {
         this.signature = signature;
         this.make = make;
-        bool method = signature.Kind is "method" or GDScriptKind;
+        bool method = signature.Kind is "method" or GDScriptKind or GDScriptSignalKind;
         NameBox = Field(signature.Name);
         NameBox.IsEnabled = method;
         ReturnTypeBox = Field(method ? signature.ReturnType : string.Empty);
-        ReturnTypeBox.IsEnabled = method;
+        ReturnTypeBox.IsEnabled = method && signature.Kind != GDScriptSignalKind;
         NameBox.TextChanged += (_, _) => Update();
         ReturnTypeBox.TextChanged += (_, _) => Update();
 
@@ -135,7 +138,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
 
     protected override string? Check()
     {
-        bool method = signature.Kind is "method" or GDScriptKind;
+        bool method = signature.Kind is "method" or GDScriptKind or GDScriptSignalKind;
         if (method && !IsName(NameBox.Text))
         {
             return string.IsNullOrWhiteSpace(NameBox.Text) ? "Method name can not be empty" : $"'{NameBox.Text}' is not a valid method name";
@@ -173,7 +176,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
             r.From >= 0 ? r.DefaultBox.Text?.Trim() ?? string.Empty : string.Empty,
             r.From < 0 ? r.DefaultBox.Text?.Trim() ?? string.Empty : string.Empty))]);
 
-    private bool GDScript => signature.Kind == GDScriptKind;
+    private bool GDScript => signature.Kind is GDScriptKind or GDScriptSignalKind;
 
     private bool IsName(string? text) => text is { } name && (GDScript ? Passenger.Workspace.GDScript.GDScriptRefactorings.WhyNotName(name.Trim()) is null
         : SyntaxFacts.IsValidIdentifier(name.Trim()) && SyntaxFacts.GetKeywordKind(name.Trim()) == SyntaxKind.None);
@@ -249,7 +252,8 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
         if (GDScript)
         {
             string returned = ReturnTypeBox.Text?.Trim() is { Length: > 0 } written ? $" -> {written}" : string.Empty;
-            preview.Text = $"func {NameBox.Text?.Trim()}({string.Join(", ", parameters)}){returned}";
+            preview.Text = signature.Kind == GDScriptSignalKind ? $"signal {NameBox.Text?.Trim()}({string.Join(", ", parameters)})"
+                : $"func {NameBox.Text?.Trim()}({string.Join(", ", parameters)}){returned}";
             Changed();
             return;
         }

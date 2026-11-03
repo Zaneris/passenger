@@ -218,7 +218,10 @@ internal static class GodotGenerated
                     (string? node, string? export) = GodotKinds.NodeOf(solution, call.Object, model, cancel) ?? (null, null);
                     IReadOnlyList<string> scripts = model.GetEnclosingSymbol(token.SpanStart, cancel)?.ContainingType is { } inside
                         ? await GodotKinds.ScriptsOfAsync(inside, solution, cancel).ConfigureAwait(false) : [];
-                    uses.Add(new GodotKindUse(path, PlaceAt(text, token.SpanStart + 1), PlaceAt(text, token.Span.End - 1), scripts, node, export, null));
+                    uses.Add(new GodotKindUse(path, PlaceAt(text, token.SpanStart + 1), PlaceAt(text, token.Span.End - 1), scripts, node, export, null)
+                    {
+                        Rest = RestOf(token, call, text),
+                    });
                 }
             }
         }
@@ -295,6 +298,24 @@ internal static class GodotGenerated
         IOperation? named = arguments.FirstOrDefault(a => a != given && a.Parameter?.Type is { Name: "GodotObject", ContainingNamespace.Name: "Godot" }) is { } beside
             ? Unconverted(beside.Value) : instance;
         return kind is { } of && named?.Type is { } on ? new GodotNameCall(of, on, method, arguments) { Object = named } : null;
+    }
+
+    /// <summary>The arguments a call passing them on after a name gives (<see cref="GodotCallRest"/>), each written by
+    /// place; null for another call, or one that names an argument or passes them as an array.</summary>
+    private static GodotCallRest? RestOf(SyntaxToken token, GodotNameCall call, SourceText text)
+    {
+        if (call.Method.Name is not ("Call" or "CallDeferred" or "Rpc" or "EmitSignal") || token.Parent?.Parent is not ArgumentSyntax named
+            || named.Parent is not ArgumentListSyntax list || list.Arguments.Any(a => a.NameColon is not null))
+        {
+            return null;
+        }
+        int at = list.Arguments.IndexOf(named);
+        if (at < 0 || call.Arguments.Any(a => a.ArgumentKind == ArgumentKind.ParamArray && a.Value is IArrayCreationOperation { IsImplicit: false }))
+        {
+            return null;
+        }
+        return new GodotCallRest(call.Method.Name, PlaceAt(text, named.Span.End), PlaceAt(text, list.CloseParenToken.SpanStart),
+            [.. list.Arguments.Skip(at + 1).Select(a => a.ToString())]);
     }
 
     /// <summary>An argument's value as written, before what converts it to its parameter's type.</summary>
