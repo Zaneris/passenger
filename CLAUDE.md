@@ -437,9 +437,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   build skipped while what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`;
   on Windows a build's first step lets go of the Avalonia previewers holding its output
   (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time (`ConsoleWritten`).
-- **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach,
-  Restart and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time
-  (`TakeStartAsync`); Stop ends every session and recording before the programs go.
+- **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach, Restart
+  and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time (`TakeStartAsync`);
+  Stop ends every session and recording before the programs go. A project run's logs and traces go to a dashboard of its
+  own (`RunDashboard`, a Compose project), started in `PrepareAsync(collects:)` and ended with the program (`EndWith`),
+  its program's variables `OtlpEnvironment`'s (a container run's too, `ContainerTelemetry.Tell`); every run with
+  telemetry is an `ITelemetryRun`.
 - **Containers.** An app's variables are named in Core's `AppVariables` (its environment
   `AspNetCoreVariables.EnvironmentOf`, HTTPS `ServesHttps`), the engine's in `EngineVariables`; a compose file is
   `ComposeFiles.IsCompose`. The person's `docker` CLI and context only, never the Engine API or a Docker package; a
