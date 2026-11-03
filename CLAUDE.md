@@ -143,37 +143,39 @@ App and the tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collecti
   reader (XAML's compilers, BAML, XamlIl) at a lone '\r' only. Every place crossing to a server, compiler, PDB or running
   app goes through `ServerLines`/`ServerPlaces` (`Compiled`, `CountedByRoslyn`, `PositionOfCompiled`), never `new
   TextPosition(line, character)`; the debugger's lines through `Debugging/BuiltLines`. MCP's places are the editor's.
-- **Writes go one way.** A workspace file: `FileText.Save` (atomic, through symlinks, permissions, Windows attributes,
-  ACL and streams, macOS metadata, and Linux's extended attributes, ACL, owner and group where it may kept
-  (`UnixFileMetadata`, `AtomicFile.Write`'s too), a file another hard link names written in place, a read-only file
-  refused, Local History given the old bytes). A file the IDE makes: `FileText.SaveNew` (its .editorconfig's end_of_line
-  and charset), one written again `FileText.SaveOver`, a workspace file the window changes itself
-  `MainWindow.ChangeFileAsync`. Any other whole file: `AtomicFile.Write`. Never `File.WriteAll*`. A state file only the
-  person may read goes through `OwnFiles` (`Folder`, `Write`, `Create`). Passenger saves an open project, solution,
-  solution filter, nuget.config or Directory.Packages.props before writing it and loads what it wrote after
-  (`SaveBeforeWriting`, `FollowWritten`). A change of several files, or one that moves a file, is one command of global
-  undo (`EditorArea.Commands.Record`), and the window follows only what a change of files made, moved or deleted
-  (`Following`, `CameOrWent`, through `ProjectSession.CameOrWent`, which lets go of a failed evaluation where its file
-  comes back), never a whole re-read of the folder. Server edits pass `LineEndings.Fit` then `Indentation.Fit`. A save
-  Windows refuses while another program holds the file lands in the background, in order (`FileText.Landed`;
-  `FileText.Read` gives its bytes meanwhile), and what hands the files to another program (a build, Git, a restore, an
-  agent) waits for it (`SaveAllLandedAsync`); a change that writes a file not open (several files, a fix, Undo and Redo)
-  says it is done only once its own writes have landed (`WorkspaceEdits.LandedAsync`, `EditorArea.LandedAsync(paths,
-  …)`), every command waiting inside its recording (`Recording.LandedAsync`, `WorkspaceEdits.LandedAsync(recording, …)`:
-  the open files' changes taken first, a file never written left out; `TypeRename.Apply` and `ApplyAsCommand` take the
-  caller's), the window's words through `UnlandedAsync`; a command that waits between its writes records with
-  `Commands.RecordWrites`, so only what it wrote is its own; its moves go through `Recording.Move`, never a bare
-  `EditorArea.MoveFile`, which no recording follows; every write of closed files goes in turn through
-  `CommandHistory.InTurnAsync`; a closed file changes through `Recording.Change` (or `Wrote` for texts it holds),
-  written off the window's thread by `Recording.WriteAsync`, the window following once they are written
-  (`AssistContext.ChangeFilesAsync`, `MainWindow.FollowingAsync`); Undo and Redo put closed files back off it
-  (`CommandHistory.BlockedAsync`, `PutAsync`), a command's `Part` (its put a task: a long `First` put runs off the
-  window's thread while the rest is checked again, `ChangedSinceFirstAsync`) saying why it could not be put and one the
-  disk may refuse going `First`; one refused partway takes back what it did (`CommandHistory.TakenBackAsync`; a
-  recording's `Recording.TakenBackAsync`, which `WorkspaceEdits.LandedAsync` and `WrittenAsync` call), and a file a
-  command deletes is kept for Undo (`Recording.Deleted`). A file shown read-only refuses every change to its text
-  (`TextDocument.IsReadOnly`, set only by `OpenDocument`; every file in a package folder an evaluation names is shown
-  so, `PackageFolders`), and an action on it greys with `Refusals.ReadOnly`.
+- **Writes go one way.** Every write of a file first passes `EditorArea.ClearAsync`, the one gate for what the person's
+  Godot editor holds unsaved (`GodotHolds`; a person asked, an agent refused, `Refusals.HeldInGodot`), and `TrySave`
+  refuses a held file unless the save was explicit or the gate let that open file through once. A workspace file:
+  `FileText.Save` (atomic, through symlinks, permissions, Windows attributes, ACL and streams, macOS metadata, and
+  Linux's extended attributes, ACL, owner and group where it may kept (`UnixFileMetadata`, `AtomicFile.Write`'s too), a
+  file another hard link names written in place, a read-only file refused, Local History given the old bytes). A file
+  the IDE makes: `FileText.SaveNew` (its .editorconfig's end_of_line and charset), one written again
+  `FileText.SaveOver`, a workspace file the window changes itself `MainWindow.ChangeFileAsync`. Any other whole file:
+  `AtomicFile.Write`. Never `File.WriteAll*`. A state file only the person may read goes through `OwnFiles` (`Folder`,
+  `Write`, `Create`). Passenger saves an open project, solution, solution filter, nuget.config or
+  Directory.Packages.props before writing it and loads what it wrote after (`SaveBeforeWriting`, `FollowWritten`). A
+  change of several files, or one that moves a file, is one command of global undo (`EditorArea.Commands.Record`), and
+  the window follows only what a change of files made, moved or deleted (`Following`, `CameOrWent`, through
+  `ProjectSession.CameOrWent`, which lets go of a failed evaluation where its file comes back), never a whole re-read of
+  the folder. Server edits pass `LineEndings.Fit` then `Indentation.Fit`. A save Windows refuses while another program
+  holds the file lands in the background, in order (`FileText.Landed`; `FileText.Read` gives its bytes meanwhile), and
+  what hands the files to another program (a build, Git, a restore, an agent) waits for it (`SaveAllLandedAsync`); a
+  change that writes a file not open (several files, a fix, Undo and Redo) says it is done only once its own writes have
+  landed (`WorkspaceEdits.LandedAsync`, `EditorArea.LandedAsync(paths, …)`), every command waiting inside its recording
+  (`Recording.LandedAsync`, `WorkspaceEdits.LandedAsync(recording, …)`: the open files' changes taken first, a file
+  never written left out; `TypeRename.Apply` and `ApplyAsCommand` take the caller's), the window's words through
+  `UnlandedAsync`; a command that waits between its writes records with `Commands.RecordWrites`, so only what it wrote
+  is its own; its moves go through `Recording.Move`, never a bare `EditorArea.MoveFile`, which no recording follows;
+  every write of closed files goes in turn through `CommandHistory.InTurnAsync`; a closed file changes through
+  `Recording.Change` (or `Wrote` for texts it holds), written off the window's thread by `Recording.WriteAsync`, the
+  window following once they are written (`AssistContext.ChangeFilesAsync`, `MainWindow.FollowingAsync`); Undo and Redo
+  put closed files back off it (`CommandHistory.BlockedAsync`, `PutAsync`), a command's `Part` (its put a task: a long
+  `First` put runs off the window's thread while the rest is checked again, `ChangedSinceFirstAsync`) saying why it
+  could not be put and one the disk may refuse going `First`; one refused partway takes back what it did
+  (`CommandHistory.TakenBackAsync`; a recording's `Recording.TakenBackAsync`, which `WorkspaceEdits.LandedAsync` and
+  `WrittenAsync` call), and a file a command deletes is kept for Undo (`Recording.Deleted`). A file shown read-only
+  refuses every change to its text (`TextDocument.IsReadOnly`, set only by `OpenDocument`; every file in a package
+  folder an evaluation names is shown so, `PackageFolders`), and an action on it greys with `Refusals.ReadOnly`.
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
   a bad file set aside as `.bad`), read off the UI thread; never a file of its own. Per-folder state lives under
   `workspaces/<name>-<hash>/`, held by each window with the folder open (`StateStore.Hold`/`LetGo`); its writes hold a
@@ -443,9 +445,10 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach, Restart
   and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time (`TakeStartAsync`);
   Stop ends every session and recording before the programs go. A project run's logs and traces go to a dashboard of its
-  own (`RunDashboard`, a Compose project), started in `PrepareAsync(collects:)` and ended with the program (`EndWith`),
-  its program's variables `OtlpEnvironment`'s (a container run's too, `ContainerTelemetry.Tell`); every run with
-  telemetry is an `ITelemetryRun`.
+  own (`RunDashboard`, a Compose project), started in `PrepareAsync(collects:)` and kept past the program's own end
+  until Stop, its next run or the folder's end, shown beside its console (`TelemetryPane`), its program's variables
+  `OtlpEnvironment`'s (a container run's too, `ContainerTelemetry.Tell`); every run with telemetry is an
+  `ITelemetryRun`.
 - **Containers.** An app's variables are named in Core's `AppVariables` (its environment
   `AspNetCoreVariables.EnvironmentOf`, HTTPS `ServesHttps`), the engine's in `EngineVariables`; a compose file is
   `ComposeFiles.IsCompose`. The person's `docker` CLI and context only, never the Engine API or a Docker package; a
@@ -454,9 +457,11 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **Aspire.** `AspireController` (the IDE execution protocol on loopback, bearer tokens checked first),
   `AspireInteractions` (gRPC, its C# checked in), `AspireClient` (the CLI, for an AppHost Passenger didn't start).
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
-  environment only; Endpoints sends nothing but on Test or Send, and a send taking the person's environment asks first.
-  `ResourceFiles` is the one reader and writer of `.resx` and `xlf/*.xlf`, a table's change one edit of the open text
-  (`WithValue`, `Renamed`, `Without`, `WithTarget`).
+  environment only; Endpoints sends nothing but on Test or Send (an app's OpenAPI document, `OpenApiDocument` and
+  `OpenApiSchemas`, Passenger's own reader, comes from a loopback app the folder runs or the build alone,
+  `OpenApiSources`, its requests written through `MainWindow.AppendRequestsAsync`), and a send taking the person's
+  environment asks first. `ResourceFiles` is the one reader and writer of `.resx` and `xlf/*.xlf`, a table's change one
+  edit of the open text (`WithValue`, `Renamed`, `Without`, `WithTarget`).
 - **Debugging.** `DebugController` (a `DebugTab` per session, several at once), `DebugSession` (its adapter an
   `AdapterEnd`: `ProcessEnd` the engine's, `InProcessEnd` one inside the IDE such as `GodotScriptAdapter`, a game's
   GDScript over its debug connection; `DebugSession.Engine` sends each file's breakpoints to the adapter that runs it; a
@@ -666,11 +671,13 @@ site-shots` retakes its images.
   `{"passenger:object": id}`; and a script can show no progress while `_build` blocks. The addon matches a session to
   its `ScriptEditorDebugger` through the tab it adds (`add_session_tab`), never by its place in the tree; a relayed
   message's data stays a `List<object?>`, as every reader matches one; Passenger's live-edit ids are negative, the
-  editor's counting up from one. IDE messaging's `Play` plays only the main scene, `DebugPlay`'s debugger fields are
-  dead in Godot 4 (Godot 3's Mono agent's), and `ReloadScripts` reloads the running games' scripts, the editor's own
-  assemblies reloaded by GodotTools' watcher every 0.5 s; Godot's JSON reads every number as a float. An agent's input
-  and layout reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing;
-  `PassengerTools.Godot.cs`).
+  editor's counting up from one. `get_unsaved_scenes` exists only from 4.7, so an older Godot's open scenes count as
+  perhaps unsaved, and no Godot says whether a resource is unsaved, so one its inspector shows counts as held; the addon
+  reloads a scene only where Godot has it open and saved. IDE messaging's `Play` plays only the main scene,
+  `DebugPlay`'s debugger fields are dead in Godot 4 (Godot 3's Mono agent's), and `ReloadScripts` reloads the running
+  games' scripts, the editor's own assemblies reloaded by GodotTools' watcher every 0.5 s; Godot's JSON reads every
+  number as a float. An agent's input and layout reach a game through Passenger's helper node (`PassengerAgent.gd`,
+  brought in by live editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
