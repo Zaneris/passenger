@@ -944,6 +944,44 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>An Avalonia app the AppHost runs as a service takes XAML Hot Reload as Run's app does: a save of its window's
+    /// XAML puts a button added into the window it shows, the apply said with the service's name.</summary>
+    [AvaloniaFact]
+    public void An_Avalonia_app_the_AppHost_runs_as_a_service_takes_its_saved_xaml_into_its_window()
+    {
+        project.Reset();
+        string app = project.WriteBindingsApp();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = project.AskToStartApi("bindings", projectPath: app);
+            using System.Net.WebSockets.ClientWebSocket subscribed = notified;
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the run session: {answer}");
+            Passenger.App.LiveTree.LiveApp? inspection = null;
+            Ui.WaitFor(() => (inspection = window.AspireRuntime.Apps.SelectMany(a => a.Services).Select(s => s.Inspection)
+                .FirstOrDefault(i => i is { State: Passenger.App.LiveTree.LiveAppState.Connected })) is not null,
+                () => $"the service's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
+
+            window.OpenFile(Path.Combine(Path.GetDirectoryName(app)!, "MainWindow.axaml"));
+            Typing.Replace(window, "Text=\"{Binding Nmae}\" />", "Text=\"{Binding Nmae}\" />\n        <Button x:Name=\"Added\" Content=\"Added\" />");
+            string said = string.Empty;
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() => (said = window.Status ?? said).Contains(": XAML changes applied: MainWindow.axaml (MainWindow)", StringComparison.Ordinal),
+                () => $"the apply to the service to be said ({window.Status})");
+            Assert.StartsWith("bindings", said, StringComparison.Ordinal);
+            Ui.WaitFor(() => Named(Ui.Await(inspection!.AgentTreeAsync([]), "the service's tree").Roots, "Added"), "the service's window to show the button added");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+
+        static bool Named(IEnumerable<Passenger.Inspector.Element> elements, string name) => elements.Any(e => e.Name == name || Named(e.Children, name));
+    }
+
     /// <summary>"(running)" says only what runs, and Rerun follows the configuration chosen: a plain run that ended is not
     /// "(running)" once an AppHost runs; with the API's configuration chosen while the AppHost runs, Rerun runs the API beside
     /// it, then stops it and runs it again, the AppHost running on as another configuration's run.</summary>

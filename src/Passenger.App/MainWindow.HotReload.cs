@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Passenger.App.Debugging;
+using Passenger.App.Editors;
 using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
@@ -75,15 +76,52 @@ public partial class MainWindow
         };
     }
 
+    /// <summary>XAML files written on disk while not open (another editor's save, a checkout, a change of files Passenger
+    /// made): each inspected app takes the text written as an edit from the text it holds, applied as a save of it applies
+    /// it, to Run's app, an AppHost's services and the apps debugged; an open file's text is the editor's, which follows the
+    /// disk itself.</summary>
+    private async Task XamlWrittenAsync(IEnumerable<string> paths)
+    {
+        ProjectSession current = session;
+        List<string> closed = [.. paths.Where(p => Xaml.XamlService.IsXaml(p) && Editors.Find(p) is null).Distinct(PathNames.Comparer)];
+        if (closed.Count == 0 || !current.Inspecting.Any(a => a.App.Xaml is not null))
+        {
+            return;
+        }
+        List<(string Path, string? Text)> written = await BackgroundWork.Run(() => closed.Select(p => (p, EditorArea.Read(p)?.ToString())).ToList());
+        if (session != current || current.IsEnded)
+        {
+            return;
+        }
+        bool edited = false;
+        foreach (InspectedApp inspected in current.Inspecting)
+        {
+            foreach ((string path, string? text) in written)
+            {
+                edited |= inspected.App.Xaml?.Written(path, text) == true;
+            }
+        }
+        if (edited)
+        {
+            XamlSaved();
+            current.Debug.XamlWritten();
+        }
+    }
+
     /// <summary>Whether the app Run runs without dotnet watch has XAML edits it has not taken.</summary>
     private bool RunXamlEdited => !buildRun.WatchesHotReload && session.RunApp is { Xaml.Changed: true, State: not Passenger.App.LiveTree.LiveAppState.Ended };
+
+    /// <summary>The apps a XAML file's save applies its edits to, beside the debugger's: Run's, and each service an AppHost
+    /// runs undebugged, those with edits they have not taken.</summary>
+    private IReadOnlyList<InspectedApp> XamlSaveTakers => [.. session.Inspecting.Where(a => a.Kind is RunningKind.Run or RunningKind.Service
+        && a.App is { Xaml.Changed: true, State: not Passenger.App.LiveTree.LiveAppState.Ended })];
 
     /// <summary>An apply a XAML file's save asked of Run's app, run once the saves of one Save All are done.</summary>
     private bool xamlOnSave;
 
     private void XamlSaved()
     {
-        if (xamlOnSave || !settings.XamlHotReloadOnSave || !RunXamlEdited)
+        if (xamlOnSave || !settings.XamlHotReloadOnSave || XamlSaveTakers.Count == 0)
         {
             return;
         }
@@ -99,11 +137,24 @@ public partial class MainWindow
         });
     }
 
-    /// <summary>The XAML edits applied to the app Run runs, said where Hot Reload says what it applied: the status bar, the
-    /// Run window and Problems' Hot Reload tab. Null when it has none to take.</summary>
+    /// <summary>The XAML edits applied to the app Run runs and to an AppHost's services run undebugged (<see cref="XamlSaveTakers"/>),
+    /// each said where Hot Reload says what it applied: the status bar, Run's in the Run window, and Problems' Hot Reload
+    /// tab. Run's outcome; null when it had none to take.</summary>
     private async Task<HotReloadOutcome?> ApplyRunXamlAsync()
     {
-        if (!RunXamlEdited || session.RunApp?.Xaml is not { } xaml)
+        HotReloadOutcome? run = null;
+        foreach (InspectedApp taker in XamlSaveTakers)
+        {
+            HotReloadOutcome? outcome = await ApplyXamlAsync(taker);
+            run = taker.Kind == RunningKind.Run ? outcome : run;
+        }
+        return run;
+    }
+
+    /// <summary>One app's XAML edits applied, said as <see cref="ApplyRunXamlAsync"/> says it.</summary>
+    private async Task<HotReloadOutcome?> ApplyXamlAsync(InspectedApp taker)
+    {
+        if (taker.App.Xaml is not { } xaml)
         {
             return null;
         }
@@ -113,7 +164,14 @@ public partial class MainWindow
         {
             return outcome;
         }
-        Bottom.Run.Append($"Hot Reload: {outcome.Said}\n", outcome.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply));
+        if (taker.Kind == RunningKind.Run)
+        {
+            Bottom.Run.Append($"Hot Reload: {outcome.Said}\n", outcome.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply));
+        }
+        else
+        {
+            outcome = outcome with { Said = $"{taker.Name}: {outcome.Said}" };
+        }
         Bottom.Problems.ShowHotReload(outcome.Said, outcome.Problems);
         if (outcome.Problems.Any(p => p.Severity == Run.ProblemSeverity.Error))
         {

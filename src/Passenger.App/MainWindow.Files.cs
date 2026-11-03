@@ -726,6 +726,7 @@ public partial class MainWindow
         }
         // Now, rather than once the watcher hears of it.
         session.Xaml.FilesChanged([.. texts.Concat(moved).Where(p => p.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)).Distinct(PathNames.Comparer)]);
+        IdeErrors.Observe(XamlWrittenAsync(texts));
     }
 
     /// <summary>Files or folders the IDE itself made, moved or deleted, followed at once rather than when the folder watcher

@@ -101,6 +101,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Folder = folder;
         Configurations = new RunConfigurations(folder, () => Workspace);
         Aspire = new AspireController(this, setup.StateFolder);
+        Aspire.Inspected = app => Reloaded(app);
         AspireFiles = new AspireFiles(this);
         Builder = new ProcessRunner(setup.Views.Build);
         Runner = new ProcessRunner(setup.Views.Run, takesInput: true);
@@ -667,12 +668,17 @@ public sealed class ProjectSession : IAsyncDisposable
         return (app?.Plan ?? plan, app);
     }
 
-    /// <summary>An app Run or Debug launches, given its XAML Hot Reload.</summary>
+    /// <summary>An app Run, Debug or an AppHost launches, given its XAML Hot Reload, which keeps what its build read of the folder's XAML.</summary>
     private LiveApp? Reloaded(LiveApp? app)
     {
         if (app is not null)
         {
-            app.Xaml = new LiveTree.XamlHotReload(app, setup.Editors.TextOf, Xaml.ProjectAsync);
+            LiveTree.XamlHotReload xaml = new(app, setup.Editors.TextOf, Xaml.ProjectAsync);
+            app.Xaml = xaml;
+            if (Index.Root is { } root)
+            {
+                IdeErrors.Observe(xaml.KeepBuiltAsync([.. Index.Files.Where(Passenger.App.Xaml.XamlService.IsXaml).Select(f => Path.Combine(root, f))]));
+            }
         }
         return app;
     }

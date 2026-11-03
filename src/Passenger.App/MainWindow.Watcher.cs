@@ -102,6 +102,7 @@ public partial class MainWindow
         session.Tests.Finder.FolderChanged(changes);
         session.Xaml.CameOrWent(changes.ComeOrGone, every: changes.Lost);
         session.Xaml.FilesChanged(changes.Paths.Concat(changes.Restored));
+        IdeErrors.Observe(XamlWrittenAsync(changes.Paths));
         session.GodotScenes.CameOrWent(changes.ComeOrGone, every: changes.Lost);
         session.GodotScenes.FilesChanged(changes.Paths);
         session.MSBuild.FilesChanged(changes.Paths, changes.Structure);

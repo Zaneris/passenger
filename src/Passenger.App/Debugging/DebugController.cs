@@ -2060,6 +2060,20 @@ public sealed class DebugController : IDisposable
         bool debugged = HotReload is { Changed: true } && HotReloadOnSave() && WhyNotApply() is null;
         bool xaml = sender is OpenDocument saved && Xaml.XamlService.IsXaml(saved.Path) && XamlOnSave()
             && view.Sessions.Any(t => t.IsLive && t.App?.Xaml is { Changed: true });
+        ApplyOnSave(run, debugged, xaml);
+    }
+
+    /// <summary>XAML files written on disk while not open, which the apps debugged took as edits: applied to them as a XAML
+    /// file's save would apply it.</summary>
+    public void XamlWritten()
+    {
+        UiThread.Check();
+        ApplyOnSave(false, false, XamlOnSave() && view.Sessions.Any(t => t.IsLive && t.App?.Xaml is { Changed: true }));
+    }
+
+    /// <summary>An apply a save asked for: of the programs run with Hot Reload, of the session debugged, of the XAML of the apps debugged.</summary>
+    private void ApplyOnSave(bool run, bool debugged, bool xaml)
+    {
         xamlOnSave |= xaml;
         if (applyOnSave || !run && !debugged && !xaml)
         {

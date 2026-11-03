@@ -14,7 +14,7 @@ namespace Passenger.Tests;
 /// its MainWindow.xaml edited in the editor (a colour, a text, a button added that names the window's own handler) and
 /// saved, and the app's own window, the same object, showing the edit; a click on the button added runs the handler, which
 /// writes to the counter through its x:Name field; an element WPF has not is refused with its line, the window left as it
-/// was. WPF's window shows on the screen, and WPF runs on Windows alone, so elsewhere the tests skip; run alone.</summary>
+/// was; and a resource dictionary App.xaml merges, saved, reaching what uses it. WPF's window shows on the screen, and WPF runs on Windows alone, so elsewhere the tests skip; run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDisposable
 {
@@ -130,6 +130,62 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
             window.Close();
         }
     }
+
+    /// <summary>Under Run, a resource dictionary App.xaml merges, edited and saved, reaches the running app: the caption's
+    /// colour, a dynamic resource of the dictionary's, takes the new brush.</summary>
+    [AvaloniaFact]
+    public void A_running_wpf_apps_saved_resource_dictionary_reaches_what_uses_its_resources()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string app = Path.Combine(folder, "App.xaml");
+        string palette = Path.Combine(folder, "Palette.xaml");
+        File.WriteAllText(palette, """
+            <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                <SolidColorBrush x:Key="Accent" Color="SteelBlue" />
+            </ResourceDictionary>
+
+            """);
+        string resources = File.ReadAllText(app);
+        int start = resources.IndexOf("<Application.Resources>", StringComparison.Ordinal) + "<Application.Resources>".Length;
+        int end = resources.IndexOf("</Application.Resources>", StringComparison.Ordinal);
+        File.WriteAllText(app, resources[..start] + "\n        <ResourceDictionary>\n            <ResourceDictionary.MergedDictionaries>\n"
+            + "                <ResourceDictionary Source=\"Palette.xaml\" />\n            </ResourceDictionary.MergedDictionaries>"
+            + resources[start..end] + "    </ResourceDictionary>\n    " + resources[end..]);
+        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("Foreground=\"SteelBlue\"", "Foreground=\"{DynamicResource Accent}\"", StringComparison.Ordinal));
+        MainWindow window = Ui.OpenFolder(folder, 1400, 900, languageServer: false);
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
+            LiveApp running = window.Session.RunApp!;
+            Assert.Contains("4682B4", Caption(running), StringComparison.OrdinalIgnoreCase);
+
+            window.OpenFile(palette);
+            Typing.Replace(window, "Color=\"SteelBlue\"", "Color=\"SeaGreen\"");
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() =>
+            {
+                OutputView run = window.BottomPanel.Run;
+                run.Flush();
+                return run.Document.Snapshot.ToString().Contains("Hot Reload: XAML changes applied: Palette.xaml (ResourceDictionary)", StringComparison.Ordinal);
+            }, () => $"the Run window to say the dictionary applied ({window.Status})");
+            Ui.WaitFor(() => Caption(running).Contains("2E8B57", StringComparison.OrdinalIgnoreCase), () => $"the caption to take the dictionary's new brush ({Caption(running)})");
+        }
+        finally
+        {
+            if (window.Runner.IsRunning)
+            {
+                Ui.Run(window, AppActions.Stop);
+                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
+            }
+            window.Close();
+        }
+    }
+
+    /// <summary>The caption's colour as the running app has it.</summary>
+    private static string Caption(LiveApp app) =>
+        Find(Ui.Await(app.AgentTreeAsync(["Foreground"]), "the app's tree").Roots, "Caption")?.Values?.GetValueOrDefault("Foreground") ?? string.Empty;
 
     /// <summary>The window's XAML edited as a person types: the caption's colour, Delete's words, and a button added that
     /// names the window's own handler.</summary>

@@ -1,4 +1,5 @@
 using Passenger.App.Debugging;
+using Passenger.App.Editors;
 using Passenger.App.Run;
 using Passenger.Core;
 using Passenger.Inspector;
@@ -7,10 +8,11 @@ using Passenger.Xaml;
 
 namespace Passenger.App.LiveTree;
 
-/// <summary>XAML Hot Reload for one inspected app: the XAML files edited since its launch, each with its text as the app
-/// holds it (the build's, from before its first edit, then the text last applied), applied through the app's inspector
-/// (<see cref="LiveApp.ReloadAsync"/>) as a save or Apply Hot Reload Changes asks, and what that came to in Hot Reload's
-/// words, each problem at the editor's line. A UI-thread object.</summary>
+/// <summary>XAML Hot Reload for one inspected app: the XAML files edited since its launch, in the editor or written on disk
+/// while not open, each with its text as the app holds it (the build's, read as it launched, else from before its first
+/// edit; then the text last applied), applied through the app's inspector (<see cref="LiveApp.ReloadAsync"/>) as a save or
+/// Apply Hot Reload Changes asks, and what that came to in Hot Reload's words, each problem at the editor's line. A UI-thread
+/// object.</summary>
 public sealed class XamlHotReload(LiveApp app, Func<string, TextSnapshot?> texts, Func<string, Task<XamlProject?>> projects)
 {
     /// <summary>The text the app holds of each file edited since its launch.</summary>
@@ -35,6 +37,35 @@ public sealed class XamlHotReload(LiveApp app, Func<string, TextSnapshot?> texts
 
     /// <summary>Whether its edits wait for the program to run on: asked while it was paused, whose UI answers nothing.</summary>
     public bool Waiting { get; private set; }
+
+    /// <summary>The texts the app's build read of the folder's XAML files of its framework, read off the window's thread as it
+    /// launches, which it holds until it takes another: a file's first edit takes it from there, a file written on disk too.</summary>
+    public async Task KeepBuiltAsync(IReadOnlyList<string> files)
+    {
+        UiThread.Check();
+        List<string> taken = [.. files.Where(Takes)];
+        List<(string Path, string? Text)> read = await BackgroundWork.Run(() => taken.Select(f => (f, EditorArea.Read(f)?.ToString())).ToList());
+        foreach ((string path, string? text) in read)
+        {
+            if (text is not null)
+            {
+                held.TryAdd(path, text);
+            }
+        }
+    }
+
+    /// <summary>A XAML file of its framework written on disk while it is not open (another editor's save, a checkout): an edit,
+    /// from the text the app holds, unless it holds that text already. Whether it is one.</summary>
+    public bool Written(string path, string? text)
+    {
+        UiThread.Check();
+        if (!Takes(path) || app.State == LiveAppState.Ended || text is null || (held.TryGetValue(path, out string? holds) && holds == text))
+        {
+            return false;
+        }
+        edited[path] = edited.GetValueOrDefault(path) + 1;
+        return true;
+    }
 
     /// <summary>A XAML file of its framework edited: its text from before is the one the app holds, if it took none since.</summary>
     public void Edited(string path, TextSnapshot before)

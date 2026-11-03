@@ -13,7 +13,8 @@ namespace Passenger.Tests;
 /// <summary>XAML Hot Reload in an Avalonia app, as a person uses it: tests/Debuggees/LiveTreeApp built and launched by Run or
 /// Debug, its MainWindow.axaml edited in the editor (a text, a colour, a control added) and saved, and the app's own window,
 /// the same object, showing the edit in its live visual tree; an edit the app's XAML compiler refuses said with its line,
-/// the app left as it was; and a handler added in C# with the button that names it in XAML, applied together, C#'s first.
+/// the app left as it was; a handler added in C# with the button that names it in XAML, applied together, C#'s first; the
+/// XAML written on disk while not open, and App.axaml's styles and resources.
 /// The app is headless, so nothing shows on the screen. It runs and is debugged through the window, so the tests run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDisposable
@@ -104,6 +105,79 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
             window.Close();
         }
     }
+
+    /// <summary>Under Run, the window's XAML written on disk while it is not open (another editor's save) reaches the running
+    /// window as a save in the editor does, from the text the app's build read: its greeting's text, Delete's colour and a
+    /// button added, in the window it had; the file never opened.</summary>
+    [AvaloniaFact]
+    public void A_running_apps_xaml_written_on_disk_while_not_open_shows_in_its_window()
+    {
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
+            LiveApp app = window.Session.RunApp!;
+            long shell = Ui.Await(app.TreeAsync(), "the app's tree").Roots.Single(r => r.Type == "MainWindow").Id;
+            Assert.DoesNotContain(window.EditorArea.Documents, d => PathNames.Same(d.Path, Xaml));
+
+            File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("Text=\"Hello\"", "Text=\"Howdy\"", StringComparison.Ordinal)
+                .Replace("Background=\"Orange\"", "Background=\"SeaGreen\"", StringComparison.Ordinal)
+                .Replace(Pin, $"<Button x:Name=\"Added\" Content=\"Added\" />\n{Pin}", StringComparison.Ordinal));
+            Ui.WaitFor(() => RunSays(window, "Hot Reload: XAML changes applied: MainWindow.axaml (MainWindow)"),
+                () => $"the Run window to say the XAML written on disk applied ({window.Status})", TimeSpan.FromMinutes(1));
+            Shows(app, shell);
+            Assert.DoesNotContain(window.EditorArea.Documents, d => PathNames.Same(d.Path, Xaml));
+        }
+        finally
+        {
+            if (window.Runner.IsRunning)
+            {
+                Ui.Run(window, AppActions.Stop);
+                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
+            }
+            window.Close();
+        }
+    }
+
+    /// <summary>Under Run, App.axaml's styles and resources edited and saved reach the running app: the title style's size,
+    /// and its colour from a resource added, on the greeting it styles.</summary>
+    [AvaloniaFact]
+    public void A_running_apps_saved_app_axaml_styles_and_resources_reach_what_they_style()
+    {
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
+            LiveApp app = window.Session.RunApp!;
+            Assert.Equal("20", Greeting(app).GetValueOrDefault("FontSize"));
+
+            window.OpenFile(Path.Combine(folder, "App.axaml"));
+            Typing.Replace(window, "<Setter Property=\"FontSize\" Value=\"20\" />",
+                "<Setter Property=\"FontSize\" Value=\"30\" />\n            <Setter Property=\"Foreground\" Value=\"{DynamicResource TitleBrush}\" />");
+            Typing.Replace(window, "    <Application.Styles>", "    <Application.Resources>\n        <SolidColorBrush x:Key=\"TitleBrush\" Color=\"#FF8000\" />\n    </Application.Resources>\n    <Application.Styles>");
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() => RunSays(window, "Hot Reload: XAML changes applied: App.axaml"), () => $"the Run window to say App.axaml applied ({window.Status})");
+            IReadOnlyDictionary<string, string> styled = new Dictionary<string, string>();
+            Ui.WaitFor(() => (styled = Greeting(app)).GetValueOrDefault("FontSize") == "30",
+                () => $"the greeting to take the title style's new size ({string.Join(", ", styled.Select(v => $"{v.Key}={v.Value}"))})");
+            Assert.Contains("FF8000", styled.GetValueOrDefault("Foreground") ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (window.Runner.IsRunning)
+            {
+                Ui.Run(window, AppActions.Stop);
+                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
+            }
+            window.Close();
+        }
+    }
+
+    /// <summary>The greeting's size and colour as the running app has them.</summary>
+    private static IReadOnlyDictionary<string, string> Greeting(LiveApp app) =>
+        Find(Ui.Await(app.AgentTreeAsync(["FontSize", "Foreground"]), "the app's tree").Roots, "Greeting")?.Values ?? new Dictionary<string, string>();
 
     /// <summary>A handler added in C# and a button added in XAML that names it, applied together by Apply Hot Reload Changes:
     /// C#'s first, so the button finds the handler; a click on the new button runs it, and what it does to the greeting

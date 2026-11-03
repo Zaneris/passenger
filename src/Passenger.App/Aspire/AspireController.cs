@@ -64,6 +64,9 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     public OutputView? LastAppConsole { get; private set; }
     public AspireResourceRun? SelectedService { get; private set; }
     public LiveApp? SelectedInspection => SelectedService?.Inspection;
+
+    /// <summary>A service launched with the inspector in it, given its XAML Hot Reload by the folder's session.</summary>
+    public Action<LiveApp>? Inspected { get; set; }
     public bool IsRunning => apps.Any(app => !app.Stopping && (app.Runner.IsRunning || app.IsTest));
     public event EventHandler? Changed;
 
@@ -920,6 +923,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             if (resource.Inspection is { } inspection)
             {
                 inspection.BindingFailed += (_, _) => BindingsFailed();
+                Inspected?.Invoke(inspection);
             }
             LaunchPlan inspected = resource.Inspection?.Plan ?? plan;
             // Held until what attaches lets it go, never where nothing can; the profiler's gets no changeable code to measure.
