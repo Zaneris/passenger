@@ -174,6 +174,40 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
     }
 
     /// <summary>Text typed a key at a time, as a person types it.</summary>
+    /// <summary>A start tag's end tag Razor gives after the person typed on inside the new element: written after what was
+    /// typed, the caret before it, and one Undo takes the end tag alone away.</summary>
+    [AvaloniaFact]
+    public void A_start_tags_end_tag_that_comes_after_more_was_typed_goes_after_what_was_typed_as_a_step_of_Undo_of_its_own()
+    {
+        MainWindow window = app.Open("Components/Greeting.razor");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<p>Hello, @Name!</p>\n");
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNextAnswer(Passenger.Lsp.LspMethods.OnAutoInsert, _ => true, answered.Task);
+        try
+        {
+            foreach (char c in "<aside>")
+            {
+                window.KeyTextInput(c.ToString());
+            }
+            Ui.AwaitPumped(held, "Razor's end tag for the '>', held unanswered");
+            // Typed while the answer is held: the window is not quiet until it lands.
+            window.KeyTextInput("H");
+            window.KeyTextInput("i");
+            Ui.PumpUntil(() => XamlTests.CaretLine(editor) == "<aside>Hi|", "what was typed while Razor's answer is held");
+        }
+        finally
+        {
+            answered.TrySetResult();
+        }
+        Ui.WaitFor(() => XamlTests.CaretLine(editor) == "<aside>Hi|</aside>", () => $"Razor's late end tag after what was typed; the line reads {XamlTests.CaretLine(editor)}");
+        Ui.Run(window, EditorActions.Undo);
+        Ui.Settle();
+        Assert.Equal("<aside>Hi|", XamlTests.CaretLine(editor));
+        window.Close();
+    }
+
     private static void TypeEach(MainWindow window, string text)
     {
         foreach (char c in text)

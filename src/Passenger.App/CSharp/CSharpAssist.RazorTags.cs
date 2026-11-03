@@ -9,8 +9,8 @@ namespace Passenger.App.CSharp;
 /// <summary>A Razor file's tags closed as they are typed, as Razor reads its markup: a start tag's '>' takes what Razor
 /// writes after it (the element's end tag, a void element or a component that takes no content closed in itself), and
 /// "&lt;/" the name of the element open there, read from the file's HTML as Razor makes it, its C# blanked out, so a
-/// generic's '&lt;' in the code is never taken for a tag. Each is a step of Undo of its own, made only on the text and
-/// carets it was worked out for.</summary>
+/// generic's '&lt;' in the code is never taken for a tag. Each is a step of Undo of its own, made on the text and carets
+/// it was worked out for; an end tag Razor gives after more was typed, after what was typed, where it still fits.</summary>
 internal sealed partial class CSharpAssist
 {
     /// <summary>Closes the tag a '>' or a '/' just typed at every caret ends or begins, unless the person turned
@@ -33,7 +33,7 @@ internal sealed partial class CSharpAssist
     }
 
     /// <summary>Razor's own answer to a start tag's '>' at each caret, made once each has come if the text and carets
-    /// are as they were.</summary>
+    /// are as they were; one caret's, typed on since, mapped through what was typed (<see cref="Late"/>).</summary>
     private async Task EndTagAsync(OpenDocument shown, LspDocument lsp)
     {
         CodeEditor editor = context.Editor;
@@ -44,19 +44,43 @@ internal sealed partial class CSharpAssist
             return;
         }
         IndentOptions indent = shown.Indentation.Options;
-        AutoInserted?[] answers = await Task.WhenAll(asked.Items.Select(s => lsp.AutoInsertAsync(s.Caret, ">", indent, shown.Conventions)));
-        if (!Unmoved(editor, lsp, version, asked) || answers.All(a => a is null))
+        TextSnapshot before = lsp.Text.Snapshot;
+        // Where the '>' was typed, carried through what is typed while Razor answers: typing there goes after it.
+        Anchor place = lsp.Text.AnchorAt(asked.Primary.Caret, AnchorGravity.Before);
+        try
         {
-            return;
+            AutoInserted?[] answers = await Task.WhenAll(asked.Items.Select(s => lsp.AutoInsertAsync(s.Caret, ">", indent, shown.Conventions)));
+            if (answers.All(a => a is null))
+            {
+                return;
+            }
+            if (Unmoved(editor, lsp, version, asked))
+            {
+                Apply(editor, lsp, shown, indent, asked, answers);
+            }
+            else if (asked.Count == 1 && answers[0] is { } answer)
+            {
+                Late(editor, lsp, shown, indent, before, asked.Primary.Caret, answer, place);
+            }
         }
+        finally
+        {
+            place.Remove();
+        }
+    }
+
+    /// <summary>Razor's answers at each caret, on the text and carets they were asked for.</summary>
+    private static void Apply(CodeEditor editor, LspDocument lsp, OpenDocument shown, IndentOptions indent, SelectionSet asked, AutoInserted?[] answers)
+    {
         TextSnapshot text = lsp.Text.Snapshot;
+        ServerLines lines = ServerLines.Of(text);
         List<TextEdit> edits = [];
         List<Selection> carets = [];
         int shift = 0;
         for (int i = 0; i < asked.Count; i++)
         {
             int caret = asked.Items[i].Caret;
-            if (answers[i] is not { TextEdit: { } made } answer || Placed(text, lsp, made, answer.TextEditFormat, shown.LineEnding, indent, caret) is not ({ } edit, int into)
+            if (answers[i] is not { TextEdit: { } made } answer || Placed(text, lines, made, answer.TextEditFormat, shown.LineEnding, indent, caret) is not ({ } edit, int into)
                 || edit.Start < (edits.Count > 0 ? edits[^1].End : 0) || edit.End > caret)
             {
                 carets.Add(Selection.At(caret + shift));
@@ -75,12 +99,47 @@ internal sealed partial class CSharpAssist
         }
     }
 
-    /// <summary>A Razor answer's edit in the editor's offsets, its line breaks and indentation the file's, and where in
-    /// its text the caret goes: a snippet's end, else its end; null where it comes to nothing.</summary>
-    private static (TextEdit? Edit, int Into) Placed(TextSnapshot text, LspDocument lsp, LspTextEdit made, InsertTextFormat format, string eol, IndentOptions indent, int caret)
+    /// <summary>Razor's end tag for a '>' it answered after more was typed: written at the caret, after what was typed since,
+    /// where it still fits: the start tag it closes still there before the place the '>' was typed (carried through the
+    /// typing, <paramref name="place"/>), one caret after that place with no tag begun or ended between, and the end tag not
+    /// already there. A step of Undo of its own.</summary>
+    private void Late(CodeEditor editor, LspDocument lsp, OpenDocument shown, IndentOptions indent, TextSnapshot before, int asked, AutoInserted answer, Anchor place)
     {
-        int start = lsp.OffsetOf(made.Range.Start);
-        int end = lsp.OffsetOf(made.Range.End);
+        if (context.Editor != editor || context.Current?.Lsp != lsp || editor.Selections is not { Count: 1 } now || !now.Primary.IsEmpty
+            || answer is not { TextEdit: { } made }
+            || Placed(before, ServerLines.Of(before), made, answer.TextEditFormat, shown.LineEnding, indent, asked) is not ({ } edit, int into)
+            || edit.Length != 0 || edit.Start != asked || asked < 2 || before[asked - 1] != '>')
+        {
+            return;
+        }
+        int open = before.ToString().LastIndexOf('<', asked - 1);
+        if (open < 0)
+        {
+            return;
+        }
+        string tag = before.GetText(open, asked - open);
+        TextSnapshot text = lsp.Text.Snapshot;
+        int at = place.Offset;
+        int caret = now.Primary.Caret;
+        if (at < tag.Length || caret < at || text.GetText(at - tag.Length, tag.Length) != tag)
+        {
+            return;
+        }
+        string typed = text.GetText(at, caret - at);
+        if (typed.IndexOfAny(['<', '>']) >= 0 || caret + edit.Text.Length <= text.Length && text.GetText(caret, edit.Text.Length) == edit.Text)
+        {
+            return;
+        }
+        editor.ApplyEdits([new TextEdit(caret, 0, edit.Text)], SelectionSet.Single(caret + (answer.TextEditFormat == InsertTextFormat.Snippet ? into : 0)));
+    }
+
+    /// <summary>A Razor answer's edit in the editor's offsets of the text it answered (its server's lines,
+    /// <paramref name="lines"/>), its line breaks and indentation the file's, and where in its text the caret goes: a
+    /// snippet's end, else its end; null where it comes to nothing.</summary>
+    private static (TextEdit? Edit, int Into) Placed(TextSnapshot text, ServerLines lines, LspTextEdit made, InsertTextFormat format, string eol, IndentOptions indent, int caret)
+    {
+        int start = lines.OffsetOf(made.Range.Start);
+        int end = lines.OffsetOf(made.Range.End);
         Snippet? snippet = format == InsertTextFormat.Snippet ? Snippet.FromProtocol(made.NewText) : null;
         string written = snippet?.Text ?? made.NewText;
         if (end < start || end > caret || LineEndings.Fit(text, [new TextEdit(start, end - start, written)], eol) is not [TextEdit broken])
