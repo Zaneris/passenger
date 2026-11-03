@@ -295,12 +295,16 @@ public sealed class GodotAddonTests : IDisposable
 
     /// <summary>A window keeping its state on the test's game, the addon installed by its action and enabled beside the test's
     /// player, Main.cs open; skips without a Godot 4 .NET build.</summary>
-    private MainWindow Opened(bool addon = true)
+    private MainWindow Opened(bool addon = true, IReadOnlyList<(string Name, string Text)>? files = null)
     {
         Assert.SkipWhen(godot is not { WhyNot: null, Version: not null, Packages: not null }, godot is null
             ? "No Godot was found (GODOT, the PATH, Applications): install Godot 4's .NET build to run this test"
             : $"The Godot found cannot run a C# game: {godot.WhyNot}");
         GodotTests.Game.Make(folder, godot!.Version!, godot.Packages!, Script, Scene);
+        foreach ((string name, string text) in files ?? [])
+        {
+            TestFolders.Write(folder, name, text);
+        }
         string project = Path.Combine(folder, GodotProject.FileName);
         // Its games headless, as no window may open; the test's player enabled beside the addon the install enables.
         File.AppendAllText(project, "\n[editor]\n\nrun/main_run_args=\"--headless\"\n\n[editor_plugins]\n\nenabled=PackedStringArray(\"res://addons/plays/plugin.cfg\")\n");
@@ -782,6 +786,18 @@ public sealed class GodotAddonTests : IDisposable
             Assert.NotNull(Node(read, "Score"));
             Assert.Equal("NodePath(\"../../Score\")", Stored(read, "Ui/Press", "focus_neighbor_bottom"));
 
+            // A remove empties the paths to the node, as Godot's own delete does, which its file then stores none of.
+            agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "remove", ["node"] = "Score" });
+            read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
+            Assert.Null(Node(read, "Score"));
+            Assert.False(Node(read, "Ui/Press")!.Value.GetProperty("properties").TryGetProperty("focus_neighbor_bottom", out JsonElement left),
+                $"The path to the node removed was left as {left}");
+            TestFolders.Write(folder, "undo.txt", "undo\n");
+            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: undid Passenger: remove Score", StringComparison.Ordinal)), () => $"Godot's undo of the remove (Godot said: {Said()})");
+            read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
+            Assert.NotNull(Node(read, "Score"));
+            Assert.Equal("NodePath(\"../../Score\")", Stored(read, "Ui/Press", "focus_neighbor_bottom"));
+
             agent.Unasked(window, client, McpTools.GodotEditor,
                 new() { ["action"] = "add", ["node"] = ".", ["type"] = "res://badge.tscn", ["name"] = "Badge", ["properties"] = new Dictionary<string, object?> { ["text"] = "Mine" } });
             JsonElement badge = Node(agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" }), "Badge")!.Value;
@@ -862,6 +878,37 @@ public sealed class GodotAddonTests : IDisposable
             Ui.WaitFor(() => said.Any(l => l.Contains("TEST: selection res://main.tscn Ui", StringComparison.Ordinal) && !l.Contains("Ui/", StringComparison.Ordinal)),
                 () => $"Godot's editor to show the scene's node at the caret ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
             Assert.Equal(1, EditorsOn(folder));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Open in Godot Editor in a GDScript, its paths read by Passenger's GDScript parser: on <c>$Panel/Button</c> and
+    /// on <c>%Button</c>, the button each names in the scene the script is attached in, selected in the editor running.</summary>
+    [AvaloniaFact]
+    public void Open_in_Godot_Editor_on_a_gdscripts_dollar_path_and_unique_name_shows_the_node_each_names()
+    {
+        MainWindow window = Opened(files:
+        [
+            ("hud.gd", "extends Control\n\n\nfunc _ready() -> void:\n\tvar button := $Panel/Button\n\tvar unique := %Button\n\tprint(button, unique)\n"),
+            ("hud.tscn", "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://hud.gd\" id=\"1\"]\n\n[node name=\"Hud\" type=\"Control\"]\n"
+                + "script = ExtResource(\"1\")\n\n[node name=\"Panel\" type=\"Panel\" parent=\".\"]\n\n[node name=\"Button\" type=\"Button\" parent=\"Panel\"]\nunique_name_in_owner = true\n"),
+        ]);
+        try
+        {
+            StartEditor([]);
+            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            window.OpenFile(Path.Combine(folder, "hud.gd"));
+            foreach (string after in (string[])["$Panel/But", "%But"])
+            {
+                said.Clear();
+                Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
+                Assert.Null(window.Actions.Run(AppActions.GodotOpenInEditor));
+                Ui.WaitFor(() => said.Any(l => l.Contains("TEST: selection res://hud.tscn Panel/Button", StringComparison.Ordinal)),
+                    () => $"Godot's editor to show the button {after} names ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
+            }
         }
         finally
         {

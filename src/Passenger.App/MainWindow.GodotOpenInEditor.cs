@@ -6,19 +6,20 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Text;
 using Passenger.Workspace;
+using Passenger.Workspace.GDScript;
 
 namespace Passenger.App;
 
 /// <summary>Open in Godot Editor: Godot's editor on the scene at hand, at its node: a scene's node the caret is in, the node
-/// a script open is on, or the node the caret's node path names (a GetNode string in C#, <c>$Path</c> or a get_node string in
-/// GDScript). An editor connected through Passenger's addon opens the scene and selects the node itself, in front, so no
+/// a script open is on, or the node the caret's node path names (a GetNode string in C#; <c>$Path</c>, <c>%Unique</c> or a
+/// get_node string in GDScript, read by its parser). An editor connected through Passenger's addon opens the scene and selects the node itself, in front, so no
 /// second editor starts. With none open, the folder's Godot Editor configuration starts one on the scene, Godot's command
 /// line naming the scene alone: the node is selected once the addon there connects, and only so. An editor open without the
 /// addon is left alone, since its command line would start a second.</summary>
 public partial class MainWindow
 {
-    /// <summary>A GetNode, get_node or $ path around the caret on its line: the path's own characters.</summary>
-    private static readonly Regex NodePathCall = new(@"(?:GetNode(?:OrNull)?\s*(?:<[^()]*>)?\s*\(\s*(?:new\s+NodePath\s*\(\s*)?|get_node(?:_or_null)?\s*\(\s*\^?|has_node\s*\(\s*\^?)""(?<path>[^""]*)""|\$(?:""(?<path>[^""]*)""|(?<path>[A-Za-z0-9_%/.]+))",
+    /// <summary>A C# GetNode path around the caret on its line: the path's own characters.</summary>
+    private static readonly Regex NodePathCall = new(@"GetNode(?:OrNull)?\s*(?:<[^()]*>)?\s*\(\s*(?:new\s+NodePath\s*\(\s*)?""(?<path>[^""]*)""",
         RegexOptions.CultureInvariant);
 
     /// <summary>The scene and node a launch from here asked an editor to open, which the first editor to connect through the
@@ -137,14 +138,17 @@ public partial class MainWindow
             return (null, ".", $"No scene of the project runs {shown.Name}: attach it to a node in Godot's editor first");
         }
         (string scene, GodotTreeNode node) = attached.FirstOrDefault(a => a.Scene == main) is { Node: not null } first ? first : attached[0];
-        int row = text.GetLineFromOffset(Math.Min(caret, text.Length));
-        int column = Math.Min(caret, text.Length) - text.GetLineStart(row);
-        Match? named = NodePathCall.Matches(text.GetLineText(row)).FirstOrDefault(m => m.Index <= column && column <= m.Index + m.Length);
-        if (named is null)
+        int offset = Math.Min(caret, text.Length);
+        int row = text.GetLineFromOffset(offset);
+        int column = offset - text.GetLineStart(row);
+        // A GDScript's own parser reads its $Path, %Unique and get_node strings.
+        string? path = shown.Path.EndsWith(".gd", StringComparison.OrdinalIgnoreCase)
+            ? await BackgroundWork.Run(() => GDScriptNodePaths.At(GDScriptTree.Parse(text.ToString()), offset))
+            : NodePathCall.Matches(text.GetLineText(row)).FirstOrDefault(m => m.Index <= column && column <= m.Index + m.Length)?.Groups["path"].Value;
+        if (path is null)
         {
             return (scene, node.Path, null);
         }
-        string path = named.Groups["path"].Value;
         if (GodotScenes.Resolve(node, path).Found is not { } target)
         {
             return (scene, node.Path, $"no node of {Path.GetFileName(scene)} is at '{path}' from {node.Name}, so it shows {node.Name}");

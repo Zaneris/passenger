@@ -189,13 +189,16 @@ static func _move(root: Node, node: Node, params: Dictionary, undo: EditorUndoRe
 
 
 ## Each NodePath property of the scene's nodes a move from one path to another changes, with its value before and after:
-## those leading to the node moved or below it, and those of it and below it leading elsewhere.
+## those leading to the node moved or below it, and those of it and below it leading elsewhere. A move to "" is a remove,
+## which empties the paths to the node and below it and leaves its own, which go with it.
 static func _repathed(root: Node, before: String, after: String) -> Array:
 	var changed := []
 	if before == after:
 		return changed
 	for holder in _nodes(root):
 		var from := _path(root, holder)
+		if after == "" and _moved(from, before, after) == "":
+			continue
 		for property in holder.get_property_list():
 			if property["usage"] & PROPERTY_USAGE_STORAGE == 0:
 				continue
@@ -216,7 +219,8 @@ static func _repath(value: Variant, from: String, from_after: String, before: St
 		if target == null:
 			return null
 		var subnames := path.get_concatenated_subnames()
-		var made := NodePath(_relative(from_after, _moved(target, before, after)) + (":" + subnames if subnames != "" else ""))
+		var gone := _moved(target, before, after)
+		var made := NodePath() if gone == "" else NodePath(_relative(from_after, gone) + (":" + subnames if subnames != "" else ""))
 		return made if str(made) != str(path) else null
 	if value is Array:
 		var copy = value.duplicate()
@@ -230,11 +234,13 @@ static func _repath(value: Variant, from: String, from_after: String, before: St
 	return null
 
 
-## A scene path (. the root) as a move of a node from one path to another leaves it.
+## A scene path (. the root) as a move of a node from one path to another leaves it; "" for one a remove takes.
 static func _moved(path: String, before: String, after: String) -> String:
 	if path == before:
 		return after
-	return after + path.substr(before.length()) if path.begins_with(before + "/") else path
+	if not path.begins_with(before + "/"):
+		return path
+	return "" if after == "" else after + path.substr(before.length())
 
 
 ## The scene path a NodePath leads to from a node's; null for one above the root.
@@ -273,6 +279,10 @@ static func _remove(root: Node, node: Node, undo: EditorUndoRedoManager) -> Vari
 	var at := node.get_index()
 	var owned := _owned(root, node)
 	undo.create_action("Passenger: remove %s" % node.name, UndoRedo.MERGE_DISABLE, root)
+	# The scene's paths to the node and below it are emptied, as Godot's own delete leaves them.
+	for each in _repathed(root, path, ""):
+		undo.add_do_property(each[0], each[1], each[3])
+		undo.add_undo_property(each[0], each[1], each[2])
 	undo.add_do_method(parent, "remove_child", node)
 	undo.add_undo_method(parent, "add_child", node, true)
 	undo.add_undo_method(parent, "move_child", node, at)
