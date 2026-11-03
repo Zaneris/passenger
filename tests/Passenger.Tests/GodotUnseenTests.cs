@@ -103,6 +103,8 @@ public sealed class GodotUnseenTests : McpRig
                 IReadOnlyList<string> started = godot.Started!;
                 Assert.True(started.Count(a => a == GodotExecutables.Headless) == 1,
                     $"A window nobody sees did not start {chosen.Name} headless once, with \"{chosen.Arguments}\" its own arguments: it started Godot with {string.Join(' ', started)}");
+                // The stand-in has written what it was started with a moment before it ends, which the next start waits out.
+                Ui.WaitFor(() => !unseen.IsRunning, () => $"{chosen.Name}'s stand-in Godot to end ({unseen.Status})");
             }
         }
         finally
