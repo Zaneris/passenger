@@ -521,7 +521,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     /// message where it has one ("1: TS2322: Type…").</summary>
     private static string[] Problems(JsonElement found) =>
         [.. found.EnumerateArray().Select(d => $"{d.GetProperty("line").GetInt32()}: "
-            + $"{(d.GetProperty("code") is { ValueKind: JsonValueKind.String } code ? $"{code.GetString()}: " : string.Empty)}{d.GetProperty("message").GetString()}")];
+            + $"{(d.TryGetProperty("code", out JsonElement code) && code.ValueKind == JsonValueKind.String ? $"{code.GetString()}: " : string.Empty)}{d.GetProperty("message").GetString()}")];
 
     /// <summary>A folder of the test's own, written by <paramref name="write"/>, removed with the test.</summary>
     private string Made(string name, Action<string> write)
