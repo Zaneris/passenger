@@ -121,6 +121,10 @@ public sealed class ProjectSession : IAsyncDisposable
         Xaml.Evaluations = path => evaluations.GetValueOrDefault(path);
         Frameworks.Changed += (_, project) => FollowFramework(project);
         GodotScenes = new Godot.GodotSceneIndex { Texts = setup.Editors.Texts, Files = () => (Index.Root, Index.Files), GameOf = GodotOf };
+        // Where a GoDotTest game's tests start: read from its scenes and the C# their nodes run.
+        Tests.GoDotStartOf = project => UiThread.InvokeAsync(async () => Godot.GodotScripts.ProjectOf(project) is { } folder
+            ? await GoDotStartAsync(await GodotScenes.ScenesAsync(folder), await GoDotChosenAsync(project))
+            : Testing.GoDotTests.Start.Main);
         Stylesheets = new Web.PageStylesheets
         {
             Texts = setup.Editors.Texts,
@@ -851,6 +855,40 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>The scenes and resources of the folder's Godot projects, read once each is asked about and followed.</summary>
     public Godot.GodotSceneIndex GodotScenes { get; }
+
+    /// <summary>The run settings file a GoDotTest game's project names (RunSettingsFilePath, as MSBuild evaluates it) and
+    /// the test scene it names (<see cref="Testing.GoDotTests.SceneParameter"/>); nulls for none.</summary>
+    private async Task<(string? Settings, string? Scene)> GoDotChosenAsync(string project)
+    {
+        if (Folder is not { } root || Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)) is not { } model
+            || await Testing.TestAssemblies.RunSettingsOfAsync(model, root, Workspace, CancellationToken.None) is not { } settings)
+        {
+            return (null, null);
+        }
+        return (settings, await BackgroundWork.Run(() => File.Exists(settings) ? Testing.GoDotTests.ChosenScene(File.ReadAllText(settings)) : null));
+    }
+
+    /// <summary>Where a GoDotTest game's tests start (<see cref="Testing.GoDotTests.StartOf"/>), its scripts read off the
+    /// window's thread as the disk holds them.</summary>
+    private static Task<Testing.GoDotTests.Start> GoDotStartAsync(Passenger.Workspace.GodotScenes scenes, (string? Settings, string? Scene) chosen)
+    {
+        return BackgroundWork.Run(() => Testing.GoDotTests.StartOf(scenes, res => scenes.FileOf(res) is { } file ? Read(file) : null, chosen.Scene) with
+        {
+            Settings = chosen.Settings,
+        });
+
+        string? Read(string file)
+        {
+            try
+            {
+                return File.Exists(file) ? File.ReadAllText(file) : null;
+            }
+            catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+    }
 
     /// <summary>The engine's API and classes as the Godot Settings name or found gives them.</summary>
     internal Godot.GodotEngineApis GodotApis { get; }

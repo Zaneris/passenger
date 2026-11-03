@@ -208,6 +208,7 @@ public sealed class DebugSession
                 if (body.ValueKind == JsonValueKind.Object && body.Deserialize<OutputEvent>(DapConnection.Options) is { } written)
                 {
                     output(written);
+                    Heard?.Invoke(written);
                 }
                 return;
             }
@@ -252,6 +253,35 @@ public sealed class DebugSession
     }
 
     public event EventHandler? StateChanged;
+
+    /// <summary>Each output event as it comes, on the connection's thread in order, beside the console it goes to: for what
+    /// reads a program's words as it writes them (a test run's game).</summary>
+    public event Action<OutputEvent>? Heard;
+
+    /// <summary>A listener of <see cref="Heard"/> handing on each whole line the program wrote, a part line held until its end.</summary>
+    public static Action<OutputEvent> Lines(Action<string> line)
+    {
+        System.Text.StringBuilder held = new();
+        return written =>
+        {
+            if (written.Category is "telemetry" or "important")
+            {
+                return;
+            }
+            foreach (char c in written.Output)
+            {
+                if (c == '\n')
+                {
+                    line(held.ToString().TrimEnd('\r'));
+                    held.Clear();
+                }
+                else
+                {
+                    held.Append(c);
+                }
+            }
+        };
+    }
 
     /// <summary>Which debugger its adapter is, and so which files' breakpoints it is sent (<see cref="Takes"/>).</summary>
     public DebugEngine Engine { get; }

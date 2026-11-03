@@ -54,11 +54,12 @@ public sealed class TestController : IAsyncDisposable
         this.projects = projects;
         this.workspaceModel = workspaceModel;
         this.log = log;
-        this.startRunner = startRunner ?? ((workspace, _) => Task.FromResult<ITestRunner>(new TestRunners(workspace, declared: Declared)));
+        this.startRunner = startRunner ?? ((workspace, _) => Task.FromResult<ITestRunner>(new TestRunners(workspace, declared: Declared, goDotStart: GoDotStartAsync)));
         Finder.Changed += (_, found) =>
         {
             code = found;
             Load();
+            ReadGoDotStarts();
         };
         Finder.Moved += (_, moved) => Tree.Move(moved.Path, moved.Moved);
         Finder.CodeRead += (_, _) => Tree.CheckCode();
@@ -67,6 +68,56 @@ public sealed class TestController : IAsyncDisposable
     }
 
     public TestTree Tree { get; }
+
+    /// <summary>Where a GoDotTest game's run of its tests starts, by its project (<see cref="GoDotTests.StartOf"/>); its main
+    /// scene where nothing reads the game's scenes.</summary>
+    public Func<string, Task<GoDotTests.Start>>? GoDotStartOf { get; set; }
+
+    /// <summary>Where each GoDotTest game's tests start as last read, by project path, which the run actions grey by.</summary>
+    private readonly Dictionary<string, GoDotTests.Start> goDotStarts = new(PathNames.Comparer);
+
+    /// <summary>Where a GoDotTest game's tests start, read now and kept for the run actions.</summary>
+    private async Task<GoDotTests.Start> GoDotStartAsync(string project)
+    {
+        GoDotTests.Start start = GoDotStartOf is { } of ? await of(project) : GoDotTests.Start.Main;
+        await UiThread.InvokeAsync(() => goDotStarts[project] = start);
+        return start;
+    }
+
+    /// <summary>Where each GoDotTest game's tests start, read again as the code the tests are found in changes.</summary>
+    private void ReadGoDotStarts()
+    {
+        if (GoDotStartOf is null)
+        {
+            return;
+        }
+        foreach (ProjectModel game in projects().Where(GoDotTests.Carried))
+        {
+            IdeErrors.Observe(GoDotStartAsync(game.Path));
+        }
+    }
+
+    /// <summary>Why the tests of these methods (every one shown, where none is named) are not run: each is a GoDotTest game's
+    /// whose scenes never run its tests, as last read; null where any may run.</summary>
+    public string? NeverRuns(IEnumerable<TestNode>? methods = null)
+    {
+        UiThread.Check();
+        List<string?> games = [.. (methods ?? Tree.Methods).Select(m => m.ProjectPath).Distinct(StringComparer.Ordinal)];
+        foreach (string game in games.OfType<string>().Where(g => !goDotStarts.ContainsKey(g) && !reading.Contains(g)))
+        {
+            // A game not read yet is read now, for the next asking.
+            if (GoDotStartOf is not null && projects().FirstOrDefault(p => PathNames.Same(p.Path, game)) is { } project && GoDotTests.Carried(project))
+            {
+                reading.Add(game);
+                IdeErrors.Observe(GoDotStartAsync(game));
+            }
+        }
+        return games.Count > 0 && games.All(p => p is not null && goDotStarts.TryGetValue(p, out GoDotTests.Start? start) && start.Never)
+            ? string.Join("; ", games.Select(g => Refusals.GoDotTestStart(Path.GetFileNameWithoutExtension(g)!, goDotStarts[g!]))) : null;
+    }
+
+    /// <summary>The games whose start a read has been begun for, so asking again begins none.</summary>
+    private readonly HashSet<string> reading = new(PathNames.Comparer);
 
     /// <summary>The window's work under way, which a run shows itself in from its first moment to its end, Stop ending it;
     /// null with no window to show it in.</summary>
@@ -147,7 +198,7 @@ public sealed class TestController : IAsyncDisposable
 
     /// <summary>A Godot run of GUT's or GoDotTest's tests to debug: the debugger starts it as Debug starts its game
     /// (<see cref="ITestDebugLauncher.DebugGameAsync"/>).</summary>
-    public Func<TestHostStart, string, int, bool, Task<Task>>? DebugGame { get; set; }
+    public Func<TestHostStart, string, int, bool, Action<string>?, Task<Task>>? DebugGame { get; set; }
 
     /// <summary>A test to debug in a test host the runner started itself: the debugger attaches to it (with Hot Reload and
     /// its hook where the host was started for them), true once it has.</summary>
@@ -311,6 +362,17 @@ public sealed class TestController : IAsyncDisposable
                 return choice.None ?? (chosen is null ? "There are no tests to run" : "None of these tests was found in the test projects as built");
             }
             List<TestNode> methods = [.. tests.Select(Tree.Node).OfType<TestNode>().Select(n => n.Kind == TestNodeKind.Row ? n.Parent! : n).Distinct()];
+            // A GoDotTest game none of whose scenes runs its tests is said before Godot starts, its start read as it stands.
+            foreach (string game in tests.Select(t => t.Project).Distinct(StringComparer.Ordinal).Where(p => projects().Any(m => PathNames.Same(m.Path, p) && GoDotTests.Carried(m))))
+            {
+                await GoDotStartAsync(game);
+            }
+            if (NeverRuns(methods) is { } never)
+            {
+                Summary = prefix + never;
+                Message?.Invoke(this, Summary);
+                return never;
+            }
             HashSet<string> containerized = [.. projects().Where(p => p.Packages.Any(n => n.Name.StartsWith("Testcontainers", StringComparison.OrdinalIgnoreCase)))
                 .Select(p => p.Path).Where(p => tests.Any(t => t.Project == p))];
             string? dockerHost = null;
@@ -791,7 +853,7 @@ public sealed class TestController : IAsyncDisposable
                 })
                 : throw new InvalidOperationException("No debugger can start the test host");
 
-        public Task<Task> DebugGameAsync(TestHostStart start, string folder, int leading, bool csharp) =>
+        public Task<Task> DebugGameAsync(TestHostStart start, string folder, int leading, bool csharp, Action<string>? heard = null) =>
             owner.DebugGame is { } debug
                 ? UiThread.InvokeAsync<Task>(() =>
                 {
@@ -800,7 +862,7 @@ public sealed class TestController : IAsyncDisposable
                         return Task.FromCanceled<Task>(new CancellationToken(canceled: true));
                     }
                     owner.ReleaseWork();
-                    return debug(start, folder, leading, csharp);
+                    return debug(start, folder, leading, csharp, heard);
                 })
                 : throw new InvalidOperationException("No debugger can start the game's tests");
 

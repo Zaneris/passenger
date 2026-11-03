@@ -4,12 +4,13 @@ using Passenger.Core;
 namespace Passenger.App.Testing;
 
 /// <summary>GoDotTest's tests run as GoDotTest runs them, inside the game: Godot on the game's project (the one its test
-/// hosts' GODOT_BIN names, <see cref="GodotTestRuns"/>), given <c>--run-tests</c> for the chosen suite or test and
-/// <c>--quit-on-finish</c>, its output kept in a log file of the run's, from which each test's outcome is read back, a
-/// failure with its exception and frames, and what it printed as its output (<see cref="GoDotTests"/>). Debugged, the game
-/// starts under the debugger as Debug starts it. Its tests are those the code declares (<paramref name="declared"/>, by
-/// the game's project), its build the run's.</summary>
-public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declared) : ITestRunner
+/// hosts' GODOT_BIN names, <see cref="GodotTestRuns"/>), from the scene that runs its tests (<paramref name="startOf"/>,
+/// <see cref="GoDotTests.StartOf"/>; a game none does refused before Godot starts), given <c>--run-tests</c> for the chosen
+/// suite or test and <c>--quit-on-finish</c>. Each test's end is told as its line is heard (its output, or under Debug its
+/// debug session's), timed from its start; once Godot ends, its log of the run gives each outcome whole, a failure with its
+/// exception and frames, and what it printed (<see cref="GoDotTests"/>). Debugged, the game starts under the debugger as
+/// Debug starts it. Its tests are those the code declares (<paramref name="declared"/>, by the game's project).</summary>
+public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declared, Func<string, Task<GoDotTests.Start>>? startOf = null) : ITestRunner
 {
     public bool IsUsable => true;
 
@@ -26,11 +27,20 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
         foreach (IGrouping<string, TestItem> project in tests.GroupBy(t => t.Project, StringComparer.Ordinal))
         {
             List<TestItem> chosen = [.. project];
+            GoDotTests.Start start = startOf is null ? GoDotTests.Start.Main : await startOf(project.Key);
+            if (start.Never)
+            {
+                string never = Refusals.GoDotTestStart(Path.GetFileNameWithoutExtension(project.Key), start) ?? string.Empty;
+                log?.Invoke(never);
+                RunSummary refused = new(TimeSpan.Zero, false, true, never);
+                summary = summary is null ? refused : summary.And(refused);
+                continue;
+            }
             List<GoDotTests.Named> all = [.. declared(project.Key).Select(t => GoDotTests.Named.Of(t.Method))];
             foreach ((string argument, IReadOnlyList<GoDotTests.Named> runs) in GoDotTests.Runs([.. chosen.Select(t => GoDotTests.Named.Of(t.Method))], all))
             {
                 HashSet<GoDotTests.Named> told = [.. runs];
-                RunSummary part = await RunGameAsync(project.Key, argument, [.. chosen.Where(t => told.Contains(GoDotTests.Named.Of(t.Method)))], outcomes, log, debugger,
+                RunSummary part = await RunGameAsync(project.Key, start.Scene, argument, [.. chosen.Where(t => told.Contains(GoDotTests.Named.Of(t.Method)))], outcomes, log, debugger,
                     environment ?? new Dictionary<string, string>(), godot ?? GodotStart.Headless, cancel);
                 summary = summary is null ? part : summary.And(part);
                 if (part.Canceled)
@@ -42,8 +52,9 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
         return summary ?? new RunSummary(TimeSpan.Zero, cancel.IsCancellationRequested, false, null);
     }
 
-    /// <summary>One run of a game with its <c>--run-tests</c> argument, telling these tests.</summary>
-    private static async Task<RunSummary> RunGameAsync(string project, string runTests, IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes,
+    /// <summary>One run of a game from a scene (its main scene where none is named) with its <c>--run-tests</c> argument,
+    /// telling these tests.</summary>
+    private static async Task<RunSummary> RunGameAsync(string project, string? scene, string runTests, IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes,
         Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string> environment, GodotStart start, CancellationToken cancel)
     {
         long began = Stopwatch.GetTimestamp();
@@ -62,13 +73,15 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
         }
         string output = Path.Combine(Path.GetTempPath(), $"passenger-godottest-{Guid.NewGuid():N}.log");
         List<string> leading = [.. start.Leading, "--path", folder];
-        List<string> arguments = [.. leading, "--log-file", output, runTests, GoDotTests.QuitOnFinish];
+        List<string> arguments = [.. leading, .. scene is null ? Array.Empty<string>() : [GoDotTests.SceneFlag, scene], "--log-file", output, runTests, GoDotTests.QuitOnFinish];
+        ILookup<string, TestItem> byKey = tests.ToLookup(t => GoDotTests.Named.Of(t.Method).Key, StringComparer.Ordinal);
+        Telling telling = new(began, byKey, outcomes);
         string said;
         try
         {
             if (debugger is not null)
             {
-                Task ended = await debugger.DebugGameAsync(new TestHostStart(godot, arguments, folder, environment), folder, leading.Count, csharp: true);
+                Task ended = await debugger.DebugGameAsync(new TestHostStart(godot, arguments, folder, environment), folder, leading.Count, csharp: true, telling.Heard);
                 await ended.WaitAsync(cancel);
                 said = "Godot ended";
             }
@@ -79,7 +92,8 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
                 {
                     run.Environment[name] = value;
                 }
-                ChildResult ran = await ChildProcesses.RunAsync(run, cancel: cancel);
+                // Not held: read for as long as the game runs, which a wait for the IDE to be quiet would otherwise wait out whole.
+                ChildRead<string> ran = await ChildProcesses.RunAsync(run, output => BackgroundWork.Unheld(() => HearAsync(output, telling, cancel)), cancel: cancel);
                 said = $"Godot ended with exit code {ran.ExitCode}: {ChildResult.FirstLineOf(ran.Error.Length > 0 ? ran.Error : ran.Output)}";
             }
         }
@@ -112,17 +126,14 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
         List<TestOutcome> told = [];
         foreach (TestItem test in tests)
         {
-            if (results.TryGetValue(GoDotTests.Named.Of(test.Method).Key, out GoDotTests.Result? result))
+            string key = GoDotTests.Named.Of(test.Method).Key;
+            if (results.TryGetValue(key, out GoDotTests.Result? result))
             {
-                told.Add(new TestOutcome(test, result.State switch
+                bool heard = telling.Took(key, out TimeSpan took);
+                told.Add(Outcome(test, result.State, took) with
                 {
-                    GoDotTests.Ending.Passed => TestState.Passed,
-                    GoDotTests.Ending.Failed => TestState.Failed,
-                    _ => TestState.Skipped,
-                }, TimeSpan.Zero)
-                {
-                    DisplayName = test.DisplayName,
-                    Message = result.Message,
+                    Again = heard,
+                    Message = Together(byKey[key], key) is { } together ? result.Message is { } own ? $"{own}\n{together}" : together : result.Message,
                     StackTrace = result.StackTrace,
                     Output = result.Output,
                 });
@@ -131,6 +142,66 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
         outcomes(told);
         return new RunSummary(Stopwatch.GetElapsedTime(began), false, false, null) { Outcomes = told };
     }
+
+    /// <summary>The game's output heard to its end, each line told (<see cref="Telling"/>); what it printed is read whole
+    /// from its log at the end.</summary>
+    private static async Task<string> HearAsync(Stream output, Telling telling, CancellationToken cancel)
+    {
+        using StreamReader reader = new(output, leaveOpen: true);
+        while (await reader.ReadLineAsync(cancel) is { } line)
+        {
+            telling.Heard(line);
+        }
+        return string.Empty;
+    }
+
+    /// <summary>A run's lines as the game writes them, its output's or its debug session's: each test's end told at once,
+    /// timed from its start (<see cref="GoDotTests.Progress"/>), and kept for the outcomes its log gives at the end.</summary>
+    private sealed class Telling(long began, ILookup<string, TestItem> byKey, Action<IReadOnlyList<TestOutcome>> outcomes)
+    {
+        private readonly GoDotTests.Progress progress = new();
+        private readonly Dictionary<string, TimeSpan> took = new(StringComparer.Ordinal);
+        private readonly Lock gate = new();
+
+        public void Heard(string line)
+        {
+            lock (gate)
+            {
+                if (progress.Heard(line, Stopwatch.GetElapsedTime(began)) is ({ } key, GoDotTests.Ending state, TimeSpan time) && byKey.Contains(key))
+                {
+                    took[key] = time;
+                    outcomes([.. byKey[key].Select(t => Outcome(t, state, time))]);
+                }
+            }
+        }
+
+        /// <summary>Whether a test's end was heard and told, and its time.</summary>
+        public bool Took(string key, out TimeSpan time)
+        {
+            lock (gate)
+            {
+                return took.TryGetValue(key, out time);
+            }
+        }
+    }
+
+    /// <summary>A test's outcome as GoDotTest ended it.</summary>
+    private static TestOutcome Outcome(TestItem test, GoDotTests.Ending state, TimeSpan took) => new(test, state switch
+    {
+        GoDotTests.Ending.Passed => TestState.Passed,
+        GoDotTests.Ending.Failed => TestState.Failed,
+        _ => TestState.Skipped,
+    }, took)
+    {
+        DisplayName = test.DisplayName,
+    };
+
+    /// <summary>Why one result stands for several tests: GoDotTest names a suite by its class's own name, so classes of one
+    /// name in different namespaces run together and are told as one; null for a name only one test has.</summary>
+    private static string? Together(IEnumerable<TestItem> named, string key) =>
+        named.Select(t => t.Method[..t.Method.LastIndexOf('.')]).Distinct(StringComparer.Ordinal).ToList() is { Count: > 1 } classes
+            ? $"GoDotTest names {Plural.Listed(classes)} alike ({key.Split("::")[0]}), so it ran them together and told one result for {key}"
+            : null;
 
     /// <summary>A run's log let go of; one Godot still holds (Windows) is left for the system's temporary folder.</summary>
     private static void Delete(string path)

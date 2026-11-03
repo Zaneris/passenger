@@ -7,9 +7,10 @@ namespace Passenger.App.Testing;
 /// other through VSTest (<see cref="VsTestRunner"/>, started the first time one needs it), a Godot project's GUT tests,
 /// found from its GDScript, through GUT's command line (<see cref="GutRunner"/>), and a Godot C# game's GoDotTest tests,
 /// found from its code, in the game (<see cref="GoDotTestRunner"/>), which takes each game's tests the code declares
-/// (<paramref name="declared"/>). So a solution of all of them shows them in one tree, and Run All runs them all.</summary>
+/// (<paramref name="declared"/>) and where each game's run starts (<paramref name="goDotStart"/>). So a solution of all of
+/// them shows them in one tree, and Run All runs them all.</summary>
 public sealed class TestRunners(string folder, Func<string, CancellationToken, Task<ITestRunner>>? startVsTest = null,
-    Func<string, IReadOnlyList<TestItem>>? declared = null) : ITestRunner
+    Func<string, IReadOnlyList<TestItem>>? declared = null, Func<string, Task<GoDotTests.Start>>? goDotStart = null) : ITestRunner
 {
     /// <summary>What a runner or a test host said: a <paramref name="notable"/> warning or error in the run's output and
     /// vstest.log, the rest (an adapter's progress) in vstest.log only while protocols are traced.</summary>
@@ -27,7 +28,7 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
 
     private readonly TestingPlatformRunner platform = new();
     private readonly GutRunner gut = new();
-    private readonly GoDotTestRunner goDot = new(declared ?? (_ => []));
+    private readonly GoDotTestRunner goDot = new(declared ?? (_ => []), goDotStart);
     private readonly Func<string, CancellationToken, Task<ITestRunner>> startVsTest = startVsTest ?? VsTestRunner.StartAsync;
     private ITestRunner? vsTest;
 

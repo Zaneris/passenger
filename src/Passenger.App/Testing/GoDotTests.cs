@@ -1,12 +1,17 @@
 using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.Languages.CSharp;
 using Passenger.Workspace;
 
 namespace Passenger.App.Testing;
 
 /// <summary>GoDotTest's tests as a Godot C# game runs them: its game, started with <c>--run-tests</c>, runs them inside
 /// itself and says how each went in Godot's output. A game carries GoDotTest where its project references its package; its
-/// tests are the methods its code marks [Test], each class a suite named by its own name. The runs that take the chosen
-/// tests, and each test's result read back from what GoDotTest printed, its colours none.</summary>
+/// tests are the methods its code marks [Test], each class a suite named by its own name. The scene a run starts in, the
+/// runs that take the chosen tests, each test's end as its lines come, and each test's result read back from what GoDotTest
+/// printed, its colours none.</summary>
 public static partial class GoDotTests
 {
     /// <summary>The test framework a GoDotTest test is told as having been found by, which <see cref="GoDotTestRunner"/> runs.</summary>
@@ -49,6 +54,141 @@ public static partial class GoDotTests
             [{ } one] => ($"{RunTests}={one.Suite}.{one.Method}", (IReadOnlyList<Named>)[one]),
             List<Named> several => ($"{RunTests}={suite.Key}", several),
         })];
+    }
+
+    /// <summary>Where a game's run of its tests starts: the scene its run settings name (<see cref="SceneParameter"/>), else
+    /// its main scene (<see cref="Scene"/> null) where a script of it reaches GoTest.RunTests, else the test scene that reaches
+    /// it, GoDotTest's own under <c>res://test/</c> first; or why none can (<see cref="Problem"/>), as nothing would run them.</summary>
+    public sealed record Start(string? Scene, StartProblem Problem = StartProblem.None)
+    {
+        public static readonly Start Main = new((string?)null);
+
+        /// <summary>Whether no run of the tests can start.</summary>
+        public bool Never => Problem != StartProblem.None;
+
+        /// <summary>The run settings file that named the scene, where one did.</summary>
+        public string? Settings { get; init; }
+    }
+
+    /// <summary>Why a game's tests cannot start: no scene of it runs them, or the scene its run settings name is not the
+    /// game's or runs none.</summary>
+    public enum StartProblem
+    {
+        None,
+        NoScene,
+        ChosenMissing,
+        ChosenRunsNone,
+    }
+
+    /// <summary>The run settings' parameter a person names a game's test scene by, a res:// path, beside GdUnit4's settings
+    /// in the same file (<c>&lt;TestRunParameters&gt;&lt;Parameter name="GoDotTestScene" value="res://test/Tests.tscn" /&gt;</c>).</summary>
+    public const string SceneParameter = "GoDotTestScene";
+
+    /// <summary>The test scene a run settings file names (<see cref="SceneParameter"/>); null where it names none, or does not
+    /// read as XML.</summary>
+    public static string? ChosenScene(string runSettings)
+    {
+        try
+        {
+            return System.Xml.Linq.XDocument.Parse(runSettings).Root?.Element("TestRunParameters")?.Elements("Parameter")
+                .FirstOrDefault(p => (string?)p.Attribute("name") == SceneParameter)?.Attribute("value")?.Value.Trim() is { Length: > 0 } scene ? scene : null;
+        }
+        catch (System.Xml.XmlException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The folder GoDotTest's README makes a game's test scene in.</summary>
+    public const string TestFolder = "res://test/";
+
+    /// <summary>The flag Godot starts a scene of the project by, in place of its main scene.</summary>
+    public const string SceneFlag = "--scene";
+
+    /// <summary>Where a game's tests run from (<see cref="Start"/>), by its scenes and the C# each script of their nodes runs
+    /// (<paramref name="code"/>, by res:// path; null for one not read), and the scene its run settings name
+    /// (<paramref name="chosen"/>): a scene reaches GoTest.RunTests where a script of it calls it, or changes to a scene it
+    /// names that does.</summary>
+    public static Start StartOf(GodotScenes scenes, Func<string, string?> code, string? chosen = null)
+    {
+        Dictionary<string, string?> read = new(StringComparer.Ordinal);
+        Dictionary<string, bool> calls = new(StringComparer.Ordinal);
+        string? Code(string script) => read.TryGetValue(script, out string? known) ? known : read[script] = code(script);
+        bool Calls(string script) => calls.TryGetValue(script, out bool known) ? known : calls[script] = Code(script) is { } text && RunsTests(text);
+        bool Reaches(string scene, HashSet<string> seen)
+        {
+            if (!seen.Add(scene) || scenes.Tree(scene) is not { } root)
+            {
+                return false;
+            }
+            foreach (string script in root.Below().Select(n => n.Script).OfType<string>().Where(s => s.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)).Distinct(StringComparer.Ordinal))
+            {
+                if (Calls(script) || Code(script) is { } text && ScenesNamed(text).Any(next => Reaches(next, seen)))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (chosen is not null)
+        {
+            return scenes.Files.TryGetValue(chosen, out GodotFile? sceneFile) && sceneFile.Header?.Tag == "gd_scene"
+                ? Reaches(chosen, []) ? new Start(chosen) : new Start(chosen, StartProblem.ChosenRunsNone)
+                : new Start(chosen, StartProblem.ChosenMissing);
+        }
+        string? main = scenes.Defined.SettingOf("application", "run/main_scene")?.Text is { } named && named.StartsWith(GodotUids.Scheme, StringComparison.Ordinal)
+            ? scenes.ResOfUid(named) : scenes.Defined.SettingOf("application", "run/main_scene")?.Text;
+        if (main is not null && Reaches(main, []))
+        {
+            return Start.Main;
+        }
+        foreach (string scene in scenes.Files.Where(f => f.Value.Header?.Tag == "gd_scene").Select(f => f.Key)
+            .OrderBy(k => k.StartsWith(TestFolder, StringComparison.Ordinal) ? 0 : 1).ThenBy(k => k, StringComparer.Ordinal))
+        {
+            if (scene != main && Reaches(scene, []))
+            {
+                return new Start(scene);
+            }
+        }
+        return new Start(null, StartProblem.NoScene);
+    }
+
+    /// <summary>Whether C# calls GoDotTest's GoTest.RunTests, as its syntax says.</summary>
+    public static bool RunsTests(string code) =>
+        CSharpSyntaxTree.ParseText(code, CSharpParsing.Default).GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>().Any(call =>
+            call.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "RunTests", Expression: var owner }
+            && owner is IdentifierNameSyntax { Identifier.ValueText: "GoTest" } or MemberAccessExpressionSyntax { Name.Identifier.ValueText: "GoTest" });
+
+    /// <summary>The scenes C# names by a string of a res:// path, which it may change to.</summary>
+    private static IEnumerable<string> ScenesNamed(string code) =>
+        CSharpSyntaxTree.ParseText(code, CSharpParsing.Default).GetRoot().DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken))
+            .Select(t => t.ValueText).Where(v => v.StartsWith("res://", StringComparison.Ordinal) && v.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>A run's tests as GoDotTest's lines of them are heard: each test's start, then its end with the time between,
+    /// from when each line came (<paramref name="at"/>, since the run began).</summary>
+    public sealed class Progress
+    {
+        private readonly Dictionary<string, TimeSpan> started = new(StringComparer.Ordinal);
+
+        /// <summary>The test a line says ended, how, and how long it ran; null for any other line.</summary>
+        public (string Key, Ending State, TimeSpan Took)? Heard(string line, TimeSpan at)
+        {
+            if (Said().Match(line) is not { Success: true } said || Event().Match(said.Groups["words"].Value) is not { Success: true } happened
+                || happened.Groups["type"].Value != "Test" || happened.Groups["error"].Success)
+            {
+                return null;
+            }
+            string key = new Named(happened.Groups["suite"].Value, happened.Groups["method"].Value).Key;
+            string what = happened.Groups["what"].Value;
+            if (what.StartsWith("Test started", StringComparison.Ordinal))
+            {
+                started[key] = at;
+                return null;
+            }
+            Ending state = what.StartsWith("Test passed", StringComparison.Ordinal) ? Ending.Passed
+                : what.StartsWith("Test failed", StringComparison.Ordinal) ? Ending.Failed : Ending.Skipped;
+            return (key, state, started.Remove(key, out TimeSpan began) ? at - began : TimeSpan.Zero);
+        }
     }
 
     /// <summary>The flag that has a game run its tests.</summary>

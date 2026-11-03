@@ -80,10 +80,27 @@ public static class GoDotTestGame
     /// <summary>The editor's line (from zero) of the tests' first line holding <paramref name="code"/>.</summary>
     public static int Line(string code) => Tests.Split('\n').ToList().FindIndex(l => l.Contains(code, StringComparison.Ordinal));
 
-    /// <summary>Writes the game into a folder, unrestored.</summary>
-    public static void Make(string folder, GodotFound godot)
+    /// <summary>A main scene's script that runs nothing of GoDotTest's.</summary>
+    public const string Plain = "using Godot;\n\npublic partial class Main : Node\n{\n    public override void _Ready() => GD.Print(\"playing\");\n}\n";
+
+    /// <summary>The test scene's script GoDotTest's README writes, which runs the tests in its scene.</summary>
+    public const string TestScene = """
+        using System.Reflection;
+        using Chickensoft.GoDotTest;
+        using Godot;
+
+        public partial class Tests : Node2D
+        {
+            public override void _Ready() => _ = GoTest.RunTests(Assembly.GetExecutingAssembly(), this);
+        }
+
+        """;
+
+    /// <summary>Writes the game into a folder, unrestored: its main scene's script <paramref name="main"/> (one running its
+    /// tests by default), and where given a test scene under test/ whose root runs <paramref name="tests"/>.</summary>
+    public static void Make(string folder, GodotFound godot, string main = Main, string? tests = null, string testCode = Tests)
     {
-        GodotTests.Game.Make(folder, godot.Version!, godot.Packages!, Main, Scene);
+        GodotTests.Game.Make(folder, godot.Version!, godot.Packages!, main, Scene);
         File.WriteAllText(Path.Combine(folder, "Spinner.csproj"), $"""
             <Project Sdk="Godot.NET.Sdk/{godot.Version}">
               <PropertyGroup>
@@ -97,7 +114,13 @@ public static class GoDotTestGame
 
             """);
         Directory.CreateDirectory(Path.GetDirectoryName(TestsPath(folder))!);
-        File.WriteAllText(TestsPath(folder), Tests);
+        File.WriteAllText(TestsPath(folder), testCode);
+        if (tests is not null)
+        {
+            File.WriteAllText(Path.Combine(folder, "test", "Tests.cs"), tests);
+            File.WriteAllText(Path.Combine(folder, "test", "Tests.tscn"),
+                "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://test/Tests.cs\" id=\"1\"]\n\n[node name=\"Tests\" type=\"Node2D\"]\nscript = ExtResource(\"1\")\n");
+        }
     }
 
     /// <summary>Why the tests skip with the Godot found, or null where it runs a C# game.</summary>
@@ -181,6 +204,205 @@ public sealed class GoDotTestTests : IDisposable
         {
             window.Close();
         }
+    }
+
+    /// <summary>Two tests, one ending a moment after it starts and the next waiting until the test lets it go (a file in the
+    /// game's folder), under a main scene giving GoDotTest's tests two minutes each.</summary>
+    private const string Stepping = """
+        namespace Spinner.Tests;
+
+        using System.Threading.Tasks;
+        using Chickensoft.GoDotTest;
+        using Godot;
+
+        public class SpinnerTest : TestClass
+        {
+            public SpinnerTest(Node testScene) : base(testScene) { }
+
+            [Test]
+            public async Task Adds() => await Task.Delay(300);
+
+            [Test]
+            public async Task Spins()
+            {
+                for (int waited = 0; waited < 1100 && !FileAccess.FileExists("res://let-go"); waited++)
+                {
+                    await TestScene.ToSignal(TestScene.GetTree().CreateTimer(0.1), SceneTreeTimer.SignalName.Timeout);
+                }
+            }
+        }
+
+        """;
+
+    /// <summary>The main scene's script running the tests with two minutes for each, where GoDotTest gives ten seconds.</summary>
+    private const string Patient = """
+        using System.Reflection;
+        using Chickensoft.GoDotTest;
+        using Godot;
+
+        public partial class Main : Node
+        {
+            public override void _Ready()
+            {
+                if (TestEnvironment.From(OS.GetCmdlineArgs()).ShouldRunTests)
+                {
+                    GoTest.TimeoutMilliseconds = 120000;
+                    CallDeferred(nameof(RunTests));
+                }
+            }
+
+            private void RunTests() => _ = GoTest.RunTests(Assembly.GetExecutingAssembly(), this);
+        }
+
+        """;
+
+    /// <summary>Run All Tests tells the first test passed, with the time it ran, while the next is still running, and that
+    /// one once the test lets it go; debugged, the run tells them so too, from the debug session's console.</summary>
+    [AvaloniaFact]
+    public void Each_test_is_told_as_it_ends_with_its_time_while_a_later_one_still_runs_and_so_under_Debug()
+    {
+        Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
+        GoDotTestGame.Make(folder, godot!, main: Patient, testCode: Stepping);
+        Restore.Run(Path.Combine(folder, "Spinner.csproj"));
+        MainWindow window = Opened();
+        try
+        {
+            Assert.True(window.Perform(AppActions.RunAllTests));
+            Ui.WaitFor(() => Method(window, "Adds")?.State == TestState.Passed && Method(window, "Spins")?.State == TestState.Running,
+                () => $"Adds told passed while Spins still runs ({Method(window, "Adds")?.State}, {Method(window, "Spins")?.State}; {window.BottomPanel.Tests.Status})",
+                TimeSpan.FromMinutes(5));
+            TimeSpan adds = Method(window, "Adds")!.Duration;
+            Assert.True(adds >= TimeSpan.FromMilliseconds(250), $"Adds, which waits 0.3 s, was told as running {adds.TotalMilliseconds} ms");
+            File.WriteAllText(Path.Combine(folder, "let-go"), "go");
+            Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Spins")?.State == TestState.Passed,
+                () => $"Spins to pass once let go ({Method(window, "Spins")?.State}; {window.BottomPanel.Tests.Status})", TimeSpan.FromMinutes(2));
+            Assert.True(Method(window, "Adds")!.State == TestState.Passed && Method(window, "Adds")!.Duration == adds,
+                $"Adds was told again otherwise at the run's end: {Method(window, "Adds")!.State}, {Method(window, "Adds")!.Duration.TotalMilliseconds} ms");
+            Assert.True(Method(window, "Spins")!.Duration > TimeSpan.Zero, "Spins was told with no time");
+
+            File.Delete(Path.Combine(folder, "let-go"));
+            Task<string?> debugged = window.Tests.RunAsync(window.Folder!, debug: true, build: false);
+            Ui.WaitFor(() => Method(window, "Adds")?.State == TestState.Passed && Method(window, "Spins")?.State == TestState.Running && window.Debugger.Session is not null,
+                () => $"Adds told passed under Debug while Spins still runs ({Method(window, "Adds")?.State}, {Method(window, "Spins")?.State}; {window.BottomPanel.Tests.Status}; {window.Debugger.Output()})",
+                TimeSpan.FromMinutes(5));
+            File.WriteAllText(Path.Combine(folder, "let-go"), "go");
+            Ui.Launched(window, debugged, "the debugged run to end", TimeSpan.FromMinutes(2));
+            Assert.True(Method(window, "Spins")!.State == TestState.Passed, $"Spins did not pass under Debug once let go: {Method(window, "Spins")!.Details}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A game whose main scene runs nothing of GoDotTest's, its tests run by a test scene under test/ as GoDotTest's
+    /// README writes one, runs them from that scene: one passes and the other fails.</summary>
+    [AvaloniaFact]
+    public void A_game_whose_tests_run_from_a_test_scene_runs_them_from_it()
+    {
+        Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
+        GoDotTestGame.Make(folder, godot!, main: GoDotTestGame.Plain, tests: GoDotTestGame.TestScene);
+        Restore.Run(Path.Combine(folder, "Spinner.csproj"));
+        MainWindow window = Opened();
+        try
+        {
+            Assert.True(window.Perform(AppActions.RunAllTests));
+            Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Spins")?.State is TestState.Passed or TestState.Failed,
+                () => $"the run of both tests from the test scene ({window.BottomPanel.Tests.Status}; {window.BottomPanel.Build.Document.Snapshot})", TimeSpan.FromMinutes(5));
+            Assert.True(Method(window, "Adds")!.State == TestState.Passed && Method(window, "Spins")!.State == TestState.Failed,
+                $"The test scene's run told Adds {Method(window, "Adds")!.State} and Spins {Method(window, "Spins")!.State}: {window.BottomPanel.Tests.Status}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The run settings' GoDotTestScene parameter chooses the scene: one the game lacks is refused before Godot
+    /// starts, Run All Tests greying with why; ci/Runner.tscn, named there, runs the tests, where test/Tests.tscn, which
+    /// GoDotTest's convention would choose, runs none of them.</summary>
+    [AvaloniaFact]
+    public void The_run_settings_choose_the_test_scene_one_the_game_lacks_refused_before_godot_starts()
+    {
+        Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
+        GoDotTestGame.Make(folder, godot!, main: GoDotTestGame.Plain, tests: GoDotTestGame.TestScene.Replace("this)", "this, predicate: _ => false)", StringComparison.Ordinal));
+        Directory.CreateDirectory(Path.Combine(folder, "ci"));
+        File.WriteAllText(Path.Combine(folder, "ci", "Runner.cs"), GoDotTestGame.TestScene.Replace("class Tests", "class Runner", StringComparison.Ordinal));
+        File.WriteAllText(Path.Combine(folder, "ci", "Runner.tscn"),
+            "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://ci/Runner.cs\" id=\"1\"]\n\n[node name=\"Runner\" type=\"Node2D\"]\nscript = ExtResource(\"1\")\n");
+        string project = Path.Combine(folder, "Spinner.csproj");
+        File.WriteAllText(project, File.ReadAllText(project).Replace("</PropertyGroup>", "  <RunSettingsFilePath>$(MSBuildProjectDirectory)/godot.runsettings</RunSettingsFilePath>\n  </PropertyGroup>", StringComparison.Ordinal));
+        string settings = Path.Combine(folder, "godot.runsettings");
+        File.WriteAllText(settings, RunSettings("res://ci/Missing.tscn"));
+        Restore.Run(project);
+        MainWindow window = Opened();
+        try
+        {
+            string missing = Refusals.GoDotTestStart("Spinner", new GoDotTests.Start("res://ci/Missing.tscn", GoDotTests.StartProblem.ChosenMissing) { Settings = settings })!;
+            Ui.WaitFor(() => window.Actions.WhyNot(AppActions.RunAllTests, window.Actions.Context()) == missing,
+                () => $"Run All Tests to grey saying the scene named is not the game's ({window.Actions.WhyNot(AppActions.RunAllTests, window.Actions.Context())})", TimeSpan.FromMinutes(2));
+
+            File.WriteAllText(settings, RunSettings("res://ci/Runner.tscn"));
+            Assert.Null(Ui.Await(window.Tests.RunAsync(window.Folder!), "the run from the scene the run settings name", TimeSpan.FromMinutes(5)));
+            Assert.True(Method(window, "Adds")!.State == TestState.Passed && Method(window, "Spins")!.State == TestState.Failed,
+                $"The scene the run settings name told Adds {Method(window, "Adds")!.State} and Spins {Method(window, "Spins")!.State}: {window.BottomPanel.Tests.Status}");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string RunSettings(string scene) =>
+            $"<RunSettings>\n  <TestRunParameters>\n    <Parameter name=\"{GoDotTests.SceneParameter}\" value=\"{scene}\" />\n  </TestRunParameters>\n</RunSettings>\n";
+    }
+
+    /// <summary>A game no scene of which runs GoDotTest's tests is said to never run them before Godot starts: Run All Tests
+    /// greys saying so, and a run asked for anyway starts no Godot and says the same.</summary>
+    [AvaloniaFact]
+    public void A_game_that_never_runs_its_tests_is_said_so_before_godot_starts_and_run_all_greys()
+    {
+        Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
+        GoDotTestGame.Make(folder, godot!, main: GoDotTestGame.Plain);
+        MainWindow window = Opened();
+        List<string> started = [];
+        EventHandler<ChildStart> heard = (_, child) =>
+        {
+            if (child.Command.Contains(godot!.Executable, StringComparison.Ordinal))
+            {
+                lock (started)
+                {
+                    started.Add(child.Command);
+                }
+            }
+        };
+        ChildProcesses.Started += heard;
+        try
+        {
+            string never = Refusals.GoDotTestNeverRuns("Spinner");
+            Ui.WaitFor(() => window.Actions.WhyNot(AppActions.RunAllTests, window.Actions.Context()) == never,
+                () => $"Run All Tests to grey saying the game never runs its tests ({window.Actions.WhyNot(AppActions.RunAllTests, window.Actions.Context())})");
+            Assert.Equal(never, Ui.Await(window.Tests.RunAsync(window.Folder!, build: false), "a run asked for anyway", TimeSpan.FromMinutes(2)));
+            lock (started)
+            {
+                Assert.True(started.Count == 0, $"Godot was started for a game that never runs its tests: {string.Join("; ", started)}");
+            }
+        }
+        finally
+        {
+            ChildProcesses.Started -= heard;
+            window.Close();
+        }
+    }
+
+    /// <summary>The game's folder open, both its tests shown from the code before any build.</summary>
+    private MainWindow Opened()
+    {
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.WaitFor(() => Method(window, "Spins") is not null && Method(window, "Adds") is not null,
+            () => $"both tests shown from the code before any build ({string.Join(", ", window.Tests.Tree.Methods.Select(m => m.Name))}; {window.Tests.Tree.EmptyText})");
+        return window;
     }
 
     private static TestNode? Method(MainWindow window, string name) => window.Tests.Tree.Methods.FirstOrDefault(m => m.Name == name);

@@ -324,7 +324,17 @@ public sealed class TestNode : Observable, ITreeRow
 
     internal void Add(TestOutcome outcome)
     {
-        results.Add(outcome);
+        int told = outcome.Again ? results.FindLastIndex(r => r.Test.Key == outcome.Test.Key && r.Row == outcome.Row) : -1;
+        if (told >= 0)
+        {
+            counts[(int)results[told].State]--;
+            AddTicks(-results[told].Duration.Ticks);
+            results[told] = outcome;
+        }
+        else
+        {
+            results.Add(outcome);
+        }
         counts[(int)outcome.State]++;
         AddTicks(outcome.Duration.Ticks);
         State = Combine(counts, running: results.Count < expected);

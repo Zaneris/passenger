@@ -100,7 +100,7 @@ public partial class MainWindow
         // A debugged test host takes Hot Reload, with its update handlers, as Settings has it while debugging.
         tests.ReloadFor = (assembly, environment) => next.Debug.HotReloadOn()
             && Debugging.UpdateHandlerHook.ForTestHost(assembly, environment) is ({ } hook, { } variables) ? new Testing.TestHostReload(variables, hook) : null;
-        tests.DebugGame = (start, folder, leading, csharp) => DebugTestGame(next, start, folder, leading, csharp, testHosts);
+        tests.DebugGame = (start, folder, leading, csharp, heard) => DebugTestGame(next, start, folder, leading, csharp, testHosts, heard);
         tests.EndDebugging = () => Task.WhenAll(testHosts.ToArray().Select(EndTestHost));
         async Task EndTestHost(DebugTab tab)
         {
@@ -361,7 +361,8 @@ public partial class MainWindow
     /// GDScript alone under the GDScript debugger, which launches it; a C# game (<paramref name="csharp"/>) under .NET's,
     /// its GDScript debugged beside it. In Debug tabs ended with the test run; done once its session is open, with the run's
     /// end.</summary>
-    private async Task<Task> DebugTestGame(ProjectSession running, Testing.TestHostStart start, string folder, int leading, bool csharp, HashSet<DebugTab> testHosts)
+    private async Task<Task> DebugTestGame(ProjectSession running, Testing.TestHostStart start, string folder, int leading, bool csharp, HashSet<DebugTab> testHosts,
+        Action<string>? heard)
     {
         CheckTestSession(running);
         string? game = Passenger.Workspace.GodotProject.Read(folder)?.Name;
@@ -399,6 +400,10 @@ public partial class MainWindow
                 throw;
             }
             debugged = launched.Tab.Session;
+            if (heard is not null && debugged is not null)
+            {
+                debugged.Heard += Debugging.DebugSession.Lines(heard);
+            }
             listening.Debugged = debugged;
             Run.BuildRunController.EndsWithGame(listening);
             if (await running.Debug.DebugScriptsAsync(listening, listened.Name) is null

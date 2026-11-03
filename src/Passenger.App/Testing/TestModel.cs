@@ -184,6 +184,10 @@ public sealed record TestOutcome(TestItem Test, TestState State, TimeSpan Durati
     /// a result of this one's.</summary>
     public DateTimeOffset? Earlier { get; init; }
 
+    /// <summary>Whether it takes the place of the outcome told before in the run for its test and row: a runner that tells
+    /// each test's end as it comes tells its details once the run has ended.</summary>
+    public bool Again { get; init; }
+
     /// <summary>The row this result is of, the test's own or one its run made; null for the method itself.</summary>
     public string? Row => Test.Row ?? (DisplayName is { } shown ? TestItem.RowOf(Test.FullyQualifiedName, shown) : null);
 }
@@ -230,8 +234,9 @@ public interface ITestDebugLauncher
 
     /// <summary>Starts a Godot run of a project's tests (GUT's, GoDotTest's) under the debugger as Debug starts its game: its
     /// GDScript under the GDScript debugger, and its C# under .NET's where the game has C# (<paramref name="csharp"/>), the
-    /// debugger's own arguments after the first <paramref name="leading"/>; done once it has started, with the run's end.</summary>
-    Task<Task> DebugGameAsync(TestHostStart start, string folder, int leading, bool csharp);
+    /// debugger's own arguments after the first <paramref name="leading"/>; done once it has started, with the run's end. Each
+    /// line the game writes is handed to <paramref name="heard"/> as the debug session hears it, on the session's thread.</summary>
+    Task<Task> DebugGameAsync(TestHostStart start, string folder, int leading, bool csharp, Action<string>? heard = null);
 }
 
 /// <summary>What finds and runs a folder's tests: VSTest's vstest.console (<see cref="VsTestRunner"/>), Microsoft.Testing.Platform's

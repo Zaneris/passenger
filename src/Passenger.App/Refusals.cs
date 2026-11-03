@@ -138,6 +138,25 @@ public static class Refusals
     /// <summary>A build asked of a folder whose one kind of project is a Godot project of GDScript alone, which builds nothing.</summary>
     public const string NothingToBuildOfScripts = "The open folder's Godot project is GDScript alone, which Godot runs as it is: there is nothing to build (Run, Debug and Profile start its game)";
 
+    /// <summary>A Godot game's GoDotTest tests asked to run where no scene of the game calls GoTest.RunTests, so a run would
+    /// start Godot and run none until stopped: said before it starts.</summary>
+    public static string GoDotTestNeverRuns(string game) =>
+        $"{game} never runs its GoDotTest tests: no scene of it calls GoTest.RunTests, neither its main scene nor a test scene (GoDotTest's README makes one in {Testing.GoDotTests.TestFolder}), so Godot is not started for them";
+
+    /// <summary>A game's GoDotTest tests asked to run where they cannot start (<see cref="Testing.GoDotTests.Start"/>): no
+    /// scene runs them, or the scene its run settings name is not the game's or runs none; null where they can.</summary>
+    public static string? GoDotTestStart(string game, Testing.GoDotTests.Start start)
+    {
+        string named = $"{(start.Settings is { } file ? PathNames.Shown(file, null) : "The run settings file")} names {start.Scene} for {game}'s GoDotTest tests (its {Testing.GoDotTests.SceneParameter} parameter)";
+        return start.Problem switch
+        {
+            Testing.GoDotTests.StartProblem.NoScene => GoDotTestNeverRuns(game),
+            Testing.GoDotTests.StartProblem.ChosenMissing => $"{named}, but the game has no such scene, so Godot is not started for them",
+            Testing.GoDotTests.StartProblem.ChosenRunsNone => $"{named}, but no script of that scene calls GoTest.RunTests, so Godot is not started for them",
+            _ => null,
+        };
+    }
+
     /// <summary>A build or publish asked for while another of the window's runs: one builds at a time.</summary>
     public const string Building = "Another build is running";
 

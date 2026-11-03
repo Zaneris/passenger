@@ -1,9 +1,10 @@
 using Passenger.App.Testing;
+using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Godot;
 
-/// <summary>The runs of a game Passenger asks GoDotTest for, and each test's result as it reads back what GoDotTest printed
-/// into Godot's log of a run.</summary>
+/// <summary>The runs of a game Passenger asks GoDotTest for, the scene a run starts in, each test's end as its line is
+/// heard, and each test's result as it reads back what GoDotTest printed into Godot's log of a run.</summary>
 public class GoDotTestsTests
 {
     private static readonly GoDotTests.Named Adds = new("SpinnerTest", "Adds");
@@ -118,5 +119,98 @@ public class GoDotTestsTests
         Assert.Equal(GoDotTests.Ending.Failed, results["TurnTest::Stops"].State);
         Assert.Equal("Its [Cleanup] method TidyUp failed", results["SpinnerTest::Adds"].Message);
         Assert.Equal(GoDotTests.Ending.Passed, results["SpinnerTest::Spins"].State);
+    }
+
+    /// <summary>Each test's end is heard as its line comes, timed from its start's line, a test skipped with no start untimed;
+    /// a [Setup]'s line, a failure's report and the rest tell nothing.</summary>
+    [Fact]
+    public void Each_tests_end_is_heard_as_its_line_comes_timed_from_its_start()
+    {
+        GoDotTests.Progress progress = new();
+        string[] lines = Log.Split('\n');
+        List<(string, GoDotTests.Ending, TimeSpan)> heard = [];
+        for (int at = 0; at < lines.Length; at++)
+        {
+            if (progress.Heard(lines[at], TimeSpan.FromSeconds(at)) is { } ended)
+            {
+                heard.Add(ended);
+            }
+        }
+        Assert.Equal([("SpinnerTest::Adds", GoDotTests.Ending.Passed, TimeSpan.FromSeconds(2)), ("SpinnerTest::Spins", GoDotTests.Ending.Failed, TimeSpan.FromSeconds(2)),
+            ("SetupTest::AfterSetup", GoDotTests.Ending.Passed, TimeSpan.FromSeconds(1)), ("SetupTest::Skipped", GoDotTests.Ending.Skipped, TimeSpan.Zero)], heard);
+    }
+
+    private const string Project = "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nrun/main_scene=\"res://main.tscn\"\n";
+
+    private static string SceneOf(string script) =>
+        $"[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"{script}\" id=\"1\"]\n\n[node name=\"Root\" type=\"Node\"]\nscript = ExtResource(\"1\")\n";
+
+    private const string Runs = "using Chickensoft.GoDotTest;\n\npublic partial class Tests : Godot.Node\n{\n    public override void _Ready() => _ = GoTest.RunTests(GetType().Assembly, this);\n}\n";
+
+    private const string Plays = "public partial class Main : Godot.Node\n{\n    // GoTest.RunTests(...) is never called.\n    public override void _Ready() => Godot.GD.Print(\"GoTest.RunTests\");\n}\n";
+
+    /// <summary>Where a game's tests start, by its main scene's script and the scenes under test/.</summary>
+    private static GoDotTests.Start StartOf(string main, string? tests, string? other = null)
+    {
+        Dictionary<string, GodotFile> files = new() { ["res://main.tscn"] = GodotFile.Parse(SceneOf("res://Main.cs")) };
+        Dictionary<string, string> code = new() { ["res://Main.cs"] = main };
+        if (tests is not null)
+        {
+            files["res://test/Tests.tscn"] = GodotFile.Parse(SceneOf("res://test/Tests.cs"));
+            code["res://test/Tests.cs"] = tests;
+        }
+        if (other is not null)
+        {
+            files["res://a/Other.tscn"] = GodotFile.Parse(SceneOf("res://a/Other.cs"));
+            code["res://a/Other.cs"] = other;
+        }
+        GodotScenes scenes = new("/game", files, texts: new Dictionary<string, string> { ["res://project.godot"] = Project });
+        return GoDotTests.StartOf(scenes, res => code.GetValueOrDefault(res));
+    }
+
+    [Fact]
+    public void A_main_scene_whose_script_runs_the_tests_or_changes_to_a_scene_that_does_starts_the_run()
+    {
+        Assert.Equal(GoDotTests.Start.Main, StartOf(Runs, null));
+        Assert.Equal(GoDotTests.Start.Main, StartOf("public partial class Main : Godot.Node\n{\n    public override void _Ready() => GetTree().ChangeSceneToFile(\"res://test/Tests.tscn\");\n}\n", Runs));
+    }
+
+    [Fact]
+    public void A_test_scene_under_test_runs_the_tests_where_the_main_scene_does_not_before_any_other_scene()
+    {
+        Assert.Equal(new GoDotTests.Start("res://test/Tests.tscn"), StartOf(Plays, Runs, other: Runs));
+        Assert.Equal(new GoDotTests.Start("res://a/Other.tscn"), StartOf(Plays, null, other: Runs));
+    }
+
+    /// <summary>A comment or a string naming GoTest.RunTests calls nothing: such a game never runs its tests.</summary>
+    [Fact]
+    public void A_game_no_scene_of_which_calls_GoTest_RunTests_never_runs_its_tests()
+    {
+        Assert.Equal(new GoDotTests.Start(null, GoDotTests.StartProblem.NoScene), StartOf(Plays, Plays));
+        Assert.False(GoDotTests.RunsTests(Plays));
+        Assert.True(GoDotTests.RunsTests("class T { void M() => Chickensoft.GoDotTest.GoTest.RunTests(null!, null!); }"));
+    }
+
+    /// <summary>A run settings file names a game's test scene by its GoDotTestScene parameter, which then starts the run where
+    /// it runs the tests, and is refused as not the game's or as running none.</summary>
+    [Fact]
+    public void The_run_settings_name_the_test_scene_which_is_refused_where_missing_or_running_none()
+    {
+        Assert.Equal("res://ci/Runner.tscn", GoDotTests.ChosenScene(
+            "<RunSettings><GdUnit4><Parameters>--headless</Parameters></GdUnit4><TestRunParameters><Parameter name=\"GoDotTestScene\" value=\" res://ci/Runner.tscn \" /></TestRunParameters></RunSettings>"));
+        Assert.Null(GoDotTests.ChosenScene("<RunSettings><TestRunParameters><Parameter name=\"Other\" value=\"x\" /></TestRunParameters></RunSettings>"));
+        Assert.Null(GoDotTests.ChosenScene("not xml"));
+
+        Dictionary<string, GodotFile> files = new()
+        {
+            ["res://main.tscn"] = GodotFile.Parse(SceneOf("res://Main.cs")),
+            ["res://test/Tests.tscn"] = GodotFile.Parse(SceneOf("res://test/Tests.cs")),
+            ["res://ci/Plays.tscn"] = GodotFile.Parse(SceneOf("res://Main.cs")),
+        };
+        Dictionary<string, string> code = new() { ["res://Main.cs"] = Plays, ["res://test/Tests.cs"] = Runs };
+        GodotScenes scenes = new("/game", files, texts: new Dictionary<string, string> { ["res://project.godot"] = Project });
+        Assert.Equal(new GoDotTests.Start("res://test/Tests.tscn"), GoDotTests.StartOf(scenes, code.GetValueOrDefault, "res://test/Tests.tscn"));
+        Assert.Equal(GoDotTests.StartProblem.ChosenMissing, GoDotTests.StartOf(scenes, code.GetValueOrDefault, "res://ci/Gone.tscn").Problem);
+        Assert.Equal(GoDotTests.StartProblem.ChosenRunsNone, GoDotTests.StartOf(scenes, code.GetValueOrDefault, "res://ci/Plays.tscn").Problem);
     }
 }
