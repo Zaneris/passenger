@@ -324,7 +324,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   Godot scene's tree, `GodotSceneOutline`, or a Markdown file's headings as Passenger reads them, `MarkdownOutline`),
   which Structure, File Structure and MCP's `outline` read, a row going on through Go to Declaration a
   `SymbolRow.Leads`; a view laid over the text follows a place gone to through `CodeEditor.WentTo`; a preview holds no
-  text (`HoldsText` false); a preview beside its text (Markdown's, an SVG's, an HTML file's) is the group's side,
+  text (`HoldsText` false); a diff's tab is an `OpenDocument.OfDiff` of no file (`EditorArea.Diffs`), never in
+  `Documents` or heard opened or closed, and every diff goes through `MainWindow.ShowDiff` (`DiffContent`, `IDiffHost`:
+  `DiffWindow` or `DiffTab`); a preview beside its text (Markdown's, an SVG's, an HTML file's) is the group's side,
   followed in `EditorGroup.FollowSidePreview`, its toggle `PreviewAction`, an SVG drawn as a drawing through
   `ZoomedPicture` (`SvgPicture`), never a bitmap, an HTML page in the system's web view (`HtmlPreview`), never made in a
   window nobody sees (`PassengerApp.ShowsNoWindow`; WebView2 refuses a thread that isn't STA). The Markdown preview
@@ -333,7 +335,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   `Dock.Add`; its floats close with their window (`DockHost.CloseFloats`); its action gives it the keys
   (`DockHost.Activate`, `ToolWindow.TakeKeys`), and Escape in it unhandled is Focus Editor (`ToolPane`). A view is built
   when first shown: what the IDE writes while it's hidden lives in a model, and code reaches a view only through a
-  property that builds it for a person's action.
+  property that builds it for a person's action. A group's views are detached and attached again as its frame rebuilds
+  (a split): a view letting go on `DetachedFromVisualTree` shows itself again on attach (`DiffView`,
+  `DiffPanes.Colour`).
 - **C#.** `CSharpService`, `ServerDiagnostics` (one pull at a time after a pause), `CodeAssist` (the window's wiring)
   over its parts; Show Usages' popup (`UsagesPopup`) is fed by Find Usages' one finder (`UsagesFound.PopupAt`); each
   language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order. `WorkspaceEdits`: a server's edit to a
