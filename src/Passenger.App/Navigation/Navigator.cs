@@ -91,7 +91,7 @@ public sealed class Navigator
         if (Editors.Active is { } active && active.Path == PathNames.Canonical(path))
         {
             Editors.CodeEditor.GoTo(position);
-            if (from is not null && Here() is { } to && (to.Path != from.Path || to.Line != from.Line))
+            if (from is not null && Here() is { } to && (!to.SameTab(from) || to.Line != from.Line))
             {
                 Places.Left(from);
             }
