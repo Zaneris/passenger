@@ -9,7 +9,7 @@ extends EditorPlugin
 ## Passenger listening, or one that refuses, it does nothing, and Godot plays as it always did.
 
 ## The addon's version, which Passenger reads to update an older one in place.
-const VERSION := 9
+const VERSION := 10
 ## How long a build may take to be answered.
 const BUILD_LIMIT_MS := 30 * 60 * 1000
 ## How long any other request may take to be answered.
@@ -50,6 +50,8 @@ var scenes_told := ""
 var scenes_looked := 0
 ## How often the scenes this editor holds are looked at for a change to tell.
 const SCENES_EVERY_MS := 300
+## Whether each act an agent asks of the edited scene is printed with its answer (PASSENGER_ADDON_TRACE, a test's).
+var trace := false
 
 
 ## Each game session Godot's editor holds, told to Passenger as it starts and stops.
@@ -77,6 +79,7 @@ class Sessions extends EditorDebuggerPlugin:
 
 
 func _enter_tree() -> void:
+	trace = OS.has_environment("PASSENGER_ADDON_TRACE")
 	sessions.addon = self
 	add_debugger_plugin(sessions)
 	scene_changed.connect(func(_root): _tell_scene())
@@ -391,6 +394,9 @@ func _heard(message: Dictionary) -> void:
 		_send({"id": int(message.get("id", 0)), "result": {}})
 	elif method.begins_with("scene_"):
 		var answer = Scenes.asked(method, params)
+		if trace:
+			var edited := EditorInterface.get_edited_scene_root()
+			print("Passenger trace: ", method, " ", JSON.stringify(params), " in ", edited.scene_file_path if edited != null else "no scene", " -> ", JSON.stringify(answer))
 		if answer is String:
 			_send({"id": int(message.get("id", 0)), "error": answer})
 		else:

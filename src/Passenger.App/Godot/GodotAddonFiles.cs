@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.App.Godot;
 
 /// <summary>Passenger's addon for Godot's editor as Passenger carries it (<c>Godot/Addon</c>): each file by its name in the
@@ -11,6 +13,11 @@ public static class GodotAddonFiles
         using StreamReader reader = new(stream);
         return (name, reader.ReadToEnd());
     })]);
+
+    /// <summary>The variable that has the addon print each act an agent asks of the edited scene, with what it answered and
+    /// the scene it acted in, to its editor's output: a test's.</summary>
+    [IdentifierHome]
+    public const string TraceVariable = "PASSENGER_ADDON_TRACE";
 
     /// <summary>The files, as written into a project.</summary>
     public static IReadOnlyList<(string Name, string Text)> Carried => Read.Value;

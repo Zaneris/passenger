@@ -823,9 +823,9 @@ public sealed class GodotAddonTests : IDisposable
         read.GetProperty("nodes").EnumerateArray().Where(n => n.GetProperty("path").GetString() == path).Select(n => (JsonElement?)n).FirstOrDefault();
 
     /// <summary>A property of a node of the edited scene, as its file would store it.</summary>
-    private static string? Stored(JsonElement read, string path, string property) =>
+    private string? Stored(JsonElement read, string path, string property) =>
         Node(read, path) is { } node && node.TryGetProperty("properties", out JsonElement stored) && stored.TryGetProperty(property, out JsonElement value) ? value.GetString()
-        : throw new InvalidOperationException($"The edited scene read holds no {property} of {path}: {read.GetRawText()}");
+        : throw new InvalidOperationException($"The edited scene read holds no {property} of {path}: {read.GetRawText()}; Godot said: {Said()}");
 
     /// <summary>An agent attached to the test's window, on the SDK's own client, as the MCP tests' agents are.</summary>
     private sealed class Agent : McpRig
@@ -996,6 +996,7 @@ public sealed class GodotAddonTests : IDisposable
             start.Environment[name] = value;
         }
         start.Environment[Passenger.App.State.StateStore.Variable] = Passenger.App.State.StateStore.DefaultRoot;
+        start.Environment[GodotAddonFiles.TraceVariable] = "1";
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         editor = ChildProcesses.Start(start);
@@ -1003,7 +1004,7 @@ public sealed class GodotAddonTests : IDisposable
         UnawaitedWork.Dismiss(ChildProcesses.Hear(editor, said.Enqueue, said.Enqueue));
     }
 
-    private string Said() => string.Join(" | ", said.TakeLast(40));
+    private string Said() => string.Join(" | ", said.TakeLast(60));
 
     /// <summary>Each Debug tab, with its session's state.</summary>
     private static string Tabs(MainWindow window) =>
