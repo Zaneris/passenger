@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -10,12 +12,23 @@ using Passenger.Core;
 
 namespace Passenger.App;
 
-/// <summary>The window's typeface's own tracking where macOS's text drawing would set it, so words in San Francisco are as
-/// tight as in the system's own apps: a face with a 'trak' table (<see cref="FontTracking"/>), on macOS, has the letter
-/// spacing its table gives each size on every TextBlock and TextPresenter drawing words in it, at its size, as its size or
-/// face changes; any other face, or any other system, keeps Avalonia's own. A UI-thread object.</summary>
-public static class WindowTracking
+/// <summary>The window's typeface's own tracking and optical size where macOS's text drawing would set them, so words in San
+/// Francisco are as wide as in the system's own apps: a face with a 'trak' table (<see cref="FontTracking"/>), on macOS, has
+/// the letter spacing its table gives each size on every TextBlock and TextPresenter drawing words in it, at its size, as
+/// its size or face changes, and a variable face is shaped at the optical size macOS gives the window's words and at its
+/// own weight, never at its default instance's; any other face, or any other system, keeps Avalonia's own. A UI-thread
+/// object.</summary>
+public static partial class WindowTracking
 {
+    /// <summary>The size of the window's words whose optical size its faces take: one face draws every size, and San
+    /// Francisco's least optical size, 17, is what macOS gives every size up to it.</summary>
+    private const double WordsSize = 13;
+
+    /// <summary>The weights and styles of the window's words, whose faces are shaped as macOS draws them.</summary>
+    private static readonly FontWeight[] Weights = [FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold];
+
+    private static readonly HashSet<GlyphTypeface> varied = [];
+
     private static FontFamily? tracked;
     private static byte[]? table;
     private static int unitsPerEm;
@@ -26,6 +39,10 @@ public static class WindowTracking
     public static void Follow(Application app, FontFamily family)
     {
         (tracked, table, unitsPerEm) = OperatingSystem.IsMacOS() && TableOf(family) is (byte[] read, int em) ? (family, read, em) : (null, null, 0);
+        if (OperatingSystem.IsMacOS())
+        {
+            Vary(family);
+        }
         if (!hooked && tracked is not null)
         {
             hooked = true;
@@ -65,4 +82,55 @@ public static class WindowTracking
         && face.PlatformTypeface.TryGetTable(OpenTypeTag.Parse("trak"), out ReadOnlyMemory<byte> trak) && trak.Length > 0
             ? (trak.ToArray(), face.Metrics.DesignEmHeight)
             : null;
+
+    /// <summary>Each face of a family the window's words take, shaped at the optical size macOS gives them and at its own
+    /// weight where it varies by them, as the system's own apps draw it: its shaper otherwise takes the font's default
+    /// instance (San Francisco's is its display size, 28, a tenth narrower than its text at 13 px). A face simulated or
+    /// already set is left as it is.</summary>
+    private static void Vary(FontFamily family)
+    {
+        foreach (FontStyle style in (FontStyle[])[FontStyle.Normal, FontStyle.Italic])
+        {
+            foreach (FontWeight weight in Weights)
+            {
+                if (!FontManager.Current.TryGetGlyphTypeface(new Typeface(family, style, weight), out GlyphTypeface? face)
+                    || face.FontSimulations != FontSimulations.None || varied.Contains(face)
+                    || !face.PlatformTypeface.TryGetTable(OpenTypeTag.Parse("fvar"), out ReadOnlyMemory<byte> fvar))
+                {
+                    continue;
+                }
+                varied.Add(face);
+                List<Variation> set = [];
+                foreach (FontAxis axis in FontAxes.Of(fvar.Span))
+                {
+                    if (axis.Tag == FontAxes.OpticalSize)
+                    {
+                        set.Add(new Variation(axis.Tag, (float)axis.Held(WordsSize)));
+                    }
+                    else if (axis.Tag == FontAxes.Weight)
+                    {
+                        set.Add(new Variation(axis.Tag, (float)axis.Held((int)weight)));
+                    }
+                }
+                if (set.Count > 0 && ShaperFont(face) is { } font)
+                {
+                    SetVariations(font, [.. set], (uint)set.Count);
+                }
+            }
+        }
+    }
+
+    /// <summary>The HarfBuzz font a face is shaped with, which Avalonia's shaper keeps on it and shows no way to vary; null
+    /// where its shaper is another.</summary>
+    private static IntPtr? ShaperFont(GlyphTypeface face) =>
+        face.TextShaperTypeface.GetType().GetProperty("HBFont", BindingFlags.Public | BindingFlags.Instance)?.GetValue(face.TextShaperTypeface) is HarfBuzzSharp.Font font
+            ? font.Handle
+            : null;
+
+    /// <summary>An axis's value as HarfBuzz takes one, its hb_variation_t.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct Variation(uint Tag, float Value);
+
+    [LibraryImport("libHarfBuzzSharp", EntryPoint = "hb_font_set_variations")]
+    private static partial void SetVariations(IntPtr font, [In] Variation[] variations, uint count);
 }
