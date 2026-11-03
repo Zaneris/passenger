@@ -608,7 +608,10 @@ site-shots` retakes its images.
   the protocol's `reload`), after C#'s (`DebugController.ApplyTargetAsync`): Avalonia's runtime loader (carried under
   `inspector/`) or WPF's `WpfXamlLoader.LoadBaml` fills each x:Class instance again, whose Styles, Resources and root
   handlers `Held` clears first, as filling adds to them (a duplicate key throws); WPF's `x:Name` fields are found
-  through `IComponentConnector`, its `SuppressMessage` compiled out; Run under dotnet watch carries no inspector.
+  through `IComponentConnector`, its `SuppressMessage` compiled out; an app keeps its build's XAML
+  (`XamlHotReload.KeepBuiltAsync`), so a closed file written on disk reaches it (`XamlHotReload.Written`). dotnet watch
+  replaces its app's `DOTNET_STARTUP_HOOKS`, so an Avalonia or WPF app's Run with Hot Reload is held and attached
+  quietly (`BuildRunController.RunsXamlApp`), its XAML applied after its C# (`RunningReload.App`).
 - **dotnet watch takes Ctrl+R only from a console's keys**, never from redirected input: the Run window's restart under
   it is Rerun, and when it waits after the program ends it says so (`BuildRunController.WatchedEnd`). A save's temporary
   file ends in `.user` (`FileText.SaveSuffix`), which every project's `DefaultItemExcludes` leaves out, so dotnet watch
