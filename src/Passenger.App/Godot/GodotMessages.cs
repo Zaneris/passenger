@@ -94,7 +94,7 @@ public static class GodotWords
     public const string NextFrame = "scene:next_frame";
     public const string SelectSetup = "scene:runtime_node_select_setup";
     public const string SelectType = "scene:runtime_node_select_set_type";
-    public const string SelectVisible = "scene:runtime_node_select_set_visible";
+    public const string SelectNodeType = "scene:runtime_node_select_set_node_type";
     public const string SelectAvoidLocked = "scene:runtime_node_select_set_avoid_locked";
     public const string SelectPreferGroup = "scene:runtime_node_select_set_prefer_group";
     public const string ClearSelection = "scene:clear_selection";
@@ -137,6 +137,16 @@ public static class GodotPicks
             new("box_selection_stroke_color", Colour(0.75)),
         ]);
     }
+
+    /// <summary>The messages that set what a click picks in a game on a Godot of a version ("4.7.2.stable…", "4.8-beta2…"):
+    /// <c>set_node_type</c> from 4.8, <c>set_type</c> before it; both where the version is not known, as a running game
+    /// passes over a <c>runtime_node_select_</c> message it lacks.</summary>
+    public static IReadOnlyList<string> TypeMessages(string? version) =>
+        System.Text.RegularExpressions.Regex.Match(version ?? string.Empty, @"^(\d+)\.(\d+)") is { Success: true } read
+        && int.TryParse(read.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture, out int major)
+        && int.TryParse(read.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture, out int minor)
+            ? [major > 4 || major == 4 && minor >= 8 ? GodotWords.SelectNodeType : GodotWords.SelectType]
+            : [GodotWords.SelectNodeType, GodotWords.SelectType];
 
     /// <summary>The node a <c>remote_objects_selected</c> message names first, or null for data of another shape.</summary>
     public static GodotObjectState? Picked(IReadOnlyList<object?> data) => GodotObjectState.Read(data) is [var first, ..] ? first : null;

@@ -512,7 +512,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
                 {
                     // One node a pick, as Select Element picks: the game takes its own input again.
                     Picking = GodotPicking.Off;
-                    Send(GodotWords.SelectType, (long)GodotPicking.Off);
+                    foreach (string typed in GodotPicks.TypeMessages(Version))
+                    {
+                        Send(typed, (long)GodotPicking.Off);
+                    }
                     Pick(picked);
                 }
                 break;
@@ -1024,7 +1027,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             throw new LiveAppException(held);
         }
         await SetUpSelectionAsync(outline);
-        await SendAsync(GodotWords.SelectType, (long)picking);
+        foreach (string typed in GodotPicks.TypeMessages(Version))
+        {
+            await SendAsync(typed, (long)picking);
+        }
         Picking = picking;
     }
 
@@ -1057,8 +1063,11 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         }
         selectionSetUp = true;
         await SendAsync(GodotWords.SelectSetup, GodotPicks.Settings(outline.Red, outline.Green, outline.Blue));
-        // Godot's selection begins picking in 2D, which would take the game's clicks before Select Element asked it to.
-        await SendAsync(GodotWords.SelectType, (long)GodotPicking.Off);
+        // Godot's selection begins picking in 2D (before 4.8), which would take the game's clicks before Select Element asked it to.
+        foreach (string typed in GodotPicks.TypeMessages(Version))
+        {
+            await SendAsync(typed, (long)GodotPicking.Off);
+        }
         await SendAsync(GodotWords.SelectAvoidLocked, true);
         await SendAsync(GodotWords.SelectPreferGroup, true);
     }

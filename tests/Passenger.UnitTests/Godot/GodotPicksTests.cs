@@ -3,8 +3,8 @@ using Passenger.App.Godot;
 namespace Passenger.UnitTests.Godot;
 
 /// <summary>Godot's runtime node selection as Passenger speaks it: the node a click in a Godot 4.7 game picked, and its word
-/// that it picked nothing (their bytes taken from the game, after their length), and the setup Passenger sends, read back
-/// as Godot reads it.</summary>
+/// that it picked nothing (their bytes taken from the game, after their length), the setup Passenger sends, read back as
+/// Godot reads it, and the name each Godot gives the message that sets what a click picks.</summary>
 public class GodotPicksTests
 {
     /// <summary>The Node2D Spot at (300, 300), picked by a click two pixels from it.</summary>
@@ -93,5 +93,15 @@ public class GodotPicksTests
         Assert.Equal(new GodotMath(GodotType.Color, [0.25, 0.5, 1, 1]), named["editors/2d/selection_rectangle_color"]);
         Assert.Equal(new GodotMath(GodotType.Color, [0.25, 0.5, 1, 1]), named["editors/3d/selection_box_color"]);
         Assert.Equal(new GodotMath(GodotType.Color, [0.25, 0.5, 1, 0.25]), named["box_selection_fill_color"]);
+    }
+
+    [Fact]
+    public void What_a_click_picks_is_set_by_set_type_before_Godot_4_8_by_set_node_type_from_it_and_by_both_where_the_version_is_not_known()
+    {
+        Assert.Equal([GodotWords.SelectType], GodotPicks.TypeMessages("4.7.2.stable.mono.official.ed1daf0bf"));
+        Assert.Equal([GodotWords.SelectNodeType], GodotPicks.TypeMessages("4.8.beta2.mono.official.cafc17a19"));
+        Assert.Equal([GodotWords.SelectNodeType], GodotPicks.TypeMessages("4.8-beta2 (official)"));
+        Assert.Equal([GodotWords.SelectNodeType], GodotPicks.TypeMessages("5.0.stable"));
+        Assert.Equal([GodotWords.SelectNodeType, GodotWords.SelectType], GodotPicks.TypeMessages(null));
     }
 }
