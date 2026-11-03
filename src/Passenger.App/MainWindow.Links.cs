@@ -132,21 +132,33 @@ public partial class MainWindow
     }
 
     private readonly List<string> played = [];
+    private readonly List<string> handed = [];
 
     /// <summary>Every sound file the window was asked to play, in order, kept since a window shown nowhere plays none.</summary>
     public IReadOnlyList<string> Played => played;
 
-    /// <summary>Plays a sound file through the system's player (<see cref="Sounds"/>), saying why where it cannot; a window
-    /// nobody sees (<see cref="Unseen"/>) plays nothing.</summary>
+    /// <summary>Every file the window handed the system's player, in order, or would have where nobody sees it: a sound as it
+    /// is, or the WAV an Ogg Vorbis or MP3 was decoded to.</summary>
+    public IReadOnlyList<string> SoundsHanded => handed;
+
+    /// <summary>Plays a sound file through the system's player (<see cref="Sounds"/>), decoded off the window's thread where
+    /// the player takes it only so, saying why where it cannot; a window nobody sees (<see cref="Unseen"/>) plays nothing.</summary>
     public async Task PlaySoundAsync(string file)
     {
         UiThread.Check();
         played.Add(file);
+        (string? playable, string? whyNot) = await BackgroundWork.Run(() => Sounds.Playable(file, Path.Combine(StateFolder, "cache", "sounds")));
+        if (playable is null)
+        {
+            status.Text = whyNot;
+            return;
+        }
+        handed.Add(playable);
         if (Unseen)
         {
             return;
         }
-        if (await Sounds.PlayAsync(file) is { } why)
+        if (await Sounds.PlayAsync(playable) is { } why)
         {
             status.Text = why;
         }

@@ -36,6 +36,8 @@ out; dbgshim's musl Linux natives are the container tools' (below), which the ap
 | `Svg.Skia`, `Svg.Model`, `Svg.Animation`, `Svg.SceneGraph`, `ShimSkiaSharp` | an SVG file's picture beside its text, drawn with Skia | MIT | Copyright © Wiesław Šoltés 2026 |
 | `Svg.Custom` | Svg.Skia's model of an SVG document, a build of SVG.NET's (https://github.com/svg-net/SVG) | MS-PL | Copyright © Wiesław Šoltés 2026 |
 | `ExCSS` | Svg.Custom's reading of an SVG's CSS | MIT | no copyright line; its author: Tyler Brinks |
+| `NVorbis` | a Godot game's Ogg Vorbis sounds decoded to WAV for the system's player | MIT | Copyright © Andrew Ward 2021 (its LICENSE file: Copyright (c) 2020 Andrew Ward) |
+| `NLayer` | a Godot game's MP3 sounds decoded to WAV for the system's player | MIT | © Mark Heath 2026 |
 | `Microsoft.CodeAnalysis.CSharp`, `Microsoft.CodeAnalysis.Common` | Roslyn: colour before the server answers, and the debugger's expressions | MIT | © Microsoft Corporation. All rights reserved. |
 | `Tint` | TextMate grammar tokenization and colour mapping | MIT | Copyright (c) 2026 Sébastien Ros |
 | `GregsEx` | Tint's managed Oniguruma-compatible regular expressions | MIT | Copyright (c) 2026 Sébastien Ros |

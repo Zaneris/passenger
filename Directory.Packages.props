@@ -74,6 +74,10 @@
     <!-- The app's JoinableTaskFactory (Synchronously.cs), at the version StreamJsonRpc takes. -->
     <PackageVersion Include="Microsoft.VisualStudio.Threading.Only" Version="18.7.23" />
     <PackageVersion Include="Porta.Pty" Version="2.2.3" />
+    <!-- A Godot game's Ogg Vorbis and MP3 sounds decoded to WAV for the system's player; NVorbis's 0.10 line, as 1.0 is
+         still a pre-release. -->
+    <PackageVersion Include="NVorbis" Version="0.10.5" />
+    <PackageVersion Include="NLayer" Version="3.0.0" />
     <!-- An SVG file's picture: 5.1, the last line on the SkiaSharp 3 Avalonia's Skia carries (5.2 takes SkiaSharp 4). -->
     <PackageVersion Include="Svg.Skia" Version="5.1.1" />
     <!-- TextMate grammars' tokenizer, with GregsEx's managed regular expressions: colour for every

@@ -552,6 +552,8 @@
           "Microsoft.TestPlatform.TranslationLayer": "[18.11.0, )",
           "Microsoft.VisualStudio.Threading.Only": "[18.7.23, )",
           "ModelContextProtocol.Core": "[2.3.0, )",
+          "NLayer": "[3.0.0, )",
+          "NVorbis": "[0.10.5, )",
           "NuGet.Configuration": "[7.9.0, )",
           "Passenger.Core": "[0.2.4, )",
           "Passenger.Dap": "[0.2.4, )",
@@ -820,6 +822,12 @@
           "Microsoft.VisualStudio.Validation": "17.13.22"
         }
       },
+      "NLayer": {
+        "type": "CentralTransitive",
+        "requested": "[3.0.0, )",
+        "resolved": "3.0.0",
+        "contentHash": "aQrCT93NjIrJNXA7wiTSHMp9OUhGNb8YTJAwnsx2FtaNdAe74vwfguFExf6QFNU72XhNPb/bLAcdMbxvaNZgWg=="
+      },
       "NuGet.Configuration": {
         "type": "CentralTransitive",
         "requested": "[7.9.0, )",
@@ -829,6 +837,12 @@
           "NuGet.Common": "7.9.0",
           "System.Security.Cryptography.ProtectedData": "8.0.0"
         }
+      },
+      "NVorbis": {
+        "type": "CentralTransitive",
+        "requested": "[0.10.5, )",
+        "resolved": "0.10.5",
+        "contentHash": "o+IptCG4Avze39HrGeztC+xIp6fOOwGVAwkoa1J++4Ji1WmZ+KIKlFl5wsgxsXqBkmdpfs/vFSUproiLKYa2bw=="
       },
       "Porta.Pty": {
         "type": "CentralTransitive",

@@ -65,6 +65,9 @@
     <PackageReference Include="Microsoft.VisualStudio.Threading.Only" />
     <!-- An HTML file's preview beside its text, in the system's own web view (Editors/HtmlPreview.cs). -->
     <PackageReference Include="Avalonia.Controls.WebView" />
+    <!-- A sound's Ogg Vorbis and MP3 decoded to WAV for the system's player (Sounds.cs). -->
+    <PackageReference Include="NVorbis" />
+    <PackageReference Include="NLayer" />
     <!-- An SVG file's picture beside its text (Editors/SvgPreview.cs). -->
     <PackageReference Include="Svg.Skia" />
     <!-- The Windows install's hooks: what its installer and uninstaller ask of Passenger.exe (Installation.cs). -->
