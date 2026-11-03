@@ -1112,6 +1112,19 @@ public sealed class CommandHistory
             return refused is { } first ? [first, .. unlanded] : unlanded;
         }
 
+        /// <summary>The gate over files the command is about to change, open or not (<see cref="EditorArea.ClearAsync"/>), for a
+        /// command that changes them itself, asked before it changes any: null to go on, else why not. Those it lets through are
+        /// not asked of again as the command writes.</summary>
+        public async Task<string?> ClearAsync(IReadOnlyCollection<string> paths)
+        {
+            if (await editors.ClearAsync(paths) is { } held)
+            {
+                return held;
+            }
+            cleared.UnionWith(paths);
+            return null;
+        }
+
         /// <summary>Makes the changes queued so far (<see cref="Change"/>) off the window's thread, in order, the open files'
         /// changes taken first (<see cref="TakeOpen"/>): the first file the disk refused, with why, the changes after it left
         /// unmade; else null.</summary>

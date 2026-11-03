@@ -211,6 +211,11 @@ public sealed class GodotAddonTests : IDisposable
         		EditorInterface.get_selection().clear()
         		EditorInterface.get_selection().add_node(root.get_node(node))
         		print("TEST: selected ", node)
+        	if FileAccess.file_exists("res://inspect.txt") and FileAccess.get_file_as_string("res://inspect.txt").ends_with("\n"):
+        		var inspected := FileAccess.get_file_as_string("res://inspect.txt").strip_edges()
+        		DirAccess.remove_absolute(ProjectSettings.globalize_path("res://inspect.txt"))
+        		EditorInterface.edit_resource(load(inspected))
+        		print("TEST: inspecting ", inspected)
         	if FileAccess.file_exists("res://attach.txt") and FileAccess.get_file_as_string("res://attach.txt").ends_with("\n"):
         		var words := FileAccess.get_file_as_string("res://attach.txt").strip_edges().split(" ")
         		DirAccess.remove_absolute(ProjectSettings.globalize_path("res://attach.txt"))
@@ -620,6 +625,126 @@ public sealed class GodotAddonTests : IDisposable
         {
             End(window);
         }
+    }
+
+    /// <summary>With Godot's editor holding the scene unsaved, a Replace in Files whose one match is in that scene, open here
+    /// and so changed only in its editor, asks the person at once, before any text changes, and declined changes nothing; an
+    /// agent's is refused, asking nobody.</summary>
+    [AvaloniaFact]
+    public void A_replace_in_an_open_scene_alone_asks_at_once_where_Godot_holds_it_unsaved_and_an_agents_is_refused()
+    {
+        MainWindow window = Opened();
+        try
+        {
+            List<string> asked = Asked(window);
+            StartEditor([]);
+            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            TestFolders.Write(folder, "hold.txt", "hold\n");
+            Ui.WaitFor(() => window.HeldByGodot(ScenePath)?.Contains("unsaved edits", StringComparison.Ordinal) == true,
+                () => $"Godot's editor to say it holds the scene unsaved ({window.HeldByGodot(ScenePath) ?? "nothing held"}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
+            Assert.Null(window.EditorArea.Open(ScenePath));
+            OpenDocument scene = window.EditorArea.Find(ScenePath)!;
+            string text = scene.Text.Snapshot.ToString();
+
+            ReplacedNothing(window, "toggle_mode = true", "toggle_mode = false", scene, asked, "Godot's editor holds unsaved edits in main.tscn");
+            int questions = asked.Count;
+            Passenger.App.Mcp.AgentCall call = Passenger.App.Mcp.AgentCall.Begin(null, null, null, McpTools.ReplaceInFiles, "Replace in Files", "a test's agent", "the test", traced: false);
+            try
+            {
+                Task<string> replaced = new Passenger.App.Mcp.PassengerTools(window).ReplaceInFiles("toggle_mode = true", "toggle_mode = false", scope: "directory", directory: folder);
+                Ui.WaitFor(() => replaced.IsCompleted, "an agent's replace to be answered", TimeSpan.FromMinutes(1));
+                Assert.True(replaced.IsFaulted && replaced.Exception!.InnerException!.Message.Contains("save it in Godot first", StringComparison.Ordinal),
+                    $"An agent's replace in the scene Godot holds was not refused saying why: {(replaced.IsFaulted ? replaced.Exception!.InnerException!.Message : Ui.Await(replaced, "the replace's answer"))}");
+            }
+            finally
+            {
+                Ui.Await(call.DisposeAsync().AsTask().ContinueWith(_ => true, TaskScheduler.Default), "the agent's call to end");
+            }
+            Assert.Equal(questions, asked.Count);
+            Assert.True(!scene.IsModified && scene.Text.Snapshot.ToString() == text, "The agent's refused replace changed the open scene");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Godot's editor answering as one before 4.7 (the addon's own words, as such a Godot has no word for a scene
+    /// held unsaved), with the scene open there: a replace in it, open here, asks at once saying the editor cannot say
+    /// whether it holds edits; and with a resource open in its inspector, a replace in that resource asks saying so.</summary>
+    [AvaloniaFact]
+    public void An_older_Godots_open_scene_and_a_resource_in_its_inspector_each_ask_in_their_own_words_before_a_replace_in_them()
+    {
+        MainWindow window = Opened(files: [("look.tres", "[gd_resource type=\"StyleBoxFlat\" format=3]\n\n[resource]\nbg_color = Color(0.2, 0.3, 0.4, 1)\n")]);
+        try
+        {
+            string addon = Path.Combine(folder, "addons", "passenger", Passenger.Workspace.GodotAddon.Script);
+            const string Sure = "var sure := EditorInterface.has_method(\"get_unsaved_scenes\")";
+            string script = File.ReadAllText(addon);
+            Assert.Contains(Sure, script, StringComparison.Ordinal);
+            TestFolders.Write(folder, Path.Combine("addons", "passenger", Passenger.Workspace.GodotAddon.Script), script.Replace(Sure, "var sure := false", StringComparison.Ordinal));
+            List<string> asked = Asked(window);
+            StartEditor([]);
+            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            TestFolders.Write(folder, "open.txt", "open\n");
+            Ui.WaitFor(() => window.HeldByGodot(ScenePath)?.Contains("does not say whether", StringComparison.Ordinal) == true,
+                () => $"Godot's editor to have the scene open, perhaps unsaved ({window.HeldByGodot(ScenePath) ?? "nothing held"}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
+            Assert.Null(window.EditorArea.Open(ScenePath));
+            ReplacedNothing(window, "toggle_mode = true", "toggle_mode = false", window.EditorArea.Find(ScenePath)!, asked,
+                "Godot's editor has main.tscn open, and this Godot does not say whether its edits there are saved");
+
+            string look = Path.Combine(folder, "look.tres");
+            TestFolders.Write(folder, "inspect.txt", "res://look.tres\n");
+            Ui.WaitFor(() => window.HeldByGodot(look)?.Contains("inspector", StringComparison.Ordinal) == true,
+                () => $"Godot's editor to inspect the resource ({window.HeldByGodot(look) ?? "nothing held"}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
+            Assert.Null(window.EditorArea.Open(look));
+            ReplacedNothing(window, "Color(0.2, 0.3, 0.4, 1)", "Color(1, 0, 0, 1)", window.EditorArea.Find(look)!, asked,
+                "Godot's editor has look.tres open in its inspector, and Godot does not say whether a resource holds unsaved edits");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>The window's questions, each by its title and words, every one declined.</summary>
+    private static List<string> Asked(MainWindow window)
+    {
+        List<string> asked = [];
+        window.Confirm = (title, text, _) =>
+        {
+            asked.Add($"{title}: {text}");
+            return Task.FromResult(false);
+        };
+        return asked;
+    }
+
+    /// <summary>A person's Replace in Files whose one match is in a file open here that Godot holds: one question, asked
+    /// before any text changes, in the hold's words, and declined, the file left as it was and its replace refused.</summary>
+    private void ReplacedNothing(MainWindow window, string from, string to, OpenDocument open, List<string> asked, string held)
+    {
+        string text = open.Text.Snapshot.ToString();
+        int before = asked.Count;
+        SearchQuery query = new(from);
+        FilesFound found = Ui.Await(window.FindInFilesAsync(query, new SearchScope(SearchScopeKind.Directory, null, folder, true, null, null), CancellationToken.None), $"the search for {from}");
+        Assert.True(found.Matches is [{ } match] && PathNames.Same(match.Path, open.Path), $"The search for {from} was to find it once, in {open.Name}: {string.Join(", ", found.Matches.Select(m => m.Path))}");
+        bool changed = false;
+        open.Text.Changed += Changed;
+        FilesReplaced done;
+        try
+        {
+            done = Ui.Await(window.ReplaceInFilesAsync(query, to, found), $"the replace of {from}");
+        }
+        finally
+        {
+            open.Text.Changed -= Changed;
+        }
+        Assert.True(asked.Count == before + 1 && asked[^1].StartsWith($"Write Over What Godot Holds?: {held}", StringComparison.Ordinal),
+            $"The replace in {open.Name} was to ask once, saying \"{held}\"; asked: {string.Join(" | ", asked.Skip(before))}");
+        Assert.True(!changed && !open.IsModified && open.Text.Snapshot.ToString() == text && done.Refused is [(string path, string why)] && PathNames.Same(path, open.Path)
+            && why.StartsWith(held, StringComparison.Ordinal), $"The declined replace was to leave {open.Name} as it was, refused: {string.Join("; ", done.Refused.Select(r => $"{r.Path}: {r.Why}"))}");
+
+        void Changed(object? sender, DocumentChangedEventArgs e) => changed = true;
     }
 
     /// <summary>An agent's rename of the scene's handler, refused saying what Godot holds.</summary>

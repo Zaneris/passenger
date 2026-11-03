@@ -202,6 +202,11 @@ public partial class MainWindow
         using LocalHistory.Activity named = history.During(activity);
         using (CommandHistory.Recording recording = Editors.Commands.RecordWrites(activity))
         {
+            if (await recording.ClearAsync([.. files.Select(f => f.Path)]) is { } held)
+            {
+                status.Text = held;
+                return held;
+            }
             List<(string Path, string Version, OpenDocument? Tab)> closed = [];
             foreach ((string path, string? version) in files)
             {
