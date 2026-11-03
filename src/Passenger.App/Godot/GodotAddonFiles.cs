@@ -4,7 +4,7 @@ namespace Passenger.App.Godot;
 /// addon's folder, with its text.</summary>
 public static class GodotAddonFiles
 {
-    private static readonly Lazy<IReadOnlyList<(string Name, string Text)>> Read = new(() => [.. ((string[])["plugin.cfg", Passenger.Workspace.GodotAddon.Script]).Select(name =>
+    private static readonly Lazy<IReadOnlyList<(string Name, string Text)>> Read = new(() => [.. ((string[])["plugin.cfg", Passenger.Workspace.GodotAddon.Script, "scenes.gd"]).Select(name =>
     {
         using Stream stream = typeof(GodotAddonFiles).Assembly.GetManifestResourceStream($"Godot/Addon/{name}")
             ?? throw new InvalidOperationException($"Passenger carries no Godot/Addon/{name}");

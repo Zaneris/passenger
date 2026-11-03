@@ -180,6 +180,20 @@ public static class Refusals
     /// saves.</summary>
     public static string ReadOnly(string name) => $"{name} is read-only";
 
+    /// <summary>An agent's act in Godot's editor from its own Passenger (<c>--mcp</c>), which no editor of the person's reaches.</summary>
+    public const string GodotEditorOfPerson = $"{Mcp.McpTools.GodotEditor} acts in the person's own Godot editor, which connects to the Passenger window they use, never to an agent's own: attach to that window (--mcp-attach)";
+
+    /// <summary>An agent's act in Godot's editor on a project whose editor is not connected: what puts Passenger's addon in the
+    /// project (<paramref name="addon"/> false), or what opens the editor, a configuration of the folder's where one does.</summary>
+    public static string NoGodotEditor(string project, bool addon, string? opens) =>
+        !addon ? $"Passenger's addon is not in {project}: Install Passenger's Godot Addon… puts it there (asking the person), and Godot's editor connects as it opens the project"
+        : opens is not null ? $"No Godot editor on {project} is connected: run {opens} to open one, whose Passenger's addon connects to this window"
+        : $"No Godot editor on {project} is connected: open the project in Godot's editor, whose Passenger's addon connects to this window";
+
+    /// <summary>An agent's act in Godot's editor whose addon is older than one that takes it.</summary>
+    public static string GodotAddonOlder(string project, int version) =>
+        $"Passenger's addon in {project} is version {version}, which takes no agent's acts: Install Passenger's Godot Addon… updates it, and Godot's editor takes it as it next opens the project";
+
     /// <summary>A change an agent asked for that would write over what the person's Godot editor holds of a file
     /// (<see cref="Passenger.Workspace.GodotHolds"/>), which only the person may choose to.</summary>
     public static string HeldInGodot(string held) => $"{held}, which only the person may choose to write over: save it in Godot first";

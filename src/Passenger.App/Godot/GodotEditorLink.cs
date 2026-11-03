@@ -404,7 +404,20 @@ internal sealed class GodotEditorPeer : IDisposable
     }
 
     /// <summary>Asks the editor: its answer's result, or null where it refused, went, or did not answer within the limit.</summary>
-    public async Task<JsonElement?> AskAsync(string method, JsonObject parameters, TimeSpan limit, CancellationToken cancel = default)
+    public async Task<JsonElement?> AskAsync(string method, JsonObject parameters, TimeSpan limit, CancellationToken cancel = default) =>
+        await ExchangeAsync(method, parameters, limit, cancel) is { } got && JsonMembers.Object(got, "result") is { } result ? result : null;
+
+    /// <summary>Asks the editor as <see cref="AskAsync"/> does: its answer's result, its refusal thrown in the addon's words
+    /// (<see cref="GodotEditorRefused"/>), and no answer as a <see cref="TimeoutException"/>.</summary>
+    public async Task<JsonElement> RequestAsync(string method, JsonObject parameters, TimeSpan limit, CancellationToken cancel = default)
+    {
+        JsonElement got = await ExchangeAsync(method, parameters, limit, cancel)
+            ?? throw new TimeoutException($"Godot's editor went, or gave no answer within {limit.TotalSeconds:0} s");
+        return JsonMembers.Object(got, "result") ?? throw new GodotEditorRefused(JsonMembers.Text(got, "error") ?? "Godot's editor refused, saying nothing of why");
+    }
+
+    /// <summary>A request's answer whole, or null where the editor went or did not answer within the limit.</summary>
+    private async Task<JsonElement?> ExchangeAsync(string method, JsonObject parameters, TimeSpan limit, CancellationToken cancel)
     {
         TaskCompletionSource<JsonElement?> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int id;
@@ -416,8 +429,7 @@ internal sealed class GodotEditorPeer : IDisposable
         await SendAsync(new JsonObject { ["id"] = id, ["method"] = method, ["params"] = parameters });
         try
         {
-            JsonElement? message = await answer.Task.WaitAsync(limit, cancel);
-            return message is { } got && JsonMembers.Object(got, "result") is { } result ? result : null;
+            return await answer.Task.WaitAsync(limit, cancel);
         }
         catch (TimeoutException)
         {

@@ -513,7 +513,7 @@ internal sealed class ConnectedTool(McpServerTool tool, MainWindow? window, Agen
             connection.Named(request.Server.ClientInfo);
             return connection.AdmitAsync(window!, told, cancel);
         });
-        if (refused is null && shown.Annotations is not ({ ReadOnlyHint: true } or { DestructiveHint: false }))
+        if (refused is null && shown.Annotations is not ({ ReadOnlyHint: true } or { DestructiveHint: false }) && !ChangesNothing(shown, request.Params?.Arguments))
         {
             refused = await UiThread.InvokeAsync(() => connection.AllowAsync(window!, shown, request.Params?.Arguments, told, cancel));
         }
@@ -542,6 +542,12 @@ internal sealed class ConnectedTool(McpServerTool tool, MainWindow? window, Agen
     }
 
     private static CallToolResult Refused(string why) => new() { IsError = true, Content = [new TextContentBlock { Text = why }] };
+
+    /// <summary>Whether a call of a tool that may change something changes nothing by what it is given, and so asks nobody:
+    /// godot_editor's reads (<see cref="PassengerTools.GodotEditorReads"/>).</summary>
+    private static bool ChangesNothing(Tool tool, IDictionary<string, JsonElement>? arguments) =>
+        tool.Name == McpTools.GodotEditor && arguments is not null && arguments.TryGetValue("action", out JsonElement action)
+        && action.ValueKind == JsonValueKind.String && PassengerTools.GodotEditorReads.Contains(action.GetString()!.Trim().ToLowerInvariant());
 
     /// <summary>What is wrong with a call's arguments by its tool's schema (a parameter it lacks, a required one missing, a
     /// value of another type), with every parameter it takes, else null: the SDK answers each with no word of which.</summary>

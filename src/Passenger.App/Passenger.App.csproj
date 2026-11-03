@@ -29,6 +29,7 @@
     <!-- Passenger's own addon for Godot's editor, written into a Godot project when the person asks (Godot/GodotAddonFiles.cs). -->
     <EmbeddedResource Include="Godot/Addon/plugin.cfg" LogicalName="Godot/Addon/plugin.cfg" />
     <EmbeddedResource Include="Godot/Addon/passenger.gd" LogicalName="Godot/Addon/passenger.gd" />
+    <EmbeddedResource Include="Godot/Addon/scenes.gd" LogicalName="Godot/Addon/scenes.gd" />
     <!-- Passenger's own Prettier runner (Web/Prettier.cs), carried beside the web language servers. -->
     <None Include="Web/prettier.cjs" Link="web/passenger/prettier.cjs" CopyToOutputDirectory="PreserveNewest" />
     <!-- Passenger's preload for the Dockerfile server, which keeps it from Docker Hub while Settings says so

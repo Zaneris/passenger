@@ -242,7 +242,21 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         }
     }
 
-    /// <summary>The game's Debug session was given, or another.</summary>
+    /// <summary>Why a game held at its start for the debugger was let go to run on without it, once it was.</summary>
+    public string? Undebugged
+    {
+        get;
+        set
+        {
+            if (field != value)
+            {
+                field = value;
+                DebuggedChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    /// <summary>The game's Debug session was given, or another, or it was let go undebugged (<see cref="Undebugged"/>).</summary>
     public event EventHandler? DebuggedChanged;
 
     public event EventHandler? StateChanged;

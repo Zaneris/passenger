@@ -1,11 +1,15 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text.Json;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Editors;
 using Passenger.App.Godot;
+using Passenger.App.Mcp;
 using Passenger.App.Run;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -150,6 +154,13 @@ public sealed class GodotAddonTests : IDisposable
         		EditorInterface.get_selection().clear()
         		EditorInterface.get_selection().add_node(root.get_node(node))
         		print("TEST: selected ", node)
+        	if FileAccess.file_exists("res://undo.txt"):
+        		DirAccess.remove_absolute(ProjectSettings.globalize_path("res://undo.txt"))
+        		var undo := EditorInterface.get_editor_undo_redo()
+        		var history := undo.get_history_undo_redo(undo.get_object_history_id(EditorInterface.get_edited_scene_root()))
+        		var undone := history.get_current_action_name()
+        		history.undo()
+        		print("TEST: undid ", undone)
         	if EditorInterface.is_playing_scene() != playing:
         		playing = EditorInterface.is_playing_scene()
         		print("TEST: play began" if playing else "TEST: play ended")
@@ -596,6 +607,151 @@ public sealed class GodotAddonTests : IDisposable
         {
             End(window);
         }
+    }
+
+    /// <summary>An agent attached to the window acting in Godot's editor (godot_editor): refused, saying what opens one, while
+    /// none is connected; then it opens the scene and reads it unasked, is asked before its first change, sets a node's
+    /// property and adds a node through Godot's undo, and reads both back from the edited scene, its file as it was and the
+    /// scene held unsaved for Passenger's writes; one undo in Godot takes the node added away, the next the property set.</summary>
+    [AvaloniaFact]
+    public void An_agents_godot_editor_changes_the_edited_scene_through_Godots_undo_and_reads_it_back()
+    {
+        MainWindow window = Opened();
+        using Agent agent = new();
+        try
+        {
+            window.ApplySettings(window.Settings with { McpServer = true });
+            Assert.True(window.AgentSocket is not null, $"The window does not listen for agents: {window.Status}");
+            McpClient client = agent.Attach();
+            CallToolResult none = agent.Await(agent.Answer(client, McpTools.GodotEditor, new() { ["action"] = "read" }), "godot_editor with no editor connected");
+            Assert.True(none.IsError == true && agent.Words(none).Contains("No Godot editor on", StringComparison.Ordinal),
+                $"godot_editor with no editor connected did not say what opens one: {agent.Words(none)}");
+
+            StartEditor([]);
+            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            string scene = File.ReadAllText(ScenePath);
+            JsonElement opened = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "open", ["scene"] = "main.tscn" });
+            Assert.Equal("res://main.tscn", opened.GetProperty("scene").GetString());
+            Assert.Equal("\"Press\"", Stored(agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" }), "Ui/Press", "text"));
+
+            agent.Asked(window, client, McpTools.GodotEditor, "act in Godot's editor",
+                new() { ["action"] = "set", ["node"] = "Ui/Press", ["properties"] = new Dictionary<string, object?> { ["text"] = "Go" } });
+            JsonElement added = agent.Unasked(window, client, McpTools.GodotEditor,
+                new() { ["action"] = "add", ["node"] = "Ui", ["type"] = "Label", ["name"] = "Score", ["properties"] = new Dictionary<string, object?> { ["text"] = "0" } });
+            Assert.Equal("Ui/Score", added.GetProperty("node").GetString());
+
+            JsonElement read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
+            Assert.Equal("\"Go\"", Stored(read, "Ui/Press", "text"));
+            Assert.Equal("\"0\"", Stored(read, "Ui/Score", "text"));
+            Assert.Equal("Label", Node(read, "Ui/Score")!.Value.GetProperty("type").GetString());
+            Assert.Equal(scene, File.ReadAllText(ScenePath));
+            // A Godot before 4.7 says nothing of what it holds unsaved.
+            if (read.TryGetProperty("unsaved", out JsonElement unsaved))
+            {
+                Assert.True(unsaved.GetBoolean(), $"The edited scene was not said to hold unsaved changes: {read.GetRawText()}");
+                Ui.WaitFor(() => window.HeldByGodot(ScenePath)?.Contains("unsaved edits", StringComparison.Ordinal) == true,
+                    () => $"Passenger's writes to see the scene held unsaved ({window.HeldByGodot(ScenePath) ?? "nothing held"})");
+            }
+
+            TestFolders.Write(folder, "undo.txt", "undo\n");
+            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: undid Passenger: add Score", StringComparison.Ordinal)), () => $"Godot's undo of the node added (Godot said: {Said()})");
+            read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
+            Assert.Null(Node(read, "Ui/Score"));
+            Assert.Equal("\"Go\"", Stored(read, "Ui/Press", "text"));
+            TestFolders.Write(folder, "undo.txt", "undo\n");
+            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: undid Passenger: set text of Press", StringComparison.Ordinal)), () => $"Godot's undo of the property set (Godot said: {Said()})");
+            Assert.Equal("\"Press\"", Stored(agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" }), "Ui/Press", "text"));
+            Assert.DoesNotContain(said, l => l.Contains("SCRIPT ERROR", StringComparison.Ordinal));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>An agent's godot_editor selects a node unasked, the selection read back; moves a node, connects a signal and
+    /// removes a node, each one step of Godot's undo, which takes each back in turn, the node moved back with its owner and
+    /// connection; and plays the scene in the editor, the game debugged here.</summary>
+    [AvaloniaFact]
+    public void An_agents_godot_editor_selects_moves_connects_removes_and_plays_the_scene_debugged_here()
+    {
+        MainWindow window = Opened();
+        using Agent agent = new();
+        try
+        {
+            window.ApplySettings(window.Settings with { McpServer = true });
+            StartEditor([]);
+            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            McpClient client = agent.Attach();
+            agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "select", ["scene"] = "res://main.tscn", ["node"] = "Ui/Press" });
+            JsonElement read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
+            Assert.Equal(["Ui/Press"], read.GetProperty("selected").EnumerateArray().Select(n => n.GetString()));
+
+            agent.Asked(window, client, McpTools.GodotEditor, "act in Godot's editor", new() { ["action"] = "add", ["node"] = ".", ["type"] = "Panel", ["name"] = "Box" });
+            agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "move", ["node"] = "Ui/Press", ["to"] = "Box", ["index"] = 0 });
+            JsonElement connected = agent.Unasked(window, client, McpTools.GodotEditor,
+                new() { ["action"] = "connect", ["node"] = "Box/Press", ["signal"] = "pressed", ["to"] = ".", ["method"] = "OnPressed" });
+            Assert.Contains("has no method OnPressed yet", connected.GetProperty("said").GetString(), StringComparison.Ordinal);
+            read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
+            Assert.Null(Node(read, "Ui/Press"));
+            Assert.Equal("\"Press\"", Stored(read, "Box/Press", "text"));
+            Assert.Equal(["Box/Press toggled → . OnToggled", "Box/Press pressed → . OnPressed"], Connections(read));
+            agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "remove", ["node"] = "Box" });
+            Assert.Null(Node(agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" }), "Box"));
+
+            foreach (string undone in (string[])["remove Box", "connect pressed to OnPressed", "move Press"])
+            {
+                TestFolders.Write(folder, "undo.txt", "undo\n");
+                Ui.WaitFor(() => said.Any(l => l.Contains($"TEST: undid Passenger: {undone}", StringComparison.Ordinal)), () => $"Godot's undo of {undone} (Godot said: {Said()})");
+            }
+            read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
+            Assert.Equal("\"Press\"", Stored(read, "Ui/Press", "text"));
+            Assert.NotNull(Node(read, "Box"));
+            Assert.Equal(["Ui/Press toggled → . OnToggled"], Connections(read));
+
+            JsonElement played = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "play" });
+            Assert.Contains("plays in Godot's editor, debugged here", Text(played), StringComparison.Ordinal);
+            Assert.True(window.Session.Game is { Relayed: true }, $"The game played is not relayed here: {Games(window)}");
+            Assert.DoesNotContain(said, l => l.Contains("SCRIPT ERROR", StringComparison.Ordinal));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>The connections of the edited scene godot_editor read.</summary>
+    private static IEnumerable<string> Connections(JsonElement read) =>
+        read.TryGetProperty("connections", out JsonElement connections) ? connections.EnumerateArray().Select(c => c.GetString()!) : [];
+
+    private static string Text(JsonElement answer) => answer.ValueKind == JsonValueKind.String ? answer.GetString()! : answer.GetRawText();
+
+    /// <summary>A node of the edited scene godot_editor read, by its path.</summary>
+    private static JsonElement? Node(JsonElement read, string path) =>
+        read.GetProperty("nodes").EnumerateArray().Where(n => n.GetProperty("path").GetString() == path).Select(n => (JsonElement?)n).FirstOrDefault();
+
+    /// <summary>A property of a node of the edited scene, as its file would store it.</summary>
+    private static string? Stored(JsonElement read, string path, string property) =>
+        Node(read, path) is { } node && node.TryGetProperty("properties", out JsonElement stored) && stored.TryGetProperty(property, out JsonElement value) ? value.GetString()
+        : throw new InvalidOperationException($"The edited scene read holds no {property} of {path}: {read.GetRawText()}");
+
+    /// <summary>An agent attached to the test's window, on the SDK's own client, as the MCP tests' agents are.</summary>
+    private sealed class Agent : McpRig
+    {
+        public McpClient Attach() => Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+
+        public Task<CallToolResult> Answer(McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?> arguments) =>
+            Waiting.Apart(() => Result(client, tool, arguments));
+
+        public new T Await<T>(Task<T> task, string what) => base.Await(task, what);
+
+        public string Words(CallToolResult result) => Text(result);
+
+        public new JsonElement Asked(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, string what, Dictionary<string, object?>? arguments = null) =>
+            base.Asked(window, client, tool, what, arguments);
+
+        public new JsonElement Unasked(MainWindow window, McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?>? arguments = null) =>
+            base.Unasked(window, client, tool, arguments);
     }
 
     /// <summary>The window's configuration made the generated game's, played in Godot's editor.</summary>

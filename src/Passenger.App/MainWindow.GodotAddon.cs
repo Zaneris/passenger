@@ -350,6 +350,7 @@ public partial class MainWindow
             }
             if (undebugged is not null)
             {
+                game.Undebugged = undebugged;
                 // Held at its start, it would wait for good for a debugger that is not coming.
                 await HeldStart.LetGoAsync(process);
                 if (session == into)

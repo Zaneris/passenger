@@ -9,7 +9,7 @@ extends EditorPlugin
 ## Passenger listening, or one that refuses, it does nothing, and Godot plays as it always did.
 
 ## The addon's version, which Passenger reads to update an older one in place.
-const VERSION := 5
+const VERSION := 6
 ## How long a build may take to be answered.
 const BUILD_LIMIT_MS := 30 * 60 * 1000
 ## How long any other request may take to be answered.
@@ -20,6 +20,8 @@ const LOOK_EVERY_MS := 2000
 const HOLD_LIMIT_MS := 60 * 1000
 ## The one key of a dictionary that stands for an object the game sent by its id, which Passenger reads back as that id.
 const OBJECT_KEY := "passenger:object"
+## What an agent asks of the scenes this editor edits, through Passenger.
+const Scenes := preload("scenes.gd")
 
 var sessions := Sessions.new()
 var peer: StreamPeerTCP = null
@@ -387,6 +389,12 @@ func _heard(message: Dictionary) -> void:
 			EditorInterface.reload_scene_from_path(path)
 			print("Passenger: ", path, " read again, as Passenger wrote it")
 		_send({"id": int(message.get("id", 0)), "result": {}})
+	elif method.begins_with("scene_"):
+		var answer = Scenes.asked(method, params)
+		if answer is String:
+			_send({"id": int(message.get("id", 0)), "error": answer})
+		else:
+			_send({"id": int(message.get("id", 0)), "result": answer})
 	elif method == "stop":
 		if EditorInterface.is_playing_scene():
 			EditorInterface.stop_playing_scene()
