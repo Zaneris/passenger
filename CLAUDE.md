@@ -165,7 +165,8 @@ App and the tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collecti
   disk may refuse going `First`; one refused partway takes back what it did (`CommandHistory.TakenBackAsync`; a
   recording's `Recording.TakenBackAsync`, which `WorkspaceEdits.LandedAsync` and `WrittenAsync` call), and a file a
   command deletes is kept for Undo (`Recording.Deleted`). A file shown read-only refuses every change to its text
-  (`TextDocument.IsReadOnly`, set only by `OpenDocument`), and an action on it greys with `Refusals.ReadOnly`.
+  (`TextDocument.IsReadOnly`, set only by `OpenDocument`; every file in a package folder an evaluation names is shown
+  so, `PackageFolders`), and an action on it greys with `Refusals.ReadOnly`.
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
   a bad file set aside as `.bad`), read off the UI thread; never a file of its own. Per-folder state lives under
   `workspaces/<name>-<hash>/`, held by each window with the folder open (`StateStore.Hold`/`LetGo`); its writes hold a
@@ -284,7 +285,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   through `GitAskPass` (`VcsController.AskerOf`), GPG's through Passenger's own gpg with loopback pinentry
   (`GpgLoopback`, `gpg.program` by `-c`); a commit's signature is read for the Log's rows shown (`CommitSignatures`,
   `Git.SignaturesAsync`), never by `%G?` in its own read, which runs a verifier per signed commit, a failure to sign
-  said by `SigningFailure`.
+  said by `SigningFailure`; a git that may ask ends with its folder, its questions refused, waited out within
+  `VcsController.GitEndLimit` (`GitQuestions`), so it takes its lock away.
 - `Passenger.Dap`, `Passenger.Debugger` (+`.Interop`), `Passenger.DebugAdapter`: Passenger's own debugger behind its own
   DAP, in a process of its own under `debugger/`. `Passenger.ContainerTools` (`passenger-tools`) runs inside a Linux
   container, self-contained, carried only in the release's archives.
@@ -605,13 +607,14 @@ site-shots` retakes its images.
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
   with unread input resets it, losing what was written (servers shut their side and drain first); the diagnostics library
   leaves a profiler pipe open after its listener goes (`ProfilingSession.CloseLeftListener` closes it, by reflection).
-- **macOS**: a hardened-runtime program without `get-task-allow` (Godot's release build) can be dumped by no one, so a
-  heap snapshot of it is refused up front (`DotnetProcesses.WhyUnreadable`); a variadic libc call through P/Invoke
-  (`fcntl`, `ioctl` with an argument) loses its variadic arguments on arm64 (`Descriptors.CloseOnExec`), and `poll`
-  never says a named pipe's writer has gone (`select`); a Unix socket path holds 104 bytes; `codesign` takes a dotted
-  folder under `Contents/MacOS` for a bundle (so the web servers live in Resources); TMPDIR is reached through the /var
-  link, so a build or restore of a test's project goes by its real path, and two spellings of one project restored at
-  once collide.
+- **macOS**: Chrome waits for good on the person's keychain where HOME has none, so `BrowserRun` passes
+  `--use-mock-keychain`; a hardened-runtime program without `get-task-allow` (Godot's release build) can be dumped by no
+  one, so a heap snapshot of it is refused up front (`DotnetProcesses.WhyUnreadable`); a variadic libc call through
+  P/Invoke (`fcntl`, `ioctl` with an argument) loses its variadic arguments on arm64 (`Descriptors.CloseOnExec`), and
+  `poll` never says a named pipe's writer has gone (`select`); a Unix socket path holds 104 bytes; `codesign` takes a
+  dotted folder under `Contents/MacOS` for a bundle (so the web servers live in Resources); TMPDIR is reached through
+  the /var link, so a build or restore of a test's project goes by its real path, and two spellings of one project
+  restored at once collide.
 - **.NET's watcher on macOS passes over FSEvents' word that it dropped events** (`MustScanSubDirs|UserDropped` arrive on
   the watched folder itself, which it skips; dotnet/runtime#136577), so a folder is watched only through `WatchedTree`
   (the folder's watcher, each of `ServerWatches`' and Git's folders outside it, `GitWatcher`), never a bare
