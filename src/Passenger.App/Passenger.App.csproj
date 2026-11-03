@@ -26,6 +26,7 @@
     <EmbeddedResource Include="Godot/PassengerAgent.gd" LogicalName="Godot/PassengerAgent.gd" />
     <!-- Passenger's own shader helper, run by a headless Godot on a project in the state's cache (Godot/GodotShaderCompiler.cs). -->
     <EmbeddedResource Include="Godot/PassengerShaders.gd" LogicalName="Godot/PassengerShaders.gd" />
+    <EmbeddedResource Include="Godot/PassengerClasses.gd" LogicalName="Godot/PassengerClasses.gd" />
     <!-- Passenger's own addon for Godot's editor, written into a Godot project when the person asks (Godot/GodotAddonFiles.cs). -->
     <EmbeddedResource Include="Godot/Addon/plugin.cfg" LogicalName="Godot/Addon/plugin.cfg" />
     <EmbeddedResource Include="Godot/Addon/passenger.gd" LogicalName="Godot/Addon/passenger.gd" />

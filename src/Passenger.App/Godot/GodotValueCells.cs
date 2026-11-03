@@ -29,22 +29,40 @@ public interface IGodotTuner
     void Say(string words);
 }
 
-/// <summary>The properties pane's editors for a running Godot game's values, each fit for its value as its type and hint
-/// read (<see cref="GodotHints"/>): a check box, a slider within a range, a choice of names, a colour's swatch that opens the
-/// colour picker, axes that scrub, a resource's thumbnail that opens the project's resources and its Properties its own, an
-/// array's or a dictionary's words that open its items or entries. A value lands in the game as the pointer moves, and a
-/// value changed is noted under its row with what it was, and Keep.</summary>
-public sealed class GodotValueCells(GodotGame game, IGodotTuner tuner) : ILiveValueCells
+/// <summary>Where a value editor's values come from and go: a running game's nodes (<see cref="GodotGame"/>), or a scene's
+/// nodes as its file writes them (<see cref="GodotSceneValues"/>).</summary>
+public interface IGodotValues
 {
-    public GodotGame Game => game;
+    /// <summary>An element's property as last read, or null.</summary>
+    GodotProperty? PropertyOf(long element, string name);
 
-    public LiveValueCell Make() => new GodotValueCell(game, tuner);
+    /// <summary>Why a property shown cannot be set, or null where it can.</summary>
+    string? WhyNotSet(long element, string name);
+
+    /// <summary>A value an editor gave: <paramref name="settles"/> once the person lets go (a drag's end, a choice made), where
+    /// a value moved before is only shown. Throws a <see cref="LiveAppException"/> saying why it was not set.</summary>
+    Task SetValueAsync(long element, string name, object? value, bool settles);
+
+    /// <summary>A value changed and not kept, noted under its row with Keep; null where none is.</summary>
+    GodotTuned? TunedOf(long element, string name);
+}
+
+/// <summary>The properties pane's editors for Godot values, each fit for its value as its type and hint read
+/// (<see cref="GodotHints"/>): a check box, a slider within a range, a choice of names, a colour's swatch that opens the
+/// colour picker, axes that scrub, and, a running game's alone, a resource's thumbnail that opens the project's resources
+/// and its Properties its own, an array's or a dictionary's words that open its items or entries. A value lands as the
+/// pointer moves, and a game's value changed is noted under its row with what it was, and Keep.</summary>
+public sealed class GodotValueCells(IGodotValues values, IGodotTuner tuner) : ILiveValueCells
+{
+    public IGodotValues Values => values;
+
+    public LiveValueCell Make() => new GodotValueCell(values, tuner);
 }
 
 /// <summary>One row's editors, each made the first time a property of its kind is shown, and its note.</summary>
 internal sealed class GodotValueCell : LiveValueCell
 {
-    private readonly GodotGame game;
+    private readonly IGodotValues values;
     private readonly IGodotTuner tuner;
     private readonly Panel editor = new() { VerticalAlignment = VerticalAlignment.Center };
     private readonly StackPanel note = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
@@ -66,13 +84,13 @@ internal sealed class GodotValueCell : LiveValueCell
 
     /// <summary>The value waiting to be sent behind the one being sent, and to which node's property; whether the details
     /// are read again once it is.</summary>
-    private (long Element, string Name, object? Value)? pending;
+    private (long Element, string Name, object? Value, bool Settles)? pending;
     private bool sending;
     private bool settle;
 
-    public GodotValueCell(GodotGame game, IGodotTuner tuner)
+    public GodotValueCell(IGodotValues values, IGodotTuner tuner)
     {
-        this.game = game;
+        this.values = values;
         this.tuner = tuner;
         Avalonia.Controls.Shapes.Ellipse mark = new() { Width = 6, Height = 6, VerticalAlignment = VerticalAlignment.Center };
         mark.Bind(Avalonia.Controls.Shapes.Shape.FillProperty, mark.GetResourceObservable(TokenKeys.Modified));
@@ -82,7 +100,7 @@ internal sealed class GodotValueCell : LiveValueCell
         ToolTip.SetTip(keep, "Write this value where it comes from: its node's line in its scene, or its default in the C# that exports it");
         keep.Click += (_, _) =>
         {
-            if (property is { } shown && game.Tuning.Of((ulong)element, shown.Name) is { Changed: true } tuned)
+            if (property is { } shown && values.TunedOf(element, shown.Name) is { Changed: true } tuned)
             {
                 tuner.Keep(tuned, keep);
             }
@@ -96,17 +114,17 @@ internal sealed class GodotValueCell : LiveValueCell
     public override (bool Edits, bool Notes) Show(long element, PropertyValue value)
     {
         this.element = element;
-        property = game.InspectedOf(element)?.Properties.FirstOrDefault(p => p.Name == value.Name);
-        bool notes = property is not null && game.Tuning.Of((ulong)element, value.Name) is { Changed: true } tuned && Noted(tuned);
+        property = values.PropertyOf(element, value.Name);
+        bool notes = property is not null && values.TunedOf(element, value.Name) is { Changed: true } tuned && Noted(tuned);
         if (property is null)
         {
             return (false, notes);
         }
         hint = GodotHints.Of(property);
-        string? whyNot = game.WhyNotSet(element, value.Name);
+        string? whyNot = values.WhyNotSet(element, value.Name);
         // A resource's own properties are read and set by its id, however the node holds it.
-        bool ownProperties = hint is { Editing: GodotEditing.Resource, PathString: false } && property.Value is string { Length: > 0 } or GodotObjectId;
-        if (hint.Editing == GodotEditing.Text || whyNot is not null && !ownProperties)
+        bool ownProperties = values is GodotGame && hint is { Editing: GodotEditing.Resource, PathString: false } && property.Value is string { Length: > 0 } or GodotObjectId;
+        if (hint.Editing == GodotEditing.Text || whyNot is not null && !ownProperties || values is not GodotGame && hint.Editing is GodotEditing.Resource or GodotEditing.Items or GodotEditing.Entries)
         {
             return (false, notes);
         }
@@ -287,7 +305,7 @@ internal sealed class GodotValueCell : LiveValueCell
                 Padding = new Thickness(4, 2, 8, 2),
                 Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { swatch, hex } },
             });
-            ToolTip.SetTip(button, "Pick a colour: the game takes each one as the pointer moves");
+            ToolTip.SetTip(button, values is GodotGame ? "Pick a colour: the game takes each one as the pointer moves" : "Pick a colour: the scene is written once one is chosen");
             button.Click += (_, _) => PickColour(button);
             colour = (button, swatch, hex);
         }
@@ -432,7 +450,7 @@ internal sealed class GodotValueCell : LiveValueCell
     {
         if (property is { } shown)
         {
-            tuner.ShowPopup(new GodotResourceEditor(game, element, shown.Name, tuner), from);
+            tuner.ShowPopup(new GodotResourceEditor((GodotGame)values, element, shown.Name, tuner), from);
         }
     }
 
@@ -454,7 +472,7 @@ internal sealed class GodotValueCell : LiveValueCell
             {
                 if (property is { } shown)
                 {
-                    tuner.ShowPopup(new GodotItemsEditor(game, element, shown, hint, tuner), button);
+                    tuner.ShowPopup(new GodotItemsEditor((GodotGame)values, element, shown, hint, tuner), button);
                 }
             };
             items = (button, words);
@@ -469,7 +487,7 @@ internal sealed class GodotValueCell : LiveValueCell
     {
         image.Tag = path;
         image.Source = null;
-        if (path is null || !path.StartsWith("res://", StringComparison.Ordinal))
+        if (path is null || !path.StartsWith("res://", StringComparison.Ordinal) || values is not GodotGame game)
         {
             return;
         }
@@ -484,7 +502,7 @@ internal sealed class GodotValueCell : LiveValueCell
     /// sent to the game.</summary>
     private void PickResource(Button from)
     {
-        if (property is not { } picked)
+        if (property is not { } picked || values is not GodotGame game)
         {
             return;
         }
@@ -506,7 +524,7 @@ internal sealed class GodotValueCell : LiveValueCell
     {
         try
         {
-            await game.SetResourceAsync(at, name, chosen);
+            await ((GodotGame)values).SetResourceAsync(at, name, chosen);
         }
         catch (LiveAppException failed)
         {
@@ -528,7 +546,7 @@ internal sealed class GodotValueCell : LiveValueCell
     /// lands as fast as the game takes it; the details read again once one that settles has gone.</summary>
     private void SendTo(long at, string name, object? value, bool settles)
     {
-        pending = (at, name, value);
+        pending = (at, name, value, settles || pending is { Settles: true } waiting && waiting.Element == at && waiting.Name == name);
         settle |= settles;
         if (!sending)
         {
@@ -546,7 +564,7 @@ internal sealed class GodotValueCell : LiveValueCell
             {
                 pending = null;
                 last = next.Element;
-                await game.SetValueAsync(next.Element, next.Name, next.Value);
+                await values.SetValueAsync(next.Element, next.Name, next.Value, next.Settles);
             }
         }
         catch (LiveAppException failed)

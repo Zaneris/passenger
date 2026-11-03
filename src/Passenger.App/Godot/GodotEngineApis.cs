@@ -40,7 +40,11 @@ internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDicti
         return api;
     }
 
-    private async Task<GodotEngineApi?> FindAsync(string? chosen)
+    private async Task<GodotEngineApi?> FindAsync(string? chosen) =>
+        await KeyAsync(chosen) is ({ } found, { } key) ? await Read.GetOrAdd(key, k => new Lazy<Task<GodotEngineApi?>>(() => BackgroundWork.Run(() => LoadAsync(found, k)))).Value : null;
+
+    /// <summary>The Godot Settings name or found, and the key of its version its readings are kept by; null where none is.</summary>
+    private static async Task<(GodotFound Found, string Key)?> KeyAsync(string? chosen)
     {
         GodotFound? found = await BackgroundWork.Run(() => GodotLaunch.Found(chosen));
         if (found is not { Exists: true })
@@ -48,12 +52,63 @@ internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDicti
             return null;
         }
         string? version = found.Version ?? await GodotExecutables.VersionAsync(found);
-        if (version is null)
+        return version is null ? null : (found, string.Concat(version.Select(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' ? c : '_')));
+    }
+
+    private static string ClassesFolder => Path.Combine(State.StateStore.DefaultRoot, "cache", "godot", "classes");
+
+    private static readonly ConcurrentDictionary<string, Lazy<Task<GodotClassDefaults?>>> ClassesRead = new(StringComparer.Ordinal);
+
+    private static readonly Lazy<byte[]> ClassesScript = new(() =>
+    {
+        using Stream stream = typeof(GodotEngineApis).Assembly.GetManifestResourceStream("Godot/PassengerClasses.gd")
+            ?? throw new InvalidOperationException("Passenger carries no Godot/PassengerClasses.gd");
+        using MemoryStream bytes = new();
+        stream.CopyTo(bytes);
+        return bytes.ToArray();
+    });
+
+    /// <summary>The engine's classes, their properties' hints and defaults, as the Godot Settings name or found lists them
+    /// (<see cref="GodotClassDefaults"/>): read headless once per Godot version into the state's cache; null where no Godot
+    /// is found or its reading fails.</summary>
+    public async Task<GodotClassDefaults?> ClassesAsync() =>
+        await KeyAsync(setting()) is ({ } found, { } key)
+            ? await ClassesRead.GetOrAdd(key, k => new Lazy<Task<GodotClassDefaults?>>(() => BackgroundWork.Run(() => LoadClassesAsync(found, k)))).Value
+            : null;
+
+    private async Task<GodotClassDefaults?> LoadClassesAsync(GodotFound found, string key)
+    {
+        string kept = Path.Combine(ClassesFolder, $"{key}.json");
+        if (!File.Exists(kept))
         {
+            string working = Path.Combine(ClassesFolder, "reading-" + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Directory.CreateDirectory(working);
+            AtomicFile.Write(Path.Combine(working, "project.godot"), "config_version=5\n"u8.ToArray());
+            AtomicFile.Write(Path.Combine(working, "PassengerClasses.gd"), ClassesScript.Value);
+            string written = Path.Combine(working, "classes.json");
+            ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--path", working, "--script", "res://PassengerClasses.gd", "--", written], working);
+            foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
+            {
+                start.Environment[name] = value;
+            }
+            ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
+            if (!File.Exists(written))
+            {
+                IdeErrors.Write($"Godot ({found.Executable}) wrote no reading of its classes: {ExitCodes.Said(result.ExitCode)}");
+                return null;
+            }
+            AtomicFile.Write(kept, await File.ReadAllBytesAsync(written));
+            Directory.Delete(working, recursive: true);
+        }
+        try
+        {
+            return GodotClassDefaults.Read(await File.ReadAllBytesAsync(kept));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            IdeErrors.Write($"Godot's classes kept at {kept} could not be read: {e.Message}");
             return null;
         }
-        string key = string.Concat(version.Select(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' ? c : '_'));
-        return await Read.GetOrAdd(key, k => new Lazy<Task<GodotEngineApi?>>(() => BackgroundWork.Run(() => LoadAsync(found, k)))).Value;
     }
 
     private async Task<GodotEngineApi?> LoadAsync(GodotFound found, string key)

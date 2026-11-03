@@ -863,6 +863,29 @@ public static class GodotVariant
         return numbers.Count == count ? (new GodotMath(type, numbers), null) : (null, $"{count} {(integers ? "whole numbers" : "numbers")} separated by commas");
     }
 
+    /// <summary>The value of a type as a scene or Godot's variant text writes it (<c>Vector2(10, 20)</c>, <c>"text"</c>,
+    /// <c>&amp;"name"</c>, <c>NodePath("Hud")</c>, <c>2.5</c>, <c>null</c>); null with why not for text of a type it does not
+    /// read (an array, a dictionary, a resource).</summary>
+    public static (object? Value, string? WhyNot) OfScene(GodotType type, string text)
+    {
+        string trimmed = text.Trim();
+        if (trimmed == "null" && type is GodotType.Nil or GodotType.Object)
+        {
+            return (null, null);
+        }
+        if (type is GodotType.String or GodotType.StringName or GodotType.NodePath)
+        {
+            string inner = type == GodotType.NodePath && trimmed.StartsWith("NodePath(", StringComparison.Ordinal) && trimmed.EndsWith(')') ? trimmed["NodePath(".Length..^1] : trimmed;
+            return Literal(inner) is { } literal ? Parse(type, literal) : (null, "a quoted string");
+        }
+        if (Count(type) > 0)
+        {
+            int open = trimmed.IndexOf('(');
+            return open > 0 && trimmed.EndsWith(')') && trimmed[..open] == TypeName(type) ? Parse(type, trimmed[(open + 1)..^1]) : (null, $"a {TypeName(type)}(…)");
+        }
+        return type is GodotType.Bool or GodotType.Int or GodotType.Float ? Parse(type, trimmed) : (null, $"a {TypeName(type)} is not read from text");
+    }
+
     /// <summary>The value a typed text gives a property of <paramref name="type"/>, read one way wherever a Godot value is
     /// typed (the Live Visual Tree's properties, Variables' Set Value): as <see cref="Parse"/> reads it, a string's in quotes
     /// ("…", &amp;"…", ^"…") as the literal it is; where that reads nothing, as GDScript in the paused frame

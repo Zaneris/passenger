@@ -19,7 +19,7 @@ namespace Passenger.App.Godot;
 /// its errors never stop it. A game Godot's editor plays is heard the same way through Passenger's addon in that editor
 /// (<see cref="Relay"/>), the editor keeping its debugger. Events are raised on the UI thread; it ends with its connection,
 /// or once disposed.</summary>
-public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
+public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, IDisposable
 {
     /// <summary>The flag that gives a game its debugger.</summary>
     public const string RemoteDebug = "--remote-debug";
@@ -1230,6 +1230,13 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
 
     /// <summary>A node's properties as last read, or null before.</summary>
     public GodotObjectState? InspectedOf(long element) => inspected.GetValueOrDefault((ulong)element);
+
+    GodotProperty? IGodotValues.PropertyOf(long element, string name) => InspectedOf(element)?.Properties.FirstOrDefault(p => p.Name == name);
+
+    /// <summary>A running game takes each value as it moves, settled or not.</summary>
+    Task IGodotValues.SetValueAsync(long element, string name, object? value, bool settles) => SetValueAsync(element, name, value);
+
+    GodotTuned? IGodotValues.TunedOf(long element, string name) => Tuning.Of((ulong)element, name);
 
     /// <summary>Where a node is in the scene tree as last sent (its chain from the root, each scene's root with its scene),
     /// with its script as last read; null for a node the tree does not hold.</summary>

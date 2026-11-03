@@ -1,14 +1,18 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
+using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Editors;
 using Passenger.App.Godot;
+using Passenger.App.LiveTree;
 using Passenger.App.Mcp;
 using Passenger.App.Run;
 using Passenger.App.Workspace;
@@ -629,7 +633,7 @@ public sealed class GodotAddonTests : IDisposable
 
     /// <summary>With Godot's editor holding the scene unsaved, a Replace in Files whose one match is in that scene, open here
     /// and so changed only in its editor, asks the person at once, before any text changes, and declined changes nothing; an
-    /// agent's is refused, asking nobody.</summary>
+    /// agent's is refused, asking nobody; and a node's property edited in the scene's outline asks the same.</summary>
     [AvaloniaFact]
     public void A_replace_in_an_open_scene_alone_asks_at_once_where_Godot_holds_it_unsaved_and_an_agents_is_refused()
     {
@@ -647,6 +651,20 @@ public sealed class GodotAddonTests : IDisposable
             string text = scene.Text.Snapshot.ToString();
 
             ReplacedNothing(window, "toggle_mode = true", "toggle_mode = false", scene, asked, "Godot's editor holds unsaved edits in main.tscn");
+
+            int before = asked.Count;
+            // A property of a node of the scene, edited in its outline, asks the same, and declined writes nothing.
+            window.ShowToolWindow(ToolWindowIds.Structure);
+            Ui.WaitFor(() => window.StructureView.Rows.Any(r => r.Name == "Ui"), () => $"the scene's outline ({window.StructureView.Said})", TimeSpan.FromMinutes(1));
+            window.EditorArea.CodeEditor.GoTo(new TextPosition(text.Split('\n').ToList().FindIndex(l => l.StartsWith("[node name=\"Ui\"", StringComparison.Ordinal)) + 1, 2));
+            Ui.WaitFor(() => window.SceneProperties?.Shown?.Name == "Ui" && window.SceneProperties.EditorOf("visible") is CheckBox,
+                () => $"Ui's properties with its visible check box ({string.Join(", ", window.SceneProperties?.Rows.Take(8).Select(r => r.Property.Name) ?? [])}; {window.Status})", TimeSpan.FromMinutes(1));
+            Ui.Settle();
+            Ui.Click((CheckBox)window.SceneProperties!.EditorOf("visible")!);
+            Ui.WaitFor(() => asked.Count == before + 1, () => $"the property's write to ask over what Godot holds ({window.Status})", TimeSpan.FromMinutes(1));
+            Assert.StartsWith("Write Over What Godot Holds?: Godot's editor holds unsaved edits in main.tscn", asked[^1], StringComparison.Ordinal);
+            Ui.WaitFor(() => !scene.IsModified && scene.Text.Snapshot.ToString() == text, () => $"the declined property's edit to be taken back ({window.Status}):\n{scene.Text.Snapshot}");
+            Assert.Equal(text, File.ReadAllText(ScenePath));
             int questions = asked.Count;
             Passenger.App.Mcp.AgentCall call = Passenger.App.Mcp.AgentCall.Begin(null, null, null, McpTools.ReplaceInFiles, "Replace in Files", "a test's agent", "the test", traced: false);
             try
@@ -662,6 +680,7 @@ public sealed class GodotAddonTests : IDisposable
             }
             Assert.Equal(questions, asked.Count);
             Assert.True(!scene.IsModified && scene.Text.Snapshot.ToString() == text, "The agent's refused replace changed the open scene");
+
         }
         finally
         {
@@ -1172,6 +1191,143 @@ public sealed class GodotAddonTests : IDisposable
             End(window);
         }
     }
+
+    private const string Paced = """
+        using Godot;
+
+        public partial class Main : Node2D
+        {
+            public enum Pace { Slow, Steady, Fast }
+
+            [Export] public Pace Speed { get; set; } = Pace.Steady;
+
+            public override void _Ready()
+            {
+                GD.Print($"loaded {Position} {Modulate} {Speed}");
+                GetTree().Quit();
+            }
+        }
+
+        """;
+
+    private const string PacedScene = """
+        [gd_scene load_steps=2 format=3]
+
+        [ext_resource type="Script" path="res://Main.cs" id="1"]
+
+        [node name="Main" type="Node2D"]
+        position = Vector2(100, 50)
+        script = ExtResource("1")
+
+        """;
+
+    /// <summary>A scene's node chosen in its outline shows its properties, what the scene sets beside its class's defaults
+    /// and its script's exported enum: its position typed in an axis, its modulate picked in the colour picker and the enum
+    /// chosen each write one line of the node's and nothing else, one step of Undo each; the game Godot runs from the scene
+    /// prints the new values.</summary>
+    [AvaloniaFact]
+    public void A_scene_nodes_position_colour_and_exported_enum_edited_in_its_outline_each_write_its_line_alone_one_step_of_Undo_each()
+    {
+        MainWindow window = Opened(addon: false, files: [("Main.cs", Paced), ("main.tscn", PacedScene)]);
+        try
+        {
+            window.OpenFile(ScenePath);
+            window.ShowToolWindow(ToolWindowIds.Structure);
+            Ui.WaitFor(() => window.StructureView.Rows.Any(r => r.Name == "Main"), () => $"the scene's outline ({window.StructureView.Said})", TimeSpan.FromMinutes(1));
+            window.EditorArea.CodeEditor.GoTo(new TextPosition(5, 2));
+            GodotSceneProperties shown() => window.SceneProperties!;
+            Ui.WaitFor(() => window.SceneProperties?.Shown?.Name == "Main" && shown().Rows.Any(r => r.Property.Name == "Speed") && shown().EditorOf("Speed") is not null,
+                () => $"Main's properties with its script's Speed ({string.Join(", ", window.SceneProperties?.Rows.Select(r => r.Property.Name) ?? [])}; {window.Status})", TimeSpan.FromMinutes(2));
+            Assert.True(shown().Rows is [{ Property.Name: "Speed" }, ..], $"The script's export was to come first, as Godot's inspector lists it: {string.Join(", ", shown().Rows.Take(3).Select(r => r.Property.Name))}");
+            Assert.Contains(shown().Rows, r => r is { Property.Name: "position", Set: true, Source: "Set in main.tscn:6" });
+            Assert.Contains(shown().Rows, r => r is { Property.Name: "modulate", Set: false, Source: "Default", Text: "Color(1, 1, 1, 1)" });
+            Assert.Contains(shown().Rows, r => r is { Property.Name: "Speed", Set: false, Text: "1" });
+            List<string> lines = [.. PacedScene.Split('\n')];
+
+            ScrubField x = shown().EditorOf("position")!.GetVisualDescendants().OfType<ScrubField>().First(f => f.IsEffectivelyVisible);
+            Ui.Click(x.Box);
+            x.Box.SelectAll();
+            window.KeyTextInput("250");
+            Ui.Press(window, "ENTER");
+            lines[5] = "position = Vector2(250, 50)";
+            Written(window, lines, "the position typed");
+
+            Button swatch = Assert.IsType<Button>(shown().EditorOf("modulate"));
+            Ui.Click(swatch);
+            Ui.WaitFor(() => window.GetVisualDescendants().OfType<Passenger.App.Xaml.ColourPicker>().Any(p => p.IsEffectivelyVisible), "the colour picker over modulate's swatch");
+            Passenger.App.Xaml.ColourPicker picker = window.GetVisualDescendants().OfType<Passenger.App.Xaml.ColourPicker>().First(p => p.IsEffectivelyVisible);
+            Avalonia.Point from = picker.Shades.TranslatePoint(new Avalonia.Point(2, 2), window)!.Value;
+            Avalonia.Point to = picker.Shades.TranslatePoint(new Avalonia.Point(picker.Shades.Bounds.Width + 20, -20), window)!.Value;
+            window.MouseDown(from, Avalonia.Input.MouseButton.Left);
+            window.MouseMove(to, Avalonia.Input.RawInputModifiers.LeftMouseButton);
+            window.MouseUp(to, Avalonia.Input.MouseButton.Left);
+            Ui.Settle();
+            Assert.Equal(PacedScene.Replace("Vector2(100, 50)", "Vector2(250, 50)", StringComparison.Ordinal), File.ReadAllText(ScenePath));
+            Ui.Click(picker.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, "Choose")));
+            // A property the node had at its default is written after the node's last line.
+            lines.Insert(7, "modulate = Color(1, 0, 0, 1)");
+            Written(window, lines, "the colour picked");
+
+            ComboBox pace = Assert.IsType<ComboBox>(shown().EditorOf("Speed"));
+            Ui.Settle();
+            Ui.Click(pace);
+            Ui.WaitFor(() => pace.IsDropDownOpen, "Speed's choices to open");
+            int fast = pace.Items.OfType<GodotChoice>().ToList().FindIndex(c => c.Name == "Fast");
+            Assert.True(fast >= 0, $"Speed offers no Fast: {string.Join(", ", pace.Items.OfType<GodotChoice>().Select(c => c.Name))}");
+            Ui.Settle();
+            Ui.Click(Assert.IsAssignableFrom<Control>(pace.ContainerFromIndex(fast)));
+            lines.Insert(8, "Speed = 2");
+            Written(window, lines, "the enum chosen");
+
+            // Godot runs the game from the scene as written: its script built, it prints what it loaded.
+            string csproj = Path.Combine(folder, "Spinner.csproj");
+            ChildResult built = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", csproj, "-nologo", "-v:q"]), limit: Restore.Limit.Scaled())),
+                "the game's build", Restore.Limit + TestFolders.Spare);
+            Assert.True(built.ExitCode == 0, $"The game did not build:\n{built.Output}");
+            ProcessStartInfo run = ChildProcesses.Command(godot!.Executable, [GodotExecutables.Headless, "--path", folder], folder);
+            foreach ((string name, string value) in GodotTests.Game.Home(Path.Combine(folder, "..", Path.GetFileName(folder) + "-run-home")))
+            {
+                run.Environment[name] = value;
+            }
+            ChildResult ran = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(run, limit: TimeSpan.FromMinutes(2).Scaled())), "the game's run", TimeSpan.FromMinutes(3));
+            Assert.True(ran.Output.Contains("loaded (250, 50) (1, 0, 0, 1) Fast", StringComparison.Ordinal), $"The game Godot ran from the scene did not load the values written:\n{ran.Output}");
+
+            // One step of Undo each, the last first.
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            foreach (string undone in (string[])["Speed = 2", "modulate = Color(1, 0, 0, 1)"])
+            {
+                lines.Remove(undone);
+                Undo(window, lines, undone);
+            }
+            lines[5] = "position = Vector2(100, 50)";
+            Undo(window, lines, "position = Vector2(250, 50)");
+            Assert.Equal(PacedScene, string.Join('\n', lines));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>The scene as the window has it is the lines given, and so on disk once saved.</summary>
+    private void Written(MainWindow window, List<string> lines, string what)
+    {
+        string expected = string.Join('\n', lines);
+        Ui.WaitFor(() => SceneText(window) == expected, () => $"{what} to write the scene's line alone ({window.Status}):\n{SceneText(window)}", TimeSpan.FromMinutes(1));
+        Assert.True(window.EditorArea.SaveAll() || File.ReadAllText(ScenePath) == expected, $"The scene could not be saved after {what}");
+        Ui.WaitFor(() => File.ReadAllText(ScenePath) == expected, () => $"{what} to reach the scene on disk:\n{File.ReadAllText(ScenePath)}");
+    }
+
+    /// <summary>One Undo in the scene's editor, where each change of the open scene is a step of its own.</summary>
+    private void Undo(MainWindow window, List<string> lines, string undone)
+    {
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, EditorActions.Undo);
+        string expected = string.Join('\n', lines);
+        Ui.WaitFor(() => SceneText(window) == expected, () => $"one Undo to take {undone} back alone ({window.Status}):\n{SceneText(window)}");
+    }
+
+    private string SceneText(MainWindow window) => window.EditorArea.Find(ScenePath)?.Text.Snapshot.ToString() ?? File.ReadAllText(ScenePath);
 
     /// <summary>How many Godot editors run on a folder: processes started with --editor that name it, but Windows' console
     /// wrapper, which starts the editor itself with the same words.</summary>

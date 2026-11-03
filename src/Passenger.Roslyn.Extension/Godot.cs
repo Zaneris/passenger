@@ -162,7 +162,11 @@ internal static partial class GodotSource
             if (Declared(member) is { } at)
             {
                 ITypeSymbol of = (member as IPropertySymbol)?.Type ?? ((IFieldSymbol)member).Type;
-                exports.Add(new GodotMember(member.Name, of.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), at.Path, at.At, at.End) { Node = NodeOf(engine, of) });
+                exports.Add(new GodotMember(member.Name, of.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), at.Path, at.At, at.End)
+                {
+                    Node = NodeOf(engine, of),
+                    Inspected = await InspectedAsync(member, of, engine, solution, cancel).ConfigureAwait(false),
+                });
             }
         }
         List<GodotMember> signals = [];
@@ -323,6 +327,71 @@ internal static partial class GodotSource
         };
         return nested is not null && GodotSharpNames.Of(compilation, owner, nested, at.Name) is { } named
             ? new GodotEngineMember(of, kind, named) : new GodotEngineMember(of, null, null);
+    }
+
+    /// <summary>Variant types by the number Godot gives them, of the types an export takes.</summary>
+    private static readonly Dictionary<string, int> Variants = new(StringComparer.Ordinal)
+    {
+        ["Vector2"] = 5, ["Vector2I"] = 6, ["Rect2"] = 7, ["Rect2I"] = 8, ["Vector3"] = 9, ["Vector3I"] = 10, ["Transform2D"] = 11,
+        ["Vector4"] = 12, ["Vector4I"] = 13, ["Plane"] = 14, ["Quaternion"] = 15, ["Aabb"] = 16, ["Basis"] = 17, ["Transform3D"] = 18,
+        ["Projection"] = 19, ["Color"] = 20, ["StringName"] = 21, ["NodePath"] = 22, ["Rid"] = 23,
+    };
+
+    /// <summary>What Godot's inspector takes an exported member as, as Godot's source generator writes its property: its
+    /// Variant type, an enum's names and values as its hint (flags for a <c>[Flags]</c> one), an <c>[Export]</c>'s own
+    /// hint and hint string, a resource's or a node's class; and its default where its initializer is a constant.</summary>
+    private static async Task<GodotExported> InspectedAsync(ISymbol member, ITypeSymbol of, Engine engine, Solution solution, CancellationToken cancel)
+    {
+        (int type, long hint, string hintString) = of switch
+        {
+            { SpecialType: SpecialType.System_Boolean } => (1, 0L, string.Empty),
+            INamedTypeSymbol { TypeKind: TypeKind.Enum } named => (2, named.GetAttributes().Any(a => a.AttributeClass?.Name == "FlagsAttribute") ? 6L : 2L,
+                string.Join(",", named.GetMembers().OfType<IFieldSymbol>().Where(f => f.HasConstantValue).Select(f => $"{f.Name}:{Convert.ToInt64(f.ConstantValue, System.Globalization.CultureInfo.InvariantCulture)}"))),
+            { SpecialType: SpecialType.System_Byte or SpecialType.System_SByte or SpecialType.System_Int16 or SpecialType.System_UInt16 or SpecialType.System_Int32
+                or SpecialType.System_UInt32 or SpecialType.System_Int64 or SpecialType.System_UInt64 } => (2, 0L, string.Empty),
+            { SpecialType: SpecialType.System_Single or SpecialType.System_Double } => (3, 0L, string.Empty),
+            { SpecialType: SpecialType.System_String } => (4, 0L, string.Empty),
+            INamedTypeSymbol { ContainingNamespace.Name: Namespace } godot when Variants.TryGetValue(godot.Name, out int variant) => (variant, 0L, string.Empty),
+            INamedTypeSymbol { ContainingNamespace.Name: "Collections" } collection when collection.Name is "Array" or "Dictionary" => (collection.Name == "Array" ? 28 : 27, 0L, string.Empty),
+            INamedTypeSymbol given when engine.Type("Resource") is { } resource && Derives(given, resource) => (24, 17L, engine.NameOf(engine.First(given) ?? given) ?? given.Name),
+            INamedTypeSymbol given when engine.Type("Node") is { } node && (SymbolEqualityComparer.Default.Equals(given, node) || Derives(given, node)) => (24, 34L, engine.NameOf(engine.First(given) ?? given) ?? given.Name),
+            _ => (0, 0L, string.Empty),
+        };
+        if (member.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "ExportAttribute")?.ConstructorArguments is [{ Value: int asked }, { Value: string words }, ..] && asked != 0)
+        {
+            (hint, hintString) = (asked, words);
+        }
+        return new GodotExported(type, hint, hintString, await DefaultAsync(member, of, solution, cancel).ConfigureAwait(false));
+    }
+
+    /// <summary>An exported member's initializer as Godot's variant text writes its value, where it is a constant (an enum's
+    /// member by its value); null where it writes none or one only running the code gives.</summary>
+    private static async Task<string?> DefaultAsync(ISymbol member, ITypeSymbol of, Solution solution, CancellationToken cancel)
+    {
+        foreach (SyntaxReference reference in member.DeclaringSyntaxReferences)
+        {
+            ExpressionSyntax? initial = await reference.GetSyntaxAsync(cancel).ConfigureAwait(false) switch
+            {
+                PropertyDeclarationSyntax property => property.Initializer?.Value,
+                VariableDeclaratorSyntax variable => variable.Initializer?.Value,
+                _ => null,
+            };
+            if (initial is null || solution.GetDocument(reference.SyntaxTree) is not { } document
+                || await document.GetSemanticModelAsync(cancel).ConfigureAwait(false) is not { } model)
+            {
+                continue;
+            }
+            Optional<object?> constant = model.GetConstantValue(initial, cancel);
+            return !constant.HasValue ? null : constant.Value switch
+            {
+                bool flag => flag ? "true" : "false",
+                string text => SymbolDisplay.FormatLiteral(text, quote: true),
+                float or double => Convert.ToDouble(constant.Value, System.Globalization.CultureInfo.InvariantCulture).ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+                null => of.IsReferenceType ? "null" : null,
+                { } number => Convert.ToInt64(number, System.Globalization.CultureInfo.InvariantCulture).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            };
+        }
+        return null;
     }
 
     /// <summary>The node a member of a type names by its path where a scene sets it: a NodePath's any node, a node type's a

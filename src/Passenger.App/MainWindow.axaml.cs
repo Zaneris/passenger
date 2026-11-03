@@ -150,6 +150,10 @@ public partial class MainWindow : IdeWindow
             {
                 structure?.Invalidate();
             }
+            if (sceneProperties?.Shown is { } shown && PathNames.Same(shown.File, document.Path))
+            {
+                sceneProperties.ReadAgain();
+            }
         };
         Editors.ActiveChanged += (_, _) => UpdateStatus();
         Editors.ActiveChanged += (_, _) => session.CSharp?.FollowIndent(Editors.Active);
@@ -874,6 +878,7 @@ public partial class MainWindow : IdeWindow
         structure.Follow(() => Editors.Active is { } shown ? (shown.Path, shown.Name, Editors.CodeEditor.CaretPosition.Line) : null,
             () => Editors.Active is { } shown ? session.OutlineOf(shown) : null);
         structure.GoToRequested += (_, row) => navigator.GoTo(row);
+        structure.Chosen += (_, row) => IdeErrors.Observe(ShowSceneNodeAsync(row));
         structure.UsagesRequested += (_, row) =>
         {
             NavigateTo(row.Path, row.Position);

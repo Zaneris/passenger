@@ -50,6 +50,7 @@ public sealed class StructureView : DockPanel
             {
                 GoToRequested?.Invoke(this, row);
             }
+            Chosen?.Invoke(this, list.SelectedItem as SymbolRow);
         };
         list.Tapped += (_, _) =>
         {
@@ -76,9 +77,38 @@ public sealed class StructureView : DockPanel
             ListMenus.Item("Find Usages", null, () => UsagesRequested?.Invoke(this, chosen)),
             ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Name))),
         ]);
-        Children.Add(new Panel { Children = { list, placeholder, unoutlined } });
+        HairlineDivider split = new(GridResizeDirection.Rows) { [Grid.RowProperty] = 1, IsVisible = false };
+        details = new ContentControl { IsVisible = false, [Grid.RowProperty] = 2 };
+        Panel rows = new() { Children = { list, placeholder, unoutlined } };
+        layout = new Grid { RowDefinitions = new RowDefinitions("3*,0,0"), Children = { rows, split, details } };
+        Children.Add(layout);
         this.Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Panel));
     }
+
+    private readonly Grid layout;
+    private readonly ContentControl details;
+
+    /// <summary>What shows under the outline about the row chosen (a scene's node's properties), its share of the height
+    /// the person's to drag; null for nothing.</summary>
+    public Control? Details
+    {
+        get => details.Content as Control;
+        set
+        {
+            details.Content = value;
+            bool showing = value is not null;
+            details.IsVisible = showing;
+            layout.Children[1].IsVisible = showing;
+            layout.RowDefinitions[1].Height = new GridLength(showing ? 1 : 0);
+            layout.RowDefinitions[2].Height = showing ? new GridLength(2, GridUnitType.Star) : new GridLength(0);
+        }
+    }
+
+    /// <summary>The row chosen changed (a click, the keys, the caret's member), or none is.</summary>
+    public event EventHandler<SymbolRow?>? Chosen;
+
+    /// <summary>The file whose outline the rows are, or null.</summary>
+    public string? Outlined => outlined;
 
     /// <summary>A member to go to.</summary>
     public event EventHandler<SymbolRow>? GoToRequested;

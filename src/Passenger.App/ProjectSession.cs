@@ -136,7 +136,8 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotScenes.Changed += (_, _) => CSharp?.GodotScenesChanged();
         GodotShaderCompiler = new Godot.GodotShaderCompiler(() => setup.Settings().GodotExecutable, () => setup.GodotEnvironment);
         GodotShaders = new Godot.GodotShaderMarks(GodotScenes, GodotOf, GodotShaderCompiler);
-        GodotScriptTypes = new Godot.GodotScriptTypes(GodotScenes, GodotOf, new Godot.GodotEngineApis(() => setup.Settings().GodotExecutable, () => setup.GodotEnvironment),
+        GodotApis = new Godot.GodotEngineApis(() => setup.Settings().GodotExecutable, () => setup.GodotEnvironment);
+        GodotScriptTypes = new Godot.GodotScriptTypes(GodotScenes, GodotOf, GodotApis,
             document => Web?.For(document));
         GodotMarks = new Godot.GodotSceneMarks(GodotScenes, GodotOf, () => CSharp, setup.Editors.Commands)
         {
@@ -842,6 +843,9 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>The scenes and resources of the folder's Godot projects, read once each is asked about and followed.</summary>
     public Godot.GodotSceneIndex GodotScenes { get; }
+
+    /// <summary>The engine's API and classes as the Godot Settings name or found gives them.</summary>
+    internal Godot.GodotEngineApis GodotApis { get; }
 
     /// <summary>The stylesheets the folder's pages link, read as they are asked for and followed through the watcher.</summary>
     public Web.PageStylesheets Stylesheets { get; }

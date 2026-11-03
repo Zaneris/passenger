@@ -523,7 +523,20 @@ public sealed record GodotMember(
     /// node, a node type's that type; null for any other member.</summary>
     [JsonPropertyName("node")]
     public GodotTypeRef? Node { get; init; }
+
+    /// <summary>For an exported member, what Godot's inspector takes it as: its Variant type (by its number), its hint and
+    /// hint string (an enum's names and values, an <c>[Export]</c>'s own), and its default where the code writes it as a
+    /// constant, in Godot's variant text; null for any other member.</summary>
+    [JsonPropertyName("inspected")]
+    public GodotExported? Inspected { get; init; }
 }
+
+/// <summary>An exported member as Godot's inspector takes it (<see cref="GodotMember.Inspected"/>).</summary>
+public sealed record GodotExported(
+    [property: JsonPropertyName("type")] int Type,
+    [property: JsonPropertyName("hint")] long Hint,
+    [property: JsonPropertyName("hintString")] string HintString,
+    [property: JsonPropertyName("default")] string? Default);
 
 /// <summary>A call of GetNode or GetNodeOrNull on the node the code runs on: the path it is given and where its string is
 /// written (its characters, when <paramref name="Exact"/>: a string written as it says, no escape in it), the class it is
