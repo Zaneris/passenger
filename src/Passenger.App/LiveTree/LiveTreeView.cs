@@ -739,6 +739,7 @@ public sealed class LiveTreeView : DockPanel
         {
             heading.Children.Add(link);
         }
+        heading.Children.Add(failures);
         ShowProperties();
         foreach (StyleReport style in details.Styles)
         {
@@ -749,6 +750,26 @@ public sealed class LiveTreeView : DockPanel
             styles.Children.Add(new TextBlock { Text = "No style could apply to it.", Classes = { StyleClasses.Muted } });
         }
         ShowLayout(details.Layout);
+    }
+
+    /// <summary>The chosen control's binding failures, each in its own words.</summary>
+    private readonly StackPanel failures = new() { Spacing = 2 };
+
+    /// <summary>The chosen control's binding failures, under its heading.</summary>
+    public IReadOnlyList<string> FailuresShown => [.. failures.Children.OfType<TextBlock>().Select(t => t.Text ?? string.Empty)];
+
+    /// <summary>Shows the binding failures of the control chosen, none for one with no failure.</summary>
+    public void ShowFailures(IReadOnlyList<string> failed)
+    {
+        if (FailuresShown.SequenceEqual(failed))
+        {
+            return;
+        }
+        failures.Children.Clear();
+        foreach (string message in failed)
+        {
+            failures.Children.Add(Colored(new TextBlock { Text = message, FontSize = 12, TextWrapping = TextWrapping.Wrap }, TokenKeys.Error));
+        }
     }
 
     /// <summary>The chosen control's link to its XAML, while it has one.</summary>

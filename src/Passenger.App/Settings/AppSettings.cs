@@ -55,6 +55,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// the open element's name.</summary>
     public bool CloseTags { get; init; } = true;
 
+    /// <summary>The XAML workspace: an Avalonia or WPF file opens beside its preview and, while its app runs, its Live Visual
+    /// Tree, an element chosen in any of the three chosen in the others.</summary>
+    public bool XamlWorkspace { get; init; }
+
     /// <summary>Parameter name hints: an argument's parameter shown before it where the call does not say it.</summary>
     public bool ParameterHints { get; init; } = true;
 

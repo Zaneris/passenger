@@ -86,6 +86,12 @@ public static class Declared
     public static readonly ToggleSetting CloseTags = new(s => s.CloseTags, (s, v) => s with { CloseTags = v },
         new(D.EditorPage, "Close tags on '>' and '</'", "auto close closing end tags markup xml xaml html razor blazor msbuild elements"));
 
+    public static readonly ToggleSetting XamlWorkspace = new(s => s.XamlWorkspace, (s, v) => s with { XamlWorkspace = v },
+        new(D.EditorPage, "Open XAML files in the XAML workspace",
+            "xaml workspace axaml preview designer live visual tree selection properties avalonia wpf layout side by side",
+            "An Avalonia or WPF file opens beside its preview and, while its app runs, the Live Visual Tree, an element chosen in "
+            + "any of them chosen in the others."));
+
     public static readonly ToggleSetting SolutionWideAnalysis = new(s => s.SolutionWideAnalysis, (s, v) => s with { SolutionWideAnalysis = v },
         new(D.EditorPage, "Solution-wide analysis", "errors problems whole solution analysis inspections without build"));
 

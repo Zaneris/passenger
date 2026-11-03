@@ -223,6 +223,29 @@ public sealed partial class LiveTreeController
     {
         details = (shown, problem);
         view?.ShowDetails(shown, problem);
+        view?.ShowFailures(FailuresOf(shown));
+    }
+
+    /// <summary>A binding failed in the app: the control chosen shows it among its own once it is that control's.</summary>
+    private void OnBindingFailed(object? sender, BindingFailedEventArgs e)
+    {
+        if (sender == app && details.Details is { } shown)
+        {
+            view?.ShowFailures(FailuresOf(shown));
+        }
+    }
+
+    /// <summary>The binding failures of a control's own XAML element, as the app last told them: those failed where its
+    /// element is written (the editor's line, as its details have it), in the words Problems shows them in.</summary>
+    private IReadOnlyList<string> FailuresOf(ElementDetails? shown)
+    {
+        if (shown?.Source is not { Line: > 0 } source || app is not LiveApp live)
+        {
+            return [];
+        }
+        Func<string, TextSnapshot?> texts = CSharp.ServerPlaces.Texts(parts.Editors);
+        return [.. live.Bindings.Where(failure => failure.Place is { } place && Path.GetFileName(place.File) == Path.GetFileName(source.File)
+            && AppPlaces.InEditor(place, texts) is { } at && at.Line == source.Line && PathNames.Same(at.File, source.File)).Select(failure => failure.Message)];
     }
 
     /// <summary>Select Element shown pressed while the app waits for a control to be pointed at.</summary>
@@ -478,6 +501,7 @@ public sealed partial class LiveTreeController
         if (app is LiveApp left)
         {
             left.Picked -= OnPicked;
+            left.BindingFailed -= OnBindingFailed;
         }
         if (app is Godot.GodotGame was)
         {
@@ -513,6 +537,7 @@ public sealed partial class LiveTreeController
         if (next is LiveApp live)
         {
             live.Picked += OnPicked;
+            live.BindingFailed += OnBindingFailed;
         }
         if (next is Godot.GodotGame game)
         {
@@ -960,12 +985,57 @@ public sealed partial class LiveTreeController
         }
     }
 
+    /// <summary>A control the person chose in the tree, or picked in the app with Select Element, has its details shown;
+    /// raised on the UI thread.</summary>
+    public event EventHandler<ElementDetails>? ElementShown;
+
     /// <summary>A control chosen in the tree: its details shown, and it outlined in the app.</summary>
-    public async Task ChooseAsync(long id)
+    public Task ChooseAsync(long id) => ChooseAsync(id, byPerson: true);
+
+    /// <summary>The control an Avalonia or WPF app made at a place of a XAML file (where its element's name starts, as the
+    /// app's build counted, from one) chosen in the tree, its details shown and it outlined in the app, as a person's choice
+    /// of its row would, but told to no one; of several made there, the one nearest the control chosen. False when the app
+    /// made nothing there, or cannot be asked now.</summary>
+    public async Task<bool> ChooseMadeAsync(string file, XamlSpot spot)
+    {
+        UiThread.Check();
+        if (app is not LiveApp { State: LiveAppState.Connected } live || Paused)
+        {
+            return false;
+        }
+        XamlValues made;
+        try
+        {
+            made = await live.MadeAsync(new XamlRead(file, [spot], chosen));
+        }
+        catch (LiveAppException)
+        {
+            return false;
+        }
+        if (app != live || made.Elements is not [{ Id: long id }, ..])
+        {
+            return false;
+        }
+        if (id != chosen)
+        {
+            if (view is not null && tree is not null)
+            {
+                view.Choose(id);
+            }
+            await ChooseAsync(id, byPerson: false);
+        }
+        return true;
+    }
+
+    private async Task ChooseAsync(long id, bool byPerson)
     {
         UiThread.Check();
         Choose(id);
         await ShowDetailsAsync(id);
+        if (byPerson && chosen == id && details.Details is { } shown && shown.Id == id)
+        {
+            ElementShown?.Invoke(this, shown);
+        }
         if (app is LiveApp { State: LiveAppState.Connected } live && !Paused)
         {
             try
@@ -1176,7 +1246,18 @@ public sealed partial class LiveTreeController
         {
             Choose(element);
             parts.Dock.Show(window.Id);
-            IdeErrors.Observe(RefreshAsync());
+            IdeErrors.Observe(PickedAsync(element));
+        }
+    }
+
+    /// <summary>The tree asked again for the control picked in the app, which is told as the person's choice once its
+    /// details are shown.</summary>
+    private async Task PickedAsync(long element)
+    {
+        await RefreshAsync();
+        if (chosen == element && details.Details is { } shown && shown.Id == element)
+        {
+            ElementShown?.Invoke(this, shown);
         }
     }
 

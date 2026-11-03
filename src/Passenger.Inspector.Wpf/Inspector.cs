@@ -79,6 +79,45 @@ internal sealed class Inspector : Inspecting<DependencyObject>
     protected override XamlValues ValuesOf(Request request) =>
         throw new Refusal("Binding values after a XAML file's lines are read from an Avalonia app's .axaml; a WPF app's are not");
 
+    /// <summary>The element WPF made at each place asked of, among the windows' visual trees, by where its BAML recorded it
+    /// (the element's name, or its '&lt;' one before it), a root by its x:Class: of several, the one chosen or inside it, else
+    /// the first.</summary>
+    protected override XamlValues MadeAt(XamlRead read)
+    {
+        string name = Path.GetFileName(read.File);
+        HashSet<string> classes = [.. read.Elements.Select(e => e.Class).OfType<string>()];
+        List<(DependencyObject Made, SourcePlace? Place)> all = [];
+        Queue<DependencyObject> next = new(TopLevels());
+        HashSet<DependencyObject> seen = [];
+        while (next.TryDequeue(out DependencyObject? at))
+        {
+            if (!seen.Add(at))
+            {
+                continue;
+            }
+            SourcePlace? place = Sources.Place(at);
+            all.Add((at, place is not null && string.Equals(Path.GetFileName(place.File), name, StringComparison.OrdinalIgnoreCase) ? place : null));
+            int count = at is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetChildrenCount(at) : 0;
+            for (int i = 0; i < count; i++)
+            {
+                next.Enqueue(VisualTreeHelper.GetChild(at, i));
+            }
+        }
+        DependencyObject? chosen = Find(read.Chosen);
+        List<ElementValues> elements = [];
+        foreach (XamlSpot spot in read.Elements)
+        {
+            List<DependencyObject> instances = [.. all.Where(a => a.Place is { } p && p.Line == spot.Line && (p.Column == spot.Column || p.Column == spot.Column - 1)
+                || (spot.Class is { } root && classes.Contains(root) && a.Made.GetType().FullName == root)).Select(a => a.Made)];
+            if (instances.Count > 0)
+            {
+                DependencyObject instance = instances.FirstOrDefault(i => chosen is not null && (i == chosen || (chosen is Visual c && i is Visual v && c.IsDescendantOf(v)))) ?? instances[0];
+                elements.Add(new ElementValues(spot.Line, spot.Column, Shown.Called(instance), IdOf(instance), instances.Count, []));
+            }
+        }
+        return new XamlValues(elements, null);
+    }
+
     protected override List<AppWindow> SetOverlays(Request request) => throw new Refusal("Renderer debug overlays are Avalonia's: a WPF app has none");
 
     protected override XamlReloaded Reload(XamlChange change) => reloads.Reload(change);

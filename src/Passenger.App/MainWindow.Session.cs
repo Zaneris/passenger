@@ -473,6 +473,7 @@ public partial class MainWindow
         agentSocket?.Describe(next.Folder);
         OnCSharpChanged(next.CSharp);
         BindPreviews(next);
+        BindXamlWorkspace(next);
         BindTargetFrameworks(next);
     }
 

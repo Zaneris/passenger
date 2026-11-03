@@ -100,6 +100,8 @@ internal sealed class Inspector : Inspecting<Visual>
         return answer;
     }
 
+    protected override XamlValues MadeAt(XamlRead read) => BindingReader.Made(this, read);
+
     /// <summary>The overlays asked for set on every window, those opened later too, and the windows as they are now.</summary>
     protected override List<AppWindow> SetOverlays(Request request)
     {

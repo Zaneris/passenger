@@ -202,6 +202,47 @@ public sealed class LiveTreeTests : IClassFixture<RestoredFolders>, IDisposable
             elements.Select(e => e.Name == name ? e : Find(e.Children, name)).FirstOrDefault(e => e is not null);
     }
 
+    /// <summary>The XAML workspace, off, leaves MainWindow.axaml alone beside the debugged app's tree, its caret choosing
+    /// nothing there; turned on, the file opens beside its preview and the tree, and one element is chosen across them: the
+    /// caret rested in Save's tag chooses Save in the tree, Greeting chosen in the tree puts the caret on its tag (the tree
+    /// keeping Greeting), and the caret on the window's own tag chooses the window, which Avalonia knows by its x:Class.</summary>
+    [AvaloniaFact]
+    public void In_the_xaml_workspace_the_caret_and_the_live_tree_choose_the_same_element_each_way()
+    {
+        string xaml = Path.Combine(folder, "MainWindow.axaml");
+        MainWindow window = Debugged();
+        LiveTreeView tree = window.LiveTree;
+        Assert.Null(window.OpenFile(xaml));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<Button x:Name=\"Sa");
+        Ui.Settle();
+        Assert.True(tree.Details is null && window.PreviewPaneOf(window.EditorArea.Active!) is null,
+            $"With the XAML workspace off, the caret in Save's tag chose {tree.Details?.Name} in the tree, or the file opened beside a preview");
+
+        window.ApplySettings(window.Settings with { XamlWorkspace = true });
+        Ui.WaitFor(() => window.PreviewPaneOf(window.EditorArea.Active!) is { } pane && window.EditorArea.Groups.Any(g => g.Side == pane),
+            "MainWindow.axaml beside its preview once the XAML workspace is on");
+        Assert.True(window.DockHost.IsShown(ToolWindowIds.LiveTree), "The Live Visual Tree is not beside the XAML workspace's file and preview");
+
+        Ui.PlaceAfter(editor, "<Button x:Name=\"Sav");
+        Ui.WaitFor(() => tree.Details?.Name == "Save" && tree.Tree.SelectedItem is LiveTreeRow { Element.Name: "Save" },
+            () => $"Save chosen in the tree as the caret rested in its tag, where the tree chose {tree.Details?.Name}");
+
+        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Greeting");
+        int greeting = Line("MainWindow.axaml", "x:Name=\"Greeting\"") - 1;
+        Ui.WaitFor(() => editor.CaretPosition.Line == greeting, () => $"the caret on Greeting's tag, line {greeting + 1}, not {editor.CaretPosition.Line + 1}");
+        Assert.StartsWith("TextBlock", File.ReadAllLines(xaml)[greeting][editor.CaretPosition.Column..], StringComparison.Ordinal);
+        Assert.Equal(xaml, window.EditorArea.Active?.Path);
+        Ui.Settle();
+        Assert.True(tree.Details?.Name == "Greeting", $"The caret put on Greeting's tag chose {tree.Details?.Name} in the tree after it");
+
+        Ui.PlaceAfter(editor, "<Wind");
+        Ui.WaitFor(() => tree.Details?.Type == "MainWindow", () => $"the window chosen in the tree as the caret rested in its own tag, not {tree.Details?.Type}");
+
+        Stop(window);
+        window.Close();
+    }
+
     /// <summary>The folder opened in a window and its app launched by Debug, its tree shown.</summary>
     private MainWindow Debugged()
     {

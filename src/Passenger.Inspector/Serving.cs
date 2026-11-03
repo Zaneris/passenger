@@ -131,6 +131,7 @@ internal abstract class Inspecting<T>(Connection connection) where T : class
                 Wire.Input => new Reply { Id = request.Id, Done = Do(request.Input ?? throw new Refusal("No input was given")) },
                 Wire.Watch => Done(request, () => Watch(request)),
                 Wire.Values => new Reply { Id = request.Id, Values = ValuesOf(request) },
+                Wire.Made => new Reply { Id = request.Id, Values = MadeAt(request.Xaml ?? throw new Refusal("No XAML file was named")) },
                 Wire.Overlays => new Reply { Id = request.Id, Windows = SetOverlays(request) },
                 Wire.Reload => new Reply { Id = request.Id, Reloaded = Reload(request.Change ?? throw new Refusal("No XAML file was given")) },
                 _ => new Reply { Id = request.Id, Error = $"The inspector does not know '{request.Method}'" },
@@ -184,6 +185,10 @@ internal abstract class Inspecting<T>(Connection connection) where T : class
 
     /// <summary>A XAML file's bindings with their values; refused by a framework that reads none.</summary>
     protected abstract XamlValues ValuesOf(Request request);
+
+    /// <summary>The element made at each place of a XAML file asked of, by its id, no bindings read: of several made there,
+    /// the one nearest the element chosen, else the first; a place the app made nothing at is left out.</summary>
+    protected abstract XamlValues MadeAt(XamlRead read);
 
     /// <summary>The renderer debug overlays asked for set, and the windows as they are then; refused by a framework with none.</summary>
     protected abstract List<AppWindow> SetOverlays(Request request);

@@ -79,35 +79,11 @@ internal static class BindingReader
     public static XamlValues Read(Inspector? inspector, XamlRead read, List<object?>? slots, List<(AvaloniaObject, AvaloniaProperty)>? watched)
     {
         Visual? chosen = inspector?.Find(read.Chosen);
-        HashSet<string> classes = [.. read.Elements.Select(e => e.Class).OfType<string>()];
-        string name = Path.GetFileName(read.File);
-        Dictionary<string, Dictionary<(int, int), List<AvaloniaObject>>> byFile = new(StringComparer.Ordinal);
-        Dictionary<string, List<AvaloniaObject>> byClass = new(StringComparer.Ordinal);
-        foreach (AvaloniaObject made in Everything())
-        {
-            if (classes.Count > 0 && made.GetType().FullName is { } type && classes.Contains(type))
-            {
-                (byClass.TryGetValue(type, out List<AvaloniaObject>? roots) ? roots : byClass[type] = []).Add(made);
-            }
-            if (Details.Place(made) is { } place && string.Equals(Path.GetFileName(place.File), name, StringComparison.OrdinalIgnoreCase))
-            {
-                Dictionary<(int, int), List<AvaloniaObject>> places = byFile.TryGetValue(place.File, out Dictionary<(int, int), List<AvaloniaObject>>? known) ? known : byFile[place.File] = [];
-                (places.TryGetValue((place.Line, place.Column), out List<AvaloniaObject>? there) ? there : places[(place.Line, place.Column)] = []).Add(made);
-            }
-        }
-        // The build's path may name the file through another link than the IDE's (/var, /private/var): the one ending most alike, then most alike in case.
-        Dictionary<(int, int), List<AvaloniaObject>> inFile = byFile.Count == 0 ? []
-            : byFile.MaxBy(p => (SharedTail(p.Key, read.File, StringComparison.OrdinalIgnoreCase), SharedTail(p.Key, read.File, StringComparison.Ordinal))).Value;
+        Func<XamlSpot, List<AvaloniaObject>> at = Placed(read);
         List<ElementValues> elements = [];
         foreach (XamlSpot spot in read.Elements)
         {
-            // Where the element's name starts, or its '<' one before it.
-            List<AvaloniaObject> instances = inFile.TryGetValue((spot.Line, spot.Column), out List<AvaloniaObject>? at)
-                || inFile.TryGetValue((spot.Line, spot.Column - 1), out at) ? [.. at] : [];
-            if (spot.Class is { } root && byClass.TryGetValue(root, out List<AvaloniaObject>? roots))
-            {
-                instances.AddRange(roots.Where(r => !instances.Contains(r)));
-            }
+            List<AvaloniaObject> instances = at(spot);
             if (instances.Count == 0)
             {
                 continue;
@@ -127,6 +103,60 @@ internal static class BindingReader
                 instances.Count, bindings));
         }
         return new XamlValues(elements, null);
+    }
+
+    /// <summary>The element made at each place asked of, by its id, no bindings read: of several, the one nearest the element
+    /// chosen, else the first.</summary>
+    public static XamlValues Made(Inspector inspector, XamlRead read)
+    {
+        Visual? chosen = inspector.Find(read.Chosen);
+        Func<XamlSpot, List<AvaloniaObject>> at = Placed(read);
+        List<ElementValues> elements = [];
+        foreach (XamlSpot spot in read.Elements)
+        {
+            List<AvaloniaObject> instances = [.. at(spot).Where(i => i is Visual)];
+            if (instances.Count > 0)
+            {
+                AvaloniaObject instance = (instances.Count == 1 ? null : Nearest(instances, chosen)) ?? instances[0];
+                elements.Add(new ElementValues(spot.Line, spot.Column, Called(instance), inspector.IdOf((Visual)instance), instances.Count, []));
+            }
+        }
+        return new XamlValues(elements, null);
+    }
+
+    /// <summary>What the app made at each place of a XAML file, found among the objects of its windows by the place Avalonia's
+    /// XAML compiler recorded (where the element's name starts, or its '&lt;' one before it), a root by its x:Class.</summary>
+    private static Func<XamlSpot, List<AvaloniaObject>> Placed(XamlRead read)
+    {
+        HashSet<string> classes = [.. read.Elements.Select(e => e.Class).OfType<string>()];
+        string name = Path.GetFileName(read.File);
+        Dictionary<string, Dictionary<(int, int), List<AvaloniaObject>>> byFile = new(StringComparer.Ordinal);
+        Dictionary<string, List<AvaloniaObject>> byClass = new(StringComparer.Ordinal);
+        foreach (AvaloniaObject made in Everything())
+        {
+            if (classes.Count > 0 && made.GetType().FullName is { } type && classes.Contains(type))
+            {
+                (byClass.TryGetValue(type, out List<AvaloniaObject>? roots) ? roots : byClass[type] = []).Add(made);
+            }
+            if (Details.Place(made) is { } place && string.Equals(Path.GetFileName(place.File), name, StringComparison.OrdinalIgnoreCase))
+            {
+                Dictionary<(int, int), List<AvaloniaObject>> places = byFile.TryGetValue(place.File, out Dictionary<(int, int), List<AvaloniaObject>>? known) ? known : byFile[place.File] = [];
+                (places.TryGetValue((place.Line, place.Column), out List<AvaloniaObject>? there) ? there : places[(place.Line, place.Column)] = []).Add(made);
+            }
+        }
+        // The build's path may name the file through another link than the IDE's (/var, /private/var): the one ending most alike, then most alike in case.
+        Dictionary<(int, int), List<AvaloniaObject>> inFile = byFile.Count == 0 ? []
+            : byFile.MaxBy(p => (SharedTail(p.Key, read.File, StringComparison.OrdinalIgnoreCase), SharedTail(p.Key, read.File, StringComparison.Ordinal))).Value;
+        return spot =>
+        {
+            List<AvaloniaObject> instances = inFile.TryGetValue((spot.Line, spot.Column), out List<AvaloniaObject>? at)
+                || inFile.TryGetValue((spot.Line, spot.Column - 1), out at) ? [.. at] : [];
+            if (spot.Class is { } root && byClass.TryGetValue(root, out List<AvaloniaObject>? roots))
+            {
+                instances.AddRange(roots.Where(r => !instances.Contains(r)));
+            }
+            return instances;
+        };
     }
 
     /// <summary>Every object of the app's windows and popups: their visual trees, which hold what templates made, and their

@@ -321,6 +321,11 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     public async Task<XamlValues> ValuesAsync(XamlRead read) =>
         (await AskAsync(new Request(0, Wire.Values) { Xaml = read })).Values ?? throw new LiveAppException($"{Name} read no bindings");
 
+    /// <summary>The elements the app made at places of a XAML file, by the ids the tree knows them by, no bindings read; of
+    /// several made at one, the one nearest the element chosen.</summary>
+    public async Task<XamlValues> MadeAsync(XamlRead read) =>
+        (await AskAsync(new Request(0, Wire.Made) { Xaml = read })).Values ?? throw new LiveAppException($"{Name} did not say what it made there");
+
     /// <summary>A XAML file's text applied to what the app made from it (XAML Hot Reload), answered with what it came to.</summary>
     public async Task<XamlReloaded> ReloadAsync(XamlChange change) =>
         (await AskAsync(new Request(0, Wire.Reload) { Change = change }, limit: ReloadLimit)).Reloaded ?? throw new LiveAppException($"{Name} did not say what the XAML came to");

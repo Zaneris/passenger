@@ -102,6 +102,7 @@ public partial class MainWindow
         {
             Explorer.Reveal(shown);
         }
+        FollowXamlWorkspace(before);
         assist.Templates = CSharp.TemplateSet.Of(next);
         assist.XamlFormat = next.XamlFormat;
         assist.GDScriptFormat = (next.GDScriptFormat, next.GDScriptFormatOnSave);

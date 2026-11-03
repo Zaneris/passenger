@@ -45,6 +45,7 @@ public static class Wire
     public const string Values = "values";
     public const string Overlays = "overlays";
     public const string Reload = "reload";
+    public const string Made = "made";
 
     /// <summary>Avalonia's renderer debug overlays, by the names of its RendererDebugOverlays flags, in its order.</summary>
     public static readonly IReadOnlyList<string> OverlayNames = ["Fps", "DirtyRects", "LayoutTimeGraph", "RenderTimeGraph"];
@@ -77,8 +78,8 @@ public static class Wire
 
 /// <summary>What Passenger asks: the windows' tree, an element's details, Select Element on or off, an element outlined in
 /// the app (none to take the outline away), the windows alone, a picture of a window (or of the element's part of it),
-/// input to the app, a property breakpoint's watch on an element's property (On false to end it), or a XAML file's text
-/// applied.</summary>
+/// input to the app, a property breakpoint's watch on an element's property (On false to end it), a XAML file's text
+/// applied, or the elements the app made at places of a XAML file (Made, with <see cref="Xaml"/>).</summary>
 public sealed record Request(int Id, string Method, long? Element = null, bool? On = null)
 {
     /// <summary>With Watch: the property, by the name the element's details list it under (Owner.Name when attached).</summary>
@@ -105,7 +106,8 @@ public sealed record Request(int Id, string Method, long? Element = null, bool? 
 
     public InputAction? Input { get; init; }
 
-    /// <summary>With Values: the XAML file and its elements whose bindings to read.</summary>
+    /// <summary>With Values: the XAML file and its elements whose bindings to read; with Made, the elements to find, the one
+    /// chosen telling apart the instances of one made more than once.</summary>
     public XamlRead? Xaml { get; init; }
 
     /// <summary>With Overlays: the renderer debug overlays every window of the app shows from now (<see cref="Wire.OverlayNames"/>),

@@ -295,6 +295,53 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
     private TextPosition Misspelt => new(Line(Xaml, "{Binding Nmae}") - 1, File.ReadAllLines(Xaml)[Line(Xaml, "{Binding Nmae}") - 1].IndexOf("Nmae", StringComparison.Ordinal));
 
     /// <summary>The folder opened in a window.</summary>
+    /// <summary>In the XAML workspace a WPF element is one choice across the editor, the preview and the debugged app's tree:
+    /// Delete clicked in the preview chosen in the tree, Greeting chosen in the tree puts the caret on its tag and is outlined
+    /// in the preview, the caret rested in the name box's tag chooses it in the tree and outlines it, and the caption chosen
+    /// shows its binding's failure among its own.</summary>
+    [AvaloniaFact]
+    public void In_the_xaml_workspace_a_wpf_element_chosen_in_the_preview_the_tree_or_at_the_caret_is_chosen_in_all_three()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        MainWindow window = Debugged();
+        LiveTreeView tree = window.LiveTree;
+        window.ApplySettings(window.Settings with { XamlWorkspace = true });
+        Assert.Null(window.OpenFile(Xaml));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => window.PreviewOf(document) is { Elements.Count: > 0 }, () => $"the preview beside MainWindow.xaml to draw its elements ({window.PreviewOf(document)?.Status})",
+            TimeSpan.FromMinutes(2));
+        Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document)!;
+        Passenger.App.Xaml.XamlPreviewPane pane = window.PreviewPaneOf(document)!;
+        Passenger.App.Xaml.PreviewElement ElementOf(string tag)
+        {
+            int at = editor.Document.Snapshot.ToString().IndexOf(tag, StringComparison.Ordinal);
+            return preview.Elements.FirstOrDefault(e => e.Tag.Start == at) ?? throw new InvalidOperationException($"The preview drew no element for {tag}");
+        }
+
+        Rect delete = ElementOf("<Button x:Name=\"Delete\"").Box;
+        Point at = pane.Frame.TranslatePoint(delete.Center, window) ?? throw new InvalidOperationException("The preview's frame is not on the window");
+        window.MouseDown(at, Avalonia.Input.MouseButton.Left);
+        window.MouseUp(at, Avalonia.Input.MouseButton.Left);
+        Ui.WaitFor(() => tree.Details?.Name == "Delete", () => $"Delete chosen in the tree as it was clicked in the preview, where the tree chose {tree.Details?.Name}");
+
+        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Greeting");
+        int greeting = Line(Xaml, "x:Name=\"Greeting\"") - 1;
+        Ui.WaitFor(() => editor.CaretPosition.Line == greeting, () => $"the caret on Greeting's tag, line {greeting + 1}, not {editor.CaretPosition.Line + 1}");
+        Ui.WaitFor(() => pane.Outlined == ElementOf("<TextBlock x:Name=\"Greeting\"").Box, "Greeting outlined in the preview as it was chosen in the tree");
+
+        Ui.PlaceAfter(editor, "<TextBox x:Name=\"Name");
+        Ui.WaitFor(() => tree.Details?.Name == "NameBox", () => $"the name box chosen in the tree as the caret rested in its tag, not {tree.Details?.Name}");
+        Assert.Equal(ElementOf("<TextBox x:Name=\"NameBox\"").Box, pane.Outlined);
+
+        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Caption");
+        Ui.WaitFor(() => tree.FailuresShown.Any(f => f.Contains("Nmae", StringComparison.Ordinal)),
+            () => $"the caption's binding failure among its own, where it shows {string.Join("; ", tree.FailuresShown)}");
+
+        Stop(window);
+        window.Close();
+    }
+
     private MainWindow Opened() => Ui.OpenFolder(folder, 1400, 900);
 
     /// <summary>The folder opened in a window and its app launched by Debug, its tree shown.</summary>

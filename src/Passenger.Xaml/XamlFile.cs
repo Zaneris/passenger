@@ -884,4 +884,16 @@ public sealed class XamlFile
 
     /// <summary>The root's <c>x:Class</c> attribute, its prefix whatever the file declares XAML's language with.</summary>
     public static XmlAttribute? ClassAttribute(XmlTree tree) => tree.Root is { } root ? Directive(root, "Class") : null;
+
+    /// <summary>The element that makes the object an offset is in: the innermost element there, a property element's owner,
+    /// and on a tag's '&lt;' (where a click in a preview puts the caret) that tag's own; null outside every element.</summary>
+    public static XmlElement? ObjectAt(XmlTree tree, int offset)
+    {
+        XmlElement? element = tree.ElementAt(offset >= 0 && offset < tree.Text.Length && tree.Text[offset] == '<' ? offset + 1 : offset);
+        while (element is { IsPropertyElement: true })
+        {
+            element = element.Parent;
+        }
+        return element;
+    }
 }
