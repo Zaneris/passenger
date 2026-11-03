@@ -1,0 +1,175 @@
+using System.Diagnostics;
+using System.Text.Json;
+using Passenger.Text;
+using Passenger.Workspace.GDScript;
+
+namespace Passenger.GodotSweep;
+
+/// <summary>Parses every .gd under a folder with Passenger's GDScript parser and writes, as JSON on standard output, each
+/// file's errors (lines and columns from 1, columns in UTF-16 units as the editor counts them), each of a few seeded edits'
+/// parse compared with a whole parse of the edited text, and on the largest script how long a whole parse and a key's
+/// parse take, what each allocates and what a tree holds.</summary>
+public static class Program
+{
+    private static readonly HashSet<string> Skipped = new(StringComparer.Ordinal) { ".godot", ".git", ".import", "node_modules" };
+
+    public static int Main(string[] args)
+    {
+        if (args.Length != 1 || !Directory.Exists(args[0]))
+        {
+            Console.Error.WriteLine("Passenger.GodotSweep: takes one argument, a folder whose .gd files to parse");
+            return 1;
+        }
+        List<string> scripts = [];
+        Walk(Path.GetFullPath(args[0]), scripts);
+        List<object> files = [];
+        List<object> mismatches = [];
+        Stopwatch total = new();
+        (string Path, string Text)? largest = null;
+        foreach (string path in scripts)
+        {
+            string text = File.ReadAllText(path);
+            total.Start();
+            GDScriptTree tree = GDScriptTree.Parse(text);
+            total.Stop();
+            TextSnapshot snapshot = TextSnapshot.From(text);
+            files.Add(new
+            {
+                path,
+                errors = tree.Errors.Select(e => snapshot.GetPosition(Math.Min(e.Start, text.Length)) is var at
+                    ? new { line = at.Line + 1, column = at.Column + 1, message = e.Message } : null),
+            });
+            mismatches.AddRange(Edits(path, text, tree));
+            if (largest is null || text.Length > largest.Value.Text.Length)
+            {
+                largest = (path, text);
+            }
+        }
+        object? speed = largest is { } big ? Speed(big.Path, big.Text) : null;
+        Console.WriteLine(JsonSerializer.Serialize(new { files, totalMilliseconds = Math.Round(total.Elapsed.TotalMilliseconds, 1), editsMismatched = mismatches, largest = speed }));
+        return 0;
+    }
+
+    private static void Walk(string folder, List<string> into)
+    {
+        foreach (string file in Directory.EnumerateFiles(folder, "*.gd").Order(StringComparer.Ordinal))
+        {
+            into.Add(file);
+        }
+        foreach (string sub in Directory.EnumerateDirectories(folder).Order(StringComparer.Ordinal))
+        {
+            if (!Skipped.Contains(Path.GetFileName(sub)))
+            {
+                Walk(sub, into);
+            }
+        }
+    }
+
+    /// <summary>A few edits a person makes, each at a place seeded by the file's length: a letter typed, a character
+    /// deleted, a line broken and indented; each edit's parse is compared with a whole parse of the text it makes.</summary>
+    private static IEnumerable<object> Edits(string path, string text, GDScriptTree tree)
+    {
+        if (text.Length < 2)
+        {
+            yield break;
+        }
+        Random random = new(text.Length);
+        for (int i = 0; i < 6; i++)
+        {
+            int at = random.Next(text.Length);
+            TextEdit edit = (i % 3) switch
+            {
+                0 => new TextEdit(at, 0, "a"),
+                1 => new TextEdit(at, 1, string.Empty),
+                _ => new TextEdit(at, 0, "\n\t"),
+            };
+            string edited = string.Concat(text.AsSpan(0, edit.Start), edit.Text, text.AsSpan(edit.End));
+            GDScriptTree incremental = tree.Reparse(edited, edit);
+            GDScriptTree whole = GDScriptTree.Parse(edited);
+            if (Shape(incremental) != Shape(whole))
+            {
+                yield return new { path, edit = new { edit.Start, edit.Length, edit.Text }, incremental = Shape(incremental), whole = Shape(whole) };
+            }
+        }
+    }
+
+    /// <summary>What a tree says, to compare two: each member's kind, name and place, and each error.</summary>
+    private static string Shape(GDScriptTree tree) =>
+        string.Join("\n", tree.Members.Select(m => $"{m.Node.GetType().Name} {Name(m.Node)} {m.Start}-{m.End}").Concat(tree.Errors.Select(e => $"! {e.Start}-{e.End} {e.Message}")));
+
+    private static string? Name(GDScriptNode node) => node switch
+    {
+        GDScriptFunction f => f.Identifier?.Name,
+        GDScriptVariable v => v.Identifier?.Name,
+        GDScriptConstant c => c.Identifier?.Name,
+        GDScriptSignal s => s.Identifier?.Name,
+        GDScriptEnum e => e.Identifier?.Name,
+        GDScriptClass c => c.Identifier?.Name,
+        GDScriptAnnotation a => a.Name,
+        _ => null,
+    };
+
+    /// <summary>On one script: a whole parse's time and allocation (the median of runs), a key typed in its middle parsed
+    /// as an edit (time, allocation, how many of its runs it parsed again), and the bytes a tree holds.</summary>
+    private static object Speed(string path, string text)
+    {
+        GDScriptTree tree = GDScriptTree.Parse(text);
+        for (int i = 0; i < 5; i++)
+        {
+            tree = GDScriptTree.Parse(text);
+        }
+        List<double> wholes = [];
+        long wholeBytes = 0;
+        for (int i = 0; i < 21; i++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            long began = Stopwatch.GetTimestamp();
+            tree = GDScriptTree.Parse(text);
+            wholes.Add(Stopwatch.GetElapsedTime(began).TotalMilliseconds);
+            wholeBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+        int middle = text.IndexOf('\n', text.Length / 2) is int line and >= 0 ? line : text.Length / 2;
+        TextEdit type = new(middle, 0, "a");
+        TextEdit erase = new(middle, 1, string.Empty);
+        string typed = string.Concat(text.AsSpan(0, middle), "a", text.AsSpan(middle));
+        List<double> keys = [];
+        long keyBytes = 0;
+        int runsParsed = 0;
+        for (int i = 0; i < 41; i++)
+        {
+            bool typing = i % 2 == 0;
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            long began = Stopwatch.GetTimestamp();
+            GDScriptTree next = tree.Reparse(typing ? typed : text, typing ? type : erase);
+            keys.Add(Stopwatch.GetElapsedTime(began).TotalMilliseconds);
+            keyBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+            runsParsed = next.RunsParsed;
+            tree = next;
+        }
+        long held = Held(text);
+        return new
+        {
+            path,
+            lines = text.Count(c => c == '\n') + 1,
+            characters = text.Length,
+            runs = tree.Runs,
+            wholeParseMilliseconds = Math.Round(Median(wholes), 3),
+            wholeParseAllocatedBytes = wholeBytes,
+            keyParseMilliseconds = Math.Round(Median(keys), 3),
+            keyParseAllocatedBytes = keyBytes,
+            keyRunsParsed = runsParsed,
+            treeHeldBytes = held,
+        };
+    }
+
+    private static double Median(List<double> values) => values.Order().ElementAt(values.Count / 2);
+
+    private static long Held(string text)
+    {
+        long before = GC.GetTotalMemory(forceFullCollection: true);
+        GDScriptTree tree = GDScriptTree.Parse(text);
+        long after = GC.GetTotalMemory(forceFullCollection: true);
+        GC.KeepAlive(tree);
+        return after - before;
+    }
+}

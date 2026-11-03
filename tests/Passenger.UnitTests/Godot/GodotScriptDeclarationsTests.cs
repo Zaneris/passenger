@@ -92,4 +92,18 @@ public class GodotScriptDeclarationsTests
         Assert.Equal((2, 1), (read.Member(GodotScriptKind.Function, "take")!.Parameters!.Count, read.Member(GodotScriptKind.Function, "take")!.Required));
         Assert.Null(read.Member(GodotScriptKind.Function, "open")!.Parameters);
     }
+
+    /// <summary>The script's members are what Godot's parser reads: a rest parameter keeps its dots, code in a string declares
+    /// nothing, an unnamed enum's values are each a constant, and an emit over several lines is counted.</summary>
+    [Fact]
+    public void Members_are_what_Godots_parser_reads_of_the_script_strings_and_rest_parameters_too()
+    {
+        GodotScriptDeclarations read = GodotScriptDeclarations.Read(
+            "signal moved(x)\nenum { NORTH, SOUTH }\nvar template = \"\"\"\nfunc not_a_member():\n\tpass\n\"\"\"\n\n"
+            + "func call_all(first, ...rest: Array) -> void:\n\tmoved.emit(\n\t\tfirst, rest\n\t)\n");
+        Assert.Equal(["first", "...rest: Array"], read.Member(GodotScriptKind.Function, "call_all")!.Parameters!);
+        Assert.Null(read.Member(GodotScriptKind.Function, "not_a_member"));
+        Assert.NotNull(read.Member(GodotScriptKind.Constant, "SOUTH"));
+        Assert.Null(read.Member(GodotScriptKind.Signal, "moved")!.Parameters);
+    }
 }

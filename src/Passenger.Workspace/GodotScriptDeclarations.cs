@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+using Passenger.Workspace.GDScript;
 
 namespace Passenger.Workspace;
 
@@ -24,11 +24,11 @@ public sealed record GodotScriptDeclared(GodotScriptKind Kind, string Name, int 
     public int Required => Parameters?.Count(p => !p.Contains('=', StringComparison.Ordinal)) ?? 0;
 }
 
-/// <summary>A GDScript file's class as its own lines declare it, the way Godot reads a script's top level: what it extends as
-/// written (a quoted path, or a class by its name), its <c>class_name</c>, and its functions (<c>static</c> ones too),
-/// signals, variables (not <c>static</c> ones) and constants (a named <c>enum</c> among them), each on a line that starts
-/// with its word, annotations before it or not; an inner class's, indented, are its own. Pure.</summary>
-public sealed partial class GodotScriptDeclarations
+/// <summary>A GDScript file's class as Godot's parser reads it (<see cref="GDScriptTree"/>): what it extends as written (a
+/// quoted path, or a class by its name), its <c>class_name</c>, and its functions (<c>static</c> ones too), signals,
+/// variables (not <c>static</c> ones) and constants (a named <c>enum</c>, and each value of an unnamed one, among them);
+/// an inner class's are its own. Pure.</summary>
+public sealed class GodotScriptDeclarations
 {
     private GodotScriptDeclarations(string? extends, bool extendsPath, string? className, IReadOnlyList<GodotScriptDeclared> members)
     {
@@ -56,55 +56,47 @@ public sealed partial class GodotScriptDeclarations
     /// <summary>The member of a kind it declares by a name; null for none.</summary>
     public GodotScriptDeclared? Member(GodotScriptKind kind, string name) => Members.FirstOrDefault(m => m.Kind == kind && m.Name == name);
 
-    public static GodotScriptDeclarations Read(string text)
+    public static GodotScriptDeclarations Read(string text) => Read(GDScriptTree.Parse(text));
+
+    /// <summary>The declarations of a parsed script: its members outside inner classes but static variables, a named enum
+    /// a constant and an unnamed one's values each one.</summary>
+    public static GodotScriptDeclarations Read(GDScriptTree tree)
     {
+        string text = tree.Text;
         List<GodotScriptDeclared> members = [];
-        string? extends = null;
-        bool path = false;
-        string? named = null;
-        for (int start = 0; start < text.Length;)
+        foreach (GDScriptMember member in tree.Members)
         {
-            int end = text.IndexOf('\n', start);
-            end = end < 0 ? text.Length : end;
-            // Only a line that starts at its first column, outside the inner classes' indented bodies, is the class's own.
-            if (end > start && text[start] is not (' ' or '\t' or '#' or '\r' or '\n'))
+            switch (member.Node)
             {
-                string line = text[start..end].TrimEnd('\r');
-                if (Declaration().Match(line) is { Success: true } declared)
-                {
-                    Group name = declared.Groups["name"];
-                    GodotScriptKind? kind = declared.Groups["word"].Value switch
+                case GDScriptFunction { Identifier: { } name } function:
+                    members.Add(new GodotScriptDeclared(GodotScriptKind.Function, name.Name, member.Offset + name.Start)
                     {
-                        "func" => GodotScriptKind.Function,
-                        "signal" => GodotScriptKind.Signal,
-                        "var" when !declared.Groups["static"].Success => GodotScriptKind.Variable,
-                        "const" or "enum" => GodotScriptKind.Constant,
-                        _ => null,
-                    };
-                    if (kind is { } of)
+                        Parameters = Written(text, member.Offset, name, function.ParametersEnd, function.Rest is { } rest ? [.. function.Parameters, rest] : function.Parameters),
+                    });
+                    break;
+                case GDScriptSignal { Identifier: { } name } signal:
+                    members.Add(new GodotScriptDeclared(GodotScriptKind.Signal, name.Name, member.Offset + name.Start)
                     {
-                        members.Add(new GodotScriptDeclared(of, name.Value, start + name.Index)
-                        {
-                            Parameters = of is GodotScriptKind.Function or GodotScriptKind.Signal ? ParametersOf(line[(name.Index + name.Length)..]) : null,
-                        });
-                    }
-                }
-                else if (ClassNamed().Match(line) is { Success: true } classed)
-                {
-                    named ??= classed.Groups["name"].Value;
-                    if (classed.Groups["extends"].Success && extends is null)
-                    {
-                        (extends, path) = Extended(classed.Groups["extends"].Value);
-                    }
-                }
-                else if (extends is null && Extended().Match(line) is { Success: true } extending)
-                {
-                    (extends, path) = Extended(extending.Groups["extends"].Value);
-                }
+                        Parameters = signal.HasParentheses ? Written(text, member.Offset, name, signal.ParametersEnd, signal.Parameters) : null,
+                    });
+                    break;
+                case GDScriptVariable { Identifier: { } name, IsStatic: false }:
+                    members.Add(new GodotScriptDeclared(GodotScriptKind.Variable, name.Name, member.Offset + name.Start));
+                    break;
+                case GDScriptConstant { Identifier: { } name }:
+                    members.Add(new GodotScriptDeclared(GodotScriptKind.Constant, name.Name, member.Offset + name.Start));
+                    break;
+                case GDScriptEnum { Identifier: { } name }:
+                    members.Add(new GodotScriptDeclared(GodotScriptKind.Constant, name.Name, member.Offset + name.Start));
+                    break;
+                case GDScriptEnum unnamed:
+                    members.AddRange(unnamed.Values.Select(v => new GodotScriptDeclared(GodotScriptKind.Constant, v.Name.Name, member.Offset + v.Name.Start)));
+                    break;
+                default:
+                    break;
             }
-            start = end + 1;
         }
-        Dictionary<string, HashSet<int>> emitted = Emitted(text);
+        Dictionary<string, HashSet<int>> emitted = Emitted(tree);
         for (int i = 0; i < members.Count; i++)
         {
             if (members[i] is { Kind: GodotScriptKind.Signal, Parameters: { } declared } signal && emitted.TryGetValue(signal.Name, out HashSet<int>? given)
@@ -113,99 +105,58 @@ public sealed partial class GodotScriptDeclarations
                 members[i] = signal with { Parameters = null };
             }
         }
-        return new GodotScriptDeclarations(extends, path, named, members);
+        GDScriptClass head = tree.Class;
+        string? extends = head.ExtendsPath ?? (head.Extends.Count > 0 ? string.Join('.', head.Extends.Select(e => e.Name)) : null);
+        return new GodotScriptDeclarations(extends, head.ExtendsPath is not null, head.Identifier?.Name, members);
     }
 
-    /// <summary>How many arguments the script's own emits of each signal give, by its name: <c>name.emit(…)</c> and
-    /// <c>emit_signal("name", …)</c>, each whose arguments close on its line.</summary>
-    private static Dictionary<string, HashSet<int>> Emitted(string text)
+    /// <summary>Parameters as written, each its own text (a rest parameter's with its <c>...</c>); null where its parentheses
+    /// close on a later line than its name.</summary>
+    private static IReadOnlyList<string>? Written(string text, int offset, GDScriptIdentifier name, int parametersEnd, IReadOnlyList<GDScriptParameter> parameters) =>
+        parametersEnd < 0 || text.AsSpan(offset + name.End, parametersEnd - name.End).Contains('\n') ? null
+            : [.. parameters.Select(p => text[Dotted(text, offset + p.Start)..(offset + p.End)])];
+
+    /// <summary>Where a parameter's text begins: at the <c>...</c> before its name where it is the rest parameter.</summary>
+    private static int Dotted(string text, int start)
+    {
+        int at = start;
+        while (at > 0 && text[at - 1] is ' ' or '\t')
+        {
+            at--;
+        }
+        return at >= 3 && text.AsSpan(at - 3, 3).SequenceEqual("...") ? at - 3 : start;
+    }
+
+    /// <summary>How many arguments the script's own emits of each signal give, by its name: <c>name.emit(…)</c>,
+    /// <c>self.name.emit(…)</c> and <c>emit_signal("name", …)</c>.</summary>
+    private static Dictionary<string, HashSet<int>> Emitted(GDScriptTree tree)
     {
         Dictionary<string, HashSet<int>> emitted = new(StringComparer.Ordinal);
-        foreach (Match emit in Emit().Matches(text))
+        Stack<GDScriptNode> pending = new(tree.Members.Select(m => m.Node));
+        while (pending.TryPop(out GDScriptNode? node))
         {
-            int line = text.IndexOf('\n', emit.Index);
-            if (ParametersOf(text[(emit.Index + emit.Length)..(line < 0 ? text.Length : line)]) is not { } given)
+            if (node is GDScriptCall call && Emit(call) is ({ } signal, int count))
             {
-                continue;
+                (emitted.TryGetValue(signal, out HashSet<int>? counts) ? counts : emitted[signal] = []).Add(count);
             }
-            bool named = emit.Groups["name"].Success;
-            string? signal = named ? emit.Groups["name"].Value
-                : given is [{ } first, ..] && first.TrimStart('&') is { Length: > 1 } quoted && quoted[0] is '"' or '\'' && quoted[^1] == quoted[0] ? quoted[1..^1] : null;
-            if (signal is not null)
+            foreach (GDScriptNode child in node.Children)
             {
-                (emitted.TryGetValue(signal, out HashSet<int>? counts) ? counts : emitted[signal] = []).Add(named ? given.Count : given.Count - 1);
+                pending.Push(child);
             }
         }
         return emitted;
-    }
 
-    /// <summary>The parameters written after a function's or signal's name, each trimmed, split at the commas outside their
-    /// own brackets and strings; null where there are no parentheses or the line leaves them open.</summary>
-    private static IReadOnlyList<string>? ParametersOf(string after)
-    {
-        string rest = after.TrimStart();
-        if (rest.Length == 0 || rest[0] != '(')
+        static (string? Signal, int Count) Emit(GDScriptCall call) => call.Callee switch
         {
-            return null;
-        }
-        List<string> parameters = [];
-        int depth = 0;
-        int begun = 1;
-        char quote = '\0';
-        for (int at = 1; at < rest.Length; at++)
-        {
-            char c = rest[at];
-            if (quote != '\0')
-            {
-                quote = c == quote ? '\0' : quote;
-                at += c == '\\' ? 1 : 0;
-            }
-            else if (c is '"' or '\'')
-            {
-                quote = c;
-            }
-            else if (c is '(' or '[' or '{')
-            {
-                depth++;
-            }
-            else if (c is ')' or ']' or '}' && depth > 0)
-            {
-                depth--;
-            }
-            else if (c == ',' && depth == 0 || c == ')')
-            {
-                if (rest[begun..at].Trim() is { Length: > 0 } parameter)
-                {
-                    parameters.Add(parameter);
-                }
-                if (c == ')')
-                {
-                    return parameters;
-                }
-                begun = at + 1;
-            }
-        }
-        return null;
+            GDScriptSubscript { IsAttribute: true, Attribute.Name: "emit", Base: GDScriptIdentifier named } => (named.Name, call.Arguments.Count),
+            GDScriptSubscript { IsAttribute: true, Attribute.Name: "emit", Base: GDScriptSubscript { IsAttribute: true, Base: GDScriptSelf, Attribute: { } named } }
+                => (named.Name, call.Arguments.Count),
+            GDScriptIdentifier { Name: "emit_signal" } or GDScriptSubscript { IsAttribute: true, Attribute.Name: "emit_signal", Base: GDScriptSelf }
+                when call.Arguments is [GDScriptLiteral { Kind: GDScriptLiteralKind.String or GDScriptLiteralKind.StringName, Value: string name }, ..]
+                => (name, call.Arguments.Count - 1),
+            _ => (null, 0),
+        };
     }
-
-    /// <summary>What an <c>extends</c> names, unquoted, and whether it is a path.</summary>
-    private static (string? Extends, bool Path) Extended(string written)
-    {
-        string extends = written.Trim();
-        return extends.Length > 1 && extends[0] is '"' or '\'' && extends[^1] == extends[0] ? (extends[1..^1], true) : (extends.Length > 0 ? extends : null, false);
-    }
-
-    [GeneratedRegex(@"^(?:@[A-Za-z_]\w*(?:\([^)]*\))?\s+)*(?<static>static\s+)?(?<word>func|signal|var|const|enum)\s+(?<name>[A-Za-z_]\w*)")]
-    private static partial Regex Declaration();
-
-    [GeneratedRegex(@"(?<![\w.])(?:self\.)?(?:(?<name>[A-Za-z_]\w*)\.emit|emit_signal)(?=\s*\()")]
-    private static partial Regex Emit();
-
-    [GeneratedRegex(@"^(?:@[A-Za-z_]\w*(?:\([^)]*\))?\s+)*class_name\s+(?<name>[A-Za-z_]\w*)(?:\s+extends\s+(?<extends>""[^""]*""|'[^']*'|[A-Za-z_][\w.]*))?")]
-    private static partial Regex ClassNamed();
-
-    [GeneratedRegex(@"^(?:@[A-Za-z_]\w*(?:\([^)]*\))?\s+)*extends\s+(?<extends>""[^""]*""|'[^']*'|[A-Za-z_][\w.]*)")]
-    private static partial Regex Extended();
 }
 
 /// <summary>A GDScript's class with the scripts it extends in its project, itself first (<see cref="GodotScenes.ChainOf"/>):
