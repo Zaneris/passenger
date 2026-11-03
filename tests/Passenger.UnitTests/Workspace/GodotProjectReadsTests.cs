@@ -75,8 +75,10 @@ public class GodotProjectReadsTests
         linux["XDG_DATA_HOME"] = "/data";
         Assert.Equal(Path.Combine("/data", "godot", "export_templates", "4.7.2.stable.mono"),
             GodotExports.TemplatesFolder("/opt/godot/godot", "4.7.2.stable.mono", windows: false, macOS: false, linux.GetValueOrDefault, _ => false));
-        Assert.Equal(Path.Combine("/opt/godot", "editor_data", "export_templates", "4.7.2.stable.mono"),
-            GodotExports.TemplatesFolder("/opt/godot/godot", "4.7.2.stable.mono", windows: false, macOS: false, linux.GetValueOrDefault, p => p == Path.Combine("/opt/godot", "._sc_")));
+        // The executable's folder as this system spells it.
+        string beside = Path.GetDirectoryName("/opt/godot/godot")!;
+        Assert.Equal(Path.Combine(beside, "editor_data", "export_templates", "4.7.2.stable.mono"),
+            GodotExports.TemplatesFolder("/opt/godot/godot", "4.7.2.stable.mono", windows: false, macOS: false, linux.GetValueOrDefault, p => p == Path.Combine(beside, "._sc_")));
         Assert.Equal(Path.Combine("/Users/ann", "Library", "Application Support", "Godot", "export_templates", "4.7.2.stable.mono"),
             GodotExports.TemplatesFolder("/Applications/Godot.app/Contents/MacOS/Godot", "4.7.2.stable.mono", windows: false, macOS: true,
                 new Dictionary<string, string> { ["HOME"] = "/Users/ann" }.GetValueOrDefault, _ => false));

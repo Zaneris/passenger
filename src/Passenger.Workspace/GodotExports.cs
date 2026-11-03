@@ -121,7 +121,7 @@ public static class GodotExports
     {
         if (preset.Custom(debug) is { } custom)
         {
-            string path = custom.StartsWith("res://", StringComparison.Ordinal) ? Path.Combine(projectFolder, custom["res://".Length..]) : custom;
+            string path = custom.StartsWith("res://", StringComparison.Ordinal) ? Path.Combine(projectFolder, custom["res://".Length..].Replace('/', Path.DirectorySeparatorChar)) : custom;
             return exists(path) ? [] : [custom];
         }
         return [.. TemplatesOf(preset, debug).Where(t => folder is null || !exists(Path.Combine(folder, t)))];

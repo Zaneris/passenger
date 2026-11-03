@@ -41,7 +41,7 @@ public class GodotUidsTests
     [Fact]
     public void A_projects_scenes_lead_from_a_uid_to_its_file_a_scenes_own_header_first()
     {
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>
+        GodotScenes scenes = new(Path.GetFullPath("/game"), new Dictionary<string, GodotFile>
         {
             ["res://player.tscn"] = GodotFile.Parse("[gd_scene format=3 uid=\"uid://bplayer\"]\n\n[node name=\"Player\" type=\"Node2D\"]\n"),
         }, new Dictionary<string, string> { ["uid://bplayer"] = "res://old_player.tscn", ["uid://cmain"] = "res://Main.cs" }, cached: true);
