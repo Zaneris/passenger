@@ -27,8 +27,16 @@ public sealed class GodotGameFolder : IAsyncLifetime
 
             private bool toggled;
 
+            private bool late;
+
             [Export]
             public string Greeting { get; set; } = "frame";
+
+            public override void _Ready()
+            {
+                string greeted = Greeting;
+                GD.Print($"ready to say {greeted}");
+            }
 
             public override void _Process(double delta)
             {
@@ -37,12 +45,22 @@ public sealed class GodotGameFolder : IAsyncLifetime
                 {
                     GD.Print($"{Greeting} {frames}");
                 }
+                if (!late && Time.GetTicksMsec() > 5000)
+                {
+                    late = true;
+                    Later(Time.GetTicksMsec());
+                }
                 bool pressed = GetNode<Button>("Ui/Toggle").ButtonPressed;
                 if (pressed != toggled)
                 {
                     toggled = pressed;
                     GD.Print($"toggled {(pressed ? "on" : "off")}");
                 }
+            }
+
+            private static void Later(ulong at)
+            {
+                GD.Print($"later, at {at} ms");
             }
         }
 
@@ -312,6 +330,28 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
         CallToolResult paused = await Result(client, McpTools.AppTree);
         Assert.True(paused.IsError == true && Text(paused).Contains("paused in the debugger", StringComparison.Ordinal), $"A paused game's tree was answered with: {Text(paused)}");
         await Call(client, McpTools.Stop);
+    }
+
+    /// <summary>debug_start of a game with a breakpoint in its script answers with the stop there itself, its line and the
+    /// method's local, rather than that the game runs once it has connected: in _Ready, and in a method its frames first
+    /// reach seconds after it starts.</summary>
+    [Fact]
+    public async Task Debug_start_answers_with_the_stop_at_a_breakpoint_in_the_games_ready_or_one_its_frames_reach_later()
+    {
+        await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false, environment: Homes);
+        string[] lines = GodotGameFolder.Script.Split('\n');
+        foreach ((string code, string local) in (ValueTuple<string, string>[])[("GD.Print($\"ready to say", "greeted"), ("GD.Print($\"later, at", "at")])
+        {
+            int line = Array.FindIndex(lines, l => l.Contains(code, StringComparison.Ordinal)) + 1;
+            await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Main.cs", ["line"] = line });
+            JsonElement stop = await Call(client, McpTools.DebugStart, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
+            Assert.True(stop.GetProperty("state").GetString() == "paused" && stop.GetProperty("location").GetString()!.StartsWith($"Main.cs:{line}:", StringComparison.Ordinal),
+                $"debug_start did not answer with the stop at Main.cs:{line}: {stop}");
+            string[] locals = [.. stop.GetProperty("locals").EnumerateArray().Select(l => l.GetProperty("name").GetString()!)];
+            Assert.True(locals.Contains(local), $"The stop at Main.cs:{line} has the locals {string.Join(", ", locals)}, without {local}");
+            await Call(client, McpTools.Stop);
+            await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Main.cs", ["line"] = line, ["remove"] = true });
+        }
     }
 
     /// <summary>A breakpoint an agent sets in a GDScript file stops the game there, its GDScript debugged beside its C#: the

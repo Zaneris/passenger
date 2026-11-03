@@ -1728,8 +1728,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     private static TimeSpan Min(TimeSpan one, TimeSpan other) => one < other ? one : other;
 
     /// <summary>Where a program just launched under the debugger is once it stops or ends, or, for an app with a window,
-    /// which runs until it is closed, once its UI is up, and for a host that serves until it is stopped, once it has
-    /// started, saying so and where it listens: an agent waits for no more than it needs.</summary>
+    /// which runs until it is closed, once its UI is up, for a Godot game once it has connected (a breakpoint set in its
+    /// files waited for as a stop), and for a host that serves until it is stopped, once it has started, saying so and where
+    /// it listens: an agent waits for no more than it needs.</summary>
     private async Task<DebugSnapshot> AfterLaunch(TimeSpan limit, CancellationToken cancel)
     {
         LiveTree.LiveApp? app = Session.LiveApp;
@@ -1738,9 +1739,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         AgentCall.Say($"Debugging: waiting up to {limit.TotalSeconds:0} s for a stop, the program's end, its UI or its host's start");
         Func<bool> going = () => Session.Debug.Session is { State: DebugState.Running or DebugState.Starting };
         HeardServing serving = HeardServing.Debugged(Session.Debug);
+        // A game's frames reach a breakpoint in its files once the debugger binds it, seconds after it connects: waited for as any stop.
+        bool breaks = game is not null && Session.Debug.Breakpoints.All.Any(b => b is { Enabled: true, Suspend: true } && PathNames.IsUnder(b.Path, game.Folder));
         // Looked at every 50 ms: the session the launch makes can come after the wait begins, and the debugger tells of none.
-        await Until(() => !going() || app is { State: not LiveTree.LiveAppState.Waiting } || game is { Monitors: not null } or { State: LiveTree.LiveAppState.Ended }
-            || serving.Serves(), limit, cancel);
+        await Until(() => !going() || app is { State: not LiveTree.LiveAppState.Waiting } || (!breaks && game is { Monitors: not null })
+            || game is { State: LiveTree.LiveAppState.Ended } || serving.Serves(), limit, cancel);
         if (going() && app is { State: LiveTree.LiveAppState.Connected })
         {
             // A stop in the first layout, just after the inspector's hello, is waited for too; looked at every 50 ms.
