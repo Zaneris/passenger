@@ -136,7 +136,7 @@ internal sealed partial class CSharpAssist
         foreach (GodotDefined autoload in defined.Autoloads)
         {
             string path = "/root/" + autoload.Name;
-            string? loaded = defined.AutoloadFile(autoload.Name);
+            string? loaded = read.Scenes.AutoloadFile(autoload.Name);
             items.Add(new CompletionItem { Label = path, Kind = CompletionItemKind.Module, Detail = $"autoload · {loaded}", FilterText = path, SortText = " " + path });
             if (loaded is not null && GodotProject.IsScene(loaded) && read.Scenes.Tree(loaded) is { } tree)
             {

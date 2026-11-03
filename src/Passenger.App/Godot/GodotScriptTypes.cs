@@ -174,7 +174,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
             Dictionary<string, string> autoloads = new(StringComparer.Ordinal);
             foreach (GodotDefined autoload in scenes.Defined.Autoloads)
             {
-                if (scenes.Defined.AutoloadFile(autoload.Name) is { } file && GodotScriptDeclarations.IsScript(file))
+                if (scenes.AutoloadFile(autoload.Name) is { } file && GodotScriptDeclarations.IsScript(file))
                 {
                     autoloads[autoload.Name] = file;
                 }
@@ -193,7 +193,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
             GodotScenes scenes = await index.ScenesAsync(folder);
             foreach (GodotDefined autoload in scenes.Defined.Autoloads)
             {
-                if (scenes.Defined.AutoloadFile(autoload.Name) is { } file && GodotScriptDeclarations.IsScript(file))
+                if (scenes.AutoloadFile(autoload.Name) is { } file && GodotScriptDeclarations.IsScript(file))
                 {
                     autoloads[autoload.Name] = file;
                 }
@@ -362,7 +362,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         Dictionary<string, string> autoloads = new(StringComparer.Ordinal);
         foreach (GodotDefined autoload in scenes.Defined.Autoloads)
         {
-            if (scenes.Defined.AutoloadFile(autoload.Name) is { } file && GodotScriptDeclarations.IsScript(file))
+            if (scenes.AutoloadFile(autoload.Name) is { } file && GodotScriptDeclarations.IsScript(file))
             {
                 autoloads[autoload.Name] = file;
             }

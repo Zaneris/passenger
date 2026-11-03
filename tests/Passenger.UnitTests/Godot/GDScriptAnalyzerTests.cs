@@ -93,6 +93,17 @@ public class GDScriptAnalyzerTests
             "func untyped(a)"], Details(analysis));
     }
 
+    /// <summary>The member types Passenger and Godot's server once told apart: an unnamed enum's value is of Godot's
+    /// anonymous enum, a preload of a constant's path is the script it loads, and _static_init says no return.</summary>
+    [Fact]
+    public void An_unnamed_enums_value_a_preload_of_a_constants_path_and_static_init_are_typed_as_godots_server_types_them()
+    {
+        (GDScriptAnalysis analysis, _) = Analyze("extends Node\n\nenum { PAST, FUTURE }\nconst OTHER_PATH := \"res://other.gd\"\nconst OTHER := preload(OTHER_PATH)\n"
+            + "var type := PAST\n\nstatic func _static_init() -> void:\n\tpass\n", new Dictionary<string, string> { ["res://other.gd"] = "extends Node\n" });
+        Assert.Equal(["const OTHER_PATH: String", "const OTHER: res://other.gd", "var type: main.gd.<anonymous enum>", "func _static_init()"],
+            Details(analysis).Where(d => !d.StartsWith("enum", StringComparison.Ordinal)));
+    }
+
     [Fact]
     public void An_expressions_type_is_read_through_the_engines_classes_built_in_types_and_operators()
     {

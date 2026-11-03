@@ -69,7 +69,7 @@ internal static class GodotChecks
         // An autoload's node, which a GetNode path through /root names, is its script's class or its scene's tree.
         foreach (GodotDefined autoload in scenes.Defined.Autoloads)
         {
-            string? loaded = scenes.Defined.AutoloadFile(autoload.Name);
+            string? loaded = scenes.AutoloadFile(autoload.Name);
             if (IsCSharp(loaded))
             {
                 written.Add(loaded!);
@@ -948,7 +948,7 @@ internal static class GodotChecks
         {
             return null;
         }
-        string? loaded = scenes.Defined.AutoloadFile(name);
+        string? loaded = scenes.AutoloadFile(name);
         if (loaded is null)
         {
             bool aRoot = scenes.Files.Where(f => f.Value.Header?.Tag == "gd_scene").Any(f => scenes.Tree(f.Key)?.Name == name);

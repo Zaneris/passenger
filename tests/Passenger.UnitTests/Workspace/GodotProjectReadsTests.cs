@@ -121,4 +121,16 @@ public class GodotProjectReadsTests
         Assert.Contains("enabled=PackedStringArray(\"res://addons/a/plugin.cfg\", \"res://addons/b/plugin.cfg\")\n\n[rendering]", both, StringComparison.Ordinal);
         Assert.Contains("enabled=PackedStringArray()\n", GodotWrites.WithPlugins(both, []), StringComparison.Ordinal);
     }
+
+    /// <summary>An autoload Godot 4.4 writes by its script's uid is read as that script, and one whose uid no file has as none.</summary>
+    [Fact]
+    public void An_autoload_written_by_uid_is_read_as_the_file_the_uid_names()
+    {
+        string project = "config_version=5\n\n[autoload]\n\nKeychain=\"*uid://dgiia2xg7fsud\"\nGone=\"*uid://nothere\"\nPlain=\"*res://plain.gd\"\n";
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), new Dictionary<string, string> { ["uid://dgiia2xg7fsud"] = "res://addons/keychain/Keychain.gd" },
+            texts: new Dictionary<string, string> { [GodotDefinitions.ProjectRes] = project });
+        Assert.Equal("res://addons/keychain/Keychain.gd", scenes.AutoloadFile("Keychain"));
+        Assert.Null(scenes.AutoloadFile("Gone"));
+        Assert.Equal("res://plain.gd", scenes.AutoloadFile("Plain"));
+    }
 }

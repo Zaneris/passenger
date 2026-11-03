@@ -227,6 +227,11 @@ public sealed class GodotScenes
     /// <summary>The res:// path of the file a uid:// names, a scene's own header first; null for one no file has.</summary>
     public string? ResOfUid(string uid) => named.Value.GetValueOrDefault(uid);
 
+    /// <summary>The res:// path of the file an autoload of project.godot loads, through its uid where it names one (as
+    /// Godot 4.4 writes them); null for none, or a uid no file has.</summary>
+    public string? AutoloadFile(string name) =>
+        Defined.AutoloadFile(name) is { } written && written.StartsWith(GodotUids.Scheme, StringComparison.Ordinal) ? ResOfUid(written) : Defined.AutoloadFile(name);
+
     /// <summary>The Godot project's folder, where its project.godot is: what res:// names.</summary>
     public string Folder { get; }
 

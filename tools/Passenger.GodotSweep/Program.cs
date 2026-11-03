@@ -131,7 +131,7 @@ public static class Program
         {
             inAutoloads = line.StartsWith('[') ? line == "[autoload]" : inAutoloads;
             int equals = line.IndexOf('=', StringComparison.Ordinal);
-            if (inAutoloads && equals > 0 && line[(equals + 1)..].Trim('"', '*') is { } loaded && loaded.EndsWith(".gd", StringComparison.Ordinal))
+            if (inAutoloads && equals > 0 && line[(equals + 1)..].Trim('"', '*') is { } loaded && (loaded.EndsWith(".gd", StringComparison.Ordinal) || loaded.StartsWith("uid://", StringComparison.Ordinal)))
             {
                 autoloads[line[..equals]] = loaded;
             }
@@ -160,6 +160,20 @@ public static class Program
                 else if (!file.EndsWith(".tscn", StringComparison.Ordinal) && System.Text.RegularExpressions.Regex.Match(head, "(?m)^\\[?(?:gd_resource )?type=\"([^\"]+)\"") is { Success: true } typed)
                 {
                     classes[owner] = typed.Groups[1].Value;
+                }
+            }
+        }
+        foreach ((string name, string loaded) in autoloads.ToList())
+        {
+            if (loaded.StartsWith("uid://", StringComparison.Ordinal))
+            {
+                if (uids.GetValueOrDefault(loaded) is { } file && file.EndsWith(".gd", StringComparison.Ordinal))
+                {
+                    autoloads[name] = file;
+                }
+                else
+                {
+                    autoloads.Remove(name);
                 }
             }
         }

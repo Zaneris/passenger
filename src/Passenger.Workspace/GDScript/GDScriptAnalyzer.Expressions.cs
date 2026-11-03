@@ -461,7 +461,7 @@ public sealed partial class GDScriptAnalyzer
                 return NodeTyped(get.Path, context);
             case GDScriptPreload preload:
                 Reduce(preload.Path, context);
-                return preload.Path is GDScriptLiteral { Value: string path } ? Preloaded(Absolute(path, context.Analysis.Path)) : GDScriptType.Native("Resource");
+                return ConstantText(preload.Path, context) is { } path ? Preloaded(Absolute(path, context.Analysis.Path)) : GDScriptType.Native("Resource");
             case GDScriptLambda lambda:
                 if (lambda.Function is { } function)
                 {
@@ -473,6 +473,33 @@ public sealed partial class GDScriptAnalyzer
             default:
                 return GDScriptType.Variant.Soft;
         }
+    }
+
+    /// <summary>The text a preload's path is as Godot folds it: a string written, or a constant's name, of the function or
+    /// of the class and the script classes it extends, whose value is one; null for any other.</summary>
+    private string? ConstantText(GDScriptExpression? expression, Context context)
+    {
+        if (expression is GDScriptLiteral { Value: string written })
+        {
+            return written;
+        }
+        if (expression is not GDScriptIdentifier name)
+        {
+            return null;
+        }
+        if (context.Scope?.Find(name.Name) is { } local)
+        {
+            return local.Local?.Node is GDScriptConstant { Initializer: GDScriptLiteral { Value: string held } } ? held : null;
+        }
+        GDScriptType? at = context.Class.Instance;
+        for (int depth = 0; at is { Kind: GDScriptTypeKind.Class } && depth < 64; depth++, at = BaseOf(at))
+        {
+            if (OwnNames(at).TryGetValue(name.Name, out (GDScriptNode Node, int Offset) owned))
+            {
+                return owned.Node is GDScriptConstant { Initializer: GDScriptLiteral { Value: string held } } ? held : null;
+            }
+        }
+        return null;
     }
 
     /// <summary>What a preloaded path gives: a script's class (as the type itself), else the resource's class.</summary>

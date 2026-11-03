@@ -136,7 +136,9 @@ public sealed class GDScriptAnalysis
                     parameters += (parameters.Length > 0 ? ", " : string.Empty) + $"...{rest.Name}: {TypeOf(restParameter)}";
                 }
                 GDScriptType returned = ReturnOf(function);
-                string returns = returned.IsVoid ? " -> void" : returned.Hard && !returned.IsVariant || function.ReturnType is not null ? $" -> {returned}" : string.Empty;
+                // Godot gives _static_init no return type, whatever is written.
+                string returns = name.Name == "_static_init" ? string.Empty
+                    : returned.IsVoid ? " -> void" : returned.Hard && !returned.IsVariant || function.ReturnType is not null ? $" -> {returned}" : string.Empty;
                 return $"func {name.Name}({parameters}){returns}";
             default:
                 return null;

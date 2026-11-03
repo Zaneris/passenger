@@ -255,6 +255,9 @@ public sealed partial class GDScriptAnalyzer
         _ => null,
     } : null;
 
+    /// <summary>Godot's name for an enum written without one, whose values are of it.</summary>
+    private const string AnonymousEnum = "<anonymous enum>";
+
     private static GDScriptType EnumType(GDScriptEnum node, GDScriptType owner, bool meta)
     {
         Dictionary<string, long> values = new(StringComparer.Ordinal);
@@ -273,7 +276,7 @@ public sealed partial class GDScriptAnalyzer
             next = written ?? next;
             values[name.Name] = next++;
         }
-        return new GDScriptType(GDScriptTypeKind.Enum, node.Identifier?.Name ?? string.Empty)
+        return new GDScriptType(GDScriptTypeKind.Enum, node.Identifier?.Name ?? AnonymousEnum)
         {
             Values = values, ValuesPartial = partial, Owner = owner.Name, Script = owner.Script, Meta = meta, Class = owner.Class, Offset = owner.Offset,
         };
@@ -408,7 +411,8 @@ public sealed partial class GDScriptAnalyzer
                 {
                     if (value.Name == name)
                     {
-                        return new GDScriptMemberInfo(name, "const", GDScriptType.Builtin("int"), At(value, GDScriptType.Builtin("int")));
+                        GDScriptType anonymous = EnumType(unnamed, owner, meta: false) with { Hard = true };
+                        return new GDScriptMemberInfo(name, "const", anonymous, At(value, anonymous));
                     }
                 }
                 return null;
