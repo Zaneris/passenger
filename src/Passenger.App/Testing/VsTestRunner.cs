@@ -200,10 +200,28 @@ public sealed class VsTestRunner : ITestRunner
         {
             bool headless = group.Key.Game && PassengerApp.ShowsNoWindow;
             IReadOnlyList<string> arguments = group.Key.Game ? godot?.Arguments ?? [] : [];
-            string settings = await BackgroundWork.Run(() => Settings(environment, log, group.Key.File, arguments, headless), cancel);
-            RunSummary part = await RunWith([.. group], settings, running, outcomes, log, debugger, environment, cancel);
-            summary = summary is null ? part : summary.And(part);
-            if (part.Canceled)
+            // Debugged with Hot Reload, each test assembly's host is started for it and its own hook, one at a time.
+            List<(List<TestCase> Cases, TestHostReload? Reload)> parts = debugger is not null && !group.Key.Game
+                ? [.. group.GroupBy(c => c.Source, StringComparer.Ordinal)
+                    .Select(each => (Cases: each.ToList(), Reload: debugger.Reload(each.Key, environment ?? new Dictionary<string, string>())))]
+                : [(group.ToList(), null)];
+            bool stopped = false;
+            foreach ((List<TestCase> cases, TestHostReload? reload) in parts)
+            {
+                Dictionary<string, string>? given = reload is null ? environment?.ToDictionary() : new(environment ?? new Dictionary<string, string>());
+                foreach ((string name, string value) in reload?.Variables ?? new Dictionary<string, string>())
+                {
+                    given![name] = value;
+                }
+                string settings = await BackgroundWork.Run(() => Settings(given, log, group.Key.File, arguments, headless), cancel);
+                RunSummary part = await RunWith(cases, settings, running, outcomes, log, debugger, environment, cancel, reload);
+                summary = summary is null ? part : summary.And(part);
+                if (stopped = part.Canceled)
+                {
+                    break;
+                }
+            }
+            if (stopped)
             {
                 break;
             }
@@ -213,7 +231,25 @@ public sealed class VsTestRunner : ITestRunner
 
     /// <summary>Runs test cases with these settings (<see cref="RunAsync"/>).</summary>
     private async Task<RunSummary> RunWith(List<TestCase> chosen, string settings, Dictionary<(Guid, string), TestItem> running, Action<IReadOnlyList<TestOutcome>> outcomes,
-        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, CancellationToken cancel)
+        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, CancellationToken cancel, TestHostReload? reload = null)
+    {
+        DebugLauncher? launcher = debugger is null ? null : new DebugLauncher(debugger, environment, reload);
+        try
+        {
+            return await RunWith(chosen, settings, running, outcomes, log, launcher, cancel);
+        }
+        finally
+        {
+            // A hook no attach took (its host never started, or started no debugger) is let go here.
+            if (launcher is { Attached: false } && reload is not null)
+            {
+                reload.Hook.Dispose();
+            }
+        }
+    }
+
+    private async Task<RunSummary> RunWith(List<TestCase> chosen, string settings, Dictionary<(Guid, string), TestItem> running, Action<IReadOnlyList<TestOutcome>> outcomes,
+        Action<string>? log, DebugLauncher? debugger, CancellationToken cancel)
     {
         Run handler = new(running, outcomes, log);
         VsTestConsoleWrapper session = console;
@@ -227,7 +263,7 @@ public sealed class VsTestRunner : ITestRunner
             }
             else
             {
-                session.RunTestsWithCustomTestHost(chosen, settings, new TestPlatformOptions(), handler, new DebugLauncher(debugger, environment));
+                session.RunTestsWithCustomTestHost(chosen, settings, new TestPlatformOptions(), handler, debugger);
             }
         });
         // Not held, off the canceller's thread: the stop is said by the run's own end.
@@ -630,9 +666,15 @@ public sealed class VsTestRunner : ITestRunner
     }
 
     /// <summary>VSTest's way to debug: it hands over the test host it would start, and the IDE starts it under its
-    /// debugger instead, or attaches to the one it started. VSTest waits on its own thread for each answer.</summary>
-    private sealed class DebugLauncher(ITestDebugLauncher debugger, IReadOnlyDictionary<string, string>? environment) : ITestHostLauncher3
+    /// debugger instead, or attaches to the one it started, with Hot Reload and its hook where the host was started for
+    /// them (<paramref name="reload"/>, taken by the first attach). VSTest waits on its own thread for each answer.</summary>
+    private sealed class DebugLauncher(ITestDebugLauncher debugger, IReadOnlyDictionary<string, string>? environment, TestHostReload? reload) : ITestHostLauncher3
     {
+        private int attached;
+
+        /// <summary>Whether an attach took the reload's hook.</summary>
+        public bool Attached => Volatile.Read(ref attached) == 1;
+
         public bool IsDebug => true;
 
         public int LaunchTestHost(TestProcessStartInfo defaultTestHostStartInfo) => LaunchTestHost(defaultTestHostStartInfo, CancellationToken.None);
@@ -659,7 +701,8 @@ public sealed class VsTestRunner : ITestRunner
         public bool AttachDebuggerToProcess(int pid) => AttachDebuggerToProcess(pid, CancellationToken.None);
 
         // VSTest starts a .NET test host itself and waits on this, on its own thread, before it runs a test in it.
-        public bool AttachDebuggerToProcess(int pid, CancellationToken cancellationToken) => Synchronously.Run(() => debugger.AttachAsync(pid));
+        public bool AttachDebuggerToProcess(int pid, CancellationToken cancellationToken) =>
+            Synchronously.Run(() => debugger.AttachAsync(pid, Interlocked.Exchange(ref attached, 1) == 0 ? reload : null));
 
         public bool AttachDebuggerToProcess(AttachDebuggerInfo attachDebuggerInfo, CancellationToken cancellationToken) =>
             AttachDebuggerToProcess(attachDebuggerInfo.ProcessId, cancellationToken);

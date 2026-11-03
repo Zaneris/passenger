@@ -1359,6 +1359,41 @@ public sealed class UnitTestsDebuggingTests : UnitTestsFolders, IClassFixture<Re
         window.Close();
     }
 
+    /// <summary>A test debugged with Hot Reload on: an edit applied while it is paused at a breakpoint reaches the test host
+    /// VSTest started and the debugger attached to, whose update handlers run as it goes on, through Passenger's hook.</summary>
+    [AvaloniaFact]
+    public void A_test_host_debugged_with_hot_reload_runs_its_update_handlers_after_an_edit_applied_at_a_breakpoint()
+    {
+        string ran = Path.Combine(Folder, "handlers.txt");
+        Write("UpdateProbe.cs", "[assembly: System.Reflection.Metadata.MetadataUpdateHandler(typeof(Sums.Tests.UpdateProbe))]\n\nnamespace Sums.Tests;\n\n"
+            + "internal static class UpdateProbe\n{\n" + $"    public static void UpdateApplication(Type[]? types) => File.WriteAllText(@\"{ran}\", \"ran\");\n}}\n");
+        string tests = Write("ReloadTests.cs", "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class ReloadTests\n{\n    [Fact]\n    public void Reloads()\n    {\n"
+            + "        int value = Value();\n        for (int i = 0; i < 300 && !File.Exists(@\"" + ran + "\"); i++)\n        {\n            Thread.Sleep(100);\n        }\n"
+            + "        Assert.True(File.Exists(@\"" + ran + "\"), \"the update handlers never ran\");\n    }\n\n    private static int Value() => 1;\n}\n");
+        MainWindow window = Open(languageServer: true);
+        window.OpenFile(tests);
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(9, 8));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        Ui.Run(window, AppActions.DebugTests);
+        Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames.Count > 0, "the stop in the test", TimeSpan.FromSeconds(120));
+
+        TextSnapshot text = editor.Document.Snapshot;
+        int one = text.ToString().IndexOf("Value() => 1", StringComparison.Ordinal) + "Value() => ".Length;
+        editor.ApplyEdits([new TextEdit(one, 1, "2")]);
+        Ui.Settle();
+        Assert.True(window.Perform(AppActions.ApplyHotReloadChanges), $"Apply Hot Reload Changes could not run on the debugged test host: {window.Status}");
+        Ui.WaitFor(() => window.Debugger.LastApplied is { Result: HotReloadResult.Applied } && window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is null,
+            () => $"the edit applied to the test host; Hot Reload said: {window.Debugger.LastApplied?.Said} ({window.Status})", TimeSpan.FromSeconds(60));
+        Ui.Run(window, AppActions.Resume);
+        Ui.WaitFor(() => !window.Tests.IsBusy, "the run to end", TimeSpan.FromSeconds(60));
+        TestNode reloads = Method(window, "Reloads")!;
+        Assert.True(File.Exists(ran), $"The debugged test host's update handlers never ran after the edit was applied:\n{reloads.Details}");
+        Assert.Equal(TestState.Passed, reloads.State);
+        window.Close();
+    }
+
     /// <summary>Stop Unit Tests ends a debugged run paused at a breakpoint inside its test within seconds, saying it
     /// stopped, its test host ended; and the next run runs.</summary>
     [AvaloniaFact]
@@ -1705,9 +1740,10 @@ public abstract class UnitTestsFolders : IDisposable
 
     /// <summary>A window on the test's Sums.Tests with its tests' file open, with no C# language server, which finding,
     /// running and debugging tests ask nothing of.</summary>
-    protected MainWindow Open()
+    /// <summary>A window on the folder, the C# language server started only where a test asks it something (Hot Reload).</summary>
+    protected MainWindow Open(bool languageServer = false)
     {
-        MainWindow window = Ui.OpenFolder(Folder, languageServer: false);
+        MainWindow window = Ui.OpenFolder(Folder, languageServer: languageServer);
         window.OpenFile(Source);
         Ui.Settle();
         return window;

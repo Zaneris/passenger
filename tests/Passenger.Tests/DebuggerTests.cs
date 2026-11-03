@@ -2200,7 +2200,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         try
         {
             MainWindow window = Open();
-            Task<bool> attached = window.Tests.AttachDebugger!(host.Id);
+            Task<bool> attached = window.Tests.AttachDebugger!(host.Id, null);
             Assert.False(Ui.Await(attached, "the attach to give up", TimeSpan.FromSeconds(30)), "The IDE told VSTest the debugger had hold of a test host it could not attach to");
             Assert.False(window.Debugger.IsDebugging, "The session went on after its attach failed, saying the tests run");
             Assert.Contains($"Could not debug Tests: Could not attach to process {host.Id}", window.Status, StringComparison.Ordinal);

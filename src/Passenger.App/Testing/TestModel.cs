@@ -210,14 +210,23 @@ public sealed record TestAttachment(string Name, string Path)
 public sealed record TestHostStart(string FileName, IReadOnlyList<string> Arguments, string? WorkingDirectory, IReadOnlyDictionary<string, string> Environment,
     string? Framework = null);
 
+/// <summary>What a debugged test host is started with for Hot Reload: the variables its runtime and Passenger's update
+/// handlers hook take, and the hook, which the attach to it takes.</summary>
+public sealed record TestHostReload(IReadOnlyDictionary<string, string> Variables, Debugging.UpdateHandlerHook Hook);
+
 /// <summary>Debugging for a runner: it hands over the test host it would start, or names the one it started.</summary>
 public interface ITestDebugLauncher
 {
     /// <summary>Starts the test host under the debugger, its process id once it runs.</summary>
     Task<int> LaunchAsync(TestHostStart start);
 
-    /// <summary>Attaches the debugger to a test host the runner started; true once the debugger has hold of it.</summary>
-    Task<bool> AttachAsync(int processId);
+    /// <summary>What the test host a test assembly runs in is started with for Hot Reload, while the debugger has it on;
+    /// null while it is off, or where the assembly's .NET takes no hook.</summary>
+    TestHostReload? Reload(string assembly, IReadOnlyDictionary<string, string> environment);
+
+    /// <summary>Attaches the debugger to a test host the runner started (with Hot Reload and its hook, where it was
+    /// started for them); true once the debugger has hold of it.</summary>
+    Task<bool> AttachAsync(int processId, TestHostReload? reload = null);
 
     /// <summary>Starts a Godot run of a project's tests (GUT's, GoDotTest's) under the debugger as Debug starts its game: its
     /// GDScript under the GDScript debugger, and its C# under .NET's where the game has C# (<paramref name="csharp"/>), the

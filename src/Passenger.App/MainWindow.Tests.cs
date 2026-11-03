@@ -96,7 +96,10 @@ public partial class MainWindow
         HashSet<DebugTab> testHosts = [];
         tests.BeginAspireTest = (project, debug, cancel) => next.Aspire.BeginTestAsync(project, debug, cancel);
         tests.LaunchUnderDebugger = start => LaunchTestHost(next, start, testHosts);
-        tests.AttachDebugger = processId => AttachTestHost(next, processId, testHosts);
+        tests.AttachDebugger = (processId, reload) => AttachTestHost(next, processId, reload, testHosts);
+        // A debugged test host takes Hot Reload, with its update handlers, as Settings has it while debugging.
+        tests.ReloadFor = (assembly, environment) => next.Debug.HotReloadOn()
+            && Debugging.UpdateHandlerHook.ForTestHost(assembly, environment) is ({ } hook, { } variables) ? new Testing.TestHostReload(variables, hook) : null;
         tests.DebugGame = (start, folder, leading, csharp) => DebugTestGame(next, start, folder, leading, csharp, testHosts);
         tests.EndDebugging = () => Task.WhenAll(testHosts.ToArray().Select(EndTestHost));
         async Task EndTestHost(DebugTab tab)
@@ -330,7 +333,7 @@ public partial class MainWindow
     }
 
     /// <summary>A test host a runner started itself, attached to: true once the debugger has hold of it.</summary>
-    private async Task<bool> AttachTestHost(ProjectSession running, int processId, HashSet<DebugTab> testHosts)
+    private async Task<bool> AttachTestHost(ProjectSession running, int processId, Testing.TestHostReload? reload, HashSet<DebugTab> testHosts)
     {
         CheckTestSession(running);
         CancellationToken cancel = running.Tests.RunCancellation;
@@ -338,7 +341,7 @@ public partial class MainWindow
         Debugging.DebugLaunch? attached = null;
         try
         {
-            attached = await running.Debug.AttachAdditionalAsync(processId, "Tests", cancel, tab => testHosts.Add(tab));
+            attached = await running.Debug.AttachAdditionalAsync(processId, "Tests", cancel, tab => testHosts.Add(tab), reload?.Hook);
             CheckTestSession(running);
             cancel.ThrowIfCancellationRequested();
             return attached.ProcessId == processId;

@@ -44,7 +44,50 @@ public sealed class UpdateHandlerHook : IDisposable
     /// a .NET older than the hook's (8), its build without the hook, or no socket of its own to be made.</summary>
     public static (UpdateHandlerHook Hook, Run.LaunchPlan Plan)? For(Run.LaunchPlan plan)
     {
-        if (plan.RunsOn is not { } framework || MajorOf(framework) < 8 || !File.Exists(HookPath))
+        if (plan.RunsOn is not { } framework || Listen(framework, plan.Name, plan.Environment) is not ({ } hook, { } variables))
+        {
+            return null;
+        }
+        Dictionary<string, string> environment = new(plan.Environment);
+        foreach ((string name, string value) in variables)
+        {
+            environment[name] = value;
+        }
+        return (hook, plan with { Environment = environment });
+    }
+
+    /// <summary>The hook for the test host a test assembly runs in, debugged with Hot Reload, and the variables its host is
+    /// started with for both (its runtime's modifiable assemblies, the hook and its socket), over <paramref name="environment"/>;
+    /// null where it cannot be loaded: the assembly on a .NET older than the hook's, as its runtimeconfig.json says.</summary>
+    public static (UpdateHandlerHook Hook, IReadOnlyDictionary<string, string> Variables)? ForTestHost(string assembly, IReadOnlyDictionary<string, string> environment)
+    {
+        if (FrameworkOf(assembly) is not { } framework || Listen(framework, Path.GetFileNameWithoutExtension(assembly), environment) is not ({ } hook, { } variables))
+        {
+            return null;
+        }
+        return (hook, new Dictionary<string, string>(variables) { [RuntimeVariables.ModifiableAssemblies] = "debug" });
+    }
+
+    /// <summary>The framework a built assembly runs on, as the runtimeconfig.json beside it names it; null where none does.</summary>
+    private static string? FrameworkOf(string assembly)
+    {
+        string config = Path.ChangeExtension(assembly, ".runtimeconfig.json");
+        try
+        {
+            using System.Text.Json.JsonDocument read = System.Text.Json.JsonDocument.Parse(File.ReadAllText(config));
+            return JsonMembers.Text(JsonMembers.Object(read.RootElement, "runtimeOptions"), "tfm");
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>A hook listening on a socket of its own for a program on <paramref name="framework"/>, and the variables that
+    /// load it there; null on a .NET older than the hook's (8), with the hook missing, or no socket to be made.</summary>
+    private static (UpdateHandlerHook Hook, IReadOnlyDictionary<string, string> Variables)? Listen(string framework, string name, IReadOnlyDictionary<string, string> environment)
+    {
+        if (MajorOf(framework) < 8 || !File.Exists(HookPath))
         {
             return null;
         }
@@ -62,15 +105,15 @@ public sealed class UpdateHandlerHook : IDisposable
         catch (Exception error) when (error is SocketException or IOException or UnauthorizedAccessException or ArgumentException)
         {
             listener.Dispose();
-            IdeErrors.Write($"Hot Reload could not listen for {plan.Name}'s update handlers at {socket}, so they are not called: {error.Message}");
+            IdeErrors.Write($"Hot Reload could not listen for {name}'s update handlers at {socket}, so they are not called: {error.Message}");
             return null;
         }
-        Dictionary<string, string> environment = new(plan.Environment)
+        Dictionary<string, string> variables = new()
         {
             [Wire.SocketVariable] = socket,
-            [RuntimeVariables.StartupHooks] = StartupHooks.First(plan.Environment, HookPath),
+            [RuntimeVariables.StartupHooks] = StartupHooks.First(environment, HookPath),
         };
-        return (new UpdateHandlerHook(socket, listener), plan with { Environment = environment });
+        return (new UpdateHandlerHook(socket, listener), variables);
     }
 
     /// <summary>The major version of a .NET target framework ("net10.0", "net8.0-windows"), zero for any other.</summary>

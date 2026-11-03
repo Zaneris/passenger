@@ -149,8 +149,13 @@ public sealed class TestController : IAsyncDisposable
     /// (<see cref="ITestDebugLauncher.DebugGameAsync"/>).</summary>
     public Func<TestHostStart, string, int, bool, Task<Task>>? DebugGame { get; set; }
 
-    /// <summary>A test to debug in a test host the runner started itself: the debugger attaches to it, true once it has.</summary>
-    public Func<int, Task<bool>>? AttachDebugger { get; set; }
+    /// <summary>A test to debug in a test host the runner started itself: the debugger attaches to it (with Hot Reload and
+    /// its hook where the host was started for them), true once it has.</summary>
+    public Func<int, TestHostReload?, Task<bool>>? AttachDebugger { get; set; }
+
+    /// <summary>What a debugged test host of a test assembly is started with for Hot Reload while the debugger has it on;
+    /// null while off.</summary>
+    public Func<string, IReadOnlyDictionary<string, string>, TestHostReload?>? ReloadFor { get; set; }
 
     /// <summary>Starts a project-scoped Aspire endpoint before its test host is launched.</summary>
     public Func<ProjectModel, bool, CancellationToken, Task<AspireTestRun?>>? BeginAspireTest { get; set; }
@@ -799,17 +804,26 @@ public sealed class TestController : IAsyncDisposable
                 })
                 : throw new InvalidOperationException("No debugger can start the game's tests");
 
-        public Task<bool> AttachAsync(int processId) =>
+        public TestHostReload? Reload(string assembly, IReadOnlyDictionary<string, string> environment) => owner.ReloadFor?.Invoke(assembly, environment);
+
+        public Task<bool> AttachAsync(int processId, TestHostReload? reload = null) =>
             owner.AttachDebugger is { } attach
                 ? UiThread.InvokeAsync(() =>
                 {
                     if (!IsCurrent)
                     {
+                        reload?.Hook.Dispose();
                         return Task.FromResult(false);
                     }
                     owner.ReleaseWork();
-                    return attach(processId);
+                    return attach(processId, reload);
                 })
-                : Task.FromResult(false);
+                : Unattached(reload);
+
+        private static Task<bool> Unattached(TestHostReload? reload)
+        {
+            reload?.Hook.Dispose();
+            return Task.FromResult(false);
+        }
     }
 }

@@ -847,13 +847,20 @@ public sealed class DebugController : IDisposable
     public Task<DebugLaunch> StartAdditionalAsync(Run.LaunchPlan plan, CancellationToken cancellation = default, Action<DebugTab>? configure = null)
         => OpenAdditionalAsync(plan.Name, tab => StartInTabAsync(plan, tab: tab), null, cancellation, configure);
 
-    /// <summary>Attaches another process in a native tab without replacing a sibling session.</summary>
-    public Task<DebugLaunch> AttachAdditionalAsync(int pid, string name, CancellationToken cancellation = default, Action<DebugTab>? configure = null)
+    /// <summary>Attaches another process in a native tab without replacing a sibling session; one started for Hot Reload with
+    /// Passenger's update handlers hook (<paramref name="reload"/>: a test host VSTest started) takes both while Settings has
+    /// Hot Reload on, the hook let go otherwise.</summary>
+    public Task<DebugLaunch> AttachAdditionalAsync(int pid, string name, CancellationToken cancellation = default, Action<DebugTab>? configure = null,
+        UpdateHandlerHook? reload = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pid);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        // Started for Hot Reload (DOTNET_MODIFIABLE_ASSEMBLIES=debug) with its update handlers' hook, as Settings has it on.
+        bool hotReloadOn = reload is not null && HotReloadOn();
+        UpdateHandlerHook? hook = hotReloadOn ? reload : Unheld(reload);
         return OpenAdditionalAsync(name, tab => OpenAsync((built, log, output, starting) =>
-            DebugSession.AttachAsync(pid, Breakpoints, built, log, output, ColumnOf, starting), name, launched: false, tab: tab), pid, cancellation, configure);
+            DebugSession.AttachAsync(pid, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn), name, launched: false, hotReloadOn: hotReloadOn, hook: hook, tab: tab),
+            pid, cancellation, configure);
     }
 
     private async Task<DebugLaunch> OpenAdditionalAsync(string name, Func<DebugTab, Task<string?>> open, int? attachedProcessId,
