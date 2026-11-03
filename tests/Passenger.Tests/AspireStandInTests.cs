@@ -3207,6 +3207,16 @@ public sealed class StandInAppHost : SharedProject
             using System.IO;
             using System.Threading;
 
+            // Published as the Aspire CLI publishes an AppHost, it writes Docker Compose's file, as its publisher would.
+            if (Array.IndexOf(args, "--operation") is int operation and >= 0 && operation + 1 < args.Length && args[operation + 1] == "publish")
+            {
+                string output = args[Array.IndexOf(args, "--output-path") + 1];
+                Directory.CreateDirectory(output);
+                File.WriteAllText(Path.Combine(output, "docker-compose.yaml"),
+                    "services:\n  api:\n    image: \"standin-api:latest\"\n    environment:\n      ASPNETCORE_URLS: \"http://+:8080\"\n    ports:\n      - \"8080\"\n");
+                Console.WriteLine("Generating Compose output");
+                return;
+            }
             string keyFile = Environment.GetEnvironmentVariable("PASSENGER_STAND_IN_KEY")!;
             File.WriteAllText(keyFile + ".urls", $"{Environment.GetEnvironmentVariable("ASPNETCORE_URLS")}\n{Environment.GetEnvironmentVariable("ASPIRE_ALLOW_UNSECURED_TRANSPORT")}");
             File.WriteAllText(keyFile + ".dashboard", Environment.GetEnvironmentVariable("AppHost__DashboardApiKey"));

@@ -146,6 +146,11 @@ public sealed class StandInHttp : IDisposable, IAsyncDisposable
                 return null;
             }
             read.AddRange(buffer.AsSpan(0, more));
+            // A TLS handshake's record (a client trying HTTPS first, as the SDK's registry client does) is closed at once.
+            if (read is [0x16, 0x03, ..])
+            {
+                return null;
+            }
         }
         string head = Encoding.ASCII.GetString([.. read.Take(headEnd + HeadEnd.Length)]);
         read.RemoveRange(0, headEnd + HeadEnd.Length);

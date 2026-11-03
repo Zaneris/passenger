@@ -100,6 +100,7 @@ public partial class MainWindow
         Navigate = NavigateTo,
         ProfileService = RecordRunServiceAsync,
         ShowFolder = ShowInFileManager,
+        LandFiles = LandFilesAsync,
         InGodotEditor = PlayInGodotEditorAsync,
         StopInGodotEditor = StopInGodotEditorAsync,
         PlaysInGodotEditor = () => PlaysInGodotEditor,

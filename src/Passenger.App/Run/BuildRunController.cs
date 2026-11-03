@@ -53,6 +53,10 @@ public sealed record BuildRunParts(
     /// <summary>Opens a folder in the file manager: where a publish put the app, from the status bar's word that it did.</summary>
     public Action<string>? ShowFolder { get; init; }
 
+    /// <summary>Lands the files a folder holds in another, as the window writes files (one command of Undo named by the
+    /// title, for those in the open folder): the files written, or why not.</summary>
+    public Func<string, string, string, Task<(IReadOnlyList<string> Written, string? Problem)>>? LandFiles { get; init; }
+
     /// <summary>Where the folder's global.json chose an SDK that does not build one of its projects, as the window says it;
     /// null where it did not.</summary>
     public Func<SdkChosen?>? SdkChosen { get; init; }
@@ -478,7 +482,7 @@ public sealed partial class BuildRunController
                 await CheckBeforeAsync(target, windows, checks, stop);
             };
         }
-        if (session.Builder.StartDotnet(arguments, session.Folder!, after: after) is { } problem)
+        if (session.Builder.StartDotnet(arguments, session.Folder!, publishing?.Environment, after: after) is { } problem)
         {
             FinishBuild(new BuildOutcome(BuildStatus.NotStarted, problem));
         }
@@ -643,6 +647,11 @@ public sealed partial class BuildRunController
         int warnings = problems.Count - errors;
         string noun = buildKind switch { BuildKind.Rebuild => "Rebuild", BuildKind.Clean => "Clean", BuildKind.Publish => "Publish", _ => "Build" };
         string warned = warnings > 0 ? $" with {Plural.Of(warnings, "warning")}" : "";
+        if (code == 0 && !session.Builder.WasStopped && publishing is { Kind: PublishKind.AppHost } appHost)
+        {
+            IdeErrors.Observe(LandAsync(appHost, warned));
+            return;
+        }
         BuildOutcome ended = session.Builder.WasStopped ? new BuildOutcome(BuildStatus.Stopped, $"{noun} stopped")
             : code == 0 && publishing is { } publish ? Published(publish, warned)
             : code == 0 ? new BuildOutcome(BuildStatus.Succeeded, $"{noun} succeeded{warned}")

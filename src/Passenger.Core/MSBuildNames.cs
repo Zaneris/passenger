@@ -97,6 +97,9 @@ public static class MSBuildNames
     public const string ContainerPort = "ContainerPort";
     public const string ContainerImageTag = "ContainerImageTag";
 
+    /// <summary>The registry an SDK container's image is pushed to; none for the engine on this machine.</summary>
+    public const string ContainerRegistry = "ContainerRegistry";
+
     // A Docker Compose project's (.dcproj).
     public const string DockerComposeBaseFilePath = "DockerComposeBaseFilePath";
     public const string AdditionalComposeFilePaths = "AdditionalComposeFilePaths";

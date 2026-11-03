@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Passenger.App.Containers;
 using Passenger.Core;
 using Passenger.Host;
 using Passenger.Workspace;
@@ -15,16 +16,19 @@ namespace Passenger.App.Run;
 public sealed record PublishChoice(string Project, string Profile, string File, PublishOptions Options, PublishOptions? Before, IReadOnlyDictionary<string, string> Raw,
     bool MultiTargeted, bool Changed, bool Replacing);
 
-/// <summary>Publish for one project, to a folder: a publish profile of the project's (its .pubxml files, each read by
-/// MSBuild) or a new one, and what it publishes (configuration, framework, deployment, runtime, folder, single-file,
-/// ReadyToRun, trimming), with the dotnet publish command that does the same. Save writes the profile (asking before it
-/// changes a file there); Publish saves it and closes with the publish to run. A profile that publishes elsewhere than
-/// to a folder (Web Deploy, FTP, Azure) is listed and cannot be chosen yet.</summary>
+/// <summary>Publish for one project, to a folder or as its container image: a publish profile of the project's (its .pubxml
+/// files, each read by MSBuild) or a new one, and what it publishes (configuration, framework, deployment, runtime, folder,
+/// single-file, ReadyToRun, trimming; an image's name, tag and registry, the SDK's Container method), with the dotnet
+/// publish command that does the same. Save writes the profile (asking before it changes a file there); Publish saves it
+/// and closes with the publish to run. A profile that publishes elsewhere (Web Deploy, FTP, Azure) is listed and cannot be
+/// chosen yet.</summary>
 public sealed class PublishDialog : IdeWindow
 {
     private const string Portable = "Portable";
     private const string FrameworkDependent = "Framework-dependent";
     private const string SelfContainedMode = "Self-contained";
+    private const string FolderTarget = "Folder";
+    private const string ImageTarget = "Container image";
     private readonly ProjectModel project;
     private readonly string open;
     private readonly bool multi;
@@ -32,6 +36,13 @@ public sealed class PublishDialog : IdeWindow
     private readonly Func<PublishChoice, Task<string?>> save;
 
     private readonly ComboBox profileBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly ComboBox targetBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = new[] { FolderTarget, ImageTarget }, SelectedItem = FolderTarget };
+    private readonly TextBox repositoryBox = new() { Classes = { StyleClasses.Search } };
+    private readonly TextBox tagBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "latest" };
+    private readonly TextBox registryBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "None: the engine on this machine" };
+    private readonly TextBlock imageSaid = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
+    private readonly Control folderRows;
+    private readonly Control imageRows;
     private readonly TextBox nameBox = new() { Classes = { StyleClasses.Search } };
     private readonly Control nameRow;
     private readonly ComboBox configurationBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -83,6 +94,7 @@ public sealed class PublishDialog : IdeWindow
         multi = project.TargetFrameworks.Count > 1;
         string name = System.IO.Path.GetFileNameWithoutExtension(project.Path);
         Title = $"Publish {name}";
+        repositoryBox.PlaceholderText = name.ToLowerInvariant().Replace(' ', '-');
         Width = 600;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
@@ -92,6 +104,12 @@ public sealed class PublishDialog : IdeWindow
         publish.Click += (_, _) => IdeErrors.Observe(PublishAsync());
         saveButton.Click += (_, _) => IdeErrors.Observe(SaveAsync());
         browse.Click += (_, _) => IdeErrors.Observe(BrowseAsync());
+        folderRows = new StackPanel { Children = { Row("Output folder:", BrowseRow.Of(folderBox, browse)), FormRows.Of(null, destination), FormRows.Of(null, copied) } };
+        imageRows = new StackPanel
+        {
+            Spacing = 10,
+            Children = { Row("Image:", repositoryBox), Row("Tag:", tagBox), new StackPanel { Children = { Row("Registry:", registryBox), FormRows.Of(null, imageSaid) } } },
+        };
         Closing += (_, _) => reads?.Cancel();
 
         frameworkBox.ItemsSource = project.TargetFrameworks;
@@ -104,7 +122,7 @@ public sealed class PublishDialog : IdeWindow
             {
                 Row("Profile:", profileBox),
                 nameRow,
-                Row("Target:", new TextBlock { Text = "Folder", VerticalAlignment = VerticalAlignment.Center }),
+                Row("Target:", targetBox),
                 Row("Configuration:", configurationBox),
             },
         };
@@ -114,10 +132,12 @@ public sealed class PublishDialog : IdeWindow
         }
         fields.Children.Add(Row("Deployment:", deploymentBox));
         fields.Children.Add(Row("Target runtime:", runtimeBox));
-        fields.Children.Add(new StackPanel { Children = { Row("Output folder:", BrowseRow.Of(folderBox, browse)), FormRows.Of(null, destination), FormRows.Of(null, copied) } });
+        fields.Children.Add(folderRows);
+        fields.Children.Add(imageRows);
         fields.Children.Add(Row("Options:", options, top: true));
+        ShowTarget();
 
-        Content = DialogFooter.Headed($"Publish {name} to a folder", command, fields, DialogFooter.OkCancel(publish, () => Close(null), problem, saveButton));
+        Content = DialogFooter.Headed($"Publish {name}", command, fields, DialogFooter.OkCancel(publish, () => Close(null), problem, saveButton));
 
         profileBox.SelectionChanged += (_, _) =>
         {
@@ -127,6 +147,23 @@ public sealed class PublishDialog : IdeWindow
             }
         };
         nameBox.TextChanged += (_, _) => Changed();
+        targetBox.SelectionChanged += (_, _) =>
+        {
+            if (!filling)
+            {
+                // A new profile's offered name follows what it publishes, a name typed kept.
+                if (Chosen is null && ProfileName == PublishProfiles.NewName(profiles, !Container))
+                {
+                    nameBox.Text = PublishProfiles.NewName(profiles, Container);
+                }
+                ShowTarget();
+                Changed();
+            }
+        };
+        foreach (TextBox box in (TextBox[])[repositoryBox, tagBox, registryBox])
+        {
+            box.TextChanged += (_, _) => Changed();
+        }
         configurationBox.SelectionChanged += (_, _) => Changed(evaluate: true);
         frameworkBox.SelectionChanged += (_, _) => Changed(evaluate: true);
         runtimeBox.SelectionChanged += (_, _) =>
@@ -192,6 +229,35 @@ public sealed class PublishDialog : IdeWindow
         get => multi ? frameworkBox.SelectedItem as string : null;
         set => frameworkBox.SelectedItem = value;
     }
+
+    /// <summary>Whether it publishes the project's container image (the SDK's Container method) rather than to a folder.</summary>
+    public bool Container
+    {
+        get => targetBox.SelectedItem is ImageTarget;
+        set => targetBox.SelectedItem = value ? ImageTarget : FolderTarget;
+    }
+
+    /// <summary>A container profile's image name, tag and registry as typed, empty where it leaves them to the SDK.</summary>
+    public string ImageName
+    {
+        get => repositoryBox.Text ?? string.Empty;
+        set => repositoryBox.Text = value;
+    }
+
+    public string ImageTag
+    {
+        get => tagBox.Text ?? string.Empty;
+        set => tagBox.Text = value;
+    }
+
+    public string Registry
+    {
+        get => registryBox.Text ?? string.Empty;
+        set => registryBox.Text = value;
+    }
+
+    /// <summary>What the dialog says under the registry of where the image goes.</summary>
+    public string ImageSaid => imageSaid.Text ?? string.Empty;
 
     /// <summary>The runtime chosen, or null for a portable app.</summary>
     public string? Runtime
@@ -319,9 +385,10 @@ public sealed class PublishDialog : IdeWindow
         return refused;
     }
 
-    /// <summary>The options as the dialog shows them, the folder null while it is MSBuild's default.</summary>
-    private PublishOptions Options() => new(Configuration, Framework, Runtime, SelfContained && Runtime is not null, SingleFile, ReadyToRun, Trimmed,
-        folderNamed && OutputFolder.Trim() is { Length: > 0 } folder ? folder : null);
+    /// <summary>The options as the dialog shows them, the folder null while it is MSBuild's default or an image's.</summary>
+    private PublishOptions Options() => new(Configuration, Framework, Runtime, SelfContained && Runtime is not null, !Container && SingleFile, ReadyToRun, Trimmed,
+        !Container && folderNamed && OutputFolder.Trim() is { Length: > 0 } folder ? folder : null,
+        Container ? new ContainerImage(ImageName.Trim(), ImageTag.Trim(), Registry.Trim() is { Length: > 0 } registry ? registry : null) : null);
 
     private string? WhyNot()
     {
@@ -345,9 +412,13 @@ public sealed class PublishDialog : IdeWindow
                 return $"'{name}' cannot name a profile: it is its file's name";
             }
         }
-        if (folderNamed && OutputFolder.Trim().Length == 0)
+        if (!Container && folderNamed && OutputFolder.Trim().Length == 0)
         {
             return "An output folder is needed";
+        }
+        if (Container && (ImageName.Trim().Contains(' ', StringComparison.Ordinal) || ImageTag.Trim().Contains(' ', StringComparison.Ordinal) || Registry.Trim().Contains(' ', StringComparison.Ordinal)))
+        {
+            return "An image's name, tag and registry take no spaces";
         }
         return null;
     }
@@ -375,7 +446,7 @@ public sealed class PublishDialog : IdeWindow
             profileBox.SelectedItem = items.FirstOrDefault(i => i.Tag is PublishProfileFile p && string.Equals(p.Name, chosen, StringComparison.OrdinalIgnoreCase) && p.Remote is null)
                 ?? items.FirstOrDefault(i => i.Tag is PublishProfileFile { Remote: null })
                 ?? items[^1];
-            nameBox.Text = PublishProfiles.NewName(profiles);
+            nameBox.Text = PublishProfiles.NewName(profiles, Container);
         }
         finally
         {
@@ -468,6 +539,19 @@ public sealed class PublishDialog : IdeWindow
             folderNamed = options.Folder is not null;
             ShowFolder(options.Folder ?? (loadedDestination is { } at ? PublishProfiles.Named(project.Path, at, open) : string.Empty));
             Destination = loadedDestination;
+            // A profile's target is its own; a new one's is the one chosen.
+            if (profile is not null)
+            {
+                Container = options.Image is not null;
+            }
+            repositoryBox.Text = options.Image?.Repository ?? string.Empty;
+            tagBox.Text = options.Image?.Tag ?? string.Empty;
+            registryBox.Text = options.Image?.Registry ?? string.Empty;
+            if (answer.Values.GetValueOrDefault(MSBuildNames.AssemblyName) is { Length: > 0 } assembly)
+            {
+                repositoryBox.PlaceholderText = assembly.ToLowerInvariant().Replace(' ', '-');
+            }
+            ShowTarget();
         }
         finally
         {
@@ -498,7 +582,14 @@ public sealed class PublishDialog : IdeWindow
         }
         Enable();
         PublishOptions options = Options();
-        PublishRequest request = new(project.Path, ProfileName.Length > 0 ? ProfileName : null, options.Configuration, options.Framework);
+        PublishRequest request = new(project.Path, ProfileName.Length > 0 ? ProfileName : null, options.Configuration, options.Framework)
+        {
+            Kind = Container ? PublishKind.Container : PublishKind.Folder,
+        };
+        string image = $"{(ImageName.Trim() is { Length: > 0 } named ? named : repositoryBox.PlaceholderText)}:{(ImageTag.Trim() is { Length: > 0 } tag ? tag : "latest")}";
+        imageSaid.Text = Registry.Trim() is { Length: > 0 } registry
+            ? $"Pushes {RegistryLogins.HostOf(registry)}/{image} with docker's login for {RegistryLogins.HostOf(registry)} (docker login)"
+            : $"Makes {image} in the engine on this machine";
         command.Text = $"dotnet publish {ChildProcesses.Quote(System.IO.Path.GetRelativePath(open, project.Path))} {string.Join(' ', request.Command().Select(ChildProcesses.Quote))}";
         if (folderNamed)
         {
@@ -550,14 +641,16 @@ public sealed class PublishDialog : IdeWindow
     }
 
     /// <summary>What can be chosen now: nothing while reading or saving; single-file and ReadyToRun with a runtime;
-    /// trimming for a self-contained app.</summary>
+    /// trimming for a self-contained app; the target for a new profile alone.</summary>
     private void Enable()
     {
         bool idle = !reading && !saving && loaded is not null;
-        foreach (Control control in (Control[])[configurationBox, frameworkBox, deploymentBox, runtimeBox, folderBox, browse, nameBox])
+        foreach (Control control in (Control[])[configurationBox, frameworkBox, deploymentBox, runtimeBox, folderBox, browse, nameBox, repositoryBox, tagBox, registryBox])
         {
             control.IsEnabled = idle;
         }
+        targetBox.IsEnabled = idle && Chosen is null;
+        ToolTip.SetTip(targetBox, Chosen is null ? null : "A profile publishes as it was made to: a new profile publishes the other way");
         profileBox.IsEnabled = !saving;
         bool runtime = Runtime is not null;
         singleFileBox.IsEnabled = idle && runtime;
@@ -571,6 +664,14 @@ public sealed class PublishDialog : IdeWindow
     }
 
     private void Say(string? said) => problem.Text = said;
+
+    /// <summary>The rows of what it publishes to: a folder's, or an image's (which takes no single file, the SDK's own layout).</summary>
+    private void ShowTarget()
+    {
+        folderRows.IsVisible = !Container;
+        imageRows.IsVisible = Container;
+        singleFileBox.IsVisible = !Container;
+    }
 
     /// <summary>Shows a folder the dialog worked out (the profile's, or MSBuild's default), which is not one typed.</summary>
     private void ShowFolder(string folder)

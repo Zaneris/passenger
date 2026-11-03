@@ -1120,9 +1120,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     // Publish is build's, as the Build window's: a tool of its own cost every session's list more than the budget has.
     [McpServerTool(Name = McpTools.Build, Title = "Build", Destructive = true), Description(
-        "Builds the solution (or the folder's project); with publish (a project), publishes it with profile, else its last; " +
+        "Builds the solution (or the folder's project); with publish (a project), publishes it with profile, else its last " +
+        "(DefaultContainer: its container image, into the engine; an AppHost through its publishers, to its last folder or aspire-output); " +
         "with preset, exports the Godot project's game through that export_presets.cfg preset, Godot's output in run's. " +
-        "Returns whether it succeeded, how it ended, every error and warning, the folder published to, and MSBuild's last " +
+        "Returns whether it succeeded, how it ended, every error and warning, the folder or image published to, and MSBuild's last " +
         "lines when it failed (output of build has them all).")]
     public Task<BuildResult> Build(string? publish = null, string? profile = null, string? preset = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
@@ -1144,7 +1145,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         IReadOnlyList<Finding> problems = [.. built.Problems.Select(p => new Finding(
             p.Severity == ProblemSeverity.Error ? "error" : "warning", p.Code, p.Message, p.Path is { } at ? Relative(at) : p.Project, p.Position.Line + 1, p.Position.Column + 1))];
         return new BuildResult(built.Succeeded, built.Message, problems.Count(p => p.Severity == "error"), problems.Count(p => p.Severity == "warning"), problems,
-            built.Succeeded ? null : string.Join('\n', built.Output)) { Folder = built.Published };
+            built.Succeeded ? null : string.Join('\n', built.Output)) { Folder = built.Published, Image = built.Image };
     });
 
     [McpServerTool(Name = McpTools.Run, Title = "Run a configuration", Destructive = true), Description(
@@ -3009,6 +3010,9 @@ public sealed record BuildResult(bool Succeeded, string Outcome, int Errors, int
 {
     /// <summary>The folder a publish landed in, once it did.</summary>
     public string? Folder { get; init; }
+
+    /// <summary>The image a container publish made, with its registry where it pushed it.</summary>
+    public string? Image { get; init; }
 }
 
 public sealed record RunResult(bool StillRunning, int? ExitCode, string Status, string Output);

@@ -68,6 +68,9 @@ public sealed record BuildOutcome(BuildStatus Status, string Message)
 
     /// <summary>The folder a publish that succeeded put the app in.</summary>
     public string? Published { get; init; }
+
+    /// <summary>The image a container publish that succeeded made, with its registry where it pushed it.</summary>
+    public string? Image { get; init; }
 }
 
 /// <summary>What a build does: Build, Rebuild (everything again, nothing taken from the last build) and Clean, and
