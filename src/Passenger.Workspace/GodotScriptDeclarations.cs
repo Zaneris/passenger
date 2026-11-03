@@ -20,8 +20,17 @@ public sealed record GodotScriptDeclared(GodotScriptKind Kind, string Name, int 
     /// an emit's arguments on as they are), so they are not known.</summary>
     public IReadOnlyList<string>? Parameters { get; init; }
 
-    /// <summary>How many of its parameters a call must give: those without a default.</summary>
-    public int Required => Parameters?.Count(p => !p.Contains('=', StringComparison.Ordinal)) ?? 0;
+    /// <summary>How many of its parameters a call must give: those before any default, a rest parameter not among them.</summary>
+    public int Required => Parameters?.Count(p => !p.Contains('=', StringComparison.Ordinal) && !IsRest(p)) ?? 0;
+
+    /// <summary>The most arguments a call may give: its parameters' count; null, any count, after a rest parameter.</summary>
+    public int? Most => Parameters is [.., { } last] && IsRest(last) ? null : Parameters?.Count ?? 0;
+
+    /// <summary>Whether a call, an emit or a connection giving it a count of arguments fits it: the one answer every
+    /// check of a count asks.</summary>
+    public bool Takes(int given) => given >= Required && (Most is not { } most || given <= most);
+
+    private static bool IsRest(string parameter) => parameter.StartsWith("...", StringComparison.Ordinal);
 }
 
 /// <summary>A GDScript file's class as Godot's parser reads it (<see cref="GDScriptTree"/>): what it extends as written (a

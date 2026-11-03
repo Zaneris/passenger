@@ -651,6 +651,41 @@ public class GodotChecksTests
         Assert.Equal(["hit gives 2 (Node, int), but _on_coin_collected takes 1 (coins)"], findings.Select(f => f.Message));
     }
 
+    /// <summary>A handler with a rest parameter takes any count past its required ones (#1211): three arguments are no
+    /// error, none is one, said as at least.</summary>
+    [Fact]
+    public void A_handler_with_a_rest_parameter_takes_any_count_past_the_ones_it_requires()
+    {
+        string scene = """
+            [gd_scene load_steps=3 format=3]
+
+            [ext_resource type="Script" path="res://player.gd" id="1"]
+            [ext_resource type="Script" path="res://hud.gd" id="2"]
+
+            [node name="Main" type="Node3D"]
+
+            [node name="Player" type="CharacterBody3D" parent="."]
+            script = ExtResource("1")
+
+            [node name="HUD" type="CanvasLayer" parent="."]
+            script = ExtResource("2")
+
+            [connection signal="three" from="Player" to="HUD" method="_on_any"]
+            [connection signal="none" from="Player" to="HUD" method="_on_any"]
+
+            """;
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) },
+            texts: new Dictionary<string, string>
+            {
+                ["res://player.gd"] = "extends CharacterBody3D\n\nsignal three(a, b, c)\nsignal none()\n",
+                ["res://hud.gd"] = "extends CanvasLayer\n\nfunc _on_any(first, ...rest):\n\tprint(first, rest)\n",
+            });
+        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/main.tscn", scenes, "res://main.tscn");
+        GodotCodeFound found = new([], [], [], [], [], [.. asked.Signals.Select(_ => (GodotSignature?)null)], [.. asked.Methods.Select(_ => (GodotSignature?)null)]);
+        IReadOnlyList<GodotChecks.SceneFinding> findings = GodotChecks.SceneFindings(scenes, "res://main.tscn", asked, found, _ => true);
+        Assert.Equal(["none gives no arguments, but _on_any takes at least 1 (first, ...rest)"], findings.Select(f => f.Message));
+    }
+
     /// <summary>A connection whose flags have Godot bind the sending node after the signal's own values (16,
     /// CONNECT_APPEND_SOURCE_OBJECT) gives its handler one more: a handler taking it is no error, and a missing one is made
     /// taking it.</summary>

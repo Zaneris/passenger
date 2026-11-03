@@ -106,4 +106,14 @@ public class GodotScriptDeclarationsTests
         Assert.NotNull(read.Member(GodotScriptKind.Constant, "SOUTH"));
         Assert.Null(read.Member(GodotScriptKind.Signal, "moved")!.Parameters);
     }
+
+    [Fact]
+    public void A_rest_parameter_takes_any_count_at_the_end_of_a_functions_arguments()
+    {
+        GodotScriptDeclared f = GodotScriptDeclarations.Read("func f(a, ...rest):\n\tpass\n\nfunc g(a, b = 1):\n\tpass\n").Member(GodotScriptKind.Function, "f")!;
+        Assert.Equal((1, (int?)null), (f.Required, f.Most));
+        Assert.Equal([false, true, true, true], new[] { 0, 1, 2, 3 }.Select(f.Takes));
+        GodotScriptDeclared g = GodotScriptDeclarations.Read("func g(a, b = 1):\n\tpass\n").Member(GodotScriptKind.Function, "g")!;
+        Assert.Equal([false, true, true, false], new[] { 0, 1, 2, 3 }.Select(g.Takes));
+    }
 }

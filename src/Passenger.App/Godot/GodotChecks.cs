@@ -218,14 +218,14 @@ internal static class GodotChecks
                     },
                 });
             }
-            else if (!methodKnown && connected.To is { } handler && ChainOf(scenes, handler)?.Find(GodotScriptKind.Function, connection.Method) is (_, { Parameters: { } taken } function)
+            else if (!methodKnown && connected.To is { } handler && ChainOf(scenes, handler)?.Find(GodotScriptKind.Function, connection.Method) is (_, { Parameters: not null } function)
                 && SignalOf(scenes, asked, found, connected) is { } carried && connection.Section.Attribute("method")?.Value is { } handled)
             {
                 int passed = carried.Count + connection.Bound - connection.Unbinds;
-                if (passed < function.Required || passed > taken.Count)
+                if (!function.Takes(passed))
                 {
                     findings.Add(new SceneFinding(handled.TextStart, handled.TextEnd, true,
-                        $"{connection.Signal} {Gives(passed, carried.Select(p => p.Type.Length == 0 ? "Variant" : p.Type).Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Bound))))}, but {connection.Method} {Takes(taken)}"));
+                        $"{connection.Signal} {Gives(passed, carried.Select(p => p.Type.Length == 0 ? "Variant" : p.Type).Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Bound))))}, but {connection.Method} {Takes(function)}"));
                 }
             }
             if (signalKnown && signal is null && connection.Section.Attribute("signal")?.Value is { } emitted)
@@ -599,7 +599,7 @@ internal static class GodotChecks
             string what = read.Kind switch { GodotNameKind.Signal => "signal", GodotNameKind.Method => "method", _ => "property" };
             return read.Script ? new Finding(read.At, read.End, true, $"{read.On} has no {what} '{read.Name}'") : null;
         }
-        if (read.Given is { } given && (given < member.Required || given > member.Parameters.Count))
+        if (read is { Kind: GodotNameKind.Signal, Given: { } given } && (given < member.Required || given > member.Parameters.Count))
         {
             return new Finding(read.At, read.End, true, $"'{read.Name}' {Takes(member.Parameters)}, but this EmitSignal gives it {(given == 0 ? "none" : given.ToString(System.Globalization.CultureInfo.InvariantCulture))}");
         }
@@ -614,6 +614,11 @@ internal static class GodotChecks
     private static string Gives(int given, IEnumerable<string> types) => given == 0 ? "gives no arguments" : $"gives {given} ({string.Join(", ", types.Take(given))})";
 
     private static string Takes(IReadOnlyList<string> parameters) => parameters.Count == 0 ? "takes none" : $"takes {parameters.Count} ({string.Join(", ", parameters)})";
+
+    /// <summary>What a GDScript function takes in words: its count, at least its required one past a rest parameter.</summary>
+    private static string Takes(GodotScriptDeclared function) => function.Most is null
+        ? $"takes at least {function.Required} ({string.Join(", ", function.Parameters ?? [])})"
+        : Takes(function.Parameters ?? []);
 
     private static int IndexOf(IReadOnlyList<GodotMemberAsked> asked, GodotMemberAsked one)
     {
@@ -882,7 +887,11 @@ internal static class GodotChecks
         // The engine class of each node, where the extension was asked of it, has the member as it answered.
         Candidates members = Members(scenes, read.Kind, ScriptsOf(found, read.Class), read.Node, read.Export,
             type => type is not null && asked.Engine.Contains(type) ? read.Engines.Contains(type) : null);
-        if (!members.Whole || members.Names.Any(n => n.Name == read.Name))
+        if (members.Names.Any(n => n.Name == read.Name))
+        {
+            return read is { Kind: GodotNameKind.Method, Given: { } given } ? CountFinding(scenes, read, given) : null;
+        }
+        if (!members.Whole)
         {
             return null;
         }
@@ -891,6 +900,26 @@ internal static class GodotChecks
         {
             Offer = read.Exact ? new GodotOffer { Near = Core.Spelling.Near(read.Name, members.Names.Select(n => n.Name)) } : null,
         };
+    }
+
+    /// <summary>A C# Call of a GDScript function by its string giving it a count no script declaring it takes; null where one
+    /// of those it may call takes it, or none is known.</summary>
+    private static Finding? CountFinding(GodotScenes scenes, GodotStringRead read, int given)
+    {
+        List<GodotScriptDeclared> functions = [];
+        foreach (string script in scenes.Texts.Keys.Where(GodotScriptDeclarations.IsScript))
+        {
+            if (scenes.ScriptOf(script)?.Member(GodotScriptKind.Function, read.Name) is { Parameters: not null } function)
+            {
+                functions.Add(function);
+            }
+        }
+        if (functions.Count == 0 || functions.Any(f => f.Takes(given)))
+        {
+            return null;
+        }
+        return new Finding(read.At, read.End, true,
+            $"'{read.Name}' {Takes(functions[0])}, but this call gives it {(given == 0 ? "none" : given.ToString(System.Globalization.CultureInfo.InvariantCulture))}");
     }
 
     /// <summary>Names of several players or shaders, each name once with every place of it.</summary>

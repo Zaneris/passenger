@@ -103,8 +103,9 @@ internal static partial class GodotSource
                 GodotNameKind.Method => Method(engine, own, engineClass, name),
                 _ => Property(engine, own, engineClass, name),
             };
-            // An EmitSignal's arguments after the signal, unless they are given as one array or span.
-            int? given = call.Kind == GodotNameKind.Signal && call.Method.Name == "EmitSignal" && token.Parent?.Parent?.Parent is ArgumentListSyntax list
+            // An EmitSignal's arguments after the signal, or a Call's after the method, unless they are given as one array or span.
+            int? given = (call.Kind == GodotNameKind.Signal && call.Method.Name == "EmitSignal" || call.Kind == GodotNameKind.Method && call.Method.Name is "Call" or "CallDeferred")
+                && token.Parent?.Parent?.Parent is ArgumentListSyntax list
                 && call.Arguments.FirstOrDefault(a => a.Parameter?.IsParams == true) is { ArgumentKind: not ArgumentKind.Explicit } ? list.Arguments.Count - 1 : null;
             bool exact = GodotGenerated.Exact(token);
             byStart[token.SpanStart] = reads.Count;

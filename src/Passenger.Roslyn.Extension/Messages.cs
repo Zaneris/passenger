@@ -450,7 +450,7 @@ public sealed record GodotNameStringsAsked(
 /// <c>new Callable(this, "OnScored")</c>, <c>Set("Speed", 2)</c>), as the file gives it: what it names, where it is written
 /// (its characters, when <paramref name="Exact"/>), the class of the object it names it on as shown, whether that is a
 /// script's class (whose members the code declares, so one it lacks is known missing), the member found, how many
-/// arguments an EmitSignal gives the signal (null for another call, or one given as an array), and, for a Callable's method
+/// arguments an EmitSignal gives the signal or a Call the method (null for another call, or one given as an array), and, for a Callable's method
 /// given to a Connect of a signal named by a string, that string's read by its index among these.</summary>
 public sealed record GodotStringRead(
     [property: JsonPropertyName("kind")] GodotNameKind Kind,
