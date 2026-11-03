@@ -11,10 +11,14 @@ namespace Passenger.App.CSharp;
 
 /// <summary>Change Signature: the method's name and return type, its parameters in a table of their modifier, type,
 /// name and default value, which Add, Remove, Move Up and Move Down change, and the signature as it will read. A new
-/// parameter's default value is what every call passes for it; a kept one's is its declaration's.</summary>
+/// parameter's default value is what every call passes for it; a kept one's is its declaration's. A GDScript function's
+/// (<see cref="GDScriptKind"/>) has no modifiers, and a type left empty is none.</summary>
 public sealed class ChangeSignatureDialog : RefactoringDialog
 {
     private const string Columns = "110,*,*,*";
+
+    /// <summary>The signature's kind for a GDScript function.</summary>
+    public const string GDScriptKind = "gdscript";
     private static readonly string[] ModifierChoices = ["", "ref", "out", "in", "params"];
 
     private readonly Signature signature;
@@ -30,7 +34,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
     {
         this.signature = signature;
         this.make = make;
-        bool method = signature.Kind == "method";
+        bool method = signature.Kind is "method" or GDScriptKind;
         NameBox = Field(signature.Name);
         NameBox.IsEnabled = method;
         ReturnTypeBox = Field(method ? signature.ReturnType : string.Empty);
@@ -131,12 +135,12 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
 
     protected override string? Check()
     {
-        bool method = signature.Kind == "method";
+        bool method = signature.Kind is "method" or GDScriptKind;
         if (method && !IsName(NameBox.Text))
         {
             return string.IsNullOrWhiteSpace(NameBox.Text) ? "Method name can not be empty" : $"'{NameBox.Text}' is not a valid method name";
         }
-        if (method && ReturnTypeBox.Text?.Trim() != "void" && !IsType(ReturnTypeBox.Text))
+        if (method && ReturnTypeBox.Text?.Trim() != "void" && !IsType(ReturnTypeBox.Text) && !(GDScript && string.IsNullOrWhiteSpace(ReturnTypeBox.Text)))
         {
             return "The return type is invalid";
         }
@@ -144,7 +148,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
         foreach (ParameterRow row in rows)
         {
             string name = row.NameBox.Text?.Trim() ?? string.Empty;
-            if (!IsType(row.TypeBox.Text))
+            if (!IsType(row.TypeBox.Text) && !(GDScript && string.IsNullOrWhiteSpace(row.TypeBox.Text)))
             {
                 return "A parameter has an invalid type";
             }
@@ -169,9 +173,13 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
             r.From >= 0 ? r.DefaultBox.Text?.Trim() ?? string.Empty : string.Empty,
             r.From < 0 ? r.DefaultBox.Text?.Trim() ?? string.Empty : string.Empty))]);
 
-    private static bool IsName(string? text) => text is { } name && SyntaxFacts.IsValidIdentifier(name.Trim()) && SyntaxFacts.GetKeywordKind(name.Trim()) == SyntaxKind.None;
+    private bool GDScript => signature.Kind == GDScriptKind;
 
-    private static bool IsType(string? text) => !string.IsNullOrWhiteSpace(text) && !SyntaxFactory.ParseTypeName(text.Trim()).ContainsDiagnostics;
+    private bool IsName(string? text) => text is { } name && (GDScript ? Passenger.Workspace.GDScript.GDScriptRefactorings.WhyNotName(name.Trim()) is null
+        : SyntaxFacts.IsValidIdentifier(name.Trim()) && SyntaxFacts.GetKeywordKind(name.Trim()) == SyntaxKind.None);
+
+    private bool IsType(string? text) => !string.IsNullOrWhiteSpace(text) && (GDScript ? text.Trim().Split('.').All(part => IsName(part) || part == "void")
+        : !SyntaxFactory.ParseTypeName(text.Trim()).ContainsDiagnostics);
 
     /// <summary>A new parameter after the chosen one, its type to type first.</summary>
     private void Add()
@@ -234,9 +242,17 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
         DownButton.IsEnabled = at >= 0 && at < rows.Count - 1 && !IsReceiver(chosen!);
         IEnumerable<string> parameters = rows.Select(r =>
         {
-            string text = $"{r.Modifier} {r.TypeBox.Text?.Trim()} {r.NameBox.Text?.Trim()}".Trim();
+            string text = GDScript ? r.NameBox.Text?.Trim() + (r.TypeBox.Text?.Trim() is { Length: > 0 } typed ? $": {typed}" : string.Empty)
+                : $"{r.Modifier} {r.TypeBox.Text?.Trim()} {r.NameBox.Text?.Trim()}".Trim();
             return r.From >= 0 && r.DefaultBox.Text?.Trim() is { Length: > 0 } value ? $"{text} = {value}" : text;
         });
+        if (GDScript)
+        {
+            string returned = ReturnTypeBox.Text?.Trim() is { Length: > 0 } written ? $" -> {written}" : string.Empty;
+            preview.Text = $"func {NameBox.Text?.Trim()}({string.Join(", ", parameters)}){returned}";
+            Changed();
+            return;
+        }
         string head = signature.Kind == "method"
             ? $"{signature.Modifiers} {ReturnTypeBox.Text?.Trim()} {NameBox.Text?.Trim()}"
             : $"{signature.Modifiers} {signature.Container}";
@@ -253,7 +269,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
             modifiers.Items.Add(choice);
         }
         modifiers.SelectedItem = modifier;
-        modifiers.IsEnabled = !receiver;
+        modifiers.IsEnabled = !receiver && !GDScript;
         TextBox typeBox = Cell(type);
         TextBox nameBox = Cell(name);
         TextBox defaultBox = Cell(defaultValue);

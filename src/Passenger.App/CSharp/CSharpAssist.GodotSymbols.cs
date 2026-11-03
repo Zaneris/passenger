@@ -161,6 +161,19 @@ internal sealed partial class CSharpAssist
     private async Task<IReadOnlyList<LspLocation>> GodotScriptUsesAsync(OpenDocument document, int offset) =>
         await GodotScriptNamedAsync(document, offset) is { } named ? [.. named.Scenes, .. named.Code] : [];
 
+    /// <summary>The places beside the scripts that name a GDScript's member at an offset (<see cref="GodotScriptNamedAsync"/>):
+    /// each scene's connection and each C# string, by file and line, for a refactoring that cannot follow them.</summary>
+    internal async Task<IReadOnlyList<Passenger.Workspace.GDScript.GDScriptPlace>> GodotScriptElsewhereAsync(OpenDocument document, int offset)
+    {
+        if (await GodotScriptNamedAsync(document, offset) is not { } named)
+        {
+            return [];
+        }
+        static Passenger.Workspace.GDScript.GDScriptPlace Placed(LspLocation at, string what) =>
+            new($"{Path.GetFileName(new Uri(at.Uri).LocalPath)}:{at.Range.Start.Line + 1}", 0, 0, what);
+        return [.. named.Scenes.Select(s => Placed(s, "a scene's connection names it")), .. named.Code.Select(c => Placed(c, "C# names it in a string"))];
+    }
+
     /// <summary>The edits a GDScript's member's uses beside its own language's take as it is renamed to <paramref name="name"/>
     /// (<see cref="GodotScriptNamedAsync"/>): each scene's connection's method or signal and each string of the C# naming it,
     /// by file, in the server's places.</summary>

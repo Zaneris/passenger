@@ -560,7 +560,8 @@ internal sealed class ChoicePopup : Border
 /// chooses it, if it has one.</summary>
 internal sealed record Choice(string Text, string Detail, object Value, bool DetailIsCode = false, char? Mnemonic = null);
 
-/// <summary>Inline rename: the name in a box over itself, all of it selected; Enter renames. For a
+/// <summary>Inline rename: the name in a box over itself, all of it selected; Enter renames (a new name's box, under its
+/// own caption, names what a refactoring makes). For a
 /// type declared in files named after it, Also rename files to reflect this change is a check box under it, with the
 /// files it would rename, clicked while the keys stay with the name.</summary>
 internal sealed class RenameBox : Border
@@ -569,7 +570,7 @@ internal sealed class RenameBox : Border
     private readonly StackPanel body;
     private CheckBox? renameFiles;
 
-    public RenameBox(string current)
+    public RenameBox(string current, string caption = "Rename")
     {
         Classes.Add(StyleClasses.Popup);
         Padding = new Thickness(8, 6);
@@ -579,7 +580,7 @@ internal sealed class RenameBox : Border
             Spacing = 4,
             Children =
             {
-                new TextBlock { Text = "Rename", Classes = { StyleClasses.Muted }, FontSize = 11 },
+                new TextBlock { Text = caption, Classes = { StyleClasses.Muted }, FontSize = 11 },
                 name,
             },
         };

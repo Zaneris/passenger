@@ -136,6 +136,54 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         return await TypeAsync(document);
     }
 
+    /// <summary>Every script of the project a file is in, read as a refactoring reads them (<see cref="GDScriptRead"/>):
+    /// each parsed and typed against the others and the engine's API off the window's thread, an open one's text as the
+    /// editor has it (<paramref name="open"/>, by path), the rest as the project's files say; null outside a Godot
+    /// project.</summary>
+    public async Task<IReadOnlyList<GDScriptRead>?> ProjectReadAsync(string path, IReadOnlyDictionary<string, string> open)
+    {
+        if (godotOf(path) is not { } folder)
+        {
+            return null;
+        }
+        GodotEngineApi? api = await apis.ApiAsync();
+        GodotScenes scenes = await index.ScenesAsync(folder);
+        return await BackgroundWork.Run(() =>
+        {
+            Dictionary<string, string> texts = new(StringComparer.Ordinal);
+            foreach ((string res, string text) in scenes.Texts.Where(t => GodotScriptDeclarations.IsScript(t.Key)))
+            {
+                texts[res] = scenes.FileOf(res) is { } file && open.TryGetValue(file, out string? typed) ? typed : text;
+            }
+            foreach ((string file, string text) in open)
+            {
+                if (scenes.ResPathOf(file) is { } res && GodotScriptDeclarations.IsScript(res))
+                {
+                    texts[res] = text;
+                }
+            }
+            Dictionary<string, GDScriptTree> trees = texts.ToDictionary(t => t.Key, t => GDScriptTree.Parse(t.Value), StringComparer.Ordinal);
+            Dictionary<string, string> classNames = new(StringComparer.Ordinal);
+            foreach ((string res, GDScriptTree tree) in trees)
+            {
+                if (tree.Class.Identifier is { } named)
+                {
+                    classNames.TryAdd(named.Name, res);
+                }
+            }
+            Dictionary<string, string> autoloads = new(StringComparer.Ordinal);
+            foreach (GodotDefined autoload in scenes.Defined.Autoloads)
+            {
+                if (scenes.Defined.AutoloadFile(autoload.Name) is { } file && GodotScriptDeclarations.IsScript(file))
+                {
+                    autoloads[autoload.Name] = file;
+                }
+            }
+            GDScriptAnalyzer analyzer = new(new GDScriptProject(api, p => trees.GetValueOrDefault(p), classNames, autoloads, uids: scenes.ResOfUid));
+            return (IReadOnlyList<GDScriptRead>?)[.. trees.Select(t => new GDScriptRead(t.Key, analyzer.Analyze(t.Value, t.Key)))];
+        });
+    }
+
     /// <summary>The script typed again, after the typing under way: each starts from the tree the last one left.</summary>
     private Task<Typed?> TypeAsync(OpenDocument document)
     {

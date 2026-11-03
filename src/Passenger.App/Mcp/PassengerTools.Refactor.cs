@@ -40,7 +40,9 @@ public sealed partial class PassengerTools
         "options, the kinds with a dialog (change_signature, move, extract_interface, pull_members_up, push_members_down) " +
         "answer it (dialog), its defaults as options to change and send back; describe true does so for any kind, changing " +
         "nothing. Applied, it answers each file created, changed, moved or deleted, the lines its edits start on, and what it " +
-        "left alone.")]
+        "left alone.\nIn a GDScript: extract_variable, extract_function, introduce_parameter ({name}, over a selection), inline, " +
+        "safe_delete and change_signature ({name, parameters: [{from, name?, type?, defaultValue?} | {name, type?, " +
+        "defaultValue?, callValue}]}), its scenes' connections and C# strings followed, refused naming any use it can't see.")]
     public Task<RefactorAnswer> Refactor(
         string kind,
         string? path = null,
@@ -54,6 +56,15 @@ public sealed partial class PassengerTools
     {
         string named = kind.Trim().ToLowerInvariant().Replace(' ', '_').Replace('-', '_');
         JsonElement? given = Options(options);
+        if (path is not null && Godot.GodotScriptTypes.IsScript(Resolve(path)))
+        {
+            RefactorAnswer scripted = await GDScriptRefactorAsync(named, path, line, column, endLine, endColumn, given, describe, cancel);
+            if (scripted.Files.Count > 0)
+            {
+                await SaveLandedAsync(cancel);
+            }
+            return scripted;
+        }
         switch (named)
         {
             case "optimize_imports" or "code_cleanup":
@@ -87,6 +98,86 @@ public sealed partial class PassengerTools
         }
         return answer;
     }, AgentCall.Say, cancel));
+
+    /// <summary>A GDScript refactoring for an agent, through the window's own (<see cref="CSharp.CodeActions.GDScriptRefactorAsync"/>):
+    /// at path, line and column, over a selection to endLine and endColumn for those that take one, with the name or the
+    /// signature options give; Change Signature without options, or any with describe, answers the function's signature.</summary>
+    private async Task<RefactorAnswer> GDScriptRefactorAsync(string kind, string path, int? line, int? column, int? endLine, int? endColumn, JsonElement? given, bool describe,
+        CancellationToken cancel)
+    {
+        CSharp.GDScriptRefactoring refactoring = kind switch
+        {
+            "extract_variable" or "introduce_variable" => CSharp.GDScriptRefactoring.ExtractVariable,
+            "extract_function" or "extract_method" => CSharp.GDScriptRefactoring.ExtractFunction,
+            "introduce_parameter" => CSharp.GDScriptRefactoring.IntroduceParameter,
+            "inline" or "inline_variable" or "inline_function" => CSharp.GDScriptRefactoring.Inline,
+            "safe_delete" => CSharp.GDScriptRefactoring.SafeDelete,
+            "change_signature" => CSharp.GDScriptRefactoring.ChangeSignature,
+            _ => throw new ArgumentException($"No GDScript refactoring '{kind}'; there are extract_variable, extract_function, introduce_parameter, inline, safe_delete and change_signature", nameof(kind)),
+        };
+        if (line is null || column is null)
+        {
+            throw new ArgumentException($"{kind} needs the place it works on: line and column", nameof(line));
+        }
+        OpenDocument document = await DocumentAsync(path, cancel);
+        int start = Offset(document, line.Value, column.Value);
+        int end = endLine is { } toLine && endColumn is { } toColumn ? Offset(document, toLine, toColumn) : start;
+        TextRange selection = TextRange.FromBounds(Math.Min(start, end), Math.Max(start, end));
+        CSharp.CodeActions actions = window.Assist.Actions;
+        if (refactoring == CSharp.GDScriptRefactoring.ChangeSignature && (describe || given is null))
+        {
+            (Signature? signature, string? why) = await actions.GDScriptSignatureAsync(document, start);
+            if (signature is null)
+            {
+                throw new InvalidOperationException($"Change Signature is not available here: {why}");
+            }
+            return Described(kind, $"Change Signature of {signature.Name} in {signature.Container}", new
+            {
+                signature.Name,
+                signature.ReturnType,
+                Parameters = signature.Parameters.Select(p => new { p.Name, p.Type, p.DefaultValue }),
+                Options = new { signature.Name, Parameters = signature.Parameters.Select(p => new { From = p.Name }) },
+            });
+        }
+        if (describe)
+        {
+            return Described(kind, $"{kind} at {Relative(document.Path)}:{line}:{column}", new { Options = new { Name = refactoring == CSharp.GDScriptRefactoring.ExtractFunction ? "new_function" : "value" } });
+        }
+        string? name = given is { } options ? JsonMembers.Text(options, "name") : null;
+        if (name is null && refactoring is CSharp.GDScriptRefactoring.ExtractVariable or CSharp.GDScriptRefactoring.ExtractFunction or CSharp.GDScriptRefactoring.IntroduceParameter)
+        {
+            throw new ArgumentException($"{kind} needs options {{name}}: what it makes is called");
+        }
+        IReadOnlyList<Passenger.Workspace.GDScript.GDScriptParameterChange>? parameters = null;
+        if (refactoring == CSharp.GDScriptRefactoring.ChangeSignature && given is { } signatureOptions)
+        {
+            (Signature? signature, string? why) = await actions.GDScriptSignatureAsync(document, start);
+            Signature had = signature ?? throw new InvalidOperationException($"Change Signature is not available here: {why}");
+            name ??= had.Name;
+            parameters = signatureOptions.TryGetProperty("parameters", out JsonElement asked) && asked.ValueKind == JsonValueKind.Array
+                ? [.. asked.EnumerateArray().Select(p => GDScriptParameterOf(p, had))]
+                : [.. had.Parameters.Select((p, i) => new Passenger.Workspace.GDScript.GDScriptParameterChange(i, p.Name, p.Type, p.DefaultValue, string.Empty))];
+        }
+        return Applied(kind, await actions.GDScriptRefactorAsync(document, refactoring, selection, name, parameters));
+    }
+
+    /// <summary>A GDScript parameter as an agent asks for it: one kept by its old name (from), else a new one with what calls pass.</summary>
+    private static Passenger.Workspace.GDScript.GDScriptParameterChange GDScriptParameterOf(JsonElement parameter, Signature had)
+    {
+        string? from = parameter.ValueKind == JsonValueKind.String ? parameter.GetString() : JsonMembers.Text(parameter, "from");
+        if (from is not null)
+        {
+            int was = had.Parameters.ToList().FindIndex(p => p.Name == from);
+            if (was < 0)
+            {
+                throw new ArgumentException($"{had.Name} has no parameter '{from}'; it has {string.Join(", ", had.Parameters.Select(p => p.Name))}");
+            }
+            Parameter old = had.Parameters[was];
+            return new(was, JsonMembers.Text(parameter, "name") ?? old.Name, JsonMembers.Text(parameter, "type") ?? old.Type, JsonMembers.Text(parameter, "defaultValue") ?? old.DefaultValue, string.Empty);
+        }
+        string made = JsonMembers.Text(parameter, "name") ?? throw new ArgumentException("A new parameter needs a name (and from, for one that was there: its old name)");
+        return new(-1, made, JsonMembers.Text(parameter, "type") ?? string.Empty, JsonMembers.Text(parameter, "defaultValue") ?? string.Empty, JsonMembers.Text(parameter, "callValue") ?? string.Empty);
+    }
 
     /// <summary>The file a refactoring works on, which only C# files have: any other language is told what it has instead.</summary>
     private async Task<(OpenDocument Document, LspDocument Lsp)> CSharpOnly(string path, string kind, CancellationToken cancel)

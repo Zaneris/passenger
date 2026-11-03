@@ -457,18 +457,24 @@ public sealed class CodeAssist
         Code(AppActions.OptimizeUsings, "Optimize Imports", context => IdeErrors.Observe(actions.OptimizeUsings()), new("Code", 1, 2));
         Code(AppActions.RefactorThis, "Refactor This…", context => IdeErrors.Observe(actions.ShowFixes(AppActions.RefactorThis, a => a.Kind?.StartsWith("refactor", StringComparison.Ordinal) == true, "Refactor This")),
             new("Refactor", 0, 0), xaml: true);
-        Code(AppActions.ChangeSignature, "Change Signature…", context => IdeErrors.Observe(actions.ChangeSignature()), new("Refactor", 1, 1));
-        Code(AppActions.ExtractMethod, "Extract Method…", context => IdeErrors.Observe(actions.Refactor(a => a.Title == RoslynNames.ExtractMethod, "Extract Method", renameMethod: true, AppActions.ExtractMethod)),
-            new("Refactor", 1, 2));
-        Code(AppActions.IntroduceVariable, "Introduce Variable…",
-            context => IdeErrors.Observe(actions.Refactor(a => a.Title.StartsWith(RoslynNames.IntroduceLocal, StringComparison.Ordinal), "Introduce Variable", renameMethod: false, AppActions.IntroduceVariable)), new("Refactor", 1, 3));
+        // A GDScript's are Passenger's own, over its reading of the project's scripts (CodeActions.GDScriptRefactor).
+        Code(AppActions.ChangeSignature, "Change Signature…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.ChangeSignature)
+            : actions.ChangeSignature()), new("Refactor", 1, 1), gdscript: true);
+        Code(AppActions.ExtractMethod, "Extract Method…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.ExtractFunction)
+            : actions.Refactor(a => a.Title == RoslynNames.ExtractMethod, "Extract Method", renameMethod: true, AppActions.ExtractMethod)), new("Refactor", 1, 2), gdscript: true);
+        Code(AppActions.IntroduceVariable, "Introduce Variable…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.ExtractVariable)
+            : actions.Refactor(a => a.Title.StartsWith(RoslynNames.IntroduceLocal, StringComparison.Ordinal), "Introduce Variable", renameMethod: false, AppActions.IntroduceVariable)),
+            new("Refactor", 1, 3), gdscript: true);
         Code(AppActions.IntroduceField, "Introduce Field…", context => IdeErrors.Observe(actions.Refactor(CodeActions.IntroduceField, AppActions.IntroduceField)), new("Refactor", 1, 4));
-        Code(AppActions.IntroduceParameter, "Introduce Parameter…", context => IdeErrors.Observe(actions.Refactor(CodeActions.IntroduceParameter, AppActions.IntroduceParameter)), new("Refactor", 1, 5));
+        Code(AppActions.IntroduceParameter, "Introduce Parameter…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.IntroduceParameter)
+            : actions.Refactor(CodeActions.IntroduceParameter, AppActions.IntroduceParameter)), new("Refactor", 1, 5), gdscript: true);
         Code(AppActions.ExtractInterface, "Extract Interface…", context => IdeErrors.Observe(actions.ExtractInterface()), new("Refactor", 1, 6));
-        Code(AppActions.Inline, "Inline…",
-            context => IdeErrors.Observe(actions.Refactor(a => a.Kind == RoslynNames.InlineKind || a.Title.StartsWith(RoslynNames.Inline, StringComparison.Ordinal), "Inline", renameMethod: false, AppActions.Inline)), new("Refactor", 1, 7));
+        Code(AppActions.Inline, "Inline…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.Inline)
+            : actions.Refactor(a => a.Kind == RoslynNames.InlineKind || a.Title.StartsWith(RoslynNames.Inline, StringComparison.Ordinal), "Inline", renameMethod: false, AppActions.Inline)),
+            new("Refactor", 1, 7), gdscript: true);
         Code(AppActions.Move, "Move…", context => IdeErrors.Observe(actions.Move()), new("Refactor", 2, 0));
-        Code(AppActions.SafeDelete, "Safe Delete…", context => IdeErrors.Observe(actions.SafeDelete()), new("Refactor", 2, 1));
+        Code(AppActions.SafeDelete, "Safe Delete…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.SafeDelete)
+            : actions.SafeDelete()), new("Refactor", 2, 1), gdscript: true);
         Code(AppActions.PullMembersUp, "Pull Members Up…", context => IdeErrors.Observe(actions.MoveMembers(up: true)), new("Refactor", 3, 0));
         Code(AppActions.PushMembersDown, "Push Members Down…", context => IdeErrors.Observe(actions.MoveMembers(up: false)), new("Refactor", 3, 1));
         Code(AppActions.EncapsulateField, "Encapsulate Field…", context => IdeErrors.Observe(actions.Refactor(CodeActions.EncapsulateField, AppActions.EncapsulateField)), new("Refactor", 3, 2));
@@ -496,12 +502,13 @@ public sealed class CodeAssist
         Code(AppActions.QuickDocumentation, "Quick Documentation", context => quickInfo.QuickDocumentation(), new("View", 1, 1), server: false);
 
         void Code(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false,
-            bool http = false, bool godot = false, bool shader = false) =>
+            bool http = false, bool godot = false, bool shader = false, bool gdscript = false) =>
             registry.Add(new IdeAction(id, title, "Code", run)
             {
                 // An .http file's requests, a Godot scene's paths and a shader's names are each read with no language server.
                 WhyNot = action => http && this.context.Languages.Http.IsHttpFile(action.File) || godot && IsGodotScene(action.File)
                     || shader && action.File is { } file && Godot.GodotShaderMarks.IsShader(file.Path) ? null
+                    : gdscript && CodeActions.IsGDScript(action.File) ? (action.Editor.IsReadOnly ? Refusals.ReadOnly(action.File!.Name) : null)
                     : WhyNot(action, server, syntax, xaml, markup, msbuild),
                 Menus = [menu],
             });
