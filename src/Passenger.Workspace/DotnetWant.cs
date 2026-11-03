@@ -46,14 +46,28 @@ public sealed partial record DotnetWant(DotnetLack Lack, SdkWanted? Install)
     /// <summary>For <see cref="DotnetLack.GlobalJsonSdk"/> and <see cref="DotnetLack.NoSdk"/>, dotnet's words of the want.</summary>
     public MissingSdk? Missing { get; init; }
 
+    /// <summary>For <see cref="DotnetLack.OlderThanProject"/>, what the global.json that chose the SDK asks of it, where one
+    /// asks for a version; null where none chose it.</summary>
+    public GlobalJsonSdk? ChosenBy { get; init; }
+
+    /// <summary>For <see cref="DotnetLack.OlderThanProject"/>, the newest SDK installed of each channel that builds the
+    /// project's .NET, newest first: those global.json could ask for.</summary>
+    public IReadOnlyList<string> Builders { get; init; } = [];
+
+    /// <summary>The global.json the want names, where it names one: the one that chose the SDK, or that asks for one missing.</summary>
+    public string? GlobalJson => ChosenBy?.Path ?? Missing?.GlobalJson;
+
     public static readonly DotnetWant Nothing = new(DotnetLack.None, null);
 
     /// <summary>Whether the folder's projects have no SDK at all to load, build and run them with, so what needs one refuses.</summary>
     public bool NoSdkAtAll => Lack is DotnetLack.NoDotnet or DotnetLack.RuntimeOnly or DotnetLack.GlobalJsonSdk or DotnetLack.NoSdk;
 
     /// <summary>The want of the machine and the folder: the machine's first, then the folder's SDK as its project host found
-    /// it (<paramref name="missing"/>, or the version it loaded), then each project's frameworks against that version.</summary>
-    public static DotnetWant Of(DotnetMachine? machine, MissingSdk? missing, string? folderSdk, IEnumerable<(string Name, IReadOnlyList<string> Frameworks)> projects)
+    /// it (<paramref name="missing"/>, or the version it loaded, which the global.json <paramref name="globalJson"/> may have
+    /// chosen), then each project's frameworks against that version. An SDK global.json chose that does not build a project
+    /// wants nothing installed where an SDK installed builds it: global.json is to ask for that one.</summary>
+    public static DotnetWant Of(DotnetMachine? machine, MissingSdk? missing, string? folderSdk, IEnumerable<(string Name, IReadOnlyList<string> Frameworks)> projects,
+        GlobalJsonSdk? globalJson = null)
     {
         if (machine is null)
         {
@@ -87,7 +101,16 @@ public sealed partial record DotnetWant(DotnetLack Lack, SdkWanted? Install)
                 if (frameworks.Select(Targeted).OfType<Version>().Where(f => f > built).Max() is { } wanted)
                 {
                     string channel = wanted.ToString(2);
-                    return new DotnetWant(DotnetLack.OlderThanProject, new SdkWanted(Channel: channel)) { Root = found.Root, Sdk = sdk, Newer = (name, channel) };
+                    GlobalJsonSdk? chose = globalJson is { Version: not null } && folderSdk is not null ? globalJson : null;
+                    IReadOnlyList<string> builders = [.. machine.Installation!.Sdks.Where(s => Channel(s) >= wanted).DistinctBy(Channel)];
+                    return new DotnetWant(DotnetLack.OlderThanProject, chose is not null && builders.Count > 0 ? null : new SdkWanted(Channel: channel))
+                    {
+                        Root = found.Root,
+                        Sdk = sdk,
+                        Newer = (name, channel),
+                        ChosenBy = chose,
+                        Builders = chose is null ? [] : builders,
+                    };
                 }
             }
         }

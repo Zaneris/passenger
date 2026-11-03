@@ -51,6 +51,38 @@ public class DotnetWantTests
     }
 
     [Fact]
+    public void An_SDK_global_json_chose_that_does_not_build_a_project_names_it_and_the_installed_SDKs_that_do_and_wants_none_installed()
+    {
+        GlobalJsonSdk asked = new("/work/global.json", "8.0.100", "major", 2);
+        DotnetWant want = DotnetWant.Of(Machine(DotnetPlace.Path, "11.0.100-rc.3.26522.148", "11.0.100-rc.2.26504.105", "10.0.403", "10.0.113", "9.0.319"), null, "9.0.319",
+            TenOnly, asked);
+        Assert.Equal((DotnetLack.OlderThanProject, (SdkWanted?)null, asked, (string?)"/work/global.json"), (want.Lack, want.Install, want.ChosenBy, want.GlobalJson));
+        Assert.Equal(["11.0.100-rc.3.26522.148", "10.0.403"], want.Builders);
+    }
+
+    [Fact]
+    public void An_SDK_global_json_chose_where_none_installed_builds_the_project_wants_the_projects_channel()
+    {
+        GlobalJsonSdk asked = new("/work/global.json", "8.0.100", "major", 2);
+        DotnetWant want = DotnetWant.Of(Machine(DotnetPlace.Path, "9.0.319", "8.0.420"), null, "9.0.319", TenOnly, asked);
+        Assert.Equal((DotnetLack.OlderThanProject, new SdkWanted(Channel: "10.0"), asked), (want.Lack, want.Install, want.ChosenBy));
+        Assert.Empty(want.Builders);
+        Assert.Null(DotnetWant.Of(Machine(DotnetPlace.Path, "10.0.403", "9.0.319"), null, "9.0.319", TenOnly, asked with { Version = null }).ChosenBy);
+    }
+
+    [Fact]
+    public void A_global_json_asks_its_version_and_roll_forward_on_the_line_its_version_is_on()
+    {
+        GlobalJsonSdk? read = GlobalJsonSdk.Of("/work/global.json", "{\n  // pinned\n  \"msbuild-sdks\": { \"version\": \"x\" },\n  \"sdk\": {\n    \"rollForward\": \"major\",\n    \"version\": \"8.0.100\",\n  },\n}\n");
+        Assert.Equal(new GlobalJsonSdk("/work/global.json", "8.0.100", "major", 5), read);
+        Assert.Equal(new GlobalJsonSdk("/work/global.json", null, null, 1), GlobalJsonSdk.Of("/work/global.json", "{\n  \"sdk\": {}\n}"));
+        Assert.Equal(new GlobalJsonSdk("/work/global.json", null, null, 0), GlobalJsonSdk.Of("/work/global.json", "{}"));
+        Assert.Null(GlobalJsonSdk.Of("/work/global.json", "[1]"));
+        Assert.Null(GlobalJsonSdk.Of("/work/global.json", "{ \"sdk\": "));
+        Assert.Null(GlobalJsonSdk.Read(null));
+    }
+
+    [Fact]
     public void Frameworks_the_SDK_builds_and_those_not_of_dotnet_lack_nothing()
     {
         DotnetWant want = DotnetWant.Of(Machine(DotnetPlace.Path, "11.0.100-rc.3.26522.148", "10.0.403"), null, "11.0.100-rc.3.26522.148",

@@ -49,6 +49,13 @@ public sealed record BuildRunParts(
     /// <summary>Opens a folder in the file manager: where a publish put the app, from the status bar's word that it did.</summary>
     public Action<string>? ShowFolder { get; init; }
 
+    /// <summary>Where the folder's global.json chose an SDK that does not build one of its projects, as the window says it;
+    /// null where it did not.</summary>
+    public Func<SdkChosen?>? SdkChosen { get; init; }
+
+    /// <summary>Opens a file at a place in the editor: global.json, from the status bar's word that it chose the SDK.</summary>
+    public Action<string, TextPosition>? Navigate { get; init; }
+
     /// <summary>Asks the person whether a container run may replace containers of its Compose project Passenger did not make
     /// (true), given the configuration, the project and those containers' names; closed unanswered (false) once the start is
     /// stopped.</summary>
@@ -571,12 +578,16 @@ public sealed partial class BuildRunController
     /// <summary>Puts the problem being read in Problems at its line as the editor counts it, unless it is there already.</summary>
     private void ReadProblem()
     {
-        if (reading is { } read && Placed(read) is var problem && !session.Problems.Contains(problem))
+        if (reading is { } read && Placed(Chosen(read)) is var problem && !session.Problems.Contains(problem))
         {
             session.Problems.Add(problem);
         }
         reading = null;
     }
+
+    /// <summary>A build's problem with why global.json's SDK does not build its project, where that is what it says.</summary>
+    private Problem Chosen(Problem problem) =>
+        problem.Code == Run.SdkChosen.TooOld && parts.SdkChosen?.Invoke() is { } chosen ? chosen.Placed(problem) : problem;
 
     /// <summary>A problem's place as the editor counts its file's lines (<see cref="Placed(Problem, Func{string, TextSnapshot?})"/>),
     /// its files' texts read once a build.</summary>
@@ -621,6 +632,7 @@ public sealed partial class BuildRunController
         BuildOutcome ended = session.Builder.WasStopped ? new BuildOutcome(BuildStatus.Stopped, $"{noun} stopped")
             : code == 0 && publishing is { } publish ? Published(publish, warned)
             : code == 0 ? new BuildOutcome(BuildStatus.Succeeded, $"{noun} succeeded{warned}")
+            : problems.FirstOrDefault(Run.SdkChosen.IsPlaced) is { } chose ? new BuildOutcome(BuildStatus.Failed, $"{noun} failed: {chose.Message.Split('\n')[0]}")
             : new BuildOutcome(BuildStatus.Failed, $"{noun} failed{FailedIn(problems)}: {Plural.Of(errors, "error")}, {Plural.Of(warnings, "warning")}; "
                 + (errors > 0 ? "Problems lists them" : $"dotnet exited with code {code}, the Build window says why"));
         if (ended.Succeeded && checking is { Count: > 0 } checks)
@@ -687,6 +699,8 @@ public sealed partial class BuildRunController
     public StatusPlace? Place(BuildOutcome ended) =>
         ended is { Succeeded: true, Published: { } folder } && parts.ShowFolder is { } show
             ? new StatusPlace($"open {Path.GetFileName(folder)} in {FileManager.Name}", () => show(folder))
+        : ended.Status == BuildStatus.Failed && ended.Problems.FirstOrDefault(Run.SdkChosen.IsPlaced) is { Path: { } chose } placed && parts.Navigate is { } navigate
+            ? new StatusPlace($"open {Path.GetFileName(chose)}", () => navigate(chose, placed.Position))
         : ended.Problems.Count > 0 ? StatusPlace.Problems(parts.Dock, parts.Views.Problems, ProblemsTab.Build, _ => true)
         : ended.Status == BuildStatus.Failed ? StatusPlace.Window(parts.Dock, ToolWindowIds.Build)
         : null;

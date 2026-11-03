@@ -95,6 +95,8 @@ public partial class MainWindow
         AskReplace = AskReplaceAsync,
         AsksNoOne = AgentsOwn,
         Unseen = Unseen,
+        SdkChosen = ChosenSdk,
+        Navigate = NavigateTo,
         ProfileService = RecordRunServiceAsync,
         ShowFolder = ShowInFileManager,
     };

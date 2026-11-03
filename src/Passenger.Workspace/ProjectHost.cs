@@ -70,6 +70,9 @@ public sealed class ProjectHost : IAsyncDisposable
     /// whose global.json stands as it did, and found the SDK as dotnet does there.</summary>
     public bool StartedFor(string folder) => PathNames.Same(startedFor.Folder, folder) && Dotnet.GlobalJsonOver(folder) == startedFor.GlobalJson;
 
+    /// <summary>The global.json the host's SDK was chosen by, as it stood when the host started; null for none.</summary>
+    public string? GlobalJson => startedFor.GlobalJson.Split('\n')[0] is { Length: > 0 } path ? path : null;
+
     /// <summary>Where the app carries the host.</summary>
     public static string Assembly => Path.Combine(AppContext.BaseDirectory, "host", "Passenger.Host.dll");
 

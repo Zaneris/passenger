@@ -24,6 +24,7 @@ public partial class MainWindow
 
     private Button? installLink;
     private Button? downloadLink;
+    private Button? globalJsonLink;
     private Button? pathLink;
     private Button? hideLink;
 
@@ -56,6 +57,7 @@ public partial class MainWindow
         });
         installLink = DotnetBanner.Link(actions[AppActions.InstallDotnetSdk]!.Title, () => Request(AppActions.InstallDotnetSdk));
         downloadLink = DotnetBanner.Link("Download Page", () => Browse(DotnetReleases.PageOf(DotnetWant.Install?.Channel ?? Channel(DotnetWant.Install?.Version))));
+        globalJsonLink = DotnetBanner.Link("Open global.json", OpenGlobalJson);
         pathLink = DotnetBanner.Link(actions[AppActions.AddDotnetToPath]!.Title, () => Request(AppActions.AddDotnetToPath));
         hideLink = DotnetBanner.Link("Hide", () =>
         {
@@ -131,12 +133,13 @@ public partial class MainWindow
     {
         UiThread.Check();
         DotnetWant = DotnetWant.Of(machine, session.Models.MissingSdk, session.Models.SdkVersion,
-            Projects.Where(p => p.IsEvaluated).Select(p => (p.Name, p.TargetFrameworks)));
+            Projects.Where(p => p.IsEvaluated).Select(p => (p.Name, p.TargetFrameworks)), session.Models.SdkAsked);
         string? said = DotnetWant.Lack == DotnetLack.OffPath && (offPathHidden || shellPath is null) ? null : Refusals.Dotnet(DotnetWant, Folder);
         DotnetBanner.Say(said);
         bool wants = DotnetWant.Install is not null;
         installLink!.IsVisible = wants;
         downloadLink!.IsVisible = wants;
+        globalJsonLink!.IsVisible = said is not null && DotnetWant.GlobalJson is not null;
         pathLink!.IsVisible = DotnetWant.Lack == DotnetLack.OffPath && shellPath is not null;
         hideLink!.IsVisible = DotnetWant.Lack == DotnetLack.OffPath;
         // The status bar's word of the folder's want, said before the machine's .NET was read, in the banner's words.
@@ -145,6 +148,21 @@ public partial class MainWindow
             ShowSdk();
         }
     }
+
+    /// <summary>Opens the global.json the want names, at the version it asks for where it chose the SDK.</summary>
+    private void OpenGlobalJson()
+    {
+        if (DotnetWant.GlobalJson is { } path)
+        {
+            NavigateTo(PathNames.Canonical(path), new Text.TextPosition(DotnetWant.ChosenBy?.Line ?? 0, 0));
+        }
+    }
+
+    /// <summary>Where global.json chose an SDK that does not build a project: the banner's words of it, global.json, and the
+    /// line it asks for the SDK on, as a build that failed for it says them; null otherwise.</summary>
+    public SdkChosen? ChosenSdk() => DotnetWant is { Lack: DotnetLack.OlderThanProject, ChosenBy: { } asked } && Refusals.Dotnet(DotnetWant, Folder) is { } words
+        ? new SdkChosen(words, PathNames.Canonical(asked.Path), new Text.TextPosition(asked.Line, 0))
+        : null;
 
     /// <summary>What a person's action that needs a .NET SDK is refused with while the folder has none to load, build and
     /// run its projects with; null while it has one.</summary>
@@ -221,22 +239,8 @@ public partial class MainWindow
     }
 
     /// <summary>The SDK wanted with the rollForward of the global.json that asks for it, read off the UI thread.</summary>
-    private static SdkWanted WithRollForward(SdkWanted wanted, string? globalJson)
-    {
-        if (wanted.Version is null || globalJson is null)
-        {
-            return wanted;
-        }
-        try
-        {
-            using System.Text.Json.JsonDocument read = System.Text.Json.JsonDocument.Parse(File.ReadAllText(globalJson), LenientJson.Document);
-            return wanted with { RollForward = JsonMembers.Text(JsonMembers.Object(read.RootElement, "sdk"), "rollForward") };
-        }
-        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
-        {
-            return wanted;
-        }
-    }
+    private static SdkWanted WithRollForward(SdkWanted wanted, string? globalJson) =>
+        wanted.Version is null || globalJson is null ? wanted : wanted with { RollForward = GlobalJsonSdk.Read(globalJson)?.RollForward };
 
     /// <summary>Add .NET to the Shell's PATH: the change said and asked, then made; it says what it came to.</summary>
     private async Task AddDotnetToPathAsync()

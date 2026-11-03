@@ -66,6 +66,11 @@ public static class Refusals
         DotnetLack.NoDotnet => NoDotnet,
         DotnetLack.RuntimeOnly => $"Only the .NET runtime is installed{(want.Root is { } root ? $", in {PathNames.Shown(root, null)}" : string.Empty)}: {NeedsTheSdk}",
         DotnetLack.GlobalJsonSdk or DotnetLack.NoSdk => NoSdk(want.Missing!, folder),
+        DotnetLack.OlderThanProject when want.ChosenBy is { } asked => $"{want.Newer!.Value.Project} targets .NET {want.Newer.Value.Framework}, which the .NET SDK {want.Sdk} "
+            + $"does not build: {PathNames.Shown(asked.Path, folder)} chose it, asking for {asked.Version}{(asked.RollForward is { } roll ? $" with rollForward {roll}" : string.Empty)}; "
+            + (want.Builders.Count > 0
+                ? $"the {Plural.Noun(want.Builders.Count, ".NET SDK")} {Plural.Listed(want.Builders)} installed {(want.Builders.Count == 1 ? "builds" : "build")} it: have global.json ask for {(want.Builders.Count == 1 ? "it" : "one of them")}"
+                : $"no .NET SDK installed builds .NET {want.Newer.Value.Framework}: install the .NET {want.Newer.Value.Framework} SDK, and have global.json ask for it"),
         DotnetLack.OlderThanProject => $"{want.Newer!.Value.Project} targets .NET {want.Newer.Value.Framework}, which the .NET SDK {want.Sdk} does not build: "
             + $"it needs the .NET {want.Newer.Value.Framework} SDK",
         DotnetLack.OffPath => $"Passenger uses the .NET SDK {want.Sdk} in {PathNames.Shown(want.Root!, null)}, which your shell's PATH does not name, "

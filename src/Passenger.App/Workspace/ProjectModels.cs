@@ -61,6 +61,9 @@ public sealed class ProjectModels
     /// <summary>The version of the SDK the host loaded for the folder, once it has; null before, or with none.</summary>
     public string? SdkVersion { get; private set; }
 
+    /// <summary>What the global.json that chose that SDK asks of it, read as the host was found; null with none.</summary>
+    public GlobalJsonSdk? SdkAsked { get; private set; }
+
     /// <summary>The folder came to have no .NET SDK to load, build and run its projects, or has one again
     /// (<see cref="MissingSdk"/>).</summary>
     public event EventHandler? SdkChanged;
@@ -150,6 +153,7 @@ public sealed class ProjectModels
         Problem = null;
         MissingSdk = null;
         SdkVersion = null;
+        SdkAsked = null;
         IsComplete = false;
         Followed = false;
     }
@@ -314,7 +318,11 @@ public sealed class ProjectModels
         try
         {
             List<string> stale = await BackgroundWork.Run(() => projects.Where(p => !before.TryGetValue(p, out EvaluatedProject? e) || !Holds(e)).ToList());
-            ProjectHost host = await BackgroundWork.Run(() => ProjectHosts.ForAsync(following));
+            (ProjectHost host, GlobalJsonSdk? asked) = await BackgroundWork.Run(async () =>
+            {
+                ProjectHost found = await ProjectHosts.ForAsync(following);
+                return (found, GlobalJsonSdk.Read(found.GlobalJson));
+            });
             if (mine != generation)
             {
                 return;
@@ -326,6 +334,7 @@ public sealed class ProjectModels
                 sdk = host.Sdk;
             }
             SdkVersion = host.Version;
+            SdkAsked = asked;
             Problem = null;
             SdkIs(null);
             if (stale.Count == 0)
@@ -375,6 +384,7 @@ public sealed class ProjectModels
                 if (error is ProjectHostFailed { MissingSdk: { } missing })
                 {
                     SdkVersion = null;
+                    SdkAsked = null;
                     SdkIs(missing);
                 }
                 Changed?.Invoke(this, []);
