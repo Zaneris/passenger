@@ -71,6 +71,11 @@ public sealed class GDScriptTree
         return new GDScriptTree(text, @class, [.. made], made.Count);
     }
 
+    /// <summary>The tree of the text a document's change made of this tree's text, its edits as the change gives them
+    /// (sorted and apart, in this tree's text): parsed again from the run the first reaches.</summary>
+    public GDScriptTree Reparse(string text, IReadOnlyList<TextEdit> edits) =>
+        edits.Count == 0 && text.Length == Text.Length ? this : Reparse(text, GDScriptTextChange.Of(edits).Edit(text));
+
     /// <summary>The tree of the text one edit of this tree's text made: the runs before the edit's run kept, its run and
     /// those after parsed again until a run start lands where one of this tree's did, the file's indentation character
     /// as it was there, and the runs from there on kept with their offsets moved.</summary>

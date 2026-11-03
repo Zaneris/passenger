@@ -441,13 +441,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## Godot's GDScript tokenizer and parser
+## Godot's GDScript tokenizer, parser and analyzer
 
 `src/Passenger.Workspace/GDScript/` (`GDScriptToken.cs`, `GDScriptTokenizer.cs`, `GDScriptNodes.cs` and the
 `GDScriptParser` files) is a port to C# of the Godot Engine's GDScript tokenizer and parser,
 `modules/gdscript/gdscript_tokenizer.cpp`, `gdscript_tokenizer.h`, `gdscript_parser.cpp` and `gdscript_parser.h` at
 commit cafc17a192acf67903910a68aeb3c076c0907a4b (4.8 beta 2) of https://github.com/godotengine/godot: their tokens,
-nodes, parse rules and error messages, kept as Godot words them. The scripts of the parser's unit tests
+nodes, parse rules and error messages, kept as Godot words them. `GDScriptAnalyzer` (with `GDScriptType`,
+`GDScriptAnalysis` and `GodotEngineApi`) ports the typing of `modules/gdscript/gdscript_analyzer.cpp` and
+`gdscript_analyzer.h` at the same commit (its data types, how a declaration, an override's return and each expression
+are typed), with the return types of `gdscript_utility_functions.cpp`'s functions and the symbols' wording of
+`language_server/gdscript_extend_parser.cpp`. The scripts of the parser's unit tests
 (`tests/Passenger.UnitTests/Godot/GDScriptParserTests.cs`) are in part Godot's own,
 `modules/gdscript/tests/scripts/parser/errors`, at the same commit.
 

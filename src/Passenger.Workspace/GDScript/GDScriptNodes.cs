@@ -127,7 +127,7 @@ public sealed class GDScriptCast : GDScriptExpression
 {
     public GDScriptExpression? Operand { get; internal set; }
 
-    public GDScriptType? Type { get; internal set; }
+    public GDScriptTypeNode? Type { get; internal set; }
 
     public override IEnumerable<GDScriptNode> Children => Of(Operand, Type);
 }
@@ -185,7 +185,7 @@ public sealed class GDScriptTypeTest : GDScriptExpression
 {
     public GDScriptExpression? Operand { get; internal set; }
 
-    public GDScriptType? Type { get; internal set; }
+    public GDScriptTypeNode? Type { get; internal set; }
 
     public override IEnumerable<GDScriptNode> Children => Of(Operand, Type);
 }
@@ -200,13 +200,13 @@ public sealed class GDScriptUnary : GDScriptExpression
     public override IEnumerable<GDScriptNode> Children => Of(Operand);
 }
 
-public sealed class GDScriptType : GDScriptNode
+public sealed class GDScriptTypeNode : GDScriptNode
 {
     /// <summary>Its names as written, <c>A.B.C</c> a name each.</summary>
     public List<GDScriptIdentifier> Chain { get; } = [];
 
     /// <summary>A typed collection's element types: <c>Array[int]</c>'s one, <c>Dictionary[String, int]</c>'s two.</summary>
-    public List<GDScriptType> Elements { get; } = [];
+    public List<GDScriptTypeNode> Elements { get; } = [];
 
     /// <summary>Whether it is <c>void</c>, which only a return type may be.</summary>
     public bool IsVoid { get; internal set; }
@@ -243,7 +243,7 @@ public abstract class GDScriptAssignable : GDScriptNode
 
     public GDScriptExpression? Initializer { get; internal set; }
 
-    public GDScriptType? Type { get; internal set; }
+    public GDScriptTypeNode? Type { get; internal set; }
 
     /// <summary>Whether its type is inferred, written <c>:=</c>.</summary>
     public bool Infers { get; internal set; }
@@ -290,7 +290,7 @@ public sealed class GDScriptFunction : GDScriptNode
     /// <summary>Its <c>...rest</c> parameter, which takes every argument after the others.</summary>
     public GDScriptParameter? Rest { get; internal set; }
 
-    public GDScriptType? ReturnType { get; internal set; }
+    public GDScriptTypeNode? ReturnType { get; internal set; }
 
     public GDScriptSuite? Body { get; internal set; }
 
@@ -414,7 +414,7 @@ public sealed class GDScriptFor : GDScriptNode
 {
     public GDScriptIdentifier? Variable { get; internal set; }
 
-    public GDScriptType? Type { get; internal set; }
+    public GDScriptTypeNode? Type { get; internal set; }
 
     public GDScriptExpression? List { get; internal set; }
 

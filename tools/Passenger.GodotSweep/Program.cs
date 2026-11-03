@@ -15,6 +15,11 @@ public static class Program
 
     public static int Main(string[] args)
     {
+        if (args is ["--types", var project, var api] && Directory.Exists(project) && File.Exists(api))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(Types(Path.GetFullPath(project), GodotEngineApi.Read(File.ReadAllBytes(api)))));
+            return 0;
+        }
         if (args.Length != 1 || !Directory.Exists(args[0]))
         {
             Console.Error.WriteLine("Passenger.GodotSweep: takes one argument, a folder whose .gd files to parse");
@@ -48,6 +53,72 @@ public static class Program
         object? speed = largest is { } big ? Speed(big.Path, big.Text) : null;
         Console.WriteLine(JsonSerializer.Serialize(new { files, totalMilliseconds = Math.Round(total.Elapsed.TotalMilliseconds, 1), editsMismatched = mismatches, largest = speed }));
         return 0;
+    }
+
+    /// <summary>Each script's members of a Godot project as Passenger's analyzer types them, written as Godot's server's
+    /// symbols write them (their detail), by res:// path.</summary>
+    private static object Types(string folder, GodotEngineApi api)
+    {
+        List<string> scripts = [];
+        Walk(folder, scripts);
+        Dictionary<string, GDScriptTree> trees = new(StringComparer.Ordinal);
+        Dictionary<string, string> classNames = new(StringComparer.Ordinal);
+        foreach (string file in scripts)
+        {
+            string res = "res://" + Path.GetRelativePath(folder, file).Replace('\\', '/');
+            GDScriptTree tree = GDScriptTree.Parse(File.ReadAllText(file));
+            trees[res] = tree;
+            if (tree.Class.Identifier is { } named)
+            {
+                classNames[named.Name] = res;
+            }
+        }
+        Dictionary<string, string> autoloads = new(StringComparer.Ordinal);
+        string godot = Path.Combine(folder, "project.godot");
+        bool inAutoloads = false;
+        foreach (string line in File.Exists(godot) ? File.ReadAllLines(godot) : [])
+        {
+            inAutoloads = line.StartsWith('[') ? line == "[autoload]" : inAutoloads;
+            int equals = line.IndexOf('=', StringComparison.Ordinal);
+            if (inAutoloads && equals > 0 && line[(equals + 1)..].Trim('"', '*') is { } loaded && loaded.EndsWith(".gd", StringComparison.Ordinal))
+            {
+                autoloads[line[..equals]] = loaded;
+            }
+        }
+        Dictionary<string, string> uids = new(StringComparer.Ordinal);
+        Dictionary<string, string> classes = new(StringComparer.Ordinal);
+        foreach (string file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Where(f => !f.Contains("/.godot/", StringComparison.Ordinal)))
+        {
+            string res = "res://" + Path.GetRelativePath(folder, file).Replace('\\', '/');
+            if (file.EndsWith(".uid", StringComparison.Ordinal))
+            {
+                uids[File.ReadAllText(file).Trim()] = res[..^4];
+            }
+            else if (file.EndsWith(".import", StringComparison.Ordinal) || file.EndsWith(".tres", StringComparison.Ordinal) || file.EndsWith(".tscn", StringComparison.Ordinal))
+            {
+                string head = string.Join('\n', File.ReadLines(file).Take(12));
+                string owner = file.EndsWith(".import", StringComparison.Ordinal) ? res[..^7] : res;
+                if (System.Text.RegularExpressions.Regex.Match(head, "uid=\"(uid://[^\"]+)\"") is { Success: true } uid)
+                {
+                    uids[uid.Groups[1].Value] = owner;
+                }
+                if (System.Text.RegularExpressions.Regex.Match(head, "script_class=\"([^\"]+)\"") is { Success: true } scripted)
+                {
+                    classes[owner] = scripted.Groups[1].Value;
+                }
+                else if (!file.EndsWith(".tscn", StringComparison.Ordinal) && System.Text.RegularExpressions.Regex.Match(head, "(?m)^\\[?(?:gd_resource )?type=\"([^\"]+)\"") is { Success: true } typed)
+                {
+                    classes[owner] = typed.Groups[1].Value;
+                }
+            }
+        }
+        GDScriptProject project = new(api, path => trees.GetValueOrDefault(path), classNames, autoloads, classes.GetValueOrDefault, uids.GetValueOrDefault);
+        GDScriptAnalyzer analyzer = new(project);
+        return trees.Select(t => (t.Key, Analysis: analyzer.Analyze(t.Value, t.Key))).Select(t => new
+        {
+            path = t.Key,
+            members = t.Analysis.Tree!.Members.Select(m => new { name = Name(m.Node), detail = t.Analysis.Detail(m.Node) }).Where(m => m.detail is not null),
+        });
     }
 
     private static void Walk(string folder, List<string> into)

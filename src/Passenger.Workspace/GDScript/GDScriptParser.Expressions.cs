@@ -727,9 +727,9 @@ internal sealed partial class GDScriptParser
         return left;
     }
 
-    private GDScriptType? ParseType(bool allowVoid = false)
+    private GDScriptTypeNode? ParseType(bool allowVoid = false)
     {
-        GDScriptType type = Alloc<GDScriptType>();
+        GDScriptTypeNode type = Alloc<GDScriptTypeNode>();
         ResetExtents(type, current);
         if (!Match(K.Identifier))
         {
@@ -750,10 +750,10 @@ internal sealed partial class GDScriptParser
         if (Match(K.BracketOpen))
         {
             bool first = true;
-            GDScriptType? made = type;
+            GDScriptTypeNode? made = type;
             do
             {
-                GDScriptType? element = ParseType();
+                GDScriptTypeNode? element = ParseType();
                 if (element is null)
                 {
                     PushError($"Expected type for collection after \"{(first ? "[" : ",")}\".");
