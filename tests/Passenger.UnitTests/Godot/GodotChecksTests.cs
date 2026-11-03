@@ -29,10 +29,15 @@ public class GodotChecksTests
 
         """;
 
+    /// <summary>The game's folder, rooted as this system roots a path, as a scene's files are found under it.</summary>
+    private static readonly string Game = Path.GetFullPath("/game");
+
+    private static string In(string name) => Path.Combine(Game, name);
+
     private static readonly Place At = new(9, 30);
     private static readonly Place End = new(9, 40);
 
-    private static GodotScenes Scenes() => new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Scene) });
+    private static GodotScenes Scenes() => new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Scene) });
 
     private static GodotClassFound Main => new("Main", "Main", new Place(2, 21), new Place(2, 25), "Node2D", ["res://Main.cs"], [], []);
 
@@ -50,7 +55,7 @@ public class GodotChecksTests
     [Fact]
     public void A_script_asks_the_engine_classes_scripts_signals_and_methods_of_the_scenes_it_runs_in()
     {
-        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", Scenes(), ["res://Main.cs"]);
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), Scenes(), ["res://Main.cs"]);
         Assert.Equal(["Node2D", "CanvasLayer", "Label"], asked.Engine);
         Assert.Equal(["res://Main.cs", "res://Hud.cs"], asked.Scripts);
         Assert.Equal([new GodotMemberAsked("CanvasLayer", "res://Hud.cs", "pressed"), new GodotMemberAsked("CanvasLayer", "res://Hud.cs", "toggled")], asked.Signals);
@@ -61,7 +66,7 @@ public class GodotChecksTests
     public void A_path_no_node_answers_and_a_node_of_another_type_are_errors_naming_the_scene_and_line()
     {
         GodotScenes scenes = Scenes();
-        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotTypeRef label = new("Label", true, "Label");
         GodotTypeRef button = new("Button", true, "Button");
         GodotTypeRef hud = new("Hud", false, "Hud");
@@ -84,7 +89,7 @@ public class GodotChecksTests
     public void A_path_no_node_answers_offers_the_nearest_of_the_type_asked_and_a_wrong_type_the_nodes_own()
     {
         GodotScenes scenes = Scenes();
-        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotTypeRef label = new("Label", true, "Label");
         GodotTypeRef node2D = new("Node2D", true, "Node2D");
         GodotCodeFound found = Found(asked, [Call("Hud/Scor", label), Call("Hud/Score", new GodotTypeRef("Button", true, "Button")), Call("Scor", label), Call("Hud/Scor", node2D)],
@@ -94,7 +99,7 @@ public class GodotChecksTests
         Assert.Equal(["Hud/Score"], findings[2].Offer!.Near);
         Assert.Empty(findings[3].Offer!.Near);
         GodotFixRequest typed = findings[1].Offer!.Make!;
-        Assert.Equal((GodotFixKind.NodeType, "Label", "/game/Main.cs", At), (typed.Kind, typed.Type, typed.Path, typed.At));
+        Assert.Equal((GodotFixKind.NodeType, "Label", In("Main.cs"), At), (typed.Kind, typed.Type, typed.Path, typed.At));
         Assert.Equal("Label", findings[1].Offer!.Shown);
     }
 
@@ -102,11 +107,11 @@ public class GodotChecksTests
     public void A_connection_to_a_missing_method_offers_it_made_with_what_the_signal_gives_less_unbinds_and_with_binds_beside_the_scripts_handlers()
     {
         GodotScenes scenes = Scenes();
-        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotCodeFound found = Found(asked, [], methods: [new GodotSignature("OnPressed", [], 0, null, null, null), null]);
         GodotChecks.Finding finding = Assert.Single(GodotChecks.Findings(scenes, asked, found, _ => true));
         GodotFixRequest made = finding.Offer!.Make!;
-        Assert.Equal((GodotFixKind.Handler, "res://Main.cs", "OnToggled", "/game/Main.cs"), (made.Kind, made.Script, made.Name, made.Path));
+        Assert.Equal((GodotFixKind.Handler, "res://Main.cs", "OnToggled", In("Main.cs")), (made.Kind, made.Script, made.Name, made.Path));
         Assert.Equal(new GodotMemberAsked("CanvasLayer", "res://Hud.cs", "toggled"), made.Signal);
         Assert.Equal(["String"], made.Binds);
         Assert.Equal(["OnPressed"], made.Beside);
@@ -116,16 +121,16 @@ public class GodotChecksTests
     [Fact]
     public void A_property_a_scene_sets_that_the_script_lacks_is_an_error_offering_it_exported_of_its_values_type()
     {
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Scene.Replace("script = ExtResource(\"1\")\n",
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Scene.Replace("script = ExtResource(\"1\")\n",
             "script = ExtResource(\"1\")\nLives = 3\nTint = Color(1, 0, 0, 1)\nTarget = NodePath(\"Hud/Score\")\nposition = Vector2(1, 2)\nmetadata/Note = \"x\"\n", StringComparison.Ordinal)) });
-        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         Assert.Equal(["Lives", "Tint", "Target"], asked.Properties.Select(p => p.Name));
         GodotCodeFound found = Found(asked, [], methods: [new GodotSignature("OnPressed", [], 0, null, null, null), new GodotSignature("OnToggled", ["bool", "string"], 2, null, null, null)])
             with { Properties = [null, null, new GodotSignature("Target", ["Label"], 0, null, null, null)] };
         IReadOnlyList<GodotChecks.Finding> findings = GodotChecks.Findings(scenes, asked, found, _ => true);
         Assert.Equal(["main.tscn:8 sets Lives on Main, which Main has no property of", "main.tscn:9 sets Tint on Main, which Main has no property of"], findings.Select(f => f.Message));
         Assert.Equal([(GodotFixKind.Export, "Lives", "int"), (GodotFixKind.Export, "Tint", "Color")], findings.Select(f => (f.Offer!.Make!.Kind, f.Offer.Make.Name, f.Offer.Make.Type!)));
-        GodotChecks.SceneFinding scene = Assert.Single(GodotChecks.SceneFindings(scenes, "res://main.tscn", GodotChecks.SceneAsks("/game/Main.cs", scenes, "res://main.tscn"),
+        GodotChecks.SceneFinding scene = Assert.Single(GodotChecks.SceneFindings(scenes, "res://main.tscn", GodotChecks.SceneAsks(In("Main.cs"), scenes, "res://main.tscn"),
             found with { Properties = [null, new GodotSignature("Tint", ["Color"], 0, null, null, null), new GodotSignature("Target", ["Label"], 0, null, null, null)] }, _ => true), f => f.Message.Contains("property", StringComparison.Ordinal));
         Assert.Equal("Main, a Node2D (Main.cs), has no property Lives, so Godot drops its value", scene.Message);
     }
@@ -135,9 +140,9 @@ public class GodotChecksTests
     [Fact]
     public void A_scene_marks_a_node_path_it_sets_that_names_no_node_or_one_of_another_type()
     {
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Scene.Replace("script = ExtResource(\"1\")\n",
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Scene.Replace("script = ExtResource(\"1\")\n",
             "script = ExtResource(\"1\")\nDisplay = NodePath(\"Hud\")\nScore = NodePath(\"Hud/Score\")\nTarget = NodePath(\"Hud/Gone\")\n", StringComparison.Ordinal)) });
-        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/Main.cs", scenes, "res://main.tscn");
+        GodotCodeRequest asked = GodotChecks.SceneAsks(In("Main.cs"), scenes, "res://main.tscn");
         Assert.Equal(["Display", "Score", "Target"], asked.Properties.Select(p => p.Name));
         GodotTypeRef label = new("Label", true, "Label");
         GodotCodeFound found = Found(asked, [], methods: [new GodotSignature("OnPressed", [], 0, null, null, null), new GodotSignature("OnToggled", ["bool", "string"], 2, null, null, null)])
@@ -163,9 +168,9 @@ public class GodotChecksTests
             old = SubResource( 3 )
 
             """;
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) });
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) });
         Assert.Equal([("Box_b", "No sub_resource of this file has the id \"Box_b\""), ("3", "No sub_resource of this file has the id \"3\"")],
-            GodotChecks.SceneFindings(scenes, "res://main.tscn", GodotChecks.SceneAsks("/game/Main.cs", scenes, "res://main.tscn"), GodotCodeFound.None, _ => true)
+            GodotChecks.SceneFindings(scenes, "res://main.tscn", GodotChecks.SceneAsks(In("Main.cs"), scenes, "res://main.tscn"), GodotCodeFound.None, _ => true)
                 .Select(f => (scene[f.Start..f.End], f.Message)));
     }
 
@@ -193,7 +198,7 @@ public class GodotChecksTests
     public void A_res_path_no_file_answers_is_an_error_and_a_folder_or_a_path_built_on_is_not()
     {
         GodotScenes scenes = Scenes();
-        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotCodeFound found = Found(asked, [], [new GodotPathRead("res://gone.tscn", At, End), new GodotPathRead("res://main.tscn", At, End),
             new GodotPathRead("res://levels/", At, End), new GodotPathRead("res://levels/level_", At, End)],
             methods: [new GodotSignature("OnPressed", [], 0, null, null, null), new GodotSignature("OnToggled", ["bool", "string"], 2, null, null, null)]);
@@ -205,8 +210,8 @@ public class GodotChecksTests
     public void A_connection_to_a_method_the_script_lacks_or_of_other_parameters_than_its_signal_and_binds_give_is_an_error()
     {
         GodotScenes scenes = Scenes();
-        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
-        GodotCodeFound found = Found(asked, [], methods: [null, new GodotSignature("OnToggled", ["bool"], 1, "/game/Main.cs", new Place(7, 17), new Place(7, 26))]);
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
+        GodotCodeFound found = Found(asked, [], methods: [null, new GodotSignature("OnToggled", ["bool"], 1, In("Main.cs"), new Place(7, 17), new Place(7, 26))]);
         IReadOnlyList<GodotChecks.Finding> findings = GodotChecks.Findings(scenes, asked, found, _ => true);
         Assert.Equal(
         [
@@ -224,10 +229,10 @@ public class GodotChecksTests
     public void A_string_naming_a_member_a_script_lacks_or_of_other_arguments_is_an_error()
     {
         GodotScenes scenes = Scenes();
-        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
-        GodotSignature scored = new("Scored", ["int"], 1, "/game/Main.cs", new Place(4, 25), new Place(4, 43));
-        GodotSignature onScored = new("OnScored", ["int"], 1, "/game/Main.cs", new Place(9, 17), new Place(9, 25));
-        GodotSignature onStart = new("OnStart", [], 0, "/game/Main.cs", new Place(11, 17), new Place(11, 24));
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
+        GodotSignature scored = new("Scored", ["int"], 1, In("Main.cs"), new Place(4, 25), new Place(4, 43));
+        GodotSignature onScored = new("OnScored", ["int"], 1, In("Main.cs"), new Place(9, 17), new Place(9, 25));
+        GodotSignature onStart = new("OnStart", [], 0, In("Main.cs"), new Place(11, 17), new Place(11, 24));
         GodotStringRead Read(GodotNameKind kind, string name, int line, bool script, GodotSignature? found, int? given = null, int? signal = null) =>
             new(kind, name, new Place(line, 10), new Place(line, 10 + name.Length), true, script ? "Main" : "Button", script, found, given, signal);
         GodotCodeFound found = Found(asked, [], methods: [null, null]) with
@@ -289,8 +294,8 @@ public class GodotChecksTests
             [connection signal="texture_changed" from="Icon" to="." method="OnToggled"]
 
             """;
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) });
-        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/Main.cs", scenes, "res://main.tscn");
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) });
+        GodotCodeRequest asked = GodotChecks.SceneAsks(In("Main.cs"), scenes, "res://main.tscn");
         Assert.Equal(["Node2D", "CanvasLayer", "Sprite2D"], asked.Engine);
         Assert.Equal(["res://Main.cs"], asked.Scripts);
         GodotSignature? Signal(GodotMemberAsked a) => a.Name switch
@@ -337,8 +342,8 @@ public class GodotChecksTests
             [node name="Lost" type="Node3D" parent="Halo/Gone"]
 
             """;
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://chicken.tscn"] = GodotFile.Parse(scene) });
-        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/Chicken.cs", scenes, "res://chicken.tscn");
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://chicken.tscn"] = GodotFile.Parse(scene) });
+        GodotCodeRequest asked = GodotChecks.SceneAsks(In("Chicken.cs"), scenes, "res://chicken.tscn");
         GodotCodeFound found = new([], [], [], [], [], [], []);
         IReadOnlyList<GodotChecks.SceneFinding> findings = GodotChecks.SceneFindings(scenes, "res://chicken.tscn", asked, found, _ => true);
         Assert.Equal([("Halo/Gone", "No node 'Halo/Gone' is in the scene, so Godot leaves Lost out")], findings.Select(f => (scene[f.Start..f.End], f.Message)));
@@ -366,12 +371,12 @@ public class GodotChecksTests
             [node name="Score" type="Label" parent="Hud"]
 
             """;
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) });
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) });
         GodotTypeRef label = new("Label", true, "Label");
         GodotTypeRef node = new("Node", true, "Node");
-        GodotMember Export(string name, GodotTypeRef type, int line) => new(name, type.Shown, "/game/Main.cs", new Place(line, 17), new Place(line, 17 + name.Length)) { Node = type };
+        GodotMember Export(string name, GodotTypeRef type, int line) => new(name, type.Shown, In("Main.cs"), new Place(line, 17), new Place(line, 17 + name.Length)) { Node = type };
         GodotClassFound main = Main with { Exports = [Export("Display", label, 4), Export("Shown", label, 5), Export("Target", node, 6), Export("Above", node, 7)] };
-        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotCodeFound found = new([main], [], [],
             [new GodotChain("Label", ["Label", "Control", "CanvasItem", "Node", "Object"], "Label", "Label"), new GodotChain("CanvasLayer", ["CanvasLayer", "Node", "Object"], "CanvasLayer", "CanvasLayer"),
                 new GodotChain("Node2D", ["Node2D", "CanvasItem", "Node", "Object"], "Node2D", "Node2D")], [], [], []);
@@ -403,16 +408,16 @@ public class GodotChecksTests
             ["res://main.tscn"] = GodotFile.Parse(scene),
             ["res://player.tscn"] = GodotFile.Parse("[gd_scene format=3 uid=\"uid://bplayer\"]\n\n[node name=\"Player\" type=\"Node2D\"]\n"),
         };
-        GodotScenes cached = new("/game", files, new Dictionary<string, string> { ["uid://cgone"] = "res://gone.tscn" }, cached: true);
-        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", cached, ["res://Main.cs"]);
+        GodotScenes cached = new(Game, files, new Dictionary<string, string> { ["uid://cgone"] = "res://gone.tscn" }, cached: true);
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), cached, ["res://Main.cs"]);
         GodotCodeFound found = Found(asked, [], [new GodotPathRead("uid://bplayer", At, End), new GodotPathRead("uid://bnone", At, End), new GodotPathRead("uid://cgone", At, End)]);
         bool Exists(string path) => !path.EndsWith("gone.tscn", StringComparison.Ordinal) && !path.EndsWith("old_player.tscn", StringComparison.Ordinal);
         Assert.Equal(["No file of the Godot project has uid://bnone", "uid://cgone is res://gone.tscn, which is not in the Godot project"],
             GodotChecks.Findings(cached, asked, found, Exists).Select(f => f.Message));
-        GodotScenes uncached = new("/game", files);
+        GodotScenes uncached = new(Game, files);
         Assert.Empty(GodotChecks.Findings(uncached, asked, found with { Resources = [new GodotPathRead("uid://bnone", At, End)] }, Exists));
 
-        GodotChecks.SceneFinding loaded = Assert.Single(GodotChecks.SceneFindings(cached, "res://main.tscn", GodotChecks.SceneAsks("/game/Main.cs", cached, "res://main.tscn"), GodotCodeFound.None, Exists));
+        GodotChecks.SceneFinding loaded = Assert.Single(GodotChecks.SceneFindings(cached, "res://main.tscn", GodotChecks.SceneAsks(In("Main.cs"), cached, "res://main.tscn"), GodotCodeFound.None, Exists));
         Assert.Equal(("res://old_player.tscn", false, "No file res://old_player.tscn is in the Godot project: Godot loads uid://bplayer, res://player.tscn, by its uid"),
             (scene[loaded.Start..loaded.End], loaded.Error, loaded.Message));
     }
@@ -444,12 +449,12 @@ public class GodotChecksTests
 
             """;
         const string project = "[autoload]\n\nHud=\"*res://hud.tscn\"\n\n[input]\n\njump={\n\"events\": []\n}\n";
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile>
         {
             ["res://main.tscn"] = GodotFile.Parse(scene),
             ["res://hud.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[node name=\"Hud\" type=\"CanvasLayer\"]\n\n[node name=\"Score\" type=\"Label\" parent=\".\"]\n"),
         }, texts: new Dictionary<string, string> { ["res://project.godot"] = project });
-        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotKindRead Read(GodotStringKind kind, string name, string? node = null, bool adds = false) => new(kind, name, At, End, true, adds, 0, node, null, null);
         GodotCodeFound found = Found(asked, [Call("/root/Hud/Score", null), Call("/root/Hud/Scor", null), Call("/root/Main", null), Call("/root/Gone", null)]) with
         {
@@ -484,12 +489,12 @@ public class GodotChecksTests
     [Fact]
     public void A_theme_item_its_class_looks_up_in_vain_is_an_error_and_the_editor_s_names_join_the_candidates()
     {
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile>
         {
             ["res://main.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[ext_resource type=\"Script\" path=\"res://Main.cs\" id=\"1\"]\n\n[node name=\"Main\" type=\"Control\"]\nscript = ExtResource(\"1\")\n"),
             ["res://theme.tres"] = GodotFile.Parse("[gd_resource type=\"Theme\" format=3]\n\n[resource]\nLabel/colors/glow = Color(1, 1, 0, 1)\n"),
         }, texts: new Dictionary<string, string> { ["res://project.godot"] = "[gui]\n\ntheme/custom=\"res://theme.tres\"\n" });
-        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotKindRead Read(GodotStringKind kind, string name, string? type, bool adds = false) => new(kind, name, At, End, true, adds, 0, null, null, type);
         GodotCodeFound found = Found(asked, []) with
         {
@@ -535,9 +540,9 @@ public class GodotChecksTests
 
             """;
         const string project = "[layer_names]\n\n2d_physics/layer_2=\"enemies\"\n\n[shader_globals]\n\nwind={\n\"type\": \"vec2\"\n}\n";
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) },
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) },
             texts: new Dictionary<string, string> { ["res://project.godot"] = project });
-        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotKindRead Read(GodotStringKind kind, string name, string? node = null, string? member = null) => new(kind, name, At, End, true, false, 0, node, null, member);
         GodotCodeFound found = Found(asked, []) with
         {
@@ -580,7 +585,7 @@ public class GodotChecksTests
 
         """;
 
-    private static GodotScenes Mixed() => new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(MixedScene) },
+    private static GodotScenes Mixed() => new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(MixedScene) },
         texts: new Dictionary<string, string>
         {
             ["res://enemy.gd"] = "extends \"res://actor.gd\"\n\nfunc take_damage(amount: int) -> void:\n\tpass\n",
@@ -591,7 +596,7 @@ public class GodotChecksTests
     public void A_scenes_connection_to_a_gdscript_is_read_against_its_scripts_and_the_engines_answer_for_its_class()
     {
         GodotScenes scenes = Mixed();
-        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/Main.cs", scenes, "res://main.tscn");
+        GodotCodeRequest asked = GodotChecks.SceneAsks(In("Main.cs"), scenes, "res://main.tscn");
         Assert.Contains(new GodotMemberAsked("CharacterBody2D", null, "move_and_slide"), asked.Methods);
         GodotSignature engine = new("x", [], 0, null, null, null);
         GodotCodeFound found = new([], [], [], [], [],
@@ -633,14 +638,14 @@ public class GodotChecksTests
             [connection signal="updated" from="Player" to="HUD" method="_on_updated"]
 
             """;
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) },
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) },
             texts: new Dictionary<string, string>
             {
                 ["res://player.gd"] = "extends CharacterBody3D\n\nsignal coin_collected\nsignal hit(by: Node, amount: int)\nsignal updated(zone)\n\n"
                     + "func collect(coins: int) -> void:\n\tcoin_collected.emit(coins)\n\thit.emit(self, coins)\n\tupdated.emit(0.2, 0.8)\n",
                 ["res://hud.gd"] = "extends CanvasLayer\n\nfunc _on_coin_collected(coins):\n\tpass\n\nfunc _on_updated(low: float, high: float) -> void:\n\tpass\n",
             });
-        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/main.tscn", scenes, "res://main.tscn");
+        GodotCodeRequest asked = GodotChecks.SceneAsks(In("main.tscn"), scenes, "res://main.tscn");
         GodotCodeFound found = new([], [], [], [], [], [.. asked.Signals.Select(_ => (GodotSignature?)null)], [.. asked.Methods.Select(_ => (GodotSignature?)null)]);
         IReadOnlyList<GodotChecks.SceneFinding> findings = GodotChecks.SceneFindings(scenes, "res://main.tscn", asked, found, _ => true);
         Assert.Equal(["hit gives 2 (Node, int), but _on_coin_collected takes 1 (coins)"], findings.Select(f => f.Message));
@@ -667,9 +672,9 @@ public class GodotChecksTests
             [connection signal="toggled" from="Events" to="." method="_on_filter_toggled"]
 
             """;
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://settings.tscn"] = GodotFile.Parse(scene) },
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://settings.tscn"] = GodotFile.Parse(scene) },
             texts: new Dictionary<string, string> { ["res://settings.gd"] = "extends VBoxContainer\n\nfunc _on_filter_toggled(toggled_on: bool, source: BaseButton) -> void:\n\tpass\n" });
-        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/settings.tscn", scenes, "res://settings.tscn");
+        GodotCodeRequest asked = GodotChecks.SceneAsks(In("settings.tscn"), scenes, "res://settings.tscn");
         GodotSignature toggled = new("toggled", ["bool"], 1, null, null, null) { Names = ["toggledOn"] };
         GodotCodeFound found = new([], [], [], [], [], [.. asked.Signals.Select(s => s.Name == "toggled" ? toggled : null)],
             [.. asked.Methods.Select(_ => (GodotSignature?)null)]);
@@ -705,9 +710,9 @@ public class GodotChecksTests
             [connection signal="toggled" from="Sound" to="." method="_on_flip"]
 
             """;
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) },
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) },
             texts: new Dictionary<string, string> { ["res://main.gd"] = "extends Node2D\n\nfunc _on_ready() -> void:\n\tpass\n\nfunc _on_flip(on: bool) -> void:\n\tpass\n" });
-        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/main.tscn", scenes, "res://main.tscn");
+        GodotCodeRequest asked = GodotChecks.SceneAsks(In("main.tscn"), scenes, "res://main.tscn");
         GodotSignature toggled = new("toggled", ["bool"], 1, null, null, null) { Names = ["toggledOn"] };
         GodotCodeFound found = new([], [], [], [], [], [.. asked.Signals.Select(s => s.Name == "toggled" ? toggled : null)],
             [.. asked.Methods.Select(_ => (GodotSignature?)null)]);
@@ -727,7 +732,7 @@ public class GodotChecksTests
     public void A_string_naming_a_member_on_a_node_of_gdscript_is_read_against_its_scripts_and_the_engine_classes_having_it()
     {
         GodotScenes scenes = Mixed();
-        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotStringRead Read(GodotNameKind kind, string name, params string[] engines) =>
             new(kind, name, At, End, true, "Node", false, null, null, null) { Class = 0, Node = "Enemy", Engines = engines };
         GodotCodeFound found = new([Main], [], [], [], [], [], [])
