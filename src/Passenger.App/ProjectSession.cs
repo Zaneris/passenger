@@ -1344,6 +1344,14 @@ public sealed class ProjectSession : IAsyncDisposable
                     GodotMarks.Changed();
                 }
             };
+            // A project the server loaded again (a script moved or added) is code the open scenes were read against as it was.
+            started.ProjectsLoaded += (_, _) =>
+            {
+                if (CSharp == started)
+                {
+                    GodotMarks.Changed();
+                }
+            };
             CSharp.Start(opening);
             foreach (FolderChanges held in unheardAhead?.Take() ?? [])
             {
