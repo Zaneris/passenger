@@ -54,6 +54,18 @@ public static class GodotWrites
         return WithSetting(text, GodotPlugins.Section, GodotPlugins.Key, value) ?? text;
     }
 
+    /// <summary>project.godot's text with an autoload made a global the project's scripts name (its path written after a
+    /// <c>*</c>, as Godot's Autoload settings write it) or a node alone; null where it is so already, or no autoload has the name.</summary>
+    public static string? WithAutoloadGlobal(string text, string name, bool global)
+    {
+        GodotFile file = GodotFile.Parse(text);
+        if (file.Sections.FirstOrDefault(s => s.Tag == "autoload")?.Property(name)?.Value is not { Text: { } path } value || path.StartsWith('*') == global)
+        {
+            return null;
+        }
+        return global ? text[..value.TextStart] + "*" + text[value.TextStart..] : text[..value.TextStart] + text[(value.TextStart + 1)..];
+    }
+
     /// <summary>A group given to the node a scene's section declares, after those its header gives (a header with none takes a
     /// <c>groups=[…]</c> before the scene it instances, as Godot writes it); null where it has the group already, or the
     /// section is no node's.</summary>

@@ -52,7 +52,7 @@ public sealed partial record GitQuestion(GitQuestionKind Kind, string Prompt, st
         }
         if (GpgPassphrase().Match(asked) is { Success: true } gpg)
         {
-            return new GitQuestion(GitQuestionKind.Passphrase, prompt, gpg.Groups["key"].Value, Signs: true) { IsGpg = true };
+            return new GitQuestion(GitQuestionKind.Passphrase, prompt, gpg.Groups["key"].Value, Signs: true) { IsGpg = true, SignsWith = gpg.Groups["kind"].Value == "GPG" ? "gpg" : "gpgsm" };
         }
         if (SshPassword().Match(asked) is { Success: true } ssh)
         {
@@ -67,6 +67,9 @@ public sealed partial record GitQuestion(GitQuestionKind Kind, string Prompt, st
 
     /// <summary>Whether it is Passenger's gpg asking for a GPG or X.509 key's passphrase, the key named by its id and user.</summary>
     public bool IsGpg { get; init; }
+
+    /// <summary>The program a passphrase asked to sign is given to: gpg's or gpgsm's (through Passenger's own), else ssh-keygen.</summary>
+    public string SignsWith { get; init; } = "ssh-keygen";
 
     /// <summary>Where it asks for, as a person names it: a URL's host and port, a key's file name (a GPG key's id and user),
     /// ssh's host.</summary>
@@ -126,8 +129,8 @@ public sealed partial record GitQuestion(GitQuestionKind Kind, string Prompt, st
     [GeneratedRegex(@"^Enter passphrase for ""(?<key>.+)"":$")]
     private static partial Regex SigningPassphrase();
 
-    /// <summary>Passenger's gpg's (<see cref="GpgLoopback"/>), signing with a GPG key.</summary>
-    [GeneratedRegex(@"^Enter passphrase for GPG key (?<key>.+):$")]
+    /// <summary>Passenger's gpg's (<see cref="GpgLoopback"/>), signing with a GPG key or an X.509 certificate's.</summary>
+    [GeneratedRegex(@"^Enter passphrase for (?<kind>GPG|X\.509) key (?<key>.+):$")]
     private static partial Regex GpgPassphrase();
 
     [GeneratedRegex(@"^(?<user>[^@\s']+)@(?<host>[^@\s']+)'s password:$")]

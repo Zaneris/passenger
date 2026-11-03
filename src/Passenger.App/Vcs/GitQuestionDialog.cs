@@ -60,7 +60,7 @@ public sealed class GitQuestionDialog : IdeWindow
             TextWrapping = TextWrapping.Wrap,
             Text = (agent is null ? string.Empty : $"Asked for {agent}'s call through Passenger's MCP server: the answer goes to git, never to the agent. ")
                 + (yesNo ? "ssh keeps a host it is told to trust in its known_hosts."
-                    : question.Signs ? $"It is given to {(question.IsGpg ? "gpg" : "ssh-keygen")} to sign this commit alone: Passenger keeps none of it."
+                    : question.Signs ? $"It is given to {question.SignsWith} to sign this commit alone: Passenger keeps none of it."
                     : "It is given to git for this operation alone: Passenger keeps none of it, and git keeps it only where a credential helper is set (git config credential.helper)."),
         };
         paragraphs.Add(kept);

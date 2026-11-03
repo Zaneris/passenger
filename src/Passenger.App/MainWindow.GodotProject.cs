@@ -25,6 +25,7 @@ public partial class MainWindow
             TitleOf = action => actions![action]!.Title,
             Export = (folder, preset) => ShowGodotExport(folder, preset),
             SetPlugin = SetGodotPluginAsync,
+            SetAutoload = SetGodotAutoloadAsync,
         };
         actions!.Add(new IdeAction(AppActions.GodotProject, "Godot Project", "Godot", c => ShowGodotProject(GodotProjectOf(c)!))
         {
@@ -126,6 +127,55 @@ public partial class MainWindow
         });
 
         static string Capital(string words) => words.Length == 0 ? words : char.ToUpperInvariant(words[0]) + words[1..];
+    }
+
+    /// <summary>An autoload made a global the project's scripts name, or a node alone, in its project's project.godot once the
+    /// person agrees, as one command of Undo; null once written, else why not.</summary>
+    private async Task<string?> SetGodotAutoloadAsync(string folder, GodotPageAutoload autoload, bool global)
+    {
+        UiThread.Check();
+        string file = Path.Combine(folder, GodotProject.FileName);
+        string made = global ? "a global" : "a node";
+        bool agreed = await ConfirmAsync(global ? "Make Autoload Global?" : "Make Autoload a Node?",
+            $"Make {autoload.Name} ({autoload.Res}) {made} in {PathNames.Shown(file, Folder)}? {(global ? "Its scripts then name it as a global, as Godot's Autoload settings' Global Variable box does" : "Its scripts then reach it by its node's path alone")}.",
+            global ? "Make Global" : "Make Node", null);
+        if (Editors.ActiveGroup.GodotPage is { } shown)
+        {
+            shown.Body.Focus();
+        }
+        if (!agreed)
+        {
+            return Told($"{autoload.Name} was left {(autoload.Global ? "a global" : "a node")}");
+        }
+        if (SaveBeforeWriting([file]) is { } unsaved)
+        {
+            return Told($"{GodotProject.FileName} could not be saved: {unsaved}");
+        }
+        if (FileText.Load(file) is not { } had)
+        {
+            return Told($"{PathNames.Shown(file, Folder)} could not be read");
+        }
+        if (GodotWrites.WithAutoloadGlobal(had.Text, autoload.Name, global) is not { } text)
+        {
+            return Told($"{autoload.Name} is {made} already, or {GodotProject.FileName} has no such autoload");
+        }
+        if (await ChangeFileAsync($"Make Autoload {autoload.Name} {(global ? "Global" : "a Node")}", [file], () =>
+        {
+            _ = FileText.SaveOver(file, had, text);
+            return null;
+        }) is { } refused)
+        {
+            return Told($"{GodotProject.FileName} could not be written: {refused}");
+        }
+        Editors.GodotPages?.Refresh();
+        status.Text = $"{autoload.Name} is {made} in {GodotProject.FileName}";
+        return null;
+
+        string Told(string why)
+        {
+            status.Text = why;
+            return why;
+        }
     }
 
     /// <summary>A plugin enabled or disabled in its project's project.godot once the person agrees: the list of those enabled

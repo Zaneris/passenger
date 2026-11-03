@@ -92,5 +92,32 @@ public class SigningTests
         GitQuestion gpg = GitQuestion.Of("Enter passphrase for GPG key Me <me@example.org> (0123ABCD): ");
         Assert.Equal((GitQuestionKind.Passphrase, "Me <me@example.org> (0123ABCD)", true, true), (gpg.Kind, gpg.Place, gpg.Signs, gpg.IsGpg));
         Assert.False(GitQuestion.Of("Enter passphrase for key '/home/me/.ssh/id_ed25519': ").Signs);
+        Assert.Equal(("gpg", "ssh-keygen"), (gpg.SignsWith, ssh.SignsWith));
+        GitQuestion x509 = GitQuestion.Of("Enter passphrase for X.509 key 0xA1B2C3: ");
+        Assert.Equal((GitQuestionKind.Passphrase, "0xA1B2C3", true, "gpgsm"), (x509.Kind, x509.Place, x509.Signs, x509.SignsWith));
+    }
+
+    /// <summary>gpgsm is the one git's config names for X.509 (gpg.x509.program), beside gpg's own setting.</summary>
+    [Fact]
+    public void Gits_config_names_the_gpgsm_an_x509_commit_is_signed_with()
+    {
+        SigningSetup setup = SigningSetup.Of("local\0gpg.format\nx509\0local\0gpg.x509.program\n/opt/gnupg/bin/gpgsm\0local\0gpg.program\n/usr/bin/gpg\0");
+        Assert.Equal((SigningFormat.X509, "/opt/gnupg/bin/gpgsm", "/usr/bin/gpg"), (setup.Format, setup.X509Program, setup.Program));
+        Assert.Null(SigningSetup.Of("local\0gpg.format\nx509\0").X509Program);
+    }
+
+    /// <summary>Git for Windows' own gpg is found in usr\bin under its top folder from its git.exe, wherever that is: cmd\,
+    /// bin\ or mingw64\bin\; none where Git carries none.</summary>
+    [Theory]
+    [InlineData("cmd")]
+    [InlineData("bin")]
+    [InlineData("mingw64/bin")]
+    public void Git_for_windows_own_gpg_is_found_under_its_top_folder_from_its_git(string at)
+    {
+        string top = Path.Combine(Path.GetTempPath(), "Git");
+        string git = Path.Combine(top, at.Replace('/', Path.DirectorySeparatorChar), "git.exe");
+        string gpg = Path.Combine(top, "usr", "bin", "gpg.exe");
+        Assert.Equal(gpg, GpgPrograms.Bundled(git, "gpg.exe", path => path == gpg));
+        Assert.Null(GpgPrograms.Bundled(git, "gpg.exe", _ => false));
     }
 }

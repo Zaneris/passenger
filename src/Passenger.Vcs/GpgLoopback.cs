@@ -8,19 +8,26 @@ namespace Passenger.Vcs;
 /// <summary>Passenger's gpg, which git runs in place of gpg to sign a commit Passenger makes (gpg.program, given for that
 /// commit alone with -c): the person's gpg (<see cref="Variable"/> names it) run with loopback pinentry, the data to sign
 /// in a file of its own so gpg's input is free for its commands, and the passphrase it asks for (GET_HIDDEN on its status)
-/// asked of the person through the operation's askpass socket (<see cref="GitAskPass"/>) and written to it. What gpg
-/// writes and says goes to git as its own would; a call that signs nothing passes through untouched.</summary>
+/// asked of the person through the operation's askpass socket (<see cref="GitAskPass"/>) and written to it. In place of
+/// gpgsm (gpg.x509.program; <see cref="X509Variable"/> names the person's), which takes a passphrase only as it starts: run
+/// first with no pinentry, which an agent holding the passphrase answers, then where it wants one, given the one asked. What
+/// gpg writes and says goes to git as its own would; a call that signs nothing passes through untouched.</summary>
 public static class GpgLoopback
 {
     /// <summary>The variable naming the person's gpg, which makes Passenger's executable this program.</summary>
     [IdentifierHome]
     public const string Variable = "PASSENGER_GPG";
 
+    /// <summary>The variable naming the person's gpgsm, which signs with an X.509 certificate's key, as git runs gpg.</summary>
+    [IdentifierHome]
+    public const string X509Variable = "PASSENGER_GPGSM";
+
     /// <summary>What Main asks before anything starts: where git runs this executable as its gpg, gpg run and its exit
     /// code; else null, and Passenger starts as itself.</summary>
     public static async Task<int?> RunAsync(string[] args)
     {
-        if (Environment.GetEnvironmentVariable(Variable) is not { Length: > 0 } gpg)
+        string? gpgsm = Environment.GetEnvironmentVariable(X509Variable) is { Length: > 0 } x509 ? x509 : null;
+        if ((gpgsm ?? Environment.GetEnvironmentVariable(Variable)) is not { Length: > 0 } gpg)
         {
             return null;
         }
@@ -39,7 +46,7 @@ public static class GpgLoopback
         AtomicFile.Write(file, data.ToArray(), UnixFileMode.UserRead | UnixFileMode.UserWrite);
         try
         {
-            return await SignAsync(gpg, args, file, socket);
+            return gpgsm is null ? await SignAsync(gpg, args, file, socket) : await SignX509Async(gpgsm, args, file, socket);
         }
         finally
         {
@@ -86,6 +93,54 @@ public static class GpgLoopback
         await signature;
         await signing.WaitForExitAsync();
         return signing.ExitCode;
+    }
+
+    /// <summary>gpgsm signing the file: with no pinentry first, then where it wants the key's passphrase, given the one the
+    /// person is asked through the socket; what the run git takes writes and says passed to git.</summary>
+    private static async Task<int> SignX509Async(string gpgsm, string[] args, string file, string socket)
+    {
+        (int code, byte[] signature, byte[] said) = await RunX509Async(gpgsm, ["--pinentry-mode", "error", "--output", "-", .. args, "--", file], null);
+        if (code != 0 && Encoding.UTF8.GetString(said).Contains("pinentry", StringComparison.OrdinalIgnoreCase))
+        {
+            int named = Array.FindIndex(args, a => a.Length > 1 && a[0] == '-' && a[1] != '-' && a.EndsWith('u'));
+            string key = named >= 0 && named + 1 < args.Length ? args[named + 1] : "the signing certificate";
+            if (Ask(socket, $"Enter passphrase for X.509 key {key}:") is { } passphrase)
+            {
+                (code, signature, said) = await RunX509Async(gpgsm, ["--batch", "--pinentry-mode", "loopback", "--passphrase-fd", "0", "--output", "-", .. args, "--", file], passphrase + "\n");
+            }
+        }
+        await using (Stream output = Console.OpenStandardOutput())
+        {
+            await output.WriteAsync(signature);
+        }
+        await using (Stream errors = Console.OpenStandardError())
+        {
+            await errors.WriteAsync(said);
+        }
+        return code;
+    }
+
+    /// <summary>One run of gpgsm, given <paramref name="input"/>: its exit code, what it wrote and what it said.</summary>
+    private static async Task<(int Code, byte[] Output, byte[] Errors)> RunX509Async(string gpgsm, IReadOnlyList<string> args, string? input)
+    {
+        ProcessStartInfo start = ChildProcesses.Command(gpgsm, args);
+        start.RedirectStandardInput = true;
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+        using Process signing = await ChildProcesses.StartAsync(start);
+        using MemoryStream output = new();
+        using MemoryStream errors = new();
+        Task written = signing.StandardOutput.BaseStream.CopyToAsync(output);
+        Task said = signing.StandardError.BaseStream.CopyToAsync(errors);
+        if (input is not null)
+        {
+            await signing.StandardInput.WriteAsync(input);
+            await signing.StandardInput.FlushAsync();
+        }
+        signing.StandardInput.Close();
+        await Task.WhenAll(written, said);
+        await signing.WaitForExitAsync();
+        return (signing.ExitCode, output.ToArray(), errors.ToArray());
     }
 
     /// <summary>gpg run as git asked, its input, output and errors git's own.</summary>

@@ -160,7 +160,7 @@ public sealed class GodotPageViewer
                 : [Empty($"{GodotProject.FileName} names no main scene")]);
 
         Section("Autoloads", facts.Autoloads.Count == 0 ? [Empty("No autoloads")]
-            : [.. facts.Autoloads.Select(a => Row(Link(a.Name, () => pages.GoTo(project, a.Line)), Muted(a.Global ? "global" : "node"),
+            : [.. facts.Autoloads.Select(a => Row(Link(a.Name, () => pages.GoTo(project, a.Line)), Autoload(facts.Folder, a),
                 a.File is { } loaded ? Link(a.Res!, () => pages.Open(loaded)) : Muted(a.Res ?? string.Empty)))]);
 
         Section("Input Map", facts.Actions.Count == 0 ? [Empty("No input actions of the project's own")]
@@ -252,6 +252,27 @@ public sealed class GodotPageViewer
     }
 
     private static Control Empty(string words) => new TextBlock { Classes = { StyleClasses.EmptyText }, Text = words, Margin = new Thickness(8, 4), HorizontalAlignment = HorizontalAlignment.Left };
+
+    /// <summary>What an autoload is (a global the scripts name, or a node), and a link that asks to make it the other.</summary>
+    private Control Autoload(string folder, GodotPageAutoload autoload)
+    {
+        StackPanel said = new() { Orientation = Orientation.Horizontal, Spacing = 12 };
+        said.Children.Add(Muted(autoload.Global ? "global" : "node"));
+        said.Children.Add(Link(autoload.Global ? MakeNodeWords : MakeGlobalWords, () =>
+        {
+            if (file is { } shown)
+            {
+                IdeErrors.Observe(shown.Pages.SetAutoload(folder, autoload, !autoload.Global));
+            }
+        }));
+        return said;
+    }
+
+    /// <summary>The words of an autoload's link that makes it a global the project's scripts name.</summary>
+    public const string MakeGlobalWords = "Make Global…";
+
+    /// <summary>The words of an autoload's link that makes it a node alone.</summary>
+    public const string MakeNodeWords = "Make Node…";
 
     /// <summary>A plugin's box, checked while the project enables it; a click asks to enable or disable it, the box left as
     /// the file says until it is written.</summary>

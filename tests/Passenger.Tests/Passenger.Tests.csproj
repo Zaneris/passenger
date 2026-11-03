@@ -95,6 +95,14 @@
     <AssemblyMetadata Include="NpgsqlEfVersion" Value="$(NpgsqlEfVersion)" />
   </ItemGroup>
 
+  <!-- .NET's runtime pack for this machine at the SDK's own version, which a Godot game's C# export publishes with (its
+       export is self-contained), and which this project's RuntimeIdentifiers have the SDK download already: GodotExportTests
+       copies it into a feed of the run's own, so the export reaches no nuget.org. -->
+  <ItemGroup>
+    <AssemblyMetadata Include="RuntimePack" Value="Microsoft.NETCore.App.Runtime.$(NETCoreSdkRuntimeIdentifier)" />
+    <AssemblyMetadata Include="RuntimePackVersion" Value="$(BundledNETCoreAppPackageVersion)" />
+  </ItemGroup>
+
   <!-- The package graphs of the GdUnit4 and GoDotTest tests the Godot tests write (tests/GodotGraphs), in the package
        cache before they run, and their versions for the game's project file (GdUnit4Tests, GoDotTestTests). -->
   <ItemGroup>

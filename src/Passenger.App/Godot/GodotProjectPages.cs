@@ -41,8 +41,9 @@ public sealed record GodotPageFacts(
     IReadOnlyList<GodotPageLayer> Layers);
 
 /// <summary>The pages of a window's Godot projects, one for each project.godot open (<see cref="GodotPageFile"/>), and what
-/// they do through the window: read a project's facts, go to a place in a file of it, open a file, run an action, and
-/// enable or disable a plugin, asked first. Made and asked on the UI thread.</summary>
+/// they do through the window: read a project's facts, go to a place in a file of it, open a file, run an action, enable or
+/// disable a plugin and make an autoload a global or a node, asked first; each read again as its files change on disk
+/// (<see cref="Follows"/>). Made and asked on the UI thread.</summary>
 public sealed class GodotProjectPages
 {
     private readonly ConditionalWeakTable<OpenDocument, GodotPageFile> files = [];
@@ -67,6 +68,15 @@ public sealed class GodotProjectPages
 
     /// <summary>A plugin enabled or disabled in its project's project.godot, asked first; null once written, else why not.</summary>
     public required Func<string, GodotPlugin, bool, Task<string?>> SetPlugin { get; init; }
+
+    /// <summary>An autoload made a global or a node alone in its project's project.godot, asked first; null once written, else why not.</summary>
+    public required Func<string, GodotPageAutoload, bool, Task<string?>> SetAutoload { get; init; }
+
+    /// <summary>Whether a file written on disk changes what a page shows beside its project.godot: the export presets, or a
+    /// plugin's plugin.cfg.</summary>
+    public static bool Follows(string path) => Path.GetFileName(path) is var name
+        && (name.Equals(GodotExports.FileName, StringComparison.OrdinalIgnoreCase) || name.Equals(GodotPlugins.ConfigName, StringComparison.OrdinalIgnoreCase)
+            || name.Equals(GodotProject.FileName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The page of an open project.godot; null for any other file.</summary>
     public GodotPageFile? For(OpenDocument document) =>

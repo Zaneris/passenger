@@ -122,6 +122,18 @@ public class GodotProjectReadsTests
         Assert.Contains("enabled=PackedStringArray()\n", GodotWrites.WithPlugins(both, []), StringComparison.Ordinal);
     }
 
+    /// <summary>An autoload is made a global by a '*' before its path, as Godot's Autoload settings write it, and a node by
+    /// taking it away; one so already, or none of the name, is left.</summary>
+    [Fact]
+    public void An_autoload_is_made_a_global_or_a_node_by_its_paths_star()
+    {
+        const string Project = "config_version=5\n\n[autoload]\n\nScore=\"*res://score.gd\"\nMusic=\"res://music.tscn\"\n";
+        Assert.Equal("config_version=5\n\n[autoload]\n\nScore=\"res://score.gd\"\nMusic=\"res://music.tscn\"\n", GodotWrites.WithAutoloadGlobal(Project, "Score", global: false));
+        Assert.Equal("config_version=5\n\n[autoload]\n\nScore=\"*res://score.gd\"\nMusic=\"*res://music.tscn\"\n", GodotWrites.WithAutoloadGlobal(Project, "Music", global: true));
+        Assert.Null(GodotWrites.WithAutoloadGlobal(Project, "Score", global: true));
+        Assert.Null(GodotWrites.WithAutoloadGlobal(Project, "Gone", global: true));
+    }
+
     /// <summary>An autoload Godot 4.4 writes by its script's uid is read as that script, and one whose uid no file has as none.</summary>
     [Fact]
     public void An_autoload_written_by_uid_is_read_as_the_file_the_uid_names()

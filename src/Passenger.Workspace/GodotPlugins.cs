@@ -14,6 +14,9 @@ public static class GodotPlugins
 
     public const string Key = "enabled";
 
+    /// <summary>A plugin's own file in its folder under addons/.</summary>
+    public const string ConfigName = "plugin.cfg";
+
     /// <summary>The plugins of a project's folder by their folders' names, each enabled where <paramref name="enabled"/>
     /// lists its res:// path; one whose plugin.cfg cannot be read named by its folder.</summary>
     public static IReadOnlyList<GodotPlugin> Read(string folder, IReadOnlyList<string> enabled)
@@ -28,12 +31,12 @@ public static class GodotPlugins
             }
             foreach (string own in Directory.EnumerateDirectories(addons).Order(StringComparer.Ordinal))
             {
-                string file = Path.Combine(own, "plugin.cfg");
+                string file = Path.Combine(own, ConfigName);
                 if (!System.IO.File.Exists(file))
                 {
                     continue;
                 }
-                string res = $"res://addons/{Path.GetFileName(own)}/plugin.cfg";
+                string res = $"res://addons/{Path.GetFileName(own)}/{ConfigName}";
                 GodotSection? plugin = null;
                 try
                 {

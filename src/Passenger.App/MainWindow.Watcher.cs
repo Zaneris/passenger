@@ -69,6 +69,11 @@ public partial class MainWindow
             // Only the run configurations are made of launch profiles, so the solution and the Explorer stay as they are.
             session.Configurations.Configure(Projects);
         }
+        // A Godot project's page shows its export presets and plugins as their files say.
+        if (changes.Lost || changes.Paths.Any(Godot.GodotProjectPages.Follows))
+        {
+            Editors.GodotPages?.Refresh();
+        }
         // A C# file written may have gained or lost the AppHost SDK's line; one come or gone is the index's to find.
         session.AspireFiles.Changed(changes.Paths, every: changes.Lost);
         if (changes.Lost)

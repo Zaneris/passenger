@@ -1069,9 +1069,13 @@ public sealed class VcsController : IDisposable
     {
         SigningSetup setup = await repository.SigningAsync();
         GitAsker? asker = Asker();
-        if (asker is not null && (signing.Sign ?? setup.Signs) && setup.Format is SigningFormat.OpenPgp && GpgOf(setup) is { } gpg)
+        if (asker is not null && (signing.Sign ?? setup.Signs) && setup.Format is SigningFormat.OpenPgp && GpgPrograms.Gpg(setup.Program) is { } gpg)
         {
             signing = signing with { Config = [$"gpg.program={asker.Helper}"], Environment = new Dictionary<string, string> { [GpgLoopback.Variable] = gpg } };
+        }
+        else if (asker is not null && (signing.Sign ?? setup.Signs) && setup.Format is SigningFormat.X509 && GpgPrograms.Gpgsm(setup.X509Program) is { } gpgsm)
+        {
+            signing = signing with { Config = [$"gpg.x509.program={asker.Helper}"], Environment = new Dictionary<string, string> { [GpgLoopback.X509Variable] = gpgsm } };
         }
         return (new Signer(signing, asker), setup);
     }
@@ -1098,12 +1102,6 @@ public sealed class VcsController : IDisposable
         string? why = said.Unanswered is { } unanswered ? SigningFailure.Unsigned + unanswered : SigningFailure.Of(said.Error, setup);
         return why is null ? said : said with { Error = why, Unanswered = null };
     }
-
-    /// <summary>The gpg the person signs OpenPGP with, as a path: the one git's config names, else the one on the PATH;
-    /// null where none is there, when git is left to find its own.</summary>
-    private static string? GpgOf(SigningSetup setup) => setup.Program is { } named
-        ? Path.IsPathRooted(named) ? (File.Exists(named) ? named : null) : Programs.OnPath(named)
-        : Programs.OnPath(OperatingSystem.IsWindows() ? "gpg.exe" : "gpg");
 
     /// <summary>How the tree's git config has a commit signed; none outside a working tree.</summary>
     public async Task<SigningSetup> SigningAsync()

@@ -13,8 +13,10 @@ namespace Passenger.Tests;
 
 /// <summary>A Godot project's page over its project.godot, as a person opens it from the file's row in the Explorer or from
 /// Find Action: its main scene, its two autoloads with their files, its input action with its key and button, its export
-/// preset, its plugin and its layer each shown; a click on the action goes to its line in project.godot; and the plugin's
-/// box enables it in project.godot once asked, as one command Undo takes back. Godot is only asked its version.</summary>
+/// preset, its plugin and its layer each shown; a click on the action goes to its line in project.godot; the plugin's box
+/// enables it in project.godot once asked, as one command Undo takes back; a preset added to export_presets.cfg on disk is
+/// shown as it comes; and an autoload made a node from the page, once asked, is written so, Undo taking it back. Godot is
+/// only asked its version.</summary>
 public sealed class GodotProjectPageTests
 {
     private const string Project = """
@@ -119,6 +121,23 @@ public sealed class GodotProjectPageTests
         Ui.WaitFor(() => !Open().Contains("editor_plugins", StringComparison.Ordinal), () => $"Undo to take the plugin's enabling back ({window.Status}): {Open()}");
         Ui.WaitFor(() => Shown(window).Body.GetVisualDescendants().OfType<CheckBox>().Any(b => b.Content as string == "Level Tools" && b.IsChecked == false),
             "the plugin's box cleared once Undo took its enabling back");
+
+        File.WriteAllText(Path.Combine(root, GodotExports.FileName), Presets + Presets.Replace("[preset.0", "[preset.1", StringComparison.Ordinal)
+            .Replace("name=\"Desktop\"", "name=\"Web\"", StringComparison.Ordinal).Replace("platform=\"Linux\"", "platform=\"Web\"", StringComparison.Ordinal)
+            .Replace("build/hopper.x86_64", "build/web/index.html", StringComparison.Ordinal));
+        Ui.WaitFor(() => window.EditorArea.ActiveGroup.GodotPage is { File.Facts: { } facts } && facts.Presets.Any(p => p.Preset.Name == "Web"),
+            "the page to show the preset added to export_presets.cfg on disk", TimeSpan.FromSeconds(30));
+
+        page = Shown(window);
+        Assert.Equal(2, page.Body.GetVisualDescendants().OfType<Button>().Count(b => b.Content as string is GodotPageViewer.MakeGlobalWords or GodotPageViewer.MakeNodeWords));
+        Ui.ClickButton(page.Body, GodotPageViewer.MakeNodeWords);
+        Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(), "the question before Score is made a node");
+        Ui.ClickButton(DialogButtonsTests.Check(window.OwnedWindows.OfType<ConfirmDialog>().Single()), "Make Node");
+        Ui.WaitFor(() => File.ReadAllText(project).Contains("Score=\"res://score.gd\"", StringComparison.Ordinal),
+            () => $"project.godot to make Score a node ({window.Status}): {File.ReadAllText(project)}");
+        Ui.WaitFor(() => Shown(window).File!.Facts!.Autoloads.Single(a => a.Name == "Score").Global == false, "the page to show Score a node");
+        Ui.Press(window, Ui.Shortcut(EditorActions.Undo));
+        Ui.WaitFor(() => Open().Contains("Score=\"*res://score.gd\"", StringComparison.Ordinal), () => $"Undo to make Score a global again ({window.Status}): {Open()}");
         window.Close();
     }
 

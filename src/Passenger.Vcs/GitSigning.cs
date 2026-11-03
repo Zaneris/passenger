@@ -10,6 +10,9 @@ namespace Passenger.Vcs;
 public sealed record SigningSetup(bool Signs, SigningFormat Format, string? Key, string? KeyScope = null, bool KeyCommand = false, bool FormatSet = false,
     string? Program = null)
 {
+    /// <summary>The gpgsm git signs an X.509 commit with, where its config names one (gpg.x509.program).</summary>
+    public string? X509Program { get; init; }
+
     public static readonly SigningSetup None = new(false, SigningFormat.OpenPgp, null);
 
     /// <summary>The setup `git config -z --show-scope --get-regexp` wrote: each setting its scope and a NUL, its name, a
@@ -19,6 +22,7 @@ public sealed record SigningSetup(bool Signs, SigningFormat Format, string? Key,
         Dictionary<string, (string Scope, string Value)> set = new(StringComparer.OrdinalIgnoreCase);
         string[] parts = config.Split('\0');
         string? program = null;
+        string? x509 = null;
         for (int i = 0; i + 1 < parts.Length; i += 2)
         {
             string entry = parts[i + 1];
@@ -29,6 +33,10 @@ public sealed record SigningSetup(bool Signs, SigningFormat Format, string? Key,
             if (name.Equals("gpg.program", StringComparison.OrdinalIgnoreCase) || name.Equals("gpg.openpgp.program", StringComparison.OrdinalIgnoreCase))
             {
                 program = set[name].Value.Trim() is { Length: > 0 } given ? given : null;
+            }
+            else if (name.Equals("gpg.x509.program", StringComparison.OrdinalIgnoreCase))
+            {
+                x509 = set[name].Value.Trim() is { Length: > 0 } given ? given : null;
             }
         }
         bool signs = set.TryGetValue("commit.gpgsign", out (string Scope, string Value) sign) && Truth(sign.Value);
@@ -41,7 +49,10 @@ public sealed record SigningSetup(bool Signs, SigningFormat Format, string? Key,
         (string? scope, string? key) = set.TryGetValue("user.signingkey", out (string Scope, string Value) named) && named.Value.Trim().Length > 0
             ? (named.Scope, named.Value.Trim())
             : (null, null);
-        return new SigningSetup(signs, format, key, scope, set.GetValueOrDefault("gpg.ssh.defaultKeyCommand").Value is { Length: > 0 }, set.ContainsKey("gpg.format"), program);
+        return new SigningSetup(signs, format, key, scope, set.GetValueOrDefault("gpg.ssh.defaultKeyCommand").Value is { Length: > 0 }, set.ContainsKey("gpg.format"), program)
+        {
+            X509Program = x509,
+        };
 
         static bool Truth(string value) => value.Trim().ToLowerInvariant() is "true" or "yes" or "on" or "1";
     }
@@ -76,6 +87,44 @@ public sealed record SigningSetup(bool Signs, SigningFormat Format, string? Key,
     {
         string[] words = key.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         return words.Length > 2 ? $"{Kind} key {string.Join(' ', words[2..])}" : $"{Kind} key {words[0]}";
+    }
+}
+
+/// <summary>The gpg and gpgsm git signs with as it finds them: the one its config names, else the PATH's, else on Windows
+/// Git for Windows' own copy in usr\bin under its top folder, which its git.exe puts on the PATH of the programs it runs
+/// (git-wrapper.c's setup_environment) and of no other's.</summary>
+public static class GpgPrograms
+{
+    /// <summary>The gpg git runs for a GPG signature, where it is there.</summary>
+    public static string? Gpg(string? named) => Of(named, "gpg");
+
+    /// <summary>The gpgsm git runs for an X.509 signature, where it is there.</summary>
+    public static string? Gpgsm(string? named) => Of(named, "gpgsm");
+
+    private static string? Of(string? named, string program)
+    {
+        string exe = OperatingSystem.IsWindows() ? $"{program}.exe" : program;
+        if (named is not null)
+        {
+            return Path.IsPathRooted(named) ? (File.Exists(named) ? named : null) : Programs.OnPath(named);
+        }
+        return Programs.OnPath(exe) ?? (OperatingSystem.IsWindows() && Programs.OnPath("git.exe") is { } git ? Bundled(git, exe, File.Exists) : null);
+    }
+
+    /// <summary>Git for Windows' own copy of a program, from its git.exe (in cmd\, bin\ or mingw64\bin\ under its top
+    /// folder): <c>usr\bin\program</c> under the first folder above that holds one; null for none.</summary>
+    public static string? Bundled(string git, string exe, Func<string, bool> exists)
+    {
+        string? folder = Path.GetDirectoryName(git);
+        for (int up = 0; up < 3 && folder is not null; up++, folder = Path.GetDirectoryName(folder))
+        {
+            string bundled = Path.Combine(folder, "usr", "bin", exe);
+            if (exists(bundled))
+            {
+                return bundled;
+            }
+        }
+        return null;
     }
 }
 
@@ -274,7 +323,7 @@ public sealed partial class Git
     public async Task<SigningSetup> SigningAsync()
     {
         GitResult config = await RunAsync(Root, ["config", "-z", "--show-scope", "--get-regexp",
-            @"^(commit\.gpgsign|gpg\.format|user\.signingkey|gpg\.ssh\.defaultkeycommand|gpg\.program|gpg\.openpgp\.program)$"], answers: [1]);
+            @"^(commit\.gpgsign|gpg\.format|user\.signingkey|gpg\.ssh\.defaultkeycommand|gpg\.program|gpg\.openpgp\.program|gpg\.x509\.program)$"], answers: [1]);
         return config.Succeeded ? SigningSetup.Of(config.Output) : SigningSetup.None;
     }
 }

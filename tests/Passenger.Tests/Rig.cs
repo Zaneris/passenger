@@ -2379,26 +2379,71 @@ public static class TestGpgKeys
 
     /// <summary>A new key for tests@passenger.invalid guarded by <paramref name="passphrase"/>, given gpg on its input,
     /// never its command line; its id, the agent ended after so the passphrase is asked for again.</summary>
-    public static async Task<string> MakeAsync(string passphrase)
+    public static async Task<string> MakeAsync(string passphrase, string? gpg = null)
     {
-        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(Gpg!,
+        gpg ??= Gpg!;
+        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(gpg,
             ["--batch", "--pinentry-mode", "loopback", "--passphrase-fd", "0", "--quick-gen-key", "Passenger Tests <tests@passenger.invalid>", "ed25519", "sign", "never"]),
             passphrase + "\n", Limit.Scaled());
         Assert.True(made.Succeeded, $"gpg made no key to sign with, exiting {made.ExitCode}: {made.Error}");
-        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(Gpg!,
+        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(gpg,
             ["--list-secret-keys", "--with-colons", "tests@passenger.invalid"]), limit: Limit.Scaled());
         string id = listed.Output.Split('\n').Select(l => l.Split(':')).First(f => f[0] == "sec")[4];
-        await EndAgentAsync();
+        await EndAgentAsync(gpg);
         return id;
     }
 
-    /// <summary>The run's gpg-agent ended, its passphrases forgotten.</summary>
-    public static async Task EndAgentAsync()
+    /// <summary>Git for Windows' own gpg, where git's is the only one: on Windows with no gpg on the PATH; else null.</summary>
+    public static string? Bundled => OperatingSystem.IsWindows() && Gpg is null && Passenger.Core.Programs.OnPath("git.exe") is { } git
+        ? Passenger.Vcs.GpgPrograms.Bundled(git, "gpg.exe", File.Exists) : null;
+
+    /// <summary>The run's gpg-agent ended, its passphrases forgotten: by the gpgconf beside <paramref name="gpg"/> where one
+    /// is given (Git for Windows' own), else the PATH's.</summary>
+    public static async Task EndAgentAsync(string? gpg = null)
     {
-        if (Passenger.Core.Programs.OnPath(OperatingSystem.IsWindows() ? "gpgconf.exe" : "gpgconf") is { } gpgconf)
+        string beside = gpg is null ? string.Empty : Path.Combine(Path.GetDirectoryName(gpg)!, OperatingSystem.IsWindows() ? "gpgconf.exe" : "gpgconf");
+        if ((File.Exists(beside) ? beside : Passenger.Core.Programs.OnPath(OperatingSystem.IsWindows() ? "gpgconf.exe" : "gpgconf")) is { } gpgconf)
         {
             await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(gpgconf, ["--kill", "gpg-agent"]), limit: Limit.Scaled());
         }
+    }
+}
+
+/// <summary>X.509 keys a test signs its commits with, made by gpgsm in the run's own keyring (GNUPGHOME), never the person's:
+/// a self-signed certificate trusted there as a root, CRLs left unchecked, as no authority issues it.</summary>
+public static class TestX509Keys
+{
+    private static readonly TimeSpan Limit = TimeSpan.FromMinutes(1);
+
+    /// <summary>The gpgsm a commit is signed with, or null where it is not on the PATH.</summary>
+    public static string? Gpgsm => Passenger.Core.Programs.OnPath(OperatingSystem.IsWindows() ? "gpgsm.exe" : "gpgsm");
+
+    /// <summary>Why a test that signs with X.509 cannot run here, or null.</summary>
+    public static string? WhyNot => Gpgsm is null ? "gpgsm is not on the PATH, so no commit can be signed with an X.509 certificate here" : null;
+
+    /// <summary>A new self-signed certificate for tests@passenger.invalid, its key guarded by <paramref name="passphrase"/>
+    /// given gpgsm on its input, never its command line, imported and trusted in the run's keyring; its fingerprint (0x…),
+    /// the agent ended after so the passphrase is asked for again.</summary>
+    public static async Task<string> MakeAsync(string passphrase, string folder)
+    {
+        string home = Environment.GetEnvironmentVariable("GNUPGHOME")!;
+        await File.AppendAllTextAsync(Path.Combine(home, "gpgsm.conf"), "disable-crl-checks\ndisable-policy-checks\n");
+        string parameters = Path.Combine(folder, "x509.txt");
+        string certificate = Path.Combine(folder, "x509.pem");
+        await File.WriteAllTextAsync(parameters, "Key-Type: RSA\nKey-Length: 2048\nKey-Usage: sign\nSerial: random\nName-DN: CN=Passenger Tests,O=Passenger\n"
+            + "Name-Email: tests@passenger.invalid\n");
+        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(Gpgsm!,
+            ["--batch", "--pinentry-mode", "loopback", "--passphrase-fd", "0", "--armor", "--output", certificate, "--gen-key", parameters]), passphrase + "\n", Limit.Scaled());
+        Assert.True(made.Succeeded, $"gpgsm made no certificate to sign with, exiting {made.ExitCode}: {made.Error}");
+        Passenger.Core.ChildResult imported = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(Gpgsm!, ["--batch", "--import", certificate]),
+            limit: Limit.Scaled());
+        Assert.True(imported.Succeeded, $"gpgsm did not import the test's certificate, exiting {imported.ExitCode}: {imported.Error}");
+        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(Gpgsm!,
+            ["--with-colons", "--list-secret-keys", "tests@passenger.invalid"]), limit: Limit.Scaled());
+        string fingerprint = listed.Output.Split('\n').Select(l => l.Split(':')).First(f => f[0] == "fpr")[9];
+        await File.AppendAllTextAsync(Path.Combine(home, "trustlist.txt"), $"{fingerprint} S relax\n");
+        await TestGpgKeys.EndAgentAsync(Gpgsm);
+        return $"0x{fingerprint}";
     }
 }
 

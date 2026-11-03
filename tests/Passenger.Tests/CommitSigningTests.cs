@@ -10,7 +10,8 @@ using Passenger.Core;
 namespace Passenger.Tests;
 
 /// <summary>Signing from the Commit window: whether a commit is signed and with which key as git's config says, Sign
-/// turned off for one commit and Sign-off kept for the folder; a key's passphrase asked in Passenger's dialog, a wrong one
+/// turned off for one commit and Sign-off kept for the folder; a key's passphrase asked in Passenger's dialog (an SSH key's,
+/// a GPG key's through gpg, Git for Windows' own on Windows, and an X.509 certificate's through gpgsm), a wrong one
 /// and a key not there each saying why the commit was not made and how to mend it; and Commit Signing… setting SSH up in
 /// the repository's config alone, the key listed as an allowed signer; a quit while the dialog asks refusing the
 /// passphrase, so git ends on its own, its index.lock gone. Every key is the test's own (ssh-keygen in a folder of its
@@ -174,7 +175,81 @@ public sealed class CommitSigningTests : IDisposable
         }
         finally
         {
-            Ui.AwaitPumped(Waiting.Apart(TestGpgKeys.EndAgentAsync), "the run's gpg-agent ended", TimeSpan.FromMinutes(1));
+            Ui.AwaitPumped(Waiting.Apart(() => TestGpgKeys.EndAgentAsync()), "the run's gpg-agent ended", TimeSpan.FromMinutes(1));
+        }
+    }
+
+    /// <summary>With no gpg on the PATH but Git for Windows' own, Passenger's gpg wraps that one: the key's passphrase is asked
+    /// in Passenger's dialog, never git's pinentry, and the commit is signed.</summary>
+    [AvaloniaFact]
+    public void Git_for_windows_own_gpg_asks_its_keys_passphrase_in_passengers_dialog_and_signs_the_commit()
+    {
+        Assert.SkipWhen(!OperatingSystem.IsWindows(), "Git for Windows' own gpg is Windows'");
+        Assert.SkipWhen(TestGpgKeys.Bundled is null, TestGpgKeys.Gpg is not null ? "A gpg is on the PATH, which git takes before its own"
+            : "Git for Windows on the PATH carries no gpg in its usr\\bin");
+        Signs("signing-bundled-", "lantern-quay-5", () => TestGpgKeys.MakeAsync("lantern-quay-5", TestGpgKeys.Bundled), [],
+            "Passphrase for Passenger Tests <tests@passenger.invalid>", "G", () => TestGpgKeys.EndAgentAsync(TestGpgKeys.Bundled));
+    }
+
+    /// <summary>An X.509 certificate's key, signed with through gpgsm: its passphrase asked in Passenger's dialog, as gpgsm
+    /// takes one only as it starts, and the commit signed.</summary>
+    [AvaloniaFact]
+    public void An_x509_keys_passphrase_is_asked_in_passengers_dialog_through_gpgsm_and_signs_the_commit()
+    {
+        Assert.SkipWhen(TestX509Keys.WhyNot is not null, TestX509Keys.WhyNot ?? string.Empty);
+        string made = PathNames.Canonical(TestFolders.Create("signing-x509-keys-"));
+        folders.Add(made);
+        Signs("signing-x509-", "harbour-gate-6", () => TestX509Keys.MakeAsync("harbour-gate-6", made), ["gpg.format", "x509"], "Passphrase for 0x", null,
+            () => TestGpgKeys.EndAgentAsync(TestX509Keys.Gpgsm));
+    }
+
+    /// <summary>A commit of the Commit window signed with a key the test makes, the repository given <paramref name="config"/>
+    /// (pairs of name and value) beside the key: its passphrase asked in Passenger's dialog, titled as <paramref name="asked"/>
+    /// begins, and the commit signed, %G? giving <paramref name="verified"/> where given, its signature in the commit else.</summary>
+    private void Signs(string name, string passphrase, Func<Task<string>> make, string[] config, string asked, string? verified, Func<Task> ended)
+    {
+        string root = PathNames.Canonical(TestFolders.Create(name));
+        folders.Add(root);
+        File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
+        TestGit.Init(root);
+        string id = Ui.AwaitPumped(Waiting.Apart(make), "the test's signing key", TimeSpan.FromMinutes(2));
+        TestGit.Run(root, "config", "user.signingkey", id);
+        TestGit.Run(root, "config", "commit.gpgsign", "true");
+        for (int at = 0; at + 1 < config.Length; at += 2)
+        {
+            TestGit.Run(root, "config", config[at], config[at + 1]);
+        }
+        try
+        {
+            MainWindow window = Open(root);
+            CommitView commit = window.CommitView;
+            Ui.Landed(() => commit.Sign, $"the Commit window to sign, where it says \"{commit.SignWith}\"");
+            File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n    int count;\n}\n");
+            window.Perform(AppActions.CommitRefresh);
+            Ui.Landed(() => commit.Chosen.Count == 1, "Shop.cs's change listed");
+            commit.Message = "Signed";
+            Task<bool> committing = commit.CommitAsync(push: false);
+            Ui.PumpUntil(() => window.GitQuestion is { IsVisible: true }, $"the window to ask for the key's passphrase, where the status bar says \"{window.Status}\"");
+            GitQuestionDialog question = DialogButtonsTests.Check(window.GitQuestion!);
+            Assert.True((question.Title ?? string.Empty).StartsWith(asked, StringComparison.Ordinal), $"The window asks \"{question.Title}\"");
+            question.KeyTextInput(passphrase);
+            Ui.Press(question, "ENTER");
+            Ui.Landed(() => committing.IsCompleted, "the commit given the key's passphrase");
+            if (verified is not null)
+            {
+                Assert.True(Show(root, "%s %G?") == $"Signed {verified}", $"The commit given its key's passphrase is \"{Show(root, "%s %G?")}\", where the status bar says \"{window.Status}\"");
+            }
+            else
+            {
+                string made = TestGit.Run(root, "cat-file", "commit", "HEAD");
+                Assert.True(made.Contains("gpgsig -----BEGIN SIGNED MESSAGE-----", StringComparison.Ordinal), $"The commit given its key's passphrase carries no signature ({window.Status}):\n{made}");
+            }
+            Assert.False(Ui.IdeLog().Contains(passphrase, StringComparison.Ordinal), "The passphrase typed is in the IDE's log");
+            window.Close();
+        }
+        finally
+        {
+            Ui.AwaitPumped(Waiting.Apart(ended), "the run's gpg-agent ended", TimeSpan.FromMinutes(1));
         }
     }
 
