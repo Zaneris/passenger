@@ -375,7 +375,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
   runs one tsserver (`useSyntaxServer` never): a syntax server answers rename and usages from the open files alone.
   typescript-language-server keeps a file's first `formattingOptions` answer while it runs, so each open file tells
-  tsserver how it indents itself (`WebDocument`'s `configure`).
+  tsserver how it indents itself (`WebDocument`'s `configure`). A page's stylesheets' classes have one finder,
+  `PageStylesheets` (links as the app serves them, packages' `_content` from project.assets.json, one on the web through
+  `RemoteStylesheets` only while Settings allows, its copy read-only), answered by `CssClassAssist` before the web
+  languages. Razor forwards `_vs_onAutoInsert` to the client's HTML only for `=`: a Razor file's `>` is Razor's own
+  answer, its `</` closed over Razor's HTML (`LspDocument.RazorHtmlAsync`).
 - **Build and run.** A folder with no usable .NET SDK is `ProjectModels.MissingSdk`, said through `Refusals.NoSdk` and
   the window's banner (`DotnetWant`, `MainWindow.Dotnet`); Install .NET SDK… is `DotnetReleases` and `DotnetInstall`
   (`PASSENGER_DOTNET_RELEASES`, dead in tests), and a `dotnet` no PATH names is taken by `Dotnet.Use`. On Windows a
