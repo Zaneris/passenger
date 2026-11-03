@@ -433,7 +433,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.Rename, Title = "Rename a symbol", Destructive = true), Description(
         "Renames the symbol at a position everywhere it is used, as Rename does, and saves the files: a C# symbol's XAML too " +
-        "(bindings, x:DataType, x:Static, handlers, tags), a type's files named " +
+        "(bindings, x:DataType, x:Static, handlers, tags; from any of them as from its declaration) and the MVVM Toolkit's " +
+        "property or command made of it, a type's files named " +
         "after it (Foo.cs, Foo.Designer.cs, Foo.axaml) unless renameFiles is false, and always its XAML's x:Class and " +
         "Razor component (Foo.razor, Foo.razor.css); an Aspire resource's name where its AppHost " +
         "declares it and its services read it; a Godot node's name (in a scene, or a GetNode path) in its scenes and the code's paths; " +
@@ -489,7 +490,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             case GodotServed scene:
                 return await GodotRename(await window.Assist.Languages.Godot.NodeAtAsync(scene.Document, offset), newName, $"No node's name is at {Relative(scene.Document.Path)}:{at.Line}:{at.Column}", cancel);
             case XamlServed xaml:
-                return await XamlRename(xaml, offset, newName, cancel);
+                return await XamlRename(xaml, offset, newName, renameFiles, patience, cancel);
             case ServerServed json when !json.Provides("renameProvider"):
                 return await JsonRename(json, offset, newName);
             case MSBuildServed:
@@ -527,7 +528,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await SaveLandedAsync(cancel);
             return $"{made.Said}: {string.Join(", ", made.Files.Select(f => Relative(f.Path)).Distinct())}";
         }
-        RefactorOutcome renaming = await window.Assist.Actions.RenameSymbolAsync(served.Document, offset, newName, renameFiles, patience);
+        return await SymbolRenamed(await window.Assist.Actions.RenameSymbolAsync(served.Document, offset, newName, renameFiles, patience), cancel);
+    }, AgentCall.Say, cancel));
+
+    /// <summary>A symbol's rename's answer, its files saved: the files it changed and moved, and those left as edited meanwhile.</summary>
+    private async Task<string> SymbolRenamed(RefactorOutcome renaming, CancellationToken cancel)
+    {
         if (renaming.Problem is { } notRenamed)
         {
             throw new InvalidOperationException(notRenamed);
@@ -542,7 +548,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         string renamed = moved.Count > 0 ? $"; renamed {string.Join(", ", moved)}" : string.Empty;
         string unrenamed = renaming.Left.Count > 0 ? $"; not in {string.Join(", ", renaming.Left)}, edited meanwhile" : string.Empty;
         return $"Renamed in {Plural.Of(changed.Count, "file")}: {string.Join(", ", changed)}{renamed}{unrenamed}";
-    }, AgentCall.Say, cancel));
+    }
 
     [McpServerTool(Name = McpTools.CodeActions, Title = "Fixes and refactorings", ReadOnly = true), Description(
         "The fixes and refactorings offered at a position (Alt+Enter), or over a selection to endLine:endColumn (Extract " +

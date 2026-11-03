@@ -12,6 +12,9 @@
     <AvaloniaTemplatesVersion>12.1.4</AvaloniaTemplatesVersion>
     <!-- Avalonia 11's last release, for the previewer's test of an app still on it (tests/AvaloniaGraphs). -->
     <AvaloniaOlderVersion>11.3.22</AvaloniaOlderVersion>
+    <!-- The MVVM Toolkit at the version Avalonia's MVVM template above writes, downloaded for the tests' package cache, so
+         an app of theirs restores with its generators and reaches no feed. -->
+    <CommunityToolkitMvvmVersion>8.4.2</CommunityToolkitMvvmVersion>
     <!-- Aspire's templates, AppHost SDK and package, dashboard, orchestrator and CLI at one version, downloaded for the
          tests' local feed. -->
     <AspireTemplatesVersion>13.6.4</AspireTemplatesVersion>

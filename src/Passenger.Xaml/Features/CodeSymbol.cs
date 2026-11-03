@@ -108,6 +108,15 @@ public sealed class CodeSymbol
         return true;
     }
 
+    /// <summary>The name a C# symbol named <paramref name="declared"/> takes for a XAML use written <paramref name="written"/>
+    /// to read <paramref name="typed"/>: the field or method the MVVM Toolkit makes that property or command of, where the
+    /// use is one (null where the toolkit makes no such name of any), else the name typed.</summary>
+    public static string? NameFor(string declared, string written, string typed) =>
+        written == declared ? typed
+        : written == ToolkitNames.PropertyOf(declared) ? ToolkitNames.FieldFor(declared, typed)
+        : written == ToolkitNames.CommandOf(declared) ? ToolkitNames.MethodFor(declared, typed)
+        : typed;
+
     /// <summary>Whether a member is declared where the symbol is: the symbol itself, or a member the MVVM Toolkit makes of it.</summary>
     public bool IsDeclaredAs(ClrMember member) => IsDeclared(member.Place);
 

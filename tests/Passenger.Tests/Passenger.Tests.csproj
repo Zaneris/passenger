@@ -38,11 +38,13 @@
        as a local feed (AvaloniaApp.Feed), so installing them never reaches nuget.org at test time. -->
   <ItemGroup>
     <PackageDownload Include="Avalonia.Templates" Version="[$(AvaloniaTemplatesVersion)]" />
+    <PackageDownload Include="CommunityToolkit.Mvvm" Version="[$(CommunityToolkitMvvmVersion)]" />
     <PackageDownload Include="Aspire.ProjectTemplates" Version="[$(AspireTemplatesVersion)]" />
     <PackageDownload Include="Aspire.AppHost.Sdk" Version="[$(AspireTemplatesVersion)]" />
     <AssemblyMetadata Include="NuGetPackageRoot" Value="$(NuGetPackageRoot)" />
     <AssemblyMetadata Include="AvaloniaTemplatesVersion" Value="$(AvaloniaTemplatesVersion)" />
     <AssemblyMetadata Include="AvaloniaOlderVersion" Value="$(AvaloniaOlderVersion)" />
+    <AssemblyMetadata Include="CommunityToolkitMvvmVersion" Value="$(CommunityToolkitMvvmVersion)" />
     <AssemblyMetadata Include="AspireTemplatesVersion" Value="$(AspireTemplatesVersion)" />
   </ItemGroup>
 

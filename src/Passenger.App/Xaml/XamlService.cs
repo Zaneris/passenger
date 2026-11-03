@@ -44,6 +44,9 @@ public sealed class XamlService : IDisposable
     private readonly Dictionary<OpenDocument, TypedSource> sources = [];
     private readonly List<SourcesPending> pending = [];
 
+    /// <summary>The changes of the projects' C# under way off the UI thread (<see cref="UpdateAsync"/>), each one's end awaited by <see cref="CurrentAsync"/>.</summary>
+    private Task updating = Task.CompletedTask;
+
     /// <summary>The projects whose folders were found holding no XAML, not looked in again until a XAML file comes.</summary>
     private readonly HashSet<string> withoutXaml = new(PathNames.Comparer);
 
@@ -195,7 +198,13 @@ public sealed class XamlService : IDisposable
         {
             document.Text.Changed -= source.Handler;
             document.Parsed -= OnParsed;
+            bool typed = source.Wait.IsWaiting;
             source.Wait.Stop();
+            if (typed)
+            {
+                // Closed before its typing paused (saved as it closed), it is read from the disk now, not once the watcher hears.
+                FilesChanged([document.Path]);
+            }
         }
     }
 
@@ -464,8 +473,24 @@ public sealed class XamlService : IDisposable
         return holding.Task;
     }
 
+    /// <summary>Done once the C# typed in and changed on disk that the projects have yet to read is theirs, so a XAML file read
+    /// next reads the code as it stands, a rename's or an agent's own edits a moment before among it.</summary>
+    public async Task CurrentAsync()
+    {
+        UiThread.Check();
+        await TypedNowAsync();
+        await updating;
+    }
+
     /// <summary>A change made to a loaded project off the UI thread; its open XAML files read against the result.</summary>
-    private async Task UpdateAsync(XamlLoading loading, Func<XamlProjectBuilder, XamlProject?> change)
+    private Task UpdateAsync(XamlLoading loading, Func<XamlProjectBuilder, XamlProject?> change)
+    {
+        Task update = ChangeAsync(loading, change);
+        updating = updating.IsCompleted ? update.Ended() : Task.WhenAll(updating, update.Ended());
+        return update;
+    }
+
+    private async Task ChangeAsync(XamlLoading loading, Func<XamlProjectBuilder, XamlProject?> change)
     {
         using SourcesPending checking = Pending([loading]);
         try

@@ -63,6 +63,27 @@ public sealed class CodeRenameTests
         """;
 
     [Fact]
+    public void A_name_typed_for_the_toolkits_property_or_command_renames_its_field_or_method_written_as_it_is()
+    {
+        Assert.Equal("_heading", CodeSymbol.NameFor("_title", "Title", "Heading"));
+        Assert.Equal("m_heading", CodeSymbol.NameFor("m_title", "Title", "Heading"));
+        Assert.Equal("heading", CodeSymbol.NameFor("title", "Title", "Heading"));
+        Assert.Equal("SellAsync", CodeSymbol.NameFor("BuyAsync", "BuyCommand", "SellCommand"));
+        Assert.Equal("Sell", CodeSymbol.NameFor("Buy", "BuyCommand", "SellCommand"));
+        Assert.Equal("Salutation", CodeSymbol.NameFor("Greeting", "Greeting", "Salutation"));
+        Assert.Equal("Large", CodeSymbol.NameFor("Big", "big", "Large"));
+    }
+
+    [Fact]
+    public void A_name_the_toolkit_never_makes_of_a_field_or_method_renames_neither()
+    {
+        Assert.Null(CodeSymbol.NameFor("_title", "Title", "heading"));
+        Assert.Null(CodeSymbol.NameFor("_title", "Title", string.Empty));
+        Assert.Null(CodeSymbol.NameFor("Buy", "BuyCommand", "Sell"));
+        Assert.Null(CodeSymbol.NameFor("Buy", "BuyCommand", "Command"));
+    }
+
+    [Fact]
     public void A_bound_property_renamed_respells_each_binding_of_it_and_nothing_else()
     {
         Assert.Equal(View.Replace("Binding Greeting", "Binding Salutation", StringComparison.Ordinal).Replace("Path=Greeting", "Path=Salutation", StringComparison.Ordinal),

@@ -258,13 +258,27 @@ public sealed partial class PassengerTools
     /// through it, as a C# symbol's usages are, and before it has loaded none are.</summary>
     private Task CodeBehindRead(CancellationToken cancel) => When(() => Session.CSharp is not { } csharp || csharp.IsReady, ServerLimit, cancel, ServerState());
 
-    /// <summary>Rename in XAML: an element's name, in its file and where its code-behind uses its field, saved.</summary>
-    private async Task<string> XamlRename(XamlServed xaml, int offset, string newName, CancellationToken cancel)
+    /// <summary>Rename in XAML: an element's name, in its file and where its code-behind uses its field; a type or member of
+    /// the folder's C# a name leads to, from its declaration (<see cref="XamlAssist.DeclaredRenameAsync"/>); saved.</summary>
+    private async Task<string> XamlRename(XamlServed xaml, int offset, string newName, bool renameFiles, Patience patience, CancellationToken cancel)
     {
         await CodeBehindRead(cancel);
-        if (await BackgroundWork.Run(() => XamlNavigation.At(xaml.File, offset)) is not { Named: { } named })
+        // Read against the C# as it stands: the agent's own rename a moment before may have written it.
+        await Session.Xaml.CurrentAsync();
+        XamlFile file = await xaml.Xaml.FileAsync() ?? xaml.File;
+        XamlSymbol? symbol = await BackgroundWork.Run(() => XamlNavigation.At(file, offset));
+        if (symbol is { Named: null } && XamlAssist.DeclarationOf(symbol) is not null)
         {
-            throw new InvalidOperationException("Rename in XAML renames an element's name (its x:Name or Name): put the place on one, its value or a use of it");
+            if (symbol.Name == newName)
+            {
+                return $"{newName} is its name already";
+            }
+            return await SymbolRenamed(await window.Assist.Languages.Xaml.DeclaredRenameAsync(symbol, newName, renameFiles, patience)
+                ?? throw new InvalidOperationException(XamlAssist.XamlRenamesWhat), cancel);
+        }
+        if (symbol is not { Named: { } named })
+        {
+            throw new InvalidOperationException($"{XamlAssist.XamlRenamesWhat}: put the place on one, or a use of it");
         }
         if (named.Value == newName)
         {

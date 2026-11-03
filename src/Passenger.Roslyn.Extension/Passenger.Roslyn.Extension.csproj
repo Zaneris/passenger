@@ -20,6 +20,8 @@
     <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
     <Compile Include="../Passenger.Core/RazorFiles.cs" Link="RazorFiles.cs" />
     <Compile Include="../Passenger.Core/Plural.cs" Link="Plural.cs" />
+    <!-- The names the MVVM Toolkit's generators give, as Passenger's XAML reads them. -->
+    <Compile Include="../Passenger.Xaml/Metadata/ToolkitNames.cs" Link="ToolkitNames.cs" />
   </ItemGroup>
 
   <PropertyGroup>

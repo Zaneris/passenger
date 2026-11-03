@@ -533,6 +533,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return RefactorOutcome.Refused($"Rename was not applied: {unscened}");
         }
+        // What the MVVM Toolkit makes of a field or method, which no rename of its own name reaches: its property or command, its change methods.
+        ToolkitFound toolkit = symbol is not null ? await context.Now(document).ToolkitRenamesAsync(at.Offset, own) : ToolkitFound.None;
+        if (toolkit.Problem is { } unmade)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {unmade}");
+        }
         // Its uses in the code by Godot's other names for it, which no rename of its own name reaches.
         if (godot is { Uses.Count: > 0 })
         {
@@ -560,6 +566,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         if (inScenes.Count > 0)
         {
             edit = TypeRename.With(edit, inScenes);
+        }
+        if (toolkit.Uses.Count > 0)
+        {
+            edit = TypeRename.With(edit, [.. toolkit.Uses.GroupBy(u => u.Path, PathNames.Comparer).Select(file => (file.Key, (IReadOnlyList<LspTextEdit>)[.. file.Select(u =>
+                new LspTextEdit(new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character)), u.Name))]))]);
         }
         IReadOnlyList<RefactoredFile> edited = await WorkspaceEdits.FilesAsync(context.Editors, edit, asked);
         List<(string From, string To)> moves = [.. (renameFiles ? type?.Files ?? [] : []).Select(f => (From: f, To: TypeRename.Renamed(f, name))).Concat(markup.Moves)

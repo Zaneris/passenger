@@ -40,13 +40,14 @@ public static class Handlers
     public const string GodotKindStrings = "Passenger.Roslyn.Extension.GodotKindStrings";
     public const string GodotNameStrings = "Passenger.Roslyn.Extension.GodotNameStrings";
     public const string GodotFix = "Passenger.Roslyn.Extension.GodotFix";
+    public const string ToolkitRenames = "Passenger.Roslyn.Extension.ToolkitRenames";
 
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
-        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix,
+        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
     ];
 }
 
@@ -651,6 +652,26 @@ public sealed record GodotEngineMember(
     [property: JsonPropertyName("class")] string Class,
     [property: JsonPropertyName("kind")] GodotNameKind? Kind,
     [property: JsonPropertyName("member")] string? Member);
+
+/// <summary>The field or method at a caret, to be renamed <paramref name="Name"/>, whose members the MVVM Toolkit makes are
+/// asked for.</summary>
+public sealed record ToolkitAsked([property: JsonPropertyName("at")] Place At, [property: JsonPropertyName("name")] string Name);
+
+/// <summary>Each use in the solution's own files of what the MVVM Toolkit makes of the field or method asked of, with the
+/// name it takes once that is renamed; and why not, where the new name makes no such member (<paramref name="Problem"/>).</summary>
+public sealed record ToolkitFound(
+    [property: JsonPropertyName("uses")] IReadOnlyList<ToolkitUse> Uses,
+    [property: JsonPropertyName("problem")] string? Problem)
+{
+    public static readonly ToolkitFound None = new([], null);
+}
+
+/// <summary>Where a use of a member the MVVM Toolkit makes is written, and the name it takes.</summary>
+public sealed record ToolkitUse(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("name")] string Name);
 
 /// <summary>A use of a member by one of Godot's other names for it, in a file of the solution's own: where the name is
 /// written, and what it holds before the member's name (<c>EmitSignal</c> for an EmitSignalX).</summary>

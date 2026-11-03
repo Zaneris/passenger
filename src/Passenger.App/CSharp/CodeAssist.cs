@@ -80,7 +80,7 @@ public sealed class CodeAssist
         completion = new CodeCompletion(context, popups);
         navigation = new CodeNavigation(context, popups, quickInfo);
         actions = new CodeActions(context, popups, navigation);
-        XamlAssist xaml = new(context, popups, completion);
+        XamlAssist xaml = new(context, popups, completion, actions);
         CSharpAssist csharp = new(context, popups, completion, parameterInfo, navigation, actions, xaml);
         context.Languages = new LanguageAssists(new HttpAssist(context, navigation), new MSBuildAssist(context, popups, completion), xaml,
             new ComposeAssist(context, popups, completion, navigation, actions), new SettingsAssist(context, completion, navigation),

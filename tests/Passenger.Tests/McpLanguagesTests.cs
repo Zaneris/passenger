@@ -120,6 +120,12 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
             $"The agent's rename of the bound property did not say it changed the view model and the window binding it: {followed}");
         Assert.Contains("Text=\"{Binding Salutation}\"", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml")), StringComparison.Ordinal);
         Assert.Contains("public string Salutation", File.ReadAllText(Path.Combine(gallery, viewModel)), StringComparison.Ordinal);
+        // Renamed from its binding, as from its declaration: the view model's property and the window's binding both.
+        string fromXaml = (await Call(client, McpTools.Rename, new(At(File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml")), "MainWindow.axaml", "{Binding Salut"))
+            { ["newName"] = "Greeting" })).GetString()!;
+        Assert.True(fromXaml.StartsWith("Renamed in 2 files: ", StringComparison.Ordinal), $"The agent's rename from the binding answered: {fromXaml}");
+        Assert.Contains("Text=\"{Binding Greeting}\"", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml")), StringComparison.Ordinal);
+        Assert.Contains("public string Greeting", File.ReadAllText(Path.Combine(gallery, viewModel)), StringComparison.Ordinal);
         await client.DisposeAsync();
 
         // A second session, as after a restart: the same version's file, not decompiled again.
