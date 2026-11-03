@@ -1043,6 +1043,10 @@ public sealed class DebugController : IDisposable
         {
             shown.Append($"{notDebugged}\n");
         }
+        foreach (string note in plan?.Notes ?? [])
+        {
+            shown.Append($"{note}\n");
+        }
         Message?.Invoke(this, $"Debugging {name}");
         DebugSession? starting = null;
         try

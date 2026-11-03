@@ -280,7 +280,7 @@ public sealed class ProfilerCommands
         {
             return left;
         }
-        (LaunchPlan? plan, string? problem, bool unresolved) = await builds.PrepareAsync(chosen, arguments, work);
+        (LaunchPlan? plan, string? problem, bool unresolved) = await builds.PrepareAsync(chosen, arguments, work, collects: true);
         // A failed build is the Build window's to show, a stop or the folder's end nobody's.
         if (plan is null && !unresolved)
         {
@@ -289,9 +289,12 @@ public sealed class ProfilerCommands
         parts.Dock.Show(ToolWindowIds.Profiler);
         if ((plan is null ? problem : plan.WhyNot("profile")) is { } why)
         {
+            plan?.Dashboard?.Dispose();
             View.Stopped(why);
             return why;
         }
+        // Its logs and traces' dashboard, ended with the program once it runs, else with this start.
+        Telemetry.RunDashboard? dashboard = plan!.Dashboard;
         OutputView run = parts.RunConsole;
         // An Avalonia app is profiled with the inspector in it, which records its frames into the run's trace.
         (LaunchPlan listened, Godot.GodotGame? game) = profiled.Listened(plan!);
@@ -308,6 +311,10 @@ public sealed class ProfilerCommands
                 Called = launched.Godot is not null ? launched.ProgramName : null,
             };
             run.Clear();
+            foreach (string note in plan!.Notes)
+            {
+                run.Append($"{note}\n");
+            }
             ConsoleSink console = run.Sink;
             ProfilingSession running;
             // Kill is there while the program starts; the folder's end ends it too.
@@ -333,9 +340,12 @@ public sealed class ProfilerCommands
             profiled.Profiled = program;
             ConsoleInput? input = running.Input is { } writer ? ProgramInput.Of(writer) : null;
             // Only its end puts the run away, however that comes: a snapshot leaves the program running.
+            Telemetry.RunDashboard? collected = dashboard;
+            dashboard = null;
             IdeErrors.Observe(running.ExitedAsync().ContinueWith(_ => UiThread.Post(() =>
             {
                 game?.Dispose();
+                collected?.Dispose();
                 Ended(profiled, program, inspected, input, landed);
             }), TaskScheduler.Default));
             if (profiled.IsEnded)
@@ -389,6 +399,7 @@ public sealed class ProfilerCommands
             {
                 profiled.ProfileStarting = null;
             }
+            dashboard?.Dispose();
         }
     }
 

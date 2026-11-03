@@ -90,6 +90,7 @@ public partial class MainWindow
             containersView?.Reveal(project);
             containersView?.TelemetryChanged();
         },
+        TelemetryChanged = () => containersView?.TelemetryChanged(),
         DevCertificates = DevCertificates,
         AskCertificate = AskCertificateAsync,
         AskReplace = AskReplaceAsync,

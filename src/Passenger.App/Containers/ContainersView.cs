@@ -173,7 +173,7 @@ public sealed class ContainersView : DockPanel
     public TelemetryView Telemetry { get; }
 
     /// <summary>Where a Compose project's logs and traces are read, by its name: the container run of this window's folder
-    /// that runs Passenger's dashboard for it; null for any other.</summary>
+    /// that runs Passenger's dashboard for it, or a project run's dashboard's own; null for any other.</summary>
     public Func<string, TelemetrySource?>? TelemetryOf { get; set; }
 
     /// <summary>What the engine held at the last read.</summary>
@@ -629,8 +629,9 @@ public sealed class ContainersView : DockPanel
         Stats.Show(streams && shownTab == StatsTab ? row : null);
         Files.Show(streams && shownTab == FilesTab ? row : null);
         Details.Show(streams && shownTab == DetailsTab ? row : null);
-        // A service's or container's own records; a project's every service's.
-        Telemetry.Watch(streams && shownTab == TelemetryTab ? telemetry : null, Telemetry.Shown, row?.Service ?? row?.Container?.Service);
+        // A service's or container's own records; a project's every service's, as the dashboard's own row's are.
+        string? service = row?.Service ?? row?.Container?.Service;
+        Telemetry.Watch(streams && shownTab == TelemetryTab ? telemetry : null, Telemetry.Shown, service == ContainerTelemetry.Service ? null : service);
     }
 
     /// <summary>Runs an action's command on a row as the window's one action of that id under way, the status bar saying

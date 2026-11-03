@@ -76,6 +76,14 @@ public sealed partial record LaunchPlan
     /// <summary>A web app's build, which its browser refresh needs; null for any other program.</summary>
     public WebBuild? Web { get; init; }
 
+    /// <summary>What its start says of itself in the program's console as it begins: where its logs and traces go, a variable
+    /// of its own kept, why none are collected.</summary>
+    public IReadOnlyList<string> Notes { get; init; } = [];
+
+    /// <summary>The dashboard its program's logs and traces go to (its configuration's Collect logs and traces), which its
+    /// start ends with the program; null where none was brought up.</summary>
+    public Telemetry.RunDashboard? Dashboard { get; init; }
+
     /// <summary>The projects of what it launches whose code runs in the browser (<see cref="ProjectModel.RunsInBrowser"/>), by
     /// their project files: its own project first when it does, then those it references.</summary>
     public IReadOnlyList<string> InBrowser { get; init; } = [];

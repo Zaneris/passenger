@@ -27,6 +27,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private readonly Control linkedRow;
     private readonly Control aspireRow;
     private readonly Control godotRow;
+    private readonly Control telemetryRow;
     private readonly Control sceneRow;
 
     /// <summary>The rows of a Godot game's copies: how many, and each one's own arguments.</summary>
@@ -180,8 +181,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         KeepBackingBox = new CheckBox { Content = keepWords };
         TextBlock telemetryWords = new() { Text = "Collect logs and traces with Aspire's dashboard" };
         TelemetryBox = new CheckBox { Content = telemetryWords, Name = "TelemetryBox" };
-        ToolTip.SetTip(TelemetryBox, $"Runs Aspire's dashboard ({Containers.ContainerTelemetry.Image}, pulled the first time) beside the services and tells each "
-            + ".NET service to send it its OpenTelemetry, unless its own files name where; the Containers window's Telemetry tab and an agent's telemetry read it");
+
         DockerfileBox = Field("The project's own, beside it");
         ContextBox = Field("The project's DockerfileContext, else the solution's folder");
         BuildArgumentsBox = Field("NAME=value");
@@ -255,7 +255,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (Row("Run arguments", RunArgumentsBox, fields: ["runArguments"]), [RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row("Mode", ModeBox, fields: ["mode"]), [RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row(string.Empty, KeepBackingBox, marked: keepWords, fields: ["keepBackingServices"]), [RunKind.Compose]),
-            (Row(string.Empty, TelemetryBox, marked: telemetryWords, fields: ["telemetry"]), [RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
+            (telemetryRow = Row(string.Empty, TelemetryBox, marked: telemetryWords, fields: ["telemetry"]), [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (launchRows[3] = Row("Environment variables", new StackPanel { Spacing = 6, Children = { VariablesHeader(), variables, AddVariableButton } }, top: true, fields: ["environment"]),
                 [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
             (launchRows[4] = Row(string.Empty, ConsoleBox, marked: consoleWords, fields: ["console"]), [RunKind.Project]),
@@ -561,6 +561,14 @@ public sealed class RunConfigurationsDialog : IdeWindow
 
     /// <summary>Collect logs and traces: Aspire's dashboard beside a container run's services.</summary>
     public CheckBox TelemetryBox { get; }
+
+    /// <summary>What Collect logs and traces does, for a container run's services or a project run's program.</summary>
+    public static string TelemetryTip(bool containers) => containers
+        ? $"Runs Aspire's dashboard ({Containers.ContainerTelemetry.Image}, pulled the first time) beside the services and tells each "
+            + ".NET service to send it its OpenTelemetry, unless its own files name where; the Containers window's Telemetry tab and an agent's telemetry read it"
+        : $"For this project's run (Run, Debug, Hot Reload and Profile alike): runs Aspire's dashboard ({Containers.ContainerTelemetry.Image}, pulled the first time) "
+            + "in a container while the program runs, and tells the program to send it its OpenTelemetry, unless its launch profile or environment names where; "
+            + "the Containers window's Telemetry tab and an agent's telemetry read it. An Aspire AppHost's run has a dashboard of its own";
 
     public TextBox DockerfileBox { get; }
 
@@ -1044,6 +1052,9 @@ public sealed class RunConfigurationsDialog : IdeWindow
             }
             linkedRow.IsVisible = !shown.IsContainer && shown.Aspire;
             aspireRow.IsVisible = !shown.IsContainer && shown.Aspire;
+            // An AppHost's run has a dashboard of its own, and a Godot game sends no OpenTelemetry.
+            telemetryRow.IsVisible &= shown.IsContainer || !shown.Aspire && !godot;
+            ToolTip.SetTip(TelemetryBox, TelemetryTip(shown.IsContainer));
             godotRow.IsVisible = godot;
             sceneRow.IsVisible = godot && !shown.GodotEditor;
             foreach (Control row in launchRows)

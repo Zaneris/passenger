@@ -505,6 +505,10 @@ public sealed class ProjectSession : IAsyncDisposable
     /// down (or the next run comes); its containers are the folder's (<see cref="Containers"/>) until then.</summary>
     public Containers.ContainerRun? ContainerRun { get; set; }
 
+    /// <summary>The dashboards of the project runs that collect their logs and traces, each from its start's bringing it up
+    /// until it is taken down with its program; its containers are the folder's (<see cref="Containers"/>) until then.</summary>
+    public List<Telemetry.RunDashboard> Dashboards { get; } = [];
+
     /// <summary>The starts of runs of services under way (Run's, Debug's or Profile's of a container configuration or an Aspire
     /// AppHost), each from its first moment until it is up or has given up: a start of what one starts ends it first, and the
     /// folder's end ends them all, as Stop does.</summary>

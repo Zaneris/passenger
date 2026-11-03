@@ -801,7 +801,8 @@ public static class ContainerPlans
         project is not null && Workspace.UserSecrets.Of(project.Path, project.Property(Passenger.Host.CarriedProperties.UserSecretsId), Editors.EditorArea.ReadText) is { } id
             && Workspace.UserSecrets.FolderOf(id) is { } folder && Directory.Exists(folder) ? (folder, id) : null;
 
-    private static JsonObject Labels(IReadOnlyList<string> words)
+    /// <summary>The <c>--label</c> words as a Compose service's labels.</summary>
+    internal static JsonObject Labels(IReadOnlyList<string> words)
     {
         JsonObject labels = [];
         for (int i = 0; i + 1 < words.Count; i += 2)

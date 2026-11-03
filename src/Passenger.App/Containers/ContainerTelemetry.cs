@@ -10,7 +10,8 @@ namespace Passenger.App.Containers;
 /// and traces): Aspire's standalone dashboard image, a service of Passenger's override with Passenger's labels (so Stop and
 /// the folder's end take it down with the run), its frontend and telemetry API published on this machine's loopback alone
 /// and asked with a key of the run's, its OTLP endpoint reached on the run's network alone and sent to with another. Each
-/// .NET service the run starts is told to send it OpenTelemetry (<see cref="Tell"/>) unless its own files say where.</summary>
+/// .NET service the run starts is told to send it OpenTelemetry (<see cref="Tell"/>) unless its own files say where. A project
+/// run's is a Compose project of its own (<see cref="RunDashboard"/>).</summary>
 public sealed record ContainerTelemetry(string OtlpKey, string ApiKey)
 {
     /// <summary>The dashboard's image, at the Aspire release Passenger reads.</summary>
@@ -31,9 +32,10 @@ public sealed record ContainerTelemetry(string OtlpKey, string ApiKey)
 
     private static string Key() => Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
 
-    /// <summary>The dashboard's service in Passenger's override: on the networks the .NET services it hears from join (the
-    /// project's default when none names any), its API asked with its key and nothing else of it published.</summary>
-    public JsonObject Entry(JsonObject labels, IReadOnlyCollection<string> networks)
+    /// <summary>The dashboard's service in a Compose project of Passenger's: on the networks the .NET services it hears from join
+    /// (the project's default when none names any), its API asked with its key, and nothing else of it published unless its
+    /// OTLP endpoints are, for a program on this machine (<paramref name="otlp"/>), on its loopback alone too.</summary>
+    public JsonObject Entry(JsonObject labels, IReadOnlyCollection<string> networks, bool otlp = false)
     {
         JsonObject entry = new()
         {
@@ -47,7 +49,8 @@ public sealed record ContainerTelemetry(string OtlpKey, string ApiKey)
                 ["Dashboard__Api__AuthMode"] = "ApiKey",
                 ["Dashboard__Api__PrimaryApiKey"] = ApiKey,
             },
-            ["ports"] = new JsonArray(new JsonObject { ["target"] = ApiPort, ["host_ip"] = "127.0.0.1", ["protocol"] = "tcp" }),
+            ["ports"] = new JsonArray([.. (otlp ? (int[])[ApiPort, OtlpPort, OtlpHttpPort] : [ApiPort])
+                .Select(port => (JsonNode)new JsonObject { ["target"] = port, ["host_ip"] = "127.0.0.1", ["protocol"] = "tcp" })]),
         };
         if (networks.Count > 0)
         {
@@ -56,28 +59,20 @@ public sealed record ContainerTelemetry(string OtlpKey, string ApiKey)
         return entry;
     }
 
-    /// <summary>Tells a .NET service where to send its logs and traces, and as what, adding to the environment Passenger's
-    /// override gives it: what its own files set of OpenTelemetry's endpoint, name and headers stays theirs, so a service
-    /// that names its own endpoint is left to it. Batches go every second, so a request shows at once. Started after the
-    /// dashboard, which it depends on, so nothing it sends as it starts is lost.</summary>
+    /// <summary>Tells a .NET service where to send its logs and traces, and as what (<see cref="OtlpEnvironment"/>), adding to the
+    /// environment Passenger's override gives it: what its own files set of OpenTelemetry's endpoint, name and headers stays
+    /// theirs, so a service that names its own endpoint is left to it. Started after the dashboard, which it depends on, so
+    /// nothing it sends as it starts is lost.</summary>
     public bool Tell(ComposeService service, JsonObject entry, JsonObject environment)
     {
-        if (service.Environment.ContainsKey(OtelVariables.ExporterEndpoint))
+        if (OtlpEnvironment.Of(string.Create(CultureInfo.InvariantCulture, $"http://{Service}:{OtlpPort}"), string.Create(CultureInfo.InvariantCulture, $"http://{Service}:{OtlpHttpPort}"),
+            OtlpKey, service.Name, service.Environment) is not { } told)
         {
             return false;
         }
-        bool http = service.Environment.TryGetValue(OtelVariables.ExporterProtocol, out string? protocol) && protocol.StartsWith("http", StringComparison.OrdinalIgnoreCase);
-        environment[OtelVariables.ExporterEndpoint] = string.Create(CultureInfo.InvariantCulture, $"http://{Service}:{(http ? OtlpHttpPort : OtlpPort)}");
-        string header = $"x-otlp-api-key={OtlpKey}";
-        environment[OtelVariables.ExporterHeaders] = service.Environment.TryGetValue(OtelVariables.ExporterHeaders, out string? headers) && headers.Length > 0
-            ? $"{headers},{header}" : header;
-        foreach ((string name, string value) in (ReadOnlySpan<(string, string)>)[(OtelVariables.ServiceName, service.Name), (OtelVariables.LogsDelay, "1000"),
-            (OtelVariables.SpansDelay, "1000"), (OtelVariables.MetricsInterval, "1000")])
+        foreach ((string name, string value) in told.Told)
         {
-            if (!service.Environment.ContainsKey(name))
-            {
-                environment[name] = value;
-            }
+            environment[name] = value;
         }
         entry["depends_on"] = new JsonObject { [Service] = new JsonObject { ["condition"] = "service_started" } };
         return true;
@@ -92,12 +87,20 @@ public sealed record ContainerTelemetry(string OtlpKey, string ApiKey)
         {
             return (null, $"its dashboard's port could not be read ({said})");
         }
-        // An engine on another machine publishes on its own loopback, which this machine cannot reach.
-        if (await engine.StateAsync(cancel: cancel) is { Endpoint: { } endpoint } && Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? machine)
-            && machine.Scheme is "tcp" or "ssh" or "http" or "https" && machine.Host.Length > 0 && !machine.IsLoopback)
+        if (Elsewhere(await engine.StateAsync(cancel: cancel)) is { } elsewhere)
         {
-            return (null, $"its dashboard runs on {endpoint}, whose loopback this machine cannot read");
+            return (null, elsewhere);
         }
-        return (new TelemetrySource(new Uri(string.Create(CultureInfo.InvariantCulture, $"http://127.0.0.1:{port}")), ApiKey), null);
+        return (new TelemetrySource(Loopback(port), ApiKey), null);
     }
+
+    /// <summary>Why a dashboard on this engine cannot be reached from here: an engine on another machine publishes on its own
+    /// loopback, which this machine cannot reach; null on this one.</summary>
+    public static string? Elsewhere(EngineState engine) =>
+        engine is { Endpoint: { } endpoint } && Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? machine)
+        && machine.Scheme is "tcp" or "ssh" or "http" or "https" && machine.Host.Length > 0 && !machine.IsLoopback
+            ? $"its dashboard runs on {endpoint}, whose loopback this machine cannot read" : null;
+
+    /// <summary>A port published on this machine's loopback, as an address.</summary>
+    public static Uri Loopback(int port) => new(string.Create(CultureInfo.InvariantCulture, $"http://127.0.0.1:{port}"));
 }

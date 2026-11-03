@@ -67,7 +67,7 @@ public sealed record ChosenService(ServiceRun Run, string Name);
 /// supplies only what is its own: how its services restart (<see cref="RestartAsync"/>), how a hold chosen takes effect
 /// at their next start (<see cref="HoldsChangedAsync"/>) and where a service's program is (<see cref="ProgramAsync"/>). A
 /// UI-thread object of the session's.</summary>
-public abstract class ServiceRun
+public abstract class ServiceRun : Telemetry.ITelemetryRun
 {
     /// <summary>What each .NET service is held at its start for, as last chosen (debugged, or attached to quietly for Hot
     /// Reload): a restart holds it again and attaches again. A service not here runs unheld.</summary>

@@ -10,6 +10,7 @@ using Passenger.App.Docking;
 using Passenger.App.Editors;
 using Passenger.App.LiveTree;
 using Passenger.App.Settings;
+using Passenger.App.Telemetry;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Inspector;
@@ -36,6 +37,9 @@ public sealed record BuildRunParts(
 {
     /// <summary>Shows a Compose project in the Containers window, chosen there, as a container run comes up.</summary>
     public Action<string>? Reveal { get; init; }
+
+    /// <summary>A project run's dashboard went: the Containers window's Telemetry tab follows.</summary>
+    public Action? TelemetryChanged { get; init; }
 
     /// <summary>The dotnet <c>dev-certs</c> runs through for a run that serves HTTPS (containers' or Aspire's): the machine's,
     /// or a test's stand-in.</summary>
@@ -783,9 +787,11 @@ public sealed partial class BuildRunController
 
     /// <summary>A configuration's plan with its build before launch done: the plan to start, or why there is none, the folder
     /// left or Stop meanwhile among the reasons; <c>Unresolved</c> when the problem is the plan's own (what the configuration
-    /// runs could not be worked out), which a start shows where it shows its own state.</summary>
+    /// runs could not be worked out), which a start shows where it shows its own state. Where the start <paramref name="collects"/>
+    /// (Run's, Debug's, Profile's) and its configuration collects its logs and traces, its dashboard comes up as its project
+    /// builds, the plan's program told of it (<see cref="RunDashboard.CollectAsync"/>), and the start ends it with the program.</summary>
     public async Task<(LaunchPlan? Plan, string? Problem, bool Unresolved)> PrepareAsync(RunConfiguration chosen, string? arguments, Working work, bool build = true,
-        Action? reading = null)
+        Action? reading = null, bool collects = false)
     {
         (LaunchPlan? plan, string? problem) = await ResolvePlanAsync(chosen, arguments, work.Stopping);
         if (Checkpoint(work, chosen.Name) is { } stopped)
@@ -796,11 +802,77 @@ public sealed partial class BuildRunController
         {
             return (null, problem, true);
         }
+        using CancellationTokenSource collecting = CancellationTokenSource.CreateLinkedTokenSource(work.Stopping);
+        Task<LaunchPlan>? told = collects && Collects(chosen, plan) ? CollectAsync(plan, collecting.Token) : null;
         if (build && plan.Build is { } step && await BuildForAsync(step, work, reading) is { Succeeded: false } unbuilt)
         {
+            await collecting.CancelAsync();
+            await AbandonAsync(told);
             return (null, Checkpoint(work, chosen.Name) ?? unbuilt.Message, false);
         }
-        return Checkpoint(work, chosen.Name) is { } left ? (null, left, false) : (plan, null, false);
+        if (told is not null)
+        {
+            if (!told.IsCompleted)
+            {
+                work.Say($"Starting Aspire's dashboard for {chosen.Name}'s logs and traces…");
+            }
+            try
+            {
+                plan = await told;
+            }
+            catch (OperationCanceledException) when (work.Stopping.IsCancellationRequested)
+            {
+                return (null, Checkpoint(work, chosen.Name) ?? StoppedStarting(chosen.Name), false);
+            }
+        }
+        if (Checkpoint(work, chosen.Name) is { } left)
+        {
+            plan.Dashboard?.Dispose();
+            return (null, left, false);
+        }
+        return (plan, null, false);
+    }
+
+    /// <summary>Whether a start of a configuration collects its program's logs and traces: a project run's whose configuration
+    /// says Collect logs and traces, but an AppHost's, which has a dashboard of its own, and a Godot game's.</summary>
+    private static bool Collects(RunConfiguration chosen, LaunchPlan plan) =>
+        chosen is { Telemetry: true, Kind: RunKind.Project, Aspire: false } && plan is { Godot: null, Project: not null };
+
+    /// <summary>A plan its dashboard tells, the dashboard the session's while it runs (the Containers window's Telemetry tab
+    /// and an agent's <c>telemetry</c> read it), until it is taken down.</summary>
+    private async Task<LaunchPlan> CollectAsync(LaunchPlan plan, CancellationToken cancel)
+    {
+        ProjectSession collecting = session;
+        LaunchPlan told = await RunDashboard.CollectAsync(plan, collecting.Containers.Engine, collecting.Containers, collecting.Folder, parts.StateFolder(), cancel);
+        if (told.Dashboard is { } dashboard)
+        {
+            collecting.Dashboards.Add(dashboard);
+            dashboard.Stopped += (_, _) =>
+            {
+                collecting.Dashboards.Remove(dashboard);
+                parts.TelemetryChanged?.Invoke();
+            };
+            // Chosen in the Containers window, as a container run's project is, its Telemetry tab a click away.
+            parts.Reveal?.Invoke(dashboard.ProjectName);
+        }
+        return told;
+    }
+
+    /// <summary>A dashboard's start that its run will not use, ended: what came of it taken down.</summary>
+    private static async Task AbandonAsync(Task<LaunchPlan>? told)
+    {
+        if (told is null)
+        {
+            return;
+        }
+        try
+        {
+            (await told).Dashboard?.Dispose();
+        }
+        catch (OperationCanceledException)
+        {
+            // Canceled as it came up, it took down what it made.
+        }
     }
 
     /// <summary>Why a start goes no further now, or null to go on: its folder has ended, or Stop has ended the start.</summary>
@@ -974,6 +1046,8 @@ public sealed partial class BuildRunController
         using IDisposable held = BackgroundWork.Scope();
         // The edits made since its build saved the files, followed for a Godot game's Hot Reload.
         BuiltEdits? edits = null;
+        // Its logs and traces' dashboard, ended with its program once handed over, else with the start.
+        RunDashboard? dashboard = null;
         try
         {
             if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
@@ -995,11 +1069,12 @@ public sealed partial class BuildRunController
             {
                 edits?.Dispose();
                 edits = session.Debug.Building(hotReload: true);
-            } : null);
+            } : null, collects: true);
             if (plan is null)
             {
                 return Said(problem!);
             }
+            dashboard = plan.Dashboard;
             if (plan.WhyNot("run", built: !watched) is { } why)
             {
                 return Said(why);
@@ -1049,7 +1124,9 @@ public sealed partial class BuildRunController
                 // The terminal's text is the program's own: its failed bindings are in Problems alone.
                 WatchBindings(inspected, null);
                 string program = GodotConsole.Program(plan, plan.Program);
-                string? refused = await RunInTerminalAsync(chosen.Name, watched ? DotnetStart(Watch(plan), plan.WorkingDirectory) : ChildProcesses.Command(program, plan.Arguments, plan.WorkingDirectory), variables, running);
+                // What the run says of itself goes with its status, the terminal's tab being the program's own.
+                string? refused = await RunInTerminalAsync(chosen.Name, watched ? DotnetStart(Watch(plan), plan.WorkingDirectory) : ChildProcesses.Command(program, plan.Arguments, plan.WorkingDirectory), variables,
+                    string.Join("; ", [running, .. plan.Notes]));
                 if (refused is null && session.InTerminal is { } inTerminal)
                 {
                     parts.OpenBrowser(plan, inTerminal.Ended);
@@ -1068,11 +1145,16 @@ public sealed partial class BuildRunController
                 }
                 EndWith(inspected, refused is null && session.InTerminal is { } run ? run.Ended : Task.CompletedTask);
                 EndWith(game, refused is null && session.InTerminal is { } played ? played.Ended : Task.CompletedTask);
+                EndWith(Take(ref dashboard), refused is null && session.InTerminal is { } collected ? collected.Ended : Task.CompletedTask);
                 return refused;
             }
             session.InTerminal = null;
             parts.Views.Run.SetRunning(true);
             parts.Dock.Show(ToolWindowIds.Run);
+            foreach (string note in plan.Notes)
+            {
+                parts.Views.Run.Append($"{note}\n");
+            }
             parts.Say(running);
             WatchBindings(inspected, parts.Views.Run);
             if (watched)
@@ -1089,6 +1171,7 @@ public sealed partial class BuildRunController
             }
             EndWith(inspected, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
             EndWith(game, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
+            EndWith(Take(ref dashboard), notStarted is null ? session.Runner.Ended : Task.CompletedTask);
             if (notStarted is null && heldStart && session.Runner.ProcessId is int id)
             {
                 await AttachForHotReloadAsync(chosen.Name, id, parts.Views.Run.Sink, work, Take(ref edits), running);
@@ -1098,6 +1181,7 @@ public sealed partial class BuildRunController
         finally
         {
             edits?.Dispose();
+            dashboard?.Dispose();
             work.Dispose();
         }
     }
@@ -1247,11 +1331,11 @@ public sealed partial class BuildRunController
         return await RunAsync(hotReload: true) is null;
     }
 
-    /// <summary>Edits followed for a session, handed over once: the session that takes them lets them go.</summary>
-    private static BuiltEdits? Take(ref BuiltEdits? edits)
+    /// <summary>What a start holds (the edits followed for a session, its dashboard), handed over once: what takes it lets it go.</summary>
+    private static T? Take<T>(ref T? held) where T : class
     {
-        BuiltEdits? taken = edits;
-        edits = null;
+        T? taken = held;
+        held = null;
         return taken;
     }
 
@@ -1881,25 +1965,30 @@ public sealed partial class BuildRunController
         }
         // The edits made since its build saved the files, followed for its session (Hot Reload's, its built lines).
         BuiltEdits? edits = null;
+        RunDashboard? dashboard = null;
         try
         {
             (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, arguments, work, reading: () =>
             {
                 edits?.Dispose();
                 edits = session.Debug.Building(session.Debug.HotReloadOn());
-            });
+            }, collects: true);
             if (plan is null)
             {
                 return problem;
             }
+            dashboard = plan.Dashboard;
             int count = GameCopies.Count(chosen, plan);
             // An earlier launch's copies past this one's count end with it, as the rest end in their tabs' turn.
             await Task.WhenAll([.. session.Debug.CopiesOf(chosen.Name).Where(c => c.Copy > count).Select(c => session.Debug.StopAsync(c.Tab))]);
-            return count == 1 ? await LaunchDebuggedAsync(chosen, plan, work, edits) : await LaunchCopiesAsync(chosen, plan, Enumerable.Range(1, count), arguments, work, edits);
+            string? refused = count == 1 ? await LaunchDebuggedAsync(chosen, plan, work, edits) : await LaunchCopiesAsync(chosen, plan, Enumerable.Range(1, count), arguments, work, edits);
+            EndWith(Take(ref dashboard), refused is null ? DebugEnded(session.Debug.SessionNamed(plan.Name)) : Task.CompletedTask);
+            return refused;
         }
         finally
         {
             edits?.Dispose();
+            dashboard?.Dispose();
         }
     }
 

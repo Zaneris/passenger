@@ -110,7 +110,8 @@ public partial class MainWindow
         view.OtherEngines = () => session is { IsEnded: false } current ? current.Aspire.ContainerEngines : [];
         view.ActionRequested += (_, action) => Request(action);
         view.LinkClicked += (_, link) => OpenLink(link);
-        view.TelemetryOf = project => session.ContainerRun is { } run && run.Plan.ProjectName == project ? run.Telemetry : null;
+        view.TelemetryOf = project => session.ContainerRun is { } run && run.Plan.ProjectName == project ? run.Telemetry
+            : session.Dashboards.FirstOrDefault(dashboard => dashboard.ProjectName == project)?.Telemetry;
         view.UnstartedOf = project => buildRun.Containers is { } run && run.Plan.ProjectName == project ? run.Unstarted : [];
         view.StateRead += (_, state) => ShowEngine(state);
         view.Files.Opened += (_, copy) => OpenCopy(copy);

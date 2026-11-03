@@ -4,14 +4,15 @@ using ModelContextProtocol.Server;
 using Passenger.App.Aspire;
 using Passenger.App.Run;
 using Passenger.App.Telemetry;
+using Passenger.Core;
 
 namespace Passenger.App.Mcp;
 
 public sealed partial class PassengerTools
 {
     [McpServerTool(Name = McpTools.Telemetry, Title = "Logs and traces", ReadOnly = true), Description(
-        "A run's structured logs or traces (kind) from its dashboard: an Aspire AppHost's, or the container run's when its "
-        + "configuration collects them; a resource's or Compose service's (resource) or one trace's (traceId) alone.")]
+        "A run's structured logs or traces (kind) from its dashboard: an Aspire AppHost's, or a container or project run's when its "
+        + "configuration collects them; a resource's, Compose service's or project's (resource) or one trace's (traceId) alone.")]
     public Task<TelemetryInfo> GetTelemetry(string kind = "logs", string? appHost = null,
         string? resource = null, string? traceId = null, int limit = 200,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
@@ -21,7 +22,7 @@ public sealed partial class PassengerTools
             throw new ArgumentException("kind must be logs or traces");
         }
         ProjectSession current = Session;
-        (ServiceRun run, TelemetrySource? source, string? filter) = await TelemetryOfAsync(current, appHost, resource, cancel);
+        (ITelemetryRun run, TelemetrySource? source, string? filter) = await TelemetryOfAsync(current, appHost, resource, cancel);
         if (source is null)
         {
             throw new InvalidOperationException(TelemetrySource.NoDashboard(run.Name));
@@ -46,22 +47,39 @@ public sealed partial class PassengerTools
             [.. traces.Select(trace => new TraceInfo(trace.TraceId, trace.Data, [.. trace.Spans.Select(span => span.Data)]))]);
     });
 
-    /// <summary>The run an agent's <c>telemetry</c> reads, with the resource it reads alone: a Compose service of the container
-    /// run that collects telemetry, else an owned AppHost's resource or the AppHost <paramref name="appHost"/> names; with
-    /// neither named, the one run there is that has telemetry.</summary>
-    private async Task<(ServiceRun Run, TelemetrySource? Source, string? Filter)> TelemetryOfAsync(ProjectSession current, string? appHost, string? resource,
+    /// <summary>The run an agent's <c>telemetry</c> reads, with the resource it reads alone: a project run's that collects
+    /// telemetry, named by its configuration or its records' name, or a Compose service of the container run that does, else an
+    /// owned AppHost's resource or the AppHost <paramref name="appHost"/> names; with neither named, the one run there is that
+    /// has telemetry.</summary>
+    private async Task<(ITelemetryRun Run, TelemetrySource? Source, string? Filter)> TelemetryOfAsync(ProjectSession current, string? appHost, string? resource,
         CancellationToken cancel)
     {
         IReadOnlyList<ServiceRun> runs = current.ServiceRuns;
         Containers.ContainerRun? running = runs.OfType<Containers.ContainerRun>().FirstOrDefault();
         bool hosts = runs.OfType<AspireAppRun>().Any();
         Containers.ContainerRun? containers = running is { Plan.Telemetry: not null } ? running : null;
+        IReadOnlyList<RunDashboard> projects = [.. current.Dashboards.Where(d => !d.IsStopped)];
+        if (appHost is null && (resource is null ? projects.Count == 1 && running is null && !hosts ? projects[0] : null
+            : projects.FirstOrDefault(d => d.Name == resource || d.Records == resource)) is { } project)
+        {
+            return (project, project.Telemetry, resource is null ? null : project.Records);
+        }
+        if (appHost is null && resource is null && projects.Count > 1 && running is null && !hosts)
+        {
+            throw new InvalidOperationException($"Name the run: resource, one of {Plural.Listed([.. projects.Select(d => d.Records)])}");
+        }
+        // A project run that collects nothing, the only run there is: what to turn on, not Aspire's refusal.
+        if (appHost is null && resource is null && projects.Count == 0 && running is null && !hosts
+            && current.Running.FirstOrDefault(p => p.Kind is RunningKind.Run or RunningKind.Debug or RunningKind.Profile) is { } program
+            && current.Configurations.All.FirstOrDefault(c => c.Name == program.Name) is { Kind: RunKind.Project, Aspire: false, Telemetry: false } uncollecting)
+        {
+            throw new InvalidOperationException(Uncollected(uncollecting.Name));
+        }
         // A container run that collects nothing, named or the only run there is: what to turn on, not Aspire's refusal.
         if (appHost is null && running is { Plan.Telemetry: null } uncollected
             && (resource is null && !hosts || resource is not null && OfRun(uncollected, resource) is not null))
         {
-            throw new InvalidOperationException($"{uncollected.Name} collects no logs or traces: turn on its configuration's Collect logs and traces with "
-                + "Aspire's dashboard (Edit Configurations), then run it again");
+            throw new InvalidOperationException(Uncollected(uncollected.Name));
         }
         if (appHost is null && containers is not null
             && (resource is null && !hosts
@@ -93,6 +111,10 @@ public sealed partial class PassengerTools
         }
         return (app, app.Telemetry, selected?.Resource.Name);
     }
+
+    /// <summary>What a run that collects no logs or traces says to an agent: what to turn on.</summary>
+    private static string Uncollected(string name) =>
+        $"{name} collects no logs or traces: turn on its configuration's Collect logs and traces with Aspire's dashboard (Edit Configurations), then run it again";
 }
 
 public sealed record TraceInfo(string TraceId, JsonElement Summary, IReadOnlyList<JsonElement> Spans);
