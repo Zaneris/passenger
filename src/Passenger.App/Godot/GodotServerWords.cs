@@ -18,14 +18,16 @@ public static partial class GodotServerWords
     [GeneratedRegex(@"^network/language_server/remote_port\s*=\s*(?<port>\d+)\s*$", RegexOptions.Multiline)]
     private static partial Regex RemotePort();
 
-    /// <summary>A GDScript warning's name and what it says, as Godot's server writes one ("(UNUSED_PARAMETER): The
-    /// parameter…"); nulls for any other message.</summary>
-    public static (string? Code, string? Said) Warning(string message)
+    /// <summary>A GDScript warning's name and what it says, as Godot's server writes one: before its message ("(UNUSED_PARAMETER):
+    /// The parameter…"), or as the diagnostic's code beside its message; nulls for any other message.</summary>
+    public static (string? Code, string? Said) Warning(string message, string? code = null)
     {
         int close = message.IndexOf("): ", StringComparison.Ordinal);
-        return message.StartsWith('(') && close > 1 && !message.AsSpan(1, close - 1).ContainsAnyExcept(WarningName)
-            ? (message[1..close], message[(close + 3)..])
-            : (null, null);
+        if (message.StartsWith('(') && close > 1 && !message.AsSpan(1, close - 1).ContainsAnyExcept(WarningName))
+        {
+            return (message[1..close], message[(close + 3)..]);
+        }
+        return code is { Length: > 0 } && !code.AsSpan().ContainsAnyExcept(WarningName) ? (code, message) : (null, null);
     }
 
     /// <summary>The characters of a GDScript warning's name.</summary>

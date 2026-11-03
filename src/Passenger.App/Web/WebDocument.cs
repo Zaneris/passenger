@@ -390,13 +390,13 @@ public sealed class WebDocument : IServerDocument, IDisposable
     }
 
     /// <summary>A diagnostic with its code before its message: TypeScript's as TS2322 (from its own server, or the HTML
-    /// server's script), a GDScript warning's as Godot names it (UNUSED_PARAMETER, which its message begins with), none
-    /// for the rest, whose codes are lint rules' names or the JSON server's numbers.</summary>
+    /// server's script), a GDScript warning's as Godot names it (UNUSED_PARAMETER, which its message begins with or its code
+    /// says), none for the rest, whose codes are lint rules' names or the JSON server's numbers.</summary>
     private static Diagnostic Named(Diagnostic diagnostic)
     {
         string? code = diagnostic is { CodeIsNumber: true, Code: { } number } && diagnostic.Source is "typescript" or "ts" or "js" ? $"TS{number}" : null;
         string message = diagnostic.Message;
-        if (Godot.GodotServerWords.Warning(message) is ({ } warning, { } said))
+        if (Godot.GodotServerWords.Warning(message, diagnostic is { Source: "gdscript", CodeIsNumber: false } ? diagnostic.Code : null) is ({ } warning, { } said))
         {
             (code, message) = (warning, said);
         }

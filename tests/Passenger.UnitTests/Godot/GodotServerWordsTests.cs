@@ -24,4 +24,14 @@ public class GodotServerWordsTests
         Assert.Equal((null, null), GodotServerWords.Warning("Expected expression after \"+\" operator."));
         Assert.Equal((null, null), GodotServerWords.Warning("(not a name): words"));
     }
+
+    /// <summary>Godot 4.8's server gives a warning's name as the diagnostic's code and its message alone.</summary>
+    [Fact]
+    public void A_warnings_name_given_as_its_code_is_its_name_and_the_message_stays_whole()
+    {
+        Assert.Equal(("UNUSED_VARIABLE", "The local variable \"a\" is declared but never used in the block."),
+            GodotServerWords.Warning("The local variable \"a\" is declared but never used in the block.", "UNUSED_VARIABLE"));
+        Assert.Equal((null, null), GodotServerWords.Warning("Expected expression after \"+\" operator.", null));
+        Assert.Equal((null, null), GodotServerWords.Warning("Some lint rule.", "no-unused-vars"));
+    }
 }
