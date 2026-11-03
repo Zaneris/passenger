@@ -144,6 +144,12 @@ mcp folder="":
 mcp-call folder tool="" arguments="":
     @python3 -I tools/mcp-call.py --from {{ quote(invocation_directory()) }} {{ quote(folder) }} {{ quote(tool) }} {{ quote(arguments) }}
 
+# Clones the real Godot projects of tools/godot-projects.json outside the repository and sweeps each through a headless
+# Passenger after just build, writing a report (tools/godot-sweep.py): just godot-sweep [--godot GODOT] [NAME...]
+[unix]
+godot-sweep *args:
+    @python3 -I tools/godot-sweep.py {{args}}
+
 # Retake the site's pictures, site/images/<scene>-<dark|light>.webp, after just build (macOS): just site-shots [SCENE...]
 [unix]
 site-shots *scenes:
