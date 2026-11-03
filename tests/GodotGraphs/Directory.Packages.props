@@ -1,4 +1,4 @@
 <Project>
-  <!-- The repo's own versions, whose tests' section pins GdUnit4's. -->
+  <!-- The repo's own versions, whose properties pin GdUnit4's and GoDotTest's. -->
   <Import Project="../../Directory.Packages.props" />
 </Project>

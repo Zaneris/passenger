@@ -98,8 +98,8 @@
   <ItemGroup>
     <ProjectReference Include="../GodotGraphs/GdUnit4/GodotGraphs.GdUnit4.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../GodotGraphs/GoDotTest/GodotGraphs.GoDotTest.csproj" ReferenceOutputAssembly="false" />
-    <AssemblyMetadata Include="GdUnit4ApiVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'gdUnit4.api')->'%(Version)')" />
-    <AssemblyMetadata Include="GdUnit4AdapterVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'gdUnit4.test.adapter')->'%(Version)')" />
+    <AssemblyMetadata Include="GdUnit4ApiVersion" Value="$(GdUnit4ApiVersion)" />
+    <AssemblyMetadata Include="GdUnit4AdapterVersion" Value="$(GdUnit4AdapterVersion)" />
     <AssemblyMetadata Include="GoDotTestVersion" Value="$(GoDotTestVersion)" />
   </ItemGroup>
 

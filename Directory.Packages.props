@@ -36,6 +36,15 @@
     <ChickensoftLogVersion>2.0.0</ChickensoftLogVersion>
     <ChickensoftCollectionsVersion>3.2.1</ChickensoftCollectionsVersion>
     <JetBrainsAnnotationsVersion>2026.2.0</JetBrainsAnnotationsVersion>
+    <!-- GdUnit4's VSTest adapter at its release for Godot 4.7, the API release it needs, and what they depend on but
+         Godot's own GodotSharp, at the versions they name, downloaded for the Godot tests' GdUnit4 tests (tests/GodotGraphs)
+         as GoDotTest's are. -->
+    <GdUnit4ApiVersion>5.1.0-rc6</GdUnit4ApiVersion>
+    <GdUnit4AdapterVersion>3.2.0</GdUnit4AdapterVersion>
+    <GdUnit4RoslynVersion>5.0.0</GdUnit4RoslynVersion>
+    <GdUnit4RoslynAnalyzersVersion>3.11.0</GdUnit4RoslynAnalyzersVersion>
+    <GdUnit4TestPlatformVersion>18.0.1</GdUnit4TestPlatformVersion>
+    <MonoCecilVersion>0.11.6</MonoCecilVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Avalonia" Version="12.1.4" />
@@ -112,10 +121,6 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="$(NpgsqlEfVersion)" />
-    <!-- GdUnit4's VSTest adapter at its release for Godot 4.7, and the API release it needs, for the Godot tests' GdUnit4
-         tests (tests/GodotGraphs). -->
-    <PackageVersion Include="gdUnit4.api" Version="5.1.0-rc6" />
-    <PackageVersion Include="gdUnit4.test.adapter" Version="3.2.0" />
     <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.4" />
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
     <!-- The analyzers' (src/Passenger.Analyzers): the last release, MIT where netstandard2.0's 1.1.0 is not. -->
