@@ -843,6 +843,11 @@ public sealed partial class BuildRunController
     private async Task<LaunchPlan> CollectAsync(LaunchPlan plan, CancellationToken cancel)
     {
         ProjectSession collecting = session;
+        // The run's next start ends what its last left, kept or not.
+        foreach (RunDashboard last in collecting.Dashboards.Where(d => d.Name == plan.Name).ToList())
+        {
+            last.Dispose();
+        }
         LaunchPlan told = await RunDashboard.CollectAsync(plan, collecting.Containers.Engine, collecting.Containers, collecting.Folder, parts.StateFolder(), cancel);
         if (told.Dashboard is { } dashboard)
         {
@@ -850,12 +855,53 @@ public sealed partial class BuildRunController
             dashboard.Stopped += (_, _) =>
             {
                 collecting.Dashboards.Remove(dashboard);
-                parts.TelemetryChanged?.Invoke();
+                TelemetryFollows();
             };
             // Chosen in the Containers window, as a container run's project is, its Telemetry tab a click away.
             parts.Reveal?.Invoke(dashboard.ProjectName);
         }
         return told;
+    }
+
+    /// <summary>A run's dashboard handed to its program's end: taken down where the IDE ended the program (<paramref name="stopped"/>,
+    /// the folder's end), else kept, its records read on, the run saying so through <paramref name="say"/>.</summary>
+    public void Keep(RunDashboard? dashboard, Task ended, Func<bool> stopped, Action<string> say)
+    {
+        if (dashboard is null)
+        {
+            return;
+        }
+        ProjectSession running = session;
+        IdeErrors.Observe(KeepAsync());
+
+        async Task KeepAsync()
+        {
+            await ended.Ended();
+            if (dashboard.ProgramEnded(stopped() || running.IsEnded))
+            {
+                say(dashboard.KeptSaid);
+                TelemetryFollows();
+            }
+        }
+    }
+
+    /// <summary>The Run window's Telemetry follows the dashboard of the run its console shows (none: the console alone); one
+    /// its last run kept goes as another run takes the console.</summary>
+    public void ShowInRun(RunDashboard? shown)
+    {
+        if (parts.Views.RunWindow.Dashboard is { Kept: true } kept && kept != shown)
+        {
+            kept.Dispose();
+        }
+        parts.Views.RunWindow.Dashboard = shown;
+    }
+
+    /// <summary>A dashboard came up, was kept or went: the Run, Debug and Containers windows' Telemetry follow.</summary>
+    private void TelemetryFollows()
+    {
+        parts.Views.RunWindow.Follow();
+        parts.Views.Debug.TelemetryChanged();
+        parts.TelemetryChanged?.Invoke();
     }
 
     /// <summary>A dashboard's start that its run will not use, ended: what came of it taken down.</summary>
@@ -1055,6 +1101,7 @@ public sealed partial class BuildRunController
                 return Said(unsaved);
             }
             parts.Views.Run.Clear();
+            ShowInRun(null);
             UnfollowWatched();
             // dotnet watch builds the project itself, and runs it again after an edit it cannot apply.
             bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.NamesNoOtherProgram(session.Projects);
@@ -1145,7 +1192,10 @@ public sealed partial class BuildRunController
                 }
                 EndWith(inspected, refused is null && session.InTerminal is { } run ? run.Ended : Task.CompletedTask);
                 EndWith(game, refused is null && session.InTerminal is { } played ? played.Ended : Task.CompletedTask);
-                EndWith(Take(ref dashboard), refused is null && session.InTerminal is { } collected ? collected.Ended : Task.CompletedTask);
+                if (refused is null && session.InTerminal is { } collected)
+                {
+                    Keep(Take(ref dashboard), collected.Ended, () => collected.WasStopped, said => parts.Say(said));
+                }
                 return refused;
             }
             session.InTerminal = null;
@@ -1155,6 +1205,7 @@ public sealed partial class BuildRunController
             {
                 parts.Views.Run.Append($"{note}\n");
             }
+            ShowInRun(dashboard);
             parts.Say(running);
             WatchBindings(inspected, parts.Views.Run);
             if (watched)
@@ -1171,7 +1222,10 @@ public sealed partial class BuildRunController
             }
             EndWith(inspected, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
             EndWith(game, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
-            EndWith(Take(ref dashboard), notStarted is null ? session.Runner.Ended : Task.CompletedTask);
+            if (notStarted is null)
+            {
+                Keep(Take(ref dashboard), session.Runner.Ended, () => session.Runner.WasStopped, said => parts.Views.Run.Append($"{said}\n"));
+            }
             if (notStarted is null && heldStart && session.Runner.ProcessId is int id)
             {
                 await AttachForHotReloadAsync(chosen.Name, id, parts.Views.Run.Sink, work, Take(ref edits), running);
@@ -1982,7 +2036,11 @@ public sealed partial class BuildRunController
             // An earlier launch's copies past this one's count end with it, as the rest end in their tabs' turn.
             await Task.WhenAll([.. session.Debug.CopiesOf(chosen.Name).Where(c => c.Copy > count).Select(c => session.Debug.StopAsync(c.Tab))]);
             string? refused = count == 1 ? await LaunchDebuggedAsync(chosen, plan, work, edits) : await LaunchCopiesAsync(chosen, plan, Enumerable.Range(1, count), arguments, work, edits);
-            EndWith(Take(ref dashboard), refused is null ? DebugEnded(session.Debug.SessionNamed(plan.Name)) : Task.CompletedTask);
+            if (refused is null && session.Debug.Tabs.FirstOrDefault(t => t.Name == plan.Name && t.Plan?.Dashboard == dashboard) is { } tab)
+            {
+                // Debug's own Stop of the session takes it down (DebugController.StopAsync).
+                Keep(Take(ref dashboard), DebugEnded(session.Debug.SessionNamed(plan.Name)), () => false, said => tab.Console.Append($"{said}\n"));
+            }
             return refused;
         }
         finally
@@ -2465,6 +2523,11 @@ public sealed partial class BuildRunController
     /// program in the Run window or the terminal (done once its end has landed), Profile's, and the build.</summary>
     private Task StopRest()
     {
+        // The Run window's run ends now (Run's or Profile's), and what runs that ended by themselves kept.
+        foreach (RunDashboard collected in session.Dashboards.Where(d => d.Kept || d == parts.Views.RunWindow.Dashboard).ToList())
+        {
+            collected.Dispose();
+        }
         Task containers = session.StopContainersAsync();
         Task aspire = session.Aspire.StopAllAsync();
         Task ran = session.RunProgram.IsRunning ? session.RunProgram.Ended : Task.CompletedTask;
@@ -2498,5 +2561,5 @@ public sealed partial class BuildRunController
 
     /// <summary>Why Stop cannot run now: nothing it stops is running.</summary>
     public string? WhyNotStop() => session.Debug.IsDebugging || IsRunning || session.Profiled is not null || session.Builder.IsRunning || parts.Work.CanStop
-        || parts.PlaysInGodotEditor?.Invoke() == true ? null : "Nothing is running";
+        || parts.PlaysInGodotEditor?.Invoke() == true || session.Dashboards.Any(d => d.Kept) ? null : "Nothing is running";
 }

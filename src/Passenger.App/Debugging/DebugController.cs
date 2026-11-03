@@ -980,6 +980,7 @@ public sealed class DebugController : IDisposable
         tab.StopLetsGo = stopLetsGo;
         tab.App = app ?? tab.App;
         tab.Plan = plan;
+        view.TelemetryChanged();
         tab.Handlers?.Dispose();
         tab.Handlers = hook;
         tab.Browser?.Dispose();
@@ -1437,6 +1438,7 @@ public sealed class DebugController : IDisposable
         }
         TabsChanged?.Invoke(this, EventArgs.Empty);
         view.ShowConsole(tab.Console);
+        view.TelemetryChanged();
         NextShown();
         frame = null;
         Stop = null;
@@ -1480,8 +1482,9 @@ public sealed class DebugController : IDisposable
         {
             await EndAsync(tab);
         }
-        // Its program's output followed from outside goes with it, ended or not.
+        // Its program's output followed from outside goes with it, ended or not, as does its run's dashboard.
         StopFollowing(tab);
+        OwnDashboard(tab)?.Dispose();
         int at = view.Sessions.IndexOf(tab);
         if (at < 0 || disposed)
         {
@@ -1533,6 +1536,10 @@ public sealed class DebugController : IDisposable
             : StopAllAsync();
     }
 
+    /// <summary>The dashboard a tab's program's logs and traces go to, its run's own (never a companion's, whose plan is its
+    /// program's); null for any other.</summary>
+    private static Telemetry.RunDashboard? OwnDashboard(DebugTab tab) => tab.Plan?.Dashboard is { } dashboard && dashboard.Name == tab.Name ? dashboard : null;
+
     /// <summary>Stop All: every program debugged ends, as Stop ends one.</summary>
     public Task StopAllAsync()
     {
@@ -1565,6 +1572,8 @@ public sealed class DebugController : IDisposable
             await session.DetachAsync();
             return;
         }
+        // A program the debugger ends takes its run's dashboard down with it.
+        OwnDashboard(tab)?.Dispose();
         if (session.State == DebugState.Starting)
         {
             stoppedStarting.Add(session);

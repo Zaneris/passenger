@@ -1,3 +1,4 @@
+using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
@@ -8,7 +9,8 @@ using Passenger.App.Telemetry;
 namespace Passenger.Tests;
 
 /// <summary>A project run that collects its logs and traces does so however it starts: Debug and Profile tell its program
-/// of its dashboard through the same plan Run does, and Stop takes the dashboard down with the program. Alone, as it
+/// of its dashboard through the same plan Run does, its records beside the program's console (the Debug window's, the Run
+/// window's), and Stop takes the dashboard down with the program. Alone, as it
 /// debugs and profiles through the window; against a Linux engine that already holds the dashboard's image.</summary>
 [Collection(Alone.Name)]
 public sealed class ProjectTelemetryStartsTests
@@ -44,6 +46,15 @@ public sealed class ProjectTelemetryStartsTests
             Ui.WaitFor(() => ProjectTelemetryTests.Logged(view.Telemetry) is not null,
                 $"web's log of its order at its dashboard under {start} ({view.Telemetry.LogsStatus})", TimeSpan.FromMinutes(1));
             Assert.StartsWith("shop-web", ProjectTelemetryTests.Logged(view.Telemetry)!.Data.GetProperty("resourceName").GetString(), StringComparison.Ordinal);
+            // Beside the program's console too: the Debug window's for its session, the Run window's for Profile's.
+            Control beside = start == AppActions.Debug ? window.DebugWindow : window.BottomPanel.RunWindow;
+            window.ShowToolWindow(start == AppActions.Debug ? ToolWindowIds.Debug : ToolWindowIds.Run);
+            Ui.Settle();
+            ToggleButton besideTab = beside.GetVisualDescendants().OfType<ToggleButton>().Single(t => t.Name is "debugTelemetryTab" or "runTelemetryTab");
+            Ui.WaitFor(() => besideTab.IsEffectivelyVisible, $"the Telemetry tab beside the console of the program {start} started");
+            Ui.Click(besideTab);
+            TelemetryView besideView = start == AppActions.Debug ? window.DebugWindow.Telemetry.View : window.BottomPanel.RunWindow.Telemetry.View;
+            Ui.WaitFor(() => ProjectTelemetryTests.Logged(besideView) is not null, $"web's log beside its console under {start} ({besideView.LogsStatus})", TimeSpan.FromMinutes(1));
         }
         finally
         {

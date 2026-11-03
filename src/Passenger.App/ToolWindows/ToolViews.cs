@@ -9,10 +9,14 @@ public sealed class ToolViews
     public ToolViews()
     {
         Tests = new TestsView(TestTree);
+        RunWindow = new RunPane(Run);
     }
 
     public OutputView Build { get; } = new();
     public OutputView Run { get; } = new() { RerunsWhileRunning = true };
+
+    /// <summary>The Run window: its console, with its run's Telemetry beside it while the run collects logs and traces.</summary>
+    public RunPane RunWindow { get; }
     /// <summary>What the Problems window lists, kept while its view is not built.</summary>
     public ProblemsModel Problems { get; } = new();
     /// <summary>What the Debug window shows, kept while its view is not built.</summary>

@@ -11,6 +11,7 @@ using Passenger.App.Containers;
 using Passenger.App.Mcp;
 using Passenger.App.Run;
 using Passenger.App.Telemetry;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 
 namespace Passenger.Tests;
@@ -130,6 +131,90 @@ public sealed class ProjectTelemetryTests : McpRig
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void A_project_run_that_ends_with_an_error_keeps_its_last_log_and_trace_in_the_Run_windows_Telemetry_until_Stop_takes_its_dashboard_down()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        Assert.SkipWhen(!Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.RunAsync(["image", "inspect", ContainerTelemetry.Image], TimeSpan.FromSeconds(30).Scaled())),
+            $"docker image inspect {ContainerTelemetry.Image}", TimeSpan.FromSeconds(30) + TestFolders.Spare).Succeeded,
+            $"The engine lacks the dashboard's image, which no test pulls: pull {ContainerTelemetry.Image} to run it");
+        (string folder, int port) = Shop(Failing);
+        MainWindow window = ContainerRunsTests.Open(folder);
+        Collect(window);
+        string? project = null;
+        try
+        {
+            string? refused = Ui.Await(window.RunAsync(), "the project to run with its dashboard", TimeSpan.FromMinutes(5));
+            Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
+            project = Assert.Single(window.Session.Dashboards).ProjectName;
+            RunPane run = window.BottomPanel.RunWindow;
+            ToggleButton tab = run.GetVisualDescendants().OfType<ToggleButton>().Single(t => t.Name == "runTelemetryTab");
+            Assert.True(tab.IsEffectivelyVisible, "The Run window offers no Telemetry tab for a run that collects logs and traces");
+            Ui.Pumped(() => Answer(port) is not null, TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => !window.IsRunning, $"web to end with its error\n{ContainerRunsTests.Run(window)}", TimeSpan.FromMinutes(1));
+            string said = ContainerRunsTests.Run(window);
+            Assert.Contains($"{Name}'s logs and traces stay in its Telemetry tab until Stop or its next run", said, StringComparison.Ordinal);
+            Assert.True(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context()) is null, "Stop is greyed while a run that ended keeps its dashboard");
+
+            // Read once the program has gone: its dashboard kept them.
+            Ui.Click(tab);
+            TelemetryView view = run.Telemetry.View;
+            Ui.WaitFor(() => Failed(view) is not null, $"web's last log in the Run window's Telemetry after it ended ({view.LogsStatus})", TimeSpan.FromMinutes(1));
+            AspireStructuredLog log = Failed(view)!;
+            Assert.False(string.IsNullOrEmpty(log.TraceId), "web's last log has no trace, though it was written handling a request");
+            view.StructuredLogs.ScrollIntoView(view.ItemOf(log)!);
+            Ui.Settle();
+            Ui.Click(Assert.IsType<ListBoxItem>(view.StructuredLogs.ContainerFromItem(view.ItemOf(log)!)));
+            Ui.Click(run.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "telemetryShowTrace" && b.IsEffectivelyVisible));
+            Ui.WaitFor(() => view.Shown == TelemetryPage.Traces && view.SelectedTrace is { Spans.Count: >= 3 } chosen && chosen.TraceId == log.TraceId,
+                $"the failed request's trace, with web's request to itself ({view.TracesStatus})", TimeSpan.FromMinutes(1));
+            Assert.NotEqual(string.Empty, Docker.Run("ps", "-q", "--filter", $"label=com.docker.compose.project={project}"));
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            if (project is not null)
+            {
+                Docker.TakenDown(project, "Stop to take down the dashboard the ended run kept");
+            }
+        }
+        Assert.Equal(string.Empty, Docker.Run("network", "ls", "-q", "--filter", $"label=com.docker.compose.project={project}"));
+        Ui.WaitFor(() => window.Session.Dashboards.Count == 0, "the session to let go of the dashboard");
+        Ui.WaitFor(() => !window.BottomPanel.RunWindow.GetVisualDescendants().OfType<ToggleButton>().Any(t => t.Name == "runTelemetryTab" && t.IsEffectivelyVisible),
+            "the Run window's Telemetry tab to go with the dashboard");
+        window.Close();
+    }
+
+    /// <summary>web's program that fails: its one request logs the order's failure, asks web itself for its stock, and ends the
+    /// app, which exits with code 3.</summary>
+    private const string Failing = """
+        using OpenTelemetry;
+        using OpenTelemetry.Trace;
+
+        WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+        builder.Services.AddOpenTelemetry()
+            .WithTracing(tracing => tracing.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation())
+            .WithLogging(configureBuilder: null, configureOptions: logging => logging.IncludeFormattedMessage = true)
+            .UseOtlpExporter();
+        builder.Services.AddHttpClient();
+        using WebApplication app = builder.Build();
+        app.MapGet("/", async (HttpContext context, ILogger<Program> log, IHttpClientFactory clients, IHostApplicationLifetime lifetime) =>
+        {
+            string stock = await clients.CreateClient().GetStringAsync($"{context.Request.Scheme}://{context.Request.Host}/stock");
+            log.LogError("Passenger order {Order} failed: {Stock}", 42, stock);
+            lifetime.StopApplication();
+            return stock;
+        });
+        app.MapGet("/stock", () => "out of stock");
+        app.Run();
+        return 3;
+
+        """;
+
+    /// <summary>web's last log, of the order that failed, once the view lists it.</summary>
+    private static AspireStructuredLog? Failed(TelemetryView telemetry) =>
+        telemetry.Logs.FirstOrDefault(log => log.ToString().Contains("Passenger order 42 failed", StringComparison.Ordinal));
+
     internal const string Name = "Web: http";
 
     /// <summary>Its configuration's Collect logs and traces turned on in Edit Configurations, off until then, and it chosen.</summary>
@@ -147,6 +232,28 @@ public sealed class ProjectTelemetryTests : McpRig
         Assert.True(window.Configurations.Single(c => c.Name == Name).Telemetry, "Edit Configurations' choice to collect logs and traces was not kept");
         Assert.True(window.SelectConfiguration(Name));
     }
+
+    /// <summary>web's program: each request logs an order and asks web itself for its stock.</summary>
+    private const string Serving = """
+            using OpenTelemetry;
+            using OpenTelemetry.Trace;
+
+            WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+            builder.Services.AddOpenTelemetry()
+                .WithTracing(tracing => tracing.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation())
+                .WithLogging(configureBuilder: null, configureOptions: logging => logging.IncludeFormattedMessage = true)
+                .UseOtlpExporter();
+            builder.Services.AddHttpClient();
+            WebApplication app = builder.Build();
+            app.MapGet("/", async (HttpContext context, ILogger<Program> log, IHttpClientFactory clients) =>
+            {
+                log.LogInformation("Passenger order {Order} placed", 42);
+                return await clients.CreateClient().GetStringAsync($"{context.Request.Scheme}://{context.Request.Host}/stock");
+            });
+            app.MapGet("/stock", () => "in stock");
+            app.Run();
+
+            """;
 
     /// <summary>web's log of the order it placed, once the Telemetry tab lists it.</summary>
     internal static AspireStructuredLog? Logged(TelemetryView telemetry) =>
@@ -168,7 +275,7 @@ public sealed class ProjectTelemetryTests : McpRig
     /// <summary>One ASP.NET Core project that sends OpenTelemetry where it is told (OTLP, as an Aspire service's defaults do),
     /// its launch profile naming its port and the name its records go by, its packages the package cache's (the run's local
     /// feed its only source).</summary>
-    internal static (string Folder, int Port) Shop()
+    internal static (string Folder, int Port) Shop(string? program = null)
     {
         string folder = TestFolders.Create("prj-telemetry-");
         int port = AspireApp.FreePort();
@@ -195,26 +302,7 @@ public sealed class ProjectTelemetryTests : McpRig
             }
 
             """);
-        TestFolders.Write(folder, "Web/Program.cs", """
-            using OpenTelemetry;
-            using OpenTelemetry.Trace;
-
-            WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
-            builder.Services.AddOpenTelemetry()
-                .WithTracing(tracing => tracing.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation())
-                .WithLogging(configureBuilder: null, configureOptions: logging => logging.IncludeFormattedMessage = true)
-                .UseOtlpExporter();
-            builder.Services.AddHttpClient();
-            WebApplication app = builder.Build();
-            app.MapGet("/", async (HttpContext context, ILogger<Program> log, IHttpClientFactory clients) =>
-            {
-                log.LogInformation("Passenger order {Order} placed", 42);
-                return await clients.CreateClient().GetStringAsync($"{context.Request.Scheme}://{context.Request.Host}/stock");
-            });
-            app.MapGet("/stock", () => "in stock");
-            app.Run();
-
-            """);
+        TestFolders.Write(folder, "Web/Program.cs", program ?? Serving);
         AvaloniaApp.UseFeed(folder);
         return (PathNames.Canonical(folder), port);
     }

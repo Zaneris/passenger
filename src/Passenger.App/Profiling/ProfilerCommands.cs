@@ -315,6 +315,7 @@ public sealed class ProfilerCommands
             {
                 run.Append($"{note}\n");
             }
+            builds.ShowInRun(dashboard);
             ConsoleSink console = run.Sink;
             ProfilingSession running;
             // Kill is there while the program starts; the folder's end ends it too.
@@ -340,12 +341,11 @@ public sealed class ProfilerCommands
             profiled.Profiled = program;
             ConsoleInput? input = running.Input is { } writer ? ProgramInput.Of(writer) : null;
             // Only its end puts the run away, however that comes: a snapshot leaves the program running.
-            Telemetry.RunDashboard? collected = dashboard;
+            builds.Keep(dashboard, running.ExitedAsync(), () => false, said => run.Append($"{said}\n"));
             dashboard = null;
             IdeErrors.Observe(running.ExitedAsync().ContinueWith(_ => UiThread.Post(() =>
             {
                 game?.Dispose();
-                collected?.Dispose();
                 Ended(profiled, program, inspected, input, landed);
             }), TaskScheduler.Default));
             if (profiled.IsEnded)

@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.VisualTree;
 using Passenger.App.Debugging;
+using Passenger.App.Telemetry;
 using Passenger.Dap;
 using Passenger.Editor;
 
@@ -27,6 +28,8 @@ public sealed class DebugView : DockPanel, IOwnKeys
     private readonly Panel debugger;
     private readonly ToggleButton debuggerTab;
     private readonly ToggleButton consoleTab;
+    private readonly ToggleButton telemetryTab;
+    private readonly TelemetryPane telemetry = new() { IsVisible = false };
     private readonly Dictionary<string, Button> tools = [];
     private readonly ToggleButton mute;
     private readonly TextBlock placeholder;
@@ -123,8 +126,10 @@ public sealed class DebugView : DockPanel, IOwnKeys
 
         debuggerTab = new ToggleButton { Content = "Debugger", Classes = { StyleClasses.PanelTab }, IsChecked = true };
         consoleTab = new ToggleButton { Content = "Console", Classes = { StyleClasses.PanelTab } };
+        telemetryTab = new ToggleButton { Content = RunWindows.TelemetryTab, Classes = { StyleClasses.PanelTab }, Name = "debugTelemetryTab", IsVisible = false };
         debuggerTab.Click += (_, _) => model.ShowTab(console: false);
         consoleTab.Click += (_, _) => model.ShowTab(console: true);
+        telemetryTab.Click += (_, _) => model.ShowTelemetry();
         StackPanel top = new()
         {
             Orientation = Orientation.Horizontal,
@@ -134,6 +139,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
             {
                 debuggerTab,
                 consoleTab,
+                telemetryTab,
                 new Border { Width = 12 },
                 Tool(AppActions.StepOver, IconKeys.StepOver, "Step Over"),
                 Tool(AppActions.StepInto, IconKeys.StepInto, "Step Into"),
@@ -170,7 +176,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
 
         Children.Add(leftBar);
         Children.Add(topBar);
-        Children.Add(new Panel { Children = { debugger, consolePane } });
+        Children.Add(new Panel { Children = { debugger, consolePane, telemetry } });
         model.ToolsChanged += (_, _) => ShowTools();
         model.FramesShown += (_, _) => ShowChosen();
         model.TabShown += (_, _) => ShowTab();
@@ -269,11 +275,21 @@ public sealed class DebugView : DockPanel, IOwnKeys
             consolePane.Children.Clear();
             consolePane.Children.Add(model.Console);
         }
-        debuggerTab.IsChecked = !model.IsConsoleShown;
-        consoleTab.IsChecked = model.IsConsoleShown;
-        debugger.IsVisible = !model.IsConsoleShown;
-        consolePane.IsVisible = model.IsConsoleShown;
+        // The Telemetry tab is there while the chosen program's run has records; without them its place is the console's.
+        telemetry.Source = model.ChosenDashboard?.Telemetry;
+        telemetryTab.IsVisible = telemetry.Source is not null;
+        bool records = model.IsTelemetryShown && telemetry.Source is not null;
+        bool console = model.IsConsoleShown || model.IsTelemetryShown && !records;
+        debuggerTab.IsChecked = !console && !records;
+        consoleTab.IsChecked = console;
+        telemetryTab.IsChecked = records;
+        debugger.IsVisible = !console && !records;
+        consolePane.IsVisible = console;
+        telemetry.IsVisible = records;
     }
+
+    /// <summary>The chosen program's Telemetry, the Telemetry tab's.</summary>
+    public TelemetryPane Telemetry => telemetry;
 
     private void FocusEvaluate()
     {

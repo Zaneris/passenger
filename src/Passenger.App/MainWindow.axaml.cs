@@ -647,7 +647,7 @@ public partial class MainWindow : IdeWindow
         });
         // Shown however it is (its action, its stripe button, a layout), it asks for the file shown then itself.
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Structure, "Structure", IconKeys.Structure, MakeStructure, Docking.ToolAnchor.LeftBottom) { Action = AppActions.ShowStructure });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Run, "Run", IconKeys.RunOutline, Bottom.Run, Docking.ToolAnchor.BottomLeft) { Action = AppActions.ShowRun, ActionTitle = "Run Tool Window" });
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Run, "Run", IconKeys.RunOutline, Bottom.RunWindow, Docking.ToolAnchor.BottomLeft) { Action = AppActions.ShowRun, ActionTitle = "Run Tool Window" });
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Debug, "Debug", IconKeys.Debug, () => debugView = new ToolWindows.DebugView(Bottom.Debug), Docking.ToolAnchor.BottomLeft)
         {
             Action = AppActions.ShowDebug,

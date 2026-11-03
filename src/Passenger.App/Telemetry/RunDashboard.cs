@@ -13,8 +13,9 @@ namespace Passenger.App.Telemetry;
 /// service of a Compose project of Passenger's own on the person's engine, labelled for the folder (<see cref="FolderContainers"/>,
 /// <see cref="ContainerLabels"/>), so the folder's end, the watchdog and the next start after a crash take it down as they take
 /// a container run's; its telemetry API and OTLP endpoints published on this machine's loopback alone, each asked with a key
-/// of the run's. The start that makes it tells its program where to send its OpenTelemetry (<see cref="CollectAsync"/>) and
-/// ends it with the program (<see cref="Dispose"/>). A UI-thread object of the session's.</summary>
+/// of the run's. The start that makes it tells its program where to send its OpenTelemetry (<see cref="CollectAsync"/>); a
+/// program the IDE ends takes it down with it, one that ends by itself leaves it kept (<see cref="ProgramEnded"/>), its records
+/// read until Stop, the run's next start or the folder's end (<see cref="Dispose"/>). A UI-thread object of the session's.</summary>
 public sealed class RunDashboard : ITelemetryRun, IDisposable
 {
     private readonly ContainerEngine engine;
@@ -52,6 +53,34 @@ public sealed class RunDashboard : ITelemetryRun, IDisposable
 
     /// <summary>Taken down (or being), heard once.</summary>
     public event EventHandler? Stopped;
+
+    /// <summary>Whether its program has ended by itself, the dashboard kept so its records can still be read.</summary>
+    public bool Kept { get; private set; }
+
+    /// <summary>Kept once its program ended by itself, heard once.</summary>
+    public event EventHandler? KeptChanged;
+
+    /// <summary>Its program has ended: by the IDE (<paramref name="stopped"/>: Stop, a Rerun), which takes it down too; else by
+    /// itself, which keeps it, its records read on. True when kept.</summary>
+    public bool ProgramEnded(bool stopped)
+    {
+        UiThread.Check();
+        if (IsStopped || Kept)
+        {
+            return Kept;
+        }
+        if (stopped)
+        {
+            Dispose();
+            return false;
+        }
+        Kept = true;
+        KeptChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>What a run says of its kept dashboard as its program ends by itself.</summary>
+    public string KeptSaid => $"{Name}'s logs and traces stay in its Telemetry tab until Stop or its next run";
 
     /// <summary>How long a dashboard come up may take to answer before its run goes on without it.</summary>
     private static readonly TimeSpan AnswerLimit = TimeSpan.FromSeconds(30);

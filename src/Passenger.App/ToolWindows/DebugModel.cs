@@ -223,6 +223,12 @@ public sealed class DebugModel
     /// <summary>Whether the Console tab is shown, rather than the Debugger's.</summary>
     public bool IsConsoleShown { get; private set; }
 
+    /// <summary>Whether the Telemetry tab is shown, the chosen program's logs and traces, rather than the Debugger's or its console.</summary>
+    public bool IsTelemetryShown { get; private set; }
+
+    /// <summary>The chosen program's run's dashboard, while it collects logs and traces; null for any other.</summary>
+    public Telemetry.RunDashboard? ChosenDashboard => Sessions.FirstOrDefault(tab => tab.IsChosen)?.Plan?.Dashboard is { IsStopped: false } dashboard ? dashboard : null;
+
     /// <summary>What Variables says over its rows once every thread ran in an evaluation: that the values read before it
     /// may have moved; null while it says nothing.</summary>
     public string? Moved { get; private set; }
@@ -358,8 +364,20 @@ public sealed class DebugModel
     public void ShowTab(bool console)
     {
         IsConsoleShown = console;
+        IsTelemetryShown = false;
         TabShown?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>Shows the Telemetry tab, where the chosen program's run collects logs and traces.</summary>
+    public void ShowTelemetry()
+    {
+        IsConsoleShown = false;
+        IsTelemetryShown = true;
+        TabShown?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>A run's dashboard came up, was kept or went: the Telemetry tab follows.</summary>
+    public void TelemetryChanged() => TabShown?.Invoke(this, EventArgs.Empty);
 
     /// <summary>Says again the place each frame's row names, whose code an edit made while paused may have moved.</summary>
     public void ShowPlacesAgain() => PlacesMoved?.Invoke(this, EventArgs.Empty);
