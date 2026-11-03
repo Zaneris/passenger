@@ -218,13 +218,14 @@ Projects in `src/`; `find_symbol` finds the rest:
   the installation's folder is `Dotnet.Root`, from the host's real path, never the folder of `Dotnet.Host()`),
   `Dotnet.CliHome` (the CLI's home, after the login shell), `OutboundHttp` (every request Passenger makes of a host),
   `PathNames`, `AtomicFile`, `FolderMoves` (a folder moved whole, across volumes too), `SocketFolders` (every Unix
-  socket), `Libc` (a C library call more than one place makes, declared once; the App's `MacObjC` and `Xlib` likewise),
-  `InFlight`, `BackgroundWork`, `DotnetProcesses.Runs` (whether a process runs: never `HasExited`, which on Windows
-  reads one this user may not open as ended), `EnvironmentValues.Milliseconds` (every PASSENGER_*_MS), `ExitCodes` (an
-  exit code said with its signal), `WindowsCommandLine` (the one maker of a Windows command line), `Product` (the one
-  place the version is read), `PassengerLog` (below the App, never `IdeLog`; a line quoting a program's words through
-  `WriteMasked`), `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's lines read and messages written as pooled
-  bytes), `SharedNames` (a name read from bytes, made once), `ContentLengthHeader` (every LSP and DAP message's header),
+  socket), `Libc` (a C library call more than one place makes, declared once, the account's own home `Libc.AccountHome`
+  whatever HOME says; the App's `MacObjC` and `Xlib` likewise), `InFlight`, `BackgroundWork`, `DotnetProcesses.Runs`
+  (whether a process runs: never `HasExited`, which on Windows reads one this user may not open as ended),
+  `EnvironmentValues.Milliseconds` (every PASSENGER_*_MS), `ExitCodes` (an exit code said with its signal),
+  `WindowsCommandLine` (the one maker of a Windows command line), `Product` (the one place the version is read),
+  `PassengerLog` (below the App, never `IdeLog`; a line quoting a program's words through `WriteMasked`),
+  `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's lines read and messages written as pooled bytes),
+  `SharedNames` (a name read from bytes, made once), `ContentLengthHeader` (every LSP and DAP message's header),
   `RazorFiles` (an `[IdentifierHome]`) and `MSBuildNames` (MSBuild's environment variables too) (compiled into the
   extension and the host; every MSBuild name Passenger writes but those the evaluation's `CarriedProperties` holds,
   MSBuildNamesTests holding both; a build's and a publish's command line end in `BuildOutput.Tail`), `JsonMembers` (a
@@ -466,9 +467,10 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
   environment only; Endpoints sends nothing but on Test or Send (an app's OpenAPI document, `OpenApiDocument` and
   `OpenApiSchemas`, Passenger's own reader, comes from a loopback app the folder runs or the build alone,
-  `OpenApiSources`, its requests written through `MainWindow.AppendRequestsAsync`), and a send taking the person's
-  environment asks first. `ResourceFiles` is the one reader and writer of `.resx` and `xlf/*.xlf`, a table's change one
-  edit of the open text (`WithValue`, `Renamed`, `Without`, `WithTarget`).
+  `OpenApiSources`, its requests written through `MainWindow.AppendRequestsAsync`, a document the code names nowhere the
+  person's, `OpenApiNames`), and a send taking the person's environment asks first. `ResourceFiles` is the one reader
+  and writer of `.resx` and `xlf/*.xlf`, a table's change one edit of the open text (`WithValue`, `Renamed`, `Without`,
+  `WithTarget`).
 - **Debugging.** `DebugController` (a `DebugTab` per session, several at once), `DebugSession` (its adapter an
   `AdapterEnd`: `ProcessEnd` the engine's, `InProcessEnd` one inside the IDE such as `GodotScriptAdapter`, a game's
   GDScript over its debug connection; `DebugSession.Engine` sends each file's breakpoints to the adapter that runs it; a
@@ -796,14 +798,16 @@ own Godot folders held untouched by `PersonsGodot`, which fails a test or run th
 nuget.org (local feeds: `AvaloniaApp.Feed`, `StandInFeed`, and the restore-only `tests/EfGraphs`, `tests/AspireGraphs`
 and `tests/BlazorGraphs` that fill the package cache), GitHub (`PASSENGER_RELEASES` dead), registries
 (`PASSENGER_BUILDKIT_CHECKS=off`), Docker Hub, symbol servers, Discord, or the person's Passenger
-(`PASSENGER_START=headless`). It shortens `PASSENGER_EVAL_TIMEOUT_MS` (3 s), `PASSENGER_WATCH_LATER_MS` (3 s),
-`PASSENGER_MCP_PROGRESS_MS` (1 s) and `PASSENGER_REGEX_TIMEOUT_MS` (1 s); a test holding a server to not answering sets
-that server's limits, never the run's. After each window test its windows close (those it closed itself too) and what
-they started is waited out (`TestsLeaveNothingBehind`, which ends and fails a test for a game an editor it ended left,
-`TestGodotEditors`), and each takes its own dispatcher as it begins (`UiThread.Own`): a headless test's dispatcher is
-its own, so a test that opens no IDE window would otherwise post to a finished one. A plain `[Fact]` using
-`HeadlessUnitTestSession.Dispatch` must not end on the session's thread (`await Task.Yield()` before throwing). A
-sleeping Mac fails tests: full runs go under `caffeinate -is`.
+(`PASSENGER_START=headless`), nor any host a browser Passenger starts asks of its own accord (`PASSENGER_BROWSER_PROXY`
+where nothing listens: Chrome reaches Google with every `BrowserRun.Quiet` flag). It shortens
+`PASSENGER_EVAL_TIMEOUT_MS` (3 s), `PASSENGER_WATCH_LATER_MS` (3 s), `PASSENGER_MCP_PROGRESS_MS` (1 s) and
+`PASSENGER_REGEX_TIMEOUT_MS` (1 s); a test holding a server to not answering sets that server's limits, never the run's.
+After each window test its windows close (those it closed itself too) and what they started is waited out
+(`TestsLeaveNothingBehind`, which ends and fails a test for a game an editor it ended left, `TestGodotEditors`), and
+each takes its own dispatcher as it begins (`UiThread.Own`): a headless test's dispatcher is its own, so a test that
+opens no IDE window would otherwise post to a finished one. A plain `[Fact]` using `HeadlessUnitTestSession.Dispatch`
+must not end on the session's thread (`await Task.Yield()` before throwing). A sleeping Mac fails tests: full runs go
+under `caffeinate -is`.
 
 **Collections and shared projects** (`Collections.cs`). Window tests run one at a time on the session's thread. Beside
 them run only the debug adapter's protocol tests (`DebugSession.Collection`) and `Beside` classes (no window, nothing
