@@ -126,26 +126,55 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
 
     public override string? Describe(CompletionItem item) => described.GetValueOrDefault(item);
 
+    /// <summary>The GDScript code style as Settings leaves it, which a file's .editorconfig overrides.</summary>
+    public GDScriptFormatSettings Format { get; set; } = new();
+
+    /// <summary>Settings' Reformat on save.</summary>
+    public bool FormatsOnSave { get; set; }
+
     /// <summary>Reformat Code on a GDScript, the window's and an agent's alike, by Passenger's formatter (Godot's style guide),
     /// off the window's thread, only the lines <paramref name="within"/> takes when given, as one undoable edit fitted to the
     /// file's line endings and indentation: its .editorconfig's (or the person's choice), else Godot's tabs, a selection
     /// the file's own. Refused, said, where laying it out would change what it says or it does not parse.</summary>
-    public override async Task<CodeActions.Reformatted?> FormatAsync(OpenDocument document, TextRange? within)
+    public override Task<CodeActions.Reformatted?> FormatAsync(OpenDocument document, TextRange? within) =>
+        GodotScriptTypes.IsScript(document.Path) ? ReformatAsync(document, within, "Reformat Code") : Task.FromResult<CodeActions.Reformatted?>(null);
+
+    /// <summary>What a save does first to a changed script, as Settings ask: Reformat Code's layout, one undoable edit,
+    /// saying only why it was not applied.</summary>
+    public async Task BeforeSave(OpenDocument document)
     {
-        if (!GodotScriptTypes.IsScript(document.Path))
+        if (FormatsOnSave && GodotScriptTypes.IsScript(document.Path) && !document.IsReadOnly
+            && await ReformatAsync(document, null, "Reformat on save") is { Applied: false } refused)
         {
-            return null;
+            context.Say(refused.Said);
+        }
+    }
+
+    /// <summary>A script laid out by Godot's style guide as one undoable edit, by <see cref="Format"/> with the file's
+    /// .editorconfig over it, only the lines of <paramref name="within"/> when given; what came of it, said as
+    /// <paramref name="what"/>.</summary>
+    private async Task<CodeActions.Reformatted?> ReformatAsync(OpenDocument document, TextRange? within, string what)
+    {
+        if (document.IsReadOnly)
+        {
+            return new CodeActions.Reformatted(false, false, $"{what} was not applied: {Refusals.ReadOnly(document.Name)}");
         }
         using ChangeTracker asked = new(document.Text);
         TextSnapshot snapshot = asked.Snapshot;
         // A selection keeps the file's own indentation, which Godot reads as one throughout the file.
         IndentOptions indent = within is not null || document.Indentation.Source is IndentSource.EditorConfig or IndentSource.Chosen
             ? document.Indentation.Options : new IndentOptions(document.Indentation.Options.TabWidth, UseTabs: true, document.Indentation.Options.TabWidth);
-        GDScriptFormatOptions options = new(indent.UseTabs, indent.Size, indent.TabWidth);
-        GDScriptFormatted formatted = await BackgroundWork.Run(() => GDScriptFormatter.Format(snapshot.ToString(), options));
+        string path = document.Path;
+        GDScriptFormatSettings settings = Format;
+        GDScriptFormatted formatted = await BackgroundWork.Run(() =>
+        {
+            EditorConfig config = EditorConfig.For(path);
+            GDScriptFormatOptions options = settings.Over(key => config[key]).Options(indent.UseTabs, indent.Size, indent.TabWidth);
+            return GDScriptFormatter.Format(snapshot.ToString(), options);
+        });
         if (formatted.Refused is { } why)
         {
-            return new CodeActions.Reformatted(false, false, $"Reformat Code was not applied: {why}");
+            return new CodeActions.Reformatted(false, false, $"{what} was not applied: {why}");
         }
         IEnumerable<TextEdit> kept = formatted.Edits;
         if (within is { } range)
@@ -159,7 +188,7 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
         if (within is not null && fitted.Count > 0
             && await BackgroundWork.Run(() => GDScriptFormatter.Differs(snapshot.ToString(), snapshot.Apply(fitted).ToString())) is { } partly)
         {
-            return new CodeActions.Reformatted(false, false, $"Reformat Code was not applied: laying out only the selection would change what the script says ({partly}); reformat the whole file");
+            return new CodeActions.Reformatted(false, false, $"{what} was not applied: laying out only the selection would change what the script says ({partly}); reformat the whole file");
         }
         if (fitted.Count == 0 || !context.Editors.Documents.Contains(document))
         {
@@ -167,7 +196,7 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
         }
         if (asked.Map(fitted) is not { } edits)
         {
-            return new CodeActions.Reformatted(false, false, "Reformat Code was not applied: the code it changes was edited meanwhile");
+            return new CodeActions.Reformatted(false, false, $"{what} was not applied: the code it changes was edited meanwhile");
         }
         WorkspaceEdits.ApplyTo(context.Editors, document, edits);
         return new CodeActions.Reformatted(true, true, "Reformatted");

@@ -394,6 +394,14 @@ public sealed class CodeAssist
         set => context.Languages.Xaml.XamlFormat = value;
     }
 
+    /// <summary>The GDScript code style as Settings leaves it, which a file's .editorconfig overrides, and whether a save
+    /// reformats a script first.</summary>
+    public (Passenger.Workspace.GDScript.GDScriptFormatSettings Style, bool OnSave) GDScriptFormat
+    {
+        get => (context.Languages.GDScript.Format, context.Languages.GDScript.FormatsOnSave);
+        set => (context.Languages.GDScript.Format, context.Languages.GDScript.FormatsOnSave) = value;
+    }
+
     private CodeEditor Editor => context.Editor;
 
     /// <summary>Keys the open popups take before the editor does: the completion list's Up, Down, Enter,
@@ -545,9 +553,13 @@ public sealed class CodeAssist
     /// <summary>A XAML project was read anew: a list made from it as it was is asked again (<see cref="XamlAssist.ProjectRead"/>).</summary>
     internal void XamlProjectRead(XamlProject project) => context.Languages.Xaml.ProjectRead(project);
 
-    /// <summary>What a save does first to a changed file, as Settings ask: <c>eslint --fix</c>, then Prettier. Each its
-    /// own undoable edit.</summary>
-    public Task BeforeSave(OpenDocument document) => context.Languages.Web.BeforeSave(document);
+    /// <summary>What a save does first to a changed file, as Settings ask: <c>eslint --fix</c>, then Prettier, or a
+    /// GDScript's Reformat on save. Each its own undoable edit.</summary>
+    public async Task BeforeSave(OpenDocument document)
+    {
+        await context.Languages.Web.BeforeSave(document);
+        await context.Languages.GDScript.BeforeSave(document);
+    }
 
     /// <summary>A service's or an AppHost's Aspire fixes on an offset's line (<see cref="CSharpAssist.AspireFixes"/>).</summary>
     public IReadOnlyList<EditorFix> AspireFixes(OpenDocument file, int offset) => context.Languages.CSharp.AspireFixes(file, offset);

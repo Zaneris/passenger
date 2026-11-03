@@ -365,6 +365,13 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// which Reformat Code lays out Avalonia's and WPF's XAML by, a file's .editorconfig over it.</summary>
     public Passenger.Xaml.Features.XamlFormatSettings XamlFormat { get; init; } = new();
 
+    /// <summary>The code style for GDScript beyond its indentation (line length, blank lines, trailing commas), which
+    /// Reformat Code lays scripts out by after Godot's style guide, a file's .editorconfig over it.</summary>
+    public Passenger.Workspace.GDScript.GDScriptFormatSettings GDScriptFormat { get; init; } = new();
+
+    /// <summary>"Reformat on save": a save (File, Save All) first reformats each changed GDScript as Reformat Code does.</summary>
+    public bool GDScriptFormatOnSave { get; init; }
+
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, DiscordKeptAsItWas, MouseShortcutsKept];
 
     /// <summary><see cref="AgentFolders"/> is a set: a folder let in always from one window while another's Settings takes
@@ -454,6 +461,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
             PrettierFiles = string.IsNullOrWhiteSpace(PrettierFiles) ? defaults.PrettierFiles : PrettierFiles.Trim(),
             SoftWrapFiles = SoftWrapFiles ?? defaults.SoftWrapFiles,
             XamlFormat = (XamlFormat ?? defaults.XamlFormat).Clamped(),
+            GDScriptFormat = (GDScriptFormat ?? defaults.GDScriptFormat).Clamped(),
             AgentFolders = [.. (AgentFolders ?? []).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(Passenger.Core.PathNames.Comparer)],
         };
         foreach (Setting setting in Declared.All)

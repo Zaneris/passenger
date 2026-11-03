@@ -41,6 +41,8 @@ public class GDScriptFormatterTests
     // Line length's multiline statement: its parentheses' lines two levels in, the closing one at the statement's.
     [InlineData("var quadrant = (\n\"northeast\" if angle_degrees <= 90\nelse \"southeast\" if angle_degrees <= 180\nelse \"northwest\"\n)\n",
         "var quadrant = (\n\t\t\"northeast\" if angle_degrees <= 90\n\t\telse \"southeast\" if angle_degrees <= 180\n\t\telse \"northwest\"\n)\n")]
+    // Line length's multiline statement: a bracket closing on its own line at the line it opened on.
+    [InlineData("func f():\n\tfoo({\n\t\t\"a\": 1,\n\t\t\t})\n", "func f():\n\tfoo({\n\t\t\"a\": 1,\n\t})\n")]
     // Static typing: "var health: int = 0", inferred "var direction := Vector3(1, 2, 3)", "func heal(amount: int) -> void:".
     [InlineData("var health : int=0\nvar direction:=Vector3(1,2,3)\n\n\nfunc heal(amount:int)->void:\n\tpass\n",
         "var health: int = 0\nvar direction := Vector3(1, 2, 3)\n\n\nfunc heal(amount: int) -> void:\n\tpass\n")]
@@ -80,5 +82,69 @@ public class GDScriptFormatterTests
     {
         string script = "func f():\n\tvar x = a[\n\t\t0\n\t]\n\tcall(func():\n\t\tpass\n\t)\n";
         Assert.Equal(script, Formatted(script));
+    }
+
+    [Theory]
+    // Indentation's own continuation: a call's arguments run on two levels in, as many to a line as fit.
+    [InlineData(100, "func f():\n\teffect.interpolate_property(sprite, \"transform/scale\", sprite.get_scale(), Vector2(2.0, 2.0), 0.3, Tween.TRANS_QUAD, Tween.EASE_OUT)\n",
+        "func f():\n\teffect.interpolate_property(sprite, \"transform/scale\", sprite.get_scale(), Vector2(2.0, 2.0),\n\t\t\t0.3, Tween.TRANS_QUAD, Tween.EASE_OUT)\n")]
+    // A declaration's parameters alike, the function's body one level in.
+    [InlineData(60, "func take_damage(amount: int, effect: Effect = null, source: Node = null) -> void:\n\tpass\n",
+        "func take_damage(amount: int, effect: Effect = null,\n\t\tsource: Node = null) -> void:\n\tpass\n")]
+    // Indentation's arrays, dictionaries and enums: an element to a line, one level in, with its trailing comma.
+    [InlineData(30, "var party = [\"Godot\", \"Godette\", \"Steve\"]\n", "var party = [\n\t\"Godot\",\n\t\"Godette\",\n\t\"Steve\",\n]\n")]
+    [InlineData(40, "var character_dict = {\"Name\": \"Bob\", \"Age\": 27, \"Job\": \"Mechanic\"}\n",
+        "var character_dict = {\n\t\"Name\": \"Bob\",\n\t\"Age\": 27,\n\t\"Job\": \"Mechanic\",\n}\n")]
+    [InlineData(30, "enum Tile {BRICK, FLOOR, SPIKE, TELEPORT}\n", "enum Tile {\n\tBRICK,\n\tFLOOR,\n\tSPIKE,\n\tTELEPORT,\n}\n")]
+    // Multiline statements: a parenthesized expression's contents two levels in, broken before else, and and or.
+    [InlineData(60, "var quadrant = (\"northeast\" if angle_degrees <= 90 else \"southeast\" if angle_degrees <= 180 else \"southwest\" if angle_degrees <= 270 else \"northwest\")\n",
+        "var quadrant = (\n\t\t\"northeast\" if angle_degrees <= 90\n\t\telse \"southeast\" if angle_degrees <= 180\n\t\telse \"southwest\" if angle_degrees <= 270\n\t\telse \"northwest\"\n)\n")]
+    [InlineData(60, "func f():\n\tif (position.x > 200 and position.x < 400 and position.y > 300 and position.y < 400):\n\t\tpass\n",
+        "func f():\n\tif (\n\t\t\tposition.x > 200 and position.x < 400\n\t\t\tand position.y > 300 and position.y < 400\n\t):\n\t\tpass\n")]
+    // A call of one dictionary hugs it, its elements one level in.
+    [InlineData(30, "func f():\n\tsave({\"name\": \"Bob\", \"age\": 27})\n", "func f():\n\tsave({\n\t\t\"name\": \"Bob\",\n\t\t\"age\": 27,\n\t})\n")]
+    // A line inside brackets opened above it runs on at its own level.
+    [InlineData(50, "var all = [\n\tItem.new(\n\t\t\t\"quit_confirmation\", \"Startup/Quit\", \"pressed\", false\n\t),\n]\n",
+        "var all = [\n\tItem.new(\n\t\t\t\"quit_confirmation\", \"Startup/Quit\",\n\t\t\t\"pressed\", false\n\t),\n]\n")]
+    public void A_long_line_wraps_inside_its_brackets_in_the_guides_multiline_forms(int length, string written, string laid)
+    {
+        Assert.Equal(laid, Formatted(written, new GDScriptFormatOptions() with { LineLength = length }));
+    }
+
+    [Fact]
+    public void A_long_line_with_nothing_to_wrap_safely_is_left_as_written()
+    {
+        // A string, a comment, a subscript, a lambda's brackets and a line no shorter for wrapping are left alone.
+        string script = "func f():\n\tprint(\"a string far too long to fit in the forty columns asked\")\n\t# a comment far too long to fit in forty columns\n"
+            + "\tvar v = values[first_index + second_index + third_index]\n\tbutton.pressed.connect(func(): print(\"pressed\", self, button))\n";
+        Assert.Equal(script, Formatted(script, new GDScriptFormatOptions() with { LineLength = 40 }));
+        string unwrapped = "var party = [\"Godot\", \"Godette\", \"Steve\"]\n";
+        Assert.Equal(unwrapped, Formatted(unwrapped, new GDScriptFormatOptions() with { LineLength = 0 }));
+    }
+
+    [Fact]
+    public void Settings_ask_for_one_blank_line_around_functions_and_no_trailing_comma()
+    {
+        GDScriptFormatOptions options = new GDScriptFormatOptions() with { BlankLines = 1, TrailingCommas = false, LineLength = 30 };
+        Assert.Equal("func a():\n\tpass\n\nfunc b():\n\tvar party = [\n\t\t\"Godot\",\n\t\t\"Godette\",\n\t\t\"Steve\"\n\t]\n",
+            Formatted("func a():\n\tpass\n\n\nfunc b():\n\tvar party = [\"Godot\", \"Godette\", \"Steve\"]\n", options));
+    }
+
+    [Fact]
+    public void An_editorconfig_says_over_the_settings_by_its_keys()
+    {
+        Dictionary<string, string> config = new()
+        {
+            ["max_line_length"] = "80",
+            ["gdscript_blank_lines_around_functions"] = "1",
+            ["gdscript_trailing_comma"] = "false",
+        };
+        GDScriptFormatSettings read = new GDScriptFormatSettings().Over(key => config.GetValueOrDefault(key));
+        Assert.Equal(new GDScriptFormatSettings { LineLength = 80, BlankLinesAroundFunctions = 1, TrailingCommas = false }, read);
+        Assert.False(new GDScriptFormatSettings().Over(key => key == "max_line_length" ? "off" : null).WrapLongLines);
+        // A value that does not read as its option's is passed over.
+        Assert.Equal(new GDScriptFormatSettings(), new GDScriptFormatSettings().Over(key => key == "max_line_length" ? "wide" : key == "gdscript_blank_lines_around_functions" ? "7" : "maybe"));
+        Assert.Equal(new GDScriptFormatOptions(false, 2, 2, 0, 1, false),
+            new GDScriptFormatSettings { WrapLongLines = false, BlankLinesAroundFunctions = 1, TrailingCommas = false }.Options(false, 2, 2));
     }
 }

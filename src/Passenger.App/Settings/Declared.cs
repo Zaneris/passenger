@@ -1,4 +1,5 @@
 using Passenger.Vcs;
+using Passenger.Workspace.GDScript;
 using Passenger.Xaml.Features;
 using D = Passenger.App.Settings.SettingsDialog;
 
@@ -196,6 +197,33 @@ public static class Declared
     public static readonly ToggleSetting CollapseEmptyElements = new(s => s.XamlFormat.CollapseEmptyElements,
         (s, v) => s with { XamlFormat = s.XamlFormat with { CollapseEmptyElements = v } },
         new(D.XamlCodeStylePage, "Remove ending tag of empty element", $"{D.XamlWords} empty element end tag self closing collapse xaml styler"));
+
+    public static readonly ToggleSetting GDScriptWrapLongLines = new(s => s.GDScriptFormat.WrapLongLines,
+        (s, v) => s with { GDScriptFormat = s.GDScriptFormat with { WrapLongLines = v } },
+        new(D.GDScriptCodeStylePage, "Wrap long lines inside brackets", $"{D.GDScriptWords} wrap long lines line length brackets arguments arrays multiline",
+            "Reformat Code lays a .gd script out by Godot's GDScript style guide, indented by its .editorconfig, else with "
+            + "Godot's tabs. A line past the line length breaks inside its brackets in the guide's multiline forms. A file's "
+            + ".editorconfig says over this by max_line_length: off leaves long lines as they are."));
+
+    public static readonly NumberSetting GDScriptLineLength = new(s => s.GDScriptFormat.LineLength,
+        (s, v) => s with { GDScriptFormat = s.GDScriptFormat with { LineLength = (int)v } },
+        GDScriptFormatSettings.ShortestLine, GDScriptFormatSettings.LongestLine, 1,
+        new(D.GDScriptCodeStylePage, "Line length (columns)", $"{D.GDScriptWords} line length columns max right margin hard wrap 100 80",
+            "The style guide's is 100. A file's .editorconfig says over this by max_line_length."));
+
+    public static readonly NumberSetting GDScriptBlankLines = new(s => s.GDScriptFormat.BlankLinesAroundFunctions,
+        (s, v) => s with { GDScriptFormat = s.GDScriptFormat with { BlankLinesAroundFunctions = (int)v } }, 1, 2, 1,
+        new(D.GDScriptCodeStylePage, "Blank lines around functions and classes", $"{D.GDScriptWords} blank lines empty functions classes methods",
+            "The style guide's is 2. A file's .editorconfig says over this by gdscript_blank_lines_around_functions."));
+
+    public static readonly ToggleSetting GDScriptTrailingCommas = new(s => s.GDScriptFormat.TrailingCommas,
+        (s, v) => s with { GDScriptFormat = s.GDScriptFormat with { TrailingCommas = v } },
+        new(D.GDScriptCodeStylePage, "Trailing comma in multi-line arrays, dictionaries and enums", $"{D.GDScriptWords} trailing comma arrays dictionaries enums",
+            "A file's .editorconfig says over this by gdscript_trailing_comma. A comma already written stays."));
+
+    public static readonly ToggleSetting GDScriptFormatOnSave = new(s => s.GDScriptFormatOnSave, (s, v) => s with { GDScriptFormatOnSave = v },
+        new(D.GDScriptCodeStylePage, "Reformat on save", $"{D.GDScriptWords} save actions on save format on save",
+            "File, Save and Save All reformat each changed script first, as Reformat Code does, as one undoable edit. Autosave never does."));
 
     public static readonly ChoiceSetting<BuildResultsMode> ShowBuildResults = new(s => s.ShowBuildResults, (s, v) => s with { ShowBuildResults = v },
         Named<BuildResultsMode>(D.BuildResultsChoices),

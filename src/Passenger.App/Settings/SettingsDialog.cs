@@ -21,6 +21,7 @@ public sealed partial class SettingsDialog : IdeWindow
     public const string LiveTemplatesPage = "Live Templates";
     public const string PostfixPage = "Postfix Completion";
     public const string XamlCodeStylePage = "Code Style: XAML";
+    public const string GDScriptCodeStylePage = "Code Style: GDScript";
     public const string TerminalPage = "Terminal";
     public const string VersionControlPage = "Version Control";
     public const string BuildPage = "Build";
@@ -58,7 +59,7 @@ public sealed partial class SettingsDialog : IdeWindow
     /// <summary>The names of <see cref="DiscordShown"/>'s choices, in its order.</summary>
     public static readonly string[] DiscordChoices = ["Passenger only", "The solution", "The solution and the file"];
 
-    private static readonly string[] Order = [Appearance, SystemPage, UpdatesPage, ExplorerPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, LiveTemplatesPage,
+    private static readonly string[] Order = [Appearance, SystemPage, UpdatesPage, ExplorerPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, GDScriptCodeStylePage, LiveTemplatesPage,
         VersionControlPage, BuildPage, RunPage, HotReloadPage, NodePage, EslintPage, PrettierPage, SchemasPage, StylesheetsPage, DockerPage, GodotPage, TerminalPage, McpPage, DiscordPage, DiagnosticsPage, KeymapPage];
 
     /// <summary>The names of Attributes format's choices, in <see cref="Passenger.Xaml.Features.XamlAttributeStyle"/>'s
@@ -76,6 +77,7 @@ public sealed partial class SettingsDialog : IdeWindow
     /// <summary>The words a search finds every option of a page by, beside each option's own.</summary>
     internal const string FoldingWords = "fold by default folding collapse collapsed open opening region";
     internal const string XamlWords = "xaml axaml xml code style formatting reformat format layout wpf avalonia";
+    internal const string GDScriptWords = "gdscript gd godot code style formatting reformat format layout style guide";
     internal const string EslintWords = "eslint lint linter linting javascript typescript code quality tools problems inspections";
     internal const string PrettierWords = "prettier format formatter formatting reformat code style javascript typescript css json";
     internal const string McpWords = "mcp model context protocol agents ai claude codex opencode attach socket";
@@ -323,6 +325,11 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.FoldXmlTags);
 
         AddXamlCodeStyle();
+        Add(Declared.GDScriptWrapLongLines);
+        Add(Declared.GDScriptLineLength);
+        Add(Declared.GDScriptBlankLines);
+        Add(Declared.GDScriptTrailingCommas);
+        Add(Declared.GDScriptFormatOnSave);
 
         Postfix = new PostfixTemplatesPane(Working, Change);
         AddPage(PostfixPage, Postfix, "postfix templates completion expression dot autopopup "

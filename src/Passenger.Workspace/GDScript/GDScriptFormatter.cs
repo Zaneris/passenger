@@ -4,8 +4,11 @@ using K = Passenger.Workspace.GDScript.GDScriptTokenKind;
 
 namespace Passenger.Workspace.GDScript;
 
-/// <summary>How a GDScript is laid out: its indentation (Godot's tabs unless its .editorconfig says spaces).</summary>
-public readonly record struct GDScriptFormatOptions(bool UseTabs = true, int IndentSize = 4, int TabWidth = 4)
+/// <summary>How a GDScript is laid out: its indentation (Godot's tabs unless its .editorconfig says spaces), the length
+/// past which a line is wrapped inside its brackets (none at 0), the blank lines around a function or class and whether a
+/// multi-line array, dictionary or enum ends in a comma (<see cref="GDScriptFormatSettings"/>).</summary>
+public readonly record struct GDScriptFormatOptions(bool UseTabs = true, int IndentSize = 4, int TabWidth = 4,
+    int LineLength = GDScriptFormatSettings.GuideLineLength, int BlankLines = 2, bool TrailingCommas = true)
 {
     /// <summary>Godot's own: tabs, four columns wide. Without this, <c>new()</c> would skip the defaults above.</summary>
     public GDScriptFormatOptions()
@@ -25,10 +28,10 @@ public sealed record GDScriptFormatted(IReadOnlyList<TextEdit> Edits, string Tex
 /// <summary>Lays a GDScript out as Godot's GDScript style guide does (docs.godotengine.org, Getting started › Scripting ›
 /// GDScript › GDScript style guide), changing only the whitespace between its tokens and adding the trailing comma of a
 /// multi-line array, dictionary or enum: indentation (Indentation), blank lines (Blank lines), spaces around operators and
-/// after commas, none inside brackets or before a call's (Whitespace), and trailing commas (Trailing comma). Comments and
-/// every token are kept as written; the result is read again and refused unless its tokens, comments and tree are the
-/// script's own. Pure, for any thread.</summary>
-public static class GDScriptFormatter
+/// after commas, none inside brackets or before a call's (Whitespace), trailing commas (Trailing comma), and a line past
+/// the length asked wrapped inside its brackets (Line length). Comments and every token are kept as written; the result
+/// is read again and refused unless its tokens, comments and tree are the script's own. Pure, for any thread.</summary>
+public static partial class GDScriptFormatter
 {
     /// <summary>A token of the script as written, with what laying it out needs: the indent level of its statement, its
     /// bracket depth, and whether it is the first on its line.</summary>
@@ -45,9 +48,21 @@ public static class GDScriptFormatter
         {
             return new GDScriptFormatted([], text, "the script's tokens do not read");
         }
-        List<TextEdit> edits = Layout(text, tokens, tree, options);
-        string formatted = TextSnapshot.From(text).Apply(edits).ToString();
-        if (Differs(text, tokens, tree, formatted) is { } why)
+        List<TextEdit> edits = Layout(text, tokens, Blocks(tree, options.BlankLines), options);
+        string formatted = Applied(text, edits);
+        List<GDScriptToken>? laidTokens = null;
+        if (options.LineLength > 0 && Wrapped(formatted, Shifted(tokens, edits), options) is { } wrapped)
+        {
+            laidTokens = Scanned(wrapped);
+            if (laidTokens is null || Aligned(text, tokens, wrapped, laidTokens) is not { } aligned)
+            {
+                return new GDScriptFormatted([], text, "laying it out would change what it says (its tokens)") { Attempted = wrapped };
+            }
+            // Its edits make the wrapped text wherever the tokens they keep read the same, which is checked next.
+            edits = aligned;
+            formatted = wrapped;
+        }
+        if (Differs(text, tokens, tree, formatted, laidTokens) is { } why)
         {
             return new GDScriptFormatted([], text, $"laying it out would change what it says ({why})") { Attempted = formatted };
         }
@@ -86,7 +101,8 @@ public static class GDScriptFormatter
 
     private static bool IsVirtual(K kind) => kind is K.Newline or K.Indent or K.Dedent;
 
-    private static List<TextEdit> Layout(string text, List<GDScriptToken> scanned, GDScriptTree tree, GDScriptFormatOptions options)
+    /// <summary>The edits laying a script out; <paramref name="blocks"/> null keeps its blank lines as they are.</summary>
+    private static List<TextEdit> Layout(string text, List<GDScriptToken> scanned, Dictionary<int, int>? blocks, GDScriptFormatOptions options)
     {
         int[] lines = LineStarts(text);
         List<Laid> laid = [];
@@ -117,23 +133,36 @@ public static class GDScriptFormatter
             };
             depth = Math.Max(0, depth);
         }
-        Dictionary<int, int> blocks = Blocks(tree);
         string unit = options.UseTabs ? "\t" : new string(' ', options.IndentSize);
+        Units units = new(unit);
         List<TextEdit> edits = [];
         // What each open bracket is, the line it opened on, and whether a lambda lies inside it.
         List<(K Kind, int Line, int Index)> open = [];
         HashSet<int> lambdaBrackets = LambdaBrackets(laid);
+        // Each line's indentation as laid out, by the line it began on in the text.
+        Dictionary<int, string> indents = [];
         bool nodePath = false;
         for (int i = 0; i <= laid.Count; i++)
         {
             int gapStart = i == 0 ? 0 : laid[i - 1].Token.End;
             int gapEnd = i == laid.Count ? text.Length : laid[i].Token.Start;
-            string gap = text[gapStart..gapEnd];
+            // Most gaps are empty or a space, read without making a string of each.
+            string gap = (gapEnd - gapStart) switch
+            {
+                0 => string.Empty,
+                1 when text[gapStart] == ' ' => " ",
+                _ => text[gapStart..gapEnd],
+            };
             string made;
             if (i == 0)
             {
                 made = Leading(gap, options, unit);
-                made += laid.Count > 0 ? Indent(laid[0], open, lambdaBrackets, lines, laid, unit, gap) : string.Empty;
+                if (laid.Count > 0)
+                {
+                    string indent = Indent(laid[0], open, lambdaBrackets, indents, laid, units, gap);
+                    indents[LineOf(lines, laid[0].Token.Start)] = indent;
+                    made += indent;
+                }
             }
             else if (i == laid.Count)
             {
@@ -160,8 +189,10 @@ public static class GDScriptFormatter
                 else
                 {
                     nodePath = false;
-                    made = Lines(gap, options, unit, BlankRule(b, blocks, open.Count > 0), Indent(b, open, lambdaBrackets, lines, laid, unit, gap));
-                    if (b.Token.Kind is K.BracketClose or K.BraceClose && open.Count > 0 && open[^1].Index != i - 1
+                    string indent = Indent(b, open, lambdaBrackets, indents, laid, units, gap);
+                    indents[LineOf(lines, b.Token.Start)] = indent;
+                    made = Lines(gap, options, unit, BlankRule(b, blocks, open.Count > 0), indent);
+                    if (options.TrailingCommas && b.Token.Kind is K.BracketClose or K.BraceClose && open.Count > 0 && open[^1].Index != i - 1
                         && a.Token.Kind != K.Comma && !lambdaBrackets.Contains(open[^1].Index) && Continued(gap) is false
                         && !(open[^1].Kind == K.BracketOpen && open[^1].Index > 0 && Subscripts(laid[open[^1].Index - 1].Token)))
                     {
@@ -216,8 +247,8 @@ public static class GDScriptFormatter
 
     /// <summary>The blank lines a member's first token wants before it, by its offset: two around a function or class at the
     /// script's top level (Blank lines: "Surround functions and class definitions with two blank lines"), one or two around
-    /// one in an inner class (negative: at least one, at most two).</summary>
-    private static Dictionary<int, int> Blocks(GDScriptTree tree)
+    /// one in an inner class (negative: at least one, at most two); <paramref name="most"/> in place of two.</summary>
+    private static Dictionary<int, int> Blocks(GDScriptTree tree, int most)
     {
         Dictionary<int, int> blocks = [];
         void Members(IReadOnlyList<(GDScriptNode Node, int Offset)> members, bool top)
@@ -230,7 +261,7 @@ public static class GDScriptFormatter
                 // An inner class's first member follows its header, with no blank line it must have.
                 if ((block || after) && (top || k > 0))
                 {
-                    blocks[offset + FirstOf(node)] = top ? 2 : -2;
+                    blocks[offset + FirstOf(node)] = top ? most : -most;
                 }
                 if (node is GDScriptClass inner)
                 {
@@ -247,8 +278,12 @@ public static class GDScriptFormatter
     /// <summary>How the blank lines before a token are kept: a member that wants some (<see cref="Blocks"/>), else at most two
     /// at the script's top level, one in a block or inside brackets (Blank lines: "Use one blank line inside functions to
     /// separate logical sections").</summary>
-    private static (int Least, int Most) BlankRule(Laid b, Dictionary<int, int> blocks, bool inBrackets)
+    private static (int Least, int Most) BlankRule(Laid b, Dictionary<int, int>? blocks, bool inBrackets)
     {
+        if (blocks is null)
+        {
+            return (0, int.MaxValue);
+        }
         if (!inBrackets && b.First && blocks.TryGetValue(b.Token.Start, out int wanted))
         {
             return wanted > 0 ? (wanted, wanted) : (1, -wanted);
@@ -402,15 +437,16 @@ public static class GDScriptFormatter
     }
 
     /// <summary>A token's line's indentation (Indentation): its statement's level, or, inside brackets, that of the line
-    /// they opened on and one level more for each array, dictionary or enum opened on a line before it, two for each
-    /// parenthesis ("Use 2 indent levels to distinguish continuation lines from regular code blocks"; arrays, dictionaries
-    /// and enums one; Line length's multiline statement closing its parenthesis at its own level); a bracket closing on its
-    /// own line at its opening line's. Inside brackets a lambda lies in, as written.</summary>
-    private static string Indent(Laid b, List<(K Kind, int Line, int Index)> open, HashSet<int> lambdas, int[] lines, List<Laid> laid, string unit, string gap)
+    /// the innermost opened on, one level more inside an array, dictionary or enum, two inside a parenthesis ("Use 2 indent
+    /// levels to distinguish continuation lines from regular code blocks"; arrays, dictionaries and enums one); a bracket
+    /// closing on its own line at its opening line's (Line length's multiline statement). Inside brackets a lambda lies
+    /// in, as written.</summary>
+    private static string Indent(Laid b, List<(K Kind, int Line, int Index)> open, HashSet<int> lambdas, Dictionary<int, string> indents, List<Laid> laid,
+        Units units, string gap)
     {
         if (b.Depth == 0)
         {
-            return string.Concat(Enumerable.Repeat(unit, b.Level));
+            return units.Of(b.Level);
         }
         if (open.Any(o => lambdas.Contains(o.Index)))
         {
@@ -418,6 +454,11 @@ public static class GDScriptFormatter
             return lineStart < 0 ? gap : gap[(lineStart + 1)..];
         }
         bool closes = b.Token.Kind is K.ParenthesisClose or K.BracketClose or K.BraceClose;
+        if (indents.TryGetValue(open[^1].Line, out string? opening))
+        {
+            return closes ? opening : opening + units.Of(open[^1].Kind == K.ParenthesisOpen ? 2 : 1);
+        }
+        // A line begun inside a multi-line string: its brackets counted from the statement's level.
         int count = closes ? open.Count - 1 : open.Count;
         int level = laid[open[0].Index].Level;
         int lastLine = -1;
@@ -435,7 +476,22 @@ public static class GDScriptFormatter
         {
             level += weight;
         }
-        return string.Concat(Enumerable.Repeat(unit, level));
+        return units.Of(level);
+    }
+
+    /// <summary>Indentation of each depth in one unit, each made once.</summary>
+    private sealed class Units(string unit)
+    {
+        private readonly List<string> made = [string.Empty];
+
+        public string Of(int levels)
+        {
+            while (made.Count <= levels)
+            {
+                made.Add(made[^1] + unit);
+            }
+            return made[levels];
+        }
     }
 
     /// <summary>Whether a bracket after a token indexes it (<c>a[0]</c>, <c>Array[int]</c>) rather than opening an array.</summary>
@@ -450,7 +506,7 @@ public static class GDScriptFormatter
     /// parameter's default keep whether they had one, anything else one where it had any.</summary>
     private static string Space(GDScriptToken? before, GDScriptToken a, GDScriptToken b, GDScriptToken? c, string gap, bool inParentheses)
     {
-        if (gap.Any(ch => ch is not (' ' or '\t')))
+        if (gap.AsSpan().ContainsAnyExcept(' ', '\t'))
         {
             return gap;
         }
@@ -550,11 +606,11 @@ public static class GDScriptFormatter
     /// reads among them, a trailing comma before a closing bracket aside), its comments in order, or the tree Godot's parser
     /// reads; null where it says the same.</summary>
     public static string? Differs(string was, string now) =>
-        Scanned(was) is { } before ? Differs(was, before, GDScriptTree.Parse(was), now) : "a token no longer reads";
+        Scanned(was) is { } before ? Differs(was, before, GDScriptTree.Parse(was), now, null) : "a token no longer reads";
 
-    private static string? Differs(string was, List<GDScriptToken> before, GDScriptTree treeBefore, string now)
+    private static string? Differs(string was, List<GDScriptToken> before, GDScriptTree treeBefore, string now, List<GDScriptToken>? scanned)
     {
-        if (Scanned(now) is not { } after)
+        if ((scanned ?? Scanned(now)) is not { } after)
         {
             return "a token no longer reads";
         }
@@ -622,17 +678,30 @@ public static class GDScriptFormatter
         int from = 0;
         foreach (GDScriptToken token in tokens.Where(t => !IsVirtual(t.Kind)).Append(new GDScriptToken(K.Eof, text.Length, text.Length)))
         {
-            foreach (string line in text[from..token.Start].Split('\n'))
+            // Between tokens a # starts a comment to its line's end.
+            for (int at = text.IndexOf('#', from, Math.Max(0, token.Start - from)); at >= 0; at = text.IndexOf('#', from, Math.Max(0, token.Start - from)))
             {
-                int hash = line.IndexOf('#', StringComparison.Ordinal);
-                if (hash >= 0)
-                {
-                    comments.Add(line[hash..].TrimEnd());
-                }
+                int end = text.IndexOf('\n', at, token.Start - at);
+                end = end < 0 ? token.Start : end;
+                comments.Add(text.AsSpan(at, end - at).TrimEnd().ToString());
+                from = end;
             }
             from = Math.Max(from, token.End);
         }
         return comments;
+    }
+
+    /// <summary>A text with edits in order, none overlapping, made.</summary>
+    private static string Applied(string text, IReadOnlyList<TextEdit> edits)
+    {
+        StringBuilder made = new(text.Length + edits.Count * 4);
+        int from = 0;
+        foreach (TextEdit edit in edits)
+        {
+            made.Append(text, from, edit.Start - from).Append(edit.Text);
+            from = edit.Start + edit.Length;
+        }
+        return made.Append(text, from, text.Length - from).ToString();
     }
 
     /// <summary>Whether two trees are alike but for places: each node's kind and what it names or holds, its annotations
@@ -654,7 +723,7 @@ public static class GDScriptFormatter
 
         static bool Node(GDScriptNode a, GDScriptNode b)
         {
-            if (a.GetType() != b.GetType() || Said(a) != Said(b) || a.Annotations.Count != b.Annotations.Count)
+            if (a.GetType() != b.GetType() || !Alike(a, b) || a.Annotations.Count != b.Annotations.Count)
             {
                 return false;
             }
@@ -686,19 +755,19 @@ public static class GDScriptFormatter
         }
     }
 
-    /// <summary>What a node names or holds, beside its kind.</summary>
-    private static string? Said(GDScriptNode node) => node switch
+    /// <summary>Whether two nodes of one kind name or hold the same, compared without making words of either.</summary>
+    private static bool Alike(GDScriptNode a, GDScriptNode b) => (a, b) switch
     {
-        GDScriptIdentifier identifier => identifier.Name,
-        GDScriptLiteral literal => $"{literal.Kind}:{literal.Value}",
-        GDScriptBinary binary => binary.Operator.ToString(),
-        GDScriptUnary unary => unary.Operator.ToString(),
-        GDScriptAssignment assignment => assignment.Operator.ToString(),
-        GDScriptAnnotation annotation => annotation.Name,
-        GDScriptGetNode get => get.Path,
-        GDScriptCall call => call.FunctionName,
-        GDScriptAssignable assignable => assignable.Infers ? "infers" : null,
-        GDScriptFunction function => function.IsStatic ? "static" : function.IsAbstract ? "abstract" : function.IsLambda ? "lambda" : null,
-        _ => null,
+        (GDScriptIdentifier x, GDScriptIdentifier y) => x.Name == y.Name,
+        (GDScriptLiteral x, GDScriptLiteral y) => x.Kind == y.Kind && Equals(x.Value, y.Value),
+        (GDScriptBinary x, GDScriptBinary y) => x.Operator == y.Operator,
+        (GDScriptUnary x, GDScriptUnary y) => x.Operator == y.Operator,
+        (GDScriptAssignment x, GDScriptAssignment y) => x.Operator == y.Operator,
+        (GDScriptAnnotation x, GDScriptAnnotation y) => x.Name == y.Name,
+        (GDScriptGetNode x, GDScriptGetNode y) => x.Path == y.Path,
+        (GDScriptCall x, GDScriptCall y) => x.FunctionName == y.FunctionName,
+        (GDScriptAssignable x, GDScriptAssignable y) => x.Infers == y.Infers,
+        (GDScriptFunction x, GDScriptFunction y) => x.IsStatic == y.IsStatic && x.IsAbstract == y.IsAbstract && x.IsLambda == y.IsLambda,
+        _ => true,
     };
 }

@@ -123,8 +123,8 @@ public partial class MainWindow
     }
 
     /// <summary>File, Save (the file shown as it is pressed) or Save All: each changed file first gets what Settings
-    /// ask of a save (Run eslint --fix on save, then Prettier's Run on save), which an explicit save runs and autosave
-    /// never does, each one undoable edit. The files are saved whatever came of those.</summary>
+    /// ask of a save (Run eslint --fix on save, then Prettier's Run on save, or a GDScript's Reformat on save), which an
+    /// explicit save runs and autosave never does, each one undoable edit. The files are saved whatever came of those.</summary>
     private async Task SaveExplicitly(bool all)
     {
         OpenDocument? pressed = all ? null : Editors.Active?.Saves;

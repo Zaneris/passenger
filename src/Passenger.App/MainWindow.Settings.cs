@@ -104,6 +104,7 @@ public partial class MainWindow
         }
         assist.Templates = CSharp.TemplateSet.Of(next);
         assist.XamlFormat = next.XamlFormat;
+        assist.GDScriptFormat = (next.GDScriptFormat, next.GDScriptFormatOnSave);
         if (terminal is { } panel)
         {
             FollowTerminalSettings(panel, next, before);

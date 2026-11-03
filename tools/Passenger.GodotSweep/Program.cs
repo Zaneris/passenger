@@ -29,6 +29,7 @@ public static class Program
         {
             string script = File.ReadAllText(timed).ReplaceLineEndings("\n");
             double least = double.MaxValue;
+            double unwrapped = double.MaxValue;
             double parse = double.MaxValue;
             for (int round = 0; round < 20; round++)
             {
@@ -36,10 +37,13 @@ public static class Program
                 GDScriptFormatter.Format(script, new GDScriptFormatOptions());
                 least = Math.Min(least, clock.Elapsed.TotalMilliseconds);
                 clock.Restart();
+                GDScriptFormatter.Format(script, new GDScriptFormatOptions() with { LineLength = 0 });
+                unwrapped = Math.Min(unwrapped, clock.Elapsed.TotalMilliseconds);
+                clock.Restart();
                 GDScriptTree.Parse(script);
                 parse = Math.Min(parse, clock.Elapsed.TotalMilliseconds);
             }
-            Console.WriteLine($"{Path.GetFileName(timed)}: format {least:F1} ms, one parse {parse:F1} ms");
+            Console.WriteLine($"{Path.GetFileName(timed)}: format {least:F1} ms ({unwrapped:F1} ms not wrapping), one parse {parse:F1} ms");
             return 0;
         }
         if (args is ["--format-one", var one] && File.Exists(one))
@@ -205,7 +209,8 @@ public static class Program
     };
 
     /// <summary>Each script under a folder laid out by Passenger's formatter (tabs, as Godot writes them): whether it changed,
-    /// why it was refused, whether a second pass changes it again, and how long the first took.</summary>
+    /// why it was refused, whether a second pass changes it again, how long the first took, and its lines past the guide's
+    /// length before and after.</summary>
     private static object Formats(string folder)
     {
         List<string> scripts = [];
@@ -226,9 +231,15 @@ public static class Program
                 stable = twice.Text == once.Text,
                 again = twice.Refused,
                 milliseconds = Math.Round(took, 2),
+                longBefore = Long(text),
+                longAfter = Long(once.Text),
             };
         });
     }
+
+    /// <summary>A script's lines wider than the guide's 100 columns, a tab four.</summary>
+    private static int Long(string text) =>
+        text.Split('\n').Count(line => line.Sum(c => c == '\t' ? 4 : 1) > GDScriptFormatSettings.GuideLineLength);
 
     private static void Walk(string folder, List<string> into)
     {
