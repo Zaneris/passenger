@@ -109,10 +109,17 @@ internal static partial class GodotSource
                 && call.Arguments.FirstOrDefault(a => a.Parameter?.IsParams == true) is { ArgumentKind: not ArgumentKind.Explicit } ? list.Arguments.Count - 1 : null;
             bool exact = GodotGenerated.Exact(token);
             byStart[token.SpanStart] = reads.Count;
-            if (call.Kind == GodotNameKind.Signal && call.Arguments.FirstOrDefault(a => a.Parameter?.Type is { Name: "Callable", ContainingNamespace.Name: Namespace })?.Value is { } callable
-                && GodotGenerated.Unconverted(callable) is IObjectCreationOperation { Arguments: [_, { Value: var method }] } && GodotGenerated.Unconverted(method) is ILiteralOperation { Syntax: LiteralExpressionSyntax literal })
+            GodotSignature? handler = null;
+            if (call.Kind == GodotNameKind.Signal && call.Arguments.FirstOrDefault(a => a.Parameter?.Type is { Name: "Callable", ContainingNamespace.Name: Namespace })?.Value is { } callable)
             {
-                joined.Add((reads.Count, literal.Token.SpanStart));
+                if (GodotGenerated.Unconverted(callable) is IObjectCreationOperation { Arguments: [_, { Value: var method }] } && GodotGenerated.Unconverted(method) is ILiteralOperation { Syntax: LiteralExpressionSyntax literal })
+                {
+                    joined.Add((reads.Count, literal.Token.SpanStart));
+                }
+                else
+                {
+                    handler = HandlerOf(engine, GodotGenerated.Unconverted(callable));
+                }
             }
             (string? node, string? export) = !script ? GodotKinds.NodeOf(solution, call.Object, model, cancel) ?? (null, null) : (null, null);
             IReadOnlyList<string> having = found is null && !script && engineClass is not null
@@ -130,6 +137,8 @@ internal static partial class GodotSource
                 Node = node,
                 Export = export,
                 Engines = having,
+                Handler = handler,
+                Connected = call.Kind == GodotNameKind.Method ? ConnectedTo(engine, token, model, cancel) : null,
             });
         }
         foreach ((int signal, int method) in joined)
@@ -137,10 +146,60 @@ internal static partial class GodotSource
             if (byStart.TryGetValue(method, out int index) && reads[index].Kind == GodotNameKind.Method)
             {
                 reads[index] = reads[index] with { Signal = signal };
+                reads[signal] = reads[signal] with { Handler = reads[index].Found };
             }
         }
         return reads;
     }
+
+    /// <summary>The C# method a Connect's Callable calls where no string the file reads names it: <c>new Callable(target,
+    /// MethodName.X)</c> (or nameof, a constant) on a class of the code's, or <c>Callable.From(X)</c>; null for a lambda, or
+    /// a target not of the code's.</summary>
+    private static GodotSignature? HandlerOf(Engine engine, IOperation callable)
+    {
+        if (callable is IObjectCreationOperation { Arguments: [{ Value: var target }, { Value: var method }] }
+            && GodotGenerated.Unconverted(target).Type is INamedTypeSymbol type && !engine.Owns(type) && type.Locations.Any(l => l.IsInSource)
+            && NamedBy(GodotGenerated.Unconverted(method), "MethodName") is { } name)
+        {
+            return Method(engine, type, null, name);
+        }
+        return callable is IInvocationOperation { TargetMethod: { Name: "From", ContainingType.Name: "Callable" }, Arguments: [{ Value: var given }, ..] }
+            && GodotGenerated.Unconverted(given) is IDelegateCreationOperation { Target: IMethodReferenceOperation { Method: { } from } }
+            ? Signature(from.Name, from, from, source: true) : null;
+    }
+
+    /// <summary>The C# signal a Callable naming a method by a string is connected to, where its Connect names the signal by
+    /// SignalName, nameof or a constant on a class of the code's; null for any other string.</summary>
+    private static GodotSignature? ConnectedTo(Engine engine, SyntaxToken token, SemanticModel model, CancellationToken cancel)
+    {
+        if (token.Parent?.Parent?.Parent?.Parent is not BaseObjectCreationExpressionSyntax made || model.GetOperation(made, cancel) is not IObjectCreationOperation creation)
+        {
+            return null;
+        }
+        IOperation? up = creation.Parent;
+        while (up is IConversionOperation)
+        {
+            up = up.Parent;
+        }
+        if (up is not IArgumentOperation { Parent: IInvocationOperation { TargetMethod.Name: "Connect" } connect }
+            || connect.Arguments.FirstOrDefault(a => a.Parameter?.Name == "signal")?.Value is not { } signal
+            || GodotGenerated.Unconverted(signal) is ILiteralOperation || NamedBy(GodotGenerated.Unconverted(signal), "SignalName") is not { } name)
+        {
+            return null;
+        }
+        INamedTypeSymbol? owner = (connect.Instance is { } instance ? GodotGenerated.Unconverted(instance).Type : model.GetEnclosingSymbol(made.SpanStart, cancel)?.ContainingType) as INamedTypeSymbol;
+        return owner is not null && !engine.Owns(owner) && owner.Locations.Any(l => l.IsInSource) ? Signal(engine, owner, null, name) : null;
+    }
+
+    /// <summary>The name a value gives a member by: a constant (nameof's too), or a field of a generated class of names
+    /// (<c>MethodName.OnDied</c>, <c>SignalName.Hit</c>).</summary>
+    private static string? NamedBy(IOperation value, string names) => value switch
+    {
+        { ConstantValue: { HasValue: true, Value: string constant } } => constant,
+        IFieldReferenceOperation { Field: { } field } when field.ContainingType?.Name == names => field.Name,
+        IPropertyReferenceOperation { Property: { } property } when property.ContainingType?.Name == names => property.Name,
+        _ => null,
+    };
 
     /// <summary>A class of the file: its place, engine class, scripts, exports and signals.</summary>
     private static async Task<GodotClassFound> ClassAsync(INamedTypeSymbol type, Solution solution, Engine engine, string path, SourceText text, CancellationToken cancel)

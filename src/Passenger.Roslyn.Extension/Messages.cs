@@ -491,6 +491,16 @@ public sealed record GodotStringRead(
     [JsonPropertyName("export")]
     public string? Export { get; init; }
 
+    /// <summary>For a signal a Connect is given, the C# method its Callable calls (by a string, MethodName, nameof, or a method
+    /// group given to Callable.From); null where it is none of those.</summary>
+    [JsonPropertyName("handler")]
+    public GodotSignature? Handler { get; init; }
+
+    /// <summary>For a method a Callable names that a Connect is given, the C# signal it is connected to where the Connect
+    /// names it otherwise than by a string (SignalName, a constant); null otherwise.</summary>
+    [JsonPropertyName("connected")]
+    public GodotSignature? Connected { get; init; }
+
     /// <summary>For a member an engine class's object lacks, the engine classes asked of (<see cref="GodotCodeRequest.Engine"/>)
     /// deriving from its class that have it, by Godot's names.</summary>
     [JsonPropertyName("engines")]

@@ -278,15 +278,16 @@ internal sealed partial class CSharpAssist
             : [];
 
     /// <summary>The uses of a GDScript's member at an offset (the name there, where its class, it or a script it extends,
-    /// declares one) beside its own language's: each scene's connection calling it or made to it on a node whose class takes
-    /// in the declaring script, and each string of the project's C# naming it on a node the code tells is one
-    /// (<see cref="Handlers.GodotNameStrings"/>); null for an offset on no such member.</summary>
+    /// declares one) beside its own language's: each scene's connection calling it or made to it, and each key setting it as a
+    /// variable, on a node whose class takes in the declaring script, and each string of the project's C# naming it on a node
+    /// the code tells is one (<see cref="Handlers.GodotNameStrings"/>); null for an offset on no such member.</summary>
     private async Task<(IReadOnlyList<LspLocation> Scenes, IReadOnlyList<LspLocation> Code)?> GodotScriptNamedAsync(OpenDocument document, int offset) =>
-        await GodotScriptNamedWithCallsAsync(document, offset) is { } named ? (named.Scenes, named.Code) : null;
+        await GodotScriptNamedWithCallsAsync(document, offset) is { } named ? ([.. named.Scenes, .. named.Sets], named.Code) : null;
 
-    /// <summary><see cref="GodotScriptNamedAsync"/> with the C# uses as the extension gave them, each call's arguments
-    /// after the name among them.</summary>
-    private async Task<(IReadOnlyList<LspLocation> Scenes, IReadOnlyList<LspLocation> Code, IReadOnlyList<GodotKindUse> Calls)?> GodotScriptNamedWithCallsAsync(OpenDocument document, int offset)
+    /// <summary><see cref="GodotScriptNamedAsync"/> with the scenes' connections apart from their keys setting a variable,
+    /// and the C# uses as the extension gave them, each call's arguments after the name among them.</summary>
+    private async Task<(IReadOnlyList<LspLocation> Scenes, IReadOnlyList<LspLocation> Sets, IReadOnlyList<LspLocation> Code, IReadOnlyList<GodotKindUse> Calls)?>
+        GodotScriptNamedWithCallsAsync(OpenDocument document, int offset)
     {
         TextSnapshot text = document.Text.Snapshot;
         int start = Math.Clamp(offset, 0, text.Length);
@@ -312,9 +313,10 @@ internal sealed partial class CSharpAssist
             return null;
         }
         IReadOnlyList<LspLocation> uses = [.. await BackgroundWork.Run(() => SceneUses(scenes, script, member))];
+        IReadOnlyList<LspLocation> sets = member.Kind == GodotScriptKind.Variable ? [.. await BackgroundWork.Run(() => SceneSets(scenes, script, member.Name))] : [];
         if (member.Kind is not (GodotScriptKind.Function or GodotScriptKind.Signal or GodotScriptKind.Variable) || context.CSharp?.Session is not { } session)
         {
-            return (uses, [], []);
+            return (uses, sets, [], []);
         }
         GodotNameKind kind = member.Kind switch { GodotScriptKind.Function => GodotNameKind.Method, GodotScriptKind.Signal => GodotNameKind.Signal, _ => GodotNameKind.Property };
         GodotKindUses found;
@@ -324,10 +326,10 @@ internal sealed partial class CSharpAssist
         }
         catch (LanguageServerFailed)
         {
-            return (uses, [], []);
+            return (uses, sets, [], []);
         }
         List<GodotKindUse> calls = [.. found.Uses.Where(u => GodotChecks.Told(scenes, u.Scripts, u.Node, u.Export).Told.Any(n => GodotChecks.ChainOf(scenes, n)?.Runs(script) == true))];
-        return (uses, [.. calls.Select(u => new LspLocation(DocumentUris.FromPath(u.File), new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character))))],
+        return (uses, sets, [.. calls.Select(u => new LspLocation(DocumentUris.FromPath(u.File), new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character))))],
             calls);
 
         // Each scene's connection naming the member as its method or signal, on a node whose class takes in its script.
@@ -351,6 +353,35 @@ internal sealed partial class CSharpAssist
                     }
                     lines ??= ServerLines.Of(TextSnapshot.From(file.Text));
                     yield return new LspLocation(DocumentUris.FromPath(path), lines.RangeOf(new TextRange(value.TextStart, value.TextEnd - value.TextStart)));
+                }
+            }
+        }
+    }
+
+    /// <summary>Each key of the scenes setting a GDScript's variable (<paramref name="script"/>, a res:// path) on a node
+    /// whose class takes in the script, its section's own or a scene's instancing it, each once.</summary>
+    private static IEnumerable<LspLocation> SceneSets(GodotScenes scenes, string script, string variable)
+    {
+        HashSet<(string, int)> seen = [];
+        Dictionary<string, ServerLines> lines = new(StringComparer.Ordinal);
+        foreach (string scene in scenes.Files.Where(f => f.Value.Header?.Tag == "gd_scene").Select(f => f.Key).Order(StringComparer.Ordinal))
+        {
+            foreach (GodotTreeNode node in scenes.Tree(scene)?.Below() ?? [])
+            {
+                if (GodotChecks.ChainOf(scenes, node)?.Runs(script) != true)
+                {
+                    continue;
+                }
+                foreach ((string written, Passenger.Workspace.GodotNode at) in node.Written)
+                {
+                    foreach (GodotEntry key in at.Section.Properties.Where(p => p.Key == variable))
+                    {
+                        if (seen.Add((written, key.KeyStart)) && scenes.FileOf(written) is { } path && scenes.Files.TryGetValue(written, out GodotFile? file))
+                        {
+                            ServerLines read = lines.TryGetValue(written, out ServerLines? kept) ? kept : lines[written] = ServerLines.Of(TextSnapshot.From(file.Text));
+                            yield return new LspLocation(DocumentUris.FromPath(path), read.RangeOf(new TextRange(key.KeyStart, variable.Length)));
+                        }
+                    }
                 }
             }
         }

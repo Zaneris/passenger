@@ -495,6 +495,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return RefactorOutcome.Refused($"Rename was not applied: {unloaded}");
         }
+        // A C# string naming a GDScript's member is renamed as from its declaration, its other uses following there.
+        if (document.Language == Languages.Language.CSharp && await context.Languages.CSharp.ScriptMemberAtAsync(document, at.Offset) is ({ } script, int memberAt, var twice))
+        {
+            return twice is not null ? RefactorOutcome.Refused($"Rename was not applied: {twice}") : await RenameInScriptAsync(script, memberAt, name, patience);
+        }
         // A named element's field is made from its XAML, so it is renamed as the element is, there and in the code-behind.
         if (document.Language == Languages.Language.CSharp
             && await context.Languages.Xaml.NamedElementOfAsync(document, await context.Now(document).DefinitionAsync(at.Offset), at.Offset) is { Path: { } elementFile } element)
@@ -624,6 +629,35 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         return new RefactorOutcome(said, null, [.. changed, .. applied.Moved.Select(m => new RefactoredFile(m.From, "moved", [], m.To))], dropped);
     }
+
+    /// <summary>A GDScript's member renamed from where its script declares it, as Rename there renames it: the script lent
+    /// with no tab where none shows it, once Godot's server reads it, within <see cref="ScriptServed"/>.</summary>
+    private async Task<RefactorOutcome> RenameInScriptAsync(string script, int offset, string name, Patience? patience)
+    {
+        (OpenDocument document, IDisposable hold) = context.Editors.Lend(script);
+        using (hold)
+        {
+            DateTime until = DateTime.UtcNow + Waits.Of(ScriptServed);
+            if (context.WebOf(document) is { Lsp: null })
+            {
+                context.Say($"Rename waits for Godot's server to read {document.Name}");
+            }
+            while (context.WebOf(document) is { Lsp: null } && context.Web?.Invoke()?.CannotStart(document) == false && DateTime.UtcNow < until)
+            {
+                // Looked at every 50 ms: a web server's document comes as the server starts, raising nothing.
+                await Task.Delay(50);
+            }
+            if (context.WebOf(document)?.Lsp is null)
+            {
+                return RefactorOutcome.Refused($"Rename was not applied: {context.Web?.Invoke()?.Unready("Renaming its members", document) ?? $"no server reads {document.Name}"}");
+            }
+            return await RenameSymbolAsync(document, offset, name, renameFiles: false, patience);
+        }
+    }
+
+    /// <summary>How long a rename from a C# string waits for Godot's server to read the script declaring the member, its
+    /// editor started for it where none runs.</summary>
+    private static readonly TimeSpan ScriptServed = TimeSpan.FromSeconds(90);
 
     /// <summary>Also rename files to reflect this change, offered in the open rename box once the server says the name
     /// is a type's declared in files named after it.</summary>

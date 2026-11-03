@@ -956,7 +956,14 @@ internal static class GodotChecks
             type => type is not null && asked.Engine.Contains(type) ? read.Engines.Contains(type) : null);
         if (members.Names.Any(n => n.Name == read.Name))
         {
-            return read is { Kind: GodotNameKind.Method, Given: { } given } ? CountFinding(scenes, read, given) : null;
+            return read switch
+            {
+                { Kind: GodotNameKind.Method, Given: { } given } => CountFinding(scenes, read, given),
+                { Kind: GodotNameKind.Method } when (read.Connected ?? (read.Signal is { } at && at < found.Strings.Count ? found.Strings[at].Found : null)) is { } signal
+                    => ConnectedFinding(scenes, read, signal),
+                { Kind: GodotNameKind.Signal, Handler: { } handler } => HandlerFinding(scenes, members, read, handler),
+                _ => null,
+            };
         }
         if (!members.Whole)
         {
@@ -973,14 +980,7 @@ internal static class GodotChecks
     /// of those it may call takes it, or none is known.</summary>
     private static Finding? CountFinding(GodotScenes scenes, GodotStringRead read, int given)
     {
-        List<GodotScriptDeclared> functions = [];
-        foreach (string script in scenes.Texts.Keys.Where(GodotScriptDeclarations.IsScript))
-        {
-            if (scenes.ScriptOf(script)?.Member(GodotScriptKind.Function, read.Name) is { Parameters: not null } function)
-            {
-                functions.Add(function);
-            }
-        }
+        IReadOnlyList<GodotScriptDeclared> functions = Declarations(scenes, GodotScriptKind.Function, read.Name);
         if (functions.Count == 0 || functions.Any(f => f.Takes(given)))
         {
             return null;
@@ -988,6 +988,36 @@ internal static class GodotChecks
         return new Finding(read.At, read.End, true,
             $"'{read.Name}' {Takes(functions[0])}, but this call gives it {(given == 0 ? "none" : given.ToString(System.Globalization.CultureInfo.InvariantCulture))}");
     }
+
+    /// <summary>A C# Connect of a C# signal to a GDScript function a Callable names by its string, where no script declaring
+    /// the function takes what the signal gives; null where one does, or none is known.</summary>
+    private static Finding? ConnectedFinding(GodotScenes scenes, GodotStringRead read, GodotSignature signal)
+    {
+        IReadOnlyList<GodotScriptDeclared> functions = Declarations(scenes, GodotScriptKind.Function, read.Name);
+        if (functions.Count == 0 || functions.Any(f => f.Takes(signal.Parameters.Count)))
+        {
+            return null;
+        }
+        return new Finding(read.At, read.End, true, $"'{signal.Name}', which {Gives(signal.Parameters.Count, signal.Parameters)}, is connected to '{read.Name}', which {Takes(functions[0])}");
+    }
+
+    /// <summary>A C# Connect of a GDScript signal, by its string on a node of GDScript, to a C# method that takes other
+    /// arguments than every script declaring the signal says it gives; null where one fits, or none says.</summary>
+    private static Finding? HandlerFinding(GodotScenes scenes, Candidates members, GodotStringRead read, GodotSignature handler)
+    {
+        HashSet<string> scripts = [.. members.Names.Where(n => n.Name == read.Name).SelectMany(n => n.Places).Select(p => p.Res)];
+        List<GodotScriptDeclared> signals = [.. scripts.Select(s => scenes.ScriptOf(s)?.Member(GodotScriptKind.Signal, read.Name)).OfType<GodotScriptDeclared>()];
+        if (signals.Count == 0 || signals.Any(s => s.Parameters is not { } given || given.Count >= handler.Required && given.Count <= handler.Parameters.Count))
+        {
+            return null;
+        }
+        IReadOnlyList<string> gives = signals[0].Parameters!;
+        return new Finding(read.At, read.End, true, $"'{read.Name}', which {Gives(gives.Count, gives)}, is connected to '{handler.Name}', which {Takes(handler.Parameters)}");
+    }
+
+    /// <summary>Every declaration of a kind and name the project's GDScripts hold.</summary>
+    private static IReadOnlyList<GodotScriptDeclared> Declarations(GodotScenes scenes, GodotScriptKind kind, string name) =>
+        [.. scenes.Texts.Keys.Where(GodotScriptDeclarations.IsScript).Select(s => scenes.ScriptOf(s)?.Member(kind, name)).OfType<GodotScriptDeclared>().Where(d => d.Parameters is not null)];
 
     /// <summary>Names of several players or shaders, each name once with every place of it.</summary>
     private static IReadOnlyList<GodotDefined> Merged(IEnumerable<GodotDefined> names) =>

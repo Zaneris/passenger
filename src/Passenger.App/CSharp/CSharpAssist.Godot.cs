@@ -399,6 +399,30 @@ internal sealed partial class CSharpAssist
         return places.Count == 0 ? null : new Declared(places, Refusals.NoDeclaration) { Names = names, Title = "Declarations" };
     }
 
+    /// <summary>The GDScript member a string of a Godot project's C# names at an offset, on a node the code tells it is
+    /// (<see cref="ScriptMemberDeclared"/>'s): the script declaring it and where; a problem instead where several scripts
+    /// declare one of its name; null where the string names none.</summary>
+    internal async Task<(string Script, int Offset, string? Problem)?> ScriptMemberAtAsync(OpenDocument document, int offset)
+    {
+        if (context.CSharp is not { } csharp || csharp.For(document)?.Lsp is not { } lsp || csharp.GodotOf?.Invoke(document.Path) is null
+            || await csharp.GodotAsync(document.Path, CancellationToken.None) is not { } read
+            || read.Found.Strings.FirstOrDefault(s => OffsetOf(lsp, s.At) <= offset && offset <= OffsetOf(lsp, s.End)) is not { Found: null, Script: false } named
+            || named.Node is null && named.Export is null)
+        {
+            return null;
+        }
+        GodotChecks.Candidates members = GodotChecks.Members(read.Scenes, named.Kind, GodotChecks.ScriptsOf(read.Found, named.Class), named.Node, named.Export, _ => null);
+        IReadOnlyList<GodotPlace> places = [.. members.Names.Where(n => n.Name == named.Name).SelectMany(n => n.Places).Where(p => p.Defines)];
+        string[] scripts = [.. places.Select(p => p.Res).Distinct(StringComparer.Ordinal)];
+        if (scripts.Length == 0 || read.Scenes.FileOf(scripts[0]) is not { } file)
+        {
+            return null;
+        }
+        return scripts.Length > 1
+            ? (file, 0, $"'{named.Name}' on {members.Where} is declared by {Plural.Listed([.. scripts.Select(GodotDefinitions.Shown)])}: rename it in its script")
+            : (file, places[0].Start, null);
+    }
+
     /// <summary>The nodes the name of a GetNode path at an offset names, each in the scene its script runs in, with the name
     /// as the path writes it and the scenes read; null where the offset is on no such name.</summary>
     internal async Task<(GodotRead Read, string Name, IReadOnlyList<GodotTreeNode> Nodes)?> GodotNodeAtAsync(OpenDocument document, int offset)
