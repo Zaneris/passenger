@@ -371,33 +371,36 @@ Projects in `src/`; `find_symbol` finds the rest:
   kept in `WorkspaceState`) that the XAML preview's build (`XamlPreview.Output`), XAML's restore target and C#'s context
   (`CSharpService.ChosenContext`) follow: never a framework's output taken by its newest write. A Godot game's C# is
   read against its scenes by `GodotScenes` (Workspace: the reader, trees, paths, renames), followed through the watcher
-  (`GodotSceneIndex`), the extension's `GodotCode`, `GodotChecks`, and `GodotAssist` for `.tscn`/`.tres` (its marks
-  `GodotSceneMarks`, uids `GodotUids`; the extension's `GodotNames` for the generated names and the strings Godot's
-  calls take, `GodotPaths` for `res://` in C#; an engine member's Godot name GodotSharp's own, read from the IL of its
-  `PropertyName`/`MethodName`/`SignalName` static constructors (`GodotSharpNames`), its class reference's address
-  `GodotDocs`; a string naming what the project's files define, an input action, group, animation, autoload, shader
-  parameter or translation, through the extension's `GodotKinds` and Workspace's `GodotDefinitions`, `GodotChecks.Named`
-  the one answer, a C# string naming a member of the node it is on `GodotChecks.Members` (both over `Told`), a GDScript
-  member's C# uses the extension's `GodotNameStrings`, a GDScript's own strings and words `GodotScriptStrings`, the
-  projects' strings scanned only through the extension's `GodotKinds.WritesAsync` (each document's kept per text
-  version), a scene with no C# checked against the engine's classes read from the found Godot's GodotSharp.dll
-  (`GodotEngineClasses`, `GodotChecks.EngineAnswers`), a GDScript member renamed in its script taking its connections
-  and C# strings along (`GodotScriptRenameAsync`); a project.godot of GDScript alone is a scene's project too
-  (`ProjectSession.GodotOf`; the C# service's `BuiltGodotOf` a C# project's only), so scene code reaches the scenes
-  through `AssistContext.GodotOf` (`GodotSceneIndex.GameOf`), and a GDScript's class is `GodotScenes.ChainOf` over
-  `GodotScriptDeclarations`, read from `GDScriptTree` (Godot's own parser, ported: members are runs between clean member
-  starts, `Reparse` parsing only the edited run), typed by `GDScriptAnalyzer` (Godot's analyzer, ported), the engine's
-  types from the found Godot's extension_api.json (`GodotEngineApi`, dumped once per version into the state's cache by
-  `GodotEngineApis`: `GodotEngineClasses` has no member types, and Object's `free` is in no dump; a warning only a newer
-  Godot gives gated on the dump's version, `GodotEngineApi.Version`), a node path typed from the scenes running the
-  script (`GDScriptProject.NodeAt`, `GodotScriptTypes.NodesOf`), else Node, its Godot warnings and errors
-  `GDScriptAnalysis.Findings` (as project.godot sets them, `GDScriptWarningSettings`) shown until Godot's server has
-  pushed the file's own (`WebDocument.ShowPassengers`), fixed by `GDScriptFixes` (several edits as one through
-  `EditorFix.Edits`), and a GDScript function's argument count answered only by `GodotScriptDeclared.Takes`, its names
-  coloured by `GDScriptAnalysis.Colours` through `ColourLayer` over the grammar, its Reformat Code `GDScriptFormatter`
-  (by the style guide's sections), refused unless `GDScriptFormatter.Differs` finds the same tokens, comments and tree,
-  wrapping only inside brackets (`GDScriptFormatter.Wrapping`), its options `GDScriptFormatSettings` (Settings › Code
-  Style › GDScript, a file's .editorconfig over each), reformat on save in `CodeAssist.BeforeSave`, Order Script's Parts
+  (`GodotSceneIndex`, which reads only what changed, `Unread`, its maps changed a file at a time, `Project.Take`, one
+  reading at a time, never a walk of every file on the window's thread; an autoload's file through its uid,
+  `GodotScenes.AutoloadFile`, never project.godot's text), the extension's `GodotCode`, `GodotChecks`, and `GodotAssist`
+  for `.tscn`/`.tres` (its marks `GodotSceneMarks`, uids `GodotUids`; the extension's `GodotNames` for the generated
+  names and the strings Godot's calls take, `GodotPaths` for `res://` in C#; an engine member's Godot name GodotSharp's
+  own, read from the IL of its `PropertyName`/`MethodName`/`SignalName` static constructors (`GodotSharpNames`), its
+  class reference's address `GodotDocs`; a string naming what the project's files define, an input action, group,
+  animation, autoload, shader parameter or translation, through the extension's `GodotKinds` and Workspace's
+  `GodotDefinitions`, `GodotChecks.Named` the one answer, a C# string naming a member of the node it is on
+  `GodotChecks.Members` (both over `Told`), a GDScript member's C# uses the extension's `GodotNameStrings`, a GDScript's
+  own strings and words `GodotScriptStrings`, the projects' strings scanned only through the extension's
+  `GodotKinds.WritesAsync` (each document's kept per text version), a scene with no C# checked against the engine's
+  classes read from the found Godot's GodotSharp.dll (`GodotEngineClasses`, `GodotChecks.EngineAnswers`), a GDScript
+  member renamed in its script taking its connections and C# strings along (`GodotScriptRenameAsync`); a project.godot
+  of GDScript alone is a scene's project too (`ProjectSession.GodotOf`; the C# service's `BuiltGodotOf` a C# project's
+  only), so scene code reaches the scenes through `AssistContext.GodotOf` (`GodotSceneIndex.GameOf`), and a GDScript's
+  class is `GodotScenes.ChainOf` over `GodotScriptDeclarations`, read from `GDScriptTree` (Godot's own parser, ported:
+  members are runs between clean member starts, `Reparse` parsing only the edited run), typed by `GDScriptAnalyzer`
+  (Godot's analyzer, ported), the engine's types from the found Godot's extension_api.json (`GodotEngineApi`, dumped
+  once per version into the state's cache by `GodotEngineApis`: `GodotEngineClasses` has no member types, and Object's
+  `free` is in no dump; a warning only a newer Godot gives gated on the dump's version, `GodotEngineApi.Version`), a
+  node path typed from the scenes running the script (`GDScriptProject.NodeAt`, `GodotScriptTypes.NodesOf`), else Node,
+  its Godot warnings and errors `GDScriptAnalysis.Findings` (a script that doesn't parse gives its parse errors alone)
+  (as project.godot sets them, `GDScriptWarningSettings`) shown until Godot's server has pushed the file's own
+  (`WebDocument.ShowPassengers`), fixed by `GDScriptFixes` (several edits as one through `EditorFix.Edits`), and a
+  GDScript function's argument count answered only by `GodotScriptDeclared.Takes`, its names coloured by
+  `GDScriptAnalysis.Colours` through `ColourLayer` over the grammar, its Reformat Code `GDScriptFormatter` (by the style
+  guide's sections), refused unless `GDScriptFormatter.Differs` finds the same tokens, comments and tree, wrapping only
+  inside brackets (`GDScriptFormatter.Wrapping`), its options `GDScriptFormatSettings` (Settings › Code Style ›
+  GDScript, a file's .editorconfig over each), reformat on save in `CodeAssist.BeforeSave`, Order Script's Parts
   `GDScriptFormatter.OrderParts`, never run by Reformat Code, its refactorings `GDScriptRefactorings` over
   `GodotScriptTypes.ProjectReadAsync` (made by `CodeActions.GDScriptRefactorAsync`, a use Passenger can't see refusing,
   `GDScriptUses.Unsure`; C#'s calls by a GDScript member's name come with their arguments after it, `GodotKindUse.Rest`,
