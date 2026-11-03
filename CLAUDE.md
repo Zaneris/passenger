@@ -145,7 +145,8 @@ App and the tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collecti
   TextPosition(line, character)`; the debugger's lines through `Debugging/BuiltLines`. MCP's places are the editor's.
 - **Writes go one way.** Every write of a file first passes `EditorArea.ClearAsync`, the one gate for what the person's
   Godot editor holds unsaved (`GodotHolds`; a person asked, an agent refused, `Refusals.HeldInGodot`), and `TrySave`
-  refuses a held file unless the save was explicit or the gate let that open file through once. A workspace file:
+  refuses a held file unless the save was explicit or the gate let that open file through once; a command that writes
+  files itself, outside its recording's writes, asks the gate first (`Recording.ClearAsync`). A workspace file:
   `FileText.Save` (atomic, through symlinks, permissions, Windows attributes, ACL and streams, macOS metadata, and
   Linux's extended attributes, ACL, owner and group where it may kept (`UnixFileMetadata`, `AtomicFile.Write`'s too), a
   file another hard link names written in place, a read-only file refused, Local History given the old bytes). A file
@@ -463,13 +464,16 @@ Projects in `src/`; `find_symbol` finds the rest:
   `.tpz` the person picks (`GodotExports.Install`; a test's named by `PASSENGER_TEST_GODOT_TEMPLATES`, into the run's
   own Godot folders), its page a view of its project.godot (`GodotProjectPages`, `GodotPageViewer`) over Workspace's
   readers, a launched game's remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (its value editors
-  `GodotValueCells`, an `ILiveValueCells`, from `GodotHints`; Keep `GodotKeep`; a run's errors pinned to lines
-  `GodotErrorPins` through `ErrorPinColumn`, its console folded `GodotConsoleFold`; a running game's member values at
-  their lines' ends `GodotLiveValues`, into `OpenDocument.LiveValues` through the helper's `values` call, members from
-  `GodotMembers`; `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`),
-  `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build under way waited out
-  first), `TogetherBuild`; on Windows a build's first step lets go of the Avalonia previewers holding its output
-  (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time (`ConsoleWritten`).
+  `GodotValueCells`, an `ILiveValueCells`, from `GodotHints`, over any `IGodotValues`: a running game's, or a scene's
+  node in the outline, `GodotSceneProperties` over `GodotSceneValues`, its engine defaults from `PassengerClasses.gd`
+  through `GodotEngineApis.ClassesAsync` and `GodotClassDefaults`, its exports `GodotMember.Inspected` for C# and
+  `GDScriptExports`; Keep `GodotKeep`; a run's errors pinned to lines `GodotErrorPins` through `ErrorPinColumn`, its
+  console folded `GodotConsoleFold`; a running game's member values at their lines' ends `GodotLiveValues`, into
+  `OpenDocument.LiveValues` through the helper's `values` call, members from `GodotMembers`; `ILiveTreeSource`,
+  `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's build skipped while
+  what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`; on Windows a build's
+  first step lets go of the Avalonia previewers holding its output (`BuildRunController.LettingGo`); a console's lines
+  are heard one stream at a time (`ConsoleWritten`).
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach, Restart
   and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time (`TakeStartAsync`);
   Stop ends every session and recording before the programs go. A project run's logs and traces go to a dashboard of its
