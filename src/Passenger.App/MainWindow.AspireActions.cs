@@ -76,7 +76,7 @@ public partial class MainWindow
         {
             if (Aspire.SelectedResource?.Source is { } source && Path.IsPathFullyQualified(source))
             {
-                OpenLink(new FileLink(source, new Passenger.Text.TextPosition(0, 0)));
+                GoToAspireSource(new FileLink(source, new Passenger.Text.TextPosition(0, 0)));
             }
         },
             _ => Aspire.SelectedResource?.Source is { } source && Path.IsPathFullyQualified(source) ? null : "No resource source is selected");

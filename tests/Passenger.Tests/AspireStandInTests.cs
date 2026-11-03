@@ -2025,6 +2025,106 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>A resource waiting for another says so in its Details, what it waits for and references each a link to that
+    /// resource, whose own Details name it back as waiting for it and referencing it, a link that leads back; as the
+    /// AppHost's relationships say, and as the other resource's state stands.</summary>
+    [AvaloniaFact]
+    public void A_resource_waiting_for_another_says_what_for_in_its_details_with_links_both_ways()
+    {
+        project.Reset();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        backend.PushResource(new Resource
+        {
+            Name = "web", DisplayName = "web", Uid = "web", ResourceType = "Project", State = "Waiting",
+            Relationships = { new ResourceRelationship { ResourceName = "cache", Type = "WaitFor" }, new ResourceRelationship { ResourceName = "cache", Type = "Reference" } },
+        });
+        backend.PushResource(new Resource { Name = "cache", DisplayName = "cache", Uid = "cache", ResourceType = "Container", State = "Starting" });
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            FindAction(window, "Show Aspire Resources");
+            Ui.WaitFor(() => window.Aspire.Rows.Count == 2, "both resources' rows");
+            Ui.Click(Words(Row(window, "web"), "web"));
+            Ui.Click(Tab(window, "Details"));
+            AspireDetailsPane details = window.AspireWindow.Details;
+            Ui.WaitFor(() => details.Resource?.Name == "web", "web's details");
+            Assert.Contains("Waiting for cache (starting)", DetailsWords(details));
+            Assert.Equal([("Waits for", "cache"), ("References", "cache")], RelatedLinks(details));
+
+            Ui.Click(details.GetVisualDescendants().OfType<Button>().First(button => button.Name == "aspireRelated"));
+            Ui.WaitFor(() => details.Resource?.Name == "cache" && window.Aspire.SelectedResource?.Name == "cache", "the link to choose cache and show its details");
+            Assert.Equal([("Waited for by", "web"), ("Referenced by", "web")], RelatedLinks(details));
+
+            Ui.Click(details.GetVisualDescendants().OfType<Button>().First(button => button.Name == "aspireRelated"));
+            Ui.WaitFor(() => details.Resource?.Name == "web", "the link back to web's details");
+            backend.PushResource(new Resource { Name = "cache", DisplayName = "cache", Uid = "cache", ResourceType = "Container", State = "Running" });
+            backend.PushResource(new Resource
+            {
+                Name = "web", DisplayName = "web", Uid = "web", ResourceType = "Project", State = "Running",
+                Relationships = { new ResourceRelationship { ResourceName = "cache", Type = "WaitFor" }, new ResourceRelationship { ResourceName = "cache", Type = "Reference" } },
+            });
+            Ui.WaitFor(() => !DetailsWords(details).Any(words => words.StartsWith("Waiting for", StringComparison.Ordinal)), "web's details to stop saying it waits once it runs");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
+    /// <summary>A JavaScript app the AppHost runs (npm in its own folder) is a row like any other: Open Aspire Resource Source
+    /// chooses its folder in the Explorer, its Details' source is that folder, and its row's Restart, the AppHost's own
+    /// command, restarts it.</summary>
+    [AvaloniaFact]
+    public void A_javascript_app_resource_goes_to_its_folder_and_restarts_from_its_row()
+    {
+        project.Reset();
+        string app = PathNames.Canonical(Directory.CreateDirectory(project.PathOf("frontend")).FullName);
+        File.WriteAllText(Path.Combine(app, "package.json"), "{ \"name\": \"frontend\", \"scripts\": { \"dev\": \"vite\" } }\n");
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        backend.PushResource(new Resource
+        {
+            Name = "frontend", DisplayName = "frontend", Uid = "frontend", ResourceType = "JavaScriptApp", State = "Running",
+            Urls = { new Url { EndpointName = "http", FullUrl = "http://localhost:5173/" } },
+            Properties =
+            {
+                new ResourceProperty { Name = "executable.path", Value = Google.Protobuf.WellKnownTypes.Value.ForString("npm") },
+                new ResourceProperty { Name = "executable.workDir", Value = Google.Protobuf.WellKnownTypes.Value.ForString(app) },
+            },
+            Commands = { new ResourceCommand { Name = "resource-restart", DisplayName = "Restart", State = ResourceCommandState.Enabled } },
+        });
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            FindAction(window, "Show Aspire Resources");
+            Ui.WaitFor(() => window.Aspire.Rows.Count == 1, "the JavaScript app's row");
+            Ui.Click(Words(Row(window, "frontend"), "frontend"));
+            Assert.Equal(app, window.Aspire.SelectedResource?.Source);
+            FindAction(window, "Open Aspire Resource Source");
+            Ui.WaitFor(() => window.ExplorerView.SelectedNodes.Any(node => node.Path is { } path && PathNames.Same(path, app)),
+                () => $"the Explorer to choose the app's folder (it chose {string.Join(", ", window.ExplorerView.SelectedNodes.Select(node => node.Path))})");
+
+            Ui.Choose(RowMenu(window, "frontend"), "Restart");
+            Ui.WaitFor(() => backend.Commands.Any(command => command is { ResourceName: "frontend", CommandName: "resource-restart" }), "the row's Restart to reach the AppHost");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
+    /// <summary>Every text the details show.</summary>
+    private static string[] DetailsWords(AspireDetailsPane details) => [.. details.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? string.Empty)];
+
+    /// <summary>The details' links to related resources, each with the words its row says it by.</summary>
+    private static (string Says, string Resource)[] RelatedLinks(AspireDetailsPane details) =>
+        [.. details.GetVisualDescendants().OfType<Button>().Where(button => button.Name == "aspireRelated").Select(button =>
+            (button.GetVisualAncestors().OfType<Grid>().First().Children.OfType<TextBlock>()
+                .FirstOrDefault(name => Grid.GetColumn(name) == 0 && Grid.GetRow(name) == Grid.GetRow(button))?.Text ?? "?", button.Content as string ?? "?"))];
+
     /// <summary>A resource's row's menu, opened by a right click on its name once a click has chosen it.</summary>
     private static ContextMenu RowMenu(MainWindow window, string name)
     {

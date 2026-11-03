@@ -506,7 +506,8 @@ public sealed partial class AspireInteractions
             properties[property.Name] = property.Value is null ? null : JsonDocumentValue(property.Value);
         }
         string? source = null;
-        foreach (string key in new[] { "project.path", "executable.path", "container.image" })
+        // A JavaScript or Python app runs a program (npm, python) from its own folder, which is its source.
+        foreach (string key in new[] { "project.path", "executable.workDir", "executable.path", "container.image" })
         {
             ResourceProperty? property = resource.Properties.FirstOrDefault(property => property.Name == key && !property.IsSensitive);
             if (property?.Value?.KindCase == Google.Protobuf.WellKnownTypes.Value.KindOneofCase.StringValue

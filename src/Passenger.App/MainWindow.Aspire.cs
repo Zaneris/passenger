@@ -67,6 +67,19 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>A resource's source gone to from the Aspire window: a folder (a JavaScript or Python app's, an executable's
+    /// working folder) chosen in the Explorer, in its Files view where no project holds it; a file opened.</summary>
+    private void GoToAspireSource(LinkTarget link)
+    {
+        if (link is FileLink { Path: { } folder } && Directory.Exists(folder))
+        {
+            ShowToolWindow(ToolWindowIds.Explorer);
+            Explorer.Locate(folder);
+            return;
+        }
+        OpenLink(link);
+    }
+
     /// <summary>The Aspire window's view over the session's model, as it is first shown: its actions bound once, and its
     /// showing and hiding followed by the session's display.</summary>
     private AspireView MakeAspire()
@@ -75,7 +88,7 @@ public partial class MainWindow
         view.BindActions(Actions, id => Request(id), RowMenuItem);
         view.RowChosen += (_, _) => lastServiceWindow = ToolWindowIds.Aspire;
         view.Browse = Browse;
-        view.LinkClicked += (_, link) => OpenLink(link);
+        view.LinkClicked += (_, link) => GoToAspireSource(link);
         view.AttachedToVisualTree += (_, _) => aspireDisplayChanged?.Invoke(this, EventArgs.Empty);
         view.DetachedFromVisualTree += (_, _) => aspireDisplayChanged?.Invoke(this, EventArgs.Empty);
         return view;

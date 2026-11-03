@@ -108,7 +108,7 @@ public sealed class AspireView : DockPanel, IDisposable
             }
         };
 
-        Details = new AspireDetailsPane(uri => Browse?.Invoke(uri), OpenFile);
+        Details = new AspireDetailsPane(uri => Browse?.Invoke(uri), OpenFile, name => this.model.ChooseNamed(name));
         Log = new MergedLog("aspireLogFind", consoleStatus);
         Log.Toggled += (_, _) => UpdateConsole(again: true);
         // A log's trace and a span's logs are the window's actions here, as its other buttons are.
@@ -289,7 +289,7 @@ public sealed class AspireView : DockPanel, IDisposable
             ResourceList.ScrollIntoView(chosen);
         }
         ShowEmpty();
-        Details.Show(model.SelectedResource, model.Chosen?.LeftUnstarted == true);
+        Details.Show(model.SelectedResource, model.Chosen?.LeftUnstarted == true, model.ResourceSnapshots);
     }
 
     /// <summary>What the window says of its AppHost and resources: beside the toolbar, and in the list's place while it is empty.</summary>

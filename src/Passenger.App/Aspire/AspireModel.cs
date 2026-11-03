@@ -284,6 +284,21 @@ public sealed class AspireModel : IDisposable
         Chose();
     }
 
+    /// <summary>The row of a resource chosen by its name (or the name it shows), as a link to it in another's details asks,
+    /// the list scrolled to it; nothing for a name no row has.</summary>
+    public void ChooseNamed(string name)
+    {
+        UiThread.Check();
+        if (disposed || ItemOf(name) is not { } item || item == chosen)
+        {
+            return;
+        }
+        chosen = item;
+        RowsChanged?.Invoke(this, true);
+        ResourceSelectionChanged?.Invoke(this, Selection);
+        StreamsDue?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>Opens or closes a row with rows under it, as its chevron does; a row it hides that was chosen gives its
     /// choice to the row closed.</summary>
     public void Toggle(AspireRow? row)

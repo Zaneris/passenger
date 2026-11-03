@@ -7,12 +7,13 @@ using Passenger.Core;
 
 namespace Passenger.App.Aspire;
 
-/// <summary>A resource's Details tab in the Aspire window: the resource (its type, state and health, its source, when it
-/// started and stopped), its health reports, its addresses (links to the browser), what it relates to, its environment
-/// and properties (a secret's value masked by <see cref="ContainerSecrets"/>' rule, one the AppHost marks sensitive
-/// whatever its name, and an argument it marks so whatever is before it) and its volumes. Read from the resource as the
-/// window last had it.</summary>
-public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open) : DetailsTables
+/// <summary>A resource's Details tab in the Aspire window: the resource (its type, state and health, what it waits for
+/// while it waits, its source, when it started and stopped), its health reports, its addresses (links to the browser),
+/// what it waits for and references and what waits for and references it (links to those resources, <paramref name="choose"/>),
+/// as the AppHost's model relates them, its environment and properties (a secret's value masked by <see cref="ContainerSecrets"/>'
+/// rule, one the AppHost marks sensitive whatever its name, and an argument it marks so whatever is before it) and its
+/// volumes. Read from the resources as the window last had them.</summary>
+public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open, Action<string> choose) : DetailsTables
 {
     /// <summary>The resource shown, or null.</summary>
     public AspireResource? Resource { get; private set; }
@@ -20,35 +21,46 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open) :
     /// <summary>Whether the resource shown was said left unstarted.</summary>
     private bool shownUnstarted;
 
+    /// <summary>What the other resources said of the one shown (<see cref="RelatedBy"/>) and the states of those it waits for, as shown.</summary>
+    private string shownRelated = string.Empty;
+
     /// <summary>Shows a resource's details, or says to choose one; one its run left unstarted (<paramref name="leftUnstarted"/>,
     /// as its configuration says Don't start) is Not started, never a failure. The resource shown already, which an AppHost's
     /// update that did not change it gives again, is left as it is, its tables never made again to find nothing changed.</summary>
-    public void Show(AspireResource? resource, bool leftUnstarted = false)
+    public void Show(AspireResource? resource, bool leftUnstarted = false, IReadOnlyList<AspireResource>? all = null)
     {
         UiThread.Check();
-        if (resource is not null && ReferenceEquals(resource, Resource) && leftUnstarted == shownUnstarted)
+        IReadOnlyList<AspireResource> others = all ?? [];
+        string related = resource is null ? string.Empty : Related(resource, others);
+        if (resource is not null && ReferenceEquals(resource, Resource) && leftUnstarted == shownUnstarted && related == shownRelated)
         {
             return;
         }
         Resource = resource;
         shownUnstarted = leftUnstarted;
+        shownRelated = related;
         if (resource is null)
         {
             Say("Choose a resource to see its state, health, addresses and environment");
             return;
         }
         // Shown again as each of the AppHost's updates comes: tables that show what they showed stay, a press on a link kept.
-        Show(() => Fill(resource, leftUnstarted));
+        Show(() => Fill(resource, leftUnstarted, others));
     }
 
-    private void Fill(AspireResource resource, bool leftUnstarted)
+    private void Fill(AspireResource resource, bool leftUnstarted, IReadOnlyList<AspireResource> others)
     {
         JsonElement data = resource.Data;
+        IReadOnlyList<(string Name, string Type)> own = Relations(resource);
         List<(string, Control)> about = [("Type", Words(JsonMembers.Text(data, "resourceType") ?? JsonMembers.Text(data, "type") ?? "Unknown"))];
         about.Add(("State", leftUnstarted ? State(AspireAppRun.NotStarted, null) : State(resource.State ?? "Unknown", Health(resource))));
         if (leftUnstarted)
         {
             about.Add(("Why", Words(AspireAppRun.NotStartedWhy, brush: TokenKeys.TextMuted)));
+        }
+        else if (resource.State == Waiting && WaitingFor(own, others) is { Length: > 0 } waiting)
+        {
+            about.Add(("Why", Words($"Waiting for {waiting}", brush: TokenKeys.TextMuted)));
         }
         if (resource.Source is { } source)
         {
@@ -85,9 +97,11 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open) :
         {
             Section("URLs", addresses);
         }
-        if (JsonMembers.Items(data, "relationships") is { Count: > 0 } relations)
+        List<(string, Control)> relationships = [.. own.Select(r => (Own(r.Type), (Control)ResourceLink(r.Name, others)))];
+        relationships.AddRange(RelatedBy(resource, others).Select(r => (Theirs(r.Type), (Control)ResourceLink(r.Name, others))));
+        if (relationships.Count > 0)
         {
-            Section("Relationships", [.. relations.Select(r => (JsonMembers.Text(r, "resourceName") ?? "?", (Control)Words(JsonMembers.Text(r, "type") ?? string.Empty)))]);
+            Section("Relationships", relationships);
         }
         if (JsonMembers.Properties(data, "environment") is { Count: > 0 } environment)
         {
@@ -109,6 +123,60 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open) :
                 $"{JsonMembers.Text(v, "mountType")} {JsonMembers.Text(v, "source")}{(JsonMembers.Bool(v, "isReadOnly") is true ? " (read-only)" : string.Empty)}".Trim())))]);
         }
     }
+
+    /// <summary>Aspire's state of a resource held until what it waits for is ready.</summary>
+    private const string Waiting = "Waiting";
+
+    /// <summary>The AppHost's kinds of relationship a resource has to another: it waits for it, references it, or is its child.</summary>
+    private const string WaitFor = "WaitFor";
+    private const string Reference = "Reference";
+    private const string ParentOf = "Parent";
+
+    /// <summary>What a resource says of those it relates to, by their names and the kind of each relationship.</summary>
+    private static IReadOnlyList<(string Name, string Type)> Relations(AspireResource resource) =>
+        [.. JsonMembers.Items(resource.Data, "relationships").Select(r => (JsonMembers.Text(r, "resourceName") ?? "?", JsonMembers.Text(r, "type") ?? string.Empty))];
+
+    /// <summary>What the other resources say of this one: each that relates to it, by the name it shows, with the kind.</summary>
+    private static IEnumerable<(string Name, string Type)> RelatedBy(AspireResource resource, IReadOnlyList<AspireResource> others) =>
+        others.Where(other => !ReferenceEquals(other, resource) && other.Name != resource.Name)
+            .SelectMany(other => Relations(other).Where(r => resource.IsNamed(r.Name)).Select(r => (other.DisplayName, r.Type)))
+            .Distinct();
+
+    /// <summary>Of those a resource waits for, the ones not yet running, each with its state; all of them where none says.</summary>
+    private static string WaitingFor(IReadOnlyList<(string Name, string Type)> own, IReadOnlyList<AspireResource> others)
+    {
+        List<(string Name, AspireResource? Resource)> waited = [.. own.Where(r => r.Type == WaitFor).Select(r => (r.Name, others.FirstOrDefault(o => o.IsNamed(r.Name))))];
+        List<string> unready = [.. waited.Where(w => w.Resource is not { State: "Running", HealthStatus: null or "Healthy" })
+            .Select(w => w.Resource?.State is { } state ? $"{w.Name} ({state.ToLowerInvariant()})" : w.Name)];
+        return Plural.Listed(unready.Count > 0 ? unready : [.. waited.Select(w => w.Name)]);
+    }
+
+    /// <summary>A key of what the details read beside the resource itself, so the others' change that alters it shows.</summary>
+    private static string Related(AspireResource resource, IReadOnlyList<AspireResource> others) =>
+        string.Join("\n", RelatedBy(resource, others).Select(r => $"{r.Name} {r.Type}")
+            .Concat(Relations(resource).Select(r => $"{r.Name} {others.FirstOrDefault(o => o.IsNamed(r.Name))?.State} {others.FirstOrDefault(o => o.IsNamed(r.Name))?.HealthStatus}")));
+
+    /// <summary>A relationship's words as the resource it is of says it.</summary>
+    private static string Own(string type) => type switch
+    {
+        WaitFor => "Waits for",
+        Reference => "References",
+        ParentOf => "Parent",
+        _ => type,
+    };
+
+    /// <summary>A relationship's words as the resource it names says it.</summary>
+    private static string Theirs(string type) => type switch
+    {
+        WaitFor => "Waited for by",
+        Reference => "Referenced by",
+        ParentOf => "Child",
+        _ => $"{type} of",
+    };
+
+    /// <summary>A link to a resource the AppHost runs, which chooses its row; words alone for a name no resource has.</summary>
+    private Control ResourceLink(string name, IReadOnlyList<AspireResource> others) =>
+        others.Any(o => o.IsNamed(name)) ? Link(name, $"Show {name}", () => choose(name), "aspireRelated") : Words(name);
 
     /// <summary>A resource's health as the lists show it (healthy, unhealthy, degraded), or null for one with no health
     /// report, as a container with no health check shows none (Aspire calls such a resource healthy once it runs).</summary>

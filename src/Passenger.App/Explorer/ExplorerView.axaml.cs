@@ -568,13 +568,13 @@ public partial class ExplorerView : UserControl
     /// <summary>A file or folder to choose once the Solution view shows it.</summary>
     private string? revealing;
 
-    /// <summary>Chooses a file's row and scrolls to it, as Select Opened File asks: in the Solution view, else in the Files
-    /// view, switched to, where only the folder holds it; false, the view left as it was, where neither shows it.</summary>
+    /// <summary>Chooses a file's or folder's row and scrolls to it, as Select Opened File asks: in the Solution view, else in
+    /// the Files view, switched to, where only the folder holds it; false, the view left as it was, where neither shows it.</summary>
     public bool Locate(string path)
     {
         string full = PathNames.Canonical(path);
         ExplorerNode? node = Tree.Reveal(full);
-        if (node is null && Tree.IsSolutionView && folder is not null && PathNames.IsUnder(full, folder) && File.Exists(full))
+        if (node is null && Tree.IsSolutionView && folder is not null && PathNames.IsUnder(full, folder) && (File.Exists(full) || Directory.Exists(full)))
         {
             Show(solutionView: false);
             node = Tree.Reveal(full);
