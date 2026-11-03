@@ -410,11 +410,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   typescript-language-server keeps a file's first `formattingOptions` answer while it runs, so each open file tells
   tsserver how it indents itself (`WebDocument`'s `configure`). A page's stylesheets' classes have one finder,
   `PageStylesheets` (links as the app serves them, packages' `_content` from project.assets.json or their own base path
-  (`RestoredVersions.All`), a `<base href>`'s path, `<style>` blocks (`PageLinks.StyleText`), a parent's `::deep` rules
-  in the components it renders, one on the web through `RemoteStylesheets` only while Settings allows, its copy
-  read-only), answered by `CssClassAssist` before the web languages. Razor forwards `_vs_onAutoInsert` to the client's
-  HTML only for `=`: a Razor file's `>` is Razor's own answer (one that comes after more typing written after it,
-  through an anchor on the asked place), its `</` closed over Razor's HTML (`LspDocument.RazorHtmlAsync`).
+  (`RestoredVersions.All`), a referenced project's from its evaluation (`PageStylesheets.ReferencedAsset`), a `<base
+  href>`'s path, `<style>` blocks (`PageLinks.StyleText`), a parent's `::deep` rules in the components it renders, one
+  on the web through `RemoteStylesheets` only while Settings allows, its copy read-only), answered by `CssClassAssist`
+  before the web languages. Razor forwards `_vs_onAutoInsert` to the client's HTML only for `=`: a Razor file's `>` is
+  Razor's own answer (one that comes after more typing written after it, through an anchor on the asked place), its `</`
+  closed over Razor's HTML (`LspDocument.RazorHtmlAsync`).
 - **Build and run.** A folder with no usable .NET SDK is `ProjectModels.MissingSdk`, said through `Refusals.NoSdk` and
   the window's banner (`DotnetWant`, `MainWindow.Dotnet`), an SDK a global.json chose that can't build a project through
   `DotnetWant.ChosenBy` and `Builders` (`ProjectModels.SdkAsked`, `GlobalJsonSdk`), its NETSDK1045 placed at global.json
@@ -497,15 +498,17 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **Tests window.** `TestFinder` (tests from code before any build), kept results across restarts `TestResultsState` (a
   method's code stamp `DeclaredTest.Code`; this session's results too, `TestNode.Standing`), `TestRunners`;
   `VsTestRunner` is the only file that knows VSTest's object model (VSTest starts a debugged .NET test host itself and
-  asks to attach, its launcher an `ITestHostLauncher3`: `LaunchTestHost` is never called for one); a Godot game's
-  GdUnit4 tests go through it with `GODOT_BIN` from `GodotTestRuns` (the person's own wins), its GUT tests read from
-  GDScript (`GutScripts`) and run by GUT's command line (`GutRunner`, `GutRuns`), a project not yet imported imported
-  headless first, as GUT needs Godot's class cache, its GoDotTest tests read from C# (`GoDotTests`) and run in the game
-  (`GoDotTestRunner`), their outcomes read from Godot's `--log-file`; a Godot test run is debugged as Debug starts the
-  game (`ITestDebugLauncher.DebugGameAsync`, `MainWindow.DebugTestGame`), Settings' Godot arguments given through
-  `GodotStart`, and GdUnit4's runner folder is build output (`IgnoredFolders.GdUnit4Runner`). A run from the editor, a
-  filter or the Explorer chooses its tests once its build has ended (`TestController.RunMatchingAsync`); the gutter
-  marks by name or by the runner's file and line (`DeclaredPlace`).
+  asks to attach, its launcher an `ITestHostLauncher3`: `LaunchTestHost` is never called for one; with Hot Reload on,
+  its run settings give the host the modifiable assemblies and the update handlers hook, one assembly at a time,
+  `UpdateHandlerHook.ForTestHost`, `TestHostReload`); a Godot game's GdUnit4 tests go through it with `GODOT_BIN` from
+  `GodotTestRuns` (the person's own wins), its GUT tests read from GDScript (`GutScripts`) and run by GUT's command line
+  (`GutRunner`, `GutRuns`), a project not yet imported imported headless first, as GUT needs Godot's class cache, its
+  GoDotTest tests read from C# (`GoDotTests`) and run in the game (`GoDotTestRunner`), their outcomes read from Godot's
+  `--log-file`; a Godot test run is debugged as Debug starts the game (`ITestDebugLauncher.DebugGameAsync`,
+  `MainWindow.DebugTestGame`), Settings' Godot arguments given through `GodotStart`, and GdUnit4's runner folder is
+  build output (`IgnoredFolders.GdUnit4Runner`). A run from the editor, a filter or the Explorer chooses its tests once
+  its build has ended (`TestController.RunMatchingAsync`); the gutter marks by name or by the runner's file and line
+  (`DeclaredPlace`).
 - **The rest.** `Packages` (every package change's one path, its files the project, its lock file and
   Directory.Packages.props, one command of Undo, put back when it fails; credentials only to their feed's host),
   `Workspace` (`SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`; a version
