@@ -33,16 +33,18 @@ public sealed class GodotUnseenTests : McpRig
     /// <summary>The generated configuration of the game.</summary>
     private const string Lonely = "Lonely";
 
-    /// <summary>An agent's own Passenger, started outside a test run (no PASSENGER_START), runs the game headless though
-    /// neither its configuration nor the Godot setting asks it to.</summary>
+    /// <summary>An agent's own Passenger, started outside a test run (no PASSENGER_START), runs the game with no window though
+    /// neither its configuration nor the Godot setting asks it to: headless, or on macOS through Godot's embedded display, a
+    /// background process whose frames reach no screen.</summary>
     [Fact]
-    public async Task An_agents_own_passenger_runs_a_godot_game_headless_though_nothing_it_was_given_says_so()
+    public async Task An_agents_own_passenger_runs_a_godot_game_with_no_window_though_nothing_it_was_given_says_so()
     {
         await using McpClient client = await Start(["--mcp", game], environment: new() { [McpProxy.StartVariable] = null, [GodotExecutables.Variable] = godot.Executable }, languageServer: false);
         await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["godotExecutable"] = godot.Executable } });
         JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Lonely, ["waitSeconds"] = 60 });
         IReadOnlyList<string> started = await godot.StartedAsync($"the game's start ({ran})");
-        Assert.True(started.Contains(GodotExecutables.Headless), $"The agent's own Passenger started Godot with a window, as {string.Join(' ', started)}");
+        string unseen = GodotExecutables.DrawsWithoutWindow("4.7.2") ? GodotExecutables.Embedded : GodotExecutables.Headless;
+        Assert.True(started.Contains(unseen), $"The agent's own Passenger started Godot with a window, as {string.Join(' ', started)}");
     }
 
     /// <summary>A screenshot, started outside a test run, whose agent runs the game: Godot is started headless, so no game

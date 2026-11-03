@@ -52,6 +52,20 @@ public static partial class GodotExecutables
     /// <summary>The flag that has Godot run with its dummy display and audio drivers: no window, nothing drawn or heard.</summary>
     public const string Headless = "--headless";
 
+    /// <summary>The flag that has Godot on macOS draw a game through its embedded display, the editor's Game view's, as a
+    /// background process with no window and no Dock icon of its own: what it draws reaches no screen.</summary>
+    public const string Embedded = "--embedded";
+
+    /// <summary>Whether a Godot of a version draws a game with no window on this system: macOS's embedded display, from
+    /// Godot 4.5; on Windows and Linux, no.</summary>
+    public static bool DrawsWithoutWindow(string? version) => OperatingSystem.IsMacOS() && version is not null && Numbers(version) >= new Version(4, 5);
+
+    /// <summary>The arguments that have a game Passenger is the debugger of draw through the embedded display at a size, no
+    /// sound heard: the display takes the window and process of the editor it would sit in, which Passenger's are.</summary>
+    public static IReadOnlyList<string> EmbeddedArguments(int width, int height) =>
+        [Embedded, "--wid", "1", "--editor-pid", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "--resolution", string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{width}x{height}"), "--audio-driver", "Dummy"];
+
     /// <summary>Whether Godot given these arguments runs headless: <see cref="Headless"/>, or the headless display driver.</summary>
     public static bool RunsHeadless(IReadOnlyList<string> arguments) =>
         arguments.Contains(Headless) || arguments.Zip(arguments.Skip(1)).Any(pair => pair is ("--display-driver", "headless"));

@@ -67,6 +67,13 @@ public static class PassengerApp
 
     private static bool headless;
 
+    /// <summary>Whether this Passenger is an agent's own (<c>--mcp</c>), whose Godot games draw where the system can draw them
+    /// with no window (<see cref="GodotExecutables.DrawsWithoutWindow"/>), so the agent sees their frames.</summary>
+    public static bool ForAgent { get; private set; }
+
+    /// <summary>The process serves an agent alone (<c>--mcp</c>), as it starts.</summary>
+    internal static void RunsForAgent() => ForAgent = true;
+
     /// <summary>The process runs on the headless platform, as <c>--mcp</c>, <c>--headless</c> and a screenshot choose it
     /// before their window is made.</summary>
     internal static void RunsHeadless() => headless = true;

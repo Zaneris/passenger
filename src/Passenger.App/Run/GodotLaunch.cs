@@ -116,10 +116,12 @@ public static class GodotLaunch
                 + "(Project Settings, Application, Run, Main Scene), or give one in the configuration's arguments (res://main.tscn)");
         }
         List<string> arguments = [.. Chosen(setting)?.Arguments ?? []];
-        // Nobody would see the game's window or the editor's: Godot runs headless, whatever the setting or the configuration say.
+        // Nobody would see its window: Godot runs headless, but an agent's own game draws where the system can with none, for its frames.
         if (unseen && !GodotExecutables.RunsHeadless([.. arguments, .. own]))
         {
-            arguments.Add(GodotExecutables.Headless);
+            arguments.AddRange(PassengerApp.ForAgent && !configuration.GodotEditor && GodotExecutables.DrawsWithoutWindow(version)
+                ? GodotExecutables.EmbeddedArguments(game.WindowSize.Width, game.WindowSize.Height)
+                : [GodotExecutables.Headless]);
         }
         arguments.AddRange(["--path", folder]);
         if (configuration.GodotEditor)

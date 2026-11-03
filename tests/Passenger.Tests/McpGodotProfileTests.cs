@@ -103,7 +103,7 @@ public sealed class GodotProfileGameFolder : IAsyncLifetime
 }
 
 /// <summary>Agents running a Godot project's %GODOT% launch profiles with GODOT unset, the Godot Settings names taking its
-/// place: each runs the game as Passenger's own Godot configuration does, headless with Passenger its remote debugger, its
+/// place: each runs the game as Passenger's own Godot configuration does, with no window and Passenger its remote debugger, its
 /// tree read through app_tree, GODOT given to the game, its own arguments kept and its --path given once; Debug stops it at
 /// a breakpoint in its script. Without a Godot 4 .NET build, each skips saying why.</summary>
 [Collection(Alone.Name)]
@@ -122,14 +122,16 @@ public sealed class McpGodotProfileTests : McpRig, IClassFixture<GodotProfileGam
     }
 
     [Fact]
-    public async Task A_profile_running_GODOT_on_the_project_runs_its_game_headless_with_the_remote_debugger_its_tree_read_and_debugs_it_to_a_breakpoint()
+    public async Task A_profile_running_GODOT_on_the_project_runs_its_game_with_no_window_and_the_remote_debugger_its_tree_read_and_debugs_it_to_a_breakpoint()
     {
         await using McpClient client = await Started();
         JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Game, ["waitSeconds"] = 180 });
         Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"The game ended as it started: {ran}");
         Assert.Contains("Passenger its remote debugger", ran.GetProperty("status").GetString(), StringComparison.Ordinal);
         string said = await Ready(client);
-        Assert.True(said.Contains("display [headless]", StringComparison.Ordinal), $"An agent's game did not run headless, so its window would be on the person's screen:\n{said}");
+        // Headless, or on macOS Godot's embedded display, whose frames reach no screen.
+        string unseen = GodotExecutables.DrawsWithoutWindow(game.Godot!.Version) ? "display [embedded]" : "display [headless]";
+        Assert.True(said.Contains(unseen, StringComparison.Ordinal), $"An agent's game did not run with no window, so it would be on the person's screen:\n{said}");
         Assert.False(said.Contains("GODOT []", StringComparison.Ordinal), $"The game was not given the GODOT its profile names:\n{said}");
         string tree = Text(await Call(client, McpTools.AppTree));
         Assert.True(tree.Contains("Main#Main @", StringComparison.Ordinal) && tree.Contains("Control#Ui @", StringComparison.Ordinal),

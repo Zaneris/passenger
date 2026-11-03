@@ -43,7 +43,7 @@ public class GodotProjectTests
 
             """;
         GodotProject project = GodotProject.Parse("/games/space", Text);
-        Assert.Equal(new GodotProject("/games/space", "Space \"Shooter\"", "uid://b8k2m3n4p5q6", "SpaceShooter"), project);
+        Assert.Equal(new GodotProject("/games/space", "Space \"Shooter\"", "uid://b8k2m3n4p5q6", "SpaceShooter") { WindowSize = (1280, 648) }, project);
     }
 
     [Fact]
@@ -80,5 +80,13 @@ public class GodotProjectTests
             "A scene was taken to use a script none of its external resources names, or not the one it names, so Godot's editor would open the wrong scene");
         Assert.True(GodotProject.IsScene("res://main.tscn") && GodotProject.IsScene("Level.SCN") && !GodotProject.IsScene("Main.cs"),
             "A scene was not told from a script by its extension");
+    }
+
+    [Fact]
+    public void A_games_window_size_is_its_override_else_its_viewports_else_Godots_default()
+    {
+        Assert.Equal((1152, 648), GodotProject.Parse("/game", "config_version=5\n\n[application]\n\nconfig/name=\"Game\"\n").WindowSize);
+        Assert.Equal((640, 360), GodotProject.Parse("/game", "[display]\n\nwindow/size/viewport_width=640\nwindow/size/viewport_height=360\n").WindowSize);
+        Assert.Equal((1280, 360), GodotProject.Parse("/game", "[display]\n\nwindow/size/viewport_width=640\nwindow/size/viewport_height=360\nwindow/size/window_width_override=1280\n").WindowSize);
     }
 }

@@ -229,6 +229,7 @@ public static partial class McpHost
     public static int RunStdio(LaunchOptions launch, Stream input)
     {
         PassengerApp.RunsHeadless();
+        PassengerApp.RunsForAgent();
         Stream output = Console.OpenStandardOutput();
         // Standard output is the protocol's alone, and standard error the agent may never read: the console goes to the log.
         IdeLog.TakeConsole();

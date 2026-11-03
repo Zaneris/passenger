@@ -30,9 +30,21 @@ public sealed record GodotProject(string Folder, string? Name, string? MainScene
     public static GodotProject Parse(string folder, string text)
     {
         Dictionary<string, string> values = Strings(text);
+        Dictionary<string, string> written = Values(text);
+        int Number(string key) => written.TryGetValue(key, out string? value) && int.TryParse(value.Trim(), System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out int number) && number > 0 ? number : 0;
+        int width = Number("display/window/size/window_width_override") is > 0 and int over ? over : Number("display/window/size/viewport_width");
+        int height = Number("display/window/size/window_height_override") is > 0 and int high ? high : Number("display/window/size/viewport_height");
         return new GodotProject(folder, values.GetValueOrDefault("application/config/name"), values.GetValueOrDefault("application/run/main_scene"),
-            values.GetValueOrDefault("dotnet/project/assembly_name"));
+            values.GetValueOrDefault("dotnet/project/assembly_name"))
+        {
+            WindowSize = (width > 0 ? width : 1152, height > 0 ? height : 648),
+        };
     }
+
+    /// <summary>The size its game's window opens at: the window's override where project.godot gives one, else its viewport's,
+    /// Godot's 1152 by 648 where it says neither.</summary>
+    public (int Width, int Height) WindowSize { get; init; } = (1152, 648);
 
     /// <summary>The scenes Godot's editor opens from its command line, as their extensions say.</summary>
     public static bool IsScene(string path) =>
