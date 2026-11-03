@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Microsoft.CodeAnalysis.CSharp;
+using Passenger.App.Run;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Text;
@@ -9,8 +10,9 @@ namespace Passenger.App;
 
 /// <summary>C# script templates for Godot's Attach Script dialog in the project's style (<see cref="GodotScriptTemplates"/>):
 /// written into its script_templates folder when the person asks, for the base classes they check, one command of Undo;
-/// and, where Passenger's templates there no longer fit the project's style (its .editorconfig, root namespace or C#
-/// version changed), offered once to write again, never written unasked.</summary>
+/// where Passenger's templates there no longer fit the project's style (its .editorconfig, root namespace or C# version
+/// changed), offered once to write again, never written unasked; and left out of the game's build again where Godot wrote
+/// its project anew.</summary>
 public partial class MainWindow
 {
     /// <summary>The style the folder's templates were last written in or offered for (<see cref="WorkspaceState.GodotTemplatesStyle"/>).</summary>
@@ -121,6 +123,54 @@ public partial class MainWindow
         KeepWorkspace();
         status.Say("Passenger's C# script templates for Godot no longer fit the project's style", null,
             new StatusPlace("write them again", () => Request(AppActions.GodotScriptTemplates)));
+    }
+
+    /// <summary>Whether the game's project is being given back its leaving out of the templates. A UI-thread field.</summary>
+    private bool leavingTemplatesOut;
+
+    /// <summary>Where Passenger's templates are in the Godot project and its C# project no longer leaves them out of its build
+    /// (Godot writes the project anew as it makes a C# script with no solution beside it), the line is added back, one command
+    /// of Undo, and the status bar says so.</summary>
+    private async Task LeaveGodotTemplatesOutAsync()
+    {
+        UiThread.Check();
+        if (leavingTemplatesOut || GodotCSharpProject() is not { GodotFolder: { } folder } project)
+        {
+            return;
+        }
+        leavingTemplatesOut = true;
+        try
+        {
+            bool taken = await BackgroundWork.Run(() => GodotScriptTemplates.Bases.Any(b => GodotScriptTemplates.PathOf(folder, b) is var path && File.Exists(path)
+                && FileText.Load(path)?.Text is { } text && GodotScriptTemplates.IsPassengers(text)) && !RemovesTemplates(project.Path));
+            if (!taken)
+            {
+                return;
+            }
+            string name = Path.GetFileName(project.Path);
+            string? refused = await ChangeFileAsync("Leave C# Script Templates Out of the Build", [project.Path],
+                () => ProjectEdits.RemoveCompiled(project.Path, GodotScriptTemplates.Excluded));
+            status.Say(refused is null
+                ? $"{name} was written again without leaving Passenger's C# script templates for Godot out of its build, so they are left out again"
+                : $"{name} builds Passenger's C# script templates for Godot as its own code, and they could not be left out again: {refused}", refused is null ? null : ProblemSeverity.Warning);
+        }
+        finally
+        {
+            leavingTemplatesOut = false;
+        }
+
+        // A project that cannot be read is no project to add to.
+        static bool RemovesTemplates(string project)
+        {
+            try
+            {
+                return ProjectEdits.RemovesCompiled(project, GodotScriptTemplates.Excluded);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return true;
+            }
+        }
     }
 
     private static string Stamp(GodotScriptStyle style) => style.ToString();

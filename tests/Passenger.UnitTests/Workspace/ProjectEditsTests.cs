@@ -122,7 +122,9 @@ public sealed class ProjectEditsTests : IDisposable
         Write("Game.csproj", Game);
         string project = Path.Combine(root, "Game.csproj");
 
+        Assert.False(ProjectEdits.RemovesCompiled(project, "script_templates/**"), "A removal under a condition was read as every build's");
         Assert.Null(ProjectEdits.RemoveCompiled(project, "script_templates/**"));
+        Assert.True(ProjectEdits.RemovesCompiled(project, "script_templates/**"), "The removal written was not read back");
         string removed = Game.Replace("""
               </ItemGroup>
             </Project>

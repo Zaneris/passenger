@@ -984,7 +984,8 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>C# script templates written for Godot in a project with a root namespace and file-scoped namespaces: Godot's own
     /// Attach Script dialog in a headless editor makes a Control's script from Passenger's template and attaches it to the
     /// scene's Ui, the script in the project's namespace as the project writes its C#, and the project builds with no warning;
-    /// the project's .editorconfig changed, the window offers to write them again, writing nothing until that is taken.</summary>
+    /// the project's .editorconfig changed, the window offers to write them again, writing nothing until that is taken; the
+    /// game's project written anew without leaving them out of its build, the window leaves them out again.</summary>
     [AvaloniaFact]
     public void Csharp_script_templates_for_godot_give_a_script_its_dialog_makes_the_projects_namespace_and_style()
     {
@@ -1030,6 +1031,16 @@ public sealed class GodotAddonTests : IDisposable
             window.StatusPlace!.Go();
             Ui.WaitFor(() => File.ReadAllText(template).Contains("\tpublic override void _Ready()", StringComparison.Ordinal),
                 () => $"the templates to be written again with tabs ({window.Status}):\n{File.ReadAllText(template)}", TimeSpan.FromMinutes(1));
+
+            // The project written anew without the line, as Godot writes it making a C# script with no solution beside it: the line comes back.
+            string excluded = "<Compile Remove=\"script_templates/**\" />";
+            string written = File.ReadAllText(csproj);
+            int group = written.LastIndexOf("<ItemGroup>", written.IndexOf(excluded, StringComparison.Ordinal), StringComparison.Ordinal);
+            int after = written.IndexOf("</ItemGroup>", group, StringComparison.Ordinal) + "</ItemGroup>".Length;
+            TestFolders.Write(folder, "Spinner.csproj", written[..group].TrimEnd(' ') + written[after..].TrimStart('\r', '\n'));
+            Ui.WaitFor(() => window.Status == "Spinner.csproj was written again without leaving Passenger's C# script templates for Godot out of its build, so they are left out again",
+                () => $"the templates to be left out of the build again ({window.Status}):\n{File.ReadAllText(csproj)}", TimeSpan.FromMinutes(1));
+            Assert.Equal(written, File.ReadAllText(csproj));
         }
         finally
         {

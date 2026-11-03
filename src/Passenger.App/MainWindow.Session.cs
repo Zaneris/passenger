@@ -406,6 +406,7 @@ public partial class MainWindow
                 ShowDotnet();
                 OfferGodotEditor();
                 IdeErrors.Observe(OfferGodotTemplatesAsync());
+                IdeErrors.Observe(LeaveGodotTemplatesOutAsync());
                 ListenForGodotEditors();
             }
         };
