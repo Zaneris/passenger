@@ -59,6 +59,13 @@ public static partial class GodotExecutables
     /// <summary>Whether a Godot of a version draws a game in another program's window given by <c>--wid</c>: from Godot 4.4.</summary>
     public static bool Embeds(string? version) => version is not null && Numbers(version) >= new Version(4, 4);
 
+    /// <summary>The flag that has Godot's editor run in its recovery mode: no editor plugin, tool script or GDExtension of the
+    /// project runs in it.</summary>
+    public const string RecoveryMode = "--recovery-mode";
+
+    /// <summary>Whether a Godot of a version has <see cref="RecoveryMode"/>: from Godot 4.5.</summary>
+    public static bool HasRecoveryMode(string? version) => version is not null && Numbers(version) >= new Version(4, 5);
+
     /// <summary>Whether a Godot of a version draws a game with no window on this system: macOS's embedded display, from
     /// Godot 4.5; on Windows and Linux, no.</summary>
     public static bool DrawsWithoutWindow(string? version) => OperatingSystem.IsMacOS() && version is not null && Numbers(version) >= new Version(4, 5);

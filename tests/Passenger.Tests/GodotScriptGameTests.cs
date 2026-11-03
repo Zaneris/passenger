@@ -12,10 +12,11 @@ namespace Passenger.Tests;
 
 /// <summary>A Godot 4 project of GDScript alone, a project.godot and its scenes and scripts with no C# project, as a person
 /// works on it: the game and Godot's editor are its run configurations and Build says there is nothing to build; Run starts
-/// its game; Debug is its GDScript session alone, a breakpoint in a script stopping it and a member set from Variables
-/// changing what it prints; a saved script reaches the game Run runs with Hot Reload; and Profile records Godot's own frames,
-/// saying the run has no samples, as Attach Profiler does; Debug takes the configuration's external console. Godot runs
-/// headless, its user folders the run's. Without a Godot 4 each test skips saying why. Debugged, so run alone.</summary>
+/// its game, importing its assets first where they have no .import; Debug is its GDScript session alone, a breakpoint in a
+/// script stopping it and a member set from Variables changing what it prints; a saved script reaches the game Run runs
+/// with Hot Reload; and Profile records Godot's own frames, saying the run has no samples, as Attach Profiler does; Debug
+/// takes the configuration's external console. Godot runs headless, its user folders the run's. Without a Godot 4 each
+/// test skips saying why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Game>
 {
@@ -81,6 +82,38 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
         finally
         {
             End(window);
+        }
+    }
+
+    /// <summary>Run of a game whose asset has no .import beside it, which a game cannot load, imports the project first: the
+    /// .import Passenger's headless editor made for the GDScript server is taken away from the project, and Run's import
+    /// makes it again for the game, which loads the asset.</summary>
+    [AvaloniaFact]
+    public void Run_of_a_game_whose_asset_has_no_import_file_imports_it_first_and_the_game_loads_it()
+    {
+        string icon = Path.Combine(PathNames.Canonical(game.Folder), "icon.svg");
+        File.WriteAllText(icon, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><rect width=\"16\" height=\"16\" fill=\"#478cbf\"/></svg>\n");
+        File.WriteAllText(TickerPath, "extends Node\n\n\nfunc _ready() -> void:\n\tprint(\"icon \", load(\"res://icon.svg\") != null)\n");
+        MainWindow window = Open();
+        try
+        {
+            Ui.WaitFor(() => Ui.Shared(IdeLog.PathOf(IdeLog.Ide)).Contains($"{icon}.import, which Godot's headless editor made, is taken away", StringComparison.Ordinal),
+                () => $"the .import the GDScript server's headless editor made beside icon.svg taken away ({(File.Exists(icon + ".import") ? "it is there" : "none is there")})",
+                TimeSpan.FromMinutes(2));
+            Assert.False(File.Exists(icon + ".import"), "The .import the headless editor made beside icon.svg was left in the project");
+
+            Choose(window);
+            Ui.Launched(window, window.RunAsync(), "the game's import and start", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => Run(window).Contains("icon ", StringComparison.Ordinal), () => $"the game to say whether it loaded its icon ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
+            Assert.Contains("icon true", Run(window), StringComparison.Ordinal);
+            Assert.True(File.Exists(icon + ".import"), "Run's import of the game's assets left no .import beside icon.svg for the game");
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+            File.Delete(icon);
+            File.Delete(icon + ".import");
         }
     }
 

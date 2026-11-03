@@ -171,12 +171,7 @@ public sealed class GutRunner : ITestRunner
     /// done, else why it failed.</summary>
     private static async Task<string?> ImportAsync(string godot, string folder, IReadOnlyDictionary<string, string> environment, Action<string>? log, CancellationToken cancel)
     {
-        ProcessStartInfo start = ChildProcesses.Command(godot, [GodotExecutables.Headless, "--path", folder, "--import"], folder);
-        foreach ((string name, string value) in environment)
-        {
-            start.Environment[name] = value;
-        }
-        ChildResult imported = await Godot.GodotScripts.PuttingBackAsync(folder, () => ChildProcesses.RunAsync(start, cancel: cancel));
+        ChildResult imported = await Godot.GodotScripts.ImportAsync(godot, [], folder, environment, Godot.GodotScripts.MadeFiles.None, cancel);
         if (imported.Succeeded)
         {
             return null;

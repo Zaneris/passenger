@@ -115,6 +115,16 @@ public static class GodotLaunch
             throw new LaunchException($"{configuration.Name} cannot run: its {GodotProject.FileName} names no main scene for the game to start in: choose one in Godot's editor "
                 + "(Project Settings, Application, Run, Main Scene), or give one in the configuration's arguments (res://main.tscn)");
         }
+        if (!configuration.GodotEditor && await BackgroundWork.Run(() => Godot.GodotScripts.Unimported(folder), cancel))
+        {
+            // A game loads only what Godot's editor imported, which a project never opened in it has not.
+            ChildResult imported = await Godot.GodotScripts.ImportAsync(found.Executable, Chosen(setting)?.Arguments ?? [], folder, environment, Godot.GodotScripts.MadeFiles.Uids, cancel);
+            if (!imported.Succeeded)
+            {
+                throw new LaunchException($"{configuration.Name} cannot run: Godot could not import {PathNames.Shown(folder, null)}'s assets, which the game loads as Godot's editor "
+                    + $"imports them (exit code {imported.ExitCode}): {ChildResult.FirstLineOf(imported.Error.Length > 0 ? imported.Error : imported.Output)}");
+            }
+        }
         List<string> arguments = [.. Chosen(setting)?.Arguments ?? []];
         // Nobody would see its window: Godot runs headless, but an agent's own game draws where the system can with none, for its frames.
         if (unseen && !GodotExecutables.RunsHeadless([.. arguments, .. own]))

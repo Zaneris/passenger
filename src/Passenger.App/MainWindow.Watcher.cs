@@ -42,6 +42,7 @@ public partial class MainWindow
             return;
         }
         session.LocalHistory?.Noticed(changes.Paths);
+        Godot.GodotScripts.FolderChanged(changes);
         session.DesignTimeBuilds.FolderChanged(changes);
         session.FilesChanged(changes);
         session.Debug.FilesChanged(changes.Paths);

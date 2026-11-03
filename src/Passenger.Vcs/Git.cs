@@ -1765,6 +1765,39 @@ public sealed partial class Git
         return ran with { Output = output ?? string.Empty };
     }
 
+    /// <summary>git's commands that write a work tree's files.</summary>
+    private static readonly HashSet<string> WorkTreeWriters = new(StringComparer.Ordinal)
+    {
+        "checkout", "switch", "restore", "reset", "merge", "rebase", "pull", "stash", "cherry-pick", "revert", "am", "apply", "rm", "mv", "clean",
+        "read-tree", "checkout-index", "submodule", "worktree",
+    };
+
+    /// <summary>How many of Passenger's git commands writing a work tree run now, and when the last one ended (a
+    /// <see cref="Stopwatch"/> timestamp).</summary>
+    private static int writingWorkTree;
+    private static long wroteWorkTree;
+
+    /// <summary>Whether a git command of Passenger's that writes a work tree's files (a checkout, a pull, a stash, a reset)
+    /// runs now or has ended since a <see cref="Stopwatch"/> timestamp: what changed meanwhile may be its.</summary>
+    public static bool WroteWorkTreeSince(long since) => Volatile.Read(ref writingWorkTree) > 0 || Volatile.Read(ref wroteWorkTree) >= since;
+
+    /// <summary>The command a git command line runs: its first word past the options before it (-c and -C take a value).</summary>
+    private static string? CommandOf(IReadOnlyList<string> arguments)
+    {
+        for (int i = 0; i < arguments.Count; i++)
+        {
+            if (arguments[i] is "-c" or "-C")
+            {
+                i++;
+            }
+            else if (!arguments[i].StartsWith('-'))
+            {
+                return arguments[i];
+            }
+        }
+        return null;
+    }
+
     /// <summary>Runs git to its end, the one way every call but a clone runs it: <paramref name="input"/> written to it, what
     /// it writes handed to <paramref name="read"/> as it comes (<see cref="ChildProcesses.RunAsync{T}"/>), and what it asks
     /// of the person going to <paramref name="asker"/>; canceled, it is ended with all it started (a fetch's upload-pack, a
@@ -1776,6 +1809,29 @@ public sealed partial class Git
     {
         // What git answers is what the window shows next (the branch, the bars, the log, a blame): a screenshot waits for it.
         using GitHold held = new();
+        bool writes = CommandOf(arguments) is { } command && WorkTreeWriters.Contains(command);
+        if (writes)
+        {
+            Interlocked.Increment(ref writingWorkTree);
+        }
+        try
+        {
+            return await RunStartedAsync(folder, arguments, read, input, environment, answers, cancel, asker, held);
+        }
+        finally
+        {
+            if (writes)
+            {
+                Volatile.Write(ref wroteWorkTree, Stopwatch.GetTimestamp());
+                Interlocked.Decrement(ref writingWorkTree);
+            }
+        }
+    }
+
+    private static async Task<(GitResult Result, T? Read)> RunStartedAsync<T>(string folder, IReadOnlyList<string> arguments, Func<Stream, Task<T>> read,
+        ReadOnlyMemory<byte> input, IReadOnlyDictionary<string, string>? environment, IReadOnlyCollection<int>? answers, CancellationToken cancel, GitAsker? asker,
+        GitHold held)
+    {
         if (await StartAsync(folder, arguments) is not { } start)
         {
             return (NotInstalled, default);

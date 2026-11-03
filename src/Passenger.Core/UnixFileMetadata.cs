@@ -5,7 +5,11 @@ namespace Passenger.Core;
 
 /// <summary>What a regular file on macOS or Linux has beside its bytes and mode: its owner and group, and how many names
 /// (hard links) it has.</summary>
-internal readonly record struct UnixFile(uint Owner, uint Group, uint Links);
+internal readonly record struct UnixFile(uint Owner, uint Group, uint Links)
+{
+    /// <summary>Its inode, which a file written in place keeps and one put in its place by a rename does not; 0 where unread.</summary>
+    public ulong Inode { get; init; }
+}
 
 /// <summary>What a macOS or Linux file keeps beside its bytes and mode, given to the file written to take its place as an
 /// edit in place would have kept it: its owner and group where the process may set them (another user's owner only for
@@ -18,6 +22,7 @@ internal static unsafe partial class UnixFileMetadata
     private const int AtWorkingFolder = -100;
     private const int NoFollow = 0x100;
     private const uint WantedStatus = 0x1 | 0x2 | 0x4 | 0x8 | 0x10;
+    private const uint WantedInode = 0x100;
     private const uint WantedType = 0x1;
     private const int TypeBits = 0xF000;
     private const int RegularFile = 0x8000;
@@ -35,7 +40,7 @@ internal static unsafe partial class UnixFileMetadata
         {
             try
             {
-                if (StatX(AtWorkingFolder, path, NoFollow, WantedStatus, status) != 0
+                if (StatX(AtWorkingFolder, path, NoFollow, WantedStatus | WantedInode, status) != 0
                     || (*(uint*)status & WantedStatus) != WantedStatus || (*(ushort*)(status + 28) & TypeBits) != RegularFile)
                 {
                     return null;
@@ -45,7 +50,7 @@ internal static unsafe partial class UnixFileMetadata
             {
                 return null;
             }
-            return new UnixFile(*(uint*)(status + 20), *(uint*)(status + 24), *(uint*)(status + 16));
+            return new UnixFile(*(uint*)(status + 20), *(uint*)(status + 24), *(uint*)(status + 16)) { Inode = (*(uint*)status & WantedInode) != 0 ? *(ulong*)(status + 32) : 0 };
         }
         if (!OperatingSystem.IsMacOS())
         {
@@ -56,7 +61,7 @@ internal static unsafe partial class UnixFileMetadata
         {
             return null;
         }
-        return new UnixFile(*(uint*)(status + 16), *(uint*)(status + 20), *(ushort*)(status + 6));
+        return new UnixFile(*(uint*)(status + 16), *(uint*)(status + 20), *(ushort*)(status + 6)) { Inode = *(ulong*)(status + 8) };
     }
 
     /// <summary>The type bits (S_IFMT's) of what a path names, links followed, read without opening it; null where nothing
