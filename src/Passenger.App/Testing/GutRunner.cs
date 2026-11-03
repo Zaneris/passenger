@@ -19,7 +19,7 @@ public sealed class GutRunner : ITestRunner
 
     /// <summary>Runs each project's tests in one run of GUT, a project at a time, outcomes told as each run ends.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
-        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, CancellationToken cancel = default)
+        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default)
     {
         RunSummary? summary = null;
         foreach (IGrouping<string, TestItem> project in tests.GroupBy(t => t.Project, StringComparer.Ordinal))
@@ -56,7 +56,7 @@ public sealed class GutRunner : ITestRunner
         {
             if (debugger is not null)
             {
-                Task ended = await debugger.DebugScriptsAsync(new TestHostStart(godot, arguments, folder, environment), folder, Leading);
+                Task ended = await debugger.DebugGameAsync(new TestHostStart(godot, arguments, folder, environment), folder, Leading, csharp: false);
                 await ended.WaitAsync(cancel);
                 if (!File.Exists(results))
                 {

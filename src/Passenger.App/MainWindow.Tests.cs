@@ -97,7 +97,7 @@ public partial class MainWindow
         tests.BeginAspireTest = (project, debug, cancel) => next.Aspire.BeginTestAsync(project, debug, cancel);
         tests.LaunchUnderDebugger = start => LaunchTestHost(next, start, testHosts);
         tests.AttachDebugger = processId => AttachTestHost(next, processId, testHosts);
-        tests.DebugScripts = (start, folder, leading) => DebugTestScripts(next, start, folder, leading, testHosts);
+        tests.DebugGame = (start, folder, leading, csharp) => DebugTestGame(next, start, folder, leading, csharp, testHosts);
         tests.EndDebugging = () => Task.WhenAll(testHosts.ToArray().Select(EndTestHost));
         async Task EndTestHost(DebugTab tab)
         {
@@ -353,43 +353,77 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>A Godot run of GUT's tests started under the GDScript debugger, Passenger listening for it as its remote
-    /// debugger, its breakpoints set from its start, in a Debug tab ended with the test run; done once its session is open,
-    /// with the run's end.</summary>
-    private async Task<Task> DebugTestScripts(ProjectSession running, Testing.TestHostStart start, string folder, int leading, HashSet<DebugTab> testHosts)
+    /// <summary>A Godot run of a project's tests (GUT's, GoDotTest's) started under the debugger as Debug starts its game,
+    /// Passenger listening for it as its remote debugger, the breakpoints in its scripts set from its start: a game of
+    /// GDScript alone under the GDScript debugger, which launches it; a C# game (<paramref name="csharp"/>) under .NET's,
+    /// its GDScript debugged beside it. In Debug tabs ended with the test run; done once its session is open, with the run's
+    /// end.</summary>
+    private async Task<Task> DebugTestGame(ProjectSession running, Testing.TestHostStart start, string folder, int leading, bool csharp, HashSet<DebugTab> testHosts)
     {
         CheckTestSession(running);
+        string? game = Passenger.Workspace.GodotProject.Read(folder)?.Name;
         LaunchPlan plan = new()
         {
-            Name = "GUT",
+            Name = csharp && game is not null ? $"{game} Tests" : "GUT",
             Program = start.FileName,
             Arguments = start.Arguments,
             Leading = leading,
             WorkingDirectory = folder,
             Environment = new Dictionary<string, string>(start.Environment),
             Godot = folder,
-            ScriptsAlone = true,
-            GameName = Passenger.Workspace.GodotProject.Read(folder)?.Name,
+            GodotUnseen = Unseen,
+            ScriptsAlone = !csharp,
+            GameName = game,
         };
         ShowToolWindow(ToolWindowIds.Debug);
-        (LaunchPlan listened, Godot.GodotGame? game) = running.Listened(plan, running.Debug.ScriptStart(folder));
-        if (game is null)
+        (LaunchPlan listened, Godot.GodotGame? listening) = running.Listened(plan, running.Debug.ScriptStart(folder));
+        if (listening is null)
         {
-            throw new InvalidOperationException("GUT's run is not a Godot game the GDScript debugger can listen for");
+            throw new InvalidOperationException("The tests' run is not a Godot game the debugger can listen for");
         }
-        if (await running.Debug.LaunchScriptsAsync(listened, game) is { } refused)
+        Debugging.DebugSession? debugged;
+        if (csharp)
         {
-            game.Dispose();
-            throw new InvalidOperationException(refused);
+            Debugging.DebugLaunch launched;
+            try
+            {
+                launched = await running.Debug.StartAdditionalAsync(listened, running.Tests.RunCancellation, tab => testHosts.Add(tab));
+            }
+            catch
+            {
+                listening.LetScriptsGo();
+                listening.Dispose();
+                throw;
+            }
+            debugged = launched.Tab.Session;
+            listening.Debugged = debugged;
+            Run.BuildRunController.EndsWithGame(listening);
+            if (await running.Debug.DebugScriptsAsync(listening, listened.Name) is null
+                && running.Debug.SessionNamed(Debugging.DebugController.ScriptsTab(listened.Name)) is { } scripts && running.Debug.TabOf(scripts) is { } scriptsTab)
+            {
+                testHosts.Add(scriptsTab);
+            }
+            else
+            {
+                listening.LetScriptsGo();
+            }
         }
-        Debugging.DebugSession? debugged = running.Debug.SessionNamed(listened.Name);
-        game.Debugged = debugged;
-        if (debugged is not null && running.Debug.TabOf(debugged) is { } tab)
+        else
         {
-            testHosts.Add(tab);
+            if (await running.Debug.LaunchScriptsAsync(listened, listening) is { } refused)
+            {
+                listening.Dispose();
+                throw new InvalidOperationException(refused);
+            }
+            debugged = running.Debug.SessionNamed(listened.Name);
+            listening.Debugged = debugged;
+            if (debugged is not null && running.Debug.TabOf(debugged) is { } tab)
+            {
+                testHosts.Add(tab);
+            }
         }
         Task ended = SessionEnd(debugged);
-        IdeErrors.Observe(DisposedOnceAsync(game, ended));
+        IdeErrors.Observe(DisposedOnceAsync(listening, ended));
         return ended;
 
         static async Task DisposedOnceAsync(Godot.GodotGame game, Task ended)

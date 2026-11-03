@@ -17,7 +17,7 @@ public sealed class TestFinder
     /// <summary>The test frameworks' own packages: a project referencing one holds tests, adapter or not.</summary>
     private static readonly HashSet<string> FrameworkPackages = new(StringComparer.OrdinalIgnoreCase)
     {
-        "xunit", "xunit.core", "xunit.v3", "xunit.v3.core", "NUnit", "MSTest", "MSTest.TestFramework", "gdUnit4.api",
+        "xunit", "xunit.core", "xunit.v3", "xunit.v3.core", "NUnit", "MSTest", "MSTest.TestFramework", "gdUnit4.api", GoDotTests.Package,
     };
 
     /// <summary>Closed files' reads by path, with the write time and length they were read at: a file read again only
@@ -110,7 +110,7 @@ public sealed class TestFinder
     }
 
     /// <summary>Whether a project holds tests: it says it is a test project or references a test adapter, or references
-    /// xUnit, NUnit, MSTest or GdUnit4 itself.</summary>
+    /// xUnit, NUnit, MSTest, GdUnit4 or GoDotTest itself.</summary>
     public static bool HoldsTests(ProjectModel project) =>
         project.Exists && (project.IsTestProject || project.Packages.Any(p => FrameworkPackages.Contains(p.Name)));
 

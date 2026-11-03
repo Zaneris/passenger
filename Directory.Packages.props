@@ -29,6 +29,13 @@
     <!-- Npgsql's provider of EF Core, at a version whose range holds EfCoreVersion, for the test of a compose run's
          Postgres. -->
     <NpgsqlEfVersion>10.0.3</NpgsqlEfVersion>
+    <!-- GoDotTest at its release for Godot 4.7.2, and what it depends on but Godot's own GodotSharp, downloaded for the
+         Godot tests' GoDotTest tests (tests/GodotGraphs): restored as a graph, nuget.org's GodotSharp would go into the
+         package cache under the version a Godot's own packages give a game, and fail the next locked restore of either. -->
+    <GoDotTestVersion>2.0.52</GoDotTestVersion>
+    <ChickensoftLogVersion>2.0.0</ChickensoftLogVersion>
+    <ChickensoftCollectionsVersion>3.2.1</ChickensoftCollectionsVersion>
+    <JetBrainsAnnotationsVersion>2026.2.0</JetBrainsAnnotationsVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Avalonia" Version="12.1.4" />

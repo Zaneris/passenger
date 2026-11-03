@@ -49,6 +49,7 @@
   </Folder>
   <Folder Name="/tests/GodotGraphs/">
     <Project Path="tests/GodotGraphs/GdUnit4/GodotGraphs.GdUnit4.csproj" />
+    <Project Path="tests/GodotGraphs/GoDotTest/GodotGraphs.GoDotTest.csproj" />
   </Folder>
   <Folder Name="/tests/EfGraphs/">
     <Project Path="tests/EfGraphs/Npgsql/EfGraphs.Npgsql.csproj" />

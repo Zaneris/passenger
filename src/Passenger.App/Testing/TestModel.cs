@@ -219,9 +219,10 @@ public interface ITestDebugLauncher
     /// <summary>Attaches the debugger to a test host the runner started; true once the debugger has hold of it.</summary>
     Task<bool> AttachAsync(int processId);
 
-    /// <summary>Starts a Godot run of a project's GDScript tests (GUT's) under the GDScript debugger, the debugger's own
-    /// arguments after the first <paramref name="leading"/>; done once it has started, with the run's end.</summary>
-    Task<Task> DebugScriptsAsync(TestHostStart start, string folder, int leading);
+    /// <summary>Starts a Godot run of a project's tests (GUT's, GoDotTest's) under the debugger as Debug starts its game: its
+    /// GDScript under the GDScript debugger, and its C# under .NET's where the game has C# (<paramref name="csharp"/>), the
+    /// debugger's own arguments after the first <paramref name="leading"/>; done once it has started, with the run's end.</summary>
+    Task<Task> DebugGameAsync(TestHostStart start, string folder, int leading, bool csharp);
 }
 
 /// <summary>What finds and runs a folder's tests: VSTest's vstest.console (<see cref="VsTestRunner"/>), Microsoft.Testing.Platform's
@@ -237,9 +238,10 @@ public interface ITestRunner : IDisposable
     Task<IReadOnlyList<TestItem>> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default);
 
     /// <summary>Runs tests it discovered, their outcomes told a batch at a time as they come; under the debugger when a
-    /// launcher is given, and with these variables in the test hosts' environment.</summary>
+    /// launcher is given, with these variables in the test hosts' environment, and a Godot it starts started as
+    /// <paramref name="godot"/> says.</summary>
     Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
-        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, CancellationToken cancel = default);
+        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default);
 }
 
 /// <summary>How a run ended: how long its tests took, and whether it was stopped or broke off.</summary>

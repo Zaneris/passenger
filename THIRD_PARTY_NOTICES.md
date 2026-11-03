@@ -227,6 +227,9 @@ Packages the build or the tests use that no app carries.
 | `SQLitePCLRaw.config.e_sqlite3` | SQLite's configuration for EF Core 11's SQLite provider, restored for the tests' local feed (tests/EfGraphs) | Apache-2.0 | Copyright 2014-2026 SourceGear, LLC |
 | `gdUnit4.api`, `gdUnit4.test.adapter` | GdUnit4's API and its VSTest adapter: the graph of the GdUnit4 tests the Godot tests write into a game, restored for the tests' package cache (tests/GodotGraphs); Passenger never carries them | MIT | © 2026 Mike Schulze |
 | `GodotSharp` | Godot's C# API at the version GdUnit4's API names, restored for the tests' package cache (tests/GodotGraphs); a test's game takes the Godot found's own | MIT | Copyright (c) Godot Engine contributors |
+| `Chickensoft.GoDotTest` | GoDotTest, the test runner inside a Godot C# game, which the Godot tests write into a game: downloaded for the tests' package cache (tests/GodotGraphs); Passenger never carries it | MIT | © 2023 Chickensoft |
+| `Chickensoft.Log`, `Chickensoft.Collections` | GoDotTest's dependencies, downloaded for the tests' package cache (tests/GodotGraphs) | MIT | © 2025 Chickensoft |
+| `JetBrains.Annotations` | GoDotTest's dependency, downloaded for the tests' package cache (tests/GodotGraphs) | MIT | Copyright (c) 2016-2025 JetBrains s.r.o. |
 | `Mono.Cecil` | GdUnit4's dependency, restored for the tests' package cache (tests/GodotGraphs) | MIT | no copyright line; its author: Jb Evain |
 | `Microsoft.TestPlatform.AdapterUtilities` | GdUnit4's adapter's dependency, restored for the tests' package cache (tests/GodotGraphs) | MIT | © Microsoft Corporation. All rights reserved. |
 | `SQLite` | SQLite's native builds under EF Core 11's SQLite provider, restored for the tests' local feed (tests/EfGraphs) | public domain (the package's LICENSE.txt: "SQLite is Public Domain", https://sqlite.org/copyright.html) | Copyright 2014-2026 SourceGear, LLC (the package's builds) |

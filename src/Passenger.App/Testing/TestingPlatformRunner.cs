@@ -99,7 +99,7 @@ public sealed class TestingPlatformRunner : ITestRunner
     /// launcher is given) with the environment given; their outcomes told a notification at a time as they come. Canceled,
     /// the test host is asked to stop and given a moment, then ended, keeping the outcomes of what had run.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
-        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, CancellationToken cancel = default)
+        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default)
     {
         RunSummary summary = new(TimeSpan.Zero, false, false, null);
         foreach (IGrouping<string, (TestItem Test, Found Node)> assembly in tests

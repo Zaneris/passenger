@@ -182,7 +182,7 @@ public sealed class VsTestRunner : ITestRunner
     /// project's run settings run with them, the environment given set in the test hosts VSTest starts as the settings'
     /// EnvironmentVariables are.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
-        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, CancellationToken cancel = default)
+        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default)
     {
         // xUnit gives a test the same id in each target framework's assembly: its assembly tells them apart.
         Dictionary<(Guid, string), TestItem> running = [];

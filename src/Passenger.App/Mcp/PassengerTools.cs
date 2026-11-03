@@ -1351,8 +1351,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.TestsRun, Title = "Run unit tests", Destructive = true), Description(
         "Builds and runs the unit tests, or those whose full name contains filter, as the Unit Tests window does, each project " +
-        "by the runner its build asks for (Microsoft Testing Platform for xUnit v3, MSTest's runner and TUnit; VSTest for the " +
-        "rest). With debug, under the debugger: a stop in a test comes back, and debug_continue goes on. Returns the tally and " +
+        "by the runner its build asks for (Microsoft Testing Platform for xUnit v3, MSTest's runner and TUnit; a Godot game's GUT " +
+        "and GoDotTest in Godot; VSTest for the rest). With debug, under the debugger: a stop in a test comes back, and debug_continue goes on. Returns the tally and " +
         "every failure with its message and stack trace.")]
     public Task<TestRunInfo> TestsRun(
         string? filter = null,

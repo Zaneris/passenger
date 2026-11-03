@@ -93,12 +93,14 @@
     <AssemblyMetadata Include="NpgsqlEfVersion" Value="$(NpgsqlEfVersion)" />
   </ItemGroup>
 
-  <!-- The package graph of the GdUnit4 tests the Godot tests write (tests/GodotGraphs), in the package cache before they
-       run, and its versions for the game's project file (GdUnit4Tests). -->
+  <!-- The package graphs of the GdUnit4 and GoDotTest tests the Godot tests write (tests/GodotGraphs), in the package
+       cache before they run, and their versions for the game's project file (GdUnit4Tests, GoDotTestTests). -->
   <ItemGroup>
     <ProjectReference Include="../GodotGraphs/GdUnit4/GodotGraphs.GdUnit4.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../GodotGraphs/GoDotTest/GodotGraphs.GoDotTest.csproj" ReferenceOutputAssembly="false" />
     <AssemblyMetadata Include="GdUnit4ApiVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'gdUnit4.api')->'%(Version)')" />
     <AssemblyMetadata Include="GdUnit4AdapterVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'gdUnit4.test.adapter')->'%(Version)')" />
+    <AssemblyMetadata Include="GoDotTestVersion" Value="$(GoDotTestVersion)" />
   </ItemGroup>
 
   <!-- VSTest's SDK and xunit's adapter at the versions this project restores, for the VSTest project TestFramesTests make

@@ -5,28 +5,35 @@ namespace Passenger.App.Testing;
 
 /// <summary>What a Godot project's tests run with: GdUnit4's adapter starts the tests that need the engine on the Godot its
 /// test host's GODOT_BIN names, which is the one Passenger runs the game on unless the person names their own (in the IDE's
-/// environment, a launch profile or the run settings), and Godot keeps its user folders where a test gives them.</summary>
+/// environment, a launch profile or the run settings), and Godot keeps its user folders where a test gives them. Every
+/// framework's Godot takes the arguments Settings gives each start of it (<see cref="GodotStart"/>).</summary>
 public static class GodotTestRuns
 {
     /// <summary>The variable GdUnit4's adapter takes Godot's executable from.</summary>
     public const string BinaryVariable = "GODOT_BIN";
 
-    /// <summary>The variables a Godot project's test hosts are given, the user folders a test gives Godot among them: GODOT_BIN
-    /// naming any Godot 4 found, which runs GUT's GDScript; and why none would run GdUnit4's C# where it would not. A worker's:
-    /// finding Godot reads the disk and the login shell's PATH.</summary>
-    public static (IReadOnlyDictionary<string, string> Variables, string? NoCSharp) Variables(string? setting, IReadOnlyDictionary<string, string> userFolders)
+    /// <summary>What a Godot project's test hosts are given: the variables, the user folders a test gives Godot among them
+    /// and GODOT_BIN naming any Godot 4 found, which runs GUT's GDScript; why none would run C# where it would not; and how
+    /// each Godot a run starts is started.</summary>
+    public sealed record Given(IReadOnlyDictionary<string, string> Variables, string? NoCSharp, GodotStart Start);
+
+    /// <summary>What a Godot project's test hosts are given (<see cref="Given"/>), Godot shown in a window only where
+    /// <paramref name="windowed"/> asks and someone sees Passenger. A worker's: finding Godot reads the disk and the login
+    /// shell's PATH.</summary>
+    public static Given Variables(string? setting, IReadOnlyDictionary<string, string> userFolders, bool windowed = false)
     {
         Dictionary<string, string> variables = new(userFolders, StringComparer.Ordinal);
+        GodotStart start = new(GodotLaunch.Chosen(setting)?.Arguments ?? [], windowed && !PassengerApp.ShowsNoWindow);
         if (Environment.GetEnvironmentVariable(BinaryVariable) is { Length: > 0 })
         {
-            return (variables, null);
+            return new Given(variables, null, start);
         }
         GodotFound? found = GodotLaunch.Found(setting);
         if (found is { WhyNotScripts: null })
         {
             variables[BinaryVariable] = found.Executable;
         }
-        return (variables, found is { WhyNot: null } ? null : $"GdUnit4's tests that need Godot's engine cannot run: {found?.WhyNot ?? GodotLaunch.NotFound}");
+        return new Given(variables, found is { WhyNot: null } ? null : $"GdUnit4's tests that need Godot's engine cannot run: {found?.WhyNot ?? GodotLaunch.NotFound}", start);
     }
 
     /// <summary>A test project's environment with the Godot variables it does not set itself.</summary>
@@ -43,4 +50,17 @@ public static class GodotTestRuns
         }
         return merged;
     }
+}
+
+/// <summary>How a test run starts Godot: the arguments Settings gives each start of it, ahead of the project's, and whether
+/// the tests GUT and GoDotTest run in a game show its window (the person asked, and someone sees Passenger), else it runs
+/// headless.</summary>
+public sealed record GodotStart(IReadOnlyList<string> Arguments, bool Windowed)
+{
+    /// <summary>A start with no arguments of the setting's, headless.</summary>
+    public static readonly GodotStart Headless = new([], false);
+
+    /// <summary>The arguments ahead of the project's for GUT's and GoDotTest's Godot: the setting's, then --headless unless
+    /// it shows a window or they run it headless already.</summary>
+    public IReadOnlyList<string> Leading => Windowed || GodotExecutables.RunsHeadless(Arguments) ? Arguments : [.. Arguments, GodotExecutables.Headless];
 }

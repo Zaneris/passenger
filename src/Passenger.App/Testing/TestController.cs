@@ -54,7 +54,7 @@ public sealed class TestController : IAsyncDisposable
         this.projects = projects;
         this.workspaceModel = workspaceModel;
         this.log = log;
-        this.startRunner = startRunner ?? ((workspace, _) => Task.FromResult<ITestRunner>(new TestRunners(workspace)));
+        this.startRunner = startRunner ?? ((workspace, _) => Task.FromResult<ITestRunner>(new TestRunners(workspace, declared: Declared)));
         Finder.Changed += (_, found) =>
         {
             code = found;
@@ -135,9 +135,9 @@ public sealed class TestController : IAsyncDisposable
     /// (not running, no CLI), or the <see cref="EngineVariables.DockerHost"/> of its current context, for a test host that has none set.</summary>
     public Func<CancellationToken, Task<(string? Problem, string? DockerHost)>>? ContainerEngine { get; set; }
 
-    /// <summary>Asks before a run of a Godot project's tests what its test hosts are given (<see cref="GodotTestRuns.Variables"/>),
-    /// on a worker.</summary>
-    public Func<CancellationToken, Task<(IReadOnlyDictionary<string, string> Variables, string? Missing)>>? GodotVariables { get; set; }
+    /// <summary>Asks before a run of a Godot project's tests what its test hosts are given and how its Godot starts
+    /// (<see cref="GodotTestRuns.Variables"/>), on a worker.</summary>
+    public Func<CancellationToken, Task<GodotTestRuns.Given>>? GodotVariables { get; set; }
 
     /// <summary>The folders of the workspace's Godot projects, whose GDScript GUT's tests may be in.</summary>
     public Func<IReadOnlyList<string>> GodotFolders { get; init; } = () => [];
@@ -145,8 +145,9 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>A test to debug: the debugger launches the test host the runner gives and says what process it is.</summary>
     public Func<TestHostStart, Task<int>>? LaunchUnderDebugger { get; set; }
 
-    /// <summary>A Godot run of GUT's tests to debug: the GDScript debugger starts it (<see cref="ITestDebugLauncher.DebugScriptsAsync"/>).</summary>
-    public Func<TestHostStart, string, int, Task<Task>>? DebugScripts { get; set; }
+    /// <summary>A Godot run of GUT's or GoDotTest's tests to debug: the debugger starts it as Debug starts its game
+    /// (<see cref="ITestDebugLauncher.DebugGameAsync"/>).</summary>
+    public Func<TestHostStart, string, int, bool, Task<Task>>? DebugGame { get; set; }
 
     /// <summary>A test to debug in a test host the runner started itself: the debugger attaches to it, true once it has.</summary>
     public Func<int, Task<bool>>? AttachDebugger { get; set; }
@@ -325,9 +326,10 @@ public sealed class TestController : IAsyncDisposable
             HashSet<string> csharp = [.. projects().Where(p => p.GodotFolder is not null && !p.IsScriptGame).Select(p => p.Path).Where(p => tests.Any(t => t.Project == p))];
             HashSet<string> games = [.. csharp, .. tests.Where(t => t.Framework == GutScripts.Framework).Select(t => t.Project)];
             IReadOnlyDictionary<string, string> godot = new Dictionary<string, string>();
+            GodotStart? godotStart = null;
             if (games.Count > 0 && GodotVariables is { } godotOf)
             {
-                (godot, string? noCSharp) = await godotOf(stop.Token);
+                (godot, string? noCSharp, godotStart) = await godotOf(stop.Token);
                 if (noCSharp is not null && csharp.Count > 0)
                 {
                     log(noCSharp);
@@ -387,6 +389,7 @@ public sealed class TestController : IAsyncDisposable
                         log: UiThread.Marshal(log),
                         debugger: debug ? new DebugLauncher(this) : null,
                         environment: group.First().Environment,
+                        godot: godotStart,
                         cancel: stop.Token);
                     summary = summary is null ? part : summary.And(part);
                 }
@@ -618,8 +621,10 @@ public sealed class TestController : IAsyncDisposable
             Forget(workspace);
         }
         IReadOnlyList<ProjectModel> tests = [.. projects().Where(p => p.Exists && p.IsTestProject)];
-        List<ProjectModel> guts = [.. Finder.Projects.Where(p => p.IsScriptGame)];
-        if (tests.Count == 0 && guts.Count == 0)
+        // GUT's tests, of each Godot project carrying GUT (its project.godot), and GoDotTest's, of each C# game carrying it.
+        List<(ProjectModel Project, string Framework)> declaring = [.. Finder.Projects.Where(p => p.IsScriptGame).Select(p => (p, GutScripts.Framework)),
+            .. Finder.Projects.Where(p => !p.IsTestProject && GoDotTests.Carried(p)).Select(p => (p, GoDotTests.Framework))];
+        if (tests.Count == 0 && declaring.Count == 0)
         {
             sources = new(StringComparer.Ordinal);
             Load();
@@ -670,20 +675,23 @@ public sealed class TestController : IAsyncDisposable
             next[project.Key] = sources.TryGetValue(project.Key, out IReadOnlyList<TestSource>? was)
                 && was.Select(s => (s.Framework, s.Tests)).SequenceEqual(now.Select(s => (s.Framework, s.Tests))) ? was : now;
         }
-        // GUT's tests are the code's, told as found by GUT's runner.
-        foreach (ProjectModel gut in guts)
+        // GUT's and GoDotTest's tests are the code's, told as found by their runners.
+        foreach ((ProjectModel project, string framework) in declaring)
         {
-            List<TestItem> found = [.. (code.GetValueOrDefault(gut.Path) ?? CodeTests.None).Tests.Select(t => t with { Framework = GutScripts.Framework })];
-            next[gut.Path] = sources.TryGetValue(gut.Path, out IReadOnlyList<TestSource>? was) && was is [{ } known] && known.Tests.SequenceEqual(found)
-                ? was : [new TestSource(GutScripts.Framework, found)];
+            List<TestItem> found = [.. Declared(project.Path).Select(t => t with { Framework = framework })];
+            next[project.Path] = sources.TryGetValue(project.Path, out IReadOnlyList<TestSource>? was) && was is [{ } known] && known.Tests.SequenceEqual(found)
+                ? was : [new TestSource(framework, found)];
         }
         sources = next;
         Load();
-        int count = built.Sum(a => discovered[a.Path].Tests.Count) + guts.Sum(g => next[g.Path][0].Tests.Count);
-        int projectCount = built.Select(a => a.Project).Distinct().Count() + guts.Count;
+        int count = built.Sum(a => discovered[a.Path].Tests.Count) + declaring.Sum(d => next[d.Project.Path][0].Tests.Count);
+        int projectCount = built.Select(a => a.Project).Distinct().Count() + declaring.Count;
         Message?.Invoke(this, $"Found {Plural.Of(count, "test")} in {Plural.Of(projectCount, "project")}");
         return null;
     }
+
+    /// <summary>The tests a project's code declares as last read, by its path.</summary>
+    private IReadOnlyList<TestItem> Declared(string project) => (code.GetValueOrDefault(project) ?? CodeTests.None).Tests;
 
     /// <summary>The test projects' assemblies, from MSBuild once for these projects as the folder last read them.</summary>
     private async Task<IReadOnlyList<TestAssembly>> Assemblies(IReadOnlyList<ProjectModel> tests, string workspace, CancellationToken cancel)
@@ -755,8 +763,8 @@ public sealed class TestController : IAsyncDisposable
                 })
                 : throw new InvalidOperationException("No debugger can start the test host");
 
-        public Task<Task> DebugScriptsAsync(TestHostStart start, string folder, int leading) =>
-            owner.DebugScripts is { } debug
+        public Task<Task> DebugGameAsync(TestHostStart start, string folder, int leading, bool csharp) =>
+            owner.DebugGame is { } debug
                 ? UiThread.InvokeAsync<Task>(() =>
                 {
                     if (!IsCurrent)
@@ -764,9 +772,9 @@ public sealed class TestController : IAsyncDisposable
                         return Task.FromCanceled<Task>(new CancellationToken(canceled: true));
                     }
                     owner.ReleaseWork();
-                    return debug(start, folder, leading);
+                    return debug(start, folder, leading, csharp);
                 })
-                : throw new InvalidOperationException("No debugger can start GUT's run");
+                : throw new InvalidOperationException("No debugger can start the game's tests");
 
         public Task<bool> AttachAsync(int processId) =>
             owner.AttachDebugger is { } attach

@@ -2155,7 +2155,7 @@ public sealed partial class BuildRunController
     /// Problems until the next launch of its kind.</summary>
     /// <summary>A debugged Godot game's session is shown ended as the game ends, its connection and then its process gone,
     /// whatever its debugger is still doing.</summary>
-    private static void EndsWithGame(Godot.GodotGame game)
+    internal static void EndsWithGame(Godot.GodotGame game)
     {
         if (game.Debugged is not { } debugged)
         {

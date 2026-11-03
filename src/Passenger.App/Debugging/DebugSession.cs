@@ -111,6 +111,9 @@ public sealed class DebugSession
     /// <summary>The adapter said the program ended: with its exit code, or (attached, where none can be known) without.</summary>
     private bool programEnded;
 
+    /// <summary>The program was heard gone other than from the adapter (<see cref="ProgramGone"/>).</summary>
+    private bool goneHeard;
+
     /// <summary>The adapter's one disconnect, once asked: nothing more is asked of it, since it may go before answering.</summary>
     private Task? disconnected;
 
@@ -578,15 +581,16 @@ public sealed class DebugSession
     }
 
     /// <summary>The program has gone, heard other than from the adapter (a Godot game's connection, then its process, ended):
-    /// the session is shown ended at once and the adapter asked to end, as when it says so itself, so an adapter slow to go
-    /// leaves no program shown running.</summary>
+    /// the session is shown ended at once and the adapter asked to end, as when it says so itself, so an adapter slow to go,
+    /// or one that said the program exited and never that its debugging ended, leaves no program shown running.</summary>
     public void ProgramGone()
     {
         UiThread.Check();
-        if (State == DebugState.Ended || programEnded)
+        if (State == DebugState.Ended || goneHeard)
         {
             return;
         }
+        goneHeard = true;
         programEnded = true;
         IdeErrors.Observe(StopAsync());
     }
