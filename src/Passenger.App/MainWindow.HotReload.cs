@@ -47,6 +47,7 @@ public partial class MainWindow
             : buildRun.WatchesHotReload ? null
             : RunXamlEdited ? null
             : buildRun.IsRunning && session.RunPlan is { GodotEditor: true } editor ? GodotEditorRunsWithout(editor.Name)
+            : ScriptsReloadAsSaved() is { } saved ? saved
             : buildRun.IsRunning ? $"This program runs without Hot Reload: Run it with Hot Reload on ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)}), or Debug it"
             : $"Nothing runs: Debug the program, or Run it with Hot Reload on ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)})", ("Run", 0, 9));
         // What dotnet watch says from now is of the save, not of the one followed.
@@ -268,6 +269,14 @@ public partial class MainWindow
 
     /// <summary>Why Apply Hot Reload Changes cannot run, as the action says it, or null.</summary>
     internal string? WhyNoHotReload() => actions!.WhyNot(AppActions.ApplyHotReloadChanges, actions.Context());
+
+    /// <summary>What Apply Hot Reload Changes says where Godot reloads a game's GDScript as each file is saved, there being
+    /// nothing else to apply: the chosen debugged game's GDScript session (<see cref="DebugController.ReloadedAsSaved"/>), or a
+    /// game of GDScript alone Run runs with Hot Reload. Null for anything else.</summary>
+    internal string? ScriptsReloadAsSaved() => session.Debug.Running.Count > 0 ? null
+        : session.Debug.HotReload is not null || session.Debug.IsDebugging ? session.Debug.ReloadedAsSaved
+        : buildRun.IsRunning && session.RunPlan is { ScriptsAlone: true, GodotEditor: false } scripts && session.Games.Any(g => g.Name == scripts.Name && g.ReloadsScripts)
+            ? DebugController.ScriptsReloadAsSaved(scripts.Name) : null;
 
     /// <summary>The restart for edits Hot Reload could not apply, as an agent asks it: never the question, which is the
     /// person's; <paramref name="running"/> for the services of a container run with Hot Reload, else the program debugged.</summary>

@@ -376,10 +376,25 @@ public sealed class DebugController : IDisposable
         ?? (Reloaded!.Session!.State == DebugState.Starting ? StillStarting
         : Reloaded.App?.Xaml is { Changed: true } ? null
         : Reloaded.Session.Engine == DebugEngine.WebAssembly ? BrowserReload
-        : hotReload is null ? (Reloaded.Session.Attached
-            ? "Hot Reload applies changes to a program the debugger launched, not to one it attached to"
-            : $"This program was launched with Hot Reload when debugging off ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)})")
+        : hotReload is null ? (Reloaded.Session.Engine == DebugEngine.GDScript ? ReloadedAsSaved ?? LaunchedWithout
+            : Reloaded.Session.Attached ? "Hot Reload applies changes to a program the debugger launched, not to one it attached to"
+            : LaunchedWithout)
         : hotReload.WhyNot);
+
+    /// <summary>Why a program launched with Settings' Hot Reload while debugging off takes no changes.</summary>
+    private static string LaunchedWithout => $"This program was launched with Hot Reload when debugging off ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)})";
+
+    /// <summary>Whether the Godot game a GDScript session debugs reloads each of its scripts as it is saved (its start took
+    /// Hot Reload): the window's games answer.</summary>
+    public Func<DebugSession, bool> ReloadsScripts { get; init; } = _ => false;
+
+    /// <summary>What Apply Changes says of the chosen game's GDScript session where Godot reloads each script as it is saved:
+    /// there is nothing else to apply. Null for any other session, or one whose game takes no saved script.</summary>
+    public string? ReloadedAsSaved => NotLive() is null && Reloaded is { HotReload: null, Session: { Engine: DebugEngine.GDScript } scripts } tab && ReloadsScripts(scripts)
+        ? ScriptsReloadAsSaved(tab.Name) : null;
+
+    /// <summary>What Apply Changes says of a game whose GDScript Godot reloads as each file is saved.</summary>
+    public static string ScriptsReloadAsSaved(string name) => $"Godot reloads each GDScript file of {name} in the game as it is saved, with nothing else to apply";
 
     /// <summary>Why the debugger in the browser applies no Hot Reload changes.</summary>
     public const string BrowserReload = "Hot Reload of a Blazor app's WebAssembly half comes through dotnet watch's browser refresh, not the debugger in the browser: "

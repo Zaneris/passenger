@@ -35,7 +35,8 @@ public sealed partial class PassengerTools
         }
         if (window.WhyNoHotReload() is { } why)
         {
-            throw new InvalidOperationException($"Hot Reload cannot apply changes: {why}");
+            return why == window.ScriptsReloadAsSaved() ? new HotReloadInfo("nothingToApply", why, [], [], 0, [], false, false)
+                : throw new InvalidOperationException($"Hot Reload cannot apply changes: {why}");
         }
         // The window's Apply Hot Reload Changes, its restarts made as the agent asks (else as Settings say) and never asked.
         DebugSession? before = debugger.Session;
