@@ -36,6 +36,9 @@ public sealed record GDScriptType(GDScriptTypeKind Kind, string Name)
     /// <summary>An enum's values by name.</summary>
     public IReadOnlyDictionary<string, long>? Values { get; init; }
 
+    /// <summary>Whether a script enum's values are only partly known, one written as more than a number.</summary>
+    public bool ValuesPartial { get; init; }
+
     /// <summary>For an enum, the class it belongs to: the engine class, or the script class.</summary>
     public string? Owner { get; init; }
 

@@ -21,7 +21,11 @@ public class GDScriptWarningsTests
               { "name": "+", "right_type": "int", "return_type": "int" }] },
             { "name": "float", "operators": [{ "name": "/", "right_type": "int", "return_type": "float" }, { "name": "/", "right_type": "float", "return_type": "float" }] },
             { "name": "String", "operators": [] }, { "name": "Array", "methods": [] }, { "name": "Callable", "methods": [] },
-            { "name": "Signal", "methods": [{ "name": "emit", "return_type": "void" }] }
+            { "name": "Signal", "methods": [{ "name": "emit", "return_type": "void" }] },
+            { "name": "Vector2", "members": [{ "name": "x", "type": "float" }] }, { "name": "Vector2i", "members": [{ "name": "x", "type": "int" }] },
+            { "name": "Dictionary", "methods": [] },
+            { "name": "PackedVector2Array", "indexing_return_type": "Vector2", "methods": [{ "name": "size", "return_type": "int", "is_const": true },
+              { "name": "clear", "return_type": "void", "is_const": false }] }
           ],
           "classes": [
             { "name": "Object", "methods": [{ "name": "emit_signal", "return_value": { "type": "enum::Error" } }, { "name": "connect", "return_value": { "type": "enum::Error" } },
@@ -29,7 +33,7 @@ public class GDScriptWarningsTests
             { "name": "RefCounted", "inherits": "Object" },
             { "name": "Node", "inherits": "Object", "methods": [{ "name": "get_node", "return_value": { "type": "Node" } }, { "name": "_ready", "is_virtual": true }],
               "properties": [{ "name": "name", "type": "StringName" }] },
-            { "name": "Node2D", "inherits": "Node" }, { "name": "Resource", "inherits": "RefCounted" }, { "name": "Script", "inherits": "Resource" },
+            { "name": "Node2D", "inherits": "Node" }, { "name": "Line2D", "inherits": "Node2D", "properties": [{ "name": "points", "type": "PackedVector2Array" }] }, { "name": "Resource", "inherits": "RefCounted" }, { "name": "Script", "inherits": "Resource" },
             { "name": "GDScript", "inherits": "Script" }
           ]
         }
@@ -133,12 +137,55 @@ public class GDScriptWarningsTests
         "6 SHADOWED_VARIABLE: The local variable \"a\" is shadowing an already-declared variable at line 1 in the current class.")]
     // Object's free, which no dump of the API lists, and a script's constant read through a constant typed GDScript (runtime/features/metatypes.gd).
     [InlineData("class MyClass:\n\tconst TEST = 10\n\nfunc test():\n\tvar node: Node = Node.new()\n\tnode.free()\n\tconst ClassNoMeta: GDScript = MyClass\n\tvar b := ClassNoMeta.TEST\n\tprint(b)\n")]
+    // analyzer/warnings/confusable_capture_reassignment.gd.
+    [InlineData("var member := 1\n\nfunc test():\n\tvar number := 1\n\tvar string := \"1\"\n\tvar vector := Vector2i(1, 0)\n\tvar array_assign := [1]\n"
+        + "\tvar array_index := [1]\n\tvar dictionary := { x = 0 }\n\n\tvar lambda := func ():\n\t\tmember = 2\n\t\tnumber = 2\n\t\tstring += \"2\"\n\t\tvector.x = 2\n"
+        + "\t\tarray_assign = [2]\n\t\tarray_index[0] = 2\n\t\tdictionary.x = 2\n\n\t\tprint(member, number, string, vector, array_assign, array_index, dictionary)\n\n"
+        + "\tlambda.call()\n\tprint(member, number, string, vector, array_assign, array_index, dictionary)\n",
+        "13 CONFUSABLE_CAPTURE_REASSIGNMENT: Reassigning lambda capture does not modify the outer local variable \"number\".",
+        "14 CONFUSABLE_CAPTURE_REASSIGNMENT: Reassigning lambda capture does not modify the outer local variable \"string\".",
+        "15 CONFUSABLE_CAPTURE_REASSIGNMENT: Reassigning lambda capture does not modify the outer local variable \"vector\".",
+        "16 CONFUSABLE_CAPTURE_REASSIGNMENT: Reassigning lambda capture does not modify the outer local variable \"array_assign\".")]
+    // analyzer/warnings/confusable_temporary_modification.gd, its native property's half and the custom property's.
+    [InlineData("class TestNativeProperty extends Line2D:\n\tfunc _ready() -> void:\n\t\tpoints = PackedVector2Array([Vector2()])\n\t\tpoints[0] = Vector2()\n"
+        + "\t\tpoints[0].x = 2.0\n\t\tvar _size := points.size()\n\t\tpoints.clear()\n\t\tvar _clear_callable := points.clear\n\t\tvar base: TestNativeProperty = self\n"
+        + "\t\tbase.points[0] = Vector2()\n\t\tbase.points.clear()\n\nclass TestCustomProperty extends Node:\n\tvar points: PackedVector2Array\n\n\tfunc _ready() -> void:\n"
+        + "\t\tpoints[0] = Vector2()\n\t\tpoints.clear()\n\t\tvar base: TestCustomProperty = self\n\t\tbase.points.clear()\n\nfunc test():\n\tpass\n",
+        "4 CONFUSABLE_TEMPORARY_MODIFICATION: The built-in property \"points\" will not be modified in the assignment chain. Consider using a temporary variable and assigning it back instead, or check the \"Line2D\" class for a specialized API.",
+        "5 CONFUSABLE_TEMPORARY_MODIFICATION: The built-in property \"points\" will not be modified in the assignment chain. Consider using a temporary variable and assigning it back instead, or check the \"Line2D\" class for a specialized API.",
+        "7 CONFUSABLE_TEMPORARY_MODIFICATION: The built-in property \"points\" will not be modified as a result of calling the method \"clear()\". Consider assigning the desired value to the property instead, or check the \"Line2D\" class for a specialized API.",
+        "8 CONFUSABLE_TEMPORARY_MODIFICATION: The built-in property \"points\" will not be modified as a result of calling the method \"clear()\". Consider assigning the desired value to the property instead, or check the \"Line2D\" class for a specialized API.",
+        "10 CONFUSABLE_TEMPORARY_MODIFICATION: The built-in property \"points\" will not be modified in the assignment chain. Consider using a temporary variable and assigning it back instead, or check the \"Line2D\" class for a specialized API.",
+        "11 CONFUSABLE_TEMPORARY_MODIFICATION: The built-in property \"points\" will not be modified as a result of calling the method \"clear()\". Consider assigning the desired value to the property instead, or check the \"Line2D\" class for a specialized API.")]
+    // analyzer/warnings/cast_enum_bad_enum.gd and cast_enum_bad_int.gd, and none where an enum's value is more than a number.
+    [InlineData("enum MyEnum { ENUM_VALUE_1, ENUM_VALUE_2 }\nenum MyOtherEnum { OTHER_ENUM_VALUE_1, OTHER_ENUM_VALUE_2, OTHER_ENUM_VALUE_3 }\n\nfunc test():\n"
+        + "\tprint(MyOtherEnum.OTHER_ENUM_VALUE_3 as MyEnum)\n\tprint(2 as MyEnum)\n\tprint(1 as MyEnum)\n",
+        "5 INT_AS_ENUM_WITHOUT_MATCH: Cannot cast 2 as Enum \"main.gd.MyEnum\": no enum member has matching value.",
+        "6 INT_AS_ENUM_WITHOUT_MATCH: Cannot cast 2 as Enum \"main.gd.MyEnum\": no enum member has matching value.")]
+    [InlineData("const BASE = 4\nenum Flags { A = BASE, B }\n\nfunc test():\n\tprint(5 as Flags)\n")]
+    // A script that does not parse gives its errors alone, as Godot's analyzer never runs on it.
+    [InlineData("func test():\n\tvar unused = 1\n\tvar = 2\n", "3 ERROR: Expected variable name after \"var\".")]
     [InlineData("func test():\n\tprint(\"warn\")\n\nfunc get(_property: StringName) -> Variant:\n\treturn null\n",
         "4 NATIVE_METHOD_OVERRIDE: The method \"get()\" overrides a method from native class \"Object\". This won't be called by the engine and may not work as expected.")]
     public void Godots_own_test_scripts_give_the_warnings_their_expected_output_says(string script, params string[] expected)
     {
         (_, IReadOnlyList<GDScriptFinding> found) = Read(script);
         Assert.Equal(expected, Lines(script, found));
+    }
+
+    /// <summary>analyzer/warnings/non_tool_extends_tool.gd and its _ignored.gd: a class extending a tool script by path, by
+    /// class_name or by an autoload's name, no tool itself; none for a tool script or one ignoring it.</summary>
+    [Fact]
+    public void A_class_extending_a_tool_script_without_being_one_is_missing_tool_however_it_names_it()
+    {
+        GDScriptTree tool = GDScriptTree.Parse("@tool\nextends Node\n");
+        Func<string, GDScriptTree?> others = p => p == "res://base.gd" ? tool : null;
+        string script = "extends \"./base.gd\"\n\nclass InnerClass extends \"./base.gd\":\n\tpass\n\nfunc test():\n\tpass\n";
+        string message = "The base class script has the \"@tool\" annotation, but this script does not have it.";
+        Assert.Equal([$"1 MISSING_TOOL: {message}", $"3 MISSING_TOOL: {message}"], Lines(script, Read(script, others: others).Found));
+        string ignored = "@warning_ignore(\"missing_tool\")\nextends \"./base.gd\"\n\n@warning_ignore(\"missing_tool\")\nclass InnerClass extends \"./base.gd\":\n\tpass\n";
+        Assert.Empty(Read(ignored, others: others).Found);
+        Assert.Empty(Read("@tool\n" + script, others: others).Found);
     }
 
     [Fact]

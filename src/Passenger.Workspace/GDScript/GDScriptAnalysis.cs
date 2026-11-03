@@ -154,6 +154,11 @@ public sealed class GDScriptAnalysis
             return [];
         }
         List<GDScriptFinding> found = [.. Tree.Errors.Select(e => new GDScriptFinding(e.Start, e.End, null, e.Message))];
+        if (found.Count > 0)
+        {
+            // Godot's analyzer runs only on a script that parses, and its warnings are given only once it has.
+            return found;
+        }
         bool silenced = settings.Silences(Path);
         int[] lines = LineStarts(Tree.Text);
         Dictionary<string, HashSet<int>>? ignored = null;

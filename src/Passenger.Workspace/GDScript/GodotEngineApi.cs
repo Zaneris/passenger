@@ -10,6 +10,9 @@ public sealed record GodotApiMethod(string Name, string Returns, IReadOnlyList<(
 {
     /// <summary>Whether a script's class overriding it is what the engine calls (<c>_ready</c>), as the dump's is_virtual says.</summary>
     public bool IsVirtual { get; init; }
+
+    /// <summary>Whether it leaves the value it is called on as it was, as the dump's is_const says.</summary>
+    public bool IsConst { get; init; }
 }
 
 /// <summary>An enum of Godot's API with its values by name.</summary>
@@ -212,6 +215,7 @@ public sealed class GodotEngineApi
         return new GodotApiMethod(Text(method, "name") ?? string.Empty, returns, parameters, required, Flag(method, "is_vararg"), Flag(method, "is_static"))
         {
             IsVirtual = Flag(method, "is_virtual"),
+            IsConst = Flag(method, "is_const"),
         };
     }
 

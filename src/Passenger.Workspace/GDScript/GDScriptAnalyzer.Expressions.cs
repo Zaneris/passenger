@@ -53,6 +53,10 @@ public sealed partial class GDScriptAnalyzer
                 GDScriptType innerType = new(GDScriptTypeKind.Class, inner.Identifier.Name) { Class = inner, Script = context.Analysis.Path, Offset = context.Offset };
                 Paint(context, inner.Identifier, GDScriptColour.Class);
                 PaintExtends(inner, context);
+                if (analysis.Tree is { } own)
+                {
+                    MissingTool(inner, own, analysis.Path, context.Offset, context);
+                }
                 foreach (GDScriptNode innerMember in inner.Members)
                 {
                     Walk(analysis, innerMember, context with { Class = innerType });
@@ -90,7 +94,7 @@ public sealed partial class GDScriptAnalyzer
 
     private void WalkFunction(GDScriptFunction function, Context context)
     {
-        Scope scope = new(context.Scope);
+        Scope scope = new(context.Scope) { Function = true };
         Context inside = context with { Scope = scope, Function = function };
         if (context.Analysis.Tree is not null)
         {
@@ -385,6 +389,7 @@ public sealed partial class GDScriptAnalyzer
                 {
                     Warn(context, attribute, "UNSAFE_PROPERTY_ACCESS", named.Name, owner.Name);
                 }
+                TemporaryModification(null, attribute, context);
                 return attribute.Attribute is { } name ? Attribute(owner, name, context) : GDScriptType.Variant;
             case GDScriptSubscript subscript:
                 GDScriptType indexed = Reduce(subscript.Base, context);
@@ -426,6 +431,11 @@ public sealed partial class GDScriptAnalyzer
                 if (!castType.IsVariant && (operandType.IsVariant || !operandType.Hard))
                 {
                     Warn(context, cast, "UNSAFE_CAST", castType.ToString());
+                }
+                if (castType is { Kind: GDScriptTypeKind.Enum, Values: { } castValues, ValuesPartial: false } && cast.Operand is { } castOperand
+                    && EnumConstant(castOperand, context) is long castValue && !castValues.Values.Contains(castValue))
+                {
+                    Warn(context, castOperand, "INT_AS_ENUM_WITHOUT_MATCH", "cast", castValue.ToString(System.Globalization.CultureInfo.InvariantCulture), castType.ToString());
                 }
                 return castType;
             case GDScriptTypeTest test:
@@ -795,6 +805,7 @@ public sealed partial class GDScriptAnalyzer
                 {
                     Warn(context, call, "UNSAFE_METHOD_ACCESS", method.Name, owner.Name);
                 }
+                TemporaryModification(null, attribute, context);
                 context.Analysis.Types[method] = GDScriptType.Builtin("Callable");
                 GDScriptType called = MethodCall(owner, method, context);
                 if (owner.Kind is not GDScriptTypeKind.Variant)
@@ -866,6 +877,8 @@ public sealed partial class GDScriptAnalyzer
             assigned.Usages--;
         }
         GDScriptType target = Reduce(assignment.Assignee, context);
+        CaptureReassignment(assignment, context);
+        TemporaryModification(assignment, assignment.Assignee, context);
         if (target is { Hard: true, Kind: GDScriptTypeKind.Builtin, Name: "int" } && value is { Kind: GDScriptTypeKind.Builtin, Name: "float" } && assignment.Value is { } narrowed)
         {
             Warn(context, narrowed, "NARROWING_CONVERSION");

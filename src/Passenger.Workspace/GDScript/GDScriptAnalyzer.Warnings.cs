@@ -73,6 +73,12 @@ public sealed partial class GDScriptAnalyzer
         "INFERENCE_ON_VARIANT" => $"The {s[0]} type is being inferred from a Variant value, so it will be typed as Variant.",
         "GET_NODE_DEFAULT_WITHOUT_ONREADY" => $"The default value uses \"{s[0]}\" which won't return nodes in the scene tree before \"_ready()\" is called. Use the \"@onready\" annotation to solve this.",
         "ONREADY_WITH_EXPORT" => "\"@onready\" will set the default value after \"@export\" takes effect and will override it.",
+        "CONFUSABLE_CAPTURE_REASSIGNMENT" => $"Reassigning lambda capture does not modify the outer local variable \"{s[0]}\".",
+        "CONFUSABLE_TEMPORARY_MODIFICATION" => s.Length > 2
+            ? $"The built-in property \"{s[1]}\" will not be modified as a result of calling the method \"{s[2]}()\". Consider assigning the desired value to the property instead, or check the \"{s[0]}\" class for a specialized API."
+            : $"The built-in property \"{s[1]}\" will not be modified in the assignment chain. Consider using a temporary variable and assigning it back instead, or check the \"{s[0]}\" class for a specialized API.",
+        "INT_AS_ENUM_WITHOUT_MATCH" => $"Cannot {s[0]} {s[1]} as Enum \"{s[2]}\": no enum member has matching value.",
+        "MISSING_TOOL" => "The base class script has the \"@tool\" annotation, but this script does not have it.",
         "CONFUSABLE_LOCAL_DECLARATION" => $"The {s[0]} \"{s[1]}\" is declared below in the parent block.",
         "CONFUSABLE_LOCAL_USAGE" => $"The identifier \"{s[0]}\" will be shadowed below in the block.",
         "ONREADY_WITH_CAST" => $"\"as\" will silently return \"null\" if the type of \"{s[0]}\" is wrong. Prefer assigning the node directly to an explicitly typed variable to get an error in such cases.",
@@ -185,6 +191,117 @@ public sealed partial class GDScriptAnalyzer
         {
             Error(context, declared, "Not all code paths return a value.");
         }
+    }
+
+    /// <summary>An assignment in a lambda to a local it captures, as Godot's reduce_assignment warns of it: the local itself,
+    /// or a part of a value the lambda holds a copy of (a hard built-in type other than Array and Dictionary, or an enum).</summary>
+    private static void CaptureReassignment(GDScriptAssignment assignment, Context context)
+    {
+        if (context.Function is not { IsLambda: true })
+        {
+            return;
+        }
+        bool part = false;
+        GDScriptExpression? at = assignment.Assignee;
+        while (at is GDScriptSubscript subscript)
+        {
+            part = true;
+            at = subscript.Base;
+        }
+        if (at is not GDScriptIdentifier name || context.Scope?.Captured(name.Name) is not { } captured)
+        {
+            return;
+        }
+        GDScriptType type = captured.Type;
+        if (!part || type.Hard && (type.Kind == GDScriptTypeKind.Enum || type.Kind == GDScriptTypeKind.Builtin && type.Name is not ("Array" or "Dictionary" or "Variant")))
+        {
+            Warn(context, assignment, "CONFUSABLE_CAPTURE_REASSIGNMENT", name.Name);
+        }
+    }
+
+    /// <summary>A packed array an engine class's property gives, changed in place (assigned into, or by a method that
+    /// changes it): a copy the property never takes back, as Godot's warn_confusable_temporary_modification says, for an
+    /// assignment's chain or a method read off it.</summary>
+    private void TemporaryModification(GDScriptAssignment? assignment, GDScriptExpression? chain, Context context)
+    {
+        for (GDScriptExpression? current = chain; current is GDScriptSubscript subscript; current = subscript.Base)
+        {
+            if (subscript.Base is not { } container || context.Analysis.Types.GetValueOrDefault(container) is not { Kind: GDScriptTypeKind.Builtin, Meta: false } held
+                || !held.Name.StartsWith("Packed", StringComparison.Ordinal) || !held.Name.EndsWith("Array", StringComparison.Ordinal))
+            {
+                continue;
+            }
+            (GDScriptIdentifier? property, GDScriptType? scope) = container switch
+            {
+                GDScriptIdentifier named when context.Scope?.Find(named.Name) is null => (named, context.Class.Instance),
+                GDScriptSubscript { IsAttribute: true, Attribute: { } attribute, Base: { } owner } => (attribute, context.Analysis.Types.GetValueOrDefault(owner)),
+                _ => (null, null),
+            };
+            if (property is null || scope is null || NativePropertyOwner(scope, property.Name) is not { } native)
+            {
+                continue;
+            }
+            if (assignment is not null)
+            {
+                Warn(context, assignment, "CONFUSABLE_TEMPORARY_MODIFICATION", native, property.Name);
+            }
+            else if (subscript is { IsAttribute: true, Attribute: { } method } && Engine?.Builtins.GetValueOrDefault(held.Name)?.Methods.GetValueOrDefault(method.Name) is { IsConst: false })
+            {
+                Warn(context, subscript, "CONFUSABLE_TEMPORARY_MODIFICATION", native, property.Name, method.Name);
+            }
+        }
+    }
+
+    /// <summary>The engine class a type is of (its own, or the one its script classes extend) where a name read off it is
+    /// that class's property and no script class on the way declares it; null otherwise.</summary>
+    private string? NativePropertyOwner(GDScriptType scope, string name)
+    {
+        GDScriptType? at = scope.Instance;
+        for (int depth = 0; at is { Kind: GDScriptTypeKind.Class } && depth < 64; depth++)
+        {
+            if (at.Class is null || OwnNames(at).ContainsKey(name))
+            {
+                return null;
+            }
+            at = BaseOf(at);
+        }
+        if (at is not { Kind: GDScriptTypeKind.Native } native || Engine is not { } engine || !engine.Classes.ContainsKey(native.Name))
+        {
+            return null;
+        }
+        return engine.Chain(native.Name).Any(c => c.Properties.ContainsKey(name)) ? native.Name : null;
+    }
+
+    /// <summary>An integer an expression is as Godot folds it for a cast: a number written, negated or not, or an enum's
+    /// value named off an enum whose every value is known; null for any other.</summary>
+    private static long? EnumConstant(GDScriptExpression expression, Context context) => expression switch
+    {
+        GDScriptLiteral { Value: long given } => given,
+        GDScriptUnary { Operator: GDScriptTokenKind.Minus, Operand: GDScriptLiteral { Value: long negated } } => -negated,
+        GDScriptSubscript { IsAttribute: true, Attribute: { } member, Base: { } owner }
+            when context.Analysis.Types.GetValueOrDefault(owner) is { Kind: GDScriptTypeKind.Enum, Meta: true, ValuesPartial: false, Values: { } values }
+            && values.TryGetValue(member.Name, out long named) => named,
+        _ => null,
+    };
+
+    /// <summary>A class that is no tool while the script it extends is one, as Godot's resolve_class_inheritance warns of it:
+    /// a script extended by path, by class_name or by an autoload's name, never one of its own script's classes.</summary>
+    private void MissingTool(GDScriptClass node, GDScriptTree own, string script, int offset, Context context)
+    {
+        if (own.Class.IsTool || context.Analysis.Tree is null)
+        {
+            return;
+        }
+        string? based = node.ExtendsPath is { } written ? Absolute(written, script)
+            : node.Extends.Count == 0 ? null
+            : project.ClassPath(node.Extends[0].Name) ?? (node == own.Class || InnerClass(ScriptClass(own, script), node.Extends[0].Name) is null ? project.Autoload(node.Extends[0].Name) : null);
+        if (based is null || based == script || Tree(based) is not { Class.IsTool: true })
+        {
+            return;
+        }
+        int start = offset + node.Start;
+        int end = own.Text.IndexOf('\n', Math.Min(start, own.Text.Length));
+        context.Analysis.Found.Add(new GDScriptFinding(start, end < 0 ? own.Text.Length : end, "MISSING_TOOL", Message("MISSING_TOOL", [])));
     }
 
     /// <summary>A local declared in a block while a block it is inside declares the name further down, as Godot's

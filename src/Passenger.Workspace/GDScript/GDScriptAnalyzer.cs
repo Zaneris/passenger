@@ -34,6 +34,7 @@ public sealed partial class GDScriptAnalyzer
             WrittenVariants(member.Node, member.Offset, analysis);
         }
         PaintExtends(tree.Class, new Context(analysis, self, 0, null, null));
+        MissingTool(tree.Class, tree, path, 0, new Context(analysis, self, 0, null, null));
         foreach (GDScriptMember member in tree.Members)
         {
             Walk(analysis, member.Node, new Context(analysis, self, member.Offset, null, null));
@@ -100,6 +101,24 @@ public sealed partial class GDScriptAnalyzer
 
         /// <summary>Whether a name is declared in it itself, not in a scope it is inside.</summary>
         public bool Holds(string name) => names.ContainsKey(name);
+
+        /// <summary>Whether it holds a function's parameters, the outermost scope of its own.</summary>
+        public bool Function { get; init; }
+
+        /// <summary>A local of an enclosing function the scope's own function reads by name, as a lambda captures it.</summary>
+        public (GDScriptType Type, GDScriptDeclaration Declaration, Local? Local)? Captured(string name)
+        {
+            bool crossed = false;
+            for (Scope? at = this; at is not null; at = at.Parent)
+            {
+                if (at.names.TryGetValue(name, out (GDScriptType, GDScriptDeclaration, Local?) found))
+                {
+                    return crossed && found.Item3 is not null ? found : null;
+                }
+                crossed |= at.Function;
+            }
+            return null;
+        }
 
         /// <summary>A suite's own variables and constants, wherever in it each is declared, by name with its kind.</summary>
         public IReadOnlyDictionary<string, string>? Suite { get; init; }
@@ -240,14 +259,23 @@ public sealed partial class GDScriptAnalyzer
     {
         Dictionary<string, long> values = new(StringComparer.Ordinal);
         long next = 0;
+        bool partial = false;
         foreach ((GDScriptIdentifier name, GDScriptExpression? value) in node.Values)
         {
-            next = value is GDScriptLiteral { Value: long given } ? given : next;
+            long? written = value switch
+            {
+                null => next,
+                GDScriptLiteral { Value: long given } => given,
+                GDScriptUnary { Operator: GDScriptTokenKind.Minus, Operand: GDScriptLiteral { Value: long negated } } => -negated,
+                _ => null,
+            };
+            partial |= written is null;
+            next = written ?? next;
             values[name.Name] = next++;
         }
         return new GDScriptType(GDScriptTypeKind.Enum, node.Identifier?.Name ?? string.Empty)
         {
-            Values = values, Owner = owner.Name, Script = owner.Script, Meta = meta, Class = owner.Class, Offset = owner.Offset,
+            Values = values, ValuesPartial = partial, Owner = owner.Name, Script = owner.Script, Meta = meta, Class = owner.Class, Offset = owner.Offset,
         };
     }
 
