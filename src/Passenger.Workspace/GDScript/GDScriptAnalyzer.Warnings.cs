@@ -5,7 +5,8 @@ namespace Passenger.Workspace.GDScript;
 /// <summary>Godot's warnings and the errors of its analyzer that Passenger's reading gives, pushed where Godot's analyzer and
 /// parser push them (gdscript_analyzer.cpp, gdscript_parser.cpp, their words gdscript_warning.cpp's): what a script declares
 /// and never uses, types left to inference, shadowed names, unreachable code, standalone expressions, integer division, an
-/// await that waits for nothing or one missing, and a function whose every way does not return.</summary>
+/// await that waits for nothing or one missing, a cast of what may hold anything, and a function whose every way does not
+/// return.</summary>
 public sealed partial class GDScriptAnalyzer
 {
     private static readonly ConditionalWeakTable<GDScriptTree, HashSet<int>> Coroutines = [];
@@ -56,6 +57,7 @@ public sealed partial class GDScriptAnalyzer
         "INCOMPATIBLE_TERNARY" => "Values of the ternary operator are not mutually compatible.",
         "UNTYPED_DECLARATION" => s[0] == "Function" ? $"{s[0]} \"{s[1]}()\" has no static return type." : $"{s[0]} \"{s[1]}\" has no static type.",
         "INFERRED_DECLARATION" => $"{s[0]} \"{s[1]}\" has an implicitly inferred static type.",
+        "UNSAFE_CAST" => $"Casting \"Variant\" to \"{s[0]}\" is unsafe.",
         "RETURN_VALUE_DISCARDED" => $"The function \"{s[0]}()\" returns a value that will be discarded if not used.",
         "REDUNDANT_AWAIT" => "\"await\" keyword is unnecessary because the expression isn't a coroutine nor a signal.",
         "MISSING_AWAIT" => "\"await\" keyword might be desired because the expression is a coroutine.",

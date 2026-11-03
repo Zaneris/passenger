@@ -80,6 +80,14 @@ public class GDScriptWarningsTests
         + "\tprint(emit_signal(dynamic_name))\n\nfunc test():\n\tpass\n",
         "11 UNUSED_SIGNAL: The signal \"used_with_dynamic_name\" is declared but never explicitly used in the class.",
         "12 UNUSED_SIGNAL: The signal \"just_unused\" is declared but never explicitly used in the class.")]
+    [InlineData("# We don't want to execute it because of errors, just analyze.\nfunc no_exec_test():\n\tvar weak_int = 1\n\tprint(weak_int as Variant) # No warning.\n"
+        + "\tprint(weak_int as int)\n\tprint(weak_int as Node)\n\n\tvar weak_node = Node.new()\n\tprint(weak_node as Variant) # No warning.\n\tprint(weak_node as int)\n"
+        + "\tprint(weak_node as Node)\n\n\tvar weak_variant = null\n\tprint(weak_variant as Variant) # No warning.\n\tprint(weak_variant as int)\n\tprint(weak_variant as Node)\n\n"
+        + "\tvar hard_variant: Variant = null\n\tprint(hard_variant as Variant) # No warning.\n\tprint(hard_variant as int)\n\tprint(hard_variant as Node)\n\nfunc test():\n\tpass\n",
+        "5 UNSAFE_CAST: Casting \"Variant\" to \"int\" is unsafe.", "6 UNSAFE_CAST: Casting \"Variant\" to \"Node\" is unsafe.",
+        "10 UNSAFE_CAST: Casting \"Variant\" to \"int\" is unsafe.", "11 UNSAFE_CAST: Casting \"Variant\" to \"Node\" is unsafe.",
+        "15 UNSAFE_CAST: Casting \"Variant\" to \"int\" is unsafe.", "16 UNSAFE_CAST: Casting \"Variant\" to \"Node\" is unsafe.",
+        "20 UNSAFE_CAST: Casting \"Variant\" to \"int\" is unsafe.", "21 UNSAFE_CAST: Casting \"Variant\" to \"Node\" is unsafe.")]
     public void Godots_own_test_scripts_give_the_warnings_their_expected_output_says(string script, params string[] expected)
     {
         (_, IReadOnlyList<GDScriptFinding> found) = Read(script);

@@ -407,8 +407,13 @@ public sealed partial class GDScriptAnalyzer
                 }
                 return result with { Hard = whenTrue.Hard && whenFalse.Hard };
             case GDScriptCast cast:
-                Reduce(cast.Operand, context);
-                return cast.Type is { } castTo ? ResolveType(castTo, context) : GDScriptType.Variant;
+                GDScriptType operandType = Reduce(cast.Operand, context);
+                GDScriptType castType = cast.Type is { } castTo ? ResolveType(castTo, context) : GDScriptType.Variant;
+                if (!castType.IsVariant && (operandType.IsVariant || !operandType.Hard))
+                {
+                    Warn(context, cast, "UNSAFE_CAST", castType.ToString());
+                }
+                return castType;
             case GDScriptTypeTest test:
                 Reduce(test.Operand, context);
                 return GDScriptType.Builtin("bool");
