@@ -497,8 +497,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   templates in New Item beside Passenger's own, `OwnTemplates`, one entry each; every parameter a template takes, its
   ide.host.json's first, one switch shown once, `TemplateOptions`; every `dotnet new` through `ProjectTemplates`, what
   it writes above the new folder part of its command, `FilesAbove`; a new service's container or Aspire set-up after
-  Create through Add's own actions, `MainWindow.ServiceSetup`), `Updates` (only an installed copy updates itself; What's
-  New from `docs/release-notes/X.Y.Z.md`).
+  Create through Add's own actions, `MainWindow.ServiceSetup`), `Updates` (only an installed copy updates itself; on
+  Linux `LinuxUpdater` swaps one person's install with the release unpacked beside it, checked against `ReleaseSums`
+  (`UpdateFolders`, renameat2's exchange), refreshing its entry through the new install.sh, an install for everyone
+  through its installed `install.sh --from` as root by pkexec or a command given, a package's copy
+  (`app/package-manager`, or the package database's answer) left to its package manager; What's New from
+  `docs/release-notes/X.Y.Z.md`).
 - **MCP.** `PassengerTools` (every tool, run on the UI thread, answering with what its operation returned), `McpHost`
   (`--mcp FOLDER`, a window's socket, `--mcp-attach` through `McpProxy`), `HeadStart` (an `--mcp` folder's opening begun
   before its window, which its first session takes up), `AgentConnection` (admission and questions). A relay records
