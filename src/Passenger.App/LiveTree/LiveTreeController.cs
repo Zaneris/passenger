@@ -37,6 +37,9 @@ public sealed partial class LiveTreeController
     private int treeAsks;
     private int detailAsks;
 
+    /// <summary>Bumped by each tree the game's period asks for, apart from <see cref="treeAsks"/>, which it never overtakes.</summary>
+    private int followAsks;
+
     /// <summary>The app's tree changed while the window could not ask (paused, hidden).</summary>
     private bool stale;
 
@@ -688,7 +691,9 @@ public sealed partial class LiveTreeController
     private async Task FollowAsync(Godot.GodotGame game)
     {
         following = true;
-        int ask = ++treeAsks;
+        // A follow never overtakes a refresh (a pick's, the person's), which shows the chosen node's details with its tree.
+        int ask = ++followAsks;
+        int refreshed = treeAsks;
         AppTree next;
         try
         {
@@ -703,7 +708,7 @@ public sealed partial class LiveTreeController
         {
             following = false;
         }
-        if (ask != treeAsks || app != game || (tree is not null && Same(tree.Roots, next.Roots)))
+        if (ask != followAsks || refreshed != treeAsks || app != game || (tree is not null && Same(tree.Roots, next.Roots)))
         {
             return;
         }
