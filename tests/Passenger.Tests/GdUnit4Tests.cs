@@ -15,7 +15,8 @@ namespace Passenger.Tests;
 /// breakpoint in such a test stopping in the Godot the adapter starts. Its packages come from the Godot's own and the
 /// package cache tests/GodotGraphs fills, never nuget.org; Godot runs headless (the run settings' GdUnit4 parameters),
 /// its user folders the run's, and what the headless editor GdUnit4's adapter starts writes over of the person's editor
-/// is put back. Without a Godot 4 .NET build each test skips saying why. Debugged, so run alone.</summary>
+/// is put back. Without a Godot 4 .NET build each test skips saying why, and where the Godot's generators cannot build
+/// GdUnit4's runner, once the test that never ran says why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GdUnit4Tests : IDisposable
 {
@@ -86,9 +87,17 @@ public sealed class GdUnit4Tests : IDisposable
             TestNode spins = Method(window, "SpinsInGodot")!;
             Assert.True(Method(window, "Adds")!.State == TestState.Passed, $"The test without the engine did not pass:\n{Method(window, "Adds")!.Details}");
             Assert.True(spins.State == TestState.Failed, $"The test Godot ran did not fail at its assertion:\n{spins.Details}");
+            if (spins.Details.Contains(RunnerUnbuilt, StringComparison.Ordinal))
+            {
+                Assert.True(spins.Details.Contains("error CS0117", StringComparison.Ordinal) && spins.Details.Contains(OlderBase, StringComparison.Ordinal)
+                    && window.BottomPanel.Build.Document.Snapshot.ToString().Contains(OlderBase, StringComparison.Ordinal),
+                    $"The test GdUnit4 never ran, its runner unbuilt, does not say the compiler's error and why, nor does the run's log:\n{spins.Details}\n{window.BottomPanel.Build.Document.Snapshot}");
+                Assert.Skip($"Godot {godot!.Version}'s C# source generators cannot build GdUnit4's test runner, whose base class gdUnit4.api {AvaloniaApp.Metadata("GdUnit4ApiVersion")} "
+                    + "was built with an older Godot's (godotengine/godot#124939, godot-gdunit-labs/gdUnit4Net#547): Passenger says so, and the test Godot runs and its debugging need a Godot or a GdUnit4 that can");
+            }
             int assertion = Line("AssertThat(turns).IsEqual(3);");
-            Assert.Contains($"SpinnerTest.cs:line {assertion + 1}", spins.Details, StringComparison.Ordinal);
-            Assert.Contains("'3' but is '2'", spins.Details, StringComparison.Ordinal);
+            Assert.True(spins.Details.Contains($"SpinnerTest.cs:line {assertion + 1}", StringComparison.Ordinal) && spins.Details.Contains("'3' but is '2'", StringComparison.Ordinal),
+                $"The test Godot ran did not fail at its assertion's line:\n{spins.Details}\n{window.BottomPanel.Tests.Status}\n{window.BottomPanel.Build.Document.Snapshot}");
             Assert.True(File.Exists(GdUnit4Settings.RunnerScene(folder)), "GdUnit4's adapter wrote no test runner into the game, so its headless editor never ran");
             Assert.True(File.ReadAllText(LayoutPath) == Layout, $"GdUnit4's headless editor left the person's editor layout written over:\n{File.ReadAllText(LayoutPath)}");
 
@@ -118,6 +127,12 @@ public sealed class GdUnit4Tests : IDisposable
             window.Close();
         }
     }
+
+    /// <summary>What Passenger says of a test GdUnit4 never ran because its adapter's build of its runner failed.</summary>
+    private const string RunnerUnbuilt = "of its test runner into Spinner failed, so Godot ran none of its tests that need the engine";
+
+    /// <summary>What it adds where the runner's base class was built by an older Godot's generators than the Godot found's.</summary>
+    private const string OlderBase = "This Godot's C# source generators cannot build a class whose base class an older Godot's built";
 
     /// <summary>The editor's line (from zero) of the first line of the tests holding <paramref name="code"/>.</summary>
     private static int Line(string code) => Tests.Split('\n').ToList().FindIndex(l => l.Contains(code, StringComparison.Ordinal));

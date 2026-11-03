@@ -511,6 +511,9 @@ public sealed class VsTestRunner : ITestRunner
 
         private string? lastError;
 
+        /// <summary>What GdUnit4's adapter said, read for why its tests that need Godot's engine never ran.</summary>
+        private readonly GdUnit4Log gdUnit = new();
+
         public TaskCompletionSource<RunSummary> Done { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         /// <summary>The run let go of: how it ended if it has, else what it told before, in the time given.</summary>
@@ -533,7 +536,7 @@ public sealed class VsTestRunner : ITestRunner
                 }
             }
             List<TestOutcome> batch = [.. (testRunChangedArgs?.NewTestResults ?? [])
-                .Select(r => running.TryGetValue((r.TestCase.Id, r.TestCase.Source), out TestItem? test) ? Outcome(test, r) : null)
+                .Select(r => running.TryGetValue((r.TestCase.Id, r.TestCase.Source), out TestItem? test) ? Told(Outcome(test, r), r) : null)
                 .OfType<TestOutcome>()];
             if (batch.Count == 0)
             {
@@ -577,14 +580,36 @@ public sealed class VsTestRunner : ITestRunner
 
         public void HandleLogMessage(TestMessageLevel level, string? message)
         {
-            if (level == TestMessageLevel.Error && message is not null)
+            string? cause = null;
+            if (message is not null)
             {
                 lock (all)
                 {
-                    lastError = message;
+                    lastError = level == TestMessageLevel.Error ? message : lastError;
+                    cause = gdUnit.Heard(message);
                 }
             }
             Said(level, message, log);
+            if (cause is not null)
+            {
+                log?.Invoke(cause);
+            }
+        }
+
+        /// <summary>A test's outcome with why it never ran where GdUnit4 said its runner's build failed: a failure with no
+        /// time or frames of its own in that test assembly.</summary>
+        private TestOutcome Told(TestOutcome outcome, VsResult result)
+        {
+            if (result.Outcome != VsOutcome.Failed || result.Duration != TimeSpan.Zero || !string.IsNullOrEmpty(result.ErrorStackTrace))
+            {
+                return outcome;
+            }
+            string? why;
+            lock (all)
+            {
+                why = gdUnit.Why(Path.GetFileNameWithoutExtension(result.TestCase.Source));
+            }
+            return why is null ? outcome : outcome with { Message = outcome.Message is { Length: > 0 } message ? $"{message}\n{why}" : why };
         }
 
         public void HandleRawMessage(string rawMessage) => Raw(rawMessage);
