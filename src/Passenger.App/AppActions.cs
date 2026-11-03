@@ -123,6 +123,9 @@ public static class AppActions
     public const string ShowEndpoints = "app.showEndpoints";
     public const string TestEndpoint = "app.endpoints.test";
 
+    /// <summary>Requests for a web project's .http file from its app's OpenAPI document: no key of Rider's.</summary>
+    public const string GenerateOpenApiRequests = "app.endpoints.openApiRequests";
+
     // The Requests window over the running web app's live requests and their database commands: no key of Rider's.
     public const string ShowRequests = "app.showRequests";
 

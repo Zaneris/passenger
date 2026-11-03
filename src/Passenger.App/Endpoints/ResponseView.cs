@@ -8,8 +8,8 @@ using Passenger.Editor;
 
 namespace Passenger.App.Endpoints;
 
-/// <summary>A test's answer: the status, time and size, each criterion passed or failed with what the response had, and
-/// the body (JSON indented) or the headers.</summary>
+/// <summary>A test's answer: the status, time and size, each criterion passed or failed with what the response had, each
+/// place its body breaks the schema its app's OpenAPI document gives it, and the body (JSON indented) or the headers.</summary>
 public sealed class ResponseView : DockPanel
 {
     private readonly TextBlock summary = new() { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -56,8 +56,11 @@ public sealed class ResponseView : DockPanel
     /// <summary>The criteria checked against it.</summary>
     public IReadOnlyList<ExpectationResult> Results { get; private set; } = [];
 
-    /// <summary>Whether every criterion passed.</summary>
-    public bool Passed => Response is not null && Results.All(r => r.Passed);
+    /// <summary>Where its body breaks the schema its app's OpenAPI document gives it.</summary>
+    public IReadOnlyList<SchemaBreak> Breaks { get; private set; } = [];
+
+    /// <summary>Whether every criterion passed, and the body keeps to its schema.</summary>
+    public bool Passed => Response is not null && Results.All(r => r.Passed) && Breaks.Count == 0;
 
     /// <summary>What the summary line says.</summary>
     public string Summary => summary.Text ?? string.Empty;
@@ -70,6 +73,7 @@ public sealed class ResponseView : DockPanel
     {
         Response = null;
         Results = [];
+        Breaks = [];
         shown.IsVisible = true;
         empty.IsVisible = false;
         summary.Text = what;
@@ -85,10 +89,11 @@ public sealed class ResponseView : DockPanel
         Paint(summary, TokenKeys.Test_Failed);
     }
 
-    public void Show(EndpointResponse response, IReadOnlyList<ExpectationResult> results)
+    public void Show(EndpointResponse response, IReadOnlyList<ExpectationResult> results, IReadOnlyList<SchemaBreak>? breaks = null)
     {
         Response = response;
         Results = results;
+        Breaks = breaks ?? [];
         shown.IsVisible = true;
         empty.IsVisible = false;
         bool passed = Passed;
@@ -116,13 +121,35 @@ public sealed class ResponseView : DockPanel
             DockPanel.SetDock(what, Dock.Left);
             criteria.Children.Add(new DockPanel { Height = ListRow.Height, Children = { mark, what, had } });
         }
+        foreach (SchemaBreak broken in Breaks)
+        {
+            criteria.Children.Add(BreakRow(broken));
+        }
         ShowPart(bodyTab.IsChecked == true);
+    }
+
+    /// <summary>A place the body breaks its schema: the member in the code font, then what is wrong there.</summary>
+    private static Control BreakRow(SchemaBreak broken)
+    {
+        PathIcon mark = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0) };
+        mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(IconKeys.TestFailed));
+        Paint(mark, TokenKeys.Test_Failed);
+        TextBlock lead = new() { Text = "Breaks its schema at ", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock at = new TextBlock { Text = broken.At, FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        TextBlock said = new() { Text = $": {broken.Said}", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        Paint(said, TokenKeys.TextMuted);
+        ToolTip.SetTip(said, broken.Said);
+        DockPanel.SetDock(mark, Dock.Left);
+        DockPanel.SetDock(lead, Dock.Left);
+        DockPanel.SetDock(at, Dock.Left);
+        return new DockPanel { Height = ListRow.Height, Children = { mark, lead, at, said } };
     }
 
     public void Clear()
     {
         Response = null;
         Results = [];
+        Breaks = [];
         shown.IsVisible = false;
         empty.IsVisible = true;
     }

@@ -1,0 +1,388 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+using Passenger.Core;
+
+namespace Passenger.App.Endpoints;
+
+/// <summary>Where a JSON value breaks its schema: the member, as a JSON pointer (<c>/items/0/price</c>; <c>/</c> for the
+/// whole), and what is wrong there.</summary>
+public sealed record SchemaBreak(string At, string Said)
+{
+    public override string ToString() => $"at {At}: {Said}";
+}
+
+/// <summary>An OpenAPI document's schemas put to use: a value held to one, each place it breaks it said
+/// (<see cref="Check"/>), and a value made from one for a request's body (<see cref="Sample"/>). The parts read are those a
+/// response's or a request's body is checked by: types (with 3.0's <c>nullable</c> and 3.1's lists), <c>enum</c>, a string's
+/// <c>pattern</c>, an object's <c>required</c>, <c>properties</c> and <c>additionalProperties</c>, an array's <c>items</c>, and
+/// <c>allOf</c>, <c>anyOf</c> and <c>oneOf</c>; the rest (lengths, bounds, formats) is not checked.</summary>
+public static class OpenApiSchemas
+{
+    /// <summary>How deep a check or a sample goes, for a schema that refers to itself.</summary>
+    private const int Deepest = 48;
+
+    /// <summary>How many breaks a check says at most.</summary>
+    private const int Most = 50;
+
+    /// <summary>The places a value breaks its schema, in the order met; none where it keeps to it.</summary>
+    public static IReadOnlyList<SchemaBreak> Check(OpenApiDocument document, JsonElement schema, JsonElement value)
+    {
+        List<SchemaBreak> breaks = [];
+        Walk(document, schema, value, string.Empty, 0, breaks);
+        return breaks;
+    }
+
+    private static void Walk(OpenApiDocument document, JsonElement written, JsonElement value, string at, int depth, List<SchemaBreak> breaks)
+    {
+        if (depth > Deepest || breaks.Count >= Most)
+        {
+            return;
+        }
+        JsonElement schema = document.Resolve(written);
+        if (schema.ValueKind == JsonValueKind.False)
+        {
+            Break(breaks, at, "nothing is allowed here");
+            return;
+        }
+        if (schema.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+        foreach (JsonElement part in JsonMembers.Items(schema, "allOf"))
+        {
+            Walk(document, part, value, at, depth + 1, breaks);
+        }
+        foreach (string choice in (string[])["anyOf", "oneOf"])
+        {
+            IReadOnlyList<JsonElement> options = JsonMembers.Items(schema, choice);
+            if (options.Count > 0 && !options.Any(option => Check(document, option, value, depth + 1).Count == 0))
+            {
+                Break(breaks, at, $"{Describe(value)} is none of the {options.Count} kinds its schema's {choice} allows");
+                return;
+            }
+        }
+        IReadOnlyList<string> types = TypesOf(schema);
+        if (types.Count > 0 && !types.Any(type => IsA(value, type)))
+        {
+            Break(breaks, at, $"{Either([.. types.OrderBy(t => t == "null").Select(Named)])} was expected, not {Describe(value)}");
+            return;
+        }
+        if (JsonMembers.Items(schema, "enum") is { Count: > 0 } allowed && !allowed.Any(item => JsonElement.DeepEquals(item, value)))
+        {
+            Break(breaks, at, $"{Describe(value)} is not one of {string.Join(", ", allowed.Take(8).Select(item => item.GetRawText()))}{(allowed.Count > 8 ? ", …" : string.Empty)}");
+            return;
+        }
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.String when JsonMembers.Text(schema, "pattern") is { } pattern && Matches(pattern, value.GetString()!) == false:
+                Break(breaks, at, $"{Describe(value)} does not match its pattern {pattern}");
+                break;
+            case JsonValueKind.Object:
+                WalkObject(document, schema, value, at, depth, breaks);
+                break;
+            case JsonValueKind.Array when JsonMembers.Object(schema, "items") is { } items:
+                int index = 0;
+                foreach (JsonElement item in value.EnumerateArray())
+                {
+                    Walk(document, items, item, $"{at}/{index++.ToString(CultureInfo.InvariantCulture)}", depth + 1, breaks);
+                }
+                break;
+        }
+    }
+
+    private static void WalkObject(OpenApiDocument document, JsonElement schema, JsonElement value, string at, int depth, List<SchemaBreak> breaks)
+    {
+        foreach (string required in JsonMembers.Texts(schema, "required"))
+        {
+            if (!value.TryGetProperty(required, out _))
+            {
+                Break(breaks, $"{at}/{Escaped(required)}", "is missing, though its schema requires it");
+            }
+        }
+        JsonElement? properties = JsonMembers.Object(schema, "properties");
+        JsonElement? extra = schema.TryGetProperty("additionalProperties", out JsonElement others) ? others : null;
+        foreach (JsonProperty member in value.EnumerateObject())
+        {
+            string place = $"{at}/{Escaped(member.Name)}";
+            if (properties is { } declared && declared.TryGetProperty(member.Name, out JsonElement own))
+            {
+                Walk(document, own, member.Value, place, depth + 1, breaks);
+            }
+            else if (extra is { ValueKind: JsonValueKind.False })
+            {
+                Break(breaks, place, "is not a member its schema has");
+            }
+            else if (extra is { ValueKind: JsonValueKind.Object } kind)
+            {
+                Walk(document, kind, member.Value, place, depth + 1, breaks);
+            }
+        }
+    }
+
+    private static IReadOnlyList<SchemaBreak> Check(OpenApiDocument document, JsonElement schema, JsonElement value, int depth)
+    {
+        List<SchemaBreak> breaks = [];
+        Walk(document, schema, value, string.Empty, depth, breaks);
+        return breaks;
+    }
+
+    private static void Break(List<SchemaBreak> breaks, string at, string said)
+    {
+        if (breaks.Count < Most)
+        {
+            breaks.Add(new SchemaBreak(at.Length == 0 ? "/" : at, said));
+        }
+    }
+
+    /// <summary>The types a schema allows: its <c>type</c>, one or a list, with null where 3.0's <c>nullable</c> says.</summary>
+    private static IReadOnlyList<string> TypesOf(JsonElement schema)
+    {
+        List<string> types = schema.TryGetProperty("type", out JsonElement type) ? type.ValueKind switch
+        {
+            JsonValueKind.String => [type.GetString()!],
+            JsonValueKind.Array => [.. JsonMembers.Texts(schema, "type")],
+            _ => [],
+        } : [];
+        if (types.Count > 0 && JsonMembers.Bool(schema, "nullable") == true && !types.Contains("null"))
+        {
+            types.Add("null");
+        }
+        return types;
+    }
+
+    private static bool IsA(JsonElement value, string type) => type switch
+    {
+        "string" => value.ValueKind == JsonValueKind.String,
+        "number" => value.ValueKind == JsonValueKind.Number,
+        "integer" => value.ValueKind == JsonValueKind.Number && (value.TryGetInt64(out _) || value.TryGetDecimal(out decimal whole) && whole == decimal.Truncate(whole)),
+        "boolean" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
+        "array" => value.ValueKind == JsonValueKind.Array,
+        "object" => value.ValueKind == JsonValueKind.Object,
+        "null" => value.ValueKind == JsonValueKind.Null,
+        _ => true,
+    };
+
+    /// <summary>Kinds as a break names them: "a string", "a string or null", "a whole number, a string or null".</summary>
+    private static string Either(IReadOnlyList<string> kinds) => kinds.Count == 1 ? kinds[0] : $"{string.Join(", ", kinds.Take(kinds.Count - 1))} or {kinds[^1]}";
+
+    private static string Named(string type) => type switch
+    {
+        "null" => "null",
+        "integer" => "a whole number",
+        "number" => "a number",
+        "string" => "a string",
+        "boolean" => "true or false",
+        "array" => "an array",
+        "object" => "an object",
+        _ => type,
+    };
+
+    /// <summary>A value as a break says it: <c>the string "cheap"</c>, <c>the number 42</c>, <c>an object</c>.</summary>
+    private static string Describe(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String => $"the string {JsonSerializer.Serialize(Shortened(value.GetString()!))}",
+        JsonValueKind.Number => $"the number {value.GetRawText()}",
+        JsonValueKind.True or JsonValueKind.False => value.GetRawText(),
+        JsonValueKind.Null => "null",
+        JsonValueKind.Array => "an array",
+        _ => "an object",
+    };
+
+    private static string Shortened(string text) => text.Length > 40 ? text[..40] + "…" : text;
+
+    /// <summary>Whether a string matches a schema's pattern, which ECMAScript writes and .NET's regex reads alike for the most
+    /// part; null where the pattern cannot be read or takes too long, which the check passes over.</summary>
+    private static bool? Matches(string pattern, string text)
+    {
+        try
+        {
+            return Regex.IsMatch(text, pattern, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
+        }
+        catch (Exception unread) when (unread is ArgumentException or RegexMatchTimeoutException)
+        {
+            return null;
+        }
+    }
+
+    private static string Escaped(string name) => name.Replace("~", "~0", StringComparison.Ordinal).Replace("/", "~1", StringComparison.Ordinal);
+
+    /// <summary>A value made from a schema, as a request's body starts: its example or default where it gives one, else its
+    /// first enum value, else of its first type (an object's every member, an array of one item, a string by its format,
+    /// 0, false); null where the schema says nothing of what it is.</summary>
+    public static JsonNode? Sample(OpenApiDocument document, JsonElement schema) => Make(document, schema, 0, []);
+
+    /// <summary>A sample as an .http body or a dialog's: indented JSON.</summary>
+    public static string SampleText(OpenApiDocument document, JsonElement schema) =>
+        Sample(document, schema)?.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) ?? "{}";
+
+    private static JsonNode? Make(OpenApiDocument document, JsonElement written, int depth, HashSet<string> referred)
+    {
+        string? reference = JsonMembers.Text(written, "$ref");
+        if (depth > 8 || reference is not null && !referred.Add(reference))
+        {
+            return null;
+        }
+        try
+        {
+            JsonElement schema = document.Resolve(written);
+            if (schema.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+            foreach (string given in (string[])["example", "default"])
+            {
+                if (schema.TryGetProperty(given, out JsonElement example))
+                {
+                    return JsonNode.Parse(example.GetRawText());
+                }
+            }
+            if (JsonMembers.Items(schema, "examples") is [var first, ..])
+            {
+                return JsonNode.Parse(first.GetRawText());
+            }
+            if (JsonMembers.Items(schema, "enum") is [var listed, ..])
+            {
+                return JsonNode.Parse(listed.GetRawText());
+            }
+            if (JsonMembers.Items(schema, "allOf") is { Count: > 0 } parts)
+            {
+                JsonObject merged = [];
+                foreach (JsonNode? part in parts.Select(p => Make(document, p, depth + 1, referred)))
+                {
+                    if (part is JsonObject members)
+                    {
+                        foreach ((string name, JsonNode? member) in members.ToList())
+                        {
+                            members.Remove(name);
+                            merged[name] = member;
+                        }
+                    }
+                }
+                return merged;
+            }
+            if ((JsonMembers.Items(schema, "oneOf") is [var one, ..] ? one : JsonMembers.Items(schema, "anyOf") is [var any, ..] ? any : (JsonElement?)null) is { } choice)
+            {
+                return Make(document, choice, depth + 1, referred);
+            }
+            IReadOnlyList<string> types = TypesOf(schema);
+            string? kind = ((string[])["object", "array", "integer", "number", "boolean", "string"]).FirstOrDefault(types.Contains)
+                ?? (JsonMembers.Object(schema, "properties") is not null ? "object" : null);
+            return kind switch
+            {
+                "object" => new JsonObject(JsonMembers.Properties(schema, "properties").Select(p => KeyValuePair.Create(p.Name, Make(document, p.Value, depth + 1, referred)))),
+                "array" => JsonMembers.Object(schema, "items") is { } items ? new JsonArray(Make(document, items, depth + 1, referred)) : new JsonArray(),
+                "integer" or "number" => JsonValue.Create(0),
+                "boolean" => JsonValue.Create(false),
+                "string" => JsonValue.Create(JsonMembers.Text(schema, "format") switch
+                {
+                    "date-time" => "2000-01-01T00:00:00Z",
+                    "date" => "2000-01-01",
+                    "time" => "00:00:00",
+                    "uuid" => Guid.Empty.ToString(),
+                    "email" => "name@example.com",
+                    "uri" => "https://example.com/",
+                    _ => "string",
+                }),
+                _ => null,
+            };
+        }
+        finally
+        {
+            if (reference is not null)
+            {
+                referred.Remove(reference);
+            }
+        }
+    }
+}
+
+/// <summary>The .http requests an app's OpenAPI document makes, written as the Endpoints window's generated ones are: per
+/// operation a separator naming it, a variable for each path or required query parameter the file does not set yet, the
+/// method and the URL from the project's address with each as a <c>{{variable}}</c>, an Accept header, and a JSON body made
+/// from its request schema (<see cref="OpenApiSchemas.Sample"/>).</summary>
+public static partial class OpenApiRequests
+{
+    /// <summary>The requests for <paramref name="operations"/>, to go after <paramref name="existing"/>, the file's text: one
+    /// made for them begins with the address variable <paramref name="host"/>, at <paramref name="address"/>.</summary>
+    public static string Entries(OpenApiDocument document, IEnumerable<OpenApiOperation> operations, string existing, string host, string? address)
+    {
+        StringBuilder written = new();
+        HashSet<string> set = [.. HttpFile.Parse(string.Empty, existing).Variables.Keys];
+        if (existing.Trim().Length == 0)
+        {
+            written.Append('@').Append(host).Append(" = ").Append(address ?? "http://localhost:5000").Append("\n\n");
+            set.Add(host);
+        }
+        else if (!existing.EndsWith('\n'))
+        {
+            written.Append('\n');
+        }
+        if (existing.Trim().Length > 0 && !existing.TrimEnd().EndsWith("###", StringComparison.Ordinal))
+        {
+            written.Append("###\n");
+        }
+        if (set.Add(host))
+        {
+            written.Append('@').Append(host).Append(" = ").Append(address ?? "http://localhost:5000").Append("\n\n");
+        }
+        foreach (OpenApiOperation operation in operations)
+        {
+            written.Append("# OpenAPI: ").Append(operation.OperationId ?? operation.Title).Append(operation.Summary is { Length: > 0 } summary ? $" ({summary})" : string.Empty).Append('\n');
+            List<OpenApiParameter> named = [.. operation.Parameters.Where(p => p.In == "path" || p.In == "query" && p.Required)];
+            foreach (OpenApiParameter parameter in named)
+            {
+                if (set.Add(parameter.Name))
+                {
+                    written.Append('@').Append(parameter.Name).Append(" = ").Append(ValueOf(document, parameter)).Append('\n');
+                }
+            }
+            string path = Braced().Replace(operation.Path, match => "{{" + match.Groups[1].Value + "}}");
+            List<string> query = [.. named.Where(p => p.In == "query").Select(p => $"{Uri.EscapeDataString(p.Name)}={{{{{p.Name}}}}}")];
+            written.Append(operation.Method).Append(" {{").Append(host).Append("}}").Append(path).Append(query.Count > 0 ? "?" + string.Join("&", query) : string.Empty).Append('\n');
+            written.Append("Accept: application/json\n");
+            if (operation.RequestSchema is { } body)
+            {
+                written.Append("Content-Type: application/json\n\n").Append(OpenApiSchemas.SampleText(document, body).Replace("\r\n", "\n", StringComparison.Ordinal)).Append('\n');
+            }
+            written.Append("\n###\n");
+        }
+        return written.ToString();
+    }
+
+    /// <summary>The operations of a document that none of a file's requests calls yet.</summary>
+    public static IReadOnlyList<OpenApiOperation> Uncalled(OpenApiDocument document, string existing)
+    {
+        IReadOnlyList<EndpointRequest> requests = HttpFile.Parse(string.Empty, existing).Requests;
+        return [.. document.Operations.Where(operation => !requests.Any(request => request.Method.Equals(operation.Method, StringComparison.OrdinalIgnoreCase)
+            && RoutePath(request.Url) is { } path && document.OperationFor(operation.Method, path) == operation))];
+    }
+
+    /// <summary>The path a request's URL asks for, after its leading <c>{{variable}}</c> or <c>scheme://host</c>.</summary>
+    public static string? RoutePath(string url)
+    {
+        string rest = url.Trim();
+        if (rest.StartsWith("{{", StringComparison.Ordinal))
+        {
+            int close = rest.IndexOf("}}", StringComparison.Ordinal);
+            return close < 0 ? null : "/" + rest[(close + 2)..].TrimStart('/');
+        }
+        if (rest.IndexOf("://", StringComparison.Ordinal) is int scheme and > 0)
+        {
+            int slash = rest.IndexOf('/', scheme + 3);
+            return slash < 0 ? "/" : rest[slash..];
+        }
+        return rest.StartsWith('/') ? rest : null;
+    }
+
+    /// <summary>A parameter's variable's value, made from its schema: a string as it is, anything else as JSON writes it.</summary>
+    private static string ValueOf(OpenApiDocument document, OpenApiParameter parameter) =>
+        parameter.Schema is { } schema && OpenApiSchemas.Sample(document, schema) is { } made
+            ? made is JsonValue value && value.TryGetValue(out string? text) ? text : made.ToJsonString()
+            : parameter.Name;
+
+    [GeneratedRegex(@"\{([^{}]+)\}")]
+    private static partial Regex Braced();
+}

@@ -67,6 +67,10 @@ public static class MSBuildNames
     public const string ProjectDepsFileName = "ProjectDepsFileName";
     public const string ProjectRuntimeConfigFileName = "ProjectRuntimeConfigFileName";
     public const string IntermediateOutputPath = "IntermediateOutputPath";
+    public const string BaseIntermediateOutputPath = "BaseIntermediateOutputPath";
+
+    /// <summary>Where Microsoft.Extensions.ApiDescription.Server writes a build's OpenAPI documents.</summary>
+    public const string OpenApiDocumentsDirectory = "OpenApiDocumentsDirectory";
 
     /// <summary>The Design assembly a project names for dotnet ef in place of EF Core's.</summary>
     public const string DesignAssembly = "DesignAssembly";

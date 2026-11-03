@@ -239,7 +239,7 @@ internal static class BuildReads
             Read(PathOf(project, property));
         }
         // What the build itself writes, some of which items name (the intermediate assembly, its symbols, markers).
-        string[] built = [.. ((string[])["BaseOutputPath", "BaseIntermediateOutputPath", "OutDir", MSBuildNames.IntermediateOutputPath])
+        string[] built = [.. ((string[])["BaseOutputPath", MSBuildNames.BaseIntermediateOutputPath, "OutDir", MSBuildNames.IntermediateOutputPath])
             .Select(folder => PathOf(project, folder)).Where(folder => folder.Length > 0)];
         HashSet<string> sources = new(PathNames.Comparer);
         foreach (ProjectItem item in project.AllEvaluatedItems)

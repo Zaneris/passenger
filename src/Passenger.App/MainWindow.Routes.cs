@@ -336,55 +336,59 @@ public partial class MainWindow
     private static IEnumerable<string> HttpFilesUnder(string folder) => FolderWalk.Files(folder).Where(HttpFile.Is);
 
     /// <summary>A route's request written at the end of its project's .http file (made beside the project when it has
-    /// none): in the editor as its own undo step when the file is open, else as a command Undo takes back whole, said once
-    /// the file has landed.</summary>
+    /// none), through <see cref="AppendRequestsAsync"/>.</summary>
     private async Task<(EndpointRequest Request, HttpFile File)?> GenerateAsync(WebRoute route)
     {
         string path = PathNames.Canonical(RouteRequests.FileFor(route.Project));
         string? address = ProfileAddress(route.Project);
+        (string? now, string was, string? refused) = await AppendRequestsAsync(path, existing => RouteRequests.Entry(route, existing, address), "Generate Request");
+        if (now is null)
+        {
+            status.Text = $"No request could be written for {RouteRequests.Title(route)} in {Path.GetFileName(path)}: {refused}";
+            return null;
+        }
+        HttpFile read = HttpFile.Parse(path, now);
+        int from = was.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n').Length - 1;
+        status.Text = $"Wrote a request for {RouteRequests.Title(route)} in {PathNames.Shown(path, session.Folder)}";
+        return read.Requests.FirstOrDefault(r => r.Line >= from && RouteRequests.Calls(r, route)) is { } request ? (request, read) : null;
+    }
+
+    /// <summary>Requests written at the end of an .http file (made where it is not), what to write made from its text as it
+    /// reads (its line ends as '\n'): in the editor as its own undo step when the file is open, else as a command Undo takes
+    /// back whole, done once the file has landed. Its text now and before, or null and why not.</summary>
+    private async Task<(string? Now, string Was, string? Refused)> AppendRequestsAsync(string path, Func<string, string> added, string command)
+    {
         try
         {
             if (Editors.Find(path) is { } document)
             {
                 if (document.IsReadOnly)
                 {
-                    status.Text = $"{Refusals.ReadOnly(Path.GetFileName(path))}: no request could be written for {RouteRequests.Title(route)}";
-                    return null;
+                    return (null, string.Empty, Refusals.ReadOnly(Path.GetFileName(path)));
                 }
                 string before = document.Text.Snapshot.ToString();
-                string entry = RouteRequests.Entry(route, before, address);
-                TextEdit[] edits = [new TextEdit(before.Length, 0, entry)];
+                TextEdit[] edits = [new TextEdit(before.Length, 0, added(before.Replace("\r\n", "\n", StringComparison.Ordinal)))];
                 document.Text.Edit(edits, document.Selections, TextEditing.MapThrough(document.Selections, edits));
-                return Written(path, document.Text.Snapshot.ToString(), before);
+                return (document.Text.Snapshot.ToString(), before, null);
             }
             FileText? had = File.Exists(path) ? FileText.Load(path) : null;
             string existing = had?.Text ?? string.Empty;
-            string added = RouteRequests.Entry(route, existing.Replace("\r\n", "\n", StringComparison.Ordinal), address);
+            string entries = added(existing.Replace("\r\n", "\n", StringComparison.Ordinal));
             string text = string.Empty;
-            if (await ChangeFileAsync("Generate Request", [path], () =>
+            if (await ChangeFileAsync(command, [path], () =>
             {
-                text = (had is null ? FileText.SaveNew(path, added) : FileText.SaveOver(path, had, existing + added.Replace("\n", had.Break, StringComparison.Ordinal))).Written.Text;
+                text = (had is null ? FileText.SaveNew(path, entries) : FileText.SaveOver(path, had, existing + entries.Replace("\n", had.Break, StringComparison.Ordinal))).Written.Text;
                 return null;
             }) is { } refused)
             {
-                status.Text = $"No request could be written for {RouteRequests.Title(route)} in {Path.GetFileName(path)}: {refused}";
-                return null;
+                return (null, existing, refused);
             }
             endpoints?.Reload(session.Folder);
-            return Written(path, text, existing);
+            return (text, existing, null);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            status.Text = $"No request could be written for {RouteRequests.Title(route)} in {Path.GetFileName(path)}: {error.Message}";
-            return null;
-        }
-
-        (EndpointRequest, HttpFile)? Written(string file, string now, string was)
-        {
-            HttpFile read = HttpFile.Parse(file, now);
-            int from = was.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n').Length - 1;
-            status.Text = $"Wrote a request for {RouteRequests.Title(route)} in {PathNames.Shown(file, session.Folder)}";
-            return read.Requests.FirstOrDefault(r => r.Line >= from && RouteRequests.Calls(r, route)) is { } request ? (request, read) : null;
+            return (null, string.Empty, error.Message);
         }
     }
 

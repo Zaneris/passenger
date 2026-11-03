@@ -5,7 +5,8 @@ using Passenger.Text;
 namespace Passenger.App;
 
 /// <summary>The window's Endpoints: its tool window over the open folder's .http and .rest files, read again as one of
-/// them or an environment file changes on disk, and the Interactive Test dialog its rows open.</summary>
+/// them or an environment file changes on disk, the Interactive Test dialog its rows open, and the requests a web
+/// project's OpenAPI document makes (<see cref="GenerateFromOpenApiAsync"/>).</summary>
 public partial class MainWindow
 {
     private EndpointsView? endpoints;
@@ -21,7 +22,7 @@ public partial class MainWindow
         // Built as it is first shown or asked for (a route's request sent), over the session's files and routes then.
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Endpoints, "Endpoints", IconKeys.Endpoints, () =>
         {
-            EndpointsView view = new(new EndpointsParts(work, () => session.EndpointGrants, text => status.Text = text));
+            EndpointsView view = new(new EndpointsParts(work, () => session.EndpointGrants, text => status.Text = text, RowMenuItem) { DocumentOf = RunningDocumentAsync });
             endpoints = view;
             view.GoToRequested += (_, request) => NavigateTo(request.File, new TextPosition(request.Line, 0));
             view.InteractiveRequested += (_, request) => OpenInteractiveTest(request);
@@ -56,6 +57,12 @@ public partial class MainWindow
             WhyNot = c => c.Request is null && endpoints?.Chosen is null ? "No request is chosen in the Endpoints window" : null,
             TitleIn = c => c.Request is { Request: var request } ? request.Name.Length > 0 ? $"Send '{request.Name}'" : $"Send {request.Method} {request.Url}" : "Test Request",
             Words = ["HTTP Client", "Send Request"],
+        });
+        actions.Add(new IdeAction(AppActions.GenerateOpenApiRequests, "Generate Requests from OpenAPI", "Endpoints", _ => IdeErrors.Observe(GenerateFromOpenApiAsync(OpenApiProject()!)))
+        {
+            WhyNot = _ => OpenApiProject() is null ? "No web project is chosen in the Endpoints window" : null,
+            Works = AppActions.GenerateOpenApiRequests,
+            Words = ["OpenAPI", "Swagger", "HTTP Client"],
         });
     }
 

@@ -40,7 +40,8 @@ public sealed class InteractiveTestDialog : IdeWindow
         Params.Set(SplitQuery(request.Url).Pairs.Select(p => (true, p.Key, p.Value)));
         Headers = new KeyValueGrid("Header", "Value");
         Headers.Set(request.Headers.Select(h => (true, h.Key, h.Value)));
-        Body = Mono(request.Body, multiline: true);
+        // A body left empty is completed from the request schema of an OpenAPI document its app gave a test or a generate.
+        Body = Mono(request.Body.Length == 0 && SchemaBody(request) is { } completed ? completed : request.Body, multiline: true);
         Body.PlaceholderText = "The request's body; < ./file.json sends that file";
         Criteria = Mono(string.Join("\n", request.Expectations.Select(e => e.ToString())), multiline: true);
         Criteria.PlaceholderText = "status 2xx\ntime < 500\nheader Content-Type contains json\njson $.id exists";
@@ -99,7 +100,7 @@ public sealed class InteractiveTestDialog : IdeWindow
         };
         Add(fields, options, 4);
         // A request with a body and no query opens on its body, as that is what there is to change.
-        ShowPage(request.Body.Length > 0 && SplitQuery(request.Url).Pairs.Count == 0 ? 2 : 0);
+        ShowPage((Body.Text ?? string.Empty).Length > 0 && SplitQuery(request.Url).Pairs.Count == 0 ? 2 : 0);
         Count();
 
         Response = new ResponseView("Send to see the response");
@@ -126,6 +127,24 @@ public sealed class InteractiveTestDialog : IdeWindow
     public KeyValueGrid Params { get; }
     public KeyValueGrid Headers { get; }
     public TextBox Body { get; }
+
+    /// <summary>A body made from the request schema the operation a request calls has, in the newest OpenAPI document read of
+    /// its app that has one; null for a method that takes no body, or where none is known.</summary>
+    private static string? SchemaBody(EndpointRequest request)
+    {
+        if (request.Method is "GET" or "HEAD" or "DELETE" or "OPTIONS" || OpenApiRequests.RoutePath(request.Url) is not { } path)
+        {
+            return null;
+        }
+        foreach (OpenApiDocument document in OpenApiSources.Known)
+        {
+            if (document.OperationFor(request.Method, path)?.RequestSchema is { } schema)
+            {
+                return OpenApiSchemas.SampleText(document, schema);
+            }
+        }
+        return null;
+    }
     public TextBox Criteria { get; }
     public NumericUpDown Timeout { get; }
     public CheckBox FollowRedirects { get; }

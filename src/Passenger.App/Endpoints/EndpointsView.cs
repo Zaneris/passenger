@@ -11,8 +11,14 @@ using Passenger.Roslyn.Extension;
 namespace Passenger.App.Endpoints;
 
 /// <summary>What the Endpoints window works with: the window's actions' work (a test is one), the open folder's answers
-/// to what its requests may take from the person's computer, and the status bar.</summary>
-public sealed record EndpointsParts(ActionWork Work, Func<EndpointGrants> Grants, Action<string> Say);
+/// to what its requests may take from the person's computer, the status bar, its rows' menus' items of the window's
+/// actions (greyed with why), and the OpenAPI documents its answers are held to.</summary>
+public sealed record EndpointsParts(ActionWork Work, Func<EndpointGrants> Grants, Action<string> Say, Func<string, MenuItem> Item)
+{
+    /// <summary>The OpenAPI document of the app a request went to, where the folder runs it and it describes itself; null for
+    /// any other.</summary>
+    public Func<Uri, CancellationToken, Task<OpenApiDocument?>>? DocumentOf { get; init; }
+}
 
 /// <summary>A request as it is to be sent: as written, or as changed in the Interactive Test dialog.</summary>
 public sealed record EndpointDraft(string Method, string Url, IReadOnlyList<KeyValuePair<string, string>> Headers, string Body);
@@ -98,7 +104,9 @@ public sealed class EndpointsView : DockPanel
         [
             .. RouteRequests.Sendable(route) ? (IEnumerable<MenuItem>)[ListMenus.Item("Send Request", "Enter", () => RouteSendRequested?.Invoke(this, route))] : [],
             ListMenus.Item("Go to Route", "F4", () => RouteGoToRequested?.Invoke(this, route)),
-        ] : list.SelectedItem is not EndpointRequest chosen ? [] :
+            new Separator(),
+            parts.Item(AppActions.GenerateOpenApiRequests),
+        ] : list.SelectedItem is ProjectRow ? [parts.Item(AppActions.GenerateOpenApiRequests)] : list.SelectedItem is not EndpointRequest chosen ? [] :
         [
             ListMenus.Item("Test", "Enter", () => IdeErrors.Observe(TestAsync(chosen))),
             ListMenus.Item("Interactive Test…", null, () => InteractiveRequested?.Invoke(this, chosen)),
@@ -357,7 +365,11 @@ public sealed class EndpointsView : DockPanel
             testing.Say($"Sending {call.Method} {call.Url}…");
             shown.Sending($"Sending {call.Method} {call.Url}…");
             EndpointResponse response = await BackgroundWork.Run(() => EndpointClient.SendAsync(call, options, mine.Token), mine.Token);
-            shown.Show(response, [.. criteria.Select(c => c.Check(response))]);
+            // Held to the schema its app's document gives it, where the folder runs that app on this machine and it describes itself.
+            OpenApiDocument? document = parts.DocumentOf is { } of && Uri.TryCreate(call.Url, UriKind.Absolute, out Uri? sent) && sent.IsLoopback
+                ? await of(sent, mine.Token) : null;
+            IReadOnlyList<SchemaBreak> breaks = document is null ? [] : OpenApiSources.Check(document, call.Method, call.Url, response);
+            shown.Show(response, [.. criteria.Select(c => c.Check(response))], breaks);
             return EndpointSent.Answered;
         }
         catch (OperationCanceledException)
@@ -373,6 +385,14 @@ public sealed class EndpointsView : DockPanel
             }
         }
     }
+
+    /// <summary>The web project of the row chosen: its heading's, or a route's.</summary>
+    public string? ChosenProject => list.SelectedItem switch
+    {
+        ProjectRow project => project.Path,
+        WebRoute route => route.Project,
+        _ => null,
+    };
 
     /// <summary>The test under way, or null.</summary>
     public Working? Busy => parts.Work.Of(AppActions.TestEndpoint);
