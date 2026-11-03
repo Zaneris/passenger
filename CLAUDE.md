@@ -663,25 +663,29 @@ site-shots` retakes its images.
   editor's stdout; an `EditorDebuggerPlugin` never captures Godot's own messages, which `ScriptEditorDebugger`'s
   `debug_data` gives; the editor hears a game's `set_pid` before its session's `started`; `var_to_bytes` writes an
   object the editor holds by id (`EncodedObjectAsID`) as its holder's own id, so the addon sends it as
-  `{"passenger:object": id}`; and a script can show no progress while `_build` blocks. IDE messaging's `Play` plays only
-  the main scene, `DebugPlay`'s debugger fields are dead in Godot 4 (Godot 3's Mono agent's), and `ReloadScripts`
-  reloads the running games' scripts, the editor's own assemblies reloaded by GodotTools' watcher every 0.5 s; Godot's
-  JSON reads every number as a float. An agent's input and layout reach a game through Passenger's helper node
-  (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
+  `{"passenger:object": id}`; and a script can show no progress while `_build` blocks. The addon matches a session to
+  its `ScriptEditorDebugger` through the tab it adds (`add_session_tab`), never by its place in the tree; a relayed
+  message's data stays a `List<object?>`, as every reader matches one; Passenger's live-edit ids are negative, the
+  editor's counting up from one. IDE messaging's `Play` plays only the main scene, `DebugPlay`'s debugger fields are
+  dead in Godot 4 (Godot 3's Mono agent's), and `ReloadScripts` reloads the running games' scripts, the editor's own
+  assemblies reloaded by GodotTools' watcher every 0.5 s; Godot's JSON reads every number as a float. An agent's input
+  and layout reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing;
+  `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
   with unread input resets it, losing what was written (servers shut their side and drain first); the diagnostics library
   leaves a profiler pipe open after its listener goes (`ProfilingSession.CloseLeftListener` closes it, by reflection).
-- **macOS**: Avalonia's `SystemFonts` lists the hidden `.AppleSystemUIFont` only once something has loaded it, and
-  `TryGetGlyphTypeface` answers an unknown name with Helvetica, so `WindowFonts` checks the face it gets; Chrome waits
-  for good on the person's keychain where HOME has none, so `BrowserRun` passes `--use-mock-keychain`; a
-  hardened-runtime program without `get-task-allow` (Godot's release build) can be dumped by no one, so a heap snapshot
-  of it is refused up front (`DotnetProcesses.WhyUnreadable`); a variadic libc call through P/Invoke (`fcntl`, `ioctl`
-  with an argument) loses its variadic arguments on arm64 (`Descriptors.CloseOnExec`), and `poll` never says a named
-  pipe's writer has gone (`select`); a Unix socket path holds 104 bytes; `codesign` takes a dotted folder under
-  `Contents/MacOS` for a bundle (so the web servers live in Resources); TMPDIR is reached through the /var link, so a
-  build or restore of a test's project goes by its real path, and two spellings of one project restored at once collide.
+- **macOS**: a zombie process gives no process info, so `DotnetProcesses.Runs` counts one as gone; Avalonia's
+  `SystemFonts` lists the hidden `.AppleSystemUIFont` only once something has loaded it, and `TryGetGlyphTypeface`
+  answers an unknown name with Helvetica, so `WindowFonts` checks the face it gets; Chrome waits for good on the
+  person's keychain where HOME has none, so `BrowserRun` passes `--use-mock-keychain`; a hardened-runtime program
+  without `get-task-allow` (Godot's release build) can be dumped by no one, so a heap snapshot of it is refused up front
+  (`DotnetProcesses.WhyUnreadable`); a variadic libc call through P/Invoke (`fcntl`, `ioctl` with an argument) loses its
+  variadic arguments on arm64 (`Descriptors.CloseOnExec`), and `poll` never says a named pipe's writer has gone
+  (`select`); a Unix socket path holds 104 bytes; `codesign` takes a dotted folder under `Contents/MacOS` for a bundle
+  (so the web servers live in Resources); TMPDIR is reached through the /var link, so a build or restore of a test's
+  project goes by its real path, and two spellings of one project restored at once collide.
 - **.NET's watcher on macOS passes over FSEvents' word that it dropped events** (`MustScanSubDirs|UserDropped` arrive on
   the watched folder itself, which it skips; dotnet/runtime#136577), so a folder is watched only through `WatchedTree`
   (the folder's watcher, each of `ServerWatches`' and Git's folders outside it, `GitWatcher`), never a bare
@@ -775,10 +779,11 @@ and `tests/BlazorGraphs` that fill the package cache), GitHub (`PASSENGER_RELEAS
 (`PASSENGER_START=headless`). It shortens `PASSENGER_EVAL_TIMEOUT_MS` (3 s), `PASSENGER_WATCH_LATER_MS` (3 s),
 `PASSENGER_MCP_PROGRESS_MS` (1 s) and `PASSENGER_REGEX_TIMEOUT_MS` (1 s); a test holding a server to not answering sets
 that server's limits, never the run's. After each window test its windows close (those it closed itself too) and what
-they started is waited out (`TestsLeaveNothingBehind`), and each takes its own dispatcher as it begins (`UiThread.Own`):
-a headless test's dispatcher is its own, so a test that opens no IDE window would otherwise post to a finished one. A
-plain `[Fact]` using `HeadlessUnitTestSession.Dispatch` must not end on the session's thread (`await Task.Yield()`
-before throwing). A sleeping Mac fails tests: full runs go under `caffeinate -is`.
+they started is waited out (`TestsLeaveNothingBehind`, which ends and fails a test for a game an editor it ended left,
+`TestGodotEditors`), and each takes its own dispatcher as it begins (`UiThread.Own`): a headless test's dispatcher is
+its own, so a test that opens no IDE window would otherwise post to a finished one. A plain `[Fact]` using
+`HeadlessUnitTestSession.Dispatch` must not end on the session's thread (`await Task.Yield()` before throwing). A
+sleeping Mac fails tests: full runs go under `caffeinate -is`.
 
 **Collections and shared projects** (`Collections.cs`). Window tests run one at a time on the session's thread. Beside
 them run only the debug adapter's protocol tests (`DebugSession.Collection`) and `Beside` classes (no window, nothing
