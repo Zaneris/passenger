@@ -376,20 +376,23 @@ Projects in `src/`; `find_symbol` finds the rest:
   `GodotScriptDeclarations`, read from `GDScriptTree` (Godot's own parser, ported: members are runs between clean member
   starts, `Reparse` parsing only the edited run), typed by `GDScriptAnalyzer` (Godot's analyzer, ported), the engine's
   types from the found Godot's extension_api.json (`GodotEngineApi`, dumped once per version into the state's cache by
-  `GodotEngineApis`: `GodotEngineClasses` has no member types); their fixes `GodotOffer` over the extension's `GodotFix`
-  (members made by Roslyn so the code builds) and Workspace's pure `GodotWrites`, a fix that asks first through
-  `EditorFix.Confirms`; Godot's generator assigns every field in generated code, so a field's values are read from the
-  code's own documents); a C# file read before its project's evaluation landed is pulled again once it does
-  (`CSharpService.GodotProjectsChanged`). A Godot shader is `GodotShaderAssist` over Workspace's `GodotShaderCode`, its
-  language the carried `GodotShaderTypes.json` as the Godot found takes it (`GodotShaderCompiler.TableAsync`, probed per
-  version), its marks Godot's own compiler's through `PassengerShaders.gd` (`GodotShaderMarks`; a scene's own Shader's
-  in `GodotSceneMarks` through `GodotStringPlaces`). A theme item's name is read through `GodotThemeTable` (the carried
-  `GodotDefaultTheme.json`, `just godot-theme`) and the project's themes (`GodotDefinitions.ThemeItems`), and the
-  person's open Godot editor is asked through its IDE messaging server (`GodotIdeLink` over Workspace's
-  `GodotIdeMessaging` and `GodotIdeClient`), never Passenger's own headless editors (`GodotScripts.Headless`). Edits
-  added to a server's workspace edit for a file it already edits join that file's entry (`TypeRename.With`):
-  `documentChanges` apply in order. A server's own command (TypeScript's refactorings, ESLint's fixes) runs through
-  `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
+  `GodotEngineApis`: `GodotEngineClasses` has no member types), its Godot warnings and errors
+  `GDScriptAnalysis.Findings` (as project.godot sets them, `GDScriptWarningSettings`) shown until Godot's server has
+  pushed the file's own (`WebDocument.ShowPassengers`), fixed by `GDScriptFixes` (several edits as one through
+  `EditorFix.Edits`), and a GDScript function's argument count answered only by `GodotScriptDeclared.Takes`; their fixes
+  `GodotOffer` over the extension's `GodotFix` (members made by Roslyn so the code builds) and Workspace's pure
+  `GodotWrites`, a fix that asks first through `EditorFix.Confirms`; Godot's generator assigns every field in generated
+  code, so a field's values are read from the code's own documents); a C# file read before its project's evaluation
+  landed is pulled again once it does (`CSharpService.GodotProjectsChanged`). A Godot shader is `GodotShaderAssist` over
+  Workspace's `GodotShaderCode`, its language the carried `GodotShaderTypes.json` as the Godot found takes it
+  (`GodotShaderCompiler.TableAsync`, probed per version), its marks Godot's own compiler's through `PassengerShaders.gd`
+  (`GodotShaderMarks`; a scene's own Shader's in `GodotSceneMarks` through `GodotStringPlaces`). A theme item's name is
+  read through `GodotThemeTable` (the carried `GodotDefaultTheme.json`, `just godot-theme`) and the project's themes
+  (`GodotDefinitions.ThemeItems`), and the person's open Godot editor is asked through its IDE messaging server
+  (`GodotIdeLink` over Workspace's `GodotIdeMessaging` and `GodotIdeClient`), never Passenger's own headless editors
+  (`GodotScripts.Headless`). Edits added to a server's workspace edit for a file it already edits join that file's entry
+  (`TypeRename.With`): `documentChanges` apply in order. A server's own command (TypeScript's refactorings, ESLint's
+  fixes) runs through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
   `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind; an open GDScript
   kept parsed and typed by `GodotScriptTypes`, reparsed off the UI thread through `GDScriptTextChange`, its hints set
