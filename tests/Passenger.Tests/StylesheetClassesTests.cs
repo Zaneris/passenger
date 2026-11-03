@@ -16,7 +16,7 @@ namespace Passenger.Tests;
 /// <summary>The classes a Blazor component's pages link, completed where a class is written, through the window: a
 /// stylesheet on a CDN (a local stand-in, never a real one) only once Settings allow its download and never fetched
 /// before, its link's integrity checked; a package's static web asset under <c>_content/Kit/</c>, or under its own base
-/// path, read from the package folder its restore resolved; the component's own scoped stylesheet, a parent's ::deep
+/// path, read from the package folder its restore resolved, and a referenced library's under the base path it sets; the component's own scoped stylesheet, a parent's ::deep
 /// classes in its child; the host page's style block and a link under its base href; an HTML file's; a class's rules on
 /// the hover card and Go to Declaration to its rule, read-only; and a class no stylesheet defines marked, quietly, once
 /// every stylesheet linked was read. On a Blazor app made by <c>dotnet new blazor</c>, its warm server shared.</summary>
@@ -162,6 +162,8 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         Assert.Contains(("inline-note", "<style> in App.razor"), window.Assist.CompletionDetails);
         Assert.Contains(("based-note", "based.css"), window.Assist.CompletionDetails);
         Assert.Contains(("lamp-glow", "lamp.css"), window.Assist.CompletionDetails);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("gear-spin"), () => $"the referenced library's class under its own base path among {Listed(window)}");
+        Assert.Contains(("gear-spin", "gear.css"), window.Assist.CompletionDetails);
         window.Close();
     }
 
@@ -206,7 +208,7 @@ public sealed class StyledShop : SharedProject
         + ".btn-outline-secondary{color:#6c757d;border-color:#6c757d}@media (min-width:768px){.col-md-6{width:50%}}";
 
     private const string Component = "@page \"/styled\"\n\n<h1 class=\"halo\">Styled</h1>\n\n<p class=\"\"></p>\n\n"
-        + "<button class=\"btn btn-primary\">Go</button>\n<div class=\"btn-primry kit-card\"></div>\n";
+        + "<button class=\"btn btn-primary\">Go</button>\n<div class=\"btn-primry kit-card gear-spin\"></div>\n";
 
     private readonly StandInHttp cdn;
     private int fetched;
@@ -241,6 +243,7 @@ public sealed class StyledShop : SharedProject
                 + "    <link rel=\"stylesheet\" href=\"_content/Kit/kit.css\" />\n"
                 + "    <link rel=\"stylesheet\" href=\"/app/css/based.css\" />\n"
                 + "    <link rel=\"stylesheet\" href=\"lamp/lamp.css\" />\n"
+                + "    <link rel=\"stylesheet\" href=\"gear/gear.css\" />\n"
                 + "    <style>\n        .inline-note { color: teal; }\n    </style>", StringComparison.Ordinal);
             Assert.Contains("_content/Kit/kit.css", page, StringComparison.Ordinal);
             // Served under a path base: its relative links after it, its links under it from the app's root.
@@ -279,8 +282,14 @@ public sealed class StyledShop : SharedProject
             }
             File.WriteAllText(PathOf("nuget.config"), "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<configuration>\n  <packageSources>\n    <clear />\n"
                 + "    <add key=\"kit\" value=\"feed\" />\n  </packageSources>\n</configuration>\n");
+            // A Razor class library the app references, serving its static web assets under a base path of its own.
+            Directory.CreateDirectory(PathOf("Gear/wwwroot"));
+            File.WriteAllText(PathOf("Gear/Gear.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk.Razor\">\n  <PropertyGroup>\n"
+                + $"    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <StaticWebAssetBasePath>gear</StaticWebAssetBasePath>\n  </PropertyGroup>\n</Project>\n");
+            File.WriteAllText(PathOf("Gear/wwwroot/gear.css"), ".gear-spin {\n    rotate: 90deg;\n}\n");
             string project = await File.ReadAllTextAsync(PathOf("Shop.csproj"));
-            File.WriteAllText(PathOf("Shop.csproj"), project.Replace("</Project>", "  <ItemGroup>\n    <PackageReference Include=\"Kit\" Version=\"1.0.0\" />\n    <PackageReference Include=\"Lamp\" Version=\"1.0.0\" />\n  </ItemGroup>\n\n</Project>", StringComparison.Ordinal));
+            File.WriteAllText(PathOf("Shop.csproj"), project.Replace("</Project>", "  <ItemGroup>\n    <PackageReference Include=\"Kit\" Version=\"1.0.0\" />\n    <PackageReference Include=\"Lamp\" Version=\"1.0.0\" />\n"
+                + "    <ProjectReference Include=\"Gear/Gear.csproj\" />\n  </ItemGroup>\n\n  <PropertyGroup>\n    <DefaultItemExcludes>$(DefaultItemExcludes);Gear/**</DefaultItemExcludes>\n  </PropertyGroup>\n\n</Project>", StringComparison.Ordinal));
             Directory.CreateDirectory(PathOf("bin"));
         }, Folder);
         await PrepareAsync();

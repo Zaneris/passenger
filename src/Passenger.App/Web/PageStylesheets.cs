@@ -458,6 +458,10 @@ public sealed class PageStylesheets
             return PathNames.Canonical(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(from)!, path.TrimStart('/').Replace('/', System.IO.Path.DirectorySeparatorChar)));
         }
         string[] parts = path.TrimStart('/').Split('/');
+        if (ReferencedAsset(serving, parts, projects) is { } referencedAsset)
+        {
+            return referencedAsset;
+        }
         if (parts is ["_content", { Length: > 0 } name, .. { Length: > 0 } rest])
         {
             string below = System.IO.Path.Combine(rest);
@@ -469,6 +473,23 @@ public sealed class PageStylesheets
         }
         string own = System.IO.Path.Combine(serving.Folder, "wwwroot", System.IO.Path.Combine(parts));
         return File.Exists(own) ? own : PackageAssetUnder(serving, parts) ?? own;
+    }
+
+    /// <summary>The file an address names in the <c>wwwroot</c> of a project the app references, under the base path that
+    /// project serves its static web assets at (its <c>StaticWebAssetBasePath</c>, as its evaluation gives it); null where
+    /// no referenced project's base path begins it.</summary>
+    private static string? ReferencedAsset(ProjectModel serving, string[] parts, IReadOnlyList<ProjectModel> projects)
+    {
+        string address = string.Join('/', parts);
+        foreach (ProjectModel referenced in projects.Where(p => serving.ProjectReferences.Contains(p.Path, PathNames.Comparer)))
+        {
+            string served = referenced.Property(Host.CarriedProperties.StaticWebAssetBasePath) is { Length: > 0 } own ? own.Replace('\\', '/').Trim('/') : $"_content/{referenced.Name}";
+            if (served.Length > 0 && address.StartsWith(served + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                return System.IO.Path.Combine(referenced.Folder, "wwwroot", System.IO.Path.Combine(address[(served.Length + 1)..].Split('/')));
+            }
+        }
+        return null;
     }
 
     /// <summary>A package's static web asset in the package folder the project's restore resolved it to; null where its
