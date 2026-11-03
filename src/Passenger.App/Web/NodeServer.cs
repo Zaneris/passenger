@@ -124,6 +124,10 @@ internal sealed class NodeServer
                     Fail(unavailable.Message, unavailable.Label);
                     return null;
                 }
+                if (Configure is { } configureOwn)
+                {
+                    await configureOwn(own.Server);
+                }
                 if (cancelled.IsCancellationRequested || ended)
                 {
                     IdeErrors.Observe(BackgroundWork.Unheld(() => own.DisposeAsync().AsTask()));

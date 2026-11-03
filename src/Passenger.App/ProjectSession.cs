@@ -135,6 +135,7 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotScenes.Changed += (_, _) => CSharp?.GodotScenesChanged();
         GodotShaderCompiler = new Godot.GodotShaderCompiler(() => setup.Settings().GodotExecutable, () => setup.GodotEnvironment);
         GodotShaders = new Godot.GodotShaderMarks(GodotScenes, GodotOf, GodotShaderCompiler);
+        GodotScriptTypes = new Godot.GodotScriptTypes(GodotScenes, GodotOf, new Godot.GodotEngineApis(() => setup.Settings().GodotExecutable, () => setup.GodotEnvironment));
         GodotMarks = new Godot.GodotSceneMarks(GodotScenes, GodotOf, () => CSharp, setup.Editors.Commands)
         {
             Godot = () => setup.Settings().GodotExecutable,
@@ -142,6 +143,7 @@ public sealed class ProjectSession : IAsyncDisposable
         };
         GodotScenes.Changed += (_, _) => GodotMarks.Changed();
         GodotScenes.Changed += (_, _) => GodotShaders.Changed();
+        GodotScenes.Changed += (_, _) => GodotScriptTypes.Changed();
         GodotScenes.CodeChanged += (_, _) => GodotMarks.CodeWritten();
         Debug = new DebugController(setup.Editors, setup.Views.Debug)
         {
@@ -838,6 +840,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// asks and ended with the session.</summary>
     internal Godot.GodotEditorLink GodotEditors { get; } = new();
 
+    /// <summary>The open GDScripts' own trees and types.</summary>
+    internal Godot.GodotScriptTypes GodotScriptTypes { get; }
+
     /// <summary>The folder of the Godot project a file is of: the one its project builds a game for, else the Godot project of
     /// GDScript alone it lies in (<see cref="WorkspaceModel.ScriptGames"/>), the innermost; null for a file of none.</summary>
     public string? GodotOf(string path) => ProjectOf(path)?.GodotFolder
@@ -1076,6 +1081,7 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotScenes.Attach(document);
         GodotMarks.Attach(document);
         GodotShaders.Attach(document);
+        GodotScriptTypes.Attach(document);
         MSBuild.Attach(document);
         FileChecks.Attach(document);
         Debug.Attach(document);
@@ -1093,6 +1099,7 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotScenes.Detach(document);
         GodotMarks.Detach(document);
         GodotShaders.Detach(document);
+        GodotScriptTypes.Detach(document);
         MSBuild.Detach(document);
         FileChecks.Detach(document);
         Debug.Detach(document);
@@ -1142,6 +1149,8 @@ public sealed class ProjectSession : IAsyncDisposable
             GodotMarks.Attach(document);
             GodotShaders.Detach(document);
             GodotShaders.Attach(document);
+            GodotScriptTypes.Detach(document);
+            GodotScriptTypes.Attach(document);
         }
     }
 
@@ -1442,6 +1451,7 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotScenes.Stop();
         GodotMarks.Stop();
         GodotShaders.Stop();
+        GodotScriptTypes.Stop();
         parts.Add(("Godot's shader compiler", GodotShaderCompiler.DisposeAsync().AsTask()));
         parts.Add(("Godot's editors", GodotEditors.DisposeAsync().AsTask()));
         parts.Add(("the Godot editor's IDE messaging connection", GodotIde.DisposeAsync().AsTask()));

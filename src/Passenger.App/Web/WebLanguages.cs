@@ -670,18 +670,17 @@ public sealed class WebLanguages : IAsyncDisposable
 
     private async Task ConfigureAsync(WebServerKind kind, LanguageServer server)
     {
-        // Godot's server reads no settings of the client's.
-        if (kind == WebServerKind.GDScript)
-        {
-            return;
-        }
         if (configureHeld is { } hold)
         {
             configureHeld = null;
             hold.Holding.SetResult(server.ProcessId);
             await hold.Until;
         }
-        await Configure(kind, server);
+        // Godot's server reads no settings of the client's.
+        if (kind != WebServerKind.GDScript)
+        {
+            await Configure(kind, server);
+        }
     }
 
     /// <summary>The settings a server reads from <c>workspace/didChangeConfiguration</c> rather than asks for, sent once it

@@ -38,6 +38,9 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>The open shaders' marks from Godot's compiler, which its compiler and what it read of their uniforms come from.</summary>
     public Func<Godot.GodotShaderMarks?>? GodotShaders { get; set; }
 
+    /// <summary>The open GDScripts' own trees and types.</summary>
+    public Func<Godot.GodotScriptTypes?>? GodotScriptTypes { get; set; }
+
     /// <summary>The scenes of the Godot project a file is of and that project's folder; null for a file of none.</summary>
     public (Godot.GodotSceneIndex Index, string Folder)? GodotOf(string path) =>
         GodotScenes?.Invoke() is { } index && index.GameOf(path) is { } folder ? (index, folder) : null;

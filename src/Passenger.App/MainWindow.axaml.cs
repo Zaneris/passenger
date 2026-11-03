@@ -245,6 +245,7 @@ public partial class MainWindow : IdeWindow
         {
             Xaml = () => session.Xaml, MSBuild = () => session.MSBuild, Web = () => session.Web, GodotScenes = () => session.GodotScenes,
             GodotShaders = () => session.GodotShaders,
+            GodotScriptTypes = () => session.GodotScriptTypes,
             Stylesheets = () => session.Stylesheets,
             Projects = () => session.Workspace?.Projects ?? [],
         };

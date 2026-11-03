@@ -1,0 +1,226 @@
+using Passenger.App.Workspace;
+using Passenger.Core;
+using Passenger.Editor;
+using Passenger.Text;
+using Passenger.Workspace;
+using Passenger.Workspace.GDScript;
+
+namespace Passenger.App.Godot;
+
+/// <summary>Each open GDScript's own syntax tree and types (<see cref="GDScriptTree"/>, <see cref="GDScriptAnalyzer"/>):
+/// the tree parsed again off the window's thread once typing pauses, from the edits the text gave since (only the members
+/// they reach parsed again), the types read against the project's other scripts, its autoloads and the engine's API, and
+/// the types inferred where none is written shown as inlay hints. What a key costs the window's thread is the edit's
+/// note and the pause's restart. A UI-thread object.</summary>
+internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, string?> godotOf, GodotEngineApis apis)
+{
+    /// <summary>How long typing pauses before the file is parsed and typed again.</summary>
+    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(250);
+
+    private readonly Dictionary<OpenDocument, Kept> documents = [];
+
+    /// <summary>An open script's tree and analysis as last made, and the change its text has made since.</summary>
+    private sealed class Kept(Debounce pause)
+    {
+        public Debounce Pause { get; } = pause;
+
+        public EventHandler<DocumentChangedEventArgs>? Typed { get; set; }
+
+        public GDScriptTree? Tree { get; set; }
+
+        public string? TreeText { get; set; }
+
+        public GDScriptTextChange? Pending { get; set; }
+
+        public Task<Typed?>? Current { get; set; }
+    }
+
+    /// <summary>A script's types for a version of its text: its tree, its analysis, and the analyzer that read them.</summary>
+    public sealed record Typed(int Version, GDScriptTree Tree, GDScriptAnalysis Analysis, GDScriptAnalyzer Analyzer, string Text, HintList Hints);
+
+    public static bool IsScript(string path) => GodotScriptDeclarations.IsScript(path);
+
+    public void Attach(OpenDocument document)
+    {
+        UiThread.Check();
+        if (!IsScript(document.Path) || documents.ContainsKey(document))
+        {
+            return;
+        }
+        Kept kept = new(new Debounce(Settle, () => TypeAsync(document)));
+        kept.Typed = (_, e) =>
+        {
+            GDScriptTextChange change = GDScriptTextChange.Of(e.Edits);
+            kept.Pending = kept.Pending is { } before ? before.Then(change) : change;
+            kept.Pause.Restart();
+        };
+        documents[document] = kept;
+        document.Text.Changed += kept.Typed;
+        IdeErrors.Observe(TypeAsync(document));
+    }
+
+    public void Detach(OpenDocument document)
+    {
+        UiThread.Check();
+        if (documents.Remove(document, out Kept? gone))
+        {
+            document.Text.Changed -= gone.Typed;
+            gone.Pause.Stop();
+        }
+    }
+
+    /// <summary>The project's other files changed: each open script typed again once changes pause.</summary>
+    public void Changed()
+    {
+        UiThread.Check();
+        foreach (Kept kept in documents.Values)
+        {
+            kept.Pause.Restart();
+        }
+    }
+
+    public void Stop()
+    {
+        foreach (Kept kept in documents.Values)
+        {
+            kept.Pause.Stop();
+        }
+    }
+
+    /// <summary>An open script's types for its text as it stands, read now where typing has not paused since; null for a
+    /// file this follows not.</summary>
+    public async Task<Typed?> TypedAsync(OpenDocument document)
+    {
+        UiThread.Check();
+        if (!documents.TryGetValue(document, out Kept? kept))
+        {
+            return null;
+        }
+        if (kept.Current is { } current && await current is { } typed && typed.Version == document.Text.Version)
+        {
+            return typed;
+        }
+        return await TypeAsync(document);
+    }
+
+    /// <summary>The script typed again, after the typing under way: each starts from the tree the last one left.</summary>
+    private Task<Typed?> TypeAsync(OpenDocument document)
+    {
+        UiThread.Check();
+        if (!documents.TryGetValue(document, out Kept? kept))
+        {
+            return Task.FromResult<Typed?>(null);
+        }
+        Task<Typed?> typing = AfterAsync(document, kept, kept.Current);
+        kept.Current = typing;
+        return typing;
+    }
+
+    private async Task<Typed?> AfterAsync(OpenDocument document, Kept kept, Task<Typed?>? before)
+    {
+        if (before is not null)
+        {
+            await before.Ended();
+        }
+        if (!documents.ContainsKey(document))
+        {
+            return null;
+        }
+        TextSnapshot snapshot = document.Text.Snapshot;
+        GDScriptTextChange? change = kept.Pending;
+        kept.Pending = null;
+        Typed? typed = await TypeOffAsync(document, snapshot, document.Text.Version, kept.Tree, kept.TreeText, change);
+        if (typed is null || !documents.ContainsKey(document))
+        {
+            return typed;
+        }
+        kept.Tree = typed.Tree;
+        kept.TreeText = typed.Text;
+        if (document.Text.Version == typed.Version && !Alike(document.InlayHints, typed.Hints))
+        {
+            document.InlayHints = typed.Hints;
+        }
+        return typed;
+    }
+
+    private async Task<Typed?> TypeOffAsync(OpenDocument document, TextSnapshot snapshot, int version, GDScriptTree? tree, string? treeText, GDScriptTextChange? change)
+    {
+        string path = document.Path;
+        GodotEngineApi? api = await apis.ApiAsync();
+        GodotScenes? scenes = godotOf(path) is { } folder ? await index.ScenesAsync(folder) : null;
+        return await BackgroundWork.Run(() =>
+        {
+            string text = snapshot.ToString();
+            GDScriptTree parsed = tree is not null && treeText is not null && change is { } edit && edit.Fits(treeText.Length, text.Length)
+                ? tree.Reparse(text, edit.Edit(text)) : GDScriptTree.Parse(text);
+            string res = scenes?.ResPathOf(path) ?? "res://" + Path.GetFileName(path);
+            GDScriptProject project = ProjectOf(scenes, api, res, parsed);
+            GDScriptAnalyzer analyzer = new(project);
+            GDScriptAnalysis analysis = analyzer.Analyze(parsed, res);
+            HintList hints = HintList.Of([.. analysis.Inferred().Select(i => new InlayHint(i.Offset, $": {i.Type}", Kind: InlayHintKind.Type))]);
+            return (Typed?)new Typed(version, parsed, analysis, analyzer, text, hints);
+        });
+    }
+
+    /// <summary>Whether the hints shown, carried through the edits since, say what the new ones say where they say it: a
+    /// pause that changed no inferred type sets none, so typing in a long script costs the window no list of its hints.</summary>
+    private static bool Alike(IReadOnlyList<InlayHint> shown, HintList made)
+    {
+        if (shown.Count != made.Count)
+        {
+            return false;
+        }
+        for (int i = 0; i < made.Count; i++)
+        {
+            if (shown[i] is var was && made[i] is var now && (was.Offset != now.Offset || was.Label != now.Label || was.Kind != now.Kind))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>What a script's types are read against: the project's scripts (this one as the editor has it), their
+    /// <c>class_name</c>s, its autoloads, its uids and the engine's API.</summary>
+    private static GDScriptProject ProjectOf(GodotScenes? scenes, GodotEngineApi? api, string res, GDScriptTree own)
+    {
+        if (scenes is null)
+        {
+            return new GDScriptProject(api, path => path == res ? own : null, new Dictionary<string, string>(), new Dictionary<string, string>());
+        }
+        Dictionary<string, GDScriptTree> trees = new(StringComparer.Ordinal) { [res] = own };
+        GDScriptTree? Tree(string path)
+        {
+            if (!trees.TryGetValue(path, out GDScriptTree? tree) && scenes.Texts.TryGetValue(path, out string? text) && GodotScriptDeclarations.IsScript(path))
+            {
+                trees[path] = tree = Parsed.Of(text);
+            }
+            return tree;
+        }
+        Dictionary<string, string> classNames = new(StringComparer.Ordinal);
+        foreach (string script in scenes.Texts.Keys.Where(GodotScriptDeclarations.IsScript))
+        {
+            if (scenes.ScriptOf(script)?.ClassName is { } named)
+            {
+                classNames.TryAdd(named, script);
+            }
+        }
+        Dictionary<string, string> autoloads = new(StringComparer.Ordinal);
+        foreach (GodotDefined autoload in scenes.Defined.Autoloads)
+        {
+            if (scenes.Defined.AutoloadFile(autoload.Name) is { } file && GodotScriptDeclarations.IsScript(file))
+            {
+                autoloads[autoload.Name] = file;
+            }
+        }
+        return new GDScriptProject(api, Tree, classNames, autoloads, uids: scenes.ResOfUid);
+    }
+
+    /// <summary>Each other script's tree, parsed once for each text the project reads.</summary>
+    private static class Parsed
+    {
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<string, GDScriptTree> Kept = [];
+
+        public static GDScriptTree Of(string text) => Kept.GetValue(text, GDScriptTree.Parse);
+    }
+}

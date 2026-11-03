@@ -92,6 +92,9 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// definitions or renames, which Passenger then gives itself.</summary>
     public bool Provides(string capability) => session?.Server.Provides(capability) == true;
 
+    /// <summary>Whether its server has started and answers for it.</summary>
+    public bool Serving => session is not null;
+
     public IReadOnlyList<Diagnostic> Diagnostics => diagnostics.Placed;
 
     /// <summary>ESLint's share of the file, while ESLint checks it.</summary>
