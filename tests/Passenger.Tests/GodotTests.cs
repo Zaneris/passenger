@@ -663,7 +663,9 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             window.ApplySettings(window.Settings with { GodotExecutable = StandIn("4.6.1") });
             Choose(window, Generated(window, "Spinner"));
             string? refused = Ui.AwaitPumped(window.RunAsync(), "Run of the game on a Godot too old for it", TimeSpan.FromMinutes(3));
-            Assert.Equal($"Spinner on Godot cannot run: it builds with Godot.NET.Sdk {version}, newer than the Godot 4.6.1 that runs it: run it on Godot {version} or newer, "
+            // The project's Godot.NET.Sdk is the found Godot's package, spelled as NuGet spells it (4.8.0-beta.2 for 4.8 beta 2).
+            string sdk = godot.Version!;
+            Assert.Equal($"Spinner on Godot cannot run: it builds with Godot.NET.Sdk {sdk}, newer than the Godot 4.6.1 that runs it: run it on Godot {sdk} or newer, "
                 + $"or build it with Godot.NET.Sdk 4.6.1", refused);
             Assert.False(window.IsRunning, "Run started the game on a Godot too old for its Godot.NET.Sdk");
         }
