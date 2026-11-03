@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Diagnostics.Tracing;
 using System.Globalization;
 using Microsoft.Diagnostics.NETCore.Client;
@@ -53,34 +54,77 @@ public sealed class LiveMetrics : IAsyncDisposable
     /// <summary>Done once the stream ends: the program gone, or the session stopped.</summary>
     public Task Ended { get; }
 
+    /// <summary>The session id a program in a container is read under, the same for every Passenger there.</summary>
+    public const string ContainerSession = "passenger-container-metrics";
+
+    /// <summary>The runtime's metrics of <paramref name="meters"/> asked under a session id: its messages, time series and
+    /// instruments published, at the interval and limits dotnet-counters asks for.</summary>
+    public static EventPipeProvider[] Providers(string session, IReadOnlyCollection<string> meters) =>
+    [
+        new EventPipeProvider(Provider, EventLevel.Informational, 0x7, new Dictionary<string, string>
+        {
+            ["SessionId"] = session,
+            ["Metrics"] = string.Join(',', meters.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)),
+            ["RefreshInterval"] = "1",
+            ["MaxTimeSeries"] = "1000",
+            ["MaxHistograms"] = "10",
+        }),
+    ];
+
     /// <summary>Starts hearing a running program's instruments of <paramref name="meters"/> at its diagnostic port. A program
     /// gone, or with no port to reach, is a <see cref="ProfilingException"/> saying why.</summary>
     public static async Task<LiveMetrics> AttachAsync(int processId, IReadOnlyCollection<string> meters, MetricsHeard heard, CancellationToken cancel = default)
     {
         string session = Guid.NewGuid().ToString();
-        HashSet<string> asked = new(meters, StringComparer.Ordinal);
-        EventPipeProvider[] providers =
-        [
-            // Its messages, time series and instruments published, at the interval and limits dotnet-counters asks for.
-            new EventPipeProvider(Provider, EventLevel.Informational, 0x7, new Dictionary<string, string>
-            {
-                ["SessionId"] = session,
-                ["Metrics"] = string.Join(',', asked.Order(StringComparer.Ordinal)),
-                ["RefreshInterval"] = "1",
-                ["MaxTimeSeries"] = "1000",
-                ["MaxHistograms"] = "10",
-            }),
-        ];
         EventPipeSession started;
         try
         {
-            started = await new DiagnosticsClient(processId).StartEventPipeSessionAsync(providers, requestRundown: false, circularBufferMB: 16, cancel);
+            started = await new DiagnosticsClient(processId).StartEventPipeSessionAsync(Providers(session, meters), requestRundown: false, circularBufferMB: 16, cancel);
         }
         catch (Exception error) when (DiagnosticsFailures.Of(error))
         {
             throw new ProfilingException($"Its metrics could not be read: {error.Message}", error);
         }
-        EventPipeEventSource source = new(started.EventStream);
+        return Hear(started.EventStream, session, meters, heard, async () =>
+        {
+            await EventPipeStops.StopAsync(started, TimeSpan.FromSeconds(5));
+            started.Dispose();
+        });
+    }
+
+    /// <summary>Starts hearing a program in a container (<paramref name="place"/>) through Passenger's tools there (their
+    /// <see cref="ContainerToolsWords.Trace"/> with <see cref="ContainerToolsWords.Metrics"/>: the meters .NET ships, at the
+    /// program's own diagnostic port, its stream on their output). Tools that cannot start or reach it are a
+    /// <see cref="ProfilingException"/> with their last word.</summary>
+    public static async Task<LiveMetrics> AttachAsync(int processId, ProfilePlace place, MetricsHeard heard, CancellationToken cancel = default)
+    {
+        ContainerTrace recording = await ContainerTrace.StartAsync(place, processId, resume: false, ContainerToolsWords.Metrics, "read its metrics", "reading its metrics", cancel);
+        Process tools = recording.Tools;
+        return Hear(tools.StandardOutput.BaseStream, ContainerSession, Shipped, heard, async () =>
+        {
+            // Their input's end stops the session there; tools that do not end are ended.
+            try
+            {
+                tools.StandardInput.Close();
+            }
+            catch (IOException)
+            {
+            }
+            await Task.WhenAny(tools.WaitForExitAsync(CancellationToken.None), Task.Delay(TimeSpan.FromSeconds(5)));
+            if (!tools.HasExited)
+            {
+                ChildProcesses.Kill(tools);
+            }
+            await Task.WhenAny(recording.Heard, Task.Delay(TimeSpan.FromSeconds(2)));
+            tools.Dispose();
+        });
+    }
+
+    /// <summary>A stream's events read on a thread of their own, each interval's readings told together, until it ends.</summary>
+    private static LiveMetrics Hear(Stream stream, string session, IReadOnlyCollection<string> meters, MetricsHeard heard, Func<Task> stop)
+    {
+        HashSet<string> asked = new(meters, StringComparer.Ordinal);
+        EventPipeEventSource source = new(stream);
         List<MetricReading> interval = [];
         HashSet<string> told = new(StringComparer.Ordinal);
         source.Dynamic.All += data =>
@@ -120,11 +164,7 @@ public sealed class LiveMetrics : IAsyncDisposable
             {
             }
         });
-        return new LiveMetrics(source, ended, async () =>
-        {
-            await EventPipeStops.StopAsync(started, TimeSpan.FromSeconds(5));
-            started.Dispose();
-        });
+        return new LiveMetrics(source, ended, stop);
     }
 
     private static bool Ours(TraceEvent data, string session) => data.PayloadByName("sessionId") as string == session;

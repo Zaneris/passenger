@@ -5,23 +5,29 @@ using Passenger.App.Aspire;
 using Passenger.App.Run;
 using Passenger.App.Telemetry;
 using Passenger.Core;
+using Passenger.Profiler;
 
 namespace Passenger.App.Mcp;
 
 public sealed partial class PassengerTools
 {
-    [McpServerTool(Name = McpTools.Telemetry, Title = "Logs and traces", ReadOnly = true), Description(
+    [McpServerTool(Name = McpTools.Telemetry, Title = "Logs, traces and metrics", ReadOnly = true), Description(
         "A run's structured logs or traces (kind) from its dashboard: an Aspire AppHost's, or a container or project run's when its "
-        + "configuration collects them; a resource's, Compose service's or project's (resource) or one trace's (traceId) alone.")]
+        + "configuration collects them; a resource's, Compose service's or project's (resource) or one trace's (traceId) alone. "
+        + "kind metrics: a resource's .NET program's instruments read from its runtime a few seconds, each one's latest value and rate.")]
     public Task<TelemetryInfo> GetTelemetry(string kind = "logs", string? appHost = null,
         string? resource = null, string? traceId = null, int limit = 200,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
-        if (kind is not ("logs" or "traces"))
+        if (kind is not ("logs" or "traces" or "metrics"))
         {
-            throw new ArgumentException("kind must be logs or traces");
+            throw new ArgumentException("kind must be logs, traces or metrics");
         }
         ProjectSession current = Session;
+        if (kind == "metrics")
+        {
+            return await MetricsOfAsync(current, appHost, resource, limit, cancel);
+        }
         (ITelemetryRun run, TelemetrySource? source, string? filter) = await TelemetryOfAsync(current, appHost, resource, cancel);
         if (source is null)
         {
@@ -112,10 +118,99 @@ public sealed partial class PassengerTools
         return (app, app.Telemetry, selected?.Resource.Name);
     }
 
+    /// <summary>A resource's .NET program's metrics for an agent, as the Aspire window's Stats tab reads them: its runtime's
+    /// instruments heard for a few collections (the meters it publishes itself read in a second session), each one's latest
+    /// value and rate, at most <paramref name="limit"/>, saying how many more there were.</summary>
+    private async Task<TelemetryInfo> MetricsOfAsync(ProjectSession current, string? appHost, string? resource, int limit, CancellationToken cancel)
+    {
+        if (resource is null)
+        {
+            throw new ArgumentException("kind metrics reads one resource's program: give resource, as workspace lists them");
+        }
+        string qualified = appHost is not null && !resource.Contains("::", StringComparison.Ordinal) ? $"{Resolve(appHost)}::{resource}" : resource;
+        AspireSelection selected = await window.ResolveOwnedAspireResourceAsync(qualified, null, cancel)
+            ?? throw new InvalidOperationException($"No owned AppHost has a resource {resource}; workspace lists them");
+        int program = AspireController.ProgramOf(selected.Resource) ?? current.Aspire.FindService(selected)?.ProcessId
+            ?? throw new InvalidOperationException($"{selected.Resource.DisplayName} runs no .NET program on this machine to read metrics from");
+        Dictionary<(string, string), MetricValue> latest = [];
+        HashSet<string> published = new(StringComparer.Ordinal);
+        await HearAsync(LiveMetrics.Shipped);
+        if (published.Count > 0)
+        {
+            await HearAsync([.. LiveMetrics.Shipped, .. published]);
+        }
+        if (Session != current || current.IsEnded)
+        {
+            throw new InvalidOperationException("The workspace or its run changed");
+        }
+        MetricInfo[] heard = [.. latest.Values.OrderBy(v => LiveMetrics.Shipped.Contains(v.Meter) ? 0 : 1).ThenBy(v => v.Meter, StringComparer.Ordinal)
+            .ThenBy(v => v.Instrument, StringComparer.Ordinal).Select(v => new MetricInfo(v.Meter, v.Instrument, v.Unit, v.Shown))];
+        (IReadOnlyList<MetricInfo> kept, string? more) = AgentAnswers.Listed(heard, Math.Max(1, limit), "instrument", "a larger limit gives them");
+        return new TelemetryInfo([], []) { Metrics = kept, More = more };
+
+        // Its readings of three collections at most, or of a few seconds; an idle histogram keeps the value it last had.
+        async Task HearAsync(IReadOnlyCollection<string> meters)
+        {
+            object gate = new();
+            int collections = 0;
+            TaskCompletionSource enough = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            MetricsHeard listened = new(readings =>
+            {
+                lock (gate)
+                {
+                    foreach (MetricValue value in MetricsPane.Combined(readings))
+                    {
+                        if (!value.Idle || !latest.ContainsKey((value.Meter, value.Instrument)))
+                        {
+                            latest[(value.Meter, value.Instrument)] = value;
+                        }
+                    }
+                    if (++collections >= 3)
+                    {
+                        enough.TrySetResult();
+                    }
+                }
+            }, meter =>
+            {
+                lock (gate)
+                {
+                    published.Add(meter);
+                }
+            }, why => enough.TrySetException(new InvalidOperationException($"{selected.Resource.DisplayName}: {why}")));
+            LiveMetrics live;
+            try
+            {
+                live = await LiveMetrics.AttachAsync(program, meters, listened, cancel);
+            }
+            catch (ProfilingException failed)
+            {
+                throw new InvalidOperationException($"{selected.Resource.DisplayName}: {failed.Message}", failed);
+            }
+            await using (live)
+            {
+                await Task.WhenAny(enough.Task, Task.Delay(TimeSpan.FromSeconds(6), cancel), live.Ended);
+                if (enough.Task.IsFaulted)
+                {
+                    await enough.Task;
+                }
+            }
+        }
+    }
+
     /// <summary>What a run that collects no logs or traces says to an agent: what to turn on.</summary>
     private static string Uncollected(string name) =>
         $"{name} collects no logs or traces: turn on its configuration's Collect logs and traces with Aspire's dashboard (Edit Configurations), then run it again";
 }
 
 public sealed record TraceInfo(string TraceId, JsonElement Summary, IReadOnlyList<JsonElement> Spans);
-public sealed record TelemetryInfo(IReadOnlyList<JsonElement> Logs, IReadOnlyList<TraceInfo> Traces);
+public sealed record TelemetryInfo(IReadOnlyList<JsonElement> Logs, IReadOnlyList<TraceInfo> Traces)
+{
+    /// <summary>kind metrics': each instrument's latest value as the Stats tab says it.</summary>
+    public IReadOnlyList<MetricInfo>? Metrics { get; init; }
+
+    /// <summary>What it left out of a long answer, and how to read it.</summary>
+    public string? More { get; init; }
+}
+
+/// <summary>An instrument of a program's, its meter, unit and latest value with its rate ("12/s, median 0.14 ms, 95% under 0.22 ms").</summary>
+public sealed record MetricInfo(string Meter, string Instrument, string Unit, string Value);

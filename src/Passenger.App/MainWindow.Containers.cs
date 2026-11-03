@@ -126,6 +126,7 @@ public partial class MainWindow
         view.TelemetryOf = project => session.ContainerRun is { } run && run.Plan.ProjectName == project ? run.Telemetry
             : session.Dashboards.FirstOrDefault(dashboard => dashboard.ProjectName == project)?.Telemetry;
         view.UnstartedOf = project => buildRun.Containers is { } run && run.Plan.ProjectName == project ? run.Unstarted : [];
+        view.DotnetOf = DotnetInContainerAsync;
         view.StateRead += (_, state) => ShowEngine(state);
         view.Files.Opened += (_, copy) => OpenCopy(copy);
         view.Files.Problem += (_, problem) => status.Text = problem;
@@ -134,6 +135,25 @@ public partial class MainWindow
         // Added after the window marks its tool windows' buttons (ShowActionWork): its own marked as it is built.
         ActionButtons.ShowMarked(view, actions!);
         return view;
+    }
+
+    /// <summary>A .NET service of the folder's container run, by its Compose project and service: its program in its
+    /// container and where Passenger's tools reach it, as the Requests window finds it; null for any other, or one not up.</summary>
+    private async Task<(int Process, Profiler.ProfilePlace Place)?> DotnetInContainerAsync(string project, string service)
+    {
+        if (session.ContainerRun is not { } run || run.Plan.ProjectName != project
+            || session.Running.FirstOrDefault(p => p.Kind == RunningKind.Service && p.Services == run && p.Service?.Name == service)?.Service is not { } running)
+        {
+            return null;
+        }
+        try
+        {
+            return await run.ProgramAsync(running, Task.CompletedTask, CancellationToken.None) is { WhyNot: null, Recorded: { } place } found ? (found.Id, place) : null;
+        }
+        catch (Exception error) when (error is ServiceUnreachedException || run.Refused(error))
+        {
+            return null;
+        }
     }
 
     /// <summary>The window's folder opened: when it holds a Compose file or a Dockerfile, the engine is asked once, off the

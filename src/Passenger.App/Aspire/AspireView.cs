@@ -24,7 +24,8 @@ public sealed record AspireRow(AspireResource Resource, int Depth, bool Expands,
 
 /// <summary>The Aspire window over an AppHost's resources: an icon toolbar of the window's actions, the resources as rows
 /// (<see cref="RunRows"/>: a chevron over a parent's children, the state's dot, health's tag and addresses as links), the
-/// chosen one's metrics (<see cref="MetricsPane"/>) and Details (<see cref="AspireDetailsPane"/>), the resources' consoles
+/// chosen one's metrics (<see cref="MetricsPane"/>) and Details (<see cref="AspireDetailsPane"/>), the AppHost's graph
+/// (<see cref="AspireGraph"/>), the resources' consoles
 /// merged (<see cref="MergedLog"/>), the dashboard's structured logs and traces (<see cref="TelemetryView"/>'s pages), and the
 /// AppHost's own console, on the frame of a run's windows (<see cref="RunWindowFrame"/>). A view of the session's
 /// <see cref="AspireModel"/>, built as the window is first shown.</summary>
@@ -110,6 +111,7 @@ public sealed class AspireView : DockPanel, IDisposable
         };
 
         Details = new AspireDetailsPane(uri => Browse?.Invoke(uri), OpenFile, name => this.model.ChooseNamed(name));
+        Graph = new AspireGraph(name => this.model.ChooseNamed(name));
         Log = new MergedLog("aspireLogFind", consoleStatus);
         Log.Toggled += (_, _) => UpdateConsole(again: true);
         // A log's trace and a span's logs are the window's actions here, as its other buttons are.
@@ -126,6 +128,7 @@ public sealed class AspireView : DockPanel, IDisposable
             [LogTab] = Log,
             [StatsTab] = Metrics,
             [AspireModel.DetailsTab] = Details,
+            [AspireModel.GraphTab] = new ScrollViewer { Content = Graph, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto },
             [TelemetryTab] = Telemetry.Both,
             [AspireModel.AppHostTab] = WithHeader(readiness, appHostConsole),
         };
@@ -149,6 +152,9 @@ public sealed class AspireView : DockPanel, IDisposable
 
     /// <summary>The chosen resource's Details tab.</summary>
     public AspireDetailsPane Details { get; }
+
+    /// <summary>The AppHost's resources at once, the Graph tab.</summary>
+    public AspireGraph Graph { get; }
 
     /// <summary>The chosen resource's metrics, the Stats tab, read only while it is shown.</summary>
     public MetricsPane Metrics { get; } = new();
@@ -296,6 +302,7 @@ public sealed class AspireView : DockPanel, IDisposable
         }
         ShowEmpty();
         Details.Show(model.SelectedResource, model.Chosen?.LeftUnstarted == true, model.ResourceSnapshots);
+        Graph.Show(model.ResourceSnapshots);
         UpdateMetrics();
     }
 

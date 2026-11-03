@@ -2029,6 +2029,48 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>A resource waiting for another says so in its Details, what it waits for and references each a link to that
     /// resource, whose own Details name it back as waiting for it and referencing it, a link that leads back; as the
     /// AppHost's relationships say, and as the other resource's state stands.</summary>
+    /// <summary>The AppHost's graph shows every resource at once, an edge for each wait and reference its relationships give,
+    /// each resource right of those it waits for; a click on a node chooses its row.</summary>
+    [AvaloniaFact]
+    public void The_apphosts_graph_has_an_edge_for_each_wait_and_a_node_chooses_its_row()
+    {
+        project.Reset();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        backend.PushResource(new Resource
+        {
+            Name = "web", DisplayName = "web", Uid = "web", ResourceType = "Project", State = "Waiting",
+            Relationships = { new ResourceRelationship { ResourceName = "api", Type = "WaitFor" }, new ResourceRelationship { ResourceName = "cache", Type = "Reference" } },
+        });
+        backend.PushResource(new Resource
+        {
+            Name = "api", DisplayName = "api", Uid = "api", ResourceType = "Project", State = "Waiting",
+            Relationships = { new ResourceRelationship { ResourceName = "cache", Type = "WaitFor" }, new ResourceRelationship { ResourceName = "db", Type = "WaitFor" } },
+        });
+        backend.PushResource(new Resource { Name = "cache", DisplayName = "cache", Uid = "cache", ResourceType = "Container", State = "Running" });
+        backend.PushResource(new Resource { Name = "db", DisplayName = "db", Uid = "db", ResourceType = "Container", State = "Starting" });
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            FindAction(window, "Show Aspire Graph");
+            AspireGraph graph = window.AspireWindow.Graph;
+            Ui.WaitFor(() => graph.Nodes.Count == 4, () => $"the graph's four resources, not [{string.Join(", ", graph.Nodes.Keys)}]");
+            Assert.Equal([new AspireEdge("web", "api", "WaitFor"), new AspireEdge("web", "cache", "Reference"), new AspireEdge("api", "cache", "WaitFor"), new AspireEdge("api", "db", "WaitFor")],
+                graph.Edges.OrderBy(e => e.From == "web" ? 0 : 1).ThenBy(e => e.To, StringComparer.Ordinal));
+            double Column(string name) => Canvas.GetLeft(graph.Nodes[name]);
+            Assert.True(Column("cache") == Column("db") && Column("db") < Column("api") && Column("api") < Column("web"),
+                $"The graph's columns put cache at {Column("cache")}, db at {Column("db")}, api at {Column("api")} and web at {Column("web")}");
+
+            Ui.Click(graph.Nodes["db"]);
+            Ui.WaitFor(() => window.Aspire.SelectedResource?.Name == "db", "the db node to choose db's row");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     [AvaloniaFact]
     public void A_resource_waiting_for_another_says_what_for_in_its_details_with_links_both_ways()
     {
@@ -3365,15 +3407,26 @@ public sealed class StandInAppHost : SharedProject
     }
 
     /// <summary>Writes an ASP.NET Core app into the stand-in's folder, built by its real path, for the AppHost to start as a web
-    /// service: one route, /, which answers "up" and counts itself on a meter of the app's own (StandIn.Web's standin.served).
-    /// Its project's path; the next test's <see cref="SharedProject.Reset"/> takes it away.</summary>
-    internal string WriteWebApp()
+    /// service: one route, /, which answers "up" and counts itself on a meter of the app's own (StandIn.Web's standin.served);
+    /// given STAND_IN_PID_FILE, it writes its process's id there as it starts. Its project's path; the next test's
+    /// <see cref="SharedProject.Reset"/> takes it away.</summary>
+    internal string WriteWebApp() => Ui.Await(WriteWebAppAsync(), "the web service's build", TimeSpan.FromMinutes(4));
+
+    /// <inheritdoc cref="WriteWebApp"/>
+    internal async Task<string> WriteWebAppAsync()
     {
         TestFolders.Write(Folder, "StandIn.Web/StandIn.Web.csproj", TestProjects.Web());
         TestFolders.Write(Folder, "StandIn.Web/Program.cs", """
+            using System;
             using System.Diagnostics.Metrics;
+            using System.IO;
             using Microsoft.AspNetCore.Builder;
 
+            if (Environment.GetEnvironmentVariable("STAND_IN_PID_FILE") is { Length: > 0 } told)
+            {
+                File.WriteAllText(told + ".part", Environment.ProcessId.ToString());
+                File.Move(told + ".part", told, overwrite: true);
+            }
             Meter meter = new("StandIn.Web");
             Counter<long> served = meter.CreateCounter<long>("standin.served", "{request}");
             WebApplication app = WebApplication.CreateBuilder(args).Build();
@@ -3386,8 +3439,7 @@ public sealed class StandInAppHost : SharedProject
 
             """);
         string web = PathNames.Canonical(PathOf("StandIn.Web/StandIn.Web.csproj"));
-        ChildResult result = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", web, "-nologo", "-v:q"]),
-            limit: TimeSpan.FromMinutes(3).Scaled()), "the web service's build");
+        ChildResult result = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", web, "-nologo", "-v:q"]), limit: TimeSpan.FromMinutes(3).Scaled());
         Assert.True(result.Succeeded, $"The web service did not build: {result.Output}{result.Error}");
         return web;
     }

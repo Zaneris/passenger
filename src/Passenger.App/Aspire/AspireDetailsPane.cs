@@ -133,7 +133,7 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open, A
     private const string ParentOf = "Parent";
 
     /// <summary>What a resource says of those it relates to, by their names and the kind of each relationship.</summary>
-    private static IReadOnlyList<(string Name, string Type)> Relations(AspireResource resource) =>
+    internal static IReadOnlyList<(string Name, string Type)> Relations(AspireResource resource) =>
         [.. JsonMembers.Items(resource.Data, "relationships").Select(r => (JsonMembers.Text(r, "resourceName") ?? "?", JsonMembers.Text(r, "type") ?? string.Empty))];
 
     /// <summary>What the other resources say of this one: each that relates to it, by the name it shows, with the kind.</summary>

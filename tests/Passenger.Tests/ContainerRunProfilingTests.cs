@@ -3,8 +3,10 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Containers;
 using Passenger.App.Profiling;
 using Passenger.App.Run;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Profiler;
 
@@ -14,8 +16,8 @@ namespace Passenger.Tests;
 /// Compose solution, its web service marked Debug and so the one profiled, held at its start until Passenger's tools record
 /// it in its container, the rest running as Run runs them; a memory snapshot taken there; Get Snapshot naming its hot method
 /// at its line with the run going on; Attach Profiler recording it again as it runs, and Stop reading that snapshot before it
-/// takes the containers down. Skips, saying why, where no Linux engine runs; the tools are published for the engine's
-/// processor where a dev build finds them.</summary>
+/// takes the containers down; and a .NET service's metrics read there under its Stats. Skips, saying why, where no Linux
+/// engine runs; the tools are published for the engine's processor where a dev build finds them.</summary>
 [Collection(Alone.Name)]
 public sealed class ContainerRunProfilingTests(ContainerRunDebuggingTests.Tools tools) : IClassFixture<ContainerRunDebuggingTests.Tools>
 {
@@ -134,6 +136,44 @@ public sealed class ContainerRunProfilingTests(ContainerRunDebuggingTests.Tools 
             Docker.Stopped(window, project, "Stop to take every container down");
         }
         Ui.WaitFor(() => !window.IsRunning && window.Profiling is null, "the run and its profile to end with Stop");
+        window.Close();
+    }
+
+    /// <summary>A .NET service of a container run has its metrics charted under its Stats in the Containers window, read in its
+    /// container through Passenger's tools there: web, sent requests while its Stats tab is shown, has its request duration
+    /// charted with its rate and median, and none is read once another row is chosen.</summary>
+    [AvaloniaFact]
+    public void A_container_runs_dotnet_service_has_its_request_duration_charted_under_its_stats()
+    {
+        Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
+        (string folder, string project) = ContainerRunsTests.Shop("metrics");
+        MainWindow window = ContainerRunsTests.Open(folder);
+        Assert.True(window.SelectConfiguration(window.Configurations.First(c => c.Kind == RunKind.Compose).Name));
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the shop to come up", TimeSpan.FromMinutes(5));
+            int port = ContainerRunsTests.Published(project, "web");
+            window.ShowToolWindow(ToolWindowIds.Containers);
+            ContainersView view = window.ContainersWindow;
+            Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Service && r.Service == "web"), "web's row", TimeSpan.FromMinutes(1));
+            view.ShowTab(RunWindows.StatsTab);
+            Passenger.App.Telemetry.MetricsPane metrics = view.Metrics;
+            Ui.WaitFor(() =>
+            {
+                ContainerRunsTests.Answer(port);
+                return metrics.Charted.GetValueOrDefault("http.server.request.duration") >= 2;
+            }, () => $"web's request duration charted (the pane says {metrics.Said}, charting {string.Join(", ", metrics.Charted.Select(c => $"{c.Key} {c.Value}"))})", TimeSpan.FromMinutes(2));
+            Assert.Matches(@"^[0-9.,]+/s, median ", metrics.ValueOf("http.server.request.duration") ?? string.Empty);
+            Assert.EndsWith("in its container: read every second", metrics.Said, StringComparison.Ordinal);
+
+            Assert.True(view.Choose(r => r.Kind == ContainerRowKind.Service && r.Service == "cache"), "cache's row");
+            Ui.Settle();
+            Assert.True(metrics.Charted.Count == 0 && !metrics.IsVisible, $"cache chosen, web's metrics were still read: {metrics.Said}");
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take every container down");
+        }
         window.Close();
     }
 

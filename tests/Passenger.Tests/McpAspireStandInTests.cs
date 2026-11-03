@@ -357,6 +357,79 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             .TryGetProperty("session", out JsonElement session) && session.ValueKind == JsonValueKind.String ? session.GetString() : null;
     }
 
+    /// <summary>An agent reads a service's metrics through telemetry's kind metrics, as the Stats tab reads them: a web app the
+    /// stand-in AppHost has Passenger start, sent requests meanwhile, answers its request duration with its rate and median,
+    /// heard from its runtime.</summary>
+    [Fact]
+    public async Task An_agent_reads_a_services_request_duration_through_telemetry_metrics()
+    {
+        await project.ResetAsync();
+        string web = await project.WriteWebAppAsync();
+        string address = $"http://127.0.0.1:{AspireApp.FreePort().ToString(System.Globalization.CultureInfo.InvariantCulture)}/";
+        string told = $"{project.KeyFile}.web.pid";
+        File.Delete(told);
+        await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
+        resources.PushResource(new Passenger.App.Aspire.Protocol.Resource { Name = "web", DisplayName = "web", Uid = "web", ResourceType = "Project", State = "Starting" });
+        await project.ServeAsync(resources);
+        await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
+        await Running(client, PathNames.Canonical(project.ProjectFile), "web");
+        (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = await project.StartApiAsync("web",
+            environment: new Dictionary<string, string> { [AspNetCoreVariables.Urls] = address, ["STAND_IN_PID_FILE"] = told }, projectPath: web);
+        using System.Net.WebSockets.ClientWebSocket subscribed = notified;
+        Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the web service's run session: {answer}");
+        int program = 0;
+        Assert.True(await Waiting.UntilAsync(() => (program = Processes.ReadId(told)) > 0, TimeSpan.FromMinutes(1), Cancel), "The web service never said its process's id");
+        resources.PushResource(new Passenger.App.Aspire.Protocol.Resource
+        {
+            Name = "web", DisplayName = "web", Uid = "web", ResourceType = "Project", State = "Running",
+            Properties =
+            {
+                new Passenger.App.Aspire.Protocol.ResourceProperty { Name = "project.path", Value = Google.Protobuf.WellKnownTypes.Value.ForString(web) },
+                new Passenger.App.Aspire.Protocol.ResourceProperty { Name = "executable.pid", Value = Google.Protobuf.WellKnownTypes.Value.ForNumber(program) },
+            },
+        });
+        using CancellationTokenSource stopAsking = CancellationTokenSource.CreateLinkedTokenSource(Cancel);
+        Task asking = Waiting.Apart(async () =>
+        {
+            using HttpClient http = new() { Timeout = TimeSpan.FromSeconds(5) };
+            while (!stopAsking.IsCancellationRequested)
+            {
+                try
+                {
+                    using HttpResponseMessage _ = await http.GetAsync(address, stopAsking.Token);
+                }
+                catch (HttpRequestException)
+                {
+                    // Not yet listening.
+                }
+                catch (OperationCanceledException) when (stopAsking.IsCancellationRequested)
+                {
+                }
+                await Waiting.ForAsync(TimeSpan.FromMilliseconds(100), "a request's pause", stopAsking.Token).Ended();
+            }
+        }, Cancel);
+        try
+        {
+            JsonElement heard = default;
+            Assert.True(await Waiting.UntilAsync(async () =>
+            {
+                heard = await Call(client, McpTools.Telemetry, new() { ["kind"] = "metrics", ["resource"] = "web" });
+                return heard.TryGetProperty("metrics", out JsonElement metrics) && metrics.EnumerateArray().Any(m => m.GetProperty("instrument").GetString() == "http.server.request.duration"
+                    && m.GetProperty("value").GetString()!.Contains("median", StringComparison.Ordinal));
+            }, TimeSpan.FromMinutes(1), Cancel), $"The agent was not told the web service's request duration: {heard}");
+            JsonElement duration = heard.GetProperty("metrics").EnumerateArray().Single(m => m.GetProperty("instrument").GetString() == "http.server.request.duration");
+            Assert.Equal(("Microsoft.AspNetCore.Hosting", "s"), (duration.GetProperty("meter").GetString(), duration.GetProperty("unit").GetString()));
+            Assert.Matches(@"^[0-9.,]+/s, median ", duration.GetProperty("value").GetString()!);
+            Assert.Empty(resources.Errors);
+        }
+        finally
+        {
+            await stopAsking.CancelAsync();
+            await asking.Ended();
+            Processes.Kill(program);
+        }
+    }
+
     /// <summary>The stand-in AppHost run by the agent from its Aspire configuration, which run answers once the AppHost is
     /// up: its Passenger lists it with its resource from the stand-in resource service, running, as the answer comes.</summary>
     private async Task Running(McpClient client, string host, string resource = "api-owned-instance")

@@ -50,6 +50,7 @@ public partial class MainWindow
                 A.AspireConsole => ["Show Aspire Console"],
                 A.AspireAppHostConsole => ["Show Aspire AppHost console"],
                 A.AspireStats => ["Show Aspire Metrics"],
+                A.AspireGraph => ["Show Aspire Resource Graph", "Aspire Dependencies"],
                 _ => null,
             });
         }

@@ -413,7 +413,7 @@ public sealed class ProfilingSession : IAsyncDisposable
         ContainerTrace recording;
         try
         {
-            recording = await ContainerTrace.StartAsync(place, processId, resume, requests: false, $"profile {name}", $"recording {name}", cancellation).ConfigureAwait(false);
+            recording = await ContainerTrace.StartAsync(place, processId, resume, kind: null, $"profile {name}", $"recording {name}", cancellation).ConfigureAwait(false);
         }
         catch
         {

@@ -13,12 +13,12 @@ internal sealed record ContainerTrace(Process Tools, Task Heard)
     /// <summary>How long the tools are given to begin recording.</summary>
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(30);
 
-    /// <summary>Starts the tools' recording of <paramref name="processId"/> in <paramref name="place"/>: with
-    /// <paramref name="resume"/> a program held at its start let go once recording, with <paramref name="requests"/>
-    /// <see cref="LiveRequests"/>' session. Tools that cannot start, end first or have not begun in 30 s are ended, and a
+    /// <summary>Starts the tools' recording of <paramref name="processId"/> in <paramref name="place"/>: with <paramref name="resume"/>
+    /// a program held at its start let go once recording, <paramref name="kind"/> naming another session (Requests', Metrics').
+    /// Tools that cannot start, end first or have not begun in 30 s are ended, and a
     /// <see cref="ProfilingException"/> says why: their last word, else that they could not <paramref name="to"/> or did not
     /// begin <paramref name="doing"/>. <paramref name="cancel"/> ends them too, and throws.</summary>
-    public static async Task<ContainerTrace> StartAsync(ProfilePlace place, int processId, bool resume, bool requests, string to, string doing,
+    public static async Task<ContainerTrace> StartAsync(ProfilePlace place, int processId, bool resume, string? kind, string to, string doing,
         CancellationToken cancel)
     {
         List<string> words = [ContainerToolsWords.Trace, ContainerToolsWords.Pid, processId.ToString(CultureInfo.InvariantCulture)];
@@ -26,9 +26,9 @@ internal sealed record ContainerTrace(Process Tools, Task Heard)
         {
             words.Add(ContainerToolsWords.Resume);
         }
-        if (requests)
+        if (kind is not null)
         {
-            words.Add(ContainerToolsWords.Requests);
+            words.Add(kind);
         }
         Process tools;
         try

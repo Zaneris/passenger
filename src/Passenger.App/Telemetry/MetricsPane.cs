@@ -36,6 +36,7 @@ public sealed class MetricsPane : DockPanel
     private string name = string.Empty;
     private string said = string.Empty;
     private int process;
+    private ProfilePlace? place;
 
     /// <summary>Each follow begun and each stop counted, so what a follow let go of hears nothing more.</summary>
     private int follows;
@@ -66,8 +67,9 @@ public sealed class MetricsPane : DockPanel
     public string? ValueOf(string instrument) => charts.FirstOrDefault(chart => chart.Key.Instrument == instrument).Value?.Value.Text;
 
     /// <summary>Reads a program's metrics, or nothing (<paramref name="shown"/> null); without a program it says
-    /// <paramref name="none"/>. The same program again leaves its reading as it is.</summary>
-    public void Show(string? shown, int? program, string? none = null)
+    /// <paramref name="none"/>. One in a container (<paramref name="where"/>) is read through Passenger's tools there, the
+    /// meters .NET ships alone. The same program again leaves its reading as it is.</summary>
+    public void Show(string? shown, int? program, string? none = null, ProfilePlace? where = null)
     {
         UiThread.Check();
         if (shown is null)
@@ -79,7 +81,7 @@ public sealed class MetricsPane : DockPanel
             Say(none ?? string.Empty);
             return;
         }
-        string next = $"{shown}\n{program}";
+        string next = $"{shown}\n{program}\n{where?.Where}";
         if (next == key)
         {
             return;
@@ -93,6 +95,7 @@ public sealed class MetricsPane : DockPanel
             return;
         }
         process = id;
+        place = where;
         meters.UnionWith(LiveMetrics.Shipped);
         Say($"Waiting for {shown}'s first metrics…");
         IdeErrors.Observe(FollowAsync(++follows, again: false));
@@ -113,7 +116,8 @@ public sealed class MetricsPane : DockPanel
         {
             try
             {
-                LiveMetrics started = await LiveMetrics.AttachAsync(process, [.. meters], Heard(follow));
+                LiveMetrics started = place is { } there ? await LiveMetrics.AttachAsync(process, there, Heard(follow))
+                    : await LiveMetrics.AttachAsync(process, [.. meters], Heard(follow));
                 if (follow != follows)
                 {
                     await started.DisposeAsync();
@@ -146,7 +150,7 @@ public sealed class MetricsPane : DockPanel
         }),
         meter => UiThread.Post(() =>
         {
-            if (follow == follows && meters.Add(meter))
+            if (follow == follows && place is null && meters.Add(meter))
             {
                 widen.Restart();
             }
@@ -209,40 +213,56 @@ public sealed class MetricsPane : DockPanel
     }
 
     /// <summary>An interval's readings, one value an instrument added to its line; the rows laid out again only as one comes.</summary>
-    private void Take(IReadOnlyList<MetricReading> readings)
-    {
-        bool came = false;
-        bool first = charts.Count == 0;
-        foreach (IGrouping<(string Meter, string Instrument), MetricReading> instrument in readings.GroupBy(reading => (reading.Meter, reading.Instrument)))
+    /// <summary>An interval's readings as one value an instrument: a counter's rates and a gauge's values summed across its
+    /// series, a histogram's highest series' quantiles with how many all measured; a histogram that measured nothing has
+    /// none (<see cref="MetricValue.Idle"/>). The Stats tab's lines and an agent's telemetry read the same.</summary>
+    public static IReadOnlyList<MetricValue> Combined(IReadOnlyList<MetricReading> readings) =>
+    [
+        .. readings.GroupBy(reading => (reading.Meter, reading.Instrument)).Select(instrument =>
         {
             MetricReading one = instrument.First();
             MetricReading[] measured = [.. instrument.Where(reading => reading.Count is not 0)];
             double? counted = instrument.Any(reading => reading.Count is not null) ? instrument.Sum(reading => reading.Count ?? 0) : null;
             if (measured.Length == 0)
             {
+                return new MetricValue(one.Meter, one.Instrument, one.Unit, one.Kind, 0, null, counted, Idle: true);
+            }
+            double value = one.Kind == MetricKind.Histogram ? measured.Max(reading => reading.Value) : measured.Sum(reading => reading.Value);
+            double? upper = one.Kind == MetricKind.Histogram ? measured.Max(reading => reading.Upper ?? reading.Value) : null;
+            return new MetricValue(one.Meter, one.Instrument, one.Unit, one.Kind, value, upper, counted, Idle: false);
+        }),
+    ];
+
+    private void Take(IReadOnlyList<MetricReading> readings)
+    {
+        bool came = false;
+        bool first = charts.Count == 0;
+        foreach (MetricValue instrument in Combined(readings))
+        {
+            (string, string) named = (instrument.Meter, instrument.Instrument);
+            if (instrument.Idle)
+            {
                 // A histogram that measured nothing this second has no median to draw: its line waits for the next.
-                if (charts.TryGetValue(instrument.Key, out Chart? idle))
+                if (charts.TryGetValue(named, out Chart? idle))
                 {
                     idle.Value.Text = "none this second";
                 }
                 continue;
             }
-            double value = one.Kind == MetricKind.Histogram ? measured.Max(reading => reading.Value) : measured.Sum(reading => reading.Value);
-            double? upper = one.Kind == MetricKind.Histogram ? measured.Max(reading => reading.Upper ?? reading.Value) : null;
-            if (!charts.TryGetValue(instrument.Key, out Chart? chart))
+            if (!charts.TryGetValue(named, out Chart? chart))
             {
-                charts[instrument.Key] = chart = new Chart(one);
+                charts[named] = chart = new Chart(instrument.Meter, instrument.Instrument, instrument.Unit, instrument.Kind);
                 came = true;
             }
-            if (upper is double high)
+            if (instrument.Upper is double high)
             {
-                chart.Line.Add(value, high);
+                chart.Line.Add(instrument.Value, high);
             }
             else
             {
-                chart.Line.Add(value);
+                chart.Line.Add(instrument.Value);
             }
-            string words = Shown(one.Kind, one.Unit, value, upper, counted);
+            string words = instrument.Shown;
             if (chart.Value.Text != words)
             {
                 chart.Value.Text = words;
@@ -254,7 +274,7 @@ public sealed class MetricsPane : DockPanel
         }
         if (first && charts.Count > 0)
         {
-            Say($"{name}, process {process.ToString(CultureInfo.InvariantCulture)}: read every second");
+            Say($"{name}, process {process.ToString(CultureInfo.InvariantCulture)}{(place is null ? string.Empty : " in its container")}: read every second");
         }
     }
 
@@ -303,8 +323,9 @@ public sealed class MetricsPane : DockPanel
     /// <summary>An instrument's row: its name and latest value, then its line, a histogram's 95th percentile beside its median.</summary>
     private sealed class Chart
     {
-        public Chart(MetricReading first)
+        public Chart(string meter, string instrument, string unit, MetricKind kind)
         {
+            MetricReading first = new(meter, instrument, unit, kind, string.Empty, 0, null);
             Line = first.Kind == MetricKind.Histogram
                 ? new Sparkline(Kept, fromZero: true, fromRight: false, TokenKeys.Link, TokenKeys.Graph_2) { Least = 0 }
                 : new Sparkline(Kept, fromZero: true, fromRight: false, TokenKeys.Link) { Least = 0 };
@@ -321,4 +342,12 @@ public sealed class MetricsPane : DockPanel
         public TextBlock Value { get; }
         public Grid Row { get; }
     }
+}
+
+/// <summary>An instrument's value over an interval, its series taken as one (<see cref="MetricsPane.Combined"/>); a histogram
+/// that measured nothing is <see cref="Idle"/>, with no value.</summary>
+public sealed record MetricValue(string Meter, string Instrument, string Unit, MetricKind Kind, double Value, double? Upper, double? Counted, bool Idle)
+{
+    /// <summary>Its value as a person reads it, as the Stats tab says it.</summary>
+    public string Shown => Idle ? "none this second" : MetricsPane.Shown(Kind, Unit, Value, Upper, Counted);
 }

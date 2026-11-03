@@ -26,9 +26,9 @@ public static class InContainer
     /// <summary>Records a program from now: its EventPipe session written to <paramref name="output"/> as it comes,
     /// until <paramref name="input"/> ends, when the session is stopped and its rundown flushed, or the program ends.
     /// With <paramref name="resume"/> a runtime held at its start is let go once the session has begun, and nothing it
-    /// starts is held so; with <paramref name="requests"/> the session is <see cref="LiveRequests"/>'. Problems go to
-    /// <paramref name="said"/>; the exit code is 0 once recorded.</summary>
-    public static async Task<int> TraceAsync(int processId, bool resume, Stream input, Stream output, TextWriter said, bool requests = false)
+    /// starts is held so; with <paramref name="requests"/> the session is <see cref="LiveRequests"/>', with
+    /// <paramref name="metrics"/> <see cref="LiveMetrics"/>'. Problems go to <paramref name="said"/>; the exit code is 0 once recorded.</summary>
+    public static async Task<int> TraceAsync(int processId, bool resume, Stream input, Stream output, TextWriter said, bool requests = false, bool metrics = false)
     {
         EventPipeSession? session = null;
         try
@@ -80,9 +80,10 @@ public static class InContainer
         }
         return 0;
 
-        // A web app's requests need no rundown: nothing in them is named by address.
+        // A web app's requests and a program's metrics need no rundown: nothing in them is named by address.
         Task<EventPipeSession> StartAsync(DiagnosticsClient client) => requests
             ? client.StartEventPipeSessionAsync(LiveRequests.Providers, requestRundown: false, circularBufferMB: 64)
+            : metrics ? client.StartEventPipeSessionAsync(LiveMetrics.Providers(LiveMetrics.ContainerSession, LiveMetrics.Shipped), requestRundown: false, circularBufferMB: 16)
             : client.StartEventPipeSessionAsync(ProfilingSession.Providers, requestRundown: true, circularBufferMB: 512);
     }
 
