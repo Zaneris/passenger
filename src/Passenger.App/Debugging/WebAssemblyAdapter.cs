@@ -378,7 +378,7 @@ public sealed class WebAssemblyAdapter
                     Value = "…",
                     EvaluateName = named,
                     PresentationHint = new DapPresentationHint(Lazy: true),
-                    VariablesReference = Reference(async () => [await GetterAsync(member, named, frame)]),
+                    VariablesReference = Reference(async () => [await GetterAsync(member, named, expression is null ? null : objectId, frame)]),
                     Unsettable = NoSet,
                 });
             }
@@ -386,10 +386,13 @@ public sealed class WebAssemblyAdapter
         return rows;
     }
 
-    /// <summary>A property read by its getter, evaluated in the frame it was opened from.</summary>
-    private async Task<DapVariable> GetterAsync(string member, string expression, WebAssemblyFrame frame)
+    /// <summary>A property read by its getter: called on <paramref name="owner"/>, the object the proxy read it from, which
+    /// invokes the getter alone; evaluated in the frame it was opened from where the proxy has no object to call it on.</summary>
+    private async Task<DapVariable> GetterAsync(string member, string expression, string? owner, WebAssemblyFrame frame)
     {
-        JsonElement evaluated = await browser!.Page.SendAsync(CdpCommands.EvaluateOnCallFrame, new { callFrameId = frame.Id, expression });
+        JsonElement evaluated = owner is null
+            ? await browser!.Page.SendAsync(CdpCommands.EvaluateOnCallFrame, new { callFrameId = frame.Id, expression })
+            : await browser!.Page.SendAsync(CdpCommands.CallFunctionOn, new { objectId = owner, functionDeclaration = "function(e){return this[e]}", arguments = new[] { new { value = member } } });
         return JsonMembers.Object(evaluated, "exceptionDetails") is { } failed
             ? new DapVariable { Name = member, Value = WebAssemblyValues.Failure(failed), EvaluateName = expression, PresentationHint = new DapPresentationHint(Attributes: ["failedEvaluation"]) }
             : Row(member, expression, JsonMembers.Object(evaluated, "result") ?? default, frame);

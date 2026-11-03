@@ -146,9 +146,54 @@ public sealed partial class BuildRunController
             {
                 DebugTab? tab = purpose == RunStart.HotReload ? null : session.Debug.Tabs.LastOrDefault(t => t.Name == name && t.IsLive);
                 run.Attached(service, program, tab, tab?.Session ?? session.Debug.Running.LastOrDefault(r => r.Name == name)?.Session);
+                // A Blazor Web App an AppHost starts debugged has its WebAssembly half debugged beside it, as a local one does.
+                if (tab is not null && service is Aspire.AspireResourceRun { Plan: { InBrowser.Count: > 0 } plan })
+                {
+                    IdeErrors.Observe(DebugServiceBrowserAsync(name, plan));
+                }
             }
         }
         return refused is null ? null : program.Caveat is { } caveat ? $"{refused} ({caveat})" : refused;
+    }
+
+    /// <summary>A debugged service's code in the browser debugged beside its tab, at the page its run serves: the address its
+    /// orchestrator gave it (ASPNETCORE_URLS) on its launch profile's path; one no browser debugs says why.</summary>
+    private async Task DebugServiceBrowserAsync(string name, LaunchPlan plan)
+    {
+        LaunchPlan paged = plan with { Name = name, Page = PageOf(plan) };
+        IReadOnlyList<Passenger.Workspace.ProjectModel> projects = session.Projects;
+        string? setting = parts.Settings().DebugBrowser;
+        (Debugging.BrowserDebugging? inBrowser, string? notInBrowser) = await BackgroundWork.Run(() => Debugging.BrowserDebugging.For(paged, projects, setting));
+        if (session.IsEnded || session.Debug.SessionNamed(name) is not { State: not DebugState.Ended } server)
+        {
+            return;
+        }
+        if (inBrowser is null)
+        {
+            parts.Say($"{name}'s components in the browser are not debugged: {notInBrowser ?? "no browser debugs them"}");
+            return;
+        }
+        await DebugBrowserAsync(paged with { Browser = inBrowser }, inBrowser, DebugEnded(server));
+    }
+
+    /// <summary>The page a service serves as its run started it: the first address of ASPNETCORE_URLS its orchestrator gave it
+    /// (a wildcard host made localhost), the scheme its launch profile's page has where both are given, on that page's path.</summary>
+    internal static Uri? PageOf(LaunchPlan plan)
+    {
+        Uri? page = plan.Page;
+        if (plan.Environment.GetValueOrDefault(AspNetCoreVariables.Urls) is not { Length: > 0 } urls)
+        {
+            return page;
+        }
+        Uri[] served = [.. urls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(url => url.Replace("://+", "://localhost", StringComparison.Ordinal).Replace("://*", "://localhost", StringComparison.Ordinal)
+                .Replace("://0.0.0.0", "://localhost", StringComparison.Ordinal).Replace("://[::]", "://localhost", StringComparison.Ordinal))
+            .Select(url => Uri.TryCreate(url, UriKind.Absolute, out Uri? address) && address.Scheme is "http" or "https" ? address : null).OfType<Uri>()];
+        if ((served.FirstOrDefault(s => s.Scheme == page?.Scheme) ?? served.FirstOrDefault()) is not { } at)
+        {
+            return page;
+        }
+        return new UriBuilder(at.Scheme, at.Host, at.Port, page?.AbsolutePath ?? "/") { Query = page?.Query.TrimStart('?') ?? string.Empty }.Uri;
     }
 
     /// <summary>Restarts services of a run (their sessions and recording ended first, so no debugger loses its program under

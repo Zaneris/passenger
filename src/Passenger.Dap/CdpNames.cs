@@ -9,6 +9,7 @@ public static class CdpCommands
     public const string PageNavigate = "Page.navigate";
     public const string RuntimeEnable = "Runtime.enable";
     public const string GetProperties = "Runtime.getProperties";
+    public const string CallFunctionOn = "Runtime.callFunctionOn";
     public const string DebuggerEnable = "Debugger.enable";
     public const string SetBreakpointByUrl = "Debugger.setBreakpointByUrl";
     public const string RemoveBreakpoint = "Debugger.removeBreakpoint";

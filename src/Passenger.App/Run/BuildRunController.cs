@@ -2214,7 +2214,8 @@ public sealed partial class BuildRunController
         if (inBrowser is not null && PathNames.Same(listened.InBrowser[0], listened.Project!))
         {
             // A standalone app's browser session runs its development server itself, no engine beside it.
-            return await debug.LaunchBrowserAsync(listened, inBrowser);
+            return await UntrustedPageAsync(inBrowser) is { } untrusted ? $"{listened.Name}'s components in the browser are not debugged: {untrusted}"
+                : await debug.LaunchBrowserAsync(listened, inBrowser);
         }
         // An Avalonia or WPF app is launched with the Live Visual Tree's inspector, held by its tab, ending with this debugging.
         (LaunchPlan launched, LiveApp? inspected) = session.Inspected(listened);
@@ -2257,7 +2258,7 @@ public sealed partial class BuildRunController
     private async Task DebugBrowserAsync(LaunchPlan plan, Debugging.BrowserDebugging browser, Task serverEnded)
     {
         DebugController debug = session.Debug;
-        if (await debug.DebugBrowserAsync(plan, browser) is { } refused)
+        if ((await UntrustedPageAsync(browser) ?? await debug.DebugBrowserAsync(plan, browser)) is { } refused)
         {
             parts.Say($"{plan.Name}'s components in the browser are not debugged: {refused}");
             return;
@@ -2267,6 +2268,27 @@ public sealed partial class BuildRunController
         {
             await debug.StopAsync(DebugController.BrowserTab(plan.Name));
         }
+    }
+
+    /// <summary>Why a page served over HTTPS cannot be debugged in the browser: the development certificate it is served with
+    /// is missing or not trusted here, which the browser refuses, with the person's fix. The certificate is only read, as
+    /// dotnet dev-certs checks it, never made or trusted here; null for a page over HTTP, or one the check could not say.</summary>
+    private async Task<string?> UntrustedPageAsync(Debugging.BrowserDebugging browser)
+    {
+        if (browser.Page.Scheme != Uri.UriSchemeHttps || session.Folder is not { } folder)
+        {
+            return null;
+        }
+        DotnetWords dotnet = parts.DevCertificates ?? DevelopmentCertificate.Machine;
+        (DevelopmentCertificate.Standing standing, _, _) = await BackgroundWork.Run(() => DevelopmentCertificate.CheckAsync(dotnet, folder, CancellationToken.None));
+        return standing switch
+        {
+            DevelopmentCertificate.Standing.NotTrusted => $"the development certificate its page {browser.Page.Authority} is served with is not trusted on this machine, "
+                + "so the browser refuses the page: run dotnet dev-certs https --trust in a terminal, then debug again",
+            DevelopmentCertificate.Standing.Missing => $"its page {browser.Page.Authority} is served over HTTPS, and this machine has no development certificate: "
+                + "run dotnet dev-certs https --trust in a terminal, then debug again",
+            _ => null,
+        };
     }
 
     /// <summary>Debug of a Godot game of GDScript alone: its GDScript session launches it, no C# engine beside it, Hot Reload

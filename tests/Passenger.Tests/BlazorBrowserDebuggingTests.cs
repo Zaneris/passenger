@@ -18,7 +18,7 @@ namespace Passenger.Tests;
 /// are the SDK's templates, restored from the package cache tests/BlazorGraphs fills. Skipped without a Chromium browser.
 /// Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
-public sealed class BlazorBrowserDebuggingTests : IDisposable
+public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDisposable, IClassFixture<StandInAppHost>
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("blazor-browser-"));
 
@@ -37,6 +37,7 @@ public sealed class BlazorBrowserDebuggingTests : IDisposable
         @code {
             private int currentCount;
             private string greeting = "hello";
+            private string Loud => greeting.ToUpperInvariant();
 
             protected override void OnInitialized()
             {
@@ -97,8 +98,100 @@ public sealed class BlazorBrowserDebuggingTests : IDisposable
         }
     }
 
+    /// <summary>A Blazor Web App an AppHost starts debugged, as DCP asks for it, has its WebAssembly half debugged in the
+    /// browser beside its server's tab, at the page its run serves (the address DCP gave it on its launch profile's path):
+    /// the stand-in AppHost's service, its page's component stopping at its breakpoint in its WebAssembly tab.</summary>
+    [AvaloniaFact]
+    public void A_Blazor_Web_App_an_AppHost_starts_debugged_has_its_WebAssembly_component_stop_in_the_browser()
+    {
+        SkipWithoutBrowser();
+        appHost.Reset();
+        appHost.BuildApi();
+        string made = PathNames.Canonical(Directory.CreateDirectory(appHost.PathOf("Bwa")).FullName);
+        MakeIn(made, "blazor", "Bwa", "--interactivity", "WebAssembly", "--no-https");
+        string counter = Path.Combine(made, "Bwa.Client", "Pages", "Counter.razor");
+        File.WriteAllText(counter, Counter);
+        Profile(Path.Combine(made, "Bwa", "Properties", "launchSettings.json"));
+        string server = PathNames.Canonical(Path.Combine(made, "Bwa", "Bwa.csproj"));
+        Restore.Run(server);
+        ChildResult built = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", server, "-nologo", "-v:q"]), limit: Limit.Scaled()), "Bwa's build", Limit + TestFolders.Spare);
+        Assert.True(built.Succeeded, $"Bwa did not build: {built.Output}{built.Error}");
+        TestFolders.Write(appHost.Folder, "StandIn.slnx", $"<Solution>\n  <Project Path=\"{StandInAppHost.Name}/{StandInAppHost.Name}.csproj\" />\n  <Project Path=\"{StandInAppHost.Api}/{StandInAppHost.Api}.csproj\" />\n"
+            + "  <Project Path=\"Bwa/Bwa/Bwa.csproj\" />\n  <Project Path=\"Bwa/Bwa.Client/Bwa.Client.csproj\" />\n</Solution>\n");
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(appHost.KeyFile), "the stand-in resource service");
+        appHost.Serve(backend);
+        MainWindow window = appHost.Open(appHost.Program, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == StandInAppHost.Configuration) && window.Projects.Any(p => p.Name == "Bwa.Client" && p.IsEvaluated),
+                "the stand-in AppHost's configuration and Bwa's projects evaluated", TimeSpan.FromMinutes(2));
+            Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
+            int set = LineOf(counter, "currentCount = 41;");
+            window.Debugger.Breakpoints.Set(counter, set, null);
+            Ui.Launched(window, window.DebugAsync(), "the stand-in AppHost to come up debugged", TimeSpan.FromMinutes(3));
+            string address = $"http://localhost:{AspireApp.FreePort().ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = appHost.AskToStartApi("bwa", "Debug",
+                new Dictionary<string, string> { [AspNetCoreVariables.Urls] = address }, projectPath: server);
+            using System.Net.WebSockets.ClientWebSocket subscribed = notified;
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused Bwa's start: {answer} ({window.Status})");
+
+            Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.WebAssembly, State: DebugState.Paused } && Stopped(window, counter) == set || BrowserRefused(window),
+                () => $"the service's page component to stop in the browser ({Sessions(window)}; {Ui.Said(window)}; {Consoles(window)}; the service said: "
+                    + string.Join("\n", window.AspireRuntime.Apps.SelectMany(a => a.Services).Select(service => service.Console.Document.Snapshot.ToString())) + ")", TimeSpan.FromMinutes(3));
+            Assert.False(BrowserRefused(window), $"Bwa's components in the browser were not debugged: {Ui.Said(window)}");
+            DebugTab browser = window.Debugger.Tabs.Single(t => t.Name.EndsWith(" (WebAssembly)", StringComparison.Ordinal));
+            Assert.True(browser.Companion is { } beside && beside.Name.Contains("bwa", StringComparison.OrdinalIgnoreCase),
+                $"The WebAssembly tab {browser.Name} is beside {browser.Companion?.Name}, not the service's tab");
+        }
+        finally
+        {
+            End(window);
+            Ui.Await(backend.DisposeAsync().AsTask(), "the stand-in resource service to stop");
+        }
+    }
+
+    /// <summary>A Blazor Web App whose page is served over HTTPS on a development certificate this machine does not trust has
+    /// its components in the browser left undebugged, saying so and how to trust it (dotnet dev-certs https --trust, the
+    /// person's to run): the certificate is only checked, never made or trusted, through a stand-in for dev-certs.</summary>
+    [AvaloniaFact]
+    public void A_Blazor_Web_Apps_https_page_on_an_untrusted_development_certificate_says_so_and_how_to_trust_it()
+    {
+        SkipWithoutBrowser();
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in for dotnet dev-certs is a shell script");
+        Make("blazor", "Bwa", "--interactivity", "WebAssembly", "--no-https");
+        string settings = Path.Combine(folder, "Bwa", "Properties", "launchSettings.json");
+        Profile(settings);
+        // Its page over HTTPS; the server listening over HTTP, so it starts whatever certificate this machine has.
+        JsonNode launch = JsonNode.Parse(File.ReadAllText(settings))!;
+        int port = AspireApp.FreePort();
+        launch["profiles"]!["http"]!["launchUrl"] = $"https://localhost:{port}/counter";
+        File.WriteAllText(settings, launch.ToJsonString());
+        Restore.Run(Path.Combine(folder, "Bwa", "Bwa.csproj"));
+        string certificates = TestFolders.Create("dev-certs-");
+        File.WriteAllText(Path.Combine(certificates, "check"), "7");
+        MainWindow window = ContainerRunsTests.Open(folder, devCertificates: DevCerts.In(certificates));
+        try
+        {
+            Ui.WaitFor(() => window.Projects.Count == 2 && window.Projects.All(p => p.IsEvaluated) && window.Configurations.Any(c => c.Name == "Bwa: http"),
+                () => $"Bwa's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}", TimeSpan.FromMinutes(2));
+            Assert.True(window.SelectConfiguration("Bwa: http"));
+            Ui.Launched(window, window.DebugAsync(), "Bwa to build and start under the debugger", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => BrowserRefused(window), () => $"the untrusted certificate said ({Sessions(window)}; {Ui.Said(window)})", TimeSpan.FromMinutes(2));
+            Assert.Equal($"Bwa: http's components in the browser are not debugged: the development certificate its page localhost:{port.ToString(System.Globalization.CultureInfo.InvariantCulture)} "
+                + "is served with is not trusted on this machine, so the browser refuses the page: run dotnet dev-certs https --trust in a terminal, then debug again", Ui.Said(window));
+            Assert.Equal("dev-certs https --check --trust", DevCerts.Asked(certificates).Trim());
+            Assert.DoesNotContain(window.Debugger.Tabs, t => t.Name.EndsWith(" (WebAssembly)", StringComparison.Ordinal));
+        }
+        finally
+        {
+            End(window);
+            TestFolders.Delete(certificates);
+        }
+    }
+
     /// <summary>A standalone Blazor WebAssembly app debugs in its WebAssembly tab alone, which runs its development server:
-    /// its component stops as the page renders it, Step Over goes to the next line, and Variables shows its field.</summary>
+    /// its component stops as the page renders it, Step Over goes to the next line, and Variables shows its field, and its
+    /// property read by its getter through the proxy once its row is opened.</summary>
     [AvaloniaFact]
     public void A_standalone_WebAssembly_apps_component_stops_in_the_browser_steps_and_shows_its_field()
     {
@@ -313,7 +406,8 @@ public sealed class BlazorBrowserDebuggingTests : IDisposable
         return program;
     }
 
-    /// <summary>Step Over from the component's first line goes to the next, and Variables shows the field it set under this.</summary>
+    /// <summary>Step Over from the component's first line goes to the next, and Variables shows the field it set under this,
+    /// and a property read by its getter as its row is opened.</summary>
     private static void SteppedWithItsField(MainWindow window, string counter, int set)
     {
         Ui.Run(window, AppActions.StepOver);
@@ -327,6 +421,13 @@ public sealed class BlazorBrowserDebuggingTests : IDisposable
         Assert.True((self.Children ?? []).Any(c => c.Name == "currentCount" && c.Value == "41" && c.Type == "int"),
             $"Variables showed the component's field set by the line stepped over as {string.Join("; ", (self.Children ?? []).Select(c => $"{c.Name} = {c.Value} ({c.Type})"))}");
         Assert.Contains(self.Children!, c => c.Name == "greeting" && c.Value == "\"hello\"");
+        // A property the proxy reads only by its getter, read once its row is opened.
+        VariableNode loud = self.Children!.First(c => c.Name == "Loud");
+        Assert.True(loud.IsLazy, $"Variables read Loud before its row was opened, as {loud.Value}");
+        Task read = view.Tree.Expand(loud);
+        Ui.WaitFor(() => read.IsCompleted && loud.ReadAs is not null, "Loud's getter to be read");
+        Assert.True(loud.ReadAs is { Value: "\"HELLO\"", Type: "string" },
+            $"Loud's getter read as {loud.ReadAs!.Value} ({loud.ReadAs.Type}), where it returns \"HELLO\"");
     }
 
     /// <summary>The app's http profile at a free port, opening the counter's page.</summary>
@@ -371,7 +472,10 @@ public sealed class BlazorBrowserDebuggingTests : IDisposable
     }
 
     /// <summary>The app of an SDK template, made in the test's folder without its restore, restoring from the package cache alone.</summary>
-    private void Make(string template, string name, params string[] options)
+    private void Make(string template, string name, params string[] options) => MakeIn(folder, template, name, options);
+
+    /// <summary>The app of an SDK template made in a folder of the test's (<see cref="Make(string, string, string[])"/>).</summary>
+    private static void MakeIn(string folder, string template, string name, params string[] options)
     {
         Ui.AwaitPumped(Waiting.Apart(async () =>
         {
