@@ -356,56 +356,58 @@ Projects in `src/`; `find_symbol` finds the rest:
   `DiffPanes.Colour`).
 - **C#.** `CSharpService`, `ServerDiagnostics` (one pull at a time after a pause), `CodeAssist` (the window's wiring)
   over its parts; Show Usages' popup (`UsagesPopup`) is fed by Find Usages' one finder (`UsagesFound.PopupAt`); each
-  language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order. `WorkspaceEdits`: a server's edit to a
-  file not open written in the 2 s before it was asked waits for the server to read it (`Patience`, the window's and an
-  agent's alike, said as the action's work), and any other file of the solution written or deleted a moment before
-  (`DocumentsWritten`), or heard changed that no command has seen the server read, however long ago
-  (`WatchedFiles.Changing`, settled before each attempt by `WorkspaceEdits.SettleAsync`); one written as the server
-  worked is refused. `ServerWatches` watches for the server what it registers (`WatchedFiles`), beside the folder's
-  watcher. A place the server names in a source generator's document reaches the file it was written in through
-  `RoslynSession.WrittenAsync` (Razor's), else a read-only copy under the state's cache (`GeneratedCode`; an agent's
-  tools on one answer from its text, `PassengerTools.NotGenerated`), never opened in the server, which would freeze its
-  text into the compilation. A C# symbol's uses in XAML come from one finder, `XamlService.UsesAsync` over
-  `XamlNavigation.Uses` (Go to Declaration's resolver) and `CodeSymbol`, a C# rename's edits there from it too
-  (`XamlService.RenamesAsync`), and a rename started in XAML is C#'s from its declaration
-  (`XamlAssist.DeclaredRenameAsync`), the MVVM Toolkit's generated members following through the extension's
-  `ToolkitRenames`; what must read the C# as it stands awaits `XamlService.CurrentAsync`. A build problem carries its
-  inner build's framework (`Problem.Framework`), so a XAML file's marks are the chosen framework's; an agent chooses it
-  through `ide_action app.targetFramework`. A JS interop call's function comes from Roslyn's binding in the extension
-  (`JsInteropCalls`) over `JsFunctions`. A multi-targeted project's framework is one choice (`TargetFrameworkChoices`,
-  kept in `WorkspaceState`) that the XAML preview's build (`XamlPreview.Output`), XAML's restore target and C#'s context
-  (`CSharpService.ChosenContext`) follow: never a framework's output taken by its newest write. A Godot game's C# is
-  read against its scenes by `GodotScenes` (Workspace: the reader, trees, paths, renames), followed through the watcher
-  (`GodotSceneIndex`, which reads only what changed, `Unread`, its maps changed a file at a time, `Project.Take`, one
-  reading at a time, never a walk of every file on the window's thread; an autoload's file through its uid,
-  `GodotScenes.AutoloadFile`, never project.godot's text), the extension's `GodotCode`, `GodotChecks`, and `GodotAssist`
-  for `.tscn`/`.tres` (its marks `GodotSceneMarks`, uids `GodotUids`; the extension's `GodotNames` for the generated
-  names and the strings Godot's calls take, `GodotPaths` for `res://` in C#; an engine member's Godot name GodotSharp's
-  own, read from the IL of its `PropertyName`/`MethodName`/`SignalName` static constructors (`GodotSharpNames`), its
-  class reference's address `GodotDocs`; a string naming what the project's files define, an input action, group,
-  animation, autoload, shader parameter or translation, through the extension's `GodotKinds` and Workspace's
-  `GodotDefinitions`, `GodotChecks.Named` the one answer, a C# string naming a member of the node it is on
-  `GodotChecks.Members` (both over `Told`), a GDScript member's C# uses the extension's `GodotNameStrings`, a GDScript's
-  own strings and words `GodotScriptStrings`, the projects' strings scanned only through the extension's
-  `GodotKinds.WritesAsync` (each document's kept per text version), a scene with no C# checked against the engine's
-  classes read from the found Godot's GodotSharp.dll (`GodotEngineClasses`, `GodotChecks.EngineAnswers`), a GDScript
-  member renamed in its script taking its connections and C# strings along (`GodotScriptRenameAsync`); a project.godot
-  of GDScript alone is a scene's project too (`ProjectSession.GodotOf`; the C# service's `BuiltGodotOf` a C# project's
-  only), so scene code reaches the scenes through `AssistContext.GodotOf` (`GodotSceneIndex.GameOf`), and a GDScript's
-  class is `GodotScenes.ChainOf` over `GodotScriptDeclarations`, read from `GDScriptTree` (Godot's own parser, ported:
-  members are runs between clean member starts, `Reparse` parsing only the edited run), typed by `GDScriptAnalyzer`
-  (Godot's analyzer, ported), the engine's types from the found Godot's extension_api.json (`GodotEngineApi`, dumped
-  once per version into the state's cache by `GodotEngineApis`: `GodotEngineClasses` has no member types, and Object's
-  `free` is in no dump; a warning only a newer Godot gives gated on the dump's version, `GodotEngineApi.Version`), a
-  node path typed from the scenes running the script (`GDScriptProject.NodeAt`, `GodotScriptTypes.NodesOf`), else Node,
-  its Godot warnings and errors `GDScriptAnalysis.Findings` (a script that doesn't parse gives its parse errors alone)
-  (as project.godot sets them, `GDScriptWarningSettings`) shown until Godot's server has pushed the file's own
-  (`WebDocument.ShowPassengers`), fixed by `GDScriptFixes` (several edits as one through `EditorFix.Edits`), and a
-  GDScript function's argument count answered only by `GodotScriptDeclared.Takes`, its names coloured by
-  `GDScriptAnalysis.Colours` through `ColourLayer` over the grammar, its Reformat Code `GDScriptFormatter` (by the style
-  guide's sections), refused unless `GDScriptFormatter.Differs` finds the same tokens, comments and tree, wrapping only
-  inside brackets (`GDScriptFormatter.Wrapping`), its options `GDScriptFormatSettings` (Settings › Code Style ›
-  GDScript, a file's .editorconfig over each), reformat on save in `CodeAssist.BeforeSave`, Order Script's Parts
+  language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order, its own fixes too
+  (`LanguageAssist.Fixes` after `ReadyAsync`), which Show Context Actions and MCP's `code_actions` both read through
+  `CodeActions.OwnFixesAsync`. `WorkspaceEdits`: a server's edit to a file not open written in the 2 s before it was
+  asked waits for the server to read it (`Patience`, the window's and an agent's alike, said as the action's work), and
+  any other file of the solution written or deleted a moment before (`DocumentsWritten`), or heard changed that no
+  command has seen the server read, however long ago (`WatchedFiles.Changing`, settled before each attempt by
+  `WorkspaceEdits.SettleAsync`); one written as the server worked is refused. `ServerWatches` watches for the server
+  what it registers (`WatchedFiles`), beside the folder's watcher. A place the server names in a source generator's
+  document reaches the file it was written in through `RoslynSession.WrittenAsync` (Razor's), else a read-only copy
+  under the state's cache (`GeneratedCode`; an agent's tools on one answer from its text,
+  `PassengerTools.NotGenerated`), never opened in the server, which would freeze its text into the compilation. A C#
+  symbol's uses in XAML come from one finder, `XamlService.UsesAsync` over `XamlNavigation.Uses` (Go to Declaration's
+  resolver) and `CodeSymbol`, a C# rename's edits there from it too (`XamlService.RenamesAsync`), and a rename started
+  in XAML is C#'s from its declaration (`XamlAssist.DeclaredRenameAsync`), the MVVM Toolkit's generated members
+  following through the extension's `ToolkitRenames`; what must read the C# as it stands awaits
+  `XamlService.CurrentAsync`. A build problem carries its inner build's framework (`Problem.Framework`), so a XAML
+  file's marks are the chosen framework's; an agent chooses it through `ide_action app.targetFramework`. A JS interop
+  call's function comes from Roslyn's binding in the extension (`JsInteropCalls`) over `JsFunctions`. A multi-targeted
+  project's framework is one choice (`TargetFrameworkChoices`, kept in `WorkspaceState`) that the XAML preview's build
+  (`XamlPreview.Output`), XAML's restore target and C#'s context (`CSharpService.ChosenContext`) follow: never a
+  framework's output taken by its newest write. A Godot game's C# is read against its scenes by `GodotScenes`
+  (Workspace: the reader, trees, paths, renames), followed through the watcher (`GodotSceneIndex`, which reads only what
+  changed, `Unread`, its maps changed a file at a time, `Project.Take`, one reading at a time, never a walk of every
+  file on the window's thread; an autoload's file through its uid, `GodotScenes.AutoloadFile`, never project.godot's
+  text), the extension's `GodotCode`, `GodotChecks`, and `GodotAssist` for `.tscn`/`.tres` (its marks `GodotSceneMarks`,
+  uids `GodotUids`; the extension's `GodotNames` for the generated names and the strings Godot's calls take,
+  `GodotPaths` for `res://` in C#; an engine member's Godot name GodotSharp's own, read from the IL of its
+  `PropertyName`/`MethodName`/`SignalName` static constructors (`GodotSharpNames`), its class reference's address
+  `GodotDocs`; a string naming what the project's files define, an input action, group, animation, autoload, shader
+  parameter or translation, through the extension's `GodotKinds` and Workspace's `GodotDefinitions`, `GodotChecks.Named`
+  the one answer, a C# string naming a member of the node it is on `GodotChecks.Members` (both over `Told`), a GDScript
+  member's C# uses the extension's `GodotNameStrings`, a GDScript's own strings and words `GodotScriptStrings`, the
+  projects' strings scanned only through the extension's `GodotKinds.WritesAsync` (each document's kept per text
+  version), a scene with no C# checked against the engine's classes read from the found Godot's GodotSharp.dll
+  (`GodotEngineClasses`, `GodotChecks.EngineAnswers`), a GDScript member renamed in its script taking its connections
+  and C# strings along (`GodotScriptRenameAsync`); a project.godot of GDScript alone is a scene's project too
+  (`ProjectSession.GodotOf`; the C# service's `BuiltGodotOf` a C# project's only), so scene code reaches the scenes
+  through `AssistContext.GodotOf` (`GodotSceneIndex.GameOf`), and a GDScript's class is `GodotScenes.ChainOf` over
+  `GodotScriptDeclarations`, read from `GDScriptTree` (Godot's own parser, ported: members are runs between clean member
+  starts, `Reparse` parsing only the edited run), typed by `GDScriptAnalyzer` (Godot's analyzer, ported), the engine's
+  types from the found Godot's extension_api.json (`GodotEngineApi`, dumped once per version into the state's cache by
+  `GodotEngineApis`: `GodotEngineClasses` has no member types, and Object's `free` is in no dump; a warning only a newer
+  Godot gives gated on the dump's version, `GodotEngineApi.Version`), a node path typed from the scenes running the
+  script (`GDScriptProject.NodeAt`, `GodotScriptTypes.NodesOf`), else Node, its Godot warnings and errors
+  `GDScriptAnalysis.Findings` (a script that doesn't parse gives its parse errors alone) (as project.godot sets them,
+  `GDScriptWarningSettings`) shown until Godot's server has pushed the file's own (`WebDocument.ShowPassengers`), fixed
+  by `GDScriptFixes` (several edits as one through `EditorFix.Edits`), and a GDScript function's argument count answered
+  only by `GodotScriptDeclared.Takes`, its names coloured by `GDScriptAnalysis.Colours` through `ColourLayer` over the
+  grammar, its Reformat Code `GDScriptFormatter` (by the style guide's sections), refused unless
+  `GDScriptFormatter.Differs` finds the same tokens, comments and tree, wrapping only inside brackets
+  (`GDScriptFormatter.Wrapping`), its options `GDScriptFormatSettings` (Settings › Code Style › GDScript, a file's
+  .editorconfig over each), reformat on save in `CodeAssist.BeforeSave`, Order Script's Parts
   `GDScriptFormatter.OrderParts`, never run by Reformat Code, its refactorings `GDScriptRefactorings` over
   `GodotScriptTypes.ProjectReadAsync` (made by `CodeActions.GDScriptRefactorAsync`, a use Passenger can't see refusing,
   `GDScriptUses.Unsure`; C#'s calls by a GDScript member's name come with their arguments after it, `GodotKindUse.Rest`,
@@ -420,13 +422,16 @@ Projects in `src/`; `find_symbol` finds the rest:
   script moved or added changes what their code reads as. A Godot shader is `GodotShaderAssist` over Workspace's
   `GodotShaderCode`, its language the carried `GodotShaderTypes.json` as the Godot found takes it
   (`GodotShaderCompiler.TableAsync`, probed per version), its marks Godot's own compiler's through `PassengerShaders.gd`
-  (`GodotShaderMarks`; a scene's own Shader's in `GodotSceneMarks` through `GodotStringPlaces`). A theme item's name is
-  read through `GodotThemeTable` (the carried `GodotDefaultTheme.json`, `just godot-theme`) and the project's themes
-  (`GodotDefinitions.ThemeItems`), and the person's open Godot editor is asked through its IDE messaging server
-  (`GodotIdeLink` over Workspace's `GodotIdeMessaging` and `GodotIdeClient`), never Passenger's own headless editors
-  (`GodotScripts.Headless`). Edits added to a server's workspace edit for a file it already edits join that file's entry
-  (`TypeRename.With`): `documentChanges` apply in order. A server's own command (TypeScript's refactorings, ESLint's
-  fixes) runs through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
+  (`GodotShaderMarks`; a scene's own Shader's in `GodotSceneMarks` through `GodotStringPlaces`, and its completion,
+  cards and declarations through `GodotShaderAssist.SceneCodeAt`), one helper per rendering method
+  (`GodotDefinitions.RenderingMethod`), let go when no shader has been open or asked for a while
+  (`GodotShaderCompiler.Opened`/`Closed`, `IdleVariable`). A theme item's name is read through `GodotThemeTable` (the
+  carried `GodotDefaultTheme.json`, `just godot-theme`) and the project's themes (`GodotDefinitions.ThemeItems`), and
+  the person's open Godot editor is asked through its IDE messaging server (`GodotIdeLink` over Workspace's
+  `GodotIdeMessaging` and `GodotIdeClient`), never Passenger's own headless editors (`GodotScripts.Headless`). Edits
+  added to a server's workspace edit for a file it already edits join that file's entry (`TypeRename.With`):
+  `documentChanges` apply in order. A server's own command (TypeScript's refactorings, ESLint's fixes) runs through
+  `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
   `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind; an open GDScript
   kept parsed and typed by `GodotScriptTypes`, reparsed off the UI thread through `GDScriptTextChange`, its hints set
