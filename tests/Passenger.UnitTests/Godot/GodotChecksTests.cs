@@ -782,4 +782,30 @@ public class GodotChecksTests
         Assert.False(members.Whole, "A node whose engine class is not known to lack the name is taken to have all it may");
         Assert.False(GodotChecks.Members(scenes, GodotNameKind.Method, ["res://Main.cs"], ".", null, _ => false).Whole, "Main's own C# script is read as GDScript");
     }
+
+    /// <summary>A C# Call of a GDScript's function by its string is read for its count as an emit is (#1211): the count its
+    /// function takes is no mark, fewer than it requires or more than it takes is, and a rest parameter takes any more.</summary>
+    [Fact]
+    public void A_csharp_call_of_a_gdscripts_function_gives_it_a_count_it_takes_a_rest_parameter_taking_any_more()
+    {
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(MixedScene) },
+            texts: new Dictionary<string, string>
+            {
+                ["res://enemy.gd"] = "extends \"res://actor.gd\"\n\nfunc take_damage(amount: int) -> void:\n\tpass\n\nfunc shout(first, ...rest) -> void:\n\tprint(first, rest)\n",
+                ["res://actor.gd"] = "class_name Actor extends CharacterBody2D\n\nsignal died\n\nvar health := 3\n",
+            });
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
+        GodotStringRead Call(string name, int given, int line) =>
+            new(GodotNameKind.Method, name, new Place(line, 20), new Place(line, 20 + name.Length), true, "Node", false, null, given, null) { Class = 0, Node = "Enemy" };
+        GodotCodeFound found = new([Main], [], [], [], [], [], [])
+        {
+            Strings = [Call("take_damage", 1, 10), Call("take_damage", 0, 11), Call("take_damage", 2, 12), Call("shout", 1, 13), Call("shout", 3, 14), Call("shout", 0, 15)],
+        };
+        Assert.Equal(
+        [
+            (11, "'take_damage' takes 1 (amount: int), but this call gives it none"),
+            (12, "'take_damage' takes 1 (amount: int), but this call gives it 2"),
+            (15, "'shout' takes at least 1 (first, ...rest), but this call gives it none"),
+        ], GodotChecks.Findings(scenes, asked, found, _ => true).Select(f => (f.At.Line, f.Message)));
+    }
 }

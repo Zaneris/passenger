@@ -157,6 +157,40 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
         }
     }
 
+    /// <summary>A GDScript function with a rest parameter takes any count past the ones it requires (#1211): a scene's
+    /// connection of a signal giving it three is no mark, one giving none is; a C# Call giving it one is no mark, one
+    /// giving none is, where the string is written.</summary>
+    [AvaloniaFact]
+    public void A_function_with_a_rest_parameter_takes_any_count_from_a_scenes_connection_and_a_csharp_call()
+    {
+        File.WriteAllText(game.PathOf("enemy.gd"), Enemy + "\n\nsignal talked(a, b, c)\nsignal hushed()\n\n\nfunc shout(first, ...rest) -> void:\n\tprint(first, rest)\n");
+        File.WriteAllText(game.PathOf("main.tscn"), Scene + "[connection signal=\"talked\" from=\"Enemy\" to=\"Enemy\" method=\"shout\"]\n"
+            + "[connection signal=\"hushed\" from=\"Enemy\" to=\"Enemy\" method=\"shout\"]\n");
+        string calls = Script.Replace("enemy.Call(\"move_and_slide\");", "enemy.Call(\"move_and_slide\");\n        enemy.Call(\"shout\", 1);\n        enemy.Call(\"shout\");", StringComparison.Ordinal);
+        File.WriteAllText(game.PathOf("Main.cs"), calls);
+        MainWindow window = game.Open(game.PathOf("Main.cs"), godot: game.Homes);
+        try
+        {
+            string noneGiven = "'shout' takes at least 1 (first, ...rest), but this call gives it none";
+            Ui.WaitFor(() => GodotSceneTests.Marked(window).Contains(noneGiven),
+                () => $"the call giving shout none to be marked: {string.Join("; ", GodotSceneTests.Marked(window))}", TimeSpan.FromMinutes(2));
+            OpenDocument code = window.EditorArea.Active!;
+            Marker marked = Assert.Single(code.Markers, m => m.Message.Contains("'shout'", StringComparison.Ordinal));
+            int line = calls.Split('\n').ToList().FindIndex(l => l.Contains("enemy.Call(\"shout\");", StringComparison.Ordinal));
+            Assert.Equal((line, "shout"), (code.Text.Snapshot.GetLineFromOffset(marked.Range.Start), code.Text.Snapshot.GetText(marked.Range.Start, marked.Range.Length)));
+
+            Assert.Null(window.OpenFile(game.PathOf("main.tscn")));
+            string none = "hushed gives no arguments, but shout takes at least 1 (first, ...rest)";
+            Ui.WaitFor(() => GodotSceneTests.Marked(window).Contains(none),
+                () => $"the connection giving shout none to be marked: {string.Join("; ", GodotSceneTests.Marked(window))}", TimeSpan.FromMinutes(1));
+            Assert.DoesNotContain(GodotSceneTests.Marked(window), m => m.Contains("talked", StringComparison.Ordinal));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A file's text as the window has it: an open one's in its editor, which a rename changes unsaved, else the disk's.</summary>
     private static string TextOf(MainWindow window, string path) =>
         window.EditorArea.Documents.FirstOrDefault(d => PathNames.Same(d.Path, PathNames.Canonical(path)))?.Text.Snapshot.ToString() ?? File.ReadAllText(path);
