@@ -80,7 +80,9 @@ public sealed class NoDotnetTests : IAsyncDisposable
         Assert.True(window.DotnetSaid == Refusals.NoDotnet, $"With no .NET, the Welcome screen's banner said: {window.DotnetSaid}");
         Assert.Equal(DotnetLack.NoDotnet, window.DotnetWant.Lack);
 
-        Ui.Click(window.Welcome.NewSolutionButton);
+        Assert.True(!window.Welcome.NewSolutionButton.IsEnabled && ToolTip.GetTip(window.Welcome.NewSolutionButton) as string == Refusals.NoDotnet,
+            $"The Welcome screen's New Solution is {(window.Welcome.NewSolutionButton.IsEnabled ? "not greyed" : "greyed")}, its tip saying {ToolTip.GetTip(window.Welcome.NewSolutionButton)}");
+        Ui.Run(window, AppActions.NewSolution);
         Assert.True(window.Status == Refusals.NoDotnet && !window.OwnedWindows.OfType<NewProjectDialog>().Any(),
             $"New Solution with no .NET said ({window.OwnedWindows.Count} windows over it): {window.Status}");
 
@@ -106,7 +108,8 @@ public sealed class NoDotnetTests : IAsyncDisposable
             Assert.True(window.Actions.WhyNot(action, here) == Refusals.NoDotnet, $"{action} with no .NET is refused with: {window.Actions.WhyNot(action, here)}");
         }
         Assert.Null(window.Actions.WhyNot(AppActions.InstallDotnetSdk, here));
-        Assert.Equal(Refusals.AgentInstalls, window.Actions.WhyNot(AppActions.InstallDotnetSdk, here.ForAgent()));
+        Assert.Null(window.Actions.WhyNot(AppActions.InstallDotnetSdk, here.ForAgent()));
+        Assert.Equal(Refusals.AgentChangesPath, window.Actions.WhyNot(AppActions.AddDotnetToPath, here.ForAgent()));
         Ui.Run(window, AppActions.Build);
         Assert.Equal(Refusals.NoDotnet, window.Status);
 
@@ -140,12 +143,33 @@ public sealed class NoDotnetTests : IAsyncDisposable
         MainWindow window = Ui.OpenFolder(solution, languageServer: false);
         Ui.WaitFor(() => window.DotnetWant.Lack == DotnetLack.NoDotnet && window.Session.Models.MissingSdk is not null, "the window to find no .NET", TimeSpan.FromMinutes(1));
 
+        List<string> stages = [];
+        window.Actions.Work.Changed += (_, change) =>
+        {
+            if (change.Work.Id == AppActions.InstallDotnetSdk && !change.Ended)
+            {
+                stages.Add(change.Work.Stage);
+            }
+        };
         ConfirmDialog dialog = Asked(window);
         Assert.Equal($"Install the .NET SDK {sdk.Version}?", dialog.Title);
+        // Its size, which the metadata does not give, from the archive's HEAD.
+        string size = $", {Math.Max(1, new FileInfo(sdk.Path).Length / (1024 * 1024))} MB,";
+        Assert.True(dialog.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text?.Contains(size, StringComparison.Ordinal) == true),
+            $"The question does not give the download's size{size}: {string.Join(" | ", dialog.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text))}");
         CheckBox onPath = dialog.GetVisualDescendants().OfType<CheckBox>().Single(c => c.Name == "AddDotnetToPath");
         Assert.True(onPath.IsChecked == true, "Install .NET SDK does not offer to add it to the shell's PATH, checked");
         Ui.ClickButton(dialog, "Install");
         Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null, () => $"the install to end ({window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage})", TimeSpan.FromMinutes(5));
+        // Each step named as it runs, and timed in the log, so where an install's time goes reads from it.
+        foreach (string step in (string[])[$"Downloading the .NET SDK {sdk.Version}", $"Checking the .NET SDK {sdk.Version}'s archive", $"Unpacking the .NET SDK {sdk.Version}",
+            $"Moving the .NET SDK {sdk.Version} into ", $"Starting the .NET SDK {sdk.Version} for the first time"])
+        {
+            Assert.True(stages.Any(s => s.StartsWith(step, StringComparison.Ordinal)), $"The install never said '{step}': it said {string.Join(" | ", stages.Distinct())}");
+        }
+        string log = Ui.IdeLog();
+        Assert.True(log.Contains($"Install .NET SDK {sdk.Version}: installed; download ", StringComparison.Ordinal) && log.Contains(", move ", StringComparison.Ordinal)
+            && log.Contains($"Install .NET SDK {sdk.Version}: first run ", StringComparison.Ordinal), "The log does not time the install's steps");
         Assert.True(window.Status?.StartsWith($"The .NET SDK {sdk.Version} is installed in ", StringComparison.Ordinal) == true, $"The install said: {window.Status}");
         Assert.True(File.Exists(Path.Combine(Installs, DotnetName)) && File.Exists(Path.Combine(Installs, "sdk", sdk.Version, "dotnet.dll")),
             $"Nothing of the SDK is in {Installs}: {string.Join(", ", Directory.EnumerateFileSystemEntries(Installs).Select(Path.GetFileName))}");
@@ -183,8 +207,7 @@ public sealed class NoDotnetTests : IAsyncDisposable
         Ui.ClickButton(dialog, "Install");
         Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null, "the install to end", TimeSpan.FromMinutes(1));
         Assert.Equal("The .NET SDK 10.0.999's archive is not the one Microsoft publishes (its SHA-512 differs), so nothing was installed", window.Status);
-        Assert.True(!Directory.Exists(Installs) || !Directory.EnumerateFileSystemEntries(Installs).Any(),
-            $"{Installs} holds {string.Join(", ", Directory.EnumerateFileSystemEntries(Installs).Select(Path.GetFileName))} after a refused install");
+        Assert.True(!Directory.Exists(Installs), $"A refused install left the folder it made, {Installs}, holding [{string.Join(", ", Directory.EnumerateFileSystemEntries(Installs).Select(Path.GetFileName))}]");
         Assert.Equal(Refusals.NoDotnet, window.DotnetSaid);
         window.Close();
     }
@@ -210,6 +233,92 @@ public sealed class NoDotnetTests : IAsyncDisposable
         Ui.WaitFor(() => window.Actions.Work.Of(AppActions.AddDotnetToPath) is null && window.DotnetSaid is null, () => $"the banner to go once the PATH has it ({window.Status})", TimeSpan.FromMinutes(1));
         Assert.Equal(Refusals.OnPathAlready(own), window.Actions.WhyNot(AppActions.AddDotnetToPath, window.Actions.Context()));
         window.Close();
+    }
+
+    /// <summary>An agent's Install .NET SDK on a person's window is their question, in a window of its own that waits for
+    /// them, the install going on only as they say: declined, nothing is installed and no folder made, in words the agent is
+    /// told; an agent's own Passenger, which nobody is at, refuses it as before.</summary>
+    [AvaloniaFact]
+    public void An_agents_install_on_a_persons_window_is_their_question_and_an_agents_own_passenger_refuses_it()
+    {
+        StandIn sdk = Archive.Value;
+        using StandInHttp feed = Feed(sdk, sdk.Sha512);
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+        window.Show();
+        Ui.Settle();
+        Assert.Null(window.Actions.RunForAgent(AppActions.InstallDotnetSdk));
+        Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any() || window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null,
+            () => $"the agent's install to ask the person ({window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage}; {window.Status})", TimeSpan.FromMinutes(1));
+        ConfirmDialog asked = DialogButtonsTests.Check(window.OwnedWindows.OfType<ConfirmDialog>().Single());
+        Assert.Equal($"Let an agent install the .NET SDK {sdk.Version}?", asked.Title);
+        Assert.True(window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage == $"Waiting for the person to allow installing the .NET SDK {sdk.Version}",
+            $"The agent's install waits saying {window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage}");
+        Ui.ClickButton(asked, "Don't Install");
+        Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null, "the agent's install to end", TimeSpan.FromMinutes(1));
+        Assert.Equal($"The person did not allow installing the .NET SDK {sdk.Version}, so nothing was installed", window.Status);
+        Assert.False(Directory.Exists(Installs), $"The install the person declined made {Installs}");
+        window.Close();
+
+        MainWindow own = new() { Width = 1200, Height = 800, StartsLanguageServer = false, AgentsOwn = true };
+        own.Show();
+        Ui.Settle();
+        Assert.Equal(Refusals.AgentInstalls, own.Actions.WhyNot(AppActions.InstallDotnetSdk, own.Actions.Context().ForAgent()));
+        own.Close();
+    }
+
+    /// <summary>Hide on the word that the shell's PATH does not name the SDK Passenger found is kept for that installation: the
+    /// next window keeping its state where the first did says nothing of it either.</summary>
+    [AvaloniaFact]
+    public void Hide_on_the_off_PATH_word_is_kept_for_that_installation_in_the_next_window()
+    {
+        string own = Path.Combine(Home, ".dotnet");
+        Unpack(Archive.Value.Path, own);
+        Dotnet.PlacesStandIn = [Path.Combine(own, DotnetName)];
+        string state = TestFolders.Create("no-dotnet-state-");
+        try
+        {
+            MainWindow window = Kept(state);
+            Ui.WaitFor(() => window.DotnetWant.Lack == DotnetLack.OffPath && window.DotnetSaid is not null, () => $"the off-PATH word ({window.DotnetWant.Lack}: {window.DotnetSaid})", TimeSpan.FromMinutes(1));
+            Ui.ClickButton(window, "Hide");
+            Assert.Null(window.DotnetSaid);
+            window.Close();
+
+            MainWindow again = Kept(state);
+            Ui.WaitFor(() => again.DotnetWant.Lack == DotnetLack.OffPath, () => $"the next window to find the SDK off the PATH ({again.DotnetWant.Lack})", TimeSpan.FromMinutes(1));
+            Ui.Settle();
+            Assert.True(again.DotnetSaid is null, $"The next window said the word Hide hid: {again.DotnetSaid}");
+            again.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(state);
+        }
+    }
+
+    /// <summary>A C# file of no project shown with no .NET at all has the banner say, after what is missing, that it knows no
+    /// framework types until an SDK is installed, and why: Roslyn's server reads a loose file's framework only from a project
+    /// the SDK's MSBuild builds, so the carried runtime cannot stand in.</summary>
+    [AvaloniaFact]
+    public void A_loose_csharp_file_with_no_dotnet_has_the_banner_say_it_knows_no_framework_types_and_why()
+    {
+        string loose = TestFolders.Write(folder, "Basket.cs", "namespace Shop;\n\npublic class Basket\n{\n}\n");
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+        window.Show();
+        Ui.Settle();
+        Assert.Null(window.OpenFile(loose));
+        Ui.Settle();
+        Assert.Equal($"{Refusals.NoDotnet}. {Refusals.LooseWithoutSdk("Basket.cs")}", window.DotnetSaid);
+        window.Close();
+    }
+
+    /// <summary>A window keeping its state in <paramref name="state"/>, as the window a person uses does.</summary>
+    private static MainWindow Kept(string state)
+    {
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = state, StartsLanguageServer = false };
+        window.Show();
+        window.KeepLayout();
+        Ui.Settle();
+        return window;
     }
 
     /// <summary>Install .NET SDK clicked in the banner, waited on until it asks.</summary>
@@ -254,6 +363,10 @@ public sealed class NoDotnetTests : IAsyncDisposable
                     { "channel-version": "{{Channel}}", "releases": [ { "release-version": "{{Channel}}.0", "sdk": { "version": "{{sdk.Version}}", "runtime-version": "",
                       "files": [ { "name": "{{name}}", "rid": "{{system}}", "url": "{{at}}{{file}}", "hash": "{{hash}}" } ] } } ] }
                     """);
+            }
+            else if (exchange.Path == file && exchange.Method == "HEAD")
+            {
+                await exchange.HeadAsync(200, "application/octet-stream", new FileInfo(sdk.Path).Length);
             }
             else if (exchange.Path == file)
             {

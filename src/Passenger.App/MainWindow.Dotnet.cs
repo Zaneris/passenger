@@ -9,8 +9,9 @@ namespace Passenger.App;
 /// it or the folder lacks (<see cref="DotnetWant"/>) said in the banner over the window's middle, on the Welcome screen and
 /// a folder alike, with its fix. Install .NET SDK asks, then installs the SDK wanted into the person's own folder
 /// (<see cref="DotnetInstall"/>), which Passenger, its terminal and what it starts use at once, the folder's projects then
-/// evaluated with it; Add .NET to the Shell's PATH puts it on the PATH of shells started outside Passenger. An agent does
-/// neither: it may ask the person.</summary>
+/// evaluated with it; Add .NET to the Shell's PATH puts it on the PATH of shells started outside Passenger. An agent's
+/// install on a person's window is their question (<see cref="AskForAgentAsync"/>); an agent's own Passenger, which nobody
+/// is at, installs nothing, and no agent changes the PATH.</summary>
 public partial class MainWindow
 {
     /// <summary>The machine's .NET as last read, null before the first read lands.</summary>
@@ -19,8 +20,9 @@ public partial class MainWindow
     /// <summary>What would put the installation found on the shell's PATH, read with it; null where it is there already.</summary>
     private ShellPath? shellPath;
 
-    /// <summary>The banner's word that the SDK is off the shell's PATH, hidden by the person for this window's life.</summary>
-    private bool offPathHidden;
+    /// <summary>The installations whose off-PATH word the person hid in this window, kept in the store's dotnet.json too by
+    /// the window a person uses (<see cref="State.DotnetState"/>).</summary>
+    private readonly HashSet<string> offPathHidden = new(PathNames.Comparer);
 
     private Button? installLink;
     private Button? downloadLink;
@@ -38,7 +40,7 @@ public partial class MainWindow
     {
         actions!.Add(new IdeAction(AppActions.InstallDotnetSdk, "Install .NET SDK…", "IDE", context => IdeErrors.Observe(InstallDotnetAsync(context)))
         {
-            WhyNot = context => context.ByAgent ? Refusals.AgentInstalls
+            WhyNot = context => context.ByAgent && (AgentsOwn || AgentsUnattended) ? Refusals.AgentInstalls
                 : DotnetWant.Install is null ? Refusals.NothingToInstall(machine, DotnetWant)
                 : null,
             Menus = [new MenuPlace("Tools", 1, 0)],
@@ -47,7 +49,7 @@ public partial class MainWindow
         });
         actions.Add(new IdeAction(AppActions.AddDotnetToPath, "Add .NET to the Shell's PATH…", "IDE", _ => IdeErrors.Observe(AddDotnetToPathAsync()))
         {
-            WhyNot = context => context.ByAgent ? Refusals.AgentInstalls
+            WhyNot = context => context.ByAgent ? Refusals.AgentChangesPath
                 : machine?.Found is not { } found ? Refusals.NoDotnet
                 : shellPath is null ? Refusals.OnPathAlready(found.Root)
                 : null,
@@ -59,14 +61,37 @@ public partial class MainWindow
         downloadLink = DotnetBanner.Link("Download Page", () => Browse(DotnetReleases.PageOf(DotnetWant.Install?.Channel ?? Channel(DotnetWant.Install?.Version))));
         globalJsonLink = DotnetBanner.Link("Open global.json", OpenGlobalJson);
         pathLink = DotnetBanner.Link(actions[AppActions.AddDotnetToPath]!.Title, () => Request(AppActions.AddDotnetToPath));
-        hideLink = DotnetBanner.Link("Hide", () =>
-        {
-            offPathHidden = true;
-            ShowDotnet();
-        });
+        hideLink = DotnetBanner.Link("Hide", HideOffPath);
         Activated += (_, _) => ReadDotnet();
+        // A C# file of no project shown or left changes what the banner says of it.
+        Editors.ActiveChanged += (_, _) =>
+        {
+            if (machine is not null)
+            {
+                ShowDotnet();
+            }
+        };
         ReadDotnet();
     }
+
+    /// <summary>Hide on the off-PATH word: hidden for the installation found, in this window and, for the window a person
+    /// uses, every window from now (the store's dotnet.json).</summary>
+    private void HideOffPath()
+    {
+        if (machine?.Found is { } found)
+        {
+            offPathHidden.Add(found.Root);
+            if (keepsWorkspace && state is not null && !state.Dotnet.Value.Hides(found.Root))
+            {
+                state.Dotnet.Set(state.Dotnet.Value with { HiddenOffPath = [.. state.Dotnet.Value.HiddenOffPath, found.Root] });
+            }
+        }
+        ShowDotnet();
+    }
+
+    /// <summary>Whether the person hid the off-PATH word of the installation found, here or, kept, in any window.</summary>
+    private bool OffPathHidden => machine?.Found is { } found
+        && (offPathHidden.Contains(found.Root) || (keepsWorkspace && state?.Dotnet.Value.Hides(found.Root) == true));
 
     /// <summary>A version's channel ("10.0" for 10.0.100), null for none.</summary>
     private static string? Channel(string? version) => version?.Split('.') is { Length: >= 2 } parts ? $"{parts[0]}.{parts[1]}" : null;
@@ -134,8 +159,20 @@ public partial class MainWindow
         UiThread.Check();
         DotnetWant = DotnetWant.Of(machine, session.Models.MissingSdk, session.Models.SdkVersion,
             Projects.Where(p => p.IsEvaluated).Select(p => (p.Name, p.TargetFrameworks)), session.Models.SdkAsked);
-        string? said = DotnetWant.Lack == DotnetLack.OffPath && (offPathHidden || shellPath is null) ? null : Refusals.Dotnet(DotnetWant, Folder);
+        string? said = DotnetWant.Lack == DotnetLack.OffPath && (OffPathHidden || shellPath is null) ? null : Refusals.Dotnet(DotnetWant, Folder);
+        if (said is not null && DotnetWant.NoSdkAtAll && LooseCSharp() is { } loose)
+        {
+            said = $"{said}. {Refusals.LooseWithoutSdk(loose)}";
+        }
         DotnetBanner.Say(said);
+        // The Welcome screen's New Solution greys as the action does, saying why on its tip.
+        if (actions![AppActions.NewSolution] is not null)
+        {
+            string? whyNot = actions.WhyNot(AppActions.NewSolution, actions.Context());
+            welcome.NewSolutionButton.IsEnabled = whyNot is null;
+            ToolTip.SetTip(welcome.NewSolutionButton, whyNot);
+            ToolTip.SetShowOnDisabled(welcome.NewSolutionButton, true);
+        }
         bool wants = DotnetWant.Install is not null;
         installLink!.IsVisible = wants;
         downloadLink!.IsVisible = wants;
@@ -148,6 +185,13 @@ public partial class MainWindow
             ShowSdk();
         }
     }
+
+    /// <summary>The name of the C# file shown while it is of no project of the folder's (a loose file), else null.</summary>
+    private string? LooseCSharp() =>
+        Editors.Active is { Diff: null } shown && Path.GetExtension(shown.Path).Equals(".cs", StringComparison.OrdinalIgnoreCase)
+            && ProjectModel.Owning(session.Projects, shown.Path) is null
+            ? Path.GetFileName(shown.Path)
+            : null;
 
     /// <summary>Opens the global.json the want names, at the version it asks for where it chose the SDK.</summary>
     private void OpenGlobalJson()
@@ -200,14 +244,24 @@ public partial class MainWindow
                 return;
             }
             ShellPath? onPath = await BackgroundWork.Run(() => ShellPath.For(into));
+            long? size = await BackgroundWork.Run(() => DotnetReleases.SizeAsync(sdk, installing.Stopping));
             CheckBox? addToPath = onPath is null ? null : new CheckBox { Name = "AddDotnetToPath", IsChecked = true, Content = $"Also add it to your shell's PATH: Passenger {onPath.Shown}" };
             installing.Say($"Asking to install the .NET SDK {sdk.Version}");
             string runtime = sdk.Runtime.Length > 0 ? $" (with the .NET runtime {sdk.Runtime})" : string.Empty;
+            string sized = size is > 0 ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $", {Math.Max(1, size.Value / (1024 * 1024))} MB,") : string.Empty;
             string replacing = machine?.Found is { } found && !PathNames.Same(found.Root, into) ? $" in place of the one in {PathNames.Shown(found.Root, null)}" : string.Empty;
-            if (!await ConfirmAsync($"Install the .NET SDK {sdk.Version}?",
-                $"Passenger downloads the .NET SDK {sdk.Version}{runtime} from Microsoft ({sdk.Url.Host}), checks it against the SHA-512 Microsoft publishes, and installs it "
-                + $"into {PathNames.Shown(into, null)}, for you alone: no administrator rights are needed. Passenger, its terminal and the programs it starts use it at once{replacing}.",
-                "Install", addToPath))
+            string title = $"Install the .NET SDK {sdk.Version}?";
+            string text = $"Passenger downloads the .NET SDK {sdk.Version}{runtime}{sized} from Microsoft ({sdk.Url.Host}), checks it against the SHA-512 Microsoft publishes, "
+                + $"and installs it into {PathNames.Shown(into, null)}, for you alone: no administrator rights are needed. Passenger, its terminal and the programs it starts use it at once{replacing}.";
+            if (context.ByAgent)
+            {
+                if (await AskAgentInstallAsync(sdk, text, addToPath, installing) is { } refused)
+                {
+                    Told(installing, false, refused);
+                    return;
+                }
+            }
+            else if (!await ConfirmAsync(title, text, "Install", addToPath))
             {
                 Told(installing, false, "No .NET SDK was installed");
                 return;
@@ -229,6 +283,7 @@ public partial class MainWindow
                 return;
             }
             Dotnet.Use(installed.Root);
+            await BackgroundWork.Run(() => DotnetInstall.FirstRunAsync(sdk, installed.Root, stage => UiThread.Post(() => installing.Say(stage)), installing.Stopping));
             string pathSaid = path && onPath is not null ? await MakePathAsync(onPath) : string.Empty;
             if (!await ReadDotnetAsync())
             {
@@ -236,6 +291,29 @@ public partial class MainWindow
             }
             Told(installing, true, $"The .NET SDK {sdk.Version} is installed in {PathNames.Shown(installed.Root, null)}: Passenger uses it now{pathSaid}");
         }
+    }
+
+    /// <summary>An agent's install put to the person at the window as the agent's question, the call waiting on it: null once
+    /// they let it install, else why not, in words the agent is told.</summary>
+    private async Task<string?> AskAgentInstallAsync(SdkDownload sdk, string text, CheckBox? addToPath, Working installing)
+    {
+        string agent = Mcp.AgentCall.Current?.Agent ?? "an agent";
+        ConfirmDialog dialog = new($"Let {agent} install the .NET SDK {sdk.Version}?",
+            $"{char.ToUpperInvariant(agent[0])}{agent[1..]}, connected through Passenger's MCP server, asks to install it. {text}", "Install", "Don't Install", addToPath)
+        {
+            EnterAgrees = false,
+        };
+        installing.Say($"Waiting for the person to allow installing the .NET SDK {sdk.Version}");
+        IdeErrors.Write($"Agents: {agent} asks to install the .NET SDK {sdk.Version} in the window on {Folder ?? "no folder"}");
+        Mcp.Admission said = await AskForAgentAsync(dialog, () => Answered(dialog.Answered), $"{agent} waits for you: install the .NET SDK {sdk.Version}?", installing.Stopping);
+        IdeErrors.Write($"Agents: {agent} {said} to install the .NET SDK {sdk.Version}");
+        return said switch
+        {
+            Mcp.Admission.Allowed => null,
+            Mcp.Admission.NotAllowed => $"The person did not allow installing the .NET SDK {sdk.Version}, so nothing was installed",
+            Mcp.Admission.FolderChanged => Refusals.FolderChanged(Folder),
+            _ => $"Nobody at the window answered within {Mcp.AgentConnection.Limit(this)} whether to install the .NET SDK {sdk.Version}, so nothing was installed",
+        };
     }
 
     /// <summary>The SDK wanted with the rollForward of the global.json that asks for it, read off the UI thread.</summary>

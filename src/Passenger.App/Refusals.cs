@@ -79,8 +79,17 @@ public static class Refusals
     };
 
     /// <summary>What an agent's ide_action of Install .NET SDK or Add .NET to the Shell's PATH is refused with.</summary>
-    public const string AgentInstalls = "An agent never installs software or changes the person's PATH: ask the person, who does it with the banner over "
+    public const string AgentInstalls = "An agent's own Passenger, which nobody is at, never installs software: ask the person, who does it with the banner over "
         + "Passenger's window, or Tools, Install .NET SDK…";
+
+    /// <summary>An agent's Add .NET to the Shell's PATH: the person's shell is theirs to change.</summary>
+    public const string AgentChangesPath = "An agent never changes the person's shell PATH: ask the person, who does it with the banner over Passenger's window, "
+        + "or Tools, Add .NET to the Shell's PATH…";
+
+    /// <summary>The banner's word of a C# file of no project shown while the machine has no .NET SDK: what Roslyn's server
+    /// cannot give it, and why.</summary>
+    public static string LooseWithoutSdk(string file) =>
+        $"{file} is a C# file of no project, which knows no framework types until a .NET SDK is installed: Roslyn reads a loose file's framework only from a project the SDK's MSBuild builds";
 
     /// <summary>Install .NET SDK with nothing lacking: the newest SDK found, and where.</summary>
     public static string NothingToInstall(DotnetMachine? machine, DotnetWant want) =>

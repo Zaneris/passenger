@@ -68,7 +68,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         const string Missing = "The .NET SDK 1.0.100 that global.json asks for is not installed: install it, or have global.json name one that is";
         JsonElement workspace = await Call(client, McpTools.Workspace);
         Assert.True(workspace.TryGetProperty("sdkMissing", out JsonElement missing)
-            && missing.GetString() == $"{Missing}. The person installs it with Install .NET SDK in the banner over Passenger's window; an agent may ask them to, never install it itself",
+            && missing.GetString() == $"{Missing}. This Passenger, an agent's own, installs nothing: the person installs it with Install .NET SDK in the banner over their Passenger's window",
             $"workspace, where global.json asks for an SDK not installed, answered: {workspace}");
         CallToolResult run = await Result(client, McpTools.Run);
         Assert.True(run.IsError == true && Text(run).Contains(Missing, StringComparison.Ordinal), $"run without the SDK answered: {Text(run)}");

@@ -92,8 +92,15 @@ public class DotnetReleasesTests
     public void A_version_reads_its_own_channel_and_a_rollForward_past_its_minor_the_newer_supported_ones_newest_first()
     {
         Assert.Equal(["10.0"], DotnetReleases.ChannelsFor(new SdkWanted("10.0.100"), Channels()).Select(c => c.Version));
-        Assert.Equal(["9.0", "10.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "latestMajor"), Channels()).Select(c => c.Version));
+        Assert.Equal(["9.0", "10.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "major"), Channels()).Select(c => c.Version));
         Assert.Equal(["9.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "latestMinor"), Channels()).Select(c => c.Version));
+    }
+
+    [Fact]
+    public void A_latestMajor_rollForward_reads_the_newest_channel_first_its_own_in_its_place()
+    {
+        Assert.Equal(["10.0", "9.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "latestMajor"), Channels()).Select(c => c.Version));
+        Assert.Equal(["10.0", "9.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "LatestMajor"), Channels()).Select(c => c.Version));
     }
 
     [Fact]

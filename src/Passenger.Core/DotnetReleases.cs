@@ -97,7 +97,8 @@ public static class DotnetReleases
 
     /// <summary>The channels that may hold the SDK wanted, in the order they are read: the one asked for (a channel, or the
     /// version's own), then, where global.json's rollForward lets a version go past its minor or major, the supported ones
-    /// newest first; with nothing asked, the newest supported.</summary>
+    /// newest first, a latestMinor or latestMajor reading them all newest first, the asked one in its place; with nothing
+    /// asked, the newest supported.</summary>
     public static IEnumerable<DotnetChannel> ChannelsFor(SdkWanted wanted, IReadOnlyList<DotnetChannel> channels)
     {
         if (wanted.Channel is { } asked)
@@ -110,9 +111,15 @@ public static class DotnetReleases
         }
         string own = string.Join('.', version.Split('.').Take(2));
         IEnumerable<DotnetChannel> first = channels.Where(c => c.Version == own);
-        return Roll(wanted.RollForward) >= Rolls.Minor
-            ? first.Concat(channels.Where(c => c.Supported && c.Version != own && Satisfies(wanted, c.Version + ".0")).OrderByDescending(c => c.Version, VersionOrder.Instance))
-            : first;
+        if (Roll(wanted.RollForward) < Rolls.Minor)
+        {
+            return first;
+        }
+        IEnumerable<DotnetChannel> newer = channels.Where(c => c.Supported && c.Version != own && Satisfies(wanted, c.Version + ".0"));
+        // A latest… rollForward takes the newest SDK it may, so the newest channel is read first, the asked one in its place.
+        return wanted.RollForward?.StartsWith("latest", StringComparison.OrdinalIgnoreCase) == true
+            ? first.Concat(newer).OrderByDescending(c => c.Version, VersionOrder.Instance)
+            : first.Concat(newer.OrderByDescending(c => c.Version, VersionOrder.Instance));
     }
 
     /// <summary>The newest SDK a channel's releases.json lists that the wanted takes, with this system's archive (a .zip on
@@ -196,6 +203,38 @@ public static class DotnetReleases
             ? (major, minor, patch)
             : null;
     }
+
+    /// <summary>How many bytes an SDK's archive is, as its server answers a HEAD request for it (Microsoft's metadata gives no
+    /// size); null where it does not say or cannot be asked in time.</summary>
+    public static async Task<long?> SizeAsync(SdkDownload sdk, CancellationToken cancel)
+    {
+        if (!DotnetInstall.Secure(sdk.Url))
+        {
+            return null;
+        }
+        using CancellationTokenSource limit = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        limit.CancelAfter(SizeLimit);
+        try
+        {
+            using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Head, sdk.Url);
+            using HttpResponseMessage response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, limit.Token).ConfigureAwait(false);
+            return response.IsSuccessStatusCode && response.RequestMessage?.RequestUri is { } landed && DotnetInstall.Secure(landed)
+                ? response.Content.Headers.ContentLength
+                : null;
+        }
+        catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (Exception error) when (error is HttpRequestException or IOException)
+        {
+            PassengerLog.Write($"The .NET SDK {sdk.Version}'s size could not be asked of {sdk.Url.Host}: {error.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>How long the archive's size is waited for before the question goes without it.</summary>
+    private static readonly TimeSpan SizeLimit = TimeSpan.FromSeconds(10);
 
     private static async Task<JsonDocument> ReadAsync(Uri uri, CancellationToken cancel)
     {
