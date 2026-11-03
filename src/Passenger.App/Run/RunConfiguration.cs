@@ -70,6 +70,11 @@ public sealed record RunConfiguration
     /// program of its own.</summary>
     public bool GodotEditor { get; init; }
 
+    /// <summary>For a Godot project's game, whether Godot's editor open on the project plays it, as its own Play does, rather
+    /// than Passenger starting it: through Passenger's addon there where it is installed, else through the editor's IDE
+    /// messaging (<see cref="MainWindow"/>'s Run in Godot Editor).</summary>
+    public bool GodotInEditor { get; init; }
+
     /// <summary>For a Godot project's game, the scene it starts in: its project.godot's main scene (null), the scene open in the
     /// editor as it starts (<see cref="CurrentScene"/>: a scene, or one a script open runs in), or a scene's res:// path.</summary>
     public string? GodotScene { get; init; }

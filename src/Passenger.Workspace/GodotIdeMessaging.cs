@@ -47,6 +47,23 @@ public static class GodotIdeMessaging
     /// <summary>The id of a request for the names a script's string may take.</summary>
     public const string CodeCompletion = "CodeCompletion";
 
+    /// <summary>The id of a request that the editor play its main scene, as its Play does, building first as Play builds.</summary>
+    public const string Play = "Play";
+
+    /// <summary>The id of a request that the editor play its main scene, its body saying whether its own build comes first. Its
+    /// debugger fields name a Mono debugger agent the editor puts in its environment for Godot 3's games, which no Godot 4
+    /// game reads.</summary>
+    public const string DebugPlay = "DebugPlay";
+
+    /// <summary>The id of a request that the editor stop what it plays, as its Stop does.</summary>
+    public const string StopPlay = "StopPlay";
+
+    /// <summary>The body of a request to play without the editor building first, once Passenger has built the game itself.</summary>
+    public static string PlayBuilt => JsonSerializer.Serialize(new Dictionary<string, object> { ["DebuggerHost"] = string.Empty, ["DebuggerPort"] = 0, ["BuildBeforePlaying"] = false });
+
+    /// <summary>The body of a request that carries nothing.</summary>
+    public const string NoBody = "{}";
+
     private static readonly Regex ServerHandshake = new(@"^GodotIdeServer,Version=([0-9]+)\.([0-9]+)\.([0-9]+),([_a-zA-Z][_a-zA-Z0-9]{0,63})$", RegexOptions.CultureInvariant);
 
     /// <summary>The meta file a project's .NET editor writes its port and executable into while it runs.</summary>

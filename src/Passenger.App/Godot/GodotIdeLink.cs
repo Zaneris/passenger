@@ -160,6 +160,30 @@ internal sealed class GodotIdeLink : IAsyncDisposable
         }
     }
 
+    /// <summary>Whether the person's editor is open on a project and answers.</summary>
+    public async Task<bool> IsOpenAsync(string project) => await BackgroundWork.Run(() => EditorAsync(project)) is not null;
+
+    /// <summary>Asks the editor open on a project to do what a request says (play, stop): null once it answered as asked, else
+    /// why not, in words that follow "Godot's editor".</summary>
+    public async Task<string?> RequestAsync(string project, string id, string body)
+    {
+        if (await BackgroundWork.Run(() => EditorAsync(project)) is not { } client)
+        {
+            return "is not open on the project";
+        }
+        using CancellationTokenSource within = new(Patience);
+        try
+        {
+            GodotIdeMessage? answer = await client.AskAsync(id, body, within.Token);
+            return answer is { Request: false, Status: GodotIdeMessaging.Ok } ? null
+                : answer is null ? "closed before it answered" : $"answered {answer.Status}";
+        }
+        catch (OperationCanceledException)
+        {
+            return $"did not answer within {Patience.TotalSeconds:0} s";
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         List<GodotIdeClient> clients;

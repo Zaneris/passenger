@@ -36,6 +36,9 @@ public sealed class RunConfigurationsDialog : IdeWindow
     /// <summary>The rows of what a build makes (its framework, launch profile and build before launch), which a Godot project
     /// of GDScript alone has none of.</summary>
     private readonly Control[] builtRows = new Control[3];
+
+    /// <summary>The rows of how Passenger starts the program, which a game Godot's editor plays takes none of.</summary>
+    private readonly Control[] launchRows = new Control[5];
     private readonly CancellationTokenSource aspireLifetime = new();
     private int aspireReading;
     private bool aspireClosed;
@@ -143,7 +146,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         }, reshow: true);
         FrameworkBox.SelectionChanged += (_, _) => Edit(c => c with { Framework = FrameworkBox.SelectedIndex <= 0 ? string.Empty : FrameworkBox.SelectedItem as string ?? string.Empty });
         ProfileBox.SelectionChanged += (_, _) => Edit(FromProfile, reshow: true);
-        GodotBox.SelectionChanged += (_, _) => Edit(c => c with { GodotEditor = GodotBox.SelectedIndex == 1 }, reshow: true);
+        GodotBox.SelectionChanged += (_, _) => Edit(c => c with { GodotEditor = GodotBox.SelectedIndex == 1, GodotInEditor = GodotBox.SelectedIndex == 2 }, reshow: true);
         SceneBox.SelectionChanged += (_, _) => Edit(c => c with
         {
             GodotScene = SceneBox.SelectedIndex == 1 ? RunConfiguration.CurrentScene : c.GodotScene == RunConfiguration.CurrentScene ? null : c.GodotScene,
@@ -223,7 +226,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             ServiceActions = AspireTable.Actions(every: true),
         });
         aspireRow = Row("Aspire resources", AspireTable, top: true, fields: ["serviceActions", "serviceProjects"]);
-        godotRow = Row("Starts", GodotBox, fields: ["godotEditor"]);
+        godotRow = Row("Starts", GodotBox, fields: ["godotEditor", "godotInEditor"]);
         sceneRow = Row("Scene", SceneBox, fields: ["godotScene"]);
         copyRows[0] = Row("Copies", CopiesBox, fields: ["godotCopies"]);
         copyRows[1] = Row("Each copy's arguments", CopyArgumentsBox, top: true, fields: ["copyArguments"]);
@@ -239,9 +242,9 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (copyRows[1], [RunKind.Project]),
             (builtRows[0] = Row("Target framework", FrameworkBox, fields: ["framework"]), [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
             (builtRows[1] = Row("Launch profile", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { ProfileBox, SaveAsProfileButton } }), [RunKind.Project]),
-            (Row("Exe path", ProgramBox, fields: ["program"]), [RunKind.Project]),
-            (Row("Program arguments", ArgumentsBox, fields: ["arguments"]), [RunKind.Project]),
-            (Row("Working directory", WorkingDirectoryBox, fields: ["workingDirectory"]), [RunKind.Project]),
+            (launchRows[0] = Row("Exe path", ProgramBox, fields: ["program"]), [RunKind.Project]),
+            (launchRows[1] = Row("Program arguments", ArgumentsBox, fields: ["arguments"]), [RunKind.Project]),
+            (launchRows[2] = Row("Working directory", WorkingDirectoryBox, fields: ["workingDirectory"]), [RunKind.Project]),
             (Row("Compose files", ComposeFilesBox, fields: ["composeFiles"]), [RunKind.Compose]),
             (Row("Env files", EnvFilesBox, fields: ["envFiles"]), [RunKind.Compose]),
             (Row("Profiles", ProfilesBox, fields: ["profiles"]), [RunKind.Compose]),
@@ -253,9 +256,9 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (Row("Mode", ModeBox, fields: ["mode"]), [RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row(string.Empty, KeepBackingBox, marked: keepWords, fields: ["keepBackingServices"]), [RunKind.Compose]),
             (Row(string.Empty, TelemetryBox, marked: telemetryWords, fields: ["telemetry"]), [RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
-            (Row("Environment variables", new StackPanel { Spacing = 6, Children = { VariablesHeader(), variables, AddVariableButton } }, top: true, fields: ["environment"]),
+            (launchRows[3] = Row("Environment variables", new StackPanel { Spacing = 6, Children = { VariablesHeader(), variables, AddVariableButton } }, top: true, fields: ["environment"]),
                 [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
-            (Row(string.Empty, ConsoleBox, marked: consoleWords, fields: ["console"]), [RunKind.Project]),
+            (launchRows[4] = Row(string.Empty, ConsoleBox, marked: consoleWords, fields: ["console"]), [RunKind.Project]),
             (browserRows[0], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (browserRows[1], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row("Launched service", LaunchServiceBox, fields: ["launchService"]), [RunKind.Compose]),
@@ -412,7 +415,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     public ComboBox GodotBox { get; }
 
     /// <summary>The choices of <see cref="GodotBox"/>, the game's first.</summary>
-    public static readonly string[] GodotStarts = ["The game", "Godot's editor on the project"];
+    public static readonly string[] GodotStarts = ["The game", "Godot's editor on the project", "The game, in Godot's editor"];
 
     /// <summary>The scene a Godot project's game starts in: its main scene, or the one open in the editor as it starts.</summary>
     public ComboBox SceneBox { get; }
@@ -1009,7 +1012,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             ProfileBox.ItemsSource = (string[])["None", .. profiles.Select(p => p.Name)];
             ProfileBox.SelectedIndex = Math.Max(0, profiles.ToList().FindIndex(p => p.Name == shown.LaunchProfile) + 1);
             bool godot = !shown.IsContainer && project?.GodotFolder is not null;
-            GodotBox.SelectedIndex = shown.GodotEditor ? 1 : 0;
+            GodotBox.SelectedIndex = shown.GodotEditor ? 1 : shown.GodotInEditor ? 2 : 0;
             SceneBox.SelectedIndex = shown.GodotScene == RunConfiguration.CurrentScene ? 1 : 0;
             CopiesBox.Value = shown.GodotCopies;
             CopyArgumentsBox.Text = string.Join(Environment.NewLine, shown.CopyArguments);
@@ -1043,8 +1046,13 @@ public sealed class RunConfigurationsDialog : IdeWindow
             aspireRow.IsVisible = !shown.IsContainer && shown.Aspire;
             godotRow.IsVisible = godot;
             sceneRow.IsVisible = godot && !shown.GodotEditor;
-            copyRows[0].IsVisible = godot && !shown.GodotEditor;
-            copyRows[1].IsVisible = godot && !shown.GodotEditor && shown.GodotCopies > 1;
+            foreach (Control row in launchRows)
+            {
+                row.IsVisible &= !(godot && shown.GodotInEditor);
+            }
+            // Godot's editor plays as many instances as its own Run Multiple Instances says.
+            copyRows[0].IsVisible = godot && !shown.GodotEditor && !shown.GodotInEditor;
+            copyRows[1].IsVisible = godot && !shown.GodotEditor && !shown.GodotInEditor && shown.GodotCopies > 1;
             foreach (Control browser in godot ? browserRows : [])
             {
                 browser.IsVisible = false;

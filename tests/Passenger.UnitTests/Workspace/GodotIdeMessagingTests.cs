@@ -4,9 +4,22 @@ namespace Passenger.UnitTests.Workspace;
 
 /// <summary>Godot's IDE messaging protocol as Passenger speaks it to the person's Godot editor: the meta file's port, the
 /// handshake each side checks, a message framed as the editor's own peer frames it and read back line by line however its
-/// lines end, a request for a script's names and the editor's answer read without its quotes.</summary>
+/// lines end, a request for a script's names and the editor's answer read without its quotes, and a play of a game built
+/// here asking the editor not to build it again.</summary>
 public class GodotIdeMessagingTests
 {
+    [Fact]
+    public void A_play_of_a_game_built_here_asks_the_editor_to_play_without_building_it_again()
+    {
+        using System.Text.Json.JsonDocument body = System.Text.Json.JsonDocument.Parse(GodotIdeMessaging.PlayBuilt);
+
+        Assert.False(body.RootElement.GetProperty("BuildBeforePlaying").GetBoolean());
+        Assert.Equal("Request\nDebugPlay\nOk\n1\n" + GodotIdeMessaging.PlayBuilt + "\n\n",
+            GodotIdeMessaging.Written(new GodotIdeMessage(true, GodotIdeMessaging.DebugPlay, GodotIdeMessaging.Ok, GodotIdeMessaging.PlayBuilt)));
+        Assert.Equal("Request\nStopPlay\nOk\n1\n{}\n\n",
+            GodotIdeMessaging.Written(new GodotIdeMessage(true, GodotIdeMessaging.StopPlay, GodotIdeMessaging.Ok, GodotIdeMessaging.NoBody)));
+    }
+
     [Fact]
     public void A_meta_file_names_its_port_and_executable_and_a_text_naming_no_port_is_none()
     {

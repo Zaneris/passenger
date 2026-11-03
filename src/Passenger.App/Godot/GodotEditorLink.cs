@@ -345,6 +345,16 @@ internal sealed class GodotEditorPeer : IDisposable
     /// <summary>The edits made since Play's last build, kept for each game it starts held, which takes its own copy.</summary>
     public Debugging.BuiltEdits? Kept { get; set; }
 
+    /// <summary>Whether the next Play Passenger asked for is debugged (true) or only run (false); null for the editor's own
+    /// Play, which Settings decides.</summary>
+    public bool? Debugs { get; set; }
+
+    /// <summary>Whether Passenger asked the editor to play, its game yet to begin.</summary>
+    public bool PlayAsked { get; set; }
+
+    /// <summary>Whether a game the editor plays because Passenger asked still plays, which Stop ends in the editor.</summary>
+    public bool PlaysForPassenger { get; set; }
+
     /// <summary>Each line read handed on, until the connection ends.</summary>
     public async Task ReadAsync(Func<JsonElement, Task> heard, CancellationToken cancel)
     {

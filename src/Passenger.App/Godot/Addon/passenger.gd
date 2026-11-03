@@ -9,7 +9,7 @@ extends EditorPlugin
 ## Passenger listening, or one that refuses, it does nothing, and Godot plays as it always did.
 
 ## The addon's version, which Passenger reads to update an older one in place.
-const VERSION := 2
+const VERSION := 3
 ## How long a build may take to be answered.
 const BUILD_LIMIT_MS := 30 * 60 * 1000
 ## How long any other request may take to be answered.
@@ -305,8 +305,8 @@ func _read() -> void:
 		end = received.find(10)
 
 
-## Passenger's messages: one for a game sent on through its session, a held game taken or let go; a request this version
-## does not answer refused, saying so.
+## Passenger's messages: one for a game sent on through its session, a held game taken or let go, Play and Stop asked
+## for; a request this version does not answer refused, saying so.
 func _heard(message: Dictionary) -> void:
 	var method := str(message["method"])
 	var params: Dictionary = message.get("params") if message.get("params") is Dictionary else {}
@@ -323,8 +323,27 @@ func _heard(message: Dictionary) -> void:
 		holding.erase(int(params.get("session", -1)))
 		if str(params.get("said", "")) != "":
 			print("Passenger: ", str(params["said"]))
+	elif method == "play":
+		# Played once this message is read through, as Play's build asks Passenger itself.
+		_play.call_deferred(str(params.get("scene", "")))
+		_send({"id": int(message.get("id", 0)), "result": {}})
+	elif method == "stop":
+		if EditorInterface.is_playing_scene():
+			EditorInterface.stop_playing_scene()
+		_send({"id": int(message.get("id", 0)), "result": {}})
 	elif message.has("id"):
-		_send({"id": message["id"], "error": "Passenger's addon %d takes no %s" % [VERSION, method]})
+		# JSON reads every number as a float, which Passenger would not take for its request's id.
+		_send({"id": int(message["id"]), "error": "Passenger's addon %d takes no %s" % [VERSION, method]})
+
+
+## Play, as Passenger asks it: the scene given (res://), else the main scene, as Godot's own Play plays it.
+func _play(scene: String) -> void:
+	if EditorInterface.is_playing_scene():
+		EditorInterface.stop_playing_scene()
+	if scene == "":
+		EditorInterface.play_main_scene()
+	else:
+		EditorInterface.play_custom_scene(scene)
 
 
 ## The variables Passenger gives the game Play starts now, in the editor's environment until it has started.

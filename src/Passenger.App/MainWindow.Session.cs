@@ -99,6 +99,9 @@ public partial class MainWindow
         Navigate = NavigateTo,
         ProfileService = RecordRunServiceAsync,
         ShowFolder = ShowInFileManager,
+        InGodotEditor = PlayInGodotEditorAsync,
+        StopInGodotEditor = StopInGodotEditorAsync,
+        PlaysInGodotEditor = () => PlaysInGodotEditor,
     };
 
     /// <summary>Opens a folder, or a solution (.sln, .slnx) or C# project (.csproj) over its folder, as the workspace (a

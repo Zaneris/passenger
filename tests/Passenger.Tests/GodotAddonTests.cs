@@ -4,6 +4,7 @@ using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Editors;
+using Passenger.App.Run;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -73,7 +74,17 @@ public sealed class GodotAddonTests : IDisposable
         extends EditorPlugin
 
 
+        var playing := false
+
+
+        func _ready() -> void:
+        	print("TEST: ready")
+
+
         func _process(_delta: float) -> void:
+        	if EditorInterface.is_playing_scene() != playing:
+        		playing = EditorInterface.is_playing_scene()
+        		print("TEST: play began" if playing else "TEST: play ended")
         	if FileAccess.file_exists("res://stop.txt"):
         		DirAccess.remove_absolute(ProjectSettings.globalize_path("res://stop.txt"))
         		print("TEST: stopping")
@@ -179,7 +190,7 @@ public sealed class GodotAddonTests : IDisposable
 
     /// <summary>A window keeping its state on the test's game, the addon installed by its action and enabled beside the test's
     /// player, Main.cs open; skips without a Godot 4 .NET build.</summary>
-    private MainWindow Opened()
+    private MainWindow Opened(bool addon = true)
     {
         Assert.SkipWhen(godot is not { WhyNot: null, Version: not null, Packages: not null }, godot is null
             ? "No Godot was found (GODOT, the PATH, Applications): install Godot 4's .NET build to run this test"
@@ -198,7 +209,13 @@ public sealed class GodotAddonTests : IDisposable
         window.KeepLayout();
         window.OpenFolder(folder);
         Ui.Settle();
-        window.Confirm = (_, _, _) => Task.FromResult(true);
+        // Asked nothing but the install: an offer to open Godot's editor would open one with a window.
+        window.Confirm = (title, _, _) => Task.FromResult(title.StartsWith("Install", StringComparison.Ordinal));
+        if (!addon)
+        {
+            window.OpenFile(Path.Combine(folder, "Main.cs"));
+            return window;
+        }
         Assert.Null(window.Actions.Run(AppActions.GodotAddon));
         Ui.WaitFor(() => window.Status?.Contains("Passenger's addon is installed", StringComparison.Ordinal) == true, () => $"the addon to be installed ({window.Status})");
         string enabled = File.ReadAllText(project);
@@ -207,6 +224,103 @@ public sealed class GodotAddonTests : IDisposable
             $"The addon's files were to be written and enabled beside the test's plugin:\n{enabled}");
         window.OpenFile(Path.Combine(folder, "Main.cs"));
         return window;
+    }
+
+    /// <summary>Run in Godot Editor through the addon: Run has the editor play the game, built here, undebugged and relayed,
+    /// and Stop ends it in the editor; Debug has it play held at its start, stopped at the breakpoint in _Ready, and Stop
+    /// ends that play in the editor too, not only the debugger's hold of it.</summary>
+    [AvaloniaFact]
+    public void Run_in_Godot_Editor_plays_the_game_in_the_editor_through_the_addon_and_Stop_ends_it_there()
+    {
+        MainWindow window = Opened();
+        try
+        {
+            InEditor(window);
+            StartEditor([]);
+            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+
+            Ui.Launched(window, window.RunAsync(), "the play in Godot's editor", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => File.Exists(Ready) && window.Session.Game is { Relayed: true, State: Passenger.App.LiveTree.LiveAppState.Connected },
+                () => $"the editor to play the game, relayed here ({Games(window)}; {window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            Assert.False(window.Debugger.Tabs.Any(t => t.IsLive), "Run debugged the game the editor played");
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => window.Session.Games.Count == 0 && said.Any(l => l.Contains("TEST: play ended", StringComparison.Ordinal)),
+                () => $"Stop to end the play in the editor ({Games(window)}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
+
+            File.Delete(Ready);
+            said.Clear();
+            CodeEditor code = window.EditorArea.CodeEditor;
+            int line = Line(code, "int answer = 6 * 7;");
+            code.GoTo(new TextPosition(line, 13));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Launched(window, window.DebugAsync(), "the play in Godot's editor under the debugger", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && code.LineMarks.Any(m => m.Kind == LineMarkKind.ExecutionPoint && m.Line == line),
+                () => $"the game the editor played to stop at the breakpoint in _Ready ({Games(window)}; {window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging && window.Session.Games.Count == 0 && said.Any(l => l.Contains("TEST: play ended", StringComparison.Ordinal)),
+                () => $"Stop to end the play in the editor ({Games(window)}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Run in Godot Editor where the editor is open without the addon: the game is built here and played through
+    /// the editor's IDE messaging, which Stop stops there; and the editor takes the assemblies of a build here on its own.</summary>
+    [AvaloniaFact]
+    public void Run_in_Godot_Editor_without_the_addon_plays_through_IDE_messaging_and_the_editor_reloads_after_a_build()
+    {
+        MainWindow window = Opened(addon: false);
+        try
+        {
+            InEditor(window);
+            StartEditor([], verbose: true);
+            Ui.WaitFor(() => File.Exists(GodotIdeMessaging.MetaPath(folder)) && said.Any(l => l.Contains("TEST: ready", StringComparison.Ordinal)),
+                () => $"Godot's editor to open and serve its IDE messaging (Godot said: {Said()})", TimeSpan.FromMinutes(2));
+
+            Ui.Launched(window, window.RunAsync(), "the play in Godot's editor", TimeSpan.FromMinutes(2));
+            Assert.Contains("plays in Godot's editor", window.Status, StringComparison.Ordinal);
+            Ui.WaitFor(() => File.Exists(Ready), () => $"the editor to play the game ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: play ended", StringComparison.Ordinal)),
+                () => $"Stop to end the play in the editor (Godot said: {Said()})", TimeSpan.FromMinutes(1));
+
+            int reloads = said.Count(l => l.Contains(".NET: Reloading assemblies", StringComparison.Ordinal));
+            Typing.Replace(window, "ready {answer}", "ready again {answer}");
+            Ui.Await(window.BuildAsync(), "the build", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => said.Count(l => l.Contains(".NET: Reloading assemblies", StringComparison.Ordinal)) > reloads,
+                () => $"the editor to reload the game's assemblies after the build (Godot said: {Said()})", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Run in Godot Editor with no editor open on the project says so, naming the configuration that opens one.</summary>
+    [AvaloniaFact]
+    public void Run_in_Godot_Editor_with_no_editor_open_says_so_and_names_what_opens_one()
+    {
+        MainWindow window = Opened(addon: false);
+        try
+        {
+            InEditor(window);
+            string? refused = Ui.Await(window.RunAsync(), "Run in Godot Editor", TimeSpan.FromMinutes(1));
+            Assert.Equal("Godot's editor is not open on Spinner: Spinner: Godot Editor opens it, then run Spinner in Godot's editor again", refused);
+            Assert.False(window.IsRunning, "Something ran with no editor open");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>The window's configuration made the generated game's, played in Godot's editor.</summary>
+    private static void InEditor(MainWindow window)
+    {
+        RunConfiguration generated = window.Session.Configurations.All.First(c => c.Generated && !c.GodotEditor && c.Name == "Spinner");
+        window.SetConfigurations([generated with { Name = "Spinner in Godot's editor", Generated = false, GodotInEditor = true }], "Spinner in Godot's editor");
     }
 
     private static void End(MainWindow window)
@@ -222,9 +336,10 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>A headless Godot editor on the project, its user folders the run's and Passenger's state the IDE's, with the
     /// variables given, which the games it plays inherit; on Windows through Godot's console wrapper, as its own .exe writes
     /// to no console.</summary>
-    private void StartEditor(IReadOnlyList<(string Name, string Value)> variables)
+    private void StartEditor(IReadOnlyList<(string Name, string Value)> variables, bool verbose = false)
     {
-        ProcessStartInfo start = ChildProcesses.Command(GodotExecutables.InTerminal(godot!.Executable), ["--headless", "--editor", "--path", folder], folder);
+        ProcessStartInfo start = ChildProcesses.Command(GodotExecutables.InTerminal(godot!.Executable),
+            ["--headless", "--editor", .. verbose ? new[] { "--verbose" } : [], "--path", folder], folder);
         foreach ((string name, string value) in GodotTests.Game.Home(Path.Combine(folder, "..", Path.GetFileName(folder) + "-home")).Select(v => (v.Key, v.Value)).Concat(variables))
         {
             start.Environment[name] = value;

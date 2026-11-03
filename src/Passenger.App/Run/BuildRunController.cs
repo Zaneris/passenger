@@ -61,6 +61,16 @@ public sealed record BuildRunParts(
     /// stopped.</summary>
     public Func<string, string, IReadOnlyList<string>, CancellationToken, Task<bool>>? AskReplace { get; init; }
 
+    /// <summary>Plays a configuration whose game Godot's editor open on the project plays (<see cref="RunConfiguration.GodotInEditor"/>),
+    /// under the debugger where asked: null once it plays, else why not.</summary>
+    public Func<RunConfiguration, bool, CancellationToken, Task<string?>>? InGodotEditor { get; init; }
+
+    /// <summary>Stop's end of the games Godot's editor plays because Passenger asked it to.</summary>
+    public Func<Task>? StopInGodotEditor { get; init; }
+
+    /// <summary>Whether Godot's editor plays a game because Passenger asked it to.</summary>
+    public Func<bool>? PlaysInGodotEditor { get; init; }
+
     /// <summary>Whether nobody is at the window to ask (an agent's own IDE, <c>--mcp</c>): what would ask the person takes the
     /// way that asks nothing, saying so.</summary>
     public bool AsksNoOne { get; init; }
@@ -927,6 +937,10 @@ public sealed partial class BuildRunController
         {
             RunStart mode = (hotReload ?? parts.Settings().HotReload) ? RunStart.HotReload : RunStart.Run;
             return await RunAspireAsync(chosen, arguments, mode, cancellation);
+        }
+        if (chosen.GodotInEditor && parts.InGodotEditor is { } inEditor)
+        {
+            return await inEditor(chosen, false, cancellation) is { } refused ? Said(refused) : null;
         }
         // The Run console's program is one at a time; an AppHost of another configuration runs beside it.
         if (await TakeConsoleAsync(chosen) is { } taken)
@@ -1838,6 +1852,10 @@ public sealed partial class BuildRunController
         {
             return await RunAspireAsync(chosen, arguments, RunStart.Debug, cancellation);
         }
+        if (chosen.GodotInEditor && parts.InGodotEditor is { } inEditor)
+        {
+            return await inEditor(chosen, true, cancellation);
+        }
         if (parts.Work.Begin(AppActions.Debug, $"Working out how to debug {chosen.Name}…") is not { } work)
         {
             return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!);
@@ -2365,7 +2383,8 @@ public sealed partial class BuildRunController
         Task copies = EndCopyRunsAsync();
         session.Profiled?.Run.Kill();
         session.Builder.Stop();
-        return Task.WhenAll(containers, aspire, ran, copies);
+        Task played = parts.StopInGodotEditor?.Invoke() ?? Task.CompletedTask;
+        return Task.WhenAll(containers, aspire, ran, copies, played);
     }
 
     /// <summary>Rerun's stop: Run's own start under way and the program it started (in the Run window or the terminal, or its
@@ -2389,5 +2408,6 @@ public sealed partial class BuildRunController
         || session.Profiled is { Run.HasExited: false } profiled && profiled.Name == name;
 
     /// <summary>Why Stop cannot run now: nothing it stops is running.</summary>
-    public string? WhyNotStop() => session.Debug.IsDebugging || IsRunning || session.Profiled is not null || session.Builder.IsRunning || parts.Work.CanStop ? null : "Nothing is running";
+    public string? WhyNotStop() => session.Debug.IsDebugging || IsRunning || session.Profiled is not null || session.Builder.IsRunning || parts.Work.CanStop
+        || parts.PlaysInGodotEditor?.Invoke() == true ? null : "Nothing is running";
 }

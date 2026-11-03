@@ -171,6 +171,8 @@ public partial class MainWindow
             if (session == next && JsonMembers.Number(told, "session") is int id)
             {
                 RelayGodotGame(next, peer, id, JsonMembers.Bool(told, "held") == true);
+                peer.PlaysForPassenger |= peer.PlayAsked;
+                peer.PlayAsked = false;
             }
         });
         link.Hear("game", (peer, told) =>
@@ -186,6 +188,7 @@ public partial class MainWindow
             {
                 game.RelayEnded();
             }
+            peer.PlaysForPassenger &= peer.Games.Count > 0 || peer.PlayAsked;
         });
         link.Hear("scene", (peer, told) =>
         {
@@ -247,7 +250,9 @@ public partial class MainWindow
             return new JsonObject { ["built"] = false, ["said"] = built.Message };
         }
         JsonObject variables = [];
-        if (settings.GodotDebugPlays)
+        bool debugs = peer.Debugs ?? settings.GodotDebugPlays;
+        peer.Debugs = null;
+        if (debugs)
         {
             peer.Kept = edits;
             foreach ((string variable, string value) in HeldStart.Variables(changeable: true))
