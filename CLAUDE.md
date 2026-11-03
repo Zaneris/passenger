@@ -486,14 +486,16 @@ Projects in `src/`; `find_symbol` finds the rest:
   `ComposeFiles.IsCompose`. The person's `docker` CLI and context only, never the Engine API or a Docker package; a
   service's name always after `--`. Compose's own model is the plan, Passenger's override goes to the state, and the
   tools downloaded from the release are SHA256-checked. Podman works both ways it's set up (`EngineState.IsPodman`). A
-  container publish is the SDK's container profile with `-t:PublishContainer`, a push needing docker's login for its
-  registry (`RegistryLogins`, server names only), the image the person's own, labelled by nothing of Passenger's; it is
-  judged by the SDK's "Pushed image" line, as an unreachable base image is only a warning while dotnet exits 0, and the
-  SDK's registry client tries HTTPS first even on localhost. An AppHost publishes through its own publishers into the
-  state, landed by `MainWindow.LandFilesAsync`. An image's vulnerabilities come from the person's `docker scout`
-  (`DockerScout`) only when asked, in its Details (`ImageDetailsPane`) and at a Dockerfile's `FROM`
-  (`EngineChecks.Scout`); without the plugin docker answers `scout … --format` with "unknown flag", so a missing one is
-  found by `docker scout version`. A container's .NET service's metrics come through `passenger-tools trace --metrics`.
+  container publish is the SDK's container profile with `-t:PublishContainer` (several platforms writing
+  `RuntimeIdentifiers` too, NETSDK1047 otherwise, and needing containerd's image store), a push needing docker's login
+  for its registry (`RegistryLogins`, server names only), the image the person's own, labelled by nothing of
+  Passenger's; it is judged by the SDK's "Pushed image" line, as an unreachable base image is only a warning while
+  dotnet exits 0, and the SDK's registry client tries HTTPS first even on localhost. An AppHost publishes through its
+  own publishers into the state, landed by `MainWindow.LandFilesAsync`. An image's vulnerabilities come from the
+  person's `docker scout` (`DockerScout`) only when asked, in its Details (`ImageDetailsPane`) and at a Dockerfile's
+  `FROM` (`EngineChecks.Scout`); without the plugin docker answers `scout … --format` with "unknown flag", so a missing
+  one is found by `docker scout version`. A container's .NET service's metrics come through `passenger-tools trace
+  --metrics`.
 - **Aspire.** `AspireController` (the IDE execution protocol on loopback, bearer tokens checked first),
   `AspireInteractions` (gRPC, its C# checked in), `AspireClient` (the CLI, for an AppHost Passenger didn't start); a
   resource's relationships both ways are `AspireDetailsPane`'s (chosen by `AspireModel.ChooseNamed`), its program
@@ -524,8 +526,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   `Target` is the type's own, before it (`TargetedAt`). A Blazor app's WebAssembly half is debugged by
   `WebAssemblyAdapter` (an `InProcessEnd`) over `Passenger.Dap`'s `CdpConnection`, through .NET's own proxy from the
   browser project's WebAssembly pack (`BrowserDebugging`), in a Chromium `BrowserRun` starts on the folder's profile
-  (`ChromiumBrowsers`); a Blazor Web App's WebAssembly tab is its server tab's `Companion`. Chrome runs a new-document
-  script only once `Page.enable` came, so a page's conversation enables Page first, or nothing binds; an app-hosted
+  (`ChromiumBrowsers`); a Blazor Web App's WebAssembly tab is its server tab's `Companion`, an AppHost's one at the page
+  the orchestrator gave it (`BuildRunController.PageOf`), an HTTPS page's dev certificate only read
+  (`UntrustedPageAsync`, `dotnet dev-certs https --check --trust`), never made or trusted; a getter the proxy reads only
+  by itself is called through `Runtime.callFunctionOn` on its object. Chrome runs a new-document script only once
+  `Page.enable` came, so a page's conversation enables Page first, or nothing binds; an app-hosted
   `/_framework/debug/ws-proxy` binds once per app process to its first browser's port; with a fixed
   `--remote-debugging-port` Chrome writes no DevToolsActivePort. A debugged web app's pages are kept up through the
   SDK's own browser refresh, what the app serves read from its build's `staticwebassets.development.json`
@@ -661,13 +666,14 @@ site-shots` retakes its images.
 - **Agents never open windows on the person's screen**: `--mcp FOLDER`, or a headless screenshot run's `--agent`
   step to try attached behaviour (a headless `--mcp-attach` window keeps no settings, so it asks a person who isn't
   there); never a bare `--mcp-attach`, never `just run`.
-- **Aspire's CLI and AppHosts** keep running AppHosts in `$HOME/.aspire/cli/bch` whatever ASPIRE_HOME says; on Windows
-  in the profile whatever the environment says (those tests skip there). An Aspire service's replicas share
-  `OTEL_SERVICE_NAME` and its display name: a start's own resource is found by `service.instance.id`
-  (`AspireResourceRun.ResourceIn`), never by name alone; a service action takes the start chosen, and a start's hold,
-  attach and recording are kept by `ServiceRun.KeyOf`. DCP names each replica with a random suffix every AppHost run,
-  and its index never reaches the IDE: a replica's identity lasts one run, so a choice for one replica is every
-  replica's next run.
+- **Aspire's CLI and AppHosts** list an AppHost's pipeline steps only over the CLI's backchannel, and a real AppHost's
+  `--operation publish` without it runs every step, deploy included (`docker compose up`, pulls): never in a probe or a
+  test. They keep running AppHosts in `$HOME/.aspire/cli/bch` whatever ASPIRE_HOME says; on Windows in the profile
+  whatever the environment says (those tests skip there). An Aspire service's replicas share `OTEL_SERVICE_NAME` and its
+  display name: a start's own resource is found by `service.instance.id` (`AspireResourceRun.ResourceIn`), never by name
+  alone; a service action takes the start chosen, and a start's hold, attach and recording are kept by
+  `ServiceRun.KeyOf`. DCP names each replica with a random suffix every AppHost run, and its index never reaches the
+  IDE: a replica's identity lasts one run, so a choice for one replica is every replica's next run.
 - **Godot** starts .NET through hostfxr itself and runs no startup hook, so a game's Hot Reload, under Run too, goes
   through the debugger (a quiet one under Run, `AttachForHotReloadAsync`), never dotnet watch; its game's assembly comes
   from a stream (no `Location`). It writes logs and editor settings under the user's folders, on macOS whatever XDG
