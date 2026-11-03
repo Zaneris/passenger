@@ -553,14 +553,23 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     [McpServerTool(Name = McpTools.CodeActions, Title = "Fixes and refactorings", ReadOnly = true), Description(
         "The fixes and refactorings offered at a position (Alt+Enter), or over a selection to endLine:endColumn (Extract " +
         "Method, Introduce Variable), as 'title [kind]' with the choices each offers (nested actions, a Fix All's scopes, where " +
-        "a XAML resource goes), which apply_code_action takes: Passenger's own fixes first, then ESLint's, then the language " +
-        "server's; in XAML, the line's problems' fixes (a binding's missing property or command, a missing converter), Extract " +
+        "a XAML resource goes), which apply_code_action takes: Passenger's own fixes first (a GDScript's are all Passenger's), then " +
+        "ESLint's, then the language server's; in XAML, the line's problems' fixes (a binding's missing property or command, a missing converter), Extract " +
         "Resource and Extract Style. A Suppress or Configure action's choices are counted, and listed when title names it.")]
     public Task<IReadOnlyList<string>> CodeActions(string path, int line, int column, int? endLine = null, int? endColumn = null, string? title = null,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
-        Served served = await Serve(path, cancel);
         IReadOnlyList<(string Title, string Shown)> listed;
+        // A GDScript's fixes are Passenger's own, listed as Show Context Actions lists them, Godot's server running or not.
+        if (Godot.GodotScriptTypes.IsScript(Resolve(path)))
+        {
+            OpenDocument script = await DocumentAsync(path, cancel);
+            listed = [.. (await window.Assist.OwnFixesAsync(script, Offset(script, line, column))).Select(f => (f.Title, $"{f.Title} [quickfix]"))];
+            return title is null ? (IReadOnlyList<string>)[.. listed.Select(a => a.Shown)]
+                : listed.Where(a => a.Title == title).Select(a => a.Shown).ToList() is { Count: > 0 } fixes ? fixes
+                : throw new InvalidOperationException(listed.Count == 0 ? $"No fixes here in {Relative(script.Path)}" : $"No action '{title}' here; there are: {string.Join("; ", listed.Select(a => a.Title))}");
+        }
+        Served served = await Serve(path, cancel);
         switch (served)
         {
             case XamlServed xaml:
@@ -583,7 +592,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 int offset = Offset(served.Document, line, column);
                 await AspireMarked(served, cancel);
                 IReadOnlyList<EslintFix> linted = await LintFixes(served, offset, cancel);
-                listed = [.. window.Assist.OwnFixes(served.Document, offset).Select(f => (f.Title, $"{f.Title} [quickfix]")),
+                listed = [.. (await window.Assist.OwnFixesAsync(served.Document, offset)).Select(f => (f.Title, $"{f.Title} [quickfix]")),
                     .. linted.Select(f => (f.Title, f.Action.Kind is { Length: > 0 } kind ? $"{f.Title} [{kind}]" : f.Title)),
                     .. (await Actions((ServerServed)served, line, column, endLine, endColumn)).Select(a => (a.Title, Described(a, all: title is not null)))];
                 break;
@@ -605,6 +614,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         string? name = null,
         CancellationToken cancel = default) => OnUi(cancel, () => Patience.RunAsync(Editors.Commands, () => Session.CSharp?.Session, async patience =>
     {
+        if (Godot.GodotScriptTypes.IsScript(Resolve(path)))
+        {
+            OpenDocument script = await DocumentAsync(path, cancel);
+            IReadOnlyList<EditorFix> fixes = await window.Assist.OwnFixesAsync(script, Offset(script, line, column));
+            return await ApplyOwnFix(script, fixes.FirstOrDefault(f => f.Title == title)
+                ?? throw new InvalidOperationException(fixes.Count == 0 ? $"No fixes here in {Relative(script.Path)}" : $"No action '{title}' here; there are: {string.Join("; ", fixes.Select(f => f.Title))}"),
+                patience, name);
+        }
         Served served = await Serve(path, cancel);
         switch (served)
         {
@@ -624,7 +641,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         ServerServed server = (ServerServed)served;
         int offset = Offset(served.Document, line, column);
         await AspireMarked(served, cancel);
-        if (window.Assist.OwnFixes(served.Document, offset).FirstOrDefault(f => f.Title == title) is { } own)
+        if ((await window.Assist.OwnFixesAsync(served.Document, offset)).FirstOrDefault(f => f.Title == title) is { } own)
         {
             return await ApplyOwnFix(served.Document, own, patience, name);
         }

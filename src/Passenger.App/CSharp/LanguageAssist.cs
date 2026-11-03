@@ -39,6 +39,13 @@ internal abstract class LanguageAssist
     /// agent's alike; an abandoned one throws <see cref="OperationCanceledException"/>, so the card is not shown.</summary>
     public virtual Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel) => Passed;
 
+    /// <summary>The language's own fixes at an offset of a file, Passenger's that need no server, from its reading of the file
+    /// as it holds it now (<see cref="ReadyAsync"/> brings that up to the text); none by default.</summary>
+    public virtual IReadOnlyList<EditorFix> Fixes(OpenDocument document, int offset) => [];
+
+    /// <summary>Brings the language's reading of a file up to its text as it stands, before its fixes are asked for.</summary>
+    public virtual Task ReadyAsync(OpenDocument document) => Task.CompletedTask;
+
     /// <summary>Go to Declaration from an offset of the file shown.</summary>
     public virtual Task<bool> DefinitionAsync(int offset) => Passed;
 
@@ -105,6 +112,19 @@ internal sealed class LanguageAssists(HttpAssist http, MSBuildAssist msbuild, Xa
             {
                 return;
             }
+        }
+    }
+
+    /// <summary>Every language's own fixes at an offset of a file, in the ladder's order: what Show Context Actions and an
+    /// agent's code_actions both list after the window's other fixes.</summary>
+    public IReadOnlyList<EditorFix> Fixes(OpenDocument document, int offset) => [.. ladder.SelectMany(l => l.Fixes(document, offset))];
+
+    /// <summary>Every language's reading of a file brought up to its text, so its fixes stand on what it says now.</summary>
+    public async Task ReadyAsync(OpenDocument document)
+    {
+        foreach (LanguageAssist language in ladder)
+        {
+            await language.ReadyAsync(document);
         }
     }
 

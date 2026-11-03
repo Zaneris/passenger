@@ -307,9 +307,18 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
         return "The script's parts are in order";
     }
 
+    /// <summary>A script's reading made for its text as it stands, which its fixes stand on.</summary>
+    public override async Task ReadyAsync(OpenDocument document)
+    {
+        if (GodotScriptTypes.IsScript(document.Path) && context.GodotScriptTypes?.Invoke() is { } types)
+        {
+            await types.TypedAsync(document);
+        }
+    }
+
     /// <summary>The fixes of Godot's findings on an offset's line, from Passenger's reading of the script as it stands
     /// (whoever's marks are shown there): each made as one edit of the text it was offered for.</summary>
-    public IReadOnlyList<EditorFix> Fixes(OpenDocument file, int offset)
+    public override IReadOnlyList<EditorFix> Fixes(OpenDocument file, int offset)
     {
         if (!GodotScriptTypes.IsScript(file.Path) || context.GodotScriptTypes?.Invoke()?.Latest(file) is not { } typed)
         {

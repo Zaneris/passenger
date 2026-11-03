@@ -38,7 +38,20 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// <summary>Asks the person to agree to a fix (a title, what is asked, the button that agrees); whether they did.</summary>
     public Func<string, string, string, Task<bool>>? ConfirmFix { get; set; }
 
-    internal IReadOnlyList<EditorFix> OwnFixes(OpenDocument? file, int offset) => file is not null && EditorFixes?.Invoke(file, offset) is { } fixes ? fixes : [];
+    internal IReadOnlyList<EditorFix> OwnFixes(OpenDocument? file, int offset) =>
+        file is null ? [] : [.. EditorFixes?.Invoke(file, offset) ?? [], .. context.Languages.Fixes(file, offset)];
+
+    /// <summary>Passenger's own fixes at an offset of a file (<see cref="OwnFixes"/>) once each language's reading of it is
+    /// up to its text: what Show Context Actions and an agent's code_actions both list first.</summary>
+    internal async Task<IReadOnlyList<EditorFix>> OwnFixesAsync(OpenDocument? file, int offset)
+    {
+        if (file is null)
+        {
+            return [];
+        }
+        await context.Languages.ReadyAsync(file);
+        return OwnFixes(file, offset);
+    }
 
     /// <summary>One of Passenger's own fixes made in the file shown, as one undoable edit: worked out again on its text as it
     /// stands (<see cref="EditorFix.On"/>), and refused, said in the status bar, when the text no longer has what it fixes;
@@ -145,8 +158,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         string what = only is null ? "Show Context Actions" : title;
         // Passenger's own fixes first, which need no server (a compose file's are its container engine's).
-        IReadOnlyList<EditorFix> own = only is null ? OwnFixes(context.Editors.Active, context.Caret) : [];
         if (context.Editors.Active is not { } document)
+        {
+            return;
+        }
+        IReadOnlyList<EditorFix> own = only is null ? await OwnFixesAsync(document, context.Caret) : [];
+        if (context.Editors.Active != document)
         {
             return;
         }

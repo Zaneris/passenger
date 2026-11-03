@@ -572,6 +572,11 @@ public sealed class CodeAssist
 
     internal IReadOnlyList<EditorFix> OwnFixes(OpenDocument? file, int offset) => actions.OwnFixes(file, offset);
 
+    internal Task<IReadOnlyList<EditorFix>> OwnFixesAsync(OpenDocument? file, int offset) => actions.OwnFixesAsync(file, offset);
+
+    /// <summary>The titles of Passenger's own fixes Show Context Actions lists first at an offset of a file, in its order.</summary>
+    public async Task<IReadOnlyList<string>> OwnFixTitlesAsync(OpenDocument file, int offset) => [.. (await actions.OwnFixesAsync(file, offset)).Select(f => f.Title)];
+
     /// <summary>A fix's changes to files made as one command, once the files not open it wrote have landed
     /// (<see cref="CodeActions.ApplyFileChangesAsync"/>): null once made, else why not.</summary>
     internal Task<string?> ApplyFileChangesAsync(string name, IReadOnlyList<XamlFileChange> changes) => actions.ApplyFileChangesAsync(name, changes);
@@ -603,7 +608,6 @@ public sealed class CodeAssist
     internal IReadOnlyList<EditorFix> GodotFixes(OpenDocument file, int offset, Godot.GodotSceneMarks marks) => context.Languages.CSharp.GodotFixes(file, offset, marks);
 
     /// <summary>The fixes of Godot's findings on an offset's line of a GDScript, from Passenger's own reading of it.</summary>
-    internal IReadOnlyList<EditorFix> GDScriptFixes(OpenDocument file, int offset) => context.Languages.GDScript.Fixes(file, offset);
 
     /// <summary>A XAML colour's badge in the completion list: the colour itself, the content's own; null for no colour.</summary>
     internal static IBrush? Swatch(string? colour) =>
