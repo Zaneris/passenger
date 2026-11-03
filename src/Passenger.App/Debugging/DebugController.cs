@@ -714,18 +714,18 @@ public sealed class DebugController : IDisposable
         return code < span.End ? code - span.Start + 1 : null;
     }
 
-    /// <summary>Attaches the debugger to a running .NET process beside any other program debugged, its output going where it
-    /// always went. With <paramref name="hotReload"/> it was started held with DOTNET_MODIFIABLE_ASSEMBLIES=debug, so Hot Reload
-    /// is offered as for a launch while Settings has it on, told to <paramref name="handlers"/> it started with; <paramref
-    /// name="elsewhere"/> runs it on another machine, <paramref name="place"/> the adapter where it is, and an inspected
-    /// <paramref name="app"/> is held by its tab. Null once the session is open, else why it could not.</summary>
+    /// <summary>Attaches the debugger to a running .NET process beside any other program debugged. With <paramref name="hotReload"/>
+    /// it was started held with DOTNET_MODIFIABLE_ASSEMBLIES=debug, so Hot Reload is offered while Settings has it on, told
+    /// to <paramref name="handlers"/>; <paramref name="elsewhere"/> runs it on another machine, <paramref name="place"/> the
+    /// adapter where it is; <paramref name="startedElsewhere"/>, said in its console, names another program keeping it, which
+    /// Stop lets it go on in (<see cref="DebugTab.StopLetsGo"/>). Null once the session is open, else why it could not.</summary>
     public Task<string?> AttachAsync(int processId, string name, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null, string? group = null,
-        LiveApp? app = null, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null)
+        LiveApp? app = null, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null, string? startedElsewhere = null)
     {
         bool hotReloadOn = hotReload && HotReloadOn();
         return OpenAsync((built, log, output, starting) => DebugSession.AttachAsync(processId, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn, elsewhere, place), name,
             launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app, edits: edits, hook: hotReloadOn ? handlers : Unheld(handlers),
-            browser: hotReloadOn ? browser : Unheld(browser));
+            browser: hotReloadOn ? browser : Unheld(browser), attachedWords: startedElsewhere, stopLetsGo: startedElsewhere is not null);
     }
 
     /// <summary>What no session will tell of an update (a hook, a browser refresh), let go of: null.</summary>
@@ -935,7 +935,8 @@ public sealed class DebugController : IDisposable
     private async Task<string?> OpenAsync(Func<BuiltLines, Action<string>, Action<OutputEvent>, Action<DebugSession>, Task<DebugSession>> open, string name, bool launched,
         bool inTerminal = false, bool hotReloadOn = false, AdapterPlace? place = null, string? group = null, DebugTab? tab = null, LiveApp? app = null,
         Run.LaunchPlan? plan = null, BuiltEdits? edits = null, UpdateHandlerHook? hook = null, DebugTab? companion = null, string? attachedWords = null,
-        BrowserRefresh? browser = null, string? unkept = null, (IReadOnlyList<string> Projects, string Program)? inBrowser = null, bool copy = false)
+        BrowserRefresh? browser = null, string? unkept = null, (IReadOnlyList<string> Projects, string Program)? inBrowser = null, bool copy = false,
+        bool stopLetsGo = false)
     {
         UiThread.Check();
         // A start that opens no session lets go of its update handlers' hook and its pages' refresh with it.
@@ -976,6 +977,7 @@ public sealed class DebugController : IDisposable
         tab.Companion = companion;
         tab.Group = group ?? tab.Group;
         tab.Copy = copy;
+        tab.StopLetsGo = stopLetsGo;
         tab.App = app ?? tab.App;
         tab.Plan = plan;
         tab.Handlers?.Dispose();
@@ -1544,13 +1546,19 @@ public sealed class DebugController : IDisposable
     }
 
     /// <summary>Stop on one tab: the program the debugger started ends, at once while the debugger still waits for its
-    /// runtime; one it is still attaching to is let go, running on, as nothing of the session has reached it.</summary>
+    /// runtime; one it is still attaching to is let go, running on, as nothing of the session has reached it, as is one
+    /// another program keeps (<see cref="DebugTab.StopLetsGo"/>) unless Hot Reload changed it.</summary>
     public async Task StopAsync(DebugTab tab)
     {
         UiThread.Check();
         tab.OpeningStopped = true;
         if (tab.Session is not { State: not DebugState.Ended } session)
         {
+            return;
+        }
+        if (tab.StopLetsGo && session is { Attached: true, State: DebugState.Running or DebugState.Paused } && !HotReloadChanged(session))
+        {
+            await session.DetachAsync();
             return;
         }
         if (session.State == DebugState.Starting)

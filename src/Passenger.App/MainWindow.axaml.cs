@@ -857,6 +857,7 @@ public partial class MainWindow : IdeWindow
         }
         godotEditorOffered = kept.GodotEditorOffered;
         OfferGodotEditor();
+        ListenForGodotEditors();
     }
 
     /// <summary>The Structure tool window, built as it is first shown or asked for.</summary>

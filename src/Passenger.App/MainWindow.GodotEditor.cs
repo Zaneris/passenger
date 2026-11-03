@@ -33,6 +33,12 @@ public partial class MainWindow
             GodotEditorOffered();
             Request(AppActions.GodotScriptEditor);
         });
+        AddGodotAddon();
+        GodotBanner.Link(actions[AppActions.GodotAddon]!.Title, () =>
+        {
+            GodotEditorOffered();
+            Request(AppActions.GodotAddon);
+        });
         GodotBanner.Link("Dismiss", GodotEditorOffered);
     }
 
@@ -118,10 +124,17 @@ public partial class MainWindow
                 return;
             }
             work.Say("Asking to write Godot's editor settings");
+            CheckBox addon = new()
+            {
+                Content = $"Also install Passenger's addon in this project ({GodotAddon.FolderName} under addons, enabled in {GodotProject.FileName}): "
+                    + "Godot's Play then builds here, and this Passenger debugs what it plays",
+                IsChecked = false,
+            };
+            StackPanel detail = new() { Spacing = 8, Children = { Copyable(listed), addon } };
             if (!await ConfirmAsync("Make Passenger Godot's Script Editor?",
                 $"Godot {found.Version}'s editor will open its C# scripts and its other scripts in Passenger, at their line, in the window on their project. "
                 + $"Passenger writes these into {PathNames.Shown(found.Written!, null)}, keeping the rest; Godot's editor takes them as it next starts.",
-                "Write Settings", Copyable(listed)))
+                "Write Settings", detail))
             {
                 Told(work, false, "Godot's editor settings were left as they were");
                 return;
@@ -133,8 +146,14 @@ public partial class MainWindow
                 return;
             }
             string[] changed = [.. values.Where(v => found.Values?.TryGetValue(v.Key, out object? had) != true || !Equals(had, v.Value)).Select(v => v.Key)];
-            Told(work, true, $"Godot {found.Version}'s editor now opens its scripts in Passenger: {Plural.Listed(changed)} set in {PathNames.Shown(found.Written!, null)}; "
-                + "restart Godot's editor if it is open, which takes them as it starts");
+            string said = $"Godot {found.Version}'s editor now opens its scripts in Passenger: {Plural.Listed(changed)} set in {PathNames.Shown(found.Written!, null)}; "
+                + "restart Godot's editor if it is open, which takes them as it starts";
+            if (addon.IsChecked == true && await InstallGodotAddonAsync(work, ask: false) is { } notInstalled)
+            {
+                Told(work, false, $"{said}; {notInstalled}");
+                return;
+            }
+            Told(work, true, addon.IsChecked == true ? $"{said}; Passenger's addon is installed in this project" : said);
         }
     }
 

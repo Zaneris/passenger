@@ -383,6 +383,7 @@ public partial class MainWindow
                 }
             };
         }
+        FollowGodotEditors(next);
         next.Models.SdkChanged += (_, _) =>
         {
             if (session == next)
@@ -397,6 +398,7 @@ public partial class MainWindow
             {
                 ShowDotnet();
                 OfferGodotEditor();
+                ListenForGodotEditors();
             }
         };
         // Another folder's offer is not this one's.

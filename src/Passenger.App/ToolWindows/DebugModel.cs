@@ -75,6 +75,10 @@ public sealed class DebugTab(string name, OutputView console) : Observable, IHot
     /// (<see cref="Run.GameCopies"/>): Stop on any of them ends them all.</summary>
     public bool Copy { get; internal set; }
 
+    /// <summary>Whether Stop lets its program go, running on, as another program started it and keeps it (a game Godot's
+    /// editor plays), rather than ending it; one Hot Reload changed ends, as no debugger may let it go.</summary>
+    public bool StopLetsGo { get; internal set; }
+
     /// <summary>The tab of the program this tab's session debugs another part of (a Godot game's C#, whose GDScript this tab
     /// debugs): what names no session takes that one while neither is paused, and the two count as one program.</summary>
     public DebugTab? Companion { get; internal set; }

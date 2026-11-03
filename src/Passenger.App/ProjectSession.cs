@@ -831,6 +831,10 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The open shaders' marks from Godot's compiler, and what it read of their uniforms.</summary>
     internal Godot.GodotShaderMarks GodotShaders { get; }
 
+    /// <summary>The door for Passenger's addon in Godot's editors on the folder's Godot project, listening once the window
+    /// asks and ended with the session.</summary>
+    internal Godot.GodotEditorLink GodotEditors { get; } = new();
+
     /// <summary>The folder of the Godot project a file is of: the one its project builds a game for, else the Godot project of
     /// GDScript alone it lies in (<see cref="WorkspaceModel.ScriptGames"/>), the innermost; null for a file of none.</summary>
     public string? GodotOf(string path) => ProjectOf(path)?.GodotFolder
@@ -1435,6 +1439,7 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotMarks.Stop();
         GodotShaders.Stop();
         parts.Add(("Godot's shader compiler", GodotShaderCompiler.DisposeAsync().AsTask()));
+        parts.Add(("Godot's editors", GodotEditors.DisposeAsync().AsTask()));
         MSBuild.Dispose();
         FileChecks.Dispose();
         return parts;
