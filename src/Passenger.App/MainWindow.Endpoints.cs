@@ -64,6 +64,11 @@ public partial class MainWindow
             Works = AppActions.GenerateOpenApiRequests,
             Words = ["OpenAPI", "Swagger", "HTTP Client"],
         });
+        actions.Add(new IdeAction(AppActions.NameOpenApiDocument, "Name OpenAPI Document…", "Endpoints", _ => IdeErrors.Observe(NameOpenApiDocumentAsync(OpenApiProject()!)))
+        {
+            WhyNot = _ => OpenApiProject() is null ? "No web project is chosen in the Endpoints window" : null,
+            Words = ["OpenAPI", "Swagger", "schema"],
+        });
     }
 
     /// <summary>A session's requests in the Endpoints window, while it is the window's; the last one's test stopped.</summary>

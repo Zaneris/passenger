@@ -819,6 +819,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>What the folder's .http requests may take from the person's computer to a host, as they answered.</summary>
     public Endpoints.EndpointGrants EndpointGrants { get; } = new();
 
+    /// <summary>The OpenAPI documents the person named for the folder's web projects whose code names none.</summary>
+    public Endpoints.OpenApiNames OpenApiNames { get; } = new();
+
     /// <summary>The routes the folder's web projects declare in their code, as the language server's extension last read them.</summary>
     public Endpoints.RouteCatalog Routes { get; } = new();
 
@@ -1056,6 +1059,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Debug.Breakpoints.Restore(kept.Breakpoints.Value);
         Bookmarks.Restore(kept.Bookmarks.Value);
         EndpointGrants.Keep(kept.Endpoints);
+        OpenApiNames.Keep(kept.Endpoints);
         Publishing.Keep(kept.Publish);
         FindScope = kept.Find.Value;
         WorkspaceState workspace = kept.Workspace.Value;

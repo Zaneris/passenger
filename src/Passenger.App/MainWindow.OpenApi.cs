@@ -32,7 +32,8 @@ public partial class MainWindow
             if (address is not null && Uri.TryCreate(address, UriKind.Absolute, out Uri? running))
             {
                 IReadOnlyList<string> code = await CodeOfAsync(model);
-                document = await OpenApiSources.FromAppAsync(running, OpenApiSources.MappedIn(code), working.Stopping);
+                document = current.OpenApiNames.Of(project) is { } named ? await OpenApiSources.FromNamedAsync(named, running, working.Stopping)
+                    : await OpenApiSources.FromAppAsync(running, OpenApiSources.MappedIn(code), working.Stopping);
             }
             if (document is null && model is not null && !working.IsStopped)
             {
@@ -96,12 +97,41 @@ public partial class MainWindow
             if (await RunningAddressAsync(project) is { } address && Uri.TryCreate(address, UriKind.Absolute, out Uri? at)
                 && string.Equals(at.GetLeftPart(UriPartial.Authority), origin, StringComparison.OrdinalIgnoreCase))
             {
+                if (session.OpenApiNames.Of(project) is { } named)
+                {
+                    return await OpenApiSources.FromNamedAsync(named, sent, cancel);
+                }
                 IReadOnlyList<string> code = await CodeOfAsync(Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)));
                 return OpenApiSources.Describes(code) ? await OpenApiSources.FromAppAsync(sent, OpenApiSources.MappedIn(code), cancel) : null;
             }
         }
         return null;
     }
+
+    /// <summary>Name OpenAPI Document for a web project: the person asked where its app serves the document its code names
+    /// nowhere, the answer kept with the folder; its answers are held to that document from then on.</summary>
+    public async Task NameOpenApiDocumentAsync(string project)
+    {
+        ProjectSession current = session;
+        string name = Path.GetFileNameWithoutExtension(project);
+        OpenApiDocumentDialog dialog = new(name, current.OpenApiNames.Of(project));
+        NamingDocument = dialog;
+        try
+        {
+            if (await dialog.ShowDialog<bool>(this) && dialog.Document is { } document && session == current && !current.IsEnded)
+            {
+                current.OpenApiNames.Name(project, document);
+                status.Text = $"{name}'s answers are held to the OpenAPI document at {document}";
+            }
+        }
+        finally
+        {
+            NamingDocument = null;
+        }
+    }
+
+    /// <summary>The Name OpenAPI Document dialog open, for the tests.</summary>
+    public OpenApiDocumentDialog? NamingDocument { get; private set; }
 
     /// <summary>The text of a project's C# files, read off the window's thread, for how its app describes itself.</summary>
     private Task<IReadOnlyList<string>> CodeOfAsync(ProjectModel? model)

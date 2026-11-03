@@ -106,7 +106,9 @@ public sealed class EndpointsView : DockPanel
             ListMenus.Item("Go to Route", "F4", () => RouteGoToRequested?.Invoke(this, route)),
             new Separator(),
             parts.Item(AppActions.GenerateOpenApiRequests),
-        ] : list.SelectedItem is ProjectRow ? [parts.Item(AppActions.GenerateOpenApiRequests)] : list.SelectedItem is not EndpointRequest chosen ? [] :
+            parts.Item(AppActions.NameOpenApiDocument),
+        ] : list.SelectedItem is ProjectRow ? [parts.Item(AppActions.GenerateOpenApiRequests), parts.Item(AppActions.NameOpenApiDocument)]
+        : list.SelectedItem is not EndpointRequest chosen ? [] :
         [
             ListMenus.Item("Test", "Enter", () => IdeErrors.Observe(TestAsync(chosen))),
             ListMenus.Item("Interactive Test…", null, () => InteractiveRequested?.Invoke(this, chosen)),

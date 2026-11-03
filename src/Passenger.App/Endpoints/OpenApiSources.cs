@@ -123,6 +123,28 @@ public static partial class OpenApiSources
     [GeneratedRegex(@"\bMapOpenApi\s*\(\s*(?:pattern\s*:\s*)?""([^""]+)""")]
     private static partial Regex Mapped();
 
+    /// <summary>A document as the person names it, or why it is none: a path the app serves it at (<c>/docs/v1.json</c>), or
+    /// an http or https URL on this machine's loopback; never another host, which is never asked.</summary>
+    public static (string? Document, string? Why) Named(string? text)
+    {
+        string given = (text ?? string.Empty).Trim();
+        if (given.StartsWith('/') && Uri.TryCreate("http://localhost" + given, UriKind.Absolute, out _))
+        {
+            return (given, null);
+        }
+        if (!Uri.TryCreate(given, UriKind.Absolute, out Uri? address) || address.Scheme is not ("http" or "https"))
+        {
+            return (null, "Name the path the app serves its OpenAPI document at (/openapi/v1.json), or its URL on this machine");
+        }
+        return address.IsLoopback ? (address.ToString(), null) : (null, $"{address.Host} is not this machine: Passenger asks for a document only of the app on this machine");
+    }
+
+    /// <summary>The document named for an app (<see cref="Named"/>) asked of it: a path at the address its request went to,
+    /// a URL as named; null where it answers with none.</summary>
+    public static Task<OpenApiDocument?> FromNamedAsync(string named, Uri address, CancellationToken cancel) =>
+        named.StartsWith('/') ? FromAppAsync(address, [named], cancel)
+        : Uri.TryCreate(named, UriKind.Absolute, out Uri? url) ? FromAppAsync(url, [url.PathAndQuery], cancel) : Task.FromResult<OpenApiDocument?>(null);
+
     /// <summary>Whether a project's code has its app describe itself (MapOpenApi, Swashbuckle's UseSwagger, NSwag's
     /// UseOpenApi), so its document is worth asking it for.</summary>
     public static bool Describes(IEnumerable<string> texts) => texts.Any(text => Describing().IsMatch(text));

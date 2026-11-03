@@ -126,6 +126,9 @@ public static class AppActions
     /// <summary>Requests for a web project's .http file from its app's OpenAPI document: no key of Rider's.</summary>
     public const string GenerateOpenApiRequests = "app.endpoints.openApiRequests";
 
+    /// <summary>Names a web project's OpenAPI document where its code names none: no key of Rider's.</summary>
+    public const string NameOpenApiDocument = "app.endpoints.openApiDocument";
+
     // The Requests window over the running web app's live requests and their database commands: no key of Rider's.
     public const string ShowRequests = "app.showRequests";
 
