@@ -62,6 +62,10 @@ public sealed class GDScriptTree
 
     private int Clamped(int offset) => Math.Clamp(offset, 0, Text.Length);
 
+    /// <summary>The <c>@warning_ignore_start</c> and <c>@warning_ignore_restore</c> annotations in the order written, each
+    /// with the offset its positions count from.</summary>
+    internal IEnumerable<(GDScriptAnnotation Annotation, int Offset)> Regions => runs.SelectMany((run, i) => run.Regions.Select(a => (a, starts[i])));
+
     public static GDScriptTree Parse(string text)
     {
         GDScriptParser parser = GDScriptParser.Of(text);

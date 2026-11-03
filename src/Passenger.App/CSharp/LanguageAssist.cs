@@ -70,6 +70,8 @@ internal sealed class LanguageAssists(HttpAssist http, MSBuildAssist msbuild, Xa
 
     public GodotAssist Godot => godot;
 
+    public GDScriptAssist GDScript => gdscript;
+
     public HttpAssist Http => http;
 
     public MSBuildAssist MSBuild => msbuild;

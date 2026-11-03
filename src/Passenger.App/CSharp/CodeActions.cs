@@ -74,6 +74,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             IdeErrors.Observe(ConfirmAndMakeAsync(now.Title.TrimEnd('…'), confirms));
             return;
         }
+        if (now.Edits is { } edits)
+        {
+            WorkspaceEdits.ApplyTo(context.Editors, document, edits);
+            return;
+        }
         Editor.ApplyEdits([new TextEdit(now.Range.Start, now.Range.Length, now.Text)], SelectionSet.Single(now.Range.Start + (now.Caret ?? now.Text.Length)));
     }
 

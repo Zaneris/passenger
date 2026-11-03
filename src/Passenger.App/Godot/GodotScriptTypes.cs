@@ -10,10 +10,14 @@ namespace Passenger.App.Godot;
 /// <summary>Each open GDScript's own syntax tree and types (<see cref="GDScriptTree"/>, <see cref="GDScriptAnalyzer"/>):
 /// the tree parsed again off the window's thread once typing pauses, from the edits the text gave since (only the members
 /// they reach parsed again), the types read against the project's other scripts, its autoloads and the engine's API, and
-/// the types inferred where none is written shown as inlay hints. What a key costs the window's thread is the edit's
-/// note and the pause's restart. A UI-thread object.</summary>
-internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, string?> godotOf, GodotEngineApis apis)
+/// the types inferred where none is written shown as inlay hints, and Godot's warnings and errors that reading gives
+/// marked, by the project's warning settings, until Godot's server speaks of the file (<see cref="Web.WebDocument.ShowPassengers"/>).
+/// What a key costs the window's thread is the edit's note and the pause's restart. A UI-thread object.</summary>
+internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, string?> godotOf, GodotEngineApis apis, Func<OpenDocument, Web.WebDocument?> webOf)
 {
+    /// <summary>Who checks a script, as an agent is told while a check is under way.</summary>
+    private const string Checker = "Passenger's reading of the script";
+
     /// <summary>How long typing pauses before the file is parsed and typed again.</summary>
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(250);
 
@@ -33,10 +37,12 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         public GDScriptTextChange? Pending { get; set; }
 
         public Task<Typed?>? Current { get; set; }
+
     }
 
     /// <summary>A script's types for a version of its text: its tree, its analysis, and the analyzer that read them.</summary>
-    public sealed record Typed(int Version, GDScriptTree Tree, GDScriptAnalysis Analysis, GDScriptAnalyzer Analyzer, string Text, HintList Hints);
+    public sealed record Typed(int Version, GDScriptTree Tree, GDScriptAnalysis Analysis, GDScriptAnalyzer Analyzer, string Text, HintList Hints,
+        IReadOnlyList<GDScriptFinding> Findings);
 
     public static bool IsScript(string path) => GodotScriptDeclarations.IsScript(path);
 
@@ -47,7 +53,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         {
             return;
         }
-        Kept kept = new(new Debounce(Settle, () => TypeAsync(document)));
+        Kept kept = new(new Debounce(Settle, () => TypeAsync(document), () => document.Checking(Checker)));
         kept.Typed = (_, e) =>
         {
             GDScriptTextChange change = GDScriptTextChange.Of(e.Edits);
@@ -85,6 +91,15 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         {
             kept.Pause.Stop();
         }
+    }
+
+    /// <summary>An open script's types as last read, where they are of its text as it stands; null where typing has not
+    /// paused since, or for a file this follows not.</summary>
+    public Typed? Latest(OpenDocument document)
+    {
+        UiThread.Check();
+        return documents.TryGetValue(document, out Kept? kept) && kept.Current is { IsCompletedSuccessfully: true } done && done.Result is { } typed
+            && typed.Version == document.Text.Version ? typed : null;
     }
 
     /// <summary>An open script's types for its text as it stands, read now where typing has not paused since; null for a
@@ -136,11 +151,41 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         }
         kept.Tree = typed.Tree;
         kept.TreeText = typed.Text;
-        if (document.Text.Version == typed.Version && !Alike(document.InlayHints, typed.Hints))
+        if (document.Text.Version == typed.Version)
         {
-            document.InlayHints = typed.Hints;
+            if (!Alike(document.InlayHints, typed.Hints))
+            {
+                document.InlayHints = typed.Hints;
+            }
+            Mark(document, typed.Findings);
         }
         return typed;
+    }
+
+    /// <summary>A script's findings marked: beside its server's until the server speaks of it, else alone; none set where
+    /// the marks shown, carried through the edits since, already say them.</summary>
+    private void Mark(OpenDocument document, IReadOnlyList<GDScriptFinding> findings)
+    {
+        Web.WebDocument? web = webOf(document);
+        IReadOnlyList<Marker> shown = web?.Passengers ?? document.Markers;
+        if (findings.Count == 0 && shown.Count == 0)
+        {
+            return;
+        }
+        Marker[] marks = [.. findings.Select(f => new Marker(TextRange.FromBounds(f.Start, f.End), f.IsError ? MarkerKind.Error : MarkerKind.Warning,
+            f.Code is { } code && !f.IsError ? $"{code}: {f.Message}" : f.Message))];
+        if (marks.AsSpan().SequenceEqual(shown is Marker[] array ? array : [.. shown]))
+        {
+            return;
+        }
+        if (web is not null)
+        {
+            web.ShowPassengers(marks);
+        }
+        else if (marks.Length > 0 || document.Markers.Count > 0)
+        {
+            document.Markers = marks;
+        }
     }
 
     private async Task<Typed?> TypeOffAsync(OpenDocument document, TextSnapshot snapshot, int version, GDScriptTree? tree, string? treeText, GDScriptTextChange? change)
@@ -158,7 +203,9 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
             GDScriptAnalyzer analyzer = new(project);
             GDScriptAnalysis analysis = analyzer.Analyze(parsed, res);
             HintList hints = HintList.Of([.. analysis.Inferred().Select(i => new InlayHint(i.Offset, $": {i.Type}", Kind: InlayHintKind.Type))]);
-            return (Typed?)new Typed(version, parsed, analysis, analyzer, text, hints);
+            GDScriptWarningSettings settings = GDScriptWarningSettings.Of(scenes?.Texts.GetValueOrDefault("res://" + GodotProject.FileName));
+            IReadOnlyList<GDScriptFinding> findings = [.. analysis.Findings(settings).Where(f => f.End <= text.Length)];
+            return (Typed?)new Typed(version, parsed, analysis, analyzer, text, hints, findings);
         });
     }
 

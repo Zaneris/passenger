@@ -16,6 +16,8 @@ public sealed partial class GDScriptAnalyzer
                 {
                     Reduce(value, context);
                 }
+                Declaring(variable, type, "variable", local: false, context);
+                MemberVariableWarnings(variable, context);
                 if (variable.Getter is { Body: { } getter } get)
                 {
                     WalkSuite(getter, context with { Scope = new Scope(null), Function = get });
@@ -25,18 +27,20 @@ public sealed partial class GDScriptAnalyzer
                     Scope scope = new(null);
                     if (set.Parameters is [{ Identifier: { } parameter } only])
                     {
-                        scope.Add(parameter.Name, type, new GDScriptDeclaration(context.Analysis.Path, context.Offset + parameter.Start, parameter.Name, type));
+                        scope.Add(parameter.Name, type, new GDScriptDeclaration(context.Analysis.Path, context.Offset + parameter.Start, parameter.Name, type), new Local(only, parameter, LocalKind.Setter));
                         Record(analysis, only, type, context);
                     }
                     WalkSuite(setter, context with { Scope = scope, Function = set });
                 }
                 break;
             case GDScriptConstant constant:
-                Record(analysis, constant, MemberType(constant, context.Class, context.Offset), context);
+                GDScriptType constantType = MemberType(constant, context.Class, context.Offset);
+                Record(analysis, constant, constantType, context);
                 if (constant.Initializer is { } constantValue)
                 {
                     Reduce(constantValue, context);
                 }
+                Declaring(constant, constantType, "constant", local: false, context);
                 break;
             case GDScriptFunction function:
                 WalkFunction(function, context);
@@ -52,6 +56,16 @@ public sealed partial class GDScriptAnalyzer
                 foreach (GDScriptParameter parameter in signal.Parameters)
                 {
                     Record(analysis, parameter, parameter.Type is { } written ? ResolveType(written, context) : GDScriptType.Variant.Soft, context);
+                    if (parameter.Type is null && parameter.Identifier is { } untyped)
+                    {
+                        Warn(context, parameter, "UNTYPED_DECLARATION", "Parameter", untyped.Name);
+                    }
+                }
+                break;
+            case GDScriptEnum { Identifier: null } named:
+                foreach ((GDScriptIdentifier enumValue, _) in named.Values)
+                {
+                    Shadowing(enumValue, "enum member", local: false, context);
                 }
                 break;
             default:
@@ -69,34 +83,57 @@ public sealed partial class GDScriptAnalyzer
             if (function.Identifier is { } named && !function.IsLambda)
             {
                 context.Analysis.Declared[named] = new GDScriptDeclaration(context.Analysis.Path, context.Offset + named.Start, named.Name, context.Analysis.Types[function]);
+                context.Analysis.Declaring.Add(named);
             }
         }
+        List<Local> parameters = [];
         foreach (GDScriptParameter parameter in function.Rest is { } rest ? [.. function.Parameters, rest] : function.Parameters)
         {
             GDScriptType type = parameter == function.Rest ? GDScriptType.Builtin("Array") : AssignableType(parameter, inside, constant: false);
             Record(inside.Analysis, parameter, type, inside);
             if (parameter.Identifier is { } name)
             {
-                scope.Add(name.Name, type, new GDScriptDeclaration(context.Analysis.Path, context.Offset + name.Start, name.Name, type));
+                Local local = new(parameter, name, LocalKind.Parameter);
+                parameters.Add(local);
+                scope.Add(name.Name, type, new GDScriptDeclaration(context.Analysis.Path, context.Offset + name.Start, name.Name, type), local);
+                Declaring(parameter, type, "parameter", local: true, inside);
+                Shadowing(name, "function parameter", local: true, inside);
             }
         }
-        if (function.Body is { } body)
+        if (function.ReturnType is null && !function.IsLambda && context.Analysis.Tree is not null)
         {
-            WalkSuite(body, inside);
+            Warn(context, function.Start, function.HeaderEnd, "UNTYPED_DECLARATION", "Function", FunctionName(function));
+        }
+        if (function.Body is { } body && !function.IsAbstract)
+        {
+            bool returns = WalkSuite(body, inside);
+            FunctionWarnings(function, parameters, returns, inside);
         }
     }
 
-    private void WalkSuite(GDScriptSuite suite, Context context)
+    /// <summary>A suite's statements walked in a scope of their own; whether every way through it returns, as Godot's
+    /// parser marks a suite (<c>has_return</c>).</summary>
+    private bool WalkSuite(GDScriptSuite suite, Context context)
     {
         Scope scope = new(context.Scope);
         Context inside = context with { Scope = scope };
+        bool returns = false;
+        bool unreachable = false;
         foreach (GDScriptNode statement in suite.Statements)
         {
-            WalkStatement(statement, inside, scope);
+            if (returns && !unreachable && context.Function is { } function)
+            {
+                unreachable = true;
+                Warn(context, statement, "UNREACHABLE_CODE", FunctionName(function));
+            }
+            returns |= WalkStatement(statement, inside, scope);
         }
+        UnusedLocals(scope, context);
+        return returns;
     }
 
-    private void WalkStatement(GDScriptNode statement, Context context, Scope scope)
+    /// <summary>A statement walked; whether every way through it returns.</summary>
+    private bool WalkStatement(GDScriptNode statement, Context context, Scope scope)
     {
         GDScriptAnalysis analysis = context.Analysis;
         switch (statement)
@@ -104,40 +141,58 @@ public sealed partial class GDScriptAnalyzer
             case GDScriptVariable { Identifier: { } name } variable:
                 GDScriptType type = AssignableType(variable, context, constant: false);
                 Record(analysis, variable, type, context);
-                scope.Add(name.Name, type, new GDScriptDeclaration(analysis.Path, context.Offset + name.Start, name.Name, type));
-                break;
+                Local declared = new(variable, name, LocalKind.Variable) { Assignments = variable.Initializer is null ? 0 : 1 };
+                scope.Add(name.Name, type, new GDScriptDeclaration(analysis.Path, context.Offset + name.Start, name.Name, type), declared);
+                Declaring(variable, type, "variable", local: true, context);
+                return false;
             case GDScriptConstant { Identifier: { } name } constant:
                 GDScriptType constantType = AssignableType(constant, context, constant: true);
                 Record(analysis, constant, constantType, context);
-                scope.Add(name.Name, constantType, new GDScriptDeclaration(analysis.Path, context.Offset + name.Start, name.Name, constantType));
-                break;
+                scope.Add(name.Name, constantType, new GDScriptDeclaration(analysis.Path, context.Offset + name.Start, name.Name, constantType), new Local(constant, name, LocalKind.Constant));
+                Declaring(constant, constantType, "constant", local: true, context);
+                return false;
             case GDScriptIf branch:
                 Reduce(branch.Condition, context);
-                WalkBlock(branch.True, context);
-                WalkBlock(branch.False, context);
-                break;
+                bool whenTrue = branch.True is { } yes && WalkSuite(yes, context);
+                bool whenFalse = branch.False is { } no && WalkSuite(no, context);
+                return whenTrue && whenFalse;
             case GDScriptWhile loop:
                 Reduce(loop.Condition, context);
                 WalkBlock(loop.Loop, context);
-                break;
+                return false;
             case GDScriptFor loop:
                 GDScriptType list = Reduce(loop.List, context);
                 Scope iteration = new(scope);
                 if (loop.Variable is { } variableName)
                 {
-                    GDScriptType element = loop.Type is { } declared ? ResolveType(declared, context) : Element(list, loop.List);
+                    GDScriptType element = loop.Type is { } declaredType ? ResolveType(declaredType, context) : Element(list, loop.List);
                     analysis.Types[loop.Variable] = element;
-                    iteration.Add(variableName.Name, element, new GDScriptDeclaration(analysis.Path, context.Offset + variableName.Start, variableName.Name, element));
+                    iteration.Add(variableName.Name, element, new GDScriptDeclaration(analysis.Path, context.Offset + variableName.Start, variableName.Name, element), new Local(loop, variableName, LocalKind.Iterator));
+                    if (loop.Type is null)
+                    {
+                        Warn(context, variableName, element.Hard && !element.IsVariant ? "INFERRED_DECLARATION" : "UNTYPED_DECLARATION", "\"for\" iterator variable", variableName.Name);
+                    }
                 }
                 if (loop.Loop is { } body)
                 {
                     WalkSuite(body, context with { Scope = iteration });
                 }
-                break;
+                if (loop.Variable is { } iterated)
+                {
+                    Shadowing(iterated, "\"for\" iterator variable", local: true, context);
+                }
+                return false;
             case GDScriptMatch match:
                 Reduce(match.Test, context);
+                bool all = match.Branches.Count > 0;
+                bool wildcard = false;
                 foreach (GDScriptMatchBranch branch in match.Branches)
                 {
+                    if (wildcard && branch.Patterns.Count > 0)
+                    {
+                        Warn(context, branch.Patterns[0], "UNREACHABLE_PATTERN");
+                    }
+                    wildcard |= branch.Guard is null && branch.Patterns.Any(p => p.Kind is GDScriptPatternKind.Bind or GDScriptPatternKind.Wildcard);
                     Scope binds = new(scope);
                     foreach (GDScriptPattern pattern in branch.Patterns)
                     {
@@ -150,24 +205,38 @@ public sealed partial class GDScriptAnalyzer
                             Reduce(condition as GDScriptExpression, context with { Scope = binds });
                         }
                     }
-                    if (branch.Block is { } block)
+                    bool returned = branch.Block is { } block && WalkSuite(block, context with { Scope = binds });
+                    all &= returned;
+                    if (branch.Patterns.Count == 1)
                     {
-                        WalkSuite(block, context with { Scope = binds });
+                        UnusedLocals(binds, context);
                     }
                 }
-                break;
+                return all && wildcard;
             case GDScriptReturn returned:
                 Reduce(returned.Value, context);
-                break;
+                return true;
             case GDScriptAssert assertion:
                 Reduce(assertion.Condition, context);
                 Reduce(assertion.Message, context);
-                break;
+                if (Constant(assertion.Condition) is { } constantCondition)
+                {
+                    if (Truthy(constantCondition))
+                    {
+                        Warn(context, assertion.Condition!, "ASSERT_ALWAYS_TRUE");
+                    }
+                    else if (assertion.Condition is not GDScriptLiteral { Kind: GDScriptLiteralKind.Bool })
+                    {
+                        Warn(context, assertion.Condition!, "ASSERT_ALWAYS_FALSE");
+                    }
+                }
+                return false;
             case GDScriptExpression expression:
-                Reduce(expression, context);
-                break;
+                Reduce(expression, context, root: true);
+                Standalone(expression, context);
+                return false;
             default:
-                break;
+                return false;
         }
     }
 
@@ -184,7 +253,8 @@ public sealed partial class GDScriptAnalyzer
         if (pattern.Bind is { } name)
         {
             context.Analysis.Types[name] = GDScriptType.Variant.Soft;
-            binds.Add(name.Name, GDScriptType.Variant.Soft, new GDScriptDeclaration(context.Analysis.Path, context.Offset + name.Start, name.Name, GDScriptType.Variant.Soft));
+            binds.Add(name.Name, GDScriptType.Variant.Soft, new GDScriptDeclaration(context.Analysis.Path, context.Offset + name.Start, name.Name, GDScriptType.Variant.Soft), new Local(name, name, LocalKind.Bind));
+            Shadowing(name, "pattern bind", local: true, context);
         }
         Reduce(pattern.Expression, context);
         foreach (GDScriptPattern inner in pattern.Array)
@@ -208,6 +278,11 @@ public sealed partial class GDScriptAnalyzer
         {
             analysis.Types[name] = type;
             analysis.Declared[name] = new GDScriptDeclaration(analysis.Path, context.Offset + name.Start, name.Name, type);
+            analysis.Declaring.Add(name);
+            if (node.Type is { Chain: [{ Name: "Variant" }] })
+            {
+                analysis.WrittenVariant.Add(context.Offset + name.Start);
+            }
             analysis.Offsets[node] = context.Offset;
         }
     }
@@ -232,13 +307,13 @@ public sealed partial class GDScriptAnalyzer
     }
 
     /// <summary>An expression's type, recorded for it in the analysis where one is being made.</summary>
-    private GDScriptType Reduce(GDScriptExpression? expression, Context context)
+    private GDScriptType Reduce(GDScriptExpression? expression, Context context, bool root = false, bool awaited = false)
     {
         if (expression is null)
         {
             return GDScriptType.Variant;
         }
-        GDScriptType type = ReduceOnce(expression, context);
+        GDScriptType type = ReduceOnce(expression, context, root, awaited);
         if (context.Analysis.Tree is not null)
         {
             context.Analysis.Types[expression] = type;
@@ -246,7 +321,7 @@ public sealed partial class GDScriptAnalyzer
         return type;
     }
 
-    private GDScriptType ReduceOnce(GDScriptExpression expression, Context context)
+    private GDScriptType ReduceOnce(GDScriptExpression expression, Context context, bool root, bool awaited)
     {
         switch (expression)
         {
@@ -273,10 +348,15 @@ public sealed partial class GDScriptAnalyzer
                 Reduce(subscript.Index, context);
                 return Indexed(indexed);
             case GDScriptCall call:
-                return Call(call, context);
-            case GDScriptAwait awaited:
-                GDScriptType value = Reduce(awaited.Awaited, context);
-                return awaited.Awaited is GDScriptCall && !(value is { Kind: GDScriptTypeKind.Builtin, Name: "Signal" }) ? value : GDScriptType.Variant.Soft;
+                return Call(call, context, root, awaited);
+            case GDScriptAwait waiting:
+                GDScriptType value = Reduce(waiting.Awaited, context, awaited: true);
+                bool coroutine = waiting.Awaited is GDScriptCall waited && context.Analysis.CoroutineCalls.Contains(waited);
+                if (!coroutine && !value.IsVariant && value is not { Kind: GDScriptTypeKind.Builtin, Name: "Signal" })
+                {
+                    Warn(context, waiting, "REDUNDANT_AWAIT");
+                }
+                return waiting.Awaited is GDScriptCall && !(value is { Kind: GDScriptTypeKind.Builtin, Name: "Signal" }) ? value : GDScriptType.Variant.Soft;
             case GDScriptBinary binary:
                 return Binary(binary, context);
             case GDScriptUnary unary:
@@ -292,6 +372,10 @@ public sealed partial class GDScriptAnalyzer
                 GDScriptType whenFalse = Reduce(ternary.False, context);
                 GDScriptType result = whenTrue.IsVariant || whenFalse.IsVariant ? GDScriptType.Variant
                     : Compatible(whenTrue, whenFalse) ? whenTrue : Compatible(whenFalse, whenTrue) ? whenFalse : GDScriptType.Variant;
+                if (!whenTrue.IsVariant && !whenFalse.IsVariant && result.IsVariant)
+                {
+                    Warn(context, ternary, "INCOMPATIBLE_TERNARY");
+                }
                 return result with { Hard = whenTrue.Hard && whenFalse.Hard };
             case GDScriptCast cast:
                 Reduce(cast.Operand, context);
@@ -327,9 +411,7 @@ public sealed partial class GDScriptAnalyzer
                 }
                 return GDScriptType.Builtin("Callable");
             case GDScriptAssignment assignment:
-                Reduce(assignment.Assignee, context);
-                Reduce(assignment.Value, context);
-                return GDScriptType.Variant.Soft;
+                return Assign(assignment, context);
             default:
                 return GDScriptType.Variant.Soft;
         }
@@ -350,6 +432,14 @@ public sealed partial class GDScriptAnalyzer
         if (context.Scope?.Find(identifier.Name) is { } local)
         {
             analysis.Declared[identifier] = local.Declaration;
+            if (local.Local is { } counted && analysis.Tree is not null)
+            {
+                counted.Usages++;
+                if (counted.Kind == LocalKind.Variable && counted.Assignments == 0 && !(local.Type.Hard && local.Type.Kind == GDScriptTypeKind.Builtin))
+                {
+                    Warn(context, identifier, "UNASSIGNED_VARIABLE", identifier.Name);
+                }
+            }
             return local.Type;
         }
         if (Member(context.Class, identifier.Name) is { } member)
@@ -455,7 +545,54 @@ public sealed partial class GDScriptAnalyzer
 
     /// <summary>What a call gives (Godot's reduce_call): a built-in type's constructor its type, a function's or method's
     /// return type, the script's own, its base classes', the engine's or a utility function's; <c>new()</c> an instance.</summary>
-    private GDScriptType Call(GDScriptCall call, Context context)
+    /// <summary>A call's type, and Godot's warnings of it: a coroutine called without <c>await</c> (a warning as a statement,
+    /// else an error), a value a method returns left unused, and a signal of the class named by its string.</summary>
+    private GDScriptType Call(GDScriptCall call, Context context, bool root, bool awaited)
+    {
+        GDScriptType returned = CallOnce(call, context);
+        if (context.Analysis.Tree is null)
+        {
+            return returned;
+        }
+        GDScriptIdentifier? called = call.Callee switch
+        {
+            GDScriptIdentifier name => name,
+            GDScriptSubscript { IsAttribute: true, Attribute: { } method } => method,
+            _ => null,
+        };
+        if (called is not null && context.Analysis.Declared.GetValueOrDefault(called) is { } declared && IsCoroutine(declared))
+        {
+            context.Analysis.CoroutineCalls.Add(call);
+            if (!awaited)
+            {
+                if (root)
+                {
+                    Warn(context, call, "MISSING_AWAIT");
+                }
+                else
+                {
+                    Error(context, call, $"Function \"{call.FunctionName}()\" is a coroutine, so it must be called with \"await\".");
+                }
+            }
+        }
+        bool self = call.Callee is GDScriptIdentifier || call.Callee is GDScriptSubscript { IsAttribute: true, Base: GDScriptSelf };
+        if (self && call.FunctionName is "emit_signal" or "connect" or "disconnect" && call.Arguments is [GDScriptLiteral { Value: string signal }, ..])
+        {
+            context.Analysis.SignalsNamed.Add(signal);
+        }
+        if (call.Callee is GDScriptIdentifier { Name: "Signal" } && call.Arguments is [GDScriptSelf, GDScriptLiteral { Value: string constructed }])
+        {
+            context.Analysis.SignalsNamed.Add(constructed);
+        }
+        if (root && call.Callee is GDScriptSubscript { IsAttribute: true } && !call.IsSuper && returned is { IsVoid: false, IsVariant: false }
+            && returned is not { Kind: GDScriptTypeKind.Builtin, Name: "Nil" })
+        {
+            Warn(context, call, "RETURN_VALUE_DISCARDED", call.FunctionName ?? string.Empty);
+        }
+        return returned;
+    }
+
+    private GDScriptType CallOnce(GDScriptCall call, Context context)
     {
         foreach (GDScriptExpression argument in call.Arguments)
         {
@@ -478,6 +615,10 @@ public sealed partial class GDScriptAnalyzer
                 {
                     context.Analysis.Declared[name] = local.Declaration;
                     context.Analysis.Types[name] = local.Type;
+                    if (local.Local is { } counted)
+                    {
+                        counted.Usages++;
+                    }
                     return GDScriptType.Variant.Soft;
                 }
                 if (Engine?.Builtins.ContainsKey(name.Name) == true && name.Name != "Nil" || IsBuiltinName(name.Name))
@@ -551,11 +692,44 @@ public sealed partial class GDScriptAnalyzer
         return returns with { Hard = returns.Hard && (owner.Hard || owner.Meta) };
     }
 
+    /// <summary>An assignment reduced as Godot's reduce_assignment does: its value first, then a local it assigns counted as
+    /// assigned rather than used, then its target; a compound one to a variable never assigned, and a float given to an
+    /// int, warned of.</summary>
+    private GDScriptType Assign(GDScriptAssignment assignment, Context context)
+    {
+        GDScriptType value = Reduce(assignment.Value, context);
+        Local? assigned = assignment.Assignee is GDScriptIdentifier name && context.Analysis.Tree is not null ? context.Scope?.Find(name.Name)?.Local : null;
+        if (assigned is { Kind: LocalKind.Variable })
+        {
+            assigned.Assignments++;
+            assigned.Usages--;
+        }
+        else if (assigned is { Kind: LocalKind.Parameter })
+        {
+            assigned.Usages--;
+        }
+        GDScriptType target = Reduce(assignment.Assignee, context);
+        if (target is { Hard: true, Kind: GDScriptTypeKind.Builtin, Name: "int" } && value is { Kind: GDScriptTypeKind.Builtin, Name: "float" } && assignment.Value is { } narrowed)
+        {
+            Warn(context, narrowed, "NARROWING_CONVERSION");
+        }
+        if (assignment.Operator != K.Equal && assigned is { Kind: LocalKind.Variable, Assignments: 1 } && assignment.Assignee is GDScriptIdentifier modified)
+        {
+            Warn(context, assignment, "UNASSIGNED_VARIABLE_OP_ASSIGN", modified.Name, GDScriptToken.KindName(assignment.Operator).TrimEnd('='));
+        }
+        return GDScriptType.Variant.Soft;
+    }
+
     private GDScriptType Binary(GDScriptBinary binary, Context context)
     {
         GDScriptType left = Reduce(binary.Left, context);
         GDScriptType right = Reduce(binary.Right, context);
         bool hard = left.Hard && right.Hard;
+        if (binary.Operator == K.Slash && left is { Kind: GDScriptTypeKind.Builtin, Name: "int" or "Vector2i" or "Vector3i" or "Vector4i" }
+            && right is { Kind: GDScriptTypeKind.Builtin } && (right.Name == "int" || right.Name == left.Name))
+        {
+            Warn(context, binary, "INTEGER_DIVISION");
+        }
         switch (binary.Operator)
         {
             case K.And or K.AmpersandAmpersand or K.Or or K.PipePipe or K.In:

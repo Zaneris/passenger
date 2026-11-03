@@ -31,9 +31,42 @@ public sealed partial class GDScriptAnalyzer
         GDScriptType self = ScriptClass(tree, path);
         foreach (GDScriptMember member in tree.Members)
         {
+            WrittenVariants(member.Node, member.Offset, analysis);
+        }
+        foreach (GDScriptMember member in tree.Members)
+        {
             Walk(analysis, member.Node, new Context(analysis, self, member.Offset, null, null));
         }
+        ClassWarnings(tree.Members, analysis, Uses(analysis));
+        if (tree.Members.Count == 0 && tree.Class.Extends.Count == 0 && tree.Class.ExtendsPath is null && tree.Class.Identifier is null && !tree.Class.IsTool
+            && tree.Class.Annotations.Count == 0 && tree.Errors.Count == 0)
+        {
+            analysis.Found.Add(new GDScriptFinding(0, 0, "EMPTY_FILE", Message("EMPTY_FILE", [])));
+        }
         return analysis;
+    }
+
+    /// <summary>The members (an inner class's too) whose type or return type is written as <c>Variant</c>, known before any
+    /// use of them is read.</summary>
+    private static void WrittenVariants(GDScriptNode member, int offset, GDScriptAnalysis analysis)
+    {
+        switch (member)
+        {
+            case GDScriptAssignable { Identifier: { } name, Type.Chain: [{ Name: "Variant" }] }:
+                analysis.WrittenVariant.Add(offset + name.Start);
+                break;
+            case GDScriptFunction { Identifier: { } name, ReturnType.Chain: [{ Name: "Variant" }] }:
+                analysis.WrittenVariant.Add(offset + name.Start);
+                break;
+            case GDScriptClass inner:
+                foreach (GDScriptNode innerMember in inner.Members)
+                {
+                    WrittenVariants(innerMember, offset, analysis);
+                }
+                break;
+            default:
+                break;
+        }
     }
 
     /// <summary>The class a script declares, by its <c>class_name</c> or else its path.</summary>
@@ -45,29 +78,52 @@ public sealed partial class GDScriptAnalyzer
 
     private sealed class Scope(Scope? parent)
     {
-        private readonly Dictionary<string, (GDScriptType Type, GDScriptDeclaration Declaration)> names = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (GDScriptType Type, GDScriptDeclaration Declaration, Local? Local)> names = new(StringComparer.Ordinal);
 
         public Scope? Parent { get; } = parent;
 
-        public void Add(string name, GDScriptType type, GDScriptDeclaration declaration) => names[name] = (type, declaration);
+        /// <summary>The locals declared in it, in the order declared, which its end checks for use.</summary>
+        public List<Local> Declared { get; } = [];
 
-        public (GDScriptType Type, GDScriptDeclaration Declaration)? Find(string name) =>
-            names.TryGetValue(name, out (GDScriptType, GDScriptDeclaration) found) ? found : Parent?.Find(name);
-
-        public IEnumerable<(string Name, GDScriptType Type, GDScriptDeclaration Declaration)> All()
+        public void Add(string name, GDScriptType type, GDScriptDeclaration declaration, Local? local = null)
         {
-            HashSet<string> seen = new(StringComparer.Ordinal);
-            for (Scope? at = this; at is not null; at = at.Parent)
+            names[name] = (type, declaration, local);
+            if (local is not null)
             {
-                foreach ((string name, (GDScriptType type, GDScriptDeclaration declaration)) in at.names)
-                {
-                    if (seen.Add(name))
-                    {
-                        yield return (name, type, declaration);
-                    }
-                }
+                Declared.Add(local);
             }
         }
+
+        public (GDScriptType Type, GDScriptDeclaration Declaration, Local? Local)? Find(string name) =>
+            names.TryGetValue(name, out (GDScriptType, GDScriptDeclaration, Local?) found) ? found : Parent?.Find(name);
+
+        /// <summary>Whether a name is declared in it itself, not in a scope it is inside.</summary>
+        public bool Holds(string name) => names.ContainsKey(name);
+    }
+
+    /// <summary>A local's uses and assignments as Godot counts them, for its warnings: what declares it (a variable, constant,
+    /// parameter, a pattern's bind or a loop's variable) and its name.</summary>
+    private sealed class Local(GDScriptNode node, GDScriptIdentifier name, LocalKind kind)
+    {
+        public GDScriptNode Node { get; } = node;
+
+        public GDScriptIdentifier Name { get; } = name;
+
+        public LocalKind Kind { get; } = kind;
+
+        public int Usages { get; set; }
+
+        public int Assignments { get; set; }
+    }
+
+    private enum LocalKind
+    {
+        Variable,
+        Constant,
+        Parameter,
+        Bind,
+        Iterator,
+        Setter,
     }
 
     // Classes and their members.
@@ -511,7 +567,8 @@ public sealed partial class GDScriptAnalyzer
         }
         if (found is null)
         {
-            return GDScriptType.Variant;
+            // A type this reading cannot find is no Variant Godot would say: what it holds is unknown.
+            return GDScriptType.Variant.Soft;
         }
         GDScriptType type = found.Instance with { Hard = true };
         return node.Elements.Count > 0 ? type with { Elements = [.. node.Elements.Select(e => ResolveType(e, context))] } : type;

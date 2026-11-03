@@ -125,6 +125,33 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
 
     public override string? Describe(CompletionItem item) => described.GetValueOrDefault(item);
 
+    /// <summary>The fixes of Godot's findings on an offset's line, from Passenger's reading of the script as it stands
+    /// (whoever's marks are shown there): each made as one edit of the text it was offered for.</summary>
+    public IReadOnlyList<EditorFix> Fixes(OpenDocument file, int offset)
+    {
+        if (!GodotScriptTypes.IsScript(file.Path) || context.GodotScriptTypes?.Invoke()?.Latest(file) is not { } typed)
+        {
+            return [];
+        }
+        TextSnapshot text = file.Text.Snapshot;
+        int line = text.GetLineFromOffset(Math.Clamp(offset, 0, text.Length));
+        List<EditorFix> fixes = [];
+        foreach (GDScriptFinding finding in typed.Findings.Where(f => f.Start <= text.Length && text.GetLineFromOffset(f.Start) == line))
+        {
+            foreach (GDScriptFix fix in GDScriptFixes.Of(typed.Analysis, finding))
+            {
+                TextEdit first = fix.Edits[0];
+                EditorFix made = new(fix.Title, finding.Code is { } code ? $"Godot's {code}" : "Godot's error", new TextRange(first.Start, first.Length), first.Text)
+                {
+                    Edits = fix.Edits,
+                };
+                // Made on the text it was worked out for; refused once that text has changed.
+                fixes.Add(made with { Again = now => now == text ? made : null });
+            }
+        }
+        return [.. fixes.DistinctBy(f => f.Title)];
+    }
+
     public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
     {
         if (!Answers(document) || context.GodotScriptTypes?.Invoke() is not { } types)

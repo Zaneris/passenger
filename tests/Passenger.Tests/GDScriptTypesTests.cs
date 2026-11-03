@@ -11,7 +11,8 @@ namespace Passenger.Tests;
 /// <summary>A GDScript read by Passenger's own parser and analyzer while Godot's server for it has not started (held at its
 /// start where a Godot is found, never started where none is): the types inferred where none is written are shown after
 /// their names, a member completes after <c>self.</c> and a local by its first letters, and Go to Declaration reaches a
-/// function of the script. A Godot editor of its own each where one is found, so run alone.</summary>
+/// function of the script; Godot's warnings and errors are marked as the project's settings ask and each is fixed as one
+/// command of Undo. A Godot editor of its own each where one is found, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GDScriptTypesTests
 {
@@ -86,6 +87,78 @@ public sealed class GDScriptTypesTests
         }
     }
 
+    private const string Warned = "extends Node\n\n\nfunc coroutine() -> int:\n\tawait get_tree().process_frame\n\tprint(\"waited\")\n\n\n"
+        + "func _ready() -> void:\n\tvar unused := 1\n\tcoroutine()\n";
+
+    [AvaloniaFact]
+    public void Godots_warnings_and_errors_are_marked_before_its_server_starts_and_each_fix_is_one_command()
+    {
+        TestFolders.Write(folder, "project.godot", "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Types\"\n\n[debug]\n\n"
+            + "gdscript/warnings/inferred_declaration=1\ngdscript/warnings/missing_await=1\n");
+        TestFolders.Write(folder, "warned.gd", Warned);
+        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open("warned.gd");
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            string[] marked =
+            [
+                "Not all code paths return a value.",
+                "INFERRED_DECLARATION: Variable \"unused\" has an implicitly inferred static type.",
+                "UNUSED_VARIABLE: The local variable \"unused\" is declared but never used in the block. If this is intended, prefix it with an underscore: \"_unused\".",
+                "MISSING_AWAIT: \"await\" keyword might be desired because the expression is a coroutine.",
+            ];
+            Ui.PumpUntil(() => marked.All(m => document.Markers.Any(k => k.Message == m)),
+                "Godot's error and three warnings marked from Passenger's reading, the project's settings turning two on", TimeSpan.FromSeconds(60));
+            Assert.Equal(MarkerKind.Error, document.Markers.First(m => m.Message == marked[0]).Kind);
+            Assert.True(window.Session.Web?.For(document) is not { Serving: true }, "Godot's server answered: the test's hold of its start did not hold");
+
+            Fix(window, editor, "var unu", "Prefix 'unused' with an underscore");
+            Ui.PumpUntil(() => document.Text.Snapshot.ToString().Contains("\tvar _unused := 1\n", StringComparison.Ordinal) && !document.Markers.Any(m => m.Message == marked[2]),
+                "the variable prefixed and its warning gone", TimeSpan.FromSeconds(30));
+            Ui.Run(window, EditorActions.Undo, settle: false);
+            Ui.PumpUntil(() => document.Text.Snapshot.ToString() == Warned && document.Markers.Any(m => m.Message == marked[2]),
+                "Undo to take the fix back whole, and the warning marked again", TimeSpan.FromSeconds(30));
+
+            Fix(window, editor, "var unu", "Add type annotation ': int'");
+            Ui.PumpUntil(() => !document.Markers.Any(m => m.Message == marked[1]), "the inferred type's warning gone once the type is written", TimeSpan.FromSeconds(30));
+            Fix(window, editor, "\tcorou", "Add 'await'");
+            Ui.PumpUntil(() => !document.Markers.Any(m => m.Message == marked[3]), "the missing await's warning gone once it is there", TimeSpan.FromSeconds(30));
+            Fix(window, editor, "func coroutine() -> i", "Add 'return 0'");
+            Ui.PumpUntil(() => !document.Markers.Any(m => m.Message == marked[0]), "the error gone once the function returns", TimeSpan.FromSeconds(30));
+            Assert.Equal("extends Node\n\n\nfunc coroutine() -> int:\n\tawait get_tree().process_frame\n\tprint(\"waited\")\n\treturn 0\n\n\n"
+                + "func _ready() -> void:\n\tvar unused: int = 1\n\tawait coroutine()\n", document.Text.Snapshot.ToString());
+        }
+        finally
+        {
+            window.Close();
+            release.SetResult();
+        }
+    }
+
+    /// <summary>A fix chosen from Show Context Actions at a place, once Passenger's reading of the text as it stands offers it.</summary>
+    private static void Fix(MainWindow window, CodeEditor editor, string after, string title)
+    {
+        Ui.PlaceAfter(editor, after);
+        Ui.PumpUntil(() =>
+        {
+            if (window.Assist.Offered.Contains(title))
+            {
+                return true;
+            }
+            if (window.Assist.Offered.Count > 0)
+            {
+                Ui.Press(window, "ESCAPE", settle: false);
+            }
+            Ui.Run(window, AppActions.QuickFix, settle: false);
+            return window.Assist.Offered.Contains(title);
+        }, $"'{title}' offered at '{after}'", TimeSpan.FromSeconds(30));
+        for (int i = window.Assist.Offered.ToList().IndexOf(title); i > 0; i--)
+        {
+            Ui.Press(window, "DOWN", settle: false);
+        }
+        Ui.Press(window, "ENTER", settle: false);
+    }
+
     /// <summary>A key typed in the middle of a GDScript of 3,000 lines allocates on the window's thread within a few
     /// kilobytes of one in a script of 30 lines (the editor carrying the script's thousand type hints through it), the
     /// script's tree and types kept as for any open script: the key notes its edit and the pause restarts, the parse and
@@ -150,8 +223,9 @@ public sealed class GDScriptTypesTests
         return least.Sum();
     }
 
-    /// <summary>The window on the folder with main.gd open, Godot's server for it held at its start where a Godot is found.</summary>
-    private (MainWindow Window, OpenDocument Document, TaskCompletionSource Release) Open()
+    /// <summary>The window on the folder with a script open (main.gd's by default), Godot's server for it held at its start
+    /// where a Godot is found.</summary>
+    private (MainWindow Window, OpenDocument Document, TaskCompletionSource Release) Open(string script = "main.gd")
     {
         MainWindow window = new()
         {
@@ -165,7 +239,7 @@ public sealed class GDScriptTypesTests
         Ui.Settle();
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task<int>? held = godot is { Exists: true } ? window.Session.Web?.HoldNextConfigure(release.Task) : null;
-        Assert.Null(window.OpenFile(Path.Combine(folder, "main.gd")));
+        Assert.Null(window.OpenFile(Path.Combine(folder, script)));
         if (held is not null)
         {
             Ui.AwaitPumped(held, "Godot's GDScript server held at its start", TimeSpan.FromMinutes(1));

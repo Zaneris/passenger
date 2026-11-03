@@ -450,9 +450,12 @@ nodes, parse rules and error messages, kept as Godot words them. `GDScriptAnalyz
 `GDScriptAnalysis` and `GodotEngineApi`) ports the typing of `modules/gdscript/gdscript_analyzer.cpp` and
 `gdscript_analyzer.h` at the same commit (its data types, how a declaration, an override's return and each expression
 are typed), with the return types of `gdscript_utility_functions.cpp`'s functions and the symbols' wording of
-`language_server/gdscript_extend_parser.cpp`. The scripts of the parser's unit tests
-(`tests/Passenger.UnitTests/Godot/GDScriptParserTests.cs`) are in part Godot's own,
-`modules/gdscript/tests/scripts/parser/errors`, at the same commit.
+`language_server/gdscript_extend_parser.cpp`; its warnings and errors (`GDScriptAnalyzer.Warnings.cs`, `GDScriptWarnings.cs`
+and `GDScriptAnalysis`'s filtering by a project's settings and `@warning_ignore`) port where `gdscript_analyzer.cpp` and
+`gdscript_parser.cpp` push them, with `gdscript_warning.cpp` and `gdscript_warning.h`'s names, default levels and words.
+The scripts of the parser's and warnings' unit tests (`tests/Passenger.UnitTests/Godot/GDScriptParserTests.cs`,
+`GDScriptWarningsTests.cs`) are in part Godot's own, `modules/gdscript/tests/scripts/parser/errors`, `parser/warnings`
+and `analyzer/warnings`, at the same commit.
 
 ```
 Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md).

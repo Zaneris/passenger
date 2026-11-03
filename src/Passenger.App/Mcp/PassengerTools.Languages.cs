@@ -361,7 +361,7 @@ public sealed partial class PassengerTools
             await SaveLandedAsync(CancellationToken.None);
             return $"Applied '{fix.Title}' to {string.Join(", ", made.Files.Select(f => Relative(f.Path)).Distinct())}";
         }
-        WorkspaceEdits.ApplyTo(Editors, document, [new TextEdit(now.Range.Start, now.Range.Length, now.Text)]);
+        WorkspaceEdits.ApplyTo(Editors, document, now.Edits ?? [new TextEdit(now.Range.Start, now.Range.Length, now.Text)]);
         await SaveLandedAsync(CancellationToken.None);
         return $"Applied '{fix.Title}' to {Relative(document.Path)}";
     }

@@ -135,7 +135,8 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotScenes.Changed += (_, _) => CSharp?.GodotScenesChanged();
         GodotShaderCompiler = new Godot.GodotShaderCompiler(() => setup.Settings().GodotExecutable, () => setup.GodotEnvironment);
         GodotShaders = new Godot.GodotShaderMarks(GodotScenes, GodotOf, GodotShaderCompiler);
-        GodotScriptTypes = new Godot.GodotScriptTypes(GodotScenes, GodotOf, new Godot.GodotEngineApis(() => setup.Settings().GodotExecutable, () => setup.GodotEnvironment));
+        GodotScriptTypes = new Godot.GodotScriptTypes(GodotScenes, GodotOf, new Godot.GodotEngineApis(() => setup.Settings().GodotExecutable, () => setup.GodotEnvironment),
+            document => Web?.For(document));
         GodotMarks = new Godot.GodotSceneMarks(GodotScenes, GodotOf, () => CSharp, setup.Editors.Commands)
         {
             Godot = () => setup.Settings().GodotExecutable,

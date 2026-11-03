@@ -90,9 +90,15 @@ public sealed record GodotProject(string Folder, string? Name, string? MainScene
         return false;
     }
 
+    /// <summary>Every value of the text by its section and key ("debug/gdscript/warnings/enable"): a string's read, any
+    /// other's as written (<c>2</c>, <c>{ "res://addons": 1 }</c>); a key set twice keeps its last.</summary>
+    internal static Dictionary<string, string> Values(string text) => Strings(text, written: true);
+
     /// <summary>Every value of the text that is a string, by its section and key ("application/config/name"); a key set
     /// twice keeps its last, as Godot reads it.</summary>
-    internal static Dictionary<string, string> Strings(string text)
+    internal static Dictionary<string, string> Strings(string text) => Strings(text, written: false);
+
+    private static Dictionary<string, string> Strings(string text, bool written)
     {
         Dictionary<string, string> found = new(StringComparer.Ordinal);
         string section = string.Empty;
@@ -134,7 +140,12 @@ public sealed record GodotProject(string Folder, string? Name, string? MainScene
             }
             else
             {
-                at = ValueEnd(text, value);
+                int end = ValueEnd(text, value);
+                if (written)
+                {
+                    found[section.Length > 0 ? $"{section}/{key}" : key] = text[value..end].Trim();
+                }
+                at = end;
             }
         }
         return found;

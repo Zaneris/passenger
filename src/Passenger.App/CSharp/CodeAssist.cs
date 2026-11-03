@@ -26,6 +26,10 @@ public sealed record EditorFix(string Title, string Detail, TextRange Range, str
     /// <summary>Where the caret goes in <see cref="Text"/> once it is made: its end when none is given.</summary>
     public int? Caret { get; init; }
 
+    /// <summary>Edits made together, as one, in place of <see cref="Text"/>'s (a name and its uses renamed), sorted and
+    /// apart, in the file's text as it stands; the caret stays where it is.</summary>
+    public IReadOnlyList<TextEdit>? Edits { get; init; }
+
     /// <summary>A fix made in another file than the one shown (an AppHost's WithReference, for its service's warning), in
     /// place of <see cref="Text"/>'s edit: made as it is chosen, given <see cref="Range"/> as it then stands and its
     /// command's patience, and saying what it came to.</summary>
@@ -558,6 +562,9 @@ public sealed class CodeAssist
 
     /// <summary>A Godot project's C# file's or open scene's fixes of its checks' marks (<see cref="CSharpAssist.GodotFixes"/>).</summary>
     internal IReadOnlyList<EditorFix> GodotFixes(OpenDocument file, int offset, Godot.GodotSceneMarks marks) => context.Languages.CSharp.GodotFixes(file, offset, marks);
+
+    /// <summary>The fixes of Godot's findings on an offset's line of a GDScript, from Passenger's own reading of it.</summary>
+    internal IReadOnlyList<EditorFix> GDScriptFixes(OpenDocument file, int offset) => context.Languages.GDScript.Fixes(file, offset);
 
     /// <summary>A XAML colour's badge in the completion list: the colour itself, the content's own; null for no colour.</summary>
     internal static IBrush? Swatch(string? colour) =>

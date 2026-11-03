@@ -51,6 +51,14 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// file), which the editor shows with its own server's and ESLint's.</summary>
     private readonly AnchoredList<Marker> engine = new(m => m.Range, (m, range) => m with { Range = range });
 
+    /// <summary>A GDScript's marks from Passenger's own reading of it (<see cref="Godot.GodotScriptTypes"/>), shown until its
+    /// server has spoken of the file: Godot's own analyzer reads every rule and the whole engine, so once it has, its
+    /// marks stand alone and each mark is said once.</summary>
+    private readonly AnchoredList<Marker> passengers = new(m => m.Range, (m, range) => m with { Range = range });
+
+    /// <summary>Whether the server has pushed its diagnostics for the file since it connected.</summary>
+    private bool spoken;
+
     internal WebDocument(OpenDocument document, WebServerKind kind, string languageId)
     {
         this.document = document;
@@ -111,12 +119,29 @@ public sealed class WebDocument : IServerDocument, IDisposable
         document.Markers = Shown();
     }
 
+    /// <summary>The marks of Passenger's own reading as the text has carried them.</summary>
+    public IReadOnlyList<Marker> Passengers => passengers.Items;
+
+    /// <summary>A GDScript's marks from Passenger's own reading, shown while its server has not spoken of the file.</summary>
+    public void ShowPassengers(IReadOnlyList<Marker> markers)
+    {
+        if (markers.Count == 0 && passengers.Count == 0)
+        {
+            return;
+        }
+        passengers.Set(document.Text, markers);
+        if (!spoken)
+        {
+            document.Markers = Shown();
+        }
+    }
+
     /// <summary>Every source's markers where the text has carried them, in the order of their starts, but an engine's on a
     /// line the server already marks as gravely: the engine's checks and the server's often find the same problem, so the
     /// line is marked once. Each source's are in order already, so a key merges them rather than sorting them.</summary>
     private IReadOnlyList<Marker> Shown()
     {
-        IReadOnlyList<Marker> own = diagnostics.Markers;
+        IReadOnlyList<Marker> own = spoken || passengers.Count == 0 ? diagnostics.Markers : Merged(diagnostics.Markers, passengers.Items);
         IReadOnlyList<Marker> lint = Lint?.Markers ?? [];
         if (engine.Count == 0)
         {
@@ -225,6 +250,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     {
         diagnostics.Stop();
         engine.Clear();
+        passengers.Clear();
         PushLanded();
         Unreached();
         document.Text.Changed -= OnChanged;
@@ -387,6 +413,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
 
     private void Show(IReadOnlyList<Diagnostic> reported)
     {
+        spoken = true;
         // The server's own codes stay with the diagnostics, which its quick fixes are asked for by.
         diagnostics.Take(reported, (d, range) => DiagnosticMarks.Marker(Named(d), range));
         document.Markers = Shown();

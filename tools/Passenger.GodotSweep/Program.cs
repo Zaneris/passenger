@@ -20,6 +20,11 @@ public static class Program
             Console.WriteLine(JsonSerializer.Serialize(Types(Path.GetFullPath(project), GodotEngineApi.Read(File.ReadAllBytes(api)))));
             return 0;
         }
+        if (args is ["--warnings", var tests, var engine] && Directory.Exists(tests) && File.Exists(engine))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(Warnings(Path.GetFullPath(tests), GodotEngineApi.Read(File.ReadAllBytes(engine)))));
+            return 0;
+        }
         if (args.Length != 1 || !Directory.Exists(args[0]))
         {
             Console.Error.WriteLine("Passenger.GodotSweep: takes one argument, a folder whose .gd files to parse");
@@ -120,6 +125,55 @@ public static class Program
             members = t.Analysis.Tree!.Members.Select(m => new { name = Name(m.Node), detail = t.Analysis.Detail(m.Node) }).Where(m => m.detail is not null),
         });
     }
+
+    /// <summary>Each script of a folder of Godot's own test scripts with Godot's findings in it as Passenger's analyzer gives
+    /// them, every warning on as Godot's test runner sets them, the folder's scripts one project: lines from 1.</summary>
+    private static object Warnings(string folder, GodotEngineApi api)
+    {
+        Dictionary<string, GDScriptTree> trees = new(StringComparer.Ordinal);
+        Dictionary<string, string> classNames = new(StringComparer.Ordinal);
+        string godot = Path.Combine(folder, "project.godot");
+        List<string> files = [];
+        if (File.Exists(godot))
+        {
+            Walk(folder, files);
+        }
+        else
+        {
+            files.AddRange(Directory.EnumerateFiles(folder, "*.gd").Order(StringComparer.Ordinal));
+        }
+        GDScriptWarningSettings? settings = File.Exists(godot) ? GDScriptWarningSettings.Of(File.ReadAllText(godot)) : null;
+        foreach (string file in files)
+        {
+            string res = "res://" + Path.GetRelativePath(folder, file).Replace('\\', '/');
+            GDScriptTree tree = GDScriptTree.Parse(File.ReadAllText(file));
+            trees[res] = tree;
+            if (tree.Class.Identifier is { } named)
+            {
+                classNames.TryAdd(named.Name, res);
+            }
+        }
+        GDScriptProject project = new(api, path => trees.GetValueOrDefault(path), classNames, new Dictionary<string, string>());
+        GDScriptAnalyzer analyzer = new(project);
+        return trees.Select(t =>
+        {
+            TextSnapshot text = TextSnapshot.From(t.Value.Text);
+            return new
+            {
+                path = t.Key,
+                found = analyzer.Analyze(t.Value, t.Key).Findings(settings ?? AsTested(t.Value.Text))
+                    .Select(f => new { line = text.GetLineFromOffset(Math.Min(f.Start, text.Length)) + 1, code = f.Code, message = f.Message }),
+            };
+        });
+    }
+
+    /// <summary>Every warning on, as Godot's test runner sets them, but the two of declarations' types, which a script turns
+    /// on by a comment (<c># enable UNTYPED_DECLARATION</c>).</summary>
+    private static GDScriptWarningSettings AsTested(string text) => GDScriptWarningSettings.Every with
+    {
+        Levels = GDScriptWarnings.Names.ToDictionary(n => n, n => n is "UNTYPED_DECLARATION" or "INFERRED_DECLARATION" && !text.Contains($"# enable {n}", StringComparison.Ordinal)
+            ? GDScriptWarnLevel.Ignore : GDScriptWarnLevel.Warn, StringComparer.Ordinal),
+    };
 
     private static void Walk(string folder, List<string> into)
     {
