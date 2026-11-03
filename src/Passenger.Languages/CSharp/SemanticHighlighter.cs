@@ -132,9 +132,14 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
     private void OnSyntaxChanged(object? sender, EventArgs e)
     {
         KeptColours = syntax.KeptColours;
+        ChangedWithin = syntax.ChangedWithin;
         Changed?.Invoke(this, EventArgs.Empty);
         KeptColours = false;
+        ChangedWithin = null;
     }
+
+    /// <summary>The parser's word of where its colours changed, while it is raised: the server's tokens are as they were.</summary>
+    public TextRange? ChangedWithin { get; private set; }
 
     /// <summary>The parser's word that it kept every colour it had given, while it is raised: the server's tokens are as
     /// they were.</summary>

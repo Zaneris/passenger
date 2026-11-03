@@ -613,6 +613,38 @@ public sealed partial class CodeEditor
             return view;
         }
 
+        /// <summary>Drops the views of a text's rows that a range of it reaches, so the next frame makes them again with the
+        /// colours they have now (a long one keeping its measure, letting go of its window); whether it dropped any.</summary>
+        public bool Drop(TextSnapshot snapshot, TextRange range)
+        {
+            if (!ReferenceEquals(text, snapshot))
+            {
+                return false;
+            }
+            scratch.Clear();
+            foreach (LineView view in byLine.Values)
+            {
+                if (view.Span.Start <= range.End && view.Span.EndIncludingBreak >= range.Start)
+                {
+                    scratch.Add(view);
+                }
+            }
+            foreach (LineView view in scratch)
+            {
+                if (view.Long is null)
+                {
+                    byLine.Remove(view.Span.Start);
+                }
+                else
+                {
+                    view.Text = null;
+                }
+            }
+            bool dropped = scratch.Count > 0;
+            scratch.Clear();
+            return dropped;
+        }
+
         /// <summary>Whether the lines in view of a text would take the colours they have from their highlighter now; if so
         /// they are kept as they are. A long line's window is never kept so.</summary>
         public bool Keep(TextSnapshot snapshot, Func<TextSnapshot, int, int, IReadOnlyList<SyntaxSpan>> colours)

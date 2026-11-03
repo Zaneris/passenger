@@ -433,6 +433,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
                     }
                     KeptColours = TakeLines(done.Result.Lines);
                     Changed?.Invoke(this, EventArgs.Empty);
+                    ChangedWithin = null;
                     if (parsedVersion == version)
                     {
                         Folds = done.Result.Folds.All;
@@ -465,7 +466,9 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
             Carry(read, spareLines, edits);
             (read, spareLines) = (spareLines, read);
         }
-        bool kept = linesWhole && linesVersion == version && Holds(read, lines);
+        bool whole = linesWhole && linesVersion == version;
+        ChangedWithin = whole ? Differing(read, lines) : null;
+        bool kept = whole && ChangedWithin is null;
         spareLines = lines;
         lines = read;
         linesVersion = version;
@@ -473,18 +476,26 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         return kept;
     }
 
-    /// <summary>Whether lines' colours read anew give every line given before its colours as they were.</summary>
-    private static bool Holds(Dictionary<int, (int Length, SyntaxSpan[] Spans)> read, Dictionary<int, (int Length, SyntaxSpan[] Spans)> given)
+    /// <summary>Where lines' colours read anew differ from those given before: from the first line given that reads
+    /// otherwise to the last; null where every line given reads as it was.</summary>
+    private static TextRange? Differing(Dictionary<int, (int Length, SyntaxSpan[] Spans)> read, Dictionary<int, (int Length, SyntaxSpan[] Spans)> given)
     {
+        int from = int.MaxValue;
+        int to = -1;
         foreach ((int start, (int Length, SyntaxSpan[] Spans) line) in given)
         {
             if (!read.TryGetValue(start, out (int Length, SyntaxSpan[] Spans) now) || now.Length != line.Length || !now.Spans.AsSpan().SequenceEqual(line.Spans))
             {
-                return false;
+                from = Math.Min(from, start);
+                to = Math.Max(to, start + line.Length);
             }
         }
-        return true;
+        return to < 0 ? null : TextRange.FromBounds(from, to);
     }
+
+    /// <summary>While <see cref="Changed"/> is raised, the lines given before whose colours the landing parse read
+    /// otherwise; null where it does not know them all.</summary>
+    public TextRange? ChangedWithin { get; private set; }
 
     /// <summary>Whether the parse that last landed gave every line it had given colours to the colours it had: the lines
     /// drawn with them stand.</summary>

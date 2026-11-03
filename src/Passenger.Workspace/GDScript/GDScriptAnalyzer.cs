@@ -222,21 +222,12 @@ public sealed partial class GDScriptAnalyzer
         return "res://" + string.Join('/', parts);
     }
 
-    private GDScriptType? InnerClass(GDScriptType owner, string name)
+    private GDScriptType? InnerClass(GDScriptType owner, string name) => OwnNames(owner).TryGetValue(name, out (GDScriptNode Node, int Offset) named) ? named.Node switch
     {
-        foreach ((GDScriptNode node, int offset) in OwnMembers(owner))
-        {
-            if (node is GDScriptClass { Identifier.Name: var named } inner && named == name)
-            {
-                return new GDScriptType(GDScriptTypeKind.Class, name) { Class = inner, Script = owner.Script, Offset = offset, Meta = true };
-            }
-            if (node is GDScriptEnum { Identifier.Name: var enumName } named2 && enumName == name)
-            {
-                return EnumType(named2, owner, meta: true);
-            }
-        }
-        return null;
-    }
+        GDScriptClass { Identifier: not null } inner => new GDScriptType(GDScriptTypeKind.Class, name) { Class = inner, Script = owner.Script, Offset = named.Offset, Meta = true },
+        GDScriptEnum { Identifier: not null } enumerated => EnumType(enumerated, owner, meta: true),
+        _ => null,
+    } : null;
 
     private static GDScriptType EnumType(GDScriptEnum node, GDScriptType owner, bool meta)
     {
@@ -267,12 +258,9 @@ public sealed partial class GDScriptAnalyzer
             {
                 break;
             }
-            foreach ((GDScriptNode node, int offset) in OwnMembers(at))
+            if (OwnNames(at).TryGetValue(name, out (GDScriptNode Node, int Offset) named) && ScriptMember(named.Node, named.Offset, name, at) is { } found)
             {
-                if (ScriptMember(node, offset, name, at) is { } found)
-                {
-                    return found;
-                }
+                return found;
             }
         }
         return null;

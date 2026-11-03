@@ -818,13 +818,32 @@ public sealed partial class CodeEditor : Control
 
     private void OnHighlighterChanged(object? sender, EventArgs e)
     {
-        coloursMoved |= highlighter is not { KeptColours: true };
+        if (highlighter is not { KeptColours: true })
+        {
+            coloursMoved = true;
+            TextSnapshot now = document.Snapshot;
+            if (highlighter?.ChangedWithin is { } range && !coloursMovedAll && (coloursMovedIn is null || ReferenceEquals(coloursMovedIn, now)))
+            {
+                coloursMovedWithin = coloursMovedWithin is { } was ? TextRange.FromBounds(Math.Min(was.Start, range.Start), Math.Max(was.End, range.End)) : range;
+                coloursMovedIn = now;
+            }
+            else
+            {
+                coloursMovedAll = true;
+            }
+        }
         Dispatcher.UIThread.Post(Recolour);
     }
 
     /// <summary>Whether the highlighter has been changed since the last <see cref="Recolour"/> without saying it kept every
     /// colour it had given.</summary>
     private bool coloursMoved;
+
+    /// <summary>Where those changes said their colours may differ, in the text they were raised in (<see cref="coloursMovedIn"/>),
+    /// unless one did not say (<see cref="coloursMovedAll"/>).</summary>
+    private TextRange? coloursMovedWithin;
+    private TextSnapshot? coloursMovedIn;
+    private bool coloursMovedAll;
 
     /// <summary>New colours for the same text: the lines are formatted again, each found again if its colours stayed. When
     /// the lines drawn keep every colour they have (a parse that finds what a key carried them to, or that says so), nothing
@@ -836,8 +855,25 @@ public sealed partial class CodeEditor : Control
             RedrawChanged();
         }
         bool moved = coloursMoved;
+        TextRange? within = coloursMovedAll || !ReferenceEquals(coloursMovedIn, document.Snapshot) ? null : coloursMovedWithin;
         coloursMoved = false;
-        if (!moved || views.Keep(document.Snapshot, Colours))
+        coloursMovedWithin = null;
+        coloursMovedIn = null;
+        coloursMovedAll = false;
+        if (!moved)
+        {
+            return;
+        }
+        if (within is { } range)
+        {
+            // Only the rows the change reached are made again, their colours asked anew; the rest stand as drawn.
+            if (views.Drop(document.Snapshot, range))
+            {
+                RedrawChanged();
+            }
+            return;
+        }
+        if (views.Keep(document.Snapshot, Colours))
         {
             return;
         }

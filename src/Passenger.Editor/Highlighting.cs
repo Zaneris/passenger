@@ -127,6 +127,11 @@ public interface IHighlighter
     /// <summary>Whether what <see cref="Changed"/> was last raised for left every colour already given for whole lines of
     /// the text as it stands as it was given (a parse that read them the same), so the lines drawn with them stand.</summary>
     bool KeptColours => false;
+
+    /// <summary>While <see cref="Changed"/> is raised, where in the text as it stands the colours it was raised for may
+    /// differ from those given before (the lines a parse read anew): rows outside it keep theirs and ask for none, so a
+    /// change costs the rows it reached. Null where that is not known, so any row may have changed.</summary>
+    TextRange? ChangedWithin => null;
 }
 
 /// <summary>A highlighter that knows its language's brackets, which the editor highlights in pairs at the caret and Move

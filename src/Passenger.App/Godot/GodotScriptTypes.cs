@@ -47,7 +47,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
 
     /// <summary>A script's types for a version of its text: its tree, its analysis, and the analyzer that read them.</summary>
     public sealed record Typed(int Version, GDScriptTree Tree, GDScriptAnalysis Analysis, GDScriptAnalyzer Analyzer, string Text, HintList Hints,
-        IReadOnlyList<GDScriptFinding> Findings, SyntaxSpan[] Colours, bool ColoursDiffer);
+        IReadOnlyList<GDScriptFinding> Findings, SyntaxSpan[] Colours, TextRange? ColoursDiffer);
 
     public static bool IsScript(string path) => GodotScriptDeclarations.IsScript(path);
 
@@ -227,7 +227,9 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
             GDScriptWarningSettings settings = GDScriptWarningSettings.Of(scenes?.Texts.GetValueOrDefault("res://" + GodotProject.FileName));
             IReadOnlyList<GDScriptFinding> findings = [.. analysis.Findings(settings).Where(f => f.End <= text.Length)];
             SyntaxSpan[] colours = [.. analysis.Colours().Select(c => new SyntaxSpan(c.Start, c.Length, KindOf(c.Colour)))];
-            bool differ = !Languages.ColourLayer.Same(coloured, made is { } carried ? [carried] : [], colours);
+            // Read whole with no edit to carry the last through, every name may differ.
+            TextRange? differ = made is null && text != treeText ? TextRange.FromBounds(0, text.Length)
+                : Languages.ColourLayer.Differing(coloured, made is { } carried ? [carried] : [], colours);
             return (Typed?)new Typed(version, parsed, analysis, analyzer, text, hints, findings, colours, differ);
         });
     }

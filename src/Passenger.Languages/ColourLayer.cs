@@ -7,7 +7,8 @@ namespace Passenger.Languages;
 /// <summary>Colours of what names are (a member, a local, a class), read elsewhere for a version of the text and given
 /// here (<see cref="Set"/>), over a grammar's colours, which they replace where they reach. Those given are carried
 /// through every edit made since, as a range is drawn, so they never lag a key nor flash plain; a set that says what is
-/// already shown, carried, raises nothing, so the rows drawn stand and a key costs what it changed. A UI-thread object.</summary>
+/// already shown, carried, raises nothing, and one that differs says where, so only the rows it reached are drawn again
+/// and a key costs what it changed. A UI-thread object.</summary>
 public sealed class ColourLayer : IHighlighter, IBraceMatcher, IDisposable
 {
     private readonly IHighlighter syntax;
@@ -42,10 +43,11 @@ public sealed class ColourLayer : IHighlighter, IBraceMatcher, IDisposable
     /// <summary>The grammar's word that it kept every colour it had given, while it is raised.</summary>
     public bool KeptColours { get; private set; }
 
-    /// <summary>Colours read for a version of the text, in order of their starts, and whether they differ from those
-    /// given before as the edits since carry them (<see cref="Same"/>, worked out where they were read); ignored where of
-    /// an older version than those shown. Raises <see cref="Changed"/> only where they differ.</summary>
-    public void Set(SyntaxSpan[] colours, int at, bool differs)
+    /// <summary>Colours read for a version of the text, in order of their starts, and where they differ from those given
+    /// before as the edits since carry them (<see cref="Differing"/>, worked out where they were read; null, the same);
+    /// ignored where of an older version than those shown. Raises <see cref="Changed"/> only where they differ, saying
+    /// where (<see cref="ChangedWithin"/>) where nothing has been typed since they were read.</summary>
+    public void Set(SyntaxSpan[] colours, int at, TextRange? differ)
     {
         if (at < version || at > document.Version)
         {
@@ -60,20 +62,45 @@ public sealed class ColourLayer : IHighlighter, IBraceMatcher, IDisposable
             done++;
         }
         history.RemoveRange(0, done);
-        if (differs)
+        if (differ is { } range)
         {
+            ChangedWithin = history.Count == 0 ? range : null;
             Changed?.Invoke(this, EventArgs.Empty);
+            ChangedWithin = null;
         }
     }
 
-    /// <summary>Whether colours given for a text, carried through the edits that made another (sorted, in the first's
-    /// text), say what colours read for the other say. Pure, for any thread.</summary>
-    public static bool Same(SyntaxSpan[] before, IReadOnlyList<TextEdit> edits, SyntaxSpan[] after)
+    /// <summary>Where colours given for a text, carried through the edits that made another (sorted, in the first's text),
+    /// differ from colours read for the other: from the first that differs to the last, in the other's text; null where
+    /// none does. Pure, for any thread.</summary>
+    public static TextRange? Differing(SyntaxSpan[] before, IReadOnlyList<TextEdit> edits, SyntaxSpan[] after)
     {
         List<SyntaxSpan> carried = [.. before];
         CarriedSpans.Forward(carried, edits, Word);
-        return carried.Count == after.Length && System.Runtime.InteropServices.CollectionsMarshal.AsSpan(carried).SequenceEqual(after);
+        int low = 0;
+        while (low < carried.Count && low < after.Length && carried[low] == after[low])
+        {
+            low++;
+        }
+        if (low == carried.Count && low == after.Length)
+        {
+            return null;
+        }
+        int high = carried.Count - 1;
+        int highAfter = after.Length - 1;
+        while (high >= low && highAfter >= low && carried[high] == after[highAfter])
+        {
+            high--;
+            highAfter--;
+        }
+        int start = Math.Min(low < carried.Count ? carried[low].Start : int.MaxValue, low < after.Length ? after[low].Start : int.MaxValue);
+        int end = Math.Max(high >= low ? carried[high].End : 0, highAfter >= low ? after[highAfter].End : 0);
+        return TextRange.FromBounds(start, Math.Max(start, end));
     }
+
+    /// <summary>While <see cref="Changed"/> is raised, where the colours it was raised for differ: the names' that changed,
+    /// or the grammar's own range.</summary>
+    public TextRange? ChangedWithin { get; private set; }
 
     public IReadOnlyList<SyntaxSpan> GetSpans(TextSnapshot text, int start, int length)
     {
@@ -168,8 +195,10 @@ public sealed class ColourLayer : IHighlighter, IBraceMatcher, IDisposable
     private void OnSyntaxChanged(object? sender, EventArgs e)
     {
         KeptColours = syntax.KeptColours;
+        ChangedWithin = syntax.ChangedWithin;
         Changed?.Invoke(this, EventArgs.Empty);
         KeptColours = false;
+        ChangedWithin = null;
     }
 
     private void OnTextChanged(object? sender, DocumentChangedEventArgs e)

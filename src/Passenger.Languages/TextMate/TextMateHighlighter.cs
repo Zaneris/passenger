@@ -209,7 +209,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
                     Failed?.Invoke(this, Failure);
                     return;
                 }
-                Show(done.Result, text, passVersion);
+                Show(done.Result.Lines, text, passVersion, done.Result.Read);
                 Tokenize();
             }
             finally
@@ -222,7 +222,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     /// <summary>Reads the lines of <paramref name="text"/> from <paramref name="first"/> on, with the state the line above
     /// ended in, until a line ends in the state its old line did with only unchanged lines after it (the last
     /// <paramref name="tail"/> lines are those of <paramref name="old"/>'s text), and takes the rest from the old table.</summary>
-    private LineTable Pass(LineTable? old, TextSnapshot text, int first, int tail, int passVersion)
+    private (LineTable Lines, (int From, int To)? Read) Pass(LineTable? old, TextSnapshot text, int first, int tail, int passVersion)
     {
         long began = Stopwatch.GetTimestamp();
         Tokenizer rules = grammar.Rules;
@@ -287,13 +287,14 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
                 partial.AddRange(soFar, 0, soFar.Count);
                 Rest(partial, line);
                 LineTable progress = partial.Build(line);
-                OnUi(() => Show(progress, text, passVersion));
+                OnUi(() => Show(progress, text, passVersion, null));
                 shown = Stopwatch.GetTimestamp();
             }
         }
         Interlocked.Increment(ref passes);
         Interlocked.Add(ref workTicks, Stopwatch.GetTimestamp() - began);
-        return built.Build(staleFrom);
+        // The lines read, which alone may have taken other colours, unless the pass stopped short of where they converge.
+        return (built.Build(staleFrom), staleFrom == count && old is not null ? (first, line) : null);
 
         // Whether the line before next, past those that changed, ends as its old line did: the rest then the old table's.
         bool Converged(int next)
@@ -320,8 +321,9 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         }
     }
 
-    /// <summary>Takes a pass's colours, of <paramref name="text"/>, as the newest, and asks for the lines to be drawn again.</summary>
-    private void Show(LineTable lines, TextSnapshot text, int passVersion)
+    /// <summary>Takes a pass's colours, of <paramref name="text"/>, as the newest, and asks for the lines to be drawn again:
+    /// those it read alone (<paramref name="read"/>, lines from and to) where nothing has been typed since.</summary>
+    private void Show(LineTable lines, TextSnapshot text, int passVersion, (int From, int To)? read)
     {
         if (disposed)
         {
@@ -330,8 +332,15 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         table = lines;
         tableText = text;
         since.RemoveAll(batch => batch.Version <= passVersion);
+        ChangedWithin = read is ({ } from, { } to) && since.Count == 0 && ReferenceEquals(text, document.Snapshot)
+            ? TextRange.FromBounds(text.GetLineStart(Math.Min(from, text.LineCount - 1)), to < text.LineCount ? text.GetLineStart(to) : text.Length)
+            : null;
         Changed?.Invoke(this, EventArgs.Empty);
+        ChangedWithin = null;
     }
+
+    /// <summary>While <see cref="Changed"/> is raised, the lines the pass read anew, where they alone may have changed.</summary>
+    public TextRange? ChangedWithin { get; private set; }
 
     /// <summary>One line's colours and the state it ends in, reusing the pass's buffer between lines. A line read past
     /// <paramref name="limit"/> is read once more, its grammar's patterns now parsed; past it again, it keeps the colours
