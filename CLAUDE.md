@@ -36,11 +36,12 @@ just mcp-call FOLDER TOOL [JSON]  # one MCP tool over a folder (a worktree) from
 just site-shots [SCENE...] # site/images/<scene>-<dark|light>.webp retaken (macOS, cwebp)
 just godot-sweep [NAME...] # tools/godot-projects.json's Godot projects swept by a headless Passenger (report.md),
                            # cloned outside any repository, whose Directory.*.props MSBuild would take in
-just icons | file-icons | themes | unicode-widths | aspire-protocol | app-icon | godot-shader-types  # regenerate
+just icons | file-icons | themes | unicode-widths | aspire-protocol | app-icon  # regenerate
+just godot-shader-types | godot-theme                                          # regenerate
 ```
 
-The app icons, generated themes, icon sets, terminal widths, Aspire's protocol code and Godot's shader table come only
-from their recipes.
+The app icons, generated themes, icon sets, terminal widths, Aspire's protocol code, and Godot's shader table and
+default theme come only from their recipes.
 
 **Use Passenger on itself.** `.mcp.json` starts Passenger's MCP server over this repository (`tools/mcp.sh`, an APFS
 clone of the last Debug build: reconnect to pick up a new one). Ask Roslyn with `diagnostics`, `find_symbol`, `outline`
@@ -380,10 +381,13 @@ Projects in `src/`; `find_symbol` finds the rest:
   (`CSharpService.GodotProjectsChanged`). A Godot shader is `GodotShaderAssist` over Workspace's `GodotShaderCode`, its
   language the carried `GodotShaderTypes.json` as the Godot found takes it (`GodotShaderCompiler.TableAsync`, probed per
   version), its marks Godot's own compiler's through `PassengerShaders.gd` (`GodotShaderMarks`; a scene's own Shader's
-  in `GodotSceneMarks` through `GodotStringPlaces`). Edits added to a server's workspace edit for a file it already
-  edits join that file's entry (`TypeRename.With`): `documentChanges` apply in order. A server's own command
-  (TypeScript's refactorings, ESLint's fixes) runs through `ServerCommands`, the edits it sends back
-  (`workspace/applyEdit`) one command of Undo.
+  in `GodotSceneMarks` through `GodotStringPlaces`). A theme item's name is read through `GodotThemeTable` (the carried
+  `GodotDefaultTheme.json`, `just godot-theme`) and the project's themes (`GodotDefinitions.ThemeItems`), and the
+  person's open Godot editor is asked through its IDE messaging server (`GodotIdeLink` over Workspace's
+  `GodotIdeMessaging` and `GodotIdeClient`), never Passenger's own headless editors (`GodotScripts.Headless`). Edits
+  added to a server's workspace edit for a file it already edits join that file's entry (`TypeRename.With`):
+  `documentChanges` apply in order. A server's own command (TypeScript's refactorings, ESLint's fixes) runs through
+  `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
   `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
@@ -623,13 +627,15 @@ site-shots` retakes its images.
   project (`GodotExecutables.NamesGodot`: Chickensoft's `%GODOT%`) is the game's configuration
   (`RunConfiguration.NamesGodot`), its `--path` the launch's (`WithoutPath`). A macOS export of an arm64 or universal
   game refuses a project without `textures/vram_compression/import_etc2_astc`. Its .NET host rolls forward only to
-  released runtimes, so a new game's framework is one it can run (`GodotGames.Runnable`). GodotTools' `_Build` runs
-  before any addon's, so Passenger's addon sets its `SkipBuildBeforePlaying` while Passenger builds; a game the editor's
-  Play starts inherits the editor's environment, names its editor by `--editor-pid`, is headless under a headless editor
-  only through `editor/run/main_run_args`, and on Windows writes nothing to the editor's stdout; an
-  `EditorDebuggerPlugin` never captures Godot's own messages, which `ScriptEditorDebugger`'s `debug_data` gives. An
-  agent's input and layout reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live
-  editing; `PassengerTools.Godot.cs`).
+  released runtimes, so a new game's framework is one it can run (`GodotGames.Runnable`). Its IDE messaging's C# list of
+  completion kinds has no font sizes, a kind's number passing to the engine's own (9 font sizes, 10 styleboxes), so
+  Passenger sends the engine's; an editor importing as it opens answers no handshake until it is done (`GodotIdeLink`
+  tries again after 10 s). GodotTools' `_Build` runs before any addon's, so Passenger's addon sets its
+  `SkipBuildBeforePlaying` while Passenger builds; a game the editor's Play starts inherits the editor's environment,
+  names its editor by `--editor-pid`, is headless under a headless editor only through `editor/run/main_run_args`, and
+  on Windows writes nothing to the editor's stdout; an `EditorDebuggerPlugin` never captures Godot's own messages, which
+  `ScriptEditorDebugger`'s `debug_data` gives. An agent's input and layout reach a game through Passenger's helper node
+  (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
