@@ -235,7 +235,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             return (IReadOnlyList<Finding>)[.. marked.Markers.Where(m => m.Kind is MarkerKind.Error or MarkerKind.Warning).Select(m =>
             {
                 TextPosition at = text.GetPosition(Math.Min(m.Range.Start, text.Length));
-                return new Finding(m.Kind == MarkerKind.Error ? "error" : "warning", null, m.Message, Relative(marked.Path), at.Line + 1, at.Column + 1);
+                return new Finding(m.Kind == MarkerKind.Error ? "error" : "warning", m.Code, m.Said, Relative(marked.Path), at.Line + 1, at.Column + 1);
             }), .. missing];
         }
         (OpenDocument document, LspDocument lsp) = await Code(path, cancel);

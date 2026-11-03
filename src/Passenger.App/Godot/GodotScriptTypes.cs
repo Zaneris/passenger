@@ -258,8 +258,8 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         {
             return;
         }
-        Marker[] marks = [.. findings.Select(f => new Marker(TextRange.FromBounds(f.Start, f.End), f.IsError ? MarkerKind.Error : MarkerKind.Warning,
-            f.Code is { } code && !f.IsError ? $"{code}: {f.Message}" : f.Message))];
+        Marker[] marks = [.. findings.Select(f => Marker.Coded(TextRange.FromBounds(f.Start, f.End), f.IsError ? MarkerKind.Error : MarkerKind.Warning,
+            f.IsError ? null : f.Code, f.Message))];
         if (marks.AsSpan().SequenceEqual(shown is Marker[] array ? array : [.. shown]))
         {
             return;

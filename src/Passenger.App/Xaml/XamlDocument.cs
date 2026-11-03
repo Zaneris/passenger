@@ -219,8 +219,7 @@ public sealed class XamlDocument : IDisposable
             LineSpan line = text.GetLine(problem.Position.Line);
             int start = line.Start + Math.Min(problem.Position.Column, line.Length);
             TextRange range = WordAt(text, start, line);
-            string code = problem.Code is { Length: > 0 } c ? $"{c}: " : string.Empty;
-            found.Add(new BuiltMarker(new Marker(range, problem.Severity == ProblemSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, code + Plain(problem.Message))
+            found.Add(new BuiltMarker(Marker.Coded(range, problem.Severity == ProblemSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, problem.Code, Plain(problem.Message)) with
             {
                 StartGravity = AnchorGravity.After,
             }, problem.Framework));

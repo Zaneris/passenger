@@ -517,9 +517,11 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         Assert.Equal("Notes (heading, line 1)\n  Building (heading, line 5)\n    On macOS (heading, line 11)\n  Running (heading, line 13)", outline);
     }
 
-    /// <summary>A file's errors and warnings as diagnostics lists them, each as "line: message".</summary>
+    /// <summary>A file's errors and warnings as diagnostics lists them, each as "line: message", its code before the
+    /// message where it has one ("1: TS2322: Type…").</summary>
     private static string[] Problems(JsonElement found) =>
-        [.. found.EnumerateArray().Select(d => $"{d.GetProperty("line").GetInt32()}: {d.GetProperty("message").GetString()}")];
+        [.. found.EnumerateArray().Select(d => $"{d.GetProperty("line").GetInt32()}: "
+            + $"{(d.GetProperty("code") is { ValueKind: JsonValueKind.String } code ? $"{code.GetString()}: " : string.Empty)}{d.GetProperty("message").GetString()}")];
 
     /// <summary>A folder of the test's own, written by <paramref name="write"/>, removed with the test.</summary>
     private string Made(string name, Action<string> write)

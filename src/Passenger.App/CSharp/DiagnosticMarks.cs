@@ -30,8 +30,7 @@ internal static class DiagnosticMarks
         {
             return null;
         }
-        string code = diagnostic.Code is { Length: > 0 } c ? $"{c}: " : string.Empty;
-        return new Marker(range, k, code + diagnostic.Message);
+        return Editor.Marker.Coded(range, k, diagnostic.Code, diagnostic.Message);
     }
 
     /// <summary>What a severity draws as: errors, warnings and information squiggled, the server's quieter hints left off
