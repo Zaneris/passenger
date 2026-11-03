@@ -104,10 +104,13 @@ App and the tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collecti
   unlabelled DCP containers and network are recorded in `AspireContainerOwnership` and ended the same way; persistent
   containers and the person's own never are.
 - **Colours are tokens** (`Passenger.*` in `Theme/Tokens.axaml`), given in every theme (dark and light, `Harbour.axaml`
-  and each look `just themes` writes); Fluent's keys are mapped once in `Theme/FluentKeys.axaml`. UiRulesTests fails on
-  a colour or non-zero CornerRadius written outside `Theme/` (but the content's own) and on an unmapped Fluent key.
-  Passenger gives no access keys: `Shell.axaml`'s ContentPresenter style shows words as written (a name's underscores
-  whole), and a native menu item's words go through `MainWindow.NativeWords`.
+  and each look `just themes` writes); Fluent's keys are mapped once in `Theme/FluentKeys.axaml`. The window's typeface
+  in force is the resource `WindowFonts.Key` (Settings › Appearance, the carried hinted Inter by default), Fluent's
+  `ContentControlThemeFontFamily` mapped to it, and a control drawing its own words takes `TextElement.GetFontFamily`,
+  never a named family (UiRulesTests); `CodeFonts.Key` is the code's. UiRulesTests fails on a colour or non-zero
+  CornerRadius written outside `Theme/` (but the content's own) and on an unmapped Fluent key. Passenger gives no access
+  keys: `Shell.axaml`'s ContentPresenter style shows words as written (a name's underscores whole), and a native menu
+  item's words go through `MainWindow.NativeWords`.
 - **An identifier is named from its home** (`[IdentifierHome]`: action and tool window ids, DAP and LSP names,
   `McpTools`, each `PASSENGER_` variable's const, the theme's keys as `TokenKeys` and `IconKeys` and its styles' classes
   as `StyleClasses`, generated from their XAML): PSG0001 (`src/Passenger.Analyzers`, every rule's id and words in
@@ -670,14 +673,15 @@ site-shots` retakes its images.
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
   with unread input resets it, losing what was written (servers shut their side and drain first); the diagnostics library
   leaves a profiler pipe open after its listener goes (`ProfilingSession.CloseLeftListener` closes it, by reflection).
-- **macOS**: Chrome waits for good on the person's keychain where HOME has none, so `BrowserRun` passes
-  `--use-mock-keychain`; a hardened-runtime program without `get-task-allow` (Godot's release build) can be dumped by no
-  one, so a heap snapshot of it is refused up front (`DotnetProcesses.WhyUnreadable`); a variadic libc call through
-  P/Invoke (`fcntl`, `ioctl` with an argument) loses its variadic arguments on arm64 (`Descriptors.CloseOnExec`), and
-  `poll` never says a named pipe's writer has gone (`select`); a Unix socket path holds 104 bytes; `codesign` takes a
-  dotted folder under `Contents/MacOS` for a bundle (so the web servers live in Resources); TMPDIR is reached through
-  the /var link, so a build or restore of a test's project goes by its real path, and two spellings of one project
-  restored at once collide.
+- **macOS**: Avalonia's `SystemFonts` lists the hidden `.AppleSystemUIFont` only once something has loaded it, and
+  `TryGetGlyphTypeface` answers an unknown name with Helvetica, so `WindowFonts` checks the face it gets; Chrome waits
+  for good on the person's keychain where HOME has none, so `BrowserRun` passes `--use-mock-keychain`; a
+  hardened-runtime program without `get-task-allow` (Godot's release build) can be dumped by no one, so a heap snapshot
+  of it is refused up front (`DotnetProcesses.WhyUnreadable`); a variadic libc call through P/Invoke (`fcntl`, `ioctl`
+  with an argument) loses its variadic arguments on arm64 (`Descriptors.CloseOnExec`), and `poll` never says a named
+  pipe's writer has gone (`select`); a Unix socket path holds 104 bytes; `codesign` takes a dotted folder under
+  `Contents/MacOS` for a bundle (so the web servers live in Resources); TMPDIR is reached through the /var link, so a
+  build or restore of a test's project goes by its real path, and two spellings of one project restored at once collide.
 - **.NET's watcher on macOS passes over FSEvents' word that it dropped events** (`MustScanSubDirs|UserDropped` arrive on
   the watched folder itself, which it skips; dotnet/runtime#136577), so a folder is watched only through `WatchedTree`
   (the folder's watcher, each of `ServerWatches`' and Git's folders outside it, `GitWatcher`), never a bare
