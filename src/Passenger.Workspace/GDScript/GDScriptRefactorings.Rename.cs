@@ -20,9 +20,10 @@ public static partial class GDScriptRefactorings
     }
 
     /// <summary>Rename of a member of a script's class: its declaration, each name resolved to it and each string a call
-    /// names it by, in every script. Refused where the name is no GDScript name or the class has a member of it already,
-    /// the member is Godot's own (<c>_ready</c>), a script it extends or that extends it declares a function of its name,
-    /// or a place may use it where Passenger can't see whose member it reads (<see cref="GDScriptUses.Unsure"/>).</summary>
+    /// names it by, in every script, a function's overrides with it (<see cref="FamilyOf"/>). Refused where the name is no
+    /// GDScript name or a class it renames in, or one built on them or they on it, has a member of it, the member is
+    /// Godot's own (<c>_ready</c>, an engine class's), or a place may use it where Passenger can't see whose member it
+    /// reads (<see cref="GDScriptUses.Unsure"/>).</summary>
     public static GDScriptRefactored Rename(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target, string name)
     {
         if (WhyNotName(name) is { } bad)
@@ -33,29 +34,44 @@ public static partial class GDScriptRefactorings
         {
             return GDScriptRefactored.No($"'{name}' is its name already");
         }
+        GDScriptRead own = scripts.First(s => s.Script == target.Script);
         if (target.Node is GDScriptFunction && Virtuals.Contains(target.Named))
         {
             return GDScriptRefactored.No($"'{target.Named}' is Godot's own, which Godot calls by its name");
         }
-        GDScriptRead own = scripts.First(s => s.Script == target.Script);
-        if (own.Tree.Members.Any(m => NameOf(m.Node) == name))
+        if (target.Node is GDScriptFunction && EngineDeclaring(own, target.Named) is ({ } engineClass, bool isVirtual))
         {
-            return GDScriptRefactored.No($"the script already has a member '{name}'");
+            return GDScriptRefactored.No($"'{target.Named}' overrides {engineClass}'s own{(isVirtual ? ", which Godot calls by its name" : string.Empty)}");
         }
-        GDScriptUses uses = UsesOf(scripts, target);
-        List<GDScriptPlace> blocking = [.. target.Node is GDScriptFunction ? Overriding(scripts, own, target.Named) : [], .. uses.Unsure];
+        IReadOnlyList<GDScriptTarget> family = FamilyOf(scripts, target);
+        foreach (GDScriptTarget member in family)
+        {
+            if (scripts.First(s => s.Script == member.Script).Tree.Members.Any(m => NameOf(m.Node) == name))
+            {
+                return GDScriptRefactored.No(member.Script == target.Script ? $"the script already has a member '{name}'" : $"{member.Script} already has a member '{name}'");
+            }
+        }
+        if (Related(scripts, scripts.First(s => s.Script == family[0].Script)).FirstOrDefault(s => s.Tree.Members.Any(m => NameOf(m.Node) == name)) is { } taken)
+        {
+            return GDScriptRefactored.No($"{taken.Script} declares a '{name}' too, in a class built on this one or that this one is built on");
+        }
+        List<GDScriptUses> found = [.. family.Select(member => UsesOf(scripts, member))];
+        List<GDScriptPlace> blocking = [.. found.SelectMany(u => u.Unsure).Distinct()];
         if (blocking.Count > 0)
         {
             return GDScriptRefactored.No($"Rename can't see every use of '{target.Named}' ({Places(blocking)})", blocking);
         }
         Dictionary<string, List<TextEdit>> edits = new(StringComparer.Ordinal);
         void Edit(string script, int start, int length) => (edits.TryGetValue(script, out List<TextEdit>? list) ? list : edits[script] = []).Add(new TextEdit(start, length, name));
-        Edit(target.Script, target.Start, target.Named.Length);
-        foreach (GDScriptUses.Use use in uses.Names)
+        foreach (GDScriptTarget member in family)
+        {
+            Edit(member.Script, member.Start, member.Named.Length);
+        }
+        foreach (GDScriptUses.Use use in found.SelectMany(u => u.Names))
         {
             Edit(use.Script.Script, use.Offset + use.Name.Start, use.Name.End - use.Name.Start);
         }
-        foreach (GDScriptUses.Named named in uses.Strings)
+        foreach (GDScriptUses.Named named in found.SelectMany(u => u.Strings))
         {
             // The string's characters between its quotes, past a StringName's or NodePath's mark.
             string text = named.Script.Text;
@@ -69,12 +85,49 @@ public static partial class GDScriptRefactorings
         return new GDScriptRefactored([.. edits.Select(e => new GDScriptEdits(e.Key, [.. e.Value.DistinctBy(t => t.Start).OrderBy(t => t.Start)]))], null, []);
     }
 
-    /// <summary>The functions of a name in the scripts a script extends or that extend it, which override it or are
-    /// overridden by it, so a rename of it would part them.</summary>
-    private static IEnumerable<GDScriptPlace> Overriding(IReadOnlyList<GDScriptRead> scripts, GDScriptRead own, string name) =>
-        scripts.Where(s => s.Script != own.Script && (Extends(scripts, s, own.Script) || Extends(scripts, own, s.Script)))
-            .SelectMany(s => s.Tree.Members.Where(m => m.Node is GDScriptFunction f && f.Identifier?.Name == name)
-                .Select(m => new GDScriptPlace(s.Script, m.Start, m.End, $"declares a '{name}' too, which overrides it or it overrides")));
+    /// <summary>A function and the functions of its name it overrides or that override it: the farthest of the scripts it is
+    /// built on that declares it, then every script built on that one declaring it too, as each overrides the one above;
+    /// any other member alone.</summary>
+    public static IReadOnlyList<GDScriptTarget> FamilyOf(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target)
+    {
+        if (target.Node is not GDScriptFunction)
+        {
+            return [target];
+        }
+        GDScriptRead own = scripts.First(s => s.Script == target.Script);
+        GDScriptRead root = own;
+        foreach (GDScriptType built in own.Analysis.Lineage.Skip(1))
+        {
+            if (scripts.FirstOrDefault(s => s.Script == built.Script) is { Analysis.Lineage: [{ } its, ..] } above && SameClass(its, built) && FunctionNamed(above, target.Named) is not null)
+            {
+                root = above;
+            }
+        }
+        List<GDScriptTarget> family = [FunctionNamed(root, target.Named)!];
+        foreach (GDScriptRead below in scripts)
+        {
+            if (below != root && Extends(scripts, below, root.Script) && FunctionNamed(below, target.Named) is { } overriding)
+            {
+                family.Add(overriding);
+            }
+        }
+        return family;
+    }
+
+    /// <summary>A script's own function of a name, as a target; null where its class declares none.</summary>
+    private static GDScriptTarget? FunctionNamed(GDScriptRead script, string name) =>
+        script.Tree.Members.Where(m => m.Node is GDScriptFunction { Identifier: { } n } && n.Name == name)
+            .Select(m => new GDScriptTarget(script.Script, m.Node, m.Offset, ((GDScriptFunction)m.Node).Identifier!)).FirstOrDefault();
+
+    /// <summary>The scripts a script is built on and those built on it.</summary>
+    private static IEnumerable<GDScriptRead> Related(IReadOnlyList<GDScriptRead> scripts, GDScriptRead root) =>
+        scripts.Where(s => s != root && (Extends(scripts, s, root.Script) || Extends(scripts, root, s.Script)));
+
+    /// <summary>The engine class a script is built on that declares a method of a name, which a function of it overrides,
+    /// and whether Godot calls it (a virtual); null for none.</summary>
+    private static (string Class, bool Virtual)? EngineDeclaring(GDScriptRead script, string name) =>
+        script.Analysis.Engine is { } engine && script.Analysis.Lineage.FirstOrDefault(t => t.Kind == GDScriptTypeKind.Native) is { } native
+            && engine.Chain(native.Name).FirstOrDefault(c => c.Methods.ContainsKey(name)) is { } declaring ? (declaring.Name, declaring.Methods[name].IsVirtual) : null;
 
     /// <summary>Whether a script's class extends another script, by its path or its class_name, through the scripts between.</summary>
     private static bool Extends(IReadOnlyList<GDScriptRead> scripts, GDScriptRead from, string script)

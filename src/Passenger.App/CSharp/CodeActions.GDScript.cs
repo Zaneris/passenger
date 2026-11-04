@@ -272,7 +272,7 @@ internal sealed partial class CodeActions
         foreach (IGrouping<string, (string Path, IReadOnlyList<LspTextEdit> Edits)> file in beside.GroupBy(b => b.Path, PathNames.Comparer))
         {
             string path = file.Key;
-            List<LspTextEdit> edits = [.. file.SelectMany(f => f.Edits)];
+            List<LspTextEdit> edits = [.. file.SelectMany(f => f.Edits).DistinctBy(e => e.Range)];
             changes.Add(new XamlFileChange(path, text =>
             {
                 ServerLines lines = ServerLines.Of(TextSnapshot.From(text));
@@ -311,7 +311,11 @@ internal sealed partial class CodeActions
             made = GDScriptRefactorings.Rename(scripts, target, name);
             if (made.Refused is null && folder is not null)
             {
-                beside.AddRange(await BesideAsync(document, folder, target, d => context.Languages.CSharp.GodotScriptRenameAsync(d, target.Start, name)));
+                // An override's family renames together, each declaration's scenes and C# with it.
+                foreach (GDScriptTarget member in GDScriptRefactorings.FamilyOf(scripts, target))
+                {
+                    beside.AddRange(await BesideAsync(document, folder, member, d => context.Languages.CSharp.GodotScriptRenameAsync(d, member.Start, name)));
+                }
             }
         }
         else if (GDScriptRefactorings.RenameLocal(own, offset, name) is { } local)

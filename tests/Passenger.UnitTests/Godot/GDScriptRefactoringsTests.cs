@@ -118,6 +118,33 @@ public class GDScriptRefactoringsTests
     }
 
     [Fact]
+    public void Renaming_an_override_renames_the_function_it_overrides_and_every_override_of_that_but_never_an_engines()
+    {
+        const string Base = "class_name Tool\nextends Node2D\n\n\nfunc draw_move() -> void:\n\tpass\n\n\nfunc _draw_shape() -> void:\n\tpass\n";
+        const string Pencil = "extends Tool\n\n\nfunc draw_move() -> void:\n\tsuper()\n";
+        const string Eraser = "extends \"res://base.gd\"\n\n\nfunc draw_move() -> void:\n\tsuper.draw_move()\n";
+        const string Lone = "class_name Lone\nextends Node2D\n\n\nfunc draw_move() -> void:\n\tpass\n";
+        const string User = "extends Node\n\nvar tool: Tool\nvar pencil := preload(\"res://pencil.gd\").new()\nvar lone := Lone.new()\n\n\n"
+            + "func go() -> void:\n\ttool.draw_move()\n\tpencil.draw_move()\n\tlone.draw_move()\n";
+        (string, string)[] project = [("res://base.gd", Base), ("res://pencil.gd", Pencil), ("res://eraser.gd", Eraser), ("res://lone.gd", Lone), ("res://user.gd", User)];
+        IReadOnlyList<GDScriptRead> scripts = ReadWith(Engine, project);
+        GDScriptRefactored renamed = GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[1], Pencil.IndexOf("draw_move", StringComparison.Ordinal))!, "move_to");
+        Assert.Contains("\nfunc move_to() -> void:\n\tpass\n", After(renamed, "res://base.gd", Base));
+        Assert.Contains("\nfunc move_to() -> void:\n\tsuper()\n", After(renamed, "res://pencil.gd", Pencil));
+        Assert.Contains("\nfunc move_to() -> void:\n\tsuper.move_to()\n", After(renamed, "res://eraser.gd", Eraser));
+        string user = After(renamed, "res://user.gd", User);
+        Assert.True(user.Contains("\ttool.move_to()\n\tpencil.move_to()\n\tlone.draw_move()\n", StringComparison.Ordinal),
+            $"The calls of the base's and the override's should follow, and Lone's own draw_move, no override of them, stay:\n{user}");
+        Assert.DoesNotContain(renamed.Scripts, s => s.Script == "res://lone.gd");
+
+        IReadOnlyList<GDScriptRead> taken = ReadWith(Engine, [.. project, ("res://bucket.gd", "extends Tool\n\n\nfunc move_to() -> void:\n\tpass\n")]);
+        Assert.Contains("res://bucket.gd declares a 'move_to' too",
+            GDScriptRefactorings.Rename(taken, GDScriptRefactorings.MemberAt(taken, taken[1], Pencil.IndexOf("draw_move", StringComparison.Ordinal))!, "move_to").Refused);
+        Assert.Contains("overrides Node2D's own, which Godot calls by its name",
+            GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], Base.IndexOf("_draw_shape", StringComparison.Ordinal))!, "shape").Refused);
+    }
+
+    [Fact]
     public void Renaming_an_inner_class_renames_it_where_a_type_or_a_base_names_it_as_where_code_does()
     {
         string text = "extends Node\n\nvar inner: Inner\nvar many: Array[Inner] = []\n\n\nfunc _ready() -> void:\n\tvar x: Variant = inner\n"
