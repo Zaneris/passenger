@@ -346,7 +346,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     [AvaloniaFact]
     public void A_profile_of_ten_thousand_stacks_reads_drags_and_draws_in_what_its_stacks_and_bars_keep()
     {
-        // Each count forty calls deep, then a path of its own down a binary tree of calls, to a spin the sampler catches it in and a large array (an allocation tick).
+        // Each count forty calls deep, then a path of its own down a binary tree, to a spin a busy machine's sampler still catches hundreds of times and a large array (an allocation tick).
         string project = Project("Stacks", """
             using System.Runtime.CompilerServices;
             int count = int.Parse(args[0]);
@@ -375,7 +375,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
                 private static int Leaf()
                 {
                     int spun = 0;
-                    for (int i = 0; i < 10_000; i++) { spun = (spun * 31) + i; }
+                    for (int i = 0; i < 100_000; i++) { spun = (spun * 31) + i; }
                     Kept = new byte[110_000];
                     return (Kept.Length + spun) & 1;
                 }
