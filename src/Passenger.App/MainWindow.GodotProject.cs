@@ -88,16 +88,18 @@ public partial class MainWindow
             GodotDefinitions defined = scenes.Defined;
             GodotProject project = GodotProject.Parse(folder, defined.TextOf(GodotDefinitions.ProjectRes) ?? string.Empty);
             int Line(GodotPlace place) => defined.LineOf(place.Res, place.Start);
+            // A file project.godot names by its uid, opened, and an autoload's shown, by its res:// path where the uid is known.
+            string? Named(string? res) => res is not null && res.StartsWith(GodotUids.Scheme, StringComparison.Ordinal) ? scenes.ResOfUid(res) ?? res : res;
             string? FileOf(string? res)
             {
-                string? named = res is not null && res.StartsWith(GodotUids.Scheme, StringComparison.Ordinal) ? scenes.ResOfUid(res) : res;
+                string? named = Named(res);
                 return named is not null && named.StartsWith("res://", StringComparison.Ordinal)
                     && Path.Combine(folder, named["res://".Length..].Replace('/', Path.DirectorySeparatorChar)) is var path && File.Exists(path) ? path : null;
             }
 
             (string, int, string?)? main = project.MainScene is { Length: > 0 } scene && defined.SettingOf("application", "run/main_scene") is ({ } place, _)
                 ? (scene, Line(place), FileOf(scene)) : null;
-            List<GodotPageAutoload> autoloads = [.. defined.Autoloads.Select(a => new GodotPageAutoload(a.Name, Line(a.Places[0]), defined.AutoloadFile(a.Name),
+            List<GodotPageAutoload> autoloads = [.. defined.Autoloads.Select(a => new GodotPageAutoload(a.Name, Line(a.Places[0]), Named(defined.AutoloadFile(a.Name)),
                 FileOf(defined.AutoloadFile(a.Name)), defined.SettingOf("autoload", a.Name)?.Text?.StartsWith('*') == true))];
             List<GodotPageAction> inputs = [.. defined.Actions.Select(a => new GodotPageAction(a.Name, Line(a.Places[0]), defined.EventsOf(a.Name)))];
 

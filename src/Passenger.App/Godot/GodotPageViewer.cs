@@ -154,8 +154,10 @@ public sealed class GodotPageViewer
 
         Section("Godot", [Row(Words(facts.Godot), null, null)]);
 
+        // A main scene project.godot names by its uid is shown by its res:// path.
         Section("Main Scene", [facts.MainScene is ({ } res, int line, { } scene)
-            ? Row(Link(res, () => pages.Open(scene)), Muted($"{GodotProject.FileName}:{line + 1}"), Link("Setting", () => pages.GoTo(project, line)))
+            ? Row(Link(facts.Scenes.FirstOrDefault(s => s.Uid == res)?.Res ?? res, () => pages.Open(scene)), Muted($"{GodotProject.FileName}:{line + 1}"),
+                Link("Setting", () => pages.GoTo(project, line)))
             : facts.MainScene is ({ } missing, int at, null)
                 ? Row(Words(missing), Muted($"not there · {GodotProject.FileName}:{at + 1}"), Link("Setting", () => pages.GoTo(project, at)))
                 : Empty($"{GodotProject.FileName} names no main scene"), .. MainSceneChoice(facts)]);

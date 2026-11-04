@@ -210,6 +210,39 @@ public sealed class GodotProjectPageTests
         Ui.WaitFor(() => File.ReadAllText(project).Contains(text, StringComparison.Ordinal), () => $"project.godot to have {what} ({window.Status}): {File.ReadAllText(project)}");
 
     /// <summary>The page the active group shows, once its facts are read.</summary>
+    /// <summary>A main scene and an autoload project.godot names by their uids, as Godot 4.4 and newer write them, are shown by
+    /// their res:// paths.</summary>
+    [AvaloniaFact]
+    public void A_main_scene_and_an_autoload_named_by_their_uids_show_as_their_paths()
+    {
+        string folder = TestFolders.Create("godot-page-uids-");
+        TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n\n[application]\n\nconfig/name=\"Hopper\"\nrun/main_scene=\"uid://cmainhop\"\n"
+            + "config/features=PackedStringArray(\"4.7\")\n\n[autoload]\n\nScore=\"*uid://cscorehop\"\n");
+        TestFolders.Write(folder, "main.tscn", "[gd_scene format=3 uid=\"uid://cmainhop\"]\n\n[node name=\"Main\" type=\"Node2D\"]\n");
+        TestFolders.Write(folder, "score.gd", "extends Node\n\nvar points := 0\n");
+        TestFolders.Write(folder, "score.gd.uid", "uid://cscorehop\n");
+        MainWindow window = new()
+        {
+            Width = 1200, Height = 900, Autosaves = false, StartsLanguageServer = false,
+            GodotEnvironment = GodotUserFolders.Under(Path.Combine(folder, "..", Path.GetFileName(folder) + "-home")),
+        };
+        window.Show();
+        try
+        {
+            window.OpenFolder(folder);
+            Ui.Settle();
+            string project = Path.Combine(PathNames.Canonical(folder), GodotProject.FileName);
+            Ui.ChooseFromRowMenu(window, window.ExplorerView.Tree.Rows.Single(r => r.Path == project), "Godot Project");
+            string[] said = Said(Shown(window));
+            Assert.True(said.Contains("res://main.tscn") && said.Contains("res://score.gd"), $"The page does not show the main scene and autoload by their paths: [{string.Join(" | ", said)}]");
+            Assert.False(said.Any(s => s.Contains("uid://", StringComparison.Ordinal)), $"The page shows a uid where its file is known: [{string.Join(" | ", said)}]");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static GodotPageViewer Shown(MainWindow window)
     {
         Ui.WaitFor(() => window.EditorArea.ActiveGroup.GodotPage is { File: { IsReading: false, Facts: not null } }, "the Godot project's page, read");
