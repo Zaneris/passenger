@@ -1,13 +1,15 @@
 using System.Text.Json;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using Passenger.App.Mcp;
 using Passenger.Core;
 
 namespace Passenger.Tests;
 
-/// <summary>An agent debugging a Godot game of GDScript alone: a script it edits (and so saves) reloads in the game, which
-/// then says the edit's words, and hot_reload answers that Godot reloads each script as it is saved, with nothing else to
-/// apply, not that Hot Reload is off. Godot runs headless, its user folders the test's; without a Godot 4 it skips saying
+/// <summary>An agent debugging a Godot game of GDScript alone: app_tree, refused before it runs, names such a game among
+/// those it reaches, and reaches it once it does; a script it edits (and so saves) reloads in the game, which then says the
+/// edit's words, and hot_reload answers that Godot reloads each script as it is saved, with nothing else to apply, not that
+/// Hot Reload is off. Godot runs headless, its user folders the test's; without a Godot 4 it skips saying
 /// why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class McpGodotScriptGameTests : McpRig
@@ -38,8 +40,12 @@ public sealed class McpGodotScriptGameTests : McpRig
     {
         await using McpClient client = await Start(["--mcp", folder], languageServer: false,
             environment: new() { [Passenger.App.Godot.GodotUserFolders.HomeVariable] = folder + "-home" });
+        CallToolResult none = await Result(client, McpTools.AppTree);
+        Assert.True(none.IsError == true && Text(none).Contains("a Godot 4 game in C# or GDScript", StringComparison.Ordinal),
+            $"app_tree with no game running did not name a game of GDScript among those it reaches: {Text(none)}");
         await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Ticker", ["waitSeconds"] = 60 });
         await Until(async () => Text(await Call(client, McpTools.Output)).Contains("tick 20", StringComparison.Ordinal), "the game to say its word");
+        Assert.Contains("#Main", Text(await Call(client, McpTools.AppTree, new() { ["depth"] = 1 })), StringComparison.Ordinal);
 
         await Call(client, McpTools.Edit, new() { ["path"] = "ticker.gd", ["oldText"] = "print(\"tick \", counter)", ["newText"] = "print(\"edited \", counter)" });
         await Until(async () => Text(await Call(client, McpTools.Output)).Contains("edited ", StringComparison.Ordinal), "the game to say the saved edit's words");

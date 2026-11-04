@@ -506,7 +506,7 @@ public sealed partial class PassengerTools
         }
         return apps.FirstOrDefault() is { } ended
             ? Ended(ended.App)
-            : "No Avalonia or WPF app or Godot game is running: run or debug_start one (Avalonia 12, WPF on Windows, a Godot 4 game in C#), or name app ide for Passenger's own windows";
+            : "No Avalonia or WPF app or Godot game is running: run or debug_start one (Avalonia 12, WPF on Windows, a Godot 4 game in C# or GDScript), or name app ide for Passenger's own windows";
 
         static string Ended(LiveApp app) => $"{app.Name} has ended: run or debug_start starts it again, or name app ide for Passenger's own windows";
     }
