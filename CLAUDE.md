@@ -534,7 +534,8 @@ machine sleeps), never the wall clock, of a developer machine's time scaled by `
 Git configuration (no ssh-agent; its own GnuPG home and keys), NuGet's home on macOS and Linux, MSBuild's node salt,
 container labels, user secrets, dotnet new's templates, Aspire's HOME and CLI, Godot's user folders
 (`PASSENGER_GODOT_HOME`); `PersonsGodot` fails a run that writes the person's Godot folders. It never reaches nuget.org
-(local feeds, the restore-only `tests/*Graphs`), GitHub (`PASSENGER_RELEASES` dead), registries
+(local feeds, the restore-only `tests/*Graphs`, which name every package their test apps resolve, at its version: a CI
+cache restored by key prefix hides one missing), GitHub (`PASSENGER_RELEASES` dead), registries
 (`PASSENGER_BUILDKIT_CHECKS=off`), Docker Hub, symbol servers, Discord, the person's Passenger
 (`PASSENGER_START=headless`), or a host a browser asks of its own accord (`PASSENGER_BROWSER_PROXY`). It shortens
 `PASSENGER_EVAL_TIMEOUT_MS`, `PASSENGER_WATCH_LATER_MS` (3 s each), `PASSENGER_MCP_PROGRESS_MS` and
