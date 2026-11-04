@@ -51,6 +51,9 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
 
     public static bool IsScript(string path) => GodotScriptDeclarations.IsScript(path);
 
+    /// <summary>Godot's class reference for the engine's words on cards; null where none is found (<see cref="GodotEngineApis.ReferenceAsync"/>).</summary>
+    public Task<GodotClassReference?> ReferenceAsync() => apis.ReferenceAsync();
+
     public void Attach(OpenDocument document)
     {
         UiThread.Check();

@@ -32,6 +32,18 @@ internal abstract class LanguageAssist
     /// <summary>What the card beside the list says of one of the language's own items; null for none.</summary>
     public virtual string? Describe(CompletionItem item) => null;
 
+    /// <summary>The card beside the list of one of the language's own items, added to <paramref name="card"/>: its words
+    /// (<see cref="Describe(CompletionItem)"/>) unless the language says more; false for none.</summary>
+    public virtual bool Describe(CompletionItem item, IHoverCard card)
+    {
+        if (Describe(item) is not { Length: > 0 } words)
+        {
+            return false;
+        }
+        card.AddText(words);
+        return true;
+    }
+
     /// <summary>The colour badge of one of the language's own items; null for none.</summary>
     public virtual IBrush? Swatch(CompletionItem item) => null;
 

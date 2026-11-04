@@ -641,10 +641,9 @@ internal sealed partial class CodeCompletion
         itemCard.IsVisible = false;
         if (completion.IsVisible && completion.Selected is { } chosen && open?.Own is { } language)
         {
-            if (language.Describe(chosen.Item) is { Length: > 0 } documentation)
+            itemCard.Clear();
+            if (language.Describe(chosen.Item, itemCard) && !itemCard.IsEmpty)
             {
-                itemCard.Clear();
-                itemCard.AddText(documentation);
                 itemCard.IsVisible = true;
                 popups.PlaceBeside(itemCard, completion);
             }

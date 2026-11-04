@@ -9,8 +9,9 @@ namespace Passenger.App.Godot;
 
 /// <summary>The engine's API as the Godot found writes it (<c>--dump-extension-api</c>, headless, with user folders of its
 /// own), dumped once per Godot version and build into the state's cache and read once per process: what GDScript's types
-/// are resolved against. None where no Godot is found or its dump fails, which leaves GDScript typed by its own scripts
-/// and built-in types alone.</summary>
+/// are resolved against; and its class reference, the same dump with its documentation (from Godot 4.2), kept as its
+/// descriptions alone (<see cref="GodotClassReference"/>). None where no Godot is found or its dump fails, which leaves
+/// GDScript typed by its own scripts and built-in types alone, and its cards without the engine's words.</summary>
 internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDictionary<string, string>?> folders)
 {
     /// <summary>How long a dump may take: Godot's start on a machine's first run, its classes written.</summary>
@@ -38,6 +39,81 @@ internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDicti
         Task<GodotEngineApi?> api = FindAsync(chosen);
         latest = (chosen, Stopwatch.GetTimestamp(), api);
         return api;
+    }
+
+    /// <summary>The class reference last asked for, by the setting it was asked with and when. A UI-thread field.</summary>
+    private (string? Setting, long At, Task<GodotClassReference?> Reference)? referenced;
+
+    private static string ReferenceFolder => Path.Combine(State.StateStore.DefaultRoot, "cache", "godot", "class-reference");
+
+    private static readonly ConcurrentDictionary<string, Lazy<Task<GodotClassReference?>>> ReferenceRead = new(StringComparer.Ordinal);
+
+    /// <summary>The first Godot whose dump of its API holds its documentation.</summary>
+    private static readonly Version Documented = new(4, 2);
+
+    /// <summary>The class reference of the Godot Settings name or found; null where none is, it is older than 4.2, or its
+    /// dump failed.</summary>
+    public Task<GodotClassReference?> ReferenceAsync()
+    {
+        string? chosen = setting();
+        if (referenced is { } kept && kept.Setting == chosen && Stopwatch.GetElapsedTime(kept.At) < Refound && !kept.Reference.IsFaulted)
+        {
+            return kept.Reference;
+        }
+        Task<GodotClassReference?> reference = FindReferenceAsync(chosen);
+        referenced = (chosen, Stopwatch.GetTimestamp(), reference);
+        return reference;
+    }
+
+    private async Task<GodotClassReference?> FindReferenceAsync(string? chosen) =>
+        await KeyAsync(chosen) is ({ } found, { } key) && VersionOf(key) is { } version && version >= Documented
+            ? await ReferenceRead.GetOrAdd(key, k => new Lazy<Task<GodotClassReference?>>(() => BackgroundWork.Run(() => LoadReferenceAsync(found, k)))).Value
+            : null;
+
+    /// <summary>The major and minor version a key begins with (<c>4.7</c> of <c>4.7.2.stable.mono…</c>); null for none.</summary>
+    private static Version? VersionOf(string key) =>
+        key.Split('.') is [{ } major, { } minor, ..] && int.TryParse(major, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int high)
+            && int.TryParse(minor, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int low) ? new Version(high, low) : null;
+
+    private async Task<GodotClassReference?> LoadReferenceAsync(GodotFound found, string key)
+    {
+        string kept = Path.Combine(ReferenceFolder, $"{key}.json");
+        if (!File.Exists(kept))
+        {
+            string working = Path.Combine(ReferenceFolder, "dumping-" + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Directory.CreateDirectory(working);
+            ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--dump-extension-api-with-docs"], working);
+            foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
+            {
+                start.Environment[name] = value;
+            }
+            ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
+            string dumped = Path.Combine(working, "extension_api.json");
+            if (!File.Exists(dumped))
+            {
+                IdeErrors.Write($"Godot ({found.Executable}) wrote no extension_api.json with its documentation: {ExitCodes.Said(result.ExitCode)}");
+                return null;
+            }
+            try
+            {
+                AtomicFile.Write(kept, GodotClassReference.Reduce(await File.ReadAllBytesAsync(dumped)));
+            }
+            catch (System.Text.Json.JsonException e)
+            {
+                IdeErrors.Write($"Godot's API with its documentation from {found.Executable} could not be read: {e.Message}");
+                return null;
+            }
+            Directory.Delete(working, recursive: true);
+        }
+        try
+        {
+            return GodotClassReference.Read(await File.ReadAllBytesAsync(kept));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            IdeErrors.Write($"Godot's class reference kept at {kept} could not be read: {e.Message}");
+            return null;
+        }
     }
 
     private async Task<GodotEngineApi?> FindAsync(string? chosen) =>

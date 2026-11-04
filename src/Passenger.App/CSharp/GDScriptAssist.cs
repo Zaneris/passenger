@@ -322,38 +322,6 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
         return [.. fixes.DistinctBy(f => f.Title)];
     }
 
-    public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
-    {
-        if (!Answers(document) || context.GodotScriptTypes?.Invoke() is not { } types)
-        {
-            return false;
-        }
-        GodotScriptTypes.Typed? typed = await types.TypedAsync(document);
-        cancel.ThrowIfCancellationRequested();
-        if (typed?.Analysis.NodeAt(offset) is not ({ } node, _) || node is not GDScriptIdentifier name)
-        {
-            return false;
-        }
-        if (await CSharpMemberAtAsync(context, document, offset) is { } csharp)
-        {
-            cancel.ThrowIfCancellationRequested();
-            Describe(card, csharp);
-            return true;
-        }
-        GDScriptDeclaration? declared = typed.Analysis.DeclarationOf(name);
-        GDScriptType type = declared?.Type ?? typed.Analysis.TypeOf(name);
-        if (declared is null && type.IsVariant && Served(document))
-        {
-            return false;
-        }
-        card.AddCode(type.IsVariant ? name.Name : $"{name.Name}: {type}");
-        if (declared is { EngineClass: { } engine })
-        {
-            card.AddText($"A member of {engine}");
-        }
-        return true;
-    }
-
     public override async Task<bool> DefinitionAsync(int offset)
     {
         if (context.Editors.Active is not { } shown || !Answers(shown))
