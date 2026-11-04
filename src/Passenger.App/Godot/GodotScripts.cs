@@ -472,7 +472,7 @@ public static class GodotScripts
 
         /// <summary>A batch the folder's watcher handed over: a kept file's change or a made file that came with another existing
         /// file of the project's, as a checkout brings them, is that operation's, never put back or taken away. Not counted:
-        /// Godot's writes (its cache, what it makes beside files, its safe save's <c>name-XXXXXX</c>), a file gone (a temporary
+        /// Godot's writes (its cache, what it makes beside files, its safe save's <c>name-XXXXXX</c> of a file there), a file gone (a temporary
         /// one renamed away), Git's folder, a folder, Passenger's saves. A batch whose changes the watcher lost leaves the kept
         /// files' changes waiting the other's, never what Godot made.</summary>
         public void Heard(Workspace.FolderChanges changes)
@@ -503,7 +503,7 @@ public static class GodotScripts
                         theirs.Add(path);
                     }
                     else if (another is null && !Within(relative, IgnoredFolders.GodotCache) && !Within(relative, ".git") && !GodotWrites.Contains(Path.GetExtension(path))
-                        && !SafeSaved(Path.GetFileName(path)) && !(savedAt.TryGetValue(path, out long at) && Stopwatch.GetElapsedTime(at, now) < OwnSave)
+                        && !SafeSaved(path, changes.Paths) && !(savedAt.TryGetValue(path, out long at) && Stopwatch.GetElapsedTime(at, now) < OwnSave)
                         && File.Exists(path))
                     {
                         another = relative;
@@ -530,8 +530,9 @@ public static class GodotScripts
                 }
             }
 
-            // Whether a name is Godot's safe save's file, the saved one's name, a dash and mkstemp's six letters or digits.
-            static bool SafeSaved(string name) => name.Length > 7 && name[^7] == '-' && name[^6..].All(char.IsAsciiLetterOrDigit);
+            // Whether a path is Godot's safe save's file: a file's own, there or in the batch, a dash and mkstemp's six letters or digits.
+            static bool SafeSaved(string path, IReadOnlySet<string> batch) =>
+                Path.GetFileName(path).Length > 7 && path[^7] == '-' && path[^6..].All(char.IsAsciiLetterOrDigit) && (batch.Contains(path[..^7]) || File.Exists(path[..^7]));
 
             // Whether a path of the project's is a folder or lies in it.
             static bool Within(string relative, string folder) =>
