@@ -365,13 +365,14 @@ public sealed partial class BuildRunController
         buildOutput = projects is { Count: > 0 } ? output : null;
         IReadOnlyList<string> whole = session.Workspace!.BuildTargets(session.Projects);
         buildQueue.Clear();
-        foreach (string target in projects is { Count: > 0 } ? projects : whole)
+        // A folder with no solution or project of its own is built only where MSBuild would find one there.
+        foreach (string target in projects is { Count: > 0 } ? projects : whole.Where(t => !PathNames.Same(t, session.Folder) || HoldsBuildable(t)))
         {
             buildQueue.Enqueue(target);
         }
         if (buildQueue.Count == 0)
         {
-            BuildOutcome nothing = new(BuildStatus.Refused, "Nothing to build: every project is unloaded");
+            BuildOutcome nothing = new(BuildStatus.Refused, whole.Count == 1 && PathNames.Same(whole[0], session.Folder) ? Refusals.NothingToBuild : "Nothing to build: every project is unloaded");
             publishing = null;
             together = null;
             work?.Tell(false, nothing.Message);
@@ -727,6 +728,20 @@ public sealed partial class BuildRunController
         : ended.Problems.Count > 0 ? StatusPlace.Problems(parts.Dock, parts.Views.Problems, ProblemsTab.Build, _ => true)
         : ended.Status == BuildStatus.Failed ? StatusPlace.Window(parts.Dock, ToolWindowIds.Build)
         : null;
+
+    /// <summary>Whether a folder holds a file MSBuild builds when given the folder: a solution, a solution filter or a project.</summary>
+    private static bool HoldsBuildable(string folder)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(folder).Any(f => Path.GetExtension(f) is { } extension
+                && (extension.EndsWith("proj", StringComparison.OrdinalIgnoreCase) || extension is ".sln" or ".slnx" or ".slnf"));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
 
     /// <summary>The last build's problems in the Problems window, its title counting them.</summary>
     public void ShowProblems()

@@ -149,6 +149,10 @@ public static class Refusals
     /// <summary>An action on a Godot project asked for in a folder that holds none.</summary>
     public const string NoGodotProject = "The open folder holds no Godot project (project.godot)";
 
+    /// <summary>A build asked of a folder with no solution or project file MSBuild could build, which it would refuse in its own
+    /// words (MSB1003).</summary>
+    public const string NothingToBuild = "The open folder has no solution or project to build: open one, or a folder that holds one";
+
     /// <summary>A build asked of a folder whose one kind of project is a Godot project of GDScript alone, which builds nothing.</summary>
     public const string NothingToBuildOfScripts = "The open folder's Godot project is GDScript alone, which Godot runs as it is: there is nothing to build (Run, Debug and Profile start its game)";
 

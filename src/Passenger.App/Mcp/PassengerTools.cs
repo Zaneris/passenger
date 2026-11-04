@@ -1211,7 +1211,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         IReadOnlyList<Finding> problems = [.. built.Problems.Select(p => new Finding(
             p.Severity == ProblemSeverity.Error ? "error" : "warning", p.Code, p.Message, p.Path is { } at ? Relative(at) : p.Project, p.Position.Line + 1, p.Position.Column + 1))];
         return new BuildResult(built.Succeeded, built.Message, problems.Count(p => p.Severity == "error"), problems.Count(p => p.Severity == "warning"), problems,
-            built.Succeeded ? null : string.Join('\n', built.Output)) { Folder = built.Published, Image = built.Image };
+            built.Succeeded || built.Output.Count == 0 ? null : string.Join('\n', built.Output)) { Folder = built.Published, Image = built.Image };
     });
 
     [McpServerTool(Name = McpTools.Run, Title = "Run a configuration", Destructive = true), Description(

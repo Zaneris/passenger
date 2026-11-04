@@ -1193,6 +1193,20 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.StartsWith("Nothing has been debugged yet", (await Call(client, McpTools.Output, new() { ["of"] = "debug" })).GetString(), StringComparison.Ordinal);
     }
 
+    /// <summary>An agent's build of a folder with no solution or project says so, never MSBuild's MSB1003 as a failed build's
+    /// error to be fixed.</summary>
+    [Fact]
+    public async Task An_agents_build_of_a_folder_with_nothing_to_build_says_so_rather_than_failing_in_msbuilds_words()
+    {
+        string folder = TestFolders.Create("mcp-nothing-");
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "README.md"), "# Notes\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("outcome").GetString() == Refusals.NothingToBuild && built.GetProperty("errors").GetInt32() == 0,
+            $"A build of a folder with no solution or project answered: {built}");
+    }
+
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
     /// vcs_commit is refused naming the file, and nothing is committed.</summary>
     [Fact]
