@@ -859,14 +859,14 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     internal static Task<string> Get(int port) => Waiting.Apart(async () =>
     {
         Uri address = new($"http://localhost:{port.ToString(CultureInfo.InvariantCulture)}/");
-        DateTime until = DateTime.UtcNow + TimeSpan.FromMinutes(1).Scaled();
+        Deadline until = Deadline.In(TimeSpan.FromMinutes(1).Scaled());
         while (true)
         {
             try
             {
                 return await Http.GetStringAsync(address);
             }
-            catch (HttpRequestException) when (DateTime.UtcNow < until)
+            catch (HttpRequestException) when (!until.Passed)
             {
                 await Waiting.UntilAsync(() => false, TimeSpan.FromMilliseconds(200));
             }

@@ -178,11 +178,11 @@ public sealed class GodotEditorCompletionTests : IClassFixture<GodotEditorComple
     /// meanwhile, within two minutes; the list that offered it.</summary>
     private static List<string> Offered(Func<List<string>> asked, string wanted, string what, Func<string> editor)
     {
-        DateTime until = DateTime.UtcNow + TimeSpan.FromMinutes(2).Scaled();
+        Deadline until = Deadline.In(TimeSpan.FromMinutes(2).Scaled());
         List<string> labels;
         while (!(labels = asked()).Contains(wanted))
         {
-            Assert.True(DateTime.UtcNow < until, $"Completion never offered {what}: {string.Join(", ", labels)}\n{editor()}");
+            Assert.True(!until.Passed, $"Completion never offered {what}: {string.Join(", ", labels)}\n{editor()}");
             Ui.Hold(TimeSpan.FromSeconds(1), "Godot's editor loads its plugins and scene before it answers them");
         }
         return labels;

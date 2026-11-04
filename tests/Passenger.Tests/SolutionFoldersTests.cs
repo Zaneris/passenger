@@ -397,12 +397,12 @@ public sealed class SolutionFoldersTests : IDisposable
     /// <summary>Waits until the folder watcher has heard nothing for a while and what it heard has landed.</summary>
     private static void Quiet(MainWindow window)
     {
-        DateTime last = DateTime.UtcNow;
-        void Seen(object? sender, FolderChanges changes) => last = DateTime.UtcNow;
+        long last = System.Diagnostics.Stopwatch.GetTimestamp();
+        void Seen(object? sender, FolderChanges changes) => Interlocked.Exchange(ref last, System.Diagnostics.Stopwatch.GetTimestamp());
         window.FolderWatcher!.Changed += Seen;
         try
         {
-            Ui.WaitFor(() => DateTime.UtcNow - last > TimeSpan.FromSeconds(1.5), "the folder watcher to hear the last of what was written");
+            Ui.WaitFor(() => System.Diagnostics.Stopwatch.GetElapsedTime(Interlocked.Read(ref last)) > TimeSpan.FromSeconds(1.5), "the folder watcher to hear the last of what was written");
         }
         finally
         {

@@ -96,7 +96,7 @@ public sealed class GDScriptCardsTests
     /// window's loop run meanwhile (Godot's server's held start keeps it from settling).</summary>
     private static string HoverUntil(MainWindow window, CodeEditor editor, string text, Func<string, bool> says, TimeSpan? within = null)
     {
-        DateTime until = DateTime.UtcNow + (within ?? TimeSpan.FromSeconds(30)).Scaled();
+        Deadline until = Deadline.In((within ?? TimeSpan.FromSeconds(30)).Scaled());
         string card = string.Empty;
         while (true)
         {
@@ -107,7 +107,7 @@ public sealed class GDScriptCardsTests
             window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
             Ui.PumpUntil(() => window.Assist.HoverText is not null, $"the card on {text}", TimeSpan.FromSeconds(30));
             card = window.Assist.HoverText!;
-            if (says(card) || DateTime.UtcNow > until)
+            if (says(card) || until.Passed)
             {
                 return card;
             }

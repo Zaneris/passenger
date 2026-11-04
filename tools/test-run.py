@@ -381,6 +381,13 @@ def one_process(lane, chosen):
     return next((code for code in codes if code != 0), 0)
 
 
+def keep_awake():
+    """On macOS, the machine held awake for the run's length, as caffeinate -is holds it, ending with this process however
+    it ends: a sleep pauses a test's waits, but what it runs (a server, a game, a debugged program) may not outlast one."""
+    if sys.platform == "darwin" and shutil.which("caffeinate"):
+        subprocess.Popen(["caffeinate", "-is", "-w", str(os.getpid())], stdin=subprocess.DEVNULL)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("filter", nargs="?", default="", help="dotnet test's --filter, as `just test Editing` gives it")
@@ -394,6 +401,8 @@ def main():
     lanes.add_argument("--gate", dest="lane", action="store_const", const="gate", help="--lane gate")
     lanes.add_argument("--report", dest="lane", action="store_const", const="report", help="--lane report")
     arguments = parser.parse_args()
+    if not arguments.plan:
+        keep_awake()
     # As CI runs: the SDK's telemetry holds each dotnet the tests start up to 2 s at its exit to send.
     os.environ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "true"
     # As just's recipes run, with no MSBuild server; every build under the run's salt, ended with it (end_builds).

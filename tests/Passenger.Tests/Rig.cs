@@ -895,7 +895,7 @@ public static class Ui
     public static void Settle()
     {
         TimeSpan limit = SettleLimit.Scaled();
-        if (!Settled(DateTime.UtcNow + limit))
+        if (!Settled(Deadline.In(limit)))
         {
             throw new TimeoutException($"The IDE was not quiet within {limit.TotalSeconds} s. Still busy:\n{Busy()}{ServerConversations()}{IdeLogTail()}{ServerLogTail()}");
         }
@@ -913,7 +913,7 @@ public static class Ui
         {
             long blinks = editor.Blinks;
             long before = GC.GetAllocatedBytesForCurrentThread();
-            if (!Settled(DateTime.UtcNow + limit, () => editor.Blinks > blinks))
+            if (!Settled(Deadline.In(limit), () => editor.Blinks > blinks))
             {
                 throw new TimeoutException($"The caret did not blink with the IDE at rest within {limit.TotalSeconds} s (it blinks only in a focused editor). Still busy:\n{Busy()}");
             }
@@ -922,7 +922,7 @@ public static class Ui
         return least;
     }
 
-    private static bool Settled(DateTime limit, Func<bool>? also = null) => Waiting.Until(() =>
+    private static bool Settled(Deadline limit, Func<bool>? also = null) => Waiting.Until(() =>
     {
         Dispatcher.UIThread.RunJobs();
         AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
@@ -934,7 +934,7 @@ public static class Ui
         }
         Draw();
         return BackgroundWork.Pending == 0 && Passenger.Core.InFlight.Count == 0 && (also is null || also());
-    }, limit - DateTime.UtcNow, every: TimeSpan.FromMilliseconds(2), scaled: false);
+    }, limit.Left, every: TimeSpan.FromMilliseconds(2), scaled: false);
 
     /// <summary>Runs what the window has queued (its layout among it) and draws until what that laid out is drawn
     /// (<see cref="Drawn"/>): at most three frames, since an animation always has a next one, and three always do.</summary>
@@ -1019,16 +1019,15 @@ public static class Ui
     public static void WaitFor(Func<bool> condition, Func<string> what, TimeSpan? limit = null)
     {
         TimeSpan within = (limit ?? SettleLimit).Scaled();
-        DateTime until = DateTime.UtcNow + within;
+        Deadline until = Deadline.In(within);
         while (!condition())
         {
-            if (DateTime.UtcNow > until)
+            if (until.Passed)
             {
                 throw new TimeoutException($"Waited {within.TotalSeconds} s for {what()}");
             }
             Frame();
-            DateTime settling = DateTime.UtcNow + SettleLimit.Scaled();
-            if (!Settled(settling > until ? settling : until))
+            if (!Settled(Deadline.Later(Deadline.In(SettleLimit.Scaled()), until)))
             {
                 throw new TimeoutException($"The IDE was not quiet while waiting {within.TotalSeconds} s for {what()}. Still busy:\n{Busy()}{ServerConversations()}{IdeLogTail()}{ServerLogTail()}");
             }
@@ -1194,10 +1193,10 @@ public static class Ui
     /// <see cref="PumpUntil"/> runs it, for a caller that goes on either way.</summary>
     public static bool Pumped(Func<bool> condition, TimeSpan limit, bool scaled = true)
     {
-        DateTime until = DateTime.UtcNow + (scaled ? limit.Scaled() : limit);
+        Deadline until = Deadline.In(scaled ? limit.Scaled() : limit);
         while (!condition())
         {
-            if (DateTime.UtcNow > until)
+            if (until.Passed)
             {
                 return false;
             }
@@ -1948,8 +1947,9 @@ public static class FilesFollowed
 
 /// <summary>The one place a test lets time pass (Thread.Sleep and Task.Delay are banned elsewhere, BannedSymbols.txt): a wait
 /// for a condition, looked at again every few milliseconds until it holds or its limit (scaled by the run's
-/// <see cref="TestRun.TimeScale"/>) is out, and time that a test needs to pass, named. It never runs the window's loop:
-/// <see cref="Ui"/>'s waits do, through it.</summary>
+/// <see cref="TestRun.TimeScale"/>) is out, and time that a test needs to pass, named. A limit is a <see cref="Deadline"/>,
+/// on a clock that stops while the machine sleeps, so a sleep pauses a wait rather than ending it. It never runs the
+/// window's loop: <see cref="Ui"/>'s waits do, through it.</summary>
 public static class Waiting
 {
     private static readonly TimeSpan Often = TimeSpan.FromMilliseconds(10);
@@ -1957,10 +1957,10 @@ public static class Waiting
     /// <summary>Whether the condition held within the limit, on this thread.</summary>
     public static bool Until(Func<bool> condition, TimeSpan limit, TimeSpan? every = null, bool scaled = true)
     {
-        DateTime until = DateTime.UtcNow + (scaled ? limit.Scaled() : limit);
+        Deadline until = Deadline.In(scaled ? limit.Scaled() : limit);
         while (!condition())
         {
-            if (DateTime.UtcNow >= until)
+            if (until.Passed)
             {
                 return false;
             }
@@ -1978,10 +1978,10 @@ public static class Waiting
     /// <summary>Whether a condition that is itself asked for (an agent's call) held within the limit.</summary>
     public static async Task<bool> UntilAsync(Func<Task<bool>> condition, TimeSpan limit, CancellationToken cancel = default, TimeSpan? every = null)
     {
-        DateTime until = DateTime.UtcNow + limit.Scaled();
+        Deadline until = Deadline.In(limit.Scaled());
         while (!await condition())
         {
-            if (DateTime.UtcNow >= until)
+            if (until.Passed)
             {
                 return false;
             }

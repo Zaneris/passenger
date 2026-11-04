@@ -305,8 +305,8 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
         string compose = project.Write("compose-dev.yml", "services:\n  shop:\n    build: ./Shop\n");
         MainWindow window = project.Open(project.PathOf("Shop/Program.cs"));
         Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-        long refreshed = DateTime.UtcNow.Ticks;
-        EventHandler heard = (_, _) => Interlocked.Exchange(ref refreshed, DateTime.UtcNow.Ticks);
+        long refreshed = System.Diagnostics.Stopwatch.GetTimestamp();
+        EventHandler heard = (_, _) => Interlocked.Exchange(ref refreshed, System.Diagnostics.Stopwatch.GetTimestamp());
         server.DiagnosticsRefreshRequested += heard;
         try
         {
@@ -314,7 +314,7 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
                 () => $"the keys nothing gives, and only those, to be warned of: {string.Join(", ", Missing(window))}");
             // The server's own refreshes as it finishes loading look at the reads again too: the edit comes once they stop.
             TimeSpan quiet = TimeSpan.FromSeconds(5).Scaled();
-            Ui.WaitFor(() => DateTime.UtcNow.Ticks - Interlocked.Read(ref refreshed) > quiet.Ticks, "the language server's refreshes to stop");
+            Ui.WaitFor(() => System.Diagnostics.Stopwatch.GetElapsedTime(Interlocked.Read(ref refreshed)) > quiet, "the language server's refreshes to stop");
             TestFolders.Write(project.Folder, "compose-dev.yml", "services:\n  shop:\n    build: ./Shop\n    environment:\n      Shop__Banner: from-compose\n");
             Ui.WaitFor(() => Missing(window).SetEquals(["Payments:ApiKey"]),
                 () => $"Shop:Banner's warning to go once {Path.GetFileName(compose)} sets it: {string.Join(", ", Missing(window))} warned of");
