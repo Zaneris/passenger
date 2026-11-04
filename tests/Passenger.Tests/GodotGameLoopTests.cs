@@ -182,6 +182,37 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
                 .Select(c => $"{c.Name} ({c.Type})")];
             Assert.True(helpers.Length == 1 && after.Children.Any(GodotAgent.Is), $"The game holds {helpers.Length} helpers once it was brought in again: {string.Join(", ", helpers)}");
             Assert.False(Run(window).Contains("passenger_agent.gd", StringComparison.Ordinal), $"Passenger's helper raised errors in the game:\n{Run(window)}");
+            Assert.True(running.CallsBesideMoved == 0,
+                $"{Plural.Of(running.CallsBesideMoved, "call")} of the helper's went beside the scene the game's tree named before its count of nodes changed, to the helper the game had freed, which never answers them");
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>A game that changes its scene (Main changes to next.tscn once told to) has the values shown in main.gd read
+    /// from the scene it changed to, every call of the helper's sent beside the scene the game's tree names once its count of
+    /// nodes has changed, none beside the scene gone, where no call is answered.</summary>
+    [AvaloniaFact]
+    public void A_game_that_changes_its_scene_has_its_values_read_beside_the_scene_it_changed_to()
+    {
+        MainWindow window = Open();
+        try
+        {
+            GodotGame running = Start(window);
+            window.OpenFile(Path.Combine(game.Folder, "main.gd"));
+            OpenDocument script = window.EditorArea.Active!;
+            int frames = Array.FindIndex(File.ReadAllText(Path.Combine(game.Folder, "main.gd")).Split('\n'), l => l.StartsWith("var frames", StringComparison.Ordinal));
+            Ui.WaitFor(() => Frames(script, frames) is not null, () => $"the frame count's value in main.gd ({Hints(script)}; {window.GodotValues.Unread})", TimeSpan.FromMinutes(1));
+
+            GodotNode main = Ui.AwaitPumped(running.SceneTreeAsync(), "the game's tree", TimeSpan.FromMinutes(1)).All().First(n => n.Name == "Main");
+            Ui.AwaitPumped(running.SetPropertyAsync(main.Id, "next_scene", "res://next.tscn"), "Main told to change the scene", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => Frames(script, frames) >= Game.NextFrames, () => $"main.gd's values to be read from next.tscn's node, its frame count from {Game.NextFrames} "
+                + $"({Hints(script)}; {window.GodotValues.Unread}; {Run(window)[^Math.Min(400, Run(window).Length)..]})", TimeSpan.FromMinutes(1));
+            Assert.True(running.CallsBesideMoved == 0,
+                $"{Plural.Of(running.CallsBesideMoved, "call")} of the helper's went beside main.tscn once the game had changed its scene, where no call is answered");
             Stop(window);
         }
         finally
@@ -296,7 +327,8 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
     }
 
     /// <summary>A Godot 4 project of GDScript alone named Arena at 20 frames a second: its Main node prints each frame it
-    /// runs, and frees Passenger's helper once its free_helper is set; under it a ColorRect Box at 100,100 to 150,150 with a
+    /// runs, frees Passenger's helper once its free_helper is set, and changes to next.tscn (a node running main.gd from
+    /// <see cref="NextFrames"/>) once its next_scene is; under it a ColorRect Box at 100,100 to 150,150 with a
     /// script of its own, and a 3D world whose camera looks at a Crate's collision box from ten units away, the Crate a group
     /// in Godot's editor with a script of its own.</summary>
     public sealed class Game
@@ -308,11 +340,23 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
             Homes = GodotTests.Game.Home(Path.Combine(Folder, "..", Path.GetFileName(Folder) + "-home"));
             File.WriteAllText(Path.Combine(Folder, "project.godot"), "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Arena\"\n"
                 + "run/main_scene=\"res://main.tscn\"\nconfig/features=PackedStringArray(\"4.7\")\nrun/max_fps=20\n");
-            File.WriteAllText(Path.Combine(Folder, "main.gd"), "extends Node\n\nvar frames := 0\nvar free_helper := false\n\n\n"
+            File.WriteAllText(Path.Combine(Folder, "main.gd"), "extends Node\n\nvar frames := 0\nvar free_helper := false\nvar next_scene := \"\"\n\n\n"
                 + "func _ready() -> void:\n\tPerformance.add_custom_monitor(\"Game/Frames\", func(): return frames)\n\n\n"
                 + "func _process(_delta: float) -> void:\n\tframes += 1\n"
                 + "\tprint(\"frame \", frames)\n\tif free_helper:\n\t\tfree_helper = false\n\t\tvar helper := get_tree().root.get_node_or_null(\"PassengerAgent\")\n"
-                + "\t\tif helper != null:\n\t\t\thelper.queue_free()\n\t\t\tprint(\"helper freed\")\n");
+                + "\t\tif helper != null:\n\t\t\thelper.queue_free()\n\t\t\tprint(\"helper freed\")\n"
+                + "\tif next_scene != \"\":\n\t\tvar going := next_scene\n\t\tnext_scene = \"\"\n\t\tPerformance.remove_custom_monitor(\"Game/Frames\")\n"
+                + "\t\tget_tree().change_scene_to_file(going)\n");
+            File.WriteAllText(Path.Combine(Folder, "next.tscn"), $$"""
+                [gd_scene load_steps=2 format=3]
+
+                [ext_resource type="Script" path="res://main.gd" id="1"]
+
+                [node name="Next" type="Node"]
+                script = ExtResource("1")
+                frames = {{NextFrames}}
+
+                """);
             File.WriteAllText(Path.Combine(Folder, "box.gd"), "extends ColorRect\n");
             File.WriteAllText(Path.Combine(Folder, "crate.gd"), "extends StaticBody3D\n");
             File.WriteAllText(Path.Combine(Folder, "main.tscn"), """
@@ -350,6 +394,9 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
 
                 """);
         }
+
+        /// <summary>The frame count next.tscn's node starts from, above any main.tscn's Main reaches in a test.</summary>
+        public const long NextFrames = 1_000_000;
 
         public string Folder { get; }
 

@@ -43,7 +43,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// unanswered meanwhile says.</summary>
     private (long At, string Said)? lastRaised;
 
-    private TaskCompletionSource<GodotNode?>? treeAsked;
+    /// <summary>The scene tree asked of the game, answered with the changes of its count of nodes heard as it came
+    /// (<see cref="moves"/>): the tree is of then, or later.</summary>
+    private TaskCompletionSource<(GodotNode? Tree, int Moves)>? treeAsked;
 
     /// <summary>The scene tree as the game last sent it, where a node set from the properties pane is placed.</summary>
     private GodotNode? lastTree;
@@ -499,7 +501,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             case GodotWords.SceneTree:
                 GodotNode? told = GodotNode.Tree(message.Data);
                 lastTree = told ?? lastTree;
-                treeAsked?.TrySetResult(told);
+                treeAsked?.TrySetResult((told, moves));
                 break;
             case GodotWords.InspectObjects:
                 foreach (GodotObjectState state in GodotObjectState.Read(message.Data))
@@ -576,10 +578,14 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             case GodotWords.Monitors when GodotMonitors.Read(message.Data, customMonitors) is { } monitors:
                 bool moved = Monitors is { } was && was.Nodes != monitors.Nodes;
                 Monitors = monitors;
+                if (moved)
+                {
+                    // Counted before the beat's own asks, so they ask for the tree again rather than go beside a scene or helper gone.
+                    moves++;
+                }
                 MonitorsChanged?.Invoke(this, EventArgs.Empty);
                 if (moved)
                 {
-                    besideScene = null;
                     TreeChanged?.Invoke(this, EventArgs.Empty);
                 }
                 break;
@@ -760,16 +766,17 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         }
     }
 
-    /// <summary>The game's scene tree now, and how many times the helper had been made when it was asked
-    /// (<see cref="brought"/>), which a question shared with an earlier one dates from that one.</summary>
-    private async Task<(GodotNode Tree, int Brought)> TreeOfBringingAsync()
+    /// <summary>The game's scene tree now, how many times the helper had been made when it was asked (<see cref="brought"/>),
+    /// which a question shared with an earlier one dates from that one, and the changes of the game's count of nodes heard
+    /// when it came (<see cref="moves"/>).</summary>
+    private async Task<(GodotNode Tree, int Brought, int Moves)> TreeOfBringingAsync()
     {
         UiThread.Check();
-        TaskCompletionSource<GodotNode?> asked = treeAsked is { Task.IsCompleted: false } pending ? pending
-            : treeAsked = new TaskCompletionSource<GodotNode?>(brought, TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<(GodotNode? Tree, int Moves)> asked = treeAsked is { Task.IsCompleted: false } pending ? pending
+            : treeAsked = new TaskCompletionSource<(GodotNode? Tree, int Moves)>(brought, TaskCreationOptions.RunContinuationsAsynchronously);
         await AskingAsync(asked.Task, GodotWords.RequestSceneTree);
-        GodotNode tree = await Answer(asked.Task, "with its scene tree") ?? throw new LiveAppException($"{Name} sent a scene tree Passenger could not read");
-        return (tree, (int)asked.Task.AsyncState!);
+        (GodotNode? told, int moved) = await Answer(asked.Task, "with its scene tree");
+        return (told ?? throw new LiveAppException($"{Name} sent a scene tree Passenger could not read"), (int)asked.Task.AsyncState!, moved);
     }
 
     /// <summary>Sends a question whose answer is waited for after: where it cannot be sent, no one waits for that answer, and
@@ -926,20 +933,21 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     private async Task<List<object?>> AskAsync(string call, object?[] arguments, Func<Task>? then)
     {
         UiThread.Check();
-        string? scene = besideScene;
-        (GodotNode Tree, int Brought)? asked = null;
-        if (scene is null || bringing is null)
+        (string Scene, int Moves)? named = beside is { } known && known.Moves == moves ? known : null;
+        (GodotNode Tree, int Brought, int Moves)? asked = null;
+        if (named is null || bringing is null)
         {
             asked = await TreeOfBringingAsync();
             GodotNode tree = asked.Value.Tree;
             List<GodotNode> all = [.. tree.All()];
-            scene = tree.Children.Select(c => c.SceneFile).FirstOrDefault(f => f.Length > 0 && all.Count(n => n.SceneFile == f) == 1)
-                ?? throw new LiveAppException($"{Name} has no scene open once under its root, beside which Passenger's helper comes into the game");
+            named = (tree.Children.Select(c => c.SceneFile).FirstOrDefault(f => f.Length > 0 && all.Count(n => n.SceneFile == f) == 1)
+                ?? throw new LiveAppException($"{Name} has no scene open once under its root, beside which Passenger's helper comes into the game"), asked.Value.Moves);
         }
+        (string scene, int namedAt) = named.Value;
         await SendAsync(GodotWords.LiveSetRoot, GodotAgent.PathOf("/root"), scene);
         await SendAsync(GodotWords.LiveNodePath, GodotAgent.PathOf($"../{GodotAgent.NodeName}"), GodotLiveEditIds.Agent);
         // Brought in only once the game knows the path its script is set through, or the script goes nowhere.
-        if (asked is ({ } lacking, int since) && !lacking.Children.Any(GodotAgent.Is) && (bringing is null || (bringing.IsCompleted && since == brought)))
+        if (asked is ({ } lacking, int since, _) && !lacking.Children.Any(GodotAgent.Is) && (bringing is null || (bringing.IsCompleted && since == brought)))
         {
             bringing = BringAsync();
         }
@@ -960,6 +968,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         agentAsked[ask] = answer;
         try
         {
+            if (namedAt != moves)
+            {
+                CallsBesideMoved++;
+            }
             // Through the one call the helper guards every other with.
             await SendAsync(GodotWords.LiveNodeCall, GodotLiveEditIds.Agent, GodotAgent.Asked, call, ask, new List<object?>(arguments));
             if (then is not null)
@@ -974,10 +986,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             }
             catch (LiveAppException)
             {
-                besideScene = null;
+                beside = null;
                 throw;
             }
-            besideScene = scene;
+            beside = (scene, namedAt);
             return said[1] is true ? said[2..]
                 : throw new LiveAppException(said is [_, _, string why, ..] ? why : $"Passenger's helper in {Name} did not say why it could not");
         }
@@ -987,9 +999,17 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         }
     }
 
-    /// <summary>The scene the helper last answered beside, while the game's count of nodes has stood since: the next ask goes
-    /// there without asking for the tree, which a game of many nodes sends at a cost.</summary>
-    private string? besideScene;
+    /// <summary>The scene the helper last answered beside, and the changes of the game's count of nodes heard when the tree
+    /// naming it came: while none has come since, the next ask goes there without asking for the tree, which a game of many
+    /// nodes sends at a cost.</summary>
+    private (string Scene, int Moves)? beside;
+
+    /// <summary>The changes of the game's count of nodes heard so far, each a sign the helper or the scene open may be gone.</summary>
+    private int moves;
+
+    /// <summary>The helper's calls sent beside a scene the game's tree named before its count of nodes last changed: to a
+    /// helper the game may have freed, or a scene no longer open, where the call goes unanswered.</summary>
+    public int CallsBesideMoved { get; private set; }
 
     /// <summary>The values of scripts' members in the nodes that run them (or a script they run is based on), through
     /// Passenger's helper: for each script asked of, how many nodes run it and the members of the one chosen, else of the
