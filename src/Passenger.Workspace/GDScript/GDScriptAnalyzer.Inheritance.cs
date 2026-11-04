@@ -156,7 +156,8 @@ public sealed partial class GDScriptAnalyzer
                         return Member(lookType, name) is { } other ? Failed(at, first, $"Cannot use {MemberWords(other)} \"{name}\" in extends chain.") : Unsure();
                 }
             }
-            return Failed(at, first, $"Could not find base class \"{name}\".");
+            // With no engine's API to look in, a name found nowhere else may be an engine class.
+            return Engine is null ? Unsure() : Failed(at, first, $"Could not find base class \"{name}\".");
 
             // A class and the classes its scope reaches through, as Godot's get_class_node_current_scope_classes lists them.
             void Add(GDScriptClass look)

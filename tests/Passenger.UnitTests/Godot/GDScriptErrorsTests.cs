@@ -605,4 +605,18 @@ public class GDScriptErrorsTests
             Errors("extends \"res://base.gd\"\n\n\nfunc _ready() -> void:\n\tprint(nowhere, from_base)\n",
                 p => p == "res://base.gd" ? GDScriptTree.Parse("extends Node\n\nvar from_base := 1\n") : null));
     }
+
+    /// <summary>With no engine's API (no Godot found to dump it), a base no script, autoload or scope gives may be an engine
+    /// class: none is said missing, and the body's errors that need no engine stand.</summary>
+    [Fact]
+    public void With_no_engines_api_a_base_no_script_gives_is_never_said_missing_and_the_bodys_own_errors_stand()
+    {
+        const string Script = "extends Node\n\n\nfunc count() -> int:\n\tpass\n";
+        GDScriptTree tree = GDScriptTree.Parse(Script);
+        GDScriptProject project = new(null, p => p == "res://main.gd" ? tree : null, new Dictionary<string, string>(), new Dictionary<string, string>());
+        GDScriptAnalysis analysis = new GDScriptAnalyzer(project).Analyze(tree, "res://main.gd");
+        TextSnapshot snapshot = TextSnapshot.From(Script);
+        Assert.Equal(["4: Not all code paths return a value."],
+            analysis.Findings(GDScriptWarningSettings.Every).Where(f => f.Code is null).Select(f => $"{snapshot.GetLineFromOffset(f.Start) + 1}: {f.Message}"));
+    }
 }

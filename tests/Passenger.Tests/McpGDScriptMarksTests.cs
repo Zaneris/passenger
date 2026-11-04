@@ -26,7 +26,8 @@ public sealed class McpGDScriptMarksTests : McpRig
             await using McpClient client = await Start(["--mcp", folder], environment: homes);
             JsonElement unused = default;
             await Until(async () => (await Call(client, McpTools.Diagnostics, new() { ["path"] = "main.gd" })).EnumerateArray()
-                .FirstOrDefault(f => f.GetProperty("code").ValueKind == JsonValueKind.String && f.GetProperty("code").GetString() == "UNUSED_VARIABLE") is { ValueKind: JsonValueKind.Object } found
+                .FirstOrDefault(f => f.TryGetProperty("code", out JsonElement code) && code.ValueKind == JsonValueKind.String && code.GetString() == "UNUSED_VARIABLE")
+                is { ValueKind: JsonValueKind.Object } found
                 && (unused = found).ValueKind == JsonValueKind.Object, "the unused variable's warning with UNUSED_VARIABLE as its code");
             Assert.Equal(("warning", Words, 5), (unused.GetProperty("severity").GetString(), unused.GetProperty("message").GetString(), unused.GetProperty("line").GetInt32()));
         }
