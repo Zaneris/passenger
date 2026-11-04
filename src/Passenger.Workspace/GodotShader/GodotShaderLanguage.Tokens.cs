@@ -306,6 +306,9 @@ public sealed partial class GodotShaderLanguage
     private string code = string.Empty;
     private int charIdx;
     private int tkLine;
+
+    /// <summary>Where the token last read begins in the code, or the place gone back to.</summary>
+    private int tokenStart;
     private readonly List<GodotShaderFilePosition> includePositions = [];
     private readonly HashSet<string> includeMarkersHandled = new(StringComparer.Ordinal);
 
@@ -315,6 +318,7 @@ public sealed partial class GodotShaderLanguage
     {
         charIdx = position.CharIdx;
         tkLine = position.TkLine;
+        tokenStart = position.CharIdx;
     }
 
     private char GetChar(int offset) => charIdx + offset < code.Length && charIdx + offset >= 0 ? code[charIdx + offset] : '\0';
@@ -349,6 +353,7 @@ public sealed partial class GodotShaderLanguage
         while (true)
         {
             charIdx++;
+            tokenStart = charIdx - 1;
             char c = GetChar(-1);
             switch (c)
             {
@@ -628,7 +633,7 @@ public sealed partial class GodotShaderLanguage
             string word = code[start..charIdx];
             foreach ((Tk token, string text, _, _) in Keywords)
             {
-                if (word == text)
+                if (word == text && !(Before48 && token is Tk.HintNoStorage or Tk.HintNoEditor))
                 {
                     return MakeToken(token);
                 }

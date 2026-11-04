@@ -5,8 +5,8 @@ namespace Passenger.UnitTests.Godot;
 
 /// <summary>Godot's shading language compiler as Passenger ports it, checked as Godot's shader editor checks a shader:
 /// shaders of every type compile clean, an error is said in Godot's words at its line (each case's words and line as
-/// Godot 4.7.2's own compiler gave them), an include's error names the include, and the warnings come as the editor
-/// gives them.</summary>
+/// Godot 4.7.2's and 4.8 beta 2's own compilers gave them), every error at once, an include's error naming the include,
+/// and the warnings as the editor gives them.</summary>
 public class GodotShaderLanguageTests
 {
     [Theory]
@@ -185,7 +185,65 @@ public class GodotShaderLanguageTests
         Assert.Equal([new GodotShaderMessage(true, string.Empty, 3, "Can't find matching branch directive.")], result.Messages);
     }
 
-    private static GodotShaderChecked Check(string code, IReadOnlyDictionary<string, string>? includes = null, string method = "forward_plus") =>
+    [Fact]
+    public void Every_error_is_said_at_once_the_first_as_Godot_gives_it_and_none_that_only_follows_from_one_before()
+    {
+        GodotShaderChecked result = Check("""
+            shader_type spatial;
+
+            uniform sampler2D tex : hint_nope;
+
+            void vertex() {
+            	VERTEX.y += sin(TIME * speedd);
+            	float a = vec3(1.0);
+            	VERTEX.x += a;
+            }
+
+            void fragment() {
+            	ALBEDO = texture(tex, UV).rgb;
+            	ROUGHNESS = 1.0
+            	METALLIC = 0.5;
+            	if (ALPHA > nope) {
+            		ALBEDO = vec3(0.0);
+            	} else {
+            		ALBEDO = vec3(1.0) + vec2(1.0);
+            	}
+            }
+
+            float no_return() {
+            	float r = 1.0;
+            }
+            """);
+        Assert.Equal([
+            (3, "Expected valid type hint after ':'."),
+            (6, "Unknown identifier in expression: 'speedd'."),
+            (7, "Invalid assignment of 'vec3' to 'float'."),
+            (14, "Expected a ';'."),
+            (15, "Unknown identifier in expression: 'nope'."),
+            (18, "Invalid arguments to operator '+': 'vec3, vec2'."),
+            (24, "Expected at least one 'return' statement in a non-void function."),
+        ], result.Messages.Select(m => (m.Line, m.Text)));
+        Assert.All(result.Messages, m => Assert.True(m.Error, $"A shader with errors was warned: {m.Text}"));
+    }
+
+    [Theory]
+    [InlineData("shader_type canvas_item;\n\nvoid fragment() {\n\tCOLOR = vec4(true, 0.5, 0.5, 1.0);\n}\n",
+        "Invalid arguments for the built-in function: \"vec4(bool,float,float,float)\".", 4, null, 0)]
+    [InlineData("shader_type canvas_item;\n\nconst int A = 2;\nconst int B = A;\n\nvoid fragment() {\n\tfloat arr[B];\n\tCOLOR.r = arr[0];\n}\n",
+        "Expected a positive integer constant.", 7, null, 0)]
+    [InlineData("shader_type spatial;\n\nuniform float x : no_storage, no_storage;\n\nvoid fragment() {\n\tALBEDO = vec3(x);\n}\n",
+        "Expected valid type hint after ':'.", 3, "Duplicated property usage flag 'no_storage'.", 3)]
+    [InlineData("shader_type canvas_item;\n\nfloat thing() {\n\treturn 1.0;\n}\n\nstruct thing {\n\tfloat x;\n};\n\nvoid fragment() {\n\tCOLOR.r = thing();\n}\n",
+        "Expected expression, found: 'PARENTHESIS_CLOSE'.", 12, "Redefinition of 'thing'.", 7)]
+    public void A_shader_is_read_as_the_Godot_found_reads_it_4_7_and_4_8_each_its_own_way(string code, string error47, int line47, string? error48, int line48)
+    {
+        GodotShaderMessage said47 = Assert.Single(Check(code).Messages);
+        Assert.Equal((error47, line47), (said47.Text, said47.Line));
+        IReadOnlyList<GodotShaderMessage> said48 = Check(code, godot: new Version(4, 8)).Messages;
+        Assert.Equal(error48 is null ? [] : [(error48, line48)], said48.Select(m => (m.Text, m.Line)));
+    }
+
+    private static GodotShaderChecked Check(string code, IReadOnlyDictionary<string, string>? includes = null, string method = "forward_plus", Version? godot = null) =>
         GodotShaderCheck.Check(new GodotShaderUnit("res://shader.gdshader", code, includes ?? new Dictionary<string, string>(), []), GodotShaderTable.Carried,
-            new GodotShaderCheckOptions { RenderingMethod = method, Godot = new Version(4, 7, 2) });
+            new GodotShaderCheckOptions { RenderingMethod = method, Godot = godot ?? new Version(4, 7, 2) });
 }

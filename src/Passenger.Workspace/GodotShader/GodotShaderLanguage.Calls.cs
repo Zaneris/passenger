@@ -131,7 +131,12 @@ public sealed partial class GodotShaderLanguage
                         }
 
                         bool converted = false;
-                        if (GetScalarType(args[i]) == args[i])
+                        if (Before48)
+                        {
+                            converted = GetScalarType(args[i]) == args[i] && pFunc.Arguments[i + 1].Type == NodeType.Constant
+                                && ConvertConstant((ConstantNode)pFunc.Arguments[i + 1], builtinFuncDefs[idx].Args[i]);
+                        }
+                        else if (GetScalarType(args[i]) == args[i])
                         {
                             if (pFunc.Arguments[i + 1].Type == NodeType.Constant)
                             {

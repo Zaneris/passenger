@@ -170,7 +170,7 @@ public sealed partial class GodotShaderLanguage
             found?.StructName = shader.Constants[pIdentifier].StructName;
             if (found is { WantsValues: true } && shader.Constants[pIdentifier].Initializer is Node initializer)
             {
-                List<Scalar> values = GetNodeValues(pBlock, pFunctionInfo, initializer);
+                List<Scalar> values = Before48 ? initializer.GetValues() : GetNodeValues(pBlock, pFunctionInfo, initializer);
                 if (values.Count > 0)
                 {
                     found.ConstantValues = values;

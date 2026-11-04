@@ -22,18 +22,22 @@ public sealed record GodotShaderCheckOptions
 }
 
 /// <summary>What Godot's front end made of a shader or an include: its messages, as Godot's editor gives them (a
-/// preprocessor's error, else the compile's errors and, where it compiled, its warnings by line), the shader type it was
-/// read as, and the uniforms it declares as the compile read them.</summary>
+/// preprocessor's error, else every error of the compile and, where it compiled, its warnings by line), the shader type
+/// it was read as, and the uniforms it declares as the compile read them.</summary>
 public sealed record GodotShaderChecked(IReadOnlyList<GodotShaderMessage> Messages, string ShaderType,
     IReadOnlyList<KeyValuePair<string, GodotShaderLanguage.Uniform>> Uniforms);
 
 /// <summary>Checks a shader or an include as Godot's shader editor validates it (ShaderTextEditor::_validate_script, MIT),
-/// with Passenger's ports of its preprocessor and compiler and the language's table as the Godot found takes it: an
-/// include compiled alone, with the warnings of what it declares and never uses off as the editor turns them off. Pure.</summary>
+/// with Passenger's ports of its preprocessor and compiler and the language's table as the Godot found takes it, going
+/// on past the error Godot stops at to the others: an include compiled alone, with the warnings of what it declares and
+/// never uses off as the editor turns them off. Pure.</summary>
 public static class GodotShaderCheck
 {
     /// <summary>The first Godot whose canvas, particles, sky, fog and blit shaders know the values of PI, TAU and E.</summary>
     private static readonly Version ConstantValues48 = new(4, 8);
+
+    /// <summary>How many errors a shader's check goes on to, past the first.</summary>
+    private const int MostErrors = 64;
 
     /// <summary>The flags Godot's editor clears for an include: it clears codes' numbers as flags, so these three.</summary>
     private const GodotShaderWarningFlags IncludeCleared = GodotShaderWarningFlags.FloatComparison | GodotShaderWarningFlags.UnusedConstant
@@ -55,16 +59,15 @@ public static class GodotShaderCheck
 
         string shaderType = isInclude ? string.Empty : GodotShaderLanguage.GetShaderType(preprocessed.Code);
         GodotShaderLanguage.ShaderCompileInfo info = InfoFor(table, isInclude ? null : shaderType, options);
-        GodotShaderLanguage language = new();
-        GodotShaderLanguage.Err result = language.Compile(preprocessed.Code, info);
+        (GodotShaderLanguage language, List<GodotShaderLanguage.CompileError> errors) = Compiled(preprocessed.Code, info);
         List<GodotShaderMessage> messages = [];
-        foreach (GodotShaderLanguage.CompileError compiled in language.Errors)
+        foreach (GodotShaderLanguage.CompileError compiled in errors)
         {
             messages.Add(compiled.Positions.Count > 1
                 ? new GodotShaderMessage(true, compiled.Positions[^1].File, compiled.Positions[^1].Line, compiled.Message)
                 : new GodotShaderMessage(true, string.Empty, compiled.Line, compiled.Message));
         }
-        if (result == GodotShaderLanguage.Err.Ok)
+        if (errors.Count == 0)
         {
             List<GodotShaderWarning> warnings = [.. language.Warnings.OrderBy(w => w.Line)];
             for (int i = 0; i < warnings.Count; i++)
@@ -79,6 +82,74 @@ public static class GodotShaderCheck
         GodotShaderIncluded? Included(string path) => unit.Includes.TryGetValue(path, out string? text)
             ? new GodotShaderIncluded(true, path.EndsWith(".gdshaderinc", StringComparison.Ordinal), text)
             : null;
+    }
+
+    /// <summary>Every error of the code, the first as Godot gives it, then each Godot would give once the statements of
+    /// those before were taken out: a condition or a local's initializer first, so the rest is still read, else the
+    /// statement whole, else what holds it. What a taken-out declaration would make wrong after it (a use of its name, a function left
+    /// with no return) is left unsaid. With the last compile, whose shader is the one read furthest.</summary>
+    private static (GodotShaderLanguage Language, List<GodotShaderLanguage.CompileError> Errors) Compiled(string code, GodotShaderLanguage.ShaderCompileInfo info)
+    {
+        List<GodotShaderLanguage.CompileError> errors = [];
+        List<GodotShaderStatements.Span> spans = GodotShaderStatements.Of(code);
+        HashSet<string> gone = new(StringComparer.Ordinal);
+        HashSet<(GodotShaderStatements.Span, int)> softened = [];
+        HashSet<GodotShaderStatements.Span> blanked = [];
+        bool returnGone = false;
+        GodotShaderLanguage language = new();
+        for (int pass = 0; pass < MostErrors; pass++)
+        {
+            language = new GodotShaderLanguage();
+            if (language.Compile(code, info) == GodotShaderLanguage.Err.Ok || language.Errors.Count == 0)
+            {
+                break;
+            }
+            GodotShaderLanguage.CompileError error = language.Errors[0];
+            bool follows = Quoted(error.Message).Any(gone.Contains)
+                || returnGone && error.Message.StartsWith("Expected at least one 'return' statement", StringComparison.Ordinal);
+            if (!follows && !errors.Any(e => e.Message == error.Message && e.Offset == error.Offset))
+            {
+                errors.Add(error);
+            }
+            if (GodotShaderStatements.At(spans, code, error.Offset) is not { } span || code.AsSpan(span.Start).TrimStart().StartsWith("shader_type"))
+            {
+                break;
+            }
+            while (blanked.Contains(span))
+            {
+                if (GodotShaderStatements.Around(spans, span) is not { } around)
+                {
+                    return (language, errors);
+                }
+                span = around;
+            }
+            if (softened.Add((span, error.Offset)) && (GodotShaderStatements.WithoutCondition(code, span, error.Offset) ?? GodotShaderStatements.WithoutInitializer(code, span)) is { } kept)
+            {
+                code = kept;
+                continue;
+            }
+            string text = code[span.Start..span.End];
+            gone.UnionWith(GodotShaderStatements.NamesDeclared(text));
+            returnGone |= text.Contains("return", StringComparison.Ordinal);
+            blanked.Add(span);
+            code = GodotShaderStatements.Blanked(code, span);
+        }
+        return (language, errors);
+    }
+
+    /// <summary>The names a message quotes ('speedd').</summary>
+    private static IEnumerable<string> Quoted(string message)
+    {
+        for (int open = message.IndexOf('\''); open >= 0;)
+        {
+            int close = message.IndexOf('\'', open + 1);
+            if (close < 0)
+            {
+                yield break;
+            }
+            yield return message[(open + 1)..close];
+            open = message.IndexOf('\'', close + 1);
+        }
     }
 
     /// <summary>What Godot's compiler is given for a shader of a type (an include's, for null): its type's functions and
@@ -103,6 +174,7 @@ public static class GodotShaderCheck
             RenderingMethod = options.RenderingMethod,
             XrEnabled = options.XrEnabled,
             Warnings = warnings,
+            Godot = options.Godot,
         };
     }
 

@@ -2504,7 +2504,10 @@ public sealed partial class GodotShaderLanguage
                         SetError(Format(("Invalid arguments to unary operator '%s': %s."), GetOperatorText(op.Op), at));
                         return null;
                     }
-                    expression[i].Node = ReduceExpression(pBlock, expression[i].Node!);
+                    if (!Before48)
+                    {
+                        expression[i].Node = ReduceExpression(pBlock, expression[i].Node!);
+                    }
                     expression.RemoveAt(i + 1);
                 }
 

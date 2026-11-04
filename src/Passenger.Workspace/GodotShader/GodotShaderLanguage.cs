@@ -317,6 +317,9 @@ public sealed partial class GodotShaderLanguage
 
         /// <summary>The warnings looked for, none checked where null (Godot's enable_warning_checking and flags).</summary>
         public GodotShaderWarningFlags? Warnings { get; init; }
+
+        /// <summary>The Godot whose compiler is followed where 4.7's read differently (4.8's for null).</summary>
+        public Version? Godot { get; init; }
     }
 
     /// <summary>What a name was found to be: Godot's out parameters of _find_identifier, its constant's values read
@@ -339,10 +342,13 @@ public sealed partial class GodotShaderLanguage
     }
 
     /// <summary>An error the compile met, in Godot's words, on a line of the code compiled, with the places it names
-    /// (the first the line in the shader, the last the line in the include it is in).</summary>
-    public sealed record CompileError(string Message, int Line, IReadOnlyList<GodotShaderFilePosition> Positions);
+    /// (the first the line in the shader, the last the line in the include it is in) and where in the code its token
+    /// begins.</summary>
+    public sealed record CompileError(string Message, int Line, IReadOnlyList<GodotShaderFilePosition> Positions, int Offset);
 
     private const int MaxInstanceUniformIndices = 16;
+
+    private static readonly Version Godot48 = new(4, 8);
 
     /// <summary>The processor functions a varying's stage is told by.</summary>
     private static readonly (string Fragment, string Vertex, string Light) varyingFunctionNames = ("fragment", "vertex", "light");
@@ -350,6 +356,7 @@ public sealed partial class GodotShaderLanguage
     private bool errorSet;
     private string errorStr = string.Empty;
     private int errorLine;
+    private int errorOffset;
     private readonly List<CompileError> errors = [];
 
     private string shaderTypeIdentifier = string.Empty;
@@ -381,6 +388,11 @@ public sealed partial class GodotShaderLanguage
     private readonly SortedDictionary<string, CallInfo> callsInfo = new(StringComparer.Ordinal);
     private ShaderCompileInfo compileInfo = new();
 
+    /// <summary>Whether the compile follows a Godot before 4.8, whose compiler knew no property usage hints, converted
+    /// only a constant's type in a built-in's call, let a struct take a function's name, and read a
+    /// constant's values only where written as values.</summary>
+    private bool Before48 => compileInfo.Godot is { } godot && godot < Godot48;
+
     /// <summary>The shader the last compile made, whole or as far as it read.</summary>
     public ShaderNode Shader => shader;
 
@@ -406,7 +418,7 @@ public sealed partial class GodotShaderLanguage
         }
         if (errorSet)
         {
-            errors.Add(new CompileError(errorStr, errorLine, [.. includePositions]));
+            errors.Add(new CompileError(errorStr, errorLine, [.. includePositions], errorOffset));
         }
         return err;
     }
@@ -435,8 +447,10 @@ public sealed partial class GodotShaderLanguage
         functionOverloadCount.Clear();
         ClearWarnings();
         errorLine = 0;
+        errorOffset = 0;
         tkLine = 1;
         charIdx = 0;
+        tokenStart = 0;
         errorSet = false;
         errorStr = string.Empty;
         errors.Clear();
@@ -450,6 +464,7 @@ public sealed partial class GodotShaderLanguage
             return;
         }
         errorLine = tkLine;
+        errorOffset = tokenStart;
         errorSet = true;
         errorStr = message;
         includePositions[^1] = includePositions[^1] with { Line = tkLine };

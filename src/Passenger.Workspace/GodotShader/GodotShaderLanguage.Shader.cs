@@ -162,7 +162,7 @@ public sealed partial class GodotShaderLanguage
                         if (tk.Type == Tk.Identifier)
                         {
                             st.Name = tk.Text;
-                            if (shader.Functions.ContainsKey(st.Name) || shader.Constants.ContainsKey(st.Name) || shader.Structs.ContainsKey(st.Name))
+                            if ((!Before48 && shader.Functions.ContainsKey(st.Name)) || shader.Constants.ContainsKey(st.Name) || shader.Structs.ContainsKey(st.Name))
                             {
                                 SetRedefinitionError((st.Name));
                                 return Err.ParseError;
