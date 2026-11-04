@@ -159,9 +159,7 @@ public static class SolutionEdits
         try
         {
             using JsonDocument read = JsonDocument.Parse(text, LenientJson.Document);
-            return read.RootElement.ValueKind == JsonValueKind.Object && read.RootElement.TryGetProperty("solution", out JsonElement solution)
-                && solution.ValueKind == JsonValueKind.Object && solution.TryGetProperty("projects", out JsonElement projects)
-                && projects.ValueKind == JsonValueKind.Array && projects.EnumerateArray().FirstOrDefault() is { ValueKind: JsonValueKind.String } first
+            return JsonMembers.Items(JsonMembers.Object(read.RootElement, "solution"), "projects") is [{ ValueKind: JsonValueKind.String } first, ..]
                 ? first.GetString() : null;
         }
         catch (JsonException)

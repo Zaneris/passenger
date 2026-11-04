@@ -46,23 +46,18 @@ public sealed record SolutionFilter(string Path, string Solution, IReadOnlySet<s
 
     private static SolutionFilter? Of(string path, JsonDocument read)
     {
-        if (read.RootElement.ValueKind != JsonValueKind.Object || !read.RootElement.TryGetProperty("solution", out JsonElement solution)
-            || solution.ValueKind != JsonValueKind.Object || !solution.TryGetProperty("path", out JsonElement named)
-            || named.GetString() is not { Length: > 0 } relative)
+        if (JsonMembers.Object(read.RootElement, "solution") is not { } solution || JsonMembers.Text(solution, "path") is not { Length: > 0 } relative)
         {
             return null;
         }
         string solutionPath = Named(relative, System.IO.Path.GetDirectoryName(path)!);
         string root = System.IO.Path.GetDirectoryName(solutionPath)!;
         HashSet<string> projects = new(PathNames.Comparer);
-        if (solution.TryGetProperty("projects", out JsonElement listed) && listed.ValueKind == JsonValueKind.Array)
+        foreach (string each in JsonMembers.Texts(solution, "projects"))
         {
-            foreach (JsonElement project in listed.EnumerateArray())
+            if (each.Length > 0)
             {
-                if (project.ValueKind == JsonValueKind.String && project.GetString() is { Length: > 0 } each)
-                {
-                    projects.Add(Named(each, root));
-                }
+                projects.Add(Named(each, root));
             }
         }
         return new SolutionFilter(path, solutionPath, projects);
