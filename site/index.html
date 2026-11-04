@@ -49,7 +49,9 @@
     },
     "license": "https://opensource.org/licenses/MIT",
     "featureList": [
+        "Godot 4 games in C# and GDScript, debugged and profiled",
         "Debugger with Hot Reload",
+        "Blazor WebAssembly components debugged in the browser",
         "CPU and memory profiler",
         "Debugging and profiling .NET services in Docker Compose and Dockerfile containers",
         "Aspire AppHosts run, debugged and profiled",
@@ -83,6 +85,7 @@
     <div class="wrap">
         <a class="brand" href="/"><img src="/favicon.svg" alt="" width="28" height="28">Passenger</a>
         <nav aria-label="Sections">
+            <a class="wide" href="/godot">Godot</a>
             <a class="wide" href="#services">Containers</a>
             <a class="wide" href="#web">Web and data</a>
             <a class="wide" href="#profiling">Profiler</a>
@@ -127,6 +130,8 @@
             <p class="intro">Most of this usually takes a paid IDE or a paid add-on. In Passenger it is part of the IDE, free
                 and open source under MIT, for work and personal projects alike.</p>
             <ul class="checks">
+                <li><a href="/godot"><strong>Godot 4 in C# and GDScript</strong>
+                    <span>C# checked against your scenes, and the running game's values, tree and profile.</span></a></li>
                 <li><a href="#debugging"><strong>A debugger with Hot Reload</strong>
                     <span>Its own, over the runtime's ICorDebug, with your edits put in the program while it runs.</span></a></li>
                 <li><a href="#profiling"><strong>CPU and memory profiling</strong>
@@ -144,6 +149,37 @@
                 <li><a href="/agents"><strong>An MCP server for your agent</strong>
                     <span>Claude Code, Codex, OpenCode and any MCP agent work through the IDE.</span></a></li>
             </ul>
+        </div>
+    </section>
+
+    <section id="godot">
+        <div class="wrap">
+            <p class="kicker">Godot</p>
+            <h2>Godot 4 games in C# and GDScript</h2>
+            <p class="intro">Passenger reads a Godot game's C# against its scenes and its GDScript with Godot's own parser,
+                is the game's remote debugger as Godot's editor is, and works beside that editor or as its script
+                editor.</p>
+
+            <div class="feature">
+                <div class="text">
+                    <h3>The running game, in your code</h3>
+                    <p>Run or debug the game and its C# runs under Passenger's debugger and its GDScript under its GDScript
+                        debugger, both at once. The Live tree shows the game's nodes as they are, a change to a property
+                        taken at once and kept in the scene if you ask, and each script member's value shows after its
+                        line as the game plays.</p>
+                    <h3>One profile, both languages</h3>
+                    <p>The profiler puts the GDScript Godot measured and the C# it sampled in one call tree, and opens the
+                        slowest frame on what it spent.</p>
+                    <a class="more" href="/godot">Godot in depth</a>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/godot-live-tree-light.webp" width="2400" height="1500">
+                        <img src="/images/godot-live-tree-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="A running Godot game's Live tree in Passenger: its scene's nodes as they are, a plant chosen with its properties and values, beside the plant's GDScript">
+                    </picture>
+                </figure>
+            </div>
         </div>
     </section>
 
@@ -315,6 +351,25 @@
                     </picture>
                 </figure>
             </div>
+
+            <div class="feature" id="blazor">
+                <div class="text">
+                    <h3>Blazor, in the browser too</h3>
+                    <p>Debug a Blazor Web App and its server stops in one tab while its WebAssembly components stop in the
+                        browser in the tab beside it: breakpoints with their conditions, stepping, Variables, watches and the
+                        hover card, through .NET's own debug proxy. An AppHost's Blazor app debugs the same way.</p>
+                    <p>The page opens in a Chromium browser Passenger starts on a profile of its own (Chrome, Edge, Chromium
+                        or Brave), never the one you have open, and with Hot Reload a stylesheet you save is applied to the
+                        page in place.</p>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/blazor-wasm-light.webp" width="2400" height="1500">
+                        <img src="/images/blazor-wasm-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="A Blazor Web App debugged in Passenger: its WebAssembly component stopped at a breakpoint in the browser, in a WebAssembly tab beside the server's, the component's fields in Variables">
+                    </picture>
+                </figure>
+            </div>
         </div>
     </section>
 
@@ -462,6 +517,22 @@
 
             <div class="feature flip">
                 <div class="text">
+                    <h3>Show Usages</h3>
+                    <p>Every use of the symbol at the caret in a popup over the code, its own file's first, each with its
+                        line, a C# member's uses in XAML among them. Choose one to go there, or keep them all in the Find
+                        window. A click with a modifier, or a mouse button of its own, runs any action you bind to it.</p>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/usages-light.webp" width="2400" height="1500">
+                        <img src="/images/usages-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="Show Usages of a C# property: every place the solution uses it in a popup at the caret, each with its file and line">
+                    </picture>
+                </figure>
+            </div>
+
+            <div class="feature">
+                <div class="text">
                     <h3>Project files</h3>
                     <p>In a <code>.csproj</code>, <code>.props</code> or <code>.targets</code>: completion of elements,
                         properties, items and their values, and of package ids and versions from your feeds, the version going to
@@ -477,7 +548,7 @@
                 </figure>
             </div>
 
-            <div class="feature">
+            <div class="feature flip">
                 <div class="text">
                     <h3>The web languages</h3>
                     <p>JavaScript, TypeScript, HTML, CSS, SCSS, Less, JSON, Dockerfiles and YAML through their language
@@ -490,6 +561,23 @@
                         <source media="(prefers-color-scheme: light)" srcset="/images/web-light.webp" width="2400" height="1500">
                         <img src="/images/web-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
                              alt="A TypeScript file with completion from its language server">
+                    </picture>
+                </figure>
+            </div>
+
+            <div class="feature">
+                <div class="text">
+                    <h3>Resources and translations</h3>
+                    <p>A <code>.resx</code> opens as a table of its keys, values and comments, each cell written in place,
+                        and an XLIFF file as its units' sources, targets and states. A localizer's keys complete in your C#,
+                        and a key a language lacks is warned of where the code reads it, its fix asking for the
+                        translation.</p>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/resx-light.webp" width="2400" height="1500">
+                        <img src="/images/resx-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="An app's .resx strings as a table of keys, values and comments, in Passenger">
                     </picture>
                 </figure>
             </div>
@@ -600,9 +688,9 @@
                 </details>
                 <details>
                     <summary>Which systems and projects does it run on?</summary>
-                    <p>Windows (x64 and Arm64), macOS on Apple Silicon, and Linux (x64 and Arm64), with a .NET SDK 10 or later.
-                        It works with modern .NET (CoreCLR): console, ASP.NET Core, Blazor, Avalonia and WPF projects, and
-                        the services of a compose file or an Aspire AppHost. .NET Framework, Mono and Unity aren't
+                    <p>Windows (x64 and Arm64), macOS on Apple Silicon, and Linux (x64 and Arm64), with a .NET SDK from 8 for your projects.
+                        It works with modern .NET (CoreCLR): console, ASP.NET Core, Blazor, Avalonia and WPF projects, Godot 4
+                        games in C# and GDScript, and the services of a compose file or an Aspire AppHost. .NET Framework, Mono and Unity aren't
                         Passenger's.</p>
                 </details>
                 <details>
@@ -662,14 +750,20 @@
             <div class="needs">
                 <p>Passenger needs:</p>
                 <ul>
-                    <li><strong>A <a href="https://dotnet.microsoft.com/download">.NET SDK</a>, version 10 or later.</strong> It
-                        builds and runs your projects with it, and its language server, project host and debugger run on
-                        it.</li>
+                    <li><strong>A <a href="https://dotnet.microsoft.com/download">.NET SDK</a> for the projects you open,
+                        .NET 8 or later.</strong> It builds and runs them with it; without one, it says what is missing and
+                        installs one in a step once you agree. Its own language server, project host and debugger run on
+                        the .NET it carries, whatever the machine has.</li>
                     <li><strong><a href="https://git-scm.com/downloads">Git</a></strong>, for version control.</li>
                     <li><strong><a href="https://nodejs.org/">Node.js</a></strong>, for JavaScript, TypeScript, HTML, CSS,
-                        JSON, Dockerfiles and YAML: 22.22.2 or later for TypeScript. C# and XAML do without it.</li>
+                        JSON, Dockerfiles and YAML: 22.22.2 or later for TypeScript. C#, XAML, GDScript and shaders do
+                        without it.</li>
+                    <li><strong>Godot 4</strong>, for Godot games (its .NET build for C#), found from <code>GODOT</code>,
+                        the PATH or your applications, or named in Settings.</li>
+                    <li><strong>Chrome, Edge or another Chromium browser</strong>, for debugging Blazor's WebAssembly.</li>
                     <li><strong>A container engine running Linux containers</strong> (Docker Desktop, Colima, OrbStack,
-                        Rancher Desktop or Podman), only for compose files, Dockerfiles and an AppHost's containers.</li>
+                        Rancher Desktop, Podman or a remote engine), only for compose files, Dockerfiles and an AppHost's
+                        containers.</li>
                 </ul>
                 <p>Every release, with its notes and its <code>SHA256SUMS</code>, is on
                     <a href="https://github.com/Zaneris/passenger/releases">GitHub</a>.</p>
@@ -684,6 +778,7 @@
         <nav aria-label="More">
             <a href="https://github.com/Zaneris/passenger">GitHub</a>
             <a href="https://x.com/Zaneris">X (@Zaneris)</a>
+            <a href="/godot">Godot</a>
             <a href="/containers">Containers and Aspire</a>
             <a href="/agents">Agents</a>
             <a href="/linux">Linux</a>

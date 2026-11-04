@@ -23,7 +23,8 @@ if [[ ! -x "$passenger" ]]; then
 fi
 command -v cwebp > /dev/null || { echo "site-shots: cwebp is not on the PATH (brew install webp)" >&2; exit 2; }
 
-all_scenes=(editor debugger git find-in-files profiler xaml project-files web live-tree agent themes aspire requests)
+all_scenes=(editor debugger git find-in-files profiler xaml project-files web live-tree agent themes aspire requests
+    godot-scene godot-values godot-live-tree godot-profile blazor-wasm usages resx)
 scenes=("$@")
 if [[ ${#scenes[@]} -eq 0 ]]; then
     scenes=("${all_scenes[@]}")
@@ -148,6 +149,91 @@ EOF
     services_prepared=1
 }
 
+# The Godot scenes' game, godot/ beside this script, on the Godot found (GODOT, else the .NET build in Applications): its
+# project on that Godot's Godot.NET.Sdk, restored from that Godot's own packages alone, and built once. Godot keeps its
+# settings, logs and the game's user:// under artifacts/site-shots (PASSENGER_GODOT_HOME), never the person's; a window
+# nobody sees runs the game headless, and its pictures are the window's.
+game="$tmp/passenger-site-shots/GreenhouseGame"
+game_prepared=
+export PASSENGER_GODOT_HOME="$work/godot-home"
+game_ready() {
+    if [[ -n $game_prepared ]] || [[ -n ${SITE_SHOTS_REUSE:-} && -d "$game/.git" ]]; then
+        game_prepared=1
+        return
+    fi
+    local godot=${GODOT:-}
+    for found in "$godot" "/Applications/Godot_mono.app/Contents/MacOS/Godot" "$HOME/Applications/Godot_mono.app/Contents/MacOS/Godot"; do
+        if [[ -n $found && -x $found ]]; then
+            godot=$found
+            break
+        fi
+    done
+    if [[ -z $godot || ! -x $godot ]]; then
+        echo "site-shots: no Godot .NET build found (GODOT, or Godot_mono.app in Applications)" >&2
+        exit 2
+    fi
+    export GODOT=$godot
+    local version packages
+    version=$(HOME="$PASSENGER_GODOT_HOME" "$godot" --version | grep -Eo '^[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+    packages=$(cd "$(dirname "$godot")/../Resources/GodotSharp/Tools/nupkgs" && pwd -P)
+    rm -rf "$game"
+    mkdir -p "$game" "$PASSENGER_GODOT_HOME"
+    cp -R "$repo/tools/site-shots/godot/." "$game/"
+    sed "s/@FEATURES@/${version%.*}/" "$game/project.godot.in" > "$game/project.godot"
+    sed "s/@VERSION@/$version/" "$game/Greenhouse.csproj.in" > "$game/Greenhouse.csproj"
+    rm "$game/project.godot.in" "$game/Greenhouse.csproj.in"
+    printf '<?xml version="1.0" encoding="utf-8"?>\n<configuration>\n  <packageSources>\n    <clear />\n    <add key="godot" value="%s" />\n  </packageSources>\n</configuration>\n' \
+        "$packages" > "$game/nuget.config"
+    export GIT_AUTHOR_NAME="Rosa Field" GIT_AUTHOR_EMAIL="rosa@greenhouse.example"
+    export GIT_COMMITTER_NAME="Rosa Field" GIT_COMMITTER_EMAIL="rosa@greenhouse.example"
+    git -C "$game" init -q -b main
+    git -C "$game" add -- .
+    GIT_AUTHOR_DATE="2026-10-20T09:00:00+00:00" GIT_COMMITTER_DATE="2026-10-20T09:00:00+00:00" \
+        git -C "$game" commit -q -m "The greenhouse as a game: its benches, sprinkler and rain tank"
+    unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+    dotnet build "$game/Greenhouse.csproj" -nologo -v:q -clp:ErrorsOnly
+    game_prepared=1
+}
+
+# The blazor-wasm scene's app: dotnet new's Blazor Web App with WebAssembly interactivity, over HTTP, its client given the
+# benches page beside this script (blazor/), which its launch profile opens with no browser of its own: Debug opens it in a
+# headless Chromium, as a window nobody sees does. Restored and built once, when the scene first asks.
+web_app="$tmp/passenger-site-shots/GreenhouseWeb"
+web_app_prepared=
+web_app_ready() {
+    if [[ -n $web_app_prepared ]] || [[ -n ${SITE_SHOTS_REUSE:-} && -d "$web_app/.git" ]]; then
+        web_app_prepared=1
+        return
+    fi
+    rm -rf "$web_app"
+    mkdir -p "$web_app"
+    cp "$repo/tools/site-shots/blazor/nuget.config" "$web_app/"
+    dotnet new blazor -n Greenhouse.Web -o "$web_app" --interactivity WebAssembly --no-https > /dev/null
+    cp "$repo/tools/site-shots/blazor/Benches.razor" "$web_app/Greenhouse.Web.Client/Pages/Benches.razor"
+    python3 -I - "$web_app/Greenhouse.Web/Properties/launchSettings.json" <<'EOF2'
+import json, sys
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    launch = json.load(f)
+http = launch["profiles"]["http"]
+http["applicationUrl"] = "http://localhost:5173"
+http["launchUrl"] = "benches"
+http["launchBrowser"] = False
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(launch, f, indent=2)
+    f.write("\n")
+EOF2
+    export GIT_AUTHOR_NAME="Rosa Field" GIT_AUTHOR_EMAIL="rosa@greenhouse.example"
+    export GIT_COMMITTER_NAME="Rosa Field" GIT_COMMITTER_EMAIL="rosa@greenhouse.example"
+    git -C "$web_app" init -q -b main
+    git -C "$web_app" add -- .
+    GIT_AUTHOR_DATE="2026-10-22T09:00:00+00:00" GIT_COMMITTER_DATE="2026-10-22T09:00:00+00:00" \
+        git -C "$web_app" commit -q -m "The greenhouse's benches on the web"
+    unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+    dotnet build "$web_app/Greenhouse.Web/Greenhouse.Web.csproj" -nologo -v:q -clp:ErrorsOnly
+    web_app_prepared=1
+}
+
 # One picture: a fresh state of its own (layout, breakpoints, logs), the window at the site's size, the scene's steps.
 shot() {
     local name=$1 theme=$2
@@ -265,6 +351,46 @@ scene() {
                 --caret 32:9 --key F9 --click 16,50 --drag 20,329,900,640 --click-name DebugButton --wait 30000 \
                 --drag 600,600,585,600 --wait 500 --drag 815,640,778,640 --wait 500 --click 870,531 --wait 1500 \
                 --hover 900,120 ;;
+        godot-scene)
+            # The game's C# beside its scene, whose tree Structure shows with each node's script.
+            game_ready
+            solution="$game" shot "$name" "$theme" --file Greenhouse.cs --caret 25:5 \
+                --key "meta+shift+A" --type "Split Right" --key enter --wait 500 \
+                --key "meta+shift+A" --type "Go to File" --key enter --type "main.tscn" --wait 800 --key enter --wait 1000 \
+                --key "meta+shift+A" --type "Structure" --key enter --wait 2000 --drag 751,400,880,400 --wait 500 ;;
+        godot-values)
+            # The game run: its scripts' values at their lines as it plays.
+            game_ready
+            solution="$game" shot "$name" "$theme" --file Greenhouse.cs --caret 8:5 --click-name RunButton --wait 30000 \
+                --key "meta+shift+F12" --wait 1000 --hover 600,640 ;;
+        godot-live-tree)
+            # The game run: its scene's nodes as they are in the Live tree, a plant chosen with its values.
+            game_ready
+            solution="$game" shot "$name" "$theme" --file plant.gd --caret 6:1 --click-name RunButton --wait 30000 \
+                --key "meta+shift+F12" --key "meta+shift+A" --type "Live Visual Tree" --key enter --wait 4000 \
+                --drag 859,400,740,400 --click 900,184 --key right --wait 1000 --key down --key down --key right --wait 1000 \
+                --key down --key down --wait 2000 --hover 600,640 ;;
+        godot-profile)
+            # The game profiled past its start, C#'s hot path open down to Forecast's calls; End, Up and Right open GDScript's
+            # root below it, the Downs bring its functions into sight, and Enter opens its heaviest at its line.
+            game_ready
+            solution="$game" shot "$name" "$theme" --file Greenhouse.cs --caret 1:1 --key "meta+shift+F12" \
+                --click-name ProfileButton --wait 40000 --click 1002,497 --wait 15000 \
+                --drag 700,444,700,160 --wait 1000 --drag 332,306,1147,306 --wait 4000 --click 600,352 \
+                --key end --key up --key right --key down --key down --key down --key up --key up \
+                --wait 500 --key enter --wait 2000 --hover 600,100 ;;
+        blazor-wasm)
+            # The Blazor Web App debugged: its WebAssembly page stopped in the browser at its breakpoint, its fields shown.
+            web_app_ready
+            solution="$web_app" shot "$name" "$theme" --file Greenhouse.Web.Client/Pages/Benches.razor \
+                --caret 24:9 --key F9 --click-name DebugButton --wait 60000 --click 456,591 --wait 3000 --hover 200,420 ;;
+        usages)
+            # Show Usages of the plant's watering interval, every use in the solution in a popup at the caret.
+            shot "$name" "$theme" --file src/Greenhouse.Core/Plant.cs --caret 7:20 \
+                --key "meta+shift+A" --type "Show Usages" --key enter --wait 3000 ;;
+        resx)
+            # The app's strings as a table of keys, values and comments.
+            shot "$name" "$theme" --file src/Greenhouse.App/Resources/Strings.resx --wait 2000 ;;
         requests)
             # The AppHost run, the sensors asking the API each second: the Requests window, thirsty-plants marked N+1.
             services_ready

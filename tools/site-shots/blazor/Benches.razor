@@ -1,0 +1,28 @@
+@page "/benches"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+
+<PageTitle>Benches</PageTitle>
+
+<h1>Benches</h1>
+
+@foreach (Bench bench in benches)
+{
+    <p>@bench.Name: @bench.Plants plants, @bench.Litres litres a day</p>
+}
+<p role="status">The tank lasts @daysLeft days</p>
+
+@code {
+    private readonly List<Bench> benches = [];
+    private double tankLitres = 120;
+    private int daysLeft;
+
+    protected override void OnInitialized()
+    {
+        benches.Add(new Bench("North", 6, 2.4));
+        benches.Add(new Bench("South", 4, 3.1));
+        double daily = benches.Sum(b => b.Litres);
+        daysLeft = (int)(tankLitres / daily);
+    }
+
+    private sealed record Bench(string Name, int Plants, double Litres);
+}

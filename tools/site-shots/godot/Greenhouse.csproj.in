@@ -1,0 +1,7 @@
+<Project Sdk="Godot.NET.Sdk/@VERSION@">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>

@@ -58,12 +58,14 @@
     <h2>1. What it needs</h2>
     <p>A 64-bit Intel or Arm machine with a desktop, and:</p>
     <ul>
-        <li><strong>A .NET SDK, version 10 or later</strong>, from <a href="https://learn.microsoft.com/dotnet/core/install/linux">Microsoft's
+        <li><strong>A .NET SDK for the projects you open, .NET 8 or later</strong>, from <a href="https://learn.microsoft.com/dotnet/core/install/linux">Microsoft's
             Linux packages or install script</a>, with <code>dotnet</code> on your PATH (or <code>DOTNET_ROOT</code> naming its
-            folder). Passenger builds and runs your projects with it, and Roslyn's language server runs on it.</li>
+            folder). Passenger builds and runs your projects with it, and without one says what is missing and installs one
+            in a step once you agree. Its own language server, project host and debugger run on the .NET it carries.</li>
         <li><strong>Git</strong>, the X11 and fontconfig libraries, and a font, which most desktops already have.
-            Passenger carries no font of its own: with none installed, its window shows no words. On a Wayland desktop,
-            Passenger runs through XWayland.</li>
+            Passenger carries its own faces, Inter for the window and JetBrains Mono for code, but takes the system's
+            default font from fontconfig as it starts, and draws the characters its faces lack (other scripts, many
+            symbols, emoji) in the fonts installed. On a Wayland desktop, Passenger runs through XWayland.</li>
         <li><strong>Node.js</strong>, only for JavaScript, TypeScript, HTML, CSS and JSON (22.22.2 or later for
             TypeScript). Your distribution's package may be older; <a href="https://nodejs.org/en/download">nodejs.org</a>
             has current ones, and Settings &rsaquo; Node.js can name the one to use.</li>
@@ -133,10 +135,10 @@ sudo /opt/passenger/install.sh --uninstall --system</pre>
     <ul>
         <li><strong>The window does not open:</strong> run <code>passenger-ide</code> from a shell to see why, and check the
             libraries in step 1; <code>install.sh</code> names any of them it finds missing.</li>
-        <li><strong>The window opens with no words in it:</strong> no font is installed. <code>install.sh</code> says so,
-            with the command that installs one on Ubuntu, Debian, Fedora, Arch, openSUSE and Alpine.</li>
-        <li><strong>C# has colour but no completion or errors:</strong> Passenger could not start Roslyn's language server.
-            Check that <code>dotnet --list-sdks</code> shows a version 10 or later SDK.</li>
+        <li><strong>No font is installed:</strong> <code>install.sh</code> says so, with the command that installs one on
+            Ubuntu, Debian, Fedora, Arch, openSUSE and Alpine.</li>
+        <li><strong>C# has colour but no completion or errors:</strong> the banner over the window says why, most often that
+            no .NET SDK installed builds the project; Install .NET SDK&hellip; installs one.</li>
         <li><strong>A TypeScript or other web file has colour but no help:</strong> the banner over it says why, most often
             that no Node.js was found or that it is too old for the language server.</li>
         <li><strong>Started from the applications menu, Passenger finds no <code>dotnet</code> or <code>git</code>:</strong>
@@ -160,6 +162,7 @@ sudo /opt/passenger/install.sh --uninstall --system</pre>
             <a href="/">Home</a>
             <a href="https://github.com/Zaneris/passenger">GitHub</a>
             <a href="https://x.com/Zaneris">X (@Zaneris)</a>
+            <a href="/godot">Godot</a>
             <a href="/containers">Containers and Aspire</a>
             <a href="/agents">Agents</a>
             <a href="https://github.com/Zaneris/passenger/blob/main/LICENSE">Licence</a>

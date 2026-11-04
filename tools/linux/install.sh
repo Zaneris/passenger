@@ -90,7 +90,8 @@ leads_to_passenger() {
     [ "$to" = "$dest/passenger" ] || { [ "${led##*/}" = passenger ] && is_passenger "${led%/*}"; }
 }
 
-# Whether fontconfig, or else the font folders, know a font: Passenger carries none, and with none its window has no words.
+# Whether fontconfig, or else the font folders, know a font: Passenger takes the system's default font from fontconfig as
+# it starts, and draws in installed fonts what its own faces (Inter, JetBrains Mono) lack.
 has_font() {
     if command -v fc-list > /dev/null 2>&1; then
         [ -n "$(fc-list : family 2> /dev/null | head -n 1)" ]
@@ -262,9 +263,9 @@ fi
 if ! has_font; then
     hint=$(font_command)
     if [ -n "$hint" ]; then
-        echo "No font is installed, so Passenger's window would show no words: install one, as with: $hint" >&2
+        echo "No font is installed, and Passenger takes its default font from the system's as it starts: install one, as with: $hint" >&2
     else
-        echo "No font is installed, so Passenger's window would show no words: install one, such as your distribution's DejaVu Sans." >&2
+        echo "No font is installed, and Passenger takes its default font from the system's as it starts: install one, such as your distribution's DejaVu Sans." >&2
     fi
 fi
 if ! command -v dotnet > /dev/null 2>&1 && [ -z "${DOTNET_ROOT:-}" ]; then
