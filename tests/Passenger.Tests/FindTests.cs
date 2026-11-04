@@ -58,6 +58,37 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Shift+Enter in the Replace box puts a line break into it, as its tooltip says, where Enter replaces; Replace
+    /// All writes it in a "\r\n" file as "\r\n", and with Regex on a \n typed in the box makes one too.</summary>
+    [AvaloniaFact]
+    public void Shift_enter_puts_a_line_break_in_the_replacement_and_a_regex_reads_backslash_n_each_written_as_the_files_own()
+    {
+        (MainWindow window, CodeEditor editor) = Open("one, two\r\nthree\r\n");
+        Ui.Press(window, Ui.Shortcut(AppActions.Replace));
+        window.KeyTextInput(", ");
+        Ui.Settle();
+        FindBar bar = window.EditorArea.FindBar;
+        TextBox replacing = bar.FindControl<TextBox>("ReplaceWith")!;
+        Assert.Contains("Shift+Enter puts a line break in", ToolTip.GetTip(replacing) as string, StringComparison.Ordinal);
+        replacing.Focus();
+        window.KeyTextInput(",");
+        Ui.Press(window, "shift ENTER");
+        window.KeyTextInput("and ");
+        Ui.Settle();
+        Assert.True(replacing.Text == ",\nand ", $"Shift+Enter in the Replace box left '{replacing.Text}' there, not a line break");
+        Ui.Click(bar.FindControl<Button>("ReplaceAllButton")!);
+        Assert.Equal("one,\r\nand two\r\nthree\r\n", editor.Document.Snapshot.ToString());
+        editor.TryExecute(EditorActions.Undo);
+
+        bar.FindControl<ToggleButton>("UseRegex")!.IsChecked = true;
+        replacing.Text = @"\n\t";
+        Ui.Settle();
+        Ui.Click(bar.FindControl<Button>("ReplaceAllButton")!);
+        window.Perform(AppActions.Save);
+        Assert.Equal("one\r\n\ttwo\r\nthree\r\n", File.ReadAllText(Path.Combine(folder, "Notes.txt")));
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_regex_sees_a_crlf_files_line_ends_and_stripping_trailing_space_keeps_its_breaks()

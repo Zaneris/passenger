@@ -57,6 +57,7 @@ public partial class FindBar : UserControl
         ReplaceAllButton.Click += (_, _) => ReplaceAll();
         // On the way down, before the text box takes Enter and Escape for itself.
         Query.AddHandler(KeyDownEvent, OnFieldKeyDown, RoutingStrategies.Tunnel);
+        ReplaceBoxes.Take(ReplaceWith);
         ReplaceWith.AddHandler(KeyDownEvent, OnFieldKeyDown, RoutingStrategies.Tunnel);
     }
 

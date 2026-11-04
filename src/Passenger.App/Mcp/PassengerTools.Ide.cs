@@ -208,7 +208,8 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.ReplaceInFiles, Title = "Replace in Files", Destructive = true), Description(
         "Replaces every match find_in_files finds (its text, options, scope and mask) with replacement, as Replace All does, as " +
         "one Undo step: an open file's saved; a closed one's in its own encoding (UTF-8 where that cannot hold the " +
-        "replacement, as the answer says). A regex's replacement takes its groups ($1, ${name}). Returns how many matches in " +
+        "replacement, as the answer says). A regex's replacement takes its groups ($1, ${name}) and \\n, \\t, \\\\ for a line break, a tab, a backslash; " +
+        "every line break is written as the file's own. Returns how many matches in " +
         "which files, and each file left as it was with why.")]
     public Task<string> ReplaceInFiles(string text, string replacement, bool matchCase = false, bool wholeWords = false, bool regex = false,
         string scope = "solution",

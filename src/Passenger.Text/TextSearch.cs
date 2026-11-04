@@ -552,11 +552,11 @@ internal sealed class FoundText(SearchPattern pattern, TextSnapshot? snapshot, s
     }
 }
 
-/// <summary>A regex's replacement read as <see cref="Match.Result"/> reads it, and what it makes of each match: runs of
-/// its own characters, and what each '$' stands for, a group ($1, ${name}, $&amp; the match, $+ the last), the text
-/// before or after the match ($`, $') or the whole text ($_), each a slice of the text read as lines, so a match's
-/// replacement is measured before it is made and made in one copy. In a text of "\r\n" breaks, each '\n' it makes
-/// after no '\r' is written as "\r\n", the file's own.</summary>
+/// <summary>A regex's replacement read as <see cref="Match.Result"/> reads it once its escapes are put in (\n, \t and \\,
+/// <see cref="Unescaped"/>), and what it makes of each match: runs of its own characters, and what each '$' stands for,
+/// a group ($1, ${name}, $&amp; the match, $+ the last), the text before or after the match ($`, $') or the whole text
+/// ($_), each a slice of the text read as lines, so a match's replacement is measured before it is made and made in one
+/// copy. In a text of "\r\n" breaks, each '\n' it makes after no '\r' is written as "\r\n", the file's own.</summary>
 internal sealed class ReplacementText
 {
     private static readonly Regex WordCharacter = new(@"[\w\u200C\u200D]");
@@ -576,6 +576,7 @@ internal sealed class ReplacementText
 
     public ReplacementText(FoundText found, string replacement, bool crlf)
     {
+        replacement = Unescaped(replacement);
         // .NET reads it first, so one it refuses (a group's number past int.MaxValue) throws as Match.Result does.
         _ = found.Regex.Replace(string.Empty, replacement, 0);
         this.found = found;
@@ -717,6 +718,28 @@ internal sealed class ReplacementText
             }
         }
         return count;
+    }
+
+    /// <summary>A regex's replacement with the escapes it reads put in, as .NET's own syntax does not: \n a line break, \t a
+    /// tab and \\ a backslash; any other backslash stays as written, as does every '$'.</summary>
+    public static string Unescaped(string replacement)
+    {
+        if (!replacement.Contains('\\', StringComparison.Ordinal))
+        {
+            return replacement;
+        }
+        StringBuilder made = new(replacement.Length);
+        for (int i = 0; i < replacement.Length; i++)
+        {
+            char c = replacement[i];
+            if (c == '\\' && i + 1 < replacement.Length && replacement[i + 1] is 'n' or 't' or '\\')
+            {
+                made.Append(replacement[++i] switch { 'n' => '\n', 't' => '\t', _ => '\\' });
+                continue;
+            }
+            made.Append(c);
+        }
+        return made.ToString();
     }
 
     /// <summary>The replacement's parts, each '$' read as .NET reads it: a group by a number or name the regex has
@@ -1150,7 +1173,10 @@ public sealed record SearchResult(IReadOnlyList<TextRange> Matches, bool Truncat
     /// <summary>What match <paramref name="index"/> is replaced with: the replacement as typed, or for a regex with its
     /// groups ($1, ${name}) filled in from that match where it stood, its lookarounds, anchors and \b as they held.</summary>
     public string Replacement(int index, string replacement) =>
-        Found is null ? replacement : new ReplacementText(Found, replacement, Crlf).Make(index, Matches[index]);
+        Found is null ? Plain(replacement) : new ReplacementText(Found, replacement, Crlf).Make(index, Matches[index]);
+
+    /// <summary>A plain text's replacement as written, each line break in it the text's own.</summary>
+    private string Plain(string replacement) => Crlf ? LineEndings.In(replacement, "\r\n") : replacement;
 
     /// <summary>How long the text searched would be with every match replaced, worked out from the matches and what the
     /// replacement takes of the text for each, none of it made.</summary>
@@ -1158,10 +1184,11 @@ public sealed record SearchResult(IReadOnlyList<TextRange> Matches, bool Truncat
     {
         long length = TextLength;
         ReplacementText? replacing = Found is null ? null : new(Found, replacement, Crlf);
+        string plain = Plain(replacement);
         for (int i = 0; i < Matches.Count; i++)
         {
             TextRange match = Matches[i];
-            length += (replacing?.Length(i, match) ?? replacement.Length) - match.Length;
+            length += (replacing?.Length(i, match) ?? plain.Length) - match.Length;
         }
         return length;
     }
@@ -1174,11 +1201,12 @@ public sealed record SearchResult(IReadOnlyList<TextRange> Matches, bool Truncat
     public IReadOnlyList<TextEdit> Replacements(string replacement)
     {
         ReplacementText? replacing = Found is null ? null : new(Found, replacement, Crlf);
+        string plain = Plain(replacement);
         TextEdit[] edits = new TextEdit[Matches.Count];
         for (int i = 0; i < edits.Length; i++)
         {
             TextRange match = Matches[i];
-            edits[i] = new TextEdit(match.Start, match.Length, replacing?.Make(i, match) ?? replacement);
+            edits[i] = new TextEdit(match.Start, match.Length, replacing?.Make(i, match) ?? plain);
         }
         return edits;
     }
