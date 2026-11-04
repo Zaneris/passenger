@@ -268,9 +268,9 @@ public sealed class GoDotTestTests : IDisposable
         try
         {
             Assert.True(window.Perform(AppActions.RunAllTests));
-            Ui.WaitFor(() => Method(window, "Adds")?.State == TestState.Passed && Method(window, "Spins")?.State == TestState.Running,
-                () => $"Adds told passed while Spins still runs ({Method(window, "Adds")?.State}, {Method(window, "Spins")?.State}; {window.BottomPanel.Tests.Status})",
-                TimeSpan.FromMinutes(5));
+            // The run is work under way until Godot ends, which a wait for the IDE to be quiet would wait out: the loop runs instead.
+            Assert.True(Ui.Pumped(() => Method(window, "Adds")?.State == TestState.Passed && Method(window, "Spins")?.State == TestState.Running, TimeSpan.FromMinutes(5)),
+                $"Adds was not told passed while Spins still ran ({Method(window, "Adds")?.State}, {Method(window, "Spins")?.State}; {window.BottomPanel.Tests.Status})");
             TimeSpan adds = Method(window, "Adds")!.Duration;
             Assert.True(adds >= TimeSpan.FromMilliseconds(250), $"Adds, which waits 0.3 s, was told as running {adds.TotalMilliseconds} ms");
             File.WriteAllText(Path.Combine(folder, "let-go"), "go");
@@ -282,9 +282,9 @@ public sealed class GoDotTestTests : IDisposable
 
             File.Delete(Path.Combine(folder, "let-go"));
             Task<string?> debugged = window.Tests.RunAsync(window.Folder!, debug: true, build: false);
-            Ui.WaitFor(() => Method(window, "Adds")?.State == TestState.Passed && Method(window, "Spins")?.State == TestState.Running && window.Debugger.Session is not null,
-                () => $"Adds told passed under Debug while Spins still runs ({Method(window, "Adds")?.State}, {Method(window, "Spins")?.State}; {window.BottomPanel.Tests.Status}; {window.Debugger.Output()})",
-                TimeSpan.FromMinutes(5));
+            Assert.True(Ui.Pumped(() => Method(window, "Adds")?.State == TestState.Passed && Method(window, "Spins")?.State == TestState.Running
+                    && window.Debugger.Session is not null, TimeSpan.FromMinutes(5)),
+                $"Adds was not told passed under Debug while Spins still ran ({Method(window, "Adds")?.State}, {Method(window, "Spins")?.State}; {window.BottomPanel.Tests.Status}; {window.Debugger.Output()})");
             File.WriteAllText(Path.Combine(folder, "let-go"), "go");
             Ui.Launched(window, debugged, "the debugged run to end", TimeSpan.FromMinutes(2));
             Assert.True(Method(window, "Spins")!.State == TestState.Passed, $"Spins did not pass under Debug once let go: {Method(window, "Spins")!.Details}");
