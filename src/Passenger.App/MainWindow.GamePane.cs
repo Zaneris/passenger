@@ -7,7 +7,7 @@ using Passenger.Editor;
 namespace Passenger.App;
 
 /// <summary>The Game window (<see cref="Godot.GamePane"/>): a game whose configuration draws it in Passenger started with the
-/// window's handle (<see cref="Godot.GameWindows.Arguments"/>, its own placing of its window left out) and held over the
+/// window's handle and the pane's place (<see cref="Godot.GameWindows.ArgumentsAt"/>, its own placing left out), held over the
 /// pane; where it cannot be (headless, a Godot before 4.4, a system with no embedding, the pane holding another), it runs in
 /// a window of its own, said once. Give the Keys to the Game hands it the keys, and the same keys, heard by Passenger's
 /// helper in the game, take them back.</summary>
@@ -72,11 +72,13 @@ public partial class MainWindow
             }
             own.Add(argument);
         }
-        List<string> arguments = [.. plan.Arguments.Take(plan.Leading), .. windows.Arguments, .. own];
+        // The game opens its window on the pane's place where the pane has one, as Godot's editor starts an embedded game.
+        IReadOnlyList<string> embedding = windows.ArgumentsAt(GamePane.ScreenPlace());
+        List<string> arguments = [.. plan.Arguments.Take(plan.Leading), .. embedding, .. own];
         Dock.ShowBehind(ToolWindowIds.Game);
         GamePane.Hold(game);
         IdeErrors.Observe(HandKeysBackAsync(game));
-        return plan with { Arguments = arguments, Leading = plan.Leading + windows.Arguments.Count };
+        return plan with { Arguments = arguments, Leading = plan.Leading + embedding.Count };
     }
 
     /// <summary>The keys of Give the Keys to the Game told to Passenger's helper in the game once its first scene is open, so

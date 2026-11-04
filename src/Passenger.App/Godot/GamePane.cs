@@ -14,6 +14,10 @@ public sealed class GamePane : Border
     /// <summary>How long a game's window is looked for once its process is known.</summary>
     private static readonly TimeSpan Finding = TimeSpan.FromSeconds(60);
 
+    /// <summary>How long a game's window found is watched as its game starts, held on the pane's place again wherever Godot's
+    /// own sizing as it starts moves it.</summary>
+    private static readonly TimeSpan Settling = TimeSpan.FromSeconds(10);
+
     private readonly TextBlock words;
     private GameWindows? windows;
     private GodotGame? game;
@@ -84,20 +88,57 @@ public sealed class GamePane : Border
         {
             if (started.ProcessId is { } process && windows is not null && windows.Find(process) is var found and not 0)
             {
+                IdeLog.Write(IdeLog.Ide, $"Game window: {started.Name}'s window 0x{found:X} found, {windows.Seen}");
                 window = found;
                 Follow(force: true);
                 if (IsFocused)
                 {
                     GiveKeys();
                 }
+                await SettleAsync(started, found);
                 return;
             }
             await Task.Delay(TimeSpan.FromMilliseconds(200));
         }
         if (game == started && window == 0)
         {
+            IdeLog.Write(IdeLog.Ide, $"Game window: {started.Name}'s window never came: {windows?.Seen}");
             NeverCame(started);
         }
+    }
+
+    /// <summary>Holds a game's window found on the pane's place again while its game starts, wherever the game's own sizing
+    /// puts it (Godot sizes its window as it starts, after it has made it), saying so in the log the first time.</summary>
+    private async Task SettleAsync(GodotGame started, nint found)
+    {
+        long began = System.Diagnostics.Stopwatch.GetTimestamp();
+        bool told = false;
+        while (game == started && window == found && System.Diagnostics.Stopwatch.GetElapsedTime(began) < Settling)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(250));
+            if (game != started || window != found || windows is null || held is not { } place || !shown || windows.PlaceOf(found) is not { } at || at == place)
+            {
+                continue;
+            }
+            if (!told)
+            {
+                IdeLog.Write(IdeLog.Ide, $"Game window: {started.Name}'s window is {at.Width}x{at.Height} at {at.X},{at.Y}; held on {place.Width}x{place.Height} at {place.X},{place.Y} again");
+                told = true;
+            }
+            windows.Hold(found, place, shown: true);
+        }
+    }
+
+    /// <summary>The pane's place on the screen in its pixels, which a game's window is held on; null while it is laid out in
+    /// no window or has no size.</summary>
+    public PixelRect? ScreenPlace()
+    {
+        if (TopLevel.GetTopLevel(this) is not { } main || !IsEffectivelyVisible || Bounds.Width <= 0 || Bounds.Height <= 0)
+        {
+            return null;
+        }
+        double scale = main.RenderScaling;
+        return new PixelRect(this.PointToScreen(new Point(0, 0)), new PixelSize((int)Math.Round(Bounds.Width * scale), (int)Math.Round(Bounds.Height * scale)));
     }
 
     /// <summary>Says a game's window never came, in Godot's own words where its console has errors: a renderer that could

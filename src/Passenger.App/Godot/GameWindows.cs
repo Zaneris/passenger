@@ -40,9 +40,35 @@ public abstract partial class GameWindows : IDisposable
 
     /// <summary>The arguments that have a Godot game make its window this embedding's, placed before the game's own: the
     /// host's handle, and on X11 the X11 display driver, which a Wayland session would not otherwise give it.</summary>
-    public IReadOnlyList<string> Arguments => this is X11
-        ? ["--wid", Host.ToString(System.Globalization.CultureInfo.InvariantCulture), "--display-driver", "x11"]
-        : ["--wid", Host.ToString(System.Globalization.CultureInfo.InvariantCulture)];
+    public IReadOnlyList<string> Arguments => ArgumentsAt(null);
+
+    /// <summary><see cref="Arguments"/>, and where the place the game's window is to be held on is known (in the screen's
+    /// pixels), its position and size as Godot's own editor gives them, in Godot's screen space (from <see cref="Origin"/>):
+    /// a game opens its window there, so the sizing Godot does as it starts keeps it on the place, not its own size.</summary>
+    public IReadOnlyList<string> ArgumentsAt(PixelRect? place)
+    {
+        System.Globalization.CultureInfo invariant = System.Globalization.CultureInfo.InvariantCulture;
+        List<string> arguments = ["--wid", Host.ToString(invariant)];
+        if (this is X11)
+        {
+            arguments.AddRange(["--display-driver", "x11"]);
+        }
+        if (place is { Width: > 0, Height: > 0 } at)
+        {
+            PixelPoint origin = Origin;
+            arguments.AddRange(["--position", $"{(at.X - origin.X).ToString(invariant)},{(at.Y - origin.Y).ToString(invariant)}",
+                "--resolution", $"{at.Width.ToString(invariant)}x{at.Height.ToString(invariant)}"]);
+        }
+        return arguments;
+    }
+
+    /// <summary>Where Godot's screen space begins on this system's: the top left of all screens together, which Godot counts
+    /// its windows' positions from.</summary>
+    protected virtual PixelPoint Origin => default;
+
+    /// <summary>What the last <see cref="Find"/> saw of the process's windows, for the log: each window's handle, owner,
+    /// place and whether it showed; empty before a search.</summary>
+    public string Seen { get; protected set; } = string.Empty;
 
     /// <summary>The arguments of a game's own placing of its window, which an embedded game's place takes the place of,
     /// each with whether a value follows it.</summary>
@@ -85,6 +111,11 @@ public abstract partial class GameWindows : IDisposable
         private const int Hide = 0;
         private const int ShowUnactivated = 8;
 
+        private const int VirtualScreenX = 76;
+        private const int VirtualScreenY = 77;
+
+        protected override PixelPoint Origin => new(GetSystemMetrics(VirtualScreenX), GetSystemMetrics(VirtualScreenY));
+
         public override unsafe nint Find(int processId)
         {
             Seeking seeking = new(processId, Host);
@@ -97,6 +128,8 @@ public abstract partial class GameWindows : IDisposable
             {
                 held.Free();
             }
+            Seen = seeking.Seen.Count == 0 ? $"no top-level window of process {processId}"
+                : $"process {processId}'s top-level windows: {string.Join("; ", seeking.Seen)} (the host is 0x{Host:X})";
             return seeking.Found;
         }
 
@@ -104,7 +137,14 @@ public abstract partial class GameWindows : IDisposable
         private static int Each(nint window, nint state)
         {
             Seeking seeking = (Seeking)GCHandle.FromIntPtr(state).Target!;
-            if (GetWindowThreadProcessId(window, out uint process) != 0 && process == seeking.ProcessId && GetWindow(window, Owner) == seeking.Host)
+            if (GetWindowThreadProcessId(window, out uint process) == 0 || process != seeking.ProcessId)
+            {
+                return 1;
+            }
+            nint owner = GetWindow(window, Owner);
+            string place = GetWindowRect(window, out Rect at) != 0 ? $"{at.Right - at.Left}x{at.Bottom - at.Top} at {at.Left},{at.Top}" : "no place";
+            seeking.Seen.Add($"0x{window:X} owned by 0x{owner:X}, {place}{(IsWindowVisible(window) != 0 ? ", shown" : ", hidden")}");
+            if (owner == seeking.Host)
             {
                 seeking.Found = window;
                 return 0;
@@ -116,7 +156,10 @@ public abstract partial class GameWindows : IDisposable
 
         public override void Hold(nint window, PixelRect place, bool shown)
         {
-            SetWindowPos(window, 0, place.X, place.Y, place.Width, place.Height, NoZOrder | NoActivate | AsyncPosition);
+            if (SetWindowPos(window, 0, place.X, place.Y, place.Width, place.Height, NoZOrder | NoActivate | AsyncPosition) == 0)
+            {
+                IdeLog.Write(IdeLog.Ide, $"Game window: Windows refused to hold 0x{window:X} at {place.Width}x{place.Height} at {place.X},{place.Y} (error {Marshal.GetLastPInvokeError()})");
+            }
             if ((IsWindowVisible(window) != 0) != shown)
             {
                 ShowWindow(window, shown ? ShowUnactivated : Hide);
@@ -137,6 +180,8 @@ public abstract partial class GameWindows : IDisposable
             public nint Host { get; } = host;
 
             public nint Found { get; set; }
+
+            public List<string> Seen { get; } = [];
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -157,8 +202,11 @@ public abstract partial class GameWindows : IDisposable
         [LibraryImport(User32)]
         private static partial nint GetWindow(nint window, uint relation);
 
-        [LibraryImport(User32)]
+        [LibraryImport(User32, SetLastError = true)]
         private static partial int SetWindowPos(nint window, nint after, int x, int y, int width, int height, uint flags);
+
+        [LibraryImport(User32)]
+        private static partial int GetSystemMetrics(int index);
 
         [LibraryImport(User32)]
         private static partial int ShowWindow(nint window, int show);
@@ -198,13 +246,25 @@ public abstract partial class GameWindows : IDisposable
 
         public static X11? Open(nint host) => Xlib.OpenDisplay(0) is var display and not 0 ? new X11(host, display) : null;
 
-        public override nint Find(int processId) => Find(Xlib.DefaultRootWindow(display), processId, 0);
-
-        private nint Find(nint window, int processId, int depth)
+        public override nint Find(int processId)
         {
-            if (ProcessOf(window) == processId && OwnerOf(window) == Host)
+            List<string> seen = [];
+            nint found = Find(Xlib.DefaultRootWindow(display), processId, 0, seen);
+            Seen = seen.Count == 0 ? $"no window of process {processId} (by _NET_WM_PID)"
+                : $"process {processId}'s windows: {string.Join("; ", seen)} (the host is 0x{Host:X})";
+            return found;
+        }
+
+        private nint Find(nint window, int processId, int depth, List<string> seen)
+        {
+            if (ProcessOf(window) == processId)
             {
-                return window;
+                nint owner = OwnerOf(window);
+                seen.Add($"0x{window:X} transient for 0x{owner:X}");
+                if (owner == Host)
+                {
+                    return window;
+                }
             }
             if (depth >= Deepest || Xlib.QueryTree(display, window, out _, out _, out nint* children, out uint count) == 0)
             {
@@ -214,7 +274,7 @@ public abstract partial class GameWindows : IDisposable
             {
                 for (uint i = 0; i < count; i++)
                 {
-                    if (Find(children[i], processId, depth + 1) is var found and not 0)
+                    if (Find(children[i], processId, depth + 1, seen) is var found and not 0)
                     {
                         return found;
                     }

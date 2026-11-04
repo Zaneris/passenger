@@ -8,12 +8,12 @@ using Passenger.Core;
 namespace Passenger.Tests;
 
 /// <summary>A Godot game drawn in Passenger's Game window, as Godot's own editor embeds one: started with the arguments of a
-/// native window's embedding (<see cref="GameWindows.Arguments"/>), its window is owned by that window (transient for it
-/// under X11) and held over a place of it, takes a key, and follows the place as it grows. The host is a native window the
-/// test makes, as a headless window has no handle; Windows, or Linux with an X11 session (DISPLAY), and a Godot 4.4 or newer
-/// are needed, or the test skips saying why, as it does in Godot's words where none of Godot's renderers starts. Godot runs
-/// with a window, on its Compatibility renderer, so run alone, and never on the Mac. Past its one wait for Godot's version it
-/// runs on one thread, the host's, whose messages it handles as it waits.</summary>
+/// native window's embedding at a place (<see cref="GameWindows.ArgumentsAt"/>), its window is owned by that window
+/// (transient for it under X11) and held over the place, takes a key, and follows the place as it grows. The host is a
+/// native window the test makes, as a headless window has no handle; Windows, or Linux with an X11 session (DISPLAY), and a
+/// Godot 4.4 or newer are needed, or the test skips saying why, as it does in Godot's words where none of Godot's renderers
+/// starts. Godot runs with a window, on its Compatibility renderer, so run alone, and never on the Mac. Past its one wait for
+/// Godot's version it runs on one thread, the host's, whose messages it handles as it waits.</summary>
 [Collection(Alone.Name)]
 public sealed partial class GameWindowsTests
 {
@@ -43,8 +43,9 @@ public sealed partial class GameWindowsTests
 
         using Host host = Host.Make();
         using GameWindows windows = GameWindows.Over(host.Kind, host.Handle) ?? throw new Xunit.Sdk.XunitException($"No embedding over a {host.Kind} window here");
+        PixelRect place = new(host.X + 40, host.Y + 60, 640, 360);
         // Compatibility draws where OpenGL or ANGLE over Direct3D 11 does (WARP too), as a VM's GPU without D3D12's shader models.
-        ProcessStartInfo start = ChildProcesses.Command(godot!.Executable, [.. windows.Arguments, "--rendering-method", "gl_compatibility", "--path", folder], folder);
+        ProcessStartInfo start = ChildProcesses.Command(godot!.Executable, [.. windows.ArgumentsAt(place), "--rendering-method", "gl_compatibility", "--path", folder], folder);
         foreach ((string name, string value) in GodotTests.Game.Home(folder + "-home"))
         {
             start.Environment[name] = value;
@@ -65,14 +66,16 @@ public sealed partial class GameWindowsTests
             nint window = 0;
             bool came = Waiting.Until(() => host.Pump() && (window = windows.Find(game.Id)) != 0, TimeSpan.FromMinutes(1));
             Assert.SkipWhen(!came && NoRenderer(), $"No renderer of Godot's starts here, so its game never ran (Godot said: {Said()})");
-            Assert.True(came, $"No window of the game's owned by the host's came (Godot said: {Said()})");
+            Assert.True(came, $"No window of the game's owned by the host's came: the search saw {windows.Seen} (Godot said: {Said()})");
             Assert.Equal(host.Handle, windows.OwnerOf(window));
 
-            PixelRect place = new(host.X + 40, host.Y + 60, 640, 360);
+            // Held once its scene runs, past the sizing Godot does as it starts, as the Game window holds it again then.
+            bool ready = Waiting.Until(() => host.Pump() && Told("TEST: ready"), TimeSpan.FromSeconds(30));
+            Assert.SkipWhen(!ready && NoRenderer(), $"No renderer of Godot's starts here, so its game never ran (Godot said: {Said()})");
+            Assert.True(ready, $"The game's scene never ran (Godot said: {Said()})");
             windows.Hold(window, place, shown: true);
             bool held = Waiting.Until(() => host.Pump() && Told("TEST: size 640x360"), TimeSpan.FromSeconds(30));
-            Assert.SkipWhen(!held && NoRenderer(), $"No renderer of Godot's starts here, so its game never ran (Godot said: {Said()})");
-            Assert.True(held, $"The game's window was not held at 640x360 over the pane's place (Godot said: {Said()})");
+            Assert.True(held, $"The game's window was not held at 640x360 over the pane's place: it is {windows.PlaceOf(window)}, the search saw {windows.Seen} (Godot said: {Said()})");
             if (OperatingSystem.IsWindows())
             {
                 Assert.Equal(place, windows.PlaceOf(window));
@@ -83,7 +86,7 @@ public sealed partial class GameWindowsTests
 
             windows.Hold(window, place.WithWidth(800).WithHeight(450), shown: true);
             Assert.True(Waiting.Until(() => host.Pump() && Told("TEST: size 800x450"), TimeSpan.FromSeconds(30)),
-                $"The game's window did not follow the pane's place as it grew to 800x450 (Godot said: {Said()})");
+                $"The game's window did not follow the pane's place as it grew to 800x450: it is {windows.PlaceOf(window)} (Godot said: {Said()})");
         }
         finally
         {
