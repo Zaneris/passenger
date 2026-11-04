@@ -45,14 +45,17 @@ public class GDScriptErrorsTests
 
     private static readonly GodotEngineApi Engine = GodotEngineApi.Read(Encoding.UTF8.GetBytes(Api));
 
+    /// <summary>The same API as Godot 4.8's dump says it, by its header's version.</summary>
+    private static readonly GodotEngineApi Engine48 = GodotEngineApi.Read(Encoding.UTF8.GetBytes("{ \"header\": { \"version_major\": 4, \"version_minor\": 8 }," + Api.TrimStart()[1..]));
+
     /// <summary>A script's errors as Godot's test runner prints them: its line, then its words; read against the project's
-    /// singleton autoloads and, where given, which paths its files lack.</summary>
+    /// singleton autoloads, where given which paths its files lack, and the engine's API (4.7's by default).</summary>
     private static List<string> Errors(string text, Func<string, GDScriptTree?>? others = null, IReadOnlyDictionary<string, string>? autoloads = null,
-        Func<string, bool>? lacks = null)
+        Func<string, bool>? lacks = null, GodotEngineApi? engine = null)
     {
         GDScriptTree tree = GDScriptTree.Parse(text);
         Assert.Empty(tree.Errors);
-        GDScriptProject project = new(Engine, p => p == "res://main.gd" ? tree : others?.Invoke(p), new Dictionary<string, string>(), autoloads ?? new Dictionary<string, string>(),
+        GDScriptProject project = new(engine ?? Engine, p => p == "res://main.gd" ? tree : others?.Invoke(p), new Dictionary<string, string>(), autoloads ?? new Dictionary<string, string>(),
             lacks: lacks);
         GDScriptAnalysis analysis = new GDScriptAnalyzer(project).Analyze(tree, "res://main.gd");
         TextSnapshot snapshot = TextSnapshot.From(text);
@@ -85,6 +88,24 @@ public class GDScriptErrorsTests
         const string Script = "class_name Hero\nextends Node\n\nvar other: Hero\n\n\nfunc _ready() -> void:\n\tprint(Hero, other)\n\n\n"
             + "class Inner:\n\tvar again: Inner\n\n\tfunc f() -> void:\n\t\tprint(Inner, Hero)\n";
         Assert.Empty(Errors(Script));
+    }
+
+    [Fact]
+    public void What_godot_4_8_says_otherwise_is_said_in_its_words_where_the_engine_is_4_8()
+    {
+        const string Script = "extends Node\n\nvar speed := 1.0\nvar b: speed\n\n\nfunc _ready() -> void:\n\tvar keyed: Dictionary[Variant, int] = {}\n"
+            + "\tvar typed: Dictionary[int, int] = {}\n\tprint(keyed[\"key\"], typed[\"key\"], b)\n";
+        Assert.Equal(
+        [
+            "4: \"speed\" is a variable but does not contain a type.",
+            "10: Invalid index type \"String\" for a base of type \"Dictionary[Variant, int]\".",
+            "10: Invalid index type \"String\" for a base of type \"Dictionary[int, int]\".",
+        ], Errors(Script));
+        Assert.Equal(
+        [
+            "4: \"speed\" is a variable, so it can't be used as a type.",
+            "10: Invalid index type \"String\" for a base of type \"Dictionary[int, int]\".",
+        ], Errors(Script, engine: Engine48));
     }
 
     [Fact]

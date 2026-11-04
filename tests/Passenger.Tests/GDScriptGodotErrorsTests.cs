@@ -64,7 +64,8 @@ public sealed class GDScriptGodotErrorsTests
     /// them), functions no instance is needed for called on classes, indices, loops and typed collections written out that
     /// Godot refuses.</summary>
     internal const string Statics = "extends Node\n\nsignal fired\nenum Mode { A, B }\nvar count: int = 0\nvar items: Array[int] = []\n"
-        + "var table: Dictionary[String, int] = {}\nvar keyed: Dictionary[int, int] = {}\nvar label: String = \"\"\n"
+        + "var table: Dictionary[String, int] = {}\nvar keyed: Dictionary[int, int] = {}\nvar any_keyed: Dictionary[Variant, int] = {}\n"
+        + "var label: String = \"\"\n"
         + "var flag: bool = false\nvar node: Node\nvar colour := Color.RED\nstatic var shared := 1\n"
         + "static var from_func = non_static_func()\nstatic var callable_value = non_static_func\nstatic var with_setter:\n"
         + "\tset(value):\n\t\tprint(count)\n\t\tnon_static_func()\n\n\nfunc non_static_func() -> int:\n\treturn 1\n\n\n"
@@ -72,7 +73,7 @@ public sealed class GDScriptGodotErrorsTests
         + "\tprint(shared)\n\tprint(name)\n\tget_child_count()\n\tprint($Child)\n\tvar f := func():\n\t\tnon_static_func()\n"
         + "\tf.call()\n\tMode.size()\n\n\nfunc _ready() -> void:\n\tVector2.length()\n\tNode.get_name()\n\tInner.method()\n"
         + "\tInner.static_method()\n\tNode.new()\n\tprint(items[label])\n\tprint(items[1.5])\n\tprint(items[Mode.A])\n"
-        + "\tprint(label[flag])\n\tprint(table[1])\n\tprint(table[label])\n\tprint(keyed[1.5])\n\tprint(keyed[label])\n"
+        + "\tprint(label[flag])\n\tprint(table[1])\n\tprint(table[label])\n\tprint(keyed[1.5])\n\tprint(keyed[label])\n\tprint(any_keyed[label])\n"
         + "\tprint(node[0])\n\tprint(node[\"name\"])\n\tprint(Mode[\"A\"])\n\tprint(count[0])\n\tprint(flag[0])\n"
         + "\tprint(colour[label])\n\tprint(colour[1.5])\n\tfor x in true:\n\t\tpass\n\tfor x in node:\n\t\tpass\n"
         + "\tfor x in colour:\n\t\tpass\n\tfor x in label:\n\t\tpass\n\tfor x in Vector2i(1, 2):\n\t\tpass\n\tfor x in range():\n"

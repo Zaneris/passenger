@@ -43,8 +43,9 @@ public sealed partial class GDScriptAnalyzer
         }
     }
 
-    /// <summary>Whether a built-in type's subscript takes an index of a built-in type, as Godot's reduce_subscript has it.</summary>
-    private static bool IndexTaken(GDScriptType based, string index) => based.Name switch
+    /// <summary>Whether a built-in type's subscript takes an index of a built-in type, as Godot's reduce_subscript has it:
+    /// from Godot 4.8 a dictionary's Variant key, or one of no hard type, takes any.</summary>
+    private bool IndexTaken(GDScriptType based, string index) => based.Name switch
     {
         "Array" or "String" or "PackedByteArray" or "PackedInt32Array" or "PackedInt64Array" or "PackedFloat32Array" or "PackedFloat64Array"
             or "PackedStringArray" or "PackedVector2Array" or "PackedVector3Array" or "PackedColorArray" or "PackedVector4Array" => index is "int" or "float",
@@ -52,7 +53,7 @@ public sealed partial class GDScriptAnalyzer
         "Basis" or "Vector2" or "Vector2i" or "Vector3" or "Vector3i" or "Vector4" or "Vector4i" or "Transform2D" or "Transform3D" or "Projection" =>
             index is "int" or "float" or "String" or "StringName",
         "Color" => index is "int" or "String" or "StringName",
-        "Dictionary" when based.Elements is [{ } key, ..] => index switch
+        "Dictionary" when based.Elements is [{ } key, ..] && !(Engine?.Version >= new Version(4, 8) && (key.IsVariant || !key.Hard)) => index switch
         {
             // Null stands for an object, and an int for a float.
             "Nil" => key.Kind is GDScriptTypeKind.Native or GDScriptTypeKind.Class,

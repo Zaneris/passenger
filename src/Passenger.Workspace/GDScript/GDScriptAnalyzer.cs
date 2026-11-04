@@ -744,7 +744,8 @@ public sealed partial class GDScriptAnalyzer
         }
         if (found is null && Member(context.Class, first.Name) is { } notType)
         {
-            return Unfound(tells, node, $"\"{first.Name}\" is a {MemberWords(notType)} but does not contain a type.");
+            return Unfound(tells, node, Engine?.Version >= new Version(4, 8) ? $"\"{first.Name}\" is a {MemberWords(notType)}, so it can't be used as a type."
+                : $"\"{first.Name}\" is a {MemberWords(notType)} but does not contain a type.");
         }
         if (found is null)
         {
