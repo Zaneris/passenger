@@ -58,6 +58,10 @@ public static partial class LaunchHandOff
                 if (JsonMembers.Text(answer.RootElement, "taken") is { } taken)
                 {
                     IdeErrors.Write($"Launch: taken by the Passenger at {path}, {(taken.Length > 0 ? $"in its window on {taken}" : "in its window with no folder")}");
+                    if (OperatingSystem.IsMacOS() && Mcp.McpHost.ProcessOf(path) is int running)
+                    {
+                        await ActivateAsync(running, cancel);
+                    }
                     return true;
                 }
                 IdeErrors.Write($"Launch: the Passenger at {path} would not take it: {JsonMembers.Text(answer.RootElement, "refused") ?? line}");
@@ -69,6 +73,35 @@ public static partial class LaunchHandOff
             }
         }
         return false;
+    }
+
+    /// <summary>How long <c>open</c> has to bring the running Passenger in front.</summary>
+    private static readonly TimeSpan ActivateLimit = TimeSpan.FromSeconds(10);
+
+    /// <summary>On macOS, brings the Passenger that took the launch in front through LaunchServices (<c>open -a</c> its
+    /// bundle), asked by this short-lived process, which the program in front started (Godot's editor): macOS's cooperative
+    /// activation may refuse the running Passenger's own, and honours one asked for by the front program's child. A
+    /// Passenger in no bundle (a build's) is left to its own, and its window to ask for the person where that is refused.</summary>
+    private static async Task ActivateAsync(int running, CancellationToken cancel)
+    {
+        string? executable = Libc.ExecutableOf(running);
+        int end = executable?.IndexOf(".app/Contents/MacOS/", StringComparison.Ordinal) ?? -1;
+        if (executable is null || end < 0)
+        {
+            IdeErrors.Write($"Launch: the Passenger that took it (process {running}) is in no app bundle, so it comes in front by itself");
+            return;
+        }
+        string bundle = executable[..(end + ".app".Length)];
+        try
+        {
+            ChildResult opened = await ChildProcesses.RunAsync(ChildProcesses.Command("/usr/bin/open", ["-a", bundle]), limit: Waits.Of(ActivateLimit), cancel: cancel);
+            IdeErrors.Write(opened.Succeeded ? $"Launch: {bundle} brought in front through LaunchServices"
+                : $"Launch: open -a {bundle} ended with exit code {opened.ExitCode}: {opened.Error.Trim()}");
+        }
+        catch (Exception error) when (error is TimeoutException or IOException or System.ComponentModel.Win32Exception)
+        {
+            IdeErrors.Write($"Launch: {bundle} could not be brought in front through LaunchServices: {error.Message}");
+        }
     }
 
     [LibraryImport("user32.dll", EntryPoint = "AllowSetForegroundWindow")]
