@@ -32,13 +32,13 @@ internal sealed class Driver(Inspector inspector) : Driving<DependencyObject, Vi
 
     protected override Visual? TopOf(DependencyObject element) => OpenTop(element) ?? Inspector.TopOf(element);
 
+    /// <summary>An open drop-down's item, clicked where it stands in its list as a person's click reaches it after scrolling:
+    /// its own pattern, else WPF's mouse button events on it, which ComboBoxItem takes to choose itself and close the list.</summary>
+    protected override InputDone? ChosenWithoutAim(Visual top, DependencyObject? element, InputAction action) =>
+        DropDownItem(element, action) is { } item ? Done(top, null, ClickOn(item, item, twice: false), Shown.TextOf(item)) : null;
+
     protected override InputDone Click(Visual top, DependencyObject? element, InputAction action)
     {
-        if (DropDownItem(element, action) is { } item && Acted(item, twice: false))
-        {
-            // Chosen wherever its list has it, which only as many items as the screen it opens on has room for may show.
-            return Done(top, null, item, Shown.TextOf(item));
-        }
         Point at = Aim(top, element, action, "click");
         DependencyObject? hit = Hit(top, at.X, at.Y);
         DependencyObject? took = hit ?? element;

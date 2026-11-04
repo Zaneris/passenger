@@ -274,7 +274,7 @@ internal abstract class Driving<T, TTop> where T : class where TTop : class, T
         T? target = element == top && action.X is not null ? null : element;
         return action.Kind switch
         {
-            InputKinds.Click => Click(top, target, action),
+            InputKinds.Click => ChosenWithoutAim(top, target, action) ?? Click(top, target, action),
             InputKinds.Scroll => Scroll(top, target, action),
             InputKinds.Type => Type(top, element, action),
             InputKinds.Key => Keys(top, element, action),
@@ -284,6 +284,11 @@ internal abstract class Driving<T, TTop> where T : class where TTop : class, T
 
     /// <summary>Why an element the framework does not show is not acted on, in its own words.</summary>
     protected abstract string Hidden { get; }
+
+    /// <summary>A click on an element chosen rather than pointed at, wherever it is shown, before any aim refuses one out of
+    /// view (an open drop-down's item, which only as many items as the screen it opens on has room for may show); null for
+    /// every other, aimed as <see cref="At"/> aims it. None by default.</summary>
+    protected virtual InputDone? ChosenWithoutAim(TTop top, T? element, InputAction action) => null;
 
     protected abstract T? Find(long id);
 
