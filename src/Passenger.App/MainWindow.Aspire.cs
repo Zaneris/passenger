@@ -85,6 +85,7 @@ public partial class MainWindow
     private AspireView MakeAspire()
     {
         AspireView view = aspireView = new AspireView(Bottom.Aspire);
+        view.Metrics.Paused = MetricsPaused;
         view.BindActions(Actions, id => Request(id), RowMenuItem);
         view.RowChosen += (_, _) => lastServiceWindow = ToolWindowIds.Aspire;
         view.Browse = Browse;
@@ -98,9 +99,22 @@ public partial class MainWindow
     private bool AspireDisplayed => Dock.IsShown(ToolWindowIds.Aspire) && aspireView is { } view
         && TopLevel.GetTopLevel(view) is not null && view.IsEffectivelyVisible;
 
+    /// <summary>Whether the debugger holds a program the Stats tabs chart paused, whose metrics wait for it to run.</summary>
+    private bool MetricsPaused(int process, Profiler.ProfilePlace? place) =>
+        session is { IsEnded: false } current && current.Debug.Debugging(process, place?.Where) is { State: DebugState.Paused };
+
     private void BindAspire(ProjectSession next)
     {
         Bottom.ResetAspire(AspireCli());
+        // A program the Stats tabs chart is read once the debugger lets it run, and said to be paused while it holds it.
+        next.Debug.StateChanged += (_, _) =>
+        {
+            if (session == next)
+            {
+                aspireView?.Metrics.DebuggerChanged();
+                containersView?.Metrics.DebuggerChanged();
+            }
+        };
         AspireModel model = Bottom.Aspire;
         aspireView?.Bind(model);
         ConditionalWeakTable<AspireInteractions, object> boundConnections = new();

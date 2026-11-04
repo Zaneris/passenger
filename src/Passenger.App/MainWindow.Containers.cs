@@ -116,6 +116,7 @@ public partial class MainWindow
     {
         ContainersView view = new(new ContainersParts(() => Engine, work, Say, Browse, () => StateFolder, id => actions![id]!.Title, RowMenuItem));
         containersView = view;
+        view.Metrics.Paused = MetricsPaused;
         view.RowChosen += (_, _) => lastServiceWindow = ToolWindowIds.Containers;
         view.AppHostOf = container => session is { IsEnded: false } current
             && current.Aspire.Apps.FirstOrDefault(app => app.KnownContainerIds.Any(id => ContainerRow.SameId(id, container.Id))) is { } run

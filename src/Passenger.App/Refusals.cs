@@ -221,6 +221,9 @@ public static class Refusals
     /// paused, and its runtime answers the profiler only as it runs.</summary>
     public static string PausedInDebugger(string program, string doing) => $"{program} is paused in the debugger: continue it to {doing}";
 
+    /// <summary>A program's metrics asked for while the debugger holds it paused, read once it runs.</summary>
+    public static string MetricsWhilePaused(string program) => $"{program} is paused in the debugger: its metrics come once it runs";
+
     /// <summary>Why a service of a run of services is not started.</summary>
     public const string DontStart = "its run configuration says Don't start";
 

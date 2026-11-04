@@ -15,7 +15,8 @@ namespace Passenger.App.Telemetry;
 /// program's own as it is published; or what another source feeds it (<see cref="ShowFed"/>, a Godot game's monitors). An
 /// instrument is a row under its meter, its latest value beside a line of its last minutes, a histogram's median with its
 /// 95th percentile and how many it measured a second; an interval's series of one instrument are one value, a counter's
-/// rates and a gauge's values summed, a histogram's quantiles its highest series'. A program with none to read says why.</summary>
+/// rates and a gauge's values summed, a histogram's quantiles its highest series'. A program with none to read says why, and
+/// one the debugger holds paused, which answers no session's start, is read once it runs (<see cref="Paused"/>).</summary>
 public sealed class MetricsPane : DockPanel
 {
     /// <summary>How many readings a line keeps: two minutes of the runtime's one a second.</summary>
@@ -40,6 +41,13 @@ public sealed class MetricsPane : DockPanel
 
     /// <summary>Each follow begun and each stop counted, so what a follow let go of hears nothing more.</summary>
     private int follows;
+
+    /// <summary>Whether the program's reading waits for the debugger to let it run (<see cref="DebuggerChanged"/>).</summary>
+    private bool held;
+
+    /// <summary>Whether the debugger holds a program paused, by its process (in its container, where it has one): its metrics
+    /// are read once it runs.</summary>
+    public Func<int, ProfilePlace?, bool>? Paused { get; set; }
 
     public MetricsPane()
     {
@@ -97,8 +105,40 @@ public sealed class MetricsPane : DockPanel
         process = id;
         place = where;
         meters.UnionWith(LiveMetrics.Shipped);
+        if (Paused?.Invoke(id, where) == true)
+        {
+            held = true;
+            Say(Refusals.MetricsWhilePaused(shown));
+            return;
+        }
         Say($"Waiting for {shown}'s first metrics…");
         IdeErrors.Observe(FollowAsync(++follows, again: false));
+    }
+
+    /// <summary>The debugger's sessions changed: a program it held paused is read now it runs, and one it pauses is said to be
+    /// paused over its charts until it runs again.</summary>
+    public void DebuggerChanged()
+    {
+        UiThread.Check();
+        if (key is null || fed || process == 0)
+        {
+            return;
+        }
+        bool paused = Paused?.Invoke(process, place) == true;
+        if (paused)
+        {
+            Say(Refusals.MetricsWhilePaused(name));
+        }
+        else if (held)
+        {
+            held = false;
+            Say($"Waiting for {name}'s first metrics…");
+            IdeErrors.Observe(FollowAsync(++follows, again: false));
+        }
+        else if (said == Refusals.MetricsWhilePaused(name))
+        {
+            Say(charts.Count == 0 ? $"Waiting for {name}'s first metrics…" : string.Empty);
+        }
     }
 
     /// <summary>Charts what a source of its own feeds it (<see cref="Feed"/>: a Godot game's monitors), or nothing
@@ -231,6 +271,8 @@ public sealed class MetricsPane : DockPanel
         }
         key = null;
         fed = false;
+        held = false;
+        process = 0;
         said = string.Empty;
         meters.Clear();
         charts.Clear();
