@@ -69,9 +69,9 @@ public sealed class ChromiumBrowsersTests
     [Fact]
     public void A_macs_browsers_are_looked_for_in_the_accounts_own_applications_whatever_HOME_says()
     {
-        Assert.Equal(["/Applications", "/Users/ada/Applications"], ChromiumBrowsers.MacFolders("/Users/ada", "/private/tmp/run/home"));
-        Assert.Equal(["/Applications", "/private/tmp/run/home/Applications"], ChromiumBrowsers.MacFolders(null, "/private/tmp/run/home"));
-        string chrome = Path.Combine("/Users/ada/Applications", "Google Chrome.app/Contents/MacOS/Google Chrome");
+        Assert.Equal(["/Applications", Path.Combine("/Users/ada", "Applications")], ChromiumBrowsers.MacFolders("/Users/ada", "/private/tmp/run/home"));
+        Assert.Equal(["/Applications", Path.Combine("/private/tmp/run/home", "Applications")], ChromiumBrowsers.MacFolders(null, "/private/tmp/run/home"));
+        string chrome = Path.Combine("/Users/ada", "Applications", "Google Chrome.app/Contents/MacOS/Google Chrome");
         Assert.Equal(chrome, ChromiumBrowsers.Find(null, [], ChromiumBrowsers.MacFolders("/Users/ada", "/elsewhere"), windows: false, path => path == chrome)?.Program);
     }
 

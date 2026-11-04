@@ -6,6 +6,9 @@ namespace Passenger.UnitTests.Core;
 /// unpacked app's deps.json gives Passenger, and which of the folders an update keeps beside the install a copy removes.</summary>
 public class UpdateFoldersTests
 {
+    /// <summary>The folder an install for one person is in, written as this system writes a path.</summary>
+    private static readonly string Opt = OperatingSystem.IsWindows() ? @"C:\Users\ada\opt" : "/home/ada/.local/opt";
+
     private const string Sum = "9F86D081884C7D659A2FEAA0C55AD015A3BF4F1B2B0B822CD15D6C15B0F00A08";
 
     [Theory]
@@ -43,11 +46,11 @@ public class UpdateFoldersTests
     [Fact]
     public void A_folder_is_beside_the_install_named_for_the_release_unpacked_into_it()
     {
-        string beside = UpdateFolders.Beside("/home/ada/.local/opt/passenger/", "1.2.0");
-        Assert.True(beside == "/home/ada/.local/opt/.passenger.update-1.2.0", $"The update's folder is {beside}, not beside the install, where the two can trade places");
+        string beside = UpdateFolders.Beside(Path.Combine(Opt, "passenger") + Path.DirectorySeparatorChar, "1.2.0");
+        Assert.True(beside == Path.Combine(Opt, ".passenger.update-1.2.0"), $"The update's folder is {beside}, not beside the install, where the two can trade places");
         Assert.True(UpdateFolders.VersionOf(beside) == "1.2.0", $"The update's folder {beside} was read as {UpdateFolders.VersionOf(beside)}'s");
-        Assert.True(UpdateFolders.VersionOf("/home/ada/.local/opt/passenger") is null, "The install itself was read as an update's folder, which a copy removes");
-        Assert.True(UpdateFolders.VersionOf("/home/ada/.local/opt/.passenger.update-") is null, "A folder named for no version was read as an update's");
+        Assert.True(UpdateFolders.VersionOf(Path.Combine(Opt, "passenger")) is null, "The install itself was read as an update's folder, which a copy removes");
+        Assert.True(UpdateFolders.VersionOf(Path.Combine(Opt, ".passenger.update-")) is null, "A folder named for no version was read as an update's");
     }
 
     [Theory]
