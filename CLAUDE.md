@@ -469,36 +469,39 @@ Projects in `src/`; `find_symbol` finds the rest:
   edited in place as `ConfigurationEdit`s), `LaunchPlan` (one resolution for Run, Debug, Profile, Hot Reload and a
   debugged test host; a RunCommand naming another program run as `dotnet run` runs it, `OtherProgram`; a Blazor Web
   App's client no program of its own, `ProjectModel.IsBrowserClient`; a Passenger it launches keeps its state in the
-  launcher's `sandbox/`; a Godot project's game and editor through `GodotLaunch` (one of GDScript alone a
-  `ProjectModel.OfScriptGame` that only Run, Debug and Profile see, `ProjectSession.RunProjects`, never in `Projects`),
-  on the Godot `GodotExecutables` finds, its copies `GameCopies` ("Name #k", Debug tabs grouped as `DebugTab.Copy`, Stop
-  ending the group), the offer of Passenger as Godot's script editor made once per folder
-  (`MainWindow.OfferGodotEditor`), Passenger's addon in the person's Godot editor (`Godot/Addon/passenger.gd`,
-  `GodotAddon`, `MainWindow.GodotAddon`) reaching the window over `GodotEditorLink` (a listing in the state's
-  `godot-editors/`, a token, then a reply, then JSON lines both ways: `GodotEditorWire`), a game its Play starts relayed
-  through it into the same `GodotGame` (`GodotGame.Relay`, `GodotRelay`, taken in by `ProjectSession.TakeGame`) and held
-  at its runtime's start until attached or let go (`HeldStart.DebuggerOffAsync`, `LetGoAsync`), a game played in the
-  person's Godot editor (`RunConfiguration.GodotInEditor`, `MainWindow.GodotEditorPlay`: the addon's play where it is
-  connected, else IDE messaging's `DebugPlay` through `GodotIdeLink.RequestAsync`), Open in Godot Editor through the
-  addon (`scene_select`) where an editor runs, else the Godot Editor configuration on the scene, selecting once it
-  connects (`selectOnConnect`; a selection Passenger asked for never followed back, `GodotEditorPeer.SelectionAsked`),
-  its Publish its export (`GodotExportDialog`, `BuildRunController.ExportGodotAsync`), templates installed only from a
-  `.tpz` the person picks (`GodotExports.Install`; a test's named by `PASSENGER_TEST_GODOT_TEMPLATES`, into the run's
-  own Godot folders), a `res://` sound played through the system's player as a WAV (`Sounds.Playable`, Ogg and MP3
-  decoded into `cache/sounds`; a test reads `MainWindow.SoundsHanded`), its page a view of its project.godot
-  (`GodotProjectPages`, `GodotPageViewer`) over Workspace's readers, following its files on disk
-  (`GodotProjectPages.Follows`), a launched game's remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (its
-  value editors `GodotValueCells`, an `ILiveValueCells`, from `GodotHints`, over any `IGodotValues`: a running game's,
-  or a scene's node in the outline (a row under a node showing that node's), `GodotSceneProperties` over
-  `GodotSceneValues`, a property written where Godot's save puts it and taken out at its default, its engine defaults
-  from `PassengerClasses.gd` through `GodotEngineApis.ClassesAsync` and `GodotClassDefaults`, its exports
-  `GodotMember.Inspected` for C# and `GDScriptExports`; Keep `GodotKeep`; a run's errors pinned to lines
-  `GodotErrorPins` through `ErrorPinColumn`, its console folded `GodotConsoleFold`; a running game's member values at
-  their lines' ends `GodotLiveValues`, into `OpenDocument.LiveValues` through the helper's `values` call, members from
-  `GodotMembers`; `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`),
-  `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build under way waited out
-  first), `TogetherBuild`; on Windows a build's first step lets go of the Avalonia previewers holding its output
-  (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time (`ConsoleWritten`).
+  launcher's `sandbox/`; a Godot project's game and editor through `GodotLaunch` (one drawn in the Game window started
+  through `ProjectSession.InPane` and held over the pane by `GameWindows` as an owned window, never a child, Godot's own
+  model, its keys given back through the helper's `keys_back`) (one of GDScript alone a `ProjectModel.OfScriptGame` that
+  only Run, Debug and Profile see, `ProjectSession.RunProjects`, never in `Projects`), on the Godot `GodotExecutables`
+  finds, its copies `GameCopies` ("Name #k", Debug tabs grouped as `DebugTab.Copy`, Stop ending the group), the offer of
+  Passenger as Godot's script editor made once per folder (`MainWindow.OfferGodotEditor`), Passenger's addon in the
+  person's Godot editor (`Godot/Addon/passenger.gd`, `GodotAddon`, `MainWindow.GodotAddon`) reaching the window over
+  `GodotEditorLink` (a listing in the state's `godot-editors/`, a token, then a reply, then JSON lines both ways:
+  `GodotEditorWire`), a game its Play starts relayed through it into the same `GodotGame` (`GodotGame.Relay`,
+  `GodotRelay`, taken in by `ProjectSession.TakeGame`) and held at its runtime's start until attached or let go
+  (`HeldStart.DebuggerOffAsync`, `LetGoAsync`), a game played in the person's Godot editor
+  (`RunConfiguration.GodotInEditor`, `MainWindow.GodotEditorPlay`: the addon's play where it is connected, else IDE
+  messaging's `DebugPlay` through `GodotIdeLink.RequestAsync`), Open in Godot Editor through the addon (`scene_select`)
+  where an editor runs, else the Godot Editor configuration on the scene, selecting once it connects (`selectOnConnect`;
+  a selection Passenger asked for never followed back, `GodotEditorPeer.SelectionAsked`), its Publish its export
+  (`GodotExportDialog`, `BuildRunController.ExportGodotAsync`), templates installed only from a `.tpz` the person picks
+  (`GodotExports.Install`; a test's named by `PASSENGER_TEST_GODOT_TEMPLATES`, into the run's own Godot folders), a
+  `res://` sound played through the system's player as a WAV (`Sounds.Playable`, Ogg and MP3 decoded into
+  `cache/sounds`; a test reads `MainWindow.SoundsHanded`), its page a view of its project.godot (`GodotProjectPages`,
+  `GodotPageViewer`) over Workspace's readers, following its files on disk (`GodotProjectPages.Follows`), its edits
+  `GodotPageEdits` over `GodotWrites` through `MainWindow.EditGodotProjectAsync`, a launched game's remote debugger
+  `GodotGame`, a Live Tree source beside `LiveApp` (its value editors `GodotValueCells`, an `ILiveValueCells`, from
+  `GodotHints`, over any `IGodotValues`: a running game's, or a scene's node in the outline (a row under a node showing
+  that node's), `GodotSceneProperties` over `GodotSceneValues`, a property written where Godot's save puts it and taken
+  out at its default, its engine defaults from `PassengerClasses.gd` through `GodotEngineApis.ClassesAsync` and
+  `GodotClassDefaults`, its exports `GodotMember.Inspected` for C# and `GDScriptExports`; Keep `GodotKeep`; a run's
+  errors pinned to lines `GodotErrorPins` through `ErrorPinColumn`, its console folded `GodotConsoleFold`; a running
+  game's member values at their lines' ends `GodotLiveValues`, into `OpenDocument.LiveValues` through the helper's
+  `values` call, members from `GodotMembers`; `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol
+  `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's build skipped while what its last build read and wrote stands,
+  a build under way waited out first), `TogetherBuild`; on Windows a build's first step lets go of the Avalonia
+  previewers holding its output (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time
+  (`ConsoleWritten`).
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach, Restart
   and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time (`TakeStartAsync`);
   Stop ends every session and recording before the programs go. A project run's logs and traces go to a dashboard of its
@@ -522,14 +525,15 @@ Projects in `src/`; `find_symbol` finds the rest:
   one is found by `docker scout version`. A container's .NET service's metrics come through `passenger-tools trace
   --metrics`.
 - **Aspire.** `AspireController` (the IDE execution protocol on loopback, bearer tokens checked first),
-  `AspireInteractions` (gRPC, its C# checked in), `AspireClient` (the CLI, for an AppHost Passenger didn't start); a
-  resource's relationships both ways are `AspireDetailsPane`'s (chosen by `AspireModel.ChooseNamed`), its program
-  `AspireController.ProgramOf` (`executable.pid`), its metrics read from its runtime by the Profiler's `LiveMetrics` and
-  charted by `Telemetry/MetricsPane` on the Stats tab only while shown (one value an instrument, `MetricsPane.Combined`,
-  the pane fed by a source of its own as a Godot game's monitors are, `ShowFed`/`Feed`, which `telemetry` kind metrics
-  answers too), the AppHost's graph `AspireGraph`, built from the snapshot's relationships. MetricsEventSource's
-  CollectionStart and Stop reach TraceEvent as `Collection/Start` and `Collection/Stop`, and a histogram's count is the
-  interval's.
+  `AspireInteractions` (gRPC, its C# checked in), `AspireClient` (the CLI, for an AppHost Passenger didn't start); an
+  AppHost's steps `AppHostSteps`, a deploy step's logins `DeployLogins`, read from each tool's files, never by running a
+  cloud CLI; a resource's relationships both ways are `AspireDetailsPane`'s (chosen by `AspireModel.ChooseNamed`), its
+  program `AspireController.ProgramOf` (`executable.pid`), its metrics read from its runtime by the Profiler's
+  `LiveMetrics` and charted by `Telemetry/MetricsPane` on the Stats tab only while shown (one value an instrument,
+  `MetricsPane.Combined`, the pane fed by a source of its own as a Godot game's monitors are, `ShowFed`/`Feed`, which
+  `telemetry` kind metrics answers too), the AppHost's graph `AspireGraph`, built from the snapshot's relationships.
+  MetricsEventSource's CollectionStart and Stop reach TraceEvent as `Collection/Start` and `Collection/Stop`, and a
+  histogram's count is the interval's.
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
   environment only; Endpoints sends nothing but on Test or Send (an app's OpenAPI document, `OpenApiDocument` and
   `OpenApiSchemas`, Passenger's own reader, comes from a loopback app the folder runs or the build alone,
@@ -695,14 +699,15 @@ site-shots` retakes its images.
 - **Agents never open windows on the person's screen**: `--mcp FOLDER`, or a headless screenshot run's `--agent`
   step to try attached behaviour (a headless `--mcp-attach` window keeps no settings, so it asks a person who isn't
   there); never a bare `--mcp-attach`, never `just run`.
-- **Aspire's CLI and AppHosts** list an AppHost's pipeline steps only over the CLI's backchannel, and a real AppHost's
-  `--operation publish` without it runs every step, deploy included (`docker compose up`, pulls): never in a probe or a
-  test. They keep running AppHosts in `$HOME/.aspire/cli/bch` whatever ASPIRE_HOME says; on Windows in the profile
-  whatever the environment says (those tests skip there). An Aspire service's replicas share `OTEL_SERVICE_NAME` and its
-  display name: a start's own resource is found by `service.instance.id` (`AspireResourceRun.ResourceIn`), never by name
-  alone; a service action takes the start chosen, and a start's hold, attach and recording are kept by
-  `ServiceRun.KeyOf`. DCP names each replica with a random suffix every AppHost run, and its index never reaches the
-  IDE: a replica's identity lasts one run, so a choice for one replica is every replica's next run.
+- **Aspire's CLI and AppHosts** list an AppHost's pipeline steps only over the CLI's backchannel (`--operation inspect
+  --list-steps true`, from Aspire 13.6), and a real AppHost's `--operation publish` without it runs every step, deploy
+  included (`docker compose up`, pulls): never in a probe or a test. They keep running AppHosts in
+  `$HOME/.aspire/cli/bch` whatever ASPIRE_HOME says; on Windows in the profile whatever the environment says (those
+  tests skip there). An Aspire service's replicas share `OTEL_SERVICE_NAME` and its display name: a start's own resource
+  is found by `service.instance.id` (`AspireResourceRun.ResourceIn`), never by name alone; a service action takes the
+  start chosen, and a start's hold, attach and recording are kept by `ServiceRun.KeyOf`. DCP names each replica with a
+  random suffix every AppHost run, and its index never reaches the IDE: a replica's identity lasts one run, so a choice
+  for one replica is every replica's next run.
 - **Godot** starts .NET through hostfxr itself and runs no startup hook, so a game's Hot Reload, under Run too, goes
   through the debugger (a quiet one under Run, `AttachForHotReloadAsync`), never dotnet watch; its game's assembly comes
   from a stream (no `Location`). It writes logs and editor settings under the user's folders, on macOS whatever XDG
