@@ -57,11 +57,14 @@ public sealed class DockingTests
         MainWindow window = Open();
         DockHost dock = window.DockHost;
         dock.Move(dock[ToolWindowIds.Hierarchy], ToolAnchor.RightBottom);
-        dock.Move(dock[ToolWindowIds.LiveTree], ToolAnchor.LeftBottom);
-        dock.Move(dock[ToolWindowIds.Endpoints], ToolAnchor.LeftBottom);
-        dock.Move(dock[ToolWindowIds.Requests], ToolAnchor.LeftBottom);
+        foreach (ToolWindow other in dock.Windows.Where(w => w.Id != ToolWindowIds.Hierarchy
+            && w.Anchor is ToolAnchor.RightTop or ToolAnchor.RightBottom or ToolAnchor.BottomRight).ToList())
+        {
+            dock.Move(other, ToolAnchor.LeftBottom);
+        }
         Ui.Settle();
-        Assert.Single(Stripe(window, right: true));
+        string[] right = [.. Stripe(window, right: true).Select(b => (string)b.Tag!)];
+        Assert.True(right is [ToolWindowIds.Hierarchy], $"The right stripe holds {string.Join(", ", right)}, not Hierarchy's button alone");
         Point lowest = Ui.Centre(Button(window, ToolWindowIds.Hierarchy), window);
 
         Ui.Drag(window, Ui.Centre(Button(window, ToolWindowIds.Debug), window), lowest - new Point(0, 4));
