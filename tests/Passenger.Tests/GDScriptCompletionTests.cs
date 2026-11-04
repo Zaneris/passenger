@@ -77,7 +77,7 @@ public sealed class GDScriptCompletionTests
     }
 
     /// <summary>After self's dot, and among the names in scope, the script's own members come before those its engine class
-    /// gives it, however their names sort.</summary>
+    /// gives it, however their names sort; a function returning nothing says void.</summary>
     [AvaloniaFact]
     public void A_scripts_own_members_are_listed_before_those_its_engine_class_gives_it()
     {
@@ -92,6 +92,7 @@ public sealed class GDScriptCompletionTests
             Assert.True(listed, "No members after self's dot");
             Assert.True(window.Assist.CompletionLabels.Take(3).OrderBy(l => l, StringComparer.Ordinal).SequenceEqual(["counter", "scored", "speed"]),
                 $"The script's own members are not first after self's dot: {string.Join(", ", window.Assist.CompletionLabels.Take(12))}");
+            Assert.Contains(("_ready", "void"), window.Assist.CompletionDetails);
         }
         finally
         {

@@ -281,7 +281,9 @@ internal sealed partial class GDScriptAssist
         if (member.Kind == "func")
         {
             bool takes = SignatureOf(typed, what) is not { Parameters.Count: 0, Varargs: false };
-            return Item(member.Name, kind, member.Type.IsVariant ? member.Kind : member.Type.ToString(), rankOf, what, member.Name + "()", takes ? 1 : 0);
+            // A function returning nothing says void, as its signature writes it, not its value's null.
+            string returns = member.Type.IsVariant ? member.Kind : member.Type is { Kind: GDScriptTypeKind.Builtin, Name: "Nil" } ? "void" : member.Type.ToString();
+            return Item(member.Name, kind, returns, rankOf, what, member.Name + "()", takes ? 1 : 0);
         }
         return Item(member.Name, kind, member.Type.IsVariant ? member.Kind : member.Type.ToString(), rankOf, what);
     }
