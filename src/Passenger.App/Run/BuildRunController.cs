@@ -1146,7 +1146,7 @@ public sealed partial class BuildRunController
             // Copies of a game each run in a tab of the Terminal window of their own: the Run console is one program's.
             if (GameCopies.Count(chosen, plan) is > 1 and int count)
             {
-                return await RunCopiesAsync(chosen, plan, count, reloaded, work);
+                return await RunCopiesAsync(chosen, plan, count, reloaded, work, Take(ref edits));
             }
             // A game of GDScript alone takes its saved scripts over its own connection: no debugger holds its start for C#'s edits.
             bool heldStart = reloaded && !plan.ScriptsAlone;
@@ -1261,37 +1261,62 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>Runs copies of a game side by side from one build, each in a tab of the Terminal window named for its place
-    /// (<see cref="GameCopies"/>), its own console, followed in the Live Visual Tree; a saved GDScript file reloads in each
-    /// where Hot Reload is on, C#'s edits only in copies debugged. An earlier run's copies of it end first. Null once every
+    /// (<see cref="GameCopies"/>), its own console, followed in the Live Visual Tree; where Hot Reload is on, a saved GDScript
+    /// file reloads in each, and each is held at its start and attached to quietly for C#'s, following its own copy of the
+    /// edits since the build (<paramref name="edits"/>, the first's). An earlier run's copies of it end first. Null once every
     /// one runs, else why the first that could not start did not, the copies before it running on.</summary>
-    private async Task<string?> RunCopiesAsync(RunConfiguration chosen, LaunchPlan plan, int count, bool reloaded, Working work)
+    private async Task<string?> RunCopiesAsync(RunConfiguration chosen, LaunchPlan plan, int count, bool reloaded, Working work, BuiltEdits? edits)
     {
-        await EndCopyRunsAsync(chosen.Name);
-        List<string> started = [];
-        for (int copy = 1; copy <= count; copy++)
+        List<BuiltEdits?> each = [edits, .. Enumerable.Range(2, count - 1).Select(_ => edits is null ? null : session.Debug.Copied(edits))];
+        try
         {
-            work.Say($"Starting {GameCopies.Name(chosen.Name, copy)}, {copy} of {count}…");
-            if (await RunCopyAsync(chosen, plan, copy, reloaded) is { } refused)
+            await EndCopyRunsAsync(chosen.Name);
+            List<string> started = [];
+            for (int copy = 1; copy <= count; copy++)
             {
-                return Said(copy == 1 ? refused : $"{GameCopies.Name(chosen.Name, copy)} did not start ({refused}); {Plural.Listed(started)} run on");
+                work.Say($"Starting {GameCopies.Name(chosen.Name, copy)}, {copy} of {count}…");
+                BuiltEdits? its = each[copy - 1];
+                each[copy - 1] = null;
+                if (await RunCopyAsync(chosen, plan, copy, reloaded, work, its) is { } refused)
+                {
+                    return Said(copy == 1 ? refused : $"{GameCopies.Name(chosen.Name, copy)} did not start ({refused}); {Plural.Listed(started)} run on");
+                }
+                started.Add(GameCopies.Name(chosen.Name, copy));
             }
-            started.Add(GameCopies.Name(chosen.Name, copy));
+            parts.Say($"Running {count} copies of {chosen.Name}{(reloaded && !plan.ScriptsAlone ? " with Hot Reload: a save applies its changes in each" : string.Empty)}, each in a tab of the Terminal window",
+                StatusPlace.Window(parts.Dock, ToolWindowIds.Terminal));
+            return null;
         }
-        parts.Say($"Running {count} copies of {chosen.Name}, each in a tab of the Terminal window{(reloaded && !plan.ScriptsAlone ? ", without C#'s Hot Reload, which copies debugged take" : string.Empty)}",
-            StatusPlace.Window(parts.Dock, ToolWindowIds.Terminal));
-        return null;
+        finally
+        {
+            foreach (BuiltEdits? left in each)
+            {
+                left?.Dispose();
+            }
+        }
     }
 
-    /// <summary>Runs one copy of a game (from one) in a tab of the Terminal window of its own, as Run's copies run; null once
-    /// it runs, else why not.</summary>
-    private async Task<string?> RunCopyAsync(RunConfiguration chosen, LaunchPlan plan, int copy, bool reloaded)
+    /// <summary>Runs one copy of a game (from one) in a tab of the Terminal window of its own, as Run's copies run; with Hot
+    /// Reload on and C# in the game, held at its runtime's start and attached to quietly (<see cref="AttachForHotReloadAsync"/>)
+    /// with <paramref name="edits"/>, which it takes, as Run's one game is. Null once it runs, else why not.</summary>
+    private async Task<string?> RunCopyAsync(RunConfiguration chosen, LaunchPlan plan, int copy, bool reloaded, Working work, BuiltEdits? edits)
     {
+        bool heldStart = reloaded && !plan.ScriptsAlone;
         (LaunchPlan each, Godot.GodotGame? game) = session.Listened(GameCopies.Plan(chosen, plan, copy));
         game?.ReloadsScripts = reloaded;
-        ProcessStartInfo start = ChildProcesses.Command(GodotConsole.Program(each, each.Program), each.Arguments, each.WorkingDirectory);
+        string program = GodotConsole.Program(each, each.Program);
+        ProcessStartInfo start = ChildProcesses.Command(program, each.Arguments, each.WorkingDirectory);
         foreach ((string variable, string value) in each.Environment)
         {
             start.Environment[variable] = value;
+        }
+        if (heldStart)
+        {
+            // Held at its runtime's start until the debugger attaches, so each of its modules takes Edit and Continue as it loads.
+            foreach ((string name, string value) in HeldStart.Variables(changeable: true))
+            {
+                start.Environment[name] = value;
+            }
         }
         TerminalRun run;
         try
@@ -1301,6 +1326,7 @@ public sealed partial class BuildRunController
         catch (LaunchException failed)
         {
             game?.Dispose();
+            edits?.Dispose();
             return failed.Message;
         }
         run.StartedBy = Mcp.AgentCall.Current?.Connection;
@@ -1308,6 +1334,21 @@ public sealed partial class BuildRunController
         EndWith(game, run.Ended);
         IdeErrors.Observe(CopyEnded());
         RunningChanged?.Invoke(this, EventArgs.Empty);
+        if (!heldStart)
+        {
+            edits?.Dispose();
+            return null;
+        }
+        try
+        {
+            await GodotConsole.FollowAsync(run, each.Program, program);
+        }
+        catch (LaunchException unfollowed)
+        {
+            edits?.Dispose();
+            return unfollowed.Message;
+        }
+        await AttachForHotReloadAsync(each.Name, run.Debuggee, null, work, edits, $"Running {each.Name} with Hot Reload: a save applies its changes");
         return null;
 
         async Task CopyEnded()
@@ -1352,7 +1393,10 @@ public sealed partial class BuildRunController
             }
             work.Say($"Starting {GameCopies.Name(chosen.Name, next)}…");
             bool reloaded = parts.Settings().HotReload && chosen.NamesNoOtherProgram(session.Projects);
-            if (await RunCopyAsync(chosen, plan, next, reloaded) is { } refused)
+            // The edits since the build the copies run, as the first of them attached for Hot Reload follows them.
+            string? first = RunsOwnProgram(chosen.Name) ? chosen.Name : copyRuns.Where(c => c.Configuration == chosen.Name).Select(c => c.Run.Name).MinBy(n => GameCopies.Of(n).Copy);
+            BuiltEdits? edits = reloaded && !plan.ScriptsAlone && first is not null ? session.Debug.Carried(first, hotReload: true) : null;
+            if (await RunCopyAsync(chosen, plan, next, reloaded, work, edits) is { } refused)
             {
                 return Said(refused);
             }
@@ -1389,20 +1433,62 @@ public sealed partial class BuildRunController
         return Task.WhenAll(ending.Select(r => r.Ended));
     }
 
-    /// <summary>Whether Run runs the Godot game of configuration <paramref name="name"/> with Hot Reload through the debugger.</summary>
-    public bool RunsGameWithHotReload(string name) => RunsOwnProgram(name) && session.RunPlan is { Godot: not null, GodotEditor: false }
+    /// <summary>Whether Run runs the Godot game of configuration <paramref name="name"/>, or the copy of one so named, with Hot
+    /// Reload through the debugger.</summary>
+    public bool RunsGameWithHotReload(string name) =>
+        (RunsOwnProgram(name) && session.RunPlan is { Godot: not null, GodotEditor: false } || copyRuns.Any(c => c.Run.Name == name))
         && session.Debug.Running.Any(r => r.Name == name);
 
     /// <summary>Restarts the Godot game Run runs with Hot Reload so the edits Hot Reload could not apply run: built and started
-    /// again, held and attached to again, while its configuration is still the one chosen. True once it runs again.</summary>
+    /// again, held and attached to again, while its configuration is still the one chosen; a copy of it alone, the others
+    /// running on. True once it runs again.</summary>
     public async Task<bool> RestartGameForEditAsync(string name)
     {
-        if (!RunsGameWithHotReload(name) || session.Configurations.Chosen?.Name != name)
+        if (!RunsGameWithHotReload(name))
+        {
+            return false;
+        }
+        if (copyRuns.FirstOrDefault(c => c.Run.Name == name) is { Run: { } copy } run)
+        {
+            return session.Configurations.Chosen is { } chosen && chosen.Name == run.Configuration && await RestartRunCopyAsync(chosen, copy);
+        }
+        if (session.Configurations.Chosen?.Name != name)
         {
             return false;
         }
         parts.Say($"Hot Reload: restarting {name} to apply the changes");
         return await RunAsync(hotReload: true) is null;
+    }
+
+    /// <summary>One copy of a game Run runs with Hot Reload restarted alone so the edits Hot Reload could not apply run: ended,
+    /// built again, and started in its tab's place, held and attached to again with the edits from this build, the other
+    /// copies running on. True once it runs again.</summary>
+    private async Task<bool> RestartRunCopyAsync(RunConfiguration chosen, TerminalRun copy)
+    {
+        if (parts.Work.Begin(AppActions.RunProgram, $"Restarting {copy.Name} to apply the changes…") is not { } work)
+        {
+            return false;
+        }
+        using (work)
+        using (BackgroundWork.Scope())
+        {
+            parts.Say($"Hot Reload: restarting {copy.Name} to apply the changes");
+            copy.Stop();
+            await copy.Ended;
+            BuiltEdits? edits = null;
+            (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, null, work, reading: () =>
+            {
+                edits?.Dispose();
+                edits = session.Debug.Building(hotReload: true);
+            });
+            if (plan is null)
+            {
+                edits?.Dispose();
+                parts.Say($"Hot Reload could not restart {copy.Name}: {problem}");
+                return false;
+            }
+            return await RunCopyAsync(chosen, plan, GameCopies.Of(copy.Name).Copy, reloaded: true, work, Take(ref edits)) is null;
+        }
     }
 
     /// <summary>What a start holds (the edits followed for a session, its dashboard), handed over once: what takes it lets it go.</summary>
@@ -2009,8 +2095,49 @@ public sealed partial class BuildRunController
             return "Nothing was launched under the debugger to restart";
         }
         (RunConfiguration configuration, string? arguments) = last;
+        // A copy among several restarts alone, the others debugged on.
+        IReadOnlyList<(ToolWindows.DebugTab Tab, int Copy)> copies = session.Debug.CopiesOf(configuration.Name);
+        if (copies.Count > 1 && copies.FirstOrDefault(c => c.Tab.Name == name) is { Tab: { } tab } own)
+        {
+            return await RestartDebuggedCopyAsync(configuration, arguments, tab, own.Copy);
+        }
         await session.Debug.StopAsync(configuration.Name);
         return await DebugAsync(configuration, arguments);
+    }
+
+    /// <summary>One copy of a game debugged beside others restarted alone: its session stopped, the game built again, and the
+    /// copy launched in its place with its own arguments and the edits from this build; null once its session is open, else
+    /// why not.</summary>
+    private async Task<string?> RestartDebuggedCopyAsync(RunConfiguration configuration, string? arguments, ToolWindows.DebugTab tab, int copy)
+    {
+        if (parts.Work.Begin(AppActions.Debug, $"Restarting {tab.Name}…") is not { } work)
+        {
+            return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!);
+        }
+        using (work)
+        using (BackgroundWork.Scope())
+        {
+            await session.Debug.StopAsync(tab);
+            BuiltEdits? edits = null;
+            try
+            {
+                (LaunchPlan? plan, string? problem, _) = await PrepareAsync(configuration, arguments, work, reading: () =>
+                {
+                    edits?.Dispose();
+                    edits = session.Debug.Building(session.Debug.HotReloadOn());
+                });
+                if (plan is null)
+                {
+                    return problem;
+                }
+                session.Debug.JoinCopies(configuration.Name);
+                return await LaunchCopiesAsync(configuration, plan, [copy], arguments, work, edits);
+            }
+            finally
+            {
+                edits?.Dispose();
+            }
+        }
     }
 
     private async Task<string?> DebugAsync(RunConfiguration chosen, string? arguments, CancellationToken cancellation = default)
