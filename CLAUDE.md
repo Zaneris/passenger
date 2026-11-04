@@ -316,9 +316,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   loaded once used: unloading it crashed on Linux); recording inside a container trusts nothing in a frame. A session's
   stop goes through `EventPipeStops.StopAsync`, a diagnostic port's failures through `DiagnosticsFailures.Of`, a
   recording in a container begins through `ContainerTrace.StartAsync`, passenger-tools' words are `ContainerToolsWords`.
-  A run keeps its newest three memory snapshots' objects (`KeptSnapshots`). A heap dump is Passenger's own (`DumpTool`,
-  deleted only once its writer and reader end, `DeleteAfterAsync`; leftovers swept, `Sweep`): the runtime's createdump
-  writes into the program's stdout, and Windows' dumps only its parent.
+  A run keeps its newest three memory snapshots' objects (`KeptSnapshots`); a program no dump can read is snapshot from
+  its runtime's GC heap dump through the diagnostics port (`GcHeapDump`, the graph `HeapGraph.Building` as a dump's),
+  saying what that lacks (`MemorySnapshot.Lacks`). A heap dump is Passenger's own (`DumpTool`, deleted only once its
+  writer and reader end, `DeleteAfterAsync`; leftovers swept, `Sweep`): the runtime's createdump writes into the
+  program's stdout, and Windows' dumps only its parent.
 - `Passenger.UpdateHandlers`: the startup hook that calls a debugged program's update handlers after Hot Reload, carried
   under `updatehandlers/`. `Passenger.Inspector` (+`.Wpf`): the Live Visual Tree's helper, loaded into the app by a
   startup hook, answering over a Unix socket (`Protocol.cs` compiled into both ends; what both say in `Serving.cs`'s
@@ -793,12 +795,12 @@ site-shots` retakes its images.
   `SystemFonts` lists the hidden `.AppleSystemUIFont` only once something has loaded it, and `TryGetGlyphTypeface`
   answers an unknown name with Helvetica, so `WindowFonts` checks the face it gets; Chrome waits for good on the
   person's keychain where HOME has none, so `BrowserRun` passes `--use-mock-keychain`; a hardened-runtime program
-  without `get-task-allow` (Godot's release build) can be dumped by no one, so a heap snapshot of it is refused up front
-  (`DotnetProcesses.WhyUnreadable`); a variadic libc call through P/Invoke (`fcntl`, `ioctl` with an argument) loses its
-  variadic arguments on arm64 (`Descriptors.CloseOnExec`), and `poll` never says a named pipe's writer has gone
-  (`select`); a Unix socket path holds 104 bytes; `codesign` takes a dotted folder under `Contents/MacOS` for a bundle
-  (so the web servers live in Resources); TMPDIR is reached through the /var link, so a build or restore of a test's
-  project goes by its real path, and two spellings of one project restored at once collide.
+  without `get-task-allow` (Godot's release build) can be dumped by no one, so its heap snapshot is read from its
+  runtime's GC heap dump instead (`DotnetProcesses.WhyUnreadable`); a variadic libc call through P/Invoke (`fcntl`,
+  `ioctl` with an argument) loses its variadic arguments on arm64 (`Descriptors.CloseOnExec`), and `poll` never says a
+  named pipe's writer has gone (`select`); a Unix socket path holds 104 bytes; `codesign` takes a dotted folder under
+  `Contents/MacOS` for a bundle (so the web servers live in Resources); TMPDIR is reached through the /var link, so a
+  build or restore of a test's project goes by its real path, and two spellings of one project restored at once collide.
 - **.NET's watcher on macOS passes over FSEvents' word that it dropped events** (`MustScanSubDirs|UserDropped` arrive on
   the watched folder itself, which it skips; dotnet/runtime#136577), so a folder is watched only through `WatchedTree`
   (the folder's watcher, each of `ServerWatches`' and Git's folders outside it, `GitWatcher`), never a bare
