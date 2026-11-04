@@ -83,17 +83,18 @@ App and the tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collecti
   `tools/Passenger.Notices/Licenses`, a package inside Roslyn's server in its table. The owner's exceptions: Visual Studio
   Telemetry and Utilities.Internal inside Roslyn's server (its Razor support needs them), and the TextMate bundle
   licence. MIT first.
-- **Every program Passenger starts goes through `ChildProcesses`** (`Command`/`DotnetCommand`, Passenger's own helpers
-  through `HelperCommand` on the runtime Passenger runs on, never the machine's; `DotnetCommand` strips a parent CLI's
-  MSBuild SDK variables, then `Start`, `StartAsync`, `RunAsync`, or `AnswerAsync` for a question one line answers, a
-  question of the .NET CLI answered before it ends made by `DotnetQuestion`, which sends no telemetry and so lets go of
-  its folder at once; `Kill` ends it with all it started), so none outlives the IDE (`Lifeline`), each given its folder
-  as the disk names it, PWD too; on Windows every child shares the IDE's UTF-8 console, made windowless where it has
-  none (`SharedConsole`); a console reads a child through `ChildProcesses.Output`/`Errors` (on macOS and Linux its pipe
-  through a socket, a waiting read allocating nothing), a child's lines are heard through `ChildProcesses.Hear`, never
-  Process's `Begin*ReadLine` (banned: its disposal faults a read under it). Started elsewhere: the terminal's shell
-  (Porta.Pty), vstest.console, Velopack's Update.exe and an agent's `--mcp-attach` Passenger (`StartApart`), and the
-  system web view's own helpers (WebView2's, WebKit's); a program run in the terminal is `Adopt`ed. Passenger's own
+- **Every program Passenger starts goes through `ChildProcesses`** (`Command`/`DotnetCommand`, Roslyn's server and the
+  project host through `ConservingMemory`, never the debug adapter, whose program would inherit it; Passenger's own
+  helpers through `HelperCommand` on the runtime Passenger runs on, never the machine's; `DotnetCommand` strips a parent
+  CLI's MSBuild SDK variables, then `Start`, `StartAsync`, `RunAsync`, or `AnswerAsync` for a question one line answers,
+  a question of the .NET CLI answered before it ends made by `DotnetQuestion`, which sends no telemetry and so lets go
+  of its folder at once; `Kill` ends it with all it started), so none outlives the IDE (`Lifeline`), each given its
+  folder as the disk names it, PWD too; on Windows every child shares the IDE's UTF-8 console, made windowless where it
+  has none (`SharedConsole`); a console reads a child through `ChildProcesses.Output`/`Errors` (on macOS and Linux its
+  pipe through a socket, a waiting read allocating nothing), a child's lines are heard through `ChildProcesses.Hear`,
+  never Process's `Begin*ReadLine` (banned: its disposal faults a read under it). Started elsewhere: the terminal's
+  shell (Porta.Pty), vstest.console, Velopack's Update.exe and an agent's `--mcp-attach` Passenger (`StartApart`), and
+  the system web view's own helpers (WebView2's, WebKit's); a program run in the terminal is `Adopt`ed. Passenger's own
   standard input is taken at its start (`StandardInput`, fd 0 then the null device), so nothing it starts reads it.
 - **No secret on a command line** (any process can read it): give it through the environment, or don't make it. Secrets
   everywhere (Details, logs, consoles, hints, agents' answers, `ChildProcesses.Shown`'s echoes) are masked by one rule,
@@ -541,12 +542,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   MetricsEventSource's CollectionStart and Stop reach TraceEvent as `Collection/Start` and `Collection/Stop`, and a
   histogram's count is the interval's.
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
-  environment only; Endpoints sends nothing but on Test or Send (an app's OpenAPI document, `OpenApiDocument` and
-  `OpenApiSchemas`, Passenger's own reader, comes from a loopback app the folder runs or the build alone,
-  `OpenApiSources`, its requests written through `MainWindow.AppendRequestsAsync`, a document the code names nowhere the
-  person's, `OpenApiNames`), and a send taking the person's environment asks first. `ResourceFiles` is the one reader
-  and writer of `.resx` and `xlf/*.xlf`, a table's change one edit of the open text (`WithValue`, `Renamed`, `Without`,
-  `WithTarget`).
+  environment only; Endpoints sends nothing but on Test or Send, a route's JSON body shaped only as its request is made
+  (`MainWindow.RouteBodyAsync`) (an app's OpenAPI document, `OpenApiDocument` and `OpenApiSchemas`, Passenger's own
+  reader, comes from a loopback app the folder runs or the build alone, `OpenApiSources`, its requests written through
+  `MainWindow.AppendRequestsAsync`, a document the code names nowhere the person's, `OpenApiNames`), and a send taking
+  the person's environment asks first. `ResourceFiles` is the one reader and writer of `.resx` and `xlf/*.xlf`, a
+  table's change one edit of the open text (`WithValue`, `Renamed`, `Without`, `WithTarget`).
 - **Debugging.** `DebugController` (a `DebugTab` per session, several at once), `DebugSession` (its adapter an
   `AdapterEnd`: `ProcessEnd` the engine's, `InProcessEnd` one inside the IDE such as `GodotScriptAdapter`, a game's
   GDScript over its debug connection; `DebugSession.Engine` sends each file's breakpoints to the adapter that runs it; a
@@ -579,16 +580,17 @@ Projects in `src/`; `find_symbol` finds the rest:
   `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a lambda on its statement's line keeps the
   lambda's column (`LambdaBreakpoints`).
 - **Tests window.** `TestFinder` (tests from code before any build, each closed file's reading kept in the state's cache
-  by its stamp, `TestsCache`, two at a time while the server loads), kept results across restarts `TestResultsState` (a
-  method's code stamp `DeclaredTest.Code`; this session's results too, `TestNode.Standing`), `TestRunners`;
-  `VsTestRunner` is the only file that knows VSTest's object model (VSTest starts a debugged .NET test host itself and
-  asks to attach, its launcher an `ITestHostLauncher3`: `LaunchTestHost` is never called for one; with Hot Reload on,
-  its run settings give the host the modifiable assemblies and the update handlers hook, one assembly at a time,
-  `UpdateHandlerHook.ForTestHost`, `TestHostReload`); a Godot game's GdUnit4 tests go through it with `GODOT_BIN` from
-  `GodotTestRuns` (the person's own wins), its GUT tests read from GDScript (`GutScripts`) and run by GUT's command line
-  (`GutRunner`, `GutRuns`), a project not yet imported imported headless first, as GUT needs Godot's class cache, its
-  GoDotTest tests read from C# (`GoDotTests`) and run in the game (`GoDotTestRunner`), started in the scene
-  `GoDotTests.StartOf` finds (the run settings' `GoDotTestScene` first), each told as its end line is heard
+  by its stamp, `TestsCache`, two at a time while the server loads), tests keyed by themselves (`TestItem.ById`, a row
+  found again by `TestPlace`/`TestIdentity`), never a key string per test; kept results across restarts
+  `TestResultsState` (a method's code stamp `DeclaredTest.Code`; this session's results too, `TestNode.Standing`),
+  `TestRunners`; `VsTestRunner` is the only file that knows VSTest's object model (VSTest starts a debugged .NET test
+  host itself and asks to attach, its launcher an `ITestHostLauncher3`: `LaunchTestHost` is never called for one; with
+  Hot Reload on, its run settings give the host the modifiable assemblies and the update handlers hook, one assembly at
+  a time, `UpdateHandlerHook.ForTestHost`, `TestHostReload`); a Godot game's GdUnit4 tests go through it with
+  `GODOT_BIN` from `GodotTestRuns` (the person's own wins), its GUT tests read from GDScript (`GutScripts`) and run by
+  GUT's command line (`GutRunner`, `GutRuns`), a project not yet imported imported headless first, as GUT needs Godot's
+  class cache, its GoDotTest tests read from C# (`GoDotTests`) and run in the game (`GoDotTestRunner`), started in the
+  scene `GoDotTests.StartOf` finds (the run settings' `GoDotTestScene` first), each told as its end line is heard
   (`GoDotTests.Progress`; a debugged game's lines through `DebugSession.Heard`), their outcomes then read whole from
   Godot's `--log-file`; a Godot test run is debugged as Debug starts the game (`ITestDebugLauncher.DebugGameAsync`,
   `MainWindow.DebugTestGame`), Settings' Godot arguments given through `GodotStart`, and GdUnit4's runner folder is
