@@ -3233,7 +3233,9 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
 /// <summary>A stand-in AppHost: a console project the IDE runs as one (it sets IsAspireHost), which writes the resource service
 /// key the IDE gave it where its stand-in resource service reads it (<see cref="AspireInteractionHost.KeyFile"/>) and waits to
-/// be stopped; its launch profile, written for each test, names that stand-in's address.</summary>
+/// be stopped; its launch profile, written for each test, names that stand-in's address. Run to list its steps, it answers
+/// over the backchannel as an AppHost of Aspire 13.6 does, with an Azure Container Apps environment's steps as Aspire's own
+/// source declares them, and runs none.</summary>
 public sealed class StandInAppHost : SharedProject
 {
     public const string Name = "StandIn.AppHost";
@@ -3247,8 +3249,17 @@ public sealed class StandInAppHost : SharedProject
         TestFolders.Write(Folder, $"{Name}/Program.cs", """
             using System;
             using System.IO;
+            using System.Net.Sockets;
+            using System.Text;
+            using System.Text.Json;
             using System.Threading;
 
+            // Listed as the Aspire CLI lists an AppHost's steps, it answers over the backchannel and runs nothing.
+            if (Array.IndexOf(args, "--list-steps") >= 0 && Environment.GetEnvironmentVariable("ASPIRE_BACKCHANNEL_PATH") is { Length: > 0 } backchannel)
+            {
+                ListSteps(backchannel);
+                return;
+            }
             // Published as the Aspire CLI publishes an AppHost, it writes Docker Compose's file, as its publisher would.
             if (Array.IndexOf(args, "--operation") is int operation and >= 0 && operation + 1 < args.Length && args[operation + 1] == "publish")
             {
@@ -3267,6 +3278,92 @@ public sealed class StandInAppHost : SharedProject
             File.Move(keyFile + ".part", keyFile, overwrite: true);
             Console.WriteLine("The stand-in AppHost is up");
             Thread.Sleep(Timeout.Infinite);
+
+            // The backchannel's JSON-RPC, as StreamJsonRpc frames it, until it is asked to stop.
+            static void ListSteps(string path)
+            {
+                using Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                File.Delete(path);
+                listener.Bind(new UnixDomainSocketEndPoint(path));
+                listener.Listen(1);
+                using Socket client = listener.Accept();
+                using NetworkStream stream = new(client);
+                while (Read(stream) is { } request)
+                {
+                    using JsonDocument message = JsonDocument.Parse(request);
+                    string method = message.RootElement.GetProperty("method").GetString()!;
+                    object? result = method switch
+                    {
+                        "GetCapabilitiesAsync" => new[] { "baseline.v2", "pipeline-steps.v1", "pipeline-steps.v2" },
+                        "GetPipelineStepsAsync" => new { Steps = Steps() },
+                        _ => null,
+                    };
+                    if (message.RootElement.TryGetProperty("id", out JsonElement id))
+                    {
+                        byte[] answer = JsonSerializer.SerializeToUtf8Bytes(new { jsonrpc = "2.0", id, result });
+                        stream.Write(Encoding.ASCII.GetBytes($"Content-Length: {answer.Length}\r\n\r\n"));
+                        stream.Write(answer);
+                    }
+                    if (method == "RequestStopAsync")
+                    {
+                        return;
+                    }
+                }
+            }
+
+            static byte[]? Read(Stream stream)
+            {
+                int length = -1;
+                StringBuilder line = new();
+                while (true)
+                {
+                    int next = stream.ReadByte();
+                    if (next < 0)
+                    {
+                        return null;
+                    }
+                    if (next != '\n')
+                    {
+                        line.Append((char)next);
+                        continue;
+                    }
+                    string header = line.ToString().TrimEnd('\r');
+                    line.Clear();
+                    if (header.Length == 0)
+                    {
+                        break;
+                    }
+                    if (header.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        length = int.Parse(header["Content-Length:".Length..].Trim());
+                    }
+                }
+                byte[] body = new byte[length];
+                stream.ReadExactly(body);
+                return body;
+            }
+
+            // An Azure Container Apps environment's steps, named, described and ordered as Aspire 13.6 declares them.
+            static object[] Steps() =>
+            [
+                Step("deploy-prereq", "Prerequisite step that runs before any deploy operations.", [], [], null),
+                Step("build-prereq", "Prerequisite step that runs before any build operations.", [], [], null),
+                Step("build-api", "Builds the container image for the api project.", ["build-prereq"], ["build-compute"], "api"),
+                Step("validate-azure-login", "Validates Azure CLI authentication before deployment.", ["deploy-prereq"], [], "azure"),
+                Step("create-provisioning-context", "Creates the Azure provisioning context for infrastructure deployment.", ["deploy-prereq", "validate-azure-login"], [], "azure"),
+                Step("provision-azure-bicep-resources", "Aggregation step for all Azure infrastructure provisioning operations.", ["deploy-prereq", "create-provisioning-context"],
+                    ["provision-infra"], "azure"),
+                Step("deploy-api", "Aggregation step for deploying api to Azure Container Apps.", ["provision-azure-bicep-resources", "build-api"], ["deploy-compute"], "api"),
+                Step("print-dashboard-url-env", "Prints the deployment summary and dashboard URL for env.", ["provision-azure-bicep-resources"], ["print-summary"], "env"),
+                Step("deploy", "Aggregation step for all deploy operations. All deploy steps should be required by this step.",
+                    ["deploy-prereq", "validate-azure-login", "create-provisioning-context", "provision-azure-bicep-resources", "build-api", "deploy-api", "print-dashboard-url-env"], [], null),
+                Step("publish-prereq", "Prerequisite step that runs before any publish operations.", [], [], null),
+                Step("publish-env", "Publishes the Azure environment configuration for env.", ["publish-prereq"], [], "env"),
+                Step("publish", "Aggregation step for all publish operations. All publish steps should be required by this step.", ["publish-prereq", "publish-env"], [], null),
+            ];
+
+            static object Step(string name, string? description, string[] dependsOn, string[] tags, string? resource) =>
+                new { Name = name, Description = description, DependsOn = dependsOn, Tags = tags, ResourceName = resource };
 
             """);
         TestFolders.Write(Folder, $"{Name}/Properties/launchSettings.json", Profile(null));

@@ -55,23 +55,30 @@ public sealed record PublishRequest(string Project, string? Profile, string? Con
     /// <summary>Where an AppHost's publishers write, which Passenger then lands in <see cref="Folder"/>.</summary>
     public string? Staging { get; init; }
 
+    /// <summary>The step of an AppHost's pipeline it runs, with those it runs after: publish, or a deploy step it declares.</summary>
+    public string Step { get; init; } = Aspire.AppHostPipeline.Publish;
+
+    /// <summary>What an AppHost's step needs of this machine, its logins looked for again as it starts.</summary>
+    public Aspire.DeployNeeds Needs { get; init; }
+
+    /// <summary>Whether it runs an AppHost's deploy step rather than its publish.</summary>
+    public bool Deploys => Kind == PublishKind.AppHost && Step != Aspire.AppHostPipeline.Publish;
+
     /// <summary>What the publish's dotnet is given beside Passenger's own environment: the engine's CLI first on PATH.</summary>
     public IReadOnlyDictionary<string, string>? Environment { get; init; }
 
     public string Name => System.IO.Path.GetFileNameWithoutExtension(Project);
 
-    /// <summary>How the publish is named in the status bar and the Build window: "Hello (FolderProfile)".</summary>
-    public string Shown => Profile is null ? Name : $"{Name} ({Profile})";
+    /// <summary>How the publish is named in the status bar and the Build window: "Hello (FolderProfile)", an AppHost's deploy
+    /// step "Hello.AppHost (deploy)".</summary>
+    public string Shown => Profile is not null ? $"{Name} ({Profile})" : Deploys ? $"{Name} ({Step})" : Name;
 
     /// <summary>The dotnet publish command line: the same as a person types to publish with the profile, ending as a build's
     /// does (<see cref="BuildOutput.Tail"/>), Windows targeting given where the project host gave it.</summary>
     public IReadOnlyList<string> Arguments(bool windowsTargeting) => Kind == PublishKind.AppHost
         ? ["run", "--project", Project, "--no-launch-profile", .. windowsTargeting ? (string[])[$"-p:{MSBuildNames.EnableWindowsTargeting}=true"] : [], "--",
-            .. AppHostPublish(Staging ?? Folder ?? string.Empty)]
+            .. Aspire.AppHostPipeline.RunArguments(Step, Staging ?? Folder ?? string.Empty)]
         : ["publish", Project, .. Command(), .. BuildOutput.Tail(windowsTargeting)];
-
-    /// <summary>What an AppHost is run with to publish through its own publishers, as the Aspire CLI's publish runs it.</summary>
-    public static IReadOnlyList<string> AppHostPublish(string output) => ["--operation", "publish", "--step", "publish", "--output-path", output];
 
     /// <summary>What follows dotnet publish and the project: its configuration, framework and profile, and a container
     /// profile's target, which the SDK runs from its profile only in a web project.</summary>

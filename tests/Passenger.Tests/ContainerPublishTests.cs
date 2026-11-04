@@ -9,9 +9,10 @@ namespace Passenger.Tests;
 
 /// <summary>Publish beside a folder's: a project's container image made by the SDK into the test's engine through a container
 /// profile, on a base image a stand-in registry serves (each image labelled for the run and removed after); a push to a
-/// registry docker holds no login for refused, saying how to log in; and an AppHost's Docker Compose files, written by its
-/// publishers, landed in the folder chosen as one step of Undo, which <c>docker compose config</c> reads. Alone: the
-/// refusal points the process's DOCKER_CONFIG at a folder of the test's while it asks.</summary>
+/// registry docker holds no login for refused, saying how to log in; an AppHost's Docker Compose files, written by its
+/// publishers, landed in the folder chosen as one step of Undo, which <c>docker compose config</c> reads; and an AppHost's
+/// deploy steps offered as it declares them, one whose Azure login is missing refused naming it. Alone: the refusals point
+/// the process's DOCKER_CONFIG and AZURE_CONFIG_DIR at folders of the test's while they ask.</summary>
 [Collection(Alone.Name)]
 public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisposable
 {
@@ -176,6 +177,46 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
         }
         finally
         {
+            window.Close();
+        }
+    }
+
+    /// <summary>The Publish dialog of an AppHost reads its deploy steps from the AppHost itself, as Aspire's CLI lists them,
+    /// and offers deploy and each environment's last step beside publish, each it runs Azure's login step for refused while
+    /// the Azure CLI holds no account, saying how to log in; a refused step cannot be chosen, and publish stays chosen.</summary>
+    [AvaloniaFact]
+    public void An_AppHosts_deploy_steps_are_offered_as_it_declares_them_and_one_needing_a_missing_azure_login_is_refused_naming_it()
+    {
+        appHost.Reset();
+        string azure = Path.Combine(folder, "azure");
+        Directory.CreateDirectory(azure);
+        string? had = Environment.GetEnvironmentVariable(Passenger.App.Aspire.DeployLogins.AzureConfigFolder);
+        OwnEnvironment.Set(Passenger.App.Aspire.DeployLogins.AzureConfigFolder, azure);
+        MainWindow window = appHost.Open(appHost.Program, languageServer: false);
+        try
+        {
+            string host = PathNames.Canonical(appHost.ProjectFile);
+            AppHostPublishDialog dialog = window.ShowAppHostPublish(host) ?? throw new InvalidOperationException($"Publish did not open: {window.Status}");
+            Ui.WaitFor(() => !dialog.IsReadingSteps, () => $"the AppHost's deploy steps to be read, where the dialog says: {dialog.StepsSaid}", TimeSpan.FromMinutes(2));
+            Assert.True(dialog.Steps.Select(s => s.Name).SequenceEqual(["publish", "deploy", "deploy-api"]),
+                $"The dialog offers {string.Join(", ", dialog.Steps.Select(s => s.Name))}, not publish, deploy and the Azure environment's last step: {dialog.StepsSaid}");
+            Assert.Null(dialog.Steps[0].WhyNot);
+            foreach ((string name, string? why) in dialog.Steps.Skip(1))
+            {
+                Assert.True(why is not null && why.StartsWith(name, StringComparison.Ordinal) && why.Contains("the Azure CLI's login", StringComparison.Ordinal)
+                    && why.Contains("az login", StringComparison.Ordinal),
+                    $"{name}, which runs Azure's login step, was not refused naming the Azure CLI's missing login: {why ?? "offered"}");
+            }
+            Assert.True(dialog.StepsSaid.Contains("deploy and deploy-api need the Azure CLI's login", StringComparison.Ordinal),
+                $"The dialog does not say once why both steps are refused: {dialog.StepsSaid}");
+            dialog.Step = "deploy";
+            Assert.Equal("publish", dialog.Step);
+            Assert.Contains("-- --operation publish --step publish --output-path ", dialog.Command, StringComparison.Ordinal);
+            dialog.Close();
+        }
+        finally
+        {
+            OwnEnvironment.Set(Passenger.App.Aspire.DeployLogins.AzureConfigFolder, had);
             window.Close();
         }
     }

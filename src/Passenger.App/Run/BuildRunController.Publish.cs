@@ -130,14 +130,46 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>An AppHost published through its own publishers (Docker Compose's, Kubernetes', a cloud's, as its code adds
-    /// them): run as the Aspire CLI's publish runs it, writing to a folder of the state's, whose files then land in the
-    /// folder chosen (the one it published to last, else aspire-output beside it) through the window's writes.</summary>
+    /// them), or one of its deploy steps run: as the Aspire CLI's publish and deploy run it, writing to a folder of the
+    /// state's, whose files then land in the folder chosen (the one it published to last, else aspire-output beside it)
+    /// through the window's writes. A deploy step's logins are looked for again first, never asked for here.</summary>
     private async Task<BuildOutcome> PublishAppHostAsync(PublishRequest request, CancellationToken cancel)
     {
         string output = request.Folder ?? session.Publishing.OutputOf(request.Project) ?? Path.Combine(Path.GetDirectoryName(request.Project)!, "aspire-output");
-        if (parts.Work.Begin(AppActions.Publish, $"Publishing {request.Name} through its publishers…") is not { } work)
+        string begun = request.Deploys ? $"Running {request.Step} of {request.Name}…" : $"Publishing {request.Name} through its publishers…";
+        if (parts.Work.Begin(AppActions.Publish, begun) is not { } work)
         {
             return Said(new BuildOutcome(BuildStatus.Refused, ActionWork.Busy(parts.Work.Of(AppActions.Publish)!)));
+        }
+        if (request.Needs != Aspire.DeployNeeds.None)
+        {
+            work.Say($"Looking for what {request.Step} needs…");
+            string? engineProblem;
+            try
+            {
+                engineProblem = request.Needs.HasFlag(Aspire.DeployNeeds.ContainerEngine) && await session.Containers.Engine.StateAsync(cancel: work.Stopping) is { IsReady: false } state
+                    ? state.Problem ?? $"{state.EngineName} does not answer"
+                    : null;
+            }
+            catch (OperationCanceledException) when (work.IsStopped)
+            {
+                work.Dispose();
+                return Said(new BuildOutcome(BuildStatus.Stopped, "Publish stopped"));
+            }
+            if (Aspire.DeployLogins.Missing(request.Needs, engineProblem) is { } missing)
+            {
+                string why = $"{request.Shown} was not run: {request.Step} {missing}";
+                work.Tell(false, why);
+                work.Dispose();
+                return Said(new BuildOutcome(BuildStatus.Refused, why));
+            }
+            if (session.IsEnded || IsBuilding)
+            {
+                string said = session.IsEnded ? Refusals.SolutionClosed : Refusals.Building;
+                work.Tell(false, said);
+                work.Dispose();
+                return Said(new BuildOutcome(BuildStatus.Refused, said));
+            }
         }
         string staging = Path.Combine(parts.StateFolder(), "cache", "aspire-publish", ContainerLabels.FolderValue(request.Project));
         try
@@ -236,6 +268,11 @@ public sealed partial class BuildRunController
         {
             ended = new BuildOutcome(BuildStatus.Failed, $"{publish.Name} published, but its files were not written to {shown}: {problem}");
         }
+        else if (landed.Written.Count == 0 && publish.Deploys)
+        {
+            session.Publishing.PublishedTo(publish.Project, folder);
+            ended = new BuildOutcome(BuildStatus.Succeeded, $"Ran {publish.Step} of {publish.Name}{warned}") { Published = folder };
+        }
         else if (landed.Written.Count == 0)
         {
             ended = new BuildOutcome(BuildStatus.Failed, $"{publish.Name}'s publishers wrote nothing: its code adds none (AddDockerComposeEnvironment adds Docker Compose's)");
@@ -249,8 +286,10 @@ public sealed partial class BuildRunController
                 parts.Views.Build.Links.Claim(line, line.Length - path.Length, path.Length, new FileLink(path, new TextPosition(0, 0)));
             }
             session.Publishing.PublishedTo(publish.Project, folder);
-            ended = new BuildOutcome(BuildStatus.Succeeded,
-                $"Published {publish.Name} to {shown}: {Plural.Listed([.. landed.Written.Select(path => Path.GetRelativePath(folder, path))])}{warned}") { Published = folder };
+            string files = Plural.Listed([.. landed.Written.Select(path => Path.GetRelativePath(folder, path))]);
+            ended = new BuildOutcome(BuildStatus.Succeeded, publish.Deploys
+                ? $"Ran {publish.Step} of {publish.Name}, its files written to {shown}: {files}{warned}"
+                : $"Published {publish.Name} to {shown}: {files}{warned}") { Published = folder };
         }
         FinishBuild(ended);
     }
@@ -267,7 +306,7 @@ public sealed partial class BuildRunController
             : said.StartsWith("Pushed image '", StringComparison.Ordinal) ? $"Publishing {publish.Shown}: its image is {(publish.Registry is null ? "in the engine" : "pushed")}"
             : Built().IsMatch(line) ? publish.Kind switch
             {
-                PublishKind.AppHost => $"Publishing {publish.Name}: its publishers are writing…",
+                PublishKind.AppHost => publish.Deploys ? $"Running {publish.Step} of {publish.Name}…" : $"Publishing {publish.Name}: its publishers are writing…",
                 PublishKind.Container => $"Publishing {publish.Shown}: copying it to its folder for its image…",
                 _ => $"Publishing {publish.Shown}: copying it to its folder…",
             }

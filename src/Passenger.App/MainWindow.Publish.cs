@@ -161,8 +161,9 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The Publish dialog over an AppHost: the folder its publishers' files land in, the one it published to last
-    /// chosen; Publish publishes it there.</summary>
+    /// <summary>The Publish dialog over an AppHost: the step it runs, publish or one of the deploy steps the AppHost declares
+    /// (read from it as the dialog opens), and the folder its files land in, the one it published to last chosen; Publish
+    /// runs the step there.</summary>
     public AppHostPublishDialog? ShowAppHostPublish(string project)
     {
         if (Folder is not { } open)
@@ -170,7 +171,11 @@ public partial class MainWindow
             status.Text = Refusals.NoFolder;
             return null;
         }
-        AppHostPublishDialog dialog = new(project, open, session.Publishing.OutputOf(project))
+        Containers.ContainerEngine engine = session.Containers.Engine;
+        Func<CancellationToken, Task<Passenger.App.Aspire.DeployOffer>>? readSteps = Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)) is { IsAspireHost: true } host
+            ? cancel => ReadDeployStepsAsync(host, engine, cancel)
+            : null;
+        AppHostPublishDialog dialog = new(project, open, session.Publishing.OutputOf(project), readSteps)
         {
             Busy = () => IsBuilding ? $"{Refusals.Building}: publish once it has ended" : null,
         };
@@ -194,6 +199,21 @@ public partial class MainWindow
                 await (LastPublish = publishing.PublishAsync(request));
             }
         }
+    }
+
+    /// <summary>An AppHost's deploy steps read from it, as its build reads the files once their saves have landed; none
+    /// while another build runs, whose files the AppHost's own build would take from under it.</summary>
+    private async Task<Passenger.App.Aspire.DeployOffer> ReadDeployStepsAsync(ProjectModel host, Containers.ContainerEngine engine, CancellationToken cancel)
+    {
+        if (IsBuilding)
+        {
+            return new Passenger.App.Aspire.DeployOffer([], $"{Refusals.Building}: its deploy steps are read as Publish opens once it has ended");
+        }
+        if (await EditorArea.LandedAsync(null, cancel) is { } unlanded)
+        {
+            return new Passenger.App.Aspire.DeployOffer([], unlanded);
+        }
+        return await Passenger.App.Aspire.AppHostSteps.OfferAsync(host, engine, cancel);
     }
 
     /// <summary>Lands the files a folder holds in another (an AppHost's publishers' output, in the order of their paths):

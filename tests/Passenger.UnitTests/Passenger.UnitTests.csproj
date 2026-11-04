@@ -67,9 +67,12 @@
     <Compile Include="../../src/Passenger.Inspector/XamlRoot.cs" Link="Inspector/XamlRoot.cs" />
   </ItemGroup>
 
-  <!-- Where an AppHost's dashboard is called from where it listens, compiled in since its project is the app's. -->
+  <!-- Where an AppHost's dashboard is called from where it listens, its deploy steps and their logins, compiled in since
+       their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Aspire/DashboardAddress.cs" Link="App/DashboardAddress.cs" />
+    <Compile Include="../../src/Passenger.App/Aspire/AppHostPipeline.cs" Link="App/AppHostPipeline.cs" />
+    <Compile Include="../../src/Passenger.App/Aspire/DeployLogins.cs" Link="App/DeployLogins.cs" />
   </ItemGroup>
 
   <!-- What godot_editor tells an agent of the scene Godot's editor edits, compiled in since its project is the app's. -->
