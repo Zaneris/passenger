@@ -710,7 +710,7 @@ public sealed partial class GDScriptAnalyzer
         {
             return GDScriptType.Native("Node");
         }
-        if (node.Script is { } script && project.Script(script) is { } tree)
+        if (node.Script is { } script && Tree(script) is { } tree)
         {
             return ScriptClass(tree, script);
         }
@@ -866,7 +866,7 @@ public sealed partial class GDScriptAnalyzer
     /// value where it asks for one of that class's subclasses.</summary>
     private void UnsafeArguments(GDScriptCall call, string script, GDScriptDeclaration declared, Context context)
     {
-        if (project.Script(script) is not { } tree
+        if (Tree(script) is not { } tree
             || tree.Members.FirstOrDefault(m => m.Node is GDScriptFunction { Identifier: { } n } && m.Offset + n.Start == declared.Start).Node is not GDScriptFunction function)
         {
             return;

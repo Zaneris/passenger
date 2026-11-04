@@ -181,8 +181,22 @@ public sealed partial class GDScriptAnalyzer
 
     private readonly Dictionary<string, GDScriptTree> analysed = new(StringComparer.Ordinal);
 
-    /// <summary>A script's tree: the one being analysed where it is, else the project's.</summary>
-    private GDScriptTree? Tree(string path) => analysed.TryGetValue(path, out GDScriptTree? tree) ? tree : project.Script(path);
+    /// <summary>The project's trees as first read, so a class read twice is one class whatever the project gives each time.</summary>
+    private readonly Dictionary<string, GDScriptTree?> read = new(StringComparer.Ordinal);
+
+    /// <summary>A script's tree: the one being analysed where it is, else the project's as first read.</summary>
+    private GDScriptTree? Tree(string path)
+    {
+        if (analysed.TryGetValue(path, out GDScriptTree? tree))
+        {
+            return tree;
+        }
+        if (!read.TryGetValue(path, out tree))
+        {
+            read[path] = tree = project.Script(path);
+        }
+        return tree;
+    }
 
     /// <summary>The class a class extends: a script's class, an engine class, or RefCounted where nothing is written.</summary>
     public GDScriptType? BaseOf(GDScriptType type)
