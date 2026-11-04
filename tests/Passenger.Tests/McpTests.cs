@@ -1215,6 +1215,27 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(kept.GetProperty("rows").GetArrayLength() > 0, $"local_history of a file deleted after its change lists none: {kept}");
     }
 
+    /// <summary>An agent's breakpoint on a C# line no code runs on, while nothing is debugged, says the line it moves to, or
+    /// that no code runs on or after it, never a bare "set" an agent takes for a stop there; one on a statement says nothing
+    /// more.</summary>
+    [Fact]
+    public async Task An_agents_breakpoint_on_a_line_no_code_runs_on_says_where_it_moves()
+    {
+        string folder = TestFolders.Create("mcp-noline-");
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "Program.cs"), "using System;\n\nint count = 1;\n\nConsole.WriteLine(count);\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        async Task<string?> Said(int line)
+        {
+            JsonElement set = (await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = line })).EnumerateArray()
+                .Single(b => b.GetProperty("line").GetInt32() == line);
+            return set.TryGetProperty("message", out JsonElement message) ? message.GetString() : null;
+        }
+        Assert.Equal("Breakpoint: no code runs on this line, so it moves to line 3, the next that may, as the program is debugged", await Said(2));
+        Assert.Null(await Said(5));
+        Assert.Equal("Breakpoint: no code runs on this line or after it, so it will not stop the program", await Said(6));
+    }
+
     /// <summary>An agent's build of a folder with no solution or project says so, never MSBuild's MSB1003 as a failed build's
     /// error to be fixed.</summary>
     [Fact]

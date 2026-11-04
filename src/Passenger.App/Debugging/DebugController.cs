@@ -2008,9 +2008,11 @@ public sealed class DebugController : IDisposable
     {
         UiThread.Check();
         List<string> words = [];
+        // The open file's parse as its text stands, which tells a line no code runs on.
+        Passenger.Languages.CSharp.ParsedText? parsed = editors.Find(path) is { } open && open.Syntax?.Current is { } current && ReferenceEquals(current.Text, open.Text.Snapshot) ? current : null;
         foreach (LineBreakpoint breakpoint in Breakpoints.In(path).Where(b => b.Line == line))
         {
-            words.AddRange(BreakpointStates.Words(breakpoint, IsDebugging, Breakpoints.Muted));
+            words.AddRange(BreakpointStates.Words(breakpoint, IsDebugging, Breakpoints.Muted, IsDebugging ? null : BreakpointStates.UnrunAt(parsed, breakpoint)));
         }
         return words.Count == 0 ? null : words;
     }

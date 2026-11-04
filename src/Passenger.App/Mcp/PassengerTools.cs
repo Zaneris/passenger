@@ -1665,7 +1665,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         LineBreakpoint set = column is int inside ? (await LambdaBreakpointAsync(full, at, inside, set: true))! : store.Set(full, at, attribute is { Length: > 0 } ? attribute : null);
         store.Update(set, enabled: true, suspend, condition, hitCondition, logMessage);
         await InTheProgram(cancel);
-        return Breakpoints(full);
+        Passenger.Languages.CSharp.ParsedText? parsed = Session.Debug.IsDebugging ? null : await LambdaBreakpoints.ParsedAsync(Editors, full);
+        // An open file's parse only as its text stands: its lines may have moved since.
+        if (parsed is not null && Editors.Find(full) is { HoldsText: true } shown && !ReferenceEquals(parsed.Text, shown.Text.Snapshot))
+        {
+            parsed = null;
+        }
+        return Breakpoints(full, parsed);
     });
 
     /// <summary>breakpoint_set's remove: the breakpoint its other arguments name taken away, or for "Any exception" and
@@ -2675,12 +2681,16 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     }
 
     /// <summary>The line breakpoints of a file (or all), each in the words the gutter's hover says it (<see cref="BreakpointStates"/>).</summary>
-    private IReadOnlyList<BreakpointInfo> Breakpoints(string? path)
+    /// <summary>The line breakpoints of a file, or every file's, as an agent reads them; with the file's parse, one set on a line
+    /// no code runs on says where it moves.</summary>
+    private IReadOnlyList<BreakpointInfo> Breakpoints(string? path, Passenger.Languages.CSharp.ParsedText? parsed = null)
     {
         DebugController debugger = Session.Debug;
         return [.. (path is null ? debugger.Breakpoints.All : debugger.Breakpoints.In(path))
             .Select(b => new BreakpointInfo(Relative(b.Path), b.Line + 1, b.Enabled, BreakpointStates.StateOf(b, debugger.IsDebugging, debugger.Breakpoints.Muted), b.Condition,
-                b.HitCondition, b.LogMessage, b.Suspend, b.Status == BreakpointStatus.Bound ? null : b.Message, Attribute: b.Attribute, Column: b.Column + 1))];
+                b.HitCondition, b.LogMessage, b.Suspend, b.Status == BreakpointStatus.Bound ? null
+                    : b.Message ?? BreakpointStates.Moves(b, debugger.IsDebugging, debugger.Breakpoints.Muted, BreakpointStates.UnrunAt(parsed, b)),
+                Attribute: b.Attribute, Column: b.Column + 1))];
     }
 
     private IReadOnlyList<BreakpointInfo> DataBreakpoints() =>
