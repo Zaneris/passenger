@@ -20,6 +20,10 @@ internal sealed partial class CodeCompletion
     private readonly InfoCard itemCard = new();
     private readonly Dictionary<CompletionItem, LiveTemplate> templatesOffered = [];
     private readonly Dictionary<CompletionItem, (PostfixTemplate Template, PostfixTarget Target)> postfixOffered = [];
+
+    /// <summary>The templates and scope the live templates offered were made for: a list asked again where both stand
+    /// offers the items made before.</summary>
+    private (TemplateSet Set, TemplateScope Scope)? templatesFor;
     private CancellationTokenSource? completing;
     private CancellationTokenSource? describing;
     private Completion? open;
@@ -188,6 +192,7 @@ internal sealed partial class CodeCompletion
     public void Open(Completion list)
     {
         templatesOffered.Clear();
+        templatesFor = null;
         postfixOffered.Clear();
         open = list;
         Filter();
@@ -244,23 +249,37 @@ internal sealed partial class CodeCompletion
                 ? lsp.OffsetOf(edit.Range.Start)
                 : lsp.IsRazor ? RazorWordStart(caret, served) : web is not null ? WebAssist.WebWordStart(web, Editor.Document.Snapshot, caret) : context.WordStart(caret));
             // The live templates that may go here are listed with the server's items, ahead of a keyword they share.
-            TemplateScope scope = context.Syntax is { } syntax ? TemplateScopes.At(syntax, caret).Scope : TemplateScope.None;
-            templatesOffered.Clear();
-            foreach (LiveTemplate template in web is null ? Templates.In(scope) : [])
+            TemplateScope scope = web is null && context.Syntax is { } syntax ? TemplateScopes.At(syntax, caret).Scope : TemplateScope.None;
+            if (templatesFor != (Templates, scope))
             {
-                templatesOffered[new CompletionItem { Label = template.Abbreviation, Kind = CompletionItemKind.Snippet, Detail = template.Description, SortText = "!" + template.Abbreviation }] = template;
+                templatesOffered.Clear();
+                foreach (LiveTemplate template in Templates.In(scope))
+                {
+                    templatesOffered[new CompletionItem { Label = template.Abbreviation, Kind = CompletionItemKind.Snippet, Detail = template.Description, SortText = "!" + template.Abbreviation }] = template;
+                }
+                templatesFor = (Templates, scope);
             }
             postfixOffered.Clear();
             foreach ((PostfixTemplate postfix, PostfixTarget target) in Templates.PostfixInCompletion ? Postfixes(Math.Min(start, caret), caret) : [])
             {
                 postfixOffered[new CompletionItem { Label = postfix.Name, Kind = CompletionItemKind.Snippet, Detail = postfix.Example, SortText = "~" + postfix.Name }] = (postfix, target);
             }
-            open = new Completion([.. named?.Items ?? [], .. served, .. templatesOffered.Keys, .. postfixOffered.Keys], Math.Min(start, Editor.Selections.Primary.Caret),
-                list?.ItemDefaults?.CommitCharacters ?? [], list?.IsIncomplete ?? false)
+            IReadOnlyList<CompletionItem> ahead = named?.Items ?? [];
+            CompletionItem[] offered = [.. templatesOffered.Keys, .. postfixOffered.Keys];
+            int listStart = Math.Min(start, Editor.Selections.Primary.Caret);
+            string listTail = named is { Tail: { } tail } ? tail : web is not null ? Tail(asked, served, caret) : string.Empty;
+            string lead = web is not null && start < caret && caret <= asked.Length ? asked.GetText(start, caret - start) : string.Empty;
+            // Gathered on the thread pool: an incomplete list of every type in reach is asked again at each key.
+            CompletionItem[] items = await BackgroundWork.Run<CompletionItem[]>(() => [.. ahead, .. served, .. offered], cancel.Token);
+            if (cancel.IsCancellationRequested)
             {
-                Tail = named is { Tail: { } tail } ? tail : web is not null ? Tail(asked, served, caret) : string.Empty,
+                return;
+            }
+            open = new Completion(items, listStart, list?.ItemDefaults?.CommitCharacters ?? [], list?.IsIncomplete ?? false)
+            {
+                Tail = listTail,
                 WordCharacters = named?.WordCharacters ?? string.Empty,
-                Lead = web is not null && start < caret && caret <= asked.Length ? asked.GetText(start, caret - start) : string.Empty,
+                Lead = lead,
             };
             Filter();
         }
