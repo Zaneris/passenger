@@ -77,6 +77,29 @@ public class GDScriptRefactoringsTests
     }
 
     [Fact]
+    public void An_enums_value_and_an_inner_classs_member_are_found_and_renamed_where_their_scope_takes_them()
+    {
+        string text = "extends Node\n\nenum Mood { CALM, ANGRY }\nenum { LOW, HIGH }\n\nvar helper := Helper.new()\n\n\nfunc _ready() -> void:\n\tvar m := Mood.CALM\n"
+            + "\thelper.count += 1\n\tprint(m == Mood.ANGRY, LOW, Helper.Kind.ONE, helper.bump())\n\n\nclass Helper:\n\tenum Kind { ONE, TWO }\n\tvar count := 0\n\n"
+            + "\tfunc bump() -> int:\n\t\tcount += 1\n\t\treturn Kind.TWO\n\n\nclass Sub extends Helper:\n\tfunc bump() -> int:\n\t\treturn 2\n";
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
+        GDScriptTarget At(string written, int into = 0) => GDScriptRefactorings.DeclarationAt(scripts, scripts[0], text.IndexOf(written, StringComparison.Ordinal) + into)!;
+        GDScriptTarget count = At("count += 1\n\tprint");
+        Assert.Equal(3, GDScriptRefactorings.PlacesOf(scripts, count).Places.Count);
+        string renamed = After(GDScriptRefactorings.Rename(scripts, count, "total"), "res://main.gd", text);
+        Assert.True(renamed.Contains("\thelper.total += 1\n", StringComparison.Ordinal) && renamed.Contains("\tvar total := 0\n", StringComparison.Ordinal)
+            && renamed.Contains("\t\ttotal += 1\n", StringComparison.Ordinal), $"Helper's count should be renamed where it is declared, read off a Helper and read in its class:\n{renamed}");
+        renamed = After(GDScriptRefactorings.Rename(scripts, At("CALM, ANGRY"), "STILL"), "res://main.gd", text);
+        Assert.True(renamed.Contains("enum Mood { STILL, ANGRY }", StringComparison.Ordinal) && renamed.Contains("var m := Mood.STILL", StringComparison.Ordinal), renamed);
+        renamed = After(GDScriptRefactorings.Rename(scripts, At("Kind.ONE", 5), "FIRST"), "res://main.gd", text);
+        Assert.True(renamed.Contains("enum Kind { FIRST, TWO }", StringComparison.Ordinal) && renamed.Contains("Helper.Kind.FIRST", StringComparison.Ordinal), renamed);
+        Assert.Contains("already has a member 'HIGH'", GDScriptRefactorings.Rename(scripts, At("LOW, HIGH"), "HIGH").Refused);
+        Assert.Contains("already has a member 'helper'", GDScriptRefactorings.Rename(scripts, At("LOW, HIGH"), "helper").Refused);
+        Assert.Null(GDScriptRefactorings.Rename(scripts, At("CALM, ANGRY"), "LOW").Refused);
+        Assert.Contains("the inner class Sub declares a 'bump' too", GDScriptRefactorings.Rename(scripts, At("bump() -> int:\n\t\tcount"), "poke").Refused);
+    }
+
+    [Fact]
     public void A_callables_own_call_names_no_method_so_a_rename_goes_on_but_an_objects_call_by_a_name_read_at_run_time_refuses_it()
     {
         const string Helper = "class_name Helper\nextends Node\n\n\nfunc clear(after: float) -> void:\n\tprint(after)\n";

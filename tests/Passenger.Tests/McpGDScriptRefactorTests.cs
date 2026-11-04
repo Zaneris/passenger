@@ -59,6 +59,21 @@ public sealed class McpGDScriptRefactorTests : McpRig
     }
 
     [Fact]
+    public async Task An_agent_finds_and_renames_an_enums_value_and_an_inner_classs_member_at_the_first_ask_with_no_godot_started()
+    {
+        string folder = TestFolders.Create("mcp-gdscript-nested-");
+        string path = TestFolders.Write(folder, "main.gd", "extends Node\n\nenum Mood { CALM, ANGRY }\n\nvar helper := Helper.new()\n\n\nfunc _ready() -> void:\n"
+            + "\tprint(Mood.CALM)\n\thelper.count += 1\n\n\nclass Helper:\n\tvar count := 0\n\n\tfunc bump() -> void:\n\t\tcount += 1\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement uses = await Call(client, McpTools.Usages, new() { ["path"] = "main.gd", ["line"] = 10, ["column"] = 9 });
+        Assert.True(uses.GetProperty("count").GetInt32() == 3, $"Helper's count should be found where it is declared and both reads: {Text(uses)}");
+        await Call(client, McpTools.Rename, new() { ["path"] = "main.gd", ["line"] = 3, ["column"] = 13, ["newName"] = "STILL" });
+        await Call(client, McpTools.Rename, new() { ["path"] = "main.gd", ["line"] = 10, ["column"] = 9, ["newName"] = "total" });
+        Assert.Equal("extends Node\n\nenum Mood { STILL, ANGRY }\n\nvar helper := Helper.new()\n\n\nfunc _ready() -> void:\n"
+            + "\tprint(Mood.STILL)\n\thelper.total += 1\n\n\nclass Helper:\n\tvar total := 0\n\n\tfunc bump() -> void:\n\t\ttotal += 1\n", File.ReadAllText(path));
+    }
+
+    [Fact]
     public async Task An_agent_changes_a_gdscript_signals_signature_through_its_emits_and_the_handler_connected()
     {
         string folder = TestFolders.Create("mcp-gdscript-signal-");

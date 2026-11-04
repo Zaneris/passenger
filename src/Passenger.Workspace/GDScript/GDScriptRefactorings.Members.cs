@@ -3,13 +3,22 @@ using Passenger.Text;
 namespace Passenger.Workspace.GDScript;
 
 /// <summary>A member of a script's own class a refactoring works on: its node, the offset its positions count from, and its
-/// name.</summary>
+/// name; an inner class's member, or an enum's value (its enum's node, the value's name), below it.</summary>
 public sealed record GDScriptTarget(string Script, GDScriptNode Node, int Offset, GDScriptIdentifier Name)
 {
     /// <summary>Where its name is, as the analyzer's declarations say it.</summary>
     public int Start => Offset + Name.Start;
 
     public string Named => Name.Name;
+
+    /// <summary>The inner class declaring it; null for the script's own class.</summary>
+    public GDScriptClass? Within { get; init; }
+
+    /// <summary>Whether it is an enum's value.</summary>
+    public bool IsEnumValue => Node is GDScriptEnum enumerated && enumerated.Identifier != Name;
+
+    /// <summary>Whether it is declared below the script's class's members: an inner class's member or an enum's value.</summary>
+    public bool Nested => Within is not null || IsEnumValue;
 }
 
 /// <summary>A member's uses across the scripts: each name resolved to it (with the call it makes, where it is called), each
@@ -63,6 +72,48 @@ public static partial class GDScriptRefactorings
         GDScriptRead? declaring = scripts.FirstOrDefault(s => s.Script == script);
         return declaring?.Tree.Members.Where(m => DeclaringName(m.Node) is { } n && m.Offset + n.Start == declared.Start)
             .Select(m => new GDScriptTarget(script, m.Node, m.Offset, DeclaringName(m.Node)!)).FirstOrDefault();
+    }
+
+    /// <summary>The member a name at an offset declares or refers to at any depth: the script's class's
+    /// (<see cref="MemberAt"/>), an inner class's, or an enum's value; null for none, a local among them.</summary>
+    public static GDScriptTarget? DeclarationAt(IReadOnlyList<GDScriptRead> scripts, GDScriptRead read, int offset)
+    {
+        if ((MemberAt(scripts, read, offset) ?? Nested(read, (start, end) => start <= offset && offset <= end)) is { } found)
+        {
+            return found;
+        }
+        return read.Analysis.NodeAt(offset) is ({ } node, _) && node is GDScriptIdentifier name && read.Analysis.DeclarationOf(name) is { Script: { } script } declared
+            && scripts.FirstOrDefault(s => s.Script == script) is { } declaring ? Nested(declaring, (start, _) => start == declared.Start) : null;
+    }
+
+    /// <summary>The first declaration below a script's class's members whose name's place is one asked: an inner class's
+    /// member at any depth, or an enum's value.</summary>
+    private static GDScriptTarget? Nested(GDScriptRead read, Func<int, int, bool> named) =>
+        read.Tree.Members.Select(m => NestedIn(read.Script, m.Node, m.Offset, null, named)).FirstOrDefault(t => t is not null);
+
+    private static GDScriptTarget? NestedIn(string script, GDScriptNode node, int offset, GDScriptClass? within, Func<int, int, bool> named)
+    {
+        if (node is GDScriptEnum enumerated)
+        {
+            return enumerated.Values.Where(v => named(offset + v.Name.Start, offset + v.Name.End))
+                .Select(v => new GDScriptTarget(script, enumerated, offset, v.Name) { Within = within }).FirstOrDefault();
+        }
+        if (node is not GDScriptClass inner)
+        {
+            return null;
+        }
+        foreach (GDScriptNode member in inner.Members)
+        {
+            if (DeclaringName(member) is { } name && named(offset + name.Start, offset + name.End))
+            {
+                return new GDScriptTarget(script, member, offset, name) { Within = inner };
+            }
+            if (NestedIn(script, member, offset, inner, named) is { } deeper)
+            {
+                return deeper;
+            }
+        }
+        return null;
     }
 
     private static GDScriptIdentifier? DeclaringName(GDScriptNode node) => node switch
@@ -159,7 +210,8 @@ public static partial class GDScriptRefactorings
         {
             return false;
         }
-        if (scripts.FirstOrDefault(s => s.Script == target.Script)?.Analysis is not { Lineage: [{ } own, ..] lineage } declaring || lineage.Any(t => SameClass(t, type)))
+        // Who builds on an inner class is not followed.
+        if (target.Within is not null || scripts.FirstOrDefault(s => s.Script == target.Script)?.Analysis is not { Lineage: [{ } own, ..] lineage } declaring || lineage.Any(t => SameClass(t, type)))
         {
             return true;
         }

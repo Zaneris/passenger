@@ -39,19 +39,31 @@ public static partial class GDScriptRefactorings
         {
             return GDScriptRefactored.No($"'{target.Named}' is Godot's own, which Godot calls by its name");
         }
-        if (target.Node is GDScriptFunction && EngineDeclaring(own, target.Named) is ({ } engineClass, bool isVirtual))
+        if (target is { Node: GDScriptFunction, Within: null } && EngineDeclaring(own, target.Named) is ({ } engineClass, bool isVirtual))
         {
             return GDScriptRefactored.No($"'{target.Named}' overrides {engineClass}'s own{(isVirtual ? ", which Godot calls by its name" : string.Empty)}");
+        }
+        if (target is { Node: GDScriptFunction, Within: { } inner } && ClassesOf(own)
+            .FirstOrDefault(c => c != inner && (BuiltOn(own, c, inner) || BuiltOn(own, inner, c)) && Scope(c, own).Contains(target.Named)) is { } beside)
+        {
+            return GDScriptRefactored.No($"the inner class {beside.Identifier?.Name} declares a '{target.Named}' too, which overrides it or it overrides");
         }
         IReadOnlyList<GDScriptTarget> family = FamilyOf(scripts, target);
         foreach (GDScriptTarget member in family)
         {
-            if (scripts.First(s => s.Script == member.Script).Tree.Members.Any(m => NameOf(m.Node) == name))
+            GDScriptRead declaring = scripts.First(s => s.Script == member.Script);
+            // An enum's values are its own names, and an unnamed enum's its class's too.
+            IEnumerable<string> names = member.IsEnumValue && member.Node is GDScriptEnum enumerated
+                ? enumerated.Values.Select(v => v.Name.Name).Concat(enumerated.Identifier is null ? Scope(member.Within ?? declaring.Tree.Class, declaring) : [])
+                : Scope(member.Within ?? declaring.Tree.Class, declaring);
+            if (names.Contains(name))
             {
-                return GDScriptRefactored.No(member.Script == target.Script ? $"the script already has a member '{name}'" : $"{member.Script} already has a member '{name}'");
+                return GDScriptRefactored.No(member.Script == target.Script ? $"{(member.Within is { } within ? $"the inner class {within.Identifier?.Name}" : "the script")} already has a member '{name}'"
+                    : $"{member.Script} already has a member '{name}'");
             }
         }
-        if (Related(scripts, scripts.First(s => s.Script == family[0].Script)).FirstOrDefault(s => s.Tree.Members.Any(m => NameOf(m.Node) == name)) is { } taken)
+        bool classWide = target.Within is null && !(target.Node is GDScriptEnum { Identifier: not null } && target.IsEnumValue);
+        if (classWide && Related(scripts, scripts.First(s => s.Script == family[0].Script)).FirstOrDefault(s => Scope(s.Tree.Class, s).Contains(name)) is { } taken)
         {
             return GDScriptRefactored.No($"{taken.Script} declares a '{name}' too, in a class built on this one or that this one is built on");
         }
@@ -90,7 +102,7 @@ public static partial class GDScriptRefactorings
     /// any other member alone.</summary>
     public static IReadOnlyList<GDScriptTarget> FamilyOf(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target)
     {
-        if (target.Node is not GDScriptFunction)
+        if (target is not { Node: GDScriptFunction, Within: null })
         {
             return [target];
         }
@@ -118,6 +130,33 @@ public static partial class GDScriptRefactorings
     private static GDScriptTarget? FunctionNamed(GDScriptRead script, string name) =>
         script.Tree.Members.Where(m => m.Node is GDScriptFunction { Identifier: { } n } && n.Name == name)
             .Select(m => new GDScriptTarget(script.Script, m.Node, m.Offset, ((GDScriptFunction)m.Node).Identifier!)).FirstOrDefault();
+
+    /// <summary>The names a class declares: its members' and its unnamed enums' values.</summary>
+    private static IEnumerable<string> Scope(GDScriptClass declared, GDScriptRead script) =>
+        (declared == script.Tree.Class ? script.Tree.Members.Select(m => m.Node) : declared.Members)
+            .SelectMany(n => n is GDScriptEnum { Identifier: null } unnamed ? unnamed.Values.Select(v => v.Name.Name) : NameOf(n) is { } named ? [named] : []);
+
+    /// <summary>A script's inner classes at any depth.</summary>
+    private static IEnumerable<GDScriptClass> ClassesOf(GDScriptRead script)
+    {
+        static IEnumerable<GDScriptClass> Inner(IEnumerable<GDScriptNode> members) => members.OfType<GDScriptClass>().SelectMany(c => Inner(c.Members).Prepend(c));
+        return Inner(script.Tree.Members.Select(m => m.Node));
+    }
+
+    /// <summary>Whether one of a script's inner classes is built on another, each naming the one below as its base.</summary>
+    private static bool BuiltOn(GDScriptRead script, GDScriptClass from, GDScriptClass on)
+    {
+        GDScriptClass? at = from;
+        for (int depth = 0; at is { ExtendsPath: null, Extends: [.., { } based] } && depth < 16; depth++)
+        {
+            at = ClassesOf(script).FirstOrDefault(c => c != at && c.Identifier?.Name == based.Name);
+            if (at == on)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /// <summary>The scripts a script is built on and those built on it.</summary>
     private static IEnumerable<GDScriptRead> Related(IReadOnlyList<GDScriptRead> scripts, GDScriptRead root) =>

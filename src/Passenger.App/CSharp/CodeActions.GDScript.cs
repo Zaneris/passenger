@@ -289,10 +289,10 @@ internal sealed partial class CodeActions
     }
 
 
-    /// <summary>Rename of a GDScript's member or local at an offset by Passenger's reading of every script of the project, the
-    /// scenes' connections and C# strings naming a member following it, as one command; refused for uses it can't see
-    /// unless <paramref name="anyway"/>, offering to make it anyway (<see cref="RefactorOutcome.Anyway"/>); null where the
-    /// name there is no member or local of a script's (the engine's, a class's), for the language server.</summary>
+    /// <summary>Rename of a GDScript's member (an inner class's or an enum's value too) or local at an offset by Passenger's
+    /// reading of every script of the project, the scenes and C# strings naming a member following it, as one command;
+    /// refused for uses it can't see unless <paramref name="anyway"/>, offering to make it anyway
+    /// (<see cref="RefactorOutcome.Anyway"/>); null where the name there is no member or local of a script's.</summary>
     internal async Task<RefactorOutcome?> GDScriptRenameAsync(OpenDocument document, int offset, string name, bool anyway = false)
     {
         if (!IsGDScript(document) || await GDScriptsAsync(document) is not ({ } scripts, { } own, var folder))
@@ -307,7 +307,7 @@ internal sealed partial class CodeActions
         }
         List<(string Path, IReadOnlyList<LspTextEdit> Edits)> beside = [];
         GDScriptRefactored made;
-        if (GDScriptRefactorings.MemberAt(scripts, own, offset) is { } target)
+        if (GDScriptRefactorings.DeclarationAt(scripts, own, offset) is { } target)
         {
             made = GDScriptRefactorings.Rename(scripts, target, name, anyway);
             if (made.Unseen)
@@ -325,7 +325,7 @@ internal sealed partial class CodeActions
                             : RefactorOutcome.Refused($"{title} was not applied: the file changed, so it no longer fits")),
                 };
             }
-            if (made.Refused is null && folder is not null)
+            if (made.Refused is null && folder is not null && !target.Nested)
             {
                 // An override's family renames together, each declaration's scenes and C# with it.
                 foreach (GDScriptTarget member in GDScriptRefactorings.FamilyOf(scripts, target))
@@ -385,7 +385,7 @@ internal sealed partial class CodeActions
         {
             return null;
         }
-        GDScriptTarget? target = GDScriptRefactorings.MemberAt(scripts, own, offset);
+        GDScriptTarget? target = GDScriptRefactorings.DeclarationAt(scripts, own, offset);
         GDScriptNamePlaces? found = target is not null ? GDScriptRefactorings.PlacesOf(scripts, target) : GDScriptRefactorings.LocalPlacesOf(own, offset);
         if (found is null)
         {
@@ -404,7 +404,7 @@ internal sealed partial class CodeActions
                 places.Add(new LspLocation(DocumentUris.FromPath(path), new LspRange(from, to)));
             }
         }
-        if (target is not null && folder is not null)
+        if (target is { Nested: false } && folder is not null)
         {
             places.AddRange(await BesideAsync(document, folder, target, d => context.Languages.CSharp.GodotScriptUsesOfAsync(d, target.Start)));
         }
