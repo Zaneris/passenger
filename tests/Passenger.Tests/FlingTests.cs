@@ -9,7 +9,8 @@ namespace Passenger.Tests;
 
 /// <summary>A fling through a long C# file leaves the collector little to promote: each line laid out in one run for each
 /// look, blanks adding none, each run shaped on its own so the formatter splits no buffer it would leave to its
-/// finalizer. Counts, not times; collections forced and finalizers counted, so run alone.</summary>
+/// finalizer, and the colours of rows scrolled past let go while they are young, a long file keeping what a short one
+/// does. Counts, not times; collections forced and finalizers counted, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class FlingTests
 {
@@ -63,6 +64,33 @@ public sealed class FlingTests
         Assert.True(left <= flung / 10,
             $"A fling through {flung} lines of several colours left the finalizer {left} objects, where its lines' layouts leave it none: each buffer the formatter splits waits for it, "
             + "is promoted with what it holds, and takes the pooled arrays it shares out of the pool");
+    }
+
+    [AvaloniaFact]
+    public void A_fling_through_a_long_file_keeps_the_colours_a_short_ones_does()
+    {
+        (int Lines, int Rows) Kept(int lines)
+        {
+            EditorRig rig = new(string.Join('\n', Enumerable.Range(0, lines).Select(Line)));
+            using CSharpHighlighter csharp = new(rig.Document);
+            CodeEditor editor = rig.Editor;
+            editor.Highlighter = csharp;
+            Ui.Settle();
+            Point over = editor.TranslatePoint(new Point(editor.Bounds.Width / 2, editor.Bounds.Height / 2), rig.Window)!.Value;
+            double screen = Math.Floor(editor.Bounds.Height / 50);
+            while (editor.LinesShown.Last < lines - 1)
+            {
+                rig.Window.MouseWheel(over, new Vector(0, -screen));
+                Ui.Draw();
+            }
+            (int, int) kept = (csharp.LinesKept, (int)(editor.Bounds.Height / editor.LineHeight));
+            rig.Window.Close();
+            return kept;
+        }
+        (int Lines, int Rows) few = Kept(500);
+        (int Lines, int Rows) many = Kept(8000);
+        Assert.True(many.Lines <= few.Lines + few.Rows,
+            $"Flung through 8,000 lines, the highlighter kept {many.Lines} lines' colours, against {few.Lines} through 500: a line scrolled past is kept until it reaches the collector's oldest generation");
     }
 
     /// <summary>The finalizable objects a full collection found dead, the queue emptied before: what the work since the last

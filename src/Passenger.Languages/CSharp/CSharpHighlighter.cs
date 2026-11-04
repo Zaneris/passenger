@@ -65,8 +65,12 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
     /// but those an edit reached, and no part of a line given apart.</summary>
     private bool linesWhole = true;
 
-    /// <summary>The most lines kept, past which they are let go: a few screens.</summary>
-    private const int MostLines = 4096;
+    /// <summary>The most lines kept, past which those away from the lines last asked for are let go: a few screens, so a
+    /// line scrolled past is let go while it is young, never kept long enough to reach the collector's oldest generation.</summary>
+    private const int MostLines = 256;
+
+    /// <summary>The most lines read ahead for the next parse to hand over: the screens asked since the last.</summary>
+    private const int MostRead = 4096;
 
     /// <param name="options">The file's preprocessor symbols (<see cref="CSharpParsing"/>), a Debug build's when not given.</param>
     public CSharpHighlighter(TextDocument document, CSharpParseOptions? options = null)
@@ -218,11 +222,15 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
     /// classified at once and kept line by line.</summary>
     private SyntaxSpan[] ByLine(TextSnapshot snapshot, int first, int last)
     {
-        if (linesVersion != version || lines.Count > MostLines)
+        if (linesVersion != version)
         {
             linesWhole &= lines.Count == 0;
             lines.Clear();
             linesVersion = version;
+        }
+        else if (lines.Count > MostLines)
+        {
+            LetGoAwayFrom(snapshot, first, last);
         }
         int count = 0;
         for (int line = first; line <= last;)
@@ -265,6 +273,23 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
             }
         }
         return spans;
+    }
+
+    /// <summary>Lets go of the lines kept further from those asked for than their own number of lines: the lines asked for
+    /// stay, and as many either side.</summary>
+    private void LetGoAwayFrom(TextSnapshot snapshot, int first, int last)
+    {
+        int margin = last - first + 1;
+        int from = snapshot.GetLineStart(Math.Max(0, first - margin));
+        int to = snapshot.GetLine(Math.Min(snapshot.LineCount - 1, last + margin)).EndIncludingBreak;
+        foreach (int start in lines.Keys)
+        {
+            if (start < from || start >= to)
+            {
+                lines.Remove(start);
+                linesWhole = false;
+            }
+        }
     }
 
     /// <summary>A line's colours as kept for the text as it stands, relative to its start; null when none are kept.</summary>
@@ -340,7 +365,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         {
             int first = Math.Min(firstAsked, lineCount - 1);
             int last = Math.Min(lastAsked, lineCount - 1);
-            if (read.Count > MostLines || (read.ContainsKey(text.GetLineStart(first)) && read.ContainsKey(text.GetLineStart(last))))
+            if (read.Count > MostRead || (read.ContainsKey(text.GetLineStart(first)) && read.ContainsKey(text.GetLineStart(last))))
             {
                 continue;
             }
@@ -355,6 +380,9 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         }
         return read;
     }
+
+    /// <summary>How many lines' colours are kept for the text as it stands: a few screens' around those last asked for.</summary>
+    public int LinesKept => linesVersion == version ? lines.Count : 0;
 
     /// <summary>How many characters the editor's asks have had classified from the tree on the UI thread: what drawing the
     /// lines on screen costs a key.</summary>
