@@ -34,6 +34,11 @@ internal sealed class Driver(Inspector inspector) : Driving<DependencyObject, Vi
 
     protected override InputDone Click(Visual top, DependencyObject? element, InputAction action)
     {
+        if (DropDownItem(element, action) is { } item && Acted(item, twice: false))
+        {
+            // Chosen wherever its list has it, which only as many items as the screen it opens on has room for may show.
+            return Done(top, null, item, Shown.TextOf(item));
+        }
         Point at = Aim(top, element, action, "click");
         DependencyObject? hit = Hit(top, at.X, at.Y);
         DependencyObject? took = hit ?? element;
@@ -83,6 +88,14 @@ internal sealed class Driver(Inspector inspector) : Driving<DependencyObject, Vi
         Raise(hit, twice);
         return hit;
     }
+
+    /// <summary>The item of an open ComboBox's drop-down a plain left click names, shown: chosen through its own pattern, as a
+    /// person scrolls the list to it and clicks it; null for any other element or click.</summary>
+    private static ComboBoxItem? DropDownItem(DependencyObject? element, InputAction action) =>
+        element is ComboBoxItem { IsVisible: true } item && action is { X: null, Y: null, Button: null or "left", Count: null or 1 } && action.Modifiers is null or { Count: 0 }
+            && ItemsControl.ItemsControlFromItemContainer(item) is ComboBox { IsDropDownOpen: true }
+            ? item
+            : null;
 
     /// <summary>Acts on an element through the automation pattern a click acts through, if it has one; false when it has none.</summary>
     private bool Acted(DependencyObject element, bool twice)
@@ -616,19 +629,6 @@ internal sealed class Driver(Inspector inspector) : Driving<DependencyObject, Vi
     protected override bool Clips(DependencyObject element) => Shown.Clips(element);
 
     protected override DependencyObject? ScrollerAround(DependencyObject element) => Up<ScrollViewer>(element);
-
-    /// <summary>An item of an open ComboBox's drop-down, which WPF makes only as tall as the screen it opens on has room for.</summary>
-    protected override bool Revealed(DependencyObject element, DependencyObject scroller)
-    {
-        if (Up<ComboBoxItem>(element) is not { } item || ItemsControl.ItemsControlFromItemContainer(item) is not ComboBox { IsDropDownOpen: true }
-            || scroller is not ScrollViewer viewer || !Shown.IsWithin(item, viewer))
-        {
-            return false;
-        }
-        item.BringIntoView();
-        viewer.UpdateLayout();
-        return true;
-    }
 
     /// <summary>What a person's pointer at a point would be over: the input element WPF's own hit test finds there (a
     /// hyperlink in a text block included).</summary>
