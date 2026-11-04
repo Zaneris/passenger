@@ -151,6 +151,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         }
         GodotEngineApi? api = await apis.ApiAsync();
         GodotScenes scenes = await index.ScenesAsync(folder);
+        Func<string, bool>? lacks = index.LacksOf(folder);
         return await BackgroundWork.Run(() =>
         {
             Dictionary<string, string> texts = new(StringComparer.Ordinal);
@@ -174,15 +175,8 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
                     classNames.TryAdd(named.Name, res);
                 }
             }
-            Dictionary<string, string> autoloads = new(StringComparer.Ordinal);
-            foreach (GodotDefined autoload in scenes.Defined.Autoloads)
-            {
-                if (scenes.AutoloadFile(autoload.Name) is { } file && GodotScriptDeclarations.IsScript(file))
-                {
-                    autoloads[autoload.Name] = file;
-                }
-            }
-            GDScriptAnalyzer analyzer = new(new GDScriptProject(api, p => trees.GetValueOrDefault(p), classNames, autoloads, uids: scenes.ResOfUid, nodes: NodesOf(scenes)));
+            GDScriptAnalyzer analyzer = new(new GDScriptProject(api, p => trees.GetValueOrDefault(p), classNames, Singletons(scenes), uids: scenes.ResOfUid, nodes: NodesOf(scenes),
+                lacks: lacks));
             return (IReadOnlyList<GDScriptRead>?)[.. trees.Select(t => new GDScriptRead(t.Key, analyzer.Analyze(t.Value, t.Key)))];
         });
     }
@@ -282,14 +276,16 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
     {
         string path = document.Path;
         GodotEngineApi? api = await apis.ApiAsync();
-        GodotScenes? scenes = godotOf(path) is { } folder ? await index.ScenesAsync(folder) : null;
+        string? game = godotOf(path);
+        GodotScenes? scenes = game is not null ? await index.ScenesAsync(game) : null;
+        Func<string, bool>? lacks = game is not null ? index.LacksOf(game) : null;
         return await BackgroundWork.Run(() =>
         {
             string text = snapshot.ToString();
             TextEdit? made = tree is not null && treeText is not null && change is { } edit && edit.Fits(treeText.Length, text.Length) ? edit.Edit(text) : null;
             GDScriptTree parsed = made is { } one ? tree!.Reparse(text, one) : GDScriptTree.Parse(text);
             string res = scenes?.ResPathOf(path) ?? "res://" + Path.GetFileName(path);
-            GDScriptProject project = ProjectOf(scenes, api, res, parsed);
+            GDScriptProject project = ProjectOf(scenes, api, res, parsed, lacks);
             GDScriptAnalyzer analyzer = new(project);
             GDScriptAnalysis analysis = analyzer.Analyze(parsed, res);
             HintList hints = HintList.Of([.. analysis.Inferred().Select(i => new InlayHint(i.Offset, $": {i.Type}", Kind: InlayHintKind.Type))]);
@@ -338,8 +334,9 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
     }
 
     /// <summary>What a script's types are read against: the project's scripts (this one as the editor has it), their
-    /// <c>class_name</c>s, its autoloads, its uids and the engine's API.</summary>
-    private static GDScriptProject ProjectOf(GodotScenes? scenes, GodotEngineApi? api, string res, GDScriptTree own)
+    /// <c>class_name</c>s, its singletons, its uids, the paths its files lack (<paramref name="lacks"/>, where listed whole)
+    /// and the engine's API.</summary>
+    private static GDScriptProject ProjectOf(GodotScenes? scenes, GodotEngineApi? api, string res, GDScriptTree own, Func<string, bool>? lacks)
     {
         if (scenes is null)
         {
@@ -362,15 +359,22 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
                 classNames.TryAdd(named, script);
             }
         }
+        return new GDScriptProject(api, Tree, classNames, Singletons(scenes), uids: scenes.ResOfUid, nodes: NodesOf(scenes), lacks: lacks);
+    }
+
+    /// <summary>The project's singleton autoloads that run a GDScript, by name, the res:// path of each's script: those code
+    /// reads by their names.</summary>
+    private static Dictionary<string, string> Singletons(GodotScenes scenes)
+    {
         Dictionary<string, string> autoloads = new(StringComparer.Ordinal);
         foreach (GodotDefined autoload in scenes.Defined.Autoloads)
         {
-            if (scenes.AutoloadFile(autoload.Name) is { } file && GodotScriptDeclarations.IsScript(file))
+            if (scenes.Defined.IsSingleton(autoload.Name) && scenes.AutoloadFile(autoload.Name) is { } file && GodotScriptDeclarations.IsScript(file))
             {
                 autoloads[autoload.Name] = file;
             }
         }
-        return new GDScriptProject(api, Tree, classNames, autoloads, uids: scenes.ResOfUid, nodes: NodesOf(scenes));
+        return autoloads;
     }
 
     /// <summary>The node a script's node path reaches, as every scene running the script has it: its engine class and the

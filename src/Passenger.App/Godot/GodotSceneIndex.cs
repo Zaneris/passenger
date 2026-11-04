@@ -29,6 +29,33 @@ public sealed class GodotSceneIndex
     /// <summary>The open folder's files as its index has them: its root and their paths from it.</summary>
     public Func<(string? Root, IReadOnlyList<string> Files)> Files { get; init; } = () => (null, []);
 
+    /// <summary>Whether the open folder's index lists every file now (<see cref="Workspace.FileIndex.IsWhole"/>).</summary>
+    public Func<bool> FilesWhole { get; init; } = () => false;
+
+    /// <summary>The res:// paths of a project's files, by the index's list they were made from, made again when it changes.</summary>
+    private (IReadOnlyList<string>? From, string? Folder, HashSet<string> Res) listed = (null, null, new HashSet<string>(PathNames.Comparer));
+
+    /// <summary>Whether a Godot project's files lack a res:// path, asked of the index on the UI thread and read off it:
+    /// null where the index does not list every file; a path in a folder the walk passes over, a hidden one or Godot's own
+    /// beside a file is never lacked.</summary>
+    public Func<string, bool>? LacksOf(string folder)
+    {
+        UiThread.Check();
+        (string? root, IReadOnlyList<string> files) = Files();
+        if (root is null || !FilesWhole())
+        {
+            return null;
+        }
+        if (!ReferenceEquals(listed.From, files) || listed.Folder != folder)
+        {
+            listed = (files, folder, new HashSet<string>(FilesUnder(folder).Select(f => GodotScenes.ResPathOf(folder, f)).OfType<string>(), PathNames.Comparer));
+        }
+        HashSet<string> known = listed.Res;
+        return res => res.StartsWith("res://", StringComparison.Ordinal) && res["res://".Length..] is { Length: > 0 } relative
+            && !known.Contains(res) && !IgnoredFolders.AnyIn(folder, relative) && !IgnoredFolders.AnyHidden(relative)
+            && !res.EndsWith(".import", StringComparison.OrdinalIgnoreCase) && !res.EndsWith(".uid", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>The folder of the Godot project a file of the open folder is of (<see cref="ProjectSession.GodotOf"/>); null for none.</summary>
     public Func<string, string?> GameOf { get; init; } = _ => null;
 

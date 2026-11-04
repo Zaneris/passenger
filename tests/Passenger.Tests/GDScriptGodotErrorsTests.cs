@@ -11,7 +11,7 @@ namespace Passenger.Tests;
 
 /// <summary>Passenger's own reading of a GDScript gives the errors Godot's own server gives on the same scripts, in the same
 /// words on the same lines: a corpus of scripts, a family of Godot's analyzer's errors each (names not found, mismatched
-/// types and calls, operators, casts and type tests, static misuse and collections, declarations), opened in a window whose
+/// types and calls, operators, casts and type tests, static misuse and collections, declarations, files lacked), opened in a window whose
 /// Godot's server serves them, each script's errors from Godot's diagnostics and from Passenger's marks set beside each
 /// other (an error Godot pushes twice at one place counted once). Without a Godot each test skips saying why; a Godot editor
 /// of its own, so run alone.</summary>
@@ -104,6 +104,35 @@ public sealed class GDScriptGodotErrorsTests
         + "class BaseThing:\n\tpass\n\n\nclass Holder extends Resource:\n\t@export var node: Node\n"
         + "\t@export var nodes: Array[Node]\n\t@export var res: Resource\n";
 
+    /// <summary>A project of singleton autoloads (Game, Hub) and one that is none (Quiet), for <see cref="Files"/>.</summary>
+    internal const string FilesProject = "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Files\"\n\n[autoload]\n\n"
+        + "Game=\"*res://game.gd\"\nHub=\"*res://hub.gd\"\nQuiet=\"res://quiet.gd\"\n";
+
+    /// <summary>Bases and preloads of files the project lacks (by res:// path and relative to the script), its one error
+    /// where a class's base is lacked, and classes named as singleton autoloads, beside the scripts they name.</summary>
+    internal static readonly (string File, string Script)[] Files =
+    [
+        ("missing_base.gd", "extends \"res://nowhere.gd\"\n\n\nfunc _ready():\n\tprint(undefined)\n"),
+        ("inner_missing.gd", "extends Node\n\n\nclass Broken:\n\textends \"res://gone.gd\"\n\n\nclass Vector2:\n\tpass\n\n\nfunc _ready():\n"
+            + "\tprint(undefined)\n"),
+        ("preloads.gd", "extends Node\n\nconst Missing = preload(\"res://missing.tscn\")\nconst Present = preload(\"res://game.gd\")\n"
+            + "const Relative = preload(\"nothing.png\")\nconst Near = preload(\"sub/thing.gd\")\n"
+            + "var icon = preload(\"res://icon.png\")\n\n\nfunc _ready() -> void:\n\tvar scene = preload(\"res://sub/none.tres\")\n"
+            + "\tprint(Missing, Present, Relative, Near, icon, scene)\n"),
+        ("hub_named.gd", "class_name Hub\nextends Node\n"),
+        ("inner_names.gd", "extends Node\n\n\nclass Game:\n\tpass\n\n\nclass Quiet:\n\tpass\n"),
+        ("sub/relative_base.gd", "extends \"missing_here.gd\"\n"),
+    ];
+
+    /// <summary>The scripts <see cref="Files"/>' autoloads and preloads name, in which Godot finds no error.</summary>
+    internal static readonly (string File, string Script)[] FilesBeside =
+    [
+        ("game.gd", "extends Node\n"),
+        ("hub.gd", "extends Node\n"),
+        ("quiet.gd", "extends Node\n"),
+        ("sub/thing.gd", "extends Resource\n"),
+    ];
+
     private readonly string folder;
     private readonly GodotFound? godot = GodotExecutables.Find(null);
 
@@ -128,6 +157,13 @@ public sealed class GDScriptGodotErrorsTests
 
     [AvaloniaFact]
     public void Declarations_godot_refuses_are_its_errors_in_its_words() => Compared([("base.gd", Base)], ("decls.gd", Declarations));
+
+    [AvaloniaFact]
+    public void Files_the_project_lacks_and_names_its_singletons_have_are_its_errors_in_its_words()
+    {
+        TestFolders.Write(folder, "project.godot", FilesProject);
+        Compared(FilesBeside, Files);
+    }
 
     /// <summary>A corpus compared with no script beside it.</summary>
     private void Compared(params (string File, string Script)[] corpus) => Compared([], corpus);

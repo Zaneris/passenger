@@ -121,7 +121,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Xaml.Snapshots = () => setup.Editors.Texts().Open;
         Xaml.Evaluations = path => evaluations.GetValueOrDefault(path);
         Frameworks.Changed += (_, project) => FollowFramework(project);
-        GodotScenes = new Godot.GodotSceneIndex { Texts = setup.Editors.Texts, Files = () => (Index.Root, Index.Files), GameOf = GodotOf };
+        GodotScenes = new Godot.GodotSceneIndex { Texts = setup.Editors.Texts, Files = () => (Index.Root, Index.Files), FilesWhole = () => Index.IsWhole, GameOf = GodotOf };
         // Where a GoDotTest game's tests start: read from its scenes and the C# their nodes run.
         Tests.GoDotStartOf = project => UiThread.InvokeAsync(async () => Godot.GodotScripts.ProjectOf(project) is { } folder
             ? await GoDotStartAsync(await GodotScenes.ScenesAsync(folder), await GoDotChosenAsync(project))

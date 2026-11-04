@@ -38,7 +38,6 @@ public sealed partial class GDScriptAnalyzer
             WrittenVariants(member.Node, member.Offset, analysis);
         }
         PaintExtends(tree.Class, new Context(analysis, self, 0, null, null));
-        ClassNameErrors(tree.Class, inner: false, new Context(analysis, self, 0, null, null));
         MissingTool(tree.Class, tree, path, 0, new Context(analysis, self, 0, null, null));
         foreach (GDScriptMember member in tree.Members)
         {
@@ -51,13 +50,47 @@ public sealed partial class GDScriptAnalyzer
         {
             analysis.Found.Add(new GDScriptFinding(0, 0, "EMPTY_FILE", Message("EMPTY_FILE", [])));
         }
-        // Godot reads no body of a script one of whose classes it can't follow to its base, so none of its errors stand.
-        if (!InnerClasses(tree.Members.Select(m => (m.Node, m.Offset)), path).All(Knows))
-        {
-            analysis.Found.RemoveAll(f => f.Code is null);
-        }
+        InheritanceErrors(tree, path, self, analysis);
         return analysis;
     }
+
+    /// <summary>The errors Godot gives as it reads a script's classes' names and bases, before any body: a name taken, and a
+    /// base whose file the project lacks. Where a base can't be followed (one lacked, an inner class's this reading can't),
+    /// Godot reads no body, so these errors alone stand; where the script's own base is lacked, its inner classes are not read.</summary>
+    private void InheritanceErrors(GDScriptTree tree, string path, GDScriptType self, GDScriptAnalysis analysis)
+    {
+        int first = analysis.Found.Count;
+        Context own = new(analysis, self, 0, null, null);
+        ClassNameErrors(tree.Class, inner: false, own);
+        bool stops = BaseLacked(tree.Class, path, own);
+        foreach (GDScriptType inner in stops ? [] : InnerClasses(tree.Members.Select(m => (m.Node, m.Offset)), path))
+        {
+            Context within = new(analysis, inner, inner.Offset, null, null);
+            ClassNameErrors(inner.Class!, inner: true, within);
+            stops |= BaseLacked(inner.Class!, path, within) || !Knows(inner);
+        }
+        if (stops)
+        {
+            List<GDScriptFinding> read = analysis.Found.GetRange(first, analysis.Found.Count - first);
+            analysis.Found.RemoveAll(f => f.Code is null);
+            analysis.Found.AddRange(read);
+        }
+    }
+
+    /// <summary>Whether a class extends by path a file the project lacks, saying so in Godot's words.</summary>
+    private bool BaseLacked(GDScriptClass node, string path, Context context)
+    {
+        if (node.ExtendsPath is not { } written || Absolute(written, path) is not { } absolute || !Lacked(absolute))
+        {
+            return false;
+        }
+        Error(context, node, $"Could not resolve super class path \"{absolute}\".");
+        return true;
+    }
+
+    /// <summary>Whether a res:// path written plainly (no uid, no <c>.</c> or <c>..</c> to resolve) names a file the project lacks.</summary>
+    private bool Lacked(string absolute) =>
+        absolute.StartsWith("res://", StringComparison.Ordinal) && !absolute["res://".Length..].Split('/').Any(p => p is "" or "." or "..") && project.Lacks(absolute);
 
     /// <summary>The classes a script declares inside its own, an inner class's too, each by its offset.</summary>
     private static IEnumerable<GDScriptType> InnerClasses(IEnumerable<(GDScriptNode Node, int Offset)> members, string path)

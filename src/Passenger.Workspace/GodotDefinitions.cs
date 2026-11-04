@@ -136,6 +136,10 @@ public sealed class GodotDefinitions
     /// <summary>project.godot's autoloads, each by its key, the node Godot adds under /root by that name.</summary>
     public IReadOnlyList<GodotDefined> Autoloads => autoloads.Value;
 
+    /// <summary>Whether an autoload of a name is a singleton, its value marked with <c>*</c>, which code reads by its name.</summary>
+    public bool IsSingleton(string name) =>
+        project.Value?.Sections.FirstOrDefault(s => s.Tag == "autoload")?.Property(name)?.Value.Text is { } value && value.StartsWith('*');
+
     /// <summary>The res:// path of the script or scene an autoload loads; null for none of the name.</summary>
     public string? AutoloadFile(string name) =>
         project.Value?.Sections.FirstOrDefault(s => s.Tag == "autoload")?.Property(name)?.Value.Text is { } value ? value.TrimStart('*') : null;

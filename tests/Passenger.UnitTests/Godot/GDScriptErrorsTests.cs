@@ -10,7 +10,8 @@ namespace Passenger.UnitTests.Godot;
 /// on self, a built-in value or type, an engine class or an enum, a type not found, a value of a type its target takes
 /// none of and a call given too few or too many arguments, an operator, cast or type test given types it refuses, a static
 /// place reaching the instance, an index, loop or typed collection Godot refuses, a member's name taken, an override's
-/// signature, an export; and none of them where the class extends one this reading cannot read.</summary>
+/// signature, an export, a file the project lacks preloaded or extended, a class named as a singleton autoload; and none of
+/// them where the class extends one this reading cannot read.</summary>
 public class GDScriptErrorsTests
 {
     private const string Api = """
@@ -44,12 +45,15 @@ public class GDScriptErrorsTests
 
     private static readonly GodotEngineApi Engine = GodotEngineApi.Read(Encoding.UTF8.GetBytes(Api));
 
-    /// <summary>A script's errors as Godot's test runner prints them: its line, then its words.</summary>
-    private static List<string> Errors(string text, Func<string, GDScriptTree?>? others = null)
+    /// <summary>A script's errors as Godot's test runner prints them: its line, then its words; read against the project's
+    /// singleton autoloads and, where given, which paths its files lack.</summary>
+    private static List<string> Errors(string text, Func<string, GDScriptTree?>? others = null, IReadOnlyDictionary<string, string>? autoloads = null,
+        Func<string, bool>? lacks = null)
     {
         GDScriptTree tree = GDScriptTree.Parse(text);
         Assert.Empty(tree.Errors);
-        GDScriptProject project = new(Engine, p => p == "res://main.gd" ? tree : others?.Invoke(p), new Dictionary<string, string>(), new Dictionary<string, string>());
+        GDScriptProject project = new(Engine, p => p == "res://main.gd" ? tree : others?.Invoke(p), new Dictionary<string, string>(), autoloads ?? new Dictionary<string, string>(),
+            lacks: lacks);
         GDScriptAnalysis analysis = new GDScriptAnalyzer(project).Analyze(tree, "res://main.gd");
         TextSnapshot snapshot = TextSnapshot.From(text);
         return [.. analysis.Findings(GDScriptWarningSettings.Every).Where(f => f.Code is null).Select(f => $"{snapshot.GetLineFromOffset(f.Start) + 1}: {f.Message}")];
@@ -233,6 +237,37 @@ public class GDScriptErrorsTests
             "27: Class \"RefCounted\" hides a native class.",
             "32: Node export is only supported in Node-derived classes, but the current class inherits \"Resource\".",
         ], Errors(Script, p => p == "res://base.gd" ? GDScriptTree.Parse(Base) : null));
+    }
+
+    /// <summary>A file the project's files, listed whole, lack is said where a script preloads it, and a class named as a
+    /// singleton autoload is said to hide it; with no list, nothing is lacked.</summary>
+    [Fact]
+    public void A_preloaded_file_the_project_lacks_and_a_class_named_as_a_singleton_are_errors_in_godots_words_on_their_lines()
+    {
+        const string Script = "class_name Hub\nextends Node\n\nconst Missing = preload(\"res://missing.tscn\")\nconst Present = preload(\"res://present.png\")\n\n\n"
+            + "class Game:\n\tpass\n\n\nclass Quiet:\n\tpass\n\n\nfunc _ready() -> void:\n\tprint(Missing, Present, preload(\"gone.tres\"))\n";
+        Dictionary<string, string> singletons = new() { ["Hub"] = "res://hub.gd", ["Game"] = "res://game.gd" };
+        static bool Lacks(string path) => path is not ("res://main.gd" or "res://present.png" or "res://hub.gd" or "res://game.gd");
+        Assert.Equal(
+        [
+            "1: Class \"Hub\" hides an autoload singleton.",
+            "4: Preload file \"res://missing.tscn\" does not exist.",
+            "8: Class \"Game\" hides an autoload singleton.",
+            "17: Preload file \"res://gone.tres\" does not exist.",
+        ], Errors(Script, autoloads: singletons, lacks: Lacks));
+        Assert.Equal(["1: Class \"Hub\" hides an autoload singleton.", "8: Class \"Game\" hides an autoload singleton."], Errors(Script, autoloads: singletons));
+    }
+
+    /// <summary>A class extending by path a file the project lacks is the one error Godot gives, its body unread; an inner
+    /// class's, with its siblings' names, where an inner class's is.</summary>
+    [Fact]
+    public void A_base_the_project_lacks_is_the_scripts_one_error_as_godot_reads_no_body_past_it()
+    {
+        static bool Lacks(string path) => path != "res://main.gd";
+        Assert.Equal(["1: Could not resolve super class path \"res://nowhere.gd\"."],
+            Errors("extends \"res://nowhere.gd\"\n\n\nfunc _ready():\n\tprint(undefined)\n", lacks: Lacks));
+        Assert.Equal(["4: Could not resolve super class path \"res://gone.gd\".", "8: Class \"Vector3\" hides a built-in type."],
+            Errors("extends Node\n\n\nclass Broken:\n\textends \"res://gone.gd\"\n\n\nclass Vector3:\n\tpass\n\n\nfunc _ready():\n\tprint(undefined)\n", lacks: Lacks));
     }
 
     /// <summary>A class extending a script this reading has not read may have any member: nothing it names is said to be missing.</summary>

@@ -52,6 +52,9 @@ public sealed class FileIndex
     /// opens or after a file came.</summary>
     public bool IsWalking => waiting > 0;
 
+    /// <summary>Whether it lists every file now: its walk landed with none since under way, and stopped at no limit.</summary>
+    public bool IsWhole => Root is not null && waiting == 0 && !cut;
+
     /// <summary>The newest walk landed (its list, or the one before when it failed), on the UI thread: what else looks for files
     /// among the folder's (its single-file AppHosts) takes them from it rather than walking the folder again.</summary>
     public event EventHandler? Walked;

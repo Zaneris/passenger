@@ -59,7 +59,6 @@ public sealed partial class GDScriptAnalyzer
                 GDScriptType innerType = new(GDScriptTypeKind.Class, inner.Identifier.Name) { Class = inner, Script = context.Analysis.Path, Offset = context.Offset };
                 Paint(context, inner.Identifier, GDScriptColour.Class);
                 PaintExtends(inner, context);
-                ClassNameErrors(inner, inner: true, context with { Class = innerType });
                 if (analysis.Tree is { } own)
                 {
                     MissingTool(inner, own, analysis.Path, context.Offset, context);
@@ -489,7 +488,16 @@ public sealed partial class GDScriptAnalyzer
                 return NodeTyped(get.Path, context);
             case GDScriptPreload preload:
                 Reduce(preload.Path, context);
-                return ConstantText(preload.Path, context) is { } path ? Preloaded(Absolute(path, context.Analysis.Path)) : GDScriptType.Native("Resource");
+                if (ConstantText(preload.Path, context) is not { } path)
+                {
+                    return GDScriptType.Native("Resource");
+                }
+                string preloaded = Absolute(path, context.Analysis.Path);
+                if (preload.Path is { } written && context.Analysis.Tree is not null && Knows(context.Class) && Lacked(preloaded))
+                {
+                    Error(context, written, $"Preload file \"{preloaded}\" does not exist.");
+                }
+                return Preloaded(preloaded);
             case GDScriptLambda lambda:
                 if (lambda.Function is { } function)
                 {

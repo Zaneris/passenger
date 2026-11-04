@@ -18,17 +18,19 @@ public sealed partial class GDScriptAnalyzer
     /// whether it takes any number more, what it returns, and whether it is static.</summary>
     private sealed record Signature(IReadOnlyList<GDScriptType> Parameters, int Defaults, bool Varargs, GDScriptType Returns, bool IsStatic);
 
-    /// <summary>A class's name's error: one a built-in type, an engine class or, for an inner class, a global script class has.</summary>
+    /// <summary>A class's name's error: one a built-in type, an engine class, for an inner class a global script class, or a
+    /// singleton autoload has.</summary>
     private void ClassNameErrors(GDScriptClass node, bool inner, Context context)
     {
-        if (node.Identifier is not { } named || context.Analysis.Tree is null || !Knows(context.Class))
+        if (node.Identifier is not { } named || context.Analysis.Tree is null || Engine is null)
         {
             return;
         }
         string name = named.Name;
-        string? hides = Engine?.Builtins.ContainsKey(name) == true && name != "Nil" || IsBuiltinName(name) ? "a built-in type"
-            : Engine?.Classes.ContainsKey(name) == true ? "a native class"
-            : inner && project.ClassPath(name) is not null ? "a global script class" : null;
+        string? hides = Engine.Builtins.ContainsKey(name) && name != "Nil" || IsBuiltinName(name) ? "a built-in type"
+            : Engine.Classes.ContainsKey(name) ? "a native class"
+            : inner && project.ClassPath(name) is not null ? "a global script class"
+            : project.Autoload(name) is not null ? "an autoload singleton" : null;
         if (hides is not null)
         {
             Error(context, named, $"Class \"{name}\" hides {hides}.");

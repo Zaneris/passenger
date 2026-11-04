@@ -5,12 +5,16 @@ public sealed record GDScriptNodeAt(string Class, string? Script);
 
 /// <summary>What a GDScript's types are resolved against: the engine's API (none where no Godot could be asked), each script
 /// of the project by its res:// path, each <c>class_name</c> by the script that gives it, the autoloads by the script each
-/// runs, and a resource's class by its path (a scene's <c>PackedScene</c>, a <c>.tres</c>'s own). Pure; its scripts are
-/// parsed once each where asked.</summary>
+/// runs (the singletons, which code reads by name), a resource's class by its path (a scene's <c>PackedScene</c>, a
+/// <c>.tres</c>'s own), and, where its files are listed whole, which res:// paths none has. Pure; its scripts are parsed
+/// once each where asked.</summary>
 public sealed class GDScriptProject(GodotEngineApi? engine, Func<string, GDScriptTree?> scripts, IReadOnlyDictionary<string, string> classNames,
     IReadOnlyDictionary<string, string> autoloads, Func<string, string?>? resourceClass = null, Func<string, string?>? uids = null,
-    Func<string, string, GDScriptNodeAt?>? nodes = null)
+    Func<string, string, GDScriptNodeAt?>? nodes = null, Func<string, bool>? lacks = null)
 {
+    /// <summary>Whether the project's files, listed whole, have none at a res:// path; never where they are not listed.</summary>
+    public bool Lacks(string path) => lacks?.Invoke(path) == true;
+
     /// <summary>The node a path names from the node a script runs on (<c>$Title</c>), as every scene running the script has
     /// it; null where none says or they differ.</summary>
     public GDScriptNodeAt? NodeAt(string script, string path) => nodes?.Invoke(script, path);
