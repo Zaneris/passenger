@@ -55,7 +55,10 @@ public sealed class GDScriptTests
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
         Assert.Equal(TokenKind.Keyword, KindOf(editor, "func"));
-        string layout = Path.Combine(folder, ".godot", "editor", "editor_layout.cfg");
+        string layout = Path.Combine(PathNames.Canonical(folder), ".godot", "editor", "editor_layout.cfg");
+        // By the log, since until the headless editor writes its own the file holds the person's layout anyway.
+        Ui.WaitFor(() => Ui.Shared(IdeLog.PathOf(IdeLog.Ide)).Contains($"GDScript: {layout}, which Godot's headless editor wrote over, is put back as it was", StringComparison.Ordinal),
+            () => $"the layout the headless editor writes over the person's to be put back ({Shown(layout)})", TimeSpan.FromSeconds(90));
         Ui.WaitFor(() => File.ReadAllText(layout) == Layout, () => $"the project's own editor layout put back over the headless editor's:\n{File.ReadAllText(layout)}");
         string card = Hover(window, editor, "get_tree");
         Assert.Contains("func Node.get_tree() -> SceneTree", card, StringComparison.Ordinal);
@@ -481,7 +484,6 @@ public sealed class GDScriptTests
         return found;
     }
 
-    /// <summary>The project's folder open on its script, once Godot's server answers for it.</summary>
     /// <summary>GDScript's server, a headless Godot editor of about 800 MB, is let go once no GDScript has been open for a
     /// while (shortened here to a second), and starts again as a script opens, rather than lasting as long as the folder.</summary>
     [AvaloniaFact]
@@ -557,6 +559,7 @@ public sealed class GDScriptTests
         return found;
     }
 
+    /// <summary>The project's folder open on its script, once Godot's server answers for it.</summary>
     private MainWindow Open()
     {
         MainWindow window = new()
