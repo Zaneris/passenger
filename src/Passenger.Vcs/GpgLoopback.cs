@@ -32,6 +32,8 @@ public static class GpgLoopback
             return null;
         }
         string? socket = Environment.GetEnvironmentVariable(GitAskPass.Variable);
+        // What gpg leaves running (its agent) must never hold git's pipes, which git reads to their end.
+        StandardHandles.NotInherited();
         // git signs with "--status-fd=2 -bsau KEY", its data on gpg's input.
         if (socket is null || !args.Any(a => a.Length > 2 && a[0] == '-' && a[1] != '-' && a.Contains('b') && a.Contains('s')))
         {
@@ -65,6 +67,16 @@ public static class GpgLoopback
         await using Stream output = Console.OpenStandardOutput();
         Task signature = signing.StandardOutput.BaseStream.CopyToAsync(output);
         await using Stream errors = Console.OpenStandardError();
+        Task said = StatusAsync(signing, errors, socket);
+        await signing.WaitForExitAsync();
+        await EndedAsync(signing, Task.WhenAll(signature, said));
+        return signing.ExitCode;
+    }
+
+    /// <summary>gpg's status and words passed to git as they come, a passphrase it asks for (GET_HIDDEN) asked of the person
+    /// through the socket and written to its commands.</summary>
+    private static async Task StatusAsync(Process signing, Stream errors, string socket)
+    {
         string? user = null;
         string? key = null;
         while (await signing.StandardError.ReadLineAsync() is { } line)
@@ -91,9 +103,16 @@ public static class GpgLoopback
                 }
             }
         }
-        await signature;
-        await signing.WaitForExitAsync();
-        return signing.ExitCode;
+    }
+
+    /// <summary>A gpg that has exited, its pipes' reads given the grace a program it left running gets: an MSYS gpg's agent
+    /// holds them open, so they are let go once that has passed.</summary>
+    private static async Task EndedAsync(Process gpg, Task reads)
+    {
+        if (!await ChildProcesses.OutputEndsAsync(gpg, reads))
+        {
+            UnawaitedWork.Dismiss(reads);
+        }
     }
 
     /// <summary>gpgsm signing the file: with no pinentry first, then where it wants the key's passphrase, given the one the
@@ -148,8 +167,8 @@ public static class GpgLoopback
             await signing.StandardInput.FlushAsync();
         }
         signing.StandardInput.Close();
-        await Task.WhenAll(written, said);
         await signing.WaitForExitAsync();
+        await EndedAsync(signing, Task.WhenAll(written, said));
         return (signing.ExitCode, output.ToArray(), errors.ToArray());
     }
 
@@ -171,9 +190,11 @@ public static class GpgLoopback
             await input.CopyToAsync(through.StandardInput.BaseStream);
             through.StandardInput.Close();
         });
-        await Task.WhenAll(through.StandardOutput.BaseStream.CopyToAsync(output), through.StandardError.BaseStream.CopyToAsync(errors));
+        Task copied = Task.WhenAll(through.StandardOutput.BaseStream.CopyToAsync(output), through.StandardError.BaseStream.CopyToAsync(errors));
         await through.WaitForExitAsync();
-        await given;
+        await EndedAsync(through, copied);
+        // git's input to gpg is written whole before git reads its output, so what is left of it is nobody's.
+        UnawaitedWork.Dismiss(given);
         return through.ExitCode;
     }
 
