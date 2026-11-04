@@ -14,8 +14,8 @@ namespace Passenger.Tests;
 /// <summary>A Godot 4 game in C# as a person works on it: its project (Godot.NET.Sdk, restored from the packages the Godot
 /// found carries, never nuget.org) has run configurations for its game and for Godot's editor; Run starts the game on
 /// that Godot, Debug stops at a breakpoint in a script's <c>_Process</c>, a Hot Reload edit reaches the game as it runs,
-/// and Profile records it, its script's own time among the samples; Run and Debug take the external console. Godot runs
-/// headless, its user folders the run's. Without a Godot 4 .NET build (GODOT, the PATH, Applications) each test skips
+/// and Profile records it, its script's own time among the samples; Run and Debug take the external console; two copies
+/// Run runs with Hot Reload each take an edit, and one restarts alone. Godot runs headless, its user folders the run's. Without a Godot 4 .NET build (GODOT, the PATH, Applications) each test skips
 /// saying why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotTests : IClassFixture<GodotTests.Game>
@@ -188,6 +188,80 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             End(window);
         }
     }
+
+    /// <summary>Run of two copies with Hot Reload on holds each at its start and attaches to each quietly, as Run's one game:
+    /// an edit to the method _Process calls, applied once, is what both copies then print, each in its own tab of the
+    /// Terminal window.</summary>
+    [AvaloniaFact]
+    public void Two_copies_run_with_Hot_Reload_each_take_a_CSharp_edit_applied_once()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            string[] copies = RunTwoCopies(window);
+            Typing.Replace(window, "{Greeting} {frames}", "tick {frames}");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.Debugger.LastApplied is not null, "Hot Reload to say what it applied");
+            Assert.True(window.Debugger.LastApplied!.Result == HotReloadResult.Applied, $"The edit to the game's script was not applied: {window.Debugger.LastApplied.Said}");
+            Ui.WaitFor(() => window.RunCopies.Count == 2 && window.RunCopies.All(r => Terminal(r).Contains("tick ", StringComparison.Ordinal)),
+                () => $"both copies to print what the edited method prints ({string.Join(" | ", window.RunCopies.Select(r => $"{r.Name}: {Tail(Terminal(r))}"))})", TimeSpan.FromMinutes(1));
+            Assert.True(copies.All(c => window.Debugger.Running.Any(r => r.Name == c)) && !window.Debugger.IsDebugging,
+                $"The copies' quiet sessions are not both there, or a debug session showed: {string.Join(", ", window.Debugger.Running.Select(r => r.Name))}");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Hot Reload's restart of one of two copies Run runs with it restarts that copy alone: built again and started
+    /// in its own tab's place, held and attached to again, printing again, while the other runs on in the same process,
+    /// still attached.</summary>
+    [AvaloniaFact]
+    public void Hot_Reloads_restart_of_one_run_copy_restarts_that_copy_alone_the_other_running_on()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            string[] copies = RunTwoCopies(window);
+            TerminalRun first = window.RunCopies.Single(r => r.Name == copies[0]);
+            TerminalRun second = window.RunCopies.Single(r => r.Name == copies[1]);
+            (int firstProcess, int secondProcess) = (first.Debuggee, second.Debuggee);
+
+            Assert.True(Ui.AwaitPumped(window.Builds.RestartGameForEditAsync(copies[1]), "the second copy's restart", TimeSpan.FromMinutes(3)),
+                $"The second copy was not restarted: {window.Status}");
+            Ui.WaitFor(() => window.RunCopies.FirstOrDefault(r => r.Name == copies[1]) is { } again && again != second && again.Debuggee != secondProcess
+                    && window.Debugger.Running.Any(r => r.Name == copies[1]) && Terminal(again).Contains("frame 10", StringComparison.Ordinal),
+                () => $"the second copy to run again, attached for Hot Reload ({string.Join(", ", window.RunCopies.Select(r => $"{r.Name} {r.Debuggee}"))}; {window.Status})",
+                TimeSpan.FromMinutes(1));
+            Assert.True(window.RunCopies.Single(r => r.Name == copies[0]) == first && first.Debuggee == firstProcess && Processes.IsRunning(firstProcess),
+                $"The first copy did not run on as the second restarted: {string.Join(", ", window.RunCopies.Select(r => $"{r.Name} {r.Debuggee}"))}");
+            Assert.True(window.Debugger.Running.Any(r => r.Name == copies[0]), $"The first copy lost its Hot Reload session as the second restarted: {string.Join(", ", window.Debugger.Running.Select(r => r.Name))}");
+            Assert.False(Processes.IsRunning(secondProcess), $"The second copy's first process runs on beside its restart: {Processes.Describe(secondProcess)}");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>The game's configuration run as two copies with Hot Reload on, each in a tab of the Terminal window, each
+    /// attached to quietly and printing: their names, the first's the configuration's.</summary>
+    private string[] RunTwoCopies(MainWindow window)
+    {
+        RunConfiguration generated = Generated(window, "Spinner");
+        window.SetConfigurations([generated with { Name = "Spinner on Godot", Generated = false, Arguments = "--headless", Environment = new(game.Homes), GodotCopies = 2 }], "Spinner on Godot");
+        Ui.Launched(window, window.Builds.RunAsync(hotReload: true), "the two copies' build and start with Hot Reload on", TimeSpan.FromMinutes(3));
+        Assert.Equal("Running 2 copies of Spinner on Godot with Hot Reload: a save applies its changes in each, each in a tab of the Terminal window", window.Status);
+        string[] copies = ["Spinner on Godot", "Spinner on Godot #2"];
+        Ui.WaitFor(() => copies.All(c => window.Debugger.Running.Any(r => r.Name == c)) && window.RunCopies.Count == 2
+                && window.RunCopies.All(r => Terminal(r).Contains("frame 10", StringComparison.Ordinal)),
+            () => $"both copies to run attached for Hot Reload ({string.Join(", ", window.Debugger.Running.Select(r => r.Name))}; "
+                + $"{string.Join(" | ", window.RunCopies.Select(r => $"{r.Name}: {Tail(Terminal(r))}"))})", TimeSpan.FromMinutes(1));
+        return copies;
+    }
+
+    private static string Tail(string text) => string.Join(" / ", text.Split('\n').TakeLast(3));
 
     /// <summary>Debug of the game stops at a breakpoint in its script's _Process, Godot having loaded the script's assembly
     /// itself; an edit to the script applied by Hot Reload is what the game prints once it goes on.</summary>

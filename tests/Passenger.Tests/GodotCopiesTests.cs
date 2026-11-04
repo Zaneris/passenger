@@ -13,7 +13,7 @@ namespace Passenger.Tests;
 /// <summary>A Godot game's configuration that starts several copies of it side by side, a server and its clients, each with
 /// its own arguments: Debug starts each in a tab of its own with its own console, each a source in the Live Visual Tree's
 /// chooser; a breakpoint only the server reaches stops it alone; Debug Another Copy starts one more beside them; Run runs
-/// each in a tab of the Terminal window, and Run Another Copy one more; Stop ends them all. The game is GDScript alone, run headless with the run's user
+/// each in a tab of the Terminal window, and Run Another Copy one more; Stop ends them all; one copy restarts alone. The game is GDScript alone, run headless with the run's user
 /// folders; without a Godot 4 each test skips saying why. It debugs through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
@@ -63,6 +63,35 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => window.Session.Games.Count == 0 && !window.Debugger.Tabs.Any(t => t.IsLive),
                 () => $"Stop on one copy to end every copy ({Sessions(window)}; {window.Session.Games.Count} games)", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Hot Reload's restart of one copy debugged beside another restarts it alone: its session stopped and the copy
+    /// launched again in its place, its tab live with its own role again, the other's session debugged on as it was.</summary>
+    [AvaloniaFact]
+    public void Restarting_one_debugged_copy_relaunches_it_alone_the_other_debugged_on()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Choose(window, 2);
+            Ui.Launched(window, window.DebugAsync(), "the two copies' start under the debugger", TimeSpan.FromMinutes(2));
+            string client = $"{Name} #2";
+            Ui.WaitFor(() => Tab(window, Name)?.Session?.State == DebugState.Running && Tab(window, client)?.Session?.State == DebugState.Running
+                    && Console(window, client).Contains("role client", StringComparison.Ordinal),
+                () => $"both copies debugged, the client saying its role ({Sessions(window)}; {Tail(Console(window, client))})", TimeSpan.FromMinutes(1));
+            DebugSession server = Tab(window, Name)!.Session!;
+            DebugSession before = Tab(window, client)!.Session!;
+
+            Assert.Null(Ui.AwaitPumped(window.Builds.RestartDebugAsync(client), "the client copy's restart", TimeSpan.FromMinutes(2)));
+            Ui.WaitFor(() => Tab(window, client)?.Session is { State: DebugState.Running } again && again != before && Console(window, client).Contains("role client", StringComparison.Ordinal),
+                () => $"the client copy debugged again, saying its role ({Sessions(window)}; {Tail(Console(window, client))})", TimeSpan.FromMinutes(1));
+            Assert.True(Tab(window, Name)?.Session == server && server.State == DebugState.Running, $"The server copy did not debug on as the client restarted: {Sessions(window)}");
+            Assert.Equal(2, window.Session.Games.Count);
         }
         finally
         {

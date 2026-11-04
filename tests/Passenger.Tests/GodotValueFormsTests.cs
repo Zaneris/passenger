@@ -12,9 +12,10 @@ namespace Passenger.Tests;
 
 /// <summary>A running Godot game's arrays, dictionaries and resources set from the Live Visual Tree's properties pane in
 /// forms fit for them: an array's items, a row each, one typed and one added; a dictionary's value typed in its entry's
-/// row; a resource's own properties, a check box among them, each reaching the game as it is set, as what the game prints
-/// shows. The game is GDScript alone, run headless with the run's user folders; without a Godot 4 each test skips saying
-/// why. Its game runs and is stopped, so run alone.</summary>
+/// row; an array in an array in a form of its own, the whole outer value sent back; a resource's own properties, a check
+/// box among them, each reaching the game as it is set, as what the game prints shows, and kept where the resource is
+/// written, its scene's sub_resource or its own file. The game is GDScript alone, run headless with the run's user
+/// folders; without a Godot 4 each test skips saying why. Its game runs and is stopped, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotValueFormsTests : IClassFixture<GodotValueFormsTests.Game>
 {
@@ -24,6 +25,7 @@ public sealed class GodotValueFormsTests : IClassFixture<GodotValueFormsTests.Ga
     {
         this.game = game;
         Assert.SkipWhen(game.Godot?.WhyNotScripts is not null || game.Godot is null, game.Skipped);
+        game.Reset();
     }
 
     /// <summary>The array's item typed and one added, the dictionary's value typed, and the resource's check box cleared,
@@ -76,6 +78,118 @@ public sealed class GodotValueFormsTests : IClassFixture<GodotValueFormsTests.Ga
             End(window);
         }
     }
+
+    /// <summary>An array in an array opens its own form under the outer one's rows: its item typed there reaches the game as
+    /// the whole outer value with that array in its place, and both forms and the pane's row show what the game holds.</summary>
+    [AvaloniaFact]
+    public void A_nested_arrays_form_sends_the_whole_outer_value_back_with_its_item_typed()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Start(window);
+            LiveTreeView tree = window.LiveTree;
+            Choose(window);
+            Ui.WaitFor(() => Printed(window, "grid [[1, 2], [3, 4]]"), () => $"the game to print its grid ({Tail(window)})", TimeSpan.FromMinutes(1));
+
+            GodotItemsEditor grid = Items(window, "grid", "[[1, 2], [3, 4]]");
+            Assert.Empty(grid.Fields);
+            Ui.Click(Opener(grid, "[1, 2]"));
+            Ui.WaitFor(() => Inner(grid) is { Fields.Count: 2 }, () => $"the first array's own form under grid's rows ({window.Status})");
+            GodotItemsEditor inner = Inner(grid)!;
+            Type(window, inner.Fields[1], "9");
+            Ui.WaitFor(() => Printed(window, "grid [[1, 9], [3, 4]]"), () => $"the game to print the grid with the item typed in its first array ({Tail(window)}; {window.Status})", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => inner.Fields[1].Text == "9" && grid.GetVisualDescendants().OfType<Button>().Any(b => b.Content is TextBlock { Text: "[1, 9]" }),
+                () => $"both forms to show what the game holds ({string.Join(", ", inner.Fields.Select(f => f.Text))})");
+            Ui.WaitFor(() => tree.PropertyRows.Any(p => p.Name == "grid" && p.Value == "[[1, 9], [3, 4]]"),
+                () => $"grid's row to show what the game holds ({tree.PropertyRows.FirstOrDefault(p => p.Name == "grid")?.Value})");
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>A resource's own property set in the game is noted in its form with Keep, which shows and writes the line
+    /// where the resource is written: in the scene's sub_resource for one the scene holds, in its own [resource] section for
+    /// one saved as a file.</summary>
+    [AvaloniaFact]
+    public void A_resources_property_set_in_the_game_is_kept_in_its_scenes_sub_resource_and_in_its_own_file()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Start(window);
+            Choose(window);
+            Ui.WaitFor(() => Printed(window, "smooth true skin true"), () => $"the game to print its first values ({Tail(window)})", TimeSpan.FromMinutes(1));
+
+            Cleared(window, "look", "smooth false");
+            KeepIn(window, "+ anti_aliasing = false");
+            string scene = Path.Combine(game.Folder, "main.tscn");
+            Ui.WaitFor(() => File.ReadAllText(scene) == Game.Scene.Replace("bg_color = Color(1, 0, 0, 1)\n", "bg_color = Color(1, 0, 0, 1)\nanti_aliasing = false\n", StringComparison.Ordinal),
+                () => $"main.tscn to keep the property in its sub_resource ({window.Status}):\n{File.ReadAllText(scene)}");
+            Ui.Press(window, "ESCAPE");
+
+            Cleared(window, "skin", "skin false");
+            KeepIn(window, "+ anti_aliasing = false");
+            string skin = Path.Combine(game.Folder, "skin.tres");
+            Ui.WaitFor(() => File.ReadAllText(skin) == Game.Skin.Replace("bg_color = Color(0, 0, 1, 1)\n", "bg_color = Color(0, 0, 1, 1)\nanti_aliasing = false\n", StringComparison.Ordinal),
+                () => $"skin.tres to keep the property in its [resource] ({window.Status}):\n{File.ReadAllText(skin)}");
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>The game's Main node chosen in the Live Visual Tree, its properties shown.</summary>
+    private static void Choose(MainWindow window)
+    {
+        LiveTreeView tree = window.LiveTree;
+        Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Main"), () => $"the game's Main node ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
+        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Main");
+        Ui.WaitFor(() => tree.PropertyRows.Any(p => p.Name == "grid") && tree.PropertyRows.Any(p => p.Name == "skin"),
+            () => $"Main's grid and skin ({string.Join(", ", tree.PropertyRows.Select(p => p.Name))})");
+    }
+
+    /// <summary>A resource's form opened from its row's Properties, its anti_aliasing cleared, and the game printing it so.</summary>
+    private static void Cleared(MainWindow window, string name, string printed)
+    {
+        Control row = Shown(window, name);
+        Ui.Click(row.GetVisualDescendants().OfType<Button>().First(b => b.IsEffectivelyVisible && Equals(b.Content, "Properties")));
+        Ui.WaitFor(() => Popup<GodotResourceEditor>(window)?.RowOf("anti_aliasing") is { IsEffectivelyVisible: true },
+            () => $"{name}'s own properties ({window.Status})", TimeSpan.FromMinutes(1));
+        Control smooth = Popup<GodotResourceEditor>(window)!.RowOf("anti_aliasing")!;
+        Ui.Click(smooth.GetVisualDescendants().OfType<CheckBox>().Single(c => c.IsEffectivelyVisible));
+        Ui.WaitFor(() => Printed(window, printed), () => $"the game to print {name}'s property cleared ({Tail(window)}; {window.Status})", TimeSpan.FromMinutes(1));
+    }
+
+    /// <summary>Keep on the resource form's changed anti_aliasing, its preview showing the line given, and Keep there.</summary>
+    private static void KeepIn(MainWindow window, string line)
+    {
+        Control smooth = Popup<GodotResourceEditor>(window)!.RowOf("anti_aliasing")!;
+        Ui.WaitFor(() => smooth.GetVisualDescendants().OfType<Button>().Any(b => b.IsEffectivelyVisible && Equals(b.Content, "Keep")),
+            () => $"anti_aliasing's row to offer Keep ({string.Join(", ", smooth.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text))})");
+        Ui.Click(smooth.GetVisualDescendants().OfType<Button>().First(b => b.IsEffectivelyVisible && Equals(b.Content, "Keep")));
+        Ui.WaitFor(() => window.KeepPreview is not null, () => $"Keep to show what it writes ({window.Status})");
+        Assert.Contains(line, window.KeepPreview!.Lines);
+        Ui.Click(window.KeepPreview.KeepButton);
+        Ui.WaitFor(() => window.KeepPreview is null && window.Status?.StartsWith("Kept anti_aliasing in ", StringComparison.Ordinal) == true,
+            () => $"Keep of anti_aliasing to be written ({window.Status})");
+    }
+
+    /// <summary>The button of a form's row that opens the item it shows.</summary>
+    private static Button Opener(GodotItemsEditor form, string words)
+    {
+        Ui.WaitFor(() => form.GetVisualDescendants().OfType<Button>().Any(b => b.IsEffectivelyVisible && b.Content is TextBlock { Text: { } said } && said == words),
+            () => $"a row of the form to offer {words}");
+        return form.GetVisualDescendants().OfType<Button>().First(b => b.IsEffectivelyVisible && b.Content is TextBlock { Text: { } said } && said == words);
+    }
+
+    /// <summary>The form open under another's rows, while one is.</summary>
+    private static GodotItemsEditor? Inner(GodotItemsEditor outer) => outer.GetVisualDescendants().OfType<GodotItemsEditor>().FirstOrDefault(e => e != outer && e.IsEffectivelyVisible);
 
     /// <summary>A container's row, its words clicked to open its items or entries.</summary>
     private static GodotItemsEditor Items(MainWindow window, string name, string words)
@@ -156,9 +270,52 @@ public sealed class GodotValueFormsTests : IClassFixture<GodotValueFormsTests.Ga
     }
 
     /// <summary>A Godot 4 project of GDScript alone named Forms at 20 frames a second: its Main node exports an array of
-    /// ints, a dictionary and a StyleBoxFlat its scene gives it, and prints them every fifth frame.</summary>
+    /// ints, a dictionary, an array of arrays, a StyleBoxFlat its scene gives it and one saved as skin.tres, and prints them
+    /// every fifth frame.</summary>
     public sealed class Game
     {
+        public const string Script = """
+            extends Node
+
+            @export var waves: Array[int] = [1, 2, 3]
+            @export var scores := {"red": 1, "blue": 2}
+            @export var grid := [[1, 2], [3, 4]]
+            @export var look: StyleBoxFlat
+            @export var skin: StyleBoxFlat
+            var frames := 0
+
+
+            func _process(_delta: float) -> void:
+            	frames += 1
+            	if frames % 5 == 0:
+            		print("waves ", waves, " scores ", scores, " smooth ", look.anti_aliasing, " skin ", skin.anti_aliasing, " grid ", grid)
+
+            """;
+
+        public const string Scene = """
+            [gd_scene load_steps=4 format=3]
+
+            [ext_resource type="Script" path="res://main.gd" id="1"]
+            [ext_resource type="StyleBox" path="res://skin.tres" id="2"]
+
+            [sub_resource type="StyleBoxFlat" id="style"]
+            bg_color = Color(1, 0, 0, 1)
+
+            [node name="Main" type="Node"]
+            script = ExtResource("1")
+            look = SubResource("style")
+            skin = ExtResource("2")
+
+            """;
+
+        public const string Skin = """
+            [gd_resource type="StyleBoxFlat" format=3]
+
+            [resource]
+            bg_color = Color(0, 0, 1, 1)
+
+            """;
+
         public Game()
         {
             Godot = GodotExecutables.Find(null);
@@ -166,34 +323,7 @@ public sealed class GodotValueFormsTests : IClassFixture<GodotValueFormsTests.Ga
             Homes = GodotTests.Game.Home(Path.Combine(Folder, "..", Path.GetFileName(Folder) + "-home"));
             File.WriteAllText(Path.Combine(Folder, "project.godot"), "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Forms\"\n"
                 + "run/main_scene=\"res://main.tscn\"\nconfig/features=PackedStringArray(\"4.7\")\nrun/max_fps=20\n");
-            File.WriteAllText(Path.Combine(Folder, "main.gd"), """
-                extends Node
-
-                @export var waves: Array[int] = [1, 2, 3]
-                @export var scores := {"red": 1, "blue": 2}
-                @export var look: StyleBoxFlat
-                var frames := 0
-
-
-                func _process(_delta: float) -> void:
-                	frames += 1
-                	if frames % 5 == 0:
-                		print("waves ", waves, " scores ", scores, " smooth ", look.anti_aliasing)
-
-                """);
-            File.WriteAllText(Path.Combine(Folder, "main.tscn"), """
-                [gd_scene load_steps=3 format=3]
-
-                [ext_resource type="Script" path="res://main.gd" id="1"]
-
-                [sub_resource type="StyleBoxFlat" id="style"]
-                bg_color = Color(1, 0, 0, 1)
-
-                [node name="Main" type="Node"]
-                script = ExtResource("1")
-                look = SubResource("style")
-
-                """);
+            Reset();
         }
 
         public string Folder { get; }
@@ -204,5 +334,13 @@ public sealed class GodotValueFormsTests : IClassFixture<GodotValueFormsTests.Ga
             : $"The Godot found cannot run a Godot 4 project: {Godot.WhyNotScripts}";
 
         public IReadOnlyDictionary<string, string> Homes { get; }
+
+        /// <summary>The script, the scene and skin.tres as each test begins, whatever a test before kept in them.</summary>
+        public void Reset()
+        {
+            File.WriteAllText(Path.Combine(Folder, "main.gd"), Script);
+            File.WriteAllText(Path.Combine(Folder, "main.tscn"), Scene);
+            File.WriteAllText(Path.Combine(Folder, "skin.tres"), Skin);
+        }
     }
 }

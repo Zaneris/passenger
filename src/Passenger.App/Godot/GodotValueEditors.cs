@@ -494,8 +494,9 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
                 rows.Children.Add(row.Row);
             }
             PropertyValue value = new(property.Name, property.Category, false, property.Type.ToString(), GodotVariant.Shown(property.Value), property.Category, null, null);
-            (bool edits, _) = row.Cell.Show((long)state.Id, value);
+            (bool edits, bool notes) = row.Cell.Show((long)state.Id, value);
             row.Cell.Editor.IsVisible = edits;
+            row.Cell.Note.IsVisible = notes;
             bool typed = !edits && game.WhyNotSet((long)state.Id, property.Name) is null && GodotVariant.Parse(property.Type, GodotVariant.Shown(property.Value)).WhyNot is null;
             row.Typed.IsVisible = typed;
             row.Shown.IsVisible = !edits && !typed;
@@ -510,7 +511,7 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
 
     private (Control Row, GodotValueCell Cell, TextBox Typed, TextBlock Shown) Row(string name)
     {
-        Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("2*,3*"), MinHeight = ListRow.Height };
+        Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("2*,3*"), RowDefinitions = new RowDefinitions("Auto,Auto"), MinHeight = ListRow.Height };
         TextBlock label = new() { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         ToolTip.SetTip(label, name);
         GodotValueCell cell = new(game, this);
@@ -529,6 +530,11 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
             Grid.SetColumn(value, 1);
             grid.Children.Add(value);
         }
+        // What a value changed was, and Keep, under its editor, as the pane's rows note it.
+        Grid.SetRow(cell.Note, 1);
+        Grid.SetColumn(cell.Note, 1);
+        cell.Note.IsVisible = false;
+        grid.Children.Add(cell.Note);
         grid.Children.Add(label);
         return (grid, cell, typed, shown);
     }
