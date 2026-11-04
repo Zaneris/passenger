@@ -105,6 +105,33 @@ public static partial class GodotExecutables
     /// <summary>Whether an argument is the flag that opens Godot's editor (<c>--editor</c>, <c>-e</c>).</summary>
     public static bool IsEditorFlag(string argument) => argument is "--editor" or "-e";
 
+    /// <summary>Whether a Godot command line (its words, the program first) opens Godot's editor on a project folder, given
+    /// canonical: an editor flag with a <c>--path</c> naming that folder whole, or that folder's project.godot named, which
+    /// opens the editor by itself. A relative path, read from a working folder unknown here, names none.</summary>
+    public static bool OpensEditorOn(IReadOnlyList<string> words, string project)
+    {
+        string folder = Path.TrimEndingDirectorySeparator(project);
+        bool editor = words.Any(IsEditorFlag);
+        for (int i = 0; i < words.Count; i++)
+        {
+            string? named = null;
+            if (words[i] == "--path" && i + 1 < words.Count)
+            {
+                named = editor ? words[i + 1] : null;
+                i++;
+            }
+            else if (Path.GetFileName(words[i]) == "project.godot")
+            {
+                named = Path.GetDirectoryName(words[i]);
+            }
+            if (named is not null && Path.IsPathFullyQualified(named) && PathNames.Same(Path.TrimEndingDirectorySeparator(PathNames.Canonical(named)), folder))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>Godot's arguments without each <c>--path</c> naming the project's <paramref name="folder"/> (from the working
     /// folder <paramref name="working"/>), for a launch that names it itself; null where one names another folder.</summary>
     public static IReadOnlyList<string>? WithoutPath(IReadOnlyList<string> arguments, string working, string folder)

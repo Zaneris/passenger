@@ -20,7 +20,8 @@ namespace Passenger.Tests;
 /// goes to a declaration, keeping the project's editor layout as it was, and its project.godot where an editor plugin
 /// saves it; an error typed shows in Problems as typed, a warning with its name; and a project deleted under that editor
 /// is let go of, said once; what that editor makes (a script's .uid) is taken away, a plugin runs not there from Godot 4.5,
-/// another program's writes are kept, and the editor is let go once no script is open; and, as a person's window opens a
+/// another program's writes are kept, as is what the person's own editor (a stand-in) makes there, an editor on a project
+/// whose path begins with this one's being none on it, and the editor is let go once no script is open; and, as a person's window opens a
 /// script, none is started until something Passenger's own reading has no answer for asks for it. Without a Godot (GODOT, the PATH,
 /// Applications) each test skips saying why. A Godot editor of its own each, so run alone.</summary>
 [Collection(Alone.Name)]
@@ -364,6 +365,102 @@ public sealed class GDScriptTests
             $"The setting another program wrote in place as the headless editor started was put back over:\n{File.ReadAllText(settings)}");
         window.Close();
     }
+
+    /// <summary>A file the person's own Godot editor makes as it opens the project while Passenger's headless editor does its
+    /// start work there (the messaging file of Godot's .NET tools, by which Passenger finds that editor) stays as that editor
+    /// wrote it: nothing there is put back or taken away while the person's editor runs on the project.</summary>
+    [AvaloniaFact]
+    public void A_file_the_persons_own_editor_makes_as_the_headless_editor_starts_stays()
+    {
+        MainWindow window = Open();
+        string project = PathNames.Canonical(folder);
+        string meta = Passenger.Workspace.GodotIdeMessaging.MetaPath(project);
+        string Log() => Ui.Shared(IdeLog.PathOf(IdeLog.Ide));
+        bool Done() => Log().Contains($"GDScript: Godot's headless editor on {project} has done its start work", StringComparison.Ordinal);
+        Assert.False(Done(), "The headless editor's start work was done before the person's editor could open the project during it");
+        Process persons = PersonsEditor(project);
+        try
+        {
+            Ui.WaitFor(() => MetaPort(meta) == PersonsPort, () => $"the person's editor to write its messaging file ({Shown(meta)})");
+            Ui.WaitFor(Done, "the headless editor's start work done", TimeSpan.FromMinutes(2));
+            Assert.True(MetaPort(meta) == PersonsPort,
+                $"The messaging file the person's own editor made as the headless editor started was taken away or written over, so Passenger would not find that editor:\n{Shown(meta)}");
+        }
+        finally
+        {
+            End(persons);
+            window.Close();
+        }
+    }
+
+    /// <summary>A Godot editor of the person's open on another project, whose folder's path begins with this one's (a copy
+    /// kept beside it), is no editor on this project: what Passenger's headless editor writes over here (its layout over
+    /// the person's) is put back still.</summary>
+    [AvaloniaFact]
+    public void An_editor_on_a_project_whose_path_begins_with_this_ones_leaves_the_headless_editors_writes_put_back()
+    {
+        string project = PathNames.Canonical(folder);
+        string other = project + "-old";
+        TestFolders.Write(other, "project.godot", "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Turns (old)\"\n");
+        string layout = Path.Combine(project, ".godot", "editor", "editor_layout.cfg");
+        string Log() => Ui.Shared(IdeLog.PathOf(IdeLog.Ide));
+        bool Kept() => Log().Contains($"GDScript: {layout} was written by another program", StringComparison.Ordinal);
+        Process persons = PersonsEditor(other);
+        try
+        {
+            MainWindow window = Open();
+            Ui.WaitFor(() => Log().Contains($"GDScript: {layout}, which Godot's headless editor wrote over, is put back as it was", StringComparison.Ordinal) || Kept(),
+                () => $"the layout the headless editor writes over the person's to be put back ({Shown(layout)})", TimeSpan.FromSeconds(90));
+            Assert.False(Kept(), $"The headless editor's layout was kept as the person's, as if their editor on {other} were one on {project}:\n{Shown(layout)}");
+            Ui.WaitFor(() => File.ReadAllText(layout) == Layout, () => $"the person's own layout as it was, not the headless editor's:\n{Shown(layout)}");
+            window.Close();
+        }
+        finally
+        {
+            End(persons);
+        }
+    }
+
+    /// <summary>The port the stand-in for the person's editor names in its messaging file.</summary>
+    private const int PersonsPort = 47113;
+
+    /// <summary>A stand-in for the person's own Godot editor on a project, started as Godot's project manager starts the
+    /// editor (<c>--path</c> the project, then <c>--editor</c>): it writes the messaging file Godot's .NET editor writes as
+    /// it opens a project, naming <see cref="PersonsPort"/>, and waits until it is ended.</summary>
+    private static Process PersonsEditor(string project)
+    {
+        string folder = TestFolders.Create("persons-godot-");
+        string meta = Passenger.Workspace.GodotIdeMessaging.MetaPath(project);
+        ProcessStartInfo start;
+        if (OperatingSystem.IsWindows())
+        {
+            string script = TestFolders.Write(folder, "godot.ps1", $"New-Item -ItemType Directory -Force -Path '{Path.GetDirectoryName(meta)}' | Out-Null\r\n"
+                + $"Set-Content -Path '{meta}' -Value \"{PersonsPort}`n$PSCommandPath\"\r\nwhile ($true) {{ Start-Sleep -Seconds 1 }}\r\n");
+            start = ChildProcesses.Command("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "--path", project, "--editor"], folder);
+        }
+        else
+        {
+            string script = TestFolders.Write(folder, "godot", $"#!/bin/sh\nmkdir -p '{Path.GetDirectoryName(meta)}'\nprintf '%s\\n%s\\n' {PersonsPort} \"$0\" > '{meta}'\n"
+                + "while :; do sleep 1; done\n");
+            File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            start = ChildProcesses.Command(script, ["--path", project, "--editor"], folder);
+        }
+        return ChildProcesses.Start(start);
+    }
+
+    /// <summary>The stand-in for the person's editor ended, with what it started.</summary>
+    private static void End(Process persons)
+    {
+        int id = persons.Id;
+        ChildProcesses.Kill(persons);
+        Assert.True(Processes.Gone(id), $"The stand-in for the person's editor (process {id}) still runs after it was ended");
+    }
+
+    /// <summary>The port a messaging file names, or null where there is none.</summary>
+    private static int? MetaPort(string meta) => File.Exists(meta) && Passenger.Workspace.GodotIdeMessaging.MetaOf(File.ReadAllText(meta)) is (int port, _) ? port : null;
+
+    /// <summary>A file's text, or that none is there.</summary>
+    private static string Shown(string path) => File.Exists(path) ? File.ReadAllText(path) : "none is there";
 
     /// <summary>How many of Passenger's headless Godot editors run on a folder: Godot started on it with a server's port.</summary>
     private static int HeadlessEditorsOn(string project)

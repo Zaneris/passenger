@@ -45,6 +45,9 @@ public sealed record DotnetProcess(int Id, string Name, string CommandLine, stri
         }
     }
 
+    /// <summary>The command line's words, the program first, each as it was given.</summary>
+    public IReadOnlyList<string> CommandWords => Words(CommandLine);
+
     /// <summary>The name without Windows' .exe; any other dot is the name's own ("Passenger.Tests").</summary>
     private string Executable => Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? Name[..^4] : Name;
 

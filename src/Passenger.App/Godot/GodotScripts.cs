@@ -358,20 +358,17 @@ public static class GodotScripts
     /// written before it takes the saved one's place.</summary>
     private static readonly HashSet<string> GodotWrites = new(StringComparer.OrdinalIgnoreCase) { ".uid", ".import", ".translation", ".tmp" };
 
-    /// <summary>Whether the person's own Godot editor runs on a project, which makes its own files there and writes its own
-    /// settings: a Godot started on its folder as an editor, not Passenger's (whose server it is, given its port).</summary>
-    private static bool PersonsEditorOn(string project) => PersonsEditorOf(project) is not null;
-
-    /// <summary>The process of the person's own Godot editor on a project (<see cref="PersonsEditorOn"/>), or null.</summary>
+    /// <summary>The process of the person's own Godot editor on a project (canonical), which makes its own files there and
+    /// writes its own settings, or null: a Godot whose command line opens its editor on that folder whole
+    /// (<see cref="GodotExecutables.OpensEditorOn"/>), not Passenger's own (whose server it is, given its port).</summary>
     private static int? PersonsEditorOf(string project)
     {
         foreach (Process process in Process.GetProcesses())
         {
             using (process)
             {
-                if (process.Id != Environment.ProcessId && DotnetProcesses.Describe(process.Id) is { } running && running.CommandLine.Contains(project, StringComparison.Ordinal)
-                    && !running.CommandLine.Contains("--lsp-port", StringComparison.Ordinal)
-                    && running.CommandLine.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Any(w => w is "--editor" or "-e"))
+                if (process.Id != Environment.ProcessId && DotnetProcesses.Describe(process.Id) is { } running && running.CommandWords is var words
+                    && !words.Contains("--lsp-port") && GodotExecutables.OpensEditorOn(words, project))
                 {
                     return process.Id;
                 }
@@ -638,7 +635,8 @@ public static class GodotScripts
             long now = Stopwatch.GetTimestamp();
             bool gitWrote = Passenger.Vcs.Git.WroteWorkTreeSince(looked);
             looked = now;
-            RemoveMade(told, gitWrote, final, now);
+            Lazy<int?> persons = PersonsEditor();
+            RemoveMade(told, gitWrote, final, now, persons);
             foreach ((string name, (byte[]? bytes, DateTime written)) in files)
             {
                 string path = Path.Combine(Project, name);
@@ -662,9 +660,10 @@ public static class GodotScripts
                             continue;
                         }
                         pending.Remove(name);
-                        if (bytes is not null && there && ByAnother(name, path))
+                        if (ByAnother(name, path, persons))
                         {
-                            Theirs(name, $"GDScript: {path} was written by another program than Passenger's headless editor, so it is kept as written");
+                            Theirs(name, there ? $"GDScript: {path} was written by another program than Passenger's headless editor, so it is kept as written"
+                                : $"GDScript: {path} was deleted by another program than Passenger's headless editor, so it is left deleted");
                             continue;
                         }
                         HeardPort(name, path);
@@ -729,7 +728,7 @@ public static class GodotScripts
             long now = Stopwatch.GetTimestamp();
             bool gitWrote = Passenger.Vcs.Git.WroteWorkTreeSince(looked);
             looked = now;
-            RemoveMade(told, gitWrote, final: false, now, Built);
+            RemoveMade(told, gitWrote, final: false, now, PersonsEditor(), Built);
             return true;
         }
 
@@ -756,16 +755,21 @@ public static class GodotScripts
             return Stopwatch.GetElapsedTime(first, now) < Settle;
         }
 
-        /// <summary>Whether a file changed since it was looked at was another program's write: one written in place, which
-        /// Godot's safe save, replacing it, never makes, or one the person's own Godot editor running on the project may have.</summary>
-        private bool ByAnother(string name, string path) =>
-            FileIdentity.Told && identities.GetValueOrDefault(name) is { } was && FileIdentity.Of(path) == was || PersonsEditorOn(Project);
+        /// <summary>Whether a file changed since it was looked at was another program's change: one written in place, which
+        /// Godot's safe save, replacing it, never makes, or any, made, written over or deleted, while the person's own Godot
+        /// editor runs on the project (<paramref name="persons"/>).</summary>
+        private bool ByAnother(string name, string path, Lazy<int?> persons) =>
+            FileIdentity.Told && identities.GetValueOrDefault(name) is { } was && FileIdentity.Of(path) == was || persons.Value is not null;
+
+        /// <summary>The person's own Godot editor on the project as one look finds it, the processes scanned only once that
+        /// look has a change to decide, and only once.</summary>
+        private Lazy<int?> PersonsEditor() => new(() => PersonsEditorOf(Project), LazyThreadSafetyMode.None);
 
         /// <summary>Takes away the files a headless editor made that were not there (a script's .uid, an asset's .import), each
         /// once it has waited as a change does, but those that came while Passenger's Git wrote the work tree, those written
         /// before <paramref name="built"/> (a game's build the editor reloads), and all where the person's own Godot editor
-        /// runs on the project, which makes its own, theirs from then on.</summary>
-        private void RemoveMade(HashSet<string> told, bool gitWrote, bool final, long now, DateTime? built = null)
+        /// runs on the project (<paramref name="persons"/>), which makes its own, theirs from then on.</summary>
+        private void RemoveMade(HashSet<string> told, bool gitWrote, bool final, long now, Lazy<int?> persons, DateTime? built = null)
         {
             List<string> made;
             lock (gate)
@@ -796,7 +800,7 @@ public static class GodotScripts
             {
                 return;
             }
-            if (PersonsEditorOf(Project) is { } editor)
+            if (persons.Value is { } editor)
             {
                 lock (gate)
                 {

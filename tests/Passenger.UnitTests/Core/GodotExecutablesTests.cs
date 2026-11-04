@@ -167,6 +167,28 @@ public sealed class GodotExecutablesTests : IDisposable
         Assert.Null(GodotExecutables.WithoutPath(["--path", "../other"], game, game));
     }
 
+    [Fact]
+    public void An_editor_is_on_the_project_its_path_names_whole_never_one_whose_path_begins_with_it()
+    {
+        string shooter = Folder("shooter");
+        string old = Folder("shooter-old");
+        Assert.True(GodotExecutables.OpensEditorOn(["godot", "--path", shooter, "--editor"], shooter), "An editor the project manager started on the project was not taken for one on it");
+        Assert.True(GodotExecutables.OpensEditorOn(["godot", "-e", "--path", shooter + Path.DirectorySeparatorChar], shooter), "An editor whose path ends in a separator was not taken for one on the project");
+        Assert.True(GodotExecutables.OpensEditorOn(["godot", Path.Combine(shooter, "project.godot")], shooter), "Godot opened on the project's project.godot, which opens its editor, was not taken for one on it");
+        Assert.False(GodotExecutables.OpensEditorOn(["godot", "--path", old, "--editor"], shooter),
+            "An editor on shooter-old was taken for one on shooter, so what a headless editor writes in shooter would be kept as the person's");
+        Assert.False(GodotExecutables.OpensEditorOn(["godot", Path.Combine(old, "project.godot")], shooter), "Godot opened on shooter-old's project.godot was taken for an editor on shooter");
+        Assert.False(GodotExecutables.OpensEditorOn(["godot", "--path", Path.Combine(shooter, "levels"), "--editor"], shooter), "An editor on a folder inside the project was taken for one on it");
+        Assert.False(GodotExecutables.OpensEditorOn(["godot", "--path", shooter, "res://main.tscn"], shooter), "A game played on the project was taken for its editor");
+        Assert.False(GodotExecutables.OpensEditorOn(["godot", "--path", ".", "--editor"], shooter), "A relative path, read from a working folder unknown, was taken for the project");
+        if (!OperatingSystem.IsWindows())
+        {
+            string link = Path.Combine(root, "linked");
+            Directory.CreateSymbolicLink(link, shooter);
+            Assert.True(GodotExecutables.OpensEditorOn(["godot", "--path", link, "--editor"], shooter), "An editor on the project through a link to its folder was not taken for one on it");
+        }
+    }
+
     private string Folder(string name) => Directory.CreateDirectory(Path.Combine(root, name)).FullName;
 
     private static string Touch(string file)
