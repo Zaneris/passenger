@@ -49,6 +49,25 @@ public sealed record GDScriptSignature(string Kind, string? Owner, string Name, 
     private static string? Written(string text, int offset, GDScriptNode? node) =>
         node is { Start: >= 0 } && offset + node.End <= text.Length ? text[(offset + node.Start)..(offset + node.End)] : null;
 
+    /// <summary>What a script declares by its name's offset, as its card names it: a member's kind ("func", "signal",
+    /// "const", "enum", "class"), the script's own class by its class_name, an enum's value as a constant, else a
+    /// variable's or a local's ("var").</summary>
+    public static string KindAt(GDScriptTree? tree, int nameStart, GDScriptType type) => (tree is null ? null : DeclaredAt(tree, nameStart)?.Node) switch
+    {
+        GDScriptFunction => "func",
+        GDScriptSignal => "signal",
+        GDScriptConstant => "const",
+        GDScriptEnum => "enum",
+        GDScriptClass => "class",
+        _ when type is { Kind: GDScriptTypeKind.Class, Meta: true } => "class",
+        _ when type is { Kind: GDScriptTypeKind.Enum, Meta: false } && tree?.Members.Any(m => EnumValueAt([m.Node], m.Offset, nameStart)) == true => "const",
+        _ => "var",
+    };
+
+    /// <summary>Whether an enum among nodes, or among an inner class's members, gives a value whose name starts at an offset.</summary>
+    private static bool EnumValueAt(IEnumerable<GDScriptNode> nodes, int offset, int nameStart) =>
+        nodes.Any(n => n is GDScriptEnum e && e.Values.Any(v => offset + v.Name.Start == nameStart) || n is GDScriptClass inner && EnumValueAt(inner.Members, offset, nameStart));
+
     /// <summary>The function or signal a script declares by its name's offset, its own class's or an inner class's, with the
     /// offset its positions count from; null for none.</summary>
     public static (GDScriptNode Node, int Offset)? DeclaredAt(GDScriptTree tree, int nameStart)

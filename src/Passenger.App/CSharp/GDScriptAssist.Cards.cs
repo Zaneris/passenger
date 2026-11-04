@@ -82,7 +82,7 @@ internal sealed partial class GDScriptAssist
         GodotEngineApi? api = typed.Analyzer.Engine;
         if (declared is { Script: { } script })
         {
-            return new OfScript(new GDScriptMemberInfo(name.Name, KindDeclared(typed, script, declared.Start), type, declared));
+            return new OfScript(new GDScriptMemberInfo(name.Name, GDScriptSignature.KindAt(script == typed.Analysis.Path ? typed.Tree : typed.Analyzer.Project.Script(script), declared.Start, type), type, declared));
         }
         if (declared is { EngineClass: { } engine })
         {
@@ -127,21 +127,6 @@ internal sealed partial class GDScriptAssist
         return typed.Analyzer.Project.ClassPath(name.Name) is not null ? new OfClass(name.Name, "class_name")
             : typed.Analyzer.Project.Autoload(name.Name) is not null ? new OfClass(name.Name, "autoload")
             : null;
-    }
-
-    /// <summary>What a script's declaration is by its name's offset: a member's kind, else a local's ("var").</summary>
-    private static string KindDeclared(GodotScriptTypes.Typed typed, string script, int start)
-    {
-        GDScriptTree? tree = script == typed.Analysis.Path ? typed.Tree : typed.Analyzer.Project.Script(script);
-        return (tree is null ? null : GDScriptSignature.DeclaredAt(tree, start)?.Node) switch
-        {
-            GDScriptFunction => "func",
-            GDScriptSignal => "signal",
-            GDScriptConstant => "const",
-            GDScriptEnum => "enum",
-            GDScriptClass => "class",
-            _ => "var",
-        };
     }
 
     /// <summary>What an engine class's member is, through the classes it extends.</summary>

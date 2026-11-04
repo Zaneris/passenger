@@ -174,6 +174,20 @@ public class GDScriptAnalyzerTests
     }
 
     [Fact]
+    public void A_declarations_card_names_what_it_declares_a_class_name_a_class_and_an_enums_value_a_constant()
+    {
+        string text = "class_name Hero\nextends Node\n\nenum Mood { CALM }\nvar count := 0\n\n\nfunc f() -> void:\n\tpass\n\n\nclass Inner:\n\tenum Kind { ONE }\n";
+        (GDScriptAnalysis analysis, _) = Analyze(text);
+        GDScriptTree tree = analysis.Tree!;
+        Assert.Equal("class", GDScriptSignature.KindAt(tree, text.IndexOf("Hero", StringComparison.Ordinal), GDScriptType.Native("Node") with { Kind = GDScriptTypeKind.Class, Meta = true }));
+        Assert.Equal("const", GDScriptSignature.KindAt(tree, text.IndexOf("CALM", StringComparison.Ordinal), new GDScriptType(GDScriptTypeKind.Enum, "Mood")));
+        Assert.Equal("const", GDScriptSignature.KindAt(tree, text.IndexOf("ONE", StringComparison.Ordinal), new GDScriptType(GDScriptTypeKind.Enum, "Kind")));
+        Assert.Equal("var", GDScriptSignature.KindAt(tree, text.IndexOf("count", StringComparison.Ordinal), GDScriptType.Builtin("int")));
+        Assert.Equal("func", GDScriptSignature.KindAt(tree, text.IndexOf("f()", StringComparison.Ordinal), GDScriptType.Builtin("Callable")));
+        Assert.Equal("enum", GDScriptSignature.KindAt(tree, text.IndexOf("Mood", StringComparison.Ordinal), new GDScriptType(GDScriptTypeKind.Enum, "Mood") { Meta = true }));
+    }
+
+    [Fact]
     public void A_scripts_own_class_name_and_its_base_by_name_are_declared_where_their_classes_are()
     {
         string text = "class_name Hero\nextends Base\n\n\nfunc f() -> void:\n\tpass\n";
