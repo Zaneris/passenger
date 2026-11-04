@@ -36,11 +36,9 @@ public sealed class Debounce(TimeSpan delay, Func<Task> work, Func<IDisposable>?
         using (BackgroundWork.Scope(file, line))
         using (hold?.Invoke())
         {
-            try
-            {
-                await Task.Delay(delay, cancel.Token);
-            }
-            catch (OperationCanceledException)
+            // Put off again, the wait ends quietly: an exception thrown at every key costs its thread more than the wait.
+            await Task.Delay(delay, cancel.Token).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
+            if (cancel.IsCancellationRequested)
             {
                 return;
             }

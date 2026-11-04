@@ -2478,48 +2478,53 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         return (items, read, frame);
     }
 
-    /// <summary>Typing on into an open completion list narrows it off the UI thread and shows it in the rows the list
-    /// has: as each letter narrows a statement's list, the controls on screen are the ones that showed it before, their
-    /// words changed in place; and a key into a list of hundreds more items (a file with the usings a project's
-    /// implicit ones bring, against one with none) costs the UI thread about what it does in the shorter one, counted
-    /// rather than timed.</summary>
+    /// <summary>Typing on into an open completion list narrows it off the UI thread in the rows the list has: as each letter
+    /// narrows a class's members, the controls on screen are the ones that showed it before; and a key into a list of four
+    /// times the items costs the UI thread what it does in the shorter one, counted rather than timed. The lists differ in
+    /// length alone: a class's members after its dot, listed whole by the server, its fields named alike, so both hold as
+    /// many rows narrowed and show the same ones.</summary>
     [AvaloniaFact]
     public void Typing_into_a_completion_list_narrows_it_off_the_UI_thread_in_the_rows_it_shows()
     {
         MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
-        window.OpenFile(project.PathOf("Bare.cs"));
+        window.OpenFile(project.PathOf("Pantry.cs"));
         Ui.Settle();
         Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
-        (int fewItems, long fewKey) = Narrowed(window, project.PathOf("Bare.cs"));
-        (int manyItems, long manyKey) = Narrowed(window, project.PathOf("Used.cs"));
+        (int fewItems, long fewKey) = Narrowed(window, project.PathOf("Pantry.cs"));
+        (int manyItems, long manyKey) = Narrowed(window, project.PathOf("Granary.cs"));
         TestContext.Current.TestOutputHelper?.WriteLine(
-            $"A key narrowing a statement's list of {fewItems} items allocated {fewKey / 1024} KB on the UI thread; of {manyItems} items, {manyKey / 1024} KB");
-        Assert.True(manyItems > fewItems + 300, $"With the usings a statement's completion listed {manyItems} items, against {fewItems} without");
-        // The server's thousand is a list it says is incomplete, asked for again at each key and gathered with the templates.
-        Assert.True(manyKey <= fewKey + (32 * 1024),
-            $"A key narrowing a list of {manyItems} items allocated {manyKey / 1024} KB on the UI thread, against {fewKey / 1024} KB for {fewItems} items: it scored them or made their rows there");
+            $"A key narrowing a list of {fewItems} members allocated {fewKey / 1024} KB on the UI thread; of {manyItems} members, {manyKey / 1024} KB");
+        Assert.True(manyItems >= fewItems * 4, $"Granary's members listed {manyItems} items, against Pantry's {fewItems}");
+        // Less than the least object for each item the longer list has more: whatever is made of an item is made off it.
+        Assert.True(manyKey - fewKey < (manyItems - fewItems) * 24L,
+            $"A key narrowing a list of {manyItems} items allocated {manyKey / 1024} KB on the UI thread, against {fewKey / 1024} KB for {fewItems} items, "
+            + $"{(manyKey - fewKey) / (manyItems - fewItems)} bytes for each item more: it scored them or made their rows there");
         window.Close();
     }
 
-    /// <summary>A statement's list in a file, opened by an S and narrowed a letter at a time: how many items it has, and the
-    /// least the UI thread allocates from a key to the narrower list shown; each key's rows shown in the controls the list
-    /// showed before it.</summary>
+    /// <summary>A class's members, listed after its dot typed in its own method, and narrowed a letter at a time: how many
+    /// items the list has, and the least the UI thread allocates from a key to the narrower list shown; each key's rows
+    /// shown in the controls the list showed before it.</summary>
     private static (int Items, long Key) Narrowed(MainWindow window, string path)
     {
+        string type = Path.GetFileNameWithoutExtension(path);
         window.OpenFile(path);
         CodeEditor editor = window.EditorArea.CodeEditor;
         Ui.PlaceAfter(editor, "        int total = 0;");
-        window.KeyTextInput(" ");
         editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput($"total += {type}");
         Ui.Settle();
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.IsCompletionOpen, $"{type}'s members after its dot");
         Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!;
         int caret = editor.Selections.Primary.Caret;
-        int items = Ui.Await(Waiting.Apart(() => lsp.CompletionAsync(caret, null)), "the statement's completion").List?.Items.Count ?? 0;
-        window.KeyTextInput("S");
-        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "S", $"a statement's list in {Path.GetFileName(path)}");
-        string typed = "S";
+        int items = Ui.Await(Waiting.Apart(() => lsp.CompletionAsync(caret, ".")), $"{type}'s members").List?.Items.Count ?? 0;
+        window.KeyTextInput("R");
+        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "R", $"{type}'s members narrowed by R");
+        string typed = "R";
         long key = long.MaxValue;
-        foreach (string letter in new[] { "y", "s", "t" })
+        foreach (string letter in new[] { "a", "t", "i" })
         {
             IReadOnlyList<Avalonia.Controls.Control> shown = window.Assist.CompletionRowControls;
             Assert.True(shown.Count > 0, $"No row of the list is on screen narrowed by '{typed}'");
@@ -2529,7 +2534,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             Ui.Pumped(() => window.Assist.CompletionNarrowedBy == typed, TimeSpan.FromSeconds(30));
             key = Math.Min(key, GC.GetAllocatedBytesForCurrentThread() - before);
             Assert.True(window.Assist.CompletionNarrowedBy == typed, $"The list never showed its rows for '{typed}'");
-            Assert.True(window.Assist.CompletionLabels.FirstOrDefault()?.StartsWith(typed, StringComparison.OrdinalIgnoreCase) == true,
+            Assert.True(window.Assist.CompletionLabels.FirstOrDefault() == "Ration000",
                 $"Narrowed by '{typed}' the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(5))} first");
             Ui.Settle();
             IReadOnlyList<Avalonia.Controls.Control> now = window.Assist.CompletionRowControls;
@@ -2617,9 +2622,17 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Bare.cs"), Statement.Replace("Statement", "Bare", StringComparison.Ordinal));
             File.WriteAllText(PathOf("Used.cs"), "using System;\nusing System.Collections.Generic;\nusing System.IO;\nusing System.Linq;\nusing System.Net.Http;\n"
                 + "using System.Threading;\nusing System.Threading.Tasks;\n" + Statement.Replace("Statement", "Used", StringComparison.Ordinal));
+            // Two classes alike but for how many members they have, every one named alike, fewer than the server's thousand.
+            File.WriteAllText(PathOf("Pantry.cs"), Rations("Pantry", 220));
+            File.WriteAllText(PathOf("Granary.cs"), Rations("Granary", 980));
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
         }
+
+        /// <summary>A class of <paramref name="count"/> fields named Ration000 on, and a method to type its name into.</summary>
+        private static string Rations(string type, int count) =>
+            $"static class {type}\n{{\n" + string.Concat(Enumerable.Range(0, count).Select(i => $"    public static int Ration{i:000};\n"))
+            + "\n    public static int Tally()\n    {\n        int total = 0;\n        return total;\n    }\n}\n";
 
         /// <summary>Whether restore downloaded .NET's reference pack, as it does when no installed SDK has the version the
         /// newest SDK targets for net10.0: the package has no IntelliSense files beside its assemblies, which the SDK's own

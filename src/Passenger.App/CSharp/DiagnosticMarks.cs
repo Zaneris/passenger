@@ -278,7 +278,12 @@ internal sealed class ServerDiagnostics(OpenDocument document, string? checker)
         {
             if (delay > TimeSpan.Zero)
             {
-                await Task.Delay(delay, cancel.Token);
+                // Typing went on, the wait ends quietly: an exception thrown at every key costs its thread more than the wait.
+                await Task.Delay(delay, cancel.Token).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
+                if (cancel.IsCancellationRequested)
+                {
+                    return;
+                }
                 if (pausing == cancel)
                 {
                     pausing = null;
