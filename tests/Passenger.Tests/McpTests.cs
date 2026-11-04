@@ -1305,6 +1305,19 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"find_symbol with limit 0 answered: {Text(none)}");
     }
 
+    /// <summary>An agent's hot_reload with nothing running names run with hotReload and debug_start, which start a program it
+    /// applies to, beside the window's words naming its Settings page.</summary>
+    [Fact]
+    public async Task An_agents_hot_reload_with_nothing_running_names_the_tools_that_start_a_program_it_applies_to()
+    {
+        string folder = TestFolders.Create("mcp-noreload-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult refused = await Result(client, McpTools.HotReload);
+        Assert.True(refused.IsError == true && Text(refused).Contains($"({McpTools.Run} with hotReload true, or {McpTools.DebugStart}, starts one it applies to)", StringComparison.Ordinal),
+            $"hot_reload with nothing running answered: {Text(refused)}");
+    }
+
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
     /// vcs_commit is refused naming the file, and nothing is committed.</summary>
     [Fact]

@@ -41,8 +41,10 @@ public sealed partial class PassengerTools
         }
         if (window.WhyNoHotReload() is { } why)
         {
+            // The window's words name its Settings page; an agent starts a program Hot Reload applies to by run or debug_start.
+            string started = debugger.IsDebugging ? string.Empty : $" ({McpTools.Run} with hotReload true, or {McpTools.DebugStart}, starts one it applies to)";
             return why == window.ScriptsReloadAsSaved() ? new HotReloadInfo("nothingToApply", why, [], [], 0, [], false, false)
-                : throw new InvalidOperationException($"Hot Reload cannot apply changes: {why}");
+                : throw new InvalidOperationException($"Hot Reload cannot apply changes: {why}{started}");
         }
         // The window's Apply Hot Reload Changes, its restarts made as the agent asks (else as Settings say) and never asked.
         DebugSession? before = debugger.Session;
