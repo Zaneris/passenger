@@ -172,9 +172,11 @@ public static partial class DotnetProcesses
     {
         if (OperatingSystem.IsMacOS())
         {
-            // A zombie's task is gone, so the system gives no BSD side for it at all, where it gives every live process's.
-            byte* info = stackalloc byte[BsdInfoSize];
-            return ProcPidInfo(id, ProcPidTbsdInfo, 0, info, BsdInfoSize) != BsdInfoSize || *(uint*)(info + BsdStatusOffset) == ZombieStatus;
+            // The short BSD side is given for another user's process too, and none (ESRCH) for a zombie, whose task is gone.
+            byte* info = stackalloc byte[ShortBsdInfoSize];
+            return ProcPidInfo(id, ProcPidtShortBsdInfo, 0, info, ShortBsdInfoSize) == ShortBsdInfoSize
+                ? *(uint*)(info + ShortBsdStatusOffset) == ZombieStatus
+                : Marshal.GetLastPInvokeError() == NoSuchProcess;
         }
         try
         {
@@ -445,10 +447,18 @@ public static partial class DotnetProcesses
     private const int ProcPidTbsdInfo = 3;
     private const int BsdInfoSize = 136;
     private const int BsdParentOffset = 16;
-    private const int BsdStatusOffset = 4;
+
+    /// <summary>proc_pidinfo's short BSD side (PROC_PIDT_SHORTBSDINFO), which it gives for any user's process.</summary>
+    private const int ProcPidtShortBsdInfo = 13;
+    private const int ShortBsdInfoSize = 64;
+    private const int ShortBsdStatusOffset = 12;
 
     /// <summary>The BSD side's status of a process that has ended and waits for its parent (SZOMB).</summary>
     private const uint ZombieStatus = 5;
+
+    /// <summary>ESRCH: no process has the id, or none but a zombie, which has no task.</summary>
+    private const int NoSuchProcess = 3;
+
     private const int BsdUidOffset = 20;
     private const int BsdStartOffset = 120;
 
@@ -667,7 +677,7 @@ public static partial class DotnetProcesses
         }
     }
 
-    [LibraryImport("libc", EntryPoint = "proc_pidinfo")]
+    [LibraryImport("libc", EntryPoint = "proc_pidinfo", SetLastError = true)]
     private static unsafe partial int ProcPidInfo(int pid, int flavor, ulong argument, byte* buffer, int size);
 
     [LibraryImport("libc", EntryPoint = "sysctl")]
