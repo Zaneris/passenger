@@ -12,9 +12,10 @@ namespace Passenger.Tests;
 /// <summary>Passenger's own reading of a GDScript gives the errors Godot's own server gives on the same scripts, in the same
 /// words on the same lines: a corpus of scripts, a family of Godot's analyzer's errors each (names not found, mismatched
 /// types and calls, operators, casts and type tests, static misuse and collections, declarations, files lacked, members
-/// reaching themselves, assignments and constructions, @onready), opened in a window whose Godot's server serves them, each script's errors from Godot's
-/// diagnostics and from Passenger's marks set beside each other (an error Godot pushes twice at one place counted once).
-/// Without a Godot each test skips saying why; a Godot editor of its own, so run alone.</summary>
+/// reaching themselves, assignments and constructions, @onready, calls made as it reads), opened in a window whose Godot's
+/// server serves them, each script's errors from Godot's diagnostics and from Passenger's marks set beside each other (an
+/// error Godot pushes twice at one place counted once). Without a Godot each test skips saying why; a Godot editor of its
+/// own, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GDScriptGodotErrorsTests
 {
@@ -181,6 +182,19 @@ public sealed class GDScriptGodotErrorsTests
     /// <summary>A Node's <c>@onready</c>, which Godot takes, and its inner class's built on no Node.</summary>
     internal const string OnreadyInner = "extends Node\n\n@onready var fine := 1\n\n\nclass Inner extends RefCounted:\n\t@onready var nope = 0\n";
 
+    /// <summary>Calls Godot makes as it reads the script, every argument a constant: math utility functions given types
+    /// they take none of, len(), char() and ord() given what they refuse, Colors made from codes (4.8 refusing those that
+    /// are no colour), beside the same calls of a value that is no constant.</summary>
+    internal const string Evaluated = "extends Node\n\nconst CODE = \"nope\"\nconst SHADE = \"Alice blue\"\nvar held := Color()\n\n\n"
+        + "func _ready() -> void:\n\tprint(floor(Color()), ceil(\"a\"), round(true), abs(Vector2()), sign(1.5))\n"
+        + "\tprint(snapped(Color(), 1), snapped(1, \"x\"), snapped(Vector2(), 1.0), snapped(1.5, 2))\n"
+        + "\tprint(lerp(\"a\", \"b\", 0.5), lerp(1, Vector2(), 0.5), lerp(1.0, 2.0, 0.5))\n"
+        + "\tprint(len(Color()), len(1), len(null), len(\"abc\"), len([1]), len(held))\n"
+        + "\tprint(char(-1), char(0), char(0xD800), char(0x110000), char(65))\n"
+        + "\tprint(ord(\"ab\"), ord(\"\"), ord(\"a\"))\n"
+        + "\tprint(Color(\"\"), Color(\"invalid\"), Color(CODE), Color(SHADE), Color(\"#fff\"), Color(\"red\"), Color(\"12345\"), Color(\"#abcd\"))\n"
+        + "\tprint(floor(held), len(held), Color(str(1)))\n";
+
     private readonly string folder;
     private readonly GodotFound? godot = GodotExecutables.Find(null);
 
@@ -216,6 +230,9 @@ public sealed class GDScriptGodotErrorsTests
 
     [AvaloniaFact]
     public void An_onready_it_refuses_is_its_error_in_its_words() => Compared(("onready.gd", Onready), ("onready_inner.gd", OnreadyInner));
+
+    [AvaloniaFact]
+    public void Calls_it_makes_as_it_reads_given_what_they_refuse_are_its_errors_in_its_words() => Compared(("evaluated.gd", Evaluated));
 
     [AvaloniaFact]
     public void Files_the_project_lacks_and_names_its_singletons_have_are_its_errors_in_its_words()

@@ -5,28 +5,30 @@ using Passenger.Workspace.GDScript;
 namespace Passenger.UnitTests.Godot;
 
 /// <summary>Godot's analyzer's errors as Passenger's analyzer gives them, in Godot's words and on Godot's lines (each script
-/// checked against Godot 4.7.2's own server, which says the same, a twice-pushed error once), over a small API of the engine's: a name declared nowhere (with Godot 4's rename hint for a Godot 3 name), a built-in type or global
-/// enum standing on its own, a member a known base lacks, an engine's enum used as a value, a call of a function not found
-/// on self, a built-in value or type, an engine class or an enum, a type not found, a value of a type its target takes
-/// none of and a call given too few or too many arguments, an operator, cast or type test given types it refuses, a static
-/// place reaching the instance, an index, loop or typed collection Godot refuses, a member's name taken, an override's
-/// signature, an export, a file the project lacks preloaded or extended, a class named as a singleton autoload, an untyped
-/// override's returns, what must be constant, a member reaching itself, an instance's member read from its class, an
-/// assignment to a constant or read-only property, a new() refused, an @onready refused, Godot 4.8's words where they
-/// differ; and none of them where the class extends one this reading cannot read.</summary>
+/// checked against Godot's own server, which says the same, a twice-pushed error once), over a small API of the engine's:
+/// a fact for each family ported (names, calls and types not found, values and calls mismatched, operators, casts and type
+/// tests, static places, indices, loops and typed collections, members' names, overrides, exports, files lacked and
+/// singleton autoloads, untyped overrides' returns, what must be constant, members reaching themselves and read from their
+/// classes, assignments to constants and read-only properties, new() refused, @onready refused, calls Godot makes as it
+/// reads), Godot 4.8's words where they differ; and none where the class extends one this reading cannot read.</summary>
 public class GDScriptErrorsTests
 {
     private const string Api = """
         {
           "global_enums": [{ "name": "Side", "values": [{ "name": "SIDE_LEFT", "value": 0 }, { "name": "SIDE_TOP", "value": 1 }] }],
           "global_constants": [],
-          "utility_functions": [{ "name": "print", "return_type": "void", "is_vararg": true, "arguments": [] }],
+          "utility_functions": [{ "name": "print", "return_type": "void", "is_vararg": true, "arguments": [] },
+            { "name": "floor", "return_type": "Variant", "arguments": [{ "name": "x", "type": "Variant" }] },
+            { "name": "snapped", "return_type": "Variant", "arguments": [{ "name": "x", "type": "Variant" }, { "name": "step", "type": "Variant" }] },
+            { "name": "lerp", "return_type": "Variant", "arguments": [{ "name": "from", "type": "Variant" }, { "name": "to", "type": "Variant" }, { "name": "weight", "type": "float" }] }],
           "singletons": [{ "name": "Time", "type": "Time" }],
           "builtin_classes": [
             { "name": "Nil" }, { "name": "bool", "operators": [{ "name": "==", "right_type": "bool", "return_type": "bool" }, { "name": "not", "return_type": "bool" }] },
             { "name": "int", "operators": [{ "name": "+", "right_type": "int", "return_type": "int" }, { "name": "==", "right_type": "Variant", "return_type": "bool" },
               { "name": "/", "right_type": "int", "return_type": "int" }, { "name": "<<", "right_type": "int", "return_type": "int" }, { "name": "unary-", "return_type": "int" }] },
             { "name": "float" }, { "name": "String", "operators": [{ "name": "+", "right_type": "String", "return_type": "String" }] }, { "name": "StringName" },
+            { "name": "Color", "constants": [{ "name": "RED", "type": "Color" }, { "name": "ALICE_BLUE", "type": "Color" }],
+              "constructors": [{ "index": 0 }, { "index": 1, "arguments": [{ "name": "code", "type": "String" }] }] },
             { "name": "Vector3", "members": [{ "name": "x", "type": "float" }, { "name": "y", "type": "float" }, { "name": "z", "type": "float" }],
               "constants": [{ "name": "ZERO", "type": "Vector3" }], "enums": [{ "name": "Axis", "values": [{ "name": "AXIS_X", "value": 0 }] }],
               "methods": [{ "name": "length", "return_type": "float", "is_const": true }], "constructors": [{ "index": 0 }] },
@@ -300,6 +302,40 @@ public class GDScriptErrorsTests
             "46: The rest parameter type must be \"Array\", but \"int\" is specified.",
             "50: Typed arrays are currently not supported for the rest parameter.",
         ], Errors(Script));
+    }
+
+    /// <summary>Calls Godot makes as it reads the script, every argument a constant: a math utility function given a type it
+    /// takes none of, len(), char() and ord() given what they refuse (char() in each version's words), and from Godot 4.8
+    /// a Color made from a code that is no colour; none where an argument is no constant.</summary>
+    [Fact]
+    public void A_call_godot_makes_as_it_reads_given_what_it_refuses_is_an_error_in_its_words_on_its_line()
+    {
+        const string Script = "extends Node\n\nconst SHADE = \"Alice blue\"\nvar held := Color()\n\n\nfunc _ready() -> void:\n"
+            + "\tprint(floor(Color()), snapped(1, \"x\"), lerp(1, Vector3(), 0.5), len(Color()), floor(held))\n"
+            + "\tprint(char(-1), char(0), ord(\"ab\"), ord(\"a\"), len(\"abc\"))\n"
+            + "\tprint(Color(\"nope\"), Color(SHADE), Color(\"#fff\"), Color(\"red\"), Color(\"12345\"))\n";
+        string[] both =
+        [
+            "8: Invalid argument for \"floor()\" function: Argument \"x\" must be \"int\", \"float\", \"Vector2\", \"Vector2i\", \"Vector3\", \"Vector3i\", \"Vector4\", or \"Vector4i\".",
+            "8: Invalid argument for \"snapped()\" function: Argument \"step\" must be \"int\" or \"float\".",
+            "8: Invalid argument for \"lerp()\" function: argument 2 should be \"int\" but is \"Vector3\".",
+            "8: Invalid argument for \"len()\" function: Value of type 'Color' can't provide a length.",
+        ];
+        Assert.Equal(
+        [
+            .. both,
+            "9: Invalid argument for \"char()\" function: Expected an integer between 0 and 2^32 - 1.",
+            "9: Invalid argument for \"ord()\" function: Expected a string of length 1 (a character).",
+        ], Errors(Script));
+        Assert.Equal(
+        [
+            .. both,
+            "9: Invalid argument for \"char()\" function: -1 is not a valid character code.",
+            "9: Invalid argument for \"char()\" function: 0 is not a valid character code.",
+            "9: Invalid argument for \"ord()\" function: Expected a string of length 1 (a character).",
+            "10: Invalid color code \"nope\".",
+            "10: Invalid color code \"12345\".",
+        ], Errors(Script, engine: Engine48));
     }
 
     /// <summary>An <c>@onready</c> in a class built on no Node, an inner one too, on a static variable, and written twice.</summary>

@@ -454,11 +454,14 @@ nodes, parse rules and error messages, kept as Godot words them. `GDScriptAnalyz
 `gdscript_analyzer.h` at the same commit (its data types, how a declaration, an override's return and each expression
 are typed), with the return types of `gdscript_utility_functions.cpp`'s functions and the symbols' wording of
 `language_server/gdscript_extend_parser.cpp`; its warnings and errors (`GDScriptAnalyzer.Warnings.cs`, `.Expressions.cs`,
-`.Operations.cs`, `.Statics.cs`, `.Containers.cs`, `.Declarations.cs`, `.Names.cs`, `.Constants.cs` and `.Cycles.cs`,
-`GDScriptWarnings.cs` and `GDScriptAnalysis`'s filtering by a project's settings and `@warning_ignore`) port where
-`gdscript_analyzer.cpp` and `gdscript_parser.cpp` (its export annotations among them) push them, the same at
-4.7.2-stable but where its words differ, which an API of 4.7's is given, with `gdscript_warning.cpp` and
-`gdscript_warning.h`'s names, default levels and words.
+`.Operations.cs`, `.Statics.cs`, `.Containers.cs`, `.Declarations.cs`, `.Names.cs`, `.Constants.cs`, `.Cycles.cs` and
+`.Evaluated.cs`, `GDScriptWarnings.cs` and `GDScriptAnalysis`'s filtering by a project's settings and `@warning_ignore`)
+port where `gdscript_analyzer.cpp` and `gdscript_parser.cpp` (its export and `@onready` annotations among them) push them,
+the same at 4.7.2-stable but where its words differ, which an API of 4.7's is given, with `gdscript_warning.cpp` and
+`gdscript_warning.h`'s names, default levels and words; `.Evaluated.cs` also ports the argument checks and words of
+`core/variant/variant_utility.cpp`'s floor, ceil, round, abs, sign, snapped and lerp, of
+`modules/gdscript/gdscript_utility_functions.cpp`'s len, char and ord, and `core/math/color.cpp`'s `html_is_valid` and
+`find_named_color`'s reading of a colour's name, at both commits.
 `GDScript/GodotRenames.json` is the table of the Godot 3 names Godot 4 renamed that the analyzer's errors hint at (its
 `renamed_in_godot_4_hint`), written by `just godot-renames` (`tools/godot-renames.py`) from
 `editor/project_upgrade/renames_map_3_to_4.cpp` at the same commit: the maps `check_for_renamed_identifier` reads.

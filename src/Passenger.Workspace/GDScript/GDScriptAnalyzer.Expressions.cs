@@ -1410,6 +1410,10 @@ public sealed partial class GDScriptAnalyzer
                 if (Engine?.Builtins.ContainsKey(name.Name) == true && name.Name != "Nil" || IsBuiltinName(name.Name))
                 {
                     Paint(context, name, ColourOf(GDScriptType.Builtin(name.Name)));
+                    if (name.Name == "Color")
+                    {
+                        ColorCodeError(call, context);
+                    }
                     return GDScriptType.Builtin(name.Name);
                 }
                 if (Member(context.Class, name.Name) is { Kind: "func" } own)
@@ -1426,6 +1430,7 @@ public sealed partial class GDScriptAnalyzer
                 {
                     context.Analysis.Types[name] = GDScriptType.Builtin("Callable");
                     Paint(context, name, GDScriptColour.Method);
+                    EvaluatedCallErrors(call, name.Name, context);
                     return FromApi(function.Returns);
                 }
                 if (name.Name == "Object" && context.Analysis.Tree is not null && Engine is not null && Member(context.Class, "Object") is null)
