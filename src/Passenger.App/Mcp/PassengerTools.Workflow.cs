@@ -210,6 +210,13 @@ public sealed partial class PassengerTools
     {
         VcsController vcs = Session.Vcs;
         await vcs.Opened;
+        // A branch named that git has not, nor a remote's of that name it would track, is said in words an agent goes on from.
+        if (!create && vcs.Repository is { } repository && await repository.RefNamesAsync() is { Count: > 0 } refs
+            && !refs.Any(r => r.Name == branch || r.Kind == RefKind.Remote && r.Name.EndsWith($"/{branch}", StringComparison.Ordinal)))
+        {
+            string[] locals = [.. refs.Where(r => r.Kind == RefKind.Local).Select(r => r.Name)];
+            throw new InvalidOperationException($"No branch {branch} is here: create true makes it from the head; the local branches are {AgentAnswers.Named(locals, "branch", "vcs_log lists every branch's commits")}");
+        }
         AgentCall.Say($"Checking out {branch}");
         VcsOutcome switched = create ? await vcs.NewBranchAsync(branch) : await vcs.CheckoutAsync(branch);
         if (switched.Problem is { } failed)

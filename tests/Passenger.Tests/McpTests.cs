@@ -1234,6 +1234,22 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"ide_action of an action there is not answered: {Text(refused)}");
     }
 
+    /// <summary>An agent's checkout of a branch the repository has not is refused naming create, which makes it, and the
+    /// branches there are, never git's "fatal: invalid reference"; the head stays where it was.</summary>
+    [Fact]
+    public async Task An_agents_checkout_of_a_branch_there_is_not_names_create_and_the_branches_there_are()
+    {
+        string repository = TestFolders.Create("mcp-nobranch-");
+        DeleteAtEnd(repository);
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\n");
+        await TestGit.InitAsync(repository);
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        CallToolResult refused = await Result(client, McpTools.VcsCheckout, new() { ["branch"] = "nowhere" });
+        Assert.True(refused.IsError == true && Text(refused).Contains("No branch nowhere is here: create true makes it from the head; the local branches are main", StringComparison.Ordinal),
+            $"A checkout of a branch there is not answered: {Text(refused)}");
+        Assert.Equal("main", (await TestGit.RunAsync(repository, "branch", "--show-current")).Trim());
+    }
+
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
     /// vcs_commit is refused naming the file, and nothing is committed.</summary>
     [Fact]
