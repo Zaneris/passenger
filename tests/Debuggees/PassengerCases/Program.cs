@@ -475,6 +475,17 @@ internal static class Rows
 		{
 			Console.WriteLine($"stepped {step}");
 		}
+		List<string> outerList = ["grown"];
+		for (int round = 0; round < 1; round++)
+		{
+			List<string> innerList = ["watered"];
+			Func<string> closes = () =>
+			{
+				string seen = $"{outerList.Count} {innerList.Count} {round}";
+				return seen;
+			};
+			Console.WriteLine($"closed {closes()}");
+		}
 	}
 
 	private static IEnumerable<int> Steps(int count)

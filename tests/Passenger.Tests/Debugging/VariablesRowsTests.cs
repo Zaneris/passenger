@@ -70,6 +70,22 @@ public class VariablesRowsTests(ITestOutputHelper testOutputHelper)
         static string Listed(List<DapVariable> rows) => string.Join(", ", rows.Select(v => $"{v.Name} = {v.Value}"));
     }
 
+    /// <summary>A lambda's captures are listed in its frame, those of its own closure and of the closure it is nested in,
+    /// though showing one evaluates in the program (a list's Count, by its DebuggerDisplay), which voids the closure read
+    /// before it: no row fails as a value the evaluation left unusable.</summary>
+    [Fact]
+    public async Task A_lambdas_captures_through_its_closures_parent_are_listed_where_showing_one_evaluates_in_the_program()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await Launch(host, "return seen;");
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        List<DapVariable> locals = await host.LocalsAsync(stop);
+        string listed = string.Join(", ", locals.Select(v => $"{v.Name} = {v.Value}"));
+        Assert.True(locals.Any(v => v is { Name: "innerList", Value: "Count = 1" }) && locals.Any(v => v is { Name: "outerList", Value: "Count = 1" })
+            && locals.Any(v => v is { Name: "round", Value: "0" }), $"The lambda's frame lists {listed}, where innerList and outerList (Count = 1) and round = 0 are to be listed");
+        Assert.DoesNotContain("zombie", host.EngineLog(), StringComparison.Ordinal);
+    }
+
     /// <summary>Each row's evaluate name is C# the evaluator takes, reading the row's own value: a HashSet's elements, a
     /// dictionary's entry and its Key and Value, a list's element (by its index in the list, which Set Value writes) and the
     /// members of its raw view, an explicit interface implementation's among them, and a tuple's item; Raw View, a row the

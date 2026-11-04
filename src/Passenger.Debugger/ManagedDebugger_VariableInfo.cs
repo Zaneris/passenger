@@ -94,14 +94,19 @@ public partial class ManagedDebugger
             }
         }
 
-        IMetaDataImport metadataImport = objectValue.Class.Module.GetMetaDataInterface<IMetaDataImport>();
-        IEnumerable<mdFieldDef> fields = metadataImport.EnumFields(objectValue.Class.Token);
+        // Read again: showing a member above may have evaluated in the program, which voids the object read before it.
+        if (closureValue.UnwrapDebugValueToObjectOrNull() is not { } closure)
+        {
+            return;
+        }
+        IMetaDataImport metadataImport = closure.Class.Module.GetMetaDataInterface<IMetaDataImport>();
+        IEnumerable<mdFieldDef> fields = metadataImport.EnumFields(closure.Class.Token);
         foreach (mdFieldDef field in fields)
         {
             (string szField, mdTypeDef pClass, CorFieldAttr pdwAttr, nint ppvSigBlob, int pcbSigBlob, CorElementType pdwCPlusTypeFlag, nint ppValue, int pcchValue) fieldProps = metadataImport.GetFieldProps(field);
             if (GeneratedNameParser.GetKind(fieldProps.szField) is GeneratedNameKind.DisplayClassLocalOrField)
             {
-                ICorDebugValue parentClosureValue = objectValue.GetFieldValue(objectValue.Class, field);
+                ICorDebugValue parentClosureValue = closure.GetFieldValue(closure.Class, field);
                 await AddClosureChainMembers(parentClosureValue, threadId, stackDepth, result);
                 break; // only one parent link per closure class
             }
