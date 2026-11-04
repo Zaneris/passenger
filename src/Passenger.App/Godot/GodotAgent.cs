@@ -15,6 +15,10 @@ public static partial class GodotAgent
     /// or why not.</summary>
     public const string Said = "passenger:said";
 
+    /// <summary>The message it sends as it leaves the game's tree, freed by the game or taken out of it: it answers nothing
+    /// it was asked and has yet to answer, nor anything sent to it after.</summary>
+    public const string Gone = "passenger:gone";
+
     /// <summary>The message it sends as the game, holding the keys in Passenger's Game window, hears the keys that hand them
     /// back (<see cref="KeysBack"/>'s call set them).</summary>
     public const string KeysAsked = "passenger:keys";

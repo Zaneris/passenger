@@ -4,6 +4,7 @@ extends Node
 ## a passenger:said message of the ask, whether it was done, and what it came to.
 
 const SAID := "passenger:said"
+const GONE := "passenger:gone"
 const SHIFT := 1
 const CTRL := 2
 const ALT := 4
@@ -69,6 +70,11 @@ func _input(event: InputEvent) -> void:
     if modifiers == _keys_back_modifiers:
         get_viewport().set_input_as_handled()
         EngineDebugger.send_message("passenger:keys", [])
+
+
+## Said as the helper leaves the game's tree, freed or taken out: what it was asked and has yet to answer, it never will.
+func _exit_tree() -> void:
+    EngineDebugger.send_message(GONE, [])
 
 
 func _say(ask: int, done: bool, data: Array) -> void:

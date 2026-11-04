@@ -185,6 +185,44 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
             Assert.False(Run(window).Contains("passenger_agent.gd", StringComparison.Ordinal), $"Passenger's helper raised errors in the game:\n{Run(window)}");
             Assert.True(running.CallsBesideMoved == 0,
                 $"{Plural.Of(running.CallsBesideMoved, "call")} of the helper's went beside the scene the game's tree named before its count of nodes changed, to the helper the game had freed, which never answers them");
+            Assert.True(running.Unanswered == 0, $"{Plural.Of(running.Unanswered, "question")} of the game's waited out the whole of an answer's limit, a call the freed helper never answered among them");
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>A call of the helper's sent as the game frees it, in a frame that adds a node in its place so the game's count
+    /// of nodes stands, fails at once saying the helper was freed, or is answered by the helper brought in again once
+    /// Passenger heard it go; no question of the game's waits out the whole of an answer's limit, a count asked after is
+    /// answered, and the values shown in main.gd climb on.</summary>
+    [AvaloniaFact]
+    public void A_call_sent_as_the_game_frees_the_helper_fails_at_once_saying_so_though_its_count_of_nodes_stands()
+    {
+        MainWindow window = Open();
+        try
+        {
+            GodotGame running = Start(window);
+            window.OpenFile(Path.Combine(game.Folder, "main.gd"));
+            OpenDocument script = window.EditorArea.Active!;
+            int frames = Array.FindIndex(File.ReadAllText(Path.Combine(game.Folder, "main.gd")).Split('\n'), l => l.StartsWith("var frames", StringComparison.Ordinal));
+            Ui.WaitFor(() => Frames(script, frames) is not null, () => $"the frame count's value in main.gd ({Hints(script)}; {window.GodotValues.Unread})", TimeSpan.FromMinutes(1));
+
+            GodotNode main = Ui.AwaitPumped(running.SceneTreeAsync(), "the game's tree", TimeSpan.FromMinutes(1)).All().First(n => n.Name == "Main");
+            Ui.AwaitPumped(running.SetPropertyAsync(main.Id, "swap_helper", true), "Main told to free the helper, a node added in its place", TimeSpan.FromMinutes(1));
+            Ui.PumpUntil(() => Run(window).Contains("helper swapped", StringComparison.Ordinal), "the game to free the helper", TimeSpan.FromMinutes(1));
+            long? shown = Frames(script, frames);
+            Task<List<object?>> sent = running.AskAsync("count");
+            Ui.PumpUntil(() => sent.IsCompleted, "the count sent as the game freed the helper to be answered or refused", TimeSpan.FromMinutes(1));
+            string said = sent.IsCompletedSuccessfully ? "answered" : sent.Exception?.InnerException?.Message ?? "cancelled";
+            Assert.True(sent.IsCompletedSuccessfully || said.Contains("freed Passenger's helper before it answered its count", StringComparison.Ordinal),
+                $"The count sent as the game freed the helper was refused, but not for the helper's going: {said}");
+            Assert.NotNull(Ui.AwaitPumped(running.TryCountAsync(), "a count once the helper was brought in again", TimeSpan.FromMinutes(1)));
+            Ui.WaitFor(() => Frames(script, frames) > shown, () => $"main.gd's frame count to climb past {shown} once the helper was brought in again ({Hints(script)}; {window.GodotValues.Unread})",
+                TimeSpan.FromMinutes(1));
+            Assert.True(running.Unanswered == 0, $"{Plural.Of(running.Unanswered, "question")} of the game's waited out the whole of an answer's limit (the count sent: {said})");
             Stop(window);
         }
         finally
@@ -328,8 +366,9 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
     }
 
     /// <summary>A Godot 4 project of GDScript alone named Arena at 20 frames a second: its Main node prints each frame it
-    /// runs, frees Passenger's helper once its free_helper is set, and changes to next.tscn (a node running main.gd from
-    /// <see cref="NextFrames"/>) once its next_scene is; under it a ColorRect Box at 100,100 to 150,150 with a
+    /// runs, frees Passenger's helper once its free_helper is set (once its swap_helper is, adding a node in its place, so
+    /// the count of nodes stands), and changes to next.tscn (a node running main.gd from <see cref="NextFrames"/>) once its
+    /// next_scene is; under it a ColorRect Box at 100,100 to 150,150 with a
     /// script of its own, and a 3D world whose camera looks at a Crate's collision box from ten units away, the Crate a group
     /// in Godot's editor with a script of its own.</summary>
     public sealed class Game
@@ -341,11 +380,13 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
             Homes = GodotTests.Game.Home(Path.Combine(Folder, "..", Path.GetFileName(Folder) + "-home"));
             File.WriteAllText(Path.Combine(Folder, "project.godot"), "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Arena\"\n"
                 + "run/main_scene=\"res://main.tscn\"\nconfig/features=PackedStringArray(\"4.7\")\nrun/max_fps=20\n");
-            File.WriteAllText(Path.Combine(Folder, "main.gd"), "extends Node\n\nvar frames := 0\nvar free_helper := false\nvar next_scene := \"\"\n\n\n"
+            File.WriteAllText(Path.Combine(Folder, "main.gd"), "extends Node\n\nvar frames := 0\nvar free_helper := false\nvar swap_helper := false\nvar next_scene := \"\"\n\n\n"
                 + "func _ready() -> void:\n\tPerformance.add_custom_monitor(\"Game/Frames\", func(): return frames)\n\n\n"
                 + "func _process(_delta: float) -> void:\n\tframes += 1\n"
                 + "\tprint(\"frame \", frames)\n\tif free_helper:\n\t\tfree_helper = false\n\t\tvar helper := get_tree().root.get_node_or_null(\"PassengerAgent\")\n"
                 + "\t\tif helper != null:\n\t\t\thelper.queue_free()\n\t\t\tprint(\"helper freed\")\n"
+                + "\tif swap_helper:\n\t\tswap_helper = false\n\t\tvar swapped := get_tree().root.get_node_or_null(\"PassengerAgent\")\n"
+                + "\t\tif swapped != null:\n\t\t\tswapped.queue_free()\n\t\t\tadd_child(Node.new())\n\t\t\tprint(\"helper swapped\")\n"
                 + "\tif next_scene != \"\":\n\t\tvar going := next_scene\n\t\tnext_scene = \"\"\n\t\tPerformance.remove_custom_monitor(\"Game/Frames\")\n"
                 + "\t\tget_tree().change_scene_to_file(going)\n");
             File.WriteAllText(Path.Combine(Folder, "next.tscn"), $$"""

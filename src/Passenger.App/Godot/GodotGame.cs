@@ -595,6 +595,11 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             case GodotAgent.Said when message.Data is List<object?> { Count: >= 2 } said && said[0] is long ask:
                 agentAsked.GetValueOrDefault(ask)?.TrySetResult(said);
                 break;
+            case GodotAgent.Gone:
+                // The game's count of nodes may never show it: come and gone within one beat of its monitors, or a node made in its place.
+                beside = null;
+                Freed();
+                break;
             case GodotAgent.KeysAsked:
                 KeysAsked?.Invoke(this, EventArgs.Empty);
                 break;
@@ -869,6 +874,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         catch (TimeoutException)
         {
             UnawaitedWork.Dismiss(asked);
+            Unanswered++;
             if (Debugged is { State: Debugging.DebugState.Paused })
             {
                 throw new LiveAppException($"{Name} is paused, and answers once it runs");
@@ -988,6 +994,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         // Brought in only once the game knows the path its script is set through, or the script goes nowhere.
         if (asked is ({ } lacking, int since, _) && !lacking.Children.Any(GodotAgent.Is) && (bringing is null || (bringing.IsCompleted && since == brought)))
         {
+            Freed();
             bringing = BringAsync();
         }
         if (bringing is { } coming)
@@ -1003,7 +1010,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             }
         }
         long ask = ++asks;
-        TaskCompletionSource<List<object?>> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<List<object?>> answer = new(call, TaskCreationOptions.RunContinuationsAsynchronously);
         agentAsked[ask] = answer;
         try
         {
@@ -1038,6 +1045,21 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             agentAsked.Remove(ask);
         }
     }
+
+    /// <summary>The helper's calls still waiting for their answers failed at once, saying why: the helper said it left the
+    /// game's tree, or the tree shows it gone with no other brought in since that tree was asked for, so the helper they were
+    /// sent to answers none of them.</summary>
+    private void Freed()
+    {
+        foreach (TaskCompletionSource<List<object?>> waiting in agentAsked.Values)
+        {
+            waiting.TrySetException(new LiveAppException($"{Name} freed Passenger's helper before it answered its {waiting.Task.AsyncState}: the next call brings it in again"));
+        }
+    }
+
+    /// <summary>The questions of the game's that waited out the whole of an answer's limit, which a game that runs and a
+    /// helper that is there never leave unanswered.</summary>
+    public int Unanswered { get; private set; }
 
     /// <summary>The scene the helper last answered beside, and the changes of the game's count of nodes heard when the tree
     /// naming it came: while none has come since, the next ask goes there without asking for the tree, which a game of many
