@@ -368,9 +368,9 @@ a new name, and `just site-shots` retakes its images.
   through `AgentAnswers` and says what it left out. `save_all` stays a tool of its own, never asked about on a person's
   window (#278). `debug_evaluate`, `debug_input` and `breakpoint_set` are `Destructive` and ask the person the first
   time; every question closes unanswered after 2 minutes; calls send progress every 10 s (OpenCode gives up after 60 s).
-- **An await of a task the window's thread completes continues on the thread pool**, even with ConfigureAwait(false): what
-  must happen where the answer lands is an awaited `ContinueWith(…, ExecuteSynchronously)`; an await of work that may have
-  ended continues inline, so a view filling on its own turn awaits with `ConfigureAwaitOptions.ForceYielding`.
+- **An await of a task the window's thread completes continues on the thread pool**, even with ConfigureAwait(false):
+  what must happen where the answer lands is an awaited `ContinueWith(…, ExecuteSynchronously)`; an await of work that
+  may have ended continues inline, so a view filling on its own turn awaits with `ConfigureAwaitOptions.ForceYielding`.
 - **Work every window shares** (a cache of tasks, a process-wide gate) runs on the thread pool, never the asking thread:
   a headless window test's thread never runs again once its test is over.
 - **A window the IDE opens of its own accord** (a notification, an agent's question) shows with `ShowActivated` false,
