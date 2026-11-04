@@ -1837,7 +1837,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         Godot.GodotGame? game = Session.Game is { Debugged: not null } debugged ? debugged : null;
         DateTime until = DateTime.UtcNow + limit;
         AgentCall.Say($"Debugging: waiting up to {limit.TotalSeconds:0} s for a stop, the program's end, its UI or its host's start");
-        Func<bool> going = () => Session.Debug.Session is { State: DebugState.Running or DebugState.Starting };
+        // Running, its GDScript or C# beside it running too: a game stopped in either language is stopped.
+        Func<bool> going = () => Session.Debug.Session is { State: DebugState.Running or DebugState.Starting } chosen && !Companions(chosen).Any(b => b.State == DebugState.Paused);
         HeardServing serving = HeardServing.Debugged(Session.Debug);
         // A game's frames reach a breakpoint in its files once the debugger binds it, seconds after it connects: waited for as any stop.
         bool breaks = game is not null && Session.Debug.Breakpoints.All.Any(b => b is { Enabled: true, Suspend: true } && PathNames.IsUnder(b.Path, game.Folder));
@@ -2303,9 +2304,24 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             AgentCall.Say($"The program runs: waiting up to {limit.TotalSeconds:0} s for it to stop or end");
         }
         DebugSession? going = session ?? Session.Debug.Session;
-        await When(() => going is not { State: DebugState.Running or DebugState.Starting }, limit, cancel, StateOf(going));
-        await StopReadAsync(going, cancel);
-        return await DebugSnapshotAsync(going);
+        // A Godot game's other language stops for it too: its GDScript beside its C#, or the C# its GDScript is beside.
+        List<DebugSession> beside = [.. Companions(going)];
+        await When(() => going is not { State: DebugState.Running or DebugState.Starting } || beside.Any(b => b.State == DebugState.Paused), limit, cancel,
+            [StateOf(going), .. beside.Select(StateOf)]);
+        DebugSession? stopped = going is { State: DebugState.Running or DebugState.Starting } && beside.FirstOrDefault(b => b.State == DebugState.Paused) is { } other ? other : going;
+        await StopReadAsync(stopped, cancel);
+        return await DebugSnapshotAsync(stopped);
+    }
+
+    /// <summary>The live sessions debugged beside a session as one program: a Godot game's GDScript tab and its C# tab, each
+    /// the other's companion.</summary>
+    private IEnumerable<DebugSession> Companions(DebugSession? session)
+    {
+        if (session is null || Session.Debug.Tabs.FirstOrDefault(t => t.Session == session) is not { } tab)
+        {
+            return [];
+        }
+        return Session.Debug.Tabs.Where(t => t != tab && t.IsLive && t.Session is not null && (t.Companion == tab || tab.Companion == t)).Select(t => t.Session!);
     }
 
     /// <summary>Waits for the Debug window to have read the stop a session is paused at (described, its frames listed), which

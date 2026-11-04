@@ -430,6 +430,33 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
         await Call(client, McpTools.Stop);
     }
 
+    /// <summary>A stop in the game's other language answers the call that let the game go, as one in its own does: debug_start
+    /// with a breakpoint in GDScript alone answers with the GDScript stop, debug_continue of it with a stop in the C#, and
+    /// debug_continue of that with the GDScript stop again, none of them waiting out its time and saying the game runs.</summary>
+    [Fact]
+    public async Task Debug_start_and_debug_continue_answer_with_a_stop_in_the_games_other_language()
+    {
+        await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false, environment: Homes);
+        int tick = Array.FindIndex(GodotGameFolder.Ticker.Split('\n'), l => l.Contains("ticks += 1", StringComparison.Ordinal)) + 1;
+        int frame = Array.FindIndex(GodotGameFolder.Script.Split('\n'), l => l.Contains("frames++;", StringComparison.Ordinal)) + 1;
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "ticker.gd", ["line"] = tick });
+        JsonElement stop = await Call(client, McpTools.DebugStart, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
+        Stopped(stop, $"ticker.gd:{tick}:", "debug_start with a breakpoint in GDScript alone");
+
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "ticker.gd", ["line"] = tick, ["remove"] = true });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Main.cs", ["line"] = frame });
+        Stopped(await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 120 }), $"Main.cs:{frame}:", "debug_continue of the GDScript stop with a breakpoint in C#");
+
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Main.cs", ["line"] = frame, ["remove"] = true });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "ticker.gd", ["line"] = tick });
+        Stopped(await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 120 }), $"ticker.gd:{tick}:", "debug_continue of the C# stop with a breakpoint in GDScript");
+        await Call(client, McpTools.Stop);
+
+        static void Stopped(JsonElement answer, string at, string what) =>
+            Assert.True(answer.GetProperty("state").GetString() == "paused" && answer.GetProperty("location").GetString()?.StartsWith(at, StringComparison.Ordinal) == true,
+                $"{what} did not answer with the stop at {at}: {answer}");
+    }
+
     /// <summary>The user folders a Godot editor the agent's Passenger starts for GDScript keeps, the run's.</summary>
     private Dictionary<string, string?> Homes => new() { [Passenger.App.Godot.GodotUserFolders.HomeVariable] = game.Folder + "-home" };
 }
