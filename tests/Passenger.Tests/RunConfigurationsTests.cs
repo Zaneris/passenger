@@ -394,6 +394,31 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
+    /// <summary>A generated configuration no one has changed, its logs and traces turned on as an agent's run turns them on
+    /// (<see cref="RunConfigurations.Collect"/>), collects them from then on, kept with the folder over its launch profile.</summary>
+    [AvaloniaFact]
+    public void A_generated_configurations_logs_and_traces_turned_on_for_an_agent_are_kept_with_the_folder()
+    {
+        Restored();
+        Write("Hello/Properties/launchSettings.json", Greet("Hi"));
+        MainWindow window = Keeping();
+        Assert.False(Assert.Single(window.Configurations).Telemetry, "A generated configuration collects logs and traces unasked");
+        Assert.True(window.Session.Configurations.Collect("Hello: Greet", true));
+        Assert.True(Assert.Single(window.Configurations).Telemetry, "Logs and traces turned on for an agent's run left its configuration collecting nothing");
+        window.Close();
+
+        MainWindow again = Keeping();
+        try
+        {
+            RunConfiguration kept = Assert.Single(again.Configurations);
+            Assert.True(kept.Generated && kept.Telemetry, $"Logs and traces turned on for {kept.Name} were not kept with the folder");
+        }
+        finally
+        {
+            again.Close();
+        }
+    }
+
     /// <summary>On Windows Write to Launch Profile into a launchSettings.json another program holds waits for it: while it
     /// is held the status bar says it waits for that file and the dialog never says it was written, and once the program
     /// lets go the arguments are in the profile and the dialog says so.</summary>

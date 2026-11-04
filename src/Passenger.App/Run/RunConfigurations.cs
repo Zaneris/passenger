@@ -129,7 +129,8 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         }
         if (found.Telemetry != on)
         {
-            RunConfiguration changed = found with { Telemetry = on };
+            // A generated one changed for the first time has no source yet: what it is now is what its project makes.
+            RunConfiguration changed = found with { Telemetry = on, Source = found.Generated ? found.Source ?? found : null };
             Set(found.Generated ? own : [.. own.Select(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase) ? changed : c)],
                 found.Generated ? [changed] : [], null, projects);
         }
