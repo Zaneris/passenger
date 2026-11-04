@@ -206,6 +206,18 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's rename of a symbol to the name it has says so and changes nothing, never "Renamed".</summary>
+    [Fact]
+    public async Task An_agents_rename_to_the_name_a_symbol_has_says_it_has_it_and_changes_nothing()
+    {
+        await TakeFolderAsync();
+        Shop(("Calc.cs", Calc), ("Till.cs", Till));
+        await using McpClient client = await Start(["--mcp", Folder]);
+        string said = (await Call(client, McpTools.Rename, new() { ["symbol"] = "Shop.Calc.Scale", ["newName"] = "Scale" })).GetString()!;
+        Assert.True(said == "Scale is its name already: nothing was renamed", $"A rename of Scale to Scale answered: {said}");
+        Assert.Equal(Till, File.ReadAllText(Path.Combine(Folder, "Till.cs")));
+    }
+
     [Fact]
     public async Task An_agent_that_writes_a_file_and_at_once_changes_a_signature_or_renames_what_it_calls_has_the_change_made_in_what_it_wrote()
     {

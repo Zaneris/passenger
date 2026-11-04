@@ -524,6 +524,10 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return RefactorOutcome.Refused($"'{name}' is not a C# identifier, so {old} keeps its name");
         }
+        if (component is null && context.WebOf(document) is null && name == old)
+        {
+            return new RefactorOutcome($"{old} is its name already: nothing was renamed", null, [], []);
+        }
         // The open files as the request went: what is typed meanwhile carries the answer on.
         using Asked asked = WorkspaceEdits.Track(context.Editors);
         // A Godot script's member by any of Godot's names for it is renamed from the code's own, its other names following.
