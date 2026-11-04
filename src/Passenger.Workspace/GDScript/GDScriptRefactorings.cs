@@ -31,7 +31,8 @@ public sealed record GDScriptParameterChange(int From, string Name, string Type,
 
 /// <summary>GDScript's refactorings over Passenger's reading of the scripts (<see cref="GDScriptAnalyzer"/>), each the edits of
 /// the scripts it changes, or refused with why and the places where it cannot tell what a change would do: Extract Variable
-/// and Extract Function, Inline Variable and Inline Function, Change Signature, Safe Delete and Introduce Parameter. A
+/// and Extract Function, Inline Variable and Inline Function, Change Signature, Safe Delete, Introduce Parameter, Move and
+/// Rename, and a name's places for Find Usages. A
 /// member's uses are the names the analyzer resolves to it in every script; a call by a string (<c>call("f")</c>) is one
 /// too, and one whose name is built at run time, or a call on a value of a type it cannot read, refuses. Pure.</summary>
 public static partial class GDScriptRefactorings

@@ -9,10 +9,12 @@ using Passenger.Workspace.GDScript;
 namespace Passenger.App.CSharp;
 
 /// <summary>A GDScript's answers from Passenger's own reading of it (<see cref="GodotScriptTypes"/>), first whether or not
-/// Godot's server for it runs: completion (<see cref="CompleteAsync"/>), the hover card's declaration and type, Go to
-/// Declaration within the project's scripts, and a node's C# script's members (<see cref="GodotCSharpMembers"/>), which
-/// Godot's server never reads. Where Passenger's reading has no answer, Godot's server is asked where it serves.</summary>
-internal sealed partial class GDScriptAssist(AssistContext context, CodeCompletion completion, ParameterInfo parameters, CodeNavigation navigation) : LanguageAssist
+/// Godot's server for it runs: completion (<see cref="CompleteAsync"/>), the cards, Parameter Info, Go to Declaration,
+/// Find Usages and Rename across the project's scripts, its scenes and C# (<see cref="CodeActions.GDScriptUsesAsync"/>),
+/// and a node's C# script's members (<see cref="GodotCSharpMembers"/>), which Godot's server never reads. Where Passenger's
+/// reading has no answer, Godot's server is asked where it serves.</summary>
+internal sealed partial class GDScriptAssist(AssistContext context, CodeCompletion completion, ParameterInfo parameters, CodeNavigation navigation, CodeActions actions)
+    : LanguageAssist
 {
     /// <summary>Whether a file is a GDScript Passenger reads.</summary>
     private bool Answers(OpenDocument? document) =>
@@ -347,6 +349,44 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
         {
             navigation.Go(declared, offset);
         }
+        return true;
+    }
+
+    /// <summary>Find Usages of a script's member or local by Passenger's reading, the places that may use it unseen said
+    /// beside them; Godot's server's for any other name where it serves.</summary>
+    public override async Task<bool> UsagesAsync(int offset, bool inPopup)
+    {
+        if (context.Editors.Active is not { } shown || !Answers(shown))
+        {
+            return false;
+        }
+        using ChangeTracker asked = new(shown.Text);
+        (IReadOnlyList<LspLocation> places, IReadOnlyList<GDScriptPlace> unsure)? found = await actions.GDScriptUsesAsync(shown, offset);
+        if (found is not ({ } places, { } unsure))
+        {
+            if (Served(shown))
+            {
+                return false;
+            }
+            context.Say("Find Usages finds nothing here: Passenger reads no member or local of a script at the caret, and Godot's server is not serving the script yet");
+            return true;
+        }
+        TextSnapshot text = shown.Text.Snapshot;
+        string name = text.GetText(TextNavigation.WordAt(text, Math.Min(asked.MapOffset(offset), text.Length)));
+        string? note = unsure.Count == 0 ? null
+            : $"{Plural.Of(unsure.Count, "place")} may use it where Passenger can't see whose member is read: {GDScriptRefactorings.Places(unsure)}";
+        context.ShowUsages($"Usages of {(name.Length > 0 ? name : "symbol")}", places, inPopup ? asked.MapOffset(offset) : null, note);
+        return true;
+    }
+
+    /// <summary>Rename at the caret of a script, by Passenger's reading first (<see cref="CodeActions.ShowGDScriptRename"/>).</summary>
+    public override bool Rename(int caret)
+    {
+        if (context.Editors.Active is not { } shown || !Answers(shown))
+        {
+            return false;
+        }
+        actions.ShowGDScriptRename();
         return true;
     }
 

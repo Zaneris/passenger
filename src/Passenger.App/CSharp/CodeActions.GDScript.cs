@@ -239,6 +239,15 @@ internal sealed partial class CodeActions
                 }
                 break;
         }
+        return await ApplyGDScriptAsync(title, title, made, scripts, folder, document, beside);
+    }
+
+    /// <summary>A GDScript refactoring's edits made as one command named <paramref name="command"/>: every script it touches
+    /// parsing clean after it, the files <paramref name="beside"/> the scripts (the scenes' connections, C# strings) with
+    /// them; what it came to, or why not, said as <paramref name="title"/>'s.</summary>
+    private async Task<RefactorOutcome> ApplyGDScriptAsync(string title, string command, GDScriptRefactored made, IReadOnlyList<GDScriptRead> scripts, string? folder,
+        OpenDocument document, List<(string Path, IReadOnlyList<LspTextEdit> Edits)> beside, string? done = null)
+    {
         if (made.Refused is { } refused)
         {
             return RefactorOutcome.Refused($"{title} was not applied: {refused}");
@@ -271,11 +280,146 @@ internal sealed partial class CodeActions
             }));
             files.Add(new RefactoredFile(path, "changed", [.. edits.Select(e => e.Range.Start.Line + 1).Distinct()]));
         }
-        if (await ApplyFileChangesAsync(title, changes) is { } failed)
+        if (await ApplyFileChangesAsync(command, changes) is { } failed)
         {
             return RefactorOutcome.Refused($"{title} was not applied: {failed}");
         }
-        return new RefactorOutcome(files.Count > 1 ? $"{title} done in {files.Count} files" : $"{title} done", null, files, []);
+        string said = done ?? $"{title} done";
+        return new RefactorOutcome(files.Count > 1 ? $"{said} in {files.Count} files" : said, null, files, []);
+    }
+
+
+    /// <summary>Rename of a GDScript's member or local at an offset by Passenger's reading of every script of the project, the
+    /// scenes' connections and C# strings naming a member following it, as one command; null where the name there is no
+    /// member or local of a script's (the engine's, a class's), for the language server.</summary>
+    internal async Task<RefactorOutcome?> GDScriptRenameAsync(OpenDocument document, int offset, string name)
+    {
+        if (!IsGDScript(document) || await GDScriptsAsync(document) is not ({ } scripts, { } own, var folder))
+        {
+            return null;
+        }
+        string old = TextNavigation.WordAt(document.Text.Snapshot, offset) is { Length: > 0 } word ? document.Text.Snapshot.GetText(word) : name;
+        string title = "Rename";
+        if (document.IsReadOnly)
+        {
+            return RefactorOutcome.Refused($"{title} was not applied: {Refusals.ReadOnly(document.Name)}");
+        }
+        List<(string Path, IReadOnlyList<LspTextEdit> Edits)> beside = [];
+        GDScriptRefactored made;
+        if (GDScriptRefactorings.MemberAt(scripts, own, offset) is { } target)
+        {
+            made = GDScriptRefactorings.Rename(scripts, target, name);
+            if (made.Refused is null && folder is not null)
+            {
+                beside.AddRange(await BesideAsync(document, folder, target, d => context.Languages.CSharp.GodotScriptRenameAsync(d, target.Start, name)));
+            }
+        }
+        else if (GDScriptRefactorings.RenameLocal(own, offset, name) is { } local)
+        {
+            made = local;
+        }
+        else
+        {
+            return null;
+        }
+        return await ApplyGDScriptAsync(title, $"Rename {old} to {name}", made, scripts, folder, document, beside, "Renamed");
+    }
+
+    /// <summary>What a member's script's document answers beside the scripts, asked of the script declaring it, lent where
+    /// no tab shows it.</summary>
+    private async Task<T> BesideAsync<T>(OpenDocument document, string folder, GDScriptTarget target, Func<OpenDocument, Task<T>> ask)
+    {
+        if (GodotScenes.FileOf(folder, target.Script) is not { } file || PathNames.Same(file, document.Path))
+        {
+            return await ask(document);
+        }
+        (OpenDocument declaring, IDisposable hold) = context.Editors.Lend(file);
+        using (hold)
+        {
+            return await ask(declaring);
+        }
+    }
+
+    /// <summary>Find Usages of a GDScript's member or local at an offset by Passenger's reading of every script of the
+    /// project, a member's scenes' connections and C# strings with them, as places for the Find window, with the places
+    /// that may use it unseen; null where the name there is no member or local of a script's.</summary>
+    internal async Task<(IReadOnlyList<LspLocation> Places, IReadOnlyList<GDScriptPlace> Unsure)?> GDScriptUsesAsync(OpenDocument document, int offset)
+    {
+        if (!IsGDScript(document) || await GDScriptsAsync(document) is not ({ } scripts, { } own, var folder))
+        {
+            return null;
+        }
+        GDScriptTarget? target = GDScriptRefactorings.MemberAt(scripts, own, offset);
+        GDScriptNamePlaces? found = target is not null ? GDScriptRefactorings.PlacesOf(scripts, target) : GDScriptRefactorings.LocalPlacesOf(own, offset);
+        if (found is null)
+        {
+            return null;
+        }
+        List<LspLocation> places = [];
+        foreach (IGrouping<string, (string Script, int Start, int End)> script in found.Places.GroupBy(p => p.Script, StringComparer.Ordinal))
+        {
+            GDScriptRead read = scripts.First(s => s.Script == script.Key);
+            string path = folder is not null && GodotScenes.FileOf(folder, read.Script) is { } file ? file : document.Path;
+            TextSnapshot text = TextSnapshot.From(read.Text);
+            foreach ((_, int start, int end) in script)
+            {
+                LspPosition from = ServerPlaces.ServerPositionOf(text, PositionOf(text, start));
+                LspPosition to = ServerPlaces.ServerPositionOf(text, PositionOf(text, end));
+                places.Add(new LspLocation(DocumentUris.FromPath(path), new LspRange(from, to)));
+            }
+        }
+        if (target is not null && folder is not null)
+        {
+            places.AddRange(await BesideAsync(document, folder, target, d => context.Languages.CSharp.GodotScriptUsesOfAsync(d, target.Start)));
+        }
+        return (places, found.Unsure);
+    }
+
+    private static TextPosition PositionOf(TextSnapshot text, int offset)
+    {
+        int line = text.GetLineFromOffset(Math.Clamp(offset, 0, text.Length));
+        return new TextPosition(line, Math.Clamp(offset, 0, text.Length) - text.GetLineStart(line));
+    }
+
+    /// <summary>Rename at the caret of a GDScript: its box, the name renamed by Passenger's reading where it is a member or
+    /// local of a script's, else by Godot's server where it serves, else said why not.</summary>
+    public void ShowGDScriptRename()
+    {
+        if (context.Editors.Active is not { } document)
+        {
+            return;
+        }
+        TextSnapshot text = Editor.Document.Snapshot;
+        TextRange word = TextNavigation.WordAt(text, Editor.Selections.Primary.Caret);
+        if (word.Length == 0 || !TextNavigation.IsWordChar(text[word.Start]))
+        {
+            return;
+        }
+        RenameBox box = new(text.GetText(word));
+        ChangeTracker opened = new(Editor.Document);
+        popups.ShowModal(box, word.Start, async name =>
+        {
+            int at = opened.MapOffset(word.Start);
+            if (name is null)
+            {
+                return;
+            }
+            Anchor held = HeldAt(document, at);
+            try
+            {
+                RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, patience => RenameSymbolAsync(document, held, name, false, patience));
+                context.Say(made.Problem ?? made.Said);
+            }
+            catch (LanguageServerFailed failed)
+            {
+                context.Failed("Rename", failed);
+            }
+            finally
+            {
+                held.Remove();
+            }
+        });
+        popups.WhenClosed(opened.Dispose);
     }
 
     /// <summary>A selection taken to the whole lines it touches, as Extract Function takes statements.</summary>

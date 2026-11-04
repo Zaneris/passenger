@@ -324,6 +324,18 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     public Task<UsagesFound> Usages(string? path = null, int? line = null, int? column = null, string? symbol = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
+        // A GDScript's member or local is found by Passenger's reading of the project's scripts, before Godot's server serves it.
+        if (Godot.GodotScriptTypes.IsScript(at.Path))
+        {
+            OpenDocument script = await DocumentAsync(at.Path, cancel);
+            if (await window.Assist.GDScriptUsesAsync(script, Offset(script, at.Line, at.Column)) is ({ } scriptUses, { } unsure))
+            {
+                return ByFile(null, await Places(scriptUses, cancel)) with
+                {
+                    Note = unsure.Count > 0 ? $"May use it where Passenger can't see whose member is read: {Passenger.Workspace.GDScript.GDScriptRefactorings.Places(unsure)}" : null,
+                };
+            }
+        }
         Served served = await Serve(at.Path, cancel);
         int offset = Offset(served.Document, at.Line, at.Column);
         string place = $"{Relative(served.Document.Path)}:{at.Line}:{at.Column}";
@@ -446,6 +458,20 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         CancellationToken cancel = default) => OnUi(cancel, () => Patience.RunAsync(Editors.Commands, () => Session.CSharp?.Session, async patience =>
     {
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
+        // A GDScript's member or local is renamed by Passenger's reading of the project's scripts, before Godot's server serves it.
+        if (Godot.GodotScriptTypes.IsScript(at.Path))
+        {
+            OpenDocument script = await DocumentAsync(at.Path, cancel);
+            if (await window.Assist.GDScriptRenameAsync(script, Offset(script, at.Line, at.Column), newName) is { } scriptRenamed)
+            {
+                if (scriptRenamed.Problem is { } refused)
+                {
+                    throw new InvalidOperationException(refused);
+                }
+                await SaveLandedAsync(cancel);
+                return $"{scriptRenamed.Said}: {string.Join(", ", scriptRenamed.Files.Select(f => Relative(f.Path)))}";
+            }
+        }
         Served served = await Serve(at.Path, cancel);
         int offset = Offset(served.Document, at.Line, at.Column);
         if (served is ServerServed { Web.Kind: WebServerKind.Yaml } yaml && global::Passenger.App.Containers.ComposeFiles.IsCompose(yaml.Document.Path)

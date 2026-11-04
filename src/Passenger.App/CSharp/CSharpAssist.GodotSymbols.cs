@@ -157,6 +157,10 @@ internal sealed partial class CSharpAssist
             new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character))))];
     }
 
+    /// <summary>The uses of a GDScript's member at an offset of the script declaring it beside the scripts: the scenes'
+    /// connections and keys, the C# strings naming it (<see cref="GodotScriptNamedAsync"/>), as places for the Find window.</summary>
+    internal Task<IReadOnlyList<LspLocation>> GodotScriptUsesOfAsync(OpenDocument document, int offset) => GodotScriptUsesAsync(document, offset);
+
     /// <summary>The uses of a GDScript's member at an offset (<see cref="GodotScriptNamedAsync"/>), as places for the Find window.</summary>
     private async Task<IReadOnlyList<LspLocation>> GodotScriptUsesAsync(OpenDocument document, int offset) =>
         await GodotScriptNamedAsync(document, offset) is { } named ? [.. named.Scenes, .. named.Code] : [];

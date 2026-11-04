@@ -491,6 +491,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// <summary>A name renamed from a place held on it (<see cref="HeldAt"/>), the server asked where the place is then.</summary>
     private async Task<RefactorOutcome> RenameSymbolAsync(OpenDocument document, Anchor at, string name, bool renameFiles, Patience? patience)
     {
+        // A GDScript's member or local is renamed by Passenger's reading of the project's scripts, its server asked for any other name.
+        if (IsGDScript(document) && await GDScriptRenameAsync(document, at.Offset, name) is { } passengers)
+        {
+            return passengers;
+        }
         if (await context.TakenInAsync(document, () => at.Offset) is { } unloaded)
         {
             return RefactorOutcome.Refused($"Rename was not applied: {unloaded}");
@@ -631,12 +636,17 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     }
 
     /// <summary>A GDScript's member renamed from where its script declares it, as Rename there renames it: the script lent
-    /// with no tab where none shows it, once Godot's server reads it, within <see cref="ScriptServed"/>.</summary>
+    /// with no tab where none shows it, renamed by Passenger's reading, else once Godot's server reads it, within
+    /// <see cref="ScriptServed"/>.</summary>
     private async Task<RefactorOutcome> RenameInScriptAsync(string script, int offset, string name, Patience? patience)
     {
         (OpenDocument document, IDisposable hold) = context.Editors.Lend(script);
         using (hold)
         {
+            if (await GDScriptRenameAsync(document, offset, name) is { } scripted)
+            {
+                return scripted;
+            }
             DateTime until = DateTime.UtcNow + Waits.Of(ScriptServed);
             if (context.WebOf(document) is { Lsp: null })
             {

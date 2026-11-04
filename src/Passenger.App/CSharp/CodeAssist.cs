@@ -82,7 +82,7 @@ public sealed class CodeAssist
         actions = new CodeActions(context, popups, navigation);
         XamlAssist xaml = new(context, popups, completion, actions);
         CSharpAssist csharp = new(context, popups, completion, parameterInfo, navigation, actions, xaml);
-        GDScriptAssist gdscript = new(context, completion, parameterInfo, navigation);
+        GDScriptAssist gdscript = new(context, completion, parameterInfo, navigation, actions);
         parameterInfo.Own = gdscript;
         context.Languages = new LanguageAssists(new HttpAssist(context, navigation), new MSBuildAssist(context, popups, completion), xaml,
             new ComposeAssist(context, popups, completion, navigation, actions), new SettingsAssist(context, completion, navigation),
@@ -542,6 +542,13 @@ public sealed class CodeAssist
 
     /// <summary>Rename at the editor's caret: a C# symbol through the server, a XAML name and a compose file's of its own.</summary>
     public void Rename() => actions.Rename();
+
+    /// <summary>Find Usages of a GDScript's member or local by Passenger's reading (<see cref="CodeActions.GDScriptUsesAsync"/>).</summary>
+    internal Task<(IReadOnlyList<Lsp.LspLocation> Places, IReadOnlyList<Passenger.Workspace.GDScript.GDScriptPlace> Unsure)?> GDScriptUsesAsync(OpenDocument document, int offset) =>
+        actions.GDScriptUsesAsync(document, offset);
+
+    /// <summary>Rename of a GDScript's member or local by Passenger's reading (<see cref="CodeActions.GDScriptRenameAsync"/>).</summary>
+    internal Task<RefactorOutcome?> GDScriptRenameAsync(OpenDocument document, int offset, string name) => actions.GDScriptRenameAsync(document, offset, name);
 
     /// <summary>Why Rename cannot run at the editor's caret; null when it can.</summary>
     public string? WhyNotRename(ActionContext context) =>
