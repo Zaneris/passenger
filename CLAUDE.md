@@ -105,7 +105,8 @@ App and the tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collecti
   containers and the person's own never are.
 - **Colours are tokens** (`Passenger.*` in `Theme/Tokens.axaml`), given in every theme (dark and light, `Harbour.axaml`
   and each look `just themes` writes); Fluent's keys are mapped once in `Theme/FluentKeys.axaml`. The window's typeface
-  in force is the resource `WindowFonts.Key` (Settings › Appearance, the carried hinted Inter by default), Fluent's
+  in force is the resource `WindowFonts.Key` (Settings › Appearance, the carried hinted Inter by default; on macOS a
+  face's own `trak` tracking and the optical size macOS gives words set by `WindowTracking`), Fluent's
   `ContentControlThemeFontFamily` mapped to it, and a control drawing its own words takes `TextElement.GetFontFamily`,
   never a named family (UiRulesTests); `CodeFonts.Key` is the code's. UiRulesTests fails on a colour or non-zero
   CornerRadius written outside `Theme/` (but the content's own) and on an unmapped Fluent key. Passenger gives no access
@@ -303,10 +304,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   through `Git.RunAsync<T>` (over `ChildProcesses.RunAsync<T>`, a failed read ending the child); paths reach git on its
   input (`Git.OnFilesAsync`), never its command line; git's questions (a login, a passphrase) reach the window only
   through `GitAskPass` (`VcsController.AskerOf`), GPG's through Passenger's own gpg with loopback pinentry
-  (`GpgLoopback`, `gpg.program` by `-c`); a commit's signature is read for the Log's rows shown (`CommitSignatures`,
-  `Git.SignaturesAsync`), never by `%G?` in its own read, which runs a verifier per signed commit, a failure to sign
-  said by `SigningFailure`; a git that may ask ends with its folder, its questions refused, waited out within
-  `VcsController.GitEndLimit` (`GitQuestions`), so it takes its lock away.
+  (`GpgLoopback`, `gpg.program` by `-c`; gpgsm's for X.509 too; every gpg found by `GpgPrograms`, Git for Windows' own
+  under `usr\bin`); a commit's signature is read for the Log's rows shown (`CommitSignatures`, `Git.SignaturesAsync`),
+  never by `%G?` in its own read, which runs a verifier per signed commit, a failure to sign said by `SigningFailure`; a
+  git that may ask ends with its folder, its questions refused, waited out within `VcsController.GitEndLimit`
+  (`GitQuestions`), so it takes its lock away.
 - `Passenger.Dap`, `Passenger.Debugger` (+`.Interop`), `Passenger.DebugAdapter`: Passenger's own debugger behind its own
   DAP, in a process of its own under `debugger/`. `Passenger.ContainerTools` (`passenger-tools`) runs inside a Linux
   container, self-contained, carried only in the release's archives.
@@ -347,8 +349,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   `SymbolRow.Leads`; a view laid over the text follows a place gone to through `CodeEditor.WentTo`; a preview holds no
   text (`HoldsText` false); a diff's tab is an `OpenDocument.OfDiff` of no file (`EditorArea.Diffs`), never in
   `Documents` or heard opened or closed, and every diff goes through `MainWindow.ShowDiff` (`DiffContent`, `IDiffHost`:
-  `DiffWindow` or `DiffTab`); a preview beside its text (Markdown's, an SVG's, an HTML file's) is the group's side,
-  followed in `EditorGroup.FollowSidePreview`, its toggle `PreviewAction`, an SVG drawn as a drawing through
+  `DiffWindow` or `DiffTab`; its Find `DiffView.Find`, its place in history `HistoryPlace.Diff`, a closed one asked
+  again through `DiffContent.Again`); a preview beside its text (Markdown's, an SVG's, an HTML file's) is the group's
+  side, followed in `EditorGroup.FollowSidePreview`, its toggle `PreviewAction`, an SVG drawn as a drawing through
   `ZoomedPicture` (`SvgPicture`), never a bitmap, an HTML page in the system's web view (`HtmlPreview`), never made in a
   window nobody sees (`PassengerApp.ShowsNoWindow`; WebView2 refuses a thread that isn't STA). The Markdown preview
   draws only the blocks near its sight (`MarkdownBlocks`), a page kept per tab, a scroll it sets going through `Jump`.
@@ -396,23 +399,25 @@ Projects in `src/`; `find_symbol` finds the rest:
   projects' strings scanned only through the extension's `GodotKinds.WritesAsync` (each document's kept per text
   version), a scene with no C# checked against the engine's classes read from the found Godot's GodotSharp.dll
   (`GodotEngineClasses`, `GodotChecks.EngineAnswers`), a GDScript member renamed in its script taking its connections
-  and C# strings along (`GodotScriptRenameAsync`); a project.godot of GDScript alone is a scene's project too
-  (`ProjectSession.GodotOf`; the C# service's `BuiltGodotOf` a C# project's only), so scene code reaches the scenes
-  through `AssistContext.GodotOf` (`GodotSceneIndex.GameOf`), and a GDScript's class is `GodotScenes.ChainOf` over
-  `GodotScriptDeclarations`, read from `GDScriptTree` (Godot's own parser, ported: members are runs between clean member
-  starts, `Reparse` parsing only the edited run), typed by `GDScriptAnalyzer` (Godot's analyzer, ported), the engine's
-  types from the found Godot's extension_api.json (`GodotEngineApi`, dumped once per version into the state's cache by
-  `GodotEngineApis`: `GodotEngineClasses` has no member types, and Object's `free` is in no dump; a warning only a newer
-  Godot gives gated on the dump's version, `GodotEngineApi.Version`), a node path typed from the scenes running the
-  script (`GDScriptProject.NodeAt`, `GodotScriptTypes.NodesOf`), else Node, its Godot warnings and errors
-  `GDScriptAnalysis.Findings` (a script that doesn't parse gives its parse errors alone) (as project.godot sets them,
-  `GDScriptWarningSettings`) shown until Godot's server has pushed the file's own (`WebDocument.ShowPassengers`), fixed
-  by `GDScriptFixes` (several edits as one through `EditorFix.Edits`), and a GDScript function's argument count answered
-  only by `GodotScriptDeclared.Takes`, its names coloured by `GDScriptAnalysis.Colours` through `ColourLayer` over the
-  grammar, its Reformat Code `GDScriptFormatter` (by the style guide's sections), refused unless
-  `GDScriptFormatter.Differs` finds the same tokens, comments and tree, wrapping only inside brackets
-  (`GDScriptFormatter.Wrapping`), its options `GDScriptFormatSettings` (Settings › Code Style › GDScript, a file's
-  .editorconfig over each), reformat on save in `CodeAssist.BeforeSave`, Order Script's Parts
+  and C# strings along (`GodotScriptRenameAsync`), and from a C# string naming it through its script
+  (`CSharpAssist.ScriptMemberAtAsync`, `CodeActions.RenameInScriptAsync`), a variable's scene keys
+  `CSharpAssist.SceneSets`, a Connect's other side `GodotStringRead.Handler`/`Connected`; a project.godot of GDScript
+  alone is a scene's project too (`ProjectSession.GodotOf`; the C# service's `BuiltGodotOf` a C# project's only), so
+  scene code reaches the scenes through `AssistContext.GodotOf` (`GodotSceneIndex.GameOf`), and a GDScript's class is
+  `GodotScenes.ChainOf` over `GodotScriptDeclarations`, read from `GDScriptTree` (Godot's own parser, ported: members
+  are runs between clean member starts, `Reparse` parsing only the edited run), typed by `GDScriptAnalyzer` (Godot's
+  analyzer, ported), the engine's types from the found Godot's extension_api.json (`GodotEngineApi`, dumped once per
+  version into the state's cache by `GodotEngineApis`: `GodotEngineClasses` has no member types, and Object's `free` is
+  in no dump; a warning only a newer Godot gives gated on the dump's version, `GodotEngineApi.Version`), a node path
+  typed from the scenes running the script (`GDScriptProject.NodeAt`, `GodotScriptTypes.NodesOf`), else Node, its Godot
+  warnings and errors `GDScriptAnalysis.Findings` (a script that doesn't parse gives its parse errors alone) (as
+  project.godot sets them, `GDScriptWarningSettings`) shown until Godot's server has pushed the file's own
+  (`WebDocument.ShowPassengers`), fixed by `GDScriptFixes` (several edits as one through `EditorFix.Edits`), and a
+  GDScript function's argument count answered only by `GodotScriptDeclared.Takes`, its names coloured by
+  `GDScriptAnalysis.Colours` through `ColourLayer` over the grammar, its Reformat Code `GDScriptFormatter` (by the style
+  guide's sections), refused unless `GDScriptFormatter.Differs` finds the same tokens, comments and tree, wrapping only
+  inside brackets (`GDScriptFormatter.Wrapping`), its options `GDScriptFormatSettings` (Settings › Code Style ›
+  GDScript, a file's .editorconfig over each), reformat on save in `CodeAssist.BeforeSave`, Order Script's Parts
   `GDScriptFormatter.OrderParts`, never run by Reformat Code, its refactorings `GDScriptRefactorings` over
   `GodotScriptTypes.ProjectReadAsync` (made by `CodeActions.GDScriptRefactorAsync`, a use Passenger can't see refusing,
   `GDScriptUses.Unsure`; C#'s calls by a GDScript member's name come with their arguments after it, `GodotKindUse.Rest`,
@@ -479,18 +484,21 @@ Projects in `src/`; `find_symbol` finds the rest:
   connects (`selectOnConnect`; a selection Passenger asked for never followed back, `GodotEditorPeer.SelectionAsked`),
   its Publish its export (`GodotExportDialog`, `BuildRunController.ExportGodotAsync`), templates installed only from a
   `.tpz` the person picks (`GodotExports.Install`; a test's named by `PASSENGER_TEST_GODOT_TEMPLATES`, into the run's
-  own Godot folders), its page a view of its project.godot (`GodotProjectPages`, `GodotPageViewer`) over Workspace's
-  readers, a launched game's remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (its value editors
-  `GodotValueCells`, an `ILiveValueCells`, from `GodotHints`, over any `IGodotValues`: a running game's, or a scene's
-  node in the outline, `GodotSceneProperties` over `GodotSceneValues`, its engine defaults from `PassengerClasses.gd`
-  through `GodotEngineApis.ClassesAsync` and `GodotClassDefaults`, its exports `GodotMember.Inspected` for C# and
-  `GDScriptExports`; Keep `GodotKeep`; a run's errors pinned to lines `GodotErrorPins` through `ErrorPinColumn`, its
-  console folded `GodotConsoleFold`; a running game's member values at their lines' ends `GodotLiveValues`, into
-  `OpenDocument.LiveValues` through the helper's `values` call, members from `GodotMembers`; `ILiveTreeSource`,
-  `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's build skipped while
-  what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`; on Windows a build's
-  first step lets go of the Avalonia previewers holding its output (`BuildRunController.LettingGo`); a console's lines
-  are heard one stream at a time (`ConsoleWritten`).
+  own Godot folders), a `res://` sound played through the system's player as a WAV (`Sounds.Playable`, Ogg and MP3
+  decoded into `cache/sounds`; a test reads `MainWindow.SoundsHanded`), its page a view of its project.godot
+  (`GodotProjectPages`, `GodotPageViewer`) over Workspace's readers, following its files on disk
+  (`GodotProjectPages.Follows`), a launched game's remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (its
+  value editors `GodotValueCells`, an `ILiveValueCells`, from `GodotHints`, over any `IGodotValues`: a running game's,
+  or a scene's node in the outline (a row under a node showing that node's), `GodotSceneProperties` over
+  `GodotSceneValues`, a property written where Godot's save puts it and taken out at its default, its engine defaults
+  from `PassengerClasses.gd` through `GodotEngineApis.ClassesAsync` and `GodotClassDefaults`, its exports
+  `GodotMember.Inspected` for C# and `GDScriptExports`; Keep `GodotKeep`; a run's errors pinned to lines
+  `GodotErrorPins` through `ErrorPinColumn`, its console folded `GodotConsoleFold`; a running game's member values at
+  their lines' ends `GodotLiveValues`, into `OpenDocument.LiveValues` through the helper's `values` call, members from
+  `GodotMembers`; `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`),
+  `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build under way waited out
+  first), `TogetherBuild`; on Windows a build's first step lets go of the Avalonia previewers holding its output
+  (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time (`ConsoleWritten`).
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach, Restart
   and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time (`TakeStartAsync`);
   Stop ends every session and recording before the programs go. A project run's logs and traces go to a dashboard of its
