@@ -187,11 +187,11 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
 Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer's "never" is a rule.
 - `Passenger.Core` (no UI), where each of these is the one way: a PATH search `Programs.OnPath`; .NET's folder
   `Dotnet.Root`, never `Dotnet.Host()`'s folder; a request of a host `OutboundHttp`; a Unix socket `SocketFolders`; a C
-  call made in more than one place `Libc`; whether a process runs `DotnetProcesses.Runs`, never `HasExited`; a
-  PASSENGER_*_MS `EnvironmentValues.Milliseconds`; a Windows command line `WindowsCommandLine`; the version `Product`; a
-  log below the App `PassengerLog`, never `IdeLog`; an MSBuild name Passenger writes `MSBuildNames`; another program's
-  or a person's JSON `JsonMembers`, never a bare `TryGetProperty`/`GetString`; a search by halving `Sorted`, never a
-  loop of your own; a primitive `PrimitiveTypes`.
+  call made in more than one place `Libc`; whether a process runs `DotnetProcesses.Runs`, a `Process` held too, never
+  `HasExited` (PSG0007); a PASSENGER_*_MS `EnvironmentValues.Milliseconds`; a Windows command line `WindowsCommandLine`;
+  the version `Product`; a log below the App `PassengerLog`, never `IdeLog`; an MSBuild name Passenger writes
+  `MSBuildNames`; another program's or a person's JSON `JsonMembers` (`Value` for a member of any kind), never a bare
+  `TryGetProperty`/`GetString`; a search by halving `Sorted`, never a loop of your own; a primitive `PrimitiveTypes`.
 - `Passenger.Text`: the rope, `TextDocument`, editing commands as pure functions to an `EditPlan`, `FileText`; an XML
   value through `XmlEntities`, never `SecurityElement.Escape` or a hand Replace; a place in the text held by an anchor
   (`AnchorAt`), never your own `TextEditing.Map*`.
