@@ -248,6 +248,10 @@ public partial class MainWindow
         }
         await FollowRequestsAsync();
         StringBuilder said = new(RequestLog.Following);
+        if (RequestLog.Requests.Count == 0 && followedRequests.Count > 0)
+        {
+            said.Append("\nNo request has come yet: each the app serves from now on is listed");
+        }
         foreach (LiveRequest request in RequestLog.Requests.TakeLast(Math.Max(1, most)))
         {
             said.Append('\n').Append(request.Method).Append(' ').Append(request.Path).Append(request.Query)

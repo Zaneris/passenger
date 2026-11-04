@@ -6,7 +6,7 @@ using Passenger.App.Mcp;
 namespace Passenger.Tests;
 
 /// <summary>An agent reads a running web app's requests and the SQL each issued: its own Passenger (<c>--mcp</c>) runs
-/// LiveRequestsTests' shop, and output with requests follows it and says what it served.</summary>
+/// LiveRequestsTests' shop, and output with requests follows it and says what it served, or that nothing has come yet.</summary>
 public sealed class McpRequestsTests : McpRig
 {
     [Fact]
@@ -24,6 +24,7 @@ public sealed class McpRequestsTests : McpRig
             // The first ask follows the app, so what it serves from then on is heard.
             string following = (await Call(client, McpTools.Output, new() { ["requests"] = true })).GetString()!;
             Assert.True(following.StartsWith("Following Shop: http (process", StringComparison.Ordinal), $"output with requests did not follow the shop: {following}");
+            Assert.True(following.Contains("\nNo request has come yet", StringComparison.Ordinal), $"output with requests, the shop asked nothing yet, gave no word of it: {following}");
             using HttpClient http = new();
             Assert.True(await Waiting.UntilAsync(async () =>
             {
