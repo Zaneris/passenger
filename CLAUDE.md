@@ -191,7 +191,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `HasExited` (PSG0007); a PASSENGER_*_MS `EnvironmentValues.Milliseconds`; a Windows command line `WindowsCommandLine`;
   the version `Product`; a log below the App `PassengerLog`, never `IdeLog`; an MSBuild name Passenger writes
   `MSBuildNames`; another program's or a person's JSON `JsonMembers` (`Value` for a member of any kind), never a bare
-  `TryGetProperty`/`GetString`; a search by halving `Sorted`, never a loop of your own; a primitive `PrimitiveTypes`.
+  `TryGetProperty`/`GetProperty` (PSG0008); a search by halving `Sorted`, never a loop of your own; a primitive
+  `PrimitiveTypes`.
 - `Passenger.Text`: the rope, `TextDocument`, editing commands as pure functions to an `EditPlan`, `FileText`; an XML
   value through `XmlEntities`, never `SecurityElement.Escape` or a hand Replace; a place in the text held by an anchor
   (`AnchorAt`), never your own `TextEditing.Map*`.
