@@ -145,6 +145,15 @@ public class GodotShaderLanguageTests
     }
 
     [Fact]
+    public void A_function_only_the_high_end_has_is_refused_under_Compatibility_as_Godot_s_editor_on_it_refuses_it()
+    {
+        const string code = "shader_type canvas_item;\n\nvoid fragment() {\n\tCOLOR.r = fma(UV.x, 2.0, 1.0);\n}\n";
+        Assert.Empty(Check(code).Messages);
+        GodotShaderMessage refused = Assert.Single(Check(code, method: "gl_compatibility").Messages);
+        Assert.Equal((4, "Built-in function \"fma(float, float, float)\" is only supported on high-end platforms."), (refused.Line, refused.Text));
+    }
+
+    [Fact]
     public void A_shader_that_compiles_is_warned_of_what_it_declares_and_never_uses_by_line()
     {
         GodotShaderChecked result = Check("""

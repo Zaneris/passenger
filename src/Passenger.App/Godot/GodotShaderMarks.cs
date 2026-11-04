@@ -4,21 +4,22 @@ using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Workspace;
+using Passenger.Workspace.GodotShader;
 
 namespace Passenger.App.Godot;
 
-/// <summary>Each open shader of a Godot project (a <c>.gdshader</c>, or a <c>.gdshaderinc</c> through the first shader
-/// including it) marked with what Godot's own compiler says of it (<see cref="GodotShaderCompiler"/>), Godot's words at
-/// their lines: as it opens, as its typing pauses, and as another of its project's files changes (an include written).
-/// Where Godot cannot compile it, its banner says why. What the compile read of its uniforms is kept for the hover card.
-/// A scene's own Shader is marked with the scene's other marks (<see cref="GodotSceneMarks"/>). A UI-thread object.</summary>
-internal sealed class GodotShaderMarks(GodotSceneIndex index, Func<string, string?> godotOf, GodotShaderCompiler compiler)
+/// <summary>Each open shader of a Godot project (a <c>.gdshader</c>, or a <c>.gdshaderinc</c> read alone, as Godot's shader
+/// editor reads one) marked with what Godot's front end says of it (<see cref="GodotShaderChecker"/>), every error and
+/// warning in Godot's words at its line: as it opens, as its typing pauses, and as another of its project's files changes
+/// (an include written). What the check read of its uniforms is kept for the hover card. A scene's own Shader is marked
+/// with the scene's other marks (<see cref="GodotSceneMarks"/>). A UI-thread object.</summary>
+internal sealed class GodotShaderMarks(GodotSceneIndex index, Func<string, string?> godotOf, GodotShaderChecker checker)
 {
     /// <summary>How long typing pauses before the shader is compiled again.</summary>
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(300);
 
     /// <summary>Who checks a shader, as an agent is told while a check is under way.</summary>
-    private const string Checker = "Godot's shader compiler";
+    private const string Checker = "Godot's shader front end";
 
     private readonly Dictionary<OpenDocument, (Debounce Pause, EventHandler<DocumentChangedEventArgs> Typed)> documents = [];
 
@@ -26,7 +27,7 @@ internal sealed class GodotShaderMarks(GodotSceneIndex index, Func<string, strin
     private readonly Dictionary<OpenDocument, IReadOnlyDictionary<string, GodotShaderUniform>> uniforms = [];
     private Debounce? again;
 
-    public GodotShaderCompiler Compiler => compiler;
+    public GodotShaderChecker ShaderChecker => checker;
 
     /// <summary>Whether a file is a shader or a shader include, by its name.</summary>
     public static bool IsShader(string path) =>
@@ -42,7 +43,6 @@ internal sealed class GodotShaderMarks(GodotSceneIndex index, Func<string, strin
         Debounce pause = new(Settle, () => MarkAsync(document), () => document.Checking(Checker));
         EventHandler<DocumentChangedEventArgs> typed = (_, _) => pause.Restart();
         documents[document] = (pause, typed);
-        compiler.Opened();
         document.Text.Changed += typed;
         IdeErrors.Observe(MarkAsync(document));
     }
@@ -55,7 +55,6 @@ internal sealed class GodotShaderMarks(GodotSceneIndex index, Func<string, strin
         {
             document.Text.Changed -= gone.Typed;
             gone.Pause.Stop();
-            compiler.Closed();
             if (document.Markers.Count > 0)
             {
                 document.Markers = [];
@@ -83,12 +82,13 @@ internal sealed class GodotShaderMarks(GodotSceneIndex index, Func<string, strin
         }
     }
 
-    /// <summary>What Godot's last compile of an open shader read of a uniform; null where it read none of that name.</summary>
+    /// <summary>What the last check of an open shader read of a uniform; null where it read none of that name.</summary>
     public GodotShaderUniform? UniformOf(OpenDocument document, string name) =>
         uniforms.TryGetValue(document, out IReadOnlyDictionary<string, GodotShaderUniform>? read) ? read.GetValueOrDefault(name) : null;
 
-    /// <summary>The shader Godot is given for an open shader file, its text as the editor has it: a shader as itself, an
-    /// include as the first shader of its project including it (none where no shader does); with the include's res:// path.</summary>
+    /// <summary>The shader an open shader file is read in for its language, its text as the editor has it: a shader as
+    /// itself, an include as the first shader of its project including it (none where no shader does), so its type is
+    /// known; with the include's res:// path.</summary>
     public static (GodotShaderUnit Unit, string? Include)? UnitOf(GodotScenes scenes, string res, string text)
     {
         string? Read(string path) => path == res ? text : scenes.Texts.GetValueOrDefault(path) ?? ShaderCodeOf(scenes, path);
@@ -129,23 +129,20 @@ internal sealed class GodotShaderMarks(GodotSceneIndex index, Func<string, strin
             return;
         }
         GodotScenes scenes = await index.ScenesAsync(folder);
-        if (scenes.ResPathOf(document.Path) is not { } res || await BackgroundWork.Run(() => UnitOf(scenes, res, text)) is not ({ } unit, var include))
+        if (scenes.ResPathOf(document.Path) is not { } res)
         {
             Show(document, version, [], null);
             return;
         }
-        if (await compiler.CompileAsync(unit, scenes.Defined.RenderingMethod) is not { } compiled)
-        {
-            Show(document, version, [], compiler.Problem is { } problem ? $"Godot's compiler does not check this shader: {problem}" : null);
-            return;
-        }
-        IReadOnlyList<GodotShaderMark> marks = await BackgroundWork.Run(() => unit.MarksIn(include, compiled.Messages));
+        GodotShaderUnit unit = await BackgroundWork.Run(() => GodotShaderUnit.Of(res, text, path => path == res ? text : scenes.Texts.GetValueOrDefault(path) ?? ShaderCodeOf(scenes, path)));
+        GodotShaderChecked result = await checker.CheckAsync(unit, scenes);
+        IReadOnlyList<GodotShaderMark> marks = await BackgroundWork.Run(() => unit.MarksIn(null, result.Messages));
         if (Show(document, version, [.. marks.Select(m => new Marker(TextRange.FromBounds(m.Start, Math.Max(m.Start, m.End)), m.Error ? MarkerKind.Error : MarkerKind.Warning, m.Message))], null))
         {
-            // A compile stopped at an error reads no uniform: what the last one read stands until one reads them again.
-            if (compiled.Uniforms.Count > 0 || !compiled.Messages.Any(m => m.Error))
+            // A check that read no uniform for an error leaves what the last one read standing until one reads them again.
+            if (result.Uniforms.Count > 0 || !result.Messages.Any(m => m.Error))
             {
-                uniforms[document] = compiled.Uniforms.DistinctBy(u => u.Name).ToDictionary(u => u.Name, StringComparer.Ordinal);
+                uniforms[document] = result.Uniforms.Select(u => GodotShaderUniform.Of(u.Key, u.Value)).ToDictionary(u => u.Name, StringComparer.Ordinal);
             }
         }
     }

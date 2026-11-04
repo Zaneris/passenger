@@ -1,12 +1,11 @@
-using System.Text.Json;
 using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Workspace;
 
 /// <summary>Godot's shading language as Passenger reads it: the carried table of shader types, processor functions and their
 /// built-ins, modes and hints, and what a Godot's refusals of its probes leave of it; a shader's own declarations and what
-/// is written at a place; the name at a place; a scene's string mapped to the file escapes and all; and what Godot's logger
-/// heard as a compile ran, marked on the shader, an include and the line leading to it.</summary>
+/// is written at a place; the name at a place; a scene's string mapped to the file escapes and all; and a check's messages
+/// marked on the shader, an include and the line leading to it.</summary>
 public class GodotShadersTests
 {
     private const string Water = """
@@ -164,16 +163,14 @@ public class GodotShadersTests
     }
 
     [Fact]
-    public void What_Godot_s_logger_heard_is_marked_on_the_shader_on_an_include_and_on_the_include_leading_to_it()
+    public void A_check_s_messages_are_marked_on_the_shader_on_an_include_and_on_the_include_leading_to_it()
     {
-        IReadOnlyList<GodotShaderMessage> messages = GodotShaderUnit.MessagesOf(Heard("""
-            [{"type": 3, "file": "", "line": 15, "text": "Unknown identifier in expression: 'speedd'.", "rationale": ""},
-             {"type": 0, "file": "servers/rendering/dummy/storage/material_storage.cpp", "line": 192, "text": "Condition \"err != OK\" is true.", "rationale": "Shader compilation failed."},
-             {"type": 3, "file": "res://lib/waves.gdshaderinc", "line": 2, "text": "Unknown identifier in expression: 'nope'.", "rationale": ""},
-             {"type": 1, "file": "res://lib/waves.gdshaderinc", "line": 1, "text": "", "rationale": "A warning of its own."}]
-            """));
-        Assert.Equal([(true, "", 15), (true, "res://lib/waves.gdshaderinc", 2), (false, "res://lib/waves.gdshaderinc", 1)], messages.Select(m => (m.Error, m.File, m.Line)));
-        Assert.Equal("A warning of its own.", messages[2].Text);
+        IReadOnlyList<GodotShaderMessage> messages =
+        [
+            new(true, "", 15, "Unknown identifier in expression: 'speedd'."),
+            new(true, "res://lib/waves.gdshaderinc", 2, "Unknown identifier in expression: 'nope'."),
+            new(false, "res://lib/waves.gdshaderinc", 1, "A warning of its own."),
+        ];
 
         string shader = Water.Replace("world = VERTEX;", "world = VERTEX * speedd;", StringComparison.Ordinal);
         string waves = "float wave(float t) {\n\treturn nope;\n}\n";
@@ -189,16 +186,14 @@ public class GodotShadersTests
     }
 
     [Fact]
-    public void An_include_no_file_answers_is_marked_with_Godot_s_preprocessor_s_words_and_a_relative_one_resolved_from_its_folder()
+    public void An_include_no_file_answers_is_marked_on_its_path_with_Godot_s_preprocessor_s_words_and_a_relative_one_resolved_from_its_folder()
     {
         string shader = "shader_type spatial;\n#include \"../lib/gone.gdshaderinc\"\nvoid fragment() {}\n";
         GodotShaderUnit unit = GodotShaderUnit.Of("res://fx/water.gdshader", shader, _ => null);
         Assert.Equal(["res://lib/gone.gdshaderinc"], unit.Missing);
-        IReadOnlyList<GodotShaderMessage> messages = GodotShaderUnit.MessagesOf(Heard("""[{"type": 3, "file": "", "line": 2, "text": "Tokenizer: Unknown character #35: '#'", "rationale": ""}]"""));
+        IReadOnlyList<GodotShaderMessage> messages = [new(true, "", 2, "Shader include file does not exist: res://lib/gone.gdshaderinc")];
         GodotShaderMark mark = Assert.Single(unit.MarksIn(null, messages));
         Assert.Equal(("../lib/gone.gdshaderinc", "Shader include file does not exist: res://lib/gone.gdshaderinc"), (shader[mark.Start..mark.End], mark.Message));
         Assert.Equal("res://shaders/a.gdshaderinc", GodotShaderUnit.Resolved("res://level.tscn::Shader_x", "shaders/./a.gdshaderinc"));
     }
-
-    private static IReadOnlyList<JsonElement> Heard(string json) => [.. JsonDocument.Parse(json).RootElement.EnumerateArray()];
 }

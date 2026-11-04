@@ -1,10 +1,7 @@
-using System.Text.Json;
-using Passenger.Core;
-
 namespace Passenger.Workspace;
 
-/// <summary>What Godot's logger heard of a shader as Godot compiled it: an error or a warning, the file it names (empty
-/// for the shader itself, else an include's res:// path), its line (from one) and Godot's words.</summary>
+/// <summary>What Godot's front end said of a shader: an error or a warning, the file it names (empty for the shader itself,
+/// else an include's res:// path), its line (from one) and Godot's words.</summary>
 public sealed record GodotShaderMessage(bool Error, string File, int Line, string Text);
 
 /// <summary>A mark a compile's messages put on a file's text: where, whether an error, and its words.</summary>
@@ -16,13 +13,7 @@ public sealed record GodotShaderMark(int Start, int End, bool Error, string Mess
 /// <see cref="Missing"/>. Pure.</summary>
 public sealed record GodotShaderUnit(string Res, string Code, IReadOnlyDictionary<string, string> Includes, IReadOnlyList<string> Missing)
 {
-    /// <summary>The error type Godot's logger gives its shader compiler's errors, and its warnings'.</summary>
-    public const int ShaderError = 3;
-
-    public const int Warning = 1;
-
-    /// <summary>What Godot's preprocessor says of an include no file answers, which its compiler, given the shader's text
-    /// unprocessed, never says.</summary>
+    /// <summary>What Godot's preprocessor says of an include no file answers.</summary>
     public const string NoInclude = "Shader include file does not exist:";
 
     /// <summary>How deep includes are followed, as Godot's preprocessor follows them.</summary>
@@ -95,31 +86,10 @@ public sealed record GodotShaderUnit(string Res, string Code, IReadOnlyDictionar
         return path[..scheme] + string.Join('/', parts);
     }
 
-    /// <summary>The messages of a compile that speak of the shader, from what Godot's logger heard (each as the helper sends
-    /// it: <c>type</c>, <c>file</c>, <c>line</c>, <c>text</c>): its compiler's errors, and any error or warning naming the
-    /// shader or one of its files; what speaks of the engine's own sources (its <c>Shader compilation failed.</c>) left out.</summary>
-    public static IReadOnlyList<GodotShaderMessage> MessagesOf(IReadOnlyList<JsonElement> heard)
-    {
-        List<GodotShaderMessage> messages = [];
-        foreach (JsonElement message in heard)
-        {
-            int type = JsonMembers.Number(message, "type") ?? -1;
-            string file = JsonMembers.Text(message, "file") ?? string.Empty;
-            string text = JsonMembers.Text(message, "text") is { Length: > 0 } said ? said : JsonMembers.Text(message, "rationale") ?? string.Empty;
-            bool own = file.Length == 0 || file.StartsWith("res://", StringComparison.Ordinal);
-            if (text.Length > 0 && (type == ShaderError || own && type is 0 or Warning))
-            {
-                messages.Add(new GodotShaderMessage(type != Warning, file, JsonMembers.Number(message, "line") ?? 0, text));
-            }
-        }
-        return messages;
-    }
-
     /// <summary>The marks a compile's messages put on one of the unit's texts: the shader's own (<paramref name="include"/>
     /// null) or an include's. A message on a line of the text is marked there, on the name it quotes where the line writes
     /// it; one in a file the text includes is marked on the <c>#include</c> leading to it, naming its place; an include no
-    /// file answers is marked with Godot's preprocessor's words, and Godot's compiler's words for the directive it was then
-    /// given in place of the shader's processed text left out.</summary>
+    /// file answers is marked on its path with Godot's preprocessor's words, which its message then says again.</summary>
     public IReadOnlyList<GodotShaderMark> MarksIn(string? include, IReadOnlyList<GodotShaderMessage> messages)
     {
         string res = include ?? Res;
@@ -135,7 +105,7 @@ public sealed record GodotShaderUnit(string Res, string Code, IReadOnlyDictionar
         }
         foreach (GodotShaderMessage message in messages)
         {
-            if (Missing.Count > 0 && message.Text.StartsWith("Tokenizer: Unknown character #35", StringComparison.Ordinal))
+            if (message.Text.StartsWith(NoInclude, StringComparison.Ordinal) && marks.Any(m => m.Message == message.Text))
             {
                 continue;
             }

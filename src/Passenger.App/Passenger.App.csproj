@@ -24,8 +24,8 @@
     <EmbeddedResource Include="MSBuild/Schemas/*.xsd" LogicalName="MSBuild/%(Filename)%(Extension)" />
     <!-- Passenger's own helper in a Godot game it debugs, which Godot loads from the state's cache (Godot/GodotAgent.cs). -->
     <EmbeddedResource Include="Godot/PassengerAgent.gd" LogicalName="Godot/PassengerAgent.gd" />
-    <!-- Passenger's own shader helper, run by a headless Godot on a project in the state's cache (Godot/GodotShaderCompiler.cs). -->
-    <EmbeddedResource Include="Godot/PassengerShaders.gd" LogicalName="Godot/PassengerShaders.gd" />
+    <!-- Passenger's readings of the Godot found, run headless once per version into the state's cache (Godot/GodotEngineApis.cs). -->
+    <EmbeddedResource Include="Godot/PassengerShaderProbes.gd" LogicalName="Godot/PassengerShaderProbes.gd" />
     <EmbeddedResource Include="Godot/PassengerClasses.gd" LogicalName="Godot/PassengerClasses.gd" />
     <!-- Passenger's own addon for Godot's editor, written into a Godot project when the person asks (Godot/GodotAddonFiles.cs). -->
     <EmbeddedResource Include="Godot/Addon/plugin.cfg" LogicalName="Godot/Addon/plugin.cfg" />

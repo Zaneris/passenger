@@ -6,6 +6,7 @@ using Passenger.Editor;
 using Passenger.Roslyn.Extension;
 using Passenger.Text;
 using Passenger.Workspace;
+using Passenger.Workspace.GodotShader;
 
 namespace Passenger.App.Godot;
 
@@ -15,15 +16,15 @@ namespace Passenger.App.Godot;
 /// (<see cref="GodotChecks.EngineAnswers"/>): as it opens, again a moment after what it is read against changes (its
 /// project's scenes as typed or written, the code a pull read, the server loaded), and at once as a C# file of its project
 /// is written on disk, read once the server holds as the disk has them the scene's scripts heard changed
-/// (<see cref="CodeAsync"/>); and each Shader it writes itself marked with what Godot's own compiler says of its code
+/// (<see cref="CodeAsync"/>); and each Shader it writes itself marked with what Godot's shader front end says of its code
 /// (<see cref="ShaderMarksAsync"/>). A UI-thread object.</summary>
 internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string?> godotOf, Func<CSharp.CSharpService?> csharp, CommandHistory commands)
 {
     /// <summary>The Godot the person's settings name (their command line for it), whose GodotSharp tells the engine's classes.</summary>
     public Func<string?> Godot { get; init; } = () => null;
 
-    /// <summary>Godot's shader compiler, which a scene's own Shaders are compiled by; none leaves them unmarked.</summary>
-    public GodotShaderCompiler? Shaders { get; init; }
+    /// <summary>Godot's shader front end, which a scene's own Shaders are checked by; none leaves them unmarked.</summary>
+    public GodotShaderChecker? Shaders { get; init; }
 
     /// <summary>How long a change waits for the next before the open scenes are read again.</summary>
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(300);
@@ -152,7 +153,7 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
         return found;
     }
 
-    /// <summary>The marks Godot's compiler gives each Shader a scene or resource writes itself (a sub_resource's <c>code</c>,
+    /// <summary>The marks Godot's front end gives each Shader a scene or resource writes itself (a sub_resource's <c>code</c>,
     /// or a Shader resource's own), each place in its code's value mapped to where the file writes it, escapes and all.</summary>
     private async Task<IReadOnlyList<Marker>> ShaderMarksAsync(GodotScenes scenes, string res, GodotFile file)
     {
@@ -170,10 +171,7 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
             }
             string shader = section.Tag == "sub_resource" ? $"{res}::{section.Text("id")}" : res;
             GodotShaderUnit unit = await BackgroundWork.Run(() => GodotShaderUnit.Of(shader, code, path => scenes.Texts.GetValueOrDefault(path)));
-            if (await compiler.CompileAsync(unit, scenes.Defined.RenderingMethod) is not { } compiled)
-            {
-                return marks;
-            }
+            GodotShaderChecked compiled = await compiler.CheckAsync(unit, scenes);
             marks.AddRange(await BackgroundWork.Run(() =>
             {
                 int[] places = GodotStringPlaces.Of(file.Text, value.TextStart, value.TextEnd);

@@ -12,7 +12,7 @@ namespace Passenger.App.CSharp;
 /// <summary>A Godot shader (<c>.gdshader</c>, <c>.gdshaderinc</c>) as Godot's language reads it: completion lists the
 /// built-ins the processor function the caret is in reads, with its stage functions and the language's functions, the
 /// render modes, stencil modes and hints where those are written, and what the shader and its includes declare; each as
-/// the Godot found takes them (<see cref="GodotShaderCompiler.TableAsync"/>). The hover card says what a name is, a uniform
+/// the Godot found takes them (<see cref="GodotShaderChecker.TableAsync"/>). The hover card says what a name is, a uniform
 /// with what Godot's compile read of it; Go to Declaration goes to a declaration, in an include too, and from an
 /// <c>#include</c> to its file; Find Usages of a uniform lists its uses in the shader, the scenes setting it and the C#
 /// naming it. Context Help browses a built-in's place in Godot's shading reference (<see cref="HelpAsync"/>). A scene's or
@@ -299,7 +299,7 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
                 if (declaration.Kind == GodotShaderDeclared.Uniform)
                 {
                     GodotShaderUniform? uniform = scene is null ? shader.Shaders?.UniformOf(document, declaration.Name)
-                        : shader.Res is { } res ? shader.Shaders?.Compiler.UniformOf(res, declaration.Name) : null;
+                        : shader.Res is { } res ? shader.Shaders?.ShaderChecker.UniformOf(res, declaration.Name) : null;
                     card.AddText(uniform is { } read
                         ? $"A uniform of {where}, which Godot reads as {read.Described}" : $"A uniform of {where}");
                 }
@@ -480,10 +480,9 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
     /// <summary>Whether an offset of a file lies in shader code: a shader's, or a scene's or resource's own Shader's.</summary>
     public static bool InShader(OpenDocument document, int offset) => IsShader(document) || SceneCodeAt(document, offset) is not null;
 
-    /// <summary>The built-ins the Godot found takes, under the rendering method of the shader's project.</summary>
+    /// <summary>The built-ins the Godot found takes.</summary>
     private static Task<GodotShaderTable> TableAsync(Shader shader, CancellationToken cancel = default) =>
-        shader.Shaders is { } marks ? marks.Compiler.TableAsync(shader.Scenes?.Defined.RenderingMethod ?? GodotShaderCompiler.DefaultMethod, cancel)
-            : Task.FromResult(GodotShaderTable.Carried);
+        shader.Shaders is { } marks ? marks.ShaderChecker.TableAsync().WaitAsync(cancel) : Task.FromResult(GodotShaderTable.Carried);
 
     /// <summary>The Shader a scene or resource writes itself whose code an offset of the file lies in: its code as Godot reads
     /// the string, the file's offset of each of its characters (<see cref="GodotStringPlaces"/>), the sub_resource's id

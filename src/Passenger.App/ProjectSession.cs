@@ -139,15 +139,15 @@ public sealed class ProjectSession : IAsyncDisposable
             Web?.StylesheetsChanged();
         };
         GodotScenes.Changed += (_, _) => CSharp?.GodotScenesChanged();
-        GodotShaderCompiler = new Godot.GodotShaderCompiler(() => setup.Settings().GodotExecutable, () => setup.GodotEnvironment);
-        GodotShaders = new Godot.GodotShaderMarks(GodotScenes, GodotOf, GodotShaderCompiler);
         GodotApis = new Godot.GodotEngineApis(() => setup.Settings().GodotExecutable, () => setup.GodotEnvironment);
+        GodotShaderChecker = new Godot.GodotShaderChecker(GodotApis);
+        GodotShaders = new Godot.GodotShaderMarks(GodotScenes, GodotOf, GodotShaderChecker);
         GodotScriptTypes = new Godot.GodotScriptTypes(GodotScenes, GodotOf, GodotApis,
             document => Web?.For(document));
         GodotMarks = new Godot.GodotSceneMarks(GodotScenes, GodotOf, () => CSharp, setup.Editors.Commands)
         {
             Godot = () => setup.Settings().GodotExecutable,
-            Shaders = GodotShaderCompiler,
+            Shaders = GodotShaderChecker,
         };
         GodotScenes.Changed += (_, _) => GodotMarks.Changed();
         GodotScenes.Changed += (_, _) => GodotShaders.Changed();
@@ -900,8 +900,8 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The marks of the open Godot scenes and resources, read against their project's scenes and code.</summary>
     internal Godot.GodotSceneMarks GodotMarks { get; }
 
-    /// <summary>Godot's own shader compiler, run for the session's shaders and ended with it.</summary>
-    internal Godot.GodotShaderCompiler GodotShaderCompiler { get; }
+    /// <summary>Godot's shader front end, which the session's shaders are checked by.</summary>
+    internal Godot.GodotShaderChecker GodotShaderChecker { get; }
 
     /// <summary>The person's Godot editors open on the folder's projects, asked for what completion offers; let go of with it.</summary>
     internal Godot.GodotIdeLink GodotIde { get; } = new();
@@ -1540,7 +1540,6 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotMarks.Stop();
         GodotShaders.Stop();
         GodotScriptTypes.Stop();
-        parts.Add(("Godot's shader compiler", GodotShaderCompiler.DisposeAsync().AsTask()));
         parts.Add(("Godot's editors", GodotEditors.DisposeAsync().AsTask()));
         parts.Add(("the Godot editor's IDE messaging connection", GodotIde.DisposeAsync().AsTask()));
         MSBuild.Dispose();

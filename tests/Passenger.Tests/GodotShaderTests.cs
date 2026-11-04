@@ -13,14 +13,15 @@ using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
-/// <summary>A Godot project's shaders checked by Godot's own compiler, in the headless helper Passenger runs on a project of
-/// its own (its user folders the run's) under the project's rendering method, the project the test writes left as it was:
-/// a misspelt name is marked with Godot's words at its line in a .gdshader, a scene's own Shader and an include; VERTEX
-/// completes in vertex() and not in light(), only a Godot taking it offering a built-in, and a uniform's card gives its type
-/// and hint as Godot reads it, in a scene's own Shader too; Go to Declaration reaches an include's function; Find Usages of
-/// a uniform lists the scene setting it; Context Help browses a built-in's place in the shading reference; a Compatibility
-/// project's Forward+ hint is marked; the helper goes once no shader is open a while, and comes back. Without a Godot of 4.5
-/// or newer (GODOT, the PATH, Applications) each test skips saying why. Run alone: each starts a Godot of its own.</summary>
+/// <summary>A Godot project's shaders checked by Passenger's port of Godot's front end, with the shading language as the
+/// Godot found takes it, the project the test writes left as it was: a misspelt name is marked with Godot's words at its
+/// line in a .gdshader, a scene's own Shader and an include; where Godot's own compiler errs over shaders of every type
+/// under each rendering method, Passenger marks the same error; checking shaders starts no Godot but its version's probe;
+/// VERTEX completes in vertex() and not in light(), only a Godot taking it offering a built-in, and a uniform's card gives
+/// its type and hint as Godot reads it, in a scene's own Shader too; Go to Declaration reaches an include's function; Find
+/// Usages of a uniform lists the scene setting it; Context Help browses a built-in's place in the shading reference; a
+/// Compatibility project's Forward+ hint is marked. Without a Godot of 4.5 or newer (GODOT, the PATH, Applications) each
+/// test skips saying why. Run alone: each starts a Godot of its own.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotShaderTests
 {
@@ -282,57 +283,33 @@ public sealed class GodotShaderTests
         window.Close();
     }
 
-    /// <summary>A Compatibility project's shader is compiled by a helper of that rendering method, so a hint only Forward+
-    /// gives is marked with Godot's words at its line.</summary>
+    /// <summary>A Compatibility project's shader is read under that rendering method, so a hint only Forward+ gives is marked
+    /// with Godot's words at its line.</summary>
     [AvaloniaFact]
     public void A_compatibility_projects_shader_is_marked_where_it_asks_for_what_only_Forward_plus_draws()
     {
         TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n\n[application]\n\nconfig/name=\"Shaded\"\n\n[rendering]\n\nrenderer/rendering_method=\"gl_compatibility\"\n");
         TestFolders.Write(folder, Path.Combine("fx", "rough.gdshader"), Rough);
-        List<string> helpers = [];
-        EventHandler<ChildStart> started = (_, child) =>
-        {
-            if (IsHelper(child))
-            {
-                lock (helpers)
-                {
-                    helpers.Add(Path.GetFileName(child.Folder));
-                }
-            }
-        };
-        ChildProcesses.Started += started;
-        try
-        {
-            MainWindow window = Open(Path.Combine("fx", "rough.gdshader"));
-            Marker hint = Marked(window, "'hint_normal_roughness_texture' is only available when using the Forward+ renderer.");
-            Assert.Equal(LineOf(Rough, "hint_normal_roughness_texture"), window.EditorArea.CodeEditor.Document.Snapshot.GetLineFromOffset(hint.Range.Start));
-            lock (helpers)
-            {
-                Assert.Equal(["gl_compatibility"], helpers);
-            }
-            window.Close();
-        }
-        finally
-        {
-            ChildProcesses.Started -= started;
-        }
+        MainWindow window = Open(Path.Combine("fx", "rough.gdshader"));
+        Marker hint = Marked(window, "'hint_normal_roughness_texture' is only available when using the Forward+ renderer.");
+        Assert.Equal(LineOf(Rough, "hint_normal_roughness_texture"), window.EditorArea.CodeEditor.Document.Snapshot.GetLineFromOffset(hint.Range.Start));
+        window.Close();
     }
 
-    /// <summary>The helper keeps running while a shader is open, is let go a while after the last one closes (the while a
-    /// second here), and starts again as one opens, marking it as before.</summary>
+    /// <summary>A session that opens a shader, an include and a scene's own Shader, edits them and checks them starts no
+    /// Godot for them: the shading language's table is probed once for the Godot found's version (kept in the state's cache,
+    /// so at most once here), and every check after it is Passenger's own.</summary>
     [AvaloniaFact]
-    public void The_helper_is_let_go_a_while_after_the_last_shader_closes_and_starts_again_as_one_opens()
+    public void Opening_editing_and_checking_shaders_starts_no_Godot_but_the_probe_of_its_version()
     {
-        string? was = Environment.GetEnvironmentVariable(GodotShaderCompiler.IdleVariable);
-        Environment.SetEnvironmentVariable(GodotShaderCompiler.IdleVariable, "1000");
-        List<int> helpers = [];
+        List<string> godots = [];
         EventHandler<ChildStart> started = (_, child) =>
         {
-            if (IsHelper(child))
+            if (child.Start is { } start && start.FileName == godot!.Executable)
             {
-                lock (helpers)
+                lock (godots)
                 {
-                    helpers.Add(child.ProcessId);
+                    godots.Add(ChildProcesses.Shown(start));
                 }
             }
         };
@@ -341,37 +318,185 @@ public sealed class GodotShaderTests
         {
             MainWindow window = Open(Path.Combine("fx", "water.gdshader"));
             Marked(window, "Unknown identifier in expression: 'speedd'.");
-            int first = Helpers(1)[0];
-            Ui.Hold(TimeSpan.FromSeconds(3), "three times the shortened while, in which the open shader keeps its helper");
-            Assert.True(DotnetProcesses.Runs(first), $"The helper (process {first}) was let go while a shader was open");
-
-            Ui.Run(window, AppActions.CloseTab);
-            Ui.WaitFor(() => !DotnetProcesses.Runs(first), () => $"the helper (process {first}) to be let go a second after the last shader closed", TimeSpan.FromSeconds(30));
-
-            Assert.Null(window.OpenFile(Path.Combine(folder, "fx", "water.gdshader")));
-            Marked(window, "Unknown identifier in expression: 'speedd'.");
-            int second = Helpers(2)[1];
-            Assert.True(DotnetProcesses.Runs(second), $"The helper started again (process {second}) has ended though the shader is open");
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "tint.rgb * speed");
+            editor.Focus();
+            Ui.Press(window, "DELETE");
+            Ui.WaitFor(() => window.EditorArea.Active!.Markers.Count == 0, () => $"the shader to check with no mark once mended: {Said(window)}");
+            Ui.PlaceAfter(editor, "TIME * speed");
+            window.KeyTextInput("x");
+            Marked(window, "Unknown identifier in expression: 'speedx'.");
+            Assert.Null(window.OpenFile(Path.Combine(folder, "lib", "waves.gdshaderinc")));
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "return sin(x");
+            window.EditorArea.CodeEditor.Focus();
+            window.KeyTextInput("x");
+            Marked(window, "Unknown identifier in expression: 'xx'.");
+            Assert.Null(window.OpenFile(Path.Combine(folder, "level.tscn")));
+            Marked(window, "Unknown identifier in expression: 'glw'.");
+            Ui.Settle();
+            lock (godots)
+            {
+                Assert.True(godots.Count <= 1 && godots.All(g => g.Contains("PassengerShaderProbes.gd", StringComparison.Ordinal)),
+                    $"Only the probe of the Godot found's shading language was to start a Godot, but these did: {string.Join("; ", godots)}");
+            }
             window.Close();
         }
         finally
         {
             ChildProcesses.Started -= started;
-            Environment.SetEnvironmentVariable(GodotShaderCompiler.IdleVariable, was);
-        }
-
-        int[] Helpers(int count)
-        {
-            lock (helpers)
-            {
-                Assert.True(helpers.Count == count, $"{count} helpers were to have started by now, but {helpers.Count} did: {string.Join(", ", helpers)}");
-                return [.. helpers];
-            }
         }
     }
 
-    /// <summary>Whether a process started is the shader compiler's helper, by the script it runs.</summary>
-    private static bool IsHelper(ChildStart child) => child.Start?.ArgumentList.Contains("res://PassengerShaders.gd") == true;
+    /// <summary>Shaders of every type, with and without errors, an include's error among them and what one rendering method
+    /// refuses: under each method, wherever Godot's own compiler (the Godot found, headless with user folders of the
+    /// test's) errs, Passenger marks the shader with the same words at the same line, or on its <c>#include</c> with the
+    /// include's place; where Godot compiles a shader, Passenger marks no error on it.</summary>
+    [AvaloniaFact]
+    public void Each_shader_is_marked_where_Godots_own_compiler_errs_in_its_words_at_its_line_under_each_rendering_method()
+    {
+        foreach (string method in new[] { "forward_plus", "mobile", "gl_compatibility" })
+        {
+            string project = TestFolders.Create($"godot-shader-parity-{method}-");
+            TestFolders.Write(project, GodotProject.FileName, $"config_version=5\n\n[application]\n\nconfig/name=\"Parity\"\n\n[rendering]\n\nrenderer/rendering_method=\"{method}\"\n");
+            foreach ((string name, string code) in Compared)
+            {
+                TestFolders.Write(project, name, code);
+            }
+            Dictionary<string, List<(string File, int Line, string Text)>> godotSays = GodotErrors(project);
+            MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+            window.Show();
+            window.OpenFolder(project);
+            Ui.Settle();
+            foreach ((string name, _) in Compared.Where(c => c.Name.EndsWith(".gdshader", StringComparison.Ordinal)))
+            {
+                Assert.Null(window.OpenFile(Path.Combine(project, name)));
+                Ui.WaitFor(() => !window.EditorArea.Active!.IsChecking, () => $"{name} to be checked under {method}: {Said(window)}", TimeSpan.FromSeconds(60));
+                IReadOnlyList<Marker> marks = window.EditorArea.Active!.Markers;
+                TextSnapshot text = window.EditorArea.CodeEditor.Document.Snapshot;
+                List<(string File, int Line, string Text)> errors = godotSays.GetValueOrDefault("res://" + name) ?? [];
+                if (errors.Count == 0)
+                {
+                    Assert.True(!marks.Any(m => m.Kind == MarkerKind.Error), $"Godot compiles {name} under {method}, but Passenger marks it: {Said(window)}");
+                    continue;
+                }
+                (string file, int line, string words) = errors[0];
+                bool marked = file.Length == 0
+                    ? marks.Any(m => m.Kind == MarkerKind.Error && m.Message == words && text.GetLineFromOffset(m.Range.Start) == line - 1)
+                    : marks.Any(m => m.Kind == MarkerKind.Error && m.Message == $"{file}:{line}: {words}");
+                Assert.True(marked, $"Godot's compiler says of {name} under {method} \"{words}\" at {(file.Length == 0 ? string.Empty : file + ":")}{line}, but Passenger marks: {Said(window)}");
+            }
+            window.Close();
+            Ui.Settle();
+        }
+    }
+
+    /// <summary>The shaders compared with Godot's own compiler, by their paths in the project: one of each type with an
+    /// error, others that compile, one including an include that errs, and one a rendering method refuses. A high end's
+    /// function is not among them: headless, Godot draws through its dummy renderer, which is no low end.</summary>
+    private static readonly (string Name, string Code)[] Compared =
+    [
+        ("spatial_name.gdshader", "shader_type spatial;\n\nuniform float speed = 1.0;\n\nvoid fragment() {\n\tALBEDO = vec3(speedd);\n}\n"),
+        ("spatial_types.gdshader", "shader_type spatial;\n\nvoid fragment() {\n\tfloat a = vec3(1.0);\n\tALBEDO = vec3(a);\n}\n"),
+        ("spatial_ok.gdshader", "shader_type spatial;\nrender_mode unshaded;\n\nuniform float never;\nuniform vec4 tint : source_color = vec4(1.0);\n\nvoid fragment() {\n\tALBEDO = tint.rgb;\n}\n"),
+        ("canvas_semicolon.gdshader", "shader_type canvas_item;\n\nvoid fragment() {\n\tCOLOR = vec4(1.0)\n}\n"),
+        ("canvas_ok.gdshader", "shader_type canvas_item;\n\nuniform float speed = 1.0;\n\nvoid vertex() {\n\tVERTEX += vec2(sin(TIME * speed), 0.0);\n}\n"),
+        ("particles_discard.gdshader", "shader_type particles;\n\nvoid process() {\n\tdiscard;\n}\n"),
+        ("particles_ok.gdshader", "shader_type particles;\n\nvoid start() {\n\tVELOCITY = vec3(0.0, 1.0, 0.0);\n}\n\nvoid process() {\n\tVELOCITY.y -= 9.8 * DELTA;\n}\n"),
+        ("sky_call.gdshader", "shader_type sky;\n\nvoid sky() {\n\tCOLOR = vec3(no_such(EYEDIR.y));\n}\n"),
+        ("sky_ok.gdshader", "shader_type sky;\n\nvoid sky() {\n\tCOLOR = mix(vec3(0.2), vec3(1.0), clamp(EYEDIR.y, 0.0, 1.0));\n}\n"),
+        ("fog_builtin.gdshader", "shader_type fog;\n\nvoid fog() {\n\tDENSITY = VERTEX.x;\n}\n"),
+        ("fog_ok.gdshader", "shader_type fog;\n\nvoid fog() {\n\tDENSITY = clamp(1.0 - length(UVW - vec3(0.5)), 0.0, 1.0);\n}\n"),
+        ("lib/bad.gdshaderinc", "float bad() {\n\treturn xx;\n}\n"),
+        ("lib/good.gdshaderinc", "float lift(float v) {\n\treturn v * 0.5 + 0.5;\n}\n"),
+        ("include_bad.gdshader", "shader_type spatial;\n\n#include \"lib/bad.gdshaderinc\"\n\nvoid fragment() {\n\tALBEDO = vec3(bad());\n}\n"),
+        ("include_good.gdshader", "shader_type canvas_item;\n\n#include \"res://lib/good.gdshaderinc\"\n\nvoid fragment() {\n\tCOLOR.rgb = vec3(lift(UV.x));\n}\n"),
+        ("forward_hint.gdshader", "shader_type spatial;\n\nuniform sampler2D nrt : hint_normal_roughness_texture;\n\nvoid fragment() {\n\tALBEDO = texture(nrt, SCREEN_UV).rgb;\n}\n"),
+    ];
+
+    /// <summary>Godot's own compiler's errors for each shader of a project, by its res:// path: the Godot found, headless on
+    /// the project with user folders beside it, compiling each as a Shader resource and writing what its logger heard.</summary>
+    private Dictionary<string, List<(string File, int Line, string Text)>> GodotErrors(string project)
+    {
+        TestFolders.Write(project, "compare.gd", CompareScript);
+        string written = Path.Combine(project, "heard.txt");
+        System.Diagnostics.ProcessStartInfo start = ChildProcesses.Command(godot!.Executable, [GodotExecutables.Headless, "--path", project, "--script", "res://compare.gd", "--", written], project);
+        foreach ((string name, string value) in Passenger.App.Godot.GodotUserFolders.Under(project + "-home"))
+        {
+            start.Environment[name] = value;
+        }
+        ChildResult result = Ui.Await(ChildProcesses.RunAsync(start, limit: TimeSpan.FromSeconds(60) * TestRun.TimeScale), "Godot's own compile of the project's shaders");
+        Assert.True(File.Exists(written), $"Godot ({godot.Executable}) wrote nothing of its compile: {result.ExitCode} {result.Output} {result.Error}");
+        Dictionary<string, List<(string File, int Line, string Text)>> errors = new(StringComparer.Ordinal);
+        foreach (string line in File.ReadAllLines(written))
+        {
+            string[] parts = line.Split('\t');
+            if (parts.Length == 5 && parts[1] == "3")
+            {
+                if (!errors.TryGetValue(parts[0], out List<(string File, int Line, string Text)>? said))
+                {
+                    errors[parts[0]] = said = [];
+                }
+                said.Add((parts[2], int.Parse(parts[3], System.Globalization.CultureInfo.InvariantCulture), parts[4]));
+            }
+        }
+        File.Delete(written);
+        File.Delete(Path.Combine(project, "compare.gd"));
+        return errors;
+    }
+
+    /// <summary>The script Godot compiles a project's shaders with: each .gdshader as a Shader resource at its path, a line
+    /// for each error or warning its logger heard (the shader, its type, file, line and words) into the file it is given.</summary>
+    private const string CompareScript = """
+        extends SceneTree
+
+        class Heard extends Logger:
+        	var mutex := Mutex.new()
+        	var messages: Array = []
+
+        	func _log_error(_function: String, file: String, line: int, code: String, rationale: String, _editor_notify: bool,
+        			error_type: int, _script_backtraces: Array[ScriptBacktrace]) -> void:
+        		mutex.lock()
+        		messages.append([error_type, file, line, code if code != "" else rationale])
+        		mutex.unlock()
+
+        	func _log_message(_message: String, _error: bool) -> void:
+        		pass
+
+        	func taken() -> Array:
+        		mutex.lock()
+        		var all := messages
+        		messages = []
+        		mutex.unlock()
+        		return all
+
+        func _initialize() -> void:
+        	var heard := Heard.new()
+        	OS.add_logger(heard)
+        	var lines := PackedStringArray()
+        	var files := []
+        	collect("res://", files)
+        	for path in files:
+        		heard.taken()
+        		var shader := Shader.new()
+        		shader.take_over_path(path)
+        		shader.code = FileAccess.get_file_as_string(path)
+        		shader.get_rid()
+        		for m in heard.taken():
+        			lines.append("%s\t%d\t%s\t%d\t%s" % [path, m[0], m[1], m[2], m[3]])
+        	var out := FileAccess.open(OS.get_cmdline_user_args()[0], FileAccess.WRITE)
+        	out.store_string("\n".join(lines))
+        	out.close()
+        	quit()
+
+        func collect(dir: String, files: Array) -> void:
+        	for f in DirAccess.get_files_at(dir):
+        		if f.ends_with(".gdshader"):
+        			files.append(dir.path_join(f))
+        	for d in DirAccess.get_directories_at(dir):
+        		if not d.begins_with("."):
+        			collect(dir.path_join(d), files)
+
+        """;
 
     private MainWindow Open(string file)
     {
@@ -384,7 +509,7 @@ public sealed class GodotShaderTests
         return window;
     }
 
-    /// <summary>The open file's mark of these words, once Godot's compiler has given it.</summary>
+    /// <summary>The open file's mark of these words, once its check has given it.</summary>
     private static Marker Marked(MainWindow window, string words)
     {
         Ui.WaitFor(() => window.EditorArea.Active!.Markers.Any(m => m.Message == words), () => $"the mark '{words}': {Said(window)}", TimeSpan.FromSeconds(60));

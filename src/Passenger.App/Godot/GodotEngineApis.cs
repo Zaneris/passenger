@@ -9,9 +9,10 @@ namespace Passenger.App.Godot;
 
 /// <summary>The engine's API as the Godot found writes it (<c>--dump-extension-api</c>, headless, with user folders of its
 /// own), dumped once per Godot version and build into the state's cache and read once per process: what GDScript's types
-/// are resolved against; and its class reference, the same dump with its documentation (from Godot 4.2), kept as its
-/// descriptions alone (<see cref="GodotClassReference"/>). None where no Godot is found or its dump fails, which leaves
-/// GDScript typed by its own scripts and built-in types alone, and its cards without the engine's words.</summary>
+/// are resolved against; its class reference, the same dump with its documentation (from Godot 4.2), kept as its
+/// descriptions alone (<see cref="GodotClassReference"/>); and the shading language's table as its compiler takes it
+/// (<see cref="ShaderTableAsync"/>). None where no Godot is found or its dump fails, which leaves GDScript typed by its
+/// own scripts and built-in types alone, its cards without the engine's words, and shaders read by the carried table.</summary>
 internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDictionary<string, string>?> folders)
 {
     /// <summary>How long a dump may take: Godot's start on a machine's first run, its classes written.</summary>
@@ -184,6 +185,106 @@ internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDicti
         {
             IdeErrors.Write($"Godot's classes kept at {kept} could not be read: {e.Message}");
             return null;
+        }
+    }
+
+    private static string ShaderFolder => Path.Combine(State.StateStore.DefaultRoot, "cache", "godot", "shader-built-ins");
+
+    private static readonly ConcurrentDictionary<string, Lazy<Task<GodotShaderTable>>> ShaderTables = new(StringComparer.Ordinal);
+
+    /// <summary>The first Godot whose scripts can hear its logger, which the probe of its shading language reads.</summary>
+    private static readonly Version Logged = new(4, 5);
+
+    private static readonly Lazy<byte[]> ProbesScript = new(() =>
+    {
+        using Stream stream = typeof(GodotEngineApis).Assembly.GetManifestResourceStream("Godot/PassengerShaderProbes.gd")
+            ?? throw new InvalidOperationException("Passenger carries no Godot/PassengerShaderProbes.gd");
+        using MemoryStream bytes = new();
+        stream.CopyTo(bytes);
+        return bytes.ToArray();
+    });
+
+    /// <summary>The carried table of the shading language as the Godot Settings name or found takes it, with that Godot's
+    /// version: each candidate's tiny shader (<see cref="GodotShaderTable.Probes"/>) compiled by it headless once per
+    /// version and build, what it refused kept in the state's cache. The carried table, and no version, where no Godot of
+    /// 4.5 or newer is found; the carried table where its probe fails.</summary>
+    public Task<(GodotShaderTable Table, Version? Godot)> ShaderTableAsync()
+    {
+        string? chosen = setting();
+        if (shaders is { } kept && kept.Setting == chosen && Stopwatch.GetElapsedTime(kept.At) < Refound && !kept.Table.IsFaulted)
+        {
+            return kept.Table;
+        }
+        Task<(GodotShaderTable Table, Version? Godot)> table = FindShaderTableAsync(chosen);
+        shaders = (chosen, Stopwatch.GetTimestamp(), table);
+        return table;
+    }
+
+    /// <summary>The shading language's table last asked for, by the setting it was asked with and when. A UI-thread field.</summary>
+    private (string? Setting, long At, Task<(GodotShaderTable Table, Version? Godot)> Table)? shaders;
+
+    private async Task<(GodotShaderTable Table, Version? Godot)> FindShaderTableAsync(string? chosen)
+    {
+        if (await KeyAsync(chosen) is not ({ } found, { } key) || VersionOf(key) is not { } version)
+        {
+            return (GodotShaderTable.Carried, null);
+        }
+        if (version < Logged)
+        {
+            return (GodotShaderTable.Carried, version);
+        }
+        string kept = $"{key}-{GodotShaderTable.Carried.Fingerprint}";
+        return (await ShaderTables.GetOrAdd(kept, k => new Lazy<Task<GodotShaderTable>>(() => BackgroundWork.Run(() => LoadShaderTableAsync(found, k)))).Value, version);
+    }
+
+    private async Task<GodotShaderTable> LoadShaderTableAsync(GodotFound found, string key)
+    {
+        GodotShaderTable carried = GodotShaderTable.Carried;
+        string kept = Path.Combine(ShaderFolder, $"{key}.json");
+        if (!File.Exists(kept))
+        {
+            string working = Path.Combine(ShaderFolder, "probing-" + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Directory.CreateDirectory(working);
+            IReadOnlyList<GodotShaderProbe> probes = carried.Probes();
+            AtomicFile.Write(Path.Combine(working, "project.godot"), "config_version=5\n"u8.ToArray());
+            AtomicFile.Write(Path.Combine(working, "PassengerShaderProbes.gd"), ProbesScript.Value);
+            string asked = Path.Combine(working, "probes.json");
+            string refusedAt = Path.Combine(working, "refused.json");
+            AtomicFile.Write(asked, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(probes.Select(p => p.Code).ToArray()));
+            ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--path", working, "--script", "res://PassengerShaderProbes.gd", "--", asked, refusedAt], working);
+            foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
+            {
+                start.Environment[name] = value;
+            }
+            ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
+            if (!File.Exists(refusedAt))
+            {
+                IdeErrors.Write($"Godot ({found.Executable}) wrote no probe of its shading language: {ExitCodes.Said(result.ExitCode)}");
+                return carried;
+            }
+            try
+            {
+                using System.Text.Json.JsonDocument read = System.Text.Json.JsonDocument.Parse(await File.ReadAllBytesAsync(refusedAt));
+                string[] refused = [.. read.RootElement.EnumerateArray().Select(e => e.TryGetInt32(out int index) && index >= 0 && index < probes.Count ? probes[index].Key : null)
+                    .OfType<string>().Order(StringComparer.Ordinal)];
+                AtomicFile.Write(kept, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(refused));
+            }
+            catch (Exception e) when (e is System.Text.Json.JsonException or InvalidOperationException)
+            {
+                IdeErrors.Write($"Godot's probe of its shading language from {found.Executable} could not be read: {e.Message}");
+                return carried;
+            }
+            Directory.Delete(working, recursive: true);
+        }
+        try
+        {
+            using System.Text.Json.JsonDocument read = System.Text.Json.JsonDocument.Parse(await File.ReadAllBytesAsync(kept));
+            return carried.Without(new HashSet<string>(read.RootElement.EnumerateArray().Select(e => e.GetString()).OfType<string>(), StringComparer.Ordinal));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            IdeErrors.Write($"Godot's probe of its shading language kept at {kept} could not be read: {e.Message}");
+            return carried;
         }
     }
 

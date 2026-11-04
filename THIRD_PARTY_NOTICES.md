@@ -772,7 +772,9 @@ on; `GodotPathStrings.cs` ports `simplify_path`, `is_absolute_path`, `get_base_d
 `servers/rendering/shader_language.cpp` and `shader_language.h` (its tokenizer, node tree, parser, checks of types,
 names, calls and assignments, constant folding, built-in function tables and messages); `GodotShaderWarnings.cs`
 ports `servers/rendering/shader_warnings.cpp` and `shader_warnings.h`; `GodotShaderCheck.cs` follows
-`editor/shader/shader_text_editor.cpp`'s validation of a shader and an include; all at commit
+`editor/shader/shader_text_editor.cpp`'s validation of a shader and an include; and
+`src/Passenger.App/Godot/GodotShaderChecker.cs` ports `uniform_to_property_info` of `shader_language.cpp` and `rtos`'s
+writing of a number (`String::num` of `core/string/ustring.cpp`); all at commit
 cafc17a192acf67903910a68aeb3c076c0907a4b (4.8 beta 2), their words kept as Godot words them.
 
 ```
