@@ -127,9 +127,36 @@ public sealed partial class GDScriptAnalyzer
         {
             Warn(context, narrowed, "NARROWING_CONVERSION");
         }
+        if (node.Initializer is { } given && value is not null && Knows(context.Class))
+        {
+            InitializerErrors(node, name.Name, kind, type, given, value, context);
+        }
         if (node is not GDScriptParameter)
         {
             Shadowing(name, kind, local, context);
+        }
+    }
+
+    /// <summary>Godot's errors of a declaration's value (resolve_assignable): a type <c>:=</c> cannot infer from null or a
+    /// value of no known type, and a value of a type the written one takes none of, a constant's said as its conversion first.</summary>
+    private void InitializerErrors(GDScriptAssignable node, string name, string kind, GDScriptType type, GDScriptExpression given, GDScriptType value, Context context)
+    {
+        if (node.Infers)
+        {
+            if (value is { Kind: GDScriptTypeKind.Builtin, Name: "Nil" } && given is GDScriptLiteral && node is not GDScriptConstant)
+            {
+                Error(context, given, $"Cannot infer the type of \"{name}\" {kind} because the value is \"null\".");
+            }
+            return;
+        }
+        if (node.Type is null || type.IsVariant || value.IsVariant || !value.Hard || !Sure(given, context))
+        {
+            return;
+        }
+        ConstantConverted(given, value, type, "assign", context);
+        if (!TypeCompatible(type, value, implicitly: true) && (node is GDScriptConstant || !TypeCompatible(value, type)))
+        {
+            Error(context, given, $"Cannot assign a value of type {value} to {kind} \"{name}\" with specified type {type}.");
         }
     }
 

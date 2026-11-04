@@ -294,7 +294,7 @@ public sealed partial class GDScriptAnalyzer
     /// <summary>Godot's name for an enum written without one, whose values are of it.</summary>
     private const string AnonymousEnum = "<anonymous enum>";
 
-    private static GDScriptType EnumType(GDScriptEnum node, GDScriptType owner, bool meta)
+    private GDScriptType EnumType(GDScriptEnum node, GDScriptType owner, bool meta)
     {
         Dictionary<string, long> values = new(StringComparer.Ordinal);
         long next = 0;
@@ -314,8 +314,20 @@ public sealed partial class GDScriptAnalyzer
         }
         return new GDScriptType(GDScriptTypeKind.Enum, node.Identifier?.Name ?? AnonymousEnum)
         {
-            Values = values, ValuesPartial = partial, Owner = owner.Name, Script = owner.Script, Meta = meta, Class = owner.Class, Offset = owner.Offset,
+            Values = values, ValuesPartial = partial, Owner = Fqcn(owner), Script = owner.Script, Meta = meta, Class = owner.Class, Offset = owner.Offset,
         };
+    }
+
+    /// <summary>A class's fully qualified name as Godot's parser gives it (its fqcn): its script's path, then each class it
+    /// is written in and its own after <c>::</c>, which an enum of it is named by.</summary>
+    private string Fqcn(GDScriptType owner)
+    {
+        if (owner.Script is not { } path || Tree(path) is not { } tree || owner.Class is not { } node || node == tree.Class)
+        {
+            return owner.Script ?? owner.Name;
+        }
+        List<GDScriptType> enclosing = Enclosing(ScriptClass(tree, path), tree.Members.Select(m => (m.Node, m.Offset)), node);
+        return string.Concat([path, .. enclosing.Skip(1).Select(c => "::" + c.Name), "::", owner.Name]);
     }
 
     /// <summary>A member a type has by a name: its own, then its base classes' (script classes, then the engine's); null for none.</summary>

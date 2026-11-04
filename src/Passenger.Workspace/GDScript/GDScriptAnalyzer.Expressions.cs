@@ -250,7 +250,11 @@ public sealed partial class GDScriptAnalyzer
                 }
                 return all && wildcard;
             case GDScriptReturn returned:
-                ReturnWarnings(returned, Reduce(returned.Value, context), context);
+                // A void function's call is returned as a statement is made, its void its own.
+                bool voids = context.Function is { ReturnType.IsVoid: true };
+                GDScriptType given = Reduce(returned.Value, context, root: voids && returned.Value is GDScriptCall);
+                ReturnWarnings(returned, given, context);
+                ReturnErrors(returned, given, voids, context);
                 return true;
             case GDScriptAssert assertion:
                 Reduce(assertion.Condition, context);
@@ -411,8 +415,8 @@ public sealed partial class GDScriptAnalyzer
                 return Operation(operand, unary.Operator switch { K.Minus => "unary-", K.Plus => "unary+", _ => "~" }, null);
             case GDScriptTernary ternary:
                 Reduce(ternary.Condition, context);
-                GDScriptType whenTrue = Reduce(ternary.True, context);
-                GDScriptType whenFalse = Reduce(ternary.False, context);
+                GDScriptType whenTrue = Reduce(ternary.True, context, root);
+                GDScriptType whenFalse = Reduce(ternary.False, context, root);
                 GDScriptType result = whenTrue.IsVariant || whenFalse.IsVariant ? GDScriptType.Variant
                     : Compatible(whenTrue, whenFalse) ? whenTrue : Compatible(whenFalse, whenTrue) ? whenFalse : GDScriptType.Variant;
                 if (!whenTrue.IsVariant && !whenFalse.IsVariant && result.IsVariant)
@@ -584,7 +588,7 @@ public sealed partial class GDScriptAnalyzer
         string path = project.Resolved(written);
         return path.EndsWith(".gd", StringComparison.OrdinalIgnoreCase) && Tree(path) is { } tree ? ScriptClass(tree, path) with { Meta = true }
             : project.ClassPath(project.ResourceClass(path)) is { } scripted && Tree(scripted) is { } scriptedTree ? ScriptClass(scriptedTree, scripted)
-            : GDScriptType.Native(project.ResourceClass(path));
+            : project.ResourceClass(path) is "Resource" ? GDScriptType.Native("Resource").Soft : GDScriptType.Native(project.ResourceClass(path));
     }
 
     /// <summary>A name's type as Godot's reduce_identifier gives it, and its errors where the class is read whole
@@ -832,6 +836,14 @@ public sealed partial class GDScriptAnalyzer
         {
             UnsafeArguments(call, script, function, context);
         }
+        if (Knows(context.Class) && call.FunctionName is { } calledName && calledName != "new" && CalledSignature(call, called, context) is var (parameters, defaults, varargs))
+        {
+            Arguments(call, parameters, defaults, varargs, context);
+        }
+        if (!root && !awaited && returned is { IsVoid: true, Hard: true } && call.FunctionName is { } voidName && Knows(context.Class))
+        {
+            Error(context, call, $"Cannot get return value of call to \"{voidName}()\" because it returns \"void\".");
+        }
         if (call.Callee is GDScriptIdentifier typeName && context.Scope?.Find(typeName.Name) is null && typeName.Name != "Nil"
             && Engine?.Builtins.GetValueOrDefault(typeName.Name) is { } builtin)
         {
@@ -979,6 +991,231 @@ public sealed partial class GDScriptAnalyzer
         }
     }
 
+    /// <summary>Godot's errors of a return (resolve_return): a void function's value, and a value of a type the declared one
+    /// takes no value of, a constant's said as its conversion first.</summary>
+    private void ReturnErrors(GDScriptReturn returned, GDScriptType given, bool voids, Context context)
+    {
+        if (returned.Value is not { } value || context.Analysis.Tree is null || !Knows(context.Class))
+        {
+            return;
+        }
+        if (voids)
+        {
+            if (value is not GDScriptCall)
+            {
+                Error(context, returned, "A void function cannot return a value.");
+            }
+            return;
+        }
+        if (context.Returns is not { IsVariant: false, Hard: true } expected || given.IsVariant || !given.Hard || !Sure(value, context))
+        {
+            return;
+        }
+        ConstantConverted(value, given, expected, "return", context);
+        if (!TypeCompatible(expected, given, implicitly: true) && !TypeCompatible(given, expected))
+        {
+            Error(context, returned, $"Cannot return value of type \"{given}\" because the function return type is \"{expected}\".");
+        }
+    }
+
+    /// <summary>Godot's error of a constant expression of a type a built-in or enum target takes none of
+    /// (update_const_expression_builtin_type), <paramref name="usage"/> what it is given to the target by.</summary>
+    private void ConstantConverted(GDScriptExpression value, GDScriptType given, GDScriptType target, string usage, Context context)
+    {
+        if (Folded(value, context) && target.Kind is GDScriptTypeKind.Builtin or GDScriptTypeKind.Enum && target.ToString() != given.ToString()
+            && !TypeCompatible(target, given, implicitly: true))
+        {
+            Error(context, value, $"Cannot {usage} a value of type \"{given}\" as \"{target}\".");
+        }
+    }
+
+    /// <summary>Whether an expression's type is one this reading is sure Godot gives it, which a mismatch's error stands on:
+    /// a literal (a negative one too), an array's or dictionary's, a name of a type written (a local, a parameter, a member
+    /// or a constant of a literal), a call of the script's own function whose return type is written, a built-in type's
+    /// constructor. What the engine's API or an inference gives is left, Godot's own reading of it being finer.</summary>
+    private bool Sure(GDScriptExpression expression, Context context) => Folded(expression, context) || expression switch
+    {
+        GDScriptLiteral or GDScriptArray or GDScriptDictionary => true,
+        GDScriptUnary { Operator: K.Minus, Operand: GDScriptLiteral } => true,
+        GDScriptIdentifier name when context.Scope?.Find(name.Name) is { } local => local.Local?.Node is GDScriptAssignable { Type: not null } or GDScriptConstant { Initializer: GDScriptLiteral },
+        GDScriptIdentifier name => Member(context.Class, name.Name) is { Declaration: { Script: { } script, Start: var start } } && Tree(script) is { } tree
+            && AssignableAt(tree.Members.Select(m => (m.Node, m.Offset)), start) is GDScriptVariable { Type: not null } or GDScriptConstant { Type: not null } or GDScriptConstant { Initializer: GDScriptLiteral },
+        GDScriptCall { Callee: GDScriptIdentifier builtin } when Engine?.Builtins.ContainsKey(builtin.Name) == true && context.Scope?.Find(builtin.Name) is null => true,
+        GDScriptCall { Callee: GDScriptIdentifier own } => Declared(own, context),
+        GDScriptCall { Callee: GDScriptSubscript { IsAttribute: true, Base: GDScriptSelf, Attribute: { } method } } => Declared(method, context),
+        _ => false,
+    };
+
+    /// <summary>Whether a name a call is made by reads a script's function whose return type is written.</summary>
+    private bool Declared(GDScriptIdentifier name, Context context) =>
+        context.Analysis.Declared.GetValueOrDefault(name) is { Script: { } script, Start: var start } && Tree(script) is { } tree
+        && FunctionAt(tree.Members.Select(m => (m.Node, m.Offset)), start) is { ReturnType: not null };
+
+    /// <summary>The variable or constant a script declares by its name's offset, its own class's or an inner class's; null for none.</summary>
+    private static GDScriptAssignable? AssignableAt(IEnumerable<(GDScriptNode Node, int Offset)> members, int start)
+    {
+        foreach ((GDScriptNode node, int offset) in members)
+        {
+            if (node is GDScriptAssignable { Identifier: { } name } assignable and (GDScriptVariable or GDScriptConstant) && offset + name.Start == start)
+            {
+                return assignable;
+            }
+            if (node is GDScriptClass inner && AssignableAt(inner.Members.Select(m => (m, offset)), start) is { } nested)
+            {
+                return nested;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Whether a value of <paramref name="source"/>'s type may be given where <paramref name="target"/>'s is asked
+    /// for, as Godot's check_type_compatibility has it: anything as a Variant, a Variant as anything; a built-in type as itself
+    /// (with <paramref name="implicitly"/>, one converting to it strictly), an enum's value as an int, typed collections by
+    /// their element types; an enum as its own or an int; null as any object, an object as its class or one it extends.</summary>
+    private bool TypeCompatible(GDScriptType target, GDScriptType source, bool implicitly = false)
+    {
+        if (target.IsVariant || source.IsVariant)
+        {
+            return true;
+        }
+        if (target.Kind == GDScriptTypeKind.Builtin)
+        {
+            // An object's Variant type is Object, which some built-in types (RID) take.
+            string variantType = source.Kind is GDScriptTypeKind.Native or GDScriptTypeKind.Class ? "Object" : source.Name;
+            bool valid = source.Kind == GDScriptTypeKind.Builtin && source.Name == target.Name
+                || implicitly && source.Kind != GDScriptTypeKind.Enum && GDScriptConversions.From(target.Name).Contains(variantType)
+                || target.Name == "int" && source is { Kind: GDScriptTypeKind.Enum, Meta: false };
+            if (valid && target.Name is "Array" or "Dictionary" && source.Kind == GDScriptTypeKind.Builtin && source.Name == target.Name)
+            {
+                for (int i = 0; i < Math.Min(target.Elements.Count, source.Elements.Count); i++)
+                {
+                    valid &= target.Elements[i].ToString() == source.Elements[i].ToString();
+                }
+            }
+            return valid;
+        }
+        if (target.Kind == GDScriptTypeKind.Enum)
+        {
+            return source is { Kind: GDScriptTypeKind.Builtin, Name: "int" } || source.Kind == GDScriptTypeKind.Enum && source.ToString() == target.ToString();
+        }
+        if (source is { Kind: GDScriptTypeKind.Builtin, Name: "Nil" })
+        {
+            return true;
+        }
+        if (source.Kind is GDScriptTypeKind.Builtin or GDScriptTypeKind.Enum || target.Meta)
+        {
+            return false;
+        }
+        if (source.Meta)
+        {
+            // A class is a script resource, an engine class its native class.
+            return target.Kind == GDScriptTypeKind.Native && Engine?.Extends(source.Kind == GDScriptTypeKind.Class ? "GDScript" : "GDScriptNativeClass", target.Name) == true;
+        }
+        int depth = 0;
+        for (GDScriptType? at = source.Instance; at is not null && depth++ < 64; at = BaseOf(at))
+        {
+            if (at.Kind == target.Kind && (at.Kind == GDScriptTypeKind.Native ? at.Name == target.Name : at.Script == target.Script && at.Name == target.Name))
+            {
+                return true;
+            }
+            if (at.Kind == GDScriptTypeKind.Native && target.Kind == GDScriptTypeKind.Native)
+            {
+                return Engine?.Extends(at.Name, target.Name) == true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Godot's errors of a call's arguments against what is called (validate_call_arg): too few or too many, and
+    /// each one of a type its parameter takes none of, a constant's said as its conversion first.</summary>
+    private void Arguments(GDScriptCall call, IReadOnlyList<GDScriptType> parameters, int defaults, bool varargs, Context context)
+    {
+        string name = call.FunctionName ?? string.Empty;
+        if (call.Arguments.Count < parameters.Count - defaults)
+        {
+            Error(context, call, $"Too few arguments for \"{name}()\" call. Expected at least {parameters.Count - defaults} but received {call.Arguments.Count}.");
+        }
+        if (!varargs && call.Arguments.Count > parameters.Count)
+        {
+            Error(context, call.Arguments[parameters.Count], $"Too many arguments for \"{name}()\" call. Expected at most {parameters.Count} but received {call.Arguments.Count}.");
+        }
+        for (int i = 0; i < call.Arguments.Count && i < parameters.Count; i++)
+        {
+            GDScriptType wanted = parameters[i];
+            GDScriptType given = context.Analysis.TypeOf(call.Arguments[i]);
+            if (!wanted.Hard || wanted.IsVariant || given.IsVariant || !given.Hard || !Sure(call.Arguments[i], context))
+            {
+                continue;
+            }
+            ConstantConverted(call.Arguments[i], given, wanted, "pass", context);
+            if (!TypeCompatible(wanted, given, implicitly: true) && !TypeCompatible(given, wanted))
+            {
+                Error(context, call.Arguments[i], $"Invalid argument for \"{name}()\" function: argument {i + 1} should be \"{wanted}\" but is \"{given}\".");
+            }
+        }
+    }
+
+    /// <summary>What a call's function takes, where Godot's reduce_call checks it: a function or method of self (or through
+    /// super), of what an attribute is called on, or a utility function; null for a built-in type's constructor, a call of
+    /// a name not found, or what is called on a value of no known type.</summary>
+    private (IReadOnlyList<GDScriptType> Parameters, int Defaults, bool Varargs)? CalledSignature(GDScriptCall call, GDScriptIdentifier? called, Context context)
+    {
+        if (called is null)
+        {
+            return null;
+        }
+        GDScriptDeclaration? declared = context.Analysis.Declared.GetValueOrDefault(called);
+        switch (call.Callee)
+        {
+            case GDScriptIdentifier name when !call.IsSuper:
+                if (context.Scope?.Find(name.Name) is not null || Engine?.Builtins.ContainsKey(name.Name) == true || IsBuiltinName(name.Name))
+                {
+                    return null;
+                }
+                // A utility function's name calls it before any method of the class (Godot's reduce_call).
+                if (Engine?.Functions.ContainsKey(name.Name) == true)
+                {
+                    return SignatureOf(null, null, name.Name);
+                }
+                return declared is not null ? SignatureOf(declared, context.Class, name.Name)
+                    : Member(context.Class, name.Name) is null ? SignatureOf(null, null, name.Name) : null;
+            case GDScriptSubscript { IsAttribute: true, Base: { } taken } when context.Analysis.Types.GetValueOrDefault(taken) is { IsVariant: false } owner:
+                return owner.Kind == GDScriptTypeKind.Builtin ? SignatureOf(null, owner, called.Name) : declared is not null ? SignatureOf(declared, owner, called.Name) : null;
+            default:
+                return call.IsSuper && declared is not null ? SignatureOf(declared, BaseOf(context.Class), called.Name) : null;
+        }
+    }
+
+    /// <summary>What a method or function a call reaches takes, where its declaration is read: a script's function's
+    /// parameters as their types are written, an engine method's or utility function's as the API gives them; null where
+    /// what is called is not known.</summary>
+    private (IReadOnlyList<GDScriptType> Parameters, int Defaults, bool Varargs)? SignatureOf(GDScriptDeclaration? declared, GDScriptType? owner, string name)
+    {
+        if (declared is { Script: { } script, Start: var start } && Tree(script) is { } tree
+            && FunctionIn(ScriptClass(tree, script), tree.Members.Select(m => (m.Node, m.Offset)), start) is ({ } function, { } inClass, int offset))
+        {
+            // Its parameters' types are read in its own class's scope, an inner class's enums before its outer's.
+            Context reading = new(new GDScriptAnalysis(null, script), inClass, offset, null, function);
+            List<GDScriptType> types = [.. function.Parameters.Select(p => p.Type is { } written ? ResolveType(written, reading) : GDScriptType.Variant.Soft)];
+            return (types, function.Parameters.Count(p => p.Initializer is not null), function.Rest is not null);
+        }
+        GodotApiMethod? method = owner switch
+        {
+            { Kind: GDScriptTypeKind.Builtin } builtin => Engine?.Builtins.GetValueOrDefault(builtin.Name)?.Methods.GetValueOrDefault(name),
+            _ when declared?.EngineClass is { } engine => Engine?.Chain(engine).Select(c => c.Methods.GetValueOrDefault(name)).FirstOrDefault(m => m is not null),
+            null => Engine?.Functions.GetValueOrDefault(name),
+            _ => null,
+        };
+        // GDScript's own functions are listed without their parameters.
+        if (method is null || method.Parameters.Count < method.Required)
+        {
+            return null;
+        }
+        // A utility function taking any number (print) asks for none of them.
+        int defaults = owner is null && method.Varargs ? method.Parameters.Count : method.Parameters.Count - method.Required;
+        return ([.. method.Parameters.Select(p => FromApi(p.Type) with { Hard = true })], defaults, method.Varargs);
+    }
+
     /// <summary>Whether a local or parameter is declared with no type written nor inferred, or as Variant.</summary>
     private static bool Untyped(GDScriptAssignable local) =>
         local is GDScriptVariable or GDScriptParameter && (local.Type is null && !local.Infers || local.Type is { Chain: [{ Name: "Variant" }] });
@@ -1105,6 +1342,25 @@ public sealed partial class GDScriptAnalyzer
         {
             Error(context, call, $"Function \"{name}()\" not found in base {based}.{GodotRenames.Call(name)}");
         }
+    }
+
+    /// <summary>The function a script declares by its name's offset with the class it is in and the offset its positions count
+    /// from; null for none.</summary>
+    private static (GDScriptFunction Function, GDScriptType Class, int Offset)? FunctionIn(GDScriptType at, IEnumerable<(GDScriptNode Node, int Offset)> members, int start)
+    {
+        foreach ((GDScriptNode node, int offset) in members)
+        {
+            if (node is GDScriptFunction { Identifier: { } name } function && offset + name.Start == start)
+            {
+                return (function, at, offset);
+            }
+            if (node is GDScriptClass { Identifier: { } innerName } inner
+                && FunctionIn(new GDScriptType(GDScriptTypeKind.Class, innerName.Name) { Class = inner, Script = at.Script, Offset = offset }, inner.Members.Select(m => (m, offset)), start) is { } nested)
+            {
+                return nested;
+            }
+        }
+        return null;
     }
 
     /// <summary>The function a script declares by its name's offset, its own class's or an inner class's; null for none.</summary>
@@ -1274,14 +1530,15 @@ public sealed partial class GDScriptAnalyzer
             case GDScriptTypeKind.Builtin:
                 GodotApiMethod? builtin = Engine?.Builtins.GetValueOrDefault(owner.Name)?.Methods.GetValueOrDefault(method.Name);
                 returns = builtin is null ? GDScriptType.Variant.Soft : FromApi(builtin.Returns);
+                // A typed array's element and the array itself, which Godot's API gives as Variant and Array: known, never hard.
                 if (owner is { Name: "Array", Elements: [{ } element, ..] } && builtin?.Returns == "Variant" && method.Name is "front" or "back" or "pick_random"
                     or "pop_back" or "pop_front" or "pop_at" or "get" or "max" or "min")
                 {
-                    returns = element;
+                    returns = element.Soft;
                 }
                 if (owner is { Name: "Array" } && method.Name is "duplicate" or "slice" or "filter")
                 {
-                    returns = owner.Instance;
+                    returns = owner.Instance.Soft;
                 }
                 break;
             case GDScriptTypeKind.Native or GDScriptTypeKind.Class:
@@ -1330,8 +1587,58 @@ public sealed partial class GDScriptAnalyzer
         {
             Warn(context, assignment, "UNASSIGNED_VARIABLE_OP_ASSIGN", modified.Name, GDScriptToken.KindName(assignment.Operator).TrimEnd('='));
         }
+        if (context.Analysis.Tree is not null && assignment.Assignee is { } assignee && assignment.Value is { } assignedValue && Knows(context.Class))
+        {
+            AssignmentErrors(assignment, assignee, target, assignedValue, value, context);
+        }
         return GDScriptType.Variant.Soft;
     }
+
+    /// <summary>Godot's errors of an assignment (reduce_assignment): to a constant, or with <c>=</c> of a value of a type
+    /// the variable's takes none of, a constant's said as its conversion first.</summary>
+    private void AssignmentErrors(GDScriptAssignment assignment, GDScriptExpression assignee, GDScriptType target, GDScriptExpression assigned, GDScriptType value, Context context)
+    {
+        if (IsConstant(assignee, context) || assignee is GDScriptSubscript { Base: { } held } && IsConstant(held, context)
+            && context.Analysis.TypeOf(held).Kind is not (GDScriptTypeKind.Class or GDScriptTypeKind.Native))
+        {
+            Error(context, assignee, "Cannot assign a new value to a constant.");
+            return;
+        }
+        if (assignment.Operator != K.Equal || target.IsVariant || !target.Hard || value.IsVariant || !value.Hard || !Sure(assigned, context) || !Sure(assignee, context))
+        {
+            return;
+        }
+        ConstantConverted(assigned, value, target, "assign", context);
+        if (!TypeCompatible(target, value, implicitly: true) && !TypeCompatible(value, target))
+        {
+            Error(context, assigned, $"Value of type \"{value}\" cannot be assigned to a variable of type \"{target}\".");
+        }
+    }
+
+    /// <summary>Whether an expression is a name Godot holds constant: a local constant, a constant, enum, enum value or signal
+    /// of the class, or an enum's value read off the enum.</summary>
+    private bool IsConstant(GDScriptExpression expression, Context context) => expression switch
+    {
+        GDScriptIdentifier name => context.Scope?.Find(name.Name) is { } local ? local.Local?.Kind == LocalKind.Constant
+            : Member(context.Class, name.Name) is { Kind: "const" or "enum" or "signal" },
+        GDScriptSubscript { IsAttribute: true, Base: { } taken } => context.Analysis.TypeOf(taken) is { Kind: GDScriptTypeKind.Enum, Meta: true },
+        _ => false,
+    };
+
+    /// <summary>Whether an expression is one Godot folds to a constant: a literal, a negative one, a constant's name, an
+    /// enum's value, or a constant read off a built-in type, an enum or a class.</summary>
+    private bool Folded(GDScriptExpression expression, Context context) => Constant(expression) is not null || expression switch
+    {
+        GDScriptIdentifier name => IsConstant(name, context),
+        GDScriptSubscript { IsAttribute: true, Base: { } taken, Attribute: { } member } => context.Analysis.TypeOf(taken) switch
+        {
+            { Kind: GDScriptTypeKind.Enum, Meta: true } => true,
+            { Kind: GDScriptTypeKind.Builtin, Meta: true } builtin => Engine?.Builtins.GetValueOrDefault(builtin.Name)?.Constants.ContainsKey(member.Name) == true,
+            { Kind: GDScriptTypeKind.Class, Meta: true } owner => Member(owner.Instance, member.Name) is { Kind: "const" or "enum" },
+            _ => false,
+        },
+        _ => false,
+    };
 
     private GDScriptType Binary(GDScriptBinary binary, Context context)
     {

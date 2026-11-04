@@ -13,14 +13,15 @@ public class GDScriptWarningsTests
     private const string Api = """
         {
           "global_enums": [], "global_constants": [],
-          "utility_functions": [{ "name": "print", "return_type": "void", "arguments": [] }, { "name": "randf", "return_type": "float", "arguments": [] }],
+          "utility_functions": [{ "name": "print", "return_type": "void", "is_vararg": true, "arguments": [] }, { "name": "randf", "return_type": "float", "arguments": [] }],
           "singletons": [],
           "builtin_classes": [
             { "name": "Nil", "operators": [] }, { "name": "bool", "operators": [] },
             { "name": "int", "operators": [{ "name": "/", "right_type": "int", "return_type": "int" }, { "name": "/", "right_type": "float", "return_type": "float" },
               { "name": "+", "right_type": "int", "return_type": "int" }] },
             { "name": "float", "operators": [{ "name": "/", "right_type": "int", "return_type": "float" }, { "name": "/", "right_type": "float", "return_type": "float" }] },
-            { "name": "String", "operators": [], "methods": [{ "name": "num_uint64", "return_type": "String", "is_static": true }] }, { "name": "Array", "methods": [] },
+            { "name": "String", "operators": [], "methods": [{ "name": "num_uint64", "return_type": "String", "is_static": true,
+              "arguments": [{ "name": "number", "type": "int" }, { "name": "base", "type": "int", "default_value": "10" }, { "name": "capitalize_hex", "type": "bool", "default_value": "false" }] }] }, { "name": "Array", "methods": [] },
             { "name": "Callable", "methods": [{ "name": "call", "return_type": "Variant", "is_vararg": true, "is_const": true }], "constructors": [{ "index": 0 }, { "index": 1, "arguments": [{ "name": "from", "type": "Callable" }] },
               { "index": 2, "arguments": [{ "name": "object", "type": "Object" }, { "name": "method", "type": "StringName" }] }] },
             { "name": "Signal", "methods": [{ "name": "emit", "return_type": "void" }] },
@@ -31,8 +32,9 @@ public class GDScriptWarningsTests
               { "name": "clear", "return_type": "void", "is_const": false }] }
           ],
           "classes": [
-            { "name": "Object", "methods": [{ "name": "emit_signal", "return_value": { "type": "enum::Error" } }, { "name": "connect", "return_value": { "type": "enum::Error" } },
-              { "name": "disconnect" }, { "name": "get", "return_value": { "type": "Variant" } }] },
+            { "name": "Object", "methods": [{ "name": "emit_signal", "is_vararg": true, "return_value": { "type": "enum::Error" }, "arguments": [{ "name": "signal", "type": "StringName" }] },
+              { "name": "connect", "return_value": { "type": "enum::Error" }, "arguments": [{ "name": "signal", "type": "StringName" }, { "name": "callable", "type": "Callable" }, { "name": "flags", "type": "int", "default_value": "0" }] },
+              { "name": "disconnect", "arguments": [{ "name": "signal", "type": "StringName" }, { "name": "callable", "type": "Callable" }] }, { "name": "get", "return_value": { "type": "Variant" } }] },
             { "name": "RefCounted", "inherits": "Object" },
             { "name": "Node", "inherits": "Object", "methods": [{ "name": "get_node", "return_value": { "type": "Node" } }, { "name": "_ready", "is_virtual": true }],
               "properties": [{ "name": "name", "type": "StringName" }] },

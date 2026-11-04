@@ -10,7 +10,8 @@ using Passenger.Text;
 namespace Passenger.Tests;
 
 /// <summary>Passenger's own reading of a GDScript gives the errors Godot's own server gives on the same scripts, in the same
-/// words on the same lines: a corpus of scripts, a family of Godot's analyzer's errors each, opened in a window whose
+/// words on the same lines: a corpus of scripts, a family of Godot's analyzer's errors each (names not found, mismatched
+/// types and calls), opened in a window whose
 /// Godot's server serves them, each script's errors from Godot's diagnostics and from Passenger's marks set beside each
 /// other (an error Godot pushes twice at one place counted once). Without a Godot each test skips saying why; a Godot editor
 /// of its own, so run alone.</summary>
@@ -34,6 +35,13 @@ public sealed class GDScriptGodotErrorsTests
     internal const string Types = "extends Node\n\nvar speed := 1.0\nvar a: Missing\nvar b: speed\nvar c: Vector3.Nope\nvar d: Node.Nope\nvar e: ProcessMode\n"
         + "var f: int[int]\nvar g: Array[int, int]\n\n\nfunc _ready() -> void:\n\tvar h: Later\n\tconst Later = Mode\n\tvar i := 1\n\tvar j: i\n\n\nenum Mode { A }\n";
 
+    /// <summary>Values of types their targets take none of, constants assigned, and calls given too few or too many
+    /// arguments or a value as a function's that returns nothing.</summary>
+    internal const string Mismatches = "extends Node\n\nenum MyEnum { A, B }\nenum Other { X, Y }\nconst LIMIT = 3\nvar count: int = \"three\"\nvar e: MyEnum = Other.X\n"
+        + "var typed_float: float = 1\nvar n := null\n\n\nfunc takes(a: int, b: String = \"\") -> int:\n\treturn a + b.length()\n\n\nfunc nothing() -> void:\n\treturn 1\n\n\n"
+        + "func gives() -> int:\n\treturn \"a\"\n\n\nfunc _ready() -> void:\n\tcount = \"four\"\n\tLIMIT = 4\n\tMyEnum.A = 1\n\tvar s: String = 5\n\ttakes()\n"
+        + "\ttakes(1, \"b\", 3)\n\ttakes(\"x\")\n\tvar v = nothing()\n\tprint(len(\"x\"), s, v, typed_float, n)\n\te = Other.Y\n\tvar w: Vector2 = Vector2.ZERO\n\tw = Color.RED\n";
+
     private readonly string folder;
     private readonly GodotFound? godot = GodotExecutables.Find(null);
 
@@ -46,6 +54,9 @@ public sealed class GDScriptGodotErrorsTests
 
     [AvaloniaFact]
     public void Names_godot_does_not_find_are_its_errors_in_its_words() => Compared(("names.gd", Names), ("calls.gd", Calls), ("types.gd", Types));
+
+    [AvaloniaFact]
+    public void Values_its_targets_take_none_of_are_its_errors_in_its_words() => Compared(("mismatches.gd", Mismatches));
 
     /// <summary>The scripts written, opened one by one once Godot's server serves the project, and each one's errors from
     /// Godot's server and from Passenger's reading the same.</summary>

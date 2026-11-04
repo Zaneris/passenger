@@ -7,8 +7,9 @@ namespace Passenger.UnitTests.Godot;
 /// <summary>Godot's analyzer's errors as Passenger's analyzer gives them, in Godot's words and on Godot's lines (each script
 /// checked against Godot 4.7.2's own server, which says the same, a twice-pushed error once), over a small API of the engine's: a name declared nowhere (with Godot 4's rename hint for a Godot 3 name), a built-in type or global
 /// enum standing on its own, a member a known base lacks, an engine's enum used as a value, a call of a function not found
-/// on self, a built-in value or type, an engine class or an enum, and a type not found; and none of them where the class
-/// extends one this reading cannot read.</summary>
+/// on self, a built-in value or type, an engine class or an enum, a type not found, a value of a type its target takes
+/// none of and a call given too few or too many arguments; and none of them where the class extends one this reading
+/// cannot read.</summary>
 public class GDScriptErrorsTests
 {
     private const string Api = """
@@ -110,6 +111,39 @@ public class GDScriptErrorsTests
             "10: Typed arrays require exactly one collection element type.",
             "14: Local constant \"Later\" is not resolved at this point.",
             "17: Local variable \"i\" cannot be used as a type.",
+        ], Errors(Script));
+    }
+
+    [Fact]
+    public void A_value_of_a_type_its_target_takes_none_of_and_a_call_given_too_few_or_many_are_errors_in_godots_words_on_its_lines()
+    {
+        const string Script = "extends Node\n\nenum MyEnum { A, B }\nenum Other { X, Y }\nconst LIMIT = 3\nvar count: int = \"three\"\nvar e: MyEnum = Other.X\n"
+            + "var typed_float: float = 1\nvar n := null\n\n\nfunc takes(a: int, b: String = \"\") -> int:\n\treturn a\n\n\nfunc nothing() -> void:\n\treturn 1\n\n\n"
+            + "func gives() -> int:\n\treturn \"a\"\n\n\nfunc _ready() -> void:\n\tcount = \"four\"\n\tLIMIT = 4\n\tMyEnum.A = 1\n\tvar s: String = 5\n\ttakes()\n"
+            + "\ttakes(1, \"b\", 3)\n\ttakes(\"x\")\n\tvar v = nothing()\n\tprint(s, v, typed_float, n)\n\te = Other.Y\n";
+        Assert.Equal(
+        [
+            "6: Cannot assign a value of type \"String\" as \"int\".",
+            "6: Cannot assign a value of type String to variable \"count\" with specified type int.",
+            "7: Cannot assign a value of type \"main.gd.Other\" as \"main.gd.MyEnum\".",
+            "7: Cannot assign a value of type main.gd.Other to variable \"e\" with specified type main.gd.MyEnum.",
+            "9: Cannot infer the type of \"n\" variable because the value is \"null\".",
+            "17: A void function cannot return a value.",
+            "21: Cannot return value of type \"String\" because the function return type is \"int\".",
+            "21: Cannot return a value of type \"String\" as \"int\".",
+            "25: Cannot assign a value of type \"String\" as \"int\".",
+            "25: Value of type \"String\" cannot be assigned to a variable of type \"int\".",
+            "26: Cannot assign a new value to a constant.",
+            "27: Cannot assign a new value to a constant.",
+            "28: Cannot assign a value of type \"int\" as \"String\".",
+            "28: Cannot assign a value of type int to variable \"s\" with specified type String.",
+            "29: Too few arguments for \"takes()\" call. Expected at least 1 but received 0.",
+            "30: Too many arguments for \"takes()\" call. Expected at most 2 but received 3.",
+            "31: Cannot pass a value of type \"String\" as \"int\".",
+            "31: Invalid argument for \"takes()\" function: argument 1 should be \"int\" but is \"String\".",
+            "32: Cannot get return value of call to \"nothing()\" because it returns \"void\".",
+            "34: Cannot assign a value of type \"main.gd.Other\" as \"main.gd.MyEnum\".",
+            "34: Value of type \"main.gd.Other\" cannot be assigned to a variable of type \"main.gd.MyEnum\".",
         ], Errors(Script));
     }
 
