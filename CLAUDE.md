@@ -582,8 +582,10 @@ Projects in `src/`; `find_symbol` finds the rest:
   `UpdateHandlerHook.ForTestHost`, `TestHostReload`); a Godot game's GdUnit4 tests go through it with `GODOT_BIN` from
   `GodotTestRuns` (the person's own wins), its GUT tests read from GDScript (`GutScripts`) and run by GUT's command line
   (`GutRunner`, `GutRuns`), a project not yet imported imported headless first, as GUT needs Godot's class cache, its
-  GoDotTest tests read from C# (`GoDotTests`) and run in the game (`GoDotTestRunner`), their outcomes read from Godot's
-  `--log-file`; a Godot test run is debugged as Debug starts the game (`ITestDebugLauncher.DebugGameAsync`,
+  GoDotTest tests read from C# (`GoDotTests`) and run in the game (`GoDotTestRunner`), started in the scene
+  `GoDotTests.StartOf` finds (the run settings' `GoDotTestScene` first), each told as its end line is heard
+  (`GoDotTests.Progress`; a debugged game's lines through `DebugSession.Heard`), their outcomes then read whole from
+  Godot's `--log-file`; a Godot test run is debugged as Debug starts the game (`ITestDebugLauncher.DebugGameAsync`,
   `MainWindow.DebugTestGame`), Settings' Godot arguments given through `GodotStart`, and GdUnit4's runner folder is
   build output (`IgnoredFolders.GdUnit4Runner`). A run from the editor, a filter or the Explorer chooses its tests once
   its build has ended (`TestController.RunMatchingAsync`); the gutter marks by name or by the runner's file and line
