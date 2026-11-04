@@ -408,6 +408,11 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
                 new Passenger.App.Aspire.Protocol.ResourceProperty { Name = "executable.pid", Value = Google.Protobuf.WellKnownTypes.Value.ForNumber(program) },
             },
         });
+        // The push reaches the IDE in its own time: until then web is starting with no program, which telemetry refuses.
+        Assert.True(await Waiting.UntilAsync(async () => (await Call(client, McpTools.Workspace)).GetProperty("aspireApps").EnumerateArray()
+            .SelectMany(app => app.GetProperty("resources").EnumerateArray())
+            .Any(listed => listed.GetProperty("name").GetString() == "web" && listed.GetProperty("state").GetString() == "Running"), TimeSpan.FromMinutes(1), Cancel),
+            $"The IDE never heard that web runs its program.{Said()}");
         using CancellationTokenSource stopAsking = CancellationTokenSource.CreateLinkedTokenSource(Cancel);
         Task asking = Waiting.Apart(async () =>
         {
