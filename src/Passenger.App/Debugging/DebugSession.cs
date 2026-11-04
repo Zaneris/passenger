@@ -863,14 +863,8 @@ public sealed class DebugSession
         launched = null;
         using (program)
         {
-            try
-            {
-                if (program.HasExited)
-                {
-                    return;
-                }
-            }
-            catch (Exception gone) when (gone is InvalidOperationException or System.ComponentModel.Win32Exception)
+            // An ended one waiting for its parent, the adapter, to take its exit (a Godot game after its teardown) reads to .NET as running.
+            if (!DotnetProcesses.Runs(program.Id))
             {
                 return;
             }
