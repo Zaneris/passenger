@@ -1289,6 +1289,22 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"editor_text of a folder answered: {Text(folderAsked)}");
     }
 
+    /// <summary>An agent's find_symbol of a kind Go to Symbol has not, or with a limit below one, is refused naming the kinds
+    /// or the limit, never an empty list an agent reads as no symbol of that name.</summary>
+    [Fact]
+    public async Task An_agents_find_symbol_of_a_kind_there_is_not_or_no_limit_is_refused_saying_so()
+    {
+        string folder = TestFolders.Create("mcp-kinds-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult kind = await Result(client, McpTools.FindSymbol, new() { ["query"] = "Order", ["kind"] = "klass" });
+        Assert.True(kind.IsError == true && Text(kind).Contains("No kind 'klass'; Go to Symbol's kinds are", StringComparison.Ordinal) && Text(kind).Contains("class", StringComparison.Ordinal),
+            $"find_symbol of the kind klass answered: {Text(kind)}");
+        CallToolResult none = await Result(client, McpTools.FindSymbol, new() { ["query"] = "Order", ["limit"] = 0 });
+        Assert.True(none.IsError == true && Text(none).Contains("limit is 0: find_symbol lists 1 or more", StringComparison.Ordinal),
+            $"find_symbol with limit 0 answered: {Text(none)}");
+    }
+
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
     /// vcs_commit is refused naming the file, and nothing is committed.</summary>
     [Fact]

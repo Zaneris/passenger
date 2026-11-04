@@ -844,9 +844,17 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         [Description("Only the symbols query names exactly, as symbol does, each with its documentation id")] bool exact = false,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
-        RoslynSession session = await Server(cancel);
         // Go to Symbol finds an indexer by neither of its names, this[] or its metadata's Item: the exact find does.
         bool indexer = query.StartsWith("this[", StringComparison.Ordinal);
+        if (limit < 1)
+        {
+            throw new ArgumentException($"limit is {limit}: find_symbol lists 1 or more", nameof(limit));
+        }
+        if (!exact && !indexer && kind is not null && !SymbolKinds.All.Contains(kind, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"No kind '{kind}'; Go to Symbol's kinds are {string.Join(", ", SymbolKinds.All)}", nameof(kind));
+        }
+        RoslynSession session = await Server(cancel);
         if (exact || indexer)
         {
             return (IReadOnlyList<SymbolFound>)[.. (await NamedAsync(session, query, kind, limit, cancel)).Symbols.Select(Found)];

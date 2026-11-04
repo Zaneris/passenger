@@ -304,6 +304,9 @@ public static class SymbolKinds
     ];
 
     public static string Name(SymbolKind kind) => kind >= SymbolKind.File && (int)kind <= Names.Length ? Names[(int)kind - 1] : "symbol";
+
+    /// <summary>Every kind's name, in the protocol's order.</summary>
+    public static IReadOnlyList<string> All => Names;
 }
 
 // Semantic tokens
