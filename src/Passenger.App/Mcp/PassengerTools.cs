@@ -1470,8 +1470,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await Session.Debug.StopAsync(tab);
             return $"Stopped {tab.Name}";
         }
+        string? idle = Builds.WhyNotStop();
         await Builds.StopAllAsync().WaitAsync(cancel);
-        return "Stopped";
+        return idle is null ? "Stopped" : $"{idle}, so nothing was stopped";
     });
 
     // Unit tests
