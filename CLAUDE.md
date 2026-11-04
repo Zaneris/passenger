@@ -424,7 +424,8 @@ a new name, and `just site-shots` retakes its images.
   from the helper's `held`. A node instancing a scene no text says keeps the names below it unknown; a signal's
   parameters are known only where written and its emits agree; a connection's flags may bind the sender. Godot compiles
   a Shader only at `get_rid()`, with no warnings, stopping at its first error, passing over a failed preprocess: only
-  the shader port's comparison test reads it.
+  the shader port's comparison test reads it. Godot finds a C# error's `at:` place and backtrace by counting frames,
+  which shift once tier 1 inlines GodotSharp's `PushError`: the console keys an entry by `GodotConsoleFold.KeyOf`.
 - **Godot's packages.** Its own GodotSharp packages differ from nuget.org's of the same version, so `tests/GodotGraphs`
   never restores GodotSharp at a version a Godot ships (NU1403): GoDotTest's and GdUnit4's are `PackageDownload`s. 4.8's
   C# generators can't build a script class whose base an older Godot's built (godotengine/godot#124939), so GdUnit4
