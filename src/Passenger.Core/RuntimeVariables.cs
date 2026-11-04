@@ -29,6 +29,9 @@ public static class RuntimeVariables
     /// <summary>"1" lets the host roll a program forward onto a prerelease runtime when no release one will do.</summary>
     public const string RollForwardToPrerelease = "DOTNET_ROLL_FORWARD_TO_PRERELEASE";
 
+    /// <summary>How hard the runtime's GC compacts a heap left fragmented, from 0 (its default) to 9.</summary>
+    public const string ConserveMemory = "DOTNET_GCConserveMemory";
+
     /// <summary>The .NET command line a build's tools and the SDK's own programs run under, as the command line gives it to
     /// MSBuild.</summary>
     public const string HostPath = "DOTNET_HOST_PATH";

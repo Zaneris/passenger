@@ -124,7 +124,7 @@ public sealed class ProjectHost : IAsyncDisposable
         try
         {
             // Run in the IDE's folder, not the one it evaluates for, which may be deleted under it.
-            start = onMachine ? ChildProcesses.DotnetCommand([Assembly, "--folder", folder]) : ChildProcesses.HelperCommand(Assembly, ["--folder", folder]);
+            start = ChildProcesses.ConservingMemory(onMachine ? ChildProcesses.DotnetCommand([Assembly, "--folder", folder]) : ChildProcesses.HelperCommand(Assembly, ["--folder", folder]));
         }
         catch (FileNotFoundException missing)
         {

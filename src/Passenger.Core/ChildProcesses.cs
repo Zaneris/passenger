@@ -118,6 +118,19 @@ public static class ChildProcesses
         return AsDotnet(Command(program, [.. words, assembly, .. arguments], folder));
     }
 
+    /// <summary>A helper of the solution's (Roslyn's server, the project host) started with the runtime compacting its heap,
+    /// which a solution's growing and shrinking leaves fragmented and no person waits on: in Passenger's own solution it
+    /// took Roslyn's server from about 2,500 MB to 1,950 and the project host from 350–480 to 270 (#1153). A setting of
+    /// the person's own stands; never a helper whose programs inherit it, as the debug adapter's debuggee would.</summary>
+    public static ProcessStartInfo ConservingMemory(ProcessStartInfo start)
+    {
+        start.Environment.TryAdd(RuntimeVariables.ConserveMemory, HelperConservesMemory);
+        return start;
+    }
+
+    /// <summary>The <see cref="RuntimeVariables.ConserveMemory"/> of <see cref="ConservingMemory"/>.</summary>
+    public const string HelperConservesMemory = "7";
+
     /// <summary>A helper's start (<see cref="HelperCommand"/>) naming the person's .NET command line (<see cref="Dotnet.Host"/>)
     /// as the one MSBuild, its SDK resolvers and its tools take for the installation, as the command line names itself to
     /// the builds it runs: the helper's own host is none of the person's. Where there is none, none is named.</summary>
