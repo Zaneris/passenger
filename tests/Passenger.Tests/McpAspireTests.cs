@@ -53,7 +53,8 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         }
         CallToolResult ordinary = await Result(client, McpTools.Run, new() { ["resource"] = "missing" });
         Assert.True(ordinary.IsError == true, $"An ordinary configuration accepted an Aspire target: {Text(ordinary)}");
-        Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
+        string? stopped = (await Call(client, McpTools.Stop)).GetString();
+        Assert.True(stopped?.StartsWith("Nothing is running, so nothing was stopped", StringComparison.Ordinal) == true, $"stop with nothing running answered {stopped}");
         JsonElement workspace = await Call(client, McpTools.Workspace);
         Assert.Equal(PathNames.Canonical(Folder), workspace.GetProperty("folder").GetString());
         Assert.Empty(workspace.GetProperty("aspireApps").EnumerateArray());
