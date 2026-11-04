@@ -154,8 +154,8 @@ public static class Refusals
     public const string NoNextStatement = "The paused program's debugger cannot move where it goes on, so there is no Set Next Statement there";
 
     /// <summary>A build asked of a folder with no solution or project file MSBuild could build, which it would refuse in its own
-    /// words (MSB1003).</summary>
-    public const string NothingToBuild = "The open folder has no solution or project to build: open one, or a folder that holds one";
+    /// words (MSB1003); short enough to read whole in the smallest window's status bar.</summary>
+    public const string NothingToBuild = "The open folder has no solution or project to build";
 
     /// <summary>A build asked of a folder whose one kind of project is a Godot project of GDScript alone, which builds nothing.</summary>
     public const string NothingToBuildOfScripts = "The open folder's Godot project is GDScript alone, which Godot runs as it is: there is nothing to build (Run, Debug and Profile start its game)";
