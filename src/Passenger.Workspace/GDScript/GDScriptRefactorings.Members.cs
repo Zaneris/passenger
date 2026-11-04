@@ -77,7 +77,8 @@ public static partial class GDScriptRefactorings
 
     /// <summary>A member's uses in every script: the names the analyzer resolves to it, the strings calls name it by, and,
     /// as unsure, a call naming a method by what is built at run time, and a member of its name the analyzer resolves to
-    /// nothing (on a value of an engine class, or of no type written).</summary>
+    /// nothing (on a value of an engine class, or of no type written); a string or a call only on an object that may run
+    /// the member's class (<see cref="MayRun"/>).</summary>
     public static GDScriptUses UsesOf(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target)
     {
         List<GDScriptUses.Use> names = [];
@@ -87,6 +88,8 @@ public static partial class GDScriptRefactorings
         {
             foreach (GDScriptMember member in script.Tree.Members)
             {
+                // What a call with no object runs on: the script's class; an inner class's, followed no further.
+                GDScriptType self = member.Node is GDScriptClass ? GDScriptType.Variant : script.Analysis.Lineage.FirstOrDefault() ?? GDScriptType.Variant;
                 Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(member.Node);
                 foreach ((GDScriptNode node, GDScriptNode? parent) in parents)
                 {
@@ -103,12 +106,13 @@ public static partial class GDScriptRefactorings
                             };
                             names.Add(new GDScriptUses.Use(script, identifier, member.Offset, calling, receiver));
                             break;
-                        case GDScriptSubscript { IsAttribute: true, Attribute: { } attribute } when attribute.Name == target.Named && script.Analysis.DeclarationOf(attribute) is null:
+                        case GDScriptSubscript { IsAttribute: true, Attribute: { } attribute, Base: { } on } when attribute.Name == target.Named
+                            && script.Analysis.DeclarationOf(attribute) is null && MayRun(scripts, script.Analysis.TypeOf(on), target):
                             // A value typed as an engine class, or not at all, may hold a node running the script.
                             unsure.Add(GDScriptUses.Place(script, member.Offset, node, $"its '{target.Named}' is on a value whose script is not read"));
                             break;
                         case GDScriptCall { FunctionName: { } function, Arguments: var arguments } call when NamingCalls.TryGetValue(function, out int index) && arguments.Count > index
-                            && !OnCallable(call, script):
+                            && !OnCallable(call, script) && MayRun(scripts, ReceiverOf(call, script, self), target):
                             GDScriptExpression argument = arguments[index];
                             if (argument is GDScriptLiteral { Value: string text } literal)
                             {
@@ -123,7 +127,7 @@ public static partial class GDScriptRefactorings
                             }
                             break;
                         case GDScriptCall { FunctionName: "emit_signal" or "connect" or "disconnect" or "has_signal", Arguments: [GDScriptLiteral { Value: string signal } named, ..] } emitting
-                            when signal == target.Named && target.Node is GDScriptSignal:
+                            when signal == target.Named && target.Node is GDScriptSignal && MayRun(scripts, ReceiverOf(emitting, script, self), target):
                             strings.Add(new GDScriptUses.Named(script, named, member.Offset, emitting));
                             break;
                     }
@@ -132,6 +136,50 @@ public static partial class GDScriptRefactorings
         }
         return new GDScriptUses(names, strings, unsure);
     }
+
+    /// <summary>What a call naming a member runs on: a Callable's object (<c>Callable(o, "f")</c>), the object it is called
+    /// on, else <paramref name="self"/>.</summary>
+    private static GDScriptType ReceiverOf(GDScriptCall call, GDScriptRead script, GDScriptType self) => call switch
+    {
+        { FunctionName: "Callable", Callee: GDScriptIdentifier, Arguments: [{ } on, ..] } => script.Analysis.TypeOf(on),
+        { IsSuper: false, Callee: GDScriptSubscript { IsAttribute: true, Base: { } on } } => script.Analysis.TypeOf(on),
+        _ => self,
+    };
+
+    /// <summary>Whether a value of a type may be an object running the target's class, so a member it reads or calls by
+    /// name may be the target: one of no type held, the class or a class it is built on or built on it, an engine class it
+    /// is built on or built on that; never a builtin value. A class whose bases are not all read may be any.</summary>
+    private static bool MayRun(IReadOnlyList<GDScriptRead> scripts, GDScriptType type, GDScriptTarget target)
+    {
+        if (type.IsVariant || !type.Hard || type.Meta)
+        {
+            return true;
+        }
+        if (type.Kind is GDScriptTypeKind.Builtin or GDScriptTypeKind.Enum)
+        {
+            return false;
+        }
+        if (scripts.FirstOrDefault(s => s.Script == target.Script)?.Analysis is not { Lineage: [{ } own, ..] lineage } declaring || lineage.Any(t => SameClass(t, type)))
+        {
+            return true;
+        }
+        if (type.Kind == GDScriptTypeKind.Native)
+        {
+            // An engine class built on the class's own may hold a node running it.
+            return lineage is not [.., { Kind: GDScriptTypeKind.Native, Name: "Object" }] || declaring.Engine is not { } engine || !engine.Classes.ContainsKey(type.Name)
+                || engine.Extends(type.Name, lineage.First(t => t.Kind == GDScriptTypeKind.Native).Name);
+        }
+        // A script's class built on the target's; an inner class's, or one of a script not read, may be any.
+        if (scripts.FirstOrDefault(s => s.Script == type.Script)?.Analysis.Lineage is not [{ } its, ..] built || !SameClass(its, type))
+        {
+            return true;
+        }
+        return !lineage.Any(t => t.Kind == GDScriptTypeKind.Native) || !built.Any(t => t.Kind == GDScriptTypeKind.Native) || built.Any(t => SameClass(t, own));
+    }
+
+    /// <summary>Whether two types are one class: an engine class by name, a script's by its script and its place there.</summary>
+    private static bool SameClass(GDScriptType a, GDScriptType b) => a.Kind == b.Kind && (a.Kind == GDScriptTypeKind.Native ? a.Name == b.Name
+        : a.Script == b.Script && (a.Class == b.Class || a.Offset == b.Offset && a.Class?.Identifier?.Name == b.Class?.Identifier?.Name));
 
     /// <summary>Whether a call is a Callable's own (<c>clear.call_deferred(0.2)</c>, a lambda's <c>call()</c>), whose
     /// arguments are the function's, not a method's name.</summary>

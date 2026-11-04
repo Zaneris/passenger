@@ -20,6 +20,13 @@ public sealed class GDScriptAnalysis
     /// <summary>The script's res:// path.</summary>
     public string Path { get; }
 
+    /// <summary>The script's class and each class it is built on, itself first, to the engine's Object where every base
+    /// was read.</summary>
+    public IReadOnlyList<GDScriptType> Lineage { get; internal set; } = [];
+
+    /// <summary>The engine's API the script was read against; null where none was dumped.</summary>
+    public GodotEngineApi? Engine { get; internal set; }
+
     internal Dictionary<GDScriptNode, GDScriptType> Types { get; } = [];
 
     internal Dictionary<GDScriptIdentifier, GDScriptDeclaration> Declared { get; } = [];

@@ -33,9 +33,15 @@ public sealed partial class GDScriptAnalyzer
     /// <summary>A script's analysis: every expression's and declaration's type, every name's declaration.</summary>
     public GDScriptAnalysis Analyze(GDScriptTree tree, string path)
     {
-        GDScriptAnalysis analysis = new(tree, path);
+        GDScriptAnalysis analysis = new(tree, path) { Engine = Engine };
         analysed[path] = tree;
         GDScriptType self = ScriptClass(tree, path);
+        List<GDScriptType> lineage = [];
+        for (GDScriptType? at = self; at is not null && lineage.Count < 64; at = BaseOf(at))
+        {
+            lineage.Add(at);
+        }
+        analysis.Lineage = lineage;
         foreach (GDScriptMember member in tree.Members)
         {
             WrittenVariants(member.Node, member.Offset, analysis);

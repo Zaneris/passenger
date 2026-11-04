@@ -33,15 +33,16 @@ public sealed record GDScriptParameterChange(int From, string Name, string Type,
 /// the scripts it changes, or refused with why and the places where it cannot tell what a change would do: Extract Variable
 /// and Extract Function, Inline Variable and Inline Function, Change Signature, Safe Delete, Introduce Parameter, Move and
 /// Rename, and a name's places for Find Usages. A
-/// member's uses are the names the analyzer resolves to it in every script; a call by a string (<c>call("f")</c>) is one
-/// too, and one whose name is built at run time, or a call on a value of a type it cannot read, refuses. Pure.</summary>
+/// member's uses are the names the analyzer resolves to it in every script; a call by a string (<c>call("f")</c>) on an
+/// object that may run its class is one too, and one whose name is built at run time, or a call on a value of a type it
+/// cannot read, refuses. Pure.</summary>
 public static partial class GDScriptRefactorings
 {
     /// <summary>The functions that call or take a method by its name as a string, and which of their arguments names it.</summary>
     private static readonly Dictionary<string, int> NamingCalls = new(StringComparer.Ordinal)
     {
         ["call"] = 0, ["call_deferred"] = 0, ["callv"] = 0, ["has_method"] = 0, ["rpc"] = 0, ["rpc_id"] = 1, ["Callable"] = 1,
-        ["get_method_argument_count"] = 0, ["is_connected"] = 1,
+        ["get_method_argument_count"] = 0,
     };
 
     private static readonly HashSet<string> Keywords = new(StringComparer.Ordinal)

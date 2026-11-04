@@ -8,12 +8,34 @@ namespace Passenger.UnitTests.Godot;
 /// code does.</summary>
 public class GDScriptRefactoringsTests
 {
+    /// <summary>A small engine API of Godot's dump's form: a few node classes, one beside another.</summary>
+    private const string Api = """
+        {
+          "global_enums": [], "global_constants": [], "utility_functions": [], "singletons": [],
+          "builtin_classes": [{ "name": "String", "methods": [] }, { "name": "StringName", "methods": [] }, { "name": "Callable", "methods": [] }],
+          "classes": [
+            { "name": "Object", "methods": [{ "name": "call", "is_vararg": true, "return_value": { "type": "Variant" }, "arguments": [{ "name": "method", "type": "StringName" }] },
+              { "name": "call_deferred", "is_vararg": true, "return_value": { "type": "Variant" }, "arguments": [{ "name": "method", "type": "StringName" }] }] },
+            { "name": "RefCounted", "inherits": "Object" },
+            { "name": "Node", "inherits": "Object", "methods": [{ "name": "_ready", "is_virtual": true }, { "name": "_get_configuration_warnings", "is_virtual": true }] },
+            { "name": "Node2D", "inherits": "Node", "methods": [{ "name": "_draw_shape", "is_virtual": true }] },
+            { "name": "Sprite2D", "inherits": "Node2D" },
+            { "name": "Timer", "inherits": "Node" }
+          ]
+        }
+        """;
+
+    private static readonly GodotEngineApi Engine = GodotEngineApi.Read(System.Text.Encoding.UTF8.GetBytes(Api));
+
     /// <summary>Scripts read as a project, each class_name naming its script.</summary>
-    private static IReadOnlyList<GDScriptRead> Read(params (string Script, string Text)[] scripts)
+    private static IReadOnlyList<GDScriptRead> Read(params (string Script, string Text)[] scripts) => ReadWith(null, scripts);
+
+    /// <summary>Scripts read as a project against an engine's API.</summary>
+    private static IReadOnlyList<GDScriptRead> ReadWith(GodotEngineApi? engine, params (string Script, string Text)[] scripts)
     {
         Dictionary<string, GDScriptTree> trees = scripts.ToDictionary(s => s.Script, s => GDScriptTree.Parse(s.Text), StringComparer.Ordinal);
         Dictionary<string, string> classNames = trees.Where(t => t.Value.Class.Identifier is not null).ToDictionary(t => t.Value.Class.Identifier!.Name, t => t.Key, StringComparer.Ordinal);
-        GDScriptAnalyzer analyzer = new(new GDScriptProject(null, p => trees.GetValueOrDefault(p), classNames, new Dictionary<string, string>()));
+        GDScriptAnalyzer analyzer = new(new GDScriptProject(engine, p => trees.GetValueOrDefault(p), classNames, new Dictionary<string, string>()));
         return [.. scripts.Select(s => new GDScriptRead(s.Script, analyzer.Analyze(trees[s.Script], s.Script)))];
     }
 
@@ -69,6 +91,30 @@ public class GDScriptRefactoringsTests
         IReadOnlyList<GDScriptRead> unsure = Read(("res://helper.gd", Helper), ("res://user.gd", Dynamic));
         Assert.Contains("names a method by what it reads at run time",
             GDScriptRefactorings.Rename(unsure, GDScriptRefactorings.MemberAt(unsure, unsure[0], Helper.IndexOf("clear", StringComparison.Ordinal))!, "wipe").Refused);
+    }
+
+    [Fact]
+    public void A_call_by_a_name_holds_back_a_rename_only_where_its_object_may_run_the_functions_class()
+    {
+        const string Helper = "class_name Helper\nextends Node2D\n\n\nfunc clear() -> void:\n\tpass\n";
+        const string Other = "class_name Other\nextends Node2D\n";
+        const string User = "extends Node\n\nvar other := Other.new()\nvar timer := Timer.new()\nvar sprite := Sprite2D.new()\n\n\n"
+            + "func by_name(method: String) -> void:\n\tother.call(method)\n\ttimer.call_deferred(method)\n\tcall(method)\n\ttimer.clear()\n"
+            + "\ttimer.call(\"clear\")\n\tsprite.call(\"clear\")\n";
+        IReadOnlyList<GDScriptRead> scripts = ReadWith(Engine, ("res://helper.gd", Helper), ("res://other.gd", Other), ("res://user.gd", User));
+        GDScriptRefactored renamed = GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], Helper.IndexOf("clear", StringComparison.Ordinal))!, "wipe");
+        Assert.True(renamed.Refused is null, $"A call by a name on another script's class, on an engine class Helper is not built on, and on the user's own class held back the rename: {renamed.Refused}");
+        string after = After(renamed, "res://user.gd", User);
+        Assert.True(after.Contains("\ttimer.call(\"clear\")\n\tsprite.call(\"wipe\")\n", StringComparison.Ordinal),
+            $"A string on a Timer, which can't run Helper, should stay, and one on a Sprite2D, which may, should follow the rename:\n{after}");
+        foreach (string unsure in new[] { "var node: Node\n\n\nfunc on_node(method: String) -> void:\n\tnode.call(method)\n",
+            "var anything\n\n\nfunc on_anything(method: String) -> void:\n\tanything.call(method)\n", "var node: Node\n\n\nfunc on_node() -> void:\n\tnode.clear()\n" })
+        {
+            IReadOnlyList<GDScriptRead> held = ReadWith(Engine, ("res://helper.gd", Helper), ("res://other.gd", Other), ("res://user.gd", User + "\n\n" + unsure));
+            GDScriptRefactored refused = GDScriptRefactorings.Rename(held, GDScriptRefactorings.MemberAt(held, held[0], Helper.IndexOf("clear", StringComparison.Ordinal))!, "wipe");
+            Assert.True(refused.Places.Count == 1 && refused.Places[0].Script == "res://user.gd",
+                $"A call on a Node, which may run Helper, or on a value of no type, and only that, should hold back the rename:\n{unsure}\n{refused.Refused}");
+        }
     }
 
     [Fact]
