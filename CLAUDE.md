@@ -481,6 +481,7 @@ a new name, and `just site-shots` retakes its images.
   permitted", so a test reading a shell's lines allows others between them.
 - **Avalonia 12's lists** re-attach, and so re-style, every recycled container and never reuse a `DataTemplate`'s
   content: rows go through `ReusedRows`, made once with their containers (UiRulesTests).
+- **Avalonia 12.1 counts a run of clicks per button**: a press of another button starts a new run (`ClickCount` 1).
 - **Avalonia 12's ListBox re-points its keys' row by the chosen row's new index before moving rows**, so a focused row
   loses the keys when rows come above it, and moves a Shift range's anchor only with its first chosen row: every tree
   goes through `TreeKeys.Attach`.
