@@ -45,7 +45,7 @@ public sealed class GodotGutTests : IDisposable
         """;
 
     /// <summary>GUT's test class, as GUT names it, the assertions the tests make, and where a failed one was.</summary>
-    private const string GutTest = """
+    internal const string GutTest = """
         class_name GutTest
         extends Node
 
@@ -69,7 +69,7 @@ public sealed class GodotGutTests : IDisposable
         """;
 
     /// <summary>GUT's command line: the scripts -gtest names, the tests -gunit_test_name picks, a JUnit file as GUT's.</summary>
-    private const string CommandLine = """
+    internal const string CommandLine = """
         extends SceneTree
 
 
@@ -234,6 +234,41 @@ public sealed class GodotGutTests : IDisposable
             Ui.Run(window, AppActions.Resume);
             Ui.Launched(window, debugged, "the debugged run to end", TimeSpan.FromMinutes(2));
             Assert.True(turns.State == TestState.Passed, $"The test that calls C# did not pass once let go:\n{turns.Details}\n{window.BottomPanel.Tests.Status}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Tests in scripts extending the project's own test class (a class_name extending GutTest), by its name, by
+    /// its path and through a class extending it, and in an inner class extending it, are in the tree from the GDScript before
+    /// any run, as GUT runs them; once the base extends a Node instead, they leave it. Needs no Godot: nothing runs.</summary>
+    [AvaloniaFact]
+    public void Tests_extending_the_projects_own_test_class_are_found_and_leave_once_it_is_no_test_class()
+    {
+        TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
+        TestFolders.Write(folder, "addons/gut/gut_cmdln.gd", CommandLine);
+        TestFolders.Write(folder, "addons/gut/test.gd", GutTest);
+        TestFolders.Write(folder, "test/tools/spin_tester.gd", "class_name SpinTester\nextends GutTest\n\n\nfunc spun():\n\treturn 2\n");
+        TestFolders.Write(folder, "test/tools/turn_tester.gd", "class_name TurnTester extends SpinTester\n");
+        TestFolders.Write(folder, "test/test_named.gd", "extends SpinTester\n\n\nfunc test_by_name():\n\tassert_eq(spun(), 2)\n");
+        TestFolders.Write(folder, "test/test_path.gd", "extends \"res://test/tools/spin_tester.gd\"\n\n\nfunc test_by_path():\n\tassert_eq(spun(), 2)\n");
+        TestFolders.Write(folder, "test/test_chain.gd", "extends TurnTester\n\n\nfunc test_through_a_chain():\n\tassert_eq(spun(), 2)\n");
+        TestFolders.Write(folder, "test/test_inner.gd", "extends GutTest\n\n\nclass TestSpins:\n\textends SpinTester\n\n\tfunc test_in_an_inner_class():\n\t\tassert_eq(spun(), 2)\n");
+        string[] derived = ["test_by_name", "test_by_path", "test_through_a_chain", "test_in_an_inner_class"];
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        window.Show();
+        try
+        {
+            window.OpenFolder(folder);
+            Ui.WaitFor(() => derived.All(name => Method(window, name) is not null),
+                () => $"every test extending the project's own test class shown before any run ({string.Join(", ", window.Tests.Tree.Methods.Select(m => m.FullName))}; {window.Tests.Tree.EmptyText})");
+            Assert.Equal("test.test_inner+TestSpins.test_in_an_inner_class", Method(window, "test_in_an_inner_class")!.FullName);
+
+            TestFolders.Write(folder, "test/tools/spin_tester.gd", "class_name SpinTester\nextends Node\n\n\nfunc spun():\n\treturn 2\n");
+            Ui.WaitFor(() => derived.All(name => Method(window, name) is null),
+                () => $"the tests to leave once their base extends a Node ({string.Join(", ", window.Tests.Tree.Methods.Select(m => m.FullName))})");
         }
         finally
         {

@@ -89,7 +89,8 @@ public sealed class TestGutter
     /// <summary>An open file's tests were read from a parse of its text as it stands.</summary>
     public event EventHandler<(OpenDocument Document, FileTests Tests)>? Read;
 
-    /// <summary>The test attributes a file's project derives from a framework's, which its methods are tests by too.</summary>
+    /// <summary>The test attributes a file's project derives from a framework's, which its methods are tests by too (a GUT
+    /// project's, the test classes its scripts derive).</summary>
     public Func<string, IReadOnlySet<string>>? OwnAttributes { get; set; }
 
     /// <summary>The test projects a file is one of (<see cref="TestFinder.ProjectsOf"/>), whose tests alone its names mark.</summary>
@@ -185,8 +186,9 @@ public sealed class TestGutter
     private async Task ReadScriptAsync(OpenDocument document, Declared file, int asked, Passenger.Text.TextSnapshot text)
     {
         string? folder = ProjectsOf?.Invoke(document.Path).Where(p => Path.GetFileName(p) == Passenger.Workspace.GodotProject.FileName).Select(Path.GetDirectoryName).FirstOrDefault();
+        IReadOnlySet<string>? bases = OwnAttributes?.Invoke(document.Path);
         (FileTests tests, FilePlaces places) = folder is null ? (FileTests.None, FilePlaces.None)
-            : await BackgroundWork.Run(() => GutScripts.Read(text.ToString(), GutScripts.TypeOf(folder, document.Path)));
+            : await BackgroundWork.Run(() => GutScripts.Read(text.ToString(), folder, document.Path, bases));
         if (asked != file.Asked || !ReferenceEquals(document.Text.Snapshot, text) || !files.ContainsKey(document))
         {
             return;

@@ -133,7 +133,8 @@ public sealed class TestFinder
         return null;
     }
 
-    /// <summary>The test attributes the project of a file derives from a framework's, its methods tests by them too.</summary>
+    /// <summary>The test attributes the project of a file derives from a framework's, its methods tests by them too; a GUT
+    /// project's, the class names and paths of its scripts that are test classes (<see cref="GutScripts.Read"/>).</summary>
     public IReadOnlySet<string> AttributesOf(string path)
     {
         UiThread.Check();
@@ -429,10 +430,10 @@ public sealed class TestFinder
     }
 
     /// <summary>Reads a closed file's tests with its project's symbols and derived test attributes, or a GDScript file's as
-    /// GUT's of the Godot project in <paramref name="gut"/>, unless it has not changed since they were read; one being
-    /// written is read once the watcher says so again. A worker's.</summary>
+    /// GUT's of the Godot project in <paramref name="gut"/> with the test classes its scripts derive, unless it has not
+    /// changed since they were read; one being written is read once the watcher says so again. A worker's.</summary>
     private void ReadFile(string path, CSharpParseOptions symbols, IReadOnlySet<string> attributes, string? gut, TestsCache? kept) =>
-        onDisk.Get(path, file => gut is not null ? GutScripts.Read(File.ReadAllText(file), GutScripts.TypeOf(gut, file)).Tests : Parse(file, symbols, attributes, kept));
+        onDisk.Get(path, file => gut is not null ? GutScripts.Read(File.ReadAllText(file), gut, file, attributes).Tests : Parse(file, symbols, attributes, kept));
 
     /// <summary>A closed C# file's tests: those the cache kept where the file and what it is read with are as they were,
     /// else parsed from the bytes its stamp was taken of, and kept. A worker's.</summary>

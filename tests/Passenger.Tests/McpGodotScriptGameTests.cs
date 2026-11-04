@@ -57,4 +57,24 @@ public sealed class McpGodotScriptGameTests : McpRig
             $"hot_reload on a game whose saved script had reloaded did not say that saved scripts reload: {reload}");
         await Call(client, McpTools.Stop);
     }
+
+    /// <summary>tests_run asked as the folder opens waits for the tests its code declares: a GUT test in a script extending the
+    /// project's own test class, known only once that class has been read, runs and passes (GUT the stand-in of
+    /// <see cref="GodotGutTests"/>).</summary>
+    [Fact]
+    public async Task Tests_run_as_the_folder_opens_runs_a_gut_test_extending_the_projects_own_test_class()
+    {
+        string gut = PathNames.Canonical(TestFolders.Create("godot-mcp-gut-"));
+        DeleteAtEnd(gut);
+        TestFolders.Write(gut, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
+        TestFolders.Write(gut, "addons/gut/gut_cmdln.gd", GodotGutTests.CommandLine);
+        TestFolders.Write(gut, "addons/gut/test.gd", GodotGutTests.GutTest);
+        TestFolders.Write(gut, "test/tools/spin_tester.gd", "class_name SpinTester\nextends GutTest\n\n\nfunc spun():\n\treturn 2\n");
+        TestFolders.Write(gut, "test/test_named.gd", "extends SpinTester\n\n\nfunc test_by_name():\n\tassert_eq(spun(), 2, \"spun twice\")\n");
+        await using McpClient client = await Start(["--mcp", gut], languageServer: false,
+            environment: new() { [Passenger.App.Godot.GodotUserFolders.HomeVariable] = folder + "-home" });
+        JsonElement ran = await Call(client, McpTools.TestsRun, new() { ["filter"] = "test_by_name" });
+        Assert.True(ran.GetProperty("summary").GetString()?.StartsWith("Tests passed: 1, failed: 0 of 1", StringComparison.Ordinal) == true,
+            $"tests_run as the folder opened did not run the GUT test extending the project's own test class: {ran}");
+    }
 }

@@ -1454,6 +1454,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         AgentCall.Say(filter is null ? "Building and running every test" : $"Building and running the tests whose names contain '{filter}'");
         AgentCall.Follow(window.Actions.Work, AppActions.Build);
         using LaunchBuild built = new(Builds);
+        // Those the code declares found first, as tests_list waits for them; looked at every 50 ms, as the finder raises nothing as it is done.
+        await Until(() => !tests.IsLooking, TestsLookLimit, cancel);
         // Matched once built: a test written a moment ago, or one only a runner finds, is among them.
         Task<string?> run = filter is null ? tests.RunAsync(folder, null, debug)
             : tests.RunMatchingAsync(folder, m => m.FullName is { } name && name.Contains(filter, StringComparison.Ordinal), $"No test's name contains '{filter}'", debug);
