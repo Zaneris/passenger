@@ -141,6 +141,32 @@ public class GodotProtocolTests
         Assert.Equal((script, 19), generated.PlaceIn(root, Local));
     }
 
+    /// <summary>GD.PushError's error at a line, as the debugger tells it before and after the JIT inlines Godot's own frames
+    /// (its place then names a frame past the caller, PushError's own frame gone), is placed at that line each time, as its
+    /// pin and Problems take it; one at another line is placed there.</summary>
+    [Fact]
+    public void An_error_is_placed_at_its_line_however_Godots_own_frames_come_and_one_at_another_line_at_that()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "spinner");
+        string Local(string path) => path.StartsWith("res://", StringComparison.Ordinal) ? Path.Combine(root, path[6..].Replace('/', Path.DirectorySeparatorChar)) : path;
+        string script = Path.Combine(root, "Main.cs");
+        const string Glue = "/root/godot/modules/mono/glue/GodotSharp/GodotSharp/Core/";
+        GodotFrame push = new(Glue + "GD.cs", "void Godot.GD.PushError(string)", 366);
+        GodotFrame trampoline = new(Path.Combine(root, ".godot", "mono", "temp", "obj", "Main_ScriptMethods.generated.cs"), "Main+GodotInternal.trampoline_1__Process", 38);
+        GodotFrame bridge = new(Glue + "Bridge/CSharpInstanceBridge.cs", "Godot.Bridge.CSharpInstanceBridge.CallViaTrampoline", 161);
+        GodotError Raised(string file, int line, int at, params GodotFrame[] frames) =>
+            new(5, file, "f", line, "Every frame", string.Empty, false, [.. frames.Select(f => f.Function.StartsWith("void Main", StringComparison.Ordinal) ? f with { Line = at } : f)]);
+        GodotFrame process = new(script, "void Main._Process(double)", 10);
+        GodotError[] forms =
+        [
+            Raised("res://Main.cs", 10, 10, push, process, trampoline, bridge),
+            Raised("res://.godot/mono/temp/obj/Main_ScriptMethods.generated.cs", 38, 10, push, process, trampoline, bridge),
+            Raised(bridge.File, 161, 10, process, trampoline, bridge),
+        ];
+        Assert.All(forms, f => Assert.Equal((script, 10), f.PlaceIn(root, Local)));
+        Assert.Equal((script, 13), Raised(bridge.File, 161, 13, process, trampoline, bridge).PlaceIn(root, Local));
+    }
+
     [Fact]
     public void What_Passenger_sends_reads_back_as_sent_its_length_first()
     {

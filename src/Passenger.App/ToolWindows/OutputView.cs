@@ -388,14 +388,14 @@ public sealed class OutputView : DockPanel
     /// <summary>The words after each folded entry's first line that came again: its line and words.</summary>
     public IReadOnlyList<LineAnnotation> FoldNotes => foldNotes;
 
-    /// <summary>A batch folded: the stretches the fold keeps put in, each stream's colour carried, the entries it saw first
-    /// anchored where they were put, and the counts written again.</summary>
+    /// <summary>A batch folded: the stretches the fold keeps put in after the start of an entry it held from the last batch,
+    /// each stream's colour carried, the entries it saw first anchored where they were put, and the counts written again.</summary>
     private void InsertFolded(string text, IReadOnlyList<ConsoleRun> runs)
     {
         // The game's own prints come on standard output, which may be read between the lines of an error's entry.
         Godot.GodotFolded taken = fold!.Take(text, DateTime.Now, at => !runs.Any(r => r.Stream != ConsoleStream.Error && at >= r.Start && at < r.Start + r.Length));
-        StringBuilder kept = new();
-        List<ConsoleRun> keptRuns = [];
+        StringBuilder kept = new(taken.Held);
+        List<ConsoleRun> keptRuns = taken.Held.Length > 0 ? [new ConsoleRun(0, taken.Held.Length, ConsoleStream.Error)] : [];
         foreach ((int start, int length) in taken.Kept)
         {
             foreach (ConsoleRun run in runs)
@@ -452,7 +452,7 @@ public sealed class OutputView : DockPanel
         folds.RemoveRange(0, gone);
         List<LineAnnotation> notes = [];
         TextSnapshot text = Document.Snapshot;
-        foreach (Godot.GodotFoldEntry entry in counted)
+        foreach (Godot.GodotFoldEntry entry in counted.Where(e => e.Count > 1))
         {
             notes.Add(new LineAnnotation(text.GetLineFromOffset(foldAt[entry].Range.Start), Counted(entry), entry.Warning ? LineAnnotationLook.Muted : LineAnnotationLook.Error));
         }
