@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
+using Passenger.Editor;
 
 namespace Passenger.App.ToolWindows;
 
@@ -100,6 +101,14 @@ public sealed class ProblemsModel
     private IReadOnlyList<Problem> containers = [];
     private IReadOnlyList<Problem> containerFiles = [];
     private IReadOnlyList<Problem>? godot;
+
+    /// <summary>What the Godot game launched last has raised, those not yet shown among them (<see cref="RaiseGodot"/>).</summary>
+    private readonly List<Problem> godotRaised = [];
+    private Debounce? godotShowing;
+
+    /// <summary>How long a game's errors wait to be shown together: one that errs every frame would otherwise copy and order
+    /// every error before it on each.</summary>
+    private static readonly TimeSpan GodotTogether = TimeSpan.FromMilliseconds(200);
 
     /// <summary>The breakpoints the programs debugged will not stop at.</summary>
     private IReadOnlyList<Problem> breakpoints = [];
@@ -603,11 +612,43 @@ public sealed class ProblemsModel
         Refresh();
     }
 
-    /// <summary>The errors and warnings the Godot game launched last raised, in Godot, its tab there from its launch on.</summary>
+    /// <summary>The errors and warnings the Godot game launched last raised, in Godot, its tab there from its launch on: its
+    /// rows made again only where that tab shows, the tabs' counts wherever.</summary>
     public void ShowGodot(IReadOnlyList<Problem> problems)
     {
         godot = problems;
-        Refresh();
+        if (Shown == ProblemsTab.Godot)
+        {
+            Refresh();
+        }
+        else
+        {
+            TabsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>The Godot game launched last begins: its tab shows, empty, and what it raises comes through <see cref="RaiseGodot"/>.</summary>
+    public void BeginGodot()
+    {
+        godotShowing?.Stop();
+        godotRaised.Clear();
+        ShowGodot([]);
+    }
+
+    /// <summary>An error or warning the Godot game launched last raised, after those before it: shown with those that come
+    /// within a moment of it (<see cref="GodotTogether"/>), all at once.</summary>
+    public void RaiseGodot(Problem problem)
+    {
+        godotRaised.Add(problem);
+        godotShowing ??= new Debounce(GodotTogether, () =>
+        {
+            ShowGodot([.. godotRaised]);
+            return Task.CompletedTask;
+        });
+        if (!godotShowing.IsWaiting)
+        {
+            godotShowing.Restart();
+        }
     }
 
     /// <summary>The breakpoints the programs debugged will not stop at (<see cref="Debugging.BreakpointStates.Problem"/>), each at

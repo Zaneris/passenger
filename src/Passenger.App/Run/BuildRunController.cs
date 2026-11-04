@@ -2366,16 +2366,14 @@ public sealed partial class BuildRunController
     /// game's alone.</summary>
     private void FollowGame(Godot.GodotGame game)
     {
-        List<Problem> raised = [];
-        parts.Views.Problems.ShowGodot(raised);
+        parts.Views.Problems.BeginGodot();
         game.Raised += (_, error) =>
         {
             if (session.Game != game || session.IsEnded)
             {
                 return;
             }
-            raised.Add(Godot.GodotProblems.Of(error, game));
-            parts.Views.Problems.ShowGodot([.. raised]);
+            parts.Views.Problems.RaiseGodot(Godot.GodotProblems.Of(error, game));
         };
     }
 
