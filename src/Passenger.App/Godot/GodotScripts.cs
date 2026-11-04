@@ -717,8 +717,9 @@ public static class GodotScripts
         }
 
         /// <summary>What a headless editor made that was not there taken away as it reloads a game's build, as
-        /// <see cref="PutBack"/> does, the files it writes over left as they are. False once the project has gone, as its
-        /// start work's watch has said.</summary>
+        /// <see cref="PutBack"/> does, the files it writes over left as they are, and one written before the build's newest
+        /// assembly kept, as the editor makes its own only once it has reloaded that build. False once the project has gone,
+        /// as its start work's watch has said.</summary>
         public bool TakeAwayMade(HashSet<string> told)
         {
             if (!File.Exists(Path.Combine(Project, GodotProject.FileName)))
@@ -728,7 +729,7 @@ public static class GodotScripts
             long now = Stopwatch.GetTimestamp();
             bool gitWrote = Passenger.Vcs.Git.WroteWorkTreeSince(looked);
             looked = now;
-            RemoveMade(told, gitWrote, final: false, now);
+            RemoveMade(told, gitWrote, final: false, now, Built);
             return true;
         }
 
@@ -761,9 +762,10 @@ public static class GodotScripts
             FileIdentity.Told && identities.GetValueOrDefault(name) is { } was && FileIdentity.Of(path) == was || PersonsEditorOn(Project);
 
         /// <summary>Takes away the files a headless editor made that were not there (a script's .uid, an asset's .import), each
-        /// once it has waited as a change does, but those that came while Passenger's Git wrote the work tree, and all where the
-        /// person's own Godot editor runs on the project, which makes its own, theirs from then on.</summary>
-        private void RemoveMade(HashSet<string> told, bool gitWrote, bool final, long now)
+        /// once it has waited as a change does, but those that came while Passenger's Git wrote the work tree, those written
+        /// before <paramref name="built"/> (a game's build the editor reloads), and all where the person's own Godot editor
+        /// runs on the project, which makes its own, theirs from then on.</summary>
+        private void RemoveMade(HashSet<string> told, bool gitWrote, bool final, long now, DateTime? built = null)
         {
             List<string> made;
             lock (gate)
@@ -781,6 +783,14 @@ public static class GodotScripts
                     return;
                 }
                 made = [.. made.Where(path => final || !Waits(path, now))];
+                if (built is { } assemblies && made.Where(path => WrittenBefore(path, assemblies)).ToList() is { Count: > 0 } older)
+                {
+                    unmade.ExceptWith(older);
+                    older.ForEach(path => pending.Remove(path));
+                    made = [.. made.Except(older, StringComparer.Ordinal)];
+                    IdeErrors.Write($"GDScript: {Plural.Listed([.. older.Select(p => Path.GetRelativePath(Project, p))])} written before the game's build Godot's headless editor "
+                        + "reloads, so another program's, kept");
+                }
             }
             if (made.Count == 0)
             {
@@ -821,6 +831,20 @@ public static class GodotScripts
                         IdeErrors.Write($"GDScript: {path}, which Godot's headless editor made, could not be taken away: {undeleted.Message}");
                     }
                 }
+            }
+        }
+
+        /// <summary>Whether a file was last written before a moment, as one of the person's written before a build is; false
+        /// where it cannot be read.</summary>
+        private static bool WrittenBefore(string path, DateTime moment)
+        {
+            try
+            {
+                return File.GetLastWriteTimeUtc(path) < moment;
+            }
+            catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+            {
+                return false;
             }
         }
 
