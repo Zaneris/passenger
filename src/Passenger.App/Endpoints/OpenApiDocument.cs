@@ -11,6 +11,9 @@ public sealed record OpenApiParameter(string Name, string In, JsonElement? Schem
 public sealed record OpenApiOperation(string Method, string Path, string? OperationId, string? Summary, IReadOnlyList<OpenApiParameter> Parameters,
     JsonElement? RequestSchema, IReadOnlyDictionary<string, JsonElement> Responses)
 {
+    /// <summary>The schema of its form body (<c>application/x-www-form-urlencoded</c>), where it takes one.</summary>
+    public JsonElement? FormSchema { get; init; }
+
     /// <summary>The operation's title: "GET /items/{id}".</summary>
     public string Title => $"{Method} {Path}";
 
@@ -141,7 +144,8 @@ public sealed class OpenApiDocument
             parameters.Add(new OpenApiParameter(name, where, JsonMembers.Object(parameter, "schema") ?? (JsonMembers.Text(parameter, "type") is not null ? parameter : null),
                 JsonMembers.Bool(parameter, "required") == true || where == "path"));
         }
-        JsonElement? request = JsonOf(Resolve(JsonMembers.Object(operation, "requestBody") ?? default)) ?? bodyIn2;
+        JsonElement requestBody = Resolve(JsonMembers.Object(operation, "requestBody") ?? default);
+        JsonElement? request = JsonOf(requestBody) ?? bodyIn2;
         Dictionary<string, JsonElement> responses = new(StringComparer.OrdinalIgnoreCase);
         foreach (JsonProperty response in JsonMembers.Properties(operation, "responses"))
         {
@@ -151,7 +155,11 @@ public sealed class OpenApiDocument
                 responses[response.Name] = schema;
             }
         }
-        return new OpenApiOperation(method, path, JsonMembers.Text(operation, "operationId"), JsonMembers.Text(operation, "summary"), parameters, request, responses);
+        return new OpenApiOperation(method, path, JsonMembers.Text(operation, "operationId"), JsonMembers.Text(operation, "summary"), parameters, request, responses)
+        {
+            FormSchema = JsonMembers.Properties(requestBody, "content").Where(c => c.Name.StartsWith("application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase))
+                .Select(c => JsonMembers.Object(c.Value, "schema")).FirstOrDefault(),
+        };
     }
 
     /// <summary>The schema of a request's or response's JSON body: its <c>application/json</c> content's, else that of the first

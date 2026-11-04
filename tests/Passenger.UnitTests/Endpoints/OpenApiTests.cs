@@ -192,4 +192,91 @@ public sealed class OpenApiTests
         Assert.StartsWith("@Web_HostAddress = http://localhost:5123\n\n# OpenAPI: GetItem\n", OpenApiRequests.Entries(Document, uncalled, string.Empty, "Web_HostAddress", "http://localhost:5123"),
             StringComparison.Ordinal);
     }
+
+    /// <summary>Each request made works as written: a required header is sent, an array query parameter is written as its
+    /// item, a form body is made from the form's schema, and a later operation's parameter of a name an earlier one set to
+    /// another kind of value has a variable of its own, never the earlier's (a long id given a GUID).</summary>
+    [Fact]
+    public void The_requests_made_send_required_headers_array_items_form_bodies_and_their_own_values_for_names_alike()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse("""
+            {
+              "openapi": "3.1.1",
+              "info": { "title": "Orders", "version": "1.0.0" },
+              "paths": {
+                "/search": {
+                  "get": {
+                    "operationId": "Search",
+                    "parameters": [
+                      { "name": "q", "in": "query", "required": true, "schema": { "type": "string" } },
+                      { "name": "X-Tenant", "in": "header", "required": true, "schema": { "type": "string" } },
+                      { "name": "tags", "in": "query", "required": true, "schema": { "type": "array", "items": { "type": "string" } } }
+                    ],
+                    "responses": { "200": { "description": "OK" } }
+                  }
+                },
+                "/orders/{id}/lines": {
+                  "get": {
+                    "operationId": "Lines",
+                    "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } } ],
+                    "responses": { "200": { "description": "OK" } }
+                  }
+                },
+                "/orders/{id}": {
+                  "delete": {
+                    "operationId": "DeleteOrder",
+                    "parameters": [ { "name": "id", "in": "path", "required": true,
+                      "schema": { "type": [ "integer", "string" ], "format": "int64", "pattern": "^-?(?:0|[1-9]\\d*)$" } } ],
+                    "responses": { "204": { "description": "No Content" } }
+                  }
+                },
+                "/form": {
+                  "post": {
+                    "operationId": "Form",
+                    "requestBody": { "required": true, "content": {
+                      "multipart/form-data": { "schema": { "type": "object", "properties": { "name": { "type": "string" } } } },
+                      "application/x-www-form-urlencoded": { "schema": { "type": "object",
+                        "allOf": [ { "type": "object", "properties": { "name": { "type": "string" } } },
+                                   { "type": "object", "properties": { "age": { "type": "integer" } } } ] } } } },
+                    "responses": { "200": { "description": "OK" } }
+                  }
+                }
+              }
+            }
+            """)!;
+        string written = OpenApiRequests.Entries(given, given.Operations, string.Empty, "Web_HostAddress", "http://localhost:5123");
+        Assert.Equal("""
+            @Web_HostAddress = http://localhost:5123
+
+            # OpenAPI: Search
+            @q = string
+            @tags = string
+            GET {{Web_HostAddress}}/search?q={{q}}&tags={{tags}}
+            Accept: application/json
+            X-Tenant: string
+
+            ###
+            # OpenAPI: Lines
+            @id = 00000000-0000-0000-0000-000000000000
+            GET {{Web_HostAddress}}/orders/{{id}}/lines
+            Accept: application/json
+
+            ###
+            # OpenAPI: DeleteOrder
+            @DeleteOrder_id = 0
+            DELETE {{Web_HostAddress}}/orders/{{DeleteOrder_id}}
+            Accept: application/json
+
+            ###
+            # OpenAPI: Form
+            POST {{Web_HostAddress}}/form
+            Accept: application/json
+            Content-Type: application/x-www-form-urlencoded
+
+            name=string&age=0
+
+            ###
+
+            """.Replace("\r\n", "\n", StringComparison.Ordinal), written);
+    }
 }

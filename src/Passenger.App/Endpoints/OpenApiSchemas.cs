@@ -300,9 +300,10 @@ public static class OpenApiSchemas
 }
 
 /// <summary>The .http requests an app's OpenAPI document makes, written as the Endpoints window's generated ones are: per
-/// operation a separator naming it, a variable for each path or required query parameter the file does not set yet, the
-/// method and the URL from the project's address with each as a <c>{{variable}}</c>, an Accept header, and a JSON body made
-/// from its request schema (<see cref="OpenApiSchemas.Sample"/>).</summary>
+/// operation a separator naming it, a variable for each path or required query parameter the file does not set yet (one
+/// named for its operation where an earlier one of this writing holds another value), the method and the URL from the
+/// project's address with each as a <c>{{variable}}</c>, an Accept header and each required header, and a JSON body made
+/// from its request schema (<see cref="OpenApiSchemas.Sample"/>), else a form body from its form schema.</summary>
 public static partial class OpenApiRequests
 {
     /// <summary>The requests for <paramref name="operations"/>, to go after <paramref name="existing"/>, the file's text: one
@@ -328,24 +329,49 @@ public static partial class OpenApiRequests
         {
             written.Append('@').Append(host).Append(" = ").Append(address ?? "http://localhost:5000").Append("\n\n");
         }
+        // What this writing set each variable to: a later operation's parameter of the name but another value has its own.
+        Dictionary<string, string> made = new(StringComparer.Ordinal);
         foreach (OpenApiOperation operation in operations)
         {
             written.Append("# OpenAPI: ").Append(operation.OperationId ?? operation.Title).Append(operation.Summary is { Length: > 0 } summary ? $" ({summary})" : string.Empty).Append('\n');
             List<OpenApiParameter> named = [.. operation.Parameters.Where(p => p.In == "path" || p.In == "query" && p.Required)];
+            Dictionary<string, string> variables = new(StringComparer.Ordinal);
             foreach (OpenApiParameter parameter in named)
             {
-                if (set.Add(parameter.Name))
+                string value = ValueOf(document, parameter);
+                string variable = parameter.Name;
+                if (made.TryGetValue(variable, out string? was) && was != value)
                 {
-                    written.Append('@').Append(parameter.Name).Append(" = ").Append(ValueOf(document, parameter)).Append('\n');
+                    variable = $"{operation.OperationId ?? operation.Method.ToLowerInvariant()}_{parameter.Name}";
+                    for (int more = 2; set.Contains(variable) && made.GetValueOrDefault(variable) != value; more++)
+                    {
+                        variable = $"{operation.OperationId ?? operation.Method.ToLowerInvariant()}_{parameter.Name}{more}";
+                    }
+                }
+                variables[parameter.Name] = variable;
+                if (set.Add(variable))
+                {
+                    made[variable] = value;
+                    written.Append('@').Append(variable).Append(" = ").Append(value).Append('\n');
                 }
             }
-            string path = Braced().Replace(operation.Path, match => "{{" + match.Groups[1].Value + "}}");
-            List<string> query = [.. named.Where(p => p.In == "query").Select(p => $"{Uri.EscapeDataString(p.Name)}={{{{{p.Name}}}}}")];
+            string path = Braced().Replace(operation.Path, match => "{{" + variables.GetValueOrDefault(match.Groups[1].Value, match.Groups[1].Value) + "}}");
+            List<string> query = [.. named.Where(p => p.In == "query").Select(p => $"{Uri.EscapeDataString(p.Name)}={{{{{variables[p.Name]}}}}}")];
             written.Append(operation.Method).Append(" {{").Append(host).Append("}}").Append(path).Append(query.Count > 0 ? "?" + string.Join("&", query) : string.Empty).Append('\n');
             written.Append("Accept: application/json\n");
+            foreach (OpenApiParameter header in operation.Parameters.Where(p => p.In == "header" && p.Required))
+            {
+                written.Append(header.Name).Append(": ").Append(ValueOf(document, header)).Append('\n');
+            }
             if (operation.RequestSchema is { } body)
             {
                 written.Append("Content-Type: application/json\n\n").Append(OpenApiSchemas.SampleText(document, body).Replace("\r\n", "\n", StringComparison.Ordinal)).Append('\n');
+            }
+            else if (operation.FormSchema is { } form && OpenApiSchemas.Sample(document, form) is JsonObject fields)
+            {
+                written.Append("Content-Type: application/x-www-form-urlencoded\n\n")
+                    .AppendJoin('&', fields.Select(field => $"{Uri.EscapeDataString(field.Key)}={Uri.EscapeDataString(TextOf(field.Value))}"))
+                    .Append('\n');
             }
             written.Append("\n###\n");
         }
@@ -377,11 +403,15 @@ public static partial class OpenApiRequests
         return rest.StartsWith('/') ? rest : null;
     }
 
-    /// <summary>A parameter's variable's value, made from its schema: a string as it is, anything else as JSON writes it.</summary>
+    /// <summary>A parameter's value, made from its schema: a string as it is, an array's first item (a query parameter's
+    /// array is the parameter written again for each), anything else as JSON writes it.</summary>
     private static string ValueOf(OpenApiDocument document, OpenApiParameter parameter) =>
         parameter.Schema is { } schema && OpenApiSchemas.Sample(document, schema) is { } made
-            ? made is JsonValue value && value.TryGetValue(out string? text) ? text : made.ToJsonString()
+            ? TextOf(made is JsonArray { Count: > 0 } items ? items[0] : made)
             : parameter.Name;
+
+    /// <summary>A sample's value as a URL or form writes it: a string as it is, anything else as JSON writes it.</summary>
+    private static string TextOf(JsonNode? made) => made is JsonValue value && value.TryGetValue(out string? text) ? text : made?.ToJsonString() ?? string.Empty;
 
     [GeneratedRegex(@"\{([^{}]+)\}")]
     private static partial Regex Braced();
