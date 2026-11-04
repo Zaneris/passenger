@@ -436,18 +436,12 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             Ui.Click(take, settle: false);
             Ui.WaitFor(() => view.Memory is not null || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,
                 "the game's memory snapshot", TimeSpan.FromMinutes(2));
-            if (DotnetProcesses.WhyUnreadable(window.Profiling!.ProcessId) is { } unreadable)
-            {
-                // A Godot signed for release on macOS lets no program read its memory: the snapshot is refused saying so, and greyed.
-                Assert.Equal($"No memory snapshot: {unreadable}", window.Status);
-                Assert.Equal(unreadable, window.Actions.WhyNot(AppActions.MemorySnapshot, window.Actions.Context()));
-            }
-            else
-            {
-                Assert.True(view.Memory is not null, window.Status);
-                Assert.True(view.HeapTypes.Any(t => t.Name == "Ledger" && t.Count == 1),
-                    $"The game's memory snapshot lists no Ledger, which its GDScript made: {string.Join(", ", view.HeapTypes.Take(30).Select(t => $"{t.Name} {t.Count}"))}");
-            }
+            Assert.True(view.Memory is not null, window.Status);
+            Assert.True(view.HeapTypes.Any(t => t.Name == "Ledger" && t.Count == 1),
+                $"The game's memory snapshot lists no Ledger, which its GDScript made: {string.Join(", ", view.HeapTypes.Take(30).Select(t => $"{t.Name} {t.Count}"))}");
+            // A Godot signed for release on macOS lets no program read its memory: its runtime's own heap dump is read, saying so.
+            Assert.True((DotnetProcesses.WhyUnreadable(window.Profiling!.ProcessId) is null) == (view.Memory!.Lacks is null),
+                $"The snapshot's words do not follow whether the game's memory could be read: {view.Memory.Lacks}");
 
             Passenger.App.Profiling.SnapshotRead read = Ui.Await(window.SnapshotAsync(), "the game's snapshot", TimeSpan.FromMinutes(2));
             Assert.True(read.Snapshot is { Game: not null, GameFrames.Count: > 100 }, $"{read.Message}: {read.Snapshot?.GameFrames.Count} of Godot's frames, {read.Snapshot?.Game?.Why}");

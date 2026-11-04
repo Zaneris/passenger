@@ -707,7 +707,8 @@ public sealed record ProfileFrame(string Method, int TotalMs, int SelfMs, string
 
 public sealed record ProfileInfo(double DurationMs, int Samples, int Threads, IReadOnlyList<ProfileFrame> HotSpots, IReadOnlyList<ProfileFrame> HotPath, string Trace, IReadOnlyList<HeapTypeInfo>? Heap = null)
 {
-    /// <summary>Why there is no heap when a memory snapshot was asked for, or what taking it put into the program's output.</summary>
+    /// <summary>Why there is no heap when a memory snapshot was asked for, what taking it put into the program's output, or
+    /// what a snapshot read from the runtime's own heap dump lacks.</summary>
     public string? HeapNote { get; init; }
 
     /// <summary>An Avalonia app's frames, as the Frames page shows them; null for any other program.</summary>

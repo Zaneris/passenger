@@ -1057,10 +1057,10 @@ public sealed class ProfilerCommands
             parts.Say(paused);
             return (null, paused);
         }
-        if (run.WhyNoHeap is { } unreadable)
+        if (run.WhyNoHeap is { } none)
         {
-            parts.Say($"No memory snapshot: {unreadable}");
-            return (null, unreadable);
+            parts.Say($"No memory snapshot: {none}");
+            return (null, none);
         }
         string name = profilingName;
         if (parts.Actions.Work.Begin(AppActions.MemorySnapshot, $"Taking a memory snapshot of {name}…") is not { } work)
@@ -1092,8 +1092,8 @@ public sealed class ProfilerCommands
                 heap = await run.TakeMemorySnapshotAsync(intoOutput: true, stopping.Token);
             }
             View.ShowMemory(heap);
-            parts.Say($"{heap.Name} of {name}: {heap.Objects:N0} objects, {heap.Bytes / 1048576.0:N1} MB");
-            return (heap, note);
+            parts.Say($"{heap.Name} of {name}: {heap.Objects:N0} objects, {heap.Bytes / 1048576.0:N1} MB{(heap.Lacks is null ? string.Empty : ", read from its runtime's GC heap dump")}");
+            return (heap, note ?? heap.Lacks);
         }
         catch (Exception error) when (error is InvalidOperationException or IOException or ServerNotAvailableException or DiagnosticsClientException
             or TimeoutException or HeapUnreadableException or ProfilingException or OperationCanceledException)

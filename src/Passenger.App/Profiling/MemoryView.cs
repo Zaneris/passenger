@@ -401,6 +401,7 @@ public sealed class MemoryView : DockPanel
             case SnapshotPage { Snapshot: var snapshot }:
                 summary.Text = $"{snapshot.Objects:N0} objects, {Size(snapshot.Bytes)} live, in {snapshot.Types.Count:N0} types; taken at "
                     + $"{snapshot.Taken:HH:mm:ss} in {snapshot.Took.TotalSeconds:0.0} s ({snapshot.Phases})"
+                    + (snapshot.Lacks is { } lacks ? $". {lacks}" : string.Empty)
                     + (snapshot.Gone is { } gone ? $". {gone}: its types are listed, its objects no longer open" : string.Empty);
                 types.ItemsSource = snapshot.Types;
                 types.SelectedIndex = snapshot.Types.Count > 0 ? 0 : -1;

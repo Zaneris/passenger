@@ -587,11 +587,9 @@ public sealed class ProfilingSession : IAsyncDisposable
         return await BackgroundWork.Run(Read, cancellation);
     }
 
-    /// <summary>Why no memory snapshot of the program can be taken whatever is tried (<see cref="DotnetProcesses.WhyUnreadable"/>),
-    /// asked of the program once; null where one may be, or for a program elsewhere, whose snapshots its container's tools take.</summary>
-    public string? WhyNoHeap => !Samples ? NoHeapOfScripts : Place is not null ? null : (whyNoHeap ??= [DotnetProcesses.WhyUnreadable(ProcessId)])[0];
-
-    private string?[]? whyNoHeap;
+    /// <summary>Why no memory snapshot of the program can be taken whatever is tried: a run of scripts alone has no .NET heap;
+    /// null where one may be. One whose memory no other program may read is read from its runtime's own heap dump.</summary>
+    public string? WhyNoHeap => !Samples ? NoHeapOfScripts : null;
 
     /// <summary>What the program's heap holds now, comparable object by object with the run's earlier ones; the run
     /// goes on. Where only the program's runtime can write it, putting createdump's lines into the program's output, it

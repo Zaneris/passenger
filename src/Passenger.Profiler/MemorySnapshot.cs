@@ -68,6 +68,10 @@ public sealed class MemorySnapshot
     /// <summary>What the time went on: the dump, its reading, the retention analysis.</summary>
     public string Phases { get; }
 
+    /// <summary>What it lacks beside a snapshot read from a dump, and why it was read otherwise (<see cref="GcHeapDump"/>);
+    /// null for one read from a dump.</summary>
+    public string? Lacks { get; init; }
+
     /// <summary>Its heap's objects, or null once let go of.</summary>
     internal HeapGraph? Graph
     {

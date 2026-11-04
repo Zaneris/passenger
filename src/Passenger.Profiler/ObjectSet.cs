@@ -220,8 +220,9 @@ public sealed class ObjectSet
             {
                 string type = graph.Types[graph.Type[holder]].Name;
                 string field = graph.Holder(holder, offset);
-                shown = field.StartsWith("at [", StringComparison.Ordinal)
-                    ? many ? $"{type} elements" : $"{type} {field}"
+                // A heap dump's holder names no field, so it is its type, or an array's elements.
+                shown = offset == HeapGraph.UnnamedOffset ? graph.Types[graph.Type[holder]].IsVector ? $"{type} elements" : type
+                    : field.StartsWith("at [", StringComparison.Ordinal) ? many ? $"{type} elements" : $"{type} {field}"
                     : $"{type}.{field}";
             }
             RetentionNode[] next = children is null ? [] : [.. children.Values

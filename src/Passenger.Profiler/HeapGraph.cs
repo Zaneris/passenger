@@ -17,6 +17,7 @@ public enum RootKind
     SizedRefHandle,
     LocalVariable,
     FReachableQueue,
+    Runtime,
 }
 
 /// <summary>A GC root: its kind, and what names it (a static field, the method whose local it is).</summary>
@@ -32,6 +33,7 @@ public sealed record GcRoot(RootKind Kind, string Name)
         RootKind.RefCountedHandle => "Handle (ref-counted)",
         RootKind.SizedRefHandle => "Handle (sized ref)",
         RootKind.LocalVariable => "Local Variable",
+        RootKind.Runtime => "Kept by the runtime",
         _ => "F-Reachable Queue",
     };
 
@@ -60,6 +62,9 @@ internal sealed class HeapGraph
 {
     /// <summary>A reference held by a dependent handle (ConditionalWeakTable) rather than a field.</summary>
     public const int DependentOffset = -1;
+
+    /// <summary>A reference whose field or element is not known: the runtime's GC heap dump tells only what an object refers to.</summary>
+    public const int UnnamedOffset = -2;
 
     /// <summary>Each DAC a dump was read through, by its path, loaded once more so it is never unloaded (<see cref="Runtime"/>).</summary>
     private static readonly ConcurrentDictionary<string, IntPtr> KeptDacs = new(StringComparer.Ordinal);
@@ -114,6 +119,10 @@ internal sealed class HeapGraph
         if (offset == DependentOffset)
         {
             return "dependent handle";
+        }
+        if (offset == UnnamedOffset)
+        {
+            return type.IsVector ? "an element" : "a field";
         }
         if (type.IsVector && type.ComponentSize > 0)
         {
@@ -236,12 +245,11 @@ internal sealed class HeapGraph
         public string? FindPEImage(string fileName, SymbolProperties archivedUnder, ImmutableArray<byte> buildIdOrUUID, OSPlatform originalPlatform, bool checkProperties) => null;
     }
 
-    /// <summary>A dump's walk: the objects and references as found, then the roots, then what is reachable.</summary>
-    private sealed class Reading(ClrRuntime runtime, int pointerSize)
+    /// <summary>A heap's objects and references as a reader finds them, each object's references after it, then its roots;
+    /// then what is reachable from them (<see cref="Analyse"/>).</summary>
+    internal class Building
     {
-        private readonly ClrHeap heap = runtime.Heap;
         private readonly Dictionary<ulong, int> typeOf = [];
-        private readonly List<HeapTypeInfo> types = [];
         private readonly Growing<ulong> addresses = new();
         private readonly Growing<int> objectTypes = new();
         private readonly Growing<long> sizes = new();
@@ -257,44 +265,43 @@ internal sealed class HeapGraph
         private ulong[]? sorted;
         private int[]? order;
 
-        public void Walk(CancellationToken cancel)
+        /// <summary>The types found, by their index.</summary>
+        public List<HeapTypeInfo> Found { get; } = [];
+
+        /// <summary>How many objects have been found.</summary>
+        public int Objects => addresses.Count;
+
+        /// <summary>The index of the type of a method table, made the first time it is found.</summary>
+        public int TypeOf(ulong methodTable, Func<HeapTypeInfo> made)
         {
-            (ulong Key, ulong Value)[] dependents = Dependents();
-            foreach (ClrObject item in heap.EnumerateObjects())
+            if (!typeOf.TryGetValue(methodTable, out int index))
             {
-                if (item.IsFree || item.Type is not { } type)
-                {
-                    continue;
-                }
-                int index = TypeIndex(type);
-                addresses.Add(item.Address);
-                objectTypes.Add(index);
-                sizes.Add((long)item.Size);
-                edgeStarts.Add(edgeTargets.Count);
-                if (type.ContainsPointers)
-                {
-                    foreach (ClrReference reference in item.EnumerateReferencesWithFields(carefully: false, considerDependantHandles: false))
-                    {
-                        edgeTargets.Add(reference.Object.Address);
-                        int offset = reference.Offset;
-                        edgeOffsets.Add(offset);
-                        if (!reference.IsArrayElement && !types[index].Fields.ContainsKey(offset))
-                        {
-                            types[index].Fields[offset] = FieldName(reference);
-                        }
-                    }
-                }
-                // What a ConditionalWeakTable keeps alive for a key, whatever the key's type holds.
-                for (int at = FirstDependent(dependents, item.Address); at < dependents.Length && dependents[at].Key == item.Address; at++)
-                {
-                    edgeTargets.Add(dependents[at].Value);
-                    edgeOffsets.Add(DependentOffset);
-                }
-                if ((addresses.Count & 0xFFFF) == 0)
-                {
-                    cancel.ThrowIfCancellationRequested();
-                }
+                index = Found.Count;
+                typeOf[methodTable] = index;
+                Found.Add(made());
             }
+            return index;
+        }
+
+        /// <summary>An object found, its references to follow.</summary>
+        public void Add(ulong address, int type, long size)
+        {
+            addresses.Add(address);
+            objectTypes.Add(type);
+            sizes.Add(size);
+            edgeStarts.Add(edgeTargets.Count);
+        }
+
+        /// <summary>A reference of the object found last, and where in it it is held.</summary>
+        public void Refers(ulong target, int offset)
+        {
+            edgeTargets.Add(target);
+            edgeOffsets.Add(offset);
+        }
+
+        /// <summary>The objects all found: what the rest looks up by address is put in address order.</summary>
+        public void EndObjects()
+        {
             edgeStarts.Add(edgeTargets.Count);
             // Regions need not come in address order; what the rest looks up by address must.
             ReadOnlySpan<ulong> walked = addresses.Items;
@@ -315,117 +322,8 @@ internal sealed class HeapGraph
             }
         }
 
-        /// <summary>The runtime's dependent handles (a ConditionalWeakTable's entries), each key and the object it keeps alive,
-        /// in the keys' order.</summary>
-        private (ulong Key, ulong Value)[] Dependents()
-        {
-            List<(ulong Key, ulong Value)> found = [];
-            foreach (ClrHandle handle in runtime.EnumerateHandles())
-            {
-                if (handle.HandleKind == ClrHandleKind.Dependent && handle.Object.Address != 0 && handle.Dependent.Address != 0)
-                {
-                    found.Add((handle.Object.Address, handle.Dependent.Address));
-                }
-            }
-            found.Sort();
-            return [.. found];
-        }
-
-        /// <summary>Where a key's dependent handles begin among them, or past their end when it has none.</summary>
-        private static int FirstDependent((ulong Key, ulong Value)[] dependents, ulong key)
-        {
-            int low = 0;
-            int high = dependents.Length;
-            while (low < high)
-            {
-                int middle = (low + high) >>> 1;
-                if (dependents[middle].Key < key)
-                {
-                    low = middle + 1;
-                }
-                else
-                {
-                    high = middle;
-                }
-            }
-            return low;
-        }
-
-        private static string FieldName(ClrReference reference)
-        {
-            string outer = reference.Field?.Name ?? "?";
-            return reference.InnerField?.Field?.Name is { } inner ? $"{outer}.{inner}" : outer;
-        }
-
-        private int TypeIndex(ClrType type)
-        {
-            if (!typeOf.TryGetValue(type.MethodTable, out int index))
-            {
-                index = types.Count;
-                typeOf[type.MethodTable] = index;
-                bool vector = type.IsArray && (type.Name?.EndsWith("[]", StringComparison.Ordinal) ?? false);
-                types.Add(new HeapTypeInfo(type.Name ?? "(unnamed)", type.MethodTable, type.ComponentSize, vector));
-            }
-            return index;
-        }
-
-        /// <summary>Statics first, named by their field, then what the runtime itself counts as roots.</summary>
-        public void FindRoots()
-        {
-            foreach (ClrModule module in runtime.EnumerateModules())
-            {
-                foreach ((ulong methodTable, int _) in module.EnumerateTypeDefToMethodTableMap())
-                {
-                    if (runtime.GetTypeByMethodTable(methodTable) is not { } type || type.StaticFields.Length == 0)
-                    {
-                        continue;
-                    }
-                    foreach (ClrStaticField field in type.StaticFields)
-                    {
-                        if (field.IsObjectReference && StaticSlot(field) is var slot and not 0
-                            && runtime.DataTarget.DataReader.ReadPointer(slot) is var value and not 0)
-                        {
-                            Add(value, new GcRoot(RootKind.StaticReference, $"{type.Name}.{field.Name}"));
-                        }
-                    }
-                }
-            }
-            foreach (ClrRoot root in heap.EnumerateRoots())
-            {
-                Add(root.Object.Address, root.RootKind switch
-                {
-                    ClrRootKind.Stack when root is ClrStackRoot { StackFrame: { } frame } => new GcRoot(RootKind.LocalVariable, Method(frame)),
-                    ClrRootKind.Stack => new GcRoot(RootKind.LocalVariable, string.Empty),
-                    ClrRootKind.PinnedHandle => new GcRoot(RootKind.PinningHandle, string.Empty),
-                    ClrRootKind.AsyncPinnedHandle => new GcRoot(RootKind.AsyncPinningHandle, string.Empty),
-                    ClrRootKind.RefCountedHandle => new GcRoot(RootKind.RefCountedHandle, string.Empty),
-                    ClrRootKind.SizedRefHandle => new GcRoot(RootKind.SizedRefHandle, string.Empty),
-                    ClrRootKind.FinalizerQueue => new GcRoot(RootKind.FReachableQueue, string.Empty),
-                    _ => new GcRoot(RootKind.Handle, string.Empty),
-                });
-            }
-        }
-
-        private static string Method(ClrStackFrame frame)
-        {
-            string method = frame.Method is { } m ? $"{m.Type?.Name}.{m.Name}" : frame.FrameName ?? "?";
-            return frame.Thread is { } thread ? $"{method} (thread #{thread.ManagedThreadId})" : method;
-        }
-
-        /// <summary>Where a static reference is kept, once its type's statics are made.</summary>
-        private ulong StaticSlot(ClrStaticField field)
-        {
-            foreach (ClrAppDomain domain in runtime.AppDomains)
-            {
-                if (field.IsInitialized(domain) && field.GetAddress(domain) is var address and not 0)
-                {
-                    return address;
-                }
-            }
-            return 0;
-        }
-
-        private void Add(ulong address, GcRoot root)
+        /// <summary>A root of an object.</summary>
+        public void Root(ulong address, GcRoot root)
         {
             if (!rootIds.TryGetValue(root, out int id))
             {
@@ -446,8 +344,9 @@ internal sealed class HeapGraph
             return at >= 0 ? order![at] : -1;
         }
 
-        /// <summary>The reachable objects, their shortest paths, and their retained sizes.</summary>
-        public HeapGraph Analyse(CancellationToken cancel)
+        /// <summary>The reachable objects, their shortest paths, and their retained sizes; where <paramref name="unrooted"/> is
+        /// given, an object no root reaches is its root's own, kept, else it is passed over.</summary>
+        public HeapGraph Analyse(int pointerSize, CancellationToken cancel, GcRoot? unrooted = null)
         {
             int count = addresses.Count;
             ReadOnlySpan<int> starts = edgeStarts.Items;
@@ -468,33 +367,59 @@ internal sealed class HeapGraph
             int[] depth = new int[count];
             int[] queue = new int[count];
             int tail = 0;
+            int head = 0;
+            List<int> rootObjects = [];
             foreach ((ulong rootObject, int id) in rooted.OrderBy(r => roots[r.Root].Kind))
             {
                 if (Find(rootObject) is var at and >= 0 && root[at] < 0)
                 {
                     root[at] = id;
                     queue[tail++] = at;
+                    rootObjects.Add(at);
                 }
             }
-            int rootObjects = tail;
-            for (int head = 0; head < tail; head++)
+            Spread(starts, offsets);
+            if (unrooted is not null)
             {
-                int from = queue[head];
-                for (int e = starts[from]; e < starts[from + 1]; e++)
+                int id = -1;
+                for (int at = 0; at < count; at++)
                 {
-                    int to = targetIndex[e];
-                    if (to >= 0 && root[to] < 0)
+                    if (root[at] < 0)
                     {
-                        root[to] = root[from];
-                        parent[to] = from;
-                        parentOffset[to] = offsets[e];
-                        depth[to] = depth[from] + 1;
-                        queue[tail++] = to;
+                        if (id < 0)
+                        {
+                            id = roots.Count;
+                            roots.Add(unrooted);
+                        }
+                        root[at] = id;
+                        queue[tail++] = at;
+                        rootObjects.Add(at);
+                        Spread(starts, offsets);
                     }
                 }
-                if ((head & 0xFFFF) == 0)
+            }
+
+            void Spread(ReadOnlySpan<int> starts, ReadOnlySpan<int> offsets)
+            {
+                for (; head < tail; head++)
                 {
-                    cancel.ThrowIfCancellationRequested();
+                    int from = queue[head];
+                    for (int e = starts[from]; e < starts[from + 1]; e++)
+                    {
+                        int to = targetIndex[e];
+                        if (to >= 0 && root[to] < 0)
+                        {
+                            root[to] = root[from];
+                            parent[to] = from;
+                            parentOffset[to] = offsets[e];
+                            depth[to] = depth[from] + 1;
+                            queue[tail++] = to;
+                        }
+                    }
+                    if ((head & 0xFFFF) == 0)
+                    {
+                        cancel.ThrowIfCancellationRequested();
+                    }
                 }
             }
 
@@ -556,14 +481,14 @@ internal sealed class HeapGraph
                 }
             }
             edgeStart[live] = edge;
-            int[] rootObjectList = new int[rootObjects];
-            for (int i = 0; i < rootObjects; i++)
+            int[] rootObjectList = new int[rootObjects.Count];
+            for (int i = 0; i < rootObjectList.Length; i++)
             {
-                rootObjectList[i] = kept[queue[i]];
+                rootObjectList[i] = kept[rootObjects[i]];
             }
             cancel.ThrowIfCancellationRequested();
 
-            Dominators dominators = Dominators.Of(live, edgeStart, edgeTarget, rootObjectList, size, type, types.Count, cancel);
+            Dominators dominators = Dominators.Of(live, edgeStart, edgeTarget, rootObjectList, size, type, Found.Count, cancel);
             return new HeapGraph
             {
                 Address = address,
@@ -572,7 +497,7 @@ internal sealed class HeapGraph
                 EdgeStart = edgeStart,
                 EdgeTarget = edgeTarget,
                 EdgeOffset = edgeOffset,
-                Types = [.. types],
+                Types = [.. Found],
                 Roots = [.. roots],
                 Root = newRoot,
                 Parent = newParent,
@@ -585,6 +510,152 @@ internal sealed class HeapGraph
                 PointerSize = pointerSize,
             };
         }
+    }
+
+    /// <summary>A dump's walk through ClrMD: the objects and references as found, then the roots.</summary>
+    private sealed class Reading(ClrRuntime runtime, int pointerSize) : Building
+    {
+        private readonly ClrHeap heap = runtime.Heap;
+
+        public void Walk(CancellationToken cancel)
+        {
+            (ulong Key, ulong Value)[] dependents = Dependents();
+            foreach (ClrObject item in heap.EnumerateObjects())
+            {
+                if (item.IsFree || item.Type is not { } type)
+                {
+                    continue;
+                }
+                int index = TypeIndex(type);
+                Add(item.Address, index, (long)item.Size);
+                if (type.ContainsPointers)
+                {
+                    foreach (ClrReference reference in item.EnumerateReferencesWithFields(carefully: false, considerDependantHandles: false))
+                    {
+                        int offset = reference.Offset;
+                        Refers(reference.Object.Address, offset);
+                        if (!reference.IsArrayElement && !Found[index].Fields.ContainsKey(offset))
+                        {
+                            Found[index].Fields[offset] = FieldName(reference);
+                        }
+                    }
+                }
+                // What a ConditionalWeakTable keeps alive for a key, whatever the key's type holds.
+                for (int at = FirstDependent(dependents, item.Address); at < dependents.Length && dependents[at].Key == item.Address; at++)
+                {
+                    Refers(dependents[at].Value, DependentOffset);
+                }
+                if ((Objects & 0xFFFF) == 0)
+                {
+                    cancel.ThrowIfCancellationRequested();
+                }
+            }
+            EndObjects();
+        }
+
+        /// <summary>The runtime's dependent handles (a ConditionalWeakTable's entries), each key and the object it keeps alive,
+        /// in the keys' order.</summary>
+        private (ulong Key, ulong Value)[] Dependents()
+        {
+            List<(ulong Key, ulong Value)> found = [];
+            foreach (ClrHandle handle in runtime.EnumerateHandles())
+            {
+                if (handle.HandleKind == ClrHandleKind.Dependent && handle.Object.Address != 0 && handle.Dependent.Address != 0)
+                {
+                    found.Add((handle.Object.Address, handle.Dependent.Address));
+                }
+            }
+            found.Sort();
+            return [.. found];
+        }
+
+        /// <summary>Where a key's dependent handles begin among them, or past their end when it has none.</summary>
+        private static int FirstDependent((ulong Key, ulong Value)[] dependents, ulong key)
+        {
+            int low = 0;
+            int high = dependents.Length;
+            while (low < high)
+            {
+                int middle = (low + high) >>> 1;
+                if (dependents[middle].Key < key)
+                {
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle;
+                }
+            }
+            return low;
+        }
+
+        private static string FieldName(ClrReference reference)
+        {
+            string outer = reference.Field?.Name ?? "?";
+            return reference.InnerField?.Field?.Name is { } inner ? $"{outer}.{inner}" : outer;
+        }
+
+        private int TypeIndex(ClrType type) => TypeOf(type.MethodTable, () =>
+            new HeapTypeInfo(type.Name ?? "(unnamed)", type.MethodTable, type.ComponentSize, type.IsArray && (type.Name?.EndsWith("[]", StringComparison.Ordinal) ?? false)));
+
+        /// <summary>Statics first, named by their field, then what the runtime itself counts as roots.</summary>
+        public void FindRoots()
+        {
+            foreach (ClrModule module in runtime.EnumerateModules())
+            {
+                foreach ((ulong methodTable, int _) in module.EnumerateTypeDefToMethodTableMap())
+                {
+                    if (runtime.GetTypeByMethodTable(methodTable) is not { } type || type.StaticFields.Length == 0)
+                    {
+                        continue;
+                    }
+                    foreach (ClrStaticField field in type.StaticFields)
+                    {
+                        if (field.IsObjectReference && StaticSlot(field) is var slot and not 0
+                            && runtime.DataTarget.DataReader.ReadPointer(slot) is var value and not 0)
+                        {
+                            Root(value, new GcRoot(RootKind.StaticReference, $"{type.Name}.{field.Name}"));
+                        }
+                    }
+                }
+            }
+            foreach (ClrRoot root in heap.EnumerateRoots())
+            {
+                Root(root.Object.Address, root.RootKind switch
+                {
+                    ClrRootKind.Stack when root is ClrStackRoot { StackFrame: { } frame } => new GcRoot(RootKind.LocalVariable, Method(frame)),
+                    ClrRootKind.Stack => new GcRoot(RootKind.LocalVariable, string.Empty),
+                    ClrRootKind.PinnedHandle => new GcRoot(RootKind.PinningHandle, string.Empty),
+                    ClrRootKind.AsyncPinnedHandle => new GcRoot(RootKind.AsyncPinningHandle, string.Empty),
+                    ClrRootKind.RefCountedHandle => new GcRoot(RootKind.RefCountedHandle, string.Empty),
+                    ClrRootKind.SizedRefHandle => new GcRoot(RootKind.SizedRefHandle, string.Empty),
+                    ClrRootKind.FinalizerQueue => new GcRoot(RootKind.FReachableQueue, string.Empty),
+                    _ => new GcRoot(RootKind.Handle, string.Empty),
+                });
+            }
+        }
+
+        private static string Method(ClrStackFrame frame)
+        {
+            string method = frame.Method is { } m ? $"{m.Type?.Name}.{m.Name}" : frame.FrameName ?? "?";
+            return frame.Thread is { } thread ? $"{method} (thread #{thread.ManagedThreadId})" : method;
+        }
+
+        /// <summary>Where a static reference is kept, once its type's statics are made.</summary>
+        private ulong StaticSlot(ClrStaticField field)
+        {
+            foreach (ClrAppDomain domain in runtime.AppDomains)
+            {
+                if (field.IsInitialized(domain) && field.GetAddress(domain) is var address and not 0)
+                {
+                    return address;
+                }
+            }
+            return 0;
+        }
+
+        /// <summary>The reachable objects, their shortest paths, and their retained sizes.</summary>
+        public HeapGraph Analyse(CancellationToken cancel) => Analyse(pointerSize, cancel);
     }
 
     /// <summary>The dominator tree of the reachable graph under a root of its own that refers to every root object
