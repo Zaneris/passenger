@@ -456,7 +456,8 @@ public sealed class ProfilerView : DockPanel
             return;
         }
         status.Text = $"{snapshotName}: reading {span.From - whole.StartMs:N0} to {span.To - whole.StartMs:N0} ms…";
-        Snapshot within = await BackgroundWork.Run(() => whole.Within(span.From, span.To));
+        // Shown on a later turn of the window's loop even when worked out already, so a choice never fills the views itself.
+        Snapshot within = await BackgroundWork.Run(() => whole.Within(span.From, span.To)).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.ForceYielding);
         if (chosen == choosing)
         {
             Fill(within);
