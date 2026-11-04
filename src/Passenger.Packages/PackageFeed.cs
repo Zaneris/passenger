@@ -365,7 +365,7 @@ public sealed class V3Feed(FeedClient client) : IPackageFeed
         }
         using (leaf)
         {
-            if (!leaf.RootElement.TryGetProperty("catalogEntry", out JsonElement entry))
+            if (JsonMembers.Value(leaf.RootElement, "catalogEntry") is not { } entry)
             {
                 return null;
             }
@@ -381,16 +381,14 @@ public sealed class V3Feed(FeedClient client) : IPackageFeed
         static PackageDependencies Groups(JsonElement entry)
         {
             List<DependencyGroup> groups = [];
-            foreach (JsonElement group in entry.TryGetProperty("dependencyGroups", out JsonElement all) && all.ValueKind == JsonValueKind.Array ? all.EnumerateArray() : [])
+            foreach (JsonElement group in JsonMembers.Items(entry, "dependencyGroups").Where(g => g.ValueKind == JsonValueKind.Object))
             {
-                string? framework = group.TryGetProperty("targetFramework", out JsonElement named) ? named.GetString() : null;
                 List<(string, string)> packages = [];
-                foreach (JsonElement dependency in group.TryGetProperty("dependencies", out JsonElement listed) && listed.ValueKind == JsonValueKind.Array ? listed.EnumerateArray() : [])
+                foreach (JsonElement dependency in JsonMembers.Items(group, "dependencies").Where(d => d.ValueKind == JsonValueKind.Object))
                 {
-                    packages.Add((dependency.TryGetProperty("id", out JsonElement depId) ? depId.GetString() ?? string.Empty : string.Empty,
-                        dependency.TryGetProperty("range", out JsonElement range) ? range.GetString() ?? string.Empty : string.Empty));
+                    packages.Add((JsonMembers.Text(dependency, "id") ?? string.Empty, JsonMembers.Text(dependency, "range") ?? string.Empty));
                 }
-                groups.Add(new DependencyGroup(framework, packages));
+                groups.Add(new DependencyGroup(JsonMembers.Text(group, "targetFramework"), packages));
             }
             return new PackageDependencies(groups);
         }
