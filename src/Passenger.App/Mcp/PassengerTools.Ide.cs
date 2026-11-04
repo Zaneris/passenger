@@ -413,6 +413,10 @@ public sealed partial class PassengerTools
         (IReadOnlyList<HistoryEvent> events, IReadOnlyDictionary<string, string?> known) = history.Snapshot();
         bool isFolder = Directory.Exists(full);
         IReadOnlyList<HistoryRow> rows = await BackgroundWork.Run(() => isFolder ? HistoryRows.OfFolder(events, full) : HistoryRows.OfFile(events, known, full), cancel);
+        if (rows.Count == 0 && !isFolder && !File.Exists(full))
+        {
+            throw new InvalidOperationException($"No file or folder is at {Relative(full)}, and Local History holds no change of one there");
+        }
         if (set is not long chosen)
         {
             (IReadOnlyList<HistoryRow> newest, string? older) = AgentAnswers.Listed(rows, MostHistoryRows, "change set",

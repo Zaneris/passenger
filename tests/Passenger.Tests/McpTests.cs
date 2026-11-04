@@ -1196,6 +1196,25 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(stopped.StartsWith("Nothing is running, so nothing was stopped", StringComparison.Ordinal), $"stop with nothing running answered: {stopped}");
     }
 
+    /// <summary>An agent's local_history of a path where no file or folder is, nor any change of one in the history, says
+    /// so, never an empty history an agent reads as a file no one changed; a file deleted after a change still lists it.</summary>
+    [Fact]
+    public async Task An_agents_local_history_of_a_path_never_there_says_so_and_a_deleted_files_still_lists_its_changes()
+    {
+        string folder = TestFolders.Create("mcp-nohistory-");
+        DeleteAtEnd(folder);
+        string notes = Path.Combine(folder, "Notes.txt");
+        File.WriteAllText(notes, "one\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult never = await Result(client, McpTools.LocalHistory, new() { ["path"] = "Nope.txt" });
+        Assert.True(never.IsError == true && Text(never).Contains("No file or folder is at Nope.txt, and Local History holds no change of one there", StringComparison.Ordinal),
+            $"local_history of a path never there answered: {Text(never)}");
+        await Call(client, McpTools.Edit, new() { ["path"] = "Notes.txt", ["oldText"] = "one", ["newText"] = "two" });
+        File.Delete(notes);
+        JsonElement kept = await Call(client, McpTools.LocalHistory, new() { ["path"] = "Notes.txt" });
+        Assert.True(kept.GetProperty("rows").GetArrayLength() > 0, $"local_history of a file deleted after its change lists none: {kept}");
+    }
+
     /// <summary>An agent's build of a folder with no solution or project says so, never MSBuild's MSB1003 as a failed build's
     /// error to be fixed.</summary>
     [Fact]
