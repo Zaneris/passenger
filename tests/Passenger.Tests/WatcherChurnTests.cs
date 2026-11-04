@@ -18,7 +18,8 @@ public sealed class WatcherChurnTests
         FileWatch sources = new(Project, "**/*.{cs,csx}", WatchKinds.Create | WatchKinds.Change | WatchKinds.Delete);
         FileWatch assets = new($"{Project}/obj", "project.assets.json", WatchKinds.Create | WatchKinds.Change | WatchKinds.Delete);
         string[] built = [.. Enumerable.Range(0, 1000).Select(i => i % 2 == 0 ? $"{Project}/obj/Debug/net10.0/App{i}.dll" : $"{Project}/bin/Debug/net10.0/App{i}.pdb")];
-        Assert.False(sources.Matches(built[0]) || assets.Matches(built[1]));
+        // Each registration reads its pattern once, at the first name under its folder: that is set aside.
+        Assert.DoesNotContain(built, path => sources.Matches(path) || assets.Matches(path));
         long before = GC.GetAllocatedBytesForCurrentThread();
         int matched = 0;
         foreach (string path in built)
