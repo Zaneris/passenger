@@ -50,14 +50,19 @@ public sealed partial class GDScriptAnalyzer
         {
             analysis.Found.Add(new GDScriptFinding(0, 0, "EMPTY_FILE", Message("EMPTY_FILE", [])));
         }
-        InheritanceErrors(tree, path, self, analysis);
+        ConfusableWarnings(tree, analysis, self);
+        if (!InheritanceErrors(tree, path, self, analysis))
+        {
+            StaticUnloadWarning(tree, analysis, self);
+        }
         return analysis;
     }
 
     /// <summary>The errors Godot gives as it reads a script's classes' names and bases, before any body: a name taken, and a
     /// base whose file the project lacks. Where a base can't be followed (one lacked, an inner class's this reading can't),
-    /// Godot reads no body, so these errors alone stand; where the script's own base is lacked, its inner classes are not read.</summary>
-    private void InheritanceErrors(GDScriptTree tree, string path, GDScriptType self, GDScriptAnalysis analysis)
+    /// Godot reads no body, so these errors alone stand, and whether that is so; where the script's own base is lacked, its
+    /// inner classes are not read.</summary>
+    private bool InheritanceErrors(GDScriptTree tree, string path, GDScriptType self, GDScriptAnalysis analysis)
     {
         int first = analysis.Found.Count;
         Context own = new(analysis, self, 0, null, null);
@@ -75,6 +80,7 @@ public sealed partial class GDScriptAnalyzer
             analysis.Found.RemoveAll(f => f.Code is null);
             analysis.Found.AddRange(read);
         }
+        return stops;
     }
 
     /// <summary>Whether a class extends by path a file the project lacks, saying so in Godot's words.</summary>

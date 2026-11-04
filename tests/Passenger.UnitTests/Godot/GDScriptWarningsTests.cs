@@ -13,7 +13,8 @@ public class GDScriptWarningsTests
     private const string Api = """
         {
           "global_enums": [], "global_constants": [],
-          "utility_functions": [{ "name": "print", "return_type": "void", "is_vararg": true, "arguments": [] }, { "name": "randf", "return_type": "float", "arguments": [] }],
+          "utility_functions": [{ "name": "print", "return_type": "void", "is_vararg": true, "arguments": [] }, { "name": "randf", "return_type": "float", "arguments": [] },
+            { "name": "prints", "return_type": "void", "is_vararg": true, "arguments": [] }],
           "singletons": [],
           "builtin_classes": [
             { "name": "Nil", "operators": [] }, { "name": "bool", "operators": [] },
@@ -215,6 +216,10 @@ public class GDScriptWarningsTests
     [InlineData("func test():\n\tvar unused = 1\n\tvar = 2\n", "3 ERROR: Expected variable name after \"var\".")]
     [InlineData("func test():\n\tprint(\"warn\")\n\nfunc get(_property: StringName) -> Variant:\n\treturn null\n",
         "4 NATIVE_METHOD_OVERRIDE: The method \"get()\" overrides a method from native class \"Object\". This won't be called by the engine and may not work as expected.")]
+    // parser/warnings/confusable_identifier.gd: a name with a Greek omicron, declared and in a $ path.
+    [InlineData("extends Node\n\nfunc test():\n\tvar port = 0 # Only latin characters.\n\tvar pοrt = 1 # The \"ο\" is Greek omicron.\n\n\tprints(port, pοrt)\n"
+        + "\n# Do not call this since nodes aren't in the tree. It is just a parser check.\nfunc nodes():\n\tvar _node1 = $port # Only latin characters.\n\tvar _node2 = $pοrt # The \"ο\" is Greek omicron.\n",
+        "5 CONFUSABLE_IDENTIFIER: The identifier \"pοrt\" has misleading characters and might be confused with something else.", "12 CONFUSABLE_IDENTIFIER: The identifier \"pοrt\" has misleading characters and might be confused with something else.")]
     public void Godots_own_test_scripts_give_the_warnings_their_expected_output_says(string script, params string[] expected)
     {
         (_, IReadOnlyList<GDScriptFinding> found) = Read(script);
@@ -251,6 +256,18 @@ public class GDScriptWarningsTests
         Assert.Equal(new[] { 3, 4, 5 }.Select(l => $"{l} ONREADY_WITH_CAST: {string.Format(System.Globalization.CultureInfo.InvariantCulture, message, "$Node")}")
             .Append($"10 ONREADY_WITH_CAST: {string.Format(System.Globalization.CultureInfo.InvariantCulture, message, "%%Unique")}"), Lines(casts, Read(casts, engine: Engine48).Found));
         Assert.Empty(Read(casts).Found);
+    }
+
+    /// <summary>@static_unload on a script of no static variable or static constructor is redundant, said on the class's line
+    /// (its class_name's or extends'); none where an inner class holds a static variable.</summary>
+    [Fact]
+    public void Static_unload_on_a_script_of_no_static_data_is_redundant_on_its_classs_line()
+    {
+        string message = "The \"@static_unload\" annotation is redundant because the file does not have a class with static variables.";
+        string script = "@static_unload\nextends Node\n\nstatic func helper() -> void:\n\tpass\n";
+        Assert.Equal([$"2 REDUNDANT_STATIC_UNLOAD: {message}"], Lines(script, Read(script).Found));
+        Assert.Empty(Read("@static_unload\nextends Node\n\n\nclass Holder:\n\tstatic var kept := 1\n").Found);
+        Assert.Empty(Read("@static_unload\nextends Node\n\n\nstatic func _static_init() -> void:\n\tpass\n").Found);
     }
 
     [Fact]

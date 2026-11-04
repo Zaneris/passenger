@@ -664,6 +664,13 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 `src/Passenger.Terminal/WideCharacters.cs`, the characters the terminal draws two columns wide, is derived from the
 Unicode Character Database 16.0.0's `EastAsianWidth.txt` and `emoji/emoji-data.txt`
 (https://www.unicode.org/Public/16.0.0/ucd/), written by `tools/unicode-widths.py`.
+`src/Passenger.Workspace/GDScript/UnicodeIdentifiers.cs`, what a GDScript identifier's spoof check reads, is derived from
+Unicode 17.0.0's `security/IdentifierStatus.txt` and `security/confusables.txt` (UTS #39) and its Character Database's
+`Scripts.txt`, `ScriptExtensions.txt`, `PropertyValueAliases.txt`, `UnicodeData.txt` and `PropList.txt`
+(https://www.unicode.org/Public/17.0.0/), written by `tools/unicode-identifiers.py`.
+`src/Passenger.Workspace/GDScript/IdentifierSpoofing.cs` is a port to C# of International Components for Unicode (ICU)
+78.3's spoof check, `icu4c/source/i18n/uspoof.cpp` (`checkImpl`) and `uspoof_impl.cpp` (its script sets, restriction
+level, numerics and hidden overlay) of https://github.com/unicode-org/icu at tag release-78.3, under the same licence.
 
 ```
 UNICODE LICENSE V3

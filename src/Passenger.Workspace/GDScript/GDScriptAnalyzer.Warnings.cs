@@ -86,6 +86,8 @@ public sealed partial class GDScriptAnalyzer
         "CONFUSABLE_LOCAL_USAGE" => $"The identifier \"{s[0]}\" will be shadowed below in the block.",
         "ONREADY_WITH_CAST" => $"\"as\" will silently return \"null\" if the type of \"{s[0]}\" is wrong. Prefer assigning the node directly to an explicitly typed variable to get an error in such cases.",
         "NATIVE_METHOD_OVERRIDE" => $"The method \"{s[0]}()\" overrides a method from native class \"{s[1]}\". This won't be called by the engine and may not work as expected.",
+        "REDUNDANT_STATIC_UNLOAD" => "The \"@static_unload\" annotation is redundant because the file does not have a class with static variables.",
+        "CONFUSABLE_IDENTIFIER" => $"The identifier \"{s[0]}\" has misleading characters and might be confused with something else.",
         _ => code,
     };
 

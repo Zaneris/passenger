@@ -146,6 +146,10 @@ notices:
 unicode-widths:
     python3 -I tools/unicode-widths.py
 
+# Rewrite the tables a GDScript identifier's spoof check reads from Unicode's security and character data (tools/unicode-identifiers.py).
+unicode-identifiers:
+    python3 -I tools/unicode-identifiers.py
+
 # Run from a clone of the last build, so rebuilding Passenger never changes the files under it (tools/mcp.sh).
 # Passenger as an MCP server over a folder, its tools on standard input and output: just mcp [FOLDER]
 mcp folder="":
