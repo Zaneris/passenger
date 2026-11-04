@@ -114,24 +114,29 @@ def run(command, cwd=None, env=None, limit=None, log_to=None):
     return code, out, round(time.monotonic() - began, 1)
 
 
+# The clones' git, which runs no hook of theirs: a hook a tool wrote there once (Git LFS's post-checkout) fails every
+# checkout where that tool is gone.
+GIT = ["git", "-c", "core.hooksPath=/dev/null"]
+
+
 def clone(entry, clones):
     """The set's clone at its commit, fetched once and put back to the commit, untracked and ignored files gone."""
     folder = os.path.join(clones, entry["name"])
     if not os.path.isdir(os.path.join(folder, ".git")):
         os.makedirs(folder, exist_ok=True)
-        subprocess.run(["git", "init", "-q", folder], check=True)
-        subprocess.run(["git", "-C", folder, "remote", "add", "origin", entry["repository"]], check=True)
-    have = subprocess.run(["git", "-C", folder, "cat-file", "-e", entry["commit"] + "^{commit}"], capture_output=True).returncode == 0
+        subprocess.run([*GIT, "init", "-q", folder], check=True)
+        subprocess.run([*GIT, "-C", folder, "remote", "add", "origin", entry["repository"]], check=True)
+    have = subprocess.run([*GIT, "-C", folder, "cat-file", "-e", entry["commit"] + "^{commit}"], capture_output=True).returncode == 0
     if not have:
         log(f"{entry['name']}: fetching {entry['commit'][:10]}")
-        subprocess.run(["git", "-C", folder, "fetch", "-q", "--depth", "1", "origin", entry["commit"]], check=True)
-    subprocess.run(["git", "-C", folder, "checkout", "-q", "-f", entry["commit"]], check=True)
-    subprocess.run(["git", "-C", folder, "clean", "-q", "-ffdx"], check=True)
+        subprocess.run([*GIT, "-C", folder, "fetch", "-q", "--depth", "1", "origin", entry["commit"]], check=True)
+    subprocess.run([*GIT, "-C", folder, "checkout", "-q", "-f", entry["commit"]], check=True)
+    subprocess.run([*GIT, "-C", folder, "clean", "-q", "-ffdx"], check=True)
     lfs = "missing"
     attributes = os.path.join(folder, ".gitattributes")
     if os.path.exists(attributes) and "filter=lfs" in open(attributes, errors="replace").read():
         if subprocess.run(["git", "lfs", "version"], capture_output=True).returncode == 0:
-            subprocess.run(["git", "-C", folder, "lfs", "pull", "origin"], check=False, capture_output=True)
+            subprocess.run([*GIT, "-C", folder, "lfs", "pull", "origin"], check=False, capture_output=True)
             lfs = "fetched"
     else:
         lfs = None
