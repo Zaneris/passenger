@@ -111,7 +111,7 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
 
     public override void Commit(CompletionItem item, int start)
     {
-        Offered? made = offered.GetValueOrDefault(item);
+        Offered? made = offered.GetValueOrDefault(item) ?? GlobalOffered(item);
         string insert = made?.Insert ?? item.Label;
         int back = made?.Back ?? 0;
         TextSnapshot text = context.Editor.Document.Snapshot;
@@ -139,6 +139,12 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
             IdeErrors.Observe(parameters.Show());
         }
     }
+
+    /// <summary>What one of the engine's global items puts in: a utility function its call's parentheses, the caret inside
+    /// them where it takes arguments; null for any other, which puts in its name.</summary>
+    private Offered? GlobalOffered(CompletionItem item) =>
+        GlobalsNamed.TryGetValue(item, out Named? named) && named is OfEngine { Kind: "func" } function && listedFrom is { } typed
+            ? new Offered(named, function.Name + "()", SignatureOf(typed, named) is { Parameters.Count: 0, Varargs: false } ? 0 : 1) : null;
 
     public override string? Describe(CompletionItem item) =>
         (offered.GetValueOrDefault(item)?.What ?? (GlobalsNamed.TryGetValue(item, out Named? global) ? global : null)) is { } named && listedFrom is { } typed

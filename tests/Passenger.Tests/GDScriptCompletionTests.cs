@@ -57,8 +57,8 @@ public sealed class GDScriptCompletionTests
 
             NewLineAfter(window, editor, "var counter := 0");
             ClearLine(window, editor);
-            TypeName(window, "@exp");
-            Listed(window, "@export_range", "a member's annotation at the class's level");
+            TypeName(window, "@export_r");
+            First(window, "@export_range", "a member's annotation at the class's level");
             Ui.Press(window, "ENTER", settle: false);
             Ui.PumpUntil(() => document.Text.Snapshot.ToString().Contains("\n@export_range\n", StringComparison.Ordinal), "@export_range put in, its @ written once",
                 TimeSpan.FromSeconds(10));
@@ -95,7 +95,7 @@ public sealed class GDScriptCompletionTests
                 Erase(window, typed.Length);
             }
             TypeName(window, "prin");
-            Listed(window, "print", "the engine's print");
+            First(window, "print", "the engine's print");
             Ui.Press(window, "ENTER", settle: false);
             Ui.PumpUntil(() => document.Text.Snapshot.ToString().Contains("\tprint()\n", StringComparison.Ordinal), "print() put in", TimeSpan.FromSeconds(10));
             int line = editor.CaretPosition.Line;
@@ -123,7 +123,7 @@ public sealed class GDScriptCompletionTests
             Assert.Contains("$Player/Sprite", window.Assist.CompletionLabels);
             Assert.Contains(window.Assist.CompletionDetails, d => d.Label == "$Title" && d.Detail.Contains("Label", StringComparison.Ordinal) && d.Detail.Contains("main.tscn", StringComparison.Ordinal));
             window.KeyTextInput("Player/Sp");
-            Listed(window, "$Player/Sprite", "the list narrowed through the path's slash");
+            First(window, "$Player/Sprite", "the list narrowed through the path's slash");
             Ui.Press(window, "ENTER", settle: false);
             Ui.PumpUntil(() => document.Text.Snapshot.ToString().Contains("\t$Player/Sprite\n", StringComparison.Ordinal), "$Player/Sprite put in", TimeSpan.FromSeconds(10));
             Ui.Press(window, "ESCAPE", settle: false);
@@ -162,7 +162,7 @@ public sealed class GDScriptCompletionTests
             }
             Ui.PlaceAfter(editor, "\temit_signal(\"sc");
             Ui.Press(window, Ui.Shortcut(AppActions.Complete), settle: false);
-            Listed(window, "scored", "the script's signal in emit_signal's string again");
+            First(window, "scored", "the script's signal in emit_signal's string again");
             Ui.Press(window, "ENTER", settle: false);
             Ui.PumpUntil(() => document.Text.Snapshot.ToString().Contains("\temit_signal(\"scored\")", StringComparison.Ordinal), "the signal's name put in the string", TimeSpan.FromSeconds(10));
         }
@@ -188,7 +188,7 @@ public sealed class GDScriptCompletionTests
             ClearLine(window, editor);
             window.KeyTextInput("func ");
             TypeName(window, "_pro");
-            Listed(window, "_process", "Node's _process after func");
+            First(window, "_process", "Node's _process after func");
             Assert.DoesNotContain("_ready", window.Assist.CompletionLabels);
             Ui.Press(window, "ENTER", settle: false);
             Ui.PumpUntil(() => document.Text.Snapshot.ToString().Contains("func _process(delta: float) -> void:", StringComparison.Ordinal),
@@ -265,6 +265,13 @@ public sealed class GDScriptCompletionTests
         Ui.PlaceAfter(editor, line);
         editor.Focus();
         Ui.Press(window, "ENTER", settle: false);
+    }
+
+    /// <summary>The list's best item, the one Enter puts in, waited for with the window's loop run.</summary>
+    private static void First(MainWindow window, string label, string what)
+    {
+        bool first = Ui.Pumped(() => window.Assist.CompletionLabels.FirstOrDefault() == label, TimeSpan.FromSeconds(60));
+        Assert.True(first, $"No {what} first in the list: it held {string.Join(", ", window.Assist.CompletionLabels.Take(20))}");
     }
 
     /// <summary>A name typed as a person types it: its first character alone, which opens the list, then the rest, which
