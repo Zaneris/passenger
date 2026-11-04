@@ -63,6 +63,7 @@ public sealed partial class GDScriptAnalyzer
                 DeclaresItself(inner.Identifier, innerType with { Meta = true }, context);
                 Paint(context, inner.Identifier, GDScriptColour.Class);
                 PaintExtends(inner, context);
+                ExtendsDeclared(inner, context);
                 if (analysis.Tree is { } own)
                 {
                     MissingTool(inner, own, analysis.Path, context.Offset, context);

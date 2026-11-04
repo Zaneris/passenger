@@ -72,6 +72,16 @@ public class GDScriptRefactoringsTests
     }
 
     [Fact]
+    public void Renaming_an_inner_class_renames_it_where_a_type_or_a_base_names_it_as_where_code_does()
+    {
+        string text = "extends Node\n\nvar inner: Inner\nvar many: Array[Inner] = []\n\n\nfunc _ready() -> void:\n\tvar x: Variant = inner\n"
+            + "\tprint(x is Inner, x as Inner, Inner.new(), many)\n\n\nclass Inner:\n\tpass\n\n\nclass Sub extends Inner:\n\tpass\n";
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
+        GDScriptTarget target = GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("class Inner", StringComparison.Ordinal) + 7)!;
+        Assert.Equal(text.Replace("Inner", "Inside", StringComparison.Ordinal), After(GDScriptRefactorings.Rename(scripts, target, "Inside"), "res://main.gd", text));
+    }
+
+    [Fact]
     public void Extract_variable_declares_the_expression_before_its_statement_and_reads_it_there()
     {
         // Typed by := where its type is read, as an int literal's is; without the engine's operators, a product's is not.

@@ -41,6 +41,7 @@ public sealed partial class GDScriptAnalyzer
             WrittenVariants(member.Node, member.Offset, analysis);
         }
         PaintExtends(tree.Class, new Context(analysis, self, 0, null, null));
+        ExtendsDeclared(tree.Class, new Context(analysis, self, 0, null, null));
         MissingTool(tree.Class, tree, path, 0, new Context(analysis, self, 0, null, null));
         foreach (GDScriptMember member in tree.Members)
         {
@@ -707,6 +708,28 @@ public sealed partial class GDScriptAnalyzer
 
     /// <summary>The type a type specifier names (<c>int</c>, <c>Array[Node]</c>, <c>Inner.State</c>, <c>Node.ProcessMode</c>),
     /// as a value of it; Variant for one not found.</summary>
+    /// <summary>A name in a type written or a base that names a script's class by that class's own name, recorded as
+    /// declared where the class is, so Go to Declaration, Find Usages and Rename take it as they take a use in code.</summary>
+    private static void NamesClass(GDScriptIdentifier name, GDScriptType? type, Context context)
+    {
+        if (context.Analysis.Tree is not null && type is { Kind: GDScriptTypeKind.Class, Script: { } script, Class.Identifier: { } own } && own.Name == name.Name)
+        {
+            context.Analysis.Declared[name] = new GDScriptDeclaration(script, type.Offset + own.Start, name.Name, type with { Meta = true });
+        }
+    }
+
+    /// <summary>A class's base written by name (<c>extends Inner</c>, <c>extends Outer.Inner</c>), each name of a script's
+    /// class recorded as declared where the class is.</summary>
+    private void ExtendsDeclared(GDScriptClass @class, Context context)
+    {
+        GDScriptType? at = null;
+        for (int i = 0; i < @class.Extends.Count; i++)
+        {
+            at = i == 0 ? GlobalOrScopedType(@class.Extends[i].Name, context.Class) : at is { Kind: GDScriptTypeKind.Class } ? InnerClass(at.Instance, @class.Extends[i].Name) : null;
+            NamesClass(@class.Extends[i], at, context);
+        }
+    }
+
     private GDScriptType ResolveType(GDScriptTypeNode node, Context context)
     {
         if (node.IsVoid)
@@ -757,6 +780,7 @@ public sealed partial class GDScriptAnalyzer
         {
             found = inherited.Type;
         }
+        NamesClass(first, found, context);
         if (found is null && project.Autoload(first.Name) is { } autoload && Tree(project.Resolved(autoload)) is null)
         {
             // An autoload of a scene: what Godot types it as comes from the scene's instance, which this reading has not.
@@ -785,6 +809,7 @@ public sealed partial class GDScriptAnalyzer
                         return Unfound(tells, node.Chain[1], Member(owner.Instance, next.Name) is not null
                             ? $"Member \"{next.Name}\" under base \"{owner}\" is not a valid type." : $"Could not find type \"{next.Name}\" under base \"{owner}\".");
                     }
+                    NamesClass(next, found, context);
                     break;
                 case GDScriptTypeKind.Native:
                     found = i == 1 ? Engine?.Chain(owner.Name).Select(c => c.Enums.GetValueOrDefault(next.Name) is { } e ? NativeEnum(c.Name, e, meta: true) : null).FirstOrDefault(e => e is not null) : null;
