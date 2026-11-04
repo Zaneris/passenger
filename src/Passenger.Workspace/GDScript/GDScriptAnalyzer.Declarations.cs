@@ -15,8 +15,8 @@ public sealed partial class GDScriptAnalyzer
     };
 
     /// <summary>A function's signature as an override is checked against it: its parameters' types, how many have defaults,
-    /// whether it takes any number more, what it returns, and whether it is static.</summary>
-    private sealed record Signature(IReadOnlyList<GDScriptType> Parameters, int Defaults, bool Varargs, GDScriptType Returns, bool IsStatic);
+    /// whether it takes any number more, what it returns, whether it is static, and whether it is the engine's virtual.</summary>
+    private sealed record Signature(IReadOnlyList<GDScriptType> Parameters, int Defaults, bool Varargs, GDScriptType Returns, bool IsStatic, bool Virtual = false);
 
     /// <summary>A class's name's error: one a built-in type, an engine class, for an inner class a global script class, or a
     /// singleton autoload has.</summary>
@@ -129,7 +129,7 @@ public sealed partial class GDScriptAnalyzer
             {
                 return Engine?.Chain(at.Name).Select(c => c.Methods.GetValueOrDefault(name)).FirstOrDefault(m => m is not null) is { } method
                     ? new Signature([.. method.Parameters.Select(p => FromApi(p.Type) with { Hard = true })], method.Parameters.Count - method.Required, method.Varargs,
-                        FromApi(method.Returns) with { Hard = true }, method.IsStatic)
+                        FromApi(method.Returns) with { Hard = true }, method.IsStatic, method.IsVirtual)
                     : null;
             }
             if (at.Kind != GDScriptTypeKind.Class || !OwnNames(at).TryGetValue(name, out (GDScriptNode Node, int Offset) owned))
@@ -148,6 +148,61 @@ public sealed partial class GDScriptAnalyzer
                 function.Parameters.Count(p => p.Initializer is not null), function.Rest is not null, returns, function.IsStatic);
         }
         return null;
+    }
+
+    /// <summary>An override of no return type written, read as returning what the function it overrides returns (Godot's
+    /// resolve_function_signature): nothing for a void one, its hard type, the engine's property list as an untyped Array.</summary>
+    private Context Overridden(GDScriptFunction function, Context inside)
+    {
+        if (function.ReturnType is not null || function.IsLambda || function.Identifier is not { Name: not ("_init" or "_static_init") } named
+            || inside.Analysis.Tree is null || !Knows(inside.Class) || ParentSignature(inside.Class, named.Name, 0) is not { } parent)
+        {
+            return inside;
+        }
+        if (named.Name == "_get_property_list" && parent.Virtual)
+        {
+            return inside with { Returns = GDScriptType.Builtin("Array") };
+        }
+        return !parent.Returns.Hard ? inside
+            : parent.Returns.IsVoid || parent.Returns is { Kind: GDScriptTypeKind.Builtin, Name: "Nil" } ? inside with { Voids = true }
+            : inside with { Returns = parent.Returns };
+    }
+
+    /// <summary>A constructor's, or a static one's, return type written as any but void.</summary>
+    private void ConstructorErrors(GDScriptFunction function, Context context)
+    {
+        if (function.IsLambda || function.ReturnType is not { IsVoid: false } written || context.Analysis.Tree is null || !Knows(context.Class))
+        {
+            return;
+        }
+        string? said = function.Identifier?.Name switch
+        {
+            "_init" => "Constructor cannot have an explicit return type.",
+            "_static_init" => "Static constructor cannot have an explicit return type.",
+            _ => null,
+        };
+        if (said is not null)
+        {
+            Error(context, written, said);
+        }
+    }
+
+    /// <summary>A rest parameter's type, an Array, its written type said where it is another or a typed one.</summary>
+    private GDScriptType RestType(GDScriptParameter rest, Context context)
+    {
+        if (rest.Type is { } written && context.Analysis.Tree is not null && Knows(context.Class))
+        {
+            GDScriptType specified = ResolveType(written, context);
+            if (specified is not { Kind: GDScriptTypeKind.Builtin, Name: "Array" })
+            {
+                Error(context, written, $"The rest parameter type must be \"Array\", but \"{specified}\" is specified.");
+            }
+            else if (specified.Elements is [{ IsVariant: false }, ..])
+            {
+                Error(context, written, "Typed arrays are currently not supported for the rest parameter.");
+            }
+        }
+        return GDScriptType.Builtin("Array");
     }
 
     /// <summary>A signature as Godot's error writes it: <c>f(int, Node = &lt;default&gt;, ...) -&gt; void</c>.</summary>

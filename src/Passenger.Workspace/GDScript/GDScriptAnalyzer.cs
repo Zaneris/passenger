@@ -151,6 +151,10 @@ public sealed partial class GDScriptAnalyzer
         /// <summary>Where the walk is static, as Godot names it: the static function it is in above any lambda (a static
         /// variable's setter or getter by Godot's name for it), empty in a static variable's value; null where it is not.</summary>
         public string? Static { get; init; }
+
+        /// <summary>Whether a return in the function may give no value: its return type written void, or an override of a
+        /// void function with none written.</summary>
+        public bool Voids { get; init; }
     }
 
     private sealed class Scope(Scope? parent)

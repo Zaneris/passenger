@@ -104,6 +104,7 @@ public sealed partial class GDScriptAnalyzer
         Context inside = context with
         {
             Scope = scope, Function = function, Returns = null, Static = function.IsLambda ? context.Static : function.IsStatic ? FunctionName(function) : null,
+            Voids = function.ReturnType is { IsVoid: true },
         };
         if (context.Analysis.Tree is not null)
         {
@@ -119,7 +120,7 @@ public sealed partial class GDScriptAnalyzer
         List<GDScriptType> parameterTypes = [];
         foreach (GDScriptParameter parameter in function.Rest is { } rest ? [.. function.Parameters, rest] : function.Parameters)
         {
-            GDScriptType type = parameter == function.Rest ? GDScriptType.Builtin("Array") : AssignableType(parameter, inside, constant: false);
+            GDScriptType type = parameter == function.Rest ? RestType(parameter, inside) : AssignableType(parameter, inside, constant: false);
             if (parameter != function.Rest)
             {
                 parameterTypes.Add(type);
@@ -139,6 +140,8 @@ public sealed partial class GDScriptAnalyzer
             inside = inside with { Returns = ResolveType(returned, inside) };
         }
         OverrideErrors(function, parameterTypes, function.ReturnType is { IsVoid: true } ? GDScriptType.Builtin("Nil") with { IsVoid = true } : inside.Returns, context);
+        ConstructorErrors(function, inside);
+        inside = Overridden(function, inside);
         if (function.ReturnType is null && !function.IsLambda && context.Analysis.Tree is not null)
         {
             Warn(context, function.Start, function.HeaderEnd, "UNTYPED_DECLARATION", "Function", FunctionName(function));
@@ -267,7 +270,7 @@ public sealed partial class GDScriptAnalyzer
                 return all && wildcard;
             case GDScriptReturn returned:
                 // A void function's call is returned as a statement is made, its void its own.
-                bool voids = context.Function is { ReturnType.IsVoid: true };
+                bool voids = context.Voids;
                 GDScriptType given = Reduce(returned.Value, context, root: voids && returned.Value is GDScriptCall);
                 ReturnWarnings(returned, given, context);
                 ReturnErrors(returned, given, voids, context);
@@ -1028,7 +1031,7 @@ public sealed partial class GDScriptAnalyzer
         {
             Warn(context, returned, "NARROWING_CONVERSION");
         }
-        if (context.Function is { ReturnType.IsVoid: true } voided && returned.Value is GDScriptCall { Callee: GDScriptIdentifier or GDScriptSubscript { IsAttribute: true, Base: GDScriptSelf } } call
+        if (context is { Voids: true, Function: { } voided } && returned.Value is GDScriptCall { Callee: GDScriptIdentifier or GDScriptSubscript { IsAttribute: true, Base: GDScriptSelf } } call
             && Member(context.Class, call.FunctionName ?? string.Empty) is { Kind: "func", Declaration: not null } && !value.Hard)
         {
             Warn(context, returned, "UNSAFE_VOID_RETURN", FunctionName(voided), call.FunctionName ?? string.Empty);
@@ -1036,11 +1039,20 @@ public sealed partial class GDScriptAnalyzer
     }
 
     /// <summary>Godot's errors of a return (resolve_return): a void function's value, and a value of a type the declared one
-    /// takes no value of, a constant's said as its conversion first.</summary>
+    /// takes no value of (a return of nothing null), a constant's said as its conversion first.</summary>
     private void ReturnErrors(GDScriptReturn returned, GDScriptType given, bool voids, Context context)
     {
-        if (returned.Value is not { } value || context.Analysis.Tree is null || !Knows(context.Class))
+        if (context.Analysis.Tree is null || !Knows(context.Class))
         {
+            return;
+        }
+        if (returned.Value is not { } value)
+        {
+            // A return of nothing gives null, which a built-in type takes none of.
+            if (!voids && context.Returns is { Hard: true, IsVariant: false } wanted && !TypeCompatible(wanted, GDScriptType.Builtin("Nil")))
+            {
+                Error(context, returned, $"Cannot return value of type \"null\" because the function return type is \"{wanted}\".");
+            }
             return;
         }
         if (voids)

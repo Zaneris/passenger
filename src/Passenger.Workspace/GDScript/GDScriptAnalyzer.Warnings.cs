@@ -224,9 +224,11 @@ public sealed partial class GDScriptAnalyzer
             }
         }
         NativeOverride(function, context);
-        if (!returns && !function.IsAbstract && function.ReturnType is { IsVoid: false } declared && (function.IsLambda || function.Identifier?.Name is not ("_init" or "_static_init")))
+        // A return type written, or an override's of none written (its parent's), must be given on every way through.
+        if (!returns && !function.IsAbstract && !context.Voids && (function.ReturnType is { IsVoid: false } || function.ReturnType is null && context.Returns is { Hard: true })
+            && (function.IsLambda || function.Identifier?.Name is not ("_init" or "_static_init")))
         {
-            Error(context, declared, "Not all code paths return a value.");
+            Error(context, function.ReturnType ?? (GDScriptNode)function, "Not all code paths return a value.");
         }
     }
 

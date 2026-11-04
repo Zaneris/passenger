@@ -10,8 +10,8 @@ namespace Passenger.UnitTests.Godot;
 /// on self, a built-in value or type, an engine class or an enum, a type not found, a value of a type its target takes
 /// none of and a call given too few or too many arguments, an operator, cast or type test given types it refuses, a static
 /// place reaching the instance, an index, loop or typed collection Godot refuses, a member's name taken, an override's
-/// signature, an export, a file the project lacks preloaded or extended, a class named as a singleton autoload; and none of
-/// them where the class extends one this reading cannot read.</summary>
+/// signature, an export, a file the project lacks preloaded or extended, a class named as a singleton autoload, an untyped
+/// override's returns; and none of them where the class extends one this reading cannot read.</summary>
 public class GDScriptErrorsTests
 {
     private const string Api = """
@@ -237,6 +237,34 @@ public class GDScriptErrorsTests
             "27: Class \"RefCounted\" hides a native class.",
             "32: Node export is only supported in Node-derived classes, but the current class inherits \"Resource\".",
         ], Errors(Script, p => p == "res://base.gd" ? GDScriptTree.Parse(Base) : null));
+    }
+
+    /// <summary>An override of no return type written returns what the function it overrides does (void, a type, the
+    /// engine's property list an Array), each return checked against it; a constructor's return type, a rest parameter's
+    /// type and a return of nothing where an int is asked for are refused as Godot refuses them.</summary>
+    [Fact]
+    public void An_untyped_override_returns_its_parents_type_and_constructors_and_rest_parameters_are_held_to_godots_rules()
+    {
+        const string Script = "extends Node\n\n\nclass A:\n\tfunc typed() -> int:\n\t\treturn 1\n\n\tfunc voided() -> void:\n\t\tpass\n\n"
+            + "\tfunc variant() -> Variant:\n\t\treturn null\n\n\nclass B extends A:\n\tfunc typed():\n\t\treturn \"s\"\n\n\tfunc voided():\n\t\treturn 1\n\n"
+            + "\tfunc variant():\n\t\tpass\n\n\nstatic func _static_init() -> int:\n\tpass\n\n\nfunc _init() -> int:\n\tpass\n\n\nfunc _ready():\n\treturn 5\n\n\n"
+            + "func _get_property_list():\n\treturn 0\n\n\nfunc empty() -> int:\n\treturn\n\n\nfunc many(...args: int) -> void:\n\tpass\n\n\n"
+            + "func typed_many(...args: Array[int]) -> void:\n\tpass\n";
+        Assert.Equal(
+        [
+            "17: Cannot return value of type \"String\" because the function return type is \"int\".",
+            "17: Cannot return a value of type \"String\" as \"int\".",
+            "20: A void function cannot return a value.",
+            "22: Not all code paths return a value.",
+            "26: Static constructor cannot have an explicit return type.",
+            "30: Constructor cannot have an explicit return type.",
+            "35: A void function cannot return a value.",
+            "39: Cannot return value of type \"int\" because the function return type is \"Array\".",
+            "39: Cannot return a value of type \"int\" as \"Array\".",
+            "43: Cannot return value of type \"null\" because the function return type is \"int\".",
+            "46: The rest parameter type must be \"Array\", but \"int\" is specified.",
+            "50: Typed arrays are currently not supported for the rest parameter.",
+        ], Errors(Script));
     }
 
     /// <summary>A file the project's files, listed whole, lack is said where a script preloads it, and a class named as a
