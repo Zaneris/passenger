@@ -64,6 +64,10 @@ public partial class MainWindow
     internal Task<string?> PlayInGodotEditorForAgentAsync(string? scene, CancellationToken cancel)
     {
         UiThread.Check();
+        if (AgentsOwn)
+        {
+            return Task.FromResult<string?>(Refusals.GodotEditorOfPerson);
+        }
         string? folder = GodotFolder();
         ProjectModel? project = folder is null ? null : session.RunProjects.FirstOrDefault(p => p.GodotFolder is { } at && PathNames.Same(at, folder));
         if (project is null)
