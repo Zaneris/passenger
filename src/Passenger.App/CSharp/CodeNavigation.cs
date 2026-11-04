@@ -40,15 +40,15 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
     }
 
     public Task GoToTypeDeclaration(int offset) => GoToRelated("Type Declaration", offset,
-        async (lsp, at) => [.. (await lsp.TypeDefinitionAsync(at)).Select(l => new Target(l))], "Cannot find a type declaration to go to");
+        async (lsp, at) => [.. (await lsp.TypeDefinitionAsync(at)).Select(l => new RelatedSymbols.Target(l))], "Cannot find a type declaration to go to");
 
-    public Task GoToBaseSymbols(int offset) => GoToRelated("Base Symbols", offset, BaseSymbolsAsync, "No base symbols found");
+    public Task GoToBaseSymbols(int offset) => GoToRelated("Base Symbols", offset, (lsp, at) => RelatedSymbols.BaseAsync(lsp, at, context.NameAt(at), context.Syntax, () => context.CSharp?.Session), "No base symbols found");
 
-    public Task GoToDerivedSymbols(int offset) => GoToRelated("Derived Symbols", offset, DerivedSymbolsAsync, "No derived symbols found");
+    public Task GoToDerivedSymbols(int offset) => GoToRelated("Derived Symbols", offset, (lsp, at) => RelatedSymbols.DerivedAsync(lsp, at, context.NameAt(at), () => context.CSharp?.Session), "No derived symbols found");
 
     /// <summary>Goes to what the server finds from the symbol at an offset (its type's declaration, its base or derived
     /// symbols): straight there when it is one place, else the places to choose from; the status bar says when none.</summary>
-    private async Task GoToRelated(string what, int offset, Func<LspDocument, int, Task<IReadOnlyList<Target>>> find, string none)
+    private async Task GoToRelated(string what, int offset, Func<LspDocument, int, Task<IReadOnlyList<RelatedSymbols.Target>>> find, string none)
     {
         using IDisposable held = BackgroundWork.Scope();
         try
@@ -57,7 +57,7 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
             {
                 TextDocument asked = Editor.Document;
                 string name = context.NameAt(offset);
-                IReadOnlyList<Target> found = await find(lsp, offset);
+                IReadOnlyList<RelatedSymbols.Target> found = await find(lsp, offset);
                 IReadOnlyList<LspLocation> places = await CopiedAsync([.. found.Select(t => t.Location)]);
                 // The editor shows another file now: the places were for the one it showed.
                 if (Editor.Document == asked)
@@ -71,104 +71,6 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
             context.Failed(what, failed);
         }
     }
-
-    /// <summary>Base Symbols: a type's base types and interfaces, or the members a member overrides or implements, the
-    /// nearest first, through every level of the hierarchy that has source.</summary>
-    private async Task<IReadOnlyList<Target>> BaseSymbolsAsync(LspDocument lsp, int offset)
-    {
-        string name = context.NameAt(offset);
-        // An override's own keyword takes the server to the member it overrides, a library's (decompiled) too.
-        List<LspLocation> found = context.Syntax is { } syntax && Declarations.OverrideKeywordAt(syntax, offset) is { } keyword ? [.. await lsp.DefinitionAsync(keyword)] : [];
-        if (await lsp.PrepareTypeHierarchyAsync(offset) is not { } type)
-        {
-            return [.. found.Select(l => new Target(l))];
-        }
-        IReadOnlyList<HierarchyItem> bases = await Walk(type, (server, item) => server.SupertypesAsync(item));
-        if (IsType(type, name))
-        {
-            return [.. bases.Select(TargetOf)];
-        }
-        // A member: those of the base types by its name that it overrides or implements, which its references take in.
-        if (bases.Count == 0 || name.Length == 0 || context.CSharp?.Session is not { } session)
-        {
-            return [.. found.Select(l => new Target(l))];
-        }
-        IReadOnlyList<LspLocation> family = await lsp.ReferencesAsync(offset);
-        IReadOnlyList<SymbolInformation> symbols = [.. (await session.SymbolsAsync(name)).Where(s => Bare(s.Name) == name)];
-        Dictionary<string, string> paths = DocumentUris.ToPaths([.. family.Select(f => f.Uri), .. symbols.Select(s => s.Location.Uri), .. bases.Select(b => b.Uri), .. found.Select(f => f.Uri)]);
-        IReadOnlyList<SymbolInformation> named = [.. symbols.Where(s => family.Any(f => SamePlace(paths, f, s.Location)))];
-        foreach (LspLocation place in bases.SelectMany(b => named.Where(s => Inside(paths, s.Location, b)).Select(s => s.Location)))
-        {
-            if (!found.Any(f => SamePlace(paths, f, place)))
-            {
-                found.Add(place);
-            }
-        }
-        return [.. found.Select(l => new Target(l))];
-    }
-
-    /// <summary>Derived Symbols: the types that derive from a type or implement an interface, through every level, or
-    /// the members that override or implement a member.</summary>
-    private async Task<IReadOnlyList<Target>> DerivedSymbolsAsync(LspDocument lsp, int offset)
-    {
-        if (await lsp.PrepareTypeHierarchyAsync(offset) is { } type && IsType(type, context.NameAt(offset)))
-        {
-            return [.. (await Walk(type, (server, item) => server.SubtypesAsync(item))).Select(TargetOf)];
-        }
-        // The server's implementations of a member with a body hold the member itself, which is not derived from it.
-        IReadOnlyList<LspLocation> own = await lsp.DefinitionAsync(offset);
-        IReadOnlyList<LspLocation> found = await lsp.ImplementationAsync(offset);
-        Dictionary<string, string> paths = DocumentUris.ToPaths([.. own.Select(o => o.Uri), .. found.Select(l => l.Uri)]);
-        return [.. found.Where(l => !own.Any(o => SamePlace(paths, o, l)))
-            .OrderBy(l => paths[l.Uri], StringComparer.Ordinal).ThenBy(l => l.Range.Start.Line).ThenBy(l => l.Range.Start.Character)
-            .Select(l => new Target(l))];
-    }
-
-    /// <summary>A type hierarchy walked one way from a type, nearest first, each type once, as far as the server has
-    /// source for: at most <see cref="MostTypes"/>, so an interface the whole solution implements stays quick.</summary>
-    private async Task<IReadOnlyList<HierarchyItem>> Walk(HierarchyItem from, Func<LanguageServer, HierarchyItem, Task<IReadOnlyList<HierarchyItem>>> next)
-    {
-        List<HierarchyItem> found = [];
-        HashSet<(string, LspPosition)> seen = [(DocumentUris.ToPath(from.Uri), from.SelectionRange.Start)];
-        Queue<HierarchyItem> waiting = new([from]);
-        while (waiting.Count > 0 && found.Count < MostTypes)
-        {
-            // Asked of the server running now at each level: the one that answered the last may have been started again.
-            LanguageServer server = context.CSharp?.Session?.Server ?? throw new LanguageServerFailed("the C# language server is not running");
-            foreach (HierarchyItem type in (await next(server, waiting.Dequeue())).OrderBy(t => t.Name, StringComparer.Ordinal))
-            {
-                if (found.Count < MostTypes && seen.Add((DocumentUris.ToPath(type.Uri), type.SelectionRange.Start)))
-                {
-                    found.Add(type);
-                    waiting.Enqueue(type);
-                }
-            }
-        }
-        return found;
-    }
-
-    private const int MostTypes = 200;
-
-    /// <summary>Whether the type hierarchy's type is the symbol named at the caret rather than the type its member is in.</summary>
-    private static bool IsType(HierarchyItem type, string name) => name.Length > 0 && Bare(type.Name) == name;
-
-    /// <summary>A name without its type parameters or parameters, as the caret's word is.</summary>
-    private static string Bare(string name) => name.Split('<', '(')[0].Trim();
-
-    /// <summary>A place to go, and the name of what is there when the list to choose from should say it (a type's).</summary>
-    private sealed record Target(LspLocation Location, string? Name = null);
-
-    private static Target TargetOf(HierarchyItem item) => new(new LspLocation(item.Uri, item.SelectionRange), item.Name);
-
-    /// <summary>Whether two places are one, by their files' paths made once for the list (<see cref="DocumentUris.ToPaths"/>).</summary>
-    private static bool SamePlace(Dictionary<string, string> paths, LspLocation one, LspLocation other) =>
-        one.Range.Start == other.Range.Start && paths[one.Uri] == paths[other.Uri];
-
-    /// <summary>Whether a place is in a type's declaration.</summary>
-    private static bool Inside(Dictionary<string, string> paths, LspLocation place, HierarchyItem type) =>
-        paths[place.Uri] == paths[type.Uri] && !Before(place.Range.Start, type.Range.Start) && !Before(type.Range.End, place.Range.Start);
-
-    private static bool Before(LspPosition one, LspPosition other) => one.Line < other.Line || (one.Line == other.Line && one.Character < other.Character);
 
     /// <summary>Find Usages, the usages in the Find window, or Show Usages, in a popup at the offset.</summary>
     public async Task FindUsages(int offset, bool inPopup = false)

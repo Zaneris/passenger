@@ -417,7 +417,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.Hierarchy, Title = "Call or type hierarchy", ReadOnly = true), Description(
         "One level of the hierarchy of the symbol at a position, as the Hierarchy window: direction callers (each at its " +
-        "call), callees, supertypes, subtypes, or implementations (Go to Implementation's).")]
+        "call), callees, supertypes, subtypes (a member's: what it overrides or implements, or what overrides or implements " +
+        "it, every level), or implementations (Go to Implementation's).")]
     public Task<IReadOnlyList<HierarchyEntry>> Hierarchy(string? path = null, int? line = null, int? column = null, string direction = "callers", string? symbol = null,
         CancellationToken cancel = default) => OnUi<IReadOnlyList<HierarchyEntry>>(cancel, async () =>
     {
@@ -437,6 +438,16 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         HierarchyItem item = (calls ? await lsp.PrepareCallHierarchyAsync(offset) : await lsp.PrepareTypeHierarchyAsync(offset))
             ?? throw new InvalidOperationException(await NoHierarchyAsync(lsp, offset, calls));
+        string name = CSharp.AssistContext.NameAt(document.Text.Snapshot, offset);
+        if (!calls && !CSharp.RelatedSymbols.IsType(item, name))
+        {
+            // A member's own, as Base and Derived Symbols go: the server's type hierarchy at a member is its type's.
+            IReadOnlyList<CSharp.RelatedSymbols.Target> related = direction == "supertypes"
+                ? await CSharp.RelatedSymbols.BaseAsync(lsp, offset, name, document.Syntax?.Current, () => Session.CSharp?.Session)
+                : await CSharp.RelatedSymbols.DerivedAsync(lsp, offset, name, () => Session.CSharp?.Session);
+            IReadOnlyList<Place> members = await Places(await csharp.WrittenAsync([.. related.Select(r => r.Location)], cancel), cancel);
+            return [.. members.Select(p => new HierarchyEntry(null, null, p.Path, p.Line, p.Column, p.Text))];
+        }
         IReadOnlyList<(HierarchyItem Item, LspRange At)> found = direction switch
         {
             "callers" => [.. (await server.IncomingCallsAsync(item)).Select(c => (c.From, c.FromRanges.FirstOrDefault() ?? c.From.SelectionRange))],
@@ -449,7 +460,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     });
 
     /// <summary>Why the symbol at an offset has no hierarchy of the kind asked, naming the directions that follow it where
-    /// it has the other kind: a type no callers, a member no supertypes.</summary>
+    /// it has the other kind: a type no callers, a member in no type no supertypes.</summary>
     private static async Task<string> NoHierarchyAsync(LspDocument lsp, int offset, bool calls)
     {
         if (calls && await lsp.PrepareTypeHierarchyAsync(offset) is { } type)
@@ -458,7 +469,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         if (!calls && await lsp.PrepareCallHierarchyAsync(offset) is { } member)
         {
-            return $"{member.Name} is a member, which has no supertypes or subtypes: direction callers, callees or implementations follows it";
+            return $"{member.Name} is in no type, so it has no supertypes or subtypes: direction callers, callees or implementations follows it";
         }
         return calls ? "No method, property or event there" : "No type there";
     }

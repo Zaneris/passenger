@@ -148,6 +148,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         await TakeFolderAsync();
         Write("Words.cs", Words);
         Write("Aaa.cs", Tally);
+        Write("Figures.cs", Figures);
         await using McpClient client = await Start(["--mcp", Folder]);
 
         // Go to Symbol's matches take in CountAll; an exact find, the two overloads alone, each by its id.
@@ -175,10 +176,19 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         CallToolResult ofType = await Result(client, McpTools.Hierarchy, new() { ["symbol"] = "Words" });
         Assert.True(ofType.IsError == true && Text(ofType).Contains("Words is a type, which has no callers or callees: direction supertypes", StringComparison.Ordinal),
             $"hierarchy of a type, its direction left as callers, answered: {Text(ofType)}");
+        Assert.Equal(["Figures.cs:3:28"], Placed(await Call(client, McpTools.Hierarchy, new() { ["symbol"] = "Square.Area", ["direction"] = "supertypes" })));
+        Assert.Equal(["Figures.cs:8:28"], Placed(await Call(client, McpTools.Hierarchy, new() { ["symbol"] = "Shape.Area", ["direction"] = "subtypes" })));
 
         Assert.Equal("Renamed in 1 file: Aaa.cs", (await Call(client, McpTools.Rename, new() { ["symbol"] = "Tally.CountAll", ["newName"] = "All" })).GetString());
         Assert.Contains("public static int All(string[] texts)", File.ReadAllText(Path.Combine(Folder, "Aaa.cs")), StringComparison.Ordinal);
     }
+
+    private const string Figures = "abstract class Shape\n{\n    public abstract double Area();\n}\n\n"
+        + "sealed class Square(double side) : Shape\n{\n    public override double Area() => side * side;\n}\n";
+
+    /// <summary>Each hierarchy entry's place as "path:line:column".</summary>
+    private static IEnumerable<string> Placed(JsonElement entries) =>
+        entries.EnumerateArray().Select(e => $"{e.GetProperty("path").GetString()}:{e.GetProperty("line").GetInt32()}:{e.GetProperty("column").GetInt32()}");
 
     private const string Shelf = "sealed class Shelf\n{\n    private readonly string[] books = [\"a\", \"b\"];\n\n"
         + "    /// <summary>The book_at a place on the shelf, from a List&lt;string&gt; of them.</summary>\n    public string this[int at] => books[at];\n\n"
