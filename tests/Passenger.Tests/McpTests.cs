@@ -1238,9 +1238,10 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>An agent's checkout of a branch the repository has not is refused naming create, which makes it, and the
-    /// branches there are, never git's "fatal: invalid reference"; the head stays where it was.</summary>
+    /// branches there are, never git's "fatal: invalid reference"; the head stays where it was. A log of no commits is
+    /// refused, never answered with one.</summary>
     [Fact]
-    public async Task An_agents_checkout_of_a_branch_there_is_not_names_create_and_the_branches_there_are()
+    public async Task An_agents_checkout_of_a_branch_there_is_not_names_create_and_the_branches_there_are_and_a_log_of_none_is_refused()
     {
         string repository = TestFolders.Create("mcp-nobranch-");
         DeleteAtEnd(repository);
@@ -1251,6 +1252,9 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(refused.IsError == true && Text(refused).Contains("No branch nowhere is here: create true makes it from the head; the local branches are main", StringComparison.Ordinal),
             $"A checkout of a branch there is not answered: {Text(refused)}");
         Assert.Equal("main", (await TestGit.RunAsync(repository, "branch", "--show-current")).Trim());
+        CallToolResult none = await Result(client, McpTools.VcsLog, new() { ["count"] = 0 });
+        Assert.True(none.IsError == true && Text(none).Contains("count is 0: vcs_log lists 1 or more", StringComparison.Ordinal),
+            $"vcs_log of no commits answered: {Text(none)}");
     }
 
     /// <summary>An agent's vcs_stash in a folder that is in no Git repository says so, as the other vcs tools do, never an

@@ -154,7 +154,7 @@ public sealed partial class PassengerTools
     });
 
     [McpServerTool(Name = McpTools.VcsLog, Title = "The history", ReadOnly = true), Description(
-        "The newest commits of every branch, with their branches and tags and a signed one's signature (good, unverified, bad or " +
+        "The newest commits (count of them, at most 500) of every branch, with their branches and tags and a signed one's signature (good, unverified, bad or " +
         "expired, by whom and with which key). With a path, Show History's: the commits from HEAD " +
         "that changed that file (followed through renames) or folder, each with what it did there; with startLine and endLine " +
         "too, those that changed those lines.")]
@@ -163,7 +163,11 @@ public sealed partial class PassengerTools
     {
         await Session.Vcs.Opened;
         Git repository = Session.Vcs.Repository ?? throw new InvalidOperationException(Session.Vcs.NoRepository);
-        int most = Math.Clamp(count, 1, 500);
+        if (count < 1)
+        {
+            throw new ArgumentException($"count is {count}: vcs_log lists 1 or more", nameof(count));
+        }
+        int most = Math.Min(count, 500);
         (int, int)? lines = (startLine, endLine) switch
         {
             (null, null) => null,
