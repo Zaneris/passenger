@@ -6,7 +6,8 @@ namespace Passenger.Tests;
 
 /// <summary>An agent's export of a Godot game through build's preset, on a project of GDScript alone whose Godot user folders
 /// hold no export templates: refused naming the template its preset takes, a debug one naming its debug template, debug
-/// without a preset refused as no export, and a preset the project lacks refused naming those it has. Godot is only asked
+/// without a preset refused as no export, a preset the project lacks refused naming those it has, and a preset naming no file
+/// refused saying so, exportPath giving it one. Godot is only asked
 /// its version; without a Godot 4 the test skips saying why. Its Passenger is a process of its own, so it runs beside the
 /// window tests.</summary>
 [Collection(Beside.Name)]
@@ -37,6 +38,14 @@ public sealed class McpGodotExportTests : McpRig
 
             JsonElement unknown = await Call(client, McpTools.Build, new() { ["preset"] = "Elsewhere" });
             Assert.Contains($"has no preset Elsewhere: it has {GodotExportTests.Preset}", unknown.GetProperty("outcome").GetString(), StringComparison.Ordinal);
+
+            // A preset that names no file, as a new one has: refused saying so, and exported to the file the agent gives.
+            string presets = Path.Combine(folder, Passenger.Workspace.GodotExports.FileName);
+            File.WriteAllText(presets, System.Text.RegularExpressions.Regex.Replace(File.ReadAllText(presets), "export_path=\"[^\"]*\"", "export_path=\"\""));
+            JsonElement nowhere = await Call(client, McpTools.Build, new() { ["preset"] = GodotExportTests.Preset });
+            Assert.Contains("names no file to export to (its export_path): give one", nowhere.GetProperty("outcome").GetString(), StringComparison.Ordinal);
+            JsonElement given = await Call(client, McpTools.Build, new() { ["preset"] = GodotExportTests.Preset, ["exportPath"] = "build/ticker" });
+            Assert.Contains($"has no {GodotExportTests.Template} among its export templates", given.GetProperty("outcome").GetString(), StringComparison.Ordinal);
         }
         finally
         {

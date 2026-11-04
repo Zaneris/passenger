@@ -27,7 +27,7 @@ public sealed record GodotExportPlan(string Program, IReadOnlyList<string> Argum
         string? path = request.Path ?? preset.ExportPath;
         if (string.IsNullOrWhiteSpace(path))
         {
-            return (null, $"The preset {preset.Name} names no file to export to: give one");
+            return (null, $"The preset {preset.Name} names no file to export to (its export_path): give one, or set it in Godot's editor (Project, Export)");
         }
         if (GodotLaunch.Found(setting) is not { } found)
         {
