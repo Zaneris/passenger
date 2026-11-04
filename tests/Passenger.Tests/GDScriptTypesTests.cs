@@ -12,9 +12,10 @@ namespace Passenger.Tests;
 
 /// <summary>A GDScript read by Passenger's own parser and analyzer while Godot's server for it has not started (held at its
 /// start where a Godot is found, never started where none is): the types inferred where none is written are shown after
-/// their names, a member completes after <c>self.</c> and a local by its first letters, and Go to Declaration reaches a
-/// function of the script; Godot's warnings and errors are marked as the project's settings ask and each is fixed as one
-/// command of Undo. A Godot editor of its own each where one is found, so run alone.</summary>
+/// their names (an operator's from the engine's API, so where a Godot is found to dump it), a member completes after
+/// <c>self.</c> and a local by its first letters, and Go to Declaration reaches a function of the script; Godot's warnings
+/// and errors are marked as the project's settings ask and each is fixed as one command of Undo. A Godot editor of its own
+/// each where one is found, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GDScriptTypesTests
 {
@@ -38,16 +39,24 @@ public sealed class GDScriptTypesTests
         try
         {
             string text = document.Text.Snapshot.ToString();
+            int total = text.IndexOf("total :=", StringComparison.Ordinal) + "total".Length;
             Dictionary<int, string> expected = new()
             {
                 [text.IndexOf("counter", StringComparison.Ordinal) + "counter".Length] = ": int",
                 [text.IndexOf("label", StringComparison.Ordinal) + "label".Length] = ": String",
                 [text.IndexOf("by =", StringComparison.Ordinal) + "by".Length] = ": float",
                 [text.IndexOf("times :=", StringComparison.Ordinal) + "times".Length] = ": int",
-                [text.IndexOf("total :=", StringComparison.Ordinal) + "total".Length] = ": int",
             };
+            // counter * times is typed by the engine's operators, which only a Godot found gives (its API's dump).
+            if (godot is { Exists: true })
+            {
+                expected[total] = ": int";
+            }
             Ui.PumpUntil(() => expected.All(e => document.InlayHints.Any(h => h.Offset == e.Key && h.Label == e.Value && h.Kind == InlayHintKind.Type)),
-                "the inferred types after their names (counter: int, label: String, by: float, times: int, total: int)", TimeSpan.FromSeconds(60));
+                $"the inferred types after their names (counter: int, label: String, by: float, times: int{(godot is { Exists: true } ? ", total: int" : string.Empty)})",
+                TimeSpan.FromSeconds(60));
+            Assert.True(godot is { Exists: true } || !document.InlayHints.Any(h => h.Offset == total),
+                $"With no Godot to give the engine's operators, total's type was guessed: {string.Join(", ", document.InlayHints.Where(h => h.Offset == total).Select(h => h.Label))}");
         }
         finally
         {
@@ -145,6 +154,7 @@ public sealed class GDScriptTypesTests
     [AvaloniaFact]
     public void A_node_path_completes_the_members_of_the_node_the_scene_running_the_script_gives_it()
     {
+        Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): a Label's members come from its API");
         TestFolders.Write(folder, "main.tscn", "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://main.gd\" id=\"1\"]\n\n"
             + "[node name=\"Main\" type=\"Node\"]\nscript = ExtResource(\"1\")\n\n[node name=\"Title\" type=\"Label\" parent=\".\"]\n");
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
