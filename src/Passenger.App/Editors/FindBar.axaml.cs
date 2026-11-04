@@ -507,6 +507,9 @@ public partial class FindBar : UserControl
     {
         switch (e.Key)
         {
+            case Key.Enter when sender == ReplaceWith && ReplaceBoxes.Breaks(e):
+                // The Replace box's line break, which its own handler puts in.
+                break;
             case Key.Enter when sender == ReplaceWith && Replaces:
                 ReplaceCurrent();
                 e.Handled = true;

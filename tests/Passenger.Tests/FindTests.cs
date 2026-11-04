@@ -73,6 +73,7 @@ public sealed class FindTests : IDisposable
         replacing.Focus();
         window.KeyTextInput(",");
         Ui.Press(window, "shift ENTER");
+        Assert.True(editor.Document.Snapshot.ToString() == "one, two\r\nthree\r\n", "Shift+Enter in the Replace box replaced the match, where it puts a line break in");
         window.KeyTextInput("and ");
         Ui.Settle();
         Assert.True(replacing.Text == ",\nand ", $"Shift+Enter in the Replace box left '{replacing.Text}' there, not a line break");
