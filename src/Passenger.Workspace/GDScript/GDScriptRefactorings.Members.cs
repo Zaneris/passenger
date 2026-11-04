@@ -107,7 +107,8 @@ public static partial class GDScriptRefactorings
                             // A value typed as an engine class, or not at all, may hold a node running the script.
                             unsure.Add(GDScriptUses.Place(script, member.Offset, node, $"its '{target.Named}' is on a value whose script is not read"));
                             break;
-                        case GDScriptCall { FunctionName: { } function, Arguments: var arguments } call when NamingCalls.TryGetValue(function, out int index) && arguments.Count > index:
+                        case GDScriptCall { FunctionName: { } function, Arguments: var arguments } call when NamingCalls.TryGetValue(function, out int index) && arguments.Count > index
+                            && !OnCallable(call, script):
                             GDScriptExpression argument = arguments[index];
                             if (argument is GDScriptLiteral { Value: string text } literal)
                             {
@@ -116,7 +117,7 @@ public static partial class GDScriptRefactorings
                                     strings.Add(new GDScriptUses.Named(script, literal, member.Offset, call));
                                 }
                             }
-                            else if (target.Node is GDScriptFunction)
+                            else if (target.Node is GDScriptFunction && argument is not GDScriptLiteral)
                             {
                                 unsure.Add(GDScriptUses.Place(script, member.Offset, call, "names a method by what it reads at run time"));
                             }
@@ -131,6 +132,11 @@ public static partial class GDScriptRefactorings
         }
         return new GDScriptUses(names, strings, unsure);
     }
+
+    /// <summary>Whether a call is a Callable's own (<c>clear.call_deferred(0.2)</c>, a lambda's <c>call()</c>), whose
+    /// arguments are the function's, not a method's name.</summary>
+    private static bool OnCallable(GDScriptCall call, GDScriptRead script) =>
+        call.Callee is GDScriptSubscript { IsAttribute: true, Base: { } on } && script.Analysis.TypeOf(on) is { Kind: GDScriptTypeKind.Builtin, Name: "Callable", Meta: false };
 
     /// <summary>The functions of other scripts with the member's name, which may override it or be overridden by it.</summary>
     private static IEnumerable<GDScriptPlace> Namesakes(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target) =>

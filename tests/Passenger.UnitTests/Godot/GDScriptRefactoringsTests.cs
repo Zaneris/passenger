@@ -55,6 +55,23 @@ public class GDScriptRefactoringsTests
     }
 
     [Fact]
+    public void A_callables_own_call_names_no_method_so_a_rename_goes_on_but_an_objects_call_by_a_name_read_at_run_time_refuses_it()
+    {
+        const string Helper = "class_name Helper\nextends Node\n\n\nfunc clear(after: float) -> void:\n\tprint(after)\n";
+        const string User = "extends Node\n\nvar helper := Helper.new()\n\n\nfunc _ready() -> void:\n\thelper.clear.call_deferred(0.2)\n"
+            + "\tvar later := func(): helper.clear(0.1)\n\tlater.call()\n\tcall_deferred(\"queue_free\")\n";
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://helper.gd", Helper), ("res://user.gd", User));
+        GDScriptTarget target = GDScriptRefactorings.MemberAt(scripts, scripts[0], Helper.IndexOf("clear", StringComparison.Ordinal))!;
+        GDScriptRefactored renamed = GDScriptRefactorings.Rename(scripts, target, "wipe");
+        Assert.Contains("\thelper.wipe.call_deferred(0.2)\n", After(renamed, "res://user.gd", User));
+        Assert.Contains("helper.wipe(0.1)", After(renamed, "res://user.gd", User));
+        const string Dynamic = User + "\n\nfunc by_name(method: String) -> void:\n\thelper.call(method)\n";
+        IReadOnlyList<GDScriptRead> unsure = Read(("res://helper.gd", Helper), ("res://user.gd", Dynamic));
+        Assert.Contains("names a method by what it reads at run time",
+            GDScriptRefactorings.Rename(unsure, GDScriptRefactorings.MemberAt(unsure, unsure[0], Helper.IndexOf("clear", StringComparison.Ordinal))!, "wipe").Refused);
+    }
+
+    [Fact]
     public void Extract_variable_declares_the_expression_before_its_statement_and_reads_it_there()
     {
         // Typed by := where its type is read, as an int literal's is; without the engine's operators, a product's is not.
