@@ -2423,7 +2423,7 @@ public static class TestGpgKeys
 
     /// <summary>A GnuPG program's start, its home the run's in the form the program reads it (Git for Windows' own MSYS one
     /// takes only /c/…).</summary>
-    private static System.Diagnostics.ProcessStartInfo Of(string program, IReadOnlyList<string> arguments)
+    internal static System.Diagnostics.ProcessStartInfo Of(string program, IReadOnlyList<string> arguments)
     {
         System.Diagnostics.ProcessStartInfo start = Passenger.Core.ChildProcesses.Command(program, arguments);
         Passenger.Vcs.MsysGpg.Fit(start, program);
@@ -2454,13 +2454,13 @@ public static class TestX509Keys
         string certificate = Path.Combine(folder, "x509.pem");
         await File.WriteAllTextAsync(parameters, "Key-Type: RSA\nKey-Length: 2048\nKey-Usage: sign\nSerial: random\nName-DN: CN=Passenger Tests,O=Passenger\n"
             + "Name-Email: tests@passenger.invalid\n");
-        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(Gpgsm!,
+        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(TestGpgKeys.Of(Gpgsm!,
             ["--batch", "--pinentry-mode", "loopback", "--passphrase-fd", "0", "--armor", "--output", certificate, "--gen-key", parameters]), passphrase + "\n", Limit.Scaled());
         Assert.True(made.Succeeded, $"gpgsm made no certificate to sign with, exiting {made.ExitCode}: {made.Error}");
-        Passenger.Core.ChildResult imported = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(Gpgsm!, ["--batch", "--import", certificate]),
+        Passenger.Core.ChildResult imported = await Passenger.Core.ChildProcesses.RunAsync(TestGpgKeys.Of(Gpgsm!, ["--batch", "--import", certificate]),
             limit: Limit.Scaled());
         Assert.True(imported.Succeeded, $"gpgsm did not import the test's certificate, exiting {imported.ExitCode}: {imported.Error}");
-        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(Gpgsm!,
+        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(TestGpgKeys.Of(Gpgsm!,
             ["--with-colons", "--list-secret-keys", "tests@passenger.invalid"]), limit: Limit.Scaled());
         string fingerprint = listed.Output.Split('\n').Select(l => l.Split(':')).First(f => f[0] == "fpr")[9];
         await File.AppendAllTextAsync(Path.Combine(home, "trustlist.txt"), $"{fingerprint} S relax\n");
