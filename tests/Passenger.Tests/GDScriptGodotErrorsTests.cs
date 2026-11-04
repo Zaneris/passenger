@@ -12,7 +12,7 @@ namespace Passenger.Tests;
 /// <summary>Passenger's own reading of a GDScript gives the errors Godot's own server gives on the same scripts, in the same
 /// words on the same lines: a corpus of scripts, a family of Godot's analyzer's errors each (names not found, mismatched
 /// types and calls, operators, casts and type tests, static misuse and collections, declarations, files lacked, members
-/// reaching themselves), opened in a window whose Godot's server serves them, each script's errors from Godot's
+/// reaching themselves, assignments and constructions), opened in a window whose Godot's server serves them, each script's errors from Godot's
 /// diagnostics and from Passenger's marks set beside each other (an error Godot pushes twice at one place counted once).
 /// Without a Godot each test skips saying why; a Godot editor of its own, so run alone.</summary>
 [Collection(Alone.Name)]
@@ -149,6 +149,29 @@ public sealed class GDScriptGodotErrorsTests
     /// <summary>The script <see cref="Cycles"/> preloads, in which Godot finds no error.</summary>
     internal const string CyclesOther = "extends RefCounted\n\nvar value := 1\nstatic var made := 2\n";
 
+    /// <summary>Assignments to what Godot holds constant (a function, a signal, an enum, a class or engine class, an
+    /// engine's method, through self or a value too) or read-only (an engine's property with no setter, a value held in
+    /// one), none to what it does not, and a new() it refuses: an engine singleton's, an abstract class's, and one built on
+    /// an engine class that cannot be made.</summary>
+    internal const string Assigns = "extends Node\n\nsignal fired\nconst LIMIT = 1\nenum Mode { A }\nvar tree := SceneTree.new()\n"
+        + "var held_node: Node\nvar loose\n\n\nfunc f() -> void:\n\tpass\n\n\nstatic func s() -> void:\n\tpass\n\n\n"
+        + "func _ready() -> void:\n\tf = null\n\tfired = Signal()\n\tMode = {}\n\tInner = null\n\tNode = null\n"
+        + "\tqueue_free = null\n\tself.f = null\n\theld_node.queue_free = null\n\ttree.root = Window.new()\n"
+        + "\ttree.current_scene = null\n\ttree.root.name = \"x\"\n"
+        + "\tvar state := PhysicsDirectBodyState3DExtension.new()\n\tstate.center_of_mass.x += 1.0\n"
+        + "\tstate.transform.origin.x = 1.0\n\tTime.new()\n\tInstancePlaceholder.new()\n\tAbstracted.new()\n"
+        + "\tBuilt.new()\n\tCanvasItem.new()\n\tInput.new()\n\tScript.new()\n\tBuilt.Deeper.new()\n\tloose.root = null\n"
+        + "\tname = \"n\"\n\tget_tree().root = null\n\ts = null\n\tprint(state, LIMIT)\n\tstate.free()\n\n\n"
+        + "@abstract class Abstracted:\n\tpass\n\n\nclass Built extends CanvasItem:\n\tfunc _init():\n\t\tpass\n\n\n"
+        + "\tclass Deeper extends Light2D:\n\t\tpass\n\n\nclass Inner:\n\tpass\n";
+
+    /// <summary>An abstract script made through a constant, its class_name and a variable holding it.</summary>
+    internal const string Makes = "extends Node\n\nconst Held = preload(\"res://abstract_thing.gd\")\n\n\nfunc _ready() -> void:\n\tHeld.new()\n"
+        + "\tAbstractThing.new()\n\tvar s := preload(\"res://abstract_thing.gd\")\n\ts.new()\n";
+
+    /// <summary>The abstract script <see cref="Makes"/> makes, in which Godot finds no error.</summary>
+    internal const string AbstractThing = "@abstract class_name AbstractThing\nextends RefCounted\n";
+
     private readonly string folder;
     private readonly GodotFound? godot = GodotExecutables.Find(null);
 
@@ -177,6 +200,10 @@ public sealed class GDScriptGodotErrorsTests
     [AvaloniaFact]
     public void Members_reaching_themselves_and_an_instances_members_read_from_its_class_are_its_errors_in_its_words() =>
         Compared([("cycles_other.gd", CyclesOther)], ("cycles.gd", Cycles));
+
+    [AvaloniaFact]
+    public void Assignments_to_constants_and_read_only_properties_and_a_new_it_refuses_are_its_errors_in_its_words() =>
+        Compared([("abstract_thing.gd", AbstractThing)], ("assigns.gd", Assigns), ("makes.gd", Makes));
 
     [AvaloniaFact]
     public void Files_the_project_lacks_and_names_its_singletons_have_are_its_errors_in_its_words()

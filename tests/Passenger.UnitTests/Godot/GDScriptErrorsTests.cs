@@ -11,8 +11,9 @@ namespace Passenger.UnitTests.Godot;
 /// none of and a call given too few or too many arguments, an operator, cast or type test given types it refuses, a static
 /// place reaching the instance, an index, loop or typed collection Godot refuses, a member's name taken, an override's
 /// signature, an export, a file the project lacks preloaded or extended, a class named as a singleton autoload, an untyped
-/// override's returns, what must be constant, a member reaching itself, an instance's member read from its class, Godot
-/// 4.8's words where they differ; and none of them where the class extends one this reading cannot read.</summary>
+/// override's returns, what must be constant, a member reaching itself, an instance's member read from its class, an
+/// assignment to a constant or read-only property, a new() refused, Godot 4.8's words where they differ; and none of them
+/// where the class extends one this reading cannot read.</summary>
 public class GDScriptErrorsTests
 {
     private const string Api = """
@@ -20,7 +21,7 @@ public class GDScriptErrorsTests
           "global_enums": [{ "name": "Side", "values": [{ "name": "SIDE_LEFT", "value": 0 }, { "name": "SIDE_TOP", "value": 1 }] }],
           "global_constants": [],
           "utility_functions": [{ "name": "print", "return_type": "void", "is_vararg": true, "arguments": [] }],
-          "singletons": [],
+          "singletons": [{ "name": "Time", "type": "Time" }],
           "builtin_classes": [
             { "name": "Nil" }, { "name": "bool", "operators": [{ "name": "==", "right_type": "bool", "return_type": "bool" }, { "name": "not", "return_type": "bool" }] },
             { "name": "int", "operators": [{ "name": "+", "right_type": "int", "return_type": "int" }, { "name": "==", "right_type": "Variant", "return_type": "bool" },
@@ -39,7 +40,11 @@ public class GDScriptErrorsTests
               { "name": "_process", "is_virtual": true, "arguments": [{ "name": "delta", "type": "float" }] }],
               "properties": [{ "name": "name", "type": "StringName" }], "signals": [{ "name": "ready" }],
               "enums": [{ "name": "ProcessMode", "values": [{ "name": "PROCESS_MODE_INHERIT", "value": 0 }] }] },
-            { "name": "CharacterBody2D", "inherits": "Node" }, { "name": "Resource", "inherits": "RefCounted" }
+            { "name": "CharacterBody2D", "inherits": "Node" }, { "name": "Resource", "inherits": "RefCounted" }, { "name": "Time", "inherits": "Object" },
+            { "name": "InstancePlaceholder", "inherits": "Node", "is_instantiable": false },
+            { "name": "SceneTree", "inherits": "Object", "properties": [{ "name": "root", "type": "Node", "getter": "get_root" },
+              { "name": "current_scene", "type": "Node", "setter": "set_current_scene", "getter": "get_current_scene" }] },
+            { "name": "Body", "inherits": "Object", "properties": [{ "name": "center", "type": "Vector3", "getter": "get_center" }] }
           ]
         }
         """;
@@ -294,6 +299,35 @@ public class GDScriptErrorsTests
             "43: Cannot return value of type \"null\" because the function return type is \"int\".",
             "46: The rest parameter type must be \"Array\", but \"int\" is specified.",
             "50: Typed arrays are currently not supported for the rest parameter.",
+        ], Errors(Script));
+    }
+
+    /// <summary>Assignments to what Godot holds constant (a function, a signal, an enum, a class, through self too) or
+    /// read-only (an engine's property with no setter, a value held in one), and a new() Godot refuses: an engine
+    /// singleton's, an abstract class's, and one built on an engine class that cannot be made.</summary>
+    [Fact]
+    public void An_assignment_to_a_constant_or_read_only_property_and_a_new_godot_refuses_are_errors_in_its_words_on_their_lines()
+    {
+        const string Script = "extends Node\n\nsignal fired\nenum Mode { A }\nvar tree := SceneTree.new()\nvar body := Body.new()\n\n\n"
+            + "func f() -> void:\n\tpass\n\n\nfunc _ready() -> void:\n\tf = null\n\tfired = null\n\tMode = {}\n\tInner = null\n\tself.f = null\n"
+            + "\ttree.root = null\n\ttree.current_scene = null\n\tbody.center.x = 1.0\n\tTime.new()\n\tInstancePlaceholder.new()\n\tAbstracted.new()\n"
+            + "\tBuilt.new()\n\tprint(tree, body)\n\n\n@abstract class Abstracted:\n\tpass\n\n\nclass Built extends InstancePlaceholder:\n\tpass\n\n\n"
+            + "class Inner:\n\tpass\n";
+        Assert.Equal(
+        [
+            "14: Cannot assign a new value to a constant.",
+            "15: Cannot assign a new value to a constant.",
+            "16: Cannot assign a new value to a constant.",
+            "17: Cannot assign a new value to a constant.",
+            "18: Cannot assign a new value to a constant.",
+            "19: Cannot assign a new value to a read-only property.",
+            "21: Cannot assign a new value to a read-only property.",
+            "22: Cannot construct native class \"Time\" because it is an engine singleton.",
+            "23: Native class \"InstancePlaceholder\" cannot be constructed as it is abstract.",
+            "23: Name \"new\" is a Callable. You can call it with \"new.call()\" instead.",
+            "24: Cannot construct abstract class \"Abstracted\".",
+            "25: Class \"main.gd::Built\" cannot be constructed as it is based on abstract native class \"InstancePlaceholder\".",
+            "25: Name \"new\" is a Callable. You can call it with \"new.call()\" instead.",
         ], Errors(Script));
     }
 

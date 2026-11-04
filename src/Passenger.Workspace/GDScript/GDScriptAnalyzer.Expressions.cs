@@ -1455,7 +1455,7 @@ public sealed partial class GDScriptAnalyzer
                 {
                     Paint(context, method, GDScriptColour.Method);
                 }
-                if (context.Analysis.Tree is not null && Engine is not null)
+                if (context.Analysis.Tree is not null && Engine is not null && !(method.Name == "new" && ConstructionErrors(call, attribute, owner, context)))
                 {
                     MethodMissing(call, attribute, owner, method, context);
                 }
@@ -1738,14 +1738,20 @@ public sealed partial class GDScriptAnalyzer
         return GDScriptType.Variant.Soft;
     }
 
-    /// <summary>Godot's errors of an assignment (reduce_assignment): to a constant, or with <c>=</c> of a value of a type
-    /// the variable's takes none of, a constant's said as its conversion first.</summary>
+    /// <summary>Godot's errors of an assignment (reduce_assignment): to a constant, to an engine's property with no setter
+    /// or a value held in one, or with <c>=</c> of a value of a type the variable's takes none of, a constant's said as its
+    /// conversion first.</summary>
     private void AssignmentErrors(GDScriptAssignment assignment, GDScriptExpression assignee, GDScriptType target, GDScriptExpression assigned, GDScriptType value, Context context)
     {
         if (IsConstant(assignee, context) || assignee is GDScriptSubscript { Base: { } held } && IsConstant(held, context)
             && context.Analysis.TypeOf(held).Kind is not (GDScriptTypeKind.Class or GDScriptTypeKind.Native))
         {
             Error(context, assignee, "Cannot assign a new value to a constant.");
+            return;
+        }
+        if (ReadOnlyProperty(assignee, context) || HeldInReadOnly(assignee, context))
+        {
+            Error(context, assignee, "Cannot assign a new value to a read-only property.");
             return;
         }
         if (target.Hard && Sure(assignee, context))
@@ -1768,15 +1774,112 @@ public sealed partial class GDScriptAnalyzer
         }
     }
 
-    /// <summary>Whether an expression is a name Godot holds constant: a local constant, a constant, enum, enum value or signal
-    /// of the class, or an enum's value read off the enum.</summary>
+    /// <summary>Whether an expression is a name Godot holds constant: a local constant, a constant, enum, enum value, signal,
+    /// function or inner class of the class, a class or engine class by its name, an enum's value read off the enum, or one
+    /// of those read off a value whose type is sure.</summary>
     private bool IsConstant(GDScriptExpression expression, Context context) => expression switch
     {
         GDScriptIdentifier name => context.Scope?.Find(name.Name) is { } local ? local.Local?.Kind == LocalKind.Constant
-            : Member(context.Class, name.Name) is { Kind: "const" or "enum" or "signal" },
-        GDScriptSubscript { IsAttribute: true, Base: { } taken } => context.Analysis.TypeOf(taken) is { Kind: GDScriptTypeKind.Enum, Meta: true },
+            : Member(context.Class, name.Name) is { } member ? member.Kind is "const" or "enum" or "signal" or "func" or "class"
+            : GlobalOrScopedType(name.Name, context.Class) is { Kind: GDScriptTypeKind.Class or GDScriptTypeKind.Native, Meta: true },
+        GDScriptSubscript { IsAttribute: true, Base: { } taken } when context.Analysis.TypeOf(taken) is { Kind: GDScriptTypeKind.Enum, Meta: true } => true,
+        GDScriptSubscript { IsAttribute: true, Base: { } taken, Attribute: { } read } => SureHolder(taken, context) && context.Analysis.TypeOf(taken) is { IsVariant: false } owner
+            && !(owner.Meta && InstanceOnly(owner, read.Name)) && Member(owner, read.Name) is { Kind: "const" or "enum" or "signal" or "func" or "class" },
         _ => false,
     };
+
+    /// <summary>Whether an expression is an engine class's property that has no setter, read off a value whose type is sure
+    /// or by its name in a class built on that engine class.</summary>
+    private bool ReadOnlyProperty(GDScriptExpression expression, Context context) => expression switch
+    {
+        GDScriptIdentifier name => context.Scope?.Find(name.Name) is null && NativeReadOnly(context.Class, name.Name),
+        GDScriptSubscript { IsAttribute: true, Base: { } taken, Attribute: { } read } => SureHolder(taken, context)
+            && context.Analysis.TypeOf(taken) is { Meta: false, Kind: GDScriptTypeKind.Native or GDScriptTypeKind.Class } owner && NativeReadOnly(owner, read.Name),
+        _ => false,
+    };
+
+    /// <summary>Whether a member is read off what Passenger is sure of the type of as Godot is: <see cref="Sure"/>'s, self,
+    /// or what an engine's method called on self returns.</summary>
+    private bool SureHolder(GDScriptExpression taken, Context context) => taken is GDScriptSelf || Sure(taken, context)
+        || taken is GDScriptCall { Callee: GDScriptIdentifier method } && context.Scope?.Find(method.Name) is null && Member(context.Class, method.Name) is { Kind: "func", Declaration.Script: null };
+
+    /// <summary>Whether a subscript changes a value of a built-in type held by copy in a read-only property, through the
+    /// read-only properties it is taken of (<c>state.center_of_mass.x</c>).</summary>
+    private bool HeldInReadOnly(GDScriptExpression assignee, Context context)
+    {
+        for (GDScriptExpression? at = assignee; at is GDScriptSubscript { Base: { } taken }; at = taken)
+        {
+            if (!ReadOnlyProperty(taken, context))
+            {
+                return false;
+            }
+            if (context.Analysis.TypeOf(taken) is { Kind: GDScriptTypeKind.Builtin, Hard: true } held && !SharedBuiltins.Contains(held.Name))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Whether a type's member of a name is an engine class's property that has no setter, none of its script
+    /// classes declaring it first.</summary>
+    private bool NativeReadOnly(GDScriptType type, string name)
+    {
+        GDScriptType? at = type.Instance;
+        for (int depth = 0; at is not null && depth < 64; depth++, at = BaseOf(at))
+        {
+            if (at.Kind == GDScriptTypeKind.Native)
+            {
+                return Engine?.Chain(at.Name).FirstOrDefault(c => c.Properties.ContainsKey(name)) is { } owner && owner.ReadOnly.Contains(name);
+            }
+            if (at.Kind != GDScriptTypeKind.Class || OwnNames(at).ContainsKey(name))
+            {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Godot's errors of a class's <c>new()</c> (reduce_call, get_function_signature): an engine singleton's, an
+    /// abstract class's, and one built on an engine class that cannot be made, with what the call is then; whether no
+    /// other error of the call is said.</summary>
+    private bool ConstructionErrors(GDScriptCall call, GDScriptSubscript callee, GDScriptType owner, Context context)
+    {
+        if (callee.Base is GDScriptIdentifier named && context.Scope?.Find(named.Name) is null && Member(context.Class, named.Name) is null
+            && Engine!.Singletons.ContainsKey(named.Name) && Engine.Classes.ContainsKey(named.Name))
+        {
+            Error(context, call, $"Cannot construct native class \"{named.Name}\" because it is an engine singleton.");
+            return true;
+        }
+        if (!owner.Meta || owner.Kind is not (GDScriptTypeKind.Class or GDScriptTypeKind.Native) || !Knows(owner))
+        {
+            return false;
+        }
+        if (owner is { Kind: GDScriptTypeKind.Class, Class.IsAbstract: true })
+        {
+            Error(context, call, $"Cannot construct abstract class \"{owner.Instance}\".");
+        }
+        if (NativeBase(owner) is not { } native || Engine!.Classes.GetValueOrDefault(native) is not { Instantiable: false })
+        {
+            return false;
+        }
+        Error(context, call, owner.Kind == GDScriptTypeKind.Native ? $"Native class \"{native}\" cannot be constructed as it is abstract."
+            : $"Class \"{QualifiedFile(owner)}\" cannot be constructed as it is based on abstract native class \"{native}\".");
+        Error(context, callee, "Name \"new\" is a Callable. You can call it with \"new.call()\" instead.");
+        return true;
+    }
+
+    /// <summary>A class's name as Godot's fqcn ends: its script's file, then each inner class holding it and its own name.</summary>
+    private string QualifiedFile(GDScriptType type)
+    {
+        string file = type.Script is { } path ? path[(path.LastIndexOf('/') + 1)..] : type.Name;
+        if (type.Script is not { } script || Tree(script) is not { } tree || type.Class is not { Identifier: { } own } inner || inner == tree.Class)
+        {
+            return file;
+        }
+        List<GDScriptType> holders = Enclosing(ScriptClass(tree, script), tree.Members.Select(m => (m.Node, m.Offset)), inner);
+        return string.Join("::", [file, .. holders.Skip(1).Select(h => h.Name), own.Name]);
+    }
 
     /// <summary>Whether an expression is one Godot folds to a constant: a literal, a negative one, a constant's name, an
     /// enum's value, or a constant read off a built-in type, an enum or a class.</summary>

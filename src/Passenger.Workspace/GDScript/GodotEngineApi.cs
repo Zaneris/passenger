@@ -33,6 +33,12 @@ public sealed class GodotApiClass
 
     public bool IsBuiltin { get; init; }
 
+    /// <summary>Whether an engine class can be made (the dump's <c>is_instantiable</c>), which an abstract one cannot.</summary>
+    public bool Instantiable { get; init; } = true;
+
+    /// <summary>An engine class's properties read by a getter that have no setter, which Godot holds read-only.</summary>
+    public HashSet<string> ReadOnly { get; } = new(StringComparer.Ordinal);
+
     public Dictionary<string, GodotApiMethod> Methods { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, string> Properties { get; } = new(StringComparer.Ordinal);
@@ -144,7 +150,7 @@ public sealed class GodotEngineApi
         }
         foreach (JsonElement type in Array(root, "classes"))
         {
-            GodotApiClass engine = new() { Name = Text(type, "name") ?? string.Empty, Inherits = Text(type, "inherits") };
+            GodotApiClass engine = new() { Name = Text(type, "name") ?? string.Empty, Inherits = Text(type, "inherits"), Instantiable = JsonMembers.Bool(type, "is_instantiable") != false };
             foreach (JsonElement method in Array(type, "methods"))
             {
                 GodotApiMethod read = Method(method, type: null);
@@ -153,6 +159,10 @@ public sealed class GodotEngineApi
             foreach (JsonElement property in Array(type, "properties"))
             {
                 engine.Properties[Text(property, "name") ?? string.Empty] = Text(property, "type") ?? "Variant";
+                if (Text(property, "getter") is { Length: > 0 } && Text(property, "setter") is null or "")
+                {
+                    engine.ReadOnly.Add(Text(property, "name") ?? string.Empty);
+                }
             }
             foreach (JsonElement signal in Array(type, "signals"))
             {
