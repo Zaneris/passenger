@@ -1,8 +1,9 @@
 namespace Passenger.Core;
 
 /// <summary>The startup hooks Passenger gives a program it starts (the inspectors, the test frames' hook): its own first,
-/// ahead of those the program's configuration or Passenger's own environment name, and taken out again by the hook as it
-/// starts, so nothing the program starts in turn loads it. Framework-free and linked into the hooks.</summary>
+/// ahead of those the program's configuration or Passenger's own environment name (last, for an inspector that may start
+/// the app itself in place of its Main), and taken out again by the hook as it starts, so nothing the program starts in turn
+/// loads it. Framework-free and linked into the hooks.</summary>
 public static class StartupHooks
 {
     /// <summary>The Avalonia Passenger's hooks into an Avalonia program are compiled against; a program on another major
@@ -15,6 +16,14 @@ public static class StartupHooks
     {
         string? others = environment.TryGetValue(RuntimeVariables.StartupHooks, out string? given) ? given : Environment.GetEnvironmentVariable(RuntimeVariables.StartupHooks);
         return others is { Length: > 0 } ? $"{hook}{Path.PathSeparator}{others}" : hook;
+    }
+
+    /// <summary>A program's startup hooks with <paramref name="hook"/> after those its own environment names (else Passenger's):
+    /// a hook that may run the program itself in place of its Main, which those after it would never reach.</summary>
+    public static string Last(IReadOnlyDictionary<string, string> environment, string hook)
+    {
+        string? others = environment.TryGetValue(RuntimeVariables.StartupHooks, out string? given) ? given : Environment.GetEnvironmentVariable(RuntimeVariables.StartupHooks);
+        return others is { Length: > 0 } ? $"{others}{Path.PathSeparator}{hook}" : hook;
     }
 
     /// <summary>The path of an assembly the program will load, by its file's name ("Avalonia.Base.dll"), from those the runtime

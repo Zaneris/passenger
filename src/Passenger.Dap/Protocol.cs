@@ -70,8 +70,8 @@ public sealed record LaunchArguments
     /// <summary>Passenger's own: how the values of types that carry no debugger attributes of their own are shown.</summary>
     public IReadOnlyList<DapTypePresentation>? Presentations { get; init; }
 
-    /// <summary>Passenger's own: no one is to see the program's windows (an agent's Godot game, drawn for its frames): on
-    /// Windows it runs on a desktop of its own, which nobody switches to.</summary>
+    /// <summary>Passenger's own: no one is to see the program's windows (an agent's Godot game, drawn for its frames, or a
+    /// desktop app a Passenger nobody sees runs): on Windows it runs on a desktop of its own, which nobody switches to.</summary>
     public bool? Unseen { get; init; }
 }
 

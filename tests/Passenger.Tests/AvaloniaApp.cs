@@ -65,17 +65,26 @@ internal static class AvaloniaApp
         return TestProjects.Console("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>").With($"  <ItemGroup>\n{packages}  </ItemGroup>\n");
     }
 
-    /// <summary>A headless app of tests/Debuggees copied into a folder, its project written (<see cref="HeadlessProject"/>):
-    /// the project's path, for its restore.</summary>
-    public static string Debuggee(string folder, string app)
+    /// <summary>The project file of an app of tests/Debuggees made a desktop app as a person's is: on the desktop's own
+    /// platforms (Avalonia.Desktop), with no headless platform of its own.</summary>
+    public static string DesktopProject()
+    {
+        string packages = string.Concat(new[] { "Avalonia", "Avalonia.Themes.Fluent", "Avalonia.Fonts.Inter", "Avalonia.Desktop" }
+            .Select(p => $"    <PackageReference Include=\"{p}\" Version=\"{Version}\" />\n"));
+        return TestProjects.Console("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>").With($"  <ItemGroup>\n{packages}  </ItemGroup>\n");
+    }
+
+    /// <summary>A headless app of tests/Debuggees copied into a folder, its project written (<see cref="HeadlessProject"/>,
+    /// else the one given): the project's path, for its restore.</summary>
+    public static string Debuggee(string folder, string app, string? project = null)
     {
         foreach (string file in Directory.GetFiles(Passenger.Tests.Debugging.Helpers.Debuggees.Source(app)))
         {
             File.Copy(file, Path.Combine(folder, Path.GetFileName(file)));
         }
-        string project = Path.Combine(folder, $"{app}.csproj");
-        File.WriteAllText(project, HeadlessProject());
-        return project;
+        string written = Path.Combine(folder, $"{app}.csproj");
+        File.WriteAllText(written, project ?? HeadlessProject());
+        return written;
     }
 
     /// <summary><see cref="CreateAsync"/> from the UI thread (a window test's body), run on the thread pool and waited for

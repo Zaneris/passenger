@@ -35,6 +35,18 @@ public static class Wire
     [IdentifierHome]
     public const string PreviewVariable = "PASSENGER_INSPECTOR_PREVIEW";
 
+    /// <summary>The app's environment where nobody is to see it (a Passenger nobody sees launched it): its Avalonia draws on
+    /// the headless platform, and where it would draw elsewhere it ends before its Main (<see cref="UnseenEnds"/>) or runs
+    /// on, on a desktop of its own (<see cref="UnseenRuns"/>).</summary>
+    [IdentifierHome]
+    public const string UnseenVariable = "PASSENGER_INSPECTOR_UNSEEN";
+
+    /// <summary><see cref="UnseenVariable"/>'s value where nothing hides an app's windows but its headless platform.</summary>
+    public const string UnseenEnds = "ends";
+
+    /// <summary><see cref="UnseenVariable"/>'s value where the app runs on a desktop of its own, which nobody sees.</summary>
+    public const string UnseenRuns = "runs";
+
     /// <summary>The app's environment: a file the inspector traces its start and its answers to.</summary>
     [IdentifierHome]
     public const string TraceVariable = "PASSENGER_INSPECTOR_TRACE";
@@ -312,6 +324,12 @@ public sealed record Hello(int Protocol, int ProcessId, string? Avalonia, string
 {
     /// <summary>From a WPF app's inspector: WPF and its version ("WPF 10.0.1"), where an Avalonia app says its Avalonia.</summary>
     public string? Framework { get; init; }
+
+    /// <summary>Whether the app draws on Avalonia's headless platform, where nobody sees it.</summary>
+    public bool Headless { get; init; }
+
+    /// <summary>Whether the inspector started the app itself, through its BuildAvaloniaApp(), in place of its Main.</summary>
+    public bool MainLeftOut { get; init; }
 }
 
 /// <summary>A binding that failed in the app, as Avalonia logged it (its Binding area, Warning or Error): the control it is

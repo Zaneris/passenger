@@ -136,13 +136,26 @@ public sealed partial record LaunchPlan
     /// (<see cref="Passenger.Core.ChildProcesses.OnDesktopOfItsOwn"/>).</summary>
     public bool OwnDesktop { get; init; }
 
+    /// <summary>Whether nobody sees the window that launches it (<see cref="MainWindow.Unseen"/>), so no window its program
+    /// makes may reach the person's screen (<see cref="UnseenApps"/>).</summary>
+    public bool Unseen { get; init; }
+
+    /// <summary>Whether its program starts on Windows on a desktop of its own: a Godot game's where its launch says so
+    /// (<see cref="OwnDesktop"/>), else a desktop app nobody is to see (<see cref="UnseenApps.TakesOwnDesktop"/>).</summary>
+    public bool OnOwnDesktop => OwnDesktop || UnseenApps.TakesOwnDesktop(this);
+
     /// <summary>The start of the plan's program through ChildProcesses, on a desktop of its own where the plan says so
-    /// (<see cref="OwnDesktop"/>).</summary>
-    public System.Diagnostics.ProcessStartInfo Start()
-    {
-        System.Diagnostics.ProcessStartInfo start = Passenger.Core.ChildProcesses.Command(Program, Arguments, WorkingDirectory);
-        return OwnDesktop ? Passenger.Core.ChildProcesses.OnDesktopOfItsOwn(start, $"{Name} is an agent's game, drawn where no one sees it for its frames") : start;
-    }
+    /// (<see cref="OnOwnDesktop"/>).</summary>
+    public System.Diagnostics.ProcessStartInfo Start() => Placed(Passenger.Core.ChildProcesses.Command(Program, Arguments, WorkingDirectory));
+
+    /// <summary>A start of the plan's program (its own, or what runs it, as dotnet watch) on a desktop of its own where the
+    /// plan says so (<see cref="OnOwnDesktop"/>), else as it was.</summary>
+    public System.Diagnostics.ProcessStartInfo Placed(System.Diagnostics.ProcessStartInfo start) =>
+        OnOwnDesktop ? Passenger.Core.ChildProcesses.OnDesktopOfItsOwn(start, OwnDesktopWhy) : start;
+
+    /// <summary>Why the program runs on a desktop of its own, for the log of its start.</summary>
+    public string OwnDesktopWhy => OwnDesktop ? $"{Name} is an agent's game, drawn where no one sees it for its frames"
+        : $"{Name} is a desktop app a Passenger nobody sees runs, whose windows reach no one's screen";
 
     /// <summary>Whether its Godot game is to draw in the window's Game window (<see cref="RunConfiguration.GodotInPane"/>).</summary>
     public bool GodotInPane { get; init; }
@@ -162,16 +175,18 @@ public sealed partial record LaunchPlan
     public string ProgramName => GameName ?? System.IO.Path.GetFileNameWithoutExtension(Built ?? Program);
 
     /// <summary>Null when the plan can launch now, its build done: else that the build made no program (unless what starts
-    /// it builds it), or that the working folder is gone ("Could not run Hello: its working folder ... does not exist"),
-    /// unless what starts it builds it there (<see cref="WorksWhereBuilt"/>).</summary>
+    /// it builds it), that the working folder is gone ("Could not run Hello: its working folder ... does not exist"),
+    /// unless what starts it builds it there (<see cref="WorksWhereBuilt"/>), or that its windows would reach the person's
+    /// screen from a Passenger nobody sees (<see cref="UnseenApps.WhyNot"/>).</summary>
     public string? WhyNot(string verb, bool built = true)
     {
         if (built && Built is { } file && !File.Exists(file))
         {
             return $"Could not {verb} {ProgramName}: {System.IO.Path.GetFileName(file)} has not been built";
         }
-        return Directory.Exists(WorkingDirectory) || (!built && WorksWhereBuilt) ? null
-            : $"Could not {verb} {ProgramName}: its working folder {WorkingDirectory} does not exist";
+        return !Directory.Exists(WorkingDirectory) && (built || !WorksWhereBuilt)
+            ? $"Could not {verb} {ProgramName}: its working folder {WorkingDirectory} does not exist"
+            : UnseenApps.WhyNot(this, verb);
     }
 
     /// <summary>Whether the program runs in the folder its build puts it in, which a project never built lacks until its
@@ -325,6 +340,7 @@ public sealed partial record LaunchPlan
             BrowserUrl = configuration.LaunchBrowser && configuration.BrowserUrl.Length > 0 ? Expand(configuration.BrowserUrl) : null,
             Page = configuration.BrowserUrl.Length > 0 ? BrowserLaunch.Address(Expand(configuration.BrowserUrl)) is { } page ? BrowserLaunch.Shown(page) : null : null,
             Web = WebOf(project, framework, properties, workspace, projects),
+            Unseen = headless,
         };
     }
 

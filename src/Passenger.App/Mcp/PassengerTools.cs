@@ -1300,8 +1300,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         string reloads = Session.Debug.Running.Any(r => r.Name == name) ? $" with Hot Reload: {McpTools.HotReload} applies the editors' edits"
             : hotReload == true && window.Status is { } told && told.StartsWith($"Running {name} without Hot Reload: ", StringComparison.Ordinal) ? told[$"Running {name}".Length..]
             : string.Empty;
-        string status = code is int exit ? BuildRunController.RunEnded(name, exit)
-            : app is { State: LiveTree.LiveAppState.Connected } ? $"Running {name}{reloads}, its UI up: app_windows, app_screenshot and app_click look at it and use it"
+        string status = app is { State: LiveTree.LiveAppState.Refused or LiveTree.LiveAppState.Ended, Problem: { } uninspected }
+            ? $"{(code is int gone ? BuildRunController.RunEnded(name, gone) : $"Running {name}{reloads}")}. {uninspected}"
+            : code is int exit ? BuildRunController.RunEnded(name, exit)
+            : app is { State: LiveTree.LiveAppState.Connected } ? $"Running {name}{reloads}, {UiUp(app)}"
             : game is { State: LiveTree.LiveAppState.Connected, Monitors: not null } ? $"Running {name}{reloads}, {GameUp}"
             : serving.Said is { } said ? $"Running {name}, {said}"
             : $"Running {name}";
@@ -1836,6 +1838,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return $"{refused}:\n{string.Join('\n', lines)}{(errors.Count > 10 ? $"\n… {errors.Count - 10} more: problems lists them" : "")}";
     }
 
+    /// <summary>What an answer says of an app whose UI is up: where it draws, where nobody sees it, and what looks at it.</summary>
+    private static string UiUp(LiveTree.LiveApp app) =>
+        (app.MainLeftOut ? "its UI up on Avalonia's headless platform, where nobody sees it, its BuildAvaloniaApp() started in place of its Main"
+            : app.Headless ? "its UI up on Avalonia's headless platform, where nobody sees it"
+            : "its UI up") + ": app_windows, app_screenshot and app_click look at it and use it";
+
     /// <summary>What an answer says of a Godot game once it has connected to Passenger, its remote debugger.</summary>
     private const string GameUp = "Passenger its remote debugger: app_tree, app_details and app_click look at its nodes and use them";
 
@@ -1868,8 +1876,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await Until(() => !going(), Min(LaunchSettle, until - DateTime.UtcNow), cancel);
         }
         DebugSnapshot started = await AfterResume(TimeSpan.Zero, cancel);
-        return started.Debugged != DebugState.Running ? started
-            : app is { State: LiveTree.LiveAppState.Connected } ? started with { Status = $"{started.Status}, its UI up: app_windows, app_screenshot and app_click look at it and use it" }
+        return app is { State: LiveTree.LiveAppState.Refused or LiveTree.LiveAppState.Ended, Problem: { } refused } ? started with { Status = $"{started.Status}. {refused}" }
+            : started.Debugged != DebugState.Running ? started
+            : app is { State: LiveTree.LiveAppState.Connected } ? started with { Status = $"{started.Status}, {UiUp(app)}" }
             : game is { State: LiveTree.LiveAppState.Connected, Monitors: not null } ? started with { Status = $"{started.Status}, {GameUp}" }
             : serving.Said is { } said ? started with { Status = $"{started.Status}, {said}" }
             : started;

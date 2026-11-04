@@ -910,6 +910,10 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         {
             throw new LaunchException("The Aspire application ended or reached its service limit during launch");
         }
+        if (UnseenApps.WhyNot(plan, "run") is { } seen)
+        {
+            throw new LaunchException(seen);
+        }
         AspireResourceRun resource = new(request.SessionId, request.DcpInstanceId, path, plan) { BuiltStamp = stamp };
         resource.ResourceName = request.Environment.FirstOrDefault(variable => variable.Name == OtelVariables.ServiceName)?.Value;
         string serviceName = ((IRunService)resource).Name;
@@ -967,7 +971,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             ProcessRunner runner = resource.Runner = new ProcessRunner(resource.Console, takesInput: true);
             runner.OutputReceived += (_, output) => app.Execution?.NotifyServiceLog(request.DcpInstanceId, request.SessionId, output.Text, output.IsError);
             runner.Exited += (_, code) => Finished(app, resource, code);
-            string? refused = await runner.StartAsync(inspected.Program, inspected.Arguments, inspected.WorkingDirectory, inspected.Environment);
+            string? refused = await runner.StartAsync(inspected.Start(), inspected.Environment);
             if (refused is not null)
             {
                 throw new LaunchException(refused);

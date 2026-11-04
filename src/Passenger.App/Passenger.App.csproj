@@ -216,8 +216,8 @@
     </ItemGroup>
   </Target>
 
-  <!-- The inspector becomes this project's output under inspector/: its own assembly and XAML Hot Reload's compiler, since
-       the app it loads into brings the Avalonia it uses. -->
+  <!-- The inspector becomes this project's output under inspector/: its own assembly, XAML Hot Reload's compiler and the
+       headless platform, since the app it loads into brings the Avalonia it uses. -->
   <Target Name="IncludeInspector" BeforeTargets="AssignTargetPaths">
     <MSBuild Projects="../Passenger.Inspector/Passenger.Inspector.csproj" Targets="GetTargetPath"
              RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">

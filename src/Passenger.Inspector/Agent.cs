@@ -1,5 +1,6 @@
 using System.Reflection;
 using Avalonia;
+using Avalonia.Platform;
 using Avalonia.Threading;
 
 namespace Passenger.Inspector;
@@ -34,8 +35,11 @@ public static class Agent
     public static void Preview(string file) => Previewed = file;
 
     /// <param name="overlays">The renderer debug overlays the launch named (<see cref="Wire.OverlaysVariable"/>), or null.</param>
-    public static void Start(string socket, Thread main, string avalonia, string? overlays) =>
-        Serving.Start(socket, new AvaloniaUi(main, avalonia, overlays));
+    /// <param name="ends">Whether nobody is to see the app, which ends once it is up drawing where people see it
+    /// (<see cref="Wire.UnseenEnds"/>).</param>
+    /// <param name="mainLeftOut">Whether the hook starts the app itself in place of its Main (<see cref="Unseen"/>).</param>
+    public static void Start(string socket, Thread main, string avalonia, string? overlays, bool ends, bool mainLeftOut) =>
+        Serving.Start(socket, new AvaloniaUi(main, avalonia, overlays, ends, mainLeftOut));
 
     /// <summary>The app's UI dispatcher once the app has made it and its Application: the main thread's in a desktop app, or
     /// whichever thread made Avalonia's, read without making one.</summary>
@@ -67,11 +71,16 @@ public static class Agent
         }
     }
 
+    /// <summary>Whether the app draws on Avalonia's headless platform, which its setup has chosen by the time its Application is up.</summary>
+    private static bool DrawsHeadless() =>
+        AvaloniaLocator.Current.GetService<IWindowingPlatform>()?.GetType().Assembly.GetName().Name == "Avalonia.Headless";
+
     /// <summary>An Avalonia app as the serve loop reaches it.</summary>
-    private sealed class AvaloniaUi(Thread main, string avalonia, string? overlays) : IAppUi
+    private sealed class AvaloniaUi(Thread main, string avalonia, string? overlays, bool ends, bool mainLeftOut) : IAppUi
     {
         private Dispatcher? dispatcher;
         private Inspector? inspector;
+        private bool headless;
 
         public void Listen(Connection connection)
         {
@@ -85,6 +94,17 @@ public static class Agent
         public void Open(Connection connection)
         {
             dispatcher = WaitForUi(main);
+            headless = DrawsHeadless();
+            if (ends && !headless)
+            {
+                // A Main its build's headless platform was taken to set up chose another: ended before its windows are shown, if it can be.
+                string said = "The app draws where people see it, though its build carries Avalonia's headless platform. "
+                    + "It was ended as its windows came, as a Passenger nobody sees opens no window on the person's screen";
+                Console.Error.WriteLine(said);
+                connection.Send(new Reply { Event = Wire.Hello, Hello = Hello(said) });
+                connection.Drain();
+                Environment.Exit(StartupHook.EndedUnseen);
+            }
             Ui = dispatcher;
             inspector = dispatcher.Invoke(() => Current = new Inspector(connection, overlays));
             if (Previewed is { } file)
@@ -93,7 +113,7 @@ public static class Agent
             }
         }
 
-        public Hello Hello(string? problem) => new(Wire.Version, Environment.ProcessId, avalonia, problem);
+        public Hello Hello(string? problem) => new(Wire.Version, Environment.ProcessId, avalonia, problem) { Headless = headless, MainLeftOut = mainLeftOut };
 
         public async Task<Reply> AnswerAsync(Request request)
         {

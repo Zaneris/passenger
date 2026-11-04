@@ -2,7 +2,8 @@
   <!-- Passenger's inspector inside an Avalonia app it debugs (the Live Visual Tree): the runtime loads it as a startup
        hook (DOTNET_STARTUP_HOOKS) into a run Passenger launches, never into the app as built or shipped, and it answers
        over the socket Passenger names, on the app's UI thread. Carried under inspector/ beside Passenger, its own
-       assembly and XAML Hot Reload's compiler alone, as the app's Avalonia must be the one it uses. -->
+       assembly, XAML Hot Reload's compiler and the headless platform alone, as the app's Avalonia must be the one it
+       uses. -->
   <PropertyGroup>
     <!-- The oldest .NET an Avalonia 12 app runs on, so it loads into any of them. -->
     <TargetFramework>net8.0</TargetFramework>
@@ -26,6 +27,9 @@
     <!-- XAML Hot Reload's runtime compiler, carried beside the inspector for an app that does not have its own
          (AppAvaloniaContext). -->
     <PackageReference Include="Avalonia.Markup.Xaml.Loader" GeneratePathProperty="true" Private="false" />
+    <!-- Avalonia's headless platform, which an app nobody is to see is started on (Unseen.cs), carried beside the
+         inspector for an app that does not have its own; its text shaping is the app's (Avalonia.HarfBuzz). -->
+    <PackageReference Include="Avalonia.Headless" GeneratePathProperty="true" Private="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -55,10 +59,12 @@
     <Compile Include="../Passenger.Core/SocketFolders.Limit.cs" Link="SocketFolders.Limit.cs" />
   </ItemGroup>
 
-  <!-- What Passenger carries under inspector/ beside the inspector's own assembly: XAML Hot Reload's compiler. -->
+  <!-- What Passenger carries under inspector/ beside the inspector's own assembly: XAML Hot Reload's compiler and the
+       headless platform. -->
   <Target Name="GetCarriedFiles" Returns="@(CarriedFile)">
     <ItemGroup>
       <CarriedFile Include="$(PkgAvalonia_Markup_Xaml_Loader)/lib/net8.0/Avalonia.Markup.Xaml.Loader.dll" />
+      <CarriedFile Include="$(PkgAvalonia_Headless)/lib/net8.0/Avalonia.Headless.dll" />
     </ItemGroup>
   </Target>
 </Project>

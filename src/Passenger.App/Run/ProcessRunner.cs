@@ -108,13 +108,15 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     }
 
     /// <summary><see cref="StartDotnet"/> with no wait, its fork off the window's thread as <see cref="StartAsync(ProcessStartInfo,
-    /// IReadOnlyDictionary{string, string}?)"/>'s is.</summary>
-    public Task<string?> StartDotnetAsync(IReadOnlyList<string> arguments, string folder, IReadOnlyDictionary<string, string>? environment = null)
+    /// IReadOnlyDictionary{string, string}?)"/>'s is, its start <paramref name="placed"/> where given (a desktop of its own).</summary>
+    public Task<string?> StartDotnetAsync(IReadOnlyList<string> arguments, string folder, IReadOnlyDictionary<string, string>? environment = null,
+        Func<ProcessStartInfo, ProcessStartInfo>? placed = null)
     {
         ProcessStartInfo start;
         try
         {
             start = ChildProcesses.DotnetCommand(arguments, folder);
+            start = placed?.Invoke(start) ?? start;
         }
         catch (FileNotFoundException missing)
         {

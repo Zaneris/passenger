@@ -310,6 +310,7 @@ public sealed class ProfilerCommands
             ProfileTarget target = new(launched.Program, launched.Arguments, launched.WorkingDirectory, launched.Environment)
             {
                 Called = launched.Godot is not null ? launched.ProgramName : null,
+                OwnDesktop = launched.OnOwnDesktop ? launched.OwnDesktopWhy : null,
             };
             run.Clear();
             foreach (string note in plan!.Notes)

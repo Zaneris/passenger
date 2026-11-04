@@ -69,11 +69,18 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         Kind = kind;
         if (plan is not null)
         {
+            string inspector = kind == LiveAppKind.Wpf ? WpfInspectorPath : InspectorPath;
+            // An Avalonia app nobody is to see may be started by its inspector, after every other hook, in place of its Main.
+            bool unseen = plan.Unseen && kind == LiveAppKind.Avalonia;
             Dictionary<string, string> environment = new(plan.Environment)
             {
                 [Wire.SocketVariable] = socket,
-                [RuntimeVariables.StartupHooks] = StartupHooks.First(plan.Environment, kind == LiveAppKind.Wpf ? WpfInspectorPath : InspectorPath),
+                [RuntimeVariables.StartupHooks] = unseen ? StartupHooks.Last(plan.Environment, inspector) : StartupHooks.First(plan.Environment, inspector),
             };
+            if (unseen)
+            {
+                environment[Wire.UnseenVariable] = plan.OnOwnDesktop ? Wire.UnseenRuns : Wire.UnseenEnds;
+            }
             if (kind == LiveAppKind.Wpf)
             {
                 environment[RuntimeVariables.XamlDiagnosticsSourceInfo] = "1";
@@ -111,6 +118,13 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
 
     /// <summary>The framework the app is built on, which its inspector serves.</summary>
     public LiveAppKind Kind { get; }
+
+    /// <summary>Whether the app draws on Avalonia's headless platform, where nobody sees it, as it said in its hello.</summary>
+    public bool Headless { get; private set; }
+
+    /// <summary>Whether its inspector started the app through its BuildAvaloniaApp() in place of its Main, as it said in its
+    /// hello: an app nobody is to see whose Main would draw where people do.</summary>
+    public bool MainLeftOut { get; private set; }
 
     /// <summary>The framework and its version as the window says it, once the app has said hello: "Avalonia 12.1.5",
     /// "WPF 10.0.1"; the framework alone before.</summary>
@@ -518,6 +532,11 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     {
         if (State == LiveAppState.Ended)
         {
+            // Why an app was refused, heard as it ended, says why it ended: one nobody was to see, ended before its Main.
+            if (reply is { Event: Wire.Hello, Hello.Problem: { } why })
+            {
+                Problem ??= why;
+            }
             return;
         }
         switch (reply.Event)
@@ -526,6 +545,8 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
                 Avalonia = hello.Avalonia;
                 FrameworkSaid = hello.Framework;
                 ProcessId = hello.ProcessId;
+                Headless = hello.Headless;
+                MainLeftOut = hello.MainLeftOut;
                 if (hello.Protocol != Wire.Version)
                 {
                     Problem = $"{Name}'s inspector speaks version {hello.Protocol} of Passenger's protocol, not {Wire.Version}";

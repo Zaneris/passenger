@@ -13,6 +13,17 @@ public sealed record ProfileTarget(string Program, IReadOnlyList<string> Argumen
     /// null for <see cref="Name"/>'s own.</summary>
     public string? Called { get; init; }
 
+    /// <summary>Why the program starts on Windows on a desktop of its own, which nobody sees (<see cref="ChildProcesses.OnDesktopOfItsOwn"/>);
+    /// null where it starts on the person's.</summary>
+    public string? OwnDesktop { get; init; }
+
+    /// <summary>The program's start through ChildProcesses, on a desktop of its own where <see cref="OwnDesktop"/> says so.</summary>
+    internal ProcessStartInfo Start()
+    {
+        ProcessStartInfo start = ChildProcesses.Command(Program, Arguments, WorkingDirectory);
+        return OwnDesktop is { } why ? ChildProcesses.OnDesktopOfItsOwn(start, why) : start;
+    }
+
     /// <summary>What the snapshot is named for: <see cref="Called"/>, else the program, or the assembly the dotnet host runs.</summary>
     public string Name => Called ?? (Path.GetFileNameWithoutExtension(Program) is "dotnet" && Arguments.Count > 0 ? Path.GetFileNameWithoutExtension(Arguments[0]) : Path.GetFileNameWithoutExtension(Program));
 }
@@ -147,7 +158,7 @@ public sealed class ProfilingSession : IAsyncDisposable
         limit.CancelAfter(TimeSpan.FromSeconds(30));
         Task<DiagnosticsClientConnector?> connecting = DiagnosticsClientConnector.FromDiagnosticPort(port, limit.Token)!;
 
-        ProcessStartInfo start = ChildProcesses.Command(target.Program, target.Arguments, target.WorkingDirectory);
+        ProcessStartInfo start = target.Start();
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         // An input of its own that stays open, for a program that waits on a read.
@@ -274,7 +285,7 @@ public sealed class ProfilingSession : IAsyncDisposable
         {
             throw new ProfilingException($"Could not profile {target.Name}: no snapshot can be written in {folder}: {error.Message}", error);
         }
-        ProcessStartInfo start = ChildProcesses.Command(target.Program, target.Arguments, target.WorkingDirectory);
+        ProcessStartInfo start = target.Start();
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         start.RedirectStandardInput = true;
