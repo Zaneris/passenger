@@ -28,6 +28,48 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-04
+
+The one-off report-lane failures of the 0.3.0 PR's CI run 41847036147 (#1268):
+- `WelcomeTests`' `File_Recent_Solutions_lists_the_others_and_opens_the_one_chosen_with_its_recent_files` and
+  `Open_takes_the_solution_chosen_of_a_folders_several_and_Recent_Solutions_keeps_and_reopens_that_one`, CI macOS:
+  "Collections differ … hn37q6pj7sj_9dmqqc… / hn37q6pj7sj__9dmqqc…". A native menu's words go through
+  `MainWindow.NativeWords`, which doubles underscores so the menu shows them as written (#1147); the tests compared the
+  items' headers with the paths as written, which only a run folder with an underscore in its path, as that runner's
+  TMPDIR had, tells apart. **The test**: it expects the menu's words (with TMPDIR under a folder named "_" it failed so
+  on this Mac before, and passes after).
+- `TemplateFamiliesTests`' `New_Solution_opens_with_every_family_listed_at_once_the_templates_read_ahead_and_the_search_finds_one_by_any_of_its_Types`,
+  CI macOS: "Collections differ at index 1: Godot 4 Game / Probe Host App". xunit ran it right after the class's
+  ide.host.json test, whose own template's family was still in the list a dialog shows at once (the last read, which
+  `ProjectTemplates.Forget` keeps). Not the entry of 2026-10-31. **The test**: the ide.host.json test reads the templates
+  again once it has uninstalled its own (the two ordered so on this Mac, it failed every time before and passes after).
+- `McpNavigationTests`' `Go_to_declaration_into_a_project_a_solution_filter_leaves_out_opens_its_source_at_the_declaration`,
+  CI Windows: "Expected ("Lib/Greeter.cs", 7), Actual ("Lib\Greeter.cs", 7)". MCP answers a path relative to the folder
+  in the system's separators. **The test**, written on the Mac: it expects `Path.Combine`'s (passes on the Windows VM).
+- `McpContainerDebuggingTests`' `An_agents_debug_start_debugs_each_service_of_a_compose_configuration_its_container_action_goes_through_the_run_and_debug_attach_reaches_a_program_in_a_container`,
+  CI Linux (the one runner with a container engine): telemetry of a run collecting nothing "answered: … (Edit
+  Configurations' Collect logs and traces)". Since 5d0ae849d the refusal named the box by words no box reads. **The
+  IDE**: it names the box as the dialog writes it, one constant for both (`RunConfigurationsDialog.TelemetryWords`; passes on the Linux VM).
+- `CommitSigningTests`' `An_x509_keys_passphrase_is_asked_in_passengers_dialog_through_gpgsm_and_signs_the_commit`, CI
+  Windows: "gpgsm made no certificate … keyblock resource '/d/a/…/debug/C:\Users\…\gnupg/pubring.kbx'". The test's
+  `TestX509Keys` gave Git for Windows' MSYS gpgsm, the runner's, GNUPGHOME in Windows' form, which it takes for a folder
+  under its own. **The test**: its gpgsm goes through `TestGpgKeys.Of` (`MsysGpg.Fit`), as its gpg does (passes on the
+  Windows VM with Git's usr\bin on the PATH, as on the runner; skipped there without it).
+- `McpLanguagesTests`' `An_agent_reads_navigates_renames_and_refactors_avalonia_xaml_through_passengers_own_xaml_and_a_library_type_decompiled_once`,
+  CI Windows: "Rename was not applied: MainWindow.axaml changed on disk a moment before the language server was asked,
+  which had not read it after 10 s". The server, 15 s into its load, had not read the XAML the rename before wrote, and
+  `Patience.Limit` stayed 10 s where every other wait of the IDE's on what it started takes `PASSENGER_WAIT_SCALE`
+  (2.5 on that runner). Not the entry of 2026-10-31, whose wait is what ran out here. **The IDE**: the limit goes
+  through `Waits.Of` (passes on the Windows VM).
+- `McpAspireStandInTests`' `An_agent_reads_a_services_request_duration_through_telemetry_metrics`, CI Windows: "web runs no
+  .NET program on this machine to read metrics from". The stand-in pushes web starting, then running with its process
+  id; the test asked at once and took the first answer, given before the push landed, for good. **The test waited
+  wrong**: it waits for workspace to list web running (passes on the Windows VM).
+- `ProfilerTests`' `A_profile_of_ten_thousand_stacks_reads_drags_and_draws_in_what_its_stacks_and_bars_keep`, CI macOS:
+  "The flame graph drew 565 bars whole and 74 zoomed into a leaf, of 26 samples". Its program's leaves spun about a
+  fifth of a second, which the runner's sampler caught 26 times (191 on this Mac), as the 2026-10-26 entry met with a
+  shorter spin. **The test**: the leaves spin ten times as long (2,346 samples on this Mac).
+
 ## 2026-10-31
 
 - `BuildRunTests`' `With_hot_reload_edits_reach_the_running_program_a_signature_change_restarts_it_and_it_ends_with_the_window`,
