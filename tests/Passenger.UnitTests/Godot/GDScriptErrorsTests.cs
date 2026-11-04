@@ -9,8 +9,8 @@ namespace Passenger.UnitTests.Godot;
 /// enum standing on its own, a member a known base lacks, an engine's enum used as a value, a call of a function not found
 /// on self, a built-in value or type, an engine class or an enum, a type not found, a value of a type its target takes
 /// none of and a call given too few or too many arguments, an operator, cast or type test given types it refuses, a static
-/// place reaching the instance, an index, loop or typed collection Godot refuses; and none of them where the class extends
-/// one this reading cannot read.</summary>
+/// place reaching the instance, an index, loop or typed collection Godot refuses, a member's name taken, an override's
+/// signature, an export; and none of them where the class extends one this reading cannot read.</summary>
 public class GDScriptErrorsTests
 {
     private const string Api = """
@@ -35,7 +35,8 @@ public class GDScriptErrorsTests
             { "name": "RefCounted", "inherits": "Object" },
             { "name": "Node", "inherits": "Object", "methods": [{ "name": "_ready", "is_virtual": true }, { "name": "get_name", "return_value": { "type": "StringName" } },
               { "name": "_process", "is_virtual": true, "arguments": [{ "name": "delta", "type": "float" }] }],
-              "properties": [{ "name": "name", "type": "StringName" }], "enums": [{ "name": "ProcessMode", "values": [{ "name": "PROCESS_MODE_INHERIT", "value": 0 }] }] },
+              "properties": [{ "name": "name", "type": "StringName" }], "signals": [{ "name": "ready" }],
+              "enums": [{ "name": "ProcessMode", "values": [{ "name": "PROCESS_MODE_INHERIT", "value": 0 }] }] },
             { "name": "CharacterBody2D", "inherits": "Node" }, { "name": "Resource", "inherits": "RefCounted" }
           ]
         }
@@ -205,6 +206,33 @@ public class GDScriptErrorsTests
             "33: Cannot have an element of type \"String\" in an array of type \"Array[int]\".",
             "33: Cannot include a value of type \"String\" as \"int\".",
         ], Errors(Script));
+    }
+
+    [Fact]
+    public void A_name_taken_an_override_that_does_not_match_and_an_export_godot_refuses_are_errors_in_its_words_on_their_lines()
+    {
+        const string Base = "extends Node\n\nsignal changed\nvar health := 10\n\n\nfunc take(amount: int) -> int:\n\treturn amount\n";
+        const string Script = "extends \"res://base.gd\"\n\nvar changed := 2\nvar name := \"x\"\nvar script: int\nvar PROCESS_MODE_INHERIT := 2\nvar CharacterBody2D := 1\n"
+            + "var Vector3 := 2\n@export var exported_node: Node\n@export var exported_object: Object\n@export var nothing\n@export static var static_exported: int\n\n\n"
+            + "func take(amount: int, more: int) -> int:\n\treturn amount + more\n\n\nfunc _ready() -> int:\n\treturn 0\n\n\nfunc _process(delta: int) -> void:\n\tpass\n\n\n"
+            + "class RefCounted:\n\tpass\n\n\nclass Holder extends Resource:\n\t@export var node: Node\n";
+        Assert.Equal(
+        [
+            "3: The member \"changed\" already exists in parent class res://base.gd.",
+            "4: Member \"name\" redefined (original in native class 'Node')",
+            "5: Member \"script\" redefined (original in native class 'Node')",
+            "6: Member \"PROCESS_MODE_INHERIT\" redefined (original in native class 'Node')",
+            "7: The member \"CharacterBody2D\" shadows a native class.",
+            "8: The member \"Vector3\" cannot have the same name as a builtin type.",
+            "10: Export type can only be built-in, a resource, a node, or an enum.",
+            "11: Cannot use simple \"@export\" annotation with variable without type or initializer, since type can't be inferred.",
+            "12: Annotation \"@export\" cannot be applied to a static variable.",
+            "15: The function signature doesn't match the parent. Parent signature is \"take(int) -> int\".",
+            "19: The function signature doesn't match the parent. Parent signature is \"_ready() -> void\".",
+            "23: The function signature doesn't match the parent. Parent signature is \"_process(float) -> void\".",
+            "27: Class \"RefCounted\" hides a native class.",
+            "32: Node export is only supported in Node-derived classes, but the current class inherits \"Resource\".",
+        ], Errors(Script, p => p == "res://base.gd" ? GDScriptTree.Parse(Base) : null));
     }
 
     /// <summary>A class extending a script this reading has not read may have any member: nothing it names is said to be missing.</summary>

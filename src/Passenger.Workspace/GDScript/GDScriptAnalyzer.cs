@@ -38,6 +38,7 @@ public sealed partial class GDScriptAnalyzer
             WrittenVariants(member.Node, member.Offset, analysis);
         }
         PaintExtends(tree.Class, new Context(analysis, self, 0, null, null));
+        ClassNameErrors(tree.Class, inner: false, new Context(analysis, self, 0, null, null));
         MissingTool(tree.Class, tree, path, 0, new Context(analysis, self, 0, null, null));
         foreach (GDScriptMember member in tree.Members)
         {

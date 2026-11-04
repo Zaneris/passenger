@@ -7,6 +7,7 @@ public sealed partial class GDScriptAnalyzer
 {
     private void Walk(GDScriptAnalysis analysis, GDScriptNode member, Context context)
     {
+        MemberNameErrors(member, context);
         switch (member)
         {
             case GDScriptVariable variable:
@@ -21,6 +22,7 @@ public sealed partial class GDScriptAnalyzer
                     Warn(context, value, "INT_AS_ENUM_WITHOUT_CAST");
                 }
                 Declaring(variable, type, "variable", local: false, valued);
+                ExportErrors(variable, type, context);
                 MemberVariableWarnings(variable, context);
                 if (variable.Type is { } memberType)
                 {
@@ -57,6 +59,7 @@ public sealed partial class GDScriptAnalyzer
                 GDScriptType innerType = new(GDScriptTypeKind.Class, inner.Identifier.Name) { Class = inner, Script = context.Analysis.Path, Offset = context.Offset };
                 Paint(context, inner.Identifier, GDScriptColour.Class);
                 PaintExtends(inner, context);
+                ClassNameErrors(inner, inner: true, context with { Class = innerType });
                 if (analysis.Tree is { } own)
                 {
                     MissingTool(inner, own, analysis.Path, context.Offset, context);
@@ -114,9 +117,14 @@ public sealed partial class GDScriptAnalyzer
             }
         }
         List<Local> parameters = [];
+        List<GDScriptType> parameterTypes = [];
         foreach (GDScriptParameter parameter in function.Rest is { } rest ? [.. function.Parameters, rest] : function.Parameters)
         {
             GDScriptType type = parameter == function.Rest ? GDScriptType.Builtin("Array") : AssignableType(parameter, inside, constant: false);
+            if (parameter != function.Rest)
+            {
+                parameterTypes.Add(type);
+            }
             Record(inside.Analysis, parameter, type, inside);
             if (parameter.Identifier is { } name)
             {
@@ -131,6 +139,7 @@ public sealed partial class GDScriptAnalyzer
         {
             inside = inside with { Returns = ResolveType(returned, inside) };
         }
+        OverrideErrors(function, parameterTypes, function.ReturnType is { IsVoid: true } ? GDScriptType.Builtin("Nil") with { IsVoid = true } : inside.Returns, context);
         if (function.ReturnType is null && !function.IsLambda && context.Analysis.Tree is not null)
         {
             Warn(context, function.Start, function.HeaderEnd, "UNTYPED_DECLARATION", "Function", FunctionName(function));

@@ -182,7 +182,9 @@ public sealed class GodotEngineApi
         {
             foreach (GodotApiMethod virtualMethod in ObjectVirtuals)
             {
-                baseObject.Methods.TryAdd(virtualMethod.Name, virtualMethod with { IsVirtual = true });
+                // From Godot 4.4 the property list a script gives is an Array of Dictionary.
+                GodotApiMethod added = virtualMethod.Name == "_get_property_list" && api.Version >= new Version(4, 4) ? virtualMethod with { Returns = "typedarray::Dictionary" } : virtualMethod;
+                baseObject.Methods.TryAdd(added.Name, added with { IsVirtual = true });
             }
             // Godot's ClassDB holds free among Object's virtuals, with no method bind, so no dump lists it.
             baseObject.Methods.TryAdd("free", new GodotApiMethod("free", "void", [], 0, false, false) { IsVirtual = true });

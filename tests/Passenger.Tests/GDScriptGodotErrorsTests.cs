@@ -11,7 +11,7 @@ namespace Passenger.Tests;
 
 /// <summary>Passenger's own reading of a GDScript gives the errors Godot's own server gives on the same scripts, in the same
 /// words on the same lines: a corpus of scripts, a family of Godot's analyzer's errors each (names not found, mismatched
-/// types and calls, operators, casts and type tests, static misuse and collections), opened in a window whose
+/// types and calls, operators, casts and type tests, static misuse and collections, declarations), opened in a window whose
 /// Godot's server serves them, each script's errors from Godot's diagnostics and from Passenger's marks set beside each
 /// other (an error Godot pushes twice at one place counted once). Without a Godot each test skips saying why; a Godot editor
 /// of its own, so run alone.</summary>
@@ -82,6 +82,28 @@ public sealed class GDScriptGodotErrorsTests
         + "\titems = [\"x\"]\n\ttakes([1, \"x\"])\n\n\nfunc takes(_list: Array[String]) -> Array[int]:\n\treturn [\"a\"]\n\n\n"
         + "class Inner:\n\tfunc method() -> void:\n\t\tpass\n\n\tstatic func static_method() -> void:\n\t\tpass\n";
 
+    /// <summary>A script class with members and functions of its own, which <see cref="Declarations"/> extends, and in which
+    /// Godot finds no error.</summary>
+    internal const string Base = "class_name BaseThing\nextends Node\n\nsignal changed\nvar health := 10\nconst LIMIT = 3\n\n\n"
+        + "func take(amount: int, source: Node = null) -> int:\n\treturn amount\n\n\nfunc untyped(value):\n\treturn value\n\n\n"
+        + "func gives() -> Node:\n\treturn null\n\n\nstatic func make() -> void:\n\tpass\n";
+
+    /// <summary>Members whose names a parent script, the engine class or a built-in type has, inner classes hiding a
+    /// built-in type, an engine class or a global script class, overrides whose signatures don't match the parent's (a
+    /// script's and the engine's virtuals), and exports Godot refuses.</summary>
+    internal const string Declarations = "extends BaseThing\n\nvar health_extra := 1\nvar changed := 2\nvar LIMIT2 := 3\nvar name := \"x\"\nvar script: int\n"
+        + "var process_mode := 0\nvar NOTIFICATION_READY := 1\nvar PROCESS_MODE_INHERIT := 2\nvar Sprite2D := 1\nvar Vector2 := 2\n"
+        + "var health := 5\nconst Node3D = 0\nsignal ready\nenum { CHANGED_A, health_b }\nenum Timer { A }\n"
+        + "@export var exported: int\n@export var exported_node: Node\n@export var exported_object: Object\n"
+        + "@export var exported_ref: RefCounted\n@export var exported_array: Array[Node]\n@export var nothing\n"
+        + "@export static var static_exported: int\n@export @export_range(0, 10) var twice: int\n@export var inferred = 5\n\n\n"
+        + "func take(amount: int) -> int:\n\treturn amount\n\n\nfunc untyped(value: int):\n\treturn value\n\n\n"
+        + "func gives() -> Object:\n\treturn null\n\n\nfunc make() -> void:\n\tpass\n\n\nfunc _ready() -> int:\n\treturn 0\n\n\n"
+        + "func _process(delta: int) -> void:\n\tpass\n\n\nfunc _input(event: InputEventKey) -> void:\n\tpass\n\n\n"
+        + "func _physics_process(_delta: float) -> void:\n\tpass\n\n\nclass Vector3:\n\tpass\n\n\nclass Node2D:\n\tpass\n\n\n"
+        + "class BaseThing:\n\tpass\n\n\nclass Holder extends Resource:\n\t@export var node: Node\n"
+        + "\t@export var nodes: Array[Node]\n\t@export var res: Resource\n";
+
     private readonly string folder;
     private readonly GodotFound? godot = GodotExecutables.Find(null);
 
@@ -104,11 +126,18 @@ public sealed class GDScriptGodotErrorsTests
     [AvaloniaFact]
     public void Static_misuse_indices_loops_and_typed_collections_godot_refuses_are_its_errors_in_its_words() => Compared(("statics.gd", Statics));
 
-    /// <summary>The scripts written, opened one by one once Godot's server serves the project, and each one's errors from
-    /// Godot's server and from Passenger's reading the same.</summary>
-    private void Compared(params (string File, string Script)[] corpus)
+    [AvaloniaFact]
+    public void Declarations_godot_refuses_are_its_errors_in_its_words() => Compared([("base.gd", Base)], ("decls.gd", Declarations));
+
+    /// <summary>A corpus compared with no script beside it.</summary>
+    private void Compared(params (string File, string Script)[] corpus) => Compared([], corpus);
+
+    /// <summary>The scripts written (those <paramref name="beside"/> the corpus, in which Godot finds no error, too), the
+    /// corpus's opened one by one once Godot's server serves the project, and each one's errors from Godot's server and
+    /// from Passenger's reading the same.</summary>
+    private void Compared(IReadOnlyList<(string File, string Script)> beside, params (string File, string Script)[] corpus)
     {
-        foreach ((string file, string script) in corpus)
+        foreach ((string file, string script) in beside.Concat(corpus))
         {
             TestFolders.Write(folder, file, script);
         }

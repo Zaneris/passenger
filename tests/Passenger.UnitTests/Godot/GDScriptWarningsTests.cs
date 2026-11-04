@@ -34,7 +34,8 @@ public class GDScriptWarningsTests
           "classes": [
             { "name": "Object", "methods": [{ "name": "emit_signal", "is_vararg": true, "return_value": { "type": "enum::Error" }, "arguments": [{ "name": "signal", "type": "StringName" }] },
               { "name": "connect", "return_value": { "type": "enum::Error" }, "arguments": [{ "name": "signal", "type": "StringName" }, { "name": "callable", "type": "Callable" }, { "name": "flags", "type": "int", "default_value": "0" }] },
-              { "name": "disconnect", "arguments": [{ "name": "signal", "type": "StringName" }, { "name": "callable", "type": "Callable" }] }, { "name": "get", "return_value": { "type": "Variant" } }] },
+              { "name": "disconnect", "arguments": [{ "name": "signal", "type": "StringName" }, { "name": "callable", "type": "Callable" }] }, { "name": "get", "return_value": { "type": "Variant" },
+                "arguments": [{ "name": "property", "type": "StringName" }] }] },
             { "name": "RefCounted", "inherits": "Object" },
             { "name": "Node", "inherits": "Object", "methods": [{ "name": "get_node", "return_value": { "type": "Node" } }, { "name": "_ready", "is_virtual": true }],
               "properties": [{ "name": "name", "type": "StringName" }] },
