@@ -19,6 +19,9 @@ public sealed partial class GDScriptAnalyzer
     private readonly Dictionary<GDScriptNode, GDScriptType> memberTypes = [];
     private readonly HashSet<GDScriptNode> resolving = [];
 
+    /// <summary>Each inline setter's parameter's property, whose type it is given.</summary>
+    private readonly Dictionary<GDScriptParameter, GDScriptVariable> setterProperties = [];
+
     public GDScriptAnalyzer(GDScriptProject project) => this.project = project;
 
     /// <summary>What the scripts are read against: the project's scripts, class names, autoloads and the engine's API.</summary>
@@ -53,6 +56,11 @@ public sealed partial class GDScriptAnalyzer
         if (tree.Errors.Count == 0)
         {
             CycleErrors(tree, path, self, analysis);
+            PropertyErrors(tree.Members.Select(m => (m.Node, m.Offset)), new Context(analysis, self, 0, null, null));
+            foreach (GDScriptType inner in InnerClasses(tree.Members.Select(m => (m.Node, m.Offset)), path))
+            {
+                PropertyErrors(inner.Class!.Members.Select(m => (m, inner.Offset)), new Context(analysis, inner, inner.Offset, null, null));
+            }
         }
         ConfusableWarnings(tree, analysis, self);
         if (!InheritanceErrors(tree, path, self, analysis))

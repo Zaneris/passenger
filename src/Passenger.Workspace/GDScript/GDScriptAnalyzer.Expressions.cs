@@ -41,6 +41,7 @@ public sealed partial class GDScriptAnalyzer
                     {
                         scope.Add(parameter.Name, type, new GDScriptDeclaration(context.Analysis.Path, context.Offset + parameter.Start, parameter.Name, type), new Local(only, parameter, LocalKind.Setter));
                         Record(analysis, only, type, context);
+                        setterProperties[only] = variable;
                     }
                     WalkSuite(setter, context with { Scope = scope, Function = set, Static = StaticAccessor(variable, "setter") });
                 }
@@ -1152,6 +1153,7 @@ public sealed partial class GDScriptAnalyzer
         GDScriptLiteral or GDScriptArray or GDScriptDictionary => true,
         GDScriptUnary { Operator: K.Minus, Operand: GDScriptLiteral } => true,
         GDScriptIdentifier name when context.Scope?.Find(name.Name) is { } local => SureDeclared(local.Local?.Node)
+            || local.Local is { Kind: LocalKind.Setter, Node: GDScriptParameter set } && setterProperties.TryGetValue(set, out GDScriptVariable? property) && SureDeclared(property)
             || local.Local?.Node is GDScriptFor { List: { } list } loop && (loop.Type is not null || list is GDScriptCall { Callee: GDScriptIdentifier { Name: "range" } } || Sure(list, context)),
         GDScriptIdentifier name => Member(context.Class, name.Name) is { Declaration: { Script: { } script, Start: var start } } && Tree(script) is { } tree
             && SureDeclared(AssignableAt(tree.Members.Select(m => (m.Node, m.Offset)), start)),

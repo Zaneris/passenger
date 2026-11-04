@@ -12,10 +12,10 @@ namespace Passenger.Tests;
 /// <summary>Passenger's own reading of a GDScript gives the errors Godot's own server gives on the same scripts, in the same
 /// words on the same lines: a corpus of scripts, a family of Godot's analyzer's errors each (names not found, mismatched
 /// types and calls, operators, casts and type tests, static misuse and collections, declarations, files lacked, members
-/// reaching themselves, assignments and constructions, @onready, calls made as it reads), opened in a window whose Godot's
-/// server serves them, each script's errors from Godot's diagnostics and from Passenger's marks set beside each other (an
-/// error Godot pushes twice at one place counted once). Without a Godot each test skips saying why; a Godot editor of its
-/// own, so run alone.</summary>
+/// reaching themselves, assignments and constructions, @onready, calls made as it reads, getters and setters), opened in a
+/// window whose Godot's server serves them, each script's errors from Godot's diagnostics and from Passenger's marks set
+/// beside each other (an error Godot pushes twice at one place counted once). Without a Godot each test skips saying why;
+/// a Godot editor of its own, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GDScriptGodotErrorsTests
 {
@@ -195,6 +195,28 @@ public sealed class GDScriptGodotErrorsTests
         + "\tprint(Color(\"\"), Color(\"invalid\"), Color(CODE), Color(SHADE), Color(\"#fff\"), Color(\"red\"), Color(\"12345\"), Color(\"#abcd\"))\n"
         + "\tprint(floor(held), len(held), Color(str(1)))\n";
 
+    /// <summary>Properties' getters and setters: inline ones typed by their property, named functions Godot refuses (not
+    /// declared, an inherited one too, of parameters or types that do not fit), untyped getters (typed by their last
+    /// return up to 4.7, Variant from 4.8), beside those Godot takes.</summary>
+    internal const string Properties = "extends \"res://props_base.gd\"\n\nvar _prop: int\nvar _text := \"\"\n\nvar a: String:\n"
+        + "\tset = set_int, get = get_int\nvar b: String:\n\tget = get_untyped\nvar c: String:\n\tget = get_mixed\n"
+        + "var d: String:\n\tget = get_local\nvar e: int:\n\tget = inherited_get\nvar f: float:\n"
+        + "\tset = set_int, get = get_int\nvar g: int:\n\tset = set_two, get = get_takes\nvar h:\n"
+        + "\tset = set_int, get = get_string\nvar i: Variant:\n\tset = set_int, get = get_string\nvar j:\n"
+        + "\tset = set_untyped, get = get_int\nvar k: String:\n\tset = set_default, get = nowhere\nvar m := 1:\n"
+        + "\tset = set_string\nvar n: String:\n\tset(value):\n\t\t_prop = value\n\tget:\n\t\treturn _prop\nvar o := 0:\n"
+        + "\tset(value):\n\t\tvar x: String = value\n\t\to = value\nvar p: String:\n\tget = get_empty\n\n\n"
+        + "func set_int(value: int) -> void:\n\t_prop = value\n\n\nfunc set_string(value: String) -> void:\n"
+        + "\t_text = value\n\n\nfunc set_untyped(value) -> void:\n\t_prop = value\n\n\n"
+        + "func set_two(x: int, y: int) -> void:\n\t_prop = x + y\n\n\nfunc set_default(value := 1) -> void:\n"
+        + "\t_prop = value\n\n\nfunc get_int() -> int:\n\treturn _prop\n\n\nfunc get_string() -> String:\n"
+        + "\treturn _text\n\n\nfunc get_untyped():\n\treturn _prop\n\n\nfunc get_mixed():\n\tif _prop > 0:\n"
+        + "\t\treturn _text\n\treturn _prop\n\n\nfunc get_local():\n\tvar _prop := \"x\"\n\treturn _prop\n\n\n"
+        + "func get_takes(x: int) -> int:\n\treturn x\n\n\nfunc get_empty():\n\tpass\n";
+
+    /// <summary>The base <see cref="Properties"/> extends, whose function it names, in which Godot finds no error.</summary>
+    internal const string PropertiesBase = "extends Node\n\nfunc inherited_get() -> int:\n\treturn 1\n";
+
     private readonly string folder;
     private readonly GodotFound? godot = GodotExecutables.Find(null);
 
@@ -233,6 +255,9 @@ public sealed class GDScriptGodotErrorsTests
 
     [AvaloniaFact]
     public void Calls_it_makes_as_it_reads_given_what_they_refuse_are_its_errors_in_its_words() => Compared(("evaluated.gd", Evaluated));
+
+    [AvaloniaFact]
+    public void Getters_and_setters_it_refuses_are_its_errors_in_its_words() => Compared([("props_base.gd", PropertiesBase)], ("props.gd", Properties));
 
     [AvaloniaFact]
     public void Files_the_project_lacks_and_names_its_singletons_have_are_its_errors_in_its_words()

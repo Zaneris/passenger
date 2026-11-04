@@ -249,6 +249,130 @@ public sealed partial class GDScriptAnalyzer
     }
 
     /// <summary>A simple <c>@export</c>'s errors, by the variable's type or its value's (an array's by its element's).</summary>
+    /// <summary>A class's properties' getter and setter functions named (<c>set = f, get = g</c>) that Godot refuses, as its
+    /// resolve_class_body checks them once the class's functions are read: one the class does not declare, one whose
+    /// parameters do not fit, one of a type the property's takes none of, and for a property of no type a getter and a
+    /// setter of types that do not fit each other.</summary>
+    private void PropertyErrors(IEnumerable<(GDScriptNode Node, int Offset)> members, Context context)
+    {
+        if (context.Analysis.Tree is null || !Knows(context.Class))
+        {
+            return;
+        }
+        List<(GDScriptNode Node, int Offset)> all = [.. members];
+        Dictionary<string, GDScriptFunction> functions = new(StringComparer.Ordinal);
+        foreach ((GDScriptNode node, _) in all)
+        {
+            if (node is GDScriptFunction { Identifier: { } name } function)
+            {
+                functions.TryAdd(name.Name, function);
+            }
+        }
+        bool newer = Engine?.Version >= new Version(4, 8);
+        foreach ((GDScriptNode node, int offset) in all)
+        {
+            if (node is not GDScriptVariable { GetterName: not null } and not GDScriptVariable { SetterName: not null } || node is not GDScriptVariable variable)
+            {
+                continue;
+            }
+            Context at = context with { Offset = offset };
+            GDScriptType property = MemberType(variable, context.Class, offset);
+            bool sure = SureDeclared(variable) || variable is { Type: null, Infers: false };
+            GDScriptType? got = null;
+            GDScriptType? set = null;
+            if (variable.GetterName is { } getterName)
+            {
+                if (!functions.TryGetValue(getterName.Name, out GDScriptFunction? getter))
+                {
+                    Error(at, variable, $"Getter \"{getterName.Name}\" not found.");
+                }
+                else if (getter.Parameters.Count != 0)
+                {
+                    Error(at, variable, $"Function \"{getterName.Name}\" cannot be used as getter because of its signature.");
+                }
+                else if (GetterType(getter, newer, at) is { } returns)
+                {
+                    if (sure && !TypeCompatible(property, returns, implicitly: true))
+                    {
+                        Error(at, variable, $"Function with return type \"{returns}\" cannot be used as getter for a property of type \"{property}\".");
+                    }
+                    else
+                    {
+                        got = returns;
+                    }
+                }
+            }
+            if (variable.SetterName is { } setterName)
+            {
+                if (!functions.TryGetValue(setterName.Name, out GDScriptFunction? setter))
+                {
+                    Error(at, variable, $"Setter \"{setterName.Name}\" not found.");
+                }
+                else if (setter.Parameters.Count != 1)
+                {
+                    Error(at, variable, $"Function \"{setterName.Name}\" cannot be used as setter because of its signature.");
+                }
+                else if (SetterType(setter.Parameters[0], at) is { } takes)
+                {
+                    if (sure && !TypeCompatible(property, takes, implicitly: true))
+                    {
+                        Error(at, variable, $"Function with argument type \"{takes}\" cannot be used as setter for a property of type \"{property}\".");
+                    }
+                    else
+                    {
+                        set = takes;
+                    }
+                }
+            }
+            if (property.IsVariant && got is not null && set is not null && !TypeCompatible(got, set, implicitly: true))
+            {
+                Error(at, variable, $"Getter with type \"{got}\" cannot be used along with setter of type \"{set}\".");
+            }
+        }
+    }
+
+    /// <summary>The type a getter function returns as Godot's check reads it: written; else from Godot 4.8 Variant, and
+    /// before it what its body's last return gives where this reading is sure of it, else Variant; null where unsure.</summary>
+    private GDScriptType? GetterType(GDScriptFunction getter, bool newer, Context context)
+    {
+        if (getter.ReturnType is { } written)
+        {
+            return ResolveType(written, context with { Analysis = new GDScriptAnalysis(null, context.Analysis.Path) }) with { Meta = false };
+        }
+        if (newer || getter.Body is not { } body)
+        {
+            return GDScriptType.Variant;
+        }
+        // Godot's suite takes the type of the last statement that may return, whatever came before.
+        GDScriptNode? last = body.Statements.LastOrDefault(s => s is GDScriptReturn or GDScriptIf or GDScriptFor or GDScriptWhile or GDScriptMatch);
+        return last switch
+        {
+            null => GDScriptType.Variant,
+            GDScriptReturn { Value: GDScriptLiteral or GDScriptIdentifier } returned when SureReturn(returned.Value, getter, context) => context.Analysis.TypeOf(returned.Value),
+            _ => null,
+        };
+    }
+
+    /// <summary>Whether a getter's returned value is one Passenger is sure of the type of outside its body: a literal, or a
+    /// member's name no local or parameter of the function takes.</summary>
+    private bool SureReturn(GDScriptExpression value, GDScriptFunction getter, Context context) => value switch
+    {
+        GDScriptLiteral => Sure(value, context),
+        GDScriptIdentifier name => !getter.Parameters.Any(p => p.Identifier?.Name == name.Name)
+            && !Within(getter.Body!).Any(d => d is GDScriptAssignable { Identifier.Name: var held } && held == name.Name || d is GDScriptFor { Variable.Name: var looped } && looped == name.Name)
+            && Sure(value, context),
+        _ => false,
+    };
+
+    /// <summary>A node's nodes below it, every level down.</summary>
+    private static IEnumerable<GDScriptNode> Within(GDScriptNode node) => node.Children.SelectMany(child => Within(child).Prepend(child));
+
+    /// <summary>The type a setter function's parameter takes: written or inferred from its default, else Variant; null for a
+    /// default this reading is unsure of.</summary>
+    private GDScriptType? SetterType(GDScriptParameter parameter, Context context) =>
+        parameter.Type is not null || parameter.Infers && SureDeclared(parameter) ? context.Analysis.TypeOf(parameter)
+        : parameter.Infers ? null : GDScriptType.Variant;
+
     /// <summary>A member variable's <c>@onready</c> annotations' errors, as Godot's onready_annotation gives them: in a
     /// class built on no Node, on a static variable, or written again.</summary>
     private void OnreadyErrors(GDScriptVariable variable, Context context)

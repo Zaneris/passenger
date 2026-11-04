@@ -10,7 +10,8 @@ namespace Passenger.UnitTests.Godot;
 /// tests, static places, indices, loops and typed collections, members' names, overrides, exports, files lacked and
 /// singleton autoloads, untyped overrides' returns, what must be constant, members reaching themselves and read from their
 /// classes, assignments to constants and read-only properties, new() refused, @onready refused, calls Godot makes as it
-/// reads), Godot 4.8's words where they differ; and none where the class extends one this reading cannot read.</summary>
+/// reads, getters and setters), Godot 4.8's words where they differ; and none where the class extends one this reading
+/// cannot read.</summary>
 public class GDScriptErrorsTests
 {
     private const string Api = """
@@ -302,6 +303,58 @@ public class GDScriptErrorsTests
             "46: The rest parameter type must be \"Array\", but \"int\" is specified.",
             "50: Typed arrays are currently not supported for the rest parameter.",
         ], Errors(Script));
+    }
+
+    /// <summary>Properties' getters and setters Godot refuses: a setter's parameter typed as its property, a named function
+    /// the class does not declare (one it inherits too), one whose parameters do not fit or of a type the property's takes
+    /// none of, a property of no type whose getter and setter do not fit each other; an untyped getter typed by its last
+    /// return before Godot 4.8 and Variant from it.</summary>
+    [Fact]
+    public void A_getter_or_setter_godot_refuses_is_an_error_in_its_words_on_its_line()
+    {
+        const string Script = "extends \"res://base.gd\"\n\nvar _prop: int\nvar _text := \"\"\n\nvar a: String:\n"
+            + "\tset = set_int, get = get_int\nvar b: String:\n\tget = get_untyped\nvar c: String:\n\tget = get_mixed\n"
+            + "var d: String:\n\tget = get_local\nvar e: int:\n\tget = inherited_get\nvar f: float:\n"
+            + "\tset = set_int, get = get_int\nvar g: int:\n\tset = set_two, get = get_takes\nvar h:\n"
+            + "\tset = set_int, get = get_string\nvar i: Variant:\n\tset = set_int, get = get_string\nvar j:\n"
+            + "\tset = set_untyped, get = get_int\nvar k: String:\n\tset = set_default, get = nowhere\nvar m := 1:\n"
+            + "\tset = set_string\nvar n: String:\n\tset(value):\n\t\t_prop = value\n\tget:\n\t\treturn _prop\nvar o := 0:\n"
+            + "\tset(value):\n\t\tvar x: String = value\n\t\to = value\nvar p: String:\n\tget = get_empty\n\n\n"
+            + "func set_int(value: int) -> void:\n\t_prop = value\n\n\nfunc set_string(value: String) -> void:\n"
+            + "\t_text = value\n\n\nfunc set_untyped(value) -> void:\n\t_prop = value\n\n\n"
+            + "func set_two(x: int, y: int) -> void:\n\t_prop = x + y\n\n\nfunc set_default(value := 1) -> void:\n"
+            + "\t_prop = value\n\n\nfunc get_int() -> int:\n\treturn _prop\n\n\nfunc get_string() -> String:\n"
+            + "\treturn _text\n\n\nfunc get_untyped():\n\treturn _prop\n\n\nfunc get_mixed():\n\tif _text:\n"
+            + "\t\treturn _text\n\treturn _prop\n\n\nfunc get_local():\n\tvar _prop := \"x\"\n\treturn _prop\n\n\n"
+            + "func get_takes(x: int) -> int:\n\treturn x\n\n\nfunc get_empty():\n\tpass\n";
+        GDScriptTree based = GDScriptTree.Parse("extends Node\n\nfunc inherited_get() -> int:\n\treturn 1\n");
+        string[] both =
+        [
+            "6: Function with argument type \"int\" cannot be used as setter for a property of type \"String\".",
+            "6: Function with return type \"int\" cannot be used as getter for a property of type \"String\".",
+        ];
+        string[] after =
+        [
+            "14: Getter \"inherited_get\" not found.",
+            "18: Function \"set_two\" cannot be used as setter because of its signature.",
+            "18: Function \"get_takes\" cannot be used as getter because of its signature.",
+            "20: Getter with type \"String\" cannot be used along with setter of type \"int\".",
+            "22: Getter with type \"String\" cannot be used along with setter of type \"int\".",
+            "26: Getter \"nowhere\" not found.",
+            "26: Function with argument type \"int\" cannot be used as setter for a property of type \"String\".",
+            "28: Function with argument type \"String\" cannot be used as setter for a property of type \"int\".",
+            "32: Value of type \"String\" cannot be assigned to a variable of type \"int\".",
+            "34: Cannot return value of type \"int\" because the function return type is \"String\".",
+            "37: Cannot assign a value of type int to variable \"x\" with specified type String.",
+        ];
+        Assert.Equal(
+        [
+            .. both,
+            "8: Function with return type \"int\" cannot be used as getter for a property of type \"String\".",
+            "10: Function with return type \"int\" cannot be used as getter for a property of type \"String\".",
+            .. after,
+        ], Errors(Script, p => p == "res://base.gd" ? based : null));
+        Assert.Equal([.. both, .. after], Errors(Script, p => p == "res://base.gd" ? based : null, engine: Engine48));
     }
 
     /// <summary>Calls Godot makes as it reads the script, every argument a constant: a math utility function given a type it
