@@ -1,25 +1,13 @@
+// The Language Server Protocol 3.17, as much of it as Passenger speaks, in its own field names
+// (serialized camelCase). Where the protocol allows several shapes for one field, the field is a
+// JsonElement and Shapes.cs reads it.
+
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Lsp;
-
-// The Language Server Protocol 3.17, as much of it as Passenger speaks, in its own field names
-// (serialized camelCase). Where the protocol allows several shapes for one field, the field is a
-// JsonElement and Shapes.cs reads it.
-
-public sealed record LspPosition(int Line, int Character);
-
-public sealed record LspRange(LspPosition Start, LspPosition End)
-{
-    /// <summary>Whether a place is in the range, either end included.</summary>
-    public bool Holds(LspPosition at) =>
-        (Start.Line < at.Line || (Start.Line == at.Line && Start.Character <= at.Character))
-        && (at.Line < End.Line || (at.Line == End.Line && at.Character <= End.Character));
-}
-
-public sealed record LspLocation(string Uri, LspRange Range);
 
 /// <summary>A call or type hierarchy's item: a symbol, where it is and its name's place there; Data is the server's,
 /// sent back as it came when its callers, callees, supertypes or subtypes are asked for.</summary>
