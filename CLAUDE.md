@@ -445,22 +445,23 @@ Projects in `src/`; `find_symbol` finds the rest:
   already edits join that file's entry (`TypeRename.With`): `documentChanges` apply in order. A server's own command
   (TypeScript's refactorings, ESLint's fixes) runs through `ServerCommands`, the edits it sends back
   (`workspace/applyEdit`) one command of Undo.
-- **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
-  `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind; an open GDScript
-  kept parsed and typed by `GodotScriptTypes`, reparsed off the UI thread through `GDScriptTextChange`, its hints set
-  only where they changed, and `GDScriptAssist` answering before Godot's server serves; a test holds that server's
-  start, as a Node.js server's, with `WebLanguages.HoldNextConfigure`), `JsonSchemas` (downloads only while Settings
-  allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript runs one tsserver
-  (`useSyntaxServer` never): a syntax server answers rename and usages from the open files alone.
-  typescript-language-server keeps a file's first `formattingOptions` answer while it runs, so each open file tells
-  tsserver how it indents itself (`WebDocument`'s `configure`). A page's stylesheets' classes have one finder,
-  `PageStylesheets` (links as the app serves them, packages' `_content` from project.assets.json or their own base path
-  (`RestoredVersions.All`), a referenced project's from its evaluation (`PageStylesheets.ReferencedAsset`), a `<base
-  href>`'s path, `<style>` blocks (`PageLinks.StyleText`), a parent's `::deep` rules in the components it renders, one
-  on the web through `RemoteStylesheets` only while Settings allows, its copy read-only), answered by `CssClassAssist`
-  before the web languages. Razor forwards `_vs_onAutoInsert` to the client's HTML only for `=`: a Razor file's `>` is
-  Razor's own answer (one that comes after more typing written after it, through an anchor on the asked place), its `</`
-  closed over Razor's HTML (`LspDocument.RazorHtmlAsync`).
+- **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP, let go once
+  no script has been open a while (`WebLanguages.GDScriptIdleVariable`): `GodotScripts`, `ServerStart.Port`,
+  `NodeServer.Elsewhere`; every per-kind switch names each kind; an open GDScript kept parsed and typed by
+  `GodotScriptTypes`, reparsed off the UI thread through `GDScriptTextChange`, its hints set only where they changed,
+  and `GDScriptAssist` answering before Godot's server serves; a test holds that server's start, as a Node.js server's,
+  with `WebLanguages.HoldNextConfigure`), `JsonSchemas` (downloads only while Settings allows); in a macOS bundle the
+  servers live under `Contents/Resources/web`. TypeScript runs one tsserver (`useSyntaxServer` never): a syntax server
+  answers rename and usages from the open files alone. typescript-language-server keeps a file's first
+  `formattingOptions` answer while it runs, so each open file tells tsserver how it indents itself (`WebDocument`'s
+  `configure`). A page's stylesheets' classes have one finder, `PageStylesheets` (links as the app serves them,
+  packages' `_content` from project.assets.json or their own base path (`RestoredVersions.All`), a referenced project's
+  from its evaluation (`PageStylesheets.ReferencedAsset`), a `<base href>`'s path, `<style>` blocks
+  (`PageLinks.StyleText`), a parent's `::deep` rules in the components it renders, one on the web through
+  `RemoteStylesheets` only while Settings allows, its copy read-only), answered by `CssClassAssist` before the web
+  languages. Razor forwards `_vs_onAutoInsert` to the client's HTML only for `=`: a Razor file's `>` is Razor's own
+  answer (one that comes after more typing written after it, through an anchor on the asked place), its `</` closed over
+  Razor's HTML (`LspDocument.RazorHtmlAsync`).
 - **Build and run.** A folder with no usable .NET SDK is `ProjectModels.MissingSdk`, said through `Refusals.NoSdk` and
   the window's banner (`DotnetWant`, `MainWindow.Dotnet`), an SDK a global.json chose that can't build a project through
   `DotnetWant.ChosenBy` and `Builders` (`ProjectModels.SdkAsked`, `GlobalJsonSdk`), its NETSDK1045 placed at global.json
@@ -723,7 +724,11 @@ site-shots` retakes its images.
   (`GodotServerWords.Warning` reads both); a headless editor writes project.godot (a plugin's `ProjectSettings.save()`
   writes all it holds), `editor_layout.cfg`, `script_editor_cache.cfg` and `ide_messaging_meta.txt` into the project,
   which `GodotScripts` puts back (`Kept`, a Passenger save meanwhile staying the person's), an import's and an export's
-  too (`PuttingBackAsync`; `PASSENGER_GODOT_HOME` gives that editor the run's user folders). Its script debugger: a
+  too (`PuttingBackAsync`; `PASSENGER_GODOT_HOME` gives that editor the run's user folders); from 4.5 that editor runs
+  in Godot's `--recovery-mode` (no plugin or tool script) but where the project has a GDExtension, its writes put back
+  only through its start work and never where another program wrote them (`Git.WroteWorkTreeSince`, the inode, the
+  person's editor, `GodotScripts.FolderChanged`, which takes Godot's safe-save temp `<file>-XXXXXX` for Godot's own),
+  and Run imports a project whose assets lack `.import` first (`GodotScripts.ImportAsync`). Its script debugger: a
   message to a stopped thread carries the thread's id; an `evaluate` in a frame with no instance, or a `break` sent
   while stopped, leaves the debug loop and lets the game go on; an evaluation's errors come after its answer, so each is
   followed by a `get_stack_dump`; `reload_scripts` keeps members by name, an added one null. Stop ends a game a moment
