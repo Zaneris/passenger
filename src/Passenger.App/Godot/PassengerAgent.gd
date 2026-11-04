@@ -349,6 +349,10 @@ func key(ask: int, id: int, chords: Array) -> void:
 
 
 func type(ask: int, id: int, text: String, replace: bool) -> void:
+    var aimed := _node(id)
+    if aimed != null and not (aimed is Control and aimed.focus_mode != Control.FOCUS_NONE):
+        _say(ask, false, ["%s takes no focus, so nothing typed would reach it: a LineEdit, a TextEdit or another control that takes the focus does" % _named(aimed)])
+        return
     var focus := _focus(id)
     if replace and focus != null and focus.has_method("select_all"):
         focus.select_all()

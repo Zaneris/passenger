@@ -62,21 +62,26 @@ public sealed class McpGodotScriptGameTests : McpRig
     private const string Presses = "extends Node2D\n\nvar count := 0\n\nfunc _ready() -> void:\n\t$Button.pressed.connect(_on_pressed)\n\n"
         + "func _on_pressed() -> void:\n\tcount += 1\n\tprint(\"pressed \", count)\n";
 
-    /// <summary>A click whose handler stops at a breakpoint is said at once as the game stopped under the debugger, never
+    /// <summary>Typing into a node that takes no focus (a Label) is refused saying so, never typed into whatever has the
+    /// focus; a click whose handler stops at a breakpoint is said at once as the game stopped under the debugger, never
     /// waited out and refused as a game paused, and debug_state says the stop; Set Next Statement, which Godot's GDScript
     /// debugger cannot do, is refused saying so, never in the protocol's words.</summary>
     [Fact]
-    public async Task A_click_that_stops_at_a_breakpoint_says_the_game_stopped_and_set_next_statement_says_its_debugger_has_none()
+    public async Task Typing_into_a_label_is_refused_a_click_that_stops_at_a_breakpoint_says_so_and_set_next_statement_says_its_debugger_has_none()
     {
         File.WriteAllText(Path.Combine(folder, "main.tscn"), "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://press.gd\" id=\"1\"]\n\n"
             + "[node name=\"Main\" type=\"Node2D\"]\nscript = ExtResource(\"1\")\n\n[node name=\"Button\" type=\"Button\" parent=\".\"]\n"
-            + "offset_right = 120.0\noffset_bottom = 40.0\ntext = \"Press\"\n");
+            + "offset_right = 120.0\noffset_bottom = 40.0\ntext = \"Press\"\n\n[node name=\"Label\" type=\"Label\" parent=\".\"]\noffset_top = 50.0\ntext = \"Count\"\n");
         File.WriteAllText(Path.Combine(folder, "press.gd"), Presses);
         await using McpClient client = await Start(["--mcp", folder], languageServer: false,
             environment: new() { [Passenger.App.Godot.GodotUserFolders.HomeVariable] = folder + "-home" });
         await Call(client, McpTools.BreakpointSet, new() { ["path"] = "press.gd", ["line"] = 9 });
         await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Ticker", ["waitSeconds"] = 10 });
         await Until(async () => await Result(client, McpTools.AppTree) is { IsError: not true } tree && Text(tree).Contains("#Button", StringComparison.Ordinal), "the game's button");
+
+        CallToolResult unfocused = await Result(client, McpTools.AppType, new() { ["control"] = "#Label", ["text"] = "typed" });
+        Assert.True(unfocused.IsError == true && Text(unfocused).Contains("Label Label takes no focus, so nothing typed would reach it", StringComparison.Ordinal),
+            $"Typing into a label, which takes no focus, answered: {Text(unfocused)}");
 
         CallToolResult clicked = await Result(client, McpTools.AppClick, new() { ["control"] = "#Button" });
         Assert.True(clicked.IsError == true && Text(clicked).Contains("stopped under the debugger before it answered", StringComparison.Ordinal),
