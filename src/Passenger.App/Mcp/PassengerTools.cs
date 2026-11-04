@@ -1215,6 +1215,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         int waitSeconds = 30,
         [Description("Under dotnet watch (Settings' choice by default), where hot_reload or a save applies edits")] bool? hotReload = null,
         string? resource = null,
+        [Description("Collect its logs and traces from now on (false stops), as Edit Configurations' box does; telemetry reads them")] bool? telemetry = null,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         if (resource is not null)
@@ -1222,6 +1223,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             if (hotReload is not null)
             {
                 throw new ArgumentException("resource uses Run Without Debugger; omit hotReload");
+            }
+            if (telemetry is not null)
+            {
+                throw new ArgumentException("An AppHost's resource sends its logs and traces to the AppHost's own dashboard; omit telemetry");
             }
             if (await ComposeTargetAsync(resource, configuration, starts: true, cancel) is { } service)
             {
@@ -1239,6 +1244,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         Choose(configuration);
         string name = Session.Configurations.Chosen?.Name ?? string.Empty;
+        if (telemetry is { } collect)
+        {
+            if (Session.Configurations.Chosen is { } collecting && Session.Aspire.IsAspire(collecting))
+            {
+                throw new ArgumentException($"{name} is an AppHost's, whose dashboard has its logs and traces already; omit telemetry");
+            }
+            Session.Configurations.Collect(name, collect);
+        }
         BuildRunController builds = Builds;
         AgentCall.Follow(window.Actions.Work, AppActions.RunProgram, AppActions.Build);
         using (LaunchBuild built = new(builds))

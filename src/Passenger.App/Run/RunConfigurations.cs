@@ -117,6 +117,25 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         Write();
     }
 
+    /// <summary>Turns a configuration's Collect logs and traces on or off, kept as Edit Configurations keeps its box (a
+    /// generated one's as its change, the folder's own in place), the choice of configuration left as it was; false where
+    /// none has the name.</summary>
+    public bool Collect(string name, bool on)
+    {
+        UiThread.Check();
+        if (All.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)) is not { } found)
+        {
+            return false;
+        }
+        if (found.Telemetry != on)
+        {
+            RunConfiguration changed = found with { Telemetry = on };
+            Set(found.Generated ? own : [.. own.Select(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase) ? changed : c)],
+                found.Generated ? [changed] : [], null, projects);
+        }
+        return true;
+    }
+
     /// <summary>The person's changes to a generated configuration as kept now (a copy), or null for none.</summary>
     public JsonObject? EditOf(string name) => edits.TryGetValue(name, out JsonObject? edit) ? (JsonObject)edit.DeepClone() : null;
 

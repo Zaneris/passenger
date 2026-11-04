@@ -223,7 +223,7 @@ public sealed partial class PassengerTools
 
     /// <summary>What a run that collects no logs or traces says to an agent: what to turn on.</summary>
     private static string Uncollected(string name) =>
-        $"{name} collects no logs or traces: turn on its configuration's Collect logs and traces with Aspire's dashboard (Edit Configurations), then run it again";
+        $"{name} collects no logs or traces: run it again with run's telemetry true (Edit Configurations' Collect logs and traces)";
 }
 
 public sealed record TraceInfo(string TraceId, JsonElement Summary, IReadOnlyList<JsonElement> Spans);

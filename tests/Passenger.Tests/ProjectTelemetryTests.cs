@@ -215,6 +215,49 @@ public sealed class ProjectTelemetryTests : McpRig
     private static AspireStructuredLog? Failed(TelemetryView telemetry) =>
         telemetry.Logs.FirstOrDefault(log => log.ToString().Contains("Passenger order 42 failed", StringComparison.Ordinal));
 
+    /// <summary>An agent turns a project run's logs and traces on as it runs it (run's telemetry), kept for its configuration
+    /// as Edit Configurations' box keeps it, and the run collects them into a dashboard of its own, which Stop takes down.</summary>
+    [AvaloniaFact]
+    public void An_agents_run_with_telemetry_turns_on_its_configurations_logs_and_traces_and_the_run_collects_them()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        Assert.SkipWhen(!Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.RunAsync(["image", "inspect", ContainerTelemetry.Image], TimeSpan.FromSeconds(30).Scaled())),
+            $"docker image inspect {ContainerTelemetry.Image}", TimeSpan.FromSeconds(30) + TestFolders.Spare).Succeeded,
+            $"The engine lacks the dashboard's image, which no test pulls: pull {ContainerTelemetry.Image} to run it");
+        (string folder, _) = Shop();
+        MainWindow window = ContainerRunsTests.Open(folder);
+        Ui.WaitFor(() => window.Configurations.Any(c => c.Name == Name), "the launch profile's configuration");
+        Assert.False(window.Configurations.Single(c => c.Name == Name).Telemetry, "A project run collects telemetry unasked");
+        Assert.True(window.SelectConfiguration(Name));
+        McpClient? client = null;
+        string? project = null;
+        try
+        {
+            client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+            Task<JsonElement> looked = Waiting.Apart(() => Call(client, McpTools.Workspace));
+            Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
+            Await(looked, "the agent's look at the workspace");
+            JsonElement ran = Asked(window, client, McpTools.Run, "run a configuration", new() { ["telemetry"] = true, ["waitSeconds"] = 120 });
+            Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"The agent's run with telemetry answered: {ran}");
+            Assert.True(window.Configurations.Single(c => c.Name == Name).Telemetry,
+                "An agent's run with telemetry left its configuration collecting nothing, so its next run and telemetry have no logs");
+            RunDashboard dashboard = Assert.Single(window.Session.Dashboards);
+            project = dashboard.ProjectName;
+        }
+        finally
+        {
+            if (client is not null)
+            {
+                Gone(client);
+            }
+            window.Perform(AppActions.Stop);
+            if (project is not null)
+            {
+                Docker.TakenDown(project, "Stop to take the run's dashboard down with its program");
+            }
+        }
+    }
+
     internal const string Name = "Web: http";
 
     /// <summary>Its configuration's Collect logs and traces turned on in Edit Configurations, off until then, and it chosen.</summary>
