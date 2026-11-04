@@ -987,8 +987,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         UiThread.Check();
         if (InspectedOf(element)?.Properties.FirstOrDefault(p => p.Name == property)?.Value is GodotObjectId { } sent)
         {
-            heldObjects.Add(sent.Id);
-            return (sent.Id, inspected.GetValueOrDefault(sent.Id)?.Class ?? string.Empty, string.Empty);
+            return Held(sent);
         }
         List<object?> said = await AskAsync("held", element, property);
         if (said is not [long id, string named, string path, ..])
@@ -998,6 +997,15 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         heldObjects.Add((ulong)id);
         heldPaths[(ulong)id] = path;
         return ((ulong)id, named, path);
+    }
+
+    /// <summary>An object the game sent by its id (a node's property's, an array's item), as <see cref="HeldAsync"/> reads one:
+    /// its id, its class where it was read, and no path, its own properties naming its file.</summary>
+    public (ulong Id, string Class, string Path) Held(GodotObjectId sent)
+    {
+        UiThread.Check();
+        heldObjects.Add(sent.Id);
+        return (sent.Id, inspected.GetValueOrDefault(sent.Id)?.Class ?? string.Empty, string.Empty);
     }
 
     /// <summary>The objects nodes' properties hold that were read by their ids (<see cref="HeldAsync"/>), whose values set are

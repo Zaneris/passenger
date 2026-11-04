@@ -12,20 +12,28 @@ namespace Passenger.App.Godot;
 
 /// <summary>A running game's array (a packed one too) as its items, or a dictionary as its keys and values: a row each,
 /// typed as its value reads (as the property's element type where it names one, else as the item's own, else as the text
-/// reads), taken at Enter or as the field is left; Add makes one more, a row's remove takes it away. Each change sends the
-/// whole value to the game, and the rows then show what the game holds.</summary>
+/// reads), taken at Enter or as the field is left; Add makes one more, a row's remove takes it away. An item that is itself
+/// an array or a dictionary opens its own form under the rows, and one that is an object its own properties. Each change
+/// sends the whole value to the game (a nested item's through the form it is in), and the rows then show what it holds.</summary>
 public sealed class GodotItemsEditor : Border
 {
     private readonly GodotGame game;
-    private readonly long element;
     private readonly string name;
     private readonly GodotType type;
     private readonly GodotHint hint;
     private readonly IGodotTuner tuner;
+
+    /// <summary>Sends a whole value to where it is held, answering what is held then.</summary>
+    private readonly Func<object?, Task<object?>> send;
+
+    /// <summary>Tells what holds the value that it has settled in the game.</summary>
+    private readonly Action settled;
+
     // Clear of the scroll bar, which shows over the rows' right.
     private readonly StackPanel rows = new() { Spacing = 2, Margin = new Thickness(0, 0, 14, 0) };
     private readonly TextBlock empty;
     private readonly List<TextBox> fields = [];
+    private readonly Border slot = new() { IsVisible = false };
 
     /// <summary>The types an item (a dictionary's value) and a key are read as: Nil where any value is taken.</summary>
     private readonly GodotType itemType;
@@ -38,14 +46,26 @@ public sealed class GodotItemsEditor : Border
     private bool sending;
 
     public GodotItemsEditor(GodotGame game, long element, GodotProperty property, GodotHint hint, IGodotTuner tuner)
+        : this(game, property.Name, property.Type, property.Value, hint, tuner, async value =>
+        {
+            await game.SetValueAsync(element, property.Name, value);
+            GodotObjectState state = await game.InspectAsync((ulong)element);
+            return state.Properties.FirstOrDefault(p => p.Name == property.Name)?.Value ?? value;
+        }, () => tuner.Settled(element))
+    {
+    }
+
+    /// <summary>The form of a value held somewhere <paramref name="send"/> sends it to: a property's, or an item's of another form.</summary>
+    private GodotItemsEditor(GodotGame game, string name, GodotType type, object? value, GodotHint hint, IGodotTuner tuner, Func<object?, Task<object?>> send, Action settled)
     {
         this.game = game;
-        this.element = element;
         this.tuner = tuner;
         this.hint = hint;
-        name = property.Name;
-        type = property.Type;
-        (items, keys) = property.Value switch
+        this.send = send;
+        this.settled = settled;
+        this.name = name;
+        this.type = type;
+        (items, keys) = value switch
         {
             GodotArray array => (array.Element, default),
             GodotDictionary dictionary => (dictionary.ValueType, dictionary.KeyType),
@@ -60,8 +80,8 @@ public sealed class GodotItemsEditor : Border
         Button add = new() { Classes = { StyleClasses.Compact }, Content = Entries ? "Add Entry" : "Add Item", HorizontalAlignment = HorizontalAlignment.Left };
         add.Click += (_, _) => IdeErrors.Observe(AddAsync());
         Add = add;
-        string of = itemType == GodotType.Nil && keyType == GodotType.Nil ? GodotVariant.TypeName(property.Type)
-            : Entries ? $"Dictionary[{Named(keyType, keys)}, {Named(itemType, items)}]" : $"{property.Type}[{Named(itemType, items)}]";
+        string of = itemType == GodotType.Nil && keyType == GodotType.Nil ? GodotVariant.TypeName(type)
+            : Entries ? $"Dictionary[{Named(keyType, keys)}, {Named(itemType, items)}]" : $"{type}[{Named(itemType, items)}]";
         Child = new StackPanel
         {
             Spacing = 6,
@@ -70,9 +90,10 @@ public sealed class GodotItemsEditor : Border
                 new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = $"{name}: {of}", TextTrimming = TextTrimming.CharacterEllipsis },
                 new ScrollViewer { MaxHeight = ListRow.Height * 12, Content = new Panel { Children = { rows, empty } } },
                 add,
+                slot,
             },
         };
-        Show(property.Value);
+        Show(value);
 
         static string Named(GodotType type, GodotElement typed) => typed.Name.Length > 0 ? typed.Name : GodotVariant.TypeName(type);
     }
@@ -110,7 +131,8 @@ public sealed class GodotItemsEditor : Border
     {
         Grid row = new() { ColumnDefinitions = new ColumnDefinitions("32,*,Auto") };
         TextBlock at = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, Text = index.ToString(System.Globalization.CultureInfo.InvariantCulture), VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
-        TextBox field = Field(Listed[index], text => IdeErrors.Observe(SetItemAsync(index, text)));
+        Control field = Opens(Listed[index], $"{name}[{index}]", held => Replaced(index, held)) is { } opens ? opens
+            : Field(Listed[index], text => IdeErrors.Observe(SetItemAsync(index, text)));
         Grid.SetColumn(field, 1);
         Button remove = ToolButtons.Of(IconKeys.Close, $"Remove item {index}", () => IdeErrors.Observe(RemoveAsync(index)));
         Grid.SetColumn(remove, 2);
@@ -125,7 +147,8 @@ public sealed class GodotItemsEditor : Border
         Grid row = new() { ColumnDefinitions = new ColumnDefinitions("2*,3*,Auto") };
         KeyValuePair<object?, object?> entry = Pairs[index];
         TextBox key = Field(entry.Key, text => IdeErrors.Observe(SetEntryAsync(index, text, key: true)));
-        TextBox value = Field(entry.Value, text => IdeErrors.Observe(SetEntryAsync(index, text, key: false)));
+        Control value = Opens(entry.Value, $"{name}[{GodotVariant.Shown(entry.Key, quoted: true)}]", held => ReplacedValue(index, held)) is { } opens ? opens
+            : Field(entry.Value, text => IdeErrors.Observe(SetEntryAsync(index, text, key: false)));
         value.Margin = new Thickness(4, 0, 0, 0);
         Grid.SetColumn(value, 1);
         Button remove = ToolButtons.Of(IconKeys.Close, $"Remove {GodotVariant.Shown(entry.Key, quoted: true)}", () => IdeErrors.Observe(RemoveAsync(index)));
@@ -134,6 +157,68 @@ public sealed class GodotItemsEditor : Border
         row.Children.Add(value);
         row.Children.Add(remove);
         return row;
+    }
+
+    /// <summary>The button an item that is a form of its own opens it with, under the rows: an array's or a dictionary's,
+    /// whose changes send this whole value with the item <paramref name="within"/> puts in its place; an object's own
+    /// properties. Null for an item typed as text.</summary>
+    private Button? Opens(object? item, string named, Func<object?, object?> within)
+    {
+        GodotType of = GodotVariant.TypeOf(item);
+        bool nested = of is GodotType.Array or GodotType.Dictionary || of >= GodotType.PackedByteArray;
+        if (!nested && item is not GodotObjectId)
+        {
+            return null;
+        }
+        TextBlock words = new TextBlock { FontSize = 12, Text = GodotVariant.Shown(item), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        Button button = new()
+        {
+            Classes = { StyleClasses.Compact },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(4, 2, 8, 2),
+            Content = words,
+        };
+        ToolTip.SetTip(button, item is GodotObjectId ? $"{named}: its own properties, read and set in the game" : $"{named}: its items, set in the game");
+        button.Click += (_, _) =>
+        {
+            Control form = item is GodotObjectId held
+                ? new GodotResourceEditor(game, held.Id, named, tuner)
+                : new GodotItemsEditor(game, named, of, item, new GodotHint(of == GodotType.Dictionary ? GodotEditing.Entries : GodotEditing.Items) { Element = GodotVariant.ElementOf(of) },
+                    tuner, async changed => Pick(await SendWholeAsync(within(changed)), named, item), settled);
+            slot.Child = form;
+            slot.IsVisible = true;
+        };
+        return button;
+    }
+
+    /// <summary>This value with the item at an index replaced.</summary>
+    private object? Replaced(int index, object? held)
+    {
+        List<object?> changed = [.. Listed];
+        changed[index] = held;
+        return GodotVariant.Packed(type, changed, items);
+    }
+
+    /// <summary>This dictionary with the value of the entry at an index replaced.</summary>
+    private object? ReplacedValue(int index, object? held)
+    {
+        List<KeyValuePair<object?, object?>> entries = [.. Pairs];
+        entries[index] = new(entries[index].Key, held);
+        return Typed(entries);
+    }
+
+    /// <summary>The item a nested form shows, out of the whole value held now: at its index, or under its key, as it was named
+    /// (<c>name[2]</c>, <c>name["key"]</c>); the item as sent where it is gone.</summary>
+    private object? Pick(object? whole, string named, object? fallback)
+    {
+        string inside = named[(name.Length + 1)..^1];
+        if (whole is GodotDictionary dictionary)
+        {
+            return dictionary.Entries.FirstOrDefault(e => GodotVariant.Shown(e.Key, quoted: true) == inside) is { Key: not null } found ? found.Value : fallback;
+        }
+        return int.TryParse(inside, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int index)
+            && GodotVariant.Items(whole) is { } listed && index < listed.Count ? listed[index] : fallback;
     }
 
     /// <summary>A field showing a value as it is typed back, which hands what was typed on at Enter or as it is left, where
@@ -280,23 +365,33 @@ public sealed class GodotItemsEditor : Border
     /// <summary>Sends the whole value, then shows what the game holds, the properties pane's row read again with it.</summary>
     private async Task SendAsync(object? value)
     {
-        sending = true;
         try
         {
-            await game.SetValueAsync(element, name, value);
-            GodotObjectState state = await game.InspectAsync((ulong)element);
-            Show(state.Properties.FirstOrDefault(p => p.Name == name)?.Value ?? value);
+            await SendWholeAsync(value);
         }
         catch (LiveAppException failed)
         {
             Refused($"{name} was not set: {failed.Message}");
             return;
         }
+        settled();
+    }
+
+    /// <summary>Sends the whole value where it is held and shows what is held then, which it answers; a nested form's change
+    /// comes this way too, so its rows and these show the same.</summary>
+    private async Task<object?> SendWholeAsync(object? value)
+    {
+        sending = true;
+        try
+        {
+            object? held = await send(value);
+            Show(held);
+            return held;
+        }
         finally
         {
             sending = false;
         }
-        tuner.Settled(element);
     }
 
     private void Refused(string why)
@@ -323,6 +418,13 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
     private ulong? id;
 
     public GodotResourceEditor(GodotGame game, long element, string property, IGodotTuner tuner)
+        : this(game, property, tuner) => IdeErrors.Observe(ReadAsync(element, property));
+
+    /// <summary>An object an array or a dictionary holds, by its id, as its own properties (<paramref name="named"/> where it is held).</summary>
+    public GodotResourceEditor(GodotGame game, ulong held, string named, IGodotTuner tuner)
+        : this(game, named, tuner) => IdeErrors.Observe(ReadHeldAsync(game.Held(new GodotObjectId(held)), named));
+
+    private GodotResourceEditor(GodotGame game, string property, IGodotTuner tuner)
     {
         this.game = game;
         this.tuner = tuner;
@@ -341,7 +443,6 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
                 slot,
             },
         };
-        IdeErrors.Observe(ReadAsync(element, property));
     }
 
     /// <summary>The resource's id once read.</summary>
@@ -354,10 +455,21 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
     {
         try
         {
-            (ulong held, string named, string path) = await game.HeldAsync(element, property);
-            id = held;
-            title.Text = $"{property}: {(named.Length > 0 ? named : "Resource")}{(path.Length > 0 ? $" ({path})" : string.Empty)}";
-            Show(await game.InspectAsync(held));
+            await ReadHeldAsync(await game.HeldAsync(element, property), property);
+        }
+        catch (LiveAppException failed)
+        {
+            words.Text = $"{property}'s properties could not be read: {failed.Message}";
+        }
+    }
+
+    private async Task ReadHeldAsync((ulong Id, string Class, string Path) held, string property)
+    {
+        try
+        {
+            id = held.Id;
+            title.Text = $"{property}: {(held.Class.Length > 0 ? held.Class : "Resource")}{(held.Path.Length > 0 ? $" ({held.Path})" : string.Empty)}";
+            Show(await game.InspectAsync(held.Id));
         }
         catch (LiveAppException failed)
         {
