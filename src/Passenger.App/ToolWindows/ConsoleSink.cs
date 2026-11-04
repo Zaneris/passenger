@@ -43,13 +43,13 @@ public sealed class ConsoleSink
     /// <summary>The longest line a pump tells its reader of whole: a longer one is told in pieces of this length.</summary>
     private const int LongestLine = 16 * 1024;
 
-    /// <summary>The most room, in characters, what waits keeps from one batch to the next.</summary>
+    /// <summary>The most room, in characters, what waits keeps from one batch to the next once a flood is over.</summary>
     private const int KeptRoom = 64 * 1024;
 
     private readonly object gate = new();
     private readonly Action take;
     private readonly ControlCodes[] streams = [new(), new(), new()];
-    private StringBuilder waiting = new();
+    private Pending waiting = new();
     private List<ConsoleRun> runs = [];
     private int limit;
     private bool queued;
@@ -371,10 +371,10 @@ public sealed class ConsoleSink
             }
             string text = waiting.ToString();
             List<ConsoleRun> taken = runs;
-            // Its room kept for the next batch, unless a flood made it larger than a batch should need.
-            if (waiting.Capacity > KeptRoom)
+            // Its room kept for the next batch while batches fill it; past a flood, a small batch lets the rest go.
+            if (waiting.Capacity > KeptRoom && waiting.Length < KeptRoom / 4)
             {
-                waiting = new StringBuilder();
+                waiting = new Pending();
             }
             else
             {
@@ -427,7 +427,7 @@ public sealed class ConsoleSink
 
     private void Cut(int length)
     {
-        waiting.Remove(0, length);
+        waiting.Remove(length);
         List<ConsoleRun> kept = [];
         foreach (ConsoleRun run in runs)
         {
@@ -463,6 +463,40 @@ public sealed class ConsoleSink
         }, TaskScheduler.Default));
     }
 
+    /// <summary>The text waiting for the console, in one array kept from batch to batch: what a stream writes is copied in
+    /// once, with nothing made for it, and a batch is taken as one string.</summary>
+    private sealed class Pending
+    {
+        private char[] chars = new char[1024];
+
+        public int Length { get; private set; }
+
+        public int Capacity => chars.Length;
+
+        public void Append(ReadOnlySpan<char> text)
+        {
+            if (Length + text.Length > chars.Length)
+            {
+                Array.Resize(ref chars, Math.Max(Length + text.Length, chars.Length * 2));
+            }
+            text.CopyTo(chars.AsSpan(Length));
+            Length += text.Length;
+        }
+
+        public void Append(char c) => Append([c]);
+
+        /// <summary>Drops the first characters, the rest moved to the front.</summary>
+        public void Remove(int count)
+        {
+            chars.AsSpan(count, Length - count).CopyTo(chars);
+            Length -= count;
+        }
+
+        public void Clear() => Length = 0;
+
+        public override string ToString() => new(chars, 0, Length);
+    }
+
     /// <summary>One stream's terminal control sequences taken out of its text, in the shapes ECMA-48 gives them and xterm
     /// reads them: CSI (colours, cursor moves) to its final byte, OSC (titles, links) to BEL or ST, DCS, SOS, PM and APC
     /// strings to ST, and the other escapes. A sequence broken by a line break, or longer than any real one, is given up
@@ -487,7 +521,7 @@ public sealed class ConsoleSink
             StringEscape,
         }
 
-        public void Strip(ReadOnlySpan<char> text, StringBuilder into)
+        public void Strip(ReadOnlySpan<char> text, Pending into)
         {
             int i = 0;
             while (i < text.Length)
@@ -534,7 +568,7 @@ public sealed class ConsoleSink
             }
         }
 
-        public void End(StringBuilder into)
+        public void End(Pending into)
         {
             if (carriageReturn)
             {

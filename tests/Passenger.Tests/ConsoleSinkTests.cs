@@ -4,7 +4,8 @@ using Passenger.App.ToolWindows;
 namespace Passenger.Tests;
 
 /// <summary>A source's lines pumped into a merged log under its name (a container's in the Containers window): every line
-/// shown, its last too where it ends with no line break, and a line that never breaks shown in pieces as it comes.</summary>
+/// shown, its last too where it ends with no line break, and a line that never breaks shown in pieces as it comes; and
+/// plain output copied once on its way in and once into the console's text.</summary>
 public sealed class ConsoleSinkTests
 {
     private const string Prefix = "web | ";
@@ -36,6 +37,38 @@ public sealed class ConsoleSinkTests
             reader.End();
             Ui.Await(pumped, "the source's end pumped");
         }
+    }
+
+    /// <summary>Plain output, no control code in it, costs what the console keeps of it and little more: what writes it
+    /// copies it into room kept from batch to batch, allocating under 128 bytes a kilobyte (1,024 characters) once warm,
+    /// and the window's thread takes each batch as one string and copies it once into the console's text, under 5.5 KB a
+    /// kilobyte: a copy more of it would pass either bound.</summary>
+    [AvaloniaFact]
+    public void Plain_output_is_copied_once_as_it_is_written_and_once_into_the_consoles_text()
+    {
+        OutputView console = new(toolbar: false);
+        string batch = string.Concat(Enumerable.Repeat(new string('x', 79) + "\n", 205));
+        for (int i = 0; i < 4; i++)
+        {
+            console.Sink.Write(batch);
+            console.Flush();
+        }
+        const int Batches = 40;
+        long written = 0;
+        long taken = 0;
+        for (int i = 0; i < Batches; i++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            console.Sink.Write(batch);
+            long between = GC.GetAllocatedBytesForCurrentThread();
+            console.Flush();
+            taken += GC.GetAllocatedBytesForCurrentThread() - between;
+            written += between - before;
+        }
+        double kilobytes = Batches * batch.Length / 1024.0;
+        Assert.True(written / kilobytes < 128, $"Writing plain output allocated {written / kilobytes:N0} bytes a kilobyte of it: it is copied more than once on its way in");
+        Assert.True(taken / kilobytes < 5.5 * 1024, $"Taking plain output into the console allocated {taken / kilobytes:N0} bytes a kilobyte of it on the window's thread: it is copied more than once into the text");
+        Assert.Equal(44 * batch.Length, console.Document.Snapshot.Length);
     }
 
     private static string Shown(OutputView console)
