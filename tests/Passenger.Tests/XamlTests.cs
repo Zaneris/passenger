@@ -1334,6 +1334,25 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         }
     }
 
+    /// <summary>Find Usages of a view model's property no XAML file names reads no project's XAML, which would read every C#
+    /// file of the project for its types; one the window binds has its project's XAML read once, the binding among its
+    /// usages.</summary>
+    [AvaloniaFact]
+    public void Find_usages_of_a_property_no_xaml_names_reads_no_projects_xaml_and_of_one_bound_reads_it_once()
+    {
+        MainWindow window = app.Open(app.PathOf("ViewModels/MainViewModel.cs"));
+        Assert.True(window.XamlService.ProjectsRead == 0, $"{window.XamlService.ProjectsRead} projects' XAML was read before any Find Usages, so what one reads cannot be told");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "int Cou");
+        IReadOnlyList<string> counted = FoundUsages(window);
+        Assert.True(window.XamlService.ProjectsRead == 0, "Find Usages of Count, which no XAML file names, read the project's XAML and all its C# to look for uses");
+        Assert.DoesNotContain(counted, u => u.Contains(".axaml:", StringComparison.Ordinal));
+
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "string Gree");
+        Assert.Contains("MainWindow.axaml:11 <TextBlock Name=\"Title\" Text=\"{Binding Greeting}\" />", FoundUsages(window));
+        Assert.Equal(1, window.XamlService.ProjectsRead);
+        window.Close();
+    }
+
     /// <summary>A view model's property used only in a <c>&lt;Binding&gt;</c> element, a <c>&lt;Binding.Path&gt;</c>'s
     /// text, a <c>?.</c> path or a step after an indexer has that XAML among its usages: Find Usages from the C# lists it,
     /// Safe Delete refuses naming it, and Go to Declaration from each lands on the property.</summary>

@@ -215,6 +215,9 @@ public sealed class XamlService : IDisposable
     /// <summary>How many files Find Usages and Safe Delete have looked at for XAML in projects not yet read, for a test.</summary>
     public int FilesWalked => Volatile.Read(ref filesWalked);
 
+    /// <summary>How many projects' XAML (and with it all their C#) has been read, for a test.</summary>
+    public int ProjectsRead { get; private set; }
+
     /// <summary>Files or folders came or went (<paramref name="every"/>: changes the watcher lost): a project found holding
     /// no XAML is looked in again once a XAML file, or what may be a folder holding one, came or went in or above its
     /// folder.</summary>
@@ -344,6 +347,7 @@ public sealed class XamlService : IDisposable
         {
             return loading;
         }
+        ProjectsRead++;
         Dictionary<string, TextSnapshot> texts = OpenTexts();
         Task<XamlProjectBuilder?> builder = BuilderAsync(project, Evaluations);
         loading = new XamlLoading(project, builder, LoadAsync(builder, texts));
@@ -530,7 +534,7 @@ public sealed class XamlService : IDisposable
     /// the UI thread.</summary>
     public async Task<IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextRange> Uses)>> UsesAsync(IEnumerable<string> projectFiles, CodeSymbol symbol)
     {
-        IReadOnlyList<XamlProject> read = await ReadAsync(projectFiles);
+        IReadOnlyList<XamlProject> read = await ReadAsync(projectFiles, symbol);
         Func<string, TextSnapshot?> open = OpenSnapshots();
         return read.Count == 0 ? [] : await BackgroundWork.Run(() => Uses(read, symbol, open).Select(f => (f.Path, f.Text, f.Uses)).ToList());
     }
@@ -542,7 +546,7 @@ public sealed class XamlService : IDisposable
     public async Task<(IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextEdit> Edits)> Files, string? Problem)> RenamesAsync(
         IEnumerable<string> projectFiles, CodeSymbol symbol, string name, Func<string, TextSnapshot?> texts)
     {
-        IReadOnlyList<XamlProject> read = await ReadAsync(projectFiles);
+        IReadOnlyList<XamlProject> read = await ReadAsync(projectFiles, symbol);
         if (read.Count == 0)
         {
             return ([], null);
@@ -570,8 +574,10 @@ public sealed class XamlService : IDisposable
     }
 
     /// <summary>The projects given whose XAML has been read, each read first where no open file has had it read and its
-    /// folders hold XAML, with the C# typed in that they have yet to read taken in; none once the service has ended.</summary>
-    private async Task<IReadOnlyList<XamlProject>> ReadAsync(IEnumerable<string> projectFiles)
+    /// folders hold XAML (that writes one of <paramref name="naming"/>'s spellings, where given, as no other can use it:
+    /// reading a project's XAML reads every C# file of it), with the C# typed in that they have yet to read taken in; none
+    /// once the service has ended.</summary>
+    private async Task<IReadOnlyList<XamlProject>> ReadAsync(IEnumerable<string> projectFiles, CodeSymbol? naming = null)
     {
         UiThread.Check();
         if (disposed)
@@ -581,10 +587,20 @@ public sealed class XamlService : IDisposable
         List<string> given = [.. projectFiles.Where(p => p.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)).Distinct(PathNames.Comparer)];
         List<string> unread = [.. given.Where(p => !projects.ContainsKey(p) && !withoutXaml.Contains(p))];
         int came = xamlMayHaveCome;
+        Func<string, TextSnapshot?> open = OpenSnapshots();
+        IReadOnlyList<string> spellings = naming?.Spellings ?? [];
+        HashSet<string> named = new(PathNames.Comparer);
         HashSet<string> holding = await BackgroundWork.Run(() => unread.Where(p =>
         {
             (bool holds, int walked) = XamlProjectBuilder.HoldsXaml(p);
             Interlocked.Add(ref filesWalked, walked);
+            if (holds && (naming is null || XamlProjectBuilder.XamlHolds(p, spellings, f => open(f)?.ToString())))
+            {
+                lock (named)
+                {
+                    named.Add(p);
+                }
+            }
             return holds;
         }).ToHashSet(PathNames.Comparer));
         if (disposed)
@@ -595,7 +611,7 @@ public sealed class XamlService : IDisposable
         {
             withoutXaml.UnionWith(unread.Where(p => !holding.Contains(p)));
         }
-        List<XamlLoading> loadings = [.. given.Where(p => projects.ContainsKey(p) || holding.Contains(p)).Select(LoadingOf)];
+        List<XamlLoading> loadings = [.. given.Where(p => projects.ContainsKey(p) || named.Contains(p)).Select(LoadingOf)];
         await TypedNowAsync();
         List<XamlProject> read = [];
         foreach (XamlLoading loading in loadings)

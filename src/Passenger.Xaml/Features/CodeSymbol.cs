@@ -45,6 +45,17 @@ public sealed class CodeSymbol
         return dot <= 0 || own.StartsWith('#') || own.StartsWith("op_", StringComparison.Ordinal) ? null : new CodeSymbol(id[0], member[..dot], own, declared);
     }
 
+    /// <summary>The words a XAML file must hold to use it, known without its project's types: its name, a markup
+    /// extension's without <c>Extension</c> too, and the property and the command the MVVM Toolkit makes of a field and a
+    /// method. A file holding none of them has no use of it, so its project's C# need not be read to know.</summary>
+    public IReadOnlyList<string> Spellings => kind switch
+    {
+        'T' => name.EndsWith("Extension", StringComparison.Ordinal) && name.Length > "Extension".Length ? [name, name[..^"Extension".Length]] : [name],
+        'F' when ToolkitNames.PropertyOf(name) is { } property => [name, property],
+        'M' => [name, ToolkitNames.CommandOf(name)],
+        _ => [name],
+    };
+
     /// <summary>The names a XAML file of a project may write it as.</summary>
     public IReadOnlyList<string> NamesIn(TypeSystem types)
     {
