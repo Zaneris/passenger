@@ -27,6 +27,7 @@ public static class Handlers
     public const string AspireParameters = "Passenger.Roslyn.Extension.AspireParameters";
     public const string ConnectionReads = "Passenger.Roslyn.Extension.ConnectionReads";
     public const string WebRoutes = "Passenger.Roslyn.Extension.WebRoutes";
+    public const string RouteBody = "Passenger.Roslyn.Extension.RouteBody";
     public const string LocalizedReads = "Passenger.Roslyn.Extension.LocalizedReads";
     public const string SymbolsNamed = "Passenger.Roslyn.Extension.SymbolsNamed";
     public const string SymbolAt = "Passenger.Roslyn.Extension.SymbolAt";
@@ -46,7 +47,7 @@ public static class Handlers
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
-        AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
+        AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
         ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
     ];
 }
@@ -749,7 +750,7 @@ public sealed record RouteParameter(
 /// Page's named handler takes ("handler=Delete"), its parameters, its handler ("TodosController.Get"), where the route is
 /// written (the file, the stretch from <paramref name="At"/> to <paramref name="End"/>, and that file's text's
 /// <see cref="TextHash"/>, which places it only in the text it was read from), where its handler is, the body parameter's
-/// type, a JSON body shaped from that type, and a hub's methods.</summary>
+/// type, and a hub's methods. The JSON body shaped from that type is asked for apart (<see cref="RouteBodyAsked"/>).</summary>
 public sealed record WebRoute(
     [property: JsonPropertyName("project")] string Project,
     [property: JsonPropertyName("kind")] string Kind,
@@ -765,8 +766,18 @@ public sealed record WebRoute(
     [property: JsonPropertyName("handlerPath")] string? HandlerPath = null,
     [property: JsonPropertyName("handlerAt")] Place? HandlerAt = null,
     [property: JsonPropertyName("bodyType")] string? BodyType = null,
-    [property: JsonPropertyName("body")] string? Body = null,
     [property: JsonPropertyName("operations")] IReadOnlyList<string>? Operations = null);
+
+/// <summary>The route whose JSON body is asked for, as its <see cref="WebRoute"/> names it: its project, the file it is
+/// written in, where, and its whole template.</summary>
+public sealed record RouteBodyAsked(
+    [property: JsonPropertyName("project")] string Project,
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("template")] string Template);
+
+/// <summary>A route's JSON body shaped from its body parameter's type; null where it takes none or is no longer there.</summary>
+public sealed record RouteBodyShaped([property: JsonPropertyName("body")] string? Body);
 
 /// <summary>What declares a route.</summary>
 public static class RouteKinds

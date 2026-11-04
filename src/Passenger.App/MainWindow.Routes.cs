@@ -332,6 +332,30 @@ public partial class MainWindow
         return null;
     }
 
+    /// <summary>The JSON body a request of a route sends, shaped from the body's type by the C# server's extension as it is
+    /// asked for (<see cref="Handlers.RouteBody"/>), so no route listed holds one; null where it takes none, or where the
+    /// server cannot say.</summary>
+    public async Task<string?> RouteBodyAsync(WebRoute route)
+    {
+        UiThread.Check();
+        if (route.BodyType is null || session.CSharp is not { IsReady: true, Session: { } roslyn })
+        {
+            return null;
+        }
+        RouteBodyAsked asked = new(route.Project, route.Path, route.At, route.Template);
+        return await BackgroundWork.Run(async () =>
+        {
+            try
+            {
+                return (await roslyn.ExtensionAsync<RouteBodyShaped>(Handlers.RouteBody, asked).ConfigureAwait(false)).Body;
+            }
+            catch (LanguageServerFailed)
+            {
+                return null;
+            }
+        });
+    }
+
     /// <summary>A folder's .http and .rest files, as the folder's walk finds them.</summary>
     private static IEnumerable<string> HttpFilesUnder(string folder) => FolderWalk.Files(folder).Where(HttpFile.Is);
 
@@ -341,7 +365,8 @@ public partial class MainWindow
     {
         string path = PathNames.Canonical(RouteRequests.FileFor(route.Project));
         string? address = ProfileAddress(route.Project);
-        (string? now, string was, string? refused) = await AppendRequestsAsync(path, existing => RouteRequests.Entry(route, existing, address), "Generate Request");
+        string? body = await RouteBodyAsync(route);
+        (string? now, string was, string? refused) = await AppendRequestsAsync(path, existing => RouteRequests.Entry(route, body, existing, address), "Generate Request");
         if (now is null)
         {
             status.Text = $"No request could be written for {RouteRequests.Title(route)} in {Path.GetFileName(path)}: {refused}";
