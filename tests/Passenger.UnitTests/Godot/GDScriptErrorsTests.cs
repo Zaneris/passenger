@@ -130,8 +130,8 @@ public class GDScriptErrorsTests
             "10: Name \"speed\" called as a function but is a \"float\".",
             "11: Member \"react\" is not a function.",
             "11: Name \"react\" is a Callable. You can call it with \"react.call()\" instead.",
-            "13: Function \"nope()\" not found in base Vector3.",
             "13: Cannot find member \"nope\" in base \"Vector3\".",
+            "13: Function \"nope()\" not found in base Vector3.",
             "14: Static function \"nope()\" not found in base \"GDScriptNativeClass\".",
             "15: Cannot call non-const Dictionary function \"clear()\" on enum \"Mode\".",
             "17: Enums only have Dictionary built-in methods. Function \"nope()\" does not exist for enum \"Mode\".",
@@ -176,8 +176,8 @@ public class GDScriptErrorsTests
             "7: Cannot assign a value of type main.gd.Other to variable \"e\" with specified type main.gd.MyEnum.",
             "9: Cannot infer the type of \"n\" variable because the value is \"null\".",
             "17: A void function cannot return a value.",
-            "21: Cannot return value of type \"String\" because the function return type is \"int\".",
             "21: Cannot return a value of type \"String\" as \"int\".",
+            "21: Cannot return value of type \"String\" because the function return type is \"int\".",
             "25: Cannot assign a value of type \"String\" as \"int\".",
             "25: Value of type \"String\" cannot be assigned to a variable of type \"int\".",
             "26: Cannot assign a new value to a constant.",
@@ -245,8 +245,8 @@ public class GDScriptErrorsTests
             "27: Unable to iterate on value of type \"bool\".",
             "29: Invalid call for \"range()\" function. Expected at least 1 argument, none given.",
             "31: Unable to iterate on value of type \"Array[int]\" with variable of type \"String\".",
-            "33: Cannot have an element of type \"String\" in an array of type \"Array[int]\".",
             "33: Cannot include a value of type \"String\" as \"int\".",
+            "33: Cannot have an element of type \"String\" in an array of type \"Array[int]\".",
         ], Errors(Script));
     }
 
@@ -290,15 +290,15 @@ public class GDScriptErrorsTests
             + "func typed_many(...args: Array[int]) -> void:\n\tpass\n";
         Assert.Equal(
         [
-            "17: Cannot return value of type \"String\" because the function return type is \"int\".",
             "17: Cannot return a value of type \"String\" as \"int\".",
+            "17: Cannot return value of type \"String\" because the function return type is \"int\".",
             "20: A void function cannot return a value.",
             "22: Not all code paths return a value.",
             "26: Static constructor cannot have an explicit return type.",
             "30: Constructor cannot have an explicit return type.",
             "35: A void function cannot return a value.",
-            "39: Cannot return value of type \"int\" because the function return type is \"Array\".",
             "39: Cannot return a value of type \"int\" as \"Array\".",
+            "39: Cannot return value of type \"int\" because the function return type is \"Array\".",
             "43: Cannot return value of type \"null\" because the function return type is \"int\".",
             "46: The rest parameter type must be \"Array\", but \"int\" is specified.",
             "50: Typed arrays are currently not supported for the rest parameter.",
@@ -386,14 +386,14 @@ public class GDScriptErrorsTests
         GDScriptTree based = GDScriptTree.Parse("extends Node\n\nfunc inherited_get() -> int:\n\treturn 1\n");
         string[] both =
         [
-            "6: Function with argument type \"int\" cannot be used as setter for a property of type \"String\".",
             "6: Function with return type \"int\" cannot be used as getter for a property of type \"String\".",
+            "6: Function with argument type \"int\" cannot be used as setter for a property of type \"String\".",
         ];
         string[] after =
         [
             "14: Getter \"inherited_get\" not found.",
-            "18: Function \"set_two\" cannot be used as setter because of its signature.",
             "18: Function \"get_takes\" cannot be used as getter because of its signature.",
+            "18: Function \"set_two\" cannot be used as setter because of its signature.",
             "20: Getter with type \"String\" cannot be used along with setter of type \"int\".",
             "22: Getter with type \"String\" cannot be used along with setter of type \"int\".",
             "26: Getter \"nowhere\" not found.",
@@ -510,13 +510,13 @@ public class GDScriptErrorsTests
         [
             "4: Could not resolve member \"NamedEnum0\": Cyclic reference.",
             "4: Enum values must be constant.",
-            "5: Enum values must be constant.",
             "5: Cannot use another enum element before it was declared.",
+            "5: Enum values must be constant.",
             "7: Could not resolve member \"ENUM_VALUE_1\": Cyclic reference.",
-            "8: Could not resolve type for constant \"CONST_0\".",
             "8: Could not resolve member \"CONST_0\": Cyclic reference.",
-            "10: Cannot infer the type of \"var_2\" variable because the value doesn't have a set type.",
+            "8: Could not resolve type for constant \"CONST_0\".",
             "10: Could not resolve member \"var_1\": Cyclic reference.",
+            "10: Cannot infer the type of \"var_2\" variable because the value doesn't have a set type.",
             "15: Could not resolve member \"lambda_param\": Cyclic reference.",
             "15: Could not resolve type for variable \"lambda_param_ref\".",
             "18: Could not resolve member \"func_0\": Cyclic reference.",

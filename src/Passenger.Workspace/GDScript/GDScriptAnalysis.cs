@@ -163,8 +163,9 @@ public sealed class GDScriptAnalysis
 
     /// <summary>Godot's findings in the script as a project's settings give them (Godot's push_warning and
     /// apply_pending_warnings): its parser's errors, then the analyzer's errors and warnings, a warning its level passes over,
-    /// its folder silences or a <c>@warning_ignore</c> covers left out, one the project makes an error said as one; in
-    /// the order of their starts, each once.</summary>
+    /// its folder silences or a <c>@warning_ignore</c> covers left out, one the project makes an error said as one; each
+    /// once, by line as Godot orders its errors and its warnings (the first on a line Godot's primary one), on a line its
+    /// errors, then the warnings it makes errors, then its warnings, each as the analyzer found them.</summary>
     public IReadOnlyList<GDScriptFinding> Findings(GDScriptWarningSettings settings)
     {
         if (Tree is null)
@@ -199,8 +200,7 @@ public sealed class GDScriptAnalysis
             }
             found.Add(level == GDScriptWarnLevel.Error ? finding with { Message = finding.Message + GDScriptWarnings.TreatedAsError } : finding);
         }
-        found.Sort((a, b) => a.Start.CompareTo(b.Start));
-        return found;
+        return [.. found.OrderBy(f => LineOf(lines, f.Start)).ThenBy(f => f.Code is null ? 0 : f.IsError ? 1 : 2)];
     }
 
     private static int[] LineStarts(string text)

@@ -155,8 +155,8 @@ public class GDScriptWarningsTests
         "5 SHADOWED_VARIABLE: The local variable \"a\" is shadowing an already-declared variable at line 1 in the current class.")]
     [InlineData("var a = 1\n\nfunc test():\n\tprint(a)\n\tvar a = a + 1\n\tprint(a)\n",
         "4 CONFUSABLE_LOCAL_USAGE: The identifier \"a\" will be shadowed below in the block.",
-        "5 SHADOWED_VARIABLE: The local variable \"a\" is shadowing an already-declared variable at line 1 in the current class.",
-        "5 CONFUSABLE_LOCAL_USAGE: The identifier \"a\" will be shadowed below in the block.")]
+        "5 CONFUSABLE_LOCAL_USAGE: The identifier \"a\" will be shadowed below in the block.",
+        "5 SHADOWED_VARIABLE: The local variable \"a\" is shadowing an already-declared variable at line 1 in the current class.")]
     [InlineData("var a = 1\n\nfunc test():\n\tfor _i in 3:\n\t\tprint(a)\n\t\tvar a = 2\n\t\tprint(a)\n",
         "5 CONFUSABLE_LOCAL_USAGE: The identifier \"a\" will be shadowed below in the block.",
         "6 SHADOWED_VARIABLE: The local variable \"a\" is shadowing an already-declared variable at line 1 in the current class.")]
@@ -299,6 +299,18 @@ public class GDScriptWarningsTests
         Assert.False(GDScriptWarningSettings.Of("[debug]\n\ngdscript/warnings/exclude_addons=false\n").Silences("res://addons/gut/test.gd"), "exclude_addons=false still silences addons");
         GDScriptWarningSettings rules = GDScriptWarningSettings.Of("[debug]\n\ngdscript/warnings/directory_rules={\n\"res://addons\": 1,\n\"res://addons/mine\": 0\n}\n");
         Assert.Equal((true, false), (rules.Silences("res://addons/gut/test.gd"), rules.Silences("res://addons/mine/tool.gd")));
+    }
+
+    /// <summary>A variable's two warnings at its one place, its type unwritten and it never used, keep the order the analyzer
+    /// found them in once a parameter never used, found after them, is marked before them.</summary>
+    [Fact]
+    public void Findings_at_one_place_keep_their_order_when_one_found_later_comes_before_them()
+    {
+        string[] Codes(string script) => [.. Read(script, GDScriptWarningSettings.Every).Found.Select(f => f.Code ?? "ERROR")];
+        Assert.Equal(["UNTYPED_DECLARATION", "UNUSED_VARIABLE"], Codes("func test() -> void:\n\tvar unused = 1\n"));
+        string[] after = Codes("func test(unused_param: int) -> void:\n\tvar unused = 1\n");
+        Assert.True(after.SequenceEqual(["UNUSED_PARAMETER", "UNTYPED_DECLARATION", "UNUSED_VARIABLE"]),
+            $"With a finding before them the variable's came as {string.Join(", ", after)}, so the fixes offered there swap as findings come and go elsewhere");
     }
 
     [Fact]

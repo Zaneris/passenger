@@ -46,9 +46,10 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         public SyntaxSpan[] Colours { get; set; } = [];
     }
 
-    /// <summary>A script's types for a version of its text: its tree, its analysis, and the analyzer that read them.</summary>
+    /// <summary>A script's types for a version of its text: its tree, its analysis, and the analyzer that read them; its
+    /// findings in Godot's order (<see cref="GDScriptAnalysis.Findings"/>) and their marks in the order of their places.</summary>
     public sealed record Typed(int Version, GDScriptTree Tree, GDScriptAnalysis Analysis, GDScriptAnalyzer Analyzer, string Text, HintList Hints,
-        IReadOnlyList<GDScriptFinding> Findings, SyntaxSpan[] Colours, TextRange? ColoursDiffer);
+        IReadOnlyList<GDScriptFinding> Findings, Marker[] Marks, SyntaxSpan[] Colours, TextRange? ColoursDiffer);
 
     public static bool IsScript(string path) => GodotScriptDeclarations.IsScript(path);
 
@@ -279,7 +280,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
             {
                 document.InlayHints = typed.Hints;
             }
-            Mark(document, typed.Findings);
+            Mark(document, typed.Marks);
             kept.Colours = typed.Colours;
             kept.Layer?.Set(typed.Colours, typed.Version, typed.ColoursDiffer);
         }
@@ -288,16 +289,14 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
 
     /// <summary>A script's findings marked: beside its server's until the server speaks of it, else alone; none set where
     /// the marks shown, carried through the edits since, already say them.</summary>
-    private void Mark(OpenDocument document, IReadOnlyList<GDScriptFinding> findings)
+    private void Mark(OpenDocument document, Marker[] marks)
     {
         Web.WebDocument? web = webOf(document);
         IReadOnlyList<Marker> shown = web?.Passengers ?? document.Markers;
-        if (findings.Count == 0 && shown.Count == 0)
+        if (marks.Length == 0 && shown.Count == 0)
         {
             return;
         }
-        Marker[] marks = [.. findings.Select(f => Marker.Coded(TextRange.FromBounds(f.Start, f.End), f.IsError ? MarkerKind.Error : MarkerKind.Warning,
-            f.IsError ? null : f.Code, f.Message))];
         if (marks.AsSpan().SequenceEqual(shown is Marker[] array ? array : [.. shown]))
         {
             return;
@@ -332,11 +331,14 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
             HintList hints = HintList.Of([.. analysis.Inferred().Select(i => new InlayHint(i.Offset, $": {i.Type}", Kind: InlayHintKind.Type))]);
             GDScriptWarningSettings settings = GDScriptWarningSettings.Of(scenes?.Texts.GetValueOrDefault("res://" + GodotProject.FileName));
             IReadOnlyList<GDScriptFinding> findings = [.. analysis.Findings(settings).Where(f => f.End <= text.Length)];
+            // In the order of their places, as the editor keeps them, those at one place in Godot's.
+            Marker[] marks = [.. findings.OrderBy(f => f.Start).Select(f => Marker.Coded(TextRange.FromBounds(f.Start, f.End), f.IsError ? MarkerKind.Error : MarkerKind.Warning,
+                f.IsError ? null : f.Code, f.Message))];
             SyntaxSpan[] colours = [.. analysis.Colours().Select(c => new SyntaxSpan(c.Start, c.Length, KindOf(c.Colour)))];
             // Read whole with no edit to carry the last through, every name may differ.
             TextRange? differ = made is null && text != treeText ? TextRange.FromBounds(0, text.Length)
                 : Languages.ColourLayer.Differing(coloured, made is { } carried ? [carried] : [], colours);
-            return (Typed?)new Typed(version, parsed, analysis, analyzer, text, hints, findings, colours, differ);
+            return (Typed?)new Typed(version, parsed, analysis, analyzer, text, hints, findings, marks, colours, differ);
         });
     }
 
