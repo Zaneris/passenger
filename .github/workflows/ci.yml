@@ -222,7 +222,7 @@ jobs:
             "$HOME/.local/share/icons/hicolor/scalable/apps/io.github.zaneris.passenger.svg"; do
             [ -e "$path" ] || { echo "::error::The install has no $path"; exit 1; }
           done
-          [ "$(readlink -f "$HOME/.local/bin/passenger")" = "$opt/passenger" ] || { echo "::error::~/.local/bin/passenger does not lead to the install"; exit 1; }
+          [ "$(readlink -f "$HOME/.local/bin/passenger-ide")" = "$opt/passenger" ] || { echo "::error::~/.local/bin/passenger-ide does not lead to the install"; exit 1; }
           entry=$HOME/.local/share/applications/io.github.zaneris.passenger.desktop
           desktop-file-validate "$entry"
           grep -qx "Exec=\"$opt/passenger\" %f" "$entry" || { echo "::error::The menu entry does not start the install's launcher"; cat "$entry"; exit 1; }
@@ -235,7 +235,7 @@ jobs:
 
       - name: An agent debugs through the Passenger installed for one person, whose helpers run on its own runtime
         run: |
-          export PASSENGER_EXECUTABLE=$HOME/.local/bin/passenger
+          export PASSENGER_EXECUTABLE=$HOME/.local/bin/passenger-ide
           dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpDebuggingTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it|FullyQualifiedName~McpDebuggingTests.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on" --blame-hang-timeout 10m --blame-hang-dump-type none
 
       - name: Uninstall for one person
@@ -243,7 +243,7 @@ jobs:
         run: |
           "$HOME/.local/opt/passenger/install.sh" --uninstall
           left=
-          for path in "$HOME/.local/opt/passenger" "$HOME/.local/bin/passenger" \
+          for path in "$HOME/.local/opt/passenger" "$HOME/.local/bin/passenger-ide" "$HOME/.local/bin/passenger" \
             "$HOME/.local/share/applications/io.github.zaneris.passenger.desktop" \
             "$HOME/.local/share/icons/hicolor/256x256/apps/io.github.zaneris.passenger.png" \
             "$HOME/.local/share/icons/hicolor/scalable/apps/io.github.zaneris.passenger.svg" \
@@ -254,9 +254,10 @@ jobs:
           [ -f "$HOME/.local/share/Passenger/kept-by-uninstall.txt" ] || { echo "::error::The uninstall took the person's state"; exit 1; }
 
       - name: Install for everyone
+        id: system
         run: |
           sudo "$RUNNER_TEMP/download/passenger/install.sh" --system
-          for path in /opt/passenger/app/Passenger /usr/local/bin/passenger /usr/share/applications/io.github.zaneris.passenger.desktop \
+          for path in /opt/passenger/app/Passenger /usr/local/bin/passenger-ide /usr/share/applications/io.github.zaneris.passenger.desktop \
             /usr/share/icons/hicolor/256x256/apps/io.github.zaneris.passenger.png /usr/share/mime/packages/io.github.zaneris.passenger.xml; do
             [ -e "$path" ] || { echo "::error::The install for everyone has no $path"; exit 1; }
           done
@@ -266,15 +267,15 @@ jobs:
 
       - name: An agent debugs through the Passenger installed for everyone, whose helpers run on its own runtime
         run: |
-          export PASSENGER_EXECUTABLE=/usr/local/bin/passenger
+          export PASSENGER_EXECUTABLE=/usr/local/bin/passenger-ide
           dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpDebuggingTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it|FullyQualifiedName~McpDebuggingTests.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on" --blame-hang-timeout 10m --blame-hang-dump-type none
 
       - name: Uninstall for everyone
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.system.outcome != 'skipped' }}
         run: |
           sudo /opt/passenger/install.sh --uninstall --system
           left=
-          for path in /opt/passenger /usr/local/bin/passenger /usr/share/applications/io.github.zaneris.passenger.desktop \
+          for path in /opt/passenger /usr/local/bin/passenger-ide /usr/local/bin/passenger /usr/share/applications/io.github.zaneris.passenger.desktop \
             /usr/share/icons/hicolor/256x256/apps/io.github.zaneris.passenger.png \
             /usr/share/icons/hicolor/scalable/apps/io.github.zaneris.passenger.svg /usr/share/mime/packages/io.github.zaneris.passenger.xml; do
             if [ -e "$path" ] || [ -L "$path" ]; then left="$left $path"; fi
