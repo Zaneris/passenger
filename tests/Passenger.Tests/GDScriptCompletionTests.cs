@@ -49,7 +49,7 @@ public sealed class GDScriptCompletionTests
             TypeName(window, "retu");
             Listed(window, "return", "the return keyword at a statement's start");
             Ui.Press(window, "ESCAPE", settle: false);
-            TypeOverLine(window, editor, "\t");
+            Erase(window, "retu".Length);
             TypeName(window, "@");
             Listed(window, "@warning_ignore", "a statement's annotation after its @");
             Assert.DoesNotContain("@export", window.Assist.CompletionLabels);
@@ -92,7 +92,7 @@ public sealed class GDScriptCompletionTests
                 TypeName(window, typed);
                 Listed(window, expected, $"{expected} after {typed}");
                 Ui.Press(window, "ESCAPE", settle: false);
-                TypeOverLine(window, editor, "\t");
+                Erase(window, typed.Length);
             }
             TypeName(window, "prin");
             Listed(window, "print", "the engine's print");
@@ -154,7 +154,7 @@ public sealed class GDScriptCompletionTests
                 ("Input.is_action_pressed(", "jump"), ("get_node(", "Player/Sprite"), ("load(", "res://main.tscn"), ("emit_signal(", "scored"),
             })
             {
-                TypeOverLine(window, editor, "\t" + call + "\"\")");
+                TypeOverLine(window, editor, call + "\"\")");
                 Ui.PlaceAfter(editor, "\t" + call + "\"");
                 TypeName(window, expected[..2]);
                 Listed(window, expected, $"{expected} in {call}'s string");
@@ -215,7 +215,7 @@ public sealed class GDScriptCompletionTests
             TypeName(window, "Ene");
             Listed(window, "Enemy", "the project's class_name after a variable's colon");
             Ui.Press(window, "ESCAPE", settle: false);
-            TypeOverLine(window, editor, "\tvar ");
+            TypeOverLine(window, editor, "var ");
             TypeName(window, "f");
             Assert.False(Ui.Pumped(() => window.Assist.IsCompletionOpen, TimeSpan.FromSeconds(2)), $"A name being declared opened a list: {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
             Ui.PlaceAfter(editor, "func _ready() -> ");
@@ -247,7 +247,7 @@ public sealed class GDScriptCompletionTests
             Listed(window, "$Player/Sprite", "the scene's nodes after $ beside Godot's server");
             Assert.Contains(window.Assist.CompletionDetails, d => d.Label == "$Title" && d.Detail.Contains("main.tscn", StringComparison.Ordinal));
             Ui.Press(window, "ESCAPE", settle: false);
-            TypeOverLine(window, editor, "\tInput.is_action_pressed(\"\")");
+            TypeOverLine(window, editor, "Input.is_action_pressed(\"\")");
             Ui.PlaceAfter(editor, "is_action_pressed(\"");
             TypeName(window, "ju");
             Listed(window, "jump", "project.godot's action beside Godot's server");
@@ -278,13 +278,24 @@ public sealed class GDScriptCompletionTests
         }
     }
 
-    /// <summary>The caret's line's text typed over as one input, which opens no list.</summary>
+    /// <summary>The caret's line's text after its indentation typed over as one input, which opens no list.</summary>
     private static void TypeOverLine(MainWindow window, CodeEditor editor, string text)
     {
         TextSnapshot snapshot = editor.Document.Snapshot;
         int line = editor.CaretPosition.Line;
-        editor.Select(new TextRange(snapshot.GetLineStart(line), snapshot.GetLineText(line).Length));
+        string written = snapshot.GetLineText(line);
+        int indent = written.Length - written.TrimStart('\t', ' ').Length;
+        editor.Select(new TextRange(snapshot.GetLineStart(line) + indent, written.Length - indent));
         window.KeyTextInput(text);
+    }
+
+    /// <summary>The characters before the caret taken back, a key each.</summary>
+    private static void Erase(MainWindow window, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            Ui.Press(window, "BACK_SPACE", settle: false);
+        }
     }
 
     /// <summary>The caret's line emptied.</summary>
@@ -295,7 +306,7 @@ public sealed class GDScriptCompletionTests
         if (snapshot.GetLineText(line).Length > 0)
         {
             editor.Select(new TextRange(snapshot.GetLineStart(line), snapshot.GetLineText(line).Length));
-            Ui.Press(window, "BACKSPACE", settle: false);
+            Ui.Press(window, "BACK_SPACE", settle: false);
         }
     }
 

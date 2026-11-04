@@ -3,6 +3,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Navigation;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -71,7 +72,12 @@ public sealed class GDScriptOutlineTests
             Assert.True(followed, $"Structure to follow the function typed: {Listed(structure)}");
 
             ListBox list = structure.GetVisualDescendants().OfType<ListBox>().First();
-            Ui.Click(Ui.Row(list, structure.Rows.First(r => r.Name == "dig()")), settle: false);
+            // Found with the window's loop run, not settled: Godot's server's held start keeps it from settling.
+            SymbolRow dig = structure.Rows.First(r => r.Name == "dig()");
+            list.ScrollIntoView(dig);
+            Control? row = null;
+            Ui.PumpUntil(() => (row = list.ContainerFromItem(dig)) is not null, "dig's row shown", TimeSpan.FromSeconds(10));
+            Ui.Click(row!, settle: false);
             bool went = Ui.Pumped(() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line).TrimStart().StartsWith("func dig", StringComparison.Ordinal), TimeSpan.FromSeconds(10));
             Assert.True(went, $"dig's row to go to its declaration: the caret is on {editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)}");
             Assert.True(window.Session.Web?.For(window.EditorArea.Active!) is not { Serving: true }, "Godot's server answered: the test's hold of its start did not hold");

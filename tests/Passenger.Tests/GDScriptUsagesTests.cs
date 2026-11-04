@@ -86,9 +86,17 @@ public sealed class GDScriptUsagesTests
             Assert.True(renamed, $"hit renamed strike in both scripts, the string and the scene ({window.Status}):\n{document.Text.Snapshot}\n{File.ReadAllText(enemy)}\n{File.ReadAllText(scene)}");
             Assert.Contains("\tstrike(\"self\")\n", document.Text.Snapshot.ToString(), StringComparison.Ordinal);
 
+            List<string> asked = [];
+            window.Confirm = (_, text, _) =>
+            {
+                asked.Add(text);
+                return Task.FromResult(true);
+            };
+            editor.Focus();
             Ui.Run(window, EditorActions.Undo, settle: false);
             bool undone = Ui.Pumped(() => document.Text.Snapshot.ToString() == Player && File.ReadAllText(enemy) == Enemy && File.ReadAllText(scene) == Scene, TimeSpan.FromSeconds(30));
             Assert.True(undone, $"One Undo did not take the rename back from both scripts and the scene ({window.Status})");
+            Assert.Contains("Rename hit to strike", Assert.Single(asked), StringComparison.Ordinal);
 
             Ui.PlaceAfter(editor, "var tot");
             Renamed(window, "sum");

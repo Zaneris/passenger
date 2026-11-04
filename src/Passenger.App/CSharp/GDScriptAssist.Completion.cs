@@ -133,9 +133,14 @@ internal sealed partial class GDScriptAssist
         TextSnapshot asked = shown.Text.Snapshot;
         int caret = context.Caret;
         GodotScriptTypes.Typed? typed = await types.TypedAsync(shown);
-        if (cancel.IsCancellationRequested || context.Editors.Active != shown || shown.Text.Snapshot != asked)
+        if (cancel.IsCancellationRequested || context.Editors.Active != shown)
         {
             return true;
+        }
+        if (shown.Text.Snapshot != asked)
+        {
+            // Typed on while the script was read: the list is made for the text as it stands now.
+            return await CompleteAsync(trigger, incomplete);
         }
         GDScriptAsked at = typed is null ? new GDScriptAsked(GDScriptAskedKind.None, caret) : GDScriptAsked.At(typed.Text, caret);
         // A sigil typed opens only its own list: '%' takes a remainder, '/' divides, a quote opens any string.
@@ -156,9 +161,13 @@ internal sealed partial class GDScriptAssist
             GDScriptAskedKind.String => await StringsListedAsync(shown, typed, at, caret),
             _ => null,
         };
-        if (cancel.IsCancellationRequested || context.Editors.Active != shown || shown.Text.Snapshot != asked)
+        if (cancel.IsCancellationRequested || context.Editors.Active != shown)
         {
             return true;
+        }
+        if (shown.Text.Snapshot != asked)
+        {
+            return await CompleteAsync(trigger, incomplete);
         }
         if (listed is not { Items.Count: > 0 })
         {
