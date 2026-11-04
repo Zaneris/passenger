@@ -758,6 +758,15 @@ names its constants stand for), the headers of `scene/gui` and `scene/main` (eac
 and `doc/classes` (the class reference's description of each theme item a class documents). The app embeds it to
 complete, check and describe the theme items a Godot game's C# names.
 
+`src/Passenger.Workspace/GodotShader/` is a port to C# of the Godot Engine's shader language front end, by which
+Passenger checks a shader as Godot reads it: `GodotShaderPreprocessor.cs` ports `servers/rendering/shader_preprocessor.cpp`
+and `shader_preprocessor.h` (its directives, macro expansion, includes and error messages, with 4.7.2-stable's reading of
+line continuations, at commit ed1daf0bf001b61586d9930840f2f1394092c079, beside 4.8 beta 2's); `GodotShaderExpression.cs`
+ports the tokenizer of `servers/rendering/shader_expression.cpp` and the parser of `core/math/expression.cpp` it runs
+on; `GodotPathStrings.cs` ports `simplify_path`, `is_absolute_path`, `get_base_dir` and `path_join` of
+`core/string/ustring.cpp`; all at commit cafc17a192acf67903910a68aeb3c076c0907a4b (4.8 beta 2), their words kept as
+Godot words them.
+
 ```
 Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md).
 Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.
