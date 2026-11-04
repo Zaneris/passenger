@@ -180,7 +180,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         ToolTip.SetTip(ModeBox, "Fast runs each .NET service in its image's runtime stage with Passenger's build mounted in, so a code change needs no image rebuild; the other builds every image as Compose says");
         TextBlock keepWords = new() { Text = "Keep backing services running after Stop" };
         KeepBackingBox = new CheckBox { Content = keepWords };
-        TextBlock telemetryWords = new() { Text = "Collect logs and traces with Aspire's dashboard" };
+        TextBlock telemetryWords = new() { Text = TelemetryWords };
         TelemetryBox = new CheckBox { Content = telemetryWords, Name = "TelemetryBox" };
 
         DockerfileBox = Field("The project's own, beside it");
@@ -562,6 +562,9 @@ public sealed class RunConfigurationsDialog : IdeWindow
 
     /// <summary>Collect logs and traces: Aspire's dashboard beside a container run's services.</summary>
     public CheckBox TelemetryBox { get; }
+
+    /// <summary>The words of <see cref="TelemetryBox"/>, by which what turns it on names it.</summary>
+    public const string TelemetryWords = "Collect logs and traces with Aspire's dashboard";
 
     /// <summary>What Collect logs and traces does, for a container run's services or a project run's program.</summary>
     public static string TelemetryTip(bool containers) => containers
