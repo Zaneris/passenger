@@ -131,7 +131,9 @@ public sealed partial class LiveTreeController : IGodotTuner
         List<string> refused = [];
         foreach (GodotTuned tuned in values)
         {
-            (GodotKept? kept, string? whyNot) = GodotKeep.Plan(tuned.Place, tuned.Name, tuned.Value, tuned.Property, res => Read(tuning, res), parts.Editors.ParseOptions);
+            (GodotKept? kept, string? whyNot) = tuned.Resource is { } resource
+                ? GodotKeep.InResource(resource, tuned.Name, tuned.Value, tuned.Property, res => Read(tuning, res))
+                : GodotKeep.Plan(tuned.Place, tuned.Name, tuned.Value, tuned.Property, res => Read(tuning, res), parts.Editors.ParseOptions);
             if (kept is not null)
             {
                 plans.Add(kept);

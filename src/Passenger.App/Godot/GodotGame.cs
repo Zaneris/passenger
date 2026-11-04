@@ -996,12 +996,16 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             throw new LiveAppException($"Passenger's helper in {Name} said no object for {property}");
         }
         heldObjects.Add((ulong)id);
+        heldPaths[(ulong)id] = path;
         return ((ulong)id, named, path);
     }
 
     /// <summary>The objects nodes' properties hold that were read by their ids (<see cref="HeldAsync"/>), whose values set are
-    /// none of <see cref="Tuning"/>'s.</summary>
+    /// recorded in <see cref="Tuning"/> as the resource's own, by its path.</summary>
     private readonly HashSet<ulong> heldObjects = [];
+
+    /// <summary>The paths Passenger's helper gave the resources it read by their ids, for one whose own properties name none.</summary>
+    private readonly Dictionary<ulong, string> heldPaths = [];
 
     /// <summary>Has the game make Passenger's helper beside the scene its live editing names, its script the file written.</summary>
     private async Task BringAsync()
@@ -1345,8 +1349,8 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         await SetValueAsync(element, value.Name, read);
     }
 
-    /// <summary>Sets an object's property to a value of its type: a node's recorded among the values set (<see cref="Tuning"/>),
-    /// a resource's a node holds not (<see cref="HeldAsync"/>), as Keep writes a node's.</summary>
+    /// <summary>Sets an object's property to a value of its type, recorded among the values set (<see cref="Tuning"/>): a
+    /// node's, or a resource's own a node holds (<see cref="HeldAsync"/>), by the resource's path, which Keep writes.</summary>
     public async Task SetValueAsync(long element, string name, object? value)
     {
         UiThread.Check();
@@ -1354,10 +1358,19 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         {
             throw new LiveAppException(why);
         }
-        GodotProperty property = inspected[(ulong)element].Properties.First(p => p.Name == name);
+        GodotObjectState state = inspected[(ulong)element];
+        GodotProperty property = state.Properties.First(p => p.Name == name);
         if (!heldObjects.Contains((ulong)element))
         {
             Tuning.Set((ulong)element, PlaceOf((ulong)element) ?? new GodotNodePlace([], null), property, value);
+        }
+        else
+        {
+            // A resource's own, kept in the file or the scene its path names.
+            string path = state.Properties.FirstOrDefault(p => p.Name == "resource_path")?.Value as string is { Length: > 0 } own ? own : heldPaths.GetValueOrDefault((ulong)element, string.Empty);
+            string shown = path.Contains("::", StringComparison.Ordinal) ? path[(path.IndexOf("::", StringComparison.Ordinal) + 2)..]
+                : path.Length > 0 ? System.IO.Path.GetFileName(path) : state.Class;
+            Tuning.Set((ulong)element, new GodotNodePlace([(shown, string.Empty)], null), property, value, resource: path);
         }
         await SetPropertyAsync((ulong)element, name, value);
     }

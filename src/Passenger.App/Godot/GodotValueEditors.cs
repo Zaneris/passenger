@@ -466,10 +466,8 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
         }
     }
 
-    /// <summary>A resource's values are kept by its file, which Keep does not write: nothing is offered.</summary>
-    public void Keep(GodotTuned tuned, Control from)
-    {
-    }
+    /// <summary>A resource's value kept where the resource is written, as the pane's Keep keeps a node's.</summary>
+    public void Keep(GodotTuned tuned, Control from) => tuner.Keep(tuned, from);
 
     /// <summary>What an editor of a row opens, under the rows.</summary>
     public void ShowPopup(Control popup, Control from)

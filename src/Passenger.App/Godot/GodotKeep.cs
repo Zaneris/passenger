@@ -70,6 +70,30 @@ public static class GodotKeep
             : (null, $"{node} is not written in {System.IO.Path.GetFileName(ownerFile)}: the game made it as it ran, so no scene keeps its values");
     }
 
+    /// <summary>How a value of a resource's own property is written where the resource is: its file's <c>[resource]</c> section
+    /// (<c>res://grass.tres</c>), or its <c>[sub_resource]</c> in the scene or resource that holds it, by its id there
+    /// (<c>res://main.tscn::StyleBoxFlat_x1y2</c>), read as <see cref="Plan"/> reads; WhyNot says why it cannot be kept.</summary>
+    public static (GodotKept? Kept, string? WhyNot) InResource(string resource, string property, object? value, GodotProperty? declared,
+        Func<string, (string File, string Text)?> read)
+    {
+        if (!resource.StartsWith("res://", StringComparison.Ordinal))
+        {
+            return (null, "its resource was made as the game ran, so no file of the project's keeps its values");
+        }
+        int split = resource.IndexOf("::", StringComparison.Ordinal);
+        string path = split < 0 ? resource : resource[..split];
+        string? id = split < 0 ? null : resource[(split + 2)..];
+        if (read(path) is not ({ } file, { } text))
+        {
+            return (null, $"{path} is not a file of the project's");
+        }
+        GodotFile parsed = GodotFile.Parse(text);
+        GodotSection? section = id is null ? parsed.Resource : parsed.Sections.FirstOrDefault(s => s.Tag == "sub_resource" && s.Text("id") == id);
+        return section is null
+            ? (null, id is null ? $"{System.IO.Path.GetFileName(file)} has no [resource] section to keep it in" : $"{System.IO.Path.GetFileName(file)} writes no resource {id} to keep it in")
+            : InScene(file, text, section, property, value, declared);
+    }
+
     /// <summary>The section of a scene that writes the node at a path from its root ("." for the root).</summary>
     public static GodotSection? NodeIn(GodotFile file, string path) => file.Nodes.FirstOrDefault(n => n.PathInScene == path)?.Section;
 

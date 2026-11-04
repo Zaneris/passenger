@@ -13,8 +13,13 @@ public sealed class GodotTuned(ulong node, GodotNodePlace place, GodotProperty p
 
     public string Name => Property.Name;
 
-    /// <summary>The node's name, as its rows say it.</summary>
+    /// <summary>The node's name, as its rows say it; a resource's, its file's name or its id in the scene that holds it.</summary>
     public string NodeName => Place.Chain.Count > 0 ? Place.Chain[^1].Name : Place.Path;
+
+    /// <summary>Where the property is a resource's own, a node holding the resource: the resource's path as Godot gives it,
+    /// its file's (<c>res://grass.tres</c>) or its scene's and its id there (<c>res://main.tscn::StyleBoxFlat_x1y2</c>), empty
+    /// for one the game made as it ran; null for a node's property.</summary>
+    public string? Resource { get; init; }
 
     /// <summary>The value it had before it was first set, or as last kept.</summary>
     public object? Original { get; internal set; } = property.Value;
@@ -48,13 +53,14 @@ public sealed class GodotTuning(string folder)
     /// <summary>A property's record, once it was set.</summary>
     public GodotTuned? Of(ulong node, string name) => tuned.GetValueOrDefault((node, name));
 
-    /// <summary>A value sent to a node's property: recorded, the first time against the value the property had as read.</summary>
-    public void Set(ulong node, GodotNodePlace place, GodotProperty property, object? value)
+    /// <summary>A value sent to a node's property, or to a resource's own (<paramref name="resource"/> its path, as
+    /// <see cref="GodotTuned.Resource"/>): recorded, the first time against the value the property had as read.</summary>
+    public void Set(ulong node, GodotNodePlace place, GodotProperty property, object? value, string? resource = null)
     {
         UiThread.Check();
         if (!tuned.TryGetValue((node, property.Name), out GodotTuned? record))
         {
-            tuned[(node, property.Name)] = record = new GodotTuned(node, place, property);
+            tuned[(node, property.Name)] = record = new GodotTuned(node, place, property) { Resource = resource };
         }
         record.Value = value;
         Changed?.Invoke(this, EventArgs.Empty);
