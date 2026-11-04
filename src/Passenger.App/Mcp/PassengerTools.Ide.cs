@@ -38,7 +38,7 @@ public sealed partial class PassengerTools
         {
             IReadOnlyList<string> installed = await font.InstalledAsync();
             fonts[font.Property] = (font.Offered, installed.Count == 0 ? null
-                : AgentAnswers.More(installed.Count, "installed family", "settings_set takes any by its name, and refuses one not installed here"));
+                : AgentAnswers.More(installed.Count, "installed family", "settings_set takes any by its name, and refuses one not installed here", "installed families"));
         }
         return new SettingsInfo(window.SettingsKept, [.. SettingProperties.Select(p =>
         {

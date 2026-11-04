@@ -112,9 +112,10 @@ public static class AgentAnswers
         return more is null ? string.Join(", ", kept) : $"{string.Join(", ", kept)}; {more}";
     }
 
-    /// <summary>Words for what a list left out: "1,200 more files left out: …".</summary>
-    public static string More(int left, string noun, string how) =>
-        string.Create(CultureInfo.InvariantCulture, $"{left:N0} more {Plural.Noun(left, noun)} left out: {how}");
+    /// <summary>Words for what a list left out: "1,200 more files left out: …", the noun's plural <paramref name="many"/>
+    /// where it is not the noun with an s ("families").</summary>
+    public static string More(int left, string noun, string how, string? many = null) =>
+        string.Create(CultureInfo.InvariantCulture, $"{left:N0} more {Plural.Noun(left, noun, many)} left out: {how}");
 
     /// <summary>The changes in <paramref name="scope"/> (the repository's root for every one), each unversioned file in a
     /// folder git shows whole (<paramref name="untracked"/>, as <see cref="Git.UntrackedFoldersAsync"/> lists them) gathered
