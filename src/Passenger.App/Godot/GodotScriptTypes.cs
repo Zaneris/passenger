@@ -362,14 +362,14 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         return new GDScriptProject(api, Tree, classNames, Singletons(scenes), uids: scenes.ResOfUid, nodes: NodesOf(scenes), lacks: lacks);
     }
 
-    /// <summary>The project's singleton autoloads that run a GDScript, by name, the res:// path of each's script: those code
-    /// reads by their names.</summary>
+    /// <summary>The project's singleton autoloads, by name, the res:// path of each's script or scene: those code reads by
+    /// their names, a scene's typed as Godot types it, a Node.</summary>
     private static Dictionary<string, string> Singletons(GodotScenes scenes)
     {
         Dictionary<string, string> autoloads = new(StringComparer.Ordinal);
         foreach (GodotDefined autoload in scenes.Defined.Autoloads)
         {
-            if (scenes.Defined.IsSingleton(autoload.Name) && scenes.AutoloadFile(autoload.Name) is { } file && GodotScriptDeclarations.IsScript(file))
+            if (scenes.Defined.IsSingleton(autoload.Name) && scenes.AutoloadFile(autoload.Name) is { } file)
             {
                 autoloads[autoload.Name] = file;
             }

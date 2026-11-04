@@ -106,12 +106,14 @@ public sealed class GDScriptGodotErrorsTests
         + "class BaseThing:\n\tpass\n\n\nclass Holder extends Resource:\n\t@export var node: Node\n"
         + "\t@export var nodes: Array[Node]\n\t@export var res: Resource\n";
 
-    /// <summary>A project of singleton autoloads (Game, Hub) and one that is none (Quiet), for <see cref="Files"/>.</summary>
+    /// <summary>A project of singleton autoloads (Game, Hub, the scene Stage) and one that is none (Quiet), for
+    /// <see cref="Files"/>.</summary>
     internal const string FilesProject = "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Files\"\n\n[autoload]\n\n"
-        + "Game=\"*res://game.gd\"\nHub=\"*res://hub.gd\"\nQuiet=\"res://quiet.gd\"\n";
+        + "Game=\"*res://game.gd\"\nHub=\"*res://hub.gd\"\nQuiet=\"res://quiet.gd\"\nStage=\"*res://stage.tscn\"\n";
 
     /// <summary>Bases and preloads of files the project lacks (by res:// path and relative to the script), its one error
-    /// where a class's base is lacked, and classes named as singleton autoloads, beside the scripts they name.</summary>
+    /// where a class's base is lacked, classes named as singleton autoloads, and a scene autoload read by its name, beside
+    /// the scripts they name.</summary>
     internal static readonly (string File, string Script)[] Files =
     [
         ("missing_base.gd", "extends \"res://nowhere.gd\"\n\n\nfunc _ready():\n\tprint(undefined)\n"),
@@ -124,6 +126,7 @@ public sealed class GDScriptGodotErrorsTests
         ("hub_named.gd", "class_name Hub\nextends Node\n"),
         ("inner_names.gd", "extends Node\n\n\nclass Game:\n\tpass\n\n\nclass Quiet:\n\tpass\n"),
         ("sub/relative_base.gd", "extends \"missing_here.gd\"\n"),
+        ("uses_stage.gd", "extends Node\n\n\nfunc _ready() -> void:\n\tprint(Stage.name, Stage.get_child_count(), undefined_stage)\n"),
     ];
 
     /// <summary>The scripts <see cref="Files"/>' autoloads and preloads name, in which Godot finds no error.</summary>
@@ -133,6 +136,7 @@ public sealed class GDScriptGodotErrorsTests
         ("hub.gd", "extends Node\n"),
         ("quiet.gd", "extends Node\n"),
         ("sub/thing.gd", "extends Resource\n"),
+        ("stage.tscn", "[gd_scene format=3]\n\n[node name=\"Stage\" type=\"Node\"]\n"),
     ];
 
     /// <summary>Members whose values reach themselves as Godot resolves them (enums', constants', variables', a parameter's
