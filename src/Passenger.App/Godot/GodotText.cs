@@ -24,6 +24,28 @@ public static class GodotText
             : value.ToString("R", CultureInfo.InvariantCulture);
     }
 
+    /// <summary>The step Godot's inspector shows a float with no range of its own at (its interface/inspector/default_float_step).</summary>
+    public const double InspectorStep = 0.001;
+
+    private static readonly double[] StepFractions = [0.9999, 0.09999, 0.009999, 0.0009999, 0.00009999, 0.000009999, 0.0000009999,
+        0.00000009999, 0.000000009999, 0.0000000009999];
+
+    /// <summary>How many decimals Godot's inspector shows a number with at a step, as its Math::range_step_decimals counts
+    /// them: the step's own (0.001's three, a whole step's none), up to ten, and as many as a double holds for no step.</summary>
+    public static int StepDecimals(double step)
+    {
+        if (step < 0.0000000000001)
+        {
+            return 15;
+        }
+        double fraction = Math.Abs(step) - Math.Truncate(Math.Abs(step));
+        int found = Array.FindIndex(StepFractions, least => fraction >= least);
+        return Math.Max(0, found);
+    }
+
+    /// <summary>A number as Godot's inspector shows it at a step: rounded to the step's decimals, in its shortest form.</summary>
+    public static string Inspected(double value, double step) => double.IsFinite(value) ? Number(Math.Round(value, StepDecimals(step))) : Number(value);
+
     /// <summary>A value as a scene's property writes it, or null for one a scene cannot hold as text (an object).</summary>
     public static string? Scene(object? value) => value switch
     {

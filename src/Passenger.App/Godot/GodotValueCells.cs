@@ -228,6 +228,7 @@ internal sealed class GodotValueCell : LiveValueCell
         rangeSlider.Fraction = given.Fraction;
         rangeSlider.Step = given.Step;
         rangeNumber.Step = given.Step;
+        rangeNumber.ShownStep = given.Step;
         rangeNumber.Integers = property?.Type == GodotType.Int;
         double now = Shown(value);
         rangeSlider.Show(now);
@@ -383,6 +384,7 @@ internal sealed class GodotValueCell : LiveValueCell
         {
             axesFields[i].Integers = hint.Integers;
             axesFields[i].Step = hint.Range?.Step ?? (hint.Integers ? 1 : 0.1);
+            axesFields[i].ShownStep = hint.Range?.Step ?? GodotText.InspectorStep;
             axesFields[i].Show(i < numbers.Count ? numbers[i] : 0);
         }
         return axesPanel;

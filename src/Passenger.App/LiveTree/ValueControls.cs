@@ -160,11 +160,13 @@ public sealed class ValueSlider : Control
 
 /// <summary>A number to type or scrub: an axis's name (x, y, z), or a grip where it has none, that the pointer drags left
 /// and right to move the value a step a few pixels (<see cref="Changing"/> as it moves, <see cref="Committed"/> as it is
-/// let go), and a box to type it in, taken with Enter. Shift scrubs ten times as fast, Alt a tenth as fast.</summary>
+/// let go), and a box to type it in, taken with Enter. Shift scrubs ten times as fast, Alt a tenth as fast. The box shows the
+/// value at <see cref="ShownStep"/> as Godot's inspector does, the whole value kept until the person changes it.</summary>
 public sealed class ScrubField : DockPanel
 {
     private readonly TextBlock label;
     private readonly TextBox box;
+    private string? written;
     private Point? pressed;
     private double from;
     private bool scrubbed;
@@ -229,7 +231,12 @@ public sealed class ScrubField : DockPanel
         };
         box.KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Enter && double.TryParse(box.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double typed))
+            if (e.Key == Key.Enter && box.Text == written)
+            {
+                // The value as shown, rounded: the whole one it stands for stays.
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Enter && double.TryParse(box.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double typed))
             {
                 e.Handled = true;
                 Shown(Round(typed));
@@ -245,6 +252,10 @@ public sealed class ScrubField : DockPanel
 
     /// <summary>How far one step of a scrub moves the value.</summary>
     public double Step { get; set; } = 0.1;
+
+    /// <summary>The step whose decimals the box shows the value to (<see cref="Passenger.App.Godot.GodotText.Inspected"/>);
+    /// 0 shows it whole.</summary>
+    public double ShownStep { get; set; }
 
     /// <summary>Whether it takes whole numbers alone.</summary>
     public bool Integers { get; set; }
@@ -278,7 +289,8 @@ public sealed class ScrubField : DockPanel
     private void Shown(double value)
     {
         Value = value;
-        box.Text = Integers ? ((long)value).ToString(CultureInfo.InvariantCulture) : Passenger.App.Godot.GodotText.Number(value);
+        box.Text = written = Integers ? ((long)value).ToString(CultureInfo.InvariantCulture)
+            : ShownStep > 0 ? Passenger.App.Godot.GodotText.Inspected(value, ShownStep) : Passenger.App.Godot.GodotText.Number(value);
     }
 
     private double Round(double value) => Integers ? Math.Round(value) : Math.Round(value, 6);
