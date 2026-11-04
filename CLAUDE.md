@@ -137,10 +137,11 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   through; a command writing outside its recording asks first (`Recording.ClearAsync`). A workspace file:
   `FileText.Save` (atomic, metadata kept, a hard-linked file in place, a read-only one refused, Local History given the
   old bytes); a file the IDE makes `SaveNew` (its .editorconfig's end_of_line and charset), again `SaveOver`; one the
-  window changes itself `MainWindow.ChangeFileAsync`; any other whole file `AtomicFile.Write`; a state file only the
-  person may read `OwnFiles`; never `File.WriteAll*`. An open project, solution, filter, nuget.config or
-  Directory.Packages.props is saved before Passenger writes it and loaded after (`SaveBeforeWriting`). Server edits pass
-  `LineEndings.Fit` then `Indentation.Fit`.
+  window changes itself `MainWindow.ChangeFileAsync`; any other whole file `AtomicFile.Write`, a file that may be a link
+  (a shell's startup file) written to the file it names; a state file only the person may read `OwnFiles`; never
+  `File.WriteAll*`. An open project, solution, filter, nuget.config or Directory.Packages.props is saved before
+  Passenger writes it and loaded after (`SaveBeforeWriting`). Server edits pass `LineEndings.Fit` then
+  `Indentation.Fit`.
 - **A change of several files, or a move, is one command of global undo** (`EditorArea.Commands.Record`; `RecordWrites`
   for one that waits between writes; moves through `Recording.Move`, never a bare `EditorArea.MoveFile`; deletes kept).
   A closed file changes through `Recording.Change`, written off the window's thread, every write of closed files in turn
