@@ -209,7 +209,7 @@ internal static partial class Lifeline
     /// where there is no shell to be it: children still run, only nothing ends them on a crash.</summary>
     private static Process? Watchdog()
     {
-        if (unavailable || watchdog is { HasExited: false })
+        if (unavailable || watchdog is { } running && DotnetProcesses.Runs(running))
         {
             return watchdog;
         }

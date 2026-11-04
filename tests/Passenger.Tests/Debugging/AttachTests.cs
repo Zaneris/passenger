@@ -49,7 +49,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
 
         // Held at its breakpoint as the IDE crashes or is ended, before any disconnect.
         first.GoWithoutDisconnecting();
-        Assert.False(debuggee.HasExited, "The adapter ended the program it had only attached to when its client went without disconnecting");
+        Assert.True(DotnetProcesses.Runs(debuggee), "The adapter ended the program it had only attached to when its client went without disconnecting");
 
         // Let go whole: it runs on, and another debugger can take hold of it.
         await using DebugSession second = DebugSession.ForAttach(testOutputHelper, Process.GetProcessById(debuggee.Id));
@@ -193,6 +193,6 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
         DapException failed = await Assert.ThrowsAsync<DapException>(() => host.ConfigurationDoneAsync());
         Assert.Contains($"Could not attach to process {other.Id}", failed.Reason, StringComparison.Ordinal);
         Assert.Contains("not a .NET program", failed.Reason, StringComparison.Ordinal);
-        Assert.False(other.HasExited, "The attach that failed ended the program it could not take hold of");
+        Assert.True(DotnetProcesses.Runs(other), "The attach that failed ended the program it could not take hold of");
     }
 }

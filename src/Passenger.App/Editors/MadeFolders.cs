@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using Passenger.Core;
 
@@ -124,7 +123,7 @@ public static class MadeFolders
         }
         foreach (string kept in Directory.EnumerateDirectories(undone))
         {
-            if (int.TryParse(Path.GetFileName(kept), NumberStyles.None, CultureInfo.InvariantCulture, out int process) && process != Environment.ProcessId && !Running(process))
+            if (int.TryParse(Path.GetFileName(kept), NumberStyles.None, CultureInfo.InvariantCulture, out int process) && process != Environment.ProcessId && !DotnetProcesses.Runs(process))
             {
                 Delete(kept);
             }
@@ -149,16 +148,4 @@ public static class MadeFolders
         }
     }
 
-    private static bool Running(int process)
-    {
-        try
-        {
-            using Process found = Process.GetProcessById(process);
-            return !found.HasExited;
-        }
-        catch (Exception missing) when (missing is ArgumentException or InvalidOperationException)
-        {
-            return false;
-        }
-    }
 }

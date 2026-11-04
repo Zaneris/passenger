@@ -83,7 +83,7 @@ public sealed class ProjectHost : IAsyncDisposable
 
     public int ProcessId { get; }
 
-    public bool HasExited => gone || process.HasExited;
+    public bool HasExited => gone || !DotnetProcesses.Runs(process);
 
     /// <summary>Starts a host with the SDK a folder picks and waits for it to say which it loaded; a
     /// <see cref="ProjectHostFailed"/> when it loads none. It runs on the runtime Passenger runs on, but for a folder whose

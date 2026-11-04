@@ -266,20 +266,7 @@ public sealed class PrettierService : IAsyncDisposable
         /// <summary>Whether its first format's time has been logged.</summary>
         public bool Timed { get; set; }
 
-        public bool HasExited
-        {
-            get
-            {
-                try
-                {
-                    return process.HasExited;
-                }
-                catch (InvalidOperationException)
-                {
-                    return true;
-                }
-            }
-        }
+        public bool HasExited => !DotnetProcesses.Runs(process);
 
         /// <summary>A runner started, its fork off the window's thread, where a format pressed there would wait it
         /// out.</summary>

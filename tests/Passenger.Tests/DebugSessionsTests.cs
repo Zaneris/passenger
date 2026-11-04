@@ -357,7 +357,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             Ui.ClickButton(asked, "Cancel");
             Assert.Equal(PathNames.Canonical(pair.Folder), window.Folder);
             Assert.Equal(DebugState.Paused, first.State);
-            Assert.False(program.HasExited, "Cancel ended First");
+            Assert.True(DotnetProcesses.Runs(program), "Cancel ended First");
             Assert.Equal("Hot Reload changed the code of First, after which its runtime lets no debugger go, so closing the solution would stop it rather than "
                 + "leave it frozen; stop it first to go on (session First)", window.Actions.RunForAgent(AppActions.CloseSolution));
             Assert.Equal(PathNames.Canonical(pair.Folder), window.Folder);

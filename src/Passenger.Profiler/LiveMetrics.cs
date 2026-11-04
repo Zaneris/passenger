@@ -111,7 +111,7 @@ public sealed class LiveMetrics : IAsyncDisposable
             {
             }
             await Task.WhenAny(tools.WaitForExitAsync(CancellationToken.None), Task.Delay(TimeSpan.FromSeconds(5)));
-            if (!tools.HasExited)
+            if (DotnetProcesses.Runs(tools))
             {
                 ChildProcesses.Kill(tools);
             }

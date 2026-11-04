@@ -2875,22 +2875,7 @@ public static partial class Processes
         }
     }
 
-    public static bool IsRunning(int id)
-    {
-        if (id <= 0)
-        {
-            return false;
-        }
-        try
-        {
-            using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
-            return !process.HasExited;
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-    }
+    public static bool IsRunning(int id) => id > 0 && DotnetProcesses.Runs(id);
 
     /// <summary>Whether a process has gone within a few seconds, the time a killed one may take to leave the list, or within
     /// the time given.</summary>

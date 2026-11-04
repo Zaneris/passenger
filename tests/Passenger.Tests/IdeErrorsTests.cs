@@ -1012,18 +1012,7 @@ public sealed class IdeErrorsTests : IDisposable
         }
     }
 
-    private static bool Running(int id)
-    {
-        try
-        {
-            using Process process = Process.GetProcessById(id);
-            return !process.HasExited;
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-    }
+    private static bool Running(int id) => Passenger.Core.DotnetProcesses.Runs(id);
 
     [DllImport("libc", EntryPoint = "kill", SetLastError = true)]
     private static extern int Signal(int process, int signal);

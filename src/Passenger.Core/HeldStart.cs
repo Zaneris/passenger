@@ -186,18 +186,8 @@ public static class HeldStart
         }
     }
 
-    /// <summary>Whether the process has ended, false when the system will not say (the deadline then ends the wait).</summary>
-    private static bool Ended(Process process)
-    {
-        try
-        {
-            return process.HasExited;
-        }
-        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
-        {
-            return false;
-        }
-    }
+    /// <summary>Whether the process has ended; one the system will not say of runs on (the deadline then ends the wait).</summary>
+    private static bool Ended(Process process) => !DotnetProcesses.Runs(process);
 }
 
 /// <summary>How <see cref="HeldStart.AtPortAsync"/>'s wait ended.</summary>

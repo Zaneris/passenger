@@ -1145,18 +1145,7 @@ public sealed class ContainersTests
             window.Close();
         }
 
-        static bool Alive(int id)
-        {
-            try
-            {
-                using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
-                return !process.HasExited;
-            }
-            catch (ArgumentException)
-            {
-                return false;
-            }
-        }
+        static bool Alive(int id) => DotnetProcesses.Runs(id);
     }
 
     /// <summary>A docker of the test's own, up or down as its <c>state</c> file says (held: down, its events kept until the

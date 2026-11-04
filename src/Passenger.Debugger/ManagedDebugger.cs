@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
 using Passenger.Debugger.Interop;
@@ -504,7 +505,7 @@ public partial class ManagedDebugger
         try
         {
             _exited.Reset();
-            (_corDebug, _process) = await ClrDebugExtensions.Automatic(processId, LetGoAsync, TakeHold, () => process.HasExited, _ending.Token, _logger);
+            (_corDebug, _process) = await ClrDebugExtensions.Automatic(processId, LetGoAsync, TakeHold, () => !DotnetProcesses.Runs(process), _ending.Token, _logger);
         }
         catch (Exception error)
         {

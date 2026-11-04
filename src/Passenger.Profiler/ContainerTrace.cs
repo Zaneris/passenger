@@ -64,7 +64,7 @@ internal sealed record ContainerTrace(Process Tools, Task Heard)
         {
             return new ContainerTrace(tools, heard);
         }
-        bool ended = tools.HasExited;
+        bool ended = !DotnetProcesses.Runs(tools);
         ChildProcesses.Kill(tools);
         // What they said as they ended, read to its end unless that takes a while.
         await Task.WhenAny(heard, Task.Delay(TimeSpan.FromSeconds(2))).ConfigureAwait(false);

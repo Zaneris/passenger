@@ -335,14 +335,12 @@ public sealed partial class McpProxy
         try
         {
             int installing = int.Parse(File.ReadAllText(order), CultureInfo.InvariantCulture);
-            using Process process = Process.GetProcessById(installing);
-            if (!process.HasExited)
+            if (DotnetProcesses.Runs(installing))
             {
                 return installing;
             }
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or FormatException or OverflowException or ArgumentException
-            or InvalidOperationException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or FormatException or OverflowException)
         {
             // No order, or one whose process has ended.
         }
@@ -879,7 +877,7 @@ public sealed partial class McpProxy
                 call.Waited("its window listens");
                 return stream;
             }
-            if (headless is { HasExited: true } ended)
+            if (headless is { } ended && !DotnetProcesses.Runs(ended))
             {
                 throw new NotJoined($"The Passenger started on {here} ended with exit code {ended.ExitCode} before its window opened.");
             }
@@ -959,7 +957,7 @@ public sealed partial class McpProxy
     /// <summary>The headless window ends with its input, cleanly, before the watchdog would kill it with its socket left.</summary>
     private void EndHeadless()
     {
-        if (headless is { HasExited: false } child)
+        if (headless is { } child && DotnetProcesses.Runs(child))
         {
             try
             {

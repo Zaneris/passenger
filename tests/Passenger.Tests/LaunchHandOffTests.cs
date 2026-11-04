@@ -77,9 +77,9 @@ public sealed class LaunchHandOffTests
         try
         {
             string sockets = SocketFolders.For(state);
-            Ui.PumpUntil(() => Directory.Exists(sockets) && Directory.EnumerateFiles(sockets, "*.open").Any() || first.HasExited,
+            Ui.PumpUntil(() => Directory.Exists(sockets) && Directory.EnumerateFiles(sockets, "*.open").Any() || !DotnetProcesses.Runs(first),
                 $"the Passenger the first launch started to listen for launches in {sockets}", TimeSpan.FromMinutes(2));
-            if (first.HasExited)
+            if (!DotnetProcesses.Runs(first))
             {
                 Assert.Fail($"The first launch, with no Passenger running, ended with exit code {first.ExitCode} rather than being the Passenger");
             }
@@ -93,7 +93,7 @@ public sealed class LaunchHandOffTests
         finally
         {
             first.StandardInput.Close();
-            if (!Ui.Pumped(() => first.HasExited, TimeSpan.FromSeconds(30)))
+            if (!Ui.Pumped(() => !DotnetProcesses.Runs(first), TimeSpan.FromSeconds(30)))
             {
                 first.Kill(entireProcessTree: true);
             }
@@ -122,14 +122,14 @@ public sealed class LaunchHandOffTests
         Task<string> error = launch.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
         try
         {
-            bool ended = Ui.Pumped(() => launch.HasExited, TimeSpan.FromSeconds(60));
+            bool ended = Ui.Pumped(() => !DotnetProcesses.Runs(launch), TimeSpan.FromSeconds(60));
             string errors = ended ? Ui.AwaitPumped(error, "the launch's standard error to end") : string.Empty;
             Assert.True(ended && launch.ExitCode == 0, ended ? $"The launch ended with exit code {launch.ExitCode}: {errors}"
                 : $"The launch was still running after 60 s: it started a Passenger of its own rather than handing itself to the one running{(running is null ? string.Empty : $"\nThe running one's log:\n{running()}")}");
         }
         finally
         {
-            if (!launch.HasExited)
+            if (DotnetProcesses.Runs(launch))
             {
                 launch.Kill(entireProcessTree: true);
             }

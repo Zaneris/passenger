@@ -326,7 +326,7 @@ public sealed class McpIdeProfilingTests : McpRig, IClassFixture<RestoredFolders
         JsonElement turn = Assert.Single(profiled.GetProperty("hotSpots").EnumerateArray(), h => h.GetProperty("method").GetString()!.Contains("Spin.Turn", StringComparison.Ordinal));
         Assert.True(turn.TryGetProperty("source", out JsonElement source) && source.GetString() == "Program.cs:11", $"Spin.Turn's hot spot is not named at its line: {turn}");
         using Process program = Process.GetProcessById(spinning);
-        Assert.False(program.HasExited, "The program an agent attached the profiler to ended with its snapshot");
+        Assert.True(DotnetProcesses.Runs(program), "The program an agent attached the profiler to ended with its snapshot");
         await Call(client, McpTools.Stop);
     }
 

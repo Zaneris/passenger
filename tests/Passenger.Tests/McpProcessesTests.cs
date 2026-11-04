@@ -67,7 +67,7 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
             Gone(client);
         }
         Process agents = LastPassenger();
-        WaitFor(() => agents.HasExited, "the agent's Passenger to end");
+        WaitFor(() => !DotnetProcesses.Runs(agents), "the agent's Passenger to end");
         Ui.WaitFor(() => File.ReadAllText(notes) == "second first draft\n", "the person's window to see the agent's change");
 
         // The next day's save, at which the window prunes the oldest of its history.

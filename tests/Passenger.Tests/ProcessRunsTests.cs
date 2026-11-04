@@ -35,8 +35,18 @@ public sealed class ProcessRunsTests
             int child = int.Parse(File.ReadAllText(named).Trim(), System.Globalization.CultureInfo.InvariantCulture);
             Assert.True(Waiting.Until(() => !DotnetProcesses.Runs(child), TimeSpan.FromSeconds(10)),
                 $"Process {child}, ended and waiting for its parent to take its exit, was taken for running: a debugged program gone so would be ended as left running");
-            using Process ended = Process.GetProcessById(child);
-            Assert.False(ended.HasExited, $"Process {child} was gone before its parent ended, so it was no zombie the test could read");
+            Process? found = null;
+            try
+            {
+                found = Process.GetProcessById(child);
+            }
+            catch (ArgumentException)
+            {
+            }
+            Assert.True(found is not null, $"Process {child} was gone before its parent ended, so it was no zombie the test could read");
+            using Process held = found;
+            Assert.False(DotnetProcesses.Runs(held),
+                $"Process {child}, ended and waiting for its parent to take its exit, was taken for running as a process held: a debugger's attached program gone so would be waited on as running");
         }
         finally
         {

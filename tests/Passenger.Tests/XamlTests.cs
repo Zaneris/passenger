@@ -2746,18 +2746,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         }
 
         // A previewer Passenger started that has since ended.
-        static bool Ended(int id)
-        {
-            try
-            {
-                using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
-                return process.HasExited;
-            }
-            catch (ArgumentException)
-            {
-                return true;
-            }
-        }
+        static bool Ended(int id) => !DotnetProcesses.Runs(id);
     }
 
     /// <summary>A view of the gallery's, filled with a colour.</summary>

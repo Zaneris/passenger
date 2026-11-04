@@ -674,8 +674,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         CallToolResult answered = Await(meanwhile, "the call made while Passenger restarted");
         Assert.True(answered.IsError != true && Text(answered).Contains(joining, StringComparison.Ordinal),
             $"The agent's call made while Passenger restarted was answered '{Text(answered)}', not by the window on {joining}");
-        Assert.True(!joinedRelay.HasExited && !idleRelay.HasExited,
-            $"An agent's relay ended with the update rather than following it: joined {(joinedRelay.HasExited ? "ended" : "runs")}, idle {(idleRelay.HasExited ? "ended" : "runs")}");
+        Assert.True(DotnetProcesses.Runs(joinedRelay) && DotnetProcesses.Runs(idleRelay),
+            $"An agent's relay ended with the update rather than following it: joined {(!DotnetProcesses.Runs(joinedRelay) ? "ended" : "runs")}, idle {(!DotnetProcesses.Runs(idleRelay) ? "ended" : "runs")}");
         // The updated app's executable started in each relay's own process, as each one's agent made its next call.
         Unasked(restarted, joined, McpTools.Workspace);
         Unasked(restartedIdle, waiting, McpTools.Workspace);
@@ -715,7 +715,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Assert.True(copy.InstalledVersion == later, $"Passenger closed with v{later} ready and an agent's relay running left {copy.Bundle} at {copy.InstalledVersion}");
         MainWindow opened = AgentsWindow(idle, languageServer: false);
         Unasked(opened, left, McpTools.Workspace);
-        Assert.True(!relayLeft.HasExited && Ui.Shared(copy.Relayed).Split('\n').Contains($"relayed {later} {relayLeft.Id}"),
+        Assert.True(DotnetProcesses.Runs(relayLeft) && Ui.Shared(copy.Relayed).Split('\n').Contains($"relayed {later} {relayLeft.Id}"),
             $"Closing Passenger to install the update did not have the agent's relay {relayLeft.Id} go on from Passenger {later}: '{Ui.Shared(copy.Relayed)}'");
         Gone(left);
         opened.Close();
@@ -772,7 +772,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
         // The agent's next call is answered by the updated app's relay, in the same process.
         Unasked(restarted, joined, McpTools.Workspace);
-        Assert.True(!relay.HasExited && Ui.Shared(copy.Relayed).Split('\n').Contains($"relayed {newer} {relay.Id}"),
+        Assert.True(DotnetProcesses.Runs(relay) && Ui.Shared(copy.Relayed).Split('\n').Contains($"relayed {newer} {relay.Id}"),
             $"The agent's relay {relay.Id} did not start again from Passenger {newer} in its own process: '{Ui.Shared(copy.Relayed)}'");
         Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: the agent's relay on {joining} (process {relay.Id}) let go of the app to install Passenger {newer}", StringComparison.Ordinal));
         Assert.True(!Errors().Any(line => line.StartsWith("passenger:", StringComparison.Ordinal)), $"The relay said it ended: {string.Join(" | ", Errors())}");

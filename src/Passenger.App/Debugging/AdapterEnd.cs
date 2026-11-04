@@ -51,7 +51,7 @@ public sealed class ProcessEnd : AdapterEnd
         process.EnableRaisingEvents = true;
         process.Exited += (_, _) => exited.TrySetResult(process.ExitCode);
         // Exited is raised once: an adapter that died as it started may have had it before this came to listen.
-        if (process.HasExited)
+        if (!DotnetProcesses.Runs(process))
         {
             exited.TrySetResult(process.ExitCode);
         }

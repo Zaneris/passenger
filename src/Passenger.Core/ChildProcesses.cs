@@ -293,16 +293,9 @@ public static class ChildProcesses
     /// a pipe it still writes to closed under it included (SIGPIPE's 141), it did not fail. <see cref="Kill"/> says it too.</summary>
     public static void Ending(Process process)
     {
-        try
+        if (DotnetProcesses.Runs(process))
         {
-            if (!process.HasExited)
-            {
-                EndedHere[process.Id] = 0;
-            }
-        }
-        catch (Exception error) when (error is InvalidOperationException or Win32Exception)
-        {
-            // It had ended, or was never started.
+            EndedHere[process.Id] = 0;
         }
     }
 

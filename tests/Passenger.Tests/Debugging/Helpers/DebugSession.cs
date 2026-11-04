@@ -520,7 +520,7 @@ public sealed class DebugSession : IAsyncDisposable
         adapter.Dispose();
         if (debuggee is not null)
         {
-            if (!debuggee.HasExited)
+            if (DotnetProcesses.Runs(debuggee))
             {
                 ChildProcesses.Kill(debuggee);
             }
@@ -588,10 +588,10 @@ public sealed class DebugSession : IAsyncDisposable
     /// step never ended, this says in which call.</summary>
     private string Stacks()
     {
-        string stacks = adapter.HasExited ? string.Empty : NativeStacks.Describe("Where the adapter's debugger was", adapter.Id, "libmscordbi", "libdbgshim");
-        if (debuggee is { HasExited: false })
+        string stacks = !DotnetProcesses.Runs(adapter) ? string.Empty : NativeStacks.Describe("Where the adapter's debugger was", adapter.Id, "libmscordbi", "libdbgshim");
+        if (debuggee is { } running && DotnetProcesses.Runs(running))
         {
-            stacks += NativeStacks.Describe("Where the debuggee's runtime was", debuggee.Id, "Debugger", "DbgTransport", "TwoWayPipe");
+            stacks += NativeStacks.Describe("Where the debuggee's runtime was", running.Id, "Debugger", "DbgTransport", "TwoWayPipe");
         }
         return stacks;
     }

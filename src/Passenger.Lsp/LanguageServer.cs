@@ -411,21 +411,7 @@ public sealed class LanguageServer : IAsyncDisposable
         set.TryGetValue(name, out object? value) ? value : Settings.TryGetValue(name, out object? own) ? own : null;
 
     /// <summary>The process has ended, or been ended by <see cref="Kill"/>, or let go of (<see cref="DisposeAsync"/>).</summary>
-    public bool HasExited
-    {
-        get
-        {
-            try
-            {
-                return killed || (process is null ? ended is not null || socket is not { Connected: true } : process.HasExited);
-            }
-            catch (InvalidOperationException)
-            {
-                // Disposed: the process is no longer this server's to ask about.
-                return true;
-            }
-        }
-    }
+    public bool HasExited => killed || (process is null ? ended is not null || socket is not { Connected: true } : !DotnetProcesses.Runs(process));
 
     /// <summary>Starts the Roslyn language server Passenger ships (under <c>roslyn/</c> beside the app, run from its copy
     /// in <paramref name="stateCache"/> where it may not write there, <see cref="RoslynServerFolder"/>), initializes it for
@@ -575,7 +561,7 @@ public sealed class LanguageServer : IAsyncDisposable
                 {
                     throw new LanguageServerFailed($"nothing listens on port {port}", LspMethods.Initialize, refused) { Ended = true };
                 }
-                if (process.HasExited)
+                if (!DotnetProcesses.Runs(process))
                 {
                     throw new LanguageServerFailed($"it ended ({ExitCodes.Said(process.ExitCode)}) before it listened on port {port}", LspMethods.Initialize, refused) { Ended = true };
                 }

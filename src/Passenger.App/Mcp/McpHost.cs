@@ -339,7 +339,7 @@ public static partial class McpHost
         }
         foreach (string path in Directory.EnumerateFiles(sockets))
         {
-            if (!path.EndsWith(AtomicFile.Temporary, StringComparison.Ordinal) && ProcessOf(path) is int pid && !Running(pid))
+            if (!path.EndsWith(AtomicFile.Temporary, StringComparison.Ordinal) && ProcessOf(path) is int pid && !DotnetProcesses.Runs(pid))
             {
                 try
                 {
@@ -348,19 +348,6 @@ public static partial class McpHost
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
                 }
-            }
-        }
-
-        static bool Running(int pid)
-        {
-            try
-            {
-                using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(pid);
-                return !process.HasExited;
-            }
-            catch (ArgumentException)
-            {
-                return false;
             }
         }
     }

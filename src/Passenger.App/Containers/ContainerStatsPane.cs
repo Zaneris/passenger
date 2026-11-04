@@ -89,7 +89,7 @@ public sealed class ContainerStatsPane : DockPanel
         UiThread.Check();
         string[] running = row is null ? [] : [.. row.Containers.Where(c => c.IsRunning).Select(c => c.Id)];
         string? next = running.Length == 0 ? null : string.Join(',', running);
-        if (next == key && (next is null || forking || streaming is { HasExited: false }))
+        if (next == key && (next is null || forking || streaming is { } stream && DotnetProcesses.Runs(stream)))
         {
             return;
         }

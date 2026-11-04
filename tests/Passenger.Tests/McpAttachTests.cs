@@ -108,7 +108,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         // Gone already, the signal finds no process, which is as good.
         await ChildProcesses.RunAsync(ChildProcesses.Command("/bin/kill", ["-TERM", proxy.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)]),
             limit: TimeSpan.FromSeconds(30), answers: [1], cancel: Cancel);
-        await Until(() => proxy.HasExited, "the agent's server to end");
+        await Until(() => !DotnetProcesses.Runs(proxy), "the agent's server to end");
         Assert.Equal(0, proxy.ExitCode);
         await Until(() => !Processes.IsRunning(started), "the Passenger the agent started to end with it");
         Assert.Empty(Directory.Exists(sockets) ? Directory.GetFiles(sockets, "*.sock") : []);

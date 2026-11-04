@@ -322,25 +322,13 @@ internal sealed class WpfPreviewHost : IPreviewHost
         {
             string name = Path.GetFileName(folder);
             int dash = name.IndexOf('-', StringComparison.Ordinal);
-            if (dash > 0 && int.TryParse(name[..dash], out int owner) && owner != Environment.ProcessId && !Running(owner))
+            if (dash > 0 && int.TryParse(name[..dash], out int owner) && owner != Environment.ProcessId && !DotnetProcesses.Runs(owner))
             {
                 Delete(folder);
             }
         }
     }
 
-    private static bool Running(int id)
-    {
-        try
-        {
-            using Process found = Process.GetProcessById(id);
-            return !found.HasExited;
-        }
-        catch (Exception missing) when (missing is ArgumentException or InvalidOperationException)
-        {
-            return false;
-        }
-    }
 
     private static void Delete(string folder)
     {

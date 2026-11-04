@@ -77,6 +77,18 @@ internal static class Rules
             + "is back; BackgroundWork.Unheld and UnheldThread are for work that must hold nothing, as a loop as long-lived "
             + "as what it serves, each caller saying why.");
 
+    public static readonly DiagnosticDescriptor ProcessEnd = new(
+        "PSG0007",
+        "Whether a process runs is read past DotnetProcesses",
+        "Process.HasExited reads a zombie of another's as running and throws for a process Windows will not open: ask DotnetProcesses.Runs",
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "Whether a process runs is answered in one place, DotnetProcesses.Runs, for a process Passenger started (by .NET's "
+            + "hold on it, which hears of its end however soon its id is taken again) and for one it found: a zombie, which waits "
+            + "for another's parent and which HasExited finds running, counts as ended, and a process Windows will not open for "
+            + "HasExited (another user's, an elevated one) is asked by its id.");
+
     public static readonly DiagnosticDescriptor KeysUnread = new(
         "PSG9001",
         "A resource keys file is not read",

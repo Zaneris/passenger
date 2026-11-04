@@ -290,7 +290,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         ConsoleSink sink = console.Sink;
         Landing landing = new();
         started.Exited += (_, _) => landing.Ended();
-        if (started.HasExited)
+        if (!DotnetProcesses.Runs(started))
         {
             landing.Ended();
         }

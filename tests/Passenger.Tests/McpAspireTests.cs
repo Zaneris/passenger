@@ -239,7 +239,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             Assert.Contains("starting", Ui.AwaitPumped(reading, "reading the starting AppHost's console"), StringComparison.Ordinal);
 
             giveUp.Cancel();
-            Ui.PumpUntil(() => starting.IsCompleted && window.AspireRuntime.Apps.Count == 0 && started.HasExited,
+            Ui.PumpUntil(() => starting.IsCompleted && window.AspireRuntime.Apps.Count == 0 && !DotnetProcesses.Runs(started),
                 "canceling the start to roll back the AppHost and listener", TimeSpan.FromMinutes(1));
             Assert.ThrowsAny<OperationCanceledException>(() => Ui.AwaitPumped(starting, "the start given up"));
             Assert.False(Await(Waiting.Apart(async () =>
@@ -383,7 +383,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         int[] owned = [.. Processes.Descendants(passenger.Id), hostId, apiId, webId];
         Assert.Contains(hostId, Processes.Descendants(passenger.Id));
         EndInput(passenger);
-        await Until(() => passenger.HasExited && owned.All(id => !Processes.IsRunning(id)),
+        await Until(() => !DotnetProcesses.Runs(passenger) && owned.All(id => !Processes.IsRunning(id)),
             "EOF to end windowless Passenger, both services, AppHost, DCP, dashboard and the remaining owned child tree without a dispatcher pump");
         using TcpClient closed = new();
         await Assert.ThrowsAsync<SocketException>(async () => await closed.ConnectAsync(IPAddress.Loopback, port, Cancel));

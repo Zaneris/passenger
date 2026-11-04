@@ -509,22 +509,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             }
         }
 
-        private static bool Alive(Process? process, int id)
-        {
-            if (process is not null)
-            {
-                return !process.HasExited;
-            }
-            try
-            {
-                using Process running = Process.GetProcessById(id);
-                return !running.HasExited;
-            }
-            catch (Exception error) when (error is ArgumentException or InvalidOperationException)
-            {
-                return false;
-            }
-        }
+        private static bool Alive(Process? process, int id) => process is not null ? DotnetProcesses.Runs(process) : DotnetProcesses.Runs(id);
 
         /// <summary>Ends a test host: the runner's own with all it started, the debugger's alone.</summary>
         private static void End(Process? process, int id)

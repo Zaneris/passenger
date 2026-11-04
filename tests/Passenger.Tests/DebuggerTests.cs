@@ -2255,7 +2255,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             Assert.True(window.Perform(AppActions.Detach), "Detach could not run on the program attached to");
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugger to let go of the program");
             Assert.Equal("Detached from ReadsInputConsoleApp, which runs on", window.Status);
-            Assert.False(program.HasExited, "Detach ended the program it let go of");
+            Assert.True(DotnetProcesses.Runs(program), "Detach ended the program it let go of");
             Ui.Run(window, AppActions.ReattachToProcess);
             Ui.WaitFor(() => window.Debugger.Session is { State: DebugState.Running }, "Reattach to Process to attach to the program again");
 

@@ -312,7 +312,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
             }
         }
         started.Exited += (_, _) => Exited();
-        if (started.HasExited)
+        if (!DotnetProcesses.Runs(started))
         {
             Exited();
         }

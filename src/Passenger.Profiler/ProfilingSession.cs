@@ -93,7 +93,7 @@ public sealed class ProfilingSession : IAsyncDisposable
     /// <summary>Whether the program has ended, as far as the run can tell: one put away (<see cref="DisposeAsync"/>) is
     /// heard of no more. For a program elsewhere, whether its recording there has ended: with the program, its container,
     /// or the run.</summary>
-    public bool HasExited => Volatile.Read(ref disposed) != 0 || process.HasExited;
+    public bool HasExited => Volatile.Read(ref disposed) != 0 || !DotnetProcesses.Runs(process);
 
     /// <summary>Whether the program was running before the profiler came, and is not the profiler's to end or to type to.</summary>
     public bool Attached => attached ?? (connector is null && Samples);
@@ -211,7 +211,7 @@ public sealed class ProfilingSession : IAsyncDisposable
         if (connector is null)
         {
             string? said = await SaidLastAsync();
-            string why = process.HasExited
+            string why = !DotnetProcesses.Runs(process)
                 ? $"{target.Name} never reached the profiler: it ended first, with exit code {process.ExitCode}{(said is null ? ". Is it a .NET program?" : $" ({said})")}"
                 : $"{target.Name} never reached the profiler in 30 s: is it a .NET program?";
             await FailAsync();
@@ -232,7 +232,7 @@ public sealed class ProfilingSession : IAsyncDisposable
         catch (Exception error) when (DiagnosticsFailures.Of(error))
         {
             string? said = await SaidLastAsync();
-            string why = process.HasExited
+            string why = !DotnetProcesses.Runs(process)
                 ? $"{target.Name} ended as the profiler began, with exit code {process.ExitCode}{(said is null ? string.Empty : $" ({said})")}"
                 : $"The profiler could not begin recording {target.Name}: {error.Message}";
             session?.Dispose();
@@ -249,7 +249,7 @@ public sealed class ProfilingSession : IAsyncDisposable
         // The last line it wrote on its standard error once it has ended, read to its end unless that takes a while.
         async Task<string?> SaidLastAsync()
         {
-            if (process.HasExited)
+            if (!DotnetProcesses.Runs(process))
             {
                 await Task.WhenAny(reading, Task.Delay(TimeSpan.FromSeconds(2)));
             }
@@ -536,7 +536,7 @@ public sealed class ProfilingSession : IAsyncDisposable
     /// nothing of the profiler's left listening for it.</summary>
     public async Task<Snapshot> StopAsync()
     {
-        if (Interlocked.Exchange(ref stopped, 1) == 0 && !process.HasExited && Samples)
+        if (Interlocked.Exchange(ref stopped, 1) == 0 && DotnetProcesses.Runs(process) && Samples)
         {
             if (session is null)
             {
@@ -610,7 +610,7 @@ public sealed class ProfilingSession : IAsyncDisposable
     /// is taken only <paramref name="intoOutput"/>, else a <see cref="DumpIntoOutputException"/> says so first.</summary>
     public Task<MemorySnapshot> TakeMemorySnapshotAsync(bool intoOutput = false, CancellationToken cancellation = default)
     {
-        if (process.HasExited)
+        if (!DotnetProcesses.Runs(process))
         {
             throw new InvalidOperationException("The program has ended; a memory snapshot needs it running");
         }
@@ -662,7 +662,7 @@ public sealed class ProfilingSession : IAsyncDisposable
             await containerHeap.DisposeAsync();
         }
         session?.Dispose();
-        if (session is null && Samples && !process.HasExited)
+        if (session is null && Samples && DotnetProcesses.Runs(process))
         {
             // The tools elsewhere stop as their input ends; a CLI that does not go is ended, which closes it there too.
             CloseToolsInput();
