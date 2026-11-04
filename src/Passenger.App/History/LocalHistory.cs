@@ -108,6 +108,10 @@ public sealed class LocalHistory
     private (long Set, string Name)? activity;
     private int activityDepth;
     private (long Set, string Name, DateTime Until)? lingering;
+
+    /// <summary>When each named activity's moment ended (its end, and <see cref="Lingering"/> after), by its set: a change
+    /// written to a file after it is no longer that activity's, however early the watcher heard the file.</summary>
+    private readonly Dictionary<long, DateTime> endedAt = [];
     /// <summary>The change set the saves made on this flow are kept under, whatever activity is under way (<see cref="Activity.Own"/>).</summary>
     private readonly AsyncLocal<(long Set, string Name)?> own = new();
 
@@ -192,6 +196,11 @@ public sealed class LocalHistory
             {
                 lingering = (ended.Set, ended.Name, DateTime.UtcNow + Lingering);
                 activity = null;
+                foreach (long old in endedAt.Where(e => e.Value < DateTime.UtcNow - HeardWithin).Select(e => e.Key).ToList())
+                {
+                    endedAt.Remove(old);
+                }
+                endedAt[ended.Set] = lingering.Value.Until;
             }
         }
     }
@@ -776,6 +785,9 @@ public sealed class LocalHistory
     {
         // What another Passenger on the same state made and kept is known, not a change made elsewhere.
         CatchUp();
+        DateTime? until = NamedUntil(set, name);
+        // A file written after the activity that named the notice is over holds what someone else wrote since: external, now.
+        long? laterSet = null;
         List<(string Path, string Hash, byte[] Bytes, bool Made)> found = [];
         List<(string Path, string Hash)> gone = [];
         List<string> later = [];
@@ -834,9 +846,11 @@ public sealed class LocalHistory
                 continue;
             }
             Store(bytes);
+            bool late = until is { } limit && WrittenAt(path) > limit;
+            (long Set, DateTimeOffset Time, string Name) named = late ? (laterSet ??= NewSet(), Keeping.Clock(), ExternalChange) : (set, time, name);
             made.Add(!isKnown
-                ? new HistoryEvent(isNew ? set : NewSet(), time, isNew ? HistoryKind.Created : HistoryKind.Seen, path, null, null, hash, isNew ? name : null)
-                : new HistoryEvent(set, time, was is null ? HistoryKind.Created : HistoryKind.Changed, path, null, was, hash, name));
+                ? new HistoryEvent(isNew ? named.Set : NewSet(), named.Time, isNew ? HistoryKind.Created : HistoryKind.Seen, path, null, null, hash, isNew ? named.Name : null)
+                : new HistoryEvent(named.Set, named.Time, was is null ? HistoryKind.Created : HistoryKind.Changed, path, null, was, hash, named.Name));
         }
         foreach ((string path, string hash) in gone.Where(g => !paired.Contains(g.Path)))
         {
@@ -863,6 +877,29 @@ public sealed class LocalHistory
                 }
             }
             found.Add((file, hash, bytes, IsNew(file)));
+        }
+    }
+
+    /// <summary>Until when a notice's set names what it reads: an activity's while it is under way (no end), one ended until
+    /// its moment did; null for an external change's, which names whatever it reads.</summary>
+    private DateTime? NamedUntil(long set, string name)
+    {
+        lock (gate)
+        {
+            return name == ExternalChange ? null : activity?.Set == set ? DateTime.MaxValue : endedAt.TryGetValue(set, out DateTime until) ? until : null;
+        }
+    }
+
+    /// <summary>When a file was last written, as the system has it; the earliest time where it cannot say.</summary>
+    private static DateTime WrittenAt(string file)
+    {
+        try
+        {
+            return File.GetLastWriteTimeUtc(file);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return DateTime.MinValue;
         }
     }
 
