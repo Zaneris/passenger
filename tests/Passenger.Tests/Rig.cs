@@ -2225,7 +2225,10 @@ public static class TestGit
         Passenger.Core.ChildResult result;
         try
         {
-            result = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command("git", arguments, folder), input, limit: Limit.Scaled());
+            System.Diagnostics.ProcessStartInfo start = Passenger.Core.ChildProcesses.Command("git", arguments, folder);
+            // Git for Windows' own gpg, which a signing test's commits are verified with, reads the run's keyring only as /c/….
+            Passenger.Vcs.MsysGpg.FitGit(start);
+            result = await Passenger.Core.ChildProcesses.RunAsync(start, input, limit: Limit.Scaled());
         }
         catch (TimeoutException hung)
         {
@@ -2382,12 +2385,12 @@ public static class TestGpgKeys
     public static async Task<string> MakeAsync(string passphrase, string? gpg = null)
     {
         gpg ??= Gpg!;
-        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(gpg,
+        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(Of(gpg,
             ["--batch", "--pinentry-mode", "loopback", "--passphrase-fd", "0", "--quick-gen-key", "Passenger Tests <tests@passenger.invalid>", "ed25519", "sign", "never"]),
             passphrase + "\n", Limit.Scaled());
         Assert.True(made.Succeeded, $"gpg made no key to sign with, exiting {made.ExitCode}: {made.Error}");
-        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(gpg,
-            ["--list-secret-keys", "--with-colons", "tests@passenger.invalid"]), limit: Limit.Scaled());
+        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(Of(gpg, ["--list-secret-keys", "--with-colons", "tests@passenger.invalid"]),
+            limit: Limit.Scaled());
         string id = listed.Output.Split('\n').Select(l => l.Split(':')).First(f => f[0] == "sec")[4];
         await EndAgentAsync(gpg);
         return id;
@@ -2404,8 +2407,17 @@ public static class TestGpgKeys
         string beside = gpg is null ? string.Empty : Path.Combine(Path.GetDirectoryName(gpg)!, OperatingSystem.IsWindows() ? "gpgconf.exe" : "gpgconf");
         if ((File.Exists(beside) ? beside : Passenger.Core.Programs.OnPath(OperatingSystem.IsWindows() ? "gpgconf.exe" : "gpgconf")) is { } gpgconf)
         {
-            await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(gpgconf, ["--kill", "gpg-agent"]), limit: Limit.Scaled());
+            await Passenger.Core.ChildProcesses.RunAsync(Of(gpgconf, ["--kill", "gpg-agent"]), limit: Limit.Scaled());
         }
+    }
+
+    /// <summary>A GnuPG program's start, its home the run's in the form the program reads it (Git for Windows' own MSYS one
+    /// takes only /c/…).</summary>
+    private static System.Diagnostics.ProcessStartInfo Of(string program, IReadOnlyList<string> arguments)
+    {
+        System.Diagnostics.ProcessStartInfo start = Passenger.Core.ChildProcesses.Command(program, arguments);
+        Passenger.Vcs.MsysGpg.Fit(start, program);
+        return start;
     }
 }
 

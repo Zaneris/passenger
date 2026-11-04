@@ -120,4 +120,19 @@ public class SigningTests
         Assert.Equal(gpg, GpgPrograms.Bundled(git, "gpg.exe", path => path == gpg));
         Assert.Null(GpgPrograms.Bundled(git, "gpg.exe", _ => false));
     }
+
+    /// <summary>Git for Windows' own gpg, an MSYS program (its msys-2.0.dll beside it), is given its home as MSYS reads a
+    /// path, its drive under /, which it takes for absolute: a Windows path it would join to its working folder.</summary>
+    [Fact]
+    public void An_msys_gpgs_home_is_given_in_msyss_form_its_drive_under_the_root()
+    {
+        Assert.Equal("/c/Users/me/AppData/Local/Temp/run/gnupg", MsysGpg.Posix(@"C:\Users\me\AppData\Local\Temp\run\gnupg"));
+        Assert.Equal("/d/keys", MsysGpg.Posix("D:/keys/"));
+        Assert.Equal("/c", MsysGpg.Posix(@"C:\"));
+        Assert.Equal("//server/share/gnupg", MsysGpg.Posix(@"\\server\share\gnupg"));
+        Assert.Equal("/home/me/.gnupg", MsysGpg.Posix("/home/me/.gnupg"));
+        string bin = Path.Combine(Path.GetTempPath(), "Git", "usr", "bin");
+        Assert.True(MsysGpg.Is(Path.Combine(bin, "gpg.exe"), path => path == Path.Combine(bin, "msys-2.0.dll")));
+        Assert.False(MsysGpg.Is(Path.Combine(Path.GetTempPath(), "GnuPG", "bin", "gpg.exe"), path => path == Path.Combine(bin, "msys-2.0.dll")));
+    }
 }

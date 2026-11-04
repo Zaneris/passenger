@@ -57,6 +57,7 @@ public static class GpgLoopback
     private static async Task<int> SignAsync(string gpg, string[] args, string file, string socket)
     {
         ProcessStartInfo start = ChildProcesses.Command(gpg, ["--pinentry-mode", "loopback", "--command-fd", "0", "--output", "-", .. args, "--", file]);
+        MsysGpg.Fit(start, gpg);
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
@@ -130,6 +131,7 @@ public static class GpgLoopback
     private static async Task<(int Code, byte[] Output, byte[] Errors)> RunX509Async(string gpgsm, IReadOnlyList<string> args, string? input)
     {
         ProcessStartInfo start = ChildProcesses.Command(gpgsm, args);
+        MsysGpg.Fit(start, gpgsm);
         start.Environment["LANGUAGE"] = "C";
         start.Environment["LC_ALL"] = "C";
         start.RedirectStandardInput = true;
@@ -155,6 +157,7 @@ public static class GpgLoopback
     private static async Task<int> ThroughAsync(string gpg, string[] args)
     {
         ProcessStartInfo start = ChildProcesses.Command(gpg, args);
+        MsysGpg.Fit(start, gpg);
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;

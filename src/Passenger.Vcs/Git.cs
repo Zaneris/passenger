@@ -1954,6 +1954,7 @@ public sealed partial class Git
         start.Environment["GIT_TERMINAL_PROMPT"] = "0";
         // A background status or diff never takes the index's lock, so a stash, commit or checkout then never fails on it.
         start.Environment["GIT_OPTIONAL_LOCKS"] = "0";
+        MsysGpg.FitGit(start);
         return start;
     }
 }
