@@ -221,7 +221,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 missing.Add(new Finding("info", null, $"Not yet checked as it stands by {string.Join(", ", unanswered)}: what {who} found before is listed",
                     Relative(marked.Path), 1, 1));
             }
-            if (Session.Web is { } web && web.For(marked) is { Lsp: null })
+            // A GDScript's own checks are Passenger's reading's, Godot's server or none.
+            if (Session.Web is { } web && web.For(marked) is { Lsp: null, Kind: not WebServerKind.GDScript })
             {
                 if (Languages.Language.ForPath(marked.Path) != Languages.Language.Dockerfile && !global::Passenger.App.Containers.ComposeFiles.IsCompose(marked.Path))
                 {
@@ -348,6 +349,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 throw Lacks(served, "Find Usages", MSBuildHas);
             case GodotServed:
                 throw Lacks(served, "Find Usages", GodotHas);
+            case ScriptServed script:
+                script.Web.AskServer?.Invoke();
+                throw new InvalidOperationException($"No member or local of a script is at {place} as Passenger reads the project's scripts, and no Godot server serves "
+                    + $"{Path.GetFileName(script.Document.Path)} yet to be asked: one is starting for it");
             case ShaderServed shader:
                 return await window.Assist.Languages.Shaders.UsesAsync(shader.Document, offset) is (_, { } shaderUses)
                     ? ByFile(null, await Places(shaderUses, cancel))
@@ -523,6 +528,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 throw Lacks(served, "Rename", MSBuildHas);
             case ShaderServed:
                 throw Lacks(served, "Rename", ShaderHas);
+            case ScriptServed script:
+                script.Web.AskServer?.Invoke();
+                throw new InvalidOperationException($"No member or local of a script is at {Relative(script.Document.Path)}:{at.Line}:{at.Column} as Passenger reads the "
+                    + $"project's scripts, and no Godot server serves it yet to be asked: one is starting for it");
         }
         ServerServed server = (ServerServed)served;
         string? resource = null;

@@ -18,7 +18,7 @@ public partial class MainWindow
         actions!.Add(new IdeAction(AppActions.ContextHelp, "Context Help", "Help", _ => IdeErrors.Observe(ContextHelpAsync()))
         {
             WhyNot = _ => Editors.Active is not { } file ? Refusals.NoFile
-                : HelpServer(file) is null && !CSharp.GodotShaderAssist.InShader(file, Editors.CodeEditor.Selections.Primary.Caret) ? Refusals.NoContextHelp(file.Name) : null,
+                : HelpServer(file) is null && !ReadsScript(file) && !CSharp.GodotShaderAssist.InShader(file, Editors.CodeEditor.Selections.Primary.Caret) ? Refusals.NoContextHelp(file.Name) : null,
             Menus = [new MenuPlace("Help", 0, 1)],
         });
 
@@ -28,6 +28,9 @@ public partial class MainWindow
         : session.Web?.For(file) is { Kind: Web.WebServerKind.GDScript, Lsp: { } gdscript } ? (gdscript, true)
         : null;
 
+    /// <summary>Whether Passenger's own reading names what a GDScript's caret is on, as no server need.</summary>
+    private bool ReadsScript(OpenDocument file) => Godot.GodotScriptTypes.IsScript(file.Path) && session.GodotScriptTypes is not null;
+
     private async Task ContextHelpAsync()
     {
         if (Editors.Active is { } shader && CSharp.GodotShaderAssist.InShader(shader, Editors.CodeEditor.Selections.Primary.Caret))
@@ -35,18 +38,21 @@ public partial class MainWindow
             await ShaderHelpAsync(shader);
             return;
         }
-        if (Editors.Active is not { } file || HelpServer(file) is not ({ } lsp, bool script))
+        if (Editors.Active is not { } file || HelpServer(file) is null && !ReadsScript(file))
         {
             return;
         }
+        (LspDocument Lsp, bool Script)? help = HelpServer(file);
         using Working? work = actions!.Work.Begin(AppActions.ContextHelp, "Finding the caret's class or member in Godot's class reference");
         int offset = Editors.CodeEditor.Selections.Primary.Caret;
         string? godot = settings.GodotExecutable;
         try
         {
-            GodotDocItem? item = script ? (await lsp.HoverAsync(offset)) is { } card ? GodotDocs.OfScriptCard(Shapes.Text(card.Contents)) : null
+            // A script by Passenger's own reading first, Godot's server for what it names none of.
+            GodotDocItem? item = ReadsScript(file) ? await assist.GDScriptDocAtAsync(file, offset) ?? await ServedDocAsync(help, offset)
+                : help is (not null, true) ? await ServedDocAsync(help, offset)
                 : await assist.GodotThemeDocAsync(file, offset) is { } themed ? themed
-                : (await lsp.ExtensionAsync<GodotNamesFound>(Handlers.GodotNames, new GodotNamesAsked(lsp.PlaceOf(offset), false))).Engine is { } engine
+                : help is ({ } lsp, false) && (await lsp.ExtensionAsync<GodotNamesFound>(Handlers.GodotNames, new GodotNamesAsked(lsp.PlaceOf(offset), false))).Engine is { } engine
                     ? new GodotDocItem(engine.Class, engine.Kind switch
                     {
                         GodotNameKind.Method => GodotDocs.Method,
@@ -75,6 +81,11 @@ public partial class MainWindow
             ActionWork.Tell(succeeded, said);
         }
     }
+
+    /// <summary>The class reference's place of the native class or member GDScript's server's card at an offset is of; null
+    /// where no GDScript server serves the file, or its card names neither.</summary>
+    private static async Task<GodotDocItem?> ServedDocAsync((LspDocument Lsp, bool Script)? help, int offset) =>
+        help is ({ } served, true) && await served.HoverAsync(offset) is { } card ? GodotDocs.OfScriptCard(Shapes.Text(card.Contents)) : null;
 
     /// <summary>Context Help in a shader: the place in Godot's shading reference of what is at the caret, browsed.</summary>
     private async Task ShaderHelpAsync(OpenDocument shader)

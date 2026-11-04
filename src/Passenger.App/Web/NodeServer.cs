@@ -60,6 +60,10 @@ internal sealed class NodeServer
     /// <summary>It cannot run: <see cref="Problem"/> says why, <see cref="State"/> in a few words.</summary>
     public Action? Unavailable { get; init; }
 
+    /// <summary>Called where its start found nothing to start yet (<see cref="Godot.GodotScripts.Unstarted"/>), its files
+    /// left to Passenger's own reading.</summary>
+    public Action? Unasked { get; init; }
+
     /// <summary>It asked for every file's diagnostics again.</summary>
     public Action? Refresh { get; init; }
 
@@ -122,6 +126,13 @@ internal sealed class NodeServer
                 catch (Godot.GodotScripts.Unavailable unavailable)
                 {
                     Fail(unavailable.Message, unavailable.Label);
+                    return null;
+                }
+                catch (Godot.GodotScripts.Unstarted)
+                {
+                    // Nothing to start yet: its files are Passenger's own reading's until one is asked for, which starts it then.
+                    State = "Passenger's own reading";
+                    Unasked?.Invoke();
                     return null;
                 }
                 if (Configure is { } configureOwn)

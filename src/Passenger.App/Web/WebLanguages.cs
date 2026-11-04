@@ -39,7 +39,8 @@ public sealed record WebServerLost(string Said, Action? StartAgain);
 
 /// <summary>JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles, YAML and GDScript for the open folder: each kind's
 /// language server (the npm packages carried under <c>web/</c>, run on the machine's Node.js through ChildProcesses;
-/// GDScript's in Godot's editor) started as the first file that needs it opens, every open file of its languages kept in step with it (a
+/// GDScript's in Godot's editor, the person's joined, a headless one started only when asked, <see cref="AskGodot"/>)
+/// started as the first file that needs it opens, every open file of its languages kept in step with it (a
 /// <see cref="WebDocument"/> each), and ended with the folder. Without a Node.js to run them (none found, or one too
 /// old), each file says why in its banner and the status bar, keeping its colours. A server that ends (as it starts too)
 /// or stops answering is started again with its files, a few times at most, then left stopped until a person starts it
@@ -70,7 +71,7 @@ public sealed class WebLanguages : IAsyncDisposable
     public const string GDScriptIdleVariable = "PASSENGER_GDSCRIPT_IDLE_MS";
 
     /// <summary>How long GDScript's server, a headless Godot editor of about 800 MB, is kept once no GDScript is open: the
-    /// next one opened starts it again in a few seconds, Passenger's own reading of the scripts answering meanwhile.</summary>
+    /// next asking starts it again in a few seconds, Passenger's own reading of the scripts answering meanwhile.</summary>
     private static TimeSpan GDScriptIdle => EnvironmentValues.Milliseconds(GDScriptIdleVariable, TimeSpan.FromMinutes(3));
 
     /// <summary>The wait for GDScript's server to be let go, while one is under way.</summary>
@@ -124,6 +125,14 @@ public sealed class WebLanguages : IAsyncDisposable
 
     /// <summary>The Godot project GDScript's server answers for: the first GDScript file's (<see cref="Godot.GodotScripts.ProjectOf"/>).</summary>
     private string? godotProject;
+
+    /// <summary>Whether opening a GDScript may start a headless Godot editor to serve it, as a test of Godot's own server
+    /// asks; else one starts only once something Passenger's own reading has no answer for asks (<see cref="AskGodot"/>),
+    /// the person's own editor joined meanwhile where one is open on the project.</summary>
+    public bool GodotHeadlessAtOpen { get; init; }
+
+    /// <summary>Whether GDScript's server was asked for since it was last let go, so its start may be a headless editor.</summary>
+    private bool godotAsked;
 
     /// <summary>ESLint, for the files it checks.</summary>
     public EslintService Eslint { get; }
@@ -196,7 +205,10 @@ public sealed class WebLanguages : IAsyncDisposable
         {
             return;
         }
-        WebDocument features = new(document, language.Kind, language.LanguageId) { Stylesheets = Stylesheets };
+        WebDocument features = new(document, language.Kind, language.LanguageId)
+        {
+            Stylesheets = Stylesheets, AskServer = language.Kind == WebServerKind.GDScript ? AskGodot : null,
+        };
         documents[document] = features;
         if (language.Kind == WebServerKind.GDScript)
         {
@@ -265,6 +277,7 @@ public sealed class WebLanguages : IAsyncDisposable
                     return;
                 }
                 IdeErrors.Observe(server.End());
+                godotAsked = false;
                 IdeErrors.Write($"GDScript's language server let go for {folder}: no GDScript open for {GDScriptIdle.TotalSeconds:0} s");
                 StateChanged?.Invoke(this, EventArgs.Empty);
             });
@@ -546,6 +559,7 @@ public sealed class WebLanguages : IAsyncDisposable
             Listen = started => started.Server.TypeScriptVersion += (_, _) => UiThread.Post(() => StateChanged?.Invoke(this, EventArgs.Empty)),
             Started = started => Started(kind, started),
             Unavailable = () => Unavailable(kind),
+            Unasked = () => Unasked(kind),
             Refresh = () =>
             {
                 foreach (WebDocument features in documents.Values.Where(d => d.Kind == kind))
@@ -559,11 +573,30 @@ public sealed class WebLanguages : IAsyncDisposable
         return made;
     }
 
-    /// <summary>GDScript's server for the project of its first file, on the Godot Settings names as its start begins.</summary>
+    /// <summary>GDScript's server for the project of its first file, on the Godot Settings names as its start begins: the
+    /// person's editor's, or a headless editor's once one was asked for.</summary>
     private Func<CancellationToken, Task<LanguageSession>> GodotStart()
     {
         (string? project, string? setting, IReadOnlyDictionary<string, string> environment) = (godotProject, settings().GodotExecutable, GodotEnvironment);
-        return cancel => Godot.GodotScripts.StartAsync(project, setting, environment, LogFolder, cancel);
+        bool headless = godotAsked || GodotHeadlessAtOpen;
+        return cancel => Godot.GodotScripts.StartAsync(project, setting, environment, LogFolder, headless, cancel);
+    }
+
+    /// <summary>Godot's server asked for, for what Passenger's own reading of a GDScript has no answer for: started, a
+    /// headless editor where the person's own serves none, unless one serves, is starting or cannot start.</summary>
+    public void AskGodot()
+    {
+        UiThread.Check();
+        if (disposed || !documents.Values.Any(d => d.Kind == WebServerKind.GDScript))
+        {
+            return;
+        }
+        godotAsked = true;
+        NodeServer server = ServerFor(WebServerKind.GDScript);
+        if (server.Session is null && server.Problem is null && server.Starting is null)
+        {
+            Start(server);
+        }
     }
 
     private void Start(NodeServer server)
@@ -602,6 +635,16 @@ public sealed class WebLanguages : IAsyncDisposable
         {
             documents[open].Unreached();
             Announce(open);
+        }
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>A kind's server found nothing to start yet: its files wait for no checks but Passenger's own reading's.</summary>
+    private void Unasked(WebServerKind kind)
+    {
+        foreach (WebDocument features in documents.Values.Where(d => d.Kind == kind))
+        {
+            features.Unreached();
         }
         StateChanged?.Invoke(this, EventArgs.Empty);
     }

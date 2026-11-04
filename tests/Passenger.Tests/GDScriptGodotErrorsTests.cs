@@ -316,7 +316,7 @@ public sealed class GDScriptGodotErrorsTests
         {
             TestFolders.Write(folder, file, script);
         }
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home"), GodotHeadlessAtOpen = true };
         window.Show();
         window.OpenFolder(folder);
         Ui.Settle();

@@ -35,7 +35,7 @@ public sealed class GDScriptOutlineTests
     [AvaloniaFact]
     public void Structure_lists_a_scripts_members_as_written_follows_one_typed_and_goes_to_one_chosen()
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home"), GodotHeadlessAtOpen = true };
         window.Show();
         window.OpenFolder(folder);
         Ui.Settle();

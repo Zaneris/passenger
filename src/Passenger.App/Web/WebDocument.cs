@@ -103,6 +103,10 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// <summary>Whether its server has started and answers for it.</summary>
     public bool Serving => session is not null;
 
+    /// <summary>What asks for its server where none serves it, for what Passenger's own reading has no answer for; none
+    /// but for a GDScript, whose server starts only so.</summary>
+    public Action? AskServer { get; init; }
+
     public IReadOnlyList<Diagnostic> Diagnostics => diagnostics.Placed;
 
     /// <summary>ESLint's share of the file, while ESLint checks it.</summary>

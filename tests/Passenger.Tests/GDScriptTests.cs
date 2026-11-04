@@ -20,7 +20,8 @@ namespace Passenger.Tests;
 /// goes to a declaration, keeping the project's editor layout as it was, and its project.godot where an editor plugin
 /// saves it; an error typed shows in Problems as typed, a warning with its name; and a project deleted under that editor
 /// is let go of, said once; what that editor makes (a script's .uid) is taken away, a plugin runs not there from Godot 4.5,
-/// another program's writes are kept, and the editor is let go once no script is open. Without a Godot (GODOT, the PATH,
+/// another program's writes are kept, and the editor is let go once no script is open; and, as a person's window opens a
+/// script, none is started until something Passenger's own reading has no answer for asks for it. Without a Godot (GODOT, the PATH,
 /// Applications) each test skips saying why. A Godot editor of its own each, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GDScriptTests
@@ -293,6 +294,7 @@ public sealed class GDScriptTests
             Height = 800,
             StartsLanguageServer = false,
             GodotEnvironment = GodotTests.Game.Home(folder + "-home"),
+            GodotHeadlessAtOpen = true,
         };
         window.Show();
         window.OpenFolder(folder);
@@ -344,6 +346,7 @@ public sealed class GDScriptTests
             Height = 800,
             StartsLanguageServer = false,
             GodotEnvironment = GodotTests.Game.Home(folder + "-home"),
+            GodotHeadlessAtOpen = true,
         };
         window.Show();
         window.OpenFolder(folder);
@@ -409,6 +412,35 @@ public sealed class GDScriptTests
         }
     }
 
+    /// <summary>A script opened starts no Godot editor where none of the person's serves the project: Passenger's own reading
+    /// marks and answers it. Go to Declaration of a name that reading declares nowhere (an engine's method) asks for one,
+    /// a headless editor, which serves the script from then.</summary>
+    [AvaloniaFact]
+    public void A_script_opened_starts_no_godot_editor_until_a_question_passengers_reading_has_no_answer_for_asks_for_one()
+    {
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        try
+        {
+            Assert.Null(window.OpenFile(Path.Combine(folder, "main.gd")));
+            Ui.Settle();
+            OpenDocument document = window.EditorArea.Active!;
+            Assert.True(EditorsServing(folder) == 0 && window.Session.Web?.For(document)?.Lsp is null,
+                $"{EditorsServing(folder)} headless Godot editors started as the script opened, where none was to");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "get_tre");
+            Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
+            Ui.WaitFor(() => window.Session.Web?.For(document)?.Lsp is not null && window.Session.Web.StateOf(document) is null,
+                () => $"Godot's server asked for by Go to Declaration of an engine method: {window.Session.Web?.StateOf(document)} {document.Notice}", TimeSpan.FromSeconds(90));
+            Assert.Equal(1, EditorsServing(folder));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>How many headless Godot editors serve a project's GDScript: Godot started on it with a language server's port.</summary>
     private static int EditorsServing(string project)
     {
@@ -436,6 +468,7 @@ public sealed class GDScriptTests
             Height = 800,
             StartsLanguageServer = false,
             GodotEnvironment = GodotTests.Game.Home(folder + "-home"),
+            GodotHeadlessAtOpen = true,
         };
         window.Show();
         window.OpenFolder(folder);

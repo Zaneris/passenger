@@ -44,7 +44,7 @@ public sealed class GDScriptRefactorCommandsTests
     [AvaloniaFact]
     public void Each_refactoring_changes_every_script_scene_and_string_naming_it_as_one_command_one_undo_takes_back()
     {
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home"), GodotHeadlessAtOpen = true };
         window.Show();
         window.OpenFolder(folder);
         Ui.Settle();

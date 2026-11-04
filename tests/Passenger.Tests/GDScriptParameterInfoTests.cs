@@ -127,6 +127,7 @@ public sealed class GDScriptParameterInfoTests
             Height = 800,
             StartsLanguageServer = false,
             GodotEnvironment = GodotTests.Game.Home(folder + "-home"),
+            GodotHeadlessAtOpen = true,
         };
         window.Show();
         window.OpenFolder(folder);

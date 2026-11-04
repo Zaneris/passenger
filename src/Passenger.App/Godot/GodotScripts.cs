@@ -53,11 +53,16 @@ public static class GodotScripts
         public string Label { get; } = label;
     }
 
-    /// <summary>The project's GDScript server, connected and initialized: the person's editor open on it where one is, else
-    /// a headless one started on the Godot Settings names (<paramref name="setting"/>), in the window's user folders for Godot
-    /// (<paramref name="environment"/>, <see cref="GodotUserFolders"/>) and its log under <paramref name="logFolder"/>.</summary>
+    /// <summary>No editor of the person's serves the project, and none was to be started: its scripts are Passenger's own
+    /// reading's until something it has no answer for asks for Godot's.</summary>
+    public sealed class Unstarted() : Exception("no Godot editor of the person's serves the project, and a headless one starts only once asked for");
+
+    /// <summary>The project's GDScript server, connected and initialized: the person's editor open on it where one is, else,
+    /// where <paramref name="headless"/>, a headless one started on the Godot Settings names (<paramref name="setting"/>), in
+    /// the window's user folders for Godot (<paramref name="environment"/>, <see cref="GodotUserFolders"/>) and its log under
+    /// <paramref name="logFolder"/>; else none (<see cref="Unstarted"/>).</summary>
     public static async Task<LanguageSession> StartAsync(string? project, string? setting, IReadOnlyDictionary<string, string> environment, string logFolder,
-        CancellationToken cancel)
+        bool headless, CancellationToken cancel)
     {
         if (project is null)
         {
@@ -71,6 +76,10 @@ public static class GodotScripts
         {
             IdeErrors.Write($"GDScript: the Godot editor open on {project} answers on port {port}");
             return own;
+        }
+        if (!headless)
+        {
+            throw new Unstarted();
         }
         string? version = await GodotExecutables.VersionAsync(found, cancel);
         int lsp = FreePort();

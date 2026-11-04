@@ -53,6 +53,7 @@ public partial class MainWindow
         DockerHub = DockerHub,
         GodotEnvironment = GodotFolders,
         StartsLanguageServer = StartsLanguageServer,
+        GodotHeadlessAtOpen = GodotHeadlessAtOpen,
         Unseen = Unseen,
         HeadStart = headStart,
     };
@@ -76,6 +77,10 @@ public partial class MainWindow
     /// <summary>The user folders every Godot this window starts keeps its settings, caches and logs in, in place of the
     /// person's: a test's (<see cref="Godot.GodotUserFolders"/>).</summary>
     public IReadOnlyDictionary<string, string>? GodotEnvironment { get; init; }
+
+    /// <summary>Whether opening a GDScript starts Godot's headless editor to serve it, as a test of Godot's own server
+    /// asks; else one starts only for what Passenger's own reading has no answer for (<see cref="Web.WebLanguages.AskGodot"/>).</summary>
+    public bool GodotHeadlessAtOpen { get; init; }
 
     /// <summary>The user folders the window's Godots keep: those it was given, else those
     /// <see cref="Godot.GodotUserFolders.HomeVariable"/> names; none for a person's window, whose Godots keep the person's.</summary>

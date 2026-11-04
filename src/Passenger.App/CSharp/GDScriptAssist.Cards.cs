@@ -173,6 +173,30 @@ internal sealed partial class GDScriptAssist
         return "var";
     }
 
+    /// <summary>The class reference's place of the engine's class or member a script names at an offset, by Passenger's
+    /// reading of it; null for the project's own, or a name its reading resolves to none.</summary>
+    public async Task<Godot.GodotDocItem?> DocAtAsync(OpenDocument document, int offset)
+    {
+        if (!Answers(document) || context.GodotScriptTypes?.Invoke() is not { } types
+            || (await types.TypedAsync(document))?.Analysis is not { } analysis || analysis.NodeAt(offset) is not ({ } node, int from) || node is not GDScriptIdentifier name)
+        {
+            return null;
+        }
+        return types.Latest(document) is { } typed ? NamedAt(typed, name, from + name.Start) switch
+        {
+            OfClass { Kind: "class" or "type" } named => new Godot.GodotDocItem(named.Name, null, null),
+            OfEngine engine => new Godot.GodotDocItem(engine.Owner, engine.Kind switch
+            {
+                "func" => Godot.GodotDocs.Method,
+                "var" => Godot.GodotDocs.Property,
+                "signal" => Godot.GodotDocs.Signal,
+                "enum" => Godot.GodotDocs.Enum,
+                _ => Godot.GodotDocs.Constant,
+            }, engine.Name),
+            _ => null,
+        } : null;
+    }
+
     public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
     {
         if (!Answers(document) || context.GodotScriptTypes?.Invoke() is not { } types)

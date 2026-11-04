@@ -39,6 +39,9 @@ public sealed partial class PassengerTools
     /// <summary>A Godot shader or shader include, read against Godot's shading language and checked by Godot's compiler.</summary>
     private sealed record ShaderServed(OpenDocument Document) : Served(Document, "Godot shader");
 
+    /// <summary>A GDScript no Godot server serves, which Passenger's own reading answers for (<see cref="WebDocument.AskServer"/>).</summary>
+    private sealed record ScriptServed(OpenDocument Document, WebDocument Web) : Served(Document, "GDScript");
+
     /// <summary>What a tool says of a language that has no such command: plainly, naming the language and what it has instead.</summary>
     private static InvalidOperationException Lacks(Served served, string command, string instead) =>
         new($"{served.Language} files have no {command} in Passenger, so {Path.GetFileName(served.Document.Path)} has none: {instead}");
@@ -76,6 +79,11 @@ public sealed partial class PassengerTools
         if (Session.MSBuild.For(document) is { } msbuild)
         {
             return new MSBuildServed(document, msbuild);
+        }
+        // A GDScript is Passenger's own reading's where no Godot server serves it: one is asked for only by what that can't answer.
+        if (Session.Web?.For(document) is { Kind: WebServerKind.GDScript, Lsp: null } script)
+        {
+            return new ScriptServed(document, script);
         }
         if (Session.Web is { } languages && languages.For(document) is { } web)
         {

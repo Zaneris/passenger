@@ -23,6 +23,10 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
     /// <summary>Whether Godot's server serves a file, to be asked for what Passenger's reading cannot answer.</summary>
     private bool Served(OpenDocument document) => context.WebOf(document) is { Serving: true };
 
+    /// <summary>Godot's server asked for where none serves a file, for a person's question Passenger's reading has no
+    /// answer for: it answers the next one once it serves.</summary>
+    private void AskGodot(OpenDocument document) => context.WebOf(document)?.AskServer?.Invoke();
+
     public override bool Typed(string text)
     {
         if (context.Editors.Active is not { } shown || !Answers(shown))
@@ -349,6 +353,7 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
         }
         if (declared is null)
         {
+            AskGodot(shown);
             context.Say(Refusals.NoDeclaration);
         }
         else if (context.Editors.Active == shown)
@@ -374,6 +379,7 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
             {
                 return false;
             }
+            AskGodot(shown);
             context.Say("Find Usages finds nothing here: Passenger reads no member or local of a script at the caret, and Godot's server is not serving the script yet");
             return true;
         }

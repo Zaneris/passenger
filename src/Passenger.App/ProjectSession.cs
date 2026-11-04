@@ -51,6 +51,9 @@ public sealed record SessionSetup(
     /// <summary>Whether the session starts the C# language server: the window's <see cref="MainWindow.StartsLanguageServer"/>.</summary>
     public bool StartsLanguageServer { get; init; } = true;
 
+    /// <summary>Whether opening a GDScript starts Godot's headless editor for it: the window's <see cref="MainWindow.GodotHeadlessAtOpen"/>.</summary>
+    public bool GodotHeadlessAtOpen { get; init; }
+
     /// <summary>Whether nobody sees the window, whose Godot then runs headless: the window's <see cref="MainWindow.Unseen"/>.</summary>
     public bool Unseen { get; init; }
 
@@ -242,6 +245,7 @@ public sealed class ProjectSession : IAsyncDisposable
         session.Web = new Web.WebLanguages(folder, setup.Settings, setup.Engine)
         {
             DockerHub = setup.DockerHub, GodotEnvironment = setup.GodotEnvironment ?? new Dictionary<string, string>(), Stylesheets = session.Stylesheets,
+            GodotHeadlessAtOpen = setup.GodotHeadlessAtOpen,
         };
         // A compose file's check reads what each .NET service's project reads, once the language server has loaded it.
         session.Web.Checks.Code = () => new Containers.ComposeCode(session.Projects, session.CSharp is { IsReady: true } csharp ? csharp.Session : null);

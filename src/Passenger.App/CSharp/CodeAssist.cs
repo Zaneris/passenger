@@ -199,6 +199,9 @@ public sealed class CodeAssist
     /// <summary>Where Godot's shading reference describes what is at an offset of a shader (<see cref="GodotShaderAssist.HelpAsync"/>).</summary>
     internal Task<(Uri Page, string Name)?> ShaderHelpAsync(OpenDocument shader, int offset, string version) => context.Languages.Shaders.HelpAsync(shader, offset, version);
 
+    /// <summary>The class reference's place of the engine's class or member a GDScript names at an offset (<see cref="GDScriptAssist.DocAtAsync"/>).</summary>
+    internal Task<Godot.GodotDocItem?> GDScriptDocAtAsync(OpenDocument file, int offset) => context.Languages.GDScript.DocAtAsync(file, offset);
+
     /// <summary>The class reference's place of a theme item a Godot game's C# names at an offset (<see cref="CSharpAssist.GodotThemeDocAsync"/>).</summary>
     internal Task<Godot.GodotDocItem?> GodotThemeDocAsync(OpenDocument file, int offset) => context.Languages.CSharp.GodotThemeDocAsync(file, offset);
 
