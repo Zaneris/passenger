@@ -112,7 +112,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>The framework the app is built on, which its inspector serves.</summary>
     public LiveAppKind Kind { get; }
 
-    /// <summary>The framework and its version as the window says it, once the app has said hello: "Avalonia 12.1.4",
+    /// <summary>The framework and its version as the window says it, once the app has said hello: "Avalonia 12.1.5",
     /// "WPF 10.0.1"; the framework alone before.</summary>
     public string Framework => Kind == LiveAppKind.Wpf
         ? FrameworkSaid ?? "WPF"

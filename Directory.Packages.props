@@ -9,7 +9,7 @@
     <RoslynServerVersion>5.11.0</RoslynServerVersion>
     <!-- Avalonia's dotnet new templates at the Avalonia version below, downloaded for the tests' local feed so no test
          reaches nuget.org for them. -->
-    <AvaloniaTemplatesVersion>12.1.4</AvaloniaTemplatesVersion>
+    <AvaloniaTemplatesVersion>12.1.5</AvaloniaTemplatesVersion>
     <!-- Avalonia 11's last release, for the previewer's test of an app still on it (tests/AvaloniaGraphs). -->
     <AvaloniaOlderVersion>11.3.22</AvaloniaOlderVersion>
     <!-- The MVVM Toolkit at the version Avalonia's MVVM template above writes, downloaded for the tests' package cache, so
@@ -50,24 +50,24 @@
     <MonoCecilVersion>0.11.6</MonoCecilVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Avalonia" Version="12.1.4" />
-    <PackageVersion Include="Avalonia.Desktop" Version="12.1.4" />
-    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.4" />
+    <PackageVersion Include="Avalonia" Version="12.1.5" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.5" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.5" />
     <!-- An HTML file's preview beside its text, the system's own web view (MIT since it left Accelerate, at 11.4.0). -->
     <PackageVersion Include="Avalonia.Controls.WebView" Version="12.1.1" />
-    <PackageVersion Include="Avalonia.HarfBuzz" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.HarfBuzz" Version="12.1.5" />
     <!-- XAML Hot Reload's compiler, carried by the inspector into an app that has none: at Avalonia's version, as it reaches
          into Avalonia's own insides. -->
-    <PackageVersion Include="Avalonia.Markup.Xaml.Loader" Version="12.1.4" />
-    <PackageVersion Include="Avalonia.Headless" Version="12.1.4" />
-    <PackageVersion Include="Avalonia.Skia" Version="12.1.4" />
-    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Markup.Xaml.Loader" Version="12.1.5" />
+    <PackageVersion Include="Avalonia.Headless" Version="12.1.5" />
+    <PackageVersion Include="Avalonia.Skia" Version="12.1.5" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.5" />
     <PackageVersion Include="Google.Protobuf" Version="3.36.2" />
     <PackageVersion Include="Grpc.Net.Client" Version="2.85.0" />
     <!-- Also what Passenger's analyzers are compiled against (src/Passenger.Analyzers), so never past the compiler of
          global.json's SDK, nor of Roslyn's server at RoslynServerVersion, which load them. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
-    <PackageVersion Include="ModelContextProtocol.Core" Version="2.3.0" />
+    <PackageVersion Include="ModelContextProtocol.Core" Version="2.3.1" />
     <!-- The NuGet window's package sources, read by NuGet's own code, so they match the CLI's. -->
     <PackageVersion Include="NuGet.Configuration" Version="7.9.0" />
     <PackageVersion Include="StreamJsonRpc" Version="2.26.150" />
@@ -114,7 +114,7 @@
          from those templates restore from the package cache tests/AspireGraphs fills. -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
     <!-- What writes a build's OpenAPI document, restored for the test of a document Passenger reads from the build. -->
-    <PackageVersion Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.10.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
@@ -130,7 +130,7 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="$(NpgsqlEfVersion)" />
-    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.5" />
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
     <!-- The analyzers' (src/Passenger.Analyzers): the last release, MIT where netstandard2.0's 1.1.0 is not. -->
     <PackageVersion Include="Microsoft.NETCore.Platforms" Version="7.0.4" />

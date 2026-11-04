@@ -649,7 +649,7 @@
       },
       "ModelContextProtocol.Core": {
         "type": "CentralTransitive",
-        "requested": "[2.3.0, )",
+        "requested": "[2.3.1, )",
         "resolved": "1.4.1",
         "contentHash": "G/hOBZkJsvF3MSy0sOvXdxca5uRe2Sb4xk7xRuTWNZI45khVBjOLo6nSzGilctIICavNVxbxUF908fLYI9RxkQ==",
         "dependencies": {
