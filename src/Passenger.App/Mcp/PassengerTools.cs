@@ -1093,6 +1093,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             return headings.Rows.Count == 0 ? "No heading is in this file"
                 : string.Join('\n', headings.Rows.Select(row => $"{new string(' ', row.Depth * 2)}{row.Name} (heading, line {row.Position.Line + 1})"));
         }
+        // A GDScript's members are Passenger's own reading, whether or not Godot's server serves it.
+        if (Godot.GodotScriptTypes.IsScript(Resolve(path)))
+        {
+            OpenDocument script = await DocumentAsync(path, cancel);
+            Outline<Navigation.SymbolRow> members = await new Godot.GDScriptOutline(script.Text).ReadAsync(script.Path, null, cancel);
+            return members.Rows.Count == 0 ? "Nothing is declared in this file"
+                : string.Join('\n', members.Rows.Select(row => $"{new string(' ', row.Depth * 2)}{row.Name}{(row.Detail is { } detail ? " " + detail : string.Empty)} ({SymbolKinds.Name(row.Kind)}, line {row.Position.Line + 1})"));
+        }
         // A generator's code copied has no server document: its own syntax says what it declares.
         if (GeneratedCode.IsCopy(Resolve(path)) && (await DocumentAsync(path, cancel)).Syntax?.Current is { } parsed)
         {
