@@ -114,4 +114,36 @@ public sealed class GameFramesTests
             Directory.Delete(folder, recursive: true);
         }
     }
+
+    /// <summary>Passenger's helper in a profiled game is none of the game's work: its functions and its calls into Godot's API
+    /// are written into no frame, and its own time is in no frame's script time, process time or whole.</summary>
+    [Fact]
+    public void The_work_of_a_script_passenger_put_in_the_game_is_written_into_no_frame_and_its_time_into_no_total()
+    {
+        string folder = Directory.CreateTempSubdirectory("passenger-unit-").FullName;
+        try
+        {
+            string trace = Path.Combine(folder, "Ticker-20261101-120000.nettrace");
+            new FileStream(trace, FileMode.CreateNew, FileAccess.Write).Dispose();
+            GameRecording recording = new("Godot 4.7.2", "/games/ticker", draws: false) { Passengers = file => file.EndsWith("passenger_agent.gd", StringComparison.Ordinal) };
+            recording.Signature(0, "res://ticker.gd::7::_process");
+            recording.Signature(1, "/state/cache/godot/passenger_agent.gd::38::asked");
+            recording.Signature(2, "/state/cache/godot/passenger_agent.gd::0::Node.get_node");
+            recording.Took(Frame(1, 5, new ScriptWork(0, 1, 0.2, 0.2, 0), new ScriptWork(1, 2, 0.5, 0.75, 0.25), new ScriptWork(2, 2, 0.25, 0.25, 0)) with { ScriptMs = 0.95 },
+                Began.AddMilliseconds(5));
+            recording.Took(Frame(2, 5, new ScriptWork(0, 1, 0.3, 0.3, 0)) with { ScriptMs = 0.3 }, Began.AddMilliseconds(10));
+            recording.Stop();
+            recording.Write(trace);
+
+            Snapshot snapshot = Snapshot.Read(trace);
+
+            Assert.Equal(["_process"], snapshot.Game!.Spots(snapshot.GameFrames).Select(s => s.Function.Name));
+            Assert.Equal([(4.25, 4.25, 0.2), (5.0, 5.0, 0.3)], snapshot.GameFrames.Select(f => (Math.Round(f.FrameMs, 2), Math.Round(f.ProcessMs, 2), Math.Round(f.ScriptMs, 2))));
+            Assert.DoesNotContain(snapshot.Game.CallRoots(snapshot.GameFrames, [], 0.05).SelectMany(r => r.Ordered), n => n.Name is "asked" or GameProfile.ApiRoot);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
 }

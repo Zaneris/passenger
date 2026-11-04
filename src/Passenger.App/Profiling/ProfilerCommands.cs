@@ -485,7 +485,7 @@ public sealed class ProfilerCommands
     /// <summary>A Godot game's own frame profile recorded beside the run's samples, ended as the run is read.</summary>
     private static void Record(ProfilingSession running, Godot.GodotGame game)
     {
-        Passenger.Profiler.GameRecording recording = new(game.Framework, game.Folder, !game.Headless);
+        Passenger.Profiler.GameRecording recording = new(game.Framework, game.Folder, !game.Headless) { Passengers = Godot.GodotAgent.IsScript };
         running.Game = recording;
         game.Profile(recording);
     }

@@ -347,9 +347,13 @@ public sealed class GameProfile
 /// <summary>A Godot game's frame profile as it comes over its debugger's connection while the game is profiled: the script
 /// functions' signatures by Godot's numbers, each frame with when it came, the renderer's stages where the game draws, and
 /// the GPU. Taken on any thread; <see cref="Stop"/> ends it, after which nothing more is taken, and the profiler writes it beside
-/// the run's trace.</summary>
+/// the run's trace, without the work of scripts Passenger put in the game (<see cref="Passengers"/>).</summary>
 public sealed class GameRecording(string engine, string folder, bool draws)
 {
+    /// <summary>Whether a script's file is one Passenger put in the game itself (its helper): its functions, their calls into
+    /// Godot's API and their time are left out of the frames written (<see cref="Without"/>), as they are none of the game's.</summary>
+    public Func<string, bool>? Passengers { get; init; }
+
     /// <summary>The most frames kept, a quarter of an hour at 240 frames a second: past it, the oldest go.</summary>
     private const int MostFrames = 216_000;
 
@@ -483,6 +487,32 @@ public sealed class GameRecording(string engine, string folder, bool draws)
             taken = [.. frames];
             drewWith = gpu;
         }
+        if (Passengers is { } ours)
+        {
+            HashSet<int> left = [.. Enumerable.Range(0, named.Length).Where(i => named[i].Length > 0 && ours(ScriptFunction.Of(named[i]).File))];
+            if (left.Count > 0)
+            {
+                taken = [.. taken.Select(f => (Without(f.Frame, left), f.Received))];
+            }
+        }
         GameProfile.Write(GameProfile.PathOf(trace), engine, folder, draws, drewWith, named, taken);
+    }
+
+    /// <summary>A frame without the work of some script functions (by number): their own time, which Godot counts in the
+    /// frame's script time and so in its process time and its whole, taken from each.</summary>
+    internal static GameFrame Without(GameFrame frame, IReadOnlySet<int> left)
+    {
+        if (!frame.Scripts.Any(w => left.Contains(w.Function)))
+        {
+            return frame;
+        }
+        double ms = frame.Scripts.Where(w => left.Contains(w.Function)).Sum(w => w.SelfMs);
+        return frame with
+        {
+            Scripts = [.. frame.Scripts.Where(w => !left.Contains(w.Function))],
+            ScriptMs = Math.Max(0, frame.ScriptMs - ms),
+            ProcessMs = Math.Max(0, frame.ProcessMs - ms),
+            FrameMs = Math.Max(0, frame.FrameMs - ms),
+        };
     }
 }

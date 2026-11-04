@@ -39,8 +39,10 @@ public static partial class GodotAgent
     public static bool Is(GodotNode node) => node.Name == NodeName && node.Type.EndsWith(FileName, StringComparison.Ordinal);
 
     /// <summary>Whether a place an error was raised at is the helper's script.</summary>
-    public static bool Raised(GodotError error) =>
-        error.File.EndsWith(FileName, StringComparison.Ordinal) || error.Frames.Any(f => f.File.EndsWith(FileName, StringComparison.Ordinal));
+    public static bool Raised(GodotError error) => IsScript(error.File) || error.Frames.Any(f => IsScript(f.File));
+
+    /// <summary>Whether a script's file, as Godot names it, is the helper's.</summary>
+    public static bool IsScript(string file) => file.EndsWith(FileName, StringComparison.Ordinal);
 
     /// <summary>A key as Godot names it (<c>OS.find_keycode_from_string</c>), from Avalonia's name for it as app_key reads one.</summary>
     public static string KeyName(string avalonia) => avalonia switch
