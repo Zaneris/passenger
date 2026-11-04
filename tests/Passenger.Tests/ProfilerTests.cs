@@ -1,6 +1,8 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.Core;
 using Passenger.Profiler;
@@ -1208,6 +1210,52 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
 
     /// <summary>A console project restored in the tests' folder, with this as its Program.cs and anything more its project
     /// file is to hold.</summary>
+    /// <summary>At the smallest window, a profile's pages, its run's summary and Open Snapshot each lie whole in the profiler's
+    /// pane, none over another, the pages and the summary taking another line where one has no room; the summary's whole text
+    /// is its tooltip, for where it is cut.</summary>
+    [AvaloniaFact]
+    public void At_the_smallest_window_a_profiles_pages_summary_and_buttons_lie_whole_in_its_pane_none_over_another()
+    {
+        string project = Project("Narrow", "Console.WriteLine($\"spun {Enumerable.Range(0, 2_000_000).Sum(i => Math.Sqrt(i))}\");\n");
+        MainWindow window = new() { Width = MainWindow.SmallestWidth, Height = MainWindow.SmallestHeight, StateFolder = TestFolders.Create("settings-"), StartsLanguageServer = false };
+        window.Show();
+        try
+        {
+            window.OpenFolder(project);
+            Ui.Settle();
+            Ui.Launched(window, window.ProfileAsync(), "the build and the start", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => window.ProfilerView.Snapshot is not null, "the program's end to show its snapshot", TimeSpan.FromMinutes(2));
+            Ui.Settle();
+            Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
+            Rect pane = Placed(window, view);
+            Control[] parts = [.. view.GetVisualDescendants().OfType<Control>().Where(c => c.Name is { } name && name.StartsWith("Profiler", StringComparison.Ordinal)
+                && c.IsEffectivelyVisible && c is Button or TextBlock)];
+            Assert.Contains(parts, part => part.Name == "ProfilerSnapshots");
+            Assert.Contains(parts, part => part.Name == "ProfilerOpenSnapshot");
+            TextBlock summary = Assert.IsType<TextBlock>(Assert.Single(parts, part => part.Name == "ProfilerSummary"));
+            Assert.Equal(summary.Text, ToolTip.GetTip(summary) as string);
+            List<string> wrong = [];
+            foreach (Control part in parts)
+            {
+                Rect at = Placed(window, part);
+                if (at.Left < pane.Left - 0.5 || at.Right > pane.Right + 0.5)
+                {
+                    wrong.Add($"{part.Name} lies at {at.Left:0.#} to {at.Right:0.#}, outside the pane's {pane.Left:0.#} to {pane.Right:0.#}");
+                }
+                wrong.AddRange(parts.Where(other => other != part && string.CompareOrdinal(other.Name, part.Name) > 0 && Placed(window, other).Intersects(at))
+                    .Select(other => $"{part.Name} lies over {other.Name}"));
+            }
+            Assert.True(wrong.Count == 0, $"At {MainWindow.SmallestWidth} wide the profiler's bar draws out of its pane or over itself: {string.Join("; ", wrong)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static Rect Placed(Visual window, Visual control) =>
+            control.TransformToVisual(window) is { } to ? new Rect(control.Bounds.Size).TransformToAABB(to) : default;
+    }
+
     private string Project(string name, string program, string more = "")
     {
         string project = Path.Combine(folder, name);

@@ -207,7 +207,9 @@ public sealed class ProfilerView : DockPanel
             Classes = { StyleClasses.EmptyText },
         };
 
-        status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0) };
+        // Cut where it is longer than its line, its whole text on hover.
+        status = new TextBlock { Name = "ProfilerSummary", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+        status.Bind(ToolTip.TipProperty, status.GetObservable(TextBlock.TextProperty));
         stop = new Button { Name = "ProfilerGetSnapshot", Content = "Get Snapshot", Classes = { StyleClasses.Primary }, IsVisible = false };
         stop.Click += (_, _) => StopRequested?.Invoke(this, EventArgs.Empty);
         kill = new Button { Content = "Kill", IsVisible = false };
@@ -219,22 +221,23 @@ public sealed class ProfilerView : DockPanel
         {
             pages[(int)page].Name = $"Profiler{page}";
         }
-        StackPanel left = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center };
+        // The pages and the run's summary wrap to another line where the pane has no room for them on one, as at 640 wide.
+        WrapPanel left = new() { ItemSpacing = 2, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center };
         foreach (ToggleButton page in pages)
         {
             left.Children.Add(page);
         }
         Button open = ToolButtons.Of(IconKeys.FolderOpen, "Open Snapshot", () => OpenSnapshotRequested?.Invoke(this, EventArgs.Empty));
+        open.Name = "ProfilerOpenSnapshot";
         heap = new Button { Name = "ProfilerGetMemorySnapshot", Content = "Get Memory Snapshot", IsVisible = false };
         heap.Click += (_, _) => MemoryRequested?.Invoke(this, EventArgs.Empty);
         ActionButtons.Mark(heap, AppActions.MemorySnapshot);
         StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center, Children = { heap, stop, kill, open } };
         DockPanel bar = new();
-        DockPanel.SetDock(left, Dock.Left);
         DockPanel.SetDock(right, Dock.Right);
-        bar.Children.Add(left);
+        left.Children.Add(status);
         bar.Children.Add(right);
-        bar.Children.Add(status);
+        bar.Children.Add(left);
         Border top = ToolBars.Top(bar);
         Children.Add(top);
         timeline = new Timeline();
