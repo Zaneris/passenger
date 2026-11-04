@@ -1263,6 +1263,32 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"vcs_stash outside a repository answered: {Text(listed)}");
     }
 
+    /// <summary>An agent's editor_text, edit and diagnostics of a file not there say no file is at that path, by the folder's
+    /// own path, and how a new file is made, never .NET's "Could not find file" with the whole path twice; of a folder, that
+    /// it is one.</summary>
+    [Fact]
+    public async Task An_agents_tools_on_a_file_not_there_say_no_file_is_at_its_path_and_how_a_new_one_is_made()
+    {
+        string folder = TestFolders.Create("mcp-nofile-");
+        DeleteAtEnd(folder);
+        Directory.CreateDirectory(Path.Combine(folder, "docs"));
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        foreach ((string tool, Dictionary<string, object?> arguments) in new (string, Dictionary<string, object?>)[]
+        {
+            (McpTools.EditorText, new() { ["path"] = "Missing.cs" }),
+            (McpTools.Edit, new() { ["path"] = "Missing.cs", ["oldText"] = "a", ["newText"] = "b" }),
+            (McpTools.Diagnostics, new() { ["path"] = "Missing.cs" }),
+        })
+        {
+            CallToolResult refused = await Result(client, tool, arguments);
+            Assert.True(refused.IsError == true && Text(refused).Contains("No file is at Missing.cs: a new file is written on disk, then edited", StringComparison.Ordinal),
+                $"{tool} of a file not there answered: {Text(refused)}");
+        }
+        CallToolResult folderAsked = await Result(client, McpTools.EditorText, new() { ["path"] = "docs" });
+        Assert.True(folderAsked.IsError == true && Text(folderAsked).Contains("docs is a folder, not a file", StringComparison.Ordinal),
+            $"editor_text of a folder answered: {Text(folderAsked)}");
+    }
+
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
     /// vcs_commit is refused naming the file, and nothing is committed.</summary>
     [Fact]

@@ -2792,13 +2792,19 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new InvalidOperationException($"{Relative(full)} is opened for a tool's call only while the call runs");
         }
+        if (!File.Exists(full))
+        {
+            throw new FileNotFoundException(Directory.Exists(full)
+                ? $"{Relative(full)} is a folder, not a file: workspace and find_in_files read a folder"
+                : $"No file is at {Relative(full)}: a new file is written on disk, then edited; find_in_files finds where a text is", full);
+        }
         try
         {
             return call.Lend(full);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            throw new FileNotFoundException($"{full} could not be opened: {error.Message}", error);
+            throw new FileNotFoundException($"{Relative(full)} could not be opened: {error.Message}", error);
         }
     }
 
