@@ -60,6 +60,7 @@ public sealed partial class GDScriptAnalyzer
                 break;
             case GDScriptClass inner when inner.Identifier is not null:
                 GDScriptType innerType = new(GDScriptTypeKind.Class, inner.Identifier.Name) { Class = inner, Script = context.Analysis.Path, Offset = context.Offset };
+                DeclaresItself(inner.Identifier, innerType with { Meta = true }, context);
                 Paint(context, inner.Identifier, GDScriptColour.Class);
                 PaintExtends(inner, context);
                 if (analysis.Tree is { } own)
@@ -72,6 +73,7 @@ public sealed partial class GDScriptAnalyzer
                 }
                 break;
             case GDScriptSignal signal:
+                DeclaresItself(signal.Identifier, GDScriptType.Builtin("Signal"), context);
                 Paint(context, signal.Identifier, GDScriptColour.Event);
                 foreach (GDScriptParameter parameter in signal.Parameters)
                 {
@@ -86,15 +88,19 @@ public sealed partial class GDScriptAnalyzer
                 EnumValueErrors(named, context);
                 foreach ((GDScriptIdentifier enumValue, _) in named.Values)
                 {
+                    DeclaresItself(enumValue, GDScriptType.Builtin("int"), context);
                     Paint(context, enumValue, GDScriptColour.Constant);
                     Shadowing(enumValue, "enum member", local: false, context);
                 }
                 break;
             case GDScriptEnum enumerated:
                 EnumValueErrors(enumerated, context);
+                GDScriptType enumType = EnumType(enumerated, context.Class, meta: true);
+                DeclaresItself(enumerated.Identifier, enumType, context);
                 Paint(context, enumerated.Identifier, GDScriptColour.Enum);
                 foreach ((GDScriptIdentifier enumValue, _) in enumerated.Values)
                 {
+                    DeclaresItself(enumValue, enumType with { Meta = false }, context);
                     Paint(context, enumValue, GDScriptColour.EnumMember);
                 }
                 break;
@@ -338,6 +344,18 @@ public sealed partial class GDScriptAnalyzer
                 Bind(value, binds, context);
             }
         }
+    }
+
+    /// <summary>A signal's, inner class's, enum's or enum value's name as where it is declared, as a variable's and a
+    /// function's are, so Go to Declaration and Find Usages take it from its own declaration.</summary>
+    private static void DeclaresItself(GDScriptIdentifier? name, GDScriptType type, Context context)
+    {
+        if (name is null || context.Analysis.Tree is null)
+        {
+            return;
+        }
+        context.Analysis.Declared[name] = new GDScriptDeclaration(context.Analysis.Path, context.Offset + name.Start, name.Name, type);
+        context.Analysis.Declaring.Add(name);
     }
 
     private static void Record(GDScriptAnalysis analysis, GDScriptAssignable node, GDScriptType type, Context context)

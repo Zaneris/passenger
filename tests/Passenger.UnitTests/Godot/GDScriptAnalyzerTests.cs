@@ -173,6 +173,20 @@ public class GDScriptAnalyzerTests
         int? DeclaredAt(int offset) => analysis.NodeAt(offset + 1) is ({ } node, _) && node is GDScriptIdentifier name ? analysis.DeclarationOf(name)?.Start : null;
     }
 
+    [Fact]
+    public void A_signals_classs_enums_and_enum_values_name_is_declared_where_it_stands_as_a_variables_is()
+    {
+        string text = "extends Node\n\nsignal hit(amount: int)\nenum Mood { CALM, ANGRY }\nenum { LOOSE }\n\n\nclass Inner:\n\tsignal inner_hit\n";
+        (GDScriptAnalysis analysis, _) = Analyze(text);
+        foreach (string name in new[] { "hit(", "Mood", "CALM", "ANGRY", "LOOSE", "Inner", "inner_hit" })
+        {
+            int at = text.IndexOf(name, StringComparison.Ordinal);
+            Assert.True(DeclaredAt(at) == at, $"{name.TrimEnd('(')} is not declared where it stands, so Go to Declaration on it goes nowhere");
+        }
+
+        int? DeclaredAt(int offset) => analysis.NodeAt(offset + 1) is ({ } node, _) && node is GDScriptIdentifier name ? analysis.DeclarationOf(name)?.Start : null;
+    }
+
     /// <summary>Changes one after another join into one span of the text before them, the same edit a whole comparison finds.</summary>
     [Fact]
     public void Changes_one_after_another_join_into_the_one_edit_of_the_text_before_them()
