@@ -2190,6 +2190,31 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>In the XAML workspace, an attribute the caret's element cannot have is said under the preview in the check's
+    /// words for it, never as a value the element sets.</summary>
+    [AvaloniaFact]
+    public void In_the_xaml_workspace_an_attribute_its_element_cannot_have_is_said_unknown_as_the_check_says()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        try
+        {
+            OpenDocument document = window.EditorArea.Active!;
+            Typing.Replace(window, "<Button Name=\"Go\" Content=\"Go\"", "<Button Name=\"Go\" Contnt=\"Go\"");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "<Button Name=\"G");
+            window.ApplySettings(window.Settings with { XamlWorkspace = true });
+            Ui.WaitFor(() => window.PreviewPaneOf(document) is { PropertiesShown.Element: "Button #Go" } pane
+                && pane.PropertiesShown.Values.Any(v => v.Property == "Contnt" && v.From != "Local"),
+                () => $"the button's misspelt Contnt said unknown under the preview, where it shows {string.Join(", ", window.PreviewPaneOf(document)?.PropertiesShown.Values ?? [])}");
+            (string Property, string Value, string From) said = window.PreviewPaneOf(document)!.PropertiesShown.Values.Single(v => v.Property == "Contnt");
+            Assert.Equal("Cannot resolve property 'Contnt' on Button", said.From);
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { XamlWorkspace = false });
+            window.Close();
+        }
+    }
+
     /// <summary>A window wider than the preview's pane is drawn smaller by the previewer itself, at the scale the pane has
     /// room for, and its frame lands pixel for pixel on the window: shrunk as a picture, its text smeared (on Windows at
     /// 100%, ClearType's colour fringes into blotches).</summary>

@@ -31,6 +31,9 @@ public partial class MainWindow
     /// <summary>The editor whose caret moved last, whose element is chosen once it rests.</summary>
     private CodeEditor? caretMoved;
 
+    /// <summary>The XAML files whose checks the workspace follows, each once, however often it opens them.</summary>
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Xaml.XamlDocument, OpenDocument> checksFollowed = new();
+
     /// <summary>Whether the caret is being put on a control's XAML for the tree, which the tree need not hear of.</summary>
     private bool placingCaret;
 
@@ -78,9 +81,21 @@ public partial class MainWindow
     /// Visual Tree beside both while an app runs, shown behind, so the keys stay where they are.</summary>
     private void OpenWorkspace()
     {
-        if (!settings.XamlWorkspace || Editors.Active is not { } shown || session.Xaml.For(shown) is null || !workspaced.Add(shown))
+        if (!settings.XamlWorkspace || Editors.Active is not { } shown || session.Xaml.For(shown) is not { } xaml || !workspaced.Add(shown))
         {
             return;
+        }
+        if (!checksFollowed.TryGetValue(xaml, out _))
+        {
+            checksFollowed.Add(xaml, shown);
+            // A check that lands after the caret rested shows the element's values again, its unknown attributes said.
+            xaml.Checked += (_, _) =>
+            {
+                if (settings.XamlWorkspace && Editors.Active == shown)
+                {
+                    caretRested?.Restart();
+                }
+            };
         }
         if (!previewing)
         {
@@ -116,7 +131,9 @@ public partial class MainWindow
         XmlTree tree = XmlTree.Parse(text.ToString());
         XmlElement? element = XamlFile.ObjectAt(tree, editor.Selections.Primary.Caret);
         bool live = LiveApp is { State: LiveAppState.Connected };
-        PreviewPaneOf(document)?.ShowProperties(live || element is null ? null : Named(element), live || element is null ? [] : ValuesOf(tree, element));
+        // The check's problems, where it has read the text as it stands: a value's attribute it cannot resolve says so.
+        IReadOnlyList<XamlDiagnostic> found = session.Xaml.For(document) is { } xaml && xaml.DiagnosedVersion == document.Text.Version ? xaml.Diagnostics : [];
+        PreviewPaneOf(document)?.ShowProperties(live || element is null ? null : Named(element), live || element is null ? [] : ValuesOf(tree, element, found));
         if (live && element is not null)
         {
             await liveTree!.ChooseMadeAsync(document.Path, SpotOf(document, text, tree, element));
@@ -128,9 +145,9 @@ public partial class MainWindow
         element.Attributes.FirstOrDefault(a => a.LocalName == "Name" && a.HasValue) is { } named ? $"{element.LocalName} #{named.Value}" : element.LocalName;
 
     /// <summary>What an element sets itself, each value's row as the preview shows it: where it comes from, a binding's path
-    /// and a resource's key said.</summary>
-    private static List<(string Property, string Value, string From)> ValuesOf(XmlTree tree, XmlElement element) =>
-        [.. XamlSetValues.Of(tree, element).Select(v => (v.Property, v.Value, v.Kind switch
+    /// and a resource's key said, or, for an attribute naming no property of the element, the check's words for it.</summary>
+    private static List<(string Property, string Value, string From)> ValuesOf(XmlTree tree, XmlElement element, IReadOnlyList<XamlDiagnostic> found) =>
+        [.. XamlSetValues.Of(tree, element).Select(v => (v.Property, v.Value, Unresolved(element, v, found) ?? v.Kind switch
         {
             XamlValueKind.Binding => v.Source is { Length: > 0 } path ? $"Binding · {path}" : "Binding",
             XamlValueKind.Resource => v.Source is { Length: > 0 } key ? $"Resource · {key}" : "Resource",
@@ -138,6 +155,18 @@ public partial class MainWindow
             XamlValueKind.Element => "Property element",
             _ => "Local",
         }))];
+
+    /// <summary>The check's error on the name of the attribute that sets a value ("Cannot resolve property 'Txt' on
+    /// TextBlock"); null where it names a property the check found.</summary>
+    private static string? Unresolved(XmlElement element, XamlSetValue value, IReadOnlyList<XamlDiagnostic> found)
+    {
+        if (value.Kind == XamlValueKind.Element || element.Attributes.FirstOrDefault(a => a.Name == value.Property) is not { } attribute)
+        {
+            return null;
+        }
+        TextRange name = attribute.NameRange;
+        return found.FirstOrDefault(d => d.Severity == XamlSeverity.Error && d.Range.Start < name.End && d.Range.End > name.Start)?.Message;
+    }
 
     /// <summary>Where the app's build recorded an element: its name's line and column as the build counted them, from one,
     /// and a root's x:Class, which the app finds a root by.</summary>

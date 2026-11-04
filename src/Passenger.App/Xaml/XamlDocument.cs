@@ -68,6 +68,12 @@ public sealed class XamlDocument : IDisposable
     /// <summary>The problems last found in the file, each with its fix when it has one.</summary>
     public IReadOnlyList<XamlDiagnostic> Diagnostics { get; private set; } = [];
 
+    /// <summary>The version of the text <see cref="Diagnostics"/> were found in; -1 before any check.</summary>
+    public int DiagnosedVersion { get; private set; } = -1;
+
+    /// <summary>Raised on the UI thread once a check's problems are the file's (<see cref="Diagnostics"/>).</summary>
+    public event EventHandler? Checked;
+
     /// <summary>The localized keys its last check found a language lacks, where each is read in the text as it stands.</summary>
     internal IReadOnlyList<(TextRange Range, ResourceGap Gap)> Gaps => gaps.Items;
 
@@ -188,6 +194,7 @@ public sealed class XamlDocument : IDisposable
             return;
         }
         Diagnostics = found;
+        DiagnosedVersion = version;
         ReadsLocalized = localizes;
         gaps.Set(Document.Text, [.. found.Where(d => d.Gap is not null).Select(d => (d.Range, d.Gap!))]);
         live.Set(Document.Text, [.. found.Select(d => new Marker(d.Range, d.Severity == XamlSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, d.Message)
@@ -195,6 +202,7 @@ public sealed class XamlDocument : IDisposable
             StartGravity = AnchorGravity.After,
         })]);
         Show();
+        Checked?.Invoke(this, EventArgs.Empty);
         IReadOnlyList<ColourUse> colours = await BackgroundWork.Run(() => Colours.InXaml(file, file.Variant));
         if (!disposed && Document.Text.Version == version)
         {
