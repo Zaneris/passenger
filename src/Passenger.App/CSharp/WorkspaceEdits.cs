@@ -620,8 +620,9 @@ public sealed class Asked(Dictionary<OpenDocument, ChangeTracker> trackers) : ID
 /// file seen so is trusted until it is written again; one written once the server was asked is refused at once.</summary>
 public sealed class Patience
 {
-    /// <summary>How long a command waits for the server, in all, before it refuses.</summary>
-    public static readonly TimeSpan Limit = TimeSpan.FromSeconds(10);
+    /// <summary>How long a command waits for the server, in all, before it refuses: longer on a slower machine
+    /// (<see cref="Waits"/>), as the server it waits on is slower there too.</summary>
+    public static TimeSpan Limit => Waits.Of(TimeSpan.FromSeconds(10));
 
     private readonly DateTime until = DateTime.UtcNow + Limit;
     private readonly Dictionary<string, (FileStamp Stamp, string Hash)> seen = new(StringComparer.Ordinal);
