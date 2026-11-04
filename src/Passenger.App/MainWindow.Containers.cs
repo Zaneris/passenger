@@ -49,7 +49,8 @@ public partial class MainWindow
         });
         actions.Add(new IdeAction(AppActions.ContainerPrune, "Prune…", "Containers", context => IdeErrors.Observe(PruneAsync(Chosen())))
         {
-            WhyNot = _ => Engine.Known is { IsReady: true } ? null : "The container engine is not running",
+            // An engine not asked yet is asked as Prune runs: only one known not to serve refuses, saying why.
+            WhyNot = _ => Engine.Known is { IsReady: false } known ? known.Problem ?? "The container engine is not running" : null,
             Works = AppActions.ContainerPrune,
         });
         // A Dockerfile's base images are asked of Docker Scout only as the person asks, which then follows its saves.
@@ -269,6 +270,11 @@ public partial class MainWindow
     /// <summary>Prune, asked first: what the chosen heading (or the chosen object's kind) gathers that nothing uses.</summary>
     private async Task PruneAsync(ContainerRow? chosen)
     {
+        if (await Engine.StateAsync() is { IsReady: false } state)
+        {
+            status.Say(state.Problem ?? "The container engine is not running", ProblemSeverity.Warning, EnginePlace(state));
+            return;
+        }
         string kind = chosen?.Object?.Kind ?? (chosen?.Kind == ContainerRowKind.Group ? chosen.Label : "container");
         (string what, IReadOnlyList<string> words) = ContainerCommands.Prune(kind);
         ConfirmDialog asked = new("Prune", $"Remove {what}? This cannot be undone.", "Prune");
