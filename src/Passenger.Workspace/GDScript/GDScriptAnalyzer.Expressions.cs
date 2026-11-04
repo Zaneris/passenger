@@ -236,6 +236,7 @@ public sealed partial class GDScriptAnalyzer
                     analysis.Types[loop.Variable] = element;
                     Paint(context, variableName, GDScriptColour.Local);
                     iteration.Add(variableName.Name, element, new GDScriptDeclaration(analysis.Path, context.Offset + variableName.Start, variableName.Name, element), new Local(loop, variableName, LocalKind.Iterator));
+                    DeclaresItself(variableName, element, context);
                     if (loop.Type is null)
                     {
                         Warn(context, variableName, element.Hard && !element.IsVariant ? "INFERRED_DECLARATION" : "UNTYPED_DECLARATION", "\"for\" iterator variable", variableName.Name);
@@ -327,6 +328,7 @@ public sealed partial class GDScriptAnalyzer
             context.Analysis.Types[name] = GDScriptType.Variant.Soft;
             Paint(context, name, GDScriptColour.Local);
             binds.Add(name.Name, GDScriptType.Variant.Soft, new GDScriptDeclaration(context.Analysis.Path, context.Offset + name.Start, name.Name, GDScriptType.Variant.Soft), new Local(name, name, LocalKind.Bind));
+            DeclaresItself(name, GDScriptType.Variant.Soft, context);
             Shadowing(name, "pattern bind", local: true, context);
         }
         Reduce(pattern.Expression, context);
@@ -365,8 +367,8 @@ public sealed partial class GDScriptAnalyzer
         }
     }
 
-    /// <summary>A signal's, inner class's, enum's or enum value's name as where it is declared, as a variable's and a
-    /// function's are, so Go to Declaration and Find Usages take it from its own declaration.</summary>
+    /// <summary>A signal's, inner class's, enum's, enum value's, loop variable's or pattern bind's name as where it is
+    /// declared, as a variable's and a function's are, so Go to Declaration and Find Usages take it from its own declaration.</summary>
     private static void DeclaresItself(GDScriptIdentifier? name, GDScriptType type, Context context)
     {
         if (name is null || context.Analysis.Tree is null)

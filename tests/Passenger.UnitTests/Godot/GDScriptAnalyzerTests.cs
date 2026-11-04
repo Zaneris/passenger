@@ -174,6 +174,20 @@ public class GDScriptAnalyzerTests
     }
 
     [Fact]
+    public void A_loop_variables_and_a_pattern_binds_name_is_declared_where_it_stands_as_a_locals_is()
+    {
+        string text = "extends Node\n\n\nfunc f(items: Array) -> void:\n\tfor item in items:\n\t\tmatch item:\n\t\t\t[var first, ..]:\n\t\t\t\tprint(first, item)\n";
+        (GDScriptAnalysis analysis, _) = Analyze(text);
+        foreach (string name in new[] { "item in", "first," })
+        {
+            int at = text.IndexOf(name, StringComparison.Ordinal);
+            Assert.True(DeclaredAt(at) == at, $"{name.Split(' ', ',')[0]} is not declared where it stands, so Go to Declaration on it goes nowhere");
+        }
+
+        int? DeclaredAt(int offset) => analysis.NodeAt(offset + 1) is ({ } node, _) && node is GDScriptIdentifier name ? analysis.DeclarationOf(name)?.Start : null;
+    }
+
+    [Fact]
     public void A_signals_classs_enums_and_enum_values_name_is_declared_where_it_stands_as_a_variables_is()
     {
         string text = "extends Node\n\nsignal hit(amount: int)\nenum Mood { CALM, ANGRY }\nenum { LOOSE }\n\n\nclass Inner:\n\tsignal inner_hit\n";
