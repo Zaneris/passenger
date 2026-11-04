@@ -6,9 +6,10 @@ using Microsoft.Win32;
 namespace Passenger.Core;
 
 /// <summary>What puts a .NET installation on the PATH of the shells a person starts outside Passenger: lines added to the
-/// end of their login shell's startup file on macOS and Linux (zsh's .zshrc, bash's .bash_profile on macOS and .bashrc
-/// elsewhere, fish's conf.d, else .profile), or, on Windows, the folder put first on the user's Path and named by their
-/// DOTNET_ROOT. <see cref="Shown"/> says it in a line before it is made.</summary>
+/// end of their login shell's startup file on macOS and Linux (zsh's .zshrc; bash's on macOS the first of .bash_profile,
+/// .bash_login and .profile there, as a login shell reads only that one, and .bashrc elsewhere; fish's conf.d; else
+/// .profile), or, on Windows, the folder put first on the user's Path and named by their DOTNET_ROOT. <see cref="Shown"/>
+/// says it in a line before it is made.</summary>
 public sealed partial record ShellPath(string Root, string? File, string Lines, string Shown)
 {
     /// <summary>A test's stand-in for the home folder whose startup files take the lines; null for the person's own.</summary>
@@ -29,7 +30,8 @@ public sealed partial record ShellPath(string Root, string? File, string Lines, 
                 : new ShellPath(root, null, root, $"puts {root} first on your user Path and sets your DOTNET_ROOT to it, for the programs you start from now on");
         }
         string home = HomeStandIn ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        (string file, string lines) = Of(Path.GetFileName(ShellEnvironment.LoginShell()), home, root, OperatingSystem.IsMacOS(), Environment.GetEnvironmentVariable("ZDOTDIR"));
+        (string file, string lines) = Of(Path.GetFileName(ShellEnvironment.LoginShell()), home, root, OperatingSystem.IsMacOS(), Environment.GetEnvironmentVariable("ZDOTDIR"),
+            System.IO.File.Exists);
         try
         {
             if (System.IO.File.Exists(file) && System.IO.File.ReadAllText(file).Contains(lines, StringComparison.Ordinal))
@@ -45,29 +47,44 @@ public sealed partial record ShellPath(string Root, string? File, string Lines, 
     }
 
     /// <summary>The startup file and its lines for a shell by name (zsh, bash, fish, any other taking .profile) in
-    /// <paramref name="home"/>: DOTNET_ROOT naming <paramref name="root"/> (from $HOME where it is under it) and the PATH
-    /// with it first.</summary>
-    public static (string File, string Lines) Of(string shell, string home, string root, bool macOS, string? zdotdir)
+    /// <paramref name="home"/>, bash's on macOS the first of its login files that <paramref name="exists"/>: DOTNET_ROOT
+    /// naming <paramref name="root"/> (from $HOME where it is under it), quoted so the shell reads it as written, and the
+    /// PATH with it first.</summary>
+    public static (string File, string Lines) Of(string shell, string home, string root, bool macOS, string? zdotdir, Func<string, bool> exists)
     {
-        string named = PathNames.IsUnder(root, home) && !PathNames.Same(root, home)
-            ? "$HOME/" + Path.GetRelativePath(home, root).Replace('\\', '/')
-            : root;
-        string quoted = '"' + named.Replace("\"", "\\\"", StringComparison.Ordinal) + '"';
+        bool fromHome = PathNames.IsUnder(root, home) && !PathNames.Same(root, home);
+        string named = fromHome ? PathNames.Below(root, home).ToString().Replace(Path.DirectorySeparatorChar, '/') : root;
+        // Double quotes keep spaces; a backslash before each character they still read keeps that one as written.
+        string Quoted(string read) =>
+            '"' + (fromHome ? "$HOME/" : string.Empty) + string.Concat(named.Select(c => read.Contains(c, StringComparison.Ordinal) ? $"\\{c}" : c.ToString())) + '"';
         const string Said = "# The .NET SDK Passenger installed";
         return shell switch
         {
             "fish" => (Path.Combine(home, ".config", "fish", "conf.d", "dotnet.fish"),
-                $"{Said}\nset -gx DOTNET_ROOT {quoted}\nset -gx PATH \"$DOTNET_ROOT\" $PATH\n"),
-            "zsh" => (Path.Combine(zdotdir is { Length: > 0 } ? zdotdir : home, ".zshrc"), Posix(quoted)),
-            "bash" => (Path.Combine(home, macOS ? ".bash_profile" : ".bashrc"), Posix(quoted)),
-            _ => (Path.Combine(home, ".profile"), Posix(quoted)),
+                $"{Said}\nset -gx DOTNET_ROOT {Quoted(FishRead)}\nset -gx PATH \"$DOTNET_ROOT\" $PATH\n"),
+            "zsh" => (Path.Combine(zdotdir is { Length: > 0 } ? zdotdir : home, ".zshrc"), Posix(Quoted(PosixRead))),
+            "bash" when macOS => (BashLogin(home, exists), Posix(Quoted(PosixRead))),
+            "bash" => (Path.Combine(home, ".bashrc"), Posix(Quoted(PosixRead))),
+            _ => (Path.Combine(home, ".profile"), Posix(Quoted(PosixRead))),
         };
 
         static string Posix(string quoted) => $"{Said}\nexport DOTNET_ROOT={quoted}\nexport PATH=\"$DOTNET_ROOT:$PATH\"\n";
     }
 
-    /// <summary>Makes the change: the lines added to the end of the startup file (made if it is not there), or Windows' user
-    /// variables set, programs started since told the environment changed.</summary>
+    /// <summary>What a POSIX shell still reads inside double quotes: a backslash, a quote, a $ and a backtick.</summary>
+    private const string PosixRead = "\\\"$`";
+
+    /// <summary>What fish still reads inside double quotes, its command substitution taking no backtick.</summary>
+    private const string FishRead = "\\\"$";
+
+    /// <summary>The file a bash login shell reads in a home: the first of .bash_profile, .bash_login and .profile there, for it
+    /// reads no other, and .bash_profile where none is.</summary>
+    private static string BashLogin(string home, Func<string, bool> exists) =>
+        ((string[])[".bash_profile", ".bash_login", ".profile"]).Select(name => Path.Combine(home, name)).FirstOrDefault(exists) ?? Path.Combine(home, ".bash_profile");
+
+    /// <summary>Makes the change: the lines added to the end of the startup file (made if it is not there; one that is a link,
+    /// into a dotfiles repository, kept one and the file it names written), or Windows' user variables set, programs started
+    /// since told the environment changed.</summary>
     public void Make()
     {
         if (File is null)
@@ -83,7 +100,8 @@ public sealed partial record ShellPath(string Root, string? File, string Lines, 
         string had = System.IO.File.Exists(File) ? System.IO.File.ReadAllText(File) : string.Empty;
         string written = had.Length == 0 ? Lines : had.EndsWith('\n') ? $"{had}\n{Lines}" : $"{had}\n\n{Lines}";
         Directory.CreateDirectory(Path.GetDirectoryName(File)!);
-        AtomicFile.Write(File, Encoding.UTF8.GetBytes(written));
+        string target = new FileInfo(File).LinkTarget is not null ? System.IO.File.ResolveLinkTarget(File, returnFinalTarget: true)?.FullName ?? File : File;
+        AtomicFile.Write(target, Encoding.UTF8.GetBytes(written));
     }
 
     private static string Plural(string lines) => $"{lines.Count(c => c == '\n')} lines";
