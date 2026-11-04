@@ -32,7 +32,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             $"The stand-in AppHost's Aspire configuration was not found.{Said()}");
         JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = StandInAppHost.Configuration });
         string output = ran.GetProperty("output").GetString()!;
-        Assert.True(output.Contains($"{StandInAppHost.Name}.dll", StringComparison.Ordinal),
+        Assert.True(output.Contains("The stand-in AppHost is up", StringComparison.Ordinal),
             $"An agent's run of the AppHost answered with a console that is not the AppHost's, so it reads nothing of its start: {ran}");
     }
 
