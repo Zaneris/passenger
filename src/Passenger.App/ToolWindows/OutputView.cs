@@ -347,8 +347,12 @@ public sealed class OutputView : DockPanel
     private readonly ToggleButton foldFilter;
     private Godot.GodotConsoleFold? fold;
 
-    /// <summary>The entries folded, each with the stretch of the console's text it was first shown in.</summary>
+    /// <summary>The entries folded, each with the stretch of the console's text it was first shown in, in the order shown.</summary>
     private readonly List<(Godot.GodotFoldEntry Entry, AnchoredRange At)> folds = [];
+
+    /// <summary>The stretch each folded entry was first shown in, and those of them that came again, whose counts are said.</summary>
+    private readonly Dictionary<Godot.GodotFoldEntry, AnchoredRange> foldAt = [];
+    private readonly HashSet<Godot.GodotFoldEntry> counted = [];
 
     private IReadOnlyList<LineAnnotation> foldNotes = [];
 
@@ -409,7 +413,20 @@ public sealed class OutputView : DockPanel
         int began = typedFrom - kept.Length;
         foreach ((Godot.GodotFoldEntry entry, int at) in taken.Made)
         {
-            folds.Add((entry, Document.MarkAt(new TextRange(Math.Max(0, began + at), Math.Min(entry.Text.Length, kept.Length - at)))));
+            AnchoredRange shown = Document.MarkAt(new TextRange(Math.Max(0, began + at), Math.Min(entry.Text.Length, kept.Length - at)));
+            folds.Add((entry, shown));
+            foldAt[entry] = shown;
+            if (entry.Count > 1)
+            {
+                counted.Add(entry);
+            }
+        }
+        foreach (Godot.GodotFoldEntry entry in taken.Again)
+        {
+            if (foldAt.ContainsKey(entry))
+            {
+                counted.Add(entry);
+            }
         }
         if (taken.Made.Count > 0 || taken.Again.Count > 0 || folds.Count > 0)
         {
@@ -418,25 +435,28 @@ public sealed class OutputView : DockPanel
     }
 
     /// <summary>The counts after the entries that came again, an entry trimmed away from the console let go (it shows anew
-    /// when it next comes); and the filtered console's text again where an entry came.</summary>
+    /// when it next comes); and the filtered console's text again where an entry came. What it walks is what was trimmed
+    /// and what came again, never every entry shown, which a game that errs anew every frame makes thousands of.</summary>
     private void ShowFolds(bool rebuild)
     {
+        // The console drops its oldest text first, so the entries trimmed away lead the list.
+        int gone = 0;
+        while (gone < folds.Count && folds[gone].At.Range.Length == 0)
+        {
+            (Godot.GodotFoldEntry entry, AnchoredRange at) = folds[gone++];
+            at.Remove();
+            foldAt.Remove(entry);
+            counted.Remove(entry);
+            fold?.Forget(entry);
+        }
+        folds.RemoveRange(0, gone);
         List<LineAnnotation> notes = [];
         TextSnapshot text = Document.Snapshot;
-        foreach ((Godot.GodotFoldEntry entry, AnchoredRange at) in folds.ToList())
+        foreach (Godot.GodotFoldEntry entry in counted)
         {
-            if (at.Range.Length == 0)
-            {
-                at.Remove();
-                folds.Remove((entry, at));
-                fold?.Forget(entry);
-                continue;
-            }
-            if (entry.Count > 1)
-            {
-                notes.Add(new LineAnnotation(text.GetLineFromOffset(at.Range.Start), Counted(entry), entry.Warning ? LineAnnotationLook.Muted : LineAnnotationLook.Error));
-            }
+            notes.Add(new LineAnnotation(text.GetLineFromOffset(foldAt[entry].Range.Start), Counted(entry), entry.Warning ? LineAnnotationLook.Muted : LineAnnotationLook.Error));
         }
+        notes.Sort((a, b) => a.Line.CompareTo(b.Line));
         foldNotes = notes;
         editor?.Decorations.SetLineAnnotations(notes);
         if (filtered is not null)
@@ -456,6 +476,8 @@ public sealed class OutputView : DockPanel
             at.Remove();
         }
         folds.Clear();
+        foldAt.Clear();
+        counted.Clear();
         fold?.Clear();
         foldNotes = [];
         editor?.Decorations.SetLineAnnotations([]);
