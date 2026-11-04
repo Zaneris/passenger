@@ -158,7 +158,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
 
         NativeMenu recent = Ui.Submenu(Ui.Submenu(window.MenuBar, "File"), MainMenu.RecentSolutions);
         NativeMenuItem[] items = [.. recent.Items.OfType<NativeMenuItem>()];
-        Assert.Equal([$"{Name(alpha)} – {RecentRow.Home(PathNames.Canonical(alpha))}"], items.Select(i => i.Header));
+        Assert.Equal([MainWindow.NativeWords($"{Name(alpha)} – {RecentRow.Home(PathNames.Canonical(alpha))}")], items.Select(i => i.Header));
         items[0].Command!.Execute(null);
         Ui.Settle();
         InThisWindow(window);
@@ -192,7 +192,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         Ui.Settle();
         InThisWindow(window);
         NativeMenuItem[] items = [.. Ui.Submenu(Ui.Submenu(window.MenuBar, "File"), MainMenu.RecentSolutions).Items.OfType<NativeMenuItem>()];
-        Assert.Equal([$"B – {RecentRow.Home(b)}", $"A – {RecentRow.Home(a)}"], items.Select(i => i.Header));
+        Assert.Equal([MainWindow.NativeWords($"B – {RecentRow.Home(b)}"), MainWindow.NativeWords($"A – {RecentRow.Home(a)}")], items.Select(i => i.Header));
         items[0].Command!.Execute(null);
         Ui.Settle();
         InThisWindow(window);
