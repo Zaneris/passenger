@@ -1,9 +1,11 @@
+using System.Text.RegularExpressions;
+
 namespace Passenger.Workspace.GodotShader;
 
 /// <summary>How a project's shaders are checked: its rendering method, the Godot that runs it, the warnings it asks for
 /// (none where null) and whether they count as errors, whether its shaders are built for XR, and the type of each global
 /// uniform it declares (none checked where null).</summary>
-public sealed record GodotShaderCheckOptions
+public sealed partial record GodotShaderCheckOptions
 {
     /// <summary>Every warning Godot's editor looks for by default.</summary>
     public const GodotShaderWarningFlags AllWarnings = (GodotShaderWarningFlags)((1u << (int)GodotShaderWarningCode.Max) - 1);
@@ -19,6 +21,64 @@ public sealed record GodotShaderCheckOptions
     public bool XrEnabled { get; init; }
 
     public IReadOnlyDictionary<string, string>? GlobalUniforms { get; init; }
+
+    private const string WarningsKey = "debug/shader_language/warnings/";
+
+    /// <summary>The options a project.godot's text gives, as Godot's editor reads them: its rendering method, each warning
+    /// on unless set off, warnings as errors, XR's shaders, and its global uniforms' types in the language's names. A value
+    /// Godot would not read leaves that setting as Godot's own.</summary>
+    public static GodotShaderCheckOptions Of(string? project, Version? godot)
+    {
+        if (project is null)
+        {
+            return new GodotShaderCheckOptions { Godot = godot };
+        }
+        Dictionary<string, string> values = GodotProject.Values(project);
+        GodotShaderWarningFlags flags = GodotShaderWarningFlags.None;
+        for (GodotShaderWarningCode code = 0; code < GodotShaderWarningCode.Max; code++)
+        {
+            if (!values.TryGetValue(WarningsKey + GodotShaderWarning.NameOf(code).ToLowerInvariant(), out string? set) || Truthy(set) != false)
+            {
+                flags |= GodotShaderWarning.FlagOf(code);
+            }
+        }
+        Dictionary<string, string> globals = new(StringComparer.Ordinal);
+        foreach ((string key, string value) in values)
+        {
+            if (key.StartsWith("shader_globals/", StringComparison.Ordinal) && GlobalType().Match(value) is { Success: true } type)
+            {
+                globals[key["shader_globals/".Length..]] = type.Groups[1].Value switch
+                {
+                    "color" or "rect2" => "vec4",
+                    "rect2i" => "ivec4",
+                    "transform_2d" => "mat3",
+                    "transform" => "mat4",
+                    string named => named,
+                };
+            }
+        }
+        string method = values.GetValueOrDefault("rendering/renderer/rendering_method")?.Trim().Trim('"') ?? string.Empty;
+        method = method is "mobile" or "gl_compatibility" ? method : GodotDefinitions.ForwardPlus;
+        return new GodotShaderCheckOptions
+        {
+            RenderingMethod = method,
+            Godot = godot,
+            Warnings = values.TryGetValue(WarningsKey + "enable", out string? enable) && Truthy(enable) == false ? null : flags,
+            WarningsAsErrors = values.TryGetValue(WarningsKey + "treat_warnings_as_errors", out string? asErrors) && Truthy(asErrors) == true,
+            XrEnabled = values.TryGetValue("xr/shaders/enabled", out string? xr) && Truthy(xr) == true,
+            GlobalUniforms = globals,
+        };
+    }
+
+    private static bool? Truthy(string value) => value.Trim() switch
+    {
+        "true" or "1" => true,
+        "false" or "0" => false,
+        _ => null,
+    };
+
+    [GeneratedRegex("\"type\"\\s*:\\s*\"(\\w+)\"")]
+    private static partial Regex GlobalType();
 }
 
 /// <summary>What Godot's front end made of a shader or an include: its messages, as Godot's editor gives them (a

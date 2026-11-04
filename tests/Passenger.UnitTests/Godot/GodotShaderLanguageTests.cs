@@ -243,6 +243,54 @@ public class GodotShaderLanguageTests
         Assert.Equal(error48 is null ? [] : [(error48, line48)], said48.Select(m => (m.Text, m.Line)));
     }
 
+    [Fact]
+    public void A_project_s_warning_settings_are_taken_as_Godot_s_editor_takes_them()
+    {
+        const string code = "shader_type spatial;\n\nuniform float unused;\n\nvoid fragment() {\n\tfloat x = 1.0;\n}\n";
+        GodotShaderCheckOptions options = GodotShaderCheckOptions.Of(
+            "config_version=5\n\n[debug]\n\nshader_language/warnings/unused_uniform=false\nshader_language/warnings/treat_warnings_as_errors=true\n", new Version(4, 7, 2));
+        GodotShaderMessage said = Assert.Single(Check(code, options).Messages);
+        Assert.Equal(new GodotShaderMessage(true, string.Empty, 6, "The local variable 'x' is declared but never used. Warnings should be fixed to prevent errors."), said);
+        Assert.Empty(Check(code, GodotShaderCheckOptions.Of("config_version=5\n\n[debug]\n\nshader_language/warnings/enable=false\n", null)).Messages);
+        Assert.Equal(2, Check(code, GodotShaderCheckOptions.Of("config_version=5\n", null)).Messages.Count);
+    }
+
+    [Fact]
+    public void An_include_is_warned_of_what_Godot_s_editor_warns_an_include_of()
+    {
+        GodotShaderChecked result = GodotShaderCheck.Check(new GodotShaderUnit("res://helpers.gdshaderinc", """
+            float unused_helper() {
+            	return 1.0;
+            }
+
+            uniform float unused_in_include;
+            const float UNUSED_C = 1.0;
+
+            float used(float v) {
+            	if (v == 0.5) {
+            		return 1.0;
+            	}
+            	float local_never = 1.0;
+            	return v;
+            }
+            """, new Dictionary<string, string>(), []), GodotShaderTable.Carried, new GodotShaderCheckOptions());
+        Assert.Equal([(5, "The uniform 'unused_in_include' is declared but never used."), (12, "The local variable 'local_never' is declared but never used.")],
+            result.Messages.Select(m => (m.Line, m.Text)));
+    }
+
+    [Fact]
+    public void A_global_uniform_is_checked_against_the_project_s_shader_globals()
+    {
+        GodotShaderCheckOptions options = GodotShaderCheckOptions.Of(
+            "config_version=5\n\n[shader_globals]\n\ntint={\n\"type\": \"color\",\n\"value\": Color(1, 1, 1, 1)\n}\nlevel={\n\"type\": \"float\",\n\"value\": 0.0\n}\n", null);
+        GodotShaderChecked result = Check("shader_type spatial;\n\nglobal uniform vec4 tint;\nglobal uniform vec3 level;\nglobal uniform float nothere;\n\nvoid fragment() {\n\tALBEDO = tint.rgb;\n}\n", options);
+        Assert.Equal([(4, "Global uniform 'level' must be of type 'float'."), (5, "Global uniform 'nothere' does not exist. Create it in Project Settings.")],
+            result.Messages.Select(m => (m.Line, m.Text)));
+    }
+
+    private static GodotShaderChecked Check(string code, GodotShaderCheckOptions options) =>
+        GodotShaderCheck.Check(new GodotShaderUnit("res://shader.gdshader", code, new Dictionary<string, string>(), []), GodotShaderTable.Carried, options);
+
     private static GodotShaderChecked Check(string code, IReadOnlyDictionary<string, string>? includes = null, string method = "forward_plus", Version? godot = null) =>
         GodotShaderCheck.Check(new GodotShaderUnit("res://shader.gdshader", code, includes ?? new Dictionary<string, string>(), []), GodotShaderTable.Carried,
             new GodotShaderCheckOptions { RenderingMethod = method, Godot = godot ?? new Version(4, 7, 2) });
