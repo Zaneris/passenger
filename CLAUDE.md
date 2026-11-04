@@ -308,11 +308,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   through `Git.RunAsync<T>` (over `ChildProcesses.RunAsync<T>`, a failed read ending the child); paths reach git on its
   input (`Git.OnFilesAsync`), never its command line; git's questions (a login, a passphrase) reach the window only
   through `GitAskPass` (`VcsController.AskerOf`), GPG's through Passenger's own gpg with loopback pinentry
-  (`GpgLoopback`, `gpg.program` by `-c`; gpgsm's for X.509 too; every gpg found by `GpgPrograms`, Git for Windows' own
-  under `usr\bin`); a commit's signature is read for the Log's rows shown (`CommitSignatures`, `Git.SignaturesAsync`),
-  never by `%G?` in its own read, which runs a verifier per signed commit, a failure to sign said by `SigningFailure`; a
-  git that may ask ends with its folder, its questions refused, waited out within `VcsController.GitEndLimit`
-  (`GitQuestions`), so it takes its lock away.
+  (`GpgLoopback`, `gpg.program` by `-c`; gpgsm's for X.509 too; Git for Windows' MSYS gpg given its home as MSYS reads
+  one, `MsysGpg`, its agent left none of Passenger's handles, `StandardHandles.NotInherited`; every gpg found by
+  `GpgPrograms`, Git for Windows' own under `usr\bin`); a commit's signature is read for the Log's rows shown
+  (`CommitSignatures`, `Git.SignaturesAsync`), never by `%G?` in its own read, which runs a verifier per signed commit,
+  a failure to sign said by `SigningFailure`; a git that may ask ends with its folder, its questions refused, waited out
+  within `VcsController.GitEndLimit` (`GitQuestions`), so it takes its lock away.
 - `Passenger.Dap`, `Passenger.Debugger` (+`.Interop`), `Passenger.DebugAdapter`: Passenger's own debugger behind its own
   DAP, in a process of its own under `debugger/`. `Passenger.ContainerTools` (`passenger-tools`) runs inside a Linux
   container, self-contained, carried only in the release's archives.
