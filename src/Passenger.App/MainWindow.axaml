@@ -181,9 +181,10 @@
                     </Button>
                     <TextBlock Name="LanguageText" Classes="status" />
                 </StackPanel>
-                <app:StatusLine>
-                    <!-- Cut where the widgets begin, so a deep file's path never runs on under them, and where what the
-                         bar says begins, which takes its room first. -->
+                <!-- A gap before the widgets, as between them, so neither a deep file's path nor what the bar says runs on
+                     against them. -->
+                <app:StatusLine Margin="0,0,18,0">
+                    <!-- Cut where its line ends, and where what the bar says begins. -->
                     <Panel Name="BreadcrumbHost" VerticalAlignment="Center" ClipToBounds="True" />
                     <!-- What the status bar says, with whether it is an error or a warning (a project's load) while it says it;
                          a link to where it has more to see while it has a place (StatusBar.Say), its whole text on hover. -->
