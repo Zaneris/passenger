@@ -123,6 +123,22 @@ public class GDScriptRefactoringsTests
     }
 
     [Fact]
+    public void Inline_variable_is_refused_where_its_value_read_anew_would_run_in_a_loop_under_a_branch_or_after_a_call()
+    {
+        string text = "func compute() -> int:\n\treturn 1\n\n\nfunc a(cond: bool) -> void:\n\tvar x := compute()\n\tif cond:\n\t\tprint(x)\n\n\n"
+            + "func b(n: int) -> void:\n\tvar y := n + 1\n\tfor i in 3:\n\t\tprint(y, i)\n\n\nfunc c() -> void:\n\tvar z := compute()\n\tprint(\"before\")\n\tprint(z)\n\n\n"
+            + "func d(cond: bool) -> bool:\n\tvar w := compute()\n\treturn cond and w > 0\n\n\nfunc e(n: int) -> void:\n\tvar v := n * 2\n\tif n > 0:\n\t\tprint(v)\n\n\n"
+            + "func f() -> int:\n\tvar u := compute()\n\treturn u + 1\n";
+        GDScriptAnalysis analysis = One(text);
+        Assert.Contains("read anew in a branch", GDScriptRefactorings.InlineVariable(analysis, text.IndexOf("x :=", StringComparison.Ordinal)).Refused);
+        Assert.Contains("read anew in a loop", GDScriptRefactorings.InlineVariable(analysis, text.IndexOf("y :=", StringComparison.Ordinal)).Refused);
+        Assert.Contains("after a call", GDScriptRefactorings.InlineVariable(analysis, text.IndexOf("z :=", StringComparison.Ordinal)).Refused);
+        Assert.Contains("read anew in a branch", GDScriptRefactorings.InlineVariable(analysis, text.IndexOf("w :=", StringComparison.Ordinal)).Refused);
+        Assert.Contains("\tif n > 0:\n\t\tprint(n * 2)\n", After(GDScriptRefactorings.InlineVariable(analysis, text.IndexOf("v :=", StringComparison.Ordinal)), "res://main.gd", text));
+        Assert.Contains("\treturn compute() + 1\n", After(GDScriptRefactorings.InlineVariable(analysis, text.IndexOf("u :=", StringComparison.Ordinal)), "res://main.gd", text));
+    }
+
+    [Fact]
     public void Inline_variable_is_refused_where_it_is_assigned_again_or_what_it_reads_changes()
     {
         string again = "func f(a):\n\tvar b = a\n\tb = 3\n\tprint(b)\n";

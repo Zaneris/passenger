@@ -318,8 +318,38 @@ public static partial class GDScriptRefactorings
         ]);
     }
 
+    /// <summary>Where a use of a local stands that its value, read there, would run other than once right after its
+    /// declaration: "a loop" (its body, or a while's condition), "a branch" (an if's or a match's block, a conditional's
+    /// branch, the right of and/or) or "a lambda"; null where it runs as the declaration did.</summary>
+    private static string? Unsettled(GDScriptNode use, GDScriptNode declaration, Dictionary<GDScriptNode, GDScriptNode?> parents)
+    {
+        GDScriptNode? stop = parents.GetValueOrDefault(declaration);
+        GDScriptNode below = use;
+        for (GDScriptNode? at = parents.GetValueOrDefault(use); at is not null && at != stop; below = at, at = parents.GetValueOrDefault(at))
+        {
+            string? why = at switch
+            {
+                GDScriptLambda => "a lambda",
+                GDScriptFor { Loop: { } loop } when loop == below => "a loop",
+                GDScriptWhile => "a loop",
+                GDScriptTernary { Condition: { } condition } when condition != below => "a branch",
+                GDScriptBinary { Operator: GDScriptTokenKind.And or GDScriptTokenKind.Or or GDScriptTokenKind.AmpersandAmpersand or GDScriptTokenKind.PipePipe, Right: { } right }
+                    when right == below => "a branch",
+                GDScriptSuite when parents.GetValueOrDefault(at) is GDScriptFunction => "a lambda",
+                GDScriptSuite when parents.GetValueOrDefault(at) is not GDScriptFor and not GDScriptWhile => "a branch",
+                _ => null,
+            };
+            if (why is not null)
+            {
+                return why;
+            }
+        }
+        return null;
+    }
+
     /// <summary>Inline Variable: a local's value put where each use reads it, its declaration taken out; refused where it is
-    /// assigned again, where what its value reads changes before a use, or where a value that calls would run more often.</summary>
+    /// assigned again, where what its value reads changes before a use, where a value that calls would run more often, and
+    /// where a value read anew would run in a loop, under a branch or after a call it did not run after.</summary>
     public static GDScriptRefactored InlineVariable(GDScriptAnalysis analysis, int offset)
     {
         if (analysis.Tree is not { } tree || FunctionAt(tree, offset) is not { Function.Body: { } body } located)
@@ -362,6 +392,22 @@ public static partial class GDScriptRefactorings
         if (calls && uses.Count != 1)
         {
             return GDScriptRefactored.No(uses.Count == 0 ? $"'{own.Name}' is never read, and its value calls" : $"its value calls, and would be called {uses.Count} times");
+        }
+        // A value read anew may give another answer: each time in a loop, sometimes under a branch, changed by a call before.
+        bool steady = Below(value).OfType<GDScriptIdentifier>().All(i => analysis.TypeOf(i).Meta
+            || analysis.DeclarationOf(i) is { } d && d.Script == analysis.Path && d.Start >= located.Offset + located.Function.Start && d.Start <= located.Offset + located.Function.End);
+        foreach (GDScriptIdentifier use in uses)
+        {
+            if (Unsettled(use, variable, parents) is { } why && (calls || !steady || why == "a loop"))
+            {
+                return GDScriptRefactored.No($"its value would be read anew in {why}, where it may give another answer",
+                    [new GDScriptPlace(analysis.Path, located.Offset + use.Start, located.Offset + use.End, why)]);
+            }
+            if ((calls || !steady) && Below(body).FirstOrDefault(n => n is GDScriptCall or GDScriptAwait && n.Start > variable.End && n.Start < use.Start && n.End < use.End) is { } between)
+            {
+                return GDScriptRefactored.No("its value would be read after a call that may change what it reads",
+                    [new GDScriptPlace(analysis.Path, located.Offset + between.Start, located.Offset + between.End, "called first")]);
+            }
         }
         string written = text[(located.Offset + value.Start)..(located.Offset + value.End)];
         List<TextEdit> edits = [.. uses.Select(u => new TextEdit(located.Offset + u.Start, u.End - u.Start, Placed(written, u, Compound(value), parents)))];
