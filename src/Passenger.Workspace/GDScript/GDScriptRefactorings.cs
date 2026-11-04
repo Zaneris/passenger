@@ -1,4 +1,5 @@
 using System.Text;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Workspace.GDScript;
@@ -570,7 +571,7 @@ public static partial class GDScriptRefactorings
         }
         if (outputs.Count > 1)
         {
-            return GDScriptRefactored.No($"the statements set {string.Join(" and ", outputs.Select(o => $"'{o.Name}'"))}, which are read after them: one function returns one value");
+            return GDScriptRefactored.No($"the statements set {Plural.Listed([.. outputs.Select(o => $"'{o.Name}'")])}, which are read after them: one function returns one value");
         }
         bool awaits = chosen.SelectMany(Below).Any(n => n is GDScriptAwait);
         string unit = Unit(text);
