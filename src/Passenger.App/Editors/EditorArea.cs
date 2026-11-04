@@ -543,17 +543,29 @@ public sealed partial class EditorArea : UserControl
         return true;
     }
 
-    /// <summary>Close Other Tabs: every tab of the group but this one and the pinned ones.</summary>
-    public void CloseOthers(EditorGroup group, OpenDocument keep) => CloseTabs(group, (tab, _) => tab.Document != keep);
+    /// <summary>Close Other Tabs: every tab of the group but this one, which it shows, and the pinned ones.</summary>
+    public void CloseOthers(EditorGroup group, OpenDocument keep) => CloseKeeping(group, keep, (tab, _) => tab.Document != keep);
 
     /// <summary>Close All Tabs: every tab of the group but the pinned ones.</summary>
     public void CloseAllTabs(EditorGroup group) => CloseTabs(group, (_, _) => true);
 
-    /// <summary>Close Tabs to the Left or to the Right of a tab, the pinned ones left open.</summary>
+    /// <summary>Close Tabs to the Left or to the Right of a tab, which it shows, the pinned ones left open.</summary>
     public void CloseToSide(EditorGroup group, OpenDocument of, bool left)
     {
         int at = group.Tabs.Select(t => t.Document).ToList().IndexOf(of);
-        CloseTabs(group, (_, index) => left ? index < at : index > at);
+        CloseKeeping(group, of, (_, index) => left ? index < at : index > at);
+    }
+
+    /// <summary>A close of the tabs beside one, chosen on it: it is shown first, so the group ends on the tab kept and none
+    /// of those closing is shown on the way.</summary>
+    private void CloseKeeping(EditorGroup group, OpenDocument keep, Func<EditorTab, int, bool> which)
+    {
+        if (group.Has(keep) && group.Active != keep)
+        {
+            group.Show(keep);
+            Activated(group);
+        }
+        CloseTabs(group, which);
     }
 
     /// <summary>Close All but Pinned: the group's unpinned tabs, or every group's in every window.</summary>
@@ -728,7 +740,8 @@ public sealed partial class EditorArea : UserControl
 
     internal void RequestMaximize() => MaximizeRequested?.Invoke(this, EventArgs.Empty);
 
-    /// <summary>A tab of a group was shown by a click on it.</summary>
+    /// <summary>A tab of a group was shown as the person chose it: a click on it, the hidden tabs' list, a close chosen
+    /// on it.</summary>
     internal void Activated(EditorGroup group)
     {
         Refresh();

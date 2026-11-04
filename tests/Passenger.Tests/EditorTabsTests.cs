@@ -215,6 +215,32 @@ public sealed class EditorTabsTests : IDisposable
         second.Close();
     }
 
+    /// <summary>Close Tabs to the Right and Close Other Tabs, chosen on a tab not shown, end showing that tab, the one
+    /// they keep, rather than the tab shown before them (left open) or a pinned tab shown more lately.</summary>
+    [AvaloniaFact]
+    public void Close_Tabs_to_the_Right_and_Close_Other_Tabs_end_showing_the_tab_they_were_chosen_on()
+    {
+        MainWindow window = Keeping(Five);
+        EditorArea area = window.EditorArea;
+        EditorGroup group = area.ActiveGroup;
+        Ui.ChooseFromMenu(Tab(group, "One.cs"), "Pin Tab");
+        Ui.Click(TabName(group, "Three.cs"));
+        Ui.Click(TabName(group, "One.cs"));
+        Assert.Equal("One.cs", area.Active?.Name);
+
+        Ui.ChooseFromMenu(Tab(group, "Four.cs"), "Close Tabs to the Right");
+        Assert.Equal(["One.cs", "Two.cs", "Three.cs", "Four.cs"], Names(group));
+        Assert.True(area.Active?.Name == "Four.cs", $"Close Tabs to the Right of Four.cs showed {area.Active?.Name}, not Four.cs, the tab it kept");
+
+        // Closing Three.cs alone would show One.cs, pinned and shown just before it.
+        Ui.Click(TabName(group, "One.cs"));
+        Ui.Click(TabName(group, "Three.cs"));
+        Ui.ChooseFromMenu(Tab(group, "Two.cs"), "Close Other Tabs");
+        Assert.Equal(["One.cs", "Two.cs"], Names(group));
+        Assert.True(area.Active?.Name == "Two.cs", $"Close Other Tabs on Two.cs showed {area.Active?.Name}, not Two.cs, the tab it kept");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Close_Tabs_to_the_Left_and_to_the_Right_close_those_on_that_side_but_the_pinned_ones()
     {
