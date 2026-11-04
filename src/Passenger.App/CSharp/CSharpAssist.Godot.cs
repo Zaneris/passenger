@@ -221,33 +221,34 @@ internal sealed partial class CSharpAssist
 
     /// <summary>What the hover card says of a Godot project's C# (<see cref="GodotWords"/>), and the preview of the file a
     /// res:// path or uid:// name there names (<see cref="GodotPreviews"/>); neither for a file of no Godot project.</summary>
-    private async Task<(string? Words, FilePreview? Preview)> GodotHoverAsync(OpenDocument document, int offset, CancellationToken cancel)
+    private async Task<(string? Words, FilePreview? Preview, bool OfString)> GodotHoverAsync(OpenDocument document, int offset, CancellationToken cancel)
     {
         if (context.WebOf(document) is not null || context.CSharp is not { } csharp || csharp.For(document)?.Lsp is not { } lsp
             || csharp.GodotOf?.Invoke(document.Path) is null || await csharp.GodotAsync(document.Path, cancel) is not { } read)
         {
-            return (null, null);
+            return (null, null, false);
         }
-        string? words = GodotWords(lsp, document, offset, read);
+        (string? words, bool ofString) = GodotWords(lsp, document, offset, read);
         FilePreview? preview = read.Found.Resources.FirstOrDefault(r => OffsetOf(lsp, r.At) <= offset && offset <= OffsetOf(lsp, r.End)) is { } named
             ? await BackgroundWork.Run(() => GodotPreviews.Of(read.Scenes, named.Path, path => File.Exists(path)), cancel)
             : null;
-        return (words, preview);
+        return (words, preview, ofString);
     }
 
     /// <summary>What the hover card says of a Godot project's C#: where a string of a kind's name is defined
-    /// (<see cref="KindHover"/>); the node a GetNode path names in each scene its script runs in, or that none answers; the
-    /// file a uid:// names; an <c>[Export]</c> member's value in each scene and resource that sets it.</summary>
-    private static string? GodotWords(LspDocument lsp, OpenDocument document, int offset, GodotRead read)
+    /// (<see cref="KindHover"/>); a GDScript member a string names; the node a GetNode path names in each scene its script
+    /// runs in, or that none answers; the file a uid:// names; an <c>[Export]</c> member's value in each scene and resource
+    /// that sets it. With whether it says what a string names, which the server would describe as System.String.</summary>
+    private static (string? Words, bool OfString) GodotWords(LspDocument lsp, OpenDocument document, int offset, GodotRead read)
     {
         (int start, _) = StringAround(lsp.Text.Snapshot, offset);
         if (KindAt(lsp, read, offset, start) is { Exact: true } kind)
         {
-            return KindHover(read, kind);
+            return (KindHover(read, kind), true);
         }
         if (MemberStringAt(lsp, read, offset, start) is { } member && MemberHover(read, member) is { } declared)
         {
-            return declared;
+            return (declared, true);
         }
         if (CallAt(lsp, read, offset, start) is { } call && call.Class < read.Found.Classes.Count)
         {
@@ -258,22 +259,21 @@ internal sealed partial class CSharpAssist
                 lines.Add(resolved.Found is { } target ? $"{GodotChecks.Shown(target)} '{target.Path}' in {GodotChecks.Place(read.Scenes, target.Declared.Scene, target)}"
                     : resolved.Unknown ? $"Not known from {Path.GetFileName(scene)}: the path leaves what it holds" : $"No node in {Path.GetFileName(scene)}");
             }
-            return lines.Count == 0 ? null : string.Join('\n', [$"'{call.Path}' from {read.Found.Classes[call.Class].Name}:", .. lines.Distinct()]);
+            return (lines.Count == 0 ? null : string.Join('\n', [$"'{call.Path}' from {read.Found.Classes[call.Class].Name}:", .. lines.Distinct()]), lines.Count > 0);
         }
         if (read.Found.Resources.FirstOrDefault(r => r.Path.StartsWith(GodotUids.Scheme, StringComparison.Ordinal) && OffsetOf(lsp, r.At) <= offset && offset <= OffsetOf(lsp, r.End)) is { } uid)
         {
-            return read.Scenes.ResOfUid(uid.Path) is { } res ? $"{uid.Path} is {res}" : $"No file of the Godot project has {uid.Path}";
+            return (read.Scenes.ResOfUid(uid.Path) is { } res ? $"{uid.Path} is {res}" : $"No file of the Godot project has {uid.Path}", true);
         }
         foreach (GodotClassFound type in read.Found.Classes)
         {
             if (type.Exports.FirstOrDefault(e => SameFile(e.Path, document.Path) && OffsetOf(lsp, e.At) <= offset && offset <= OffsetOf(lsp, e.End)) is { } export)
             {
                 IReadOnlyList<string> set = ExportValues(read.Scenes, type.Scripts, export.Name);
-                return set.Count == 0 ? $"No scene or resource sets {export.Name}: each takes its default"
-                    : string.Join('\n', [$"{export.Name} is set in:", .. set]);
+                return (set.Count == 0 ? $"No scene or resource sets {export.Name}: each takes its default" : string.Join('\n', [$"{export.Name} is set in:", .. set]), false);
             }
         }
-        return null;
+        return (null, false);
     }
 
     /// <summary>Each value scenes and resources set an exported member to, on the nodes and resources scripts run as: where

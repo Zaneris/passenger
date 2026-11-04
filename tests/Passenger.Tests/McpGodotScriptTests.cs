@@ -4,14 +4,15 @@ using Passenger.Core;
 namespace Passenger.Tests;
 
 /// <summary>An agent's usages of a GDScript's function, through the same Find Usages a person's is: it lists the C# string
-/// calling it on a node the scene runs the script on, and the scene's connection to it, beside what Godot's server finds.
+/// calling it on a node the scene runs the script on, and the scene's connection to it, beside what Godot's server finds;
+/// the card on that string is the function's.
 /// Its project restores from the packages the Godot found carries and the script starts GDScript's server in a headless
 /// Godot editor, so without a Godot 4 .NET build it skips saying why; a Godot editor of its own, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class McpGodotScriptTests : McpRig
 {
     [Fact]
-    public async Task An_agents_usages_of_a_gdscripts_function_list_the_csharp_string_and_the_scenes_connection_naming_it()
+    public async Task An_agents_usages_of_a_gdscripts_function_list_the_csharp_string_and_the_scenes_connection_naming_it_whose_card_is_the_functions()
     {
         GodotFound? godot = GodotExecutables.Find(null);
         Assert.SkipWhen(godot is not { WhyNot: null, Version: not null, Packages: not null },
@@ -31,6 +32,10 @@ public sealed class McpGodotScriptTests : McpRig
             await Until(async () => (found = Text(await Call(client, McpTools.Usages, new() { ["path"] = "enemy.gd", ["line"] = line, ["column"] = 8 })))
                 .Contains($"{called}:", StringComparison.Ordinal) && found.Contains("Main.cs", StringComparison.Ordinal), "usages of take_damage to list the C# call");
             Assert.Contains("main.tscn", found, StringComparison.Ordinal);
+            int column = GodotScriptCallsTests.Script.Split('\n')[called - 1].IndexOf("take_damage", StringComparison.Ordinal) + 2;
+            string card = Text(await Call(client, McpTools.SymbolInfo, new() { ["path"] = "Main.cs", ["line"] = called, ["column"] = column }));
+            Assert.True(card.StartsWith("func take_damage(amount: int) -> void", StringComparison.Ordinal) && !card.Contains("System.String", StringComparison.Ordinal),
+                $"The card on the C# string naming take_damage should be the function's, not a string's: {card}");
         }
         finally
         {
