@@ -55,6 +55,9 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
         }
     }
 
+    /// <summary>Who marks an open file, as an agent is told while the check is under way; null for one this takes no part in.</summary>
+    public string? CheckOf(OpenDocument document) => documents.Contains(document) ? Checker : null;
+
     public void Detach(OpenDocument document)
     {
         UiThread.Check();

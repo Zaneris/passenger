@@ -1236,6 +1236,22 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("Breakpoint: no code runs on this line or after it, so it will not stop the program", await Said(6));
     }
 
+    /// <summary>An agent's diagnostics of a file no check of Passenger's reads says so and names those it answers, never an
+    /// empty list an agent reads as a file found clean; a file a check reads (an .editorconfig) still answers its marks.</summary>
+    [Fact]
+    public async Task An_agents_diagnostics_of_a_file_no_check_reads_says_so_and_a_checked_files_answers_its_marks()
+    {
+        string folder = TestFolders.Create("mcp-unchecked-");
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "Notes.md"), "# Notes\n\nPlain words.\n");
+        File.WriteAllText(Path.Combine(folder, ".editorconfig"), "root = true\n\n[*.cs]\nindent_size = 4\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult unread = await Result(client, McpTools.Diagnostics, new() { ["path"] = "Notes.md" });
+        Assert.True(unread.IsError == true && Text(unread).Contains("No check of Passenger's reads Markdown files such as Notes.md: diagnostics answers C#", StringComparison.Ordinal),
+            $"diagnostics of a file no check reads answered: {Text(unread)}");
+        Assert.Empty((await Call(client, McpTools.Diagnostics, new() { ["path"] = ".editorconfig" })).EnumerateArray());
+    }
+
     /// <summary>An agent's build of a folder with no solution or project says so, never MSBuild's MSB1003 as a failed build's
     /// error to be fixed.</summary>
     [Fact]

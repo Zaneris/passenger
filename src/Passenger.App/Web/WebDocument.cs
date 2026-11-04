@@ -42,7 +42,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     private TimeSpan PushLimit => Kind == WebServerKind.TypeScript ? Waits.Of(TimeSpan.FromSeconds(15)) : TimeSpan.FromSeconds(5);
 
     /// <summary>Who checks the file, as an agent is told while its check is under way.</summary>
-    private string Checker => $"the {WebLanguages.Name(Kind)} language server";
+    public string Checker => $"the {WebLanguages.Name(Kind)} language server";
 
     /// <summary>The command of TypeScript's server that hands a request to its tsserver as it stands.</summary>
     private const string TsServerRequest = "typescript.tsserverRequest";

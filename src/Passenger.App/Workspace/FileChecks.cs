@@ -44,6 +44,9 @@ internal sealed class FileChecks : IDisposable
         Mark(document);
     }
 
+    /// <summary>Who marks an open file, as an agent is told while the check is under way; null for one this takes no part in.</summary>
+    public string? CheckOf(OpenDocument document) => documents.TryGetValue(document, out (Check Kind, Debounce Wait, EventHandler<DocumentChangedEventArgs> Changed) held) ? held.Kind.Checker : null;
+
     public void Detach(OpenDocument document)
     {
         UiThread.Check();

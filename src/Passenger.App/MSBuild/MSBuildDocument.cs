@@ -20,7 +20,7 @@ public sealed class MSBuildDocument : IDisposable
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(400);
 
     /// <summary>Who checks the file, as an agent is told while its check is under way.</summary>
-    private const string Checker = "the project's MSBuild evaluation";
+    internal const string Checker = "the project's MSBuild evaluation";
 
     private readonly MSBuildService service;
     private readonly Debounce inspecting;

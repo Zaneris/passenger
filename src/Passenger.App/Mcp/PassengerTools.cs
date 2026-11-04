@@ -212,6 +212,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         if (await DocumentAsync(path, cancel) is { Language.Service: not Languages.LanguageService.CSharp } marked)
         {
+            if (Session.ChecksOf(marked).Count == 0)
+            {
+                // No marks from no check would read as a file found clean.
+                throw new InvalidOperationException($"No check of Passenger's reads {LanguageOf(marked)} files such as {Path.GetFileName(marked.Path)}: diagnostics answers C#, "
+                    + "Razor, a C# project's XAML, MSBuild files, JSON, YAML, HTML, CSS, SCSS, Less, JavaScript, TypeScript, Dockerfiles and compose files, "
+                    + "Godot's scenes, shaders and scripts, and .editorconfig, .slnx and .http files");
+            }
             await Checked(marked, cancel);
             List<Finding> missing = [];
             if (marked.Unanswered is { Count: > 0 } unanswered)

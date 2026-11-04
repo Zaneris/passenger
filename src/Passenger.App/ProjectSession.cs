@@ -1171,6 +1171,33 @@ public sealed class ProjectSession : IAsyncDisposable
         Navigation.Attach(document.Path, document.Text);
     }
 
+    /// <summary>The checks of Passenger's beside C#'s that mark a file opened here, each as an agent is told while it is
+    /// under way; none for a file no check reads, whose lack of marks says nothing of it.</summary>
+    public IReadOnlyList<string> ChecksOf(OpenDocument document)
+    {
+        List<string> checks = [];
+        if (Web?.For(document) is { } web)
+        {
+            checks.Add(web.Checker);
+        }
+        if (Xaml.For(document) is not null)
+        {
+            checks.Add(Passenger.App.Xaml.XamlDocument.Checker);
+        }
+        if (MSBuild.For(document) is not null)
+        {
+            checks.Add(Passenger.App.MSBuild.MSBuildDocument.Checker);
+        }
+        foreach (string? check in (string?[])[GodotMarks.CheckOf(document), GodotShaders.CheckOf(document), GodotScriptTypes.CheckOf(document), FileChecks.CheckOf(document)])
+        {
+            if (check is not null)
+            {
+                checks.Add(check);
+            }
+        }
+        return checks;
+    }
+
     /// <summary>A file the editor closed, which they follow no more.</summary>
     public void Detach(OpenDocument document)
     {

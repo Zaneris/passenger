@@ -79,6 +79,9 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         IdeErrors.Observe(TypeAsync(document));
     }
 
+    /// <summary>Who marks an open file, as an agent is told while the check is under way; null for one this takes no part in.</summary>
+    public string? CheckOf(OpenDocument document) => documents.ContainsKey(document) ? Checker : null;
+
     public void Detach(OpenDocument document)
     {
         UiThread.Check();
