@@ -50,9 +50,30 @@ public sealed class NoDotnetTests : IAsyncDisposable
         ShellPath.UserStandIn = [];
         OwnEnvironment.Set("ZDOTDIR", Home);
         OwnEnvironment.Set("PATH", string.Join(Path.PathSeparator, (path ?? string.Empty).Split(Path.PathSeparator)
-            .Where(at => at.Length > 0 && !File.Exists(Path.Combine(at, DotnetName)))));
+            .Where(at => at.Length > 0).Select(WithoutDotnet).OfType<string>()));
         OwnEnvironment.Set(RuntimeVariables.Root, null);
         Dotnet.ForgetSdks();
+    }
+
+    /// <summary>A folder of the PATH as the test's PATH has it: as it is where it holds no dotnet; where it does, on macOS and
+    /// Linux (whose /usr/bin may link dotnet beside git) a folder of the test's linking each of its other programs, and on
+    /// Windows, where .NET's folder holds .NET alone, none.</summary>
+    private string? WithoutDotnet(string at, int place)
+    {
+        if (!File.Exists(Path.Combine(at, DotnetName)))
+        {
+            return at;
+        }
+        if (OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+        string kept = Directory.CreateDirectory(Path.Combine(folder, "path-without-dotnet", place.ToString(System.Globalization.CultureInfo.InvariantCulture))).FullName;
+        foreach (string program in Directory.EnumerateFileSystemEntries(at).Where(p => Path.GetFileName(p) != DotnetName))
+        {
+            File.CreateSymbolicLink(Path.Combine(kept, Path.GetFileName(program)), program);
+        }
+        return kept;
     }
 
     public async ValueTask DisposeAsync()
