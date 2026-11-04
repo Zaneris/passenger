@@ -2602,6 +2602,90 @@ public static partial class Processes
         }
     }
 
+    /// <summary>The MSBuild worker nodes and servers, and the compiler and Razor servers their builds started, running now
+    /// under a handshake salt that names <paramref name="salt"/> (a Passenger's, passenger-ID: a person's salt before it, a
+    /// language server's after), by id, each with its command line and salt. Each takes its environment from what started it.</summary>
+    public static IReadOnlyDictionary<int, string> SaltedBuilds(string salt)
+    {
+        Dictionary<int, string> found = [];
+        foreach ((int id, string command, string environment) in BuildProcesses())
+        {
+            System.Text.RegularExpressions.Match given = SaltVariable().Match(environment);
+            if (given.Success && Names(given.Groups[1].Value, salt))
+            {
+                found[id] = $"{command.Trim()} (salt {given.Groups[1].Value})";
+            }
+        }
+        return found;
+
+        static bool Names(string given, string salt)
+        {
+            for (int at = given.IndexOf(salt, StringComparison.Ordinal); at >= 0; at = given.IndexOf(salt, at + 1, StringComparison.Ordinal))
+            {
+                if (at + salt.Length == given.Length || given[at + salt.Length] == '-')
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    /// <summary>Each MSBuild node or server, compiler server or Razor server now, with its command line and environment:
+    /// ps shows a process's environment to its user on macOS, /proc on Linux, and on Windows its parameters in its memory.</summary>
+    private static List<(int Id, string Command, string Environment)> BuildProcesses()
+    {
+        List<(int, string, string)> found = [];
+        if (OperatingSystem.IsWindows())
+        {
+            foreach (System.Diagnostics.Process process in ((string[])["dotnet", "MSBuild", "VBCSCompiler"]).SelectMany(System.Diagnostics.Process.GetProcessesByName))
+            {
+                using (process)
+                {
+                    try
+                    {
+                        if (WindowsParameters(process) is ({ } commandLine, { } environment) && IsBuild(commandLine))
+                        {
+                            found.Add((process.Id, commandLine, environment.Replace('\0', ' ')));
+                        }
+                    }
+                    catch (Exception gone) when (gone is InvalidOperationException or System.ComponentModel.Win32Exception)
+                    {
+                        // It ended as it was read.
+                    }
+                }
+            }
+            return found;
+        }
+        foreach ((int id, string line) in ById(Ps(OperatingSystem.IsMacOS() ? ["-A", "-E", "-o", "pid=,command="] : ["-A", "-o", "pid=,command="])))
+        {
+            if (IsBuild(line))
+            {
+                found.Add((id, line, OperatingSystem.IsMacOS() ? line : ProcEnvironment(id)));
+            }
+        }
+        return found;
+
+        static bool IsBuild(string command) => command.Contains("/nodemode:", StringComparison.Ordinal) || command.Contains("VBCSCompiler", StringComparison.Ordinal)
+            || command.Contains("rzc.dll", StringComparison.Ordinal);
+    }
+
+    /// <summary>A process's environment on Linux, its variables apart by spaces; empty once it has gone.</summary>
+    private static string ProcEnvironment(int id)
+    {
+        try
+        {
+            return File.ReadAllText($"/proc/{id}/environ").Replace('\0', ' ');
+        }
+        catch (Exception gone) when (gone is IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\bMSBUILDNODEHANDSHAKESALT=(\S*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex SaltVariable();
+
     /// <summary>Each MSBuild worker node now by id on Windows, with its handshake's salt, read with its command line from
     /// its process's parameters in its memory, as no tool there shows another process's environment. Empty elsewhere.</summary>
     public static IReadOnlyDictionary<int, string> WindowsMSBuildNodes()

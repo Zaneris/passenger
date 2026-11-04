@@ -7,6 +7,10 @@ app := "src/Passenger.App"
 # Avalonia's build task sends usage data from every build of an Avalonia project unless this is in the environment.
 export AVALONIA_TELEMETRY_OPTOUT := "1"
 
+# No MSBuild server for a recipe's dotnet (the SDK's switch, MSBuild's own): it outlives its build, keeping its nodes.
+export DOTNET_CLI_USE_MSBUILD_SERVER := "0"
+export MSBUILDUSESERVER := "0"
+
 # The checkout as the disk names it, for recipes' shells and dotnet, which take a PWD naming their folder as its path.
 export PWD := justfile_directory()
 
