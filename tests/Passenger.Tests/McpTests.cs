@@ -1116,6 +1116,30 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's stash with a message but no action, which lists (the default) and so puts nothing away, is
+    /// refused saying to give push; an action vcs_stash does not have is refused as one, though no stash is there to act
+    /// on; and the change stays where it was.</summary>
+    [Fact]
+    public async Task An_agents_stash_with_a_message_and_no_action_or_an_unknown_action_is_refused_saying_what_to_give()
+    {
+        string repository = TestFolders.Create("mcp-stash-");
+        DeleteAtEnd(repository);
+        string notes = Path.Combine(repository, "Notes.txt");
+        File.WriteAllText(notes, "one\ntwo\n");
+        await TestGit.InitAsync(repository);
+        File.WriteAllText(notes, "one\n2\n");
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        CallToolResult unasked = await Result(client, McpTools.VcsStash, new() { ["message"] = "work in progress" });
+        Assert.True(unasked.IsError == true && Text(unasked).Contains("give action push", StringComparison.Ordinal),
+            $"A stash with a message and no action, which puts nothing away, answered: {Text(unasked)}");
+        CallToolResult unknown = await Result(client, McpTools.VcsStash, new() { ["action"] = "save" });
+        Assert.True(unknown.IsError == true && Text(unknown).Contains("No stash action 'save'", StringComparison.Ordinal),
+            $"A stash action vcs_stash does not have answered: {Text(unknown)}");
+        Assert.Equal("one\n2\n", File.ReadAllText(notes));
+        Assert.Empty((await Call(client, McpTools.VcsStash)).EnumerateArray());
+    }
+
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
     /// vcs_commit is refused naming the file, and nothing is committed.</summary>
     [Fact]

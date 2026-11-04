@@ -215,6 +215,14 @@ public sealed partial class PassengerTools
     public Task<IReadOnlyList<StashSummary>> VcsStash(string action = "list", string message = "", int index = 0, string? commit = null,
         CancellationToken cancel = default) => OnUi<IReadOnlyList<StashSummary>>(cancel, async () =>
     {
+        if (action is not ("list" or "push" or "pop" or "apply" or "drop"))
+        {
+            throw new ArgumentException($"No stash action '{action}'; there are list, push, pop, apply and drop", nameof(action));
+        }
+        if (action == "list" && message.Length > 0)
+        {
+            throw new ArgumentException("A message names the stash push puts away: give action push, as list (the default) stashes nothing", nameof(message));
+        }
         VcsController vcs = Session.Vcs;
         await vcs.Opened;
         if (action != "list")
