@@ -131,6 +131,11 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
             back = 0;
         }
         context.Editor.ApplyEdits([new TextEdit(start, Math.Max(0, end - start), insert)], SelectionSet.Single(start + insert.Length - back));
+        if (back > 0)
+        {
+            // The call's parentheses put in hold the caret: its signature over them.
+            IdeErrors.Observe(parameters.Show());
+        }
     }
 
     public override string? Describe(CompletionItem item) =>

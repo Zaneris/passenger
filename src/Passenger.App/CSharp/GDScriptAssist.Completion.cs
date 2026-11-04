@@ -254,9 +254,7 @@ internal sealed partial class GDScriptAssist
     /// where it takes arguments.</summary>
     private CompletionItem MemberItem(GodotScriptTypes.Typed typed, GDScriptMemberInfo member, GDScriptType? owner, string rank)
     {
-        Named what = owner is { Kind: GDScriptTypeKind.Builtin } builtin ? new OfEngine(builtin.Name, member.Kind, member.Name, member.Type)
-            : member.Declaration is { EngineClass: { } engine } ? new OfEngine(engine, member.Kind, member.Name, member.Type)
-            : new OfScript(member);
+        Named what = NamedOf(member, owner);
         CompletionItemKind kind = member.Kind switch
         {
             "func" => CompletionItemKind.Method,
@@ -274,6 +272,12 @@ internal sealed partial class GDScriptAssist
         }
         return Item(member.Name, kind, member.Type.IsVariant ? member.Kind : member.Type.ToString(), rankOf, what);
     }
+
+    /// <summary>What a member of a type names: a built-in type's or an engine class's member by its owner, else a script's.</summary>
+    private static Named NamedOf(GDScriptMemberInfo member, GDScriptType? owner) =>
+        owner is { Kind: GDScriptTypeKind.Builtin } builtin ? new OfEngine(builtin.Name, member.Kind, member.Name, member.Type)
+            : member.Declaration is { EngineClass: { } engine } ? new OfEngine(engine, member.Kind, member.Name, member.Type)
+            : new OfScript(member);
 
     /// <summary>The engine's globals as items, made once for an API.</summary>
     private static GlobalItems GlobalsOf(GodotEngineApi api) => Globals.GetValue(api, static api =>

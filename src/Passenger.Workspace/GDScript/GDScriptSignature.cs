@@ -8,7 +8,7 @@ public sealed record GDScriptParameterShown(string Name, string? Type, string? D
 }
 
 /// <summary>A function's or signal's signature as cards, Parameter Info and an override show it: what it is (<c>func</c>,
-/// <c>signal</c>), the class that declares it where it is the engine's, its name, its parameters, what it returns (null
+/// <c>signal</c>, empty for a constructor), the class that declares it where it is the engine's, its name, its parameters, what it returns (null
 /// where nothing is written) and whether it takes any number more (<c>...</c>). Pure.</summary>
 public sealed record GDScriptSignature(string Kind, string? Owner, string Name, IReadOnlyList<GDScriptParameterShown> Parameters, string? Returns, bool Varargs)
 {
@@ -17,7 +17,7 @@ public sealed record GDScriptSignature(string Kind, string? Owner, string Name, 
 
     /// <summary>The whole signature: <c>func Node.add_child(node: Node, force_readable_name: bool = false) -> void</c>.</summary>
     public override string ToString() =>
-        $"{Kind} {(Owner is null ? string.Empty : Owner + ".")}{Name}({string.Join(", ", Shown)}){(Returns is null ? string.Empty : $" -> {Returns}")}";
+        $"{(Kind.Length > 0 ? Kind + " " : string.Empty)}{(Owner is null ? string.Empty : Owner + ".")}{Name}({string.Join(", ", Shown)}){(Returns is null ? string.Empty : $" -> {Returns}")}";
 
     /// <summary>An engine method's or utility function's signature, its types as GDScript writes them.</summary>
     public static GDScriptSignature Of(GodotApiMethod method, string? owner, GDScriptAnalyzer analyzer, string kind = "func") =>
