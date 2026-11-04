@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Passenger: free C# and .NET IDE for Windows, macOS and Linux</title>
-    <meta name="description" content="A free, open-source C# and .NET IDE: debug and profile Docker Compose and Aspire services, see each request's SQL, fix EF Core migrations.">
+    <meta name="description" content="A free, open-source C# and .NET IDE, now for Godot 4 in C# and GDScript: a debugger with Hot Reload, profilers, XAML previews and an MCP server for agents.">
     <link rel="canonical" href="https://passenger-ide.net/">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
@@ -14,19 +14,19 @@
     <meta property="og:locale" content="en_US">
     <meta property="og:url" content="https://passenger-ide.net/">
     <meta property="og:title" content="Passenger: free C# and .NET IDE for Windows, macOS and Linux">
-    <meta property="og:description" content="A free, open-source C# and .NET IDE: debug and profile Docker Compose and Aspire services, see each request's SQL, fix EF Core migrations.">
-    <meta property="og:image" content="https://passenger-ide.net/images/social-622499b6.png">
+    <meta property="og:description" content="A free, open-source C# and .NET IDE, now for Godot 4 in C# and GDScript: a debugger with Hot Reload, profilers, XAML previews and an MCP server for agents.">
+    <meta property="og:image" content="https://passenger-ide.net/images/social-f846e4c2.png">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="Passenger's Requests window beside the words: Debug the whole stack. The free IDE for C# and .NET.">
+    <meta property="og:image:alt" content="A Godot game's GDScript in Passenger, each member's value after its line as the game plays, beside the words: Now for Godot 4 games. The free IDE for C# and .NET.">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:site" content="@Zaneris">
     <meta name="twitter:creator" content="@Zaneris">
     <meta name="twitter:title" content="Passenger: free C# and .NET IDE for Windows, macOS and Linux">
-    <meta name="twitter:description" content="A free, open-source C# and .NET IDE: debug and profile Docker Compose and Aspire services, see each request's SQL, fix EF Core migrations.">
-    <meta name="twitter:image" content="https://passenger-ide.net/images/social-622499b6.png">
-    <meta name="twitter:image:alt" content="Passenger's Requests window beside the words: Debug the whole stack. The free IDE for C# and .NET.">
+    <meta name="twitter:description" content="A free, open-source C# and .NET IDE, now for Godot 4 in C# and GDScript: a debugger with Hot Reload, profilers, XAML previews and an MCP server for agents.">
+    <meta name="twitter:image" content="https://passenger-ide.net/images/social-f846e4c2.png">
+    <meta name="twitter:image:alt" content="A Godot game's GDScript in Passenger, each member's value after its line as the game plays, beside the words: Now for Godot 4 games. The free IDE for C# and .NET.">
     <meta name="theme-color" content="#0F131C" media="(prefers-color-scheme: dark)">
     <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#2F6BF2">
@@ -35,13 +35,13 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Passenger",
-    "description": "A free, open-source C# and .NET IDE: debug and profile Docker Compose and Aspire services, see each request's SQL, fix EF Core migrations.",
+    "description": "A free, open-source C# and .NET IDE, now for Godot 4 in C# and GDScript: a debugger with Hot Reload, profilers, XAML previews and an MCP server for agents.",
     "url": "https://passenger-ide.net/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Windows, macOS, Linux",
-    "softwareVersion": "0.2.4",
+    "softwareVersion": "0.3.0",
     "downloadUrl": "https://github.com/Zaneris/passenger/releases",
-    "releaseNotes": "https://github.com/Zaneris/passenger/releases/tag/v0.2.4",
+    "releaseNotes": "https://github.com/Zaneris/passenger/releases/tag/v0.3.0",
     "offers": {
         "@type": "Offer",
         "price": "0",
@@ -49,19 +49,20 @@
     },
     "license": "https://opensource.org/licenses/MIT",
     "featureList": [
-        "Godot 4 games in C# and GDScript, debugged and profiled",
+        "Godot 4 games in C# and GDScript, run, debugged, profiled and Hot Reloaded",
+        "GDScript and Godot shaders checked as Godot checks them",
         "Debugger with Hot Reload",
         "Blazor WebAssembly components debugged in the browser",
         "CPU and memory profiler",
+        "XAML tooling for Avalonia and WPF, with previews, the Live Visual Tree and XAML Hot Reload",
         "Debugging and profiling .NET services in Docker Compose and Dockerfile containers",
-        "Aspire AppHosts run, debugged and profiled",
+        "Aspire AppHosts run, debugged and profiled, their metrics charted",
         "Live HTTP requests with their SQL and N+1 queries marked",
         "EF Core migrations window",
-        "XAML tooling for Avalonia and WPF",
         "MCP server for coding agents"
     ],
-    "image": "https://passenger-ide.net/images/social-622499b6.png",
-    "screenshot": "https://passenger-ide.net/images/requests-dark.webp",
+    "image": "https://passenger-ide.net/images/social-f846e4c2.png",
+    "screenshot": "https://passenger-ide.net/images/godot-live-tree-dark.webp",
     "author": {
         "@type": "Person",
         "name": "Zaneris",
@@ -86,11 +87,11 @@
         <a class="brand" href="/"><img src="/favicon.svg" alt="" width="28" height="28">Passenger</a>
         <nav aria-label="Sections">
             <a class="wide" href="/godot">Godot</a>
+            <a class="wide" href="#debugging">Debugger</a>
+            <a class="wide" href="#xaml">XAML</a>
+            <a class="wide" href="#agents">Agents</a>
             <a class="wide" href="#services">Containers</a>
             <a class="wide" href="#web">Web and data</a>
-            <a class="wide" href="#profiling">Profiler</a>
-            <a class="wide" href="#agents">Agents</a>
-            <a class="wide" href="#xaml">XAML</a>
             <a href="#download">Download</a>
             <a href="https://github.com/Zaneris/passenger">GitHub</a>
         </nav>
@@ -100,13 +101,13 @@
 <main id="main">
     <div class="hero">
         <div class="wrap">
-            <a class="news" href="https://github.com/Zaneris/passenger/releases/tag/v0.2.3"><span class="tag">New in 0.2.3</span>
-                <span class="what">Every dotnet new template, Docker and Aspire set-up, and hundreds of fixes</span><span class="short">What's
+            <a class="news" href="https://github.com/Zaneris/passenger/releases/tag/v0.3.0"><span class="tag">New in 0.3.0</span>
+                <span class="what">Godot 4 in C# and GDScript, Blazor WebAssembly debugging, XAML Hot Reload</span><span class="short">What's
                 new</span><span class="arrow" aria-hidden="true">&rarr;</span></a>
-            <h1><span class="lead">Debug the whole stack.</span> The free IDE for C# and .NET.</h1>
-            <p class="lede">From a console app to a Docker Compose stack or an Aspire AppHost, Passenger runs every .NET
-                service under its own debugger, Hot Reload and profiler, shows each request with the SQL it ran, and fixes
-                what stops <code>dotnet&nbsp;ef</code>. Your coding agent can drive all of it.</p>
+            <h1><span class="lead">Now for Godot&nbsp;4&nbsp;games.</span> The free IDE for C# and .NET.</h1>
+            <p class="lede">Run, debug, profile and Hot Reload Godot games in C# and GDScript, their scenes and scripts
+                checked as Godot reads them and the running game beside your code. Blazor WebAssembly now debugs in the
+                browser, Avalonia and WPF take XAML Hot Reload, and your coding agent can drive it all.</p>
             <div class="actions">
                 <a class="button primary" id="primary-download" href="#download">Download</a>
                 <a class="button" href="https://github.com/Zaneris/passenger">Source on GitHub</a>
@@ -115,9 +116,9 @@
             <p class="under">Free and open source under MIT: no account, no licence key, no telemetry.</p>
             <figure class="shot">
                 <picture>
-                    <source media="(prefers-color-scheme: light)" srcset="/images/requests-light.webp" width="2400" height="1500">
-                    <img src="/images/requests-dark.webp" width="2400" height="1500" fetchpriority="high"
-                         alt="Passenger's Requests window following an Aspire app's ASP.NET Core API as it runs, under the minimal API handler that loops over the plants: each GET /plants/thirsty request marked N+1, its repeated SQL query marked ×6 with its reads and times">
+                    <source media="(prefers-color-scheme: light)" srcset="/images/godot-live-tree-light.webp" width="2400" height="1500">
+                    <img src="/images/godot-live-tree-dark.webp" width="2400" height="1500" fetchpriority="high"
+                         alt="A running Godot game's Live Visual Tree in Passenger: its scene's nodes as they are, a plant chosen with its properties and values, beside the plant's GDScript with each member's value after its line">
                 </picture>
             </figure>
         </div>
@@ -127,27 +128,33 @@
         <div class="wrap">
             <p class="kicker">Included</p>
             <h2>Everything included, nothing to pay</h2>
-            <p class="intro">Most of this usually takes a paid IDE or a paid add-on. In Passenger it is part of the IDE, free
-                and open source under MIT, for work and personal projects alike.</p>
+            <p class="intro">Tools like these are usually found in paid IDEs or add-ons. In Passenger they are part of the
+                IDE, free and open source under MIT, for work and personal projects alike.</p>
             <ul class="checks">
                 <li><a href="/godot"><strong>Godot 4 in C# and GDScript</strong>
-                    <span>C# checked against your scenes, and the running game's values, tree and profile.</span></a></li>
+                    <span>Run, debug, profile and Hot Reload the game, its C# checked against its scenes.</span></a></li>
                 <li><a href="#debugging"><strong>A debugger with Hot Reload</strong>
-                    <span>Its own, over the runtime's ICorDebug, with your edits put in the program while it runs.</span></a></li>
+                    <span>Edits put in the running program, the values methods returned, Smart Step Into.</span></a></li>
                 <li><a href="#profiling"><strong>CPU and memory profiling</strong>
-                    <span>Call tree, hot spots, flame graph, and heap snapshots compared.</span></a></li>
-                <li><a href="/containers"><strong>Debugging and profiling in containers</strong>
+                    <span>Call trees, flame graphs, and heap snapshots compared.</span></a></li>
+                <li><a href="#xaml"><strong>XAML previews and live trees</strong>
+                    <span>Avalonia and WPF drawn as you type, the running app's tree, XAML Hot Reload.</span></a></li>
+                <li><a href="#agents"><strong>An agent that drives the IDE</strong>
+                    <span>Claude Code, Codex or OpenCode build, debug and try the running app through it.</span></a></li>
+                <li><a href="#blazor"><strong>Blazor WebAssembly, debugged</strong>
+                    <span>Components stopped in the browser, beside the server's code.</span></a></li>
+                <li><a href="#tests"><strong>Failed tests, pictured</strong>
+                    <span>A failed Avalonia headless test shows each of its windows as it was.</span></a></li>
+                <li><a href="#history"><strong>Local History and a three-way merge</strong>
+                    <span>Every version of your files Passenger has seen, and Git's conflicts merged.</span></a></li>
+                <li><a href="/containers"><strong>Debugging in containers</strong>
                     <span>Every .NET service of a compose file or Dockerfile, inside its container.</span></a></li>
                 <li><a href="/containers#aspire"><strong>Aspire, as the AppHost's IDE</strong>
-                    <span>Each resource started by Passenger, debugged, reloaded and profiled.</span></a></li>
+                    <span>Each resource debugged, reloaded and profiled, its metrics charted.</span></a></li>
                 <li><a href="#web"><strong>Live requests with their SQL</strong>
                     <span>Each request a running app serves, the queries it ran, N+1s marked.</span></a></li>
                 <li><a href="#migrations"><strong>EF Core migrations</strong>
                     <span>Listed, added and applied, with what would stop <code>dotnet&nbsp;ef</code> fixed first.</span></a></li>
-                <li><a href="#xaml"><strong>XAML tooling for Avalonia and WPF</strong>
-                    <span>Completion, a live preview, the Live Visual Tree and binding errors with fixes.</span></a></li>
-                <li><a href="/agents"><strong>An MCP server for your agent</strong>
-                    <span>Claude Code, Codex, OpenCode and any MCP agent work through the IDE.</span></a></li>
             </ul>
         </div>
     </section>
@@ -155,28 +162,227 @@
     <section id="godot">
         <div class="wrap">
             <p class="kicker">Godot</p>
-            <h2>Godot 4 games in C# and GDScript</h2>
-            <p class="intro">Passenger reads a Godot game's C# against its scenes and its GDScript with Godot's own parser,
-                is the game's remote debugger as Godot's editor is, and works beside that editor or as its script
-                editor.</p>
+            <h2>Godot 4: your scenes and the running game, in your code</h2>
+            <p class="intro">For games in C#, in GDScript or in both. Passenger checks your code against your scenes, debugs
+                both languages at once, and works beside Godot's editor or as its script editor.</p>
 
             <div class="feature">
                 <div class="text">
-                    <h3>The running game, in your code</h3>
-                    <p>Run or debug the game and its C# runs under Passenger's debugger and its GDScript under its GDScript
-                        debugger, both at once. The Live tree shows the game's nodes as they are, a change to a property
-                        taken at once and kept in the scene if you ask, and each script member's value shows after its
-                        line as the game plays.</p>
-                    <h3>One profile, both languages</h3>
-                    <p>The profiler puts the GDScript Godot measured and the C# it sampled in one call tree, and opens the
-                        slowest frame on what it spent.</p>
+                    <h3>C# that knows its scenes</h3>
+                    <p><code>GetNode&lt;T&gt;</code> paths and types, <code>res://</code> paths, <code>[Export]</code>
+                        values, signals and every string Godot takes (input actions, groups, animations, autoloads) complete
+                        and are checked against the scenes that run the script. A rename reaches the scenes, and a scene is
+                        marked where Godot would not load it, with fixes.</p>
                     <a class="more" href="/godot">Godot in depth</a>
                 </div>
                 <figure class="shot">
                     <picture>
-                        <source media="(prefers-color-scheme: light)" srcset="/images/godot-live-tree-light.webp" width="2400" height="1500">
-                        <img src="/images/godot-live-tree-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
-                             alt="A running Godot game's Live tree in Passenger: its scene's nodes as they are, a plant chosen with its properties and values, beside the plant's GDScript">
+                        <source media="(prefers-color-scheme: light)" srcset="/images/godot-scene-light.webp" width="2400" height="1500">
+                        <img src="/images/godot-scene-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="A Godot game's C# script beside its scene, whose tree Structure shows: the greenhouse's benches, plants, sprinkler and tank, each with its type and script">
+                    </picture>
+                </figure>
+            </div>
+
+            <div class="feature flip">
+                <div class="text">
+                    <h3>GDScript and shaders, as Godot reads them</h3>
+                    <p>Passenger's port of Godot's parser and analyzer gives Godot's own warnings and errors with their
+                        fixes, completion, the hover, Find Usages and Rename, mostly without starting Godot. Shaders are
+                        checked as Godot's compiler checks them, every error and warning at once.</p>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/gdscript-light.webp" width="2400" height="1500">
+                        <img src="/images/gdscript-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="A GDScript in Passenger with its code help open and a Godot warning marked in Godot's own words, no Godot editor running">
+                    </picture>
+                </figure>
+            </div>
+
+            <div class="grid">
+                <div class="card">
+                    <h3>Both languages, one debugger</h3>
+                    <p>A breakpoint in C# or GDScript stops the game, a script you save reloads in it, and Godot's types
+                        read as you think of them in Variables.</p>
+                </div>
+                <div class="card">
+                    <h3>The running game, tuned</h3>
+                    <p>Its nodes and values in the Live Visual Tree, changed while it plays and kept into the scene, a node
+                        picked by clicking in the game.</p>
+                </div>
+                <div class="card">
+                    <h3>One profile, both languages</h3>
+                    <p>GDScript's functions and Godot's frame times beside the C# in one call tree, a slow frame opened on
+                        what it spent.</p>
+                </div>
+                <div class="card">
+                    <h3>Its tests</h3>
+                    <p>GdUnit4, GUT and GoDotTest tests found, run and debugged in the Unit Tests window.</p>
+                </div>
+                <div class="card">
+                    <h3>Beside Godot's editor</h3>
+                    <p>Passenger becomes Godot's script editor in one step, and its addon has a game Godot's Play starts
+                        debugged in Passenger.</p>
+                </div>
+                <div class="card">
+                    <h3>The game in a pane</h3>
+                    <p>On Windows, macOS and Linux under X11, the game can draw beside its code, taking the keys when you
+                        click it.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="debugging">
+        <div class="wrap">
+            <p class="kicker">Debugger</p>
+            <h2>Fix bugs while the program runs</h2>
+            <p class="intro">Passenger's own debugger, over the runtime's ICorDebug, works the same on your machine, inside
+                a container and in the browser.</p>
+
+            <div class="feature">
+                <div class="text">
+                    <h3>A debugger of its own</h3>
+                    <p>Breakpoints with conditions, hit counts and log messages, Smart Step Into, the values methods
+                        returned (an async method's too), Run to Cursor and Set Next Statement, and the values each line
+                        used drawn after it. Several programs debug at once, a tab each, and a library without symbols shows
+                        its code, decompiled.</p>
+                    <p>Attach to a .NET program already running, in a container too, and on a Mac with nothing to set
+                        up.</p>
+                    <h3>Hot Reload while debugging</h3>
+                    <p>Edit the code, paused or running, and Hot Reload puts it in the program. An edit it can't apply is
+                        listed with why, and by default the program restarts to take it.</p>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/debugger-light.webp" width="2400" height="1500">
+                        <img src="/images/debugger-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="Stopped at a breakpoint in a C# method: the values after the lines, and the Debug window's frames and variables">
+                    </picture>
+                </figure>
+            </div>
+
+            <div class="feature flip" id="blazor">
+                <div class="text">
+                    <h3>Blazor, in the browser too</h3>
+                    <p>Debug a Blazor Web App and its server stops in one tab while its WebAssembly components stop in the
+                        browser in the tab beside it: breakpoints, stepping, Variables, watches and the hover card, under
+                        Aspire and in containers too.</p>
+                    <p>With Hot Reload a component's edit shows at once and a saved stylesheet applies in place, the page
+                        kept up. The page opens in Chrome, Edge, Chromium or Brave, on a profile of Passenger's own.</p>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/blazor-wasm-light.webp" width="2400" height="1500">
+                        <img src="/images/blazor-wasm-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="A Blazor Web App debugged in Passenger: its WebAssembly component stopped at a breakpoint in the browser, in a WebAssembly tab beside the server's, the component's fields in Variables">
+                    </picture>
+                </figure>
+            </div>
+        </div>
+    </section>
+
+    <section id="profiling">
+        <div class="wrap">
+            <p class="kicker">Profiler</p>
+            <h2>See where the time and memory go</h2>
+            <p class="intro">A profiler of Passenger's own, over the runtime's EventPipe, for a program you run, one already
+                running, or a service in its container.</p>
+
+            <div class="feature">
+                <div class="text">
+                    <h3>Where the time goes</h3>
+                    <p>Sampling from a program's first instruction or attached to one already running: its call tree, hot
+                        spots, flame graph, allocations and garbage collections, narrowed to any stretch of the
+                        timeline.</p>
+                    <h3>What holds the memory</h3>
+                    <p>A memory snapshot counts the heap by type, with each object's retained size, and shows the shortest
+                        paths that keep it alive. Two snapshots compared say which objects are new, which died and which
+                        survived.</p>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/profiler-light.webp" width="2400" height="1500">
+                        <img src="/images/profiler-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="Passenger's .NET performance profiler: a run's timeline above its call tree, the hot path opened">
+                    </picture>
+                </figure>
+            </div>
+        </div>
+    </section>
+
+    <section id="xaml">
+        <div class="wrap" id="avalonia">
+            <p class="kicker">XAML</p>
+            <h2>See your XAML as you write it, and as it runs</h2>
+            <p class="intro">Passenger is built with Avalonia, and it gives XAML the help C# gets, from the project's own
+                assemblies and the framework's own compiler and previewer, for Avalonia and WPF alike.</p>
+
+            <div class="feature">
+                <div class="text">
+                    <h3>XAML as you type</h3>
+                    <p>Completion of controls, properties, values, resources, selectors and binding paths, checked against
+                        <code>x:DataType</code> or WPF's design-time data context, the XAML compiler's errors on their lines,
+                        and a missing property, command or converter made from where it is used. A rename reaches across C#
+                        and XAML, either way.</p>
+                    <p>XAML Preview draws the file beside it as you type (WPF's on Windows), and the XAML workspace sets the
+                        file, its preview and the running app's tree side by side, one selection across the three.</p>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/xaml-light.webp" width="2400" height="1500">
+                        <img src="/images/xaml-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="An Avalonia .axaml file with XAML completion of a binding path, and XAML Preview drawing it beside the editor">
+                    </picture>
+                </figure>
+            </div>
+
+            <div class="feature flip">
+                <div class="text">
+                    <h3>The running app, from its XAML</h3>
+                    <p>Debug an Avalonia app, or a WPF app on Windows, and the Live Visual Tree shows its controls as they are,
+                        each property with where its value came from and each style with why it applies or not. In Avalonia
+                        the XAML shows each binding's value after its line, and a breakpoint goes on an element.</p>
+                    <p>Save a XAML file and XAML Hot Reload puts it in the running Avalonia or WPF app. A binding that fails
+                        is a row in Problems with a fix, and can stop the debugger like an exception.</p>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/live-tree-light.webp" width="2400" height="1500">
+                        <img src="/images/live-tree-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="Debugging an Avalonia app: the Live Visual Tree with an element's details, and binding values after the XAML's lines">
+                    </picture>
+                </figure>
+            </div>
+        </div>
+    </section>
+
+    <section id="agents">
+        <div class="wrap">
+            <p class="kicker">Agents</p>
+            <h2>A coding agent that uses the IDE and tries the app</h2>
+            <p class="intro">Passenger is an MCP server. Through it an agent works in the IDE, not only in your files: it asks
+                the language server instead of guessing from the text, and checks what it changed by building, testing and
+                running it. It works with Claude Code, Codex, OpenCode and any MCP agent.</p>
+
+            <div class="feature">
+                <div class="text">
+                    <h3>It tries what it builds</h3>
+                    <p>When the program is an Avalonia app, a Godot game, or a WPF app on Windows, the agent sees it as a
+                        person testing it would: a picture of each window or frame, the tree of its controls or nodes, and
+                        clicks, typing and keys, which never take your focus or move your pointer.</p>
+                    <h3>It works as you do</h3>
+                    <p>It finds where things are declared and used, renames, fixes and formats as the IDE does, builds, runs
+                        and tests, debugs and profiles, starts a compose service or an Aspire resource, and changes scenes in
+                        your Godot editor, each change one step of Godot's Undo. On your own window it asks you first.</p>
+                    <a class="more" href="/agents">Set up your agent</a>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/agent-light.webp" width="2400" height="1500">
+                        <img src="/images/agent-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="A coding agent in Passenger's terminal driving the Avalonia app it builds over MCP: it starts the app under the debugger, finds its Water button, clicks it and reads the plants' moisture back, while the Live Visual Tree shows the button it clicked">
                     </picture>
                 </figure>
             </div>
@@ -196,13 +402,12 @@
                     <h3>Every service under the debugger</h3>
                     <p>Debug holds each .NET service at its start, attaches inside its container and lets it go, so a
                         breakpoint in <code>Main</code> stops. Each service gets a Debug tab with its log as its console, and
-                        Hot Reload reaches them all.</p>
-                    <p>By default Passenger builds the services itself and runs each from its build, so a code change needs no
-                        image rebuild, and Rerun restarts only the services whose build changed.</p>
+                        Hot Reload reaches them all. A code change needs no image rebuild, and Rerun restarts only the
+                        services whose build changed.</p>
                     <h3>Aspire's IDE</h3>
-                    <p>Run or debug an AppHost and Aspire asks Passenger to start each project: the Aspire window shows its
-                        resources, their consoles, details, logs and traces, and its code help checks every connection string
-                        against the AppHost.</p>
+                    <p>Run or debug an AppHost and Aspire asks Passenger to start each project. The Aspire window shows its
+                        resources, their consoles, logs and traces, charts each one's metrics and draws the AppHost as a
+                        graph, and its code help checks every connection string against the AppHost.</p>
                     <a class="more" href="/containers">Containers and Aspire in depth</a>
                 </div>
                 <figure class="shot">
@@ -218,12 +423,7 @@
                 <div class="card">
                     <h3>One service at a time</h3>
                     <p>From a service's row, or the run icon beside it in the compose file: debug it, attach to it, restart
-                        or profile it while the others run on.</p>
-                </div>
-                <div class="card">
-                    <h3>Profiled in its container</h3>
-                    <p>CPU traces and memory snapshots taken where the service runs and shown as any others, hot spots at
-                        their lines.</p>
+                        or profile it in its container while the others run on.</p>
                 </div>
                 <div class="card">
                     <h3>The Containers window</h3>
@@ -234,6 +434,11 @@
                     <h3>Compose files, understood</h3>
                     <p>Each <code>${VAR}</code> shown as it comes out, names completed, renamed and checked, and a connection
                         string a service never gets warned of, with its fix.</p>
+                </div>
+                <div class="card">
+                    <h3>Images published and checked</h3>
+                    <p>Publish ships the SDK's container image, several tags and platforms, to your registry. An image's
+                        known vulnerabilities show through your own Docker Scout, when you ask.</p>
                 </div>
                 <div class="card">
                     <h3>Your engine, as it is</h3>
@@ -252,7 +457,7 @@
     <section id="web">
         <div class="wrap">
             <p class="kicker">Web apps and their data</p>
-            <h2>Every ASP.NET Core request, with its SQL</h2>
+            <h2>See every request your app serves, with its SQL</h2>
             <p class="intro">For ASP.NET Core and EF Core: what your app serves and what it asks of the database, as it runs,
                 with no change to the app.</p>
             <div class="grid two">
@@ -273,177 +478,15 @@
                 <div class="card">
                     <h3>Endpoints from your code</h3>
                     <p>Minimal APIs, controllers, Razor Pages, Blazor, SignalR and gRPC routes read from the code with no
-                        build. A route's icon sends its request to the running app, from your <code>.http</code> file.</p>
+                        build, each sent to the running app from its icon. An app's OpenAPI document becomes requests, each
+                        response checked against it.</p>
                 </div>
                 <div class="card">
-                    <h3>Configuration it knows</h3>
-                    <p><code>appsettings.json</code> and user secrets complete the keys your code reads. A key nothing gives
-                        is warned of where it's read, and a stopped EF Core query shows its SQL in the debugger.</p>
+                    <h3>Logs, traces and settings</h3>
+                    <p>Turn on Collect logs and traces and a project's run shows its OpenTelemetry logs and traces beside its
+                        console. <code>appsettings.json</code> and user secrets complete the keys your code reads, and a
+                        stopped EF Core query shows its SQL in the debugger.</p>
                 </div>
-            </div>
-        </div>
-    </section>
-
-    <section id="looks" class="looks">
-        <div class="wrap">
-            <p class="kicker">Make it yours</p>
-            <h2>Twelve looks, each dark and light</h2>
-            <p class="intro">Passenger's own in the app icon's blue, Harbour's teal on linen, and Sorbet, Nocturne, Saffron,
-                Bonbon, Ledger, Slate, Orbit, Nightjar, Moss and Phosphor, each checked for contrast and following your
-                system or your choice. Every file has an icon of its own, in each look's colours.</p>
-            <figure class="shot cycle">
-                <picture>
-                    <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: light)" srcset="/images/themes-still-light.webp" width="1864" height="1060">
-                    <source media="(prefers-reduced-motion: reduce)" srcset="/images/themes-still-dark.webp" width="1864" height="1060">
-                    <source media="(prefers-color-scheme: light)" srcset="/images/themes-light.webp" width="1864" height="1060">
-                    <img src="/images/themes-dark.webp" width="1864" height="1060" loading="lazy" decoding="async"
-                         alt="Passenger's window changing look every two seconds through all twelve, each named in its title bar and Solution view: Passenger, Harbour, Sorbet, Nocturne, Saffron, Bonbon, Ledger, Slate, Orbit, Nightjar, Moss and Phosphor">
-                </picture>
-            </figure>
-        </div>
-    </section>
-
-    <section id="profiling">
-        <div class="wrap">
-            <p class="kicker">Profiler and debugger</p>
-            <h2>A free .NET profiler and debugger</h2>
-            <p class="intro">Both are written for Passenger, over the runtime's own EventPipe and ICorDebug, and both work
-                the same on your machine and inside a container.</p>
-
-            <div class="feature">
-                <div class="text">
-                    <h3>Where the time goes</h3>
-                    <p>Sampling over EventPipe, from a program's first instruction or attached to one already running: its
-                        call tree, hot spots, flame graph, allocations and garbage collections, narrowed to any stretch of the
-                        timeline.</p>
-                    <h3>What holds the memory</h3>
-                    <p>A memory snapshot counts the heap by type, with each object's retained size, and shows the shortest
-                        paths that keep it alive. Two snapshots compared say which objects are new, which died and which
-                        survived.</p>
-                </div>
-                <figure class="shot">
-                    <picture>
-                        <source media="(prefers-color-scheme: light)" srcset="/images/profiler-light.webp" width="2400" height="1500">
-                        <img src="/images/profiler-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
-                             alt="Passenger's .NET performance profiler: a run's timeline above its call tree, the hot path opened">
-                    </picture>
-                </figure>
-            </div>
-
-            <div class="feature flip" id="debugging">
-                <div class="text">
-                    <h3>A debugger of its own</h3>
-                    <p>Breakpoints with conditions, hit counts and log messages, exception breakpoints, stepping through async
-                        code, Smart Step Into, the values methods returned, Run to Cursor and Set Next Statement, and the
-                        values each line used drawn after it. Several programs debug at once, a tab each, and the hover card
-                        opens an object into its members.</p>
-                    <p>A frame in a library without symbols shows its code, decompiled. Attach to a .NET program already
-                        running, in a container too, and on a Mac with nothing to set up.</p>
-                    <h3>Hot Reload</h3>
-                    <p>Edit the code while debugging and Hot Reload puts it in the program, paused or running. An edit it
-                        can't apply is listed with why, and by default the program restarts to take it.</p>
-                </div>
-                <figure class="shot">
-                    <picture>
-                        <source media="(prefers-color-scheme: light)" srcset="/images/debugger-light.webp" width="2400" height="1500">
-                        <img src="/images/debugger-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
-                             alt="Stopped at a breakpoint in a C# method: the values after the lines, and the Debug window's frames and variables">
-                    </picture>
-                </figure>
-            </div>
-
-            <div class="feature" id="blazor">
-                <div class="text">
-                    <h3>Blazor, in the browser too</h3>
-                    <p>Debug a Blazor Web App and its server stops in one tab while its WebAssembly components stop in the
-                        browser in the tab beside it: breakpoints with their conditions, stepping, Variables, watches and the
-                        hover card, through .NET's own debug proxy. An AppHost's Blazor app debugs the same way.</p>
-                    <p>The page opens in a Chromium browser Passenger starts on a profile of its own (Chrome, Edge, Chromium
-                        or Brave), never the one you have open, and with Hot Reload a stylesheet you save is applied to the
-                        page in place.</p>
-                </div>
-                <figure class="shot">
-                    <picture>
-                        <source media="(prefers-color-scheme: light)" srcset="/images/blazor-wasm-light.webp" width="2400" height="1500">
-                        <img src="/images/blazor-wasm-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
-                             alt="A Blazor Web App debugged in Passenger: its WebAssembly component stopped at a breakpoint in the browser, in a WebAssembly tab beside the server's, the component's fields in Variables">
-                    </picture>
-                </figure>
-            </div>
-        </div>
-    </section>
-
-    <section id="agents">
-        <div class="wrap">
-            <p class="kicker">Agents</p>
-            <h2>An IDE your coding agent can drive</h2>
-            <p class="intro">Passenger is an MCP server. Through it an agent works in the IDE, not only in your files: it asks
-                the language server instead of guessing from the text, and checks what it changed by building, testing and
-                running it. It works with Claude Code, Codex, OpenCode and any MCP agent.</p>
-
-            <div class="feature">
-                <div class="text">
-                    <h3>It tries the app it builds</h3>
-                    <p>When the program is an Avalonia app, or a WPF app on Windows, the agent sees it as a person testing it
-                        would: a picture of each window, the tree of its controls, and clicks, typing and keys sent to the
-                        window, which never takes your focus or moves your pointer.</p>
-                    <h3>It works as you do</h3>
-                    <p>It finds where things are declared and used, renames, fixes and formats as the IDE does, builds, runs
-                        and tests, debugs and profiles, starts a compose service or an Aspire resource, reads a web app's
-                        requests and their SQL, and runs the migrations. On your own window it asks you first.</p>
-                    <a class="more" href="/agents">Set up your agent</a>
-                </div>
-                <figure class="shot">
-                    <picture>
-                        <source media="(prefers-color-scheme: light)" srcset="/images/agent-light.webp" width="2400" height="1500">
-                        <img src="/images/agent-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
-                             alt="A coding agent in Passenger's terminal driving the Avalonia app it builds over MCP: it starts the app under the debugger, finds its Water button, clicks it and reads the plants' moisture back, while the Live Visual Tree shows the button it clicked">
-                    </picture>
-                </figure>
-            </div>
-        </div>
-    </section>
-
-    <section id="xaml">
-        <div class="wrap" id="avalonia">
-            <p class="kicker">XAML</p>
-            <h2>XAML tooling for Avalonia and WPF</h2>
-            <p class="intro">Passenger is built with Avalonia, and it gives XAML the help C# gets, from the project's own
-                assemblies and the framework's own compiler and previewer, for Avalonia and WPF alike.</p>
-
-            <div class="feature">
-                <div class="text">
-                    <h3>XAML as you type</h3>
-                    <p>Completion of controls, properties, values, resources, selectors and binding paths, checked against
-                        <code>x:DataType</code> or WPF's design-time data context, the XAML compiler's errors on their lines,
-                        Go to Declaration into C#, and a missing property, command or converter made from where it is used.
-                        XAML Preview draws the file beside it as you type (WPF's on Windows).</p>
-                </div>
-                <figure class="shot">
-                    <picture>
-                        <source media="(prefers-color-scheme: light)" srcset="/images/xaml-light.webp" width="2400" height="1500">
-                        <img src="/images/xaml-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
-                             alt="An Avalonia .axaml file with XAML completion of a binding path, and XAML Preview drawing it beside the editor">
-                    </picture>
-                </figure>
-            </div>
-
-            <div class="feature flip">
-                <div class="text">
-                    <h3>The running app, from its XAML</h3>
-                    <p>Debug an Avalonia app, or a WPF app on Windows, and the Live Visual Tree shows its controls as they are,
-                        each property with where its value came from and each style with why it applies or not. In Avalonia
-                        the XAML shows each binding's value after its line, and a breakpoint goes on an element.</p>
-                    <p>A binding that fails is a console line linked to its XAML and a row in Problems with a fix, and can
-                        stop the debugger like an exception. The profiler charts an Avalonia app's frames.</p>
-                </div>
-                <figure class="shot">
-                    <picture>
-                        <source media="(prefers-color-scheme: light)" srcset="/images/live-tree-light.webp" width="2400" height="1500">
-                        <img src="/images/live-tree-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
-                             alt="Debugging an Avalonia app: the Live Visual Tree with an element's details, and binding values after the XAML's lines">
-                    </picture>
-                </figure>
             </div>
         </div>
     </section>
@@ -457,7 +500,7 @@
 
             <div class="switch">
                 <p><strong>Coming from Visual Studio?</strong> Visual Studio's keys are the default, chords included.
-                    Coming from VS Code, choose its keymap in Settings.</p>
+                    Coming from VS Code or IntelliJ IDEA, choose its keymap in Settings.</p>
                 <p><strong>A full .NET IDE on the Mac.</strong> Visual Studio for Mac was retired in August 2024. Passenger
                     runs natively on Apple Silicon, and its debugger attaches with nothing to set up.</p>
             </div>
@@ -482,13 +525,13 @@
                 </figure>
             </div>
 
-            <div class="feature flip">
+            <div class="feature flip" id="git">
                 <div class="text">
                     <h3>Git</h3>
                     <p>The Commit window with its changes, the log with its branch graph and branches, side-by-side diffs with
                         the changed words marked, blame, change bars in the gutter that roll a change back, the history of a
-                        file, a folder or a selection, stashes, push, pull and fetch, and conflicts resolved in a three-way
-                        merge.</p>
+                        file, a folder or a selection, stashes, push, pull and fetch, conflicts resolved in a three-way
+                        merge, and commits signed with SSH, GPG or X.509.</p>
                 </div>
                 <figure class="shot">
                     <picture>
@@ -553,8 +596,9 @@
                     <h3>The web languages</h3>
                     <p>JavaScript, TypeScript, HTML, CSS, SCSS, Less, JSON, Dockerfiles and YAML through their language
                         servers: completion, checks, navigation and formatting, TypeScript on the project's own version and
-                        JSON against its schema. ESLint's problems show as you type with its fixes, and the project's own
-                        Prettier formats on Reformat Code and on save.</p>
+                        JSON against its schema. ESLint's problems show as you type with its fixes, the project's own
+                        Prettier formats on Reformat Code and on save, and a class attribute completes from every stylesheet
+                        the page uses.</p>
                 </div>
                 <figure class="shot">
                     <picture>
@@ -586,13 +630,19 @@
                 <div class="card">
                     <h3>Build, run and publish</h3>
                     <p>A Solution view as MSBuild evaluates it, builds with their errors in Problems, run configurations from
-                        your launch profiles, consoles whose stack frames link to their lines, and Publish with the SDK's own
-                        profiles.</p>
+                        your launch profiles, consoles whose stack frames link to their lines, and Publish to a folder, a
+                        container image or an AppHost's own deploy steps.</p>
                 </div>
-                <div class="card">
+                <div class="card" id="tests">
                     <h3>Unit tests</h3>
                     <p>xUnit, NUnit, MSTest and TUnit, through VSTest or Microsoft.Testing.Platform: found from the code before
-                        any build, run marks in the gutter, results grouped and filtered, and any test debugged.</p>
+                        any build, run marks in the gutter, any test debugged, and results kept across restarts. A failed
+                        Avalonia headless test (xUnit v3) carries a picture of each window as it was.</p>
+                </div>
+                <div class="card" id="history">
+                    <h3>Local History</h3>
+                    <p>Every version of your files Passenger has seen, for five days of work, whatever Git knows: compared,
+                        labelled and put back.</p>
                 </div>
                 <div class="card">
                     <h3>NuGet</h3>
@@ -605,25 +655,46 @@
                         program can run and be debugged in it.</p>
                 </div>
                 <div class="card">
-                    <h3>Local History</h3>
-                    <p>Every version of your files Passenger has seen, for five days of work, whatever Git knows: compared,
-                        labelled and put back.</p>
-                </div>
-                <div class="card">
-                    <h3>Tables, images and fonts</h3>
-                    <p>CSV, TSV and Excel workbooks open as tables Find searches; images and fonts open as previews.</p>
+                    <h3>Previews and tables</h3>
+                    <p>Images zoom, SVG and HTML files preview, fonts open as previews, and CSV, TSV and Excel workbooks
+                        open as tables that sort and that Find searches.</p>
                 </div>
                 <div class="card">
                     <h3>Windows and layout</h3>
-                    <p>Tool windows docked or floating, editor tabs split or in windows of their own, a window for each
-                        solution, and New Solution from any template <code>dotnet&nbsp;new</code> has.</p>
+                    <p>Tool windows docked or floating, editor tabs split or in windows of their own, and a window for each
+                        solution.</p>
+                </div>
+                <div class="card">
+                    <h3>New projects</h3>
+                    <p>New Solution and New Project offer every template <code>dotnet&nbsp;new</code> has, a Godot 4 game
+                        among them, with their options.</p>
                 </div>
                 <div class="card">
                     <h3>Updates</h3>
-                    <p>On Windows and macOS each new release downloads in the background and installs as Passenger closes,
-                        then shows what's new. On Linux, Passenger says when one is out.</p>
+                    <p>Each new release downloads in the background and installs as Passenger closes, then shows what's
+                        new, on Windows, macOS and Linux.</p>
                 </div>
             </div>
+        </div>
+    </section>
+
+    <section id="looks" class="looks">
+        <div class="wrap">
+            <p class="kicker">Make it yours</p>
+            <h2>Twelve looks, each dark and light</h2>
+            <p class="intro">Passenger's own in the app icon's blue, Harbour's teal on linen, and Sorbet, Nocturne, Saffron,
+                Bonbon, Ledger, Slate, Orbit, Nightjar, Moss and Phosphor, each checked for contrast and following your
+                system or your choice. Every file has an icon of its own, in each look's colours, and the editor's and
+                the terminal's fonts are yours to choose.</p>
+            <figure class="shot cycle">
+                <picture>
+                    <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: light)" srcset="/images/themes-still-light.webp" width="1864" height="1060">
+                    <source media="(prefers-reduced-motion: reduce)" srcset="/images/themes-still-dark.webp" width="1864" height="1060">
+                    <source media="(prefers-color-scheme: light)" srcset="/images/themes-light.webp" width="1864" height="1060">
+                    <img src="/images/themes-dark.webp" width="1864" height="1060" loading="lazy" decoding="async"
+                         alt="Passenger's window changing look every two seconds through all twelve, each named in its title bar and Solution view: Passenger, Harbour, Sorbet, Nocturne, Saffron, Bonbon, Ledger, Slate, Orbit, Nightjar, Moss and Phosphor">
+                </picture>
+            </figure>
         </div>
     </section>
 
@@ -655,6 +726,11 @@
                         says where a file's indent came from.</dd>
                 </div>
                 <div>
+                    <dt>Signed commits</dt>
+                    <dd>Commits signed with SSH, GPG or X.509 as your Git configuration asks, the passphrase asked in
+                        Passenger, and each commit's signature shown in the log.</dd>
+                </div>
+                <div>
                     <dt>Agents for the whole team</dt>
                     <dd>A <code>.mcp.json</code> committed to the repository gives every Claude Code user there Passenger's
                         tools.</dd>
@@ -681,10 +757,11 @@
                 </details>
                 <details>
                     <summary>Is it ready for daily work?</summary>
-                    <p>Passenger is young (0.2.4), and its own development runs through it every day: the coding agents
+                    <p>Passenger is young (0.3.0), and its own development runs through it every day: the coding agents
                         that write much of it work through its MCP server. Its tests drive the whole IDE, a window with real
-                        keys and clicks, on macOS, Windows and Linux. Each release's notes say what it does and its known
-                        limits, so you can judge for your own projects.</p>
+                        keys and clicks, on macOS, Windows and Linux, and each release is tried on a standing set of real
+                        Godot projects. Each release's notes say what it does and its known limits, so you can judge for
+                        your own projects.</p>
                 </details>
                 <details>
                     <summary>Which systems and projects does it run on?</summary>
@@ -692,6 +769,12 @@
                         It works with modern .NET (CoreCLR): console, ASP.NET Core, Blazor, Avalonia and WPF projects, Godot 4
                         games in C# and GDScript, and the services of a compose file or an Aspire AppHost. .NET Framework, Mono and Unity aren't
                         Passenger's.</p>
+                </details>
+                <details>
+                    <summary>Which Godot does it need?</summary>
+                    <p>Any Godot 4 for GDScript, and Godot's .NET build for C#, found from <code>GODOT</code>, the PATH or
+                        your applications, or named in Settings. The Game window takes Godot 4.4 or newer (4.5 or newer on
+                        macOS). The <a href="/godot#limits">Godot page</a> says the rest.</p>
                 </details>
                 <details>
                     <summary>Does it need an account or send data?</summary>
@@ -742,8 +825,8 @@
                         <li><a data-asset="Passenger-linux-x64.tar.gz" href="https://github.com/Zaneris/passenger/releases/latest/download/Passenger-linux-x64.tar.gz">x64 <span class="kind">.tar.gz</span></a></li>
                         <li><a data-asset="Passenger-linux-arm64.tar.gz" href="https://github.com/Zaneris/passenger/releases/latest/download/Passenger-linux-arm64.tar.gz">Arm64 <span class="kind">.tar.gz</span></a></li>
                     </ul>
-                    <p class="note">Unpack it and run its <code>install.sh</code>, for you alone or for everyone. Passenger
-                        says when a new release is out.</p>
+                    <p class="note">Unpack it and run its <code>install.sh</code>, for you alone or for everyone. Installed
+                        so, it updates itself as on macOS and Windows.</p>
                     <a class="more" href="/linux">How to install on Linux</a>
                 </div>
             </div>
@@ -774,7 +857,8 @@
 
 <footer>
     <div class="wrap">
-        <p>Passenger is free and open source under the MIT licence. It is not affiliated with JetBrains or Microsoft.</p>
+        <p>Passenger is free and open source under the MIT licence. It is not affiliated with JetBrains, Microsoft or the
+            Godot Foundation.</p>
         <nav aria-label="More">
             <a href="https://github.com/Zaneris/passenger">GitHub</a>
             <a href="https://x.com/Zaneris">X (@Zaneris)</a>

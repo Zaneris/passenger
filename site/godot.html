@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Passenger for Godot 4: a free C# and GDScript IDE</title>
-    <meta name="description" content="A free, open-source IDE for Godot 4 games in C# and GDScript: C# checked against your scenes, a running game's values in your code, its live tree, and one profile across both languages.">
+    <meta name="description" content="A free, open-source IDE for Godot 4 games in C# and GDScript: C# checked against your scenes, GDScript read as Godot reads it, and the running game in your code.">
     <link rel="canonical" href="https://passenger-ide.net/godot">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
@@ -14,19 +14,19 @@
     <meta property="og:locale" content="en_US">
     <meta property="og:url" content="https://passenger-ide.net/godot">
     <meta property="og:title" content="Passenger for Godot 4: a free C# and GDScript IDE">
-    <meta property="og:description" content="A free, open-source IDE for Godot 4 games in C# and GDScript: C# checked against your scenes, a running game's values in your code, its live tree, and one profile across both languages.">
-    <meta property="og:image" content="https://passenger-ide.net/images/social-622499b6.png">
+    <meta property="og:description" content="A free, open-source IDE for Godot 4 games in C# and GDScript: C# checked against your scenes, GDScript read as Godot reads it, and the running game in your code.">
+    <meta property="og:image" content="https://passenger-ide.net/images/social-f846e4c2.png">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="Passenger's Requests window beside the words: Debug the whole stack. The free IDE for C# and .NET.">
+    <meta property="og:image:alt" content="A Godot game's GDScript in Passenger, each member's value after its line as the game plays, beside the words: Now for Godot 4 games. The free IDE for C# and .NET.">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:site" content="@Zaneris">
     <meta name="twitter:creator" content="@Zaneris">
     <meta name="twitter:title" content="Passenger for Godot 4: a free C# and GDScript IDE">
-    <meta name="twitter:description" content="A free, open-source IDE for Godot 4 games in C# and GDScript: C# checked against your scenes, a running game's values in your code, its live tree, and one profile across both languages.">
-    <meta name="twitter:image" content="https://passenger-ide.net/images/social-622499b6.png">
-    <meta name="twitter:image:alt" content="Passenger's Requests window beside the words: Debug the whole stack. The free IDE for C# and .NET.">
+    <meta name="twitter:description" content="A free, open-source IDE for Godot 4 games in C# and GDScript: C# checked against your scenes, GDScript read as Godot reads it, and the running game in your code.">
+    <meta name="twitter:image" content="https://passenger-ide.net/images/social-f846e4c2.png">
+    <meta name="twitter:image:alt" content="A Godot game's GDScript in Passenger, each member's value after its line as the game plays, beside the words: Now for Godot 4 games. The free IDE for C# and .NET.">
     <meta name="theme-color" content="#0F131C" media="(prefers-color-scheme: dark)">
     <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#2F6BF2">
@@ -40,9 +40,10 @@
         <a class="brand" href="/"><img src="/favicon.svg" alt="" width="28" height="28">Passenger</a>
         <nav aria-label="Pages">
             <a class="wide" href="/">Home</a>
+            <a class="wide" href="#run">Run and debug</a>
             <a class="wide" href="#scenes">Scenes</a>
+            <a class="wide" href="#gdscript">GDScript</a>
             <a class="wide" href="#running">The running game</a>
-            <a class="wide" href="#profile">Profiler</a>
             <a href="/#download">Download</a>
             <a href="https://github.com/Zaneris/passenger">GitHub</a>
         </nav>
@@ -54,12 +55,13 @@
         <div class="wrap">
             <p class="kicker">Godot</p>
             <h1>A free IDE for Godot 4 games in C# and GDScript</h1>
-            <p class="lede">Passenger reads your C# against your scenes, shows a running game's values in your code and its
-                nodes as they are, debugs C# and GDScript at once, and profiles both in one call tree. It works beside
-                Godot's editor, or as its script editor. Free and open source, on Windows, macOS and Linux.</p>
+            <p class="lede">Passenger runs, debugs, profiles and Hot Reloads your game, checks its C# against its scenes,
+                reads its GDScript and shaders as Godot does, and shows the running game's tree and values beside your
+                code. It works beside Godot's editor, or as its script editor. Free and open source, on Windows, macOS
+                and Linux.</p>
             <div class="actions">
                 <a class="button primary" href="/#download">Download Passenger</a>
-                <a class="button" href="https://github.com/Zaneris/passenger/releases">Release notes</a>
+                <a class="button" href="https://github.com/Zaneris/passenger/releases/tag/v0.3.0">What's new in 0.3.0</a>
             </div>
         </div>
     </div>
@@ -73,19 +75,60 @@
             </picture>
         </figure>
 
+        <section id="run">
+            <h2>Run, debug and Hot Reload the game</h2>
+            <p class="intro">Run and Debug start the game on the Godot that Settings names or the one found, a game of
+                GDScript alone too. Passenger is its remote debugger, as Godot's editor is: its C# under Passenger's
+                debugger and its GDScript under Passenger's GDScript debugger, both at once.</p>
+            <div class="grid">
+                <div class="card">
+                    <h3>Both languages, one stop</h3>
+                    <p>A breakpoint in C# or GDScript stops the game. Godot's types read as you think of them in Variables
+                        and the hover, Vector3, Transform2D and Color among them.</p>
+                </div>
+                <div class="card">
+                    <h3>Changed as it runs</h3>
+                    <p>Hot Reload puts your C# edits in the running game, under Run too, and a GDScript you save reloads in
+                        it.</p>
+                </div>
+                <div class="card">
+                    <h3>The game in a pane</h3>
+                    <p>On Windows, macOS and Linux under X11, the game can draw in Passenger's Game window beside its code.
+                        It takes the keys when you click it, and Ctrl+F11 takes them back.</p>
+                </div>
+                <div class="card">
+                    <h3>A scene, or several copies</h3>
+                    <p>Run Current Scene plays the scene open in the editor. Run Another Copy plays up to 16 copies for a
+                        multiplayer game, debugged as one group that one Stop ends.</p>
+                </div>
+                <div class="card">
+                    <h3>From a new game to an export</h3>
+                    <p>New Solution and New Project make a Godot 4 game, C# or GDScript, ready to run. Publish exports it
+                        through the presets of your <code>export_presets.cfg</code>.</p>
+                </div>
+                <div class="card">
+                    <h3>The project at a glance</h3>
+                    <p><code>project.godot</code> opens as a page of its main scene, autoloads, input map, export presets and
+                        plugins. A project's launch profiles run as configurations, Chickensoft's <code>%GODOT%</code> ones
+                        too, and F1 opens Godot's documentation at the class or member.</p>
+                </div>
+            </div>
+        </section>
+
         <section id="scenes">
             <h2>Your scenes, read with your code</h2>
             <div class="feature">
                 <div class="text">
                     <h3>The scene's tree beside its C#</h3>
-                    <p>A <code>.tscn</code> opens as Structure's tree of its nodes, each with its type and script, a row a
-                        click from its place in the file. It is marked where Godot would not load what it says, and where a
-                        signal is connected to a method its script lacks.</p>
+                    <p>A <code>.tscn</code> opens as Structure's tree of its nodes, each with its type and script, its
+                        properties edited there. A scene is marked where Godot would not load what it says, with fixes, and a
+                        script shows the scenes it runs in.</p>
                     <h3>C# that knows its scenes</h3>
-                    <p>The C# of a script is checked against every scene that runs it. <code>GetNode</code> paths complete
-                        and are marked where no node is, and signal names, input actions, groups, animations and autoloads
-                        are completed and checked as Godot will read them. A rename of a member or a node reaches the scenes
-                        and the strings that name it.</p>
+                    <p>The C# of a script is checked against every scene that runs it. <code>GetNode&lt;T&gt;</code> paths
+                        and types, <code>res://</code> and <code>uid://</code> paths and <code>[Export]</code> values
+                        complete and are checked, and every string Godot takes (input actions, groups, animations,
+                        autoloads, shader parameters, translations, layers and theme items) completes, is checked and
+                        renames. Signals and their handlers lead to each other, and a rename reaches the scenes.</p>
                 </div>
                 <figure class="shot">
                     <picture>
@@ -98,41 +141,75 @@
 
             <div class="grid two">
                 <div class="card">
-                    <h3>GDScript of its own</h3>
-                    <p>Passenger reads GDScript with Godot's own parser and analyzer, ported: completion, types, the
-                        warnings your <code>project.godot</code> turns on with their fixes, Go to Declaration and Find
-                        Usages, refactorings that take a script's connections and its C# callers along, and Reformat Code by
-                        the style guide.</p>
+                    <h3>C# and GDScript, together</h3>
+                    <p>Calls, connections, usages and renames lead across both languages, so a C# member's GDScript callers
+                        are found and renamed with it.</p>
                 </div>
                 <div class="card">
-                    <h3>Shaders and resources</h3>
-                    <p>A <code>.gdshader</code> gets completion and Godot's own compiler's errors, a scene's shader too.
-                        <code>.tres</code> files, uids and <code>res://</code> paths are read and checked, and
-                        <code>project.godot</code> opens as a page of its settings.</p>
+                    <h3>Your Godot editor's work kept</h3>
+                    <p>What your Godot editor holds unsaved is safe: Passenger asks before it writes over it, and the
+                        headless Godot behind GDScript's language server never changes your project.</p>
                 </div>
+            </div>
+        </section>
+
+        <section id="gdscript">
+            <h2>GDScript and shaders, read as Godot reads them</h2>
+            <div class="feature flip">
+                <div class="text">
+                    <h3>GDScript of its own</h3>
+                    <p>Passenger's port of Godot's parser and analyzer gives Godot's warnings and errors with their fixes,
+                        and answers completion, the hover, Find Usages, Rename and the outline, mostly without starting
+                        Godot. It marks only what Godot would, in Godot's order.</p>
+                    <p>Rename, Change Signature and Move reach every caller, through scenes' connections and C# strings.
+                        Reformat Code follows Godot's style guide, and Order Script's Parts puts a script in its order.</p>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/gdscript-light.webp" width="2400" height="1500">
+                        <img src="/images/gdscript-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="A GDScript in Passenger with its code help open and a Godot warning marked in Godot's own words, no Godot editor running">
+                    </picture>
+                </figure>
+            </div>
+
+            <div class="feature">
+                <div class="text">
+                    <h3>Shaders checked as Godot's compiler checks them</h3>
+                    <p>A <code>.gdshader</code> shows every error and warning at once, with no Godot running, its built-ins
+                        completed and explained on hover. A scene's shader is checked too, and a <code>.tres</code>, uids and
+                        <code>res://</code> paths are read and checked.</p>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/godot-shader-light.webp" width="2400" height="1500">
+                        <img src="/images/godot-shader-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="A Godot .gdshader in Passenger: its marks in Godot's words, and a built-in completed">
+                    </picture>
+                </figure>
             </div>
         </section>
 
         <section id="running">
             <h2>The running game, in your code</h2>
-            <p class="intro">Run or debug the game and Passenger is its remote debugger, as Godot's editor is. Its C# runs
-                under Passenger's debugger and its GDScript under Passenger's GDScript debugger, both at once, a breakpoint
-                in either stopping it.</p>
+            <p class="intro">While the game runs, Passenger follows it over Godot's own remote debug protocol: its tree, its
+                values and its errors, beside the code that made them.</p>
             <div class="feature flip">
                 <div class="text">
                     <h3>The live tree</h3>
-                    <p>The Live tree shows the game's nodes as they are, each property with its value now. Change one and the
-                        game takes it at once; Keep writes it back into the scene. The values of a script's members show
-                        after their lines as the game plays, and an error the game hits is pinned to its line.</p>
-                    <h3>C# changed as it runs</h3>
-                    <p>Hot Reload puts your C# edits in the running game, under Run too, and Godot's reload takes a
-                        GDScript saved. Run Another Copy plays several at once, for a multiplayer game.</p>
+                    <p>The Live Visual Tree shows the game's nodes as they are, each property with its value now. Tune one
+                        with a swatch, a slider or a vector's parts and the game takes it at once; Keep writes it back into
+                        the scene. Click in the game to select a node, and pause the game or step it a frame.</p>
+                    <h3>Values and errors at their lines</h3>
+                    <p>The values of a script's members show after their lines as the game plays, with no breakpoint. An
+                        error the game hits stays pinned to its line after the run, and frame time and your own monitors are
+                        charted live.</p>
                 </div>
                 <figure class="shot">
                     <picture>
                         <source media="(prefers-color-scheme: light)" srcset="/images/godot-live-tree-light.webp" width="2400" height="1500">
                         <img src="/images/godot-live-tree-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
-                             alt="A running Godot game's Live tree in Passenger: its scene's nodes as they are, a plant chosen with its properties and values, beside the plant's GDScript">
+                             alt="A running Godot game's Live Visual Tree in Passenger: its scene's nodes as they are, a plant chosen with its properties and values, beside the plant's GDScript with each member's value after its line">
                     </picture>
                 </figure>
             </div>
@@ -140,36 +217,45 @@
             <div class="grid two">
                 <div class="card">
                     <h3>With Godot's editor</h3>
-                    <p>Passenger can be Godot's script editor, opening each script at its line. Its addon has Godot's Play
-                        start a game Passenger debugs, and Open in Godot Editor selects a scene's node there.</p>
-                </div>
-                <div class="card">
-                    <h3>The Game window</h3>
-                    <p>A game can draw in Passenger's own Game window beside its code, on Windows and on Linux under X11,
-                        taking the keys when you click it.</p>
-                </div>
-                <div class="card">
-                    <h3>Tests and exports</h3>
-                    <p>GdUnit4, GUT and GoDotTest tests in the Unit Tests window, run and debugged. Publish exports the game
-                        with the presets of your <code>export_presets.cfg</code>.</p>
+                    <p>Tools &rsaquo; Make Passenger Godot's Script Editor&hellip; has Godot open each script in Passenger at
+                        its line, and Open in Godot Editor goes the other way. Passenger's addon has a game Godot's Play
+                        starts debugged in Passenger, and lets Passenger play and stop the game in your editor.</p>
                 </div>
                 <div class="card">
                     <h3>For your coding agent</h3>
-                    <p>An agent plays the game through Passenger's MCP server: its tree, values and input, a picture of its
-                        frame, and the scenes of your open Godot editor changed as an editor's undoable actions.</p>
+                    <p>An agent plays and debugs the game through Passenger's MCP server: its tree, values, clicks and keys,
+                        a picture of its frame with no window on your screen, and the scenes of your open Godot editor
+                        changed, each change one step of Godot's Undo.</p>
                 </div>
+            </div>
+        </section>
+
+        <section id="tests">
+            <h2>Your game's tests, run and debugged</h2>
+            <div class="feature">
+                <div class="text">
+                    <p>GdUnit4, GUT and GoDotTest tests are found in the Unit Tests window, and run and debugged there as
+                        any other test is.</p>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/godot-tests-light.webp" width="2400" height="1500">
+                        <img src="/images/godot-tests-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="The Unit Tests window over a Godot game's tests in Passenger, one failed with its line, beside the test's code">
+                    </picture>
+                </figure>
             </div>
         </section>
 
         <section id="profile">
             <h2>One profile, GDScript and C#</h2>
-            <div class="feature">
+            <div class="feature flip">
                 <div class="text">
                     <p>Profile the game and its call tree holds both languages: its GDScript's functions as Godot's own
                         profiler measured them, each opening at its line, beside the C# it sampled, in one scale. The Frames
                         page charts each frame's time and opens the slowest on what it spent, its costliest function chosen,
-                        GDScript's or C#'s.</p>
-                    <a class="more" href="/#profiling">The profiler and debugger</a>
+                        GDScript's or C#'s. Memory snapshots of the game are taken too.</p>
+                    <a class="more" href="/#profiling">The profiler</a>
                 </div>
                 <figure class="shot">
                     <picture>
@@ -184,12 +270,15 @@
         <section id="limits">
             <h2>Good to know</h2>
             <ul class="limits">
-                <li><strong>Godot 4.</strong> GDScript works with any Godot 4; C# needs Godot's .NET build, and Passenger
-                    finds it on the PATH, in Applications or where Settings names it.</li>
-                <li><strong>The Game window</strong> takes Godot 4.4 or later, on Windows or Linux under X11; elsewhere the
-                    game draws in its own window.</li>
-                <li><strong>Godot's own editor</strong> keeps what it holds unsaved: Passenger asks before it writes a scene
-                    open there.</li>
+                <li><strong>Godot 4.</strong> GDScript works with any Godot 4; C# needs Godot's .NET build. Passenger finds
+                    it from <code>GODOT</code>, the PATH or your applications, or where Settings &rsaquo; Godot names it,
+                    and is tested on Godot 4.7 and 4.8.</li>
+                <li><strong>The Game window</strong> takes Godot 4.4 or newer (4.5 or newer on macOS), and under Wayland it
+                    needs XWayland; otherwise the game draws in a window of its own.</li>
+                <li><strong>GdUnit4 on Godot 4.8's betas:</strong> its tests that need the engine don't run yet, since
+                    GdUnit4's runner doesn't build there; each such test's details say why. They run on Godot 4.7.</li>
+                <li><strong>A <code>.gdshaderinc</code></strong> is checked on its own, as Godot's shader editor checks
+                    one.</li>
             </ul>
         </section>
     </div>
