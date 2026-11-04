@@ -8,6 +8,7 @@ public sealed partial class GDScriptAnalyzer
     private void Walk(GDScriptAnalysis analysis, GDScriptNode member, Context context)
     {
         MemberNameErrors(member, context);
+        AnnotationArgumentErrors(member, context);
         switch (member)
         {
             case GDScriptVariable variable:
@@ -80,6 +81,7 @@ public sealed partial class GDScriptAnalyzer
                 }
                 break;
             case GDScriptEnum { Identifier: null } named:
+                EnumValueErrors(named, context);
                 foreach ((GDScriptIdentifier enumValue, _) in named.Values)
                 {
                     Paint(context, enumValue, GDScriptColour.Constant);
@@ -87,6 +89,7 @@ public sealed partial class GDScriptAnalyzer
                 }
                 break;
             case GDScriptEnum enumerated:
+                EnumValueErrors(enumerated, context);
                 Paint(context, enumerated.Identifier, GDScriptColour.Enum);
                 foreach ((GDScriptIdentifier enumValue, _) in enumerated.Values)
                 {
@@ -317,6 +320,10 @@ public sealed partial class GDScriptAnalyzer
             Shadowing(name, "pattern bind", local: true, context);
         }
         Reduce(pattern.Expression, context);
+        if (pattern.Expression is { } expression)
+        {
+            PatternErrors(expression, context);
+        }
         foreach (GDScriptPattern inner in pattern.Array)
         {
             Bind(inner, binds, context);
@@ -362,14 +369,11 @@ public sealed partial class GDScriptAnalyzer
         {
             return GDScriptType.Builtin("int");
         }
-        GDScriptType element = list switch
-        {
-            { Kind: GDScriptTypeKind.Builtin, Name: "int" or "float" or "String" } => GDScriptType.Builtin(list.Name),
-            { Kind: GDScriptTypeKind.Builtin, Name: "Array", Elements: [{ } typed, ..] } => typed,
-            { Kind: GDScriptTypeKind.Builtin, Name: "Dictionary", Elements: [{ } key, ..] } => key,
-            { Kind: GDScriptTypeKind.Builtin } builtin when Engine?.Builtins.GetValueOrDefault(builtin.Name)?.Indexing is { } indexed && builtin.Name.StartsWith("Packed", StringComparison.Ordinal) => FromApi(indexed),
-            _ => GDScriptType.Variant,
-        };
+        // An object goes through by its script's _iter_get, typed as that returns.
+        GDScriptType element = IterationOf(list)
+            ?? (list is { Kind: GDScriptTypeKind.Native or GDScriptTypeKind.Class, Meta: false } && Member(list, "_iter_get") is { Kind: "func", Declaration.Script: not null } iterated
+                ? iterated.Type : null)
+            ?? GDScriptType.Variant;
         return element with { Hard = list.Hard && element.Hard };
     }
 
@@ -412,7 +416,7 @@ public sealed partial class GDScriptAnalyzer
             case GDScriptSubscript subscript:
                 GDScriptType indexed = ReduceBase(subscript.Base, context);
                 SubscriptErrors(subscript, indexed, Reduce(subscript.Index, context), context);
-                return Indexed(indexed);
+                return ConstantElement(subscript, context) ?? Indexed(indexed);
             case GDScriptCall call:
                 return Call(call, context, root, awaited);
             case GDScriptAwait waiting:
@@ -485,6 +489,7 @@ public sealed partial class GDScriptAnalyzer
                     }
                     Reduce(item, context);
                 }
+                DuplicateKeyErrors(dictionary, context);
                 return GDScriptType.Builtin("Dictionary");
             case GDScriptGetNode get:
                 GetNodeErrors(get, context);
@@ -826,6 +831,21 @@ public sealed partial class GDScriptAnalyzer
         }
     }
 
+    /// <summary>The type of the element a constant array written out holds at a literal index, as Godot folds a constant's
+    /// subscript; null for any other subscript.</summary>
+    private GDScriptType? ConstantElement(GDScriptSubscript subscript, Context context)
+    {
+        if (subscript is not { Base: GDScriptIdentifier name, Index: GDScriptLiteral { Value: long index } })
+        {
+            return null;
+        }
+        GDScriptNode? declared = context.Scope?.Find(name.Name) is { } local ? local.Local?.Node
+            : Member(context.Class, name.Name) is { Kind: "const", Declaration: { Script: { } script, Start: var start } } && script == context.Analysis.Path && Tree(script) is { } tree
+                ? AssignableAt(tree.Members.Select(m => (m.Node, m.Offset)), start) : null;
+        return declared is GDScriptConstant { Initializer: GDScriptArray array } && index >= 0 && index < array.Elements.Count
+            && array.Elements[(int)index] is GDScriptLiteral element && context.Analysis.TypeOf(element) is { IsVariant: false } held ? held : null;
+    }
+
     private GDScriptType Indexed(GDScriptType indexed)
     {
         GDScriptType element = indexed switch
@@ -1101,7 +1121,8 @@ public sealed partial class GDScriptAnalyzer
     {
         GDScriptLiteral or GDScriptArray or GDScriptDictionary => true,
         GDScriptUnary { Operator: K.Minus, Operand: GDScriptLiteral } => true,
-        GDScriptIdentifier name when context.Scope?.Find(name.Name) is { } local => SureDeclared(local.Local?.Node),
+        GDScriptIdentifier name when context.Scope?.Find(name.Name) is { } local => SureDeclared(local.Local?.Node)
+            || local.Local?.Node is GDScriptFor { List: { } list } loop && (loop.Type is not null || list is GDScriptCall { Callee: GDScriptIdentifier { Name: "range" } } || Sure(list, context)),
         GDScriptIdentifier name => Member(context.Class, name.Name) is { Declaration: { Script: { } script, Start: var start } } && Tree(script) is { } tree
             && SureDeclared(AssignableAt(tree.Members.Select(m => (m.Node, m.Offset)), start)),
         GDScriptCall { Callee: GDScriptIdentifier builtin } when Engine?.Builtins.ContainsKey(builtin.Name) == true && context.Scope?.Find(builtin.Name) is null => true,
@@ -1111,7 +1132,7 @@ public sealed partial class GDScriptAnalyzer
     };
 
     /// <summary>Whether a declaration's type is one Godot gives as Passenger does: written, or inferred from a literal, a
-    /// built-in type's constant or its constructor.</summary>
+    /// built-in type's constant or its constructor, a class's <c>new()</c>, or an element taken by a literal index.</summary>
     private bool SureDeclared(GDScriptNode? declared) => declared switch
     {
         GDScriptAssignable { Type: not null } => true,
@@ -1121,6 +1142,8 @@ public sealed partial class GDScriptAnalyzer
             GDScriptSubscript { IsAttribute: true, Base: GDScriptIdentifier type, Attribute: { } constant } =>
                 Engine?.Builtins.GetValueOrDefault(type.Name)?.Constants.ContainsKey(constant.Name) == true,
             GDScriptCall { Callee: GDScriptIdentifier type } => type.Name != "Nil" && Engine?.Builtins.ContainsKey(type.Name) == true,
+            GDScriptCall { Callee: GDScriptSubscript { IsAttribute: true, Attribute.Name: "new", Base: GDScriptIdentifier } } => true,
+            GDScriptSubscript { IsAttribute: false, Index: GDScriptLiteral { Kind: GDScriptLiteralKind.Int } } => true,
             _ => false,
         },
         _ => false,

@@ -11,7 +11,7 @@ namespace Passenger.UnitTests.Godot;
 /// none of and a call given too few or too many arguments, an operator, cast or type test given types it refuses, a static
 /// place reaching the instance, an index, loop or typed collection Godot refuses, a member's name taken, an override's
 /// signature, an export, a file the project lacks preloaded or extended, a class named as a singleton autoload, an untyped
-/// override's returns; and none of them where the class extends one this reading cannot read.</summary>
+/// override's returns, what must be constant; and none of them where the class extends one this reading cannot read.</summary>
 public class GDScriptErrorsTests
 {
     private const string Api = """
@@ -264,6 +264,43 @@ public class GDScriptErrorsTests
             "43: Cannot return value of type \"null\" because the function return type is \"int\".",
             "46: The rest parameter type must be \"Array\", but \"int\" is specified.",
             "50: Typed arrays are currently not supported for the rest parameter.",
+        ], Errors(Script));
+    }
+
+    /// <summary>What must be constant and is not (a constant's value, an annotation's argument, an enum's value, a match
+    /// pattern), a type <c>:=</c> can't infer from a weak value, a dictionary's key written twice, and the types Godot folds
+    /// or infers for a constant's element, a loop's variable and a class's <c>new()</c>, in Godot's words on its lines.</summary>
+    [Fact]
+    public void What_must_be_constant_a_weak_inference_and_a_key_written_twice_are_errors_in_godots_words_on_their_lines()
+    {
+        const string Script = "extends Node\n\nsignal fired\nenum BadEnum { A = 0.0, B = \"hello\", C = 2 }\nvar num := 1\nvar untyped = 1\n"
+            + "var inferred := untyped\nconst FROM_VAR = num\nconst LIST := [0]\n\n@export_range(num, 10) var ranged: int\n\n"
+            + "\nfunc check(param_untyped = 1, param_inferred := param_untyped) -> void:\n\tpass\n\n\n"
+            + "func _ready() -> void:\n\tvar local_untyped = 1\n\tvar local_inferred := local_untyped\n"
+            + "\tvar awaited := await fired\n\tvar hard := 1\n\tvar mixed := hard if true else local_untyped\n\tvar i = 12\n"
+            + "\tconst TEST = 13 + i\n\tvar dict = {\"a\": 1, &\"a\": 2, 1: 5, 1: 6}\n\tvar lua = {b = 3, \"b\" = 4}\n"
+            + "\tvar sub := LIST[0]\n\tprint(sub is String)\n\tfor y in 1.5:\n\t\tprint(y is String)\n"
+            + "\tvar made := Node.new()\n\tprint(made is Resource)\n\tmatch hard:\n\t\thard + 2:\n\t\t\tpass\n"
+            + "\tprint(inferred, local_inferred, awaited, mixed, dict, lua, TEST, FROM_VAR, ranged)\n";
+        Assert.Equal(
+        [
+            "4: Enum values must be integers.",
+            "4: Enum values must be integers.",
+            "7: Cannot infer the type of \"inferred\" variable because the value doesn't have a set type.",
+            "8: Assigned value for constant \"FROM_VAR\" isn't a constant expression.",
+            "11: Argument 1 of annotation \"@export_range\" isn't a constant expression.",
+            "14: Cannot infer the type of \"param_inferred\" parameter because the value doesn't have a set type.",
+            "20: Cannot infer the type of \"local_inferred\" variable because the value doesn't have a set type.",
+            "21: Cannot infer the type of \"awaited\" variable because the value doesn't have a set type.",
+            "23: Cannot infer the type of \"mixed\" variable because the value doesn't have a set type.",
+            "25: Assigned value for constant \"TEST\" isn't a constant expression.",
+            "26: Key \"a\" was already used in this dictionary (at line 26).",
+            "26: Key \"1\" was already used in this dictionary (at line 26).",
+            "27: Key \"b\" was already used in this dictionary (at line 27).",
+            "29: Expression is of type \"int\" so it can't be of type \"String\".",
+            "31: Expression is of type \"float\" so it can't be of type \"String\".",
+            "33: Expression is of type \"Node\" so it can't be of type \"Resource\".",
+            "35: Expression in match pattern must be a constant expression, an identifier, or an attribute access (\"A.B\").",
         ], Errors(Script));
     }
 

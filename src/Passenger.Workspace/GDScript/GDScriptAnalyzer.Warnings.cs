@@ -148,9 +148,14 @@ public sealed partial class GDScriptAnalyzer
         {
             TypedLiteralErrors(given, type, context);
         }
+        ConstantValueErrors(node, name, given, context);
         if (node.Infers)
         {
-            if (value is { Kind: GDScriptTypeKind.Builtin, Name: "Nil" } && given is GDScriptLiteral && node is not GDScriptConstant)
+            if (SurelyWeak(given, context))
+            {
+                Error(context, given, $"Cannot infer the type of \"{name}\" {kind} because the value doesn't have a set type.");
+            }
+            else if (value is { Kind: GDScriptTypeKind.Builtin, Name: "Nil" } && given is GDScriptLiteral && node is not GDScriptConstant)
             {
                 Error(context, given, $"Cannot infer the type of \"{name}\" {kind} because the value is \"null\".");
             }
