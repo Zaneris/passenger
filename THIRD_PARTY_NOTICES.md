@@ -717,7 +717,7 @@ reordering, Remove ending tag of empty element); (c) Xavalon. All rights reserve
 
 `src/Passenger.App/MSBuild/Schemas/` holds `Microsoft.Build.Core.xsd` and `Microsoft.Build.CommonTypes.xsd`, MSBuild's own
 schemas of its elements, properties, items, metadata and tasks (`src/MSBuild/MSBuild/` of https://github.com/dotnet/msbuild
-at commit 7af2a3b, October 14, 2026), unchanged but for `AnalysisLevel` in `Microsoft.Build.CommonTypes.xsd`, which also
+at commit c749ea6, November 3, 2026), unchanged but for `AnalysisLevel` in `Microsoft.Build.CommonTypes.xsd`, which also
 lists the levels of .NET 7 to 11 (`7.0` to `11.0`, each with `-minimum`, `-recommended` and `-all`) that the SDKs take.
 The app embeds them for the code help in project files, which offers and describes what they declare; the .NET SDK does
 not carry them.
@@ -810,40 +810,40 @@ SOFTWARE.
 file of Visual Studio Code's own extensions (https://github.com/microsoft/vscode, MIT, Copyright (c) 2015 - present
 Microsoft Corporation), unchanged, from the project its header names:
 
-- `xml.tmLanguage.json` (VS Code 1.142.0, `extensions/xml`): from atom/language-xml
+- `xml.tmLanguage.json` (VS Code 1.144.0, `extensions/xml`): from atom/language-xml
   (https://github.com/atom/language-xml), MIT, Copyright (c) 2014 GitHub Inc., which was converted from the TextMate
   bundle textmate/xml.tmbundle, under the TextMate bundle licence below.
-- `JSON.tmLanguage.json` (VS Code 1.142.0, `extensions/json`): from microsoft/vscode-JSON.tmLanguage
+- `JSON.tmLanguage.json` (VS Code 1.144.0, `extensions/json`): from microsoft/vscode-JSON.tmLanguage
   (https://github.com/microsoft/vscode-JSON.tmLanguage), MIT, Copyright (c) 2015 simonzack, zertosh, benvie.
 - `yaml.tmLanguage.json` (VS Code 1.85.0, `extensions/yaml`): the YAML syntax of textmate/yaml.tmbundle
   (https://github.com/textmate/yaml.tmbundle), MIT, Copyright (c) 2015 FichteFoll, as its `Syntaxes/YAML-license.txt`
   says. It stays at 1.85.0: VS Code's own since is RedCMD/YAML-Syntax-Highlighter's (a grammar per YAML version),
   which TextMateSharp did not read rightly when these grammars came in; its 2.0.4 is still its newest.
-- `markdown.tmLanguage.json` (VS Code 1.142.0, `extensions/markdown-basics`): from microsoft/vscode-markdown-tm-grammar
+- `markdown.tmLanguage.json` (VS Code 1.144.0, `extensions/markdown-basics`): from microsoft/vscode-markdown-tm-grammar
   (https://github.com/microsoft/vscode-markdown-tm-grammar), MIT, Copyright (c) Microsoft 2018, derived from
   textmate/markdown.tmbundle, under the TextMate bundle licence below.
-- `html.tmLanguage.json` (VS Code 1.142.0, `extensions/html`): converted from textmate/html.tmbundle
+- `html.tmLanguage.json` (VS Code 1.144.0, `extensions/html`): converted from textmate/html.tmbundle
   (https://github.com/textmate/html.tmbundle), under the TextMate bundle licence below.
-- `css.tmLanguage.json` (VS Code 1.142.0, `extensions/css`): from microsoft/vscode-css
+- `css.tmLanguage.json` (VS Code 1.144.0, `extensions/css`): from microsoft/vscode-css
   (https://github.com/microsoft/vscode-css), MIT, Copyright (c) Microsoft Corporation, derived from atom/language-css
   and the TextMate bundle textmate/css.tmbundle, under the TextMate bundle licence below.
-- `scss.tmLanguage.json` (VS Code 1.142.0, `extensions/scss`): from atom/language-sass
+- `scss.tmLanguage.json` (VS Code 1.144.0, `extensions/scss`): from atom/language-sass
   (https://github.com/atom/language-sass), MIT, Copyright (c) 2014 GitHub Inc., derived from the TextMate bundle
   alexsancho/Sass.tmbundle (https://github.com/alexsancho/Sass.tmbundle), MIT, Copyright (c) 2012 Alex Sancho, as
   atom/language-sass's `LICENSE.md` says.
-- `less.tmLanguage.json` (VS Code 1.142.0, `extensions/less`): from radium-v/Better-Less
+- `less.tmLanguage.json` (VS Code 1.144.0, `extensions/less`): from radium-v/Better-Less
   (https://github.com/radium-v/Better-Less), MIT, Copyright (c) 2017 John Kreitlow.
-- `JavaScript.tmLanguage.json` (VS Code 1.142.0, `extensions/javascript`), and `TypeScript.tmLanguage.json` and
-  `TypeScriptReact.tmLanguage.json` (VS Code 1.142.0, `extensions/typescript-basics`): from
+- `JavaScript.tmLanguage.json` (VS Code 1.144.0, `extensions/javascript`), and `TypeScript.tmLanguage.json` and
+  `TypeScriptReact.tmLanguage.json` (VS Code 1.144.0, `extensions/typescript-basics`): from
   microsoft/TypeScript-TmLanguage (https://github.com/microsoft/TypeScript-TmLanguage), MIT, Copyright (c) Microsoft
   Corporation; VS Code names textmate/javascript.tmbundle, under the TextMate bundle licence below, among the JavaScript
   grammar's sources too.
-- `shell-unix-bash.tmLanguage.json` (VS Code 1.142.0, `extensions/shellscript`): from jeff-hykin/better-shell-syntax
+- `shell-unix-bash.tmLanguage.json` (VS Code 1.144.0, `extensions/shellscript`): from jeff-hykin/better-shell-syntax
   (https://github.com/jeff-hykin/better-shell-syntax), MIT, Copyright (c) 2019 Jeff Hykin.
-- `docker.tmLanguage.json` (VS Code 1.142.0, `extensions/docker`): from moby/moby's
+- `docker.tmLanguage.json` (VS Code 1.144.0, `extensions/docker`): from moby/moby's
   `contrib/syntax/textmate/Docker.tmbundle` (https://github.com/moby/moby), under the Apache License 2.0 below, with
   Docker's NOTICE.
-- `ini.tmLanguage.json` (VS Code 1.142.0, `extensions/ini`): converted from textmate/ini.tmbundle
+- `ini.tmLanguage.json` (VS Code 1.144.0, `extensions/ini`): converted from textmate/ini.tmbundle
   (https://github.com/textmate/ini.tmbundle), under the TextMate bundle licence below; it colours .editorconfig files.
 
 And two that colour Razor's .razor and .cshtml files before the language server answers, files of Razor's tooling in
@@ -1014,7 +1014,7 @@ limitations under the License.
 ## SchemaStore's JSON schemas
 
 `src/Passenger.Lsp/WebServers/schemas/` holds JSON schemas of the JSON Schema Store
-(https://github.com/SchemaStore/schemastore, `src/schemas/json/` at commit 5661ee1b), modified as listed below (each
+(https://github.com/SchemaStore/schemastore, `src/schemas/json/` at commit 5decc3eb), modified as listed below (each
 changed file saying so in its top-level `$comment`), carried
 under `web/schemas/`: those the JSON language server checks and completes package.json, tsconfig.json, jsconfig.json,
 appsettings.json, launchSettings.json and global.json by (`package.json`, `tsconfig.json`, `jsconfig.json`,
@@ -1055,7 +1055,7 @@ Passenger's changes, each where a schema refused what the tool it describes take
 ## The Compose specification's schema
 
 `src/Passenger.Lsp/WebServers/schemas/compose-spec.json` is the Compose specification's JSON schema
-(https://github.com/compose-spec/compose-spec, `schema/compose-spec.json` at commit 914ec15d), modified as below (the
+(https://github.com/compose-spec/compose-spec, `schema/compose-spec.json` at commit 3a4a6995), modified as below (the
 file saying so in its top-level `$comment`),
 carried under `web/schemas/`: the YAML language server checks and completes compose files (`compose.yaml`,
 `docker-compose.yml` and their variants) by it, under the Apache License 2.0 given under TextMate grammars above, with
