@@ -136,7 +136,13 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         {
             return new Declared(Declared.Served([place], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration);
         }
-        return new Declared(context.CSharp is { } csharp ? await csharp.Generated.CopiedAsync(found) : found, Refusals.NoDeclaration);
+        if (context.CSharp is not { } csharp)
+        {
+            return new Declared(found, Refusals.NoDeclaration);
+        }
+        // A project the folder has but C# does not load is declared in its own source, never its assembly's metadata stub.
+        found = await UnloadedSources.OfAsync(found, csharp.UnloadedNow?.Invoke() ?? []);
+        return new Declared(await csharp.Generated.CopiedAsync(found), Refusals.NoDeclaration);
     }
 
     public override async Task<bool> UsagesAsync(int offset, bool inPopup)

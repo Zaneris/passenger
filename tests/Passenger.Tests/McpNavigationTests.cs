@@ -2,6 +2,7 @@ using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Passenger.App.Mcp;
+using Passenger.Core;
 
 namespace Passenger.Tests;
 
@@ -29,6 +30,42 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
 
     private const string Tally = "static class Tally\n{\n    public static int Of(string text) => Words.Count(text) + Words.Count(text, 1);\n\n"
         + "    public static int CountAll(string[] texts) => texts.Sum(Words.Count);\n}\n";
+
+    /// <summary>A symbol of a project a solution filter leaves out, which C# reads only as its built assembly, is declared in
+    /// that project's own file, never in the server's stub of the assembly: a method, a property and a primary constructor,
+    /// and a method whose source takes another parameter than the assembly built before it; the framework's still a stub.</summary>
+    [Fact]
+    public async Task Go_to_declaration_into_a_project_a_solution_filter_leaves_out_opens_its_source_at_the_declaration()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-unloaded-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "Lib/Lib.csproj", TestProjects.Library());
+        TestFolders.Write(folder, "Lib/Greeter.cs", "namespace Lib;\n\npublic sealed class Greeter(string who)\n{\n    public string Who { get; } = who;\n\n"
+            + "    public string Greet(string greeting) => $\"{greeting}, {Who}\";\n}\n");
+        TestFolders.Write(folder, "App/App.csproj", TestProjects.Console().With("  <ItemGroup>\n    <ProjectReference Include=\"../Lib/Lib.csproj\" />\n  </ItemGroup>\n"));
+        TestFolders.Write(folder, "App/Program.cs", "Lib.Greeter greeter = new(\"Ada\");\nSystem.Console.WriteLine(greeter.Greet(\"Hello\") + greeter.Who);\n");
+        TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
+        TestFolders.Write(folder, "App.slnf", "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [ \"App\\\\App.csproj\" ]\n  }\n}\n");
+        await Restore.RunAsync(Path.Combine(folder, "Shop.slnx"));
+        await using McpClient client = await Start(["--mcp", Path.Combine(folder, "App.slnf")]);
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The filter's app did not build with the project it leaves out: {built}");
+
+        Assert.Equal(("Lib/Greeter.cs", 7), await DeclaredAsync(client, 2, 34));
+        Assert.Equal(("Lib/Greeter.cs", 5), await DeclaredAsync(client, 2, 59));
+        Assert.Equal(("Lib/Greeter.cs", 3), await DeclaredAsync(client, 1, 23));
+        // Its source changed since its assembly was built: the method of that name, however many parameters it takes now.
+        TestFolders.Write(folder, "Lib/Greeter.cs", File.ReadAllText(Path.Combine(folder, "Lib/Greeter.cs")).Replace("Greet(string greeting)", "Greet(string greeting, int times = 1)", StringComparison.Ordinal));
+        Assert.Equal(("Lib/Greeter.cs", 7), await DeclaredAsync(client, 2, 34));
+        (string console, _) = await DeclaredAsync(client, 2, 16);
+        Assert.Contains("MetadataAsSource", console, StringComparison.Ordinal);
+
+        async Task<(string Path, int Line)> DeclaredAsync(McpClient asking, int line, int column)
+        {
+            JsonElement place = Assert.Single((await Call(asking, McpTools.Definition, new() { ["path"] = "App/Program.cs", ["line"] = line, ["column"] = column })).EnumerateArray());
+            return (place.GetProperty("path").GetString()!, place.GetProperty("line").GetInt32());
+        }
+    }
 
     [Fact]
     public async Task An_agent_finds_the_solutions_own_symbols_reads_usages_in_order_and_hears_when_no_symbol_is_where_it_asked()

@@ -1374,6 +1374,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 Hints = (shown.ParameterHints, shown.TypeHints),
                 FirstProjects = ActiveProjectsAsync,
                 ProjectsNow = () => Projects,
+                UnloadedNow = () => [.. Workspace?.Projects.Where(p => Unloaded.Contains(p.Path)) ?? []],
                 Frameworks = Frameworks,
                 Feed = DesignTimeBuilds.Feed,
                 // Razor's HTML is the HTML server's to answer.
