@@ -44,7 +44,12 @@ public sealed class MemorySnapshot
         Types = [.. types.OrderByDescending(t => t.Bytes).ThenBy(t => t.Name, StringComparer.Ordinal)];
         Bytes = bytes.Sum();
         Objects = graph.Count;
+        NamedFrom = graph.NamedFrom;
     }
+
+    /// <summary>How many objects its dump's walk read with their fields' names: a type's first, and one holding a field none
+    /// before it did; the rest were read as their references alone.</summary>
+    public int NamedFrom { get; }
 
     /// <summary>Which of the run's snapshots this is, from 1.</summary>
     public int Number { get; }

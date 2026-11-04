@@ -105,6 +105,10 @@ internal sealed class HeapGraph
 
     /// <summary>How long the dump's walk took, and the analysis after it.</summary>
     public TimeSpan Walked { get; internal set; }
+
+    /// <summary>How many objects the dump's walk read with their fields' names, which costs ClrMD's objects per reference:
+    /// the rest are read as their references alone.</summary>
+    public int NamedFrom { get; internal set; }
     public TimeSpan Analysed { get; internal set; }
 
     public int Count => Address.Length;
@@ -207,6 +211,7 @@ internal sealed class HeapGraph
         reading.FindRoots();
         TimeSpan walked = clock.Elapsed;
         HeapGraph graph = reading.Analyse(cancel);
+        graph.NamedFrom = reading.NamedFrom;
         graph.Walked = walked;
         graph.Analysed = clock.Elapsed - walked;
         return graph;
@@ -517,6 +522,12 @@ internal sealed class HeapGraph
     {
         private readonly ClrHeap heap = runtime.Heap;
 
+        /// <summary>An object's bytes as last read, kept for the next: its references are read from them.</summary>
+        private byte[] bytes = new byte[4096];
+
+        /// <summary>How many objects were read with their fields' names (<see cref="Named"/>).</summary>
+        public int NamedFrom { get; private set; }
+
         public void Walk(CancellationToken cancel)
         {
             (ulong Key, ulong Value)[] dependents = Dependents();
@@ -527,18 +538,11 @@ internal sealed class HeapGraph
                     continue;
                 }
                 int index = TypeIndex(type);
-                Add(item.Address, index, (long)item.Size);
-                if (type.ContainsPointers)
+                ulong size = item.Size;
+                Add(item.Address, index, (long)size);
+                if (type.ContainsPointers && type.GCDesc is { IsEmpty: false } layout && size <= int.MaxValue && References(item, layout, (int)size, index, type.IsArray))
                 {
-                    foreach (ClrReference reference in item.EnumerateReferencesWithFields(carefully: false, considerDependantHandles: false))
-                    {
-                        int offset = reference.Offset;
-                        Refers(reference.Object.Address, offset);
-                        if (!reference.IsArrayElement && !Found[index].Fields.ContainsKey(offset))
-                        {
-                            Found[index].Fields[offset] = FieldName(reference);
-                        }
-                    }
+                    Named(item, index);
                 }
                 // What a ConditionalWeakTable keeps alive for a key, whatever the key's type holds.
                 for (int at = FirstDependent(dependents, item.Address); at < dependents.Length && dependents[at].Key == item.Address; at++)
@@ -551,6 +555,45 @@ internal sealed class HeapGraph
                 }
             }
             EndObjects();
+        }
+
+        /// <summary>An object's references from its bytes and its type's layout, each with where it is held: no reference is
+        /// made of them, nor its object's type looked up, which a million objects would pay for. True where a field holds one
+        /// whose name its type has not been given yet.</summary>
+        private bool References(ClrObject item, GCDesc layout, int size, int index, bool array)
+        {
+            if (bytes.Length < size)
+            {
+                bytes = new byte[Math.Max(size, bytes.Length * 2)];
+            }
+            int read = runtime.DataTarget.DataReader.Read(item.Address, bytes.AsSpan(0, size));
+            if (read <= pointerSize)
+            {
+                return false;
+            }
+            bool unnamed = false;
+            foreach ((ulong target, int at) in layout.WalkObject(bytes, read))
+            {
+                // The layout counts from the object's method table, a reference's offset from its first field.
+                int offset = at - pointerSize;
+                Refers(target, offset);
+                unnamed |= !array && !Found[index].Fields.ContainsKey(offset);
+            }
+            return unnamed;
+        }
+
+        /// <summary>The names of the fields an object holds references in, read for its type through ClrMD's references: a
+        /// type's first object, and one holding a field none before it did.</summary>
+        private void Named(ClrObject item, int index)
+        {
+            NamedFrom++;
+            foreach (ClrReference reference in item.EnumerateReferencesWithFields(carefully: false, considerDependantHandles: false))
+            {
+                if (!reference.IsArrayElement && !Found[index].Fields.ContainsKey(reference.Offset))
+                {
+                    Found[index].Fields[reference.Offset] = FieldName(reference);
+                }
+            }
         }
 
         /// <summary>The runtime's dependent handles (a ConditionalWeakTable's entries), each key and the object it keeps alive,

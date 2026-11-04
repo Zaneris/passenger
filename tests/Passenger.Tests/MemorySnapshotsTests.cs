@@ -332,11 +332,16 @@ public sealed class MemorySnapshotsTests : IDisposable
                 {
                     for (int i = 0; i < count; i++)
                     {
-                        Nodes.Add(new Node(i));
+                        Nodes.Add(new Node(i) { Before = Nodes.Count > 0 ? Nodes[^1] : null });
                     }
                 }
             }
-            sealed class Node(int number) { public int Number { get; } = number; }
+            sealed class Node(int number)
+            {
+                public int Number { get; } = number;
+
+                public Node? Before { get; init; }
+            }
             """);
         MemoryView memory = window.ProfilerView.MemoryPage;
         MemorySnapshot first = Snapshot(window, 1);
@@ -345,6 +350,8 @@ public sealed class MemorySnapshotsTests : IDisposable
         Ui.PumpUntil(() => Console(window).Contains("added", StringComparison.Ordinal), "the program to add its nodes");
         MemorySnapshot second = Snapshot(window, 2);
         Assert.True(second.Objects > 1_200_000, $"{second.Objects} objects in the second snapshot");
+        // A million nodes each holding a reference are read as their references alone, their field's name read once.
+        Assert.True(first.NamedFrom < 5_000, $"The first snapshot read {first.NamedFrom:N0} of its {first.Objects:N0} objects with their fields' names");
 
         Task compared = memory.CompareWithAsync(first);
         Ui.PumpUntil(() => memory.Comparison is not null, "the comparison", TimeSpan.FromMinutes(2));
