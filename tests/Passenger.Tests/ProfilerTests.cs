@@ -132,7 +132,9 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         Assert.Equal(Snapshots.Kept, Directory.GetFiles(kept, "*.nettrace").Length);
         Assert.False(File.Exists(Path.Combine(kept, "Spinner-earlier-0.nettrace")), "the oldest snapshot was kept past the cap");
         Assert.True(File.Exists(Path.Combine(kept, "Spinner-earlier-1.nettrace")), "a snapshot within the cap was removed");
-        Assert.Contains($"kept in {kept}", window.Status, StringComparison.Ordinal);
+        // The status names where the snapshot is kept as a person finds it, never by its folder deep in Passenger's state.
+        Assert.True(window.Status?.EndsWith("kept on the Performance Profiler's Snapshots page", StringComparison.Ordinal) == true
+            && !window.Status.Contains(kept, StringComparison.Ordinal), $"The snapshot's status said \"{window.Status}\", naming its folder {kept}");
         Assert.Equal(snapshot.TracePath, view.Kept[0].Path);
         Assert.Equal(Snapshots.Kept, view.Kept.Count);
         Assert.Contains(kept, view.KeptSummary, StringComparison.Ordinal);

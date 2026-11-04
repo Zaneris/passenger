@@ -478,6 +478,12 @@ public sealed class ProfilerCommands
         }), TaskScheduler.Default));
     }
 
+    /// <summary>What the status says of a snapshot read: what it holds, and that it is kept among the Snapshots page's, which
+    /// names their folder, deep in Passenger's state, with a button that shows it.</summary>
+    public static string SnapshotSaid(string name, Snapshot snapshot) => snapshot.FramesAlone
+        ? $"Snapshot of {name}: {Plural.Of(snapshot.GameFrames.Count, "frame")} as Godot's profiler measured them, no samples (GDScript alone), kept on the Performance Profiler's Snapshots page"
+        : $"Snapshot of {name}: {snapshot.Samples:N0} samples, kept on the Performance Profiler's Snapshots page";
+
     /// <summary>What Profile says of a Godot game of GDScript alone it runs, whose run is Godot's own frames.</summary>
     public static string FramesAloneSaid(string name) =>
         $"Profiling {name} with Godot's own profiler: a game of GDScript alone runs no .NET code, so its run is its frames and scripts as Godot measures them, with no samples";
@@ -954,9 +960,7 @@ public sealed class ProfilerCommands
         {
             // Held by the scope, and back on no thread of the window's, which may be gone by then.
             Snapshot snapshot = await BackgroundWork.Unheld(() => run.StopAsync()).ConfigureAwait(false);
-            string read = snapshot.FramesAlone
-                ? $"Snapshot of {name}: {Plural.Of(snapshot.GameFrames.Count, "frame")} as Godot's profiler measured them, no samples (GDScript alone), kept in {Path.GetDirectoryName(snapshot.TracePath)}"
-                : $"Snapshot of {name}: {snapshot.Samples:N0} samples, kept in {Path.GetDirectoryName(snapshot.TracePath)}";
+            string read = SnapshotSaid(name, snapshot);
             if (closing.IsCancellationRequested)
             {
                 // Its folder was left as it was read: it is that folder's to list when it opens again.
