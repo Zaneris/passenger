@@ -167,6 +167,7 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
 
             GodotNode before = Ui.AwaitPumped(running.SceneTreeAsync(), "the game's tree", TimeSpan.FromMinutes(1));
             GodotNode main = before.All().First(n => n.Name == "Main");
+            Ui.WaitFor(() => running.Monitors is not null, () => $"the game's first monitors, its count of nodes ({window.Status})", TimeSpan.FromMinutes(1));
             double nodes = running.Monitors!.Nodes;
             Ui.AwaitPumped(running.SetPropertyAsync(main.Id, "free_helper", true), "Main told to free the helper", TimeSpan.FromMinutes(1));
             Ui.WaitFor(() => Run(window).Contains("helper freed", StringComparison.Ordinal), () => $"the game to free the helper ({Run(window)[^Math.Min(400, Run(window).Length)..]})", TimeSpan.FromMinutes(1));
