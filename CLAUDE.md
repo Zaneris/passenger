@@ -233,8 +233,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 `src/Passenger.App`, by area:
 - **Shell.** Every open through `PassengerApp.OpenProject`; a `.slnf`'s left-out projects are never saved as the
   person's; a handler acts only while its session is bound (`ProjectSession.Bind`). A Passenger nobody sees
-  (`ShowsNoWindow`) runs Godot and browsers headless and plays no sound. Anything new on the toolbar goes inside
-  `ToolbarStart` or `ToolbarEnd`, or Windows takes a press for the caption's.
+  (`ShowsNoWindow`) runs Godot and browsers headless, a desktop app where nobody sees it (`UnseenApps`), and plays no
+  sound. Anything new on the toolbar goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press for the
+  caption's.
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; every editor through `ForEachEditor`; the one
   close `CloseTab`). A diff is an `OpenDocument.OfDiff` of no file, never in `Documents`, every one through
   `MainWindow.ShowDiff`. An SVG preview is a drawing (`ZoomedPicture`), never a bitmap; an HTML preview is never made in
@@ -254,12 +255,14 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - **Godot code.** `GodotScenes`, `GodotSceneIndex` (never a walk of every file on the window's thread; an autoload by
   uid, never project.godot's text), the extension's `GodotChecks` and `GodotKinds` (the projects' strings only through
   `GodotKinds.WritesAsync`). GDScript is Godot's parser and analyzer, ported (`GDScriptTree`, `GDScriptAnalyzer`); a
-  newer Godot's warning is gated on `GodotEngineApi.Version`; a function's argument count only
-  `GodotScriptDeclared.Takes`; `GDScriptFormatter` refuses unless `Differs` finds the same tokens, comments and tree,
-  and Reformat Code never runs `OrderParts`. Godot's generator assigns every field in generated code, so a field's
-  values come from the code's own documents. Shader marks are Passenger's port of Godot's front end
-  (`GodotShaderChecker`). The person's Godot editor is asked through IDE messaging (`GodotIdeLink`), never Passenger's
-  headless editors.
+  newer Godot's warning or error is gated on `GodotEngineApi.Version`; an error is said only where the class is read
+  whole and both types are sure (`GDScriptAnalyzer.Knows`, `Sure`); a GDScript session starts no Godot editor, its
+  headless one only when asked (`WebLanguages.AskGodot`; a test of Godot's own server opens with
+  `MainWindow.GodotHeadlessAtOpen`); a function's argument count only `GodotScriptDeclared.Takes`; `GDScriptFormatter`
+  refuses unless `Differs` finds the same tokens, comments and tree, and Reformat Code never runs `OrderParts`. Godot's
+  generator assigns every field in generated code, so a field's values come from the code's own documents. Shader marks
+  are Passenger's port of Godot's front end (`GodotShaderChecker`). The person's Godot editor is asked through IDE
+  messaging (`GodotIdeLink`), never Passenger's headless editors.
 - **Web languages.** `WebLanguages`: one Node.js server per kind but GDScript's (Godot's editor over TCP), every
   per-kind switch naming each kind; `JsonSchemas` and `PageStylesheets` reach the web only while Settings allows; in a
   macOS bundle the servers live under `Contents/Resources/web`. One tsserver, never `useSyntaxServer` (it answers rename
