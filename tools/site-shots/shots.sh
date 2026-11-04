@@ -149,10 +149,7 @@ EOF
     services_prepared=1
 }
 
-# The Godot scenes' game, godot/ beside this script, on the Godot found (GODOT, else the .NET build in Applications): its
-# project on that Godot's Godot.NET.Sdk, restored from that Godot's own packages alone, and built once. Godot keeps its
-# settings, logs and the game's user:// under artifacts/site-shots (PASSENGER_GODOT_HOME), never the person's; a window
-# nobody sees runs the game headless, and its pictures are the window's.
+# The Godot scenes' game (godot/), on the Godot found, its settings and user:// under artifacts/site-shots, run headless.
 game="$tmp/passenger-site-shots/GreenhouseGame"
 game_prepared=
 export PASSENGER_GODOT_HOME="$work/godot-home"
@@ -195,9 +192,7 @@ game_ready() {
     game_prepared=1
 }
 
-# The blazor-wasm scene's app: dotnet new's Blazor Web App with WebAssembly interactivity, over HTTP, its client given the
-# benches page beside this script (blazor/), which its launch profile opens with no browser of its own: Debug opens it in a
-# headless Chromium, as a window nobody sees does. Restored and built once, when the scene first asks.
+# The blazor-wasm scene's app: a WebAssembly Blazor Web App given blazor/'s page, debugged in a headless Chromium.
 web_app="$tmp/passenger-site-shots/GreenhouseWeb"
 web_app_prepared=
 web_app_ready() {
@@ -371,8 +366,7 @@ scene() {
                 --drag 859,400,740,400 --click 900,184 --key right --wait 1000 --key down --key down --key right --wait 1000 \
                 --key down --key down --wait 2000 --hover 600,640 ;;
         godot-profile)
-            # The game profiled past its start, C#'s hot path open down to Forecast's calls; End, Up and Right open GDScript's
-            # root below it, the Downs bring its functions into sight, and Enter opens its heaviest at its line.
+            # Profiled past its start: C#'s hot path open to Forecast, then GDScript's root, its heaviest opened at its line.
             game_ready
             solution="$game" shot "$name" "$theme" --file Greenhouse.cs --caret 1:1 --key "meta+shift+F12" \
                 --click-name ProfileButton --wait 40000 --click 1002,497 --wait 15000 \
