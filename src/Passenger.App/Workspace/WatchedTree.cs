@@ -40,6 +40,9 @@ public abstract class WatchedTree : IDisposable
     private readonly Dictionary<string, DateTime> heardAt = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DateTime> touched = new(StringComparer.Ordinal);
 
+    /// <summary><see cref="touched"/> by a folder's path as a span of a change's: a folder heard before costs no string.</summary>
+    private readonly Dictionary<string, DateTime>.AlternateLookup<ReadOnlySpan<char>> touchedAt;
+
     /// <summary>The paths come or gone in the batch gathering, which the record follows once it is handed over.</summary>
     private readonly HashSet<string> cameOrWent = new(StringComparer.Ordinal);
 
@@ -85,6 +88,7 @@ public abstract class WatchedTree : IDisposable
         Top = folder;
         this.watching = watching;
         this.eachFolder = eachFolder;
+        touchedAt = touched.GetAlternateLookup<ReadOnlySpan<char>>();
     }
 
     /// <summary>The folder watched.</summary>
@@ -165,6 +169,10 @@ public abstract class WatchedTree : IDisposable
     /// <summary>Whether a kept folder's entry is recorded, and so found come, gone or written by a listing: every one,
     /// unless the watcher wants fewer.</summary>
     protected virtual bool Records(string at, string name, bool folder) => true;
+
+    /// <summary>Whether a folder's entry, by its name, may be one <see cref="Records"/> keeps, asked before a walk makes a
+    /// string of it: an entry it says no to is passed over as if not there (a build's output no registration can match).</summary>
+    protected virtual bool Passes(ReadOnlySpan<char> name, bool folder) => true;
 
     /// <summary>What a change seen at a path is to the watcher, asked off the gate.</summary>
     protected abstract Notice Noticed(string path, bool created);
@@ -510,8 +518,9 @@ public abstract class WatchedTree : IDisposable
 
     /// <summary>What is in a folder now, its stamp read first so a change made while it is listed moves it past the one
     /// kept, and each file's last write when <paramref name="written"/> (a look at each file's own record); the system's
-    /// own files and a save's temporary file passed over, as every walk does. Null when it is gone.</summary>
-    private static (DateTime Stamp, List<Entry> Entries)? Listing(string at, bool written)
+    /// own files, a save's temporary file and what the watcher never records (<see cref="Passes"/>) passed over, as every
+    /// walk does, with no string made for them. Null when it is gone.</summary>
+    private (DateTime Stamp, List<Entry> Entries)? Listing(string at, bool written)
     {
         DateTime stamp = Directory.GetLastWriteTimeUtc(at);
         try
@@ -519,7 +528,8 @@ public abstract class WatchedTree : IDisposable
             FileSystemEnumerable<Entry> entries = new(at, (ref FileSystemEntry entry) => new Entry(entry.FileName.ToString(), entry.IsDirectory,
                 entry.IsDirectory && (entry.Attributes & FileAttributes.ReparsePoint) != 0, written && !entry.IsDirectory ? entry.LastWriteTimeUtc.UtcDateTime : default), Everything)
             {
-                ShouldIncludePredicate = static (ref FileSystemEntry entry) => !PathNames.IsSystemFile(entry.FileName) && !FileText.IsSaving(entry.FileName),
+                ShouldIncludePredicate = (ref FileSystemEntry entry) => !PathNames.IsSystemFile(entry.FileName) && !FileText.IsSaving(entry.FileName)
+                    && Passes(entry.FileName, entry.IsDirectory),
             };
             return (stamp, [.. entries]);
         }
@@ -802,9 +812,9 @@ public abstract class WatchedTree : IDisposable
                     }
                     lastHeard = now;
                     heardInBatch++;
-                    if (Path.GetDirectoryName(notice.Canonical ?? path) is { } holder)
+                    if (Path.GetDirectoryName((notice.Canonical ?? path).AsSpan()) is { IsEmpty: false } holder)
                     {
-                        touched[holder] = now;
+                        touchedAt[holder] = now;
                     }
                 }
                 if (created)

@@ -326,6 +326,52 @@ public sealed record FileWatch(string? Folder, string Pattern, WatchKinds Kinds)
     /// <summary>The watcher as a log shows it.</summary>
     public string Shown => $"{Folder}{(Folder is null ? "" : " ")}{Pattern} ({Kinds})";
 
+    /// <summary>What a file's name must end with, or be, for each pattern: read from its last name (<c>*.cs</c>,
+    /// <c>*.{cs,csx}</c>, <c>*Tests.cs</c>, <c>project.assets.json</c>); none where any name may match it.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Text, bool Whole)[]> NamesOfPattern = new(StringComparer.Ordinal);
+
+    /// <summary>Whether a file of this name may match the glob, by its last name alone and in any letter case: false only
+    /// for a name it never matches, told without a string made.</summary>
+    public bool MayMatch(ReadOnlySpan<char> name)
+    {
+        (string Text, bool Whole)[] names = NamesOfPattern.GetOrAdd(Pattern, NamesOf);
+        if (names.Length == 0)
+        {
+            return true;
+        }
+        foreach ((string text, bool whole) in names)
+        {
+            if (whole ? name.Equals(text, StringComparison.OrdinalIgnoreCase) : name.EndsWith(text, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>What a pattern's last name asks a file's name to end with or be; none where it is not of those shapes.</summary>
+    private static (string Text, bool Whole)[] NamesOf(string pattern)
+    {
+        string last = pattern[(pattern.LastIndexOf('/') + 1)..];
+        if (last.Length == 0 || last.IndexOfAny(['?', '[', ']', '!', '}']) >= 0 && !last.StartsWith("*.{", StringComparison.Ordinal))
+        {
+            return [];
+        }
+        if (last.StartsWith("*.{", StringComparison.Ordinal))
+        {
+            string inner = last[3..];
+            return inner.EndsWith('}') && inner[..^1] is var alternatives && alternatives.IndexOfAny(['*', '?', '[', ']', '{', '}', '!', '/']) < 0
+                ? [.. alternatives.Split(',').Select(a => ("." + a, false))]
+                : [];
+        }
+        if (last[0] == '*')
+        {
+            string rest = last[1..];
+            return rest.Length == 0 || rest.IndexOfAny(['*', '{']) >= 0 ? [] : [(rest, false)];
+        }
+        return last.IndexOfAny(['*', '{']) >= 0 ? [] : [(last, true)];
+    }
+
     /// <summary>Whether the pattern reaches into the folders under <see cref="Folder"/>, where it can match a path of more
     /// than one name.</summary>
     public bool Recursive => Pattern.Contains('/', StringComparison.Ordinal) || Pattern.Contains("**", StringComparison.Ordinal);
@@ -342,22 +388,15 @@ public sealed record FileWatch(string? Folder, string Pattern, WatchKinds Kinds)
         return (Kinds & kind) != 0 && Matches(change.Path);
     }
 
-    /// <summary>Whether the watcher's glob matches a path, whatever changed there.</summary>
+    /// <summary>Whether the watcher's glob matches a path, whatever changed there: a path outside its folder, or whose name
+    /// its glob's last name cannot match (<see cref="MayMatch"/>), told without a string made, as a build's churn is.</summary>
     public bool Matches(string path)
     {
-        string named;
-        if (Folder is null)
-        {
-            named = path;
-        }
-        else if (PathNames.IsUnder(path, Folder))
-        {
-            named = PathNames.Below(path, Folder).ToString();
-        }
-        else
+        if (Folder is not null && !PathNames.IsUnder(path, Folder) || !MayMatch(Path.GetFileName(path.AsSpan())))
         {
             return false;
         }
+        string named = Folder is null ? path : PathNames.Below(path, Folder).ToString();
         string relative = "/" + named.Replace('\\', '/').TrimStart('/');
         string glob = "/" + Pattern.TrimStart('/');
         // Where the path's folder takes names in any letter case, so does the glob.

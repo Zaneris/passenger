@@ -446,9 +446,38 @@ public sealed class ServerWatches : IDisposable
 
         private bool Matched(string path) => Volatile.Read(ref concerning).Any(w => w.Matches(path));
 
-        /// <summary>A change any registration matches now, the latest among them too, is taken; every other counts alone.</summary>
-        protected override Notice Noticed(string path, bool created) =>
-            owner.watched.Watches.Any(w => w.Matches(path)) ? new Notice(Takes: true, Counts: true, PathNames.Canonical(path)) : new Notice(Takes: false, Counts: true, Canonical: null);
+        /// <summary>A file no registration over the folder can match by its name is never listed: a build's output under it.</summary>
+        protected override bool Passes(ReadOnlySpan<char> name, bool folder)
+        {
+            if (folder)
+            {
+                return true;
+            }
+            IReadOnlyList<FileWatch> over = Volatile.Read(ref concerning);
+            for (int i = 0; i < over.Count; i++)
+            {
+                if (over[i].MayMatch(name))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>A change any registration matches now, the latest among them too, is taken; every other counts alone,
+        /// told without a string made (a build's churn).</summary>
+        protected override Notice Noticed(string path, bool created)
+        {
+            IReadOnlyList<FileWatch> watches = owner.watched.Watches;
+            for (int i = 0; i < watches.Count; i++)
+            {
+                if (watches[i].Matches(path))
+                {
+                    return new Notice(Takes: true, Counts: true, PathNames.Canonical(path));
+                }
+            }
+            return new Notice(Takes: false, Counts: true, Canonical: null);
+        }
 
         protected override void Take(string path, bool created, Notice notice)
         {
