@@ -109,6 +109,8 @@ public sealed partial class PassengerTools
         AspireAppRun app = apps.Length == 1 ? apps[0]
             : throw new InvalidOperationException(containers is not null && path is null
                 ? $"Name the run: appHost, or resource (a service of {containers.Name} or an AppHost's); workspace lists them"
+                : apps.Length == 0 && path is null && containers is null && current.Running.Count == 0
+                ? $"Nothing runs whose logs and traces a dashboard collects: {McpTools.Run} with telemetry true runs a project so, and an AppHost's runs always are"
                 : "Name one owned AppHost by appHost or a unique resource; workspace lists targets");
         if (Session != current || current.IsEnded)
         {

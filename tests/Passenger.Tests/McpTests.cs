@@ -1318,6 +1318,19 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"hot_reload with nothing running answered: {Text(refused)}");
     }
 
+    /// <summary>An agent's telemetry with nothing running says so and how a run collects logs and traces, never to name an
+    /// AppHost the folder has none of.</summary>
+    [Fact]
+    public async Task An_agents_telemetry_with_nothing_running_says_how_a_run_collects_rather_than_asking_for_an_apphost()
+    {
+        string folder = TestFolders.Create("mcp-notelemetry-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult refused = await Result(client, McpTools.Telemetry);
+        Assert.True(refused.IsError == true && Text(refused).Contains($"Nothing runs whose logs and traces a dashboard collects: {McpTools.Run} with telemetry true", StringComparison.Ordinal),
+            $"telemetry with nothing running answered: {Text(refused)}");
+    }
+
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
     /// vcs_commit is refused naming the file, and nothing is committed.</summary>
     [Fact]
