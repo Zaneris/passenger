@@ -747,9 +747,10 @@ SOFTWARE.
 (`tools/godot-shader-types.py`) from two files of the Godot Engine (https://github.com/godotengine/godot) at commit
 cafc17a192acf67903910a68aeb3c076c0907a4b, which Godot 4.8 beta 2 was built from: `servers/rendering/shader_types.cpp`
 (each shader type's processor functions, the built-ins each offers, the stage functions each may call, its render and
-stencil modes) and `servers/rendering/shader_language.cpp` (the uniform hints of its keyword list, and its built-in
-functions with their arguments' names). The app embeds it for completion and the hover card in shaders, each candidate
-offered only where the Godot found takes it.
+stencil modes) and `servers/rendering/shader_language.cpp` (the uniform hints of its keyword list, its built-in
+functions with their arguments' names, and every entry of its built-in function table in order, constructors too). The
+app embeds it for completion, the hover card and the compiler's port in shaders, each candidate offered only where the
+Godot found takes it.
 
 `src/Passenger.Workspace/GodotDefaultTheme.json` is a table of Godot's default theme, written by `just godot-theme`
 (`tools/godot-theme.py`) from files of the Godot Engine at the same commit: `scene/theme/default_theme.cpp` (each theme
@@ -764,8 +765,12 @@ and `shader_preprocessor.h` (its directives, macro expansion, includes and error
 line continuations, at commit ed1daf0bf001b61586d9930840f2f1394092c079, beside 4.8 beta 2's); `GodotShaderExpression.cs`
 ports the tokenizer of `servers/rendering/shader_expression.cpp` and the parser of `core/math/expression.cpp` it runs
 on; `GodotPathStrings.cs` ports `simplify_path`, `is_absolute_path`, `get_base_dir` and `path_join` of
-`core/string/ustring.cpp`; all at commit cafc17a192acf67903910a68aeb3c076c0907a4b (4.8 beta 2), their words kept as
-Godot words them.
+`core/string/ustring.cpp`; the `GodotShaderLanguage` files and `GodotShaderNodes.cs` port
+`servers/rendering/shader_language.cpp` and `shader_language.h` (its tokenizer, node tree, parser, checks of types,
+names, calls and assignments, constant folding, built-in function tables and messages); `GodotShaderWarnings.cs`
+ports `servers/rendering/shader_warnings.cpp` and `shader_warnings.h`; `GodotShaderCheck.cs` follows
+`editor/shader/shader_text_editor.cpp`'s validation of a shader and an include; all at commit
+cafc17a192acf67903910a68aeb3c076c0907a4b (4.8 beta 2), their words kept as Godot words them.
 
 ```
 Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md).

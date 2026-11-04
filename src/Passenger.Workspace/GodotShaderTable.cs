@@ -21,7 +21,15 @@ public sealed record GodotShaderCall(string Name, string Returns, IReadOnlyList<
 
 /// <summary>A shader type's processor function (<c>vertex</c>), or its scopes every function reads (<see cref="GodotShaderTable.Global"/>,
 /// <see cref="GodotShaderTable.Constants"/>): the built-ins it offers and the stage functions it may call.</summary>
-public sealed record GodotShaderProcessor(string Name, bool Main, IReadOnlyList<GodotShaderBuiltIn> BuiltIns, IReadOnlyList<GodotShaderCall> StageFunctions);
+public sealed record GodotShaderProcessor(string Name, bool Main, IReadOnlyList<GodotShaderBuiltIn> BuiltIns, IReadOnlyList<GodotShaderCall> StageFunctions)
+{
+    /// <summary>Whether its code may discard.</summary>
+    public bool Discards { get; init; }
+}
+
+/// <summary>An entry of the language's built-in function table as its compiler holds it, constructors too: what it
+/// returns and takes, its tag (<c>global</c>, or <c>array</c> for an array's own) and whether only the high end has it.</summary>
+public sealed record GodotShaderBuiltinFunction(string Name, string Returns, IReadOnlyList<string> Takes, string Tag, bool HighEnd);
 
 /// <summary>A render or stencil mode, each of its options written after its name (<c>blend</c>'s <c>blend_mix</c>), or its
 /// name alone where it has none.</summary>
@@ -63,13 +71,14 @@ public sealed class GodotShaderTable
     });
 
     private GodotShaderTable(string source, string fingerprint, IReadOnlyList<GodotShaderType> types, IReadOnlyDictionary<string, IReadOnlyList<string>> hints,
-        IReadOnlyList<GodotShaderCall> functions)
+        IReadOnlyList<GodotShaderCall> functions, IReadOnlyList<GodotShaderBuiltinFunction> builtinFunctions)
     {
         Source = source;
         Fingerprint = fingerprint;
         Types = types;
         HintsByType = hints;
         Functions = functions;
+        BuiltinFunctions = builtinFunctions;
     }
 
     /// <summary>The table as Passenger carries it.</summary>
@@ -89,6 +98,9 @@ public sealed class GodotShaderTable
     /// <summary>The language's built-in functions, every overload, in its order.</summary>
     public IReadOnlyList<GodotShaderCall> Functions { get; }
 
+    /// <summary>The compiler's table of built-in functions, constructors too, in its order, which overloads are tried in.</summary>
+    public IReadOnlyList<GodotShaderBuiltinFunction> BuiltinFunctions { get; }
+
     /// <summary>The table from its JSON.</summary>
     public static GodotShaderTable Read(string json)
     {
@@ -100,14 +112,23 @@ public sealed class GodotShaderTable
             [.. JsonMembers.Items(type, "functions").Select(f => new GodotShaderProcessor(JsonMembers.Text(f, "name") ?? string.Empty, JsonMembers.Bool(f, "main") == true,
                 [.. JsonMembers.Items(f, "builtIns").Select(b => new GodotShaderBuiltIn(JsonMembers.Text(b, "name") ?? string.Empty, JsonMembers.Text(b, "type") ?? string.Empty,
                     JsonMembers.Bool(b, "constant") == true))],
-                [.. JsonMembers.Items(f, "stageFunctions").Select(CallOf)]))],
+                [.. JsonMembers.Items(f, "stageFunctions").Select(CallOf)])
+            {
+                Discards = JsonMembers.Bool(f, "discards") == true,
+            })],
             Modes(type, "modes"), Modes(type, "stencilModes")))];
         string fingerprint = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(json)))[..12];
         return new GodotShaderTable(JsonMembers.Text(root, "source") ?? string.Empty, fingerprint, types,
-            types.ToDictionary(t => t.Name, _ => hints, StringComparer.Ordinal), [.. JsonMembers.Items(root, "functions").Select(CallOf)]);
+            types.ToDictionary(t => t.Name, _ => hints, StringComparer.Ordinal), [.. JsonMembers.Items(root, "functions").Select(CallOf)],
+            [.. JsonMembers.Items(root, "builtins").Select(BuiltinOf)]);
 
         static IReadOnlyList<GodotShaderMode> Modes(JsonElement type, string name) =>
             [.. JsonMembers.Items(type, name).Select(m => new GodotShaderMode(JsonMembers.Text(m, "name") ?? string.Empty, JsonMembers.Texts(m, "options")))];
+
+        static GodotShaderBuiltinFunction BuiltinOf(JsonElement entry) => new(JsonMembers.Text(entry, "name") ?? string.Empty,
+            JsonMembers.Text(entry, "returns") ?? "void",
+            (JsonMembers.Text(entry, "takes") ?? string.Empty).Split(", ", StringSplitOptions.RemoveEmptyEntries),
+            JsonMembers.Text(entry, "tag") ?? "global", JsonMembers.Bool(entry, "highEnd") == true);
 
         static GodotShaderCall CallOf(JsonElement call) => new(JsonMembers.Text(call, "name") ?? string.Empty, JsonMembers.Text(call, "returns") ?? "void",
             [.. JsonMembers.Items(call, "arguments").Select(a => new GodotShaderArgument(JsonMembers.Text(a, "name") ?? string.Empty, JsonMembers.Text(a, "type") ?? string.Empty))]);
@@ -178,7 +199,8 @@ public sealed class GodotShaderTable
             StencilModes = Kept(type.StencilModes, m => StencilKey(type.Name, m)),
         })];
         return new GodotShaderTable(Source, Fingerprint, types,
-            types.ToDictionary(t => t.Name, t => (IReadOnlyList<string>)[.. HintsOf(t.Name).Where(h => !refused.Contains(HintKey(t.Name, h)))], StringComparer.Ordinal), Functions);
+            types.ToDictionary(t => t.Name, t => (IReadOnlyList<string>)[.. HintsOf(t.Name).Where(h => !refused.Contains(HintKey(t.Name, h)))], StringComparer.Ordinal), Functions,
+            BuiltinFunctions);
 
         IReadOnlyList<GodotShaderMode> Kept(IReadOnlyList<GodotShaderMode> modes, Func<string, string> key) =>
             [.. modes.Where(m => m.Options.Count == 0 ? !refused.Contains(key(m.Name)) : m.Options.Any(o => !refused.Contains(key($"{m.Name}_{o}"))))

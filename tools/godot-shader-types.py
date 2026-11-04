@@ -4,8 +4,8 @@ Godot's own sources at one commit (MIT, named in THIRD_PARTY_NOTICES.md):
 
 - servers/rendering/shader_types.cpp: each shader type's processor functions, the built-ins each offers (with "global"
   and "constants", offered in every function), the stage functions each may call, and its render and stencil modes;
-- servers/rendering/shader_language.cpp: the uniform hints (its keywords between "// hints" and the list's end) and the
-  built-in functions (builtin_func_defs, but the constructors).
+- servers/rendering/shader_language.cpp: the uniform hints (its keywords between "// hints" and the list's end), the
+  built-in functions (builtin_func_defs, but the constructors) and, for Passenger's compiler, every entry of it in order.
 The table only proposes: the Godot found decides which candidates it takes. The sources are fetched once into
 artifacts/godot-shader-types/<commit>/; COMMIT is Godot 4.8 beta 2's (godotengine/godot-builds names it).
 """
@@ -102,6 +102,14 @@ def functions(source):
     return found
 
 
+def builtins(source):
+    start = source.index("ShaderLanguage::builtin_func_defs[] = {")
+    end = source.index("{ nullptr,", start)
+    # Its argument types as one string, so each entry is a line.
+    return [{"name": m[1], "returns": type_name(m[2]), "takes": ", ".join(type_name(t.strip()[5:]) for t in m[3].split(",") if t.strip() and t.strip() != "TYPE_VOID"),
+             "tag": m[5].lower(), "highEnd": m[6] == "true"} for m in FUNCTION.finditer(source[start:end])]
+
+
 def written(value, depth):
     """JSON with a line for each built-in, mode and function, so a new commit's changes read line by line."""
     if isinstance(value, dict) and any(isinstance(v, list) and v and isinstance(v[0], (dict, str)) for v in value.values()):
@@ -120,11 +128,12 @@ def main():
         "types": shader_types(types_source),
         "hints": hints(language_source),
         "functions": functions(language_source),
+        "builtins": builtins(language_source),
     }
     with open(OUT, "w", encoding="utf-8", newline="\n") as out:
         out.write(written(table, 0) + "\n")
     count = sum(len(f["builtIns"]) for t in table["types"] for f in t["functions"])
-    print(f"Wrote {os.path.relpath(OUT, ROOT)}: {count} built-ins, {len(table['hints'])} hints, {len(table['functions'])} functions")
+    print(f"Wrote {os.path.relpath(OUT, ROOT)}: {count} built-ins, {len(table['hints'])} hints, {len(table['functions'])} functions, {len(table['builtins'])} entries")
 
 
 if __name__ == "__main__":
