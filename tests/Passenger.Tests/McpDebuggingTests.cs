@@ -466,6 +466,29 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(Errors().Length == 0, $"The agent's Passenger wrote to its standard error, which an agent may never read:\n{string.Join('\n', Errors())}");
     }
 
+    /// <summary>A launch whose program never reaches its breakpoint in the time waited is answered as running, naming the
+    /// breakpoint it never stopped at, never as a plain "running" an agent takes for a stop yet to come; its progress says
+    /// meanwhile what it waits for, the stop at that breakpoint among it.</summary>
+    [Fact]
+    public async Task A_launch_that_never_reaches_its_breakpoint_says_so_and_its_progress_says_what_it_waits_for()
+    {
+        await TakeFolderAsync();
+        Write("Program.cs", "int ticks = 0;\nwhile (true)\n{\n    ticks++;\n    Thread.Sleep(50);\n    if (ticks < 0)\n    {\n"
+            + "        Console.WriteLine(\"never\");\n    }\n}\n");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 8 });
+        Heard heard = new();
+        CallToolResult started = await Result(client, McpTools.DebugStart, new() { ["waitSeconds"] = 4 }, heard: heard);
+        Assert.False(started.IsError == true, $"debug_start failed: {Text(started)}");
+        JsonElement answer = JsonDocument.Parse(Text(started)).RootElement;
+        Assert.Equal("running", answer.GetProperty("state").GetString());
+        Assert.True(answer.GetProperty("status").GetString()!.Contains("in the 4 s waited it never stopped at its breakpoint at Program.cs:8", StringComparison.Ordinal),
+            $"A launch that never reached its breakpoint did not say so: {answer}");
+        Assert.True(heard.Told.Any(t => t.Message?.Contains("for a stop at its breakpoint at Program.cs:8", StringComparison.Ordinal) == true),
+            $"The agent was never told the launch waits for a stop at its breakpoint: {heard}");
+        await Call(client, McpTools.Stop);
+    }
+
     /// <summary>Whether a schema says what leaving a parameter out says already: a null default, or null among its types.</summary>
     private static bool SaysNothing(JsonElement schema) => schema.ValueKind switch
     {

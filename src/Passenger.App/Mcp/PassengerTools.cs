@@ -1916,27 +1916,84 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         LiveTree.LiveApp? app = Session.LiveApp;
         Godot.GodotGame? game = Session.Game is { Debugged: not null } debugged ? debugged : null;
         DateTime until = DateTime.UtcNow + limit;
-        AgentCall.Say($"Debugging: waiting up to {limit.TotalSeconds:0} s for a stop, the program's end, its UI or its host's start");
         // Running, its GDScript or C# beside it running too: a game stopped in either language is stopped.
         Func<bool> going = () => Session.Debug.Session is { State: DebugState.Running or DebugState.Starting } chosen && !Companions(chosen).Any(b => b.State == DebugState.Paused);
         HeardServing serving = HeardServing.Debugged(Session.Debug);
         // A game's frames reach a breakpoint in its files once the debugger binds it, seconds after it connects: waited for as any stop.
         bool breaks = game is not null && Session.Debug.Breakpoints.All.Any(b => b is { Enabled: true, Suspend: true } && PathNames.IsUnder(b.Path, game.Folder));
-        // Looked at every 50 ms: the session the launch makes can come after the wait begins, and the debugger tells of none.
-        await Until(() => !going() || app is { State: not LiveTree.LiveAppState.Waiting } || (!breaks && game is { Monitors: not null })
-            || game is { State: LiveTree.LiveAppState.Ended } || serving.Serves(), limit, cancel);
-        if (going() && app is { State: LiveTree.LiveAppState.Connected })
+        string? stops = StopsWaitedFor(game?.Folder);
+        AgentCall? call = AgentCall.Current;
+        int? phase = null;
+        bool Done()
         {
-            // A stop in the first layout, just after the inspector's hello, is waited for too; looked at every 50 ms.
-            await Until(() => !going(), Min(LaunchSettle, until - DateTime.UtcNow), cancel);
+            bool done = !going() || app is { State: not LiveTree.LiveAppState.Waiting } || (!breaks && game is { Monitors: not null })
+                || game is { State: LiveTree.LiveAppState.Ended } || serving.Serves();
+            // What the call waits for now, told as its progress over whatever the launch's own work says meanwhile.
+            int now = Session.Debug.Session is not { State: not DebugState.Starting } ? 0 : game is { State: LiveTree.LiveAppState.Connected } ? 1
+                : app is { State: LiveTree.LiveAppState.Waiting } ? 2 : 3;
+            if (!done && now != phase)
+            {
+                phase = now;
+                call?.Waits(Awaited(now, game?.Name, stops, limit));
+            }
+            return done;
         }
-        DebugSnapshot started = await AfterResume(TimeSpan.Zero, cancel);
-        return app is { State: LiveTree.LiveAppState.Refused or LiveTree.LiveAppState.Ended, Problem: { } refused } ? started with { Status = $"{started.Status}. {refused}" }
-            : started.Debugged != DebugState.Running ? started
-            : app is { State: LiveTree.LiveAppState.Connected } ? started with { Status = $"{started.Status}, {UiUp(app)}" }
-            : game is { State: LiveTree.LiveAppState.Connected, Monitors: not null } ? started with { Status = $"{started.Status}, {GameUp}" }
-            : serving.Said is { } said ? started with { Status = $"{started.Status}, {said}" }
-            : started;
+        try
+        {
+            // Looked at every 50 ms: the session the launch makes can come after the wait begins, and the debugger tells of none.
+            await Until(Done, limit, cancel);
+            bool waitedOut = !Done();
+            if (going() && app is { State: LiveTree.LiveAppState.Connected })
+            {
+                // A stop in the first layout, just after the inspector's hello, is waited for too; looked at every 50 ms.
+                await Until(() => !going(), Min(LaunchSettle, until - DateTime.UtcNow), cancel);
+            }
+            DebugSnapshot started = await AfterResume(TimeSpan.Zero, cancel);
+            DebugSnapshot shown = app is { State: LiveTree.LiveAppState.Refused or LiveTree.LiveAppState.Ended, Problem: { } refused } ? started with { Status = $"{started.Status}. {refused}" }
+                : started.Debugged != DebugState.Running ? started
+                : app is { State: LiveTree.LiveAppState.Connected } ? started with { Status = $"{started.Status}, {UiUp(app)}" }
+                : game is { State: LiveTree.LiveAppState.Connected, Monitors: not null } ? started with { Status = $"{started.Status}, {GameUp}" }
+                : serving.Said is { } said ? started with { Status = $"{started.Status}, {said}" }
+                : started;
+            // The whole wait out with the program running: what it was waited for never stopped it.
+            return waitedOut && shown.Debugged == DebugState.Running && stops is not null
+                ? shown with { Status = $"{shown.Status}; in the {limit.TotalSeconds:0} s waited it never stopped at {stops}" } : shown;
+        }
+        finally
+        {
+            call?.Waited(Session.Debug.Session?.State.ToString().ToLowerInvariant() ?? "no session");
+        }
+    }
+
+    /// <summary>What a launch under the debugger is waited for at a phase of its start, within <paramref name="limit"/> in
+    /// all: the program to start, a game that runs to stop or end, an app's UI, else a stop, the end or a host's start;
+    /// <paramref name="stops"/> names the breakpoints it may stop at.</summary>
+    private static string Awaited(int phase, string? game, string? stops, TimeSpan limit)
+    {
+        string stop = stops is null ? "a stop" : $"a stop at {stops}";
+        string within = $"up to {limit.TotalSeconds:0} s in all";
+        return phase switch
+        {
+            0 => $"Debugging: waiting for the program to start, then for {stop}, its end, its UI or its host's start ({within})",
+            1 => $"Debugging: {game} runs; waiting for {stop} or its end ({within})",
+            2 => $"Debugging: the program runs; waiting for its UI, {stop} or its end ({within})",
+            _ => $"Debugging: the program runs; waiting for {stop}, its end or its host's start ({within})",
+        };
+    }
+
+    /// <summary>The breakpoints that may stop a program launched under the debugger (a game's, those in its folder), as an
+    /// agent reads them: a few by file and line, more by their count; null for none, or while Mute Breakpoints is on.</summary>
+    private string? StopsWaitedFor(string? folder)
+    {
+        List<LineBreakpoint> set = Session.Debug.Breakpoints.Muted ? []
+            : [.. Session.Debug.Breakpoints.All.Where(b => b is { Enabled: true, Suspend: true } && (folder is null || PathNames.IsUnder(b.Path, folder)))];
+        return set.Count switch
+        {
+            0 => null,
+            1 => $"its breakpoint at {Relative(set[0].Path)}:{set[0].Line + 1}",
+            <= 3 => $"its breakpoints at {Plural.Listed([.. set.Select(b => $"{Relative(b.Path)}:{b.Line + 1}")])}",
+            _ => $"its {set.Count} breakpoints",
+        };
     }
 
     /// <summary>A program's output heard as it comes, each line once it is whole, from its console or its terminal tab, for
