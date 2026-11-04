@@ -303,6 +303,8 @@ public sealed class TemplateFamiliesTests : IDisposable
                 DotnetNew(["uninstall", probe]);
             }
             ProjectTemplates.Forget();
+            // What a dialog lists at once is the last read, which was this test's with its template: read again without it.
+            Ui.Await(Waiting.Apart(() => ProjectTemplates.LoadAsync(place)), "the templates read again once the probe was uninstalled", TimeSpan.FromMinutes(2));
         }
     }
 
