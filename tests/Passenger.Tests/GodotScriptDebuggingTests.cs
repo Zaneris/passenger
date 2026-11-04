@@ -16,8 +16,9 @@ namespace Passenger.Tests;
 /// <summary>A Godot 4 game's GDScript as a person debugs it beside its C#, through the game's own debug connection: a
 /// breakpoint in a script's <c>_process</c> stops the game with its locals in Variables, a step goes to the next line, an
 /// evaluation answers in the frame, a script error stops it where it was raised; a saved script reaches the game Run runs
-/// with Hot Reload; and Run Current Scene starts the game in the scene open. Godot runs headless, its user folders the
-/// run's. Without a Godot 4 .NET build each test skips saying why. Debugged, so run alone.</summary>
+/// with Hot Reload; and Run Current Scene starts the game in the scene open, where Hot Reload's restart and Rerun start it
+/// again. Godot runs headless, its user folders the run's. Without a Godot 4 .NET build each test skips saying why.
+/// Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggingTests.Game>
 {
@@ -221,6 +222,44 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
         {
             End(window);
         }
+    }
+
+    /// <summary>A game Run Current Scene started with Hot Reload in the second scene starts in that scene again as Hot Reload
+    /// restarts it for an edit it cannot apply, and on Rerun, though the main scene is the one open by then: its res:// path
+    /// on Godot's command line each time, and only that scene ready.</summary>
+    [AvaloniaFact]
+    public void A_game_Run_Current_Scene_started_restarts_and_reruns_in_that_scene_whatever_is_open_then()
+    {
+        const string Name = "Spinner on Godot";
+        MainWindow window = Open(Path.Combine(game.Folder, "other.tscn"));
+        try
+        {
+            Choose(window);
+            window.ApplySettings(window.Settings with { HotReload = true });
+            Assert.Null(window.Actions.Run(AppActions.RunCurrentScene));
+            InOther(window, "Run Current Scene's start", TimeSpan.FromMinutes(3));
+            Assert.Null(window.OpenFile(Path.Combine(game.Folder, "main.tscn")));
+            Ui.WaitFor(() => window.Builds.RunsGameWithHotReload(Name), () => $"the game attached to for Hot Reload ({window.Status})", TimeSpan.FromMinutes(1));
+
+            Assert.True(Ui.AwaitPumped(window.Builds.RestartGameForEditAsync(Name), "Hot Reload's restart of the game", TimeSpan.FromMinutes(3)),
+                $"The game was not restarted for the edit: {window.Status}");
+            InOther(window, "Hot Reload's restart, main.tscn open", TimeSpan.FromMinutes(1));
+
+            Ui.Launched(window, window.Builds.RerunAsync(), "Rerun of the game, main.tscn open", TimeSpan.FromMinutes(3));
+            InOther(window, "Rerun, main.tscn open", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>The Run console, cleared as the start began, once it shows the game started in the second scene alone.</summary>
+    private static void InOther(MainWindow window, string start, TimeSpan limit)
+    {
+        Ui.WaitFor(() => Run(window).Contains("other scene ready", StringComparison.Ordinal), () => $"the game to start in other.tscn on {start} ({window.Status}; {Run(window)})", limit);
+        Assert.True(Run(window).Contains(" res://other.tscn", StringComparison.Ordinal) && !Run(window).Contains("main ready", StringComparison.Ordinal),
+            $"On {start} the game was to start in other.tscn, where its run began, not in the main scene or the one open:\n{Run(window)}");
     }
 
     /// <summary>The line (from zero) the editor shows the program stopped at, or -1.</summary>

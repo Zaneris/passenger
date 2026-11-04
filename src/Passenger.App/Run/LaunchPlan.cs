@@ -127,6 +127,10 @@ public sealed partial record LaunchPlan
     /// <summary>The version of the Godot a Godot game's plan runs on, where known.</summary>
     public string? GodotVersion { get; init; }
 
+    /// <summary>The scene a Godot game's plan starts it in as its configuration names one (a res:// path, the scene open
+    /// resolved as the plan was made); null where it starts in the project's main scene, or its arguments name one.</summary>
+    public string? GodotScene { get; init; }
+
     /// <summary>Whether nobody sees the window that starts the plan's Godot (<see cref="MainWindow.Unseen"/>), which then runs
     /// it headless whatever its arguments say.</summary>
     public bool GodotUnseen { get; init; }

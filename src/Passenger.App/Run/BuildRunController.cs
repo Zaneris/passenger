@@ -1070,7 +1070,8 @@ public sealed partial class BuildRunController
         {
             return Said(session.NothingTo("run"));
         }
-        // Run Current Scene's: this start of a Godot game begins in the scene open.
+        // Run Current Scene's, or a restart's or Rerun's of a run that began in a scene of its own: this start of a Godot game begins there.
+        bool sceneOwn = scene is not null || chosen.GodotScene == RunConfiguration.CurrentScene;
         if (scene is not null)
         {
             chosen = chosen with { GodotScene = scene };
@@ -1149,6 +1150,7 @@ public sealed partial class BuildRunController
             {
                 return Said(problem!);
             }
+            startedIn = sceneOwn && plan.GodotScene is { } begun ? (chosen.Name, begun) : null;
             dashboard = plan.Dashboard;
             if (plan.WhyNot("run", built: !watched) is { } why)
             {
@@ -1465,15 +1467,23 @@ public sealed partial class BuildRunController
         }
         if (copyRuns.FirstOrDefault(c => c.Run.Name == name) is { Run: { } copy } run)
         {
-            return session.Configurations.Chosen is { } chosen && chosen.Name == run.Configuration && await RestartRunCopyAsync(chosen, copy);
+            return session.Configurations.Chosen is { } chosen && chosen.Name == run.Configuration
+                && await RestartRunCopyAsync(SceneOf(chosen) is { } scene ? chosen with { GodotScene = scene } : chosen, copy);
         }
-        if (session.Configurations.Chosen?.Name != name)
+        if (session.Configurations.Chosen is not { } running || running.Name != name)
         {
             return false;
         }
         parts.Say($"Hot Reload: restarting {name} to apply the changes");
-        return await RunAsync(hotReload: true) is null;
+        return await RunAsync(hotReload: true, scene: SceneOf(running)) is null;
     }
+
+    /// <summary>The scene the last start of a configuration began in, given it or resolved from the scene open (Run Current
+    /// Scene's), by its name, which its restarts and Rerun begin in again whatever is open then; null where none was.</summary>
+    private (string Configuration, string Scene)? startedIn;
+
+    /// <summary>The scene a configuration's restart or Rerun begins in (<see cref="startedIn"/>), or null for its own.</summary>
+    private string? SceneOf(RunConfiguration chosen) => startedIn is { } begun && begun.Configuration == chosen.Name ? begun.Scene : null;
 
     /// <summary>One copy of a game Run runs with Hot Reload restarted alone so the edits Hot Reload could not apply run: ended,
     /// built again, and started in its tab's place, held and attached to again with the edits from this build, the other
@@ -2013,7 +2023,7 @@ public sealed partial class BuildRunController
                     return Refusals.SolutionClosed;
                 }
             }
-            return await RunAsync();
+            return await RunAsync(scene: SceneOf(chosen));
         }
         finally
         {

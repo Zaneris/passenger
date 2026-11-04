@@ -173,6 +173,7 @@ public static class GodotLaunch
             Console = configuration.Console,
             Godot = folder,
             GodotVersion = version,
+            GodotScene = starts,
             GodotUnseen = unseen,
             OwnDesktop = ownDesktop,
             GodotInPane = configuration.GodotInPane && !configuration.GodotEditor && !configuration.GodotInEditor,
