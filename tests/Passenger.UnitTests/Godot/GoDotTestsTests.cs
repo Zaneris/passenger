@@ -191,6 +191,20 @@ public class GoDotTestsTests
         Assert.True(GoDotTests.RunsTests("class T { void M() => Chickensoft.GoDotTest.GoTest.RunTests(null!, null!); }"));
     }
 
+    /// <summary>A main scene's script calling GoTest.RunTests under #if RUN_TESTS, as Chickensoft's game template has it, runs
+    /// the tests where the game's symbols define RUN_TESTS, and none where they do not.</summary>
+    [Fact]
+    public void A_call_under_the_games_own_symbol_runs_the_tests_where_its_project_defines_it()
+    {
+        const string guarded = "public partial class Main : Godot.Node\n{\n    public override void _Ready()\n    {\n#if RUN_TESTS\n"
+            + "        _ = Chickensoft.GoDotTest.GoTest.RunTests(GetType().Assembly, this);\n#endif\n    }\n}\n";
+        Dictionary<string, GodotFile> files = new() { ["res://main.tscn"] = GodotFile.Parse(SceneOf("res://Main.cs")) };
+        Dictionary<string, string> code = new() { ["res://Main.cs"] = guarded };
+        GodotScenes scenes = new("/game", files, texts: new Dictionary<string, string> { ["res://project.godot"] = Project });
+        Assert.Equal(GoDotTests.Start.Main, GoDotTests.StartOf(scenes, code.GetValueOrDefault, parsing: Passenger.Languages.CSharp.CSharpParsing.Defining(["DEBUG", "RUN_TESTS"], null)));
+        Assert.Equal(GoDotTests.StartProblem.NoScene, GoDotTests.StartOf(scenes, code.GetValueOrDefault).Problem);
+    }
+
     /// <summary>A run settings file names a game's test scene by its GoDotTestScene parameter, which then starts the run where
     /// it runs the tests, and is refused as not the game's or as running none.</summary>
     [Fact]

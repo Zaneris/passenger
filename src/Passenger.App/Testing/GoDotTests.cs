@@ -106,15 +106,15 @@ public static partial class GoDotTests
     public const string SceneFlag = "--scene";
 
     /// <summary>Where a game's tests run from (<see cref="Start"/>), by its scenes and the C# each script of their nodes runs
-    /// (<paramref name="code"/>, by res:// path; null for one not read), and the scene its run settings name
-    /// (<paramref name="chosen"/>): a scene reaches GoTest.RunTests where a script of it calls it, or changes to a scene it
-    /// names that does.</summary>
-    public static Start StartOf(GodotScenes scenes, Func<string, string?> code, string? chosen = null)
+    /// (<paramref name="code"/>, by res:// path; null for one not read), read with the game's symbols (<paramref name="parsing"/>:
+    /// a call under its #if RUN_TESTS is one), and the scene its run settings name (<paramref name="chosen"/>): a scene reaches
+    /// GoTest.RunTests where a script of it calls it, or changes to a scene it names that does.</summary>
+    public static Start StartOf(GodotScenes scenes, Func<string, string?> code, string? chosen = null, CSharpParseOptions? parsing = null)
     {
         Dictionary<string, string?> read = new(StringComparer.Ordinal);
         Dictionary<string, bool> calls = new(StringComparer.Ordinal);
         string? Code(string script) => read.TryGetValue(script, out string? known) ? known : read[script] = code(script);
-        bool Calls(string script) => calls.TryGetValue(script, out bool known) ? known : calls[script] = Code(script) is { } text && RunsTests(text);
+        bool Calls(string script) => calls.TryGetValue(script, out bool known) ? known : calls[script] = Code(script) is { } text && RunsTests(text, parsing);
         bool Reaches(string scene, HashSet<string> seen)
         {
             if (!seen.Add(scene) || scenes.Tree(scene) is not { } root)
@@ -123,7 +123,7 @@ public static partial class GoDotTests
             }
             foreach (string script in root.Below().Select(n => n.Script).OfType<string>().Where(s => s.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)).Distinct(StringComparer.Ordinal))
             {
-                if (Calls(script) || Code(script) is { } text && ScenesNamed(text).Any(next => Reaches(next, seen)))
+                if (Calls(script) || Code(script) is { } text && ScenesNamed(text, parsing).Any(next => Reaches(next, seen)))
                 {
                     return true;
                 }
@@ -154,14 +154,14 @@ public static partial class GoDotTests
     }
 
     /// <summary>Whether C# calls GoDotTest's GoTest.RunTests, as its syntax says.</summary>
-    public static bool RunsTests(string code) =>
-        CSharpSyntaxTree.ParseText(code, CSharpParsing.Default).GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>().Any(call =>
+    public static bool RunsTests(string code, CSharpParseOptions? parsing = null) =>
+        CSharpSyntaxTree.ParseText(code, parsing ?? CSharpParsing.Default).GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>().Any(call =>
             call.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "RunTests", Expression: var owner }
             && owner is IdentifierNameSyntax { Identifier.ValueText: "GoTest" } or MemberAccessExpressionSyntax { Name.Identifier.ValueText: "GoTest" });
 
     /// <summary>The scenes C# names by a string of a res:// path, which it may change to.</summary>
-    private static IEnumerable<string> ScenesNamed(string code) =>
-        CSharpSyntaxTree.ParseText(code, CSharpParsing.Default).GetRoot().DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken))
+    private static IEnumerable<string> ScenesNamed(string code, CSharpParseOptions? parsing) =>
+        CSharpSyntaxTree.ParseText(code, parsing ?? CSharpParsing.Default).GetRoot().DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken))
             .Select(t => t.ValueText).Where(v => v.StartsWith("res://", StringComparison.Ordinal) && v.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>A run's tests as GoDotTest's lines of them are heard: each test's start, then its end with the time between,

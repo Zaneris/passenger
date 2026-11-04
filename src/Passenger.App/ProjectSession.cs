@@ -124,7 +124,8 @@ public sealed class ProjectSession : IAsyncDisposable
         GodotScenes = new Godot.GodotSceneIndex { Texts = setup.Editors.Texts, Files = () => (Index.Root, Index.Files), FilesWhole = () => Index.IsWhole, GameOf = GodotOf };
         // Where a GoDotTest game's tests start: read from its scenes and the C# their nodes run.
         Tests.GoDotStartOf = project => UiThread.InvokeAsync(async () => Godot.GodotScripts.ProjectOf(project) is { } folder
-            ? await GoDotStartAsync(await GodotScenes.ScenesAsync(folder), await GoDotChosenAsync(project))
+            ? await GoDotStartAsync(await GodotScenes.ScenesAsync(folder), await GoDotChosenAsync(project),
+                Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)) is { } game ? Passenger.App.CSharp.CompilationSymbols.Of(game) : null)
             : Testing.GoDotTests.Start.Main);
         Stylesheets = new Web.PageStylesheets
         {
@@ -870,10 +871,11 @@ public sealed class ProjectSession : IAsyncDisposable
     }
 
     /// <summary>Where a GoDotTest game's tests start (<see cref="Testing.GoDotTests.StartOf"/>), its scripts read off the
-    /// window's thread as the disk holds them.</summary>
-    private static Task<Testing.GoDotTests.Start> GoDotStartAsync(Passenger.Workspace.GodotScenes scenes, (string? Settings, string? Scene) chosen)
+    /// window's thread as the disk holds them, with the game's symbols.</summary>
+    private static Task<Testing.GoDotTests.Start> GoDotStartAsync(Passenger.Workspace.GodotScenes scenes, (string? Settings, string? Scene) chosen,
+        Microsoft.CodeAnalysis.CSharp.CSharpParseOptions? parsing)
     {
-        return BackgroundWork.Run(() => Testing.GoDotTests.StartOf(scenes, res => scenes.FileOf(res) is { } file ? Read(file) : null, chosen.Scene) with
+        return BackgroundWork.Run(() => Testing.GoDotTests.StartOf(scenes, res => scenes.FileOf(res) is { } file ? Read(file) : null, chosen.Scene, parsing) with
         {
             Settings = chosen.Settings,
         });
