@@ -72,6 +72,13 @@ public abstract class WatchedTree : IDisposable
     private bool lost;
     private bool overflowed;
 
+    /// <summary>Whether the system said it overflowed since a batch was last looked at for what a burst lost: one said as a
+    /// batch is handed over, after its look, is looked for by a batch of its own.</summary>
+    private bool unlooked;
+
+    /// <summary>What the next hand-over runs as it looks at the disk, for a test (<see cref="WhileNextHandOver"/>).</summary>
+    private Action? meanwhile;
+
     /// <summary>A burst at risk is looked at once more when it has been quiet a moment, for what it lost after its last
     /// look: whether that look is due, and asked for now, when the burst was last at risk and when it began.</summary>
     private bool recheckDue;
@@ -208,10 +215,14 @@ public abstract class WatchedTree : IDisposable
     private void HandOver()
     {
         List<string> named;
+        Action? then;
         lock (gate)
         {
             named = disposed ? [] : [.. cameOrWent];
+            then = meanwhile;
+            meanwhile = null;
         }
+        then?.Invoke();
         Dictionary<string, Seen> seen = new(StringComparer.Ordinal);
         foreach (string path in named)
         {
@@ -221,10 +232,13 @@ public abstract class WatchedTree : IDisposable
         FolderChanges? changes;
         List<string> comeOrGone;
         bool watching;
+        bool again;
         lock (gate)
         {
             changes = Gathered(lost, overflowed);
-            lost = overflowed = pending = false;
+            again = unlooked && !disposed;
+            lost = overflowed = false;
+            pending = again;
             watching = !disposed;
             comeOrGone = watching ? [.. cameOrWent] : [];
             cameOrWent.Clear();
@@ -237,6 +251,20 @@ public abstract class WatchedTree : IDisposable
         if (changes is not null && watching)
         {
             Hand(changes);
+        }
+        if (again)
+        {
+            DeliverLater();
+        }
+    }
+
+    /// <summary>Runs <paramref name="what"/> in the next batch's hand-over, once, as it begins to look at the disk, after the
+    /// batch was looked at for a burst at risk: for a test of what the system's watcher says then.</summary>
+    public void WhileNextHandOver(Action what)
+    {
+        lock (gate)
+        {
+            meanwhile = what;
         }
     }
 
@@ -391,6 +419,7 @@ public abstract class WatchedTree : IDisposable
             lock (gate)
             {
                 overflowed = true;
+                unlooked = true;
                 if (pending)
                 {
                     return;
@@ -921,7 +950,7 @@ public abstract class WatchedTree : IDisposable
                     handed.Remove(path);
                 }
             }
-            bool risky = batches.Sum(b => b.Heard) >= AtRisk || overflowed;
+            bool risky = batches.Sum(b => b.Heard) >= AtRisk || unlooked;
             bool looking = recheck;
             recheck = false;
             if (!risky && !looking)
@@ -931,10 +960,11 @@ public abstract class WatchedTree : IDisposable
             bool again = risky && !recheckDue;
             if (risky)
             {
-                riskBegan = overflowed ? since : burstBegan;
+                riskBegan = unlooked ? since : burstBegan;
                 lastRisk = now;
                 recheckDue = true;
             }
+            unlooked = false;
             return (riskBegan, since, [.. touched.Keys], new Dictionary<string, DateTime>(heardAt, StringComparer.Ordinal), again);
         }
     }
