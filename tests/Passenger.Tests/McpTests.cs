@@ -1250,6 +1250,19 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("main", (await TestGit.RunAsync(repository, "branch", "--show-current")).Trim());
     }
 
+    /// <summary>An agent's vcs_stash in a folder that is in no Git repository says so, as the other vcs tools do, never an
+    /// empty list of stashes an agent reads as a repository with none.</summary>
+    [Fact]
+    public async Task An_agents_stash_outside_a_git_repository_says_the_folder_is_in_none()
+    {
+        string folder = TestFolders.Create("mcp-norepo-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult listed = await Result(client, McpTools.VcsStash);
+        Assert.True(listed.IsError == true && Text(listed).Contains("not in a Git repository", StringComparison.Ordinal),
+            $"vcs_stash outside a repository answered: {Text(listed)}");
+    }
+
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
     /// vcs_commit is refused naming the file, and nothing is committed.</summary>
     [Fact]

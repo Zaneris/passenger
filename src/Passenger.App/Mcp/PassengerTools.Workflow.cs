@@ -243,6 +243,10 @@ public sealed partial class PassengerTools
         }
         VcsController vcs = Session.Vcs;
         await vcs.Opened;
+        if (vcs.Repository is null)
+        {
+            throw new InvalidOperationException(vcs.NoRepository);
+        }
         if (action != "list")
         {
             IReadOnlyList<StashInfo> before = await vcs.StashesAsync();
