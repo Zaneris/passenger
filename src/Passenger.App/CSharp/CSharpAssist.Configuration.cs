@@ -54,7 +54,7 @@ internal sealed partial class CSharpAssist
     /// elsewhere, and asking nothing where the offset is in no string.</summary>
     private async Task<(ConfigurationProject Project, ConfigurationKey Read)?> ReadAtAsync(LspDocument lsp, OpenDocument document, int offset, CancellationToken cancel = default)
     {
-        if (document.Syntax?.Current is not { } parsed || !ReferenceEquals(parsed.Text, document.Text.Snapshot)
+        if ((document.Syntax is { } parsing ? await parsing.CurrentAsync() : null) is not { } parsed || !ReferenceEquals(parsed.Text, document.Text.Snapshot)
             || !parsed.Root.FindToken(Math.Max(0, offset - 1)).IsKind(SyntaxKind.StringLiteralToken) && !parsed.Root.FindToken(offset).IsKind(SyntaxKind.StringLiteralToken)
             || ConfigurationOf?.Invoke(document.Path) is not { } project)
         {

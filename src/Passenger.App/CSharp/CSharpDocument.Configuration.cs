@@ -91,6 +91,11 @@ public sealed partial class CSharpDocument
     /// extension by the project; the files read off the UI thread.</summary>
     internal async Task<IReadOnlyList<Diagnostic>> ConfigurationFindingsAsync(IReadOnlyList<Diagnostic> beside, CancellationToken cancel)
     {
+        // Its types are read below, as soon as the file opens: its first parse is awaited, never waited for on the window's thread.
+        if (document.Syntax is { } parsing)
+        {
+            await parsing.CurrentAsync();
+        }
         if (service.Session is not { } roslyn || service.ConfigurationOf?.Invoke(document.Path) is not { } project || !MayReadConfiguration)
         {
             return [];

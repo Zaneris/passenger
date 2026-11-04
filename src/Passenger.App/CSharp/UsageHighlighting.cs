@@ -93,7 +93,11 @@ public sealed class UsageHighlighting
             {
                 return null;
             }
-            ParsedText? syntax = document.Syntax?.Current;
+            ParsedText? syntax = document.Syntax is { } parsing ? await parsing.CurrentAsync() : null;
+            if (cancel.IsCancellationRequested || document.Text.Version != version || editor.Document != document.Text)
+            {
+                return null;
+            }
             LspPosition[] ends = new LspPosition[found.Count * 2];
             for (int i = 0; i < found.Count; i++)
             {

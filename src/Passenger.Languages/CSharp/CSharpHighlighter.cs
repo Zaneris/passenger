@@ -129,6 +129,28 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         }
     }
 
+    /// <summary>The syntax as the text stands, as <see cref="Current"/> gives it, once the file's first parse has landed:
+    /// waited for without holding the thread that asks, as an answer landing while a file opens needs it.</summary>
+    public async Task<ParsedText> CurrentAsync()
+    {
+        while (tree is null && running is { IsCompleted: false } first)
+        {
+            await first.Ended();
+        }
+        return Current;
+    }
+
+    /// <summary>How many times this thread has waited for a file's first parse, asking for <see cref="Current"/> before it
+    /// landed: what the window's thread never does while a file opens.</summary>
+    public static int FirstParseWaits => firstParseWaits;
+
+    [ThreadStatic]
+    private static int firstParseWaits;
+
+    /// <summary>Every parse begun from now waits for this task to end before it reads the text, until it is set again: a
+    /// test's way to ask for a file's syntax before its first parse has landed.</summary>
+    public static Task? HeldParses { get; set; }
+
     /// <summary>The newest parse when it is of the text as it stands, else null until one is (<see cref="Parsed"/>).</summary>
     public ParsedText? Newest => tree is not null && sinceTree.Count == 0 ? Current : null;
 
@@ -427,10 +449,15 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         int parsedVersion = version;
         parsingVersion = parsedVersion;
         (int First, int Last)[] warm = [.. asked];
+        Task? held = HeldParses;
         // Held from here, the parse's own start holding nothing, until what it parsed lands on the UI thread.
         BackgroundWork.Begin();
-        Task<(SyntaxTree Tree, FoldRegions Folds, Dictionary<int, (int Length, SyntaxSpan[] Spans)> Lines)> parse = BackgroundWork.Unheld(() =>
+        Task<(SyntaxTree Tree, FoldRegions Folds, Dictionary<int, (int Length, SyntaxSpan[] Spans)> Lines)> parse = BackgroundWork.Unheld(async () =>
         {
+            if (held is not null)
+            {
+                await held.Ended();
+            }
             long allocated = GC.GetAllocatedBytesForCurrentThread();
             SyntaxTree parsed = previous is null ? CSharpSyntaxTree.ParseText(parsedText, parsedWith) : previous.WithChangedText(parsedText);
             // The screen's lines classified here build the tree's nodes off the UI thread, which classifies them no more.
@@ -536,6 +563,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         SyntaxTree? basis = tree;
         if (basis is null && running is { } first)
         {
+            firstParseWaits += first.IsCompleted ? 0 : 1;
             ((IAsyncResult)first).AsyncWaitHandle.WaitOne();
             basis = first.IsCompletedSuccessfully ? first.Result.Tree : null;
         }

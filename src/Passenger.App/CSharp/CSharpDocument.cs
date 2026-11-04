@@ -273,9 +273,13 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         {
             return false;
         }
+        ParsedText? syntax = hints.Any(h => h.Kind == Passenger.Lsp.InlayHintKind.Type) && document.Syntax is { } parsing ? await parsing.CurrentAsync() : null;
+        if (cancel.IsCancellationRequested || hinted != document.Text.Version)
+        {
+            return false;
+        }
         // Placed on the thread pool, in the text and syntax they were asked for: a file of thousands of calls has as many.
         TextSnapshot text = document.Text.Snapshot;
-        ParsedText? syntax = hints.Any(h => h.Kind == Passenger.Lsp.InlayHintKind.Type) ? document.Syntax?.Current : null;
         bool razor = lsp.IsRazor;
         IReadOnlyList<InlayHint> godot = GodotHints(hinted);
         HintList shown = await BackgroundWork.Run(() => Shown(text, syntax, razor, hints, godot), cancel);

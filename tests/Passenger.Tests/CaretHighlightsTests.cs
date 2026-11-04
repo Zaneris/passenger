@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Passenger.App;
 using Passenger.Editor;
+using Passenger.Languages.CSharp;
 using Passenger.Text;
 
 namespace Passenger.Tests;
@@ -52,6 +53,40 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         Assert.Equal(9, readMark.Row);
         Assert.Equal(Token(window, TokenKeys.Editor_UsageWriteMark), Ui.Pixel(window, editor.TranslatePoint(editor.StripePoint(writeMark), window)!.Value));
         Assert.Equal(Token(window, TokenKeys.Editor_UsageReadMark), Ui.Pixel(window, editor.TranslatePoint(editor.StripePoint(readMark), window)!.Value));
+        window.Close();
+    }
+
+    /// <summary>The server's highlights for the caret in a file whose first parse has not landed wait for that parse
+    /// without holding the window's thread, which goes on running meanwhile: with the file's parse held, its highlights
+    /// come once the parse lands, and the window's thread never waited for it, where it used to stand still until then.</summary>
+    [AvaloniaFact]
+    public void Highlights_answered_before_a_files_first_parse_wait_for_it_without_holding_the_windows_thread()
+    {
+        MainWindow window = project.Open("Totals.cs");
+        TaskCompletionSource parse = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int waits = CSharpHighlighter.FirstParseWaits;
+        try
+        {
+            // Let go of from apart, so a wait on the window's thread ends and is counted rather than waiting for good.
+            Task landed = Waiting.Apart(async () =>
+            {
+                await Waiting.ForAsync(TimeSpan.FromSeconds(3), "the server answering the caret's highlights while the file's first parse is held");
+                parse.TrySetResult();
+            });
+            CSharpHighlighter.HeldParses = parse.Task;
+            window.OpenFile(project.PathOf("Braces.cs"));
+            CSharpHighlighter.HeldParses = null;
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.Click(editor, editor.PointOf(Braces.IndexOf("int a", StringComparison.Ordinal) + 4) + new Point(1, editor.LineHeight / 2), settle: false);
+            Ui.PumpUntil(() => editor.UsageHighlights.Count == 3 && landed.IsCompleted, "the parameter's three highlights, once the file's first parse landed", TimeSpan.FromMinutes(1));
+            Assert.True(CSharpHighlighter.FirstParseWaits == waits,
+                $"The window's thread stood still {CSharpHighlighter.FirstParseWaits - waits} times waiting for a file's first parse, while the server's answer for its caret waited for it");
+        }
+        finally
+        {
+            CSharpHighlighter.HeldParses = null;
+            parse.TrySetResult();
+        }
         window.Close();
     }
 
