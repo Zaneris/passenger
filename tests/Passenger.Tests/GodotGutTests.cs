@@ -68,7 +68,8 @@ public sealed class GodotGutTests : IDisposable
 
         """;
 
-    /// <summary>GUT's command line: the scripts -gtest names, the tests -gunit_test_name picks, a JUnit file as GUT's.</summary>
+    /// <summary>GUT's command line: the scripts -gtest names, the tests -gunit_test_name picks (every test where it is empty,
+    /// as GUT takes it), a JUnit file as GUT's.</summary>
     internal const string CommandLine = """
         extends SceneTree
 
@@ -91,7 +92,7 @@ public sealed class GodotGutTests : IDisposable
         		var fails := 0
         		for method in script.get_script_method_list():
         			var name: String = method.name
-        			if not name.begins_with("test_") or (options.has("-gunit_test_name") and not name.contains(options["-gunit_test_name"])):
+        			if not name.begins_with("test_") or (str(options.get("-gunit_test_name", "")) != "" and not name.contains(options["-gunit_test_name"])):
         				continue
         			print("* ", name)
         			test.failures.clear()
