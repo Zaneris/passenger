@@ -52,12 +52,13 @@ public sealed class FlingTests
         {
             // A few frames between full collections, too few to start one of their own: each counts what they left.
             Collected();
+            long idle = Collected();
             for (int frame = 0; frame < 4; frame++)
             {
                 rig.Window.MouseWheel(over, new Vector(0, -screen));
                 Ui.Draw();
             }
-            left += Collected();
+            left += Math.Max(0, Collected() - idle);
         }
         int flung = editor.LinesShown.First - first;
         Assert.True(editor.RunsFormatted - runs > 4L * flung, $"The fling through {flung} lines laid out only {editor.RunsFormatted - runs} runs: its lines were not of many colours");
@@ -98,7 +99,8 @@ public sealed class FlingTests
     }
 
     /// <summary>The finalizable objects a full collection found dead, the queue emptied before: what the work since the last
-    /// such call left the finalizer.</summary>
+    /// such call left the finalizer, beside what every full collection finds (the runtime's pools register a callback that
+    /// is found dead and registers itself again at each).</summary>
     private static long Collected()
     {
         GC.Collect();
