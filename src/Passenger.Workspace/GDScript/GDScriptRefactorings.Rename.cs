@@ -99,7 +99,7 @@ public static partial class GDScriptRefactorings
     }
 
     /// <summary>The local or parameter a name at an offset declares or reads: its declaration's offset, its name, and the
-    /// member it is in; null where the name is no local of the script's.</summary>
+    /// member it is in; null where the name is no local of the script's (an inner class's member among them).</summary>
     private static (int Declared, string Name, GDScriptMember Member)? LocalAt(GDScriptRead read, int offset)
     {
         if (read.Analysis.NodeAt(offset) is not ({ } node, int from) || node is not GDScriptIdentifier identifier
@@ -110,6 +110,12 @@ public static partial class GDScriptRefactorings
         int declared = read.Analysis.DeclarationOf(identifier) is { } resolved && resolved.Script == read.Script ? resolved.Start
             : read.Analysis.Declaring.Contains(identifier) ? from + identifier.Start : -1;
         if (declared < member.Start || declared > member.End || DeclaringName(member.Node) is { } memberName && member.Offset + memberName.Start == declared)
+        {
+            return null;
+        }
+        // A local is declared inside a function, its name aside: an inner class's members are no locals.
+        if (!Below(member.Node).OfType<GDScriptFunction>().Any(f => member.Offset + f.Start <= declared && declared <= member.Offset + f.End
+            && !(f.Identifier is { } own && member.Offset + own.Start == declared)))
         {
             return null;
         }

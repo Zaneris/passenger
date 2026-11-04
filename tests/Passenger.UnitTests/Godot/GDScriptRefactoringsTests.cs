@@ -39,6 +39,22 @@ public class GDScriptRefactoringsTests
     }
 
     [Fact]
+    public void An_inner_classs_member_is_no_local_so_its_rename_and_uses_are_left_to_the_whole_project()
+    {
+        string text = "extends Node\n\n\nfunc _ready() -> void:\n\tvar h := Helper.new()\n\th.count += 1\n\tprint(h.count)\n\n\n"
+            + "class Helper:\n\tenum Kind { ONE, TWO }\n\tsignal bumped\n\tvar count := 0\n\n\tfunc bump(by := 1) -> void:\n\t\tvar step := by\n\t\tcount += step\n";
+        GDScriptRead read = Read(("res://main.gd", text))[0];
+        foreach (string member in new[] { "count := 0", "bump(by", "bumped\n", "ONE", "count += step" })
+        {
+            int at = text.IndexOf(member, StringComparison.Ordinal) + 1;
+            Assert.True(GDScriptRefactorings.RenameLocal(read, at, "renamed") is null, $"Renaming {member} renames it as a local of its inner class alone");
+            Assert.True(GDScriptRefactorings.LocalPlacesOf(read, at) is null, $"Find Usages of {member} finds it as a local of its inner class alone");
+        }
+        string renamed = After(GDScriptRefactorings.RenameLocal(read, text.IndexOf("step :=", StringComparison.Ordinal) + 1, "amount")!, "res://main.gd", text);
+        Assert.Contains("\t\tvar amount := by\n\t\tcount += amount\n", renamed);
+    }
+
+    [Fact]
     public void Extract_variable_declares_the_expression_before_its_statement_and_reads_it_there()
     {
         // Typed by := where its type is read, as an int literal's is; without the engine's operators, a product's is not.
