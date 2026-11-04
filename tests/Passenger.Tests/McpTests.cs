@@ -894,8 +894,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>A rebase stopped on a conflict that the agent resolves is still said by vcs_status, and vcs_commit refuses to
-    /// commit beside it, naming Continue Rebase and Abort Rebase: no commit of the agent's takes the place of the rebase's
-    /// on its detached head, and the rebase is still in progress.</summary>
+    /// commit beside it, naming Continue Rebase and Abort Rebase by the ids ide_action runs: no commit of the agent's takes
+    /// the place of the rebase's on its detached head, and the rebase goes on once the agent runs Continue Rebase.</summary>
     [Fact]
     public async Task A_rebase_whose_conflict_is_resolved_is_still_said_and_an_agents_commit_never_goes_beside_it()
     {
@@ -930,8 +930,14 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         CallToolResult commit = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Agent's commit" });
         Assert.True(commit.IsError == true, $"vcs_commit made a commit of its own in the middle of a rebase: {Text(commit)}");
         Assert.Contains("Continue Rebase", Text(commit), StringComparison.Ordinal);
+        Assert.True(Text(commit).Contains($"(ide_action {AppActions.ContinueRebase} and {AppActions.AbortRebase})", StringComparison.Ordinal),
+            $"vcs_commit refused in the middle of a rebase named no action an agent can run to go on: {Text(commit)}");
         Assert.Equal(head, (await TestGit.RunAsync(repository, "rev-parse", "HEAD")).Trim());
         Assert.True(Directory.Exists(Path.Combine(repository, ".git", "rebase-merge")), "The rebase is no longer in progress after vcs_commit was refused");
+
+        await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ContinueRebase });
+        Assert.False(Directory.Exists(Path.Combine(repository, ".git", "rebase-merge")), "Continue Rebase, run by its id, left the rebase in progress");
+        Assert.Equal("Later\nTwo in capitals\nTwo in Roman", (await TestGit.RunAsync(repository, "log", "-3", "--format=%s")).Trim());
     }
 
     /// <summary>An interactive rebase stopped at an edit step is said by vcs_status as stopped to edit that commit, and there

@@ -139,7 +139,10 @@ public sealed partial class PassengerTools
         CommitResult result = await vcs.CommitAsync(chosen, message, amend, push, ask: false, signing: new CommitSigning(SignOff: vcs.SignOff));
         if (!result.Commit.Succeeded)
         {
-            throw new InvalidOperationException(result.Commit.Message);
+            // A rebase stopped for conflicts goes on by its own action, which an agent runs by its id.
+            throw new InvalidOperationException(vcs.Merge is { Operation: MergeOperation.Rebase, Stop: null }
+                ? $"{result.Commit.Message} (ide_action {AppActions.ContinueRebase} and {AppActions.AbortRebase})"
+                : result.Commit.Message);
         }
         string made = result.Made is { } head ? $"{head.Short} {head.Subject}" : result.Commit.Message;
         return result.Push switch
