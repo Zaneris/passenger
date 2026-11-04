@@ -539,7 +539,7 @@ public sealed class TestController : IAsyncDisposable
         Dictionary<string, KeptRun> runs = new(StringComparer.Ordinal);
         foreach (TestNode method in methods)
         {
-            if (method.Identity is { } identity && !runs.ContainsKey(identity) && method.Results.Any(r => r.Earlier is null))
+            if (method.Identity?.Kept is { } identity && !runs.ContainsKey(identity) && method.Results.Any(r => r.Earlier is null))
             {
                 runs[identity] = KeptRun.Of(method.Results, began, method.RanCode);
             }
@@ -599,11 +599,11 @@ public sealed class TestController : IAsyncDisposable
     private List<TestItem> Chosen(IEnumerable<TestNode> rows)
     {
         List<TestItem> tests = [];
-        HashSet<string> seen = new(StringComparer.Ordinal);
+        HashSet<TestItem> seen = new(TestItem.ById);
         foreach (TestNode row in rows.SelectMany(Now))
         {
             IEnumerable<TestItem> its = row.Kind == TestNodeKind.Row ? row.Item is { } item ? [item] : row.Parent!.Items : row.Methods.SelectMany(m => m.Items);
-            tests.AddRange(its.Where(t => seen.Add(t.Key)));
+            tests.AddRange(its.Where(seen.Add));
         }
         return tests;
     }

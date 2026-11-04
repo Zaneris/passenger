@@ -32,8 +32,8 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
     private readonly Func<string, CancellationToken, Task<ITestRunner>> startVsTest = startVsTest ?? VsTestRunner.StartAsync;
     private ITestRunner? vsTest;
 
-    /// <summary>The runner that found each test, by the test's key, which runs it.</summary>
-    private readonly Dictionary<string, ITestRunner> byKey = new(StringComparer.Ordinal);
+    /// <summary>The runner that found each assembly's tests, which runs them, by the assembly's project and framework.</summary>
+    private readonly Dictionary<(string Project, string? Framework), ITestRunner> byAssembly = [];
 
     public bool IsUsable => vsTest?.IsUsable ?? true;
 
@@ -46,13 +46,13 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
         Task<IReadOnlyList<TestItem>> fromPlatform = platformOnes.Count > 0 ? platform.DiscoverAsync(platformOnes, log, cancel) : Task.FromResult<IReadOnlyList<TestItem>>([]);
         Task<IReadOnlyList<TestItem>> fromVsTest = vsTestOnes.Count > 0 ? DiscoverWithVsTest(vsTestOnes, log, cancel) : Task.FromResult<IReadOnlyList<TestItem>>([]);
         IReadOnlyList<TestItem>[] found = await Task.WhenAll(fromVsTest, fromPlatform);
-        foreach (TestItem test in found[0])
+        foreach (TestAssembly assembly in vsTestOnes)
         {
-            byKey[test.Key] = vsTest!;
+            byAssembly[(assembly.Project.Path, assembly.Framework)] = vsTest!;
         }
-        foreach (TestItem test in found[1])
+        foreach (TestAssembly assembly in platformOnes)
         {
-            byKey[test.Key] = platform;
+            byAssembly[(assembly.Project.Path, assembly.Framework)] = platform;
         }
         return [.. found[0], .. found[1]];
     }
@@ -72,7 +72,7 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
         foreach (ITestRunner runner in new ITestRunner?[] { vsTest, platform, gut, goDot }.OfType<ITestRunner>())
         {
             List<TestItem> its = [.. tests.Where(t => runner == gut ? t.Framework == GutScripts.Framework : runner == goDot ? t.Framework == GoDotTests.Framework
-                : byKey.TryGetValue(t.Key, out ITestRunner? by) && by == runner)];
+                : byAssembly.TryGetValue((t.Project, t.Framework), out ITestRunner? by) && by == runner)];
             if (its.Count == 0)
             {
                 continue;

@@ -30,7 +30,7 @@ public sealed class TestingPlatformRunner : ITestRunner
     /// <summary>How long a test host done with its request has to tell its last results and exit before it is ended.</summary>
     private static readonly TimeSpan ExitLimit = TimeSpan.FromSeconds(10);
 
-    /// <summary>The test nodes discovered, by the key of the test each was told as.</summary>
+    /// <summary>The test nodes discovered, by the id of the test each was told as.</summary>
     private readonly TestCatalog<Found> found = new();
 
     public bool IsUsable => true;
@@ -187,7 +187,7 @@ public sealed class TestingPlatformRunner : ITestRunner
     }
 
     /// <summary>The test nodes found told as the IDE's tests, each with the project and framework of its assembly, and kept
-    /// to be run by the key of the test told. The platform names a source file as the compiler was given it: the tree's are
+    /// to be run by the id of the test told. The platform names a source file as the compiler was given it: the tree's are
     /// canonical.</summary>
     private IReadOnlyList<TestItem> Tell((TestAssembly Assembly, IReadOnlyList<PlatformNode> Nodes)[] asked) =>
         found.Tell(asked.Select(a => a.Assembly), asked.SelectMany(a => a.Nodes.Where(n => n.IsTest).Select(n => (a.Assembly, n))), node => node.Uid,

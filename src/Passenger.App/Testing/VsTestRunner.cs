@@ -49,7 +49,7 @@ public sealed class VsTestRunner : ITestRunner
     /// <summary>The session of vstest.console the runner asks, another taken once a stopped run left one stuck.</summary>
     private VsTestConsoleWrapper console;
 
-    /// <summary>The test cases discovered, by the key of the test each was told as.</summary>
+    /// <summary>The test cases discovered, by the id of the test each was told as.</summary>
     private readonly TestCatalog<TestCase> cases = new();
 
     /// <summary>The run settings file each assembly looked at runs with, by its path; null for none.</summary>
@@ -430,7 +430,7 @@ public sealed class VsTestRunner : ITestRunner
     }
 
     /// <summary>VSTest's test cases told as the IDE's tests, each with the project and framework of the assembly it is
-    /// in, and kept to be run by the key of the test told. VSTest names an assembly and a source file as it was given or
+    /// in, and kept to be run by the id of the test told. VSTest names an assembly and a source file as it was given or
     /// as the PDB says: the tree's are canonical.</summary>
     private IReadOnlyList<TestItem> Tell(IReadOnlyList<TestAssembly> assemblies, IReadOnlyList<TestCase> found)
     {
