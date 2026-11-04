@@ -76,6 +76,30 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>After self's dot, and among the names in scope, the script's own members come before those its engine class
+    /// gives it, however their names sort.</summary>
+    [AvaloniaFact]
+    public void A_scripts_own_members_are_listed_before_those_its_engine_class_gives_it()
+    {
+        Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): the engine's members come from its API");
+        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "\tcounter += 1");
+            window.KeyTextInput("self.");
+            bool listed = Ui.Pumped(() => window.Assist.CompletionLabels.Count > 3, TimeSpan.FromSeconds(60));
+            Assert.True(listed, "No members after self's dot");
+            Assert.True(window.Assist.CompletionLabels.Take(3).OrderBy(l => l, StringComparer.Ordinal).SequenceEqual(["counter", "scored", "speed"]),
+                $"The script's own members are not first after self's dot: {string.Join(", ", window.Assist.CompletionLabels.Take(12))}");
+        }
+        finally
+        {
+            window.Close();
+            release.SetResult();
+        }
+    }
+
     /// <summary>The engine's utility functions, built-in types, classes, singletons and global constants complete beside the
     /// script's own names, and a function goes in with its call's parentheses, the caret inside them where it takes arguments.</summary>
     [AvaloniaFact]

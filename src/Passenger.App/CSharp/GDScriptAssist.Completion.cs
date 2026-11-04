@@ -227,7 +227,7 @@ internal sealed partial class GDScriptAssist
         {
             if (seen.Add(member.Name))
             {
-                items.Add(MemberItem(typed, member, null, "1"));
+                items.Add(MemberItem(typed, member, null, RankOf(member, "1")));
             }
         }
         foreach (string keyword in at.StatementStart ? StatementKeywords.Concat(ExpressionKeywords) : ExpressionKeywords)
@@ -261,6 +261,10 @@ internal sealed partial class GDScriptAssist
 
     /// <summary>A member's item: its kind, its type, and for a function the parentheses its call takes, the caret inside them
     /// where it takes arguments.</summary>
+    /// <summary>The rank a member's item sorts by: a script's own members before what the engine's classes give it, as
+    /// Godot's editor lists them by where they are declared.</summary>
+    private static string RankOf(GDScriptMemberInfo member, string rank) => member.Declaration is { Script: not null } ? rank : rank + "~~";
+
     private CompletionItem MemberItem(GodotScriptTypes.Typed typed, GDScriptMemberInfo member, GDScriptType? owner, string rank)
     {
         Named what = NamedOf(member, owner);
@@ -356,7 +360,7 @@ internal sealed partial class GDScriptAssist
         }
         if (!owner.IsVariant)
         {
-            items.AddRange(typed.Analyzer.Members(owner).Where(m => csharp.All(c => c.Name != m.Name)).Select(m => MemberItem(typed, m, owner, "0")));
+            items.AddRange(typed.Analyzer.Members(owner).Where(m => csharp.All(c => c.Name != m.Name)).Select(m => MemberItem(typed, m, owner, RankOf(m, "0"))));
         }
         return new Listed(at.Start, items);
     }
