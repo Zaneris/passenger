@@ -460,7 +460,9 @@ and `GDScriptAnalysis`'s filtering by a project's settings and `@warning_ignore`
 `renamed_in_godot_4_hint`), written by `just godot-renames` (`tools/godot-renames.py`) from
 `editor/project_upgrade/renames_map_3_to_4.cpp` at the same commit: the maps `check_for_renamed_identifier` reads.
 `GDScriptConversions.cs` is the table of `Variant::can_convert_strict` in `core/variant/variant.cpp` at the same commit
-(the same at 4.7.2-stable, ed1daf0bf001b61586d9930840f2f1394092c079), which a built-in type's constructor's warnings read.
+(the same at 4.7.2-stable, ed1daf0bf001b61586d9930840f2f1394092c079), which a built-in type's constructor's warnings read,
+with `Variant::can_convert`'s for a cast's errors, and the Object rows of `core/variant/variant_op.cpp`'s operator table,
+which the API's dump leaves out, beside the dump's own operators for an operand's errors.
 The scripts of the parser's and warnings' unit tests (`tests/Passenger.UnitTests/Godot/GDScriptParserTests.cs`,
 `GDScriptWarningsTests.cs`) are in part Godot's own, `modules/gdscript/tests/scripts/parser/errors`, `parser/warnings`
 and `analyzer/warnings`, at the same commit.
