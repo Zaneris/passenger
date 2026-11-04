@@ -302,26 +302,32 @@ public static class GodotScripts
             }
             LanguageServer server = starting.Result.Server;
             DateTime built = before.Built;
-            // The build being reloaded (when it wrote, the earliest of a run of them) and when it was seen.
-            (DateTime Built, long Seen)? reloading = null;
+            // When a build's reload was seen; and what of the files the editor would make stood at the last look before it.
+            long? reloading = null;
+            IReadOnlyList<string> standing = before.Standing();
             while (!server.HasExited)
             {
                 await Task.Delay(reloading is null ? Reloads : TimeSpan.FromMilliseconds(200));
                 if (before.Built is var now && now != built)
                 {
-                    reloading ??= (now, Stopwatch.GetTimestamp());
                     built = now;
+                    if (reloading is null)
+                    {
+                        reloading = Stopwatch.GetTimestamp();
+                        before.KeepStanding(standing);
+                    }
                 }
-                if (reloading is not { } build)
+                if (reloading is not { } since)
                 {
+                    standing = before.Standing();
                     continue;
                 }
-                if (!before.TakeAwayMade(told, build.Built))
+                if (!before.TakeAwayMade(told))
                 {
                     return;
                 }
                 // A build's reload is watched until it has been quiet a while, what it made decided.
-                if (Stopwatch.GetElapsedTime(Math.Max(build.Seen, before.LastFound)) >= Starting && !before.Deciding)
+                if (Stopwatch.GetElapsedTime(Math.Max(since, before.LastFound)) >= Starting && !before.Deciding)
                 {
                     reloading = null;
                 }
@@ -454,8 +460,9 @@ public static class GodotScripts
 
         public string Project { get; }
 
-        /// <summary>When a game's build last wrote its assemblies where Godot's .NET tools read them (under
-        /// <c>.godot/mono/temp/bin</c>), which a headless editor reloads within a second; the earliest time where none is there.</summary>
+        /// <summary>The newest write time of a game's build's assemblies where Godot's .NET tools read them (under
+        /// <c>.godot/mono/temp/bin</c>), a copy's kept from its source, which changes as a build lands and a headless editor
+        /// reloads within a second; the earliest time where none is there.</summary>
         public DateTime Built
         {
             get
@@ -676,23 +683,38 @@ public static class GodotScripts
             return true;
         }
 
-        /// <summary>What a headless editor made that was not there taken away as it reloads a game's build written at
-        /// <paramref name="built"/>, as <see cref="PutBack"/> does, the files it writes over left as they are: one there before
-        /// that build is another program's, kept. False once the project has gone, as its start work's watch has said.</summary>
-        public bool TakeAwayMade(HashSet<string> told, DateTime built)
+        /// <summary>The files a headless editor would make that are there now, another program's should a build come next.</summary>
+        public IReadOnlyList<string> Standing()
+        {
+            lock (gate)
+            {
+                return [.. unmade.Where(File.Exists)];
+            }
+        }
+
+        /// <summary>The files that stood (<see cref="Standing"/>) at the last look before a game's build the editor reloads:
+        /// another program's, kept from then on.</summary>
+        public void KeepStanding(IReadOnlyList<string> standing)
+        {
+            lock (gate)
+            {
+                foreach (string path in standing.Where(unmade.Contains))
+                {
+                    unmade.Remove(path);
+                    pending.Remove(path);
+                    IdeErrors.Write($"GDScript: {path} was there before the game's build Godot's headless editor reloads, so it is another program's, kept");
+                }
+            }
+        }
+
+        /// <summary>What a headless editor made that was not there taken away as it reloads a game's build, as
+        /// <see cref="PutBack"/> does, the files it writes over left as they are. False once the project has gone, as its
+        /// start work's watch has said.</summary>
+        public bool TakeAwayMade(HashSet<string> told)
         {
             if (!File.Exists(Path.Combine(Project, GodotProject.FileName)))
             {
                 return false;
-            }
-            lock (gate)
-            {
-                foreach (string path in unmade.Where(p => File.Exists(p) && File.GetLastWriteTimeUtc(p) < built).ToList())
-                {
-                    unmade.Remove(path);
-                    pending.Remove(path);
-                    IdeErrors.Write($"GDScript: {path} was written before the game's build Godot's headless editor reloads, so it is another program's, kept");
-                }
             }
             long now = Stopwatch.GetTimestamp();
             bool gitWrote = Passenger.Vcs.Git.WroteWorkTreeSince(looked);
