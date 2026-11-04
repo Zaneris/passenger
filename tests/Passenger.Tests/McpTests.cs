@@ -1140,6 +1140,23 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Empty((await Call(client, McpTools.VcsStash)).EnumerateArray());
     }
 
+    /// <summary>An agent's edit of a Latin-1 file with a character Latin-1 cannot hold is saved as UTF-8, as the person's
+    /// is, and the agent is told so, as the status bar tells the person, rather than only that it was saved.</summary>
+    [Fact]
+    public async Task An_agents_edit_its_files_encoding_cannot_hold_is_saved_as_utf8_and_the_answer_says_so()
+    {
+        string folder = TestFolders.Create("mcp-latin1-");
+        DeleteAtEnd(folder);
+        string menu = Path.Combine(folder, "Menu.txt");
+        File.WriteAllBytes(menu, System.Text.Encoding.Latin1.GetBytes("caf\u00e9 cr\u00e8me\n"));
+
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        string edited = Text(await Call(client, McpTools.Edit, new() { ["path"] = "Menu.txt", ["oldText"] = "crème", ["newText"] = "crème \u2603" }));
+        Assert.True(edited.Contains("saved (Menu.txt was saved as UTF-8:", StringComparison.Ordinal),
+            $"An agent's edit its file's Latin-1 cannot hold was answered without saying the file is UTF-8 now: {edited}");
+        Assert.Equal("caf\u00e9 cr\u00e8me \u2603\n", System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(menu)));
+    }
+
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
     /// vcs_commit is refused naming the file, and nothing is committed.</summary>
     [Fact]

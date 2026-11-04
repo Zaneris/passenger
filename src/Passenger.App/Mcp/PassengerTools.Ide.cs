@@ -308,10 +308,26 @@ public sealed partial class PassengerTools
         document.Text.BreakUndoGroup();
         document.Text.Edit(edits, document.Selections, TextEditing.MapThrough(document.Selections, edits));
         document.Text.BreakUndoGroup();
-        string saved = Editors.SaveSaying(document) is { } refused ? $"not saved: {refused}" : "saved";
+        // A save its encoding could not hold is written as UTF-8, which the agent is told as the status bar tells the person.
+        string? converted = null;
+        void Converted(object? sender, string said) => converted = said;
+        document.Converted += Converted;
+        string saved;
+        try
+        {
+            saved = Editors.SaveSaying(document) is { } refused ? $"not saved: {refused}" : "saved";
+        }
+        finally
+        {
+            document.Converted -= Converted;
+        }
         if (saved == "saved" && await Passenger.App.Editors.EditorArea.LandedAsync(null, cancel) is { } unlanded)
         {
             saved = $"not saved: {unlanded}";
+        }
+        else if (converted is not null)
+        {
+            saved = $"saved ({converted})";
         }
         // Each edit's lines as they are now: offsets move by what the edits before it added.
         TextSnapshot after = document.Text.Snapshot;
