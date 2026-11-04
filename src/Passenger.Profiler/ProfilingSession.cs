@@ -587,6 +587,9 @@ public sealed class ProfilingSession : IAsyncDisposable
         return await BackgroundWork.Run(Read, cancellation);
     }
 
+    /// <summary>Where a memory snapshot's dump lies while it is read, the user's own folder of them.</summary>
+    public static string DumpFolder => DumpTool.Folder;
+
     /// <summary>Why no memory snapshot of the program can be taken whatever is tried: a run of scripts alone has no .NET heap;
     /// null where one may be. One whose memory no other program may read is read from its runtime's own heap dump.</summary>
     public string? WhyNoHeap => !Samples ? NoHeapOfScripts : null;

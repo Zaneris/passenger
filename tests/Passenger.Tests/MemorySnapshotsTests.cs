@@ -634,7 +634,7 @@ public sealed class MemorySnapshotsTests : IDisposable
     }
 
     /// <summary>This process's dumps of a program in the temporary folder.</summary>
-    private static string[] Dumps(int program) => Directory.GetFiles(Path.GetTempPath(), $"passenger-heap-{Environment.ProcessId}-{program}-*.dmp");
+    private static string[] Dumps(int program) => Directory.GetFiles(ProfilingSession.DumpFolder, $"passenger-heap-{Environment.ProcessId}-{program}-*.dmp");
 
     /// <summary>A console project, built and started under the profiler from the window, run until it says it is ready
     /// (having been <paramref name="sent"/> a line to say back, for a program that says nothing by itself).</summary>
