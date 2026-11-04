@@ -11,12 +11,26 @@ public readonly record struct DiffHunk(int OldStart, int OldCount, int NewStart,
 /// with how much of them differs.</summary>
 public static class LineDiff
 {
-    /// <summary>The most edits the comparison looks for before it calls the rest one changed stretch, so a file edited
-    /// all over (or a huge one) costs a bounded time.</summary>
+    /// <summary>The most edits a stretch's comparison looks for before it splits the stretch where its searches got
+    /// furthest rather than on a shortest edit, so a file edited all over (or a huge one) costs a bounded time.</summary>
     private const int MostEdits = 4000;
 
+    /// <summary>The most steps a search takes once one of the comparison's searches has failed to meet: what Git's xdiff
+    /// allows each, so a text edited all over costs a few hundred points per edit rather than thousands.</summary>
+    private const int FarSteps = 256;
+
+    /// <summary>How many points this thread's comparisons have visited, each one diagonal's step of a search: what a
+    /// comparison costs, counted rather than timed.</summary>
+    internal static long Visited => visited;
+
+    [ThreadStatic]
+    private static long visited;
+
     /// <summary>The hunks between two texts' <see cref="Lines"/>, which a caller may keep to compare again.</summary>
-    public static IReadOnlyList<DiffHunk> Hunks(string[] before, string[] after)
+    public static IReadOnlyList<DiffHunk> Hunks(string[] before, string[] after) => Hunks(before, after, MostEdits);
+
+    /// <summary>The hunks between two texts' lines, each stretch searched for at most <paramref name="mostEdits"/> edits.</summary>
+    internal static IReadOnlyList<DiffHunk> Hunks(string[] before, string[] after, int mostEdits)
     {
         // The ends that agree are no work: only the middle is compared.
         int prefix = 0;
@@ -39,7 +53,7 @@ public static class LineDiff
         {
             return [new DiffHunk(prefix, n, prefix, m)];
         }
-        return new Comparison(before, after).Run(prefix, prefix + n, prefix, prefix + m, MostEdits) ?? [new DiffHunk(prefix, n, prefix, m)];
+        return new Comparison(before, after, mostEdits).Run(prefix, prefix + n, prefix, prefix + m);
     }
 
     /// <summary>The lines a comparison sees, without their breaks ("\r\n" or "\n"). A break at the very end ends the last
@@ -248,12 +262,24 @@ public static class LineDiff
 
     /// <summary>Myers' comparison in linear space: a stretch is split where the searches from its two ends first meet,
     /// which is on a shortest edit, and each half compared the same way. It holds one furthest point per diagonal for
-    /// each search, where keeping every step's to trace the path back costs the edits squared.</summary>
+    /// each search, where keeping every step's to trace the path back costs the edits squared. Searches that have not met
+    /// within the steps allowed split the stretch at the point furthest from its corner that either reached, as Git's
+    /// xdiff does, until the points visited pass a budget, after which a stretch that will not split is one change.</summary>
     private sealed class Comparison
     {
         private readonly string[] a;
         private readonly string[] b;
         private readonly List<DiffHunk> hunks = [];
+
+        /// <summary>The steps each search of a stretch takes at most, and the points all searches may visit before a
+        /// stretch still being split is left one change: eight times what one search that never meets visits, where a
+        /// shortest edit of the most edits searched for needs two.</summary>
+        private readonly int steps;
+        private readonly long mostWork;
+        private long work;
+
+        /// <summary>The steps a search takes now: <see cref="steps"/> until one fails to meet, then fewer.</summary>
+        private int limit;
 
         /// <summary>The furthest x reached on each diagonal (x - y, from <see cref="offset"/>) by the search from the top
         /// left and by the search from the bottom right.</summary>
@@ -261,25 +287,23 @@ public static class LineDiff
         private readonly int[] up;
         private readonly int offset;
 
-        public Comparison(string[] a, string[] b)
+        public Comparison(string[] a, string[] b, int mostEdits)
         {
             this.a = a;
             this.b = b;
             down = new int[a.Length + b.Length + 3];
             up = new int[a.Length + b.Length + 3];
             offset = b.Length + 1;
+            steps = (mostEdits + 1) / 2;
+            limit = steps;
+            mostWork = 8L * steps * steps;
         }
 
-        /// <summary>The hunks between two stretches whose first lines differ and whose last lines differ, or null when
-        /// they differ by more than <paramref name="mostEdits"/>.</summary>
-        public List<DiffHunk>? Run(int xoff, int xlim, int yoff, int ylim, int mostEdits)
+        /// <summary>The hunks between two stretches whose first lines differ and whose last lines differ.</summary>
+        public List<DiffHunk> Run(int xoff, int xlim, int yoff, int ylim)
         {
-            if (Split(xoff, xlim, yoff, ylim, (mostEdits + 1) / 2) is not (int x, int y))
-            {
-                return null;
-            }
-            Compare(xoff, x, yoff, y);
-            Compare(x, xlim, y, ylim);
+            Compare(xoff, xlim, yoff, ylim);
+            visited += work;
             return hunks;
         }
 
@@ -300,8 +324,12 @@ public static class LineDiff
                 Add(xoff, xlim - xoff, yoff, ylim - yoff);
                 return;
             }
-            // Each half's shortest edit is shorter than this one's (two edits at least, the ends trimmed), so the splitting ends.
-            (int x, int y) = Split(xoff, xlim, yoff, ylim, int.MaxValue)!.Value;
+            // A split lies off the stretch's corners, so each half is smaller and the splitting ends.
+            if (Split(xoff, xlim, yoff, ylim) is not (int x, int y))
+            {
+                Add(xoff, xlim - xoff, yoff, ylim - yoff);
+                return;
+            }
             Compare(xoff, x, yoff, y);
             Compare(x, xlim, y, ylim);
         }
@@ -322,9 +350,10 @@ public static class LineDiff
         }
 
         /// <summary>A point on a shortest edit through the stretch, where the searches from its two ends first meet (the
-        /// end of Myers' middle snake), or null when they have not within <paramref name="mostSteps"/> edits each. Both
-        /// stretches are lines, and their first lines differ, as do their last.</summary>
-        private (int X, int Y)? Split(int xoff, int xlim, int yoff, int ylim, int mostSteps)
+        /// end of Myers' middle snake); where they have not within <see cref="limit"/> edits each, the point either got
+        /// furthest to; null once the comparison has visited <see cref="mostWork"/> points. Both stretches are lines, and
+        /// their first lines differ, as do their last.</summary>
+        private (int X, int Y)? Split(int xoff, int xlim, int yoff, int ylim)
         {
             int dmin = xoff - ylim;
             int dmax = xlim - yoff;
@@ -338,8 +367,13 @@ public static class LineDiff
             bool odd = ((fmid - bmid) & 1) != 0;
             down[offset + fmid] = xoff;
             up[offset + bmid] = xlim;
-            for (int step = 1; step <= mostSteps; step++)
+            for (int step = 1; step <= limit; step++)
             {
+                work += ((fmax - fmin + bmax - bmin) / 2) + 2;
+                if (work > mostWork)
+                {
+                    return null;
+                }
                 // One more edit on each diagonal: past the stretch's corner the range shrinks instead, keeping its parity.
                 if (fmin > dmin)
                 {
@@ -412,7 +446,46 @@ public static class LineDiff
                     }
                 }
             }
-            return null;
+            limit = Math.Min(steps, FarSteps);
+            return Furthest(xoff, xlim, yoff, ylim, (fmin, fmax), (bmin, bmax));
+        }
+
+        /// <summary>Of the points the searches reached on their last step, the one furthest from the corner its search
+        /// began at, forward or backward (xdiff's choice), or null where that is a corner of the stretch.</summary>
+        private (int X, int Y)? Furthest(int xoff, int xlim, int yoff, int ylim, (int Min, int Max) forward, (int Min, int Max) backward)
+        {
+            int fbest = -1;
+            int fx = xoff;
+            for (int d = forward.Max; d >= forward.Min; d -= 2)
+            {
+                int x = Math.Min(down[offset + d], xlim);
+                int y = x - d;
+                if (y > ylim)
+                {
+                    (x, y) = (ylim + d, ylim);
+                }
+                if (x + y > fbest)
+                {
+                    (fbest, fx) = (x + y, x);
+                }
+            }
+            int bbest = int.MaxValue;
+            int bx = xlim;
+            for (int d = backward.Max; d >= backward.Min; d -= 2)
+            {
+                int x = Math.Max(xoff, up[offset + d]);
+                int y = x - d;
+                if (y < yoff)
+                {
+                    (x, y) = (yoff + d, yoff);
+                }
+                if (x + y < bbest)
+                {
+                    (bbest, bx) = (x + y, x);
+                }
+            }
+            (int X, int Y) split = xlim + ylim - bbest < fbest - (xoff + yoff) ? (fx, fbest - fx) : (bx, bbest - bx);
+            return split == (xoff, yoff) || split == (xlim, ylim) ? null : split;
         }
     }
 }
