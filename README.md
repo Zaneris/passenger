@@ -1,14 +1,15 @@
 # Passenger
 
-**Debug the whole stack.** The free IDE for C# and .NET: from a console app to a Docker Compose stack or an Aspire
-AppHost, every .NET service under its own debugger, Hot Reload and profiler. Free and open source under MIT, for
-Windows, macOS and Linux ([how to install it there](https://passenger-ide.net/linux)).
+**Debug the whole stack.** The free IDE for C# and .NET: from a console app to a Godot game, a Docker Compose stack or
+an Aspire AppHost, every .NET program under its own debugger, Hot Reload and profiler. Free and open source under MIT,
+for Windows, macOS and Linux ([installing](#installing)).
 
 <p align="center">
   <a href="https://passenger-ide.net">Website</a> •
   <a href="https://passenger-ide.net/#download">Download</a> •
-  <a href="https://github.com/Zaneris/passenger/releases/tag/v0.2.4">What's new in 0.2.4</a> •
+  <a href="docs/release-notes/0.3.0.md">What's new in 0.3.0</a> •
   <a href="#what-it-does">What it does</a> •
+  <a href="#installing">Installing</a> •
   <a href="#your-coding-agent-using-the-ide-as-you-do">Your coding agent</a> •
   <a href="#building">Building</a> •
   <a href="CONTRIBUTING.md">Contributing</a>
@@ -23,6 +24,12 @@ Passenger edits, builds, runs, tests, debugs and profiles C# and modern .NET. Mo
 paid IDE or a paid add-on; in Passenger it is part of the IDE, free and open source under MIT, for work and personal
 projects alike, with no account, no licence key and no telemetry:
 
+- **Godot 4 games, in C# and GDScript.** Run, Debug, Profile and Hot Reload of the game; its C# checked against its
+  scenes, its signals, node paths and every string Godot takes; GDScript and shaders read as Godot reads them, with no
+  Godot running for it; the running game's tree and values beside the code; its GdUnit4, GUT and GoDotTest tests; and
+  an addon that debugs in Passenger the game Godot's own Play starts.
+- **Blazor's WebAssembly, debugged in the browser.** Breakpoints, steps and values in the components that run on
+  .NET's WebAssembly runtime, beside the server's, with Hot Reload keeping the page up.
 - **Debugging and profiling in containers.** A Docker Compose file's services or a Dockerfile's run as one, every .NET
   service built here, held at its start and attached to inside its container, with Hot Reload and the profiler there
   too.
@@ -35,20 +42,48 @@ projects alike, with no account, no licence key and no telemetry:
 - **A debugger of its own, with Hot Reload,** and **performance and memory profiling:** several programs debugged at
   once, the values methods returned, Smart Step Into and decompiled libraries; call trees, flame graphs and heap
   snapshots compared.
-- **XAML tooling for Avalonia and WPF.** Completion and checks, a preview as you type, the running app's Live Visual
-  Tree, failed bindings with fixes, and in Avalonia, binding values and breakpoints in the XAML.
+- **XAML tooling for Avalonia and WPF.** Completion and checks, a preview as you type, XAML Hot Reload into the
+  running app, its Live Visual Tree, failed bindings with fixes, and in Avalonia, binding values and breakpoints in the
+  XAML.
 - **An IDE your agent can drive.** Passenger is an MCP server for Claude Code, Codex, OpenCode and any MCP agent: it
   builds, tests, debugs and profiles through the IDE, and tries out the app it is building.
 - **The rest of a full IDE:** a three-way merge for Git's conflicts, Local History, NuGet with vulnerable versions
   marked, four test frameworks, a terminal of its own, and twelve looks, each dark and light.
 
-Coming from Visual Studio? Visual Studio's keys are the default. On a Mac, where Visual Studio for Mac was retired in
-August 2024, Passenger is a full .NET IDE that runs natively on Apple Silicon.
+Coming from Visual Studio? Visual Studio's keys are the default, and VS Code's and IntelliJ IDEA's are a setting away,
+each as Rider's keymaps have it. On a Mac, where Visual Studio for Mac was retired in August 2024, Passenger is a full
+.NET IDE that runs natively on Apple Silicon.
 
 What comes next is in the [milestones](https://github.com/Zaneris/passenger/milestones), the release in progress among
 them. The pictures here are of sample projects committed to this repository, in your system's light or dark.
 
 ## What it does
+
+### Godot 4
+
+A Godot 4 game in C# gets two run configurations, the game and Godot's editor on it, and Run, Debug, Profile and Run
+with Hot Reload reach the game, on the Godot Settings › Godot names or the one found; a game of GDScript alone runs,
+debugs and profiles the same way, on any Godot 4 build. Debug stops in the game's C# and its GDScript side by side, a
+saved script reloads in the running game, several copies of a game run at once for multiplayer, and on Windows and
+Linux the game can draw in Passenger's own Game window beside its code. New Project makes a game, Publish exports one
+through its export presets, and a project's page shows its version, main scene, autoloads, input map and presets.
+
+The game's C# is read against its scenes: `GetNode<T>` paths and types, `res://` and `uid://` paths, `[Export]`
+values, signals and their handlers, and every string Godot takes (input actions, groups, animations, autoloads,
+shader parameters, translations, theme items) are completed, checked, led to and renamed, an open scene marked where
+Godot would not load what it says, with fixes. A scene's tree is its outline, its nodes' properties edited there, and
+the scenes a script runs in are marked on its class. GDScript is Passenger's own, a parser and analyzer ported from
+Godot's: its types, Godot's warnings in its words, completion, the hover, Find Usages, Rename and its refactorings, and
+Reformat Code by Godot's style guide, with no Godot running for it. Shaders are checked by Passenger's own port of
+Godot's shader compiler, every error and warning at once, and complete their built-ins as the Godot found has them.
+
+While the game runs, the Live Visual Tree shows its scene tree over Godot's own remote debug protocol: each node's
+values tuned with editors fit for them and kept back into the scene with a click, a node picked by clicking in the
+game, the loop paused or stepped a frame, the frame time and the game's own monitors charted, and its scripts' member
+values shown in the code with no breakpoint. Its runtime errors stay pinned to their lines after the run. A profile
+holds GDScript's functions and Godot's frame times beside the C# samples in one call tree. GdUnit4, GUT and GoDotTest
+tests run and debug in the Unit Tests window. Passenger's addon for Godot's editor debugs in Passenger the game Godot's
+own Play starts, and Passenger sets itself up as Godot's script editor in one step.
 
 ### Containers and Docker Compose
 
@@ -80,7 +115,8 @@ An AppHost, a project or a single-file `apphost.cs`, is a run configuration, and
 to start each project resource: Run, Debug, Run with Hot Reload and Profile reach every service, a Debug tab each, and
 Rerun builds and restarts only what changed. The Aspire window has the Containers window's layout: the resources with
 their state, health and addresses, their details with secrets masked, their consoles merged into one log, their
-structured logs and traces, and the AppHost's own log; a resource's commands run from its row. Resource names complete,
+structured logs and traces, its references and waits both ways, its metrics charted, and the AppHost's own log and
+graph; a resource's commands run from its row. Resource names complete,
 a connection string's name in a service goes to the AppHost line that declares it, Rename renames a resource
 everywhere, and a service that reads a connection string its AppHost never gives it is marked with a fix that adds the
 `WithReference`. The containers an AppHost makes are removed with its run, however it ends.
@@ -105,8 +141,14 @@ as `dotnet ef` does, and during a compose run or an AppHost it works on the data
 
 The Endpoints window lists the requests in your `.http` files and each web project's routes, read from its code with no
 build (minimal APIs, controllers, Razor Pages, Blazor, SignalR and gRPC), each sent to the running app from an icon on
-its line. `appsettings.json` and user secrets complete the keys your code reads, and a stopped EF Core query shows the
-SQL it would run.
+its line, and makes requests from the app's OpenAPI document. `appsettings.json` and user secrets complete the keys
+your code reads, and a stopped EF Core query shows the SQL it would run.
+
+A Blazor app's WebAssembly components debug in the browser as its server's code does: breakpoints, steps, the stop's
+frames and values, in Chrome, Edge or another Chromium, through .NET's own browser debug proxy, under Aspire and in
+containers too. Debug with Hot Reload applies a component's edit at once and keeps the page up through the SDK's own
+browser refresh, a stylesheet with no reload. A class attribute completes from every stylesheet the page uses, and a
+Razor tag closes as it is typed.
 
 ### Avalonia and WPF
 
@@ -114,7 +156,9 @@ SQL it would run.
 completion of controls, properties, values, resources, selectors and binding paths checked against `x:DataType`, the
 XAML compiler's errors on their lines, Go to Declaration into C#, rename of `x:Name`, Reformat Code, Extract Resource
 and Extract Style, and a missing property, command or converter made from where it is used. XAML Preview draws the
-file beside it, following each edit.
+file beside it, following each edit, and the XAML workspace sets the file, its preview and the running app's tree
+side by side with one selection across them. A XAML file saved reaches the running Avalonia or WPF app with XAML Hot
+Reload, and a C# member's rename renames the XAML bound to it.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="site/images/xaml-light.webp">
@@ -241,7 +285,8 @@ schema, ESLint's problems and fixes as you type, and the project's own Prettier 
 
 The Commit window with its changes, the log with its branch graph and branches, side-by-side diffs with the changed
 words marked, blame, change bars in the gutter that roll a change back, the history of a file, a folder or a
-selection, stashes, push, pull and fetch, and conflicts resolved in a three-way merge.
+selection, stashes, push, pull and fetch, conflicts resolved in a three-way merge, and commits signed with SSH, GPG or
+X.509, each signature shown in the log.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="site/images/git-light.webp">
@@ -263,16 +308,44 @@ Locations, bookmarks and File Structure.
 
 - **Build, run and publish:** a Solution view of the projects as MSBuild evaluates them, builds with their errors in
   Problems, run configurations from your launch profiles (edited in place, and written back to them), consoles whose
-  stack frames link to their lines, and Publish to a folder with the SDK's own publish profiles.
-- **Unit tests:** xUnit, NUnit, MSTest and TUnit, through VSTest or Microsoft.Testing.Platform, found from the code
-  before any build, with run marks in the gutter, grouping and filters, and any test debugged.
+  stack frames link to their lines, a project run's logs and traces beside its console, and Publish to a folder, to a
+  container image with several tags and platforms, or of an Aspire AppHost through its own publishers.
+- **Unit tests:** xUnit, NUnit, MSTest and TUnit, through VSTest or Microsoft.Testing.Platform, and a Godot game's
+  GdUnit4, GUT and GoDotTest tests, found from the code before any build, with run marks in the gutter, grouping and
+  filters, any test debugged, and each test's last results kept across restarts.
 - **NuGet:** the feeds your `nuget.config` names, packages installed, updated and removed per project, central package
   management, and vulnerable versions marked with the lowest that fixes them.
 - **Terminal:** an emulator of its own with a shell per tab; a console program can run and be debugged in it.
 - **Tables and previews:** CSV, TSV and Excel workbooks open as tables Find searches, and images and fonts as
   previews.
 - **Local History**, tool windows docked or floating, a window per solution, New Solution from `dotnet new`'s
-  templates, and updates that install themselves on Windows and macOS, then show what's new.
+  templates, and updates that install themselves on Windows, macOS and Linux, then show what's new.
+
+## Installing
+
+[passenger-ide.net](https://passenger-ide.net/#download) has each system's download:
+
+- **macOS:** a disk image for Macs with Apple Silicon. Drag Passenger onto Applications.
+- **Windows:** an installer for x64 or Arm64, which installs for you alone, with no administrator.
+- **Linux:** an archive for x64 or Arm64. Unpack it and run its `install.sh`, for you alone or with `--system` for
+  everyone; the command is `passenger-ide`, so it never meets Phusion Passenger's `passenger`. Its
+  [Linux page](https://passenger-ide.net/linux) names the libraries it needs, and `install.sh` names your
+  distribution's font package where it finds no font.
+
+A copy the installer, the disk image or `install.sh` put in place updates itself, then shows what's new. Passenger
+needs:
+
+- **a .NET SDK** for the projects you open (.NET 8 or later), which it builds and runs them with. Without one,
+  Passenger says what is missing and installs one in a step, once you agree; its own language server, project host and
+  debugger run on the .NET it carries, whatever the machine has;
+- **Git**, for version control;
+- **Node.js**, for JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles and YAML; C#, XAML, GDScript and shaders do
+  without it;
+- for Godot games, **Godot 4** (its .NET build for C#), found from `GODOT`, the PATH or your applications, or named in
+  Settings › Godot; Passenger is tested on Godot 4.7 and 4.8;
+- for Blazor's WebAssembly debugging, **Chrome, Edge or another Chromium browser**;
+- for containers, **a container engine running Linux containers** (Docker Desktop, Colima, OrbStack, Rancher Desktop,
+  Podman or a remote engine).
 
 ## Your coding agent, using the IDE as you do
 
@@ -287,9 +360,9 @@ does, in C#, Razor, XAML, the web languages and project files alike. It builds, 
 reads and changes variables, applies Hot Reload and profiles a run. It starts, debugs, profiles and stops a compose
 service or an Aspire resource and reads its logs and traces, reads a web app's routes and its live requests with their
 SQL, and runs the EF Core migrations with their fixes. It searches and replaces across files, commits, resolves
-conflicts, adds packages, types into the terminal and looks at the window. When the program is an Avalonia app,
-or a WPF app on Windows, it sees and drives the app as a person testing it would, without taking your focus or your
-pointer.
+conflicts, adds packages, types into the terminal and looks at the window. When the program is an Avalonia app, a Godot
+game, or a WPF app on Windows, it sees and drives the app as a person testing it would, without taking your focus or
+your pointer, and through Passenger's addon it opens, reads and changes scenes in your Godot editor.
 
 There are two ways in, each a flag on Passenger's own executable:
 
@@ -399,8 +472,8 @@ November 2026) and [just](https://github.com/casey/just). The tests need more:
 
 **Python 3** runs the recipes that write or check generated files (`just icons`, `just file-icons`, `just themes`,
 `just unicode-widths`, `just notices`, `just test-times`) and some of the macOS ones (`just app-icon`,
-`just package-mac`, `just site-shots`). To use what you build, Passenger needs what a release needs: a .NET SDK 10 or
-later, Git, and Node.js for the web languages.
+`just package-mac`, `just site-shots`). To use what you build, Passenger needs what a release needs
+([installing](#installing)).
 
 ```sh
 just build                 # Debug build; warnings are errors
