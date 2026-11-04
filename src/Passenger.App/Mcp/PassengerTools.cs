@@ -1271,7 +1271,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 || serving.Serves(), TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), cancel);
         }
         int? code = ended.IsCompletedSuccessfully ? ended.Result : null;
-        string output = RunOutput(200);
+        string output = AppHostOutput(200) ?? RunOutput(200);
         string status = code is int exit ? BuildRunController.RunEnded(name, exit)
             : app is { State: LiveTree.LiveAppState.Connected } ? $"Running {name}, its UI up: app_windows, app_screenshot and app_click look at it and use it"
             : game is { State: LiveTree.LiveAppState.Connected, Monitors: not null } ? $"Running {name}, {GameUp}"
@@ -1327,14 +1327,25 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             service.Console.Flush();
             return Tail(service.Console.Document.Snapshot, lines);
         }
-        if (Session.Configurations.Chosen is { } configuration && Session.Aspire.IsAspire(configuration)
-            && (Session.Aspire.FindApp(configuration.Project)?.Console ?? Session.Aspire.LastAppConsole) is { } console)
+        if (AppHostOutput(lines) is { } appHost)
         {
-            console.Flush();
-            return Tail(console.Document.Snapshot, lines);
+            return appHost;
         }
         return Builds.Containers is { } running ? $"{await ServicesAsync(running, cancel)}\n{RunOutput(lines)}" : RunHeaded(lines);
     });
+
+    /// <summary>The last lines of the console of the AppHost the chosen configuration runs (or ran last), which Run's own
+    /// console never holds; null where the configuration is no AppHost's.</summary>
+    private string? AppHostOutput(int lines)
+    {
+        if (Session.Configurations.Chosen is not { } configuration || !Session.Aspire.IsAspire(configuration)
+            || (Session.Aspire.FindApp(configuration.Project)?.Console ?? Session.Aspire.LastAppConsole) is not { } console)
+        {
+            return null;
+        }
+        console.Flush();
+        return Tail(console.Document.Snapshot, lines);
+    }
 
     /// <summary>output's run: the console's last lines under a line naming the program Run last started and how it stands,
     /// and any program debugged meanwhile, whose console is output's debug.</summary>

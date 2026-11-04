@@ -16,6 +16,26 @@ namespace Passenger.Tests;
 [Collection(Beside.Name)]
 public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, IClassFixture<StandInAppHost>
 {
+    /// <summary>An agent's run of an AppHost answers with the AppHost's own console, which begins with the command that
+    /// started it, never Run's console, which holds whatever Run ran before it.</summary>
+    [Fact]
+    public async Task An_agents_run_of_an_AppHost_answers_with_the_AppHosts_own_console()
+    {
+        await project.ResetAsync();
+        await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
+        resources.PushResource(new Passenger.App.Aspire.Protocol.Resource { Name = "api-owned-instance", DisplayName = "api", Uid = "api", ResourceType = "Project", State = "Running" });
+        await using AspireDashboardHost dashboard = await AspireDashboardHost.StartAsync();
+        await project.ServeAsync(resources, dashboard.Endpoint);
+        await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
+        Assert.True(await Waiting.UntilAsync(async () => (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray()
+            .Any(item => item.GetString() == StandInAppHost.Configuration), TimeSpan.FromMinutes(2), Cancel),
+            $"The stand-in AppHost's Aspire configuration was not found.{Said()}");
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = StandInAppHost.Configuration });
+        string output = ran.GetProperty("output").GetString()!;
+        Assert.True(output.Contains($"{StandInAppHost.Name}.dll", StringComparison.Ordinal),
+            $"An agent's run of the AppHost answered with a console that is not the AppHost's, so it reads nothing of its start: {ran}");
+    }
+
     [Fact]
     public async Task An_agents_telemetry_is_the_dashboards_own_answer_with_its_credentials_hidden_and_never_another_resources()
     {
