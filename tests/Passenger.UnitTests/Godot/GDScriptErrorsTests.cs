@@ -11,7 +11,8 @@ namespace Passenger.UnitTests.Godot;
 /// none of and a call given too few or too many arguments, an operator, cast or type test given types it refuses, a static
 /// place reaching the instance, an index, loop or typed collection Godot refuses, a member's name taken, an override's
 /// signature, an export, a file the project lacks preloaded or extended, a class named as a singleton autoload, an untyped
-/// override's returns, what must be constant; and none of them where the class extends one this reading cannot read.</summary>
+/// override's returns, what must be constant, a member reaching itself, an instance's member read from its class, Godot
+/// 4.8's words where they differ; and none of them where the class extends one this reading cannot read.</summary>
 public class GDScriptErrorsTests
 {
     private const string Api = """
@@ -294,6 +295,43 @@ public class GDScriptErrorsTests
             "46: The rest parameter type must be \"Array\", but \"int\" is specified.",
             "50: Typed arrays are currently not supported for the rest parameter.",
         ], Errors(Script));
+    }
+
+    /// <summary>Members whose values reach themselves as Godot resolves them (an enum's, a constant's, a variable's, a
+    /// parameter's default, a lambda's, an override's), an enum's value naming its own not yet given, and an instance's
+    /// member read from its class held constant, none from a script a variable holds.</summary>
+    [Fact]
+    public void A_member_reaching_itself_and_an_instances_member_read_from_its_class_are_errors_in_godots_words_on_their_lines()
+    {
+        const string Script = "class_name Reader\nextends Node\n\nenum NamedEnum0 { VALUE = NamedEnum0.VALUE }\nenum { ENUM_VALUE_0 = ENUM_VALUE_0 }\n"
+            + "enum { ENUM_VALUE_1 = ENUM_VALUE_2 }\nenum { ENUM_VALUE_2 = ENUM_VALUE_1 }\nconst CONST_0 = CONST_0\nvar var_1 := var_2\nvar var_2 := var_1\n"
+            + "const Other = preload(\"res://other.gd\")\nvar health := 1\nvar held := preload(\"res://other.gd\")\n"
+            + "var lambda_param = func (_p = lambda_param_ref): return 0\nvar lambda_param_ref = lambda_param\n\n\n"
+            + "static func func_0(p := func_0()) -> int:\n\treturn p\n\n\nfunc _ready() -> void:\n"
+            + "\tprint(Reader.health, Inner.x, Inner.y, Other.value, Other.made, held.value, held.nope)\n\n\n"
+            + "class Inner:\n\tvar x := 1\n\tstatic var y := 2\n\n\nclass InnerA:\n\tfunc f(p := InnerB.new().f()) -> int:\n\t\treturn p\n\n\n"
+            + "class InnerB extends InnerA:\n\tfunc f(p := 1) -> int:\n\t\treturn super.f() + p\n";
+        GDScriptTree other = GDScriptTree.Parse("extends RefCounted\n\nvar value := 1\nstatic var made := 2\n");
+        Assert.Equal(
+        [
+            "4: Could not resolve member \"NamedEnum0\": Cyclic reference.",
+            "4: Enum values must be constant.",
+            "5: Enum values must be constant.",
+            "5: Cannot use another enum element before it was declared.",
+            "7: Could not resolve member \"ENUM_VALUE_1\": Cyclic reference.",
+            "8: Could not resolve type for constant \"CONST_0\".",
+            "8: Could not resolve member \"CONST_0\": Cyclic reference.",
+            "10: Cannot infer the type of \"var_2\" variable because the value doesn't have a set type.",
+            "10: Could not resolve member \"var_1\": Cyclic reference.",
+            "15: Could not resolve member \"lambda_param\": Cyclic reference.",
+            "15: Could not resolve type for variable \"lambda_param_ref\".",
+            "18: Could not resolve member \"func_0\": Cyclic reference.",
+            "18: Cannot infer the type of \"p\" parameter because the value doesn't have a set type.",
+            "23: Cannot find member \"health\" in base \"Reader\".",
+            "23: Cannot find member \"x\" in base \"Inner\".",
+            "23: Cannot find member \"value\" in base \"res://other.gd\".",
+            "37: Could not resolve member \"f\": Cyclic reference.",
+        ], Errors(Script, p => p == "res://other.gd" ? other : null));
     }
 
     /// <summary>What must be constant and is not (a constant's value, an annotation's argument, an enum's value, a match

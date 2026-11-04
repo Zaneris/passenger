@@ -453,11 +453,12 @@ nodes, parse rules and error messages, kept as Godot words them. `GDScriptAnalyz
 `GDScriptAnalysis` and `GodotEngineApi`) ports the typing of `modules/gdscript/gdscript_analyzer.cpp` and
 `gdscript_analyzer.h` at the same commit (its data types, how a declaration, an override's return and each expression
 are typed), with the return types of `gdscript_utility_functions.cpp`'s functions and the symbols' wording of
-`language_server/gdscript_extend_parser.cpp`; its warnings and errors (`GDScriptAnalyzer.Warnings.cs`, `.Operations.cs`,
-`.Statics.cs`, `.Containers.cs` and `.Declarations.cs`, `GDScriptWarnings.cs` and `GDScriptAnalysis`'s filtering by a
-project's settings and `@warning_ignore`) port where `gdscript_analyzer.cpp` and `gdscript_parser.cpp` (its export
-annotations among them) push them, the same at 4.7.2-stable, with `gdscript_warning.cpp` and `gdscript_warning.h`'s names,
-default levels and words.
+`language_server/gdscript_extend_parser.cpp`; its warnings and errors (`GDScriptAnalyzer.Warnings.cs`, `.Expressions.cs`,
+`.Operations.cs`, `.Statics.cs`, `.Containers.cs`, `.Declarations.cs`, `.Names.cs`, `.Constants.cs` and `.Cycles.cs`,
+`GDScriptWarnings.cs` and `GDScriptAnalysis`'s filtering by a project's settings and `@warning_ignore`) port where
+`gdscript_analyzer.cpp` and `gdscript_parser.cpp` (its export annotations among them) push them, the same at
+4.7.2-stable but where its words differ, which an API of 4.7's is given, with `gdscript_warning.cpp` and
+`gdscript_warning.h`'s names, default levels and words.
 `GDScript/GodotRenames.json` is the table of the Godot 3 names Godot 4 renamed that the analyzer's errors hint at (its
 `renamed_in_godot_4_hint`), written by `just godot-renames` (`tools/godot-renames.py`) from
 `editor/project_upgrade/renames_map_3_to_4.cpp` at the same commit: the maps `check_for_renamed_identifier` reads.

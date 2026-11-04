@@ -562,7 +562,7 @@ public sealed partial class GDScriptAnalyzer
             return new GDScriptType(GDScriptTypeKind.Enum, variantEnum.Name) { Values = variantEnum.Values, Meta = true };
         }
         GDScriptType found = Attribute(owner, name, context);
-        if (context.Analysis.Tree is not null && Engine is not null && Missing(owner, name, found, pseudo, context) is not null
+        if (context.Analysis.Tree is not null && Engine is not null && Missing(owner, attribute.Base, name, found, pseudo, context) is not null
             && found is { Kind: GDScriptTypeKind.Enum, Meta: true, Script: null, Owner: { } engine })
         {
             // An engine's enum on its own is no type Godot goes on with: a Variant standing for the enum's native class.
@@ -571,9 +571,9 @@ public sealed partial class GDScriptAnalyzer
         return found;
     }
 
-    /// <summary>Godot's errors of an attribute's member that is not there (reduce_identifier_from_base, reduce_subscript):
-    /// what it said, or null for none.</summary>
-    private string? Missing(GDScriptType owner, GDScriptIdentifier name, GDScriptType found, bool pseudo, Context context)
+    /// <summary>Godot's errors of an attribute's member that is not there (reduce_identifier_from_base, reduce_subscript),
+    /// a class's own instance member read from the class held constant among them: what it said, or null for none.</summary>
+    private string? Missing(GDScriptType owner, GDScriptExpression? taken, GDScriptIdentifier name, GDScriptType found, bool pseudo, Context context)
     {
         string? said = owner switch
         {
@@ -584,7 +584,8 @@ public sealed partial class GDScriptAnalyzer
                 && !builtin.Constants.ContainsKey(name.Name) && !builtin.Enums.ContainsKey(name.Name) && !builtin.Enums.Values.Any(e => e.Values.ContainsKey(name.Name)) => NotIn(owner),
             { Kind: GDScriptTypeKind.Builtin, Meta: false, Hard: true, Name: not ("Dictionary" or "Nil") } when Engine!.Builtins.GetValueOrDefault(owner.Name) is { } builtin
                 && !builtin.Properties.ContainsKey(name.Name) && !builtin.Methods.ContainsKey(name.Name) => NotIn(owner),
-            { Kind: GDScriptTypeKind.Native or GDScriptTypeKind.Class, Meta: true } when name.Name != "new" && Member(owner.Instance, name.Name) is null && Knows(owner) => NotIn(owner),
+            { Kind: GDScriptTypeKind.Native or GDScriptTypeKind.Class, Meta: true } when name.Name != "new" && Knows(owner) && HeldConstant(taken, context)
+                && (Member(owner.Instance, name.Name) is null || InstanceOnly(owner, name.Name)) => NotIn(owner),
             _ => null,
         };
         if (said is null && !pseudo && found is { Kind: GDScriptTypeKind.Enum, Meta: true, Script: null, Owner: { } engine })
@@ -598,6 +599,34 @@ public sealed partial class GDScriptAnalyzer
         return said;
 
         string NotIn(GDScriptType of) => $"Cannot find member \"{name.Name}\" in base \"{of.Instance}\".";
+    }
+
+    /// <summary>Whether Godot holds what an attribute is taken of constant, as a class read through it must be for its
+    /// members to be looked up: a constant, a class or engine class by its name, a preload, or a class held so of one.</summary>
+    private bool HeldConstant(GDScriptExpression? taken, Context context) => taken switch
+    {
+        GDScriptPreload => true,
+        GDScriptIdentifier name when context.Scope?.Find(name.Name) is { } local => local.Local?.Kind == LocalKind.Constant,
+        GDScriptIdentifier name => Member(context.Class, name.Name) is { } member ? member.Kind is "const" or "class"
+            : GlobalOrScopedType(name.Name, context.Class) is { Kind: GDScriptTypeKind.Class or GDScriptTypeKind.Native, Meta: true },
+        GDScriptSubscript { IsAttribute: true, Base: { } outer, Attribute: { } inner } => HeldConstant(outer, context)
+            && context.Analysis.Types.GetValueOrDefault(outer) is { Meta: true } holder && Member(holder.Instance, inner.Name) is { Kind: "const" or "class" },
+        _ => false,
+    };
+
+    /// <summary>Whether a script class's member of a name, the first its classes declare, is one only an instance has: a
+    /// variable or function that is not static, or a signal; Godot finds none of them on the class itself.</summary>
+    private bool InstanceOnly(GDScriptType owner, string name)
+    {
+        GDScriptType? at = owner.Instance;
+        for (int depth = 0; at is { Kind: GDScriptTypeKind.Class } && depth < 64; depth++, at = BaseOf(at))
+        {
+            if (OwnNames(at).TryGetValue(name, out (GDScriptNode Node, int Offset) owned))
+            {
+                return owned.Node is GDScriptVariable { IsStatic: false } or GDScriptSignal or GDScriptFunction { IsStatic: false };
+            }
+        }
+        return false;
     }
 
     /// <summary>The text a preload's path is as Godot folds it: a string written, or a constant's name, of the function or

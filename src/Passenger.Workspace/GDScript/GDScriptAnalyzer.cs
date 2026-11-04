@@ -50,6 +50,10 @@ public sealed partial class GDScriptAnalyzer
         {
             analysis.Found.Add(new GDScriptFinding(0, 0, "EMPTY_FILE", Message("EMPTY_FILE", [])));
         }
+        if (tree.Errors.Count == 0)
+        {
+            CycleErrors(tree, path, self, analysis);
+        }
         ConfusableWarnings(tree, analysis, self);
         if (!InheritanceErrors(tree, path, self, analysis))
         {

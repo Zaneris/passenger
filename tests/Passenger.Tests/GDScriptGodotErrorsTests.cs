@@ -11,10 +11,10 @@ namespace Passenger.Tests;
 
 /// <summary>Passenger's own reading of a GDScript gives the errors Godot's own server gives on the same scripts, in the same
 /// words on the same lines: a corpus of scripts, a family of Godot's analyzer's errors each (names not found, mismatched
-/// types and calls, operators, casts and type tests, static misuse and collections, declarations, files lacked), opened in a window whose
-/// Godot's server serves them, each script's errors from Godot's diagnostics and from Passenger's marks set beside each
-/// other (an error Godot pushes twice at one place counted once). Without a Godot each test skips saying why; a Godot editor
-/// of its own, so run alone.</summary>
+/// types and calls, operators, casts and type tests, static misuse and collections, declarations, files lacked, members
+/// reaching themselves), opened in a window whose Godot's server serves them, each script's errors from Godot's
+/// diagnostics and from Passenger's marks set beside each other (an error Godot pushes twice at one place counted once).
+/// Without a Godot each test skips saying why; a Godot editor of its own, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GDScriptGodotErrorsTests
 {
@@ -134,6 +134,21 @@ public sealed class GDScriptGodotErrorsTests
         ("sub/thing.gd", "extends Resource\n"),
     ];
 
+    /// <summary>Members whose values reach themselves as Godot resolves them (enums', constants', variables', a parameter's
+    /// default, a lambda's, an override's), what := then infers from, and an instance's members read from their classes
+    /// held constant, none from a script a variable holds.</summary>
+    internal const string Cycles = "class_name Reader\nextends Node\n\nenum NamedEnum0 { VALUE = NamedEnum0.VALUE }\nenum { ENUM_VALUE_0 = ENUM_VALUE_0 }\n"
+        + "enum { ENUM_VALUE_1 = ENUM_VALUE_2 }\nenum { ENUM_VALUE_2 = ENUM_VALUE_1 }\nconst CONST_0 = CONST_0\nvar var_1 := var_2\nvar var_2 := var_1\n"
+        + "const Other = preload(\"res://cycles_other.gd\")\nvar health := 1\nvar held := preload(\"res://cycles_other.gd\")\n"
+        + "var lambda_param = func (_p = lambda_param_ref): return 0\nvar lambda_param_ref = lambda_param\n\n\n"
+        + "static func func_0(p := func_0()) -> int:\n\treturn p\n\n\nfunc _ready() -> void:\n"
+        + "\tprint(Reader.health, Inner.x, Inner.y, Other.value, Other.made, held.value, held.nope)\n\n\n"
+        + "class Inner:\n\tvar x := 1\n\tstatic var y := 2\n\n\nclass InnerA:\n\tfunc f(p := InnerB.new().f()) -> int:\n\t\treturn p\n\n\n"
+        + "class InnerB extends InnerA:\n\tfunc f(p := 1) -> int:\n\t\treturn super.f() + p\n";
+
+    /// <summary>The script <see cref="Cycles"/> preloads, in which Godot finds no error.</summary>
+    internal const string CyclesOther = "extends RefCounted\n\nvar value := 1\nstatic var made := 2\n";
+
     private readonly string folder;
     private readonly GodotFound? godot = GodotExecutables.Find(null);
 
@@ -158,6 +173,10 @@ public sealed class GDScriptGodotErrorsTests
 
     [AvaloniaFact]
     public void Declarations_godot_refuses_are_its_errors_in_its_words() => Compared([("base.gd", Base)], ("decls.gd", Declarations));
+
+    [AvaloniaFact]
+    public void Members_reaching_themselves_and_an_instances_members_read_from_its_class_are_its_errors_in_its_words() =>
+        Compared([("cycles_other.gd", CyclesOther)], ("cycles.gd", Cycles));
 
     [AvaloniaFact]
     public void Files_the_project_lacks_and_names_its_singletons_have_are_its_errors_in_its_words()
