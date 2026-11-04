@@ -50,7 +50,8 @@ public sealed class GDScriptAnalysis
     /// <summary>What a name refers to, where it was resolved.</summary>
     public GDScriptDeclaration? DeclarationOf(GDScriptIdentifier name) => Declared.GetValueOrDefault(name);
 
-    /// <summary>The innermost node at an offset of the text, with the offset its positions count from; null outside every member.</summary>
+    /// <summary>The innermost node at an offset of the text, with the offset its positions count from (the script's
+    /// class_name and base names among them); null outside every member.</summary>
     public (GDScriptNode Node, int Offset)? NodeAt(int offset)
     {
         if (Tree is null)
@@ -77,6 +78,14 @@ public sealed class GDScriptAnalysis
                     }
                 }
                 return (at, member.Offset);
+            }
+        }
+        // The script's own class_name and base, written before any member.
+        foreach (GDScriptIdentifier name in Tree.Class.Extends.Prepend(Tree.Class.Identifier).OfType<GDScriptIdentifier>())
+        {
+            if (offset >= name.Start && offset <= name.End)
+            {
+                return (name, 0);
             }
         }
         return null;

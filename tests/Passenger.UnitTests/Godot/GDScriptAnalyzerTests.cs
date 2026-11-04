@@ -174,6 +174,21 @@ public class GDScriptAnalyzerTests
     }
 
     [Fact]
+    public void A_scripts_own_class_name_and_its_base_by_name_are_declared_where_their_classes_are()
+    {
+        string text = "class_name Hero\nextends Base\n\n\nfunc f() -> void:\n\tpass\n";
+        const string Base = "class_name Base\nextends Node\n";
+        (GDScriptAnalysis analysis, _) = Analyze(text, new Dictionary<string, string> { ["res://base.gd"] = Base });
+        int hero = text.IndexOf("Hero", StringComparison.Ordinal);
+        Assert.True(DeclaredAt(hero) is (var at, "res://main.gd") && at == hero, "Hero, the script's own class_name, is not declared where it stands");
+        Assert.True(DeclaredAt(text.IndexOf("Base", StringComparison.Ordinal)) is (var based, "res://base.gd") && based == Base.IndexOf("Base", StringComparison.Ordinal),
+            "The script's base by name, Base, is not declared at base.gd's class_name");
+
+        (int, string?)? DeclaredAt(int offset) => analysis.NodeAt(offset + 1) is ({ } node, _) && node is GDScriptIdentifier name && analysis.DeclarationOf(name) is { } declared
+            ? (declared.Start, declared.Script) : null;
+    }
+
+    [Fact]
     public void An_enums_value_read_off_its_enum_is_declared_where_the_enum_gives_it()
     {
         string text = "extends Node\n\nenum Mood { CALM, ANGRY }\n\n\nfunc f() -> int:\n\treturn Mood.ANGRY + Inner.Kind.TWO\n\n\nclass Inner:\n\tenum Kind { ONE, TWO }\n";
