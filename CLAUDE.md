@@ -453,19 +453,20 @@ Projects in `src/`; `find_symbol` finds the rest:
   no script has been open a while (`WebLanguages.GDScriptIdleVariable`): `GodotScripts`, `ServerStart.Port`,
   `NodeServer.Elsewhere`; every per-kind switch names each kind; an open GDScript kept parsed and typed by
   `GodotScriptTypes`, reparsed off the UI thread through `GDScriptTextChange`, its hints set only where they changed,
-  and `GDScriptAssist` answering before Godot's server serves; a test holds that server's start, as a Node.js server's,
-  with `WebLanguages.HoldNextConfigure`), `JsonSchemas` (downloads only while Settings allows); in a macOS bundle the
-  servers live under `Contents/Resources/web`. TypeScript runs one tsserver (`useSyntaxServer` never): a syntax server
-  answers rename and usages from the open files alone. typescript-language-server keeps a file's first
-  `formattingOptions` answer while it runs, so each open file tells tsserver how it indents itself (`WebDocument`'s
-  `configure`). A page's stylesheets' classes have one finder, `PageStylesheets` (links as the app serves them,
-  packages' `_content` from project.assets.json or their own base path (`RestoredVersions.All`), a referenced project's
-  from its evaluation (`PageStylesheets.ReferencedAsset`), a `<base href>`'s path, `<style>` blocks
-  (`PageLinks.StyleText`), a parent's `::deep` rules in the components it renders, one on the web through
-  `RemoteStylesheets` only while Settings allows, its copy read-only), answered by `CssClassAssist` before the web
-  languages. Razor forwards `_vs_onAutoInsert` to the client's HTML only for `=`: a Razor file's `>` is Razor's own
-  answer (one that comes after more typing written after it, through an anchor on the asked place), its `</` closed over
-  Razor's HTML (`LspDocument.RazorHtmlAsync`).
+  and `GDScriptAssist` answering first, Godot's server asked only for what it lacks (its cards' engine words
+  `GodotClassReference`, from `--dump-extension-api-with-docs`, as `--doctool` writes no descriptions; its outline
+  `GDScriptOutline`); a test holds that server's start, as a Node.js server's, with `WebLanguages.HoldNextConfigure`),
+  `JsonSchemas` (downloads only while Settings allows); in a macOS bundle the servers live under
+  `Contents/Resources/web`. TypeScript runs one tsserver (`useSyntaxServer` never): a syntax server answers rename and
+  usages from the open files alone. typescript-language-server keeps a file's first `formattingOptions` answer while it
+  runs, so each open file tells tsserver how it indents itself (`WebDocument`'s `configure`). A page's stylesheets'
+  classes have one finder, `PageStylesheets` (links as the app serves them, packages' `_content` from
+  project.assets.json or their own base path (`RestoredVersions.All`), a referenced project's from its evaluation
+  (`PageStylesheets.ReferencedAsset`), a `<base href>`'s path, `<style>` blocks (`PageLinks.StyleText`), a parent's
+  `::deep` rules in the components it renders, one on the web through `RemoteStylesheets` only while Settings allows,
+  its copy read-only), answered by `CssClassAssist` before the web languages. Razor forwards `_vs_onAutoInsert` to the
+  client's HTML only for `=`: a Razor file's `>` is Razor's own answer (one that comes after more typing written after
+  it, through an anchor on the asked place), its `</` closed over Razor's HTML (`LspDocument.RazorHtmlAsync`).
 - **Build and run.** A folder with no usable .NET SDK is `ProjectModels.MissingSdk`, said through `Refusals.NoSdk` and
   the window's banner (`DotnetWant`, `MainWindow.Dotnet`), an SDK a global.json chose that can't build a project through
   `DotnetWant.ChosenBy` and `Builders` (`ProjectModels.SdkAsked`, `GlobalJsonSdk`), its NETSDK1045 placed at global.json
