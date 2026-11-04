@@ -606,10 +606,10 @@ Projects in `src/`; `find_symbol` finds the rest:
   it writes above the new folder part of its command, `FilesAbove`; a new service's container or Aspire set-up after
   Create through Add's own actions, `MainWindow.ServiceSetup`), `Updates` (only an installed copy updates itself; on
   Linux `LinuxUpdater` swaps one person's install with the release unpacked beside it, checked against `ReleaseSums`
-  (`UpdateFolders`, renameat2's exchange), refreshing its entry through the new install.sh, an install for everyone
-  through its installed `install.sh --from` as root by pkexec or a command given, a package's copy
-  (`app/package-manager`, or the package database's answer) left to its package manager; What's New from
-  `docs/release-notes/X.Y.Z.md`).
+  (`UpdateFolders`, renameat2's exchange), refreshing its entry through the new install.sh, its command `passenger-ide`,
+  an install for everyone through its installed `install.sh --from --keep-replaced` (the old release kept in the
+  update's folder until the new start) as root by pkexec or a command given, a package's copy (`app/package-manager`, or
+  the package database's answer) left to its package manager; What's New from `docs/release-notes/X.Y.Z.md`).
 - **MCP.** `PassengerTools` (every tool, run on the UI thread, answering with what its operation returned; an agent's
   calls keep their last few files open, `KeptFiles`, `FilesKept`, let go when it leaves, `AgentConnection.WhenLeft`, a
   document's last pull answering while `LanguageServer.Changes` and its text stand, `LspDocument.LastDiagnosticsAsync`),
