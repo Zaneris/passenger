@@ -325,6 +325,11 @@ internal abstract class Driving<T, TTop> where T : class where TTop : class, T
     /// <summary>The scroll viewer at or around an element, if any.</summary>
     protected abstract T? ScrollerAround(T element);
 
+    /// <summary>Scrolls an element into view inside a scroller a person scrolls without being asked to, an open drop-down's
+    /// list, whose length the screen it opens on decides, laid out and hit as it now stands; whether it did. None by
+    /// default, as where hit testing reads the scene last drawn (Avalonia's) the element would be hit where it was.</summary>
+    protected virtual bool Revealed(T element, T scroller) => false;
+
     /// <summary>What a person's pointer at a point in a top level would be over.</summary>
     protected abstract T? Hit(TTop top, double x, double y);
 
@@ -341,8 +346,11 @@ internal abstract class Driving<T, TTop> where T : class where TTop : class, T
 
     /// <summary>Where the pointer acts: the point asked for in the window, or an element's centre (of the part of it its
     /// window and clipping ancestors show), or a point in the element from its top left. An element hidden, disabled, out
-    /// of view or covered by another is refused, saying which, rather than acting on whatever is there.</summary>
-    protected (double X, double Y) At(TTop top, T? element, InputAction action, string doing)
+    /// of view or covered by another is refused, saying which, rather than acting on whatever is there; one scrolled out of
+    /// an open drop-down's list is scrolled into it first (<see cref="Revealed"/>), as a person would.</summary>
+    protected (double X, double Y) At(TTop top, T? element, InputAction action, string doing) => At(top, element, action, doing, revealed: false);
+
+    private (double X, double Y) At(TTop top, T? element, InputAction action, string doing, bool revealed)
     {
         Box window = Client(top);
         if (element is null)
@@ -378,7 +386,12 @@ internal abstract class Driving<T, TTop> where T : class where TTop : class, T
         }
         if (seen is null)
         {
-            throw new Refusal(clipper is not null && ScrollerAround(clipper) is { } scroller
+            T? scroller = clipper is null ? null : ScrollerAround(clipper);
+            if (scroller is not null && !revealed && Revealed(element, scroller))
+            {
+                return At(top, element, action, doing, revealed: true);
+            }
+            throw new Refusal(scroller is not null
                 ? $"{name} is scrolled out of view inside {Called(scroller)}: scroll it to bring it into view"
                 : $"{name} is out of view ({Words.Box(box)} in a window {Words.Box(window)})");
         }

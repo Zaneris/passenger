@@ -617,6 +617,19 @@ internal sealed class Driver(Inspector inspector) : Driving<DependencyObject, Vi
 
     protected override DependencyObject? ScrollerAround(DependencyObject element) => Up<ScrollViewer>(element);
 
+    /// <summary>An item of an open ComboBox's drop-down, which WPF makes only as tall as the screen it opens on has room for.</summary>
+    protected override bool Revealed(DependencyObject element, DependencyObject scroller)
+    {
+        if (Up<ComboBoxItem>(element) is not { } item || ItemsControl.ItemsControlFromItemContainer(item) is not ComboBox { IsDropDownOpen: true }
+            || scroller is not ScrollViewer viewer || !Shown.IsWithin(item, viewer))
+        {
+            return false;
+        }
+        item.BringIntoView();
+        viewer.UpdateLayout();
+        return true;
+    }
+
     /// <summary>What a person's pointer at a point would be over: the input element WPF's own hit test finds there (a
     /// hyperlink in a text block included).</summary>
     protected override DependencyObject? Hit(Visual top, double x, double y) =>
