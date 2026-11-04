@@ -451,7 +451,7 @@ public partial class ExplorerView : UserControl
             found = await BackgroundWork.Run(() =>
             {
                 ExplorerFilter.Matches named = ExplorerFilter.Of(files, text);
-                return named with { Files = [.. named.Files.Select(f => Path.Combine(root, f))] };
+                return named with { Files = [.. named.Files.Select(f => PathNames.Canonical(Path.Combine(root, f)))] };
             });
         }
         if (ask != asked)

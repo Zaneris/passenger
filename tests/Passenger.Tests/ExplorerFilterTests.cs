@@ -127,6 +127,39 @@ public sealed class ExplorerFilterTests : IDisposable
         }
     }
 
+    /// <summary>A filter matching hundreds of files lands in the tree without the disk resolving one of their names on the
+    /// window's thread: they are resolved where the names are matched, off it, where each file's used to be resolved as
+    /// its row was found, a call into the system for every file at every key.</summary>
+    [AvaloniaFact]
+    public void A_filter_matching_hundreds_of_files_resolves_none_of_their_names_on_the_window_s_thread()
+    {
+        string root = PathNames.Canonical(TestFolders.Create("explorer-filter-names-"));
+        try
+        {
+            Areas(root, 3);
+            MainWindow window = new() { Width = 1000, Height = 700 };
+            window.Show();
+            window.OpenFolder(root);
+            Ui.WaitFor(() => window.FileIndex.Count >= 600 && !window.FileIndex.IsWalking && window.ExplorerView.Tree.Root is not null,
+                "the folder's 600 files indexed and shown");
+            Ui.Click(Filter(window));
+            Ui.Settle();
+            int before = PathNames.ResolvedOnThisThread;
+            window.KeyTextInput("x");
+            Ui.Settle();
+            int resolved = PathNames.ResolvedOnThisThread - before;
+            int shown = window.ExplorerView.Tree.Rows.Count(r => r.IsFile);
+            Assert.True(shown == ExplorerFilter.Most, $"A filter every one of 600 files matches showed {shown} files, where the tree shows the first {ExplorerFilter.Most}");
+            Assert.True(resolved < 50,
+                $"A filter landing on {shown} files had the disk resolve {resolved} names on the window's thread: a call into the system for each file it shows, at every key");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(root);
+        }
+    }
+
     /// <summary>The least a one-letter filter every file matches allocates on the UI thread of three tries, from Find's
     /// keys to its rows drawn, each emptied after; and the files it shows and what it says of the rest.</summary>
     private static (long Bytes, int Shown, string? More) OneLetter(MainWindow window, string root, int files)

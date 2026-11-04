@@ -248,9 +248,17 @@ public static partial class PathNames
     /// <summary>The characters that part a path's names: both slashes on Windows.</summary>
     public static ReadOnlySpan<char> Separators => OperatingSystem.IsWindows() ? @"\/" : "/";
 
+    /// <summary>How many names this thread has asked the file system to resolve, each a call into the system: read to
+    /// bound what the window's thread asks of the disk.</summary>
+    public static int ResolvedOnThisThread => resolvedOnThread;
+
+    [ThreadStatic]
+    private static int resolvedOnThread;
+
     /// <summary>An existing file or folder's name as the system resolves it; null for one that is not there.</summary>
     private static string? Resolved(string path)
     {
+        resolvedOnThread++;
         if (OperatingSystem.IsWindows())
         {
             return FinalPath(path);

@@ -372,17 +372,17 @@ public sealed class ExplorerTree
     /// <summary>Opens every node down to <paramref name="path"/> and returns its row, so a file can be shown where it
     /// lives: in its folder, or in the solution, in the project it belongs to (<see cref="ProjectModel.Owning"/>), the
     /// nearest of those whose folders hold it rather than the first listed.</summary>
-    public ExplorerNode? Reveal(string path) => Find(path, Expand);
+    public ExplorerNode? Reveal(string path) => Find(PathNames.Canonical(path), Expand);
 
-    /// <summary>A file's node where the view shows it, as <see cref="Reveal"/> finds it, each node above it handed to
-    /// <paramref name="through"/> before its children are read; null where the view does not show it.</summary>
-    private ExplorerNode? Find(string path, Action<ExplorerNode> through)
+    /// <summary>A file's node where the view shows it, as <see cref="Reveal"/> finds it, by its canonical path
+    /// (<see cref="PathNames.Canonical"/>), each node above it handed to <paramref name="through"/> before its children
+    /// are read; null where the view does not show it.</summary>
+    private ExplorerNode? Find(string full, Action<ExplorerNode> through)
     {
         if (Root is null)
         {
             return null;
         }
-        string full = PathNames.Canonical(path);
         string? owner = solution is null ? null : ProjectModel.Owning([.. solution.Projects, .. programs], full)?.Path;
         // A file a project takes from elsewhere shows where its Link puts it, in the project that holds it.
         string? linked = null;
@@ -453,9 +453,10 @@ public sealed class ExplorerTree
     public bool IsFiltered => passing is not null;
 
     /// <summary>Narrows the rows to these files where the view shows them and the nodes above them, those opened: the
-    /// Explorer's filter, given the files whose names match it. Rows opened or closed while it is set show only what it
+    /// Explorer's filter, given the canonical paths of the files whose names match it (<see cref="PathNames.Canonical"/>,
+    /// resolved where the disk's answers cost the window nothing). Rows opened or closed while it is set show only what it
     /// lets through.</summary>
-    public void Filter(IEnumerable<string> files)
+    public void Filter(IEnumerable<string> canonical)
     {
         if (Root is null)
         {
@@ -464,7 +465,7 @@ public sealed class ExplorerTree
         openBefore ??= [.. Loaded(Root, n => n.IsExpanded)];
         HashSet<ExplorerNode> through = new(ReferenceEqualityComparer.Instance);
         passing = new(ReferenceEqualityComparer.Instance) { Root };
-        foreach (string file in files)
+        foreach (string file in canonical)
         {
             List<ExplorerNode> above = [];
             if (Find(file, above.Add) is { IsFile: true } found)
