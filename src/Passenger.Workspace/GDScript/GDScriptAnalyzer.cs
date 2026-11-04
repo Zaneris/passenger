@@ -638,8 +638,9 @@ public sealed partial class GDScriptAnalyzer
         or "PackedInt32Array" or "PackedInt64Array" or "PackedFloat32Array" or "PackedFloat64Array" or "PackedStringArray" or "PackedVector2Array"
         or "PackedVector3Array" or "PackedColorArray" or "PackedVector4Array";
 
-    /// <summary>A name a type written may begin with, in a class's scope: one of its own or its outer classes' inner classes
-    /// and enums, a <c>class_name</c>, a built-in type, an engine class; null for none.</summary>
+    /// <summary>A name a type written may begin with, in a class's scope: a class of the scope by its own name (a script's
+    /// <c>class_name</c> whether or not the project lists it), one of its own or its outer classes' inner classes and enums,
+    /// a <c>class_name</c>, a built-in type, an engine class; null for none.</summary>
     private GDScriptType? GlobalOrScopedType(string name, GDScriptType scope)
     {
         if (name == "Variant")
@@ -648,6 +649,10 @@ public sealed partial class GDScriptAnalyzer
         }
         foreach (GDScriptType at in ScopeClasses(scope))
         {
+            if (at.Class?.Identifier?.Name == name)
+            {
+                return at with { Meta = true };
+            }
             if (InnerClass(at, name) is { } inner)
             {
                 return inner;

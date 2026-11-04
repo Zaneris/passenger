@@ -80,6 +80,14 @@ public class GDScriptErrorsTests
     }
 
     [Fact]
+    public void A_scripts_own_class_name_and_an_inner_class_by_its_own_name_are_found_where_the_project_lists_no_classes()
+    {
+        const string Script = "class_name Hero\nextends Node\n\nvar other: Hero\n\n\nfunc _ready() -> void:\n\tprint(Hero, other)\n\n\n"
+            + "class Inner:\n\tvar again: Inner\n\n\tfunc f() -> void:\n\t\tprint(Inner, Hero)\n";
+        Assert.Empty(Errors(Script));
+    }
+
+    [Fact]
     public void A_call_of_a_function_godot_would_not_find_is_an_error_in_its_words_on_its_line()
     {
         const string Script = "extends Node\n\nenum Mode { A, B }\nvar speed := 1.0\nvar react := func(): pass\n\n\nfunc _ready() -> void:\n"
