@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Passenger.Core;
 
 namespace Passenger.Lsp;
 
@@ -39,20 +40,23 @@ public static class Shapes
         List<LspInlayHint> hints = [];
         foreach (JsonElement item in result.EnumerateArray())
         {
-            if (!item.TryGetProperty("position", out JsonElement position) || !item.TryGetProperty("label", out JsonElement label))
+            if (JsonMembers.Value(item, "position") is not { } position || JsonMembers.Value(item, "label") is not { } label)
             {
                 continue;
             }
-            string text = label.ValueKind == JsonValueKind.Array
-                ? string.Concat(label.EnumerateArray().Select(part => part.TryGetProperty("value", out JsonElement value) ? value.GetString() : null))
-                : label.GetString() ?? string.Empty;
+            string text = label.ValueKind switch
+            {
+                JsonValueKind.Array => string.Concat(label.EnumerateArray().Select(part => JsonMembers.Text(part, "value"))),
+                JsonValueKind.String => label.GetString()!,
+                _ => string.Empty,
+            };
             hints.Add(new LspInlayHint(
                 position.Deserialize<LspPosition>(Json.Options)!,
                 text,
-                item.TryGetProperty("kind", out JsonElement kind) && kind.ValueKind == JsonValueKind.Number ? (InlayHintKind)kind.GetInt32() : null,
-                item.TryGetProperty("paddingLeft", out JsonElement left) && left.ValueKind == JsonValueKind.True,
-                item.TryGetProperty("paddingRight", out JsonElement right) && right.ValueKind == JsonValueKind.True,
-                item.TryGetProperty("data", out JsonElement data) ? data.Clone() : null));
+                JsonMembers.Number(item, "kind") is { } kind ? (InlayHintKind)kind : null,
+                JsonMembers.Bool(item, "paddingLeft") == true,
+                JsonMembers.Bool(item, "paddingRight") == true,
+                JsonMembers.Value(item, "data")?.Clone()));
         }
         return hints;
     }
@@ -67,7 +71,7 @@ public static class Shapes
         foreach (JsonElement item in result.EnumerateArray())
         {
             // A bare command has a string "command"; a code action's "command" (if any) is an object.
-            if (item.TryGetProperty("command", out JsonElement command) && command.ValueKind == JsonValueKind.String)
+            if (JsonMembers.Text(item, "command") is not null)
             {
                 LspCommand bare = item.Deserialize<LspCommand>(Json.Options)!;
                 actions.Add(new CodeAction { Title = bare.Title, Command = bare });
@@ -91,8 +95,8 @@ public static class Shapes
         {
             case JsonValueKind.String:
                 return value.GetString() ?? string.Empty;
-            case JsonValueKind.Object when value.TryGetProperty("value", out JsonElement text):
-                return text.GetString() ?? string.Empty;
+            case JsonValueKind.Object:
+                return JsonMembers.Text(value, "value") ?? string.Empty;
             case JsonValueKind.Array:
                 StringBuilder joined = new();
                 foreach (JsonElement part in value.EnumerateArray())
@@ -114,24 +118,24 @@ public static class Shapes
     public static IReadOnlyList<FileEdits> WorkspaceEdit(JsonElement edit)
     {
         List<FileEdits> files = [];
-        if (edit.TryGetProperty("documentChanges", out JsonElement changes) && changes.ValueKind == JsonValueKind.Array)
+        if (JsonMembers.Value(edit, "documentChanges") is { ValueKind: JsonValueKind.Array } changes)
         {
             foreach (JsonElement change in changes.EnumerateArray())
             {
-                if (change.TryGetProperty("textDocument", out JsonElement document) && change.TryGetProperty("edits", out JsonElement edits))
+                if (JsonMembers.Value(change, "textDocument") is { } document && JsonMembers.Value(change, "edits") is { } edits)
                 {
-                    int? version = document.TryGetProperty("version", out JsonElement v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
-                    files.Add(new FileEdits(document.GetProperty("uri").GetString()!, edits.Deserialize<List<LspTextEdit>>(Json.Options) ?? [], null) { Version = version });
+                    int? version = JsonMembers.Number(document, "version");
+                    files.Add(new FileEdits(Needed(document, "uri"), edits.Deserialize<List<LspTextEdit>>(Json.Options) ?? [], null) { Version = version });
                 }
-                else if (change.TryGetProperty("kind", out JsonElement kind))
+                else if (JsonMembers.Value(change, "kind") is not null)
                 {
-                    files.Add(new FileEdits(change.TryGetProperty("uri", out JsonElement uri) ? uri.GetString()! : change.GetProperty("oldUri").GetString()!, [], change.Clone()));
+                    files.Add(new FileEdits(JsonMembers.Text(change, "uri") ?? Needed(change, "oldUri"), [], change.Clone()));
                 }
             }
         }
-        else if (edit.TryGetProperty("changes", out JsonElement byUri) && byUri.ValueKind == JsonValueKind.Object)
+        else
         {
-            foreach (JsonProperty file in byUri.EnumerateObject())
+            foreach (JsonProperty file in JsonMembers.Properties(edit, "changes"))
             {
                 files.Add(new FileEdits(file.Name, file.Value.Deserialize<List<LspTextEdit>>(Json.Options) ?? [], null));
             }
@@ -141,13 +145,19 @@ public static class Shapes
 
     private static LspLocation Location(JsonElement item)
     {
-        if (item.TryGetProperty("targetUri", out JsonElement target))
+        if (JsonMembers.Value(item, "targetUri") is not null)
         {
-            LspRange range = item.GetProperty("targetSelectionRange").Deserialize<LspRange>(Json.Options)!;
-            return new LspLocation(target.GetString()!, range);
+            LspRange range = (JsonMembers.Value(item, "targetSelectionRange") ?? throw new JsonException("A language server's location link has no targetSelectionRange"))
+                .Deserialize<LspRange>(Json.Options)!;
+            return new LspLocation(Needed(item, "targetUri"), range);
         }
         return item.Deserialize<LspLocation>(Json.Options)!;
     }
+
+    /// <summary>A string a server's answer cannot go without (an edit's or a location's uri): missing or of another kind, the
+    /// answer does not read.</summary>
+    private static string Needed(JsonElement holder, string name) =>
+        JsonMembers.Text(holder, name) ?? throw new JsonException($"A language server's {name} is missing or no string");
 }
 
 /// <summary>A workspace edit's change to one file: its edits (or an operation: create, rename, delete), and the version of

@@ -742,7 +742,7 @@ public sealed class LspDocument : IDisposable
         {
             return [];
         }
-        return [.. found.EnumerateArray().Select(symbol => symbol.TryGetProperty("location", out _)
+        return [.. found.EnumerateArray().Select(symbol => JsonMembers.Value(symbol, "location") is not null
             ? symbol.Deserialize<SymbolInformation>(Json.Options) is { } flat ? new DocumentSymbol(flat.Name, null, flat.Kind, flat.Location.Range, flat.Location.Range) : null
             : symbol.Deserialize<DocumentSymbol>(Json.Options)).OfType<DocumentSymbol>()];
     }
@@ -860,7 +860,7 @@ public sealed class LspDocument : IDisposable
     {
         JsonElement result = await Read(Server.RequestAsync<JsonElement>(LspMethods.InlayHintResolve,
             new { position = hint.Position, label = hint.Label, kind = hint.Kind, data = hint.Data }, cancel));
-        return result.ValueKind == JsonValueKind.Object && result.TryGetProperty("tooltip", out JsonElement tooltip) ? Shapes.Text(tooltip) : string.Empty;
+        return JsonMembers.Value(result, "tooltip") is { } tooltip ? Shapes.Text(tooltip) : string.Empty;
     }
 
     /// <summary>Roslyn's source of what analyzers report in a document from analysing its whole project, which it has with

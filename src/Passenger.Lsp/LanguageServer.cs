@@ -650,8 +650,8 @@ public sealed class LanguageServer : IAsyncDisposable
             Task<JsonElement> answer = rpc.InvokeWithParameterObjectAsync<JsonElement>(LspMethods.Initialize, initialize, CancellationToken.None);
             UnawaitedWork.Dismiss(answer);
             JsonElement result = await answer.WaitAsync(cancel).ConfigureAwait(false);
-            server2.Capabilities = result.GetProperty("capabilities");
-            if (server2.Capabilities.TryGetProperty("semanticTokensProvider", out JsonElement tokens) && tokens.TryGetProperty("legend", out JsonElement legend))
+            server2.Capabilities = JsonMembers.Object(result, "capabilities") ?? default;
+            if (JsonMembers.Value(JsonMembers.Value(server2.Capabilities, "semanticTokensProvider"), "legend") is { } legend)
             {
                 server2.Legend = legend.Deserialize<SemanticTokensLegend>(Json.Options);
             }
@@ -696,8 +696,7 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>Whether the server said it answers a request (its capability for it, such as <c>renameProvider</c>, there
     /// and not false).</summary>
     public bool Provides(string capability) =>
-        Capabilities.ValueKind == JsonValueKind.Object && Capabilities.TryGetProperty(capability, out JsonElement value)
-        && value.ValueKind is not (JsonValueKind.False or JsonValueKind.Null or JsonValueKind.Undefined);
+        JsonMembers.Value(Capabilities, capability) is { ValueKind: not (JsonValueKind.False or JsonValueKind.Null or JsonValueKind.Undefined) };
 
     /// <summary>Whether the server takes each change of a document as its whole text (<c>textDocumentSync</c>'s change kind
     /// Full, Godot's), not as the edits made.</summary>
@@ -708,11 +707,7 @@ public sealed class LanguageServer : IAsyncDisposable
     private const int FullSync = 1;
 
     /// <summary>The characters after which the server offers completion unasked (<c>completionProvider.triggerCharacters</c>).</summary>
-    public IReadOnlyList<string> CompletionTriggers =>
-        Capabilities.ValueKind == JsonValueKind.Object && Capabilities.TryGetProperty("completionProvider", out JsonElement provider)
-        && provider.ValueKind == JsonValueKind.Object && provider.TryGetProperty("triggerCharacters", out JsonElement triggers) && triggers.ValueKind == JsonValueKind.Array
-            ? [.. triggers.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.String).Select(t => t.GetString()!)]
-            : [];
+    public IReadOnlyList<string> CompletionTriggers => JsonMembers.Texts(JsonMembers.Object(Capabilities, "completionProvider"), "triggerCharacters");
 
     /// <summary>The server's error stream heard into its log to its end, which closes the log.</summary>
     private static async Task HearErrorsAsync(Process process, ServerLog log)
@@ -1135,10 +1130,7 @@ public sealed class LanguageServer : IAsyncDisposable
 
     /// <summary>Whether the server runs a command itself: one its <c>executeCommandProvider</c> lists. Roslyn's lists none,
     /// leaving its commands to the client (<see cref="ClientCommands"/>).</summary>
-    public bool Runs(string command) =>
-        Capabilities.ValueKind == JsonValueKind.Object && Capabilities.TryGetProperty("executeCommandProvider", out JsonElement provider)
-        && provider.ValueKind == JsonValueKind.Object && provider.TryGetProperty("commands", out JsonElement commands) && commands.ValueKind == JsonValueKind.Array
-        && commands.EnumerateArray().Any(c => c.ValueKind == JsonValueKind.String && c.GetString() == command);
+    public bool Runs(string command) => JsonMembers.Texts(JsonMembers.Object(Capabilities, "executeCommandProvider"), "commands").Contains(command);
 
     /// <summary>A call hierarchy item's callers, each with where the calls are.</summary>
     public async Task<IReadOnlyList<IncomingCall>> IncomingCallsAsync(HierarchyItem item, CancellationToken cancel = default) =>
@@ -1421,9 +1413,7 @@ public sealed class LanguageServer : IAsyncDisposable
         /// <summary>Whether a registration is one of Razor's: Razor's are each for its files, by a document selector,
         /// where Roslyn's are for every file.</summary>
         private static bool ForRazor(Registration registration) =>
-            registration.RegisterOptions is { ValueKind: JsonValueKind.Object } options && options.TryGetProperty("documentSelector", out JsonElement selector)
-            && selector.ValueKind == JsonValueKind.Array && selector.EnumerateArray().Any(filter =>
-                filter.ValueKind == JsonValueKind.Object && filter.TryGetProperty("language", out JsonElement language) && language.GetString() == LanguageIds.Razor);
+            JsonMembers.Items(registration.RegisterOptions, "documentSelector").Any(filter => JsonMembers.Text(filter, "language") == LanguageIds.Razor);
 
         public IReadOnlyList<string?> DiagnosticSources
         {
@@ -1499,7 +1489,7 @@ public sealed class LanguageServer : IAsyncDisposable
             {
                 JsonValueKind.String => asked.GetString(),
                 JsonValueKind.Array when asked.GetArrayLength() > 0 && asked[0].ValueKind == JsonValueKind.String => asked[0].GetString(),
-                JsonValueKind.Object when asked.TryGetProperty("uri", out JsonElement named) && named.ValueKind == JsonValueKind.String => named.GetString(),
+                JsonValueKind.Object => JsonMembers.Text(asked, "uri"),
                 _ => null,
             };
             if (uri is null || Owner?.content is not { } content)
@@ -1534,8 +1524,7 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.ApplyEdit)]
         public async Task<object> ApplyEdit(JsonElement request)
         {
-            if (Owner is not { } owner || Volatile.Read(ref owner.commandRun) is not { } run || request.ValueKind != JsonValueKind.Object
-                || !request.TryGetProperty("edit", out JsonElement edit))
+            if (Owner is not { } owner || Volatile.Read(ref owner.commandRun) is not { } run || JsonMembers.Value(request, "edit") is not { } edit)
             {
                 return new { applied = false, failureReason = "Passenger makes a server's edits only for a command it runs" };
             }
@@ -1548,12 +1537,10 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.TypeScriptRename)]
         public object? TypeScriptRename(JsonElement place)
         {
-            if (Owner is { } owner && Volatile.Read(ref owner.commandRun) is { } run && place.ValueKind == JsonValueKind.Object
-                && place.TryGetProperty("textDocument", out JsonElement document) && document.ValueKind == JsonValueKind.Object
-                && document.TryGetProperty("uri", out JsonElement uri) && uri.ValueKind == JsonValueKind.String
-                && place.TryGetProperty("position", out JsonElement position) && position.Deserialize<LspPosition>(Json.Options) is { } at)
+            if (Owner is { } owner && Volatile.Read(ref owner.commandRun) is { } run && JsonMembers.Text(JsonMembers.Object(place, "textDocument"), "uri") is { } uri
+                && JsonMembers.Value(place, "position") is { } position && position.Deserialize<LspPosition>(Json.Options) is { } at)
             {
-                run.RenameAt = new LspLocation(uri.GetString()!, new LspRange(at, at));
+                run.RenameAt = new LspLocation(uri, new LspRange(at, at));
             }
             return null;
         }
@@ -1599,12 +1586,11 @@ public sealed class LanguageServer : IAsyncDisposable
         public void TypeScriptVersion(JsonElement version)
         {
             Owner?.log.Write($"{DateTime.Now:HH:mm:ss.fff} TypeScript {version}");
-            if (Owner is { } owner && version.ValueKind == JsonValueKind.Object && version.TryGetProperty("version", out JsonElement number)
-                && number.ValueKind == JsonValueKind.String)
+            if (Owner is { } owner && JsonMembers.Text(version, "version") is { } number)
             {
-                string? source = version.TryGetProperty("source", out JsonElement from) && from.ValueKind == JsonValueKind.String ? from.GetString() : null;
-                owner.TypeScript = (number.GetString()!, source);
-                owner.TypeScriptVersion?.Invoke(owner, (number.GetString()!, source));
+                string? source = JsonMembers.Text(version, "source");
+                owner.TypeScript = (number, source);
+                owner.TypeScriptVersion?.Invoke(owner, (number, source));
             }
         }
 
@@ -1617,8 +1603,7 @@ public sealed class LanguageServer : IAsyncDisposable
             }
             foreach (Registration registration in request.Registrations.Where(ForRazor))
             {
-                if (registration.Method == LspMethods.SemanticTokens && registration.RegisterOptions is { } options
-                    && options.TryGetProperty("legend", out JsonElement legend))
+                if (registration.Method == LspMethods.SemanticTokens && JsonMembers.Value(registration.RegisterOptions, "legend") is { } legend)
                 {
                     RazorLegend = legend.Deserialize<SemanticTokensLegend>(Json.Options);
                 }
@@ -1626,10 +1611,8 @@ public sealed class LanguageServer : IAsyncDisposable
             // Razor's are left out: a Razor file's diagnostics are its one source, pulled as the file's own.
             foreach (Registration registration in request.Registrations.Where(r => r.Method == LspMethods.DocumentDiagnostic && !ForRazor(r)))
             {
-                string? identifier = registration.RegisterOptions is { ValueKind: JsonValueKind.Object } options
-                    && options.TryGetProperty("identifier", out JsonElement id) ? id.GetString() : null;
-                bool workspace = registration.RegisterOptions is { ValueKind: JsonValueKind.Object } registered
-                    && registered.TryGetProperty("workspaceDiagnostics", out JsonElement flag) && flag.ValueKind == JsonValueKind.True;
+                string? identifier = JsonMembers.Text(registration.RegisterOptions, "identifier");
+                bool workspace = JsonMembers.Bool(registration.RegisterOptions, "workspaceDiagnostics") == true;
                 lock (diagnosticSources)
                 {
                     if (!diagnosticSources.Contains(identifier))
@@ -1650,16 +1633,13 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.UnregisterCapability)]
         public object? UnregisterCapability(JsonElement? request = null)
         {
-            if (request is { ValueKind: JsonValueKind.Object } given
-                && (given.TryGetProperty("unregisterations", out JsonElement list) || given.TryGetProperty("unregistrations", out list))
-                && list.ValueKind == JsonValueKind.Array)
+            if ((JsonMembers.Value(request, "unregisterations") ?? JsonMembers.Value(request, "unregistrations")) is { ValueKind: JsonValueKind.Array } list)
             {
                 foreach (JsonElement taken in list.EnumerateArray())
                 {
-                    if (taken.ValueKind == JsonValueKind.Object && taken.TryGetProperty("id", out JsonElement id) && id.ValueKind == JsonValueKind.String
-                        && taken.TryGetProperty("method", out JsonElement method) && method.GetString() == LspMethods.DidChangeWatchedFiles)
+                    if (JsonMembers.Text(taken, "id") is { } id && JsonMembers.Text(taken, "method") == LspMethods.DidChangeWatchedFiles)
                     {
-                        Owner?.WatchedFiles.Unregister(id.GetString()!);
+                        Owner?.WatchedFiles.Unregister(id);
                     }
                 }
             }
@@ -1826,6 +1806,6 @@ public sealed class LanguageServer : IAsyncDisposable
 
         /// <summary>The request Razor wrapped, which a resolve answers unchanged: HTML has nothing to add to it.</summary>
         private static JsonElement? Asked(JsonElement forwarded) =>
-            forwarded.ValueKind == JsonValueKind.Object && forwarded.TryGetProperty("request", out JsonElement request) ? request.Clone() : null;
+            JsonMembers.Value(forwarded, "request")?.Clone();
     }
 }

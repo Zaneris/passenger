@@ -130,8 +130,7 @@ internal sealed class RazorHtml
     /// own answer.</summary>
     public async Task<JsonElement?> ForwardAsync(string method, JsonElement forwarded)
     {
-        if (forwarded.ValueKind != JsonValueKind.Object || !forwarded.TryGetProperty("request", out JsonElement request)
-            || await HtmlAsync().ConfigureAwait(false) is not { } html)
+        if (JsonMembers.Value(forwarded, "request") is not { } request || await HtmlAsync().ConfigureAwait(false) is not { } html)
         {
             return null;
         }
@@ -240,11 +239,11 @@ internal sealed class RazorHtml
     /// <summary>Keeps a Razor file's HTML as Razor last gave it.</summary>
     public void Update(JsonElement update)
     {
-        if (Uri(update) is { } uri && update.TryGetProperty("text", out JsonElement text) && text.ValueKind == JsonValueKind.String)
+        if (Uri(update) is { } uri && JsonMembers.Text(update, "text") is { } text)
         {
             lock (texts)
             {
-                texts[uri] = text.GetString()!;
+                texts[uri] = text;
                 given[uri] = given.GetValueOrDefault(uri) + 1;
             }
         }
@@ -294,9 +293,9 @@ internal sealed class RazorHtml
                 html = texts.GetValueOrDefault(uri);
             }
         }
-        if (html is null
-            || !forwarded.TryGetProperty("request", out JsonElement request) || !request.TryGetProperty("position", out JsonElement position)
-            || Offset(html, position.GetProperty("line").GetInt32(), position.GetProperty("character").GetInt32()) is not { } at)
+        JsonElement? position = JsonMembers.Object(JsonMembers.Object(forwarded, "request"), "position");
+        if (html is null || JsonMembers.Number(position, "line") is not { } line || JsonMembers.Number(position, "character") is not { } character
+            || Offset(html, line, character) is not { } at)
         {
             return Nothing;
         }
@@ -372,7 +371,5 @@ internal sealed class RazorHtml
         return character <= length ? at + character : null;
     }
 
-    private static string? Uri(JsonElement message) =>
-        message.ValueKind == JsonValueKind.Object && message.TryGetProperty("textDocument", out JsonElement document)
-        && document.TryGetProperty("uri", out JsonElement uri) ? uri.GetString() : null;
+    private static string? Uri(JsonElement message) => JsonMembers.Text(JsonMembers.Object(message, "textDocument"), "uri");
 }

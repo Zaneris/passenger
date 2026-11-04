@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Passenger.Core;
 using Passenger.Roslyn.Extension;
 
 namespace Passenger.Lsp;
@@ -30,10 +31,7 @@ public static class RoslynExtension
         string[] missing = [.. Handlers.All.Concat(HotReloadHandlers.All).Where(h => !active.Contains(h))];
         return missing.Length == 0 ? null : $"the C# language server did not take Passenger's {string.Join(", ", missing.Select(m => m[(m.LastIndexOf('.') + 1)..]))}";
 
-        static IEnumerable<string> Named(JsonElement answer, string kind) =>
-            answer.ValueKind == JsonValueKind.Object && answer.TryGetProperty(kind, out JsonElement names) && names.ValueKind == JsonValueKind.Array
-                ? names.EnumerateArray().Select(n => n.GetString() ?? string.Empty)
-                : [];
+        static IEnumerable<string> Named(JsonElement answer, string kind) => JsonMembers.Texts(answer, kind);
     }
 
     /// <summary>A message to one of the extension's workspace handlers, about the solution the server has open, and its
@@ -91,7 +89,7 @@ public static class RoslynExtension
         {
             throw new LanguageServerFailed($"Passenger's extension to the C# language server failed: {thrown}", handler);
         }
-        if (answer.ValueKind != JsonValueKind.Object || !answer.TryGetProperty("response", out JsonElement response) || response.GetString() is not { Length: > 0 } json)
+        if (JsonMembers.Text(answer, "response") is not { Length: > 0 } json)
         {
             throw new LanguageServerFailed("the C# language server gave no answer from Passenger's extension", handler);
         }
@@ -122,13 +120,13 @@ public static class RoslynExtension
     /// <summary>The message of an exception an answer carries, whichever way the server wrote it.</summary>
     private static string? Thrown(JsonElement answer)
     {
-        if (answer.ValueKind != JsonValueKind.Object || !answer.TryGetProperty("extensionException", out JsonElement thrown) || thrown.ValueKind == JsonValueKind.Null)
+        if (JsonMembers.Value(answer, "extensionException") is not { ValueKind: not JsonValueKind.Null } thrown)
         {
             return null;
         }
         foreach (string name in new[] { "message", "Message" })
         {
-            if (thrown.ValueKind == JsonValueKind.Object && thrown.TryGetProperty(name, out JsonElement message) && message.GetString() is { Length: > 0 } said)
+            if (JsonMembers.Text(thrown, name) is { Length: > 0 } said)
             {
                 return said;
             }

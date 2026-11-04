@@ -89,7 +89,7 @@ public sealed class WatchedFiles
     internal void Register(string id, JsonElement? options)
     {
         List<FileWatch> read = [];
-        if (options is { ValueKind: JsonValueKind.Object } given && given.TryGetProperty("watchers", out JsonElement list) && list.ValueKind == JsonValueKind.Array)
+        if (JsonMembers.Value(options, "watchers") is { ValueKind: JsonValueKind.Array } list)
         {
             foreach (JsonElement watcher in list.EnumerateArray())
             {
@@ -436,28 +436,22 @@ public sealed record FileWatch(string? Folder, string Pattern, WatchKinds Kinds)
     /// folder's URI; its kinds every change unless it names them. Null for one that cannot be read.</summary>
     internal static FileWatch? Read(JsonElement watcher)
     {
-        if (watcher.ValueKind != JsonValueKind.Object || !watcher.TryGetProperty("globPattern", out JsonElement glob))
+        if (JsonMembers.Value(watcher, "globPattern") is not { } glob)
         {
             return null;
         }
-        WatchKinds kinds = watcher.TryGetProperty("kind", out JsonElement kind) && kind.TryGetInt32(out int given) ? (WatchKinds)given : WatchKinds.All;
+        WatchKinds kinds = JsonMembers.Number(watcher, "kind") is { } given ? (WatchKinds)given : WatchKinds.All;
         if (glob.ValueKind == JsonValueKind.String)
         {
             return new FileWatch(null, glob.GetString()!, kinds);
         }
-        if (glob.ValueKind != JsonValueKind.Object || !glob.TryGetProperty("pattern", out JsonElement pattern) || pattern.ValueKind != JsonValueKind.String
-            || !glob.TryGetProperty("baseUri", out JsonElement place))
+        if (JsonMembers.Text(glob, "pattern") is not { } pattern || JsonMembers.Value(glob, "baseUri") is not { } place)
         {
             return null;
         }
-        string? uri = place.ValueKind switch
-        {
-            JsonValueKind.String => place.GetString(),
-            JsonValueKind.Object when place.TryGetProperty("uri", out JsonElement folder) && folder.ValueKind == JsonValueKind.String => folder.GetString(),
-            _ => null,
-        };
+        string? uri = place.ValueKind == JsonValueKind.String ? place.GetString() : JsonMembers.Text(place, "uri");
         return uri is not null && Uri.TryCreate(uri, UriKind.Absolute, out Uri? parsed) && parsed.IsFile
-            ? new FileWatch(DocumentUris.ToPath(uri), pattern.GetString()!, kinds)
+            ? new FileWatch(DocumentUris.ToPath(uri), pattern, kinds)
             : null;
     }
 }
