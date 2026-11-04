@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -21,7 +22,7 @@ public sealed record SchemaBreak(string At, string Said)
 /// <c>allOf</c>, <c>anyOf</c> and <c>oneOf</c>; the rest (lengths, bounds, formats) is not checked.</summary>
 public static class OpenApiSchemas
 {
-    /// <summary>How deep a check or a sample goes, for a schema that refers to itself.</summary>
+    /// <summary>How deep into a value a check goes.</summary>
     private const int Deepest = 48;
 
     /// <summary>How many breaks a check says at most.</summary>
@@ -30,122 +31,204 @@ public static class OpenApiSchemas
     /// <summary>The places a value breaks its schema, in the order met; none where it keeps to it.</summary>
     public static IReadOnlyList<SchemaBreak> Check(OpenApiDocument document, JsonElement schema, JsonElement value)
     {
-        List<SchemaBreak> breaks = [];
-        Walk(document, schema, value, string.Empty, 0, breaks);
-        return breaks;
+        Checking checking = new(document, value);
+        checking.Walk(schema, string.Empty, value, string.Empty, 0);
+        return checking.Breaks;
     }
 
-    private static void Walk(OpenApiDocument document, JsonElement written, JsonElement value, string at, int depth, List<SchemaBreak> breaks)
+    /// <summary>One check of a value, each pair of a schema and a value beneath it judged once: a schema by where it lies (the
+    /// <c>$ref</c> it was found by, else its path beneath the schema checked), a value by where it starts in the value
+    /// checked. <see cref="Walk"/> says each break; <see cref="Fits"/> asks only whether a choice's option holds.</summary>
+    private sealed class Checking(OpenApiDocument document, JsonElement checkedValue)
     {
-        if (depth > Deepest || breaks.Count >= Most)
+        private readonly HashSet<(string Schema, int Value)> walked = [];
+        private readonly Dictionary<(string Schema, int Value), bool> fitting = [];
+
+        public List<SchemaBreak> Breaks { get; } = [];
+
+        public void Walk(JsonElement written, string place, JsonElement value, string at, int depth)
         {
-            return;
+            (JsonElement schema, string key) = Resolved(written, place);
+            if (depth <= Deepest && Breaks.Count < Most && walked.Add((key, Start(value))))
+            {
+                Judge(schema, key, value, at, depth, Breaks);
+            }
         }
-        JsonElement schema = document.Resolve(written);
-        if (schema.ValueKind == JsonValueKind.False)
+
+        public bool Fits(JsonElement written, string place, JsonElement value, string at, int depth)
         {
-            Break(breaks, at, "nothing is allowed here");
-            return;
+            if (depth > Deepest)
+            {
+                return true;
+            }
+            (JsonElement schema, string key) = Resolved(written, place);
+            (string, int) pair = (key, Start(value));
+            if (fitting.TryGetValue(pair, out bool known))
+            {
+                return known;
+            }
+            // Asked again before it is answered, of the same value, a schema that refers to itself holds nothing more.
+            fitting[pair] = true;
+            return fitting[pair] = Judge(schema, key, value, at, depth, null);
         }
-        if (schema.ValueKind != JsonValueKind.Object)
+
+        /// <summary>Whether the value keeps to the schema: each break said into <paramref name="breaks"/> where given, else
+        /// the answer given at the first.</summary>
+        private bool Judge(JsonElement schema, string key, JsonElement value, string at, int depth, List<SchemaBreak>? breaks)
         {
-            return;
+            if (schema.ValueKind == JsonValueKind.False)
+            {
+                return Broken(breaks, at, "nothing is allowed here");
+            }
+            if (schema.ValueKind != JsonValueKind.Object)
+            {
+                return true;
+            }
+            bool kept = true;
+            IReadOnlyList<JsonElement> parts = JsonMembers.Items(schema, "allOf");
+            for (int part = 0; part < parts.Count && (kept || breaks is not null); part++)
+            {
+                kept &= Down(parts[part], $"{key}/allOf/{Numbered(part)}", value, at, depth, breaks);
+            }
+            if (!kept && breaks is null)
+            {
+                return false;
+            }
+            foreach (string choice in (string[])["anyOf", "oneOf"])
+            {
+                if (Chosen(schema, key, choice, value, at, depth) is { } said)
+                {
+                    return Broken(breaks, at, said);
+                }
+            }
+            IReadOnlyList<string> types = TypesOf(schema);
+            if (types.Count > 0 && !types.Any(type => IsA(value, type)))
+            {
+                return Broken(breaks, at, $"{Either([.. types.OrderBy(t => t == "null").Select(Named)])} was expected, not {Describe(value)}");
+            }
+            if (JsonMembers.Items(schema, "enum") is { Count: > 0 } allowed && !allowed.Any(item => JsonElement.DeepEquals(item, value)))
+            {
+                return Broken(breaks, at, $"{Describe(value)} is not one of {string.Join(", ", allowed.Take(8).Select(item => item.GetRawText()))}{(allowed.Count > 8 ? ", …" : string.Empty)}");
+            }
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.String when JsonMembers.Text(schema, "pattern") is { } pattern && Matches(pattern, value.GetString()!) == false:
+                    return Broken(breaks, at, $"{Describe(value)} does not match its pattern {pattern}");
+                case JsonValueKind.Object:
+                    return JudgeObject(schema, key, value, at, depth, breaks) && kept;
+                case JsonValueKind.Array when JsonMembers.Object(schema, "items") is { } items:
+                    int index = 0;
+                    foreach (JsonElement item in value.EnumerateArray())
+                    {
+                        if (!Down(items, $"{key}/items", item, $"{at}/{Numbered(index++)}", depth + 1, breaks) && breaks is null)
+                        {
+                            return false;
+                        }
+                    }
+                    break;
+            }
+            return kept;
         }
-        foreach (JsonElement part in JsonMembers.Items(schema, "allOf"))
+
+        private bool JudgeObject(JsonElement schema, string key, JsonElement value, string at, int depth, List<SchemaBreak>? breaks)
         {
-            Walk(document, part, value, at, depth + 1, breaks);
+            bool kept = true;
+            foreach (string required in JsonMembers.Texts(schema, "required"))
+            {
+                if (JsonMembers.Value(value, required) is null)
+                {
+                    kept = Broken(breaks, $"{at}/{Escaped(required)}", "is missing, though its schema requires it");
+                    if (breaks is null)
+                    {
+                        return false;
+                    }
+                }
+            }
+            JsonElement? properties = JsonMembers.Object(schema, "properties");
+            bool closed = JsonMembers.Bool(schema, "additionalProperties") == false;
+            JsonElement? others = JsonMembers.Object(schema, "additionalProperties");
+            foreach (JsonProperty member in value.EnumerateObject())
+            {
+                string place = $"{at}/{Escaped(member.Name)}";
+                bool held = JsonMembers.Value(properties, member.Name) is { } own
+                    ? Down(own, $"{key}/properties/{Escaped(member.Name)}", member.Value, place, depth + 1, breaks)
+                    : closed ? Broken(breaks, place, "is not a member its schema has")
+                    : others is not { } kind || Down(kind, $"{key}/additionalProperties", member.Value, place, depth + 1, breaks);
+                if (!held && breaks is null)
+                {
+                    return false;
+                }
+                kept &= held;
+            }
+            return kept;
         }
-        foreach (string choice in (string[])["anyOf", "oneOf"])
+
+        /// <summary>What a choice says of a value that keeps to none of its options, or to more than one of a
+        /// <c>oneOf</c>'s; null where it keeps to it.</summary>
+        private string? Chosen(JsonElement schema, string key, string choice, JsonElement value, string at, int depth)
         {
             IReadOnlyList<JsonElement> options = JsonMembers.Items(schema, choice);
-            if (options.Count > 0 && !options.Any(option => Check(document, option, value, depth + 1).Count == 0))
+            List<int> held = [];
+            for (int option = 0; option < options.Count && held.Count < (choice == "oneOf" ? 2 : 1); option++)
             {
-                Break(breaks, at, $"{Describe(value)} is none of the {options.Count} kinds its schema's {choice} allows");
-                return;
-            }
-        }
-        IReadOnlyList<string> types = TypesOf(schema);
-        if (types.Count > 0 && !types.Any(type => IsA(value, type)))
-        {
-            Break(breaks, at, $"{Either([.. types.OrderBy(t => t == "null").Select(Named)])} was expected, not {Describe(value)}");
-            return;
-        }
-        if (JsonMembers.Items(schema, "enum") is { Count: > 0 } allowed && !allowed.Any(item => JsonElement.DeepEquals(item, value)))
-        {
-            Break(breaks, at, $"{Describe(value)} is not one of {string.Join(", ", allowed.Take(8).Select(item => item.GetRawText()))}{(allowed.Count > 8 ? ", …" : string.Empty)}");
-            return;
-        }
-        switch (value.ValueKind)
-        {
-            case JsonValueKind.String when JsonMembers.Text(schema, "pattern") is { } pattern && Matches(pattern, value.GetString()!) == false:
-                Break(breaks, at, $"{Describe(value)} does not match its pattern {pattern}");
-                break;
-            case JsonValueKind.Object:
-                WalkObject(document, schema, value, at, depth, breaks);
-                break;
-            case JsonValueKind.Array when JsonMembers.Object(schema, "items") is { } items:
-                int index = 0;
-                foreach (JsonElement item in value.EnumerateArray())
+                if (Fits(options[option], $"{key}/{choice}/{Numbered(option)}", value, at, depth))
                 {
-                    Walk(document, items, item, $"{at}/{index++.ToString(CultureInfo.InvariantCulture)}", depth + 1, breaks);
+                    held.Add(option);
                 }
-                break;
+            }
+            return options.Count == 0 || held.Count == 1 ? null
+                : held.Count == 0 ? $"{Describe(value)} is none of the {options.Count} kinds its schema's {choice} allows"
+                : $"{Describe(value)} fits both {Option(options, held[0])} and {Option(options, held[1])} of its schema's oneOf, which allows one alone";
         }
-    }
 
-    private static void WalkObject(OpenApiDocument document, JsonElement schema, JsonElement value, string at, int depth, List<SchemaBreak> breaks)
-    {
-        foreach (string required in JsonMembers.Texts(schema, "required"))
+        /// <summary>A schema beneath another walked, its breaks said, or asked whether it holds.</summary>
+        private bool Down(JsonElement written, string place, JsonElement value, string at, int depth, List<SchemaBreak>? breaks)
         {
-            if (!value.TryGetProperty(required, out _))
+            if (breaks is null)
             {
-                Break(breaks, $"{at}/{Escaped(required)}", "is missing, though its schema requires it");
+                return Fits(written, place, value, at, depth);
             }
+            Walk(written, place, value, at, depth);
+            return true;
         }
-        JsonElement? properties = JsonMembers.Object(schema, "properties");
-        JsonElement? extra = schema.TryGetProperty("additionalProperties", out JsonElement others) ? others : null;
-        foreach (JsonProperty member in value.EnumerateObject())
-        {
-            string place = $"{at}/{Escaped(member.Name)}";
-            if (properties is { } declared && declared.TryGetProperty(member.Name, out JsonElement own))
-            {
-                Walk(document, own, member.Value, place, depth + 1, breaks);
-            }
-            else if (extra is { ValueKind: JsonValueKind.False })
-            {
-                Break(breaks, place, "is not a member its schema has");
-            }
-            else if (extra is { ValueKind: JsonValueKind.Object } kind)
-            {
-                Walk(document, kind, member.Value, place, depth + 1, breaks);
-            }
-        }
-    }
 
-    private static IReadOnlyList<SchemaBreak> Check(OpenApiDocument document, JsonElement schema, JsonElement value, int depth)
-    {
-        List<SchemaBreak> breaks = [];
-        Walk(document, schema, value, string.Empty, depth, breaks);
-        return breaks;
-    }
+        /// <summary>Where a value starts in the value checked, which no other value beneath it starts at.</summary>
+        private int Start(JsonElement value) =>
+            JsonMarshal.GetRawUtf8Value(checkedValue).Overlaps(JsonMarshal.GetRawUtf8Value(value), out int start) ? start : -1;
 
-    private static void Break(List<SchemaBreak> breaks, string at, string said)
-    {
-        if (breaks.Count < Most)
+        /// <summary>A schema with its reference followed, and where it lies: by the reference where the document's own schemas
+        /// gave it, else by its place.</summary>
+        private (JsonElement Schema, string Key) Resolved(JsonElement written, string place)
         {
-            breaks.Add(new SchemaBreak(at.Length == 0 ? "/" : at, said));
+            JsonElement schema = document.Resolve(written);
+            return (schema, JsonMembers.Text(written, "$ref") is { } reference && !Same(schema, written) ? reference : place);
         }
+
+        private static bool Same(JsonElement one, JsonElement other) =>
+            JsonMarshal.GetRawUtf8Value(one).Overlaps(JsonMarshal.GetRawUtf8Value(other), out int offset) && offset == 0;
+
+        /// <summary>An option as a break names it: the schema its <c>$ref</c> names, else its place in the list.</summary>
+        private static string Option(IReadOnlyList<JsonElement> options, int option) =>
+            JsonMembers.Text(options[option], "$ref") is { } reference
+                ? reference[(reference.LastIndexOf('/') + 1)..].Replace("~1", "/", StringComparison.Ordinal).Replace("~0", "~", StringComparison.Ordinal)
+                : $"option {Numbered(option + 1)}";
+
+        private static bool Broken(List<SchemaBreak>? breaks, string at, string said)
+        {
+            if (breaks is { Count: < Most })
+            {
+                breaks.Add(new SchemaBreak(at.Length == 0 ? "/" : at, said));
+            }
+            return false;
+        }
+
+        private static string Numbered(int number) => number.ToString(CultureInfo.InvariantCulture);
     }
 
     /// <summary>The types a schema allows: its <c>type</c>, one or a list, with null where 3.0's <c>nullable</c> says.</summary>
     private static IReadOnlyList<string> TypesOf(JsonElement schema)
     {
-        List<string> types = schema.TryGetProperty("type", out JsonElement type) ? type.ValueKind switch
-        {
-            JsonValueKind.String => [type.GetString()!],
-            JsonValueKind.Array => [.. JsonMembers.Texts(schema, "type")],
-            _ => [],
-        } : [];
+        List<string> types = JsonMembers.Text(schema, "type") is { } type ? [type] : [.. JsonMembers.Texts(schema, "type")];
         if (types.Count > 0 && JsonMembers.Bool(schema, "nullable") == true && !types.Contains("null"))
         {
             types.Add("null");
@@ -234,7 +317,7 @@ public static class OpenApiSchemas
             }
             foreach (string given in (string[])["example", "default"])
             {
-                if (schema.TryGetProperty(given, out JsonElement example))
+                if (JsonMembers.Value(schema, given) is { } example)
                 {
                     return JsonNode.Parse(example.GetRawText());
                 }

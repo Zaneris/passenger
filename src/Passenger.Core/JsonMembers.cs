@@ -8,6 +8,9 @@ namespace Passenger.Core;
 /// A name is matched as written, or in any letter case where <c>anyCase</c> says so.</summary>
 public static class JsonMembers
 {
+    /// <summary>A member of whatever kind it is, for a reader that takes each kind itself.</summary>
+    public static JsonElement? Value(JsonElement? element, string name, bool anyCase = false) => Member(element, name, anyCase);
+
     /// <summary>A string member's value.</summary>
     public static string? Text(JsonElement? element, string name, bool anyCase = false) =>
         Member(element, name, anyCase) is { ValueKind: JsonValueKind.String } text ? text.GetString() : null;

@@ -142,6 +142,63 @@ public sealed class OpenApiTests
         Assert.Equal([new SchemaBreak("/color", "is not a member its schema has")], OpenApiSchemas.Check(given, note.RootElement, extra.RootElement));
     }
 
+    /// <summary>A oneOf holds a value that keeps to exactly one of its options: one keeping to two breaks it, said with the
+    /// two it keeps to (by the schema a $ref names, else by its place), where an anyOf takes it.</summary>
+    [Fact]
+    public void A_oneOf_holds_a_value_keeping_to_one_option_alone_and_says_which_two_one_keeps_to()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse("""
+            { "openapi": "3.1.1", "paths": {}, "components": { "schemas": {
+              "Pet": { "oneOf": [ { "$ref": "#/components/schemas/Cat" }, { "$ref": "#/components/schemas/Dog" } ] },
+              "Cat": { "type": "object", "required": [ "meows" ], "properties": { "meows": { "type": "boolean" } } },
+              "Dog": { "type": "object", "required": [ "barks" ], "properties": { "barks": { "type": "boolean" } } } } } }
+            """)!;
+        IReadOnlyList<SchemaBreak> Checked(string schema, string json)
+        {
+            using JsonDocument held = JsonDocument.Parse(schema);
+            using JsonDocument value = JsonDocument.Parse(json);
+            return OpenApiSchemas.Check(given, held.RootElement, value.RootElement);
+        }
+        const string Pet = """{ "$ref": "#/components/schemas/Pet" }""";
+        Assert.Empty(Checked(Pet, """{ "meows": true }"""));
+        Assert.Equal([new SchemaBreak("/", "an object fits both Cat and Dog of its schema's oneOf, which allows one alone")],
+            Checked(Pet, """{ "meows": true, "barks": false }"""));
+        Assert.Equal([new SchemaBreak("/", "an object is none of the 2 kinds its schema's oneOf allows")], Checked(Pet, """{ "purrs": true }"""));
+        const string Numbers = """{ "oneOf": [ { "type": "integer" }, { "type": "number" } ] }""";
+        Assert.Empty(Checked(Numbers, "2.5"));
+        Assert.Equal([new SchemaBreak("/", "the number 3 fits both option 1 and option 2 of its schema's oneOf, which allows one alone")], Checked(Numbers, "3"));
+        Assert.Empty(Checked("""{ "anyOf": [ { "type": "integer" }, { "type": "number" } ] }""", "3"));
+    }
+
+    /// <summary>A schema whose choice's options both refer back to it (a tree's node) is checked against a body 40 levels deep
+    /// to its last member, each option of each level judged once: a body twice as deep costs about twice as much to check,
+    /// where judging each option's subtree anew doubles the cost with every level.</summary>
+    [Fact]
+    public void A_schema_referring_to_itself_through_a_choice_checks_a_body_40_levels_deep_to_its_last_member_judging_each_level_once()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse("""
+            { "openapi": "3.1.1", "paths": {}, "components": { "schemas": {
+              "Node": { "anyOf": [ { "$ref": "#/components/schemas/Strict" }, { "$ref": "#/components/schemas/Loose" } ] },
+              "Strict": { "type": "object", "properties": { "next": { "$ref": "#/components/schemas/Node" }, "leaf": { "type": "string" } } },
+              "Loose": { "type": "object", "properties": { "next": { "$ref": "#/components/schemas/Node" }, "leaf": { "type": [ "string", "null" ] } } } } } }
+            """)!;
+        using JsonDocument node = JsonDocument.Parse("""{ "$ref": "#/components/schemas/Node" }""");
+        (IReadOnlyList<SchemaBreak> Breaks, long Bytes) Checked(int depth, string leaf)
+        {
+            using JsonDocument body = JsonDocument.Parse(string.Concat(Enumerable.Repeat("""{ "next": """, depth)) + $$"""{ "leaf": {{leaf}} }""" + new string('}', depth));
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            IReadOnlyList<SchemaBreak> breaks = OpenApiSchemas.Check(given, node.RootElement, body.RootElement);
+            return (breaks, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+        // A first check readies what only the first pays for.
+        Checked(10, "42");
+        long shallow = Checked(10, "42").Bytes;
+        long deep = Checked(20, "42").Bytes;
+        Assert.True(deep < shallow * 8, $"A body 20 levels deep took {deep} bytes to check where one 10 levels deep took {shallow}, so a deeper body's check grows past what its size explains and stalls the window's background work");
+        Assert.Equal([new SchemaBreak("/", "an object is none of the 2 kinds its schema's anyOf allows")], Checked(40, "42").Breaks);
+        Assert.Empty(Checked(40, "\"tea\"").Breaks);
+    }
+
     [Fact]
     public void A_swagger_2_documents_body_parameter_response_schemas_and_definitions_are_read()
     {
