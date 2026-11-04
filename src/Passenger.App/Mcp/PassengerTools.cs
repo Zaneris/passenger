@@ -1384,7 +1384,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         string output = RunOutput(lines);
         if (Session.RunPlan?.Name is not { } name)
         {
-            return output;
+            return output.Length > 0 ? output : "Run has started nothing yet, so its console is empty: run starts a configuration (debug_start's is output of debug)";
         }
         IRunningProgram program = Session.RunProgram;
         Task<int> ended = program.Ended;
@@ -2139,7 +2139,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         ToolWindows.DebugTab? tab = TabFor(session);
         DebugSession? debugged = tab?.Session;
         string output = debugged?.Terminal is { } inTerminal ? Tail(inTerminal.Session, lines) : Tail(Session.Debug.Output(debugged), lines);
-        return tab is null ? output : $"{tab.Name}, debugged, {StateOf(tab)}:\n{output}";
+        return tab is not null ? $"{tab.Name}, debugged, {StateOf(tab)}:\n{output}"
+            : output.Length > 0 ? output
+            : "Nothing has been debugged yet, so the Debug console is empty: debug_start starts a configuration under the debugger";
     }
 
     // The IDE itself

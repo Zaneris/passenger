@@ -1181,6 +1181,18 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("First", last.GetProperty("subject").GetString());
     }
 
+    /// <summary>An agent's output of a console nothing has written to yet, Run's or the Debug window's, says so and what
+    /// starts one, never an empty answer an agent reads as a program that printed nothing.</summary>
+    [Fact]
+    public async Task An_agents_output_of_a_console_nothing_ran_in_says_so_and_what_starts_one()
+    {
+        string folder = TestFolders.Create("mcp-quiet-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        Assert.StartsWith("Run has started nothing yet", (await Call(client, McpTools.Output, new() { ["of"] = "run" })).GetString(), StringComparison.Ordinal);
+        Assert.StartsWith("Nothing has been debugged yet", (await Call(client, McpTools.Output, new() { ["of"] = "debug" })).GetString(), StringComparison.Ordinal);
+    }
+
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
     /// vcs_commit is refused naming the file, and nothing is committed.</summary>
     [Fact]
