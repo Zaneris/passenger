@@ -249,6 +249,36 @@ public sealed partial class GDScriptAnalyzer
     }
 
     /// <summary>A simple <c>@export</c>'s errors, by the variable's type or its value's (an array's by its element's).</summary>
+    /// <summary>A member variable's <c>@onready</c> annotations' errors, as Godot's onready_annotation gives them: in a
+    /// class built on no Node, on a static variable, or written again.</summary>
+    private void OnreadyErrors(GDScriptVariable variable, Context context)
+    {
+        if (context.Analysis.Tree is null || !Knows(context.Class) || NativeBase(context.Class) is not { } native)
+        {
+            return;
+        }
+        bool onready = false;
+        foreach (GDScriptAnnotation annotation in variable.Annotations.Where(a => a.Name == "@onready"))
+        {
+            if (Engine?.Extends(native, "Node") == false)
+            {
+                Error(context, annotation, "\"@onready\" can only be used in classes that inherit \"Node\".");
+            }
+            else if (variable.IsStatic)
+            {
+                Error(context, annotation, "\"@onready\" annotation cannot be applied to a static variable.");
+            }
+            else if (onready)
+            {
+                Error(context, annotation, "\"@onready\" annotation can only be used once per variable.");
+            }
+            else
+            {
+                onready = true;
+            }
+        }
+    }
+
     private void SimpleExportErrors(GDScriptVariable variable, GDScriptType type, GDScriptAnnotation annotation, Context context)
     {
         if (variable.Type is null && variable.Initializer is null)

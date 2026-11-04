@@ -12,7 +12,7 @@ namespace Passenger.Tests;
 /// <summary>Passenger's own reading of a GDScript gives the errors Godot's own server gives on the same scripts, in the same
 /// words on the same lines: a corpus of scripts, a family of Godot's analyzer's errors each (names not found, mismatched
 /// types and calls, operators, casts and type tests, static misuse and collections, declarations, files lacked, members
-/// reaching themselves, assignments and constructions), opened in a window whose Godot's server serves them, each script's errors from Godot's
+/// reaching themselves, assignments and constructions, @onready), opened in a window whose Godot's server serves them, each script's errors from Godot's
 /// diagnostics and from Passenger's marks set beside each other (an error Godot pushes twice at one place counted once).
 /// Without a Godot each test skips saying why; a Godot editor of its own, so run alone.</summary>
 [Collection(Alone.Name)]
@@ -172,6 +172,15 @@ public sealed class GDScriptGodotErrorsTests
     /// <summary>The abstract script <see cref="Makes"/> makes, in which Godot finds no error.</summary>
     internal const string AbstractThing = "@abstract class_name AbstractThing\nextends RefCounted\n";
 
+    /// <summary>An <c>@onready</c> in a class built on no Node (the script's, inner ones), on a static variable and written
+    /// twice, beside those Godot takes.</summary>
+    internal const string Onready = "extends RefCounted\n\n@onready var nope := 0\n\n\nclass Inner extends Node:\n\t@onready var fine := 1\n"
+        + "\t@onready @onready var twice := 2\n\t@onready static var still := 3\n\n\nclass Plain:\n"
+        + "\t@onready var none = 0\n";
+
+    /// <summary>A Node's <c>@onready</c>, which Godot takes, and its inner class's built on no Node.</summary>
+    internal const string OnreadyInner = "extends Node\n\n@onready var fine := 1\n\n\nclass Inner extends RefCounted:\n\t@onready var nope = 0\n";
+
     private readonly string folder;
     private readonly GodotFound? godot = GodotExecutables.Find(null);
 
@@ -204,6 +213,9 @@ public sealed class GDScriptGodotErrorsTests
     [AvaloniaFact]
     public void Assignments_to_constants_and_read_only_properties_and_a_new_it_refuses_are_its_errors_in_its_words() =>
         Compared([("abstract_thing.gd", AbstractThing)], ("assigns.gd", Assigns), ("makes.gd", Makes));
+
+    [AvaloniaFact]
+    public void An_onready_it_refuses_is_its_error_in_its_words() => Compared(("onready.gd", Onready), ("onready_inner.gd", OnreadyInner));
 
     [AvaloniaFact]
     public void Files_the_project_lacks_and_names_its_singletons_have_are_its_errors_in_its_words()

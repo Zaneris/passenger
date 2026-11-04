@@ -24,6 +24,7 @@ public sealed partial class GDScriptAnalyzer
                 }
                 Declaring(variable, type, "variable", local: false, valued);
                 ExportErrors(variable, type, context);
+                OnreadyErrors(variable, context);
                 MemberVariableWarnings(variable, context);
                 if (variable.Type is { } memberType)
                 {

@@ -12,8 +12,8 @@ namespace Passenger.UnitTests.Godot;
 /// place reaching the instance, an index, loop or typed collection Godot refuses, a member's name taken, an override's
 /// signature, an export, a file the project lacks preloaded or extended, a class named as a singleton autoload, an untyped
 /// override's returns, what must be constant, a member reaching itself, an instance's member read from its class, an
-/// assignment to a constant or read-only property, a new() refused, Godot 4.8's words where they differ; and none of them
-/// where the class extends one this reading cannot read.</summary>
+/// assignment to a constant or read-only property, a new() refused, an @onready refused, Godot 4.8's words where they
+/// differ; and none of them where the class extends one this reading cannot read.</summary>
 public class GDScriptErrorsTests
 {
     private const string Api = """
@@ -300,6 +300,21 @@ public class GDScriptErrorsTests
             "46: The rest parameter type must be \"Array\", but \"int\" is specified.",
             "50: Typed arrays are currently not supported for the rest parameter.",
         ], Errors(Script));
+    }
+
+    /// <summary>An <c>@onready</c> in a class built on no Node, an inner one too, on a static variable, and written twice.</summary>
+    [Fact]
+    public void An_onready_godot_refuses_is_an_error_in_its_words_on_its_line()
+    {
+        Assert.Equal(
+        [
+            "3: \"@onready\" can only be used in classes that inherit \"Node\".",
+            "8: \"@onready\" annotation can only be used once per variable.",
+            "9: \"@onready\" annotation cannot be applied to a static variable.",
+            "13: \"@onready\" can only be used in classes that inherit \"Node\".",
+        ], Errors("extends RefCounted\n\n@onready var nope := 0\n\n\nclass Inner extends Node:\n\t@onready var fine := 1\n"
+            + "\t@onready @onready var twice := 2\n\t@onready static var still := 3\n\n\nclass Plain:\n"
+            + "\t@onready var none = 0\n"));
     }
 
     /// <summary>Assignments to what Godot holds constant (a function, a signal, an enum, a class, through self too) or
