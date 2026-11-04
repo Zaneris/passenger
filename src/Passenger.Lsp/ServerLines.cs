@@ -114,6 +114,36 @@ public sealed class ServerLines
     /// <summary>The offset of the server's line and column, the column clamped to the line's content.</summary>
     public int OffsetOf(LspPosition position) => OffsetOf(position.Line, position.Character);
 
+    /// <summary>The offsets of many of the server's places, each as <see cref="OffsetOf(LspPosition)"/> gives it, in any
+    /// order: read in one pass over their lines (<see cref="TextSnapshot.GetOffsets"/>) where the server's lines are the
+    /// editor's, else one at a time.</summary>
+    public int[] OffsetsOf(IReadOnlyList<LspPosition> positions)
+    {
+        int[] offsets = new int[positions.Count];
+        if (extra.Length > 0)
+        {
+            for (int i = 0; i < offsets.Length; i++)
+            {
+                offsets[i] = OffsetOf(positions[i]);
+            }
+            return offsets;
+        }
+        TextPosition[] places = ArrayPool<TextPosition>.Shared.Rent(offsets.Length);
+        try
+        {
+            for (int i = 0; i < offsets.Length; i++)
+            {
+                places[i] = new TextPosition(positions[i].Line, positions[i].Character);
+            }
+            Text.GetOffsets(places.AsSpan(0, offsets.Length), offsets);
+        }
+        finally
+        {
+            ArrayPool<TextPosition>.Shared.Return(places);
+        }
+        return offsets;
+    }
+
     public int OffsetOf(int line, int character)
     {
         if (extra.Length == 0)

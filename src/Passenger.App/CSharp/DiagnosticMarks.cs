@@ -50,6 +50,26 @@ internal static class DiagnosticMarks
         return TextRange.FromBounds(start, Math.Max(start, lines.OffsetOf(range.End)));
     }
 
+    /// <summary>Each diagnostic's range in the text, as <see cref="Offsets(ServerLines, LspRange)"/> gives it, all placed in
+    /// one pass over their lines however many there are.</summary>
+    public static TextRange[] Offsets(ServerLines lines, IReadOnlyList<Diagnostic> diagnostics)
+    {
+        LspPosition[] ends = new LspPosition[diagnostics.Count * 2];
+        for (int i = 0; i < diagnostics.Count; i++)
+        {
+            ends[2 * i] = diagnostics[i].Range.Start;
+            ends[(2 * i) + 1] = diagnostics[i].Range.End;
+        }
+        int[] offsets = lines.OffsetsOf(ends);
+        TextRange[] ranges = new TextRange[diagnostics.Count];
+        for (int i = 0; i < ranges.Length; i++)
+        {
+            int start = offsets[2 * i];
+            ranges[i] = TextRange.FromBounds(start, Math.Max(start, offsets[(2 * i) + 1]));
+        }
+        return ranges;
+    }
+
     /// <summary>The diagnostics reported, each on the server's lines where its range has been carried to.</summary>
     public static Diagnostic[] Placed(TextSnapshot text, IReadOnlyList<Diagnostic> reported, IReadOnlyList<TextRange> ranges)
     {
@@ -156,7 +176,12 @@ internal sealed class ServerDiagnostics(OpenDocument document, string? checker)
         Release();
         found = [.. diagnostics];
         this.late = late;
-        ranges = [.. found.Select(d => Anchored(DiagnosticMarks.Offsets(lines, d.Range)))];
+        TextRange[] reported = DiagnosticMarks.Offsets(lines, found);
+        ranges = new AnchoredRange[reported.Length];
+        for (int i = 0; i < reported.Length; i++)
+        {
+            ranges[i] = Anchored(reported[i]);
+        }
         placed = diagnostics;
         return Show(marker);
     }

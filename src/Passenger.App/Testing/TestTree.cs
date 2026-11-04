@@ -1287,7 +1287,7 @@ public sealed class TestTree
         for (int at = 0; at < Math.Min(a.Path.Count, b.Path.Count); at++)
         {
             (Segment x, Segment y) = (a.Path[at], b.Path[at]);
-            int order = x.Kind != y.Kind ? x.Kind.CompareTo(y.Kind)
+            int order = x.Kind != y.Kind ? ((int)x.Kind).CompareTo((int)y.Kind)
                 : x.Rank != y.Rank ? x.Rank.CompareTo(y.Rank)
                 : string.CompareOrdinal(x.Name, y.Name);
             if (order != 0)

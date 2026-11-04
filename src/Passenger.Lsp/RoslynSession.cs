@@ -951,6 +951,9 @@ public sealed class LspDocument : IDisposable
 
     public int OffsetOf(LspPosition position) => ServerLines.Of(Text.Snapshot).OffsetOf(position);
 
+    /// <summary>The offsets of many places at once, as <see cref="ServerLines.OffsetsOf"/> gives them.</summary>
+    public int[] OffsetsOf(IReadOnlyList<LspPosition> positions) => ServerLines.Of(Text.Snapshot).OffsetsOf(positions);
+
     /// <summary>The edits sent last to first, the order an incremental sync is read in, so each change's place in the text
     /// before the edit is its place in the text the changes sent before it left. Edits that touch go as one change: the
     /// later one can decide whether a '\r' where they meet ends a line. A change that begins or ends between the halves of

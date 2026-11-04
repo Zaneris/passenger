@@ -724,7 +724,7 @@ public sealed class ProblemsModel
     /// <summary>Problems by severity, file, line and column, then the order they came.</summary>
     private static readonly Comparison<(Problem Problem, int Came)> ByPlace = static (a, b) =>
     {
-        int order = a.Problem.Severity.CompareTo(b.Problem.Severity);
+        int order = ((int)a.Problem.Severity).CompareTo((int)b.Problem.Severity);
         order = order != 0 ? order : string.CompareOrdinal(a.Problem.Path, b.Problem.Path);
         order = order != 0 ? order : a.Problem.Position.Line.CompareTo(b.Problem.Position.Line);
         order = order != 0 ? order : a.Problem.Position.Column.CompareTo(b.Problem.Position.Column);

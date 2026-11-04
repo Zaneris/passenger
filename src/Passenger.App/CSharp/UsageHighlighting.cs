@@ -94,12 +94,20 @@ public sealed class UsageHighlighting
                 return null;
             }
             ParsedText? syntax = document.Syntax?.Current;
-            List<UsageHighlight> uses = [.. found.Select(h =>
+            LspPosition[] ends = new LspPosition[found.Count * 2];
+            for (int i = 0; i < found.Count; i++)
             {
-                int start = lsp.OffsetOf(h.Range.Start);
-                bool write = h.Kind == DocumentHighlightKind.Write || (syntax is not null && UsageKinds.DeclaresWithValue(syntax.Root, start));
-                return new UsageHighlight(TextRange.FromBounds(start, Math.Max(start, lsp.OffsetOf(h.Range.End))), write);
-            })];
+                ends[2 * i] = found[i].Range.Start;
+                ends[(2 * i) + 1] = found[i].Range.End;
+            }
+            int[] offsets = lsp.OffsetsOf(ends);
+            List<UsageHighlight> uses = new(found.Count);
+            for (int i = 0; i < found.Count; i++)
+            {
+                int start = offsets[2 * i];
+                bool write = found[i].Kind == DocumentHighlightKind.Write || (syntax is not null && UsageKinds.DeclaresWithValue(syntax.Root, start));
+                uses.Add(new UsageHighlight(TextRange.FromBounds(start, Math.Max(start, offsets[(2 * i) + 1])), write));
+            }
             // Uses of something other than what the caret is on are none of its.
             return uses.Any(u => Covers(u.Range, caret)) ? uses : [];
         }
