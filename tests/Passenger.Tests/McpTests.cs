@@ -1207,6 +1207,21 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"A build of a folder with no solution or project answered: {built}");
     }
 
+    /// <summary>An agent's ide_actions with a query lists only the actions whose id, name or group holds it, where the whole
+    /// list runs to hundreds of lines and tens of kilobytes.</summary>
+    [Fact]
+    public async Task An_agents_ide_actions_with_a_query_lists_only_the_actions_it_names()
+    {
+        string folder = TestFolders.Create("mcp-actions-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        string[] all = [.. (await Call(client, McpTools.IdeActions)).EnumerateArray().Select(a => a.GetString()!)];
+        string[] rebasing = [.. (await Call(client, McpTools.IdeActions, new() { ["query"] = "rebase" })).EnumerateArray().Select(a => a.GetString()!)];
+        Assert.True(rebasing.Length < all.Length && rebasing.Any(a => a.StartsWith($"{AppActions.ContinueRebase}:", StringComparison.Ordinal))
+            && rebasing.All(a => a.Contains("rebase", StringComparison.OrdinalIgnoreCase)),
+            $"ide_actions with the query rebase listed {rebasing.Length} of {all.Length}: {string.Join("; ", rebasing.Take(5))}");
+    }
+
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
     /// vcs_commit is refused naming the file, and nothing is committed.</summary>
     [Fact]

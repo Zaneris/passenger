@@ -2224,11 +2224,16 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     [McpServerTool(Name = McpTools.IdeActions, Title = "The IDE's actions", ReadOnly = true), Description(
         "Every action ide_action runs (those with no shortcut too), as id: name [group] (shortcut on this platform), " +
         "and why one cannot run here now.")]
-    public Task<IReadOnlyList<string>> IdeActions(CancellationToken cancel = default) => OnUi(cancel, () =>
+    public Task<IReadOnlyList<string>> IdeActions(
+        [Description("Only those whose id, name or group holds it (\"rebase\", \"Git\")")] string? query = null,
+        CancellationToken cancel = default) => OnUi(cancel, () =>
     {
         ActionRegistry actions = window.Actions;
         ActionContext context = Beside ? actions.Context().ForAgent() : actions.Context();
-        return Task.FromResult((IReadOnlyList<string>)[.. actions.All.Select(a =>
+        IEnumerable<IdeAction> asked = query is not { Length: > 0 } words ? actions.All
+            : actions.All.Where(a => a.Id.Contains(words, StringComparison.OrdinalIgnoreCase) || a.Title.Contains(words, StringComparison.OrdinalIgnoreCase)
+                || a.Group.Contains(words, StringComparison.OrdinalIgnoreCase));
+        return Task.FromResult((IReadOnlyList<string>)[.. asked.Select(a =>
             $"{a.Id}: {a.Title} [{a.Group}]{(actions.Shortcut(a.Id) is { } keys ? $" ({keys})" : string.Empty)}{(a.WhyNot(context) is { } why ? $" - cannot run: {why}" : string.Empty)}")]);
     });
 
