@@ -61,17 +61,21 @@
         <li><strong>A .NET SDK, version 10 or later</strong>, from <a href="https://learn.microsoft.com/dotnet/core/install/linux">Microsoft's
             Linux packages or install script</a>, with <code>dotnet</code> on your PATH (or <code>DOTNET_ROOT</code> naming its
             folder). Passenger builds and runs your projects with it, and Roslyn's language server runs on it.</li>
-        <li><strong>Git</strong>, and the X11 and fontconfig libraries most desktops already have. On a Wayland desktop,
+        <li><strong>Git</strong>, the X11 and fontconfig libraries, and a font, which most desktops already have.
+            Passenger carries no font of its own: with none installed, its window shows no words. On a Wayland desktop,
             Passenger runs through XWayland.</li>
         <li><strong>Node.js</strong>, only for JavaScript, TypeScript, HTML, CSS and JSON (22.22.2 or later for
             TypeScript). Your distribution's package may be older; <a href="https://nodejs.org/en/download">nodejs.org</a>
             has current ones, and Settings &rsaquo; Node.js can name the one to use.</li>
     </ul>
 <pre><span class="comment"># Ubuntu, Debian</span>
-sudo apt install git libx11-6 libice6 libsm6 libfontconfig1
+sudo apt install git libx11-6 libice6 libsm6 libfontconfig1 fonts-dejavu-core
 
 <span class="comment"># Fedora</span>
-sudo dnf install git libX11 libICE libSM fontconfig</pre>
+sudo dnf install git libX11 libICE libSM fontconfig dejavu-sans-fonts
+
+<span class="comment"># Arch</span>
+sudo pacman -S git libx11 libice libsm fontconfig ttf-dejavu</pre>
 
     <h2>2. Download and unpack</h2>
 <pre>arch=$(uname -m | sed 's/x86_64/x64/; s/aarch64/arm64/')
@@ -84,14 +88,17 @@ tar -xzf Passenger-linux-$arch.tar.gz</pre>
     <h2>3. Install</h2>
 <pre>./passenger/install.sh</pre>
     <p>For you alone, with no root needed. It copies Passenger to <code>~/.local/opt/passenger</code>, links
-        <code>~/.local/bin/passenger</code>, and adds Passenger to your applications menu with its icon, as one of the
+        <code>~/.local/bin/passenger-ide</code>, and adds Passenger to your applications menu with its icon, as one of the
         programs that open <code>.sln</code>, <code>.slnx</code> and <code>.csproj</code> files. If
         <code>~/.local/bin</code> is not on your PATH yet, add it:</p>
 <pre>echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile</pre>
     <p>For everyone on the machine, run it with <code>sudo ./passenger/install.sh --system</code>, which uses
         <code>/opt/passenger</code>, <code>/usr/local/bin</code> and <code>/usr/share/applications</code> instead.</p>
     <p>Then open a folder or a solution from the menu, or from a shell:</p>
-<pre>passenger ~/src/MySolution</pre>
+<pre>passenger-ide ~/src/MySolution</pre>
+    <p>The command is <code>passenger-ide</code>, so it never meets Phusion Passenger's <code>passenger</code>. An install
+        from before it was named so has its <code>passenger</code> link moved to the new name; any other
+        <code>passenger</code> is left as it is.</p>
 
     <p>The toolbar is the window's title bar, as on Windows and macOS, with the window's buttons at its right. To have
         your window manager's own title bar instead, turn off Settings &rsaquo; Appearance &rsaquo; Merge main menu with
@@ -111,8 +118,10 @@ sudo /opt/passenger/install.sh --uninstall --system</pre>
 
     <h2>If something goes wrong</h2>
     <ul>
-        <li><strong>The window does not open:</strong> run <code>passenger</code> from a shell to see why, and check the
+        <li><strong>The window does not open:</strong> run <code>passenger-ide</code> from a shell to see why, and check the
             libraries in step 1; <code>install.sh</code> names any of them it finds missing.</li>
+        <li><strong>The window opens with no words in it:</strong> no font is installed. <code>install.sh</code> says so,
+            with the command that installs one on Ubuntu, Debian, Fedora, Arch, openSUSE and Alpine.</li>
         <li><strong>C# has colour but no completion or errors:</strong> Passenger could not start Roslyn's language server.
             Check that <code>dotnet --list-sdks</code> shows a version 10 or later SDK.</li>
         <li><strong>A TypeScript or other web file has colour but no help:</strong> the banner over it says why, most often

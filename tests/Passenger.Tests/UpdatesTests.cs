@@ -1373,7 +1373,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         public string Executable => Path.Combine(Install, "app", "Passenger");
 
         /// <summary>The command install.sh links on the PATH.</summary>
-        public string Command => Path.Combine(Home, ".local", "bin", "passenger");
+        public string Command => Path.Combine(Home, ".local", "bin", "passenger-ide");
 
         public string Entry => Path.Combine(Home, ".local", "share", "applications", App + ".desktop");
 

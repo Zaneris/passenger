@@ -315,8 +315,8 @@ path filled in, each with a Copy button, and lists the folders agents join unask
 website's [agents page](https://passenger-ide.net/agents) has the same setups.
 
 Passenger is `/Applications/Passenger.app/Contents/MacOS/Passenger` on a Mac,
-`%LOCALAPPDATA%\PassengerIDE\current\Passenger.exe` on Windows, and `~/.local/bin/passenger` on Linux
-(`/usr/local/bin/passenger` when installed for everyone). A repository's `.mcp.json` gives it to everyone who works
+`%LOCALAPPDATA%\PassengerIDE\current\Passenger.exe` on Windows, and `~/.local/bin/passenger-ide` on Linux
+(`/usr/local/bin/passenger-ide` when installed for everyone). A repository's `.mcp.json` gives it to everyone who works
 there with Claude Code:
 
 ```json
