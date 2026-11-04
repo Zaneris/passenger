@@ -101,6 +101,29 @@ public sealed class GDScriptCompletionTests
         }
     }
 
+    /// <summary>A list opened on a name typed before it, by its key or as typing outruns the list, shows its first item's card
+    /// as it opens, the item chosen before the list shows.</summary>
+    [AvaloniaFact]
+    public void A_list_opened_on_a_name_already_typed_shows_its_first_items_card_as_it_opens()
+    {
+        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            NewLineAfter(window, editor, "\tcounter += 1");
+            TypeOverLine(window, editor, "counte");
+            Ui.Press(window, "control SPACE", settle: false);
+            First(window, "counter", "the script's counter for what was typed");
+            bool described = Ui.Pumped(() => window.Assist.ItemDocumentation?.Contains("var counter", StringComparison.Ordinal) == true, TimeSpan.FromSeconds(30));
+            Assert.True(described, $"The list opened on counte shows no card for its first item, counter, until another is chosen: {window.Assist.ItemDocumentation}");
+        }
+        finally
+        {
+            window.Close();
+            release.SetResult();
+        }
+    }
+
     /// <summary>The engine's utility functions, built-in types, classes, singletons and global constants complete beside the
     /// script's own names, and a function goes in with its call's parentheses, the caret inside them where it takes arguments.</summary>
     [AvaloniaFact]

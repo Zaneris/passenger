@@ -180,7 +180,8 @@ internal sealed partial class GDScriptAssist
             return true;
         }
         listedFrom = typed;
-        completion.Open(new CodeCompletion.Completion(listed.Items, listed.Start, [], false) { Own = this, WordCharacters = listed.WordCharacters });
+        // A list typed past before it opens comes narrowed, its first item chosen before it shows: its card shows as it opens.
+        completion.Open(new CodeCompletion.Completion(listed.Items, listed.Start, [], false) { Own = this, WordCharacters = listed.WordCharacters, DescribedAsItOpens = true });
         return true;
     }
 
@@ -259,12 +260,12 @@ internal sealed partial class GDScriptAssist
         return new Listed(at.Start, items);
     }
 
-    /// <summary>A member's item: its kind, its type, and for a function the parentheses its call takes, the caret inside them
-    /// where it takes arguments.</summary>
     /// <summary>The rank a member's item sorts by: a script's own members before what the engine's classes give it, as
     /// Godot's editor lists them by where they are declared.</summary>
     private static string RankOf(GDScriptMemberInfo member, string rank) => member.Declaration is { Script: not null } ? rank : rank + "~~";
 
+    /// <summary>A member's item: its kind, its type, and for a function the parentheses its call takes, the caret inside them
+    /// where it takes arguments.</summary>
     private CompletionItem MemberItem(GodotScriptTypes.Typed typed, GDScriptMemberInfo member, GDScriptType? owner, string rank)
     {
         Named what = NamedOf(member, owner);
