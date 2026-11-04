@@ -1156,6 +1156,7 @@ public sealed partial class BuildRunController
             // A Godot game's, with Passenger as its remote debugger.
             (plan, Godot.GodotGame? game) = session.Listened(plan);
             game?.ReloadsScripts = reloaded;
+            game?.Console = parts.Views.Run.Fold;
             session.RunPlan = plan;
             string running = watched || reloaded ? $"Running {chosen.Name} with Hot Reload: a save applies its changes"
                 : wanted && godot && !plan.ScriptsAlone ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.EditorReloads}"
@@ -2223,6 +2224,7 @@ public sealed partial class BuildRunController
         if (game is not null && debug.Chosen?.Console is { } gameConsole)
         {
             gameConsole.Fold = new Godot.GodotConsoleFold();
+            game.Console = gameConsole.Fold;
         }
         // Its tab, chosen as the start began, has the console its failed bindings are written to.
         WatchBindings(inspected, debug.Chosen?.Console);

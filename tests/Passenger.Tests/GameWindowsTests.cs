@@ -11,8 +11,9 @@ namespace Passenger.Tests;
 /// native window's embedding (<see cref="GameWindows.Arguments"/>), its window is owned by that window (transient for it
 /// under X11) and held over a place of it, takes a key, and follows the place as it grows. The host is a native window the
 /// test makes, as a headless window has no handle; Windows, or Linux with an X11 session (DISPLAY), and a Godot 4.4 or newer
-/// are needed, or the test skips saying why. Godot runs with a window, so run alone, and never on the Mac. Past its one wait for
-/// Godot's version it runs on one thread, the host's, whose messages it handles as it waits.</summary>
+/// are needed, or the test skips saying why, as it does in Godot's words where none of Godot's renderers starts. Godot runs
+/// with a window, on its Compatibility renderer, so run alone, and never on the Mac. Past its one wait for Godot's version it
+/// runs on one thread, the host's, whose messages it handles as it waits.</summary>
 [Collection(Alone.Name)]
 public sealed partial class GameWindowsTests
 {
@@ -42,7 +43,8 @@ public sealed partial class GameWindowsTests
 
         using Host host = Host.Make();
         using GameWindows windows = GameWindows.Over(host.Kind, host.Handle) ?? throw new Xunit.Sdk.XunitException($"No embedding over a {host.Kind} window here");
-        ProcessStartInfo start = ChildProcesses.Command(godot!.Executable, [.. windows.Arguments, "--path", folder], folder);
+        // Compatibility draws where OpenGL or ANGLE over Direct3D 11 does (WARP too), as a VM's GPU without D3D12's shader models.
+        ProcessStartInfo start = ChildProcesses.Command(godot!.Executable, [.. windows.Arguments, "--rendering-method", "gl_compatibility", "--path", folder], folder);
         foreach ((string name, string value) in GodotTests.Game.Home(folder + "-home"))
         {
             start.Environment[name] = value;
@@ -57,15 +59,20 @@ public sealed partial class GameWindowsTests
             heard = ChildProcesses.Hear(game, said.Enqueue, said.Enqueue);
             string Said() => string.Join(" | ", said.TakeLast(12));
             bool Told(string words) => said.Any(l => l.Contains(words, StringComparison.Ordinal));
+            // Its scene never ran, and Godot named a renderer of its that could not start (it says so last in a dialog of its own).
+            bool NoRenderer() => !Told("TEST: ready") && said.Any(l => l.Contains("(drivers/", StringComparison.Ordinal)
+                || l.Contains("video card drivers", StringComparison.Ordinal) || l.Contains("Could not initialize", StringComparison.Ordinal));
             nint window = 0;
-            Assert.True(Waiting.Until(() => host.Pump() && (window = windows.Find(game.Id)) != 0, TimeSpan.FromMinutes(1)),
-                $"No window of the game's owned by the host's came (Godot said: {Said()})");
+            bool came = Waiting.Until(() => host.Pump() && (window = windows.Find(game.Id)) != 0, TimeSpan.FromMinutes(1));
+            Assert.SkipWhen(!came && NoRenderer(), $"No renderer of Godot's starts here, so its game never ran (Godot said: {Said()})");
+            Assert.True(came, $"No window of the game's owned by the host's came (Godot said: {Said()})");
             Assert.Equal(host.Handle, windows.OwnerOf(window));
 
             PixelRect place = new(host.X + 40, host.Y + 60, 640, 360);
             windows.Hold(window, place, shown: true);
-            Assert.True(Waiting.Until(() => host.Pump() && Told("TEST: size 640x360"), TimeSpan.FromSeconds(30)),
-                $"The game's window was not held at 640x360 over the pane's place (Godot said: {Said()})");
+            bool held = Waiting.Until(() => host.Pump() && Told("TEST: size 640x360"), TimeSpan.FromSeconds(30));
+            Assert.SkipWhen(!held && NoRenderer(), $"No renderer of Godot's starts here, so its game never ran (Godot said: {Said()})");
+            Assert.True(held, $"The game's window was not held at 640x360 over the pane's place (Godot said: {Said()})");
             if (OperatingSystem.IsWindows())
             {
                 Assert.Equal(place, windows.PlaceOf(window));

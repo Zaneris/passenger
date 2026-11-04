@@ -159,6 +159,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// <summary>Whether a GDScript file of its project saved is reloaded in it (Hot Reload is on for its run).</summary>
     public bool ReloadsScripts { get; set; }
 
+    /// <summary>The fold of the console its program writes to, once its launch has one: Godot's errors from before its
+    /// debugger hears any (a renderer that could not start, which Godot then tells only in a dialog of its own).</summary>
+    public GodotConsoleFold? Console { get; set; }
+
     /// <summary>Whether its console has said what Godot's reload of a script keeps.</summary>
     public bool ToldReload { get; set; }
 

@@ -94,6 +94,19 @@ public sealed class GamePane : Border
             }
             await Task.Delay(TimeSpan.FromMilliseconds(200));
         }
+        if (game == started && window == 0)
+        {
+            NeverCame(started);
+        }
+    }
+
+    /// <summary>Says a game's window never came, in Godot's own words where its console has errors: a renderer that could
+    /// not start says why only there, and in a dialog of its own.</summary>
+    private void NeverCame(GodotGame started)
+    {
+        string[] errors = [.. (started.Console?.Entries ?? []).Where(e => !e.Warning).TakeLast(2).Select(e => e.Header)];
+        words.Text = Refusals.GameWindowNeverCame(started.Name, errors.Length == 0 ? null : string.Join(" ", errors));
+        words.IsVisible = true;
     }
 
     /// <summary>The game's window on the pane's place, shown while the pane is and the main window is not minimized.</summary>
@@ -161,9 +174,14 @@ public sealed class GamePane : Border
 
     private void GameStateChanged(object? sender, EventArgs e) => UiThread.Post(() =>
     {
-        if (sender == game && game is { State: LiveTree.LiveAppState.Ended })
+        if (sender == game && game is { State: LiveTree.LiveAppState.Ended } ended)
         {
+            bool came = window != 0;
             Let();
+            if (!came)
+            {
+                NeverCame(ended);
+            }
         }
     });
 

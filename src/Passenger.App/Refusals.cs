@@ -53,6 +53,11 @@ public static class Refusals
     /// <summary>The Game window holds one game at a time: another copy, or a game started meanwhile, draws in its own.</summary>
     public static string GameWindowHolds(string game) => $"the Game window holds {game}";
 
+    /// <summary>A game's window never came to the Game window (it ended first, or none came in time), with Godot's last
+    /// errors where its console has any.</summary>
+    public static string GameWindowNeverCame(string game, string? godotSaid) =>
+        $"{game}'s window never came to the Game window" + (godotSaid is null ? "" : $". Godot said: {godotSaid}");
+
     /// <summary>A C# file come under a project that the language server has not loaded into it (<see
     /// cref="CSharp.CSharpService.UnplacedAsync"/>), whose answers about the solution would leave it out.</summary>
     public static string NotTakenIn(string file, string project) =>
