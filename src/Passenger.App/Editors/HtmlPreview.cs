@@ -10,10 +10,10 @@ namespace Passenger.App.Editors;
 
 /// <summary>An HTML file's page beside its editor, a group's own, in the system's own web view (WebView2, WKWebView,
 /// WebKitGTK): given the text as the editor has it, its relative addresses read from the file's folder, and given it
-/// again as typing pauses. The web view keeps nothing between runs (its data under the state's cache, private). A link
-/// followed in it opens where Passenger opens one, a web page in the browser and a file in the editor, the page itself
-/// staying. A Linux without WebKitGTK 4.1 says so in the page's place; a window nobody sees is given the page with no web
-/// view to show it.</summary>
+/// again as typing pauses, at the place it was scrolled to (<see cref="PagePlace"/>). The web view keeps nothing between
+/// runs (its data under the state's cache, private). A link followed in it opens where Passenger opens one, a web page in
+/// the browser and a file in the editor, the page itself staying. A Linux without WebKitGTK 4.1 says so in the page's
+/// place; a window nobody sees is given the page with no web view to show it.</summary>
 public sealed class HtmlPreview : Panel
 {
     /// <summary>How long typing pauses before the page is given the text again.</summary>
@@ -33,14 +33,22 @@ public sealed class HtmlPreview : Panel
     /// <summary>The address the page was last given as its own, which its own load may navigate to.</summary>
     private Uri? loading;
 
+    /// <summary>Where the page was scrolled to as it was last given again, put back once the new page has loaded.</summary>
+    private PagePlace? place;
+
+    /// <summary>The file whose page the web view holds, so another file's page is never read for this one's place.</summary>
+    private OpenDocument? held;
+
+    /// <summary>Whether a page given has yet to load: read meanwhile, the place would be the new page's start.</summary>
+    private bool landing;
+
+    /// <summary>Pages begun being given, which numbers each: only the newest is navigated to.</summary>
+    private int gives;
+
     internal HtmlPreview(EditorArea area)
     {
         this.area = area;
-        typing = new Debounce(Pause, () =>
-        {
-            Give();
-            return Task.CompletedTask;
-        });
+        typing = new Debounce(Pause, GiveAsync);
         Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Editor_Background));
         if (WhyNone() is { } why)
         {
@@ -65,7 +73,10 @@ public sealed class HtmlPreview : Panel
     /// <summary>How many times the page has been given a text.</summary>
     public int Loads { get; private set; }
 
-    /// <summary>Shows a file's page, or nothing; its edits given again as typing pauses.</summary>
+    /// <summary>How many pages given have loaded in the web view, each then put back at the place it was given at.</summary>
+    public int Landed { get; private set; }
+
+    /// <summary>Shows a file's page, or nothing; its edits given again as typing pauses, each where the last was scrolled to.</summary>
     internal void Show(OpenDocument? next)
     {
         if (next == document)
@@ -78,18 +89,21 @@ public sealed class HtmlPreview : Panel
             document.Text.Changed -= OnChanged;
         }
         document = next;
+        // Hidden or showing another file, the web view may have let its page go: a file shown again starts at its top.
+        held = null;
         if (next is null)
         {
             return;
         }
         next.Text.Changed += OnChanged;
-        Give();
+        IdeErrors.Observe(GiveAsync());
     }
 
     private void OnChanged(object? sender, DocumentChangedEventArgs e) => typing.Restart();
 
-    /// <summary>The page given the text as it stands, the web view made as it is first needed.</summary>
-    private void Give()
+    /// <summary>The page given the text as it stands, the web view made as it is first needed; the same file's page is read
+    /// first for where it was scrolled to, unless the last one given has yet to load.</summary>
+    private async Task GiveAsync()
     {
         if (document is not { } shown || said.Parent is not null)
         {
@@ -97,14 +111,75 @@ public sealed class HtmlPreview : Panel
         }
         string folder = Path.GetDirectoryName(shown.Path) ?? shown.Path;
         Uri at = new(shown.Path);
-        Given = (shown.Text.Snapshot.ToString(), new Uri(folder.EndsWith(Path.DirectorySeparatorChar) ? folder : folder + Path.DirectorySeparatorChar));
+        (string Html, Uri Base) page = (shown.Text.Snapshot.ToString(), new Uri(folder.EndsWith(Path.DirectorySeparatorChar) ? folder : folder + Path.DirectorySeparatorChar));
+        Given = page;
         Loads++;
         loading = at;
         // A window nobody sees (an agent's, a test's, a screenshot's) makes no web view of the system's.
-        if (!PassengerApp.ShowsNoWindow)
+        if (PassengerApp.ShowsNoWindow)
         {
-            View().NavigateToString(Given.Value.Html, Given.Value.Base);
+            return;
         }
+        NativeWebView web = View();
+        int mine = ++gives;
+        if (held != shown)
+        {
+            place = null;
+        }
+        else if (!landing)
+        {
+            place = await PlaceOf(web);
+            if (mine != gives || document != shown)
+            {
+                return;
+            }
+        }
+        held = shown;
+        landing = true;
+        web.NavigateToString(page.Html, page.Base);
+    }
+
+    /// <summary>Where the page in the web view is scrolled to; null where the web view cannot say.</summary>
+    private static async Task<PagePlace?> PlaceOf(NativeWebView web)
+    {
+        try
+        {
+            return PagePlace.Of(await web.InvokeScript(PagePlace.Read));
+        }
+        catch (Exception error)
+        {
+            // Each system's web view throws its own; the page is given at its start.
+            IdeErrors.Write($"The HTML preview could not read where its page was scrolled to: {error}");
+            return null;
+        }
+    }
+
+    /// <summary>A page given has loaded: put back where the one before it was scrolled to. A load that failed (another
+    /// address refused, a load given again before it ended) is not the page's.</summary>
+    private void OnLanded(object? sender, WebViewNavigationCompletedEventArgs e)
+    {
+        if (landing && e.IsSuccess && sender is NativeWebView web)
+        {
+            landing = false;
+            IdeErrors.Observe(PutBackAsync(web, place));
+        }
+    }
+
+    private async Task PutBackAsync(NativeWebView web, PagePlace? at)
+    {
+        if (at is { Away: true } back)
+        {
+            try
+            {
+                await web.InvokeScript(back.Restore);
+            }
+            catch (Exception error)
+            {
+                // Each system's web view throws its own; the page stays at its start.
+                IdeErrors.Write($"The HTML preview could not put its page back where it was scrolled to: {error}");
+            }
+        }
+        Landed++;
     }
 
     private NativeWebView View()
@@ -116,6 +191,7 @@ public sealed class HtmlPreview : Panel
         view = new NativeWebView();
         view.EnvironmentRequested += (_, e) => Private(e);
         view.NavigationStarted += OnNavigating;
+        view.NavigationCompleted += OnLanded;
         view.NewWindowRequested += (_, e) =>
         {
             e.Handled = true;

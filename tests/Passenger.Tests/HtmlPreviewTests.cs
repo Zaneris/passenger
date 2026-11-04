@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -10,8 +11,9 @@ namespace Passenger.Tests;
 
 /// <summary>An HTML file's page beside its text, in the system's web view, which a headless window neither makes nor
 /// draws: what the page is given and when, the text as the editor has it with the file's folder for its relative
-/// addresses, again once typing pauses and not before; off until the strip's toggle turns it on; and a Linux without
-/// WebKitGTK 4.1 saying so in the page's place.</summary>
+/// addresses, again once typing pauses and not before; off until the strip's toggle turns it on; a Linux without
+/// WebKitGTK 4.1 saying so in the page's place; and, where a window is seen, the page given again at the place it was
+/// scrolled to.</summary>
 public sealed class HtmlPreviewTests : IDisposable
 {
     private const string Page = "<!doctype html>\n<html>\n  <head><link rel=\"stylesheet\" href=\"site.css\"></head>\n  <body><h1>Hello</h1></body>\n</html>\n";
@@ -59,6 +61,49 @@ public sealed class HtmlPreviewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Scrolled down, the page is given an edit at the same place; given a page shorter than the place, it ends at
+    /// its end; and a page scrolling itself as it loads is left where it went. Only a web view of the system's scrolls, which
+    /// a window nobody sees never makes, so headless this skips, run by hand where Passenger's window is seen.</summary>
+    [AvaloniaFact]
+    public void An_HTML_page_given_again_keeps_the_place_it_was_scrolled_to()
+    {
+        if (PassengerApp.ShowsNoWindow)
+        {
+            Assert.Skip("A window nobody sees makes no web view of the system's, the only one to scroll a page: this runs where Passenger's window is seen");
+        }
+        if (HtmlPreview.WhyNone() is { } why)
+        {
+            Assert.Skip($"This system shows no page: {why}");
+        }
+        string index = Path.Combine(folder, "index.html");
+        File.WriteAllText(index, Paragraphs(300));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Assert.Null(window.OpenFile(index));
+        Ui.Settle();
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        Ui.Click(group.PreviewToggle);
+        HtmlPreview preview = group.Html ?? throw new Xunit.Sdk.XunitException("The toggle showed no page beside the HTML file");
+        NativeWebView web = Assert.Single(preview.GetLogicalChildren().OfType<NativeWebView>());
+        Ui.WaitFor(() => preview.Landed == 1, () => $"the page's first load ({preview.Loads} given, {preview.Landed} loaded)");
+        Assert.True(Math.Abs(ScrolledTo(web, "window.scrollTo(0, 2000);") - 2000) < 1, $"A page of 300 paragraphs did not scroll to 2,000 but to {ScrolledTo(web)}");
+
+        Typing.Replace(window, "Paragraph 3<", "Paragraph three<");
+        Ui.WaitFor(() => preview.Landed == 2, () => $"the page given the edit to load ({preview.Loads} given, {preview.Landed} loaded)");
+        Ui.WaitFor(() => Math.Abs(ScrolledTo(web) - 2000) < 1, () => $"the page given the edit to stand where the reader had scrolled, 2,000, not {ScrolledTo(web)}");
+
+        Ui.Run(window, AppActions.Save);
+        File.WriteAllText(index, Paragraphs(60));
+        Ui.WaitFor(() => preview.Landed == 3, () => $"the shorter page written on disk to load ({preview.Loads} given, {preview.Landed} loaded)");
+        double end = double.Parse(Script(web, "Math.max(0, document.scrollingElement.scrollHeight - window.innerHeight)")!.Trim('"'), CultureInfo.InvariantCulture);
+        Assert.True(end is > 0 and < 2000, $"A page of 60 paragraphs should end above 2,000 and below its view's height, not at {end}");
+        Ui.WaitFor(() => Math.Abs(ScrolledTo(web) - end) < 1, () => $"the page shorter than the place to stand at its end, {end}, not {ScrolledTo(web)}");
+
+        File.WriteAllText(index, Paragraphs(300, "<script>window.addEventListener('load', function () { window.scrollTo(0, 300); });</script>"));
+        Ui.WaitFor(() => preview.Landed == 4, () => $"the page scrolling itself to load ({preview.Loads} given, {preview.Landed} loaded)");
+        Ui.WaitFor(() => Math.Abs(ScrolledTo(web) - 300) < 1, () => $"the page that scrolls itself as it loads to stand where it went, 300, not {ScrolledTo(web)}");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_system_without_a_web_view_for_the_page_says_so_in_its_place()
     {
@@ -83,4 +128,14 @@ public sealed class HtmlPreviewTests : IDisposable
             HtmlPreview.WhyNone = system;
         }
     }
+
+    /// <summary>A page of numbered paragraphs, its head holding <paramref name="head"/>.</summary>
+    private static string Paragraphs(int count, string head = "") =>
+        $"<!doctype html>\n<html>\n  <head>{head}</head>\n  <body>\n{string.Concat(Enumerable.Range(1, count).Select(i => $"    <p>Paragraph {i}</p>\n"))}  </body>\n</html>\n";
+
+    /// <summary>The page's answer to a script, the window's loop running while it is asked.</summary>
+    private static string? Script(NativeWebView web, string script) => Ui.Await(web.InvokeScript(script), $"the page's answer to {script}");
+
+    /// <summary>How far down the page is scrolled once <paramref name="first"/> has run in it; NaN where it cannot say.</summary>
+    private static double ScrolledTo(NativeWebView web, string first = "") => PagePlace.Of(Script(web, first + PagePlace.Read))?.Y ?? double.NaN;
 }

@@ -283,6 +283,12 @@
     <Compile Include="../../src/Passenger.App/Explorer/ExplorerFilter.cs" Link="App/ExplorerFilter.cs" />
   </ItemGroup>
 
+  <!-- Where an HTML preview's page is scrolled to, read from and put back by script, compiled in since its project is the
+       app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Editors/PagePlace.cs" Link="App/PagePlace.cs" />
+  </ItemGroup>
+
   <!-- The JSON schemas the app carries under web/schemas, compiled in for the checks of what they offer and take. -->
   <ItemGroup>
     <EmbeddedResource Include="../../src/Passenger.Lsp/WebServers/schemas/*.json" LogicalName="schemas/%(Filename)%(Extension)"
