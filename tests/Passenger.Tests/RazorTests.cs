@@ -554,7 +554,9 @@ public sealed class RazorDebuggingTests : IDisposable
     }
 }
 
-/// <summary>A Blazor Web App as <c>dotnet new blazor</c> makes it (named Shop, for .NET 10, without HTTPS), in a folder.</summary>
+/// <summary>A Blazor Web App as <c>dotnet new blazor</c> makes it (named Shop, for .NET 10, without HTTPS), in a folder, its
+/// nuget.config naming the folder's own feed alone: it restores from the package cache tests/BlazorGraphs fills, never
+/// nuget.org.</summary>
 internal static class BlazorApp
 {
     /// <summary>A component whose code is all in its code-behind, Tally.razor.cs, its markup without <c>@code</c>.</summary>
@@ -579,6 +581,8 @@ internal static class BlazorApp
             ChildProcesses.DotnetCommand(["new", "blazor", "--output", folder, "--name", "Shop", "--framework", TestProjects.Framework, "--no-https", "--no-restore"]),
             limit: Limit);
         Assert.True(made.Succeeded, $"dotnet new blazor did not make the test's app (exit code {made.ExitCode}):\n{made.Output}{made.Error}");
+        TestFolders.Write(folder, "nuget.config", "<configuration>\n  <packageSources><clear /><add key=\"local\" value=\"feed\" /></packageSources>\n</configuration>\n");
+        Directory.CreateDirectory(Path.Combine(folder, "feed"));
     }
 }
 
