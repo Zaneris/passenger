@@ -65,6 +65,17 @@ public sealed class WebLanguages : IAsyncDisposable
     private bool asksDockerHub;
     private bool disposed;
 
+    /// <summary>The variable that shortens how long GDScript's server waits, no GDScript open, before it is let go.</summary>
+    [IdentifierHome]
+    public const string GDScriptIdleVariable = "PASSENGER_GDSCRIPT_IDLE_MS";
+
+    /// <summary>How long GDScript's server, a headless Godot editor of about 800 MB, is kept once no GDScript is open: the
+    /// next one opened starts it again in a few seconds, Passenger's own reading of the scripts answering meanwhile.</summary>
+    private static TimeSpan GDScriptIdle => EnvironmentValues.Milliseconds(GDScriptIdleVariable, TimeSpan.FromMinutes(3));
+
+    /// <summary>The wait for GDScript's server to be let go, while one is under way.</summary>
+    private CancellationTokenSource? gdscriptIdle;
+
     /// <summary>The next server's configuring held by a test (<see cref="HoldNextConfigure"/>): what it waits for, and its
     /// process's id told once it waits.</summary>
     private (Task Until, TaskCompletionSource<int> Holding)? configureHeld;
@@ -190,6 +201,7 @@ public sealed class WebLanguages : IAsyncDisposable
         if (language.Kind == WebServerKind.GDScript)
         {
             godotProject ??= Godot.GodotScripts.ProjectOf(document.Path);
+            Interlocked.Exchange(ref gdscriptIdle, null)?.Cancel();
         }
         NodeServer server = ServerFor(language.Kind);
         if (server.Session is { } running)
@@ -221,7 +233,42 @@ public sealed class WebLanguages : IAsyncDisposable
             features.Dispose();
             document.Notice = null;
             document.NoticeAction = null;
+            if (features.Kind == WebServerKind.GDScript && !documents.Values.Any(d => d.Kind == WebServerKind.GDScript))
+            {
+                LetGoGDScriptLater();
+            }
         }
+    }
+
+    /// <summary>GDScript's server let go once <see cref="GDScriptIdle"/> passes with no GDScript open, its next file
+    /// starting it again; a server of the person's own Godot editor is only let go of, never ended.</summary>
+    private void LetGoGDScriptLater()
+    {
+        CancellationTokenSource waiting = new();
+        Interlocked.Exchange(ref gdscriptIdle, waiting)?.Cancel();
+        // Unheld: no screenshot or settling test waits on a server kept for a script yet to come.
+        IdeErrors.Observe(BackgroundWork.Unheld(async () =>
+        {
+            try
+            {
+                await Task.Delay(GDScriptIdle, waiting.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            UiThread.Post(() =>
+            {
+                if (disposed || Volatile.Read(ref gdscriptIdle) != waiting || documents.Values.Any(d => d.Kind == WebServerKind.GDScript)
+                    || !servers.Remove(WebServerKind.GDScript, out NodeServer? server))
+                {
+                    return;
+                }
+                IdeErrors.Observe(server.End());
+                IdeErrors.Write($"GDScript's language server let go for {folder}: no GDScript open for {GDScriptIdle.TotalSeconds:0} s");
+                StateChanged?.Invoke(this, EventArgs.Empty);
+            });
+        }));
     }
 
     /// <summary>The Node.js the servers run on, looked for once. Asked from any thread.</summary>

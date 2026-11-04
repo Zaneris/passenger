@@ -20,8 +20,8 @@ namespace Passenger.Tests;
 /// goes to a declaration, keeping the project's editor layout as it was, and its project.godot where an editor plugin
 /// saves it; an error typed shows in Problems as typed, a warning with its name; and a project deleted under that editor
 /// is let go of, said once; what that editor makes (a script's .uid) is taken away, a plugin runs not there from Godot 4.5,
-/// and another program's writes are kept. Without a Godot (GODOT, the PATH, Applications) each test skips saying why. A Godot editor of
-/// its own each, so run alone.</summary>
+/// another program's writes are kept, and the editor is let go once no script is open. Without a Godot (GODOT, the PATH,
+/// Applications) each test skips saying why. A Godot editor of its own each, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GDScriptTests
 {
@@ -347,6 +347,52 @@ public sealed class GDScriptTests
     }
 
     /// <summary>The project's folder open on its script, once Godot's server answers for it.</summary>
+    /// <summary>GDScript's server, a headless Godot editor of about 800 MB, is let go once no GDScript has been open for a
+    /// while (shortened here to a second), and starts again as a script opens, rather than lasting as long as the folder.</summary>
+    [AvaloniaFact]
+    public void Godots_headless_editor_is_let_go_once_no_script_is_open_and_starts_again_as_one_opens()
+    {
+        string? was = Environment.GetEnvironmentVariable(Passenger.App.Web.WebLanguages.GDScriptIdleVariable);
+        Environment.SetEnvironmentVariable(Passenger.App.Web.WebLanguages.GDScriptIdleVariable, "1000");
+        try
+        {
+            MainWindow window = Open();
+            Assert.True(EditorsServing(folder) == 1, $"{EditorsServing(folder)} headless Godot editors serve the project's GDScript, where one was to");
+            Ui.Run(window, AppActions.CloseTab);
+            Ui.WaitFor(() => EditorsServing(folder) == 0, () => $"the headless Godot editor let go once no GDScript was open ({EditorsServing(folder)} still run)", TimeSpan.FromSeconds(30));
+
+            Assert.Null(window.OpenFile(Path.Combine(folder, "main.gd")));
+            OpenDocument document = window.EditorArea.Active!;
+            Ui.WaitFor(() => window.Session.Web?.For(document)?.Lsp is not null && window.Session.Web.StateOf(document) is null,
+                () => $"Godot's server started again for {document.Name}: {window.Session.Web?.StateOf(document)} {document.Notice}", TimeSpan.FromSeconds(90));
+            Assert.Equal(1, EditorsServing(folder));
+            window.Close();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(Passenger.App.Web.WebLanguages.GDScriptIdleVariable, was);
+        }
+    }
+
+    /// <summary>How many headless Godot editors serve a project's GDScript: Godot started on it with a language server's port.</summary>
+    private static int EditorsServing(string project)
+    {
+        string named = PathNames.Canonical(project);
+        int found = 0;
+        foreach (System.Diagnostics.Process process in System.Diagnostics.Process.GetProcesses())
+        {
+            using (process)
+            {
+                if (process.Id != Environment.ProcessId && DotnetProcesses.Describe(process.Id) is { } running
+                    && running.CommandLine.Contains("--lsp-port", StringComparison.Ordinal) && running.CommandLine.Contains(named, StringComparison.Ordinal))
+                {
+                    found++;
+                }
+            }
+        }
+        return found;
+    }
+
     private MainWindow Open()
     {
         MainWindow window = new()
