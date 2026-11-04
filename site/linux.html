@@ -105,10 +105,23 @@ tar -xzf Passenger-linux-$arch.tar.gz</pre>
         window title. Under WSL and tiling window managers, the window manager's stays.</p>
 
     <h2>Updating</h2>
-    <p>Passenger says when a newer release is out (Help &rsaquo; Check for Updates asks at once), and its notice links the
-        archive for your machine. It does not install updates itself on Linux: unpack the newer archive and run its
-        <code>install.sh</code> as before (with <code>sudo</code> and <code>--system</code> if that is how you installed
-        it). It replaces the old files and keeps your settings.</p>
+    <p>Installed with <code>install.sh</code>, Passenger updates itself. It downloads a newer release in the background
+        (Help &rsaquo; Check for Updates asks at once), checks it against the release's SHA-256 sums, and puts it in place
+        as it closes, or at once with Restart to Update, keeping your settings. Installed for everyone, it asks for an
+        administrator's password where your desktop can ask, or gives you the command to run. The release it replaced is
+        kept until the new one starts.</p>
+    <p>Run from where its archive was unpacked, Passenger only says a newer release is out, and links the archive for
+        your machine: unpack it in its place, or install it. A copy your package manager installed is updated by it.</p>
+
+    <h2>Packaging Passenger</h2>
+    <p>A package of Passenger (an AUR, <code>.deb</code> or <code>.rpm</code> package) installs the archive's
+        <code>passenger</code> folder where it chooses, with its desktop entry, icons and file types, rather than running
+        <code>install.sh</code>. It also writes one file beside the app, <code>app/package-manager</code>: a line naming
+        the package manager, such as <code>pacman</code>, <code>apt</code> or <code>dnf</code>. Passenger then leaves its
+        updates to that manager and says so, rather than asking the system's package database whose the copy is, and
+        never writes over the package's files. Name the command <code>passenger-ide</code>, as <code>install.sh</code>
+        does.</p>
+<pre>echo pacman > "$pkgdir/opt/passenger-ide/app/package-manager"</pre>
 
     <h2>Uninstalling</h2>
 <pre>~/.local/opt/passenger/install.sh --uninstall

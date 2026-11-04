@@ -851,7 +851,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
                 () => $"the status bar to say v{newer} is ready to install by hand: its notice says '{Notice(window)}', its message '{window.Status}'");
 
             string unpacked = Path.Combine(copy.Staging, newer, "passenger");
-            string command = $"sudo {ShellWords.Quoted(Path.Combine(copy.Install, "install.sh"), ShellKind.Posix)} --system --from {ShellWords.Quoted(unpacked, ShellKind.Posix)}";
+            string command = $"sudo {ShellWords.Quoted(Path.Combine(copy.Install, "install.sh"), ShellKind.Posix)} --system --from {ShellWords.Quoted(unpacked, ShellKind.Posix)} --keep-replaced";
             Assert.True(window.UpdateByHand == command, $"The command that installs v{newer} is '{window.UpdateByHand}', not '{command}'");
             Assert.True(copy.Holds(newer), $"v{newer} is not unpacked at {unpacked}, which the command installs from");
             string tip = ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty;

@@ -238,12 +238,44 @@ public sealed class LinuxInstallTests
         Assert.True(Held(installed) == before, $"The installed install.sh run again changed the install, to {Held(installed)} from {before}");
     }
 
-    /// <summary>Runs an unpacked folder's install.sh for one person, <paramref name="home"/> theirs, with a folder of
-    /// programs before the PATH's own where one is given, installing another unpacked folder where one is, or removing
-    /// the install.</summary>
-    private static async Task<ChildResult> Install(string script, string home, string? programs = null, string? from = null, bool uninstall = false)
+    /// <summary>The installed install.sh given an update's unpacked release with <c>--keep-replaced</c>, as Passenger's
+    /// update of an install for everyone runs it, installs that release and keeps the one it replaced beside the release's
+    /// folder, in the update's own folder, for the new one's start to remove: nothing is left beside the install.</summary>
+    [Fact]
+    public async Task An_install_keeping_the_release_replaced_leaves_it_in_the_updates_folder_and_nothing_beside_the_install()
     {
-        string[] arguments = uninstall ? [script, "--uninstall"] : from is null ? [script] : [script, "--from", from];
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip(NoShell);
+            return;
+        }
+        string root = PathNames.Canonical(TestFolders.Create("install-"));
+        string home = Directory.CreateDirectory(Path.Combine(root, "home")).FullName;
+        string installed = Path.Combine(home, ".local", "opt", "passenger");
+        ChildResult install = await Install(Unpacked(Path.Combine(root, "first"), "1"), home);
+        Assert.True(install.Succeeded, $"The first release's install failed: {install.Said}");
+        string update = Path.Combine(root, "updates", "2");
+        string second = Path.GetDirectoryName(Unpacked(update, "2"))!;
+
+        install = await Install(Path.Combine(installed, "install.sh"), home, from: second, keepReplaced: true);
+
+        Assert.True(install.Succeeded, $"The installed install.sh given --from {second} --keep-replaced refused: {install.Said}");
+        Assert.True(File.ReadAllText(Path.Combine(installed, "app", "release.txt")) == "2",
+            $"The install keeping the release replaced left ~/.local/opt/passenger {Held(installed)}, not the second release");
+        string kept = Path.Combine(update, "replaced");
+        Assert.True(File.Exists(Path.Combine(kept, "app", "release.txt")) && File.ReadAllText(Path.Combine(kept, "app", "release.txt")) == "1",
+            $"The install keeping the release replaced left the update's folder {Held(update)}, without the first release");
+        Assert.True(Directory.EnumerateFileSystemEntries(Path.GetDirectoryName(installed)!).Select(Path.GetFileName).SequenceEqual(["passenger"]),
+            $"The install keeping the release replaced left {string.Join(", ", Directory.EnumerateFileSystemEntries(Path.GetDirectoryName(installed)!).Select(Path.GetFileName))} in ~/.local/opt");
+    }
+
+    /// <summary>Runs an unpacked folder's install.sh for one person, <paramref name="home"/> theirs, with a folder of
+    /// programs before the PATH's own where one is given, installing another unpacked folder where one is (keeping the
+    /// release it replaces where asked), or removing the install.</summary>
+    private static async Task<ChildResult> Install(string script, string home, string? programs = null, string? from = null, bool uninstall = false,
+        bool keepReplaced = false)
+    {
+        string[] arguments = uninstall ? [script, "--uninstall"] : from is null ? [script] : keepReplaced ? [script, "--from", from, "--keep-replaced"] : [script, "--from", from];
         ProcessStartInfo start = ChildProcesses.Command("/bin/sh", arguments, home);
         start.Environment["HOME"] = home;
         start.Environment["XDG_DATA_HOME"] = Path.Combine(home, ".local", "share");

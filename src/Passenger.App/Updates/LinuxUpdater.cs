@@ -14,7 +14,8 @@ namespace Passenger.App.Updates;
 /// (<see cref="UpdateFolders"/>); as the process ends the two folders trade places in one step, the release replaced kept
 /// beside until the new one starts, and the new install.sh refreshes the menu entry, icons and command as it installs
 /// them. An install for everyone (/opt/passenger) is put in place by its own install.sh, as root through pkexec or by a
-/// command the person is given; a copy a package manager installed is left to it.</summary>
+/// command the person is given, which keeps the release replaced in the update's folder in the state until the new one
+/// starts, as a person's does; a copy a package manager installed is left to it.</summary>
 [SupportedOSPlatform("linux")]
 public sealed partial class LinuxUpdater : Updater
 {
@@ -117,8 +118,8 @@ public sealed partial class LinuxUpdater : Updater
         }
         if (kind == InstallKind.Unpacked || !File.Exists(Path.Combine(Folder, "install.sh")))
         {
-            return new UpdatedElsewhere($"This copy of Passenger runs from {Folder}, where its archive was unpacked: installed by its install.sh, it updates itself.",
-                Download: true);
+            return new UpdatedElsewhere($"This copy of Passenger runs from {Folder}, where its archive was unpacked, so it is updated by hand: "
+                + "a newer archive unpacked in its place, or this one installed by its install.sh, after which it updates itself.", Download: true);
         }
         return null;
     }
@@ -219,9 +220,10 @@ public sealed partial class LinuxUpdater : Updater
             + $"so it is installed by hand: {command}");
     }
 
-    /// <summary>The command that installs a release unpacked here for everyone, as a person types it.</summary>
+    /// <summary>The command that installs a release unpacked here for everyone, as a person types it, the release it
+    /// replaces kept for the new one's start to remove.</summary>
     public string Command(string passenger) =>
-        $"sudo {ShellWords.Quoted(Path.Combine(Folder, "install.sh"), ShellKind.Posix)} --system --from {ShellWords.Quoted(passenger, ShellKind.Posix)}";
+        $"sudo {ShellWords.Quoted(Path.Combine(Folder, "install.sh"), ShellKind.Posix)} --system --from {ShellWords.Quoted(passenger, ShellKind.Posix)} --keep-replaced";
 
     /// <summary>pkexec, where it is on the PATH and a desktop session is there to show its question; else null.</summary>
     private static string? Pkexec() =>
@@ -343,7 +345,11 @@ public sealed partial class LinuxUpdater : Updater
         IdeErrors.Write($"Updates: Passenger {version} installed in {Folder}{(restart ? ", and started" : string.Empty)}");
         Restart(restart);
         Ready = null;
-        Remove(Path.Combine(Staging, version));
+        // An install for everyone left the release it replaced there, for the new one's start to remove (TidyAsync).
+        if (kind != InstallKind.System)
+        {
+            Remove(Path.Combine(Staging, version));
+        }
         IdeErrors.Flush();
     }
 
@@ -398,11 +404,12 @@ public sealed partial class LinuxUpdater : Updater
     }
 
     /// <summary>The install for everyone put in place by its own install.sh, from the release unpacked here: as root
-    /// through pkexec, or itself where this user can write the install (root). Gives why not.</summary>
+    /// through pkexec, or itself where this user can write the install (root), the release it replaces kept beside the
+    /// unpacked one, given to this user, for the new one's start to remove. Gives why not.</summary>
     private string? InstallForEveryone(string passenger)
     {
         string script = Path.Combine(Folder, "install.sh");
-        string[] arguments = ["--system", "--from", passenger];
+        string[] arguments = ["--system", "--from", passenger, "--keep-replaced"];
         ProcessStartInfo command = Writable() || asker is null
             ? ChildProcesses.Command("/bin/sh", [script, .. arguments])
             : ChildProcesses.Command(asker, [script, .. arguments]);

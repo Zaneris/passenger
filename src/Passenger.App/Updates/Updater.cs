@@ -32,6 +32,11 @@ public abstract class Updater
     /// <summary>Removes what an earlier update left beside this copy (the release it replaced), as the copy starts.</summary>
     public virtual Task TidyAsync() => Task.CompletedTask;
 
+    /// <summary>What this copy does about a newer release, for the start's log, once whether a package manager owns it is
+    /// known: a package's is updated by its package manager, an unpacked copy's by hand, an installed copy's by itself.</summary>
+    public async Task<string> UpdatedByAsync(CancellationToken cancel) =>
+        await ElsewhereAsync(cancel).ConfigureAwait(false) is { } elsewhere ? elsewhere.Why : $"This copy installs updates itself, in {Installed}.";
+
     /// <summary>Downloads the release's package for this system and checks it, off the caller's thread, reporting the
     /// percent done. Never throws but for <paramref name="cancel"/>: a refusal or a failure is an answer.</summary>
     public async Task<UpdateOutcome> DownloadAsync(LatestRelease release, Action<int> progress, CancellationToken cancel)

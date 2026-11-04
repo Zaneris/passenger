@@ -6,6 +6,8 @@
 #   sudo ./install.sh --system           for everyone: /opt/passenger, /usr/local/bin/passenger-ide, /usr/share/applications
 #   ./install.sh --uninstall [--system]  removes what that install added, and leaves the settings (~/.local/share/Passenger)
 #   ./install.sh --from FOLDER [--system] installs the unpacked passenger/ folder FOLDER rather than this script's own
+#   ./install.sh --from FOLDER --keep-replaced  keeps the release it replaces beside FOLDER, given to its owner, until
+#                                        Passenger's next start removes it, as Passenger's own update does
 # Installing a newer release's folder the same way replaces the old files and keeps the settings; the installed script
 # run again refreshes the menu entry, icons and command.
 set -eu
@@ -20,12 +22,13 @@ fail() {
 }
 
 usage() {
-    sed -n '2,11s/^# \{0,1\}//p' "$0"
+    sed -n '2,13s/^# \{0,1\}//p' "$0"
 }
 
 system=
 uninstall=
 from=
+keep_replaced=
 while [ $# -gt 0 ]; do
     case $1 in
         --system) system=1 ;;
@@ -35,15 +38,19 @@ while [ $# -gt 0 ]; do
             from=$2
             shift
             ;;
+        --keep-replaced) keep_replaced=1 ;;
         -h | --help)
             usage
             exit 0
             ;;
-        *) fail "'$1' is neither --system, --uninstall, --from FOLDER nor --help" ;;
+        *) fail "'$1' is neither --system, --uninstall, --from FOLDER, --keep-replaced nor --help" ;;
     esac
     shift
 done
 
+if [ -n "$keep_replaced" ] && [ -z "$from" ]; then
+    fail "--keep-replaced keeps the release replaced beside the folder --from names: --from FOLDER --keep-replaced"
+fi
 if [ -n "$from" ]; then
     here=$(readlink -f "$from") || fail "$from is no folder to install from"
 else
@@ -201,7 +208,13 @@ if [ "$here" != "$(readlink -f "$dest" 2> /dev/null || echo "$dest")" ]; then
     fi
     mv "$new" "$dest"
     swapped=1
-    rm -rf "$old"
+    # Kept for the release's next start to remove, which runs as the folder's owner, not as root: else removed now.
+    kept=$(dirname "$here")/replaced
+    if [ -n "$keep_replaced" ] && [ -e "$old" ] && rm -rf "$kept" && mv "$old" "$kept"; then
+        chown -R "$(stat -c %u:%g "$(dirname "$here")" 2> /dev/null)" "$kept" 2> /dev/null || true
+    else
+        rm -rf "$old"
+    fi
 fi
 
 mkdir -p "$bin" "$(dirname "$entry")" "$(dirname "$icon_png")" "$(dirname "$icon_svg")" "$(dirname "$types")"
