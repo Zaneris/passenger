@@ -1274,7 +1274,8 @@ public static class Ui
     /// <summary>A press of one of the mouse's side buttons over a control, as <see cref="Click(Control, Point?, RawInputModifiers, bool)"/>
     /// makes a click: <see cref="MouseButton.XButton1"/> is Back's, as every platform reports it, XButton2 Forward's. More
     /// presses (<paramref name="times"/>), or one right after a left click there (<paramref name="afterClick"/>), go with no
-    /// pause between, as a quick hand makes them, and fail unless the platform counted them as one run of clicks.</summary>
+    /// pause between, as a quick hand makes them, and fail unless the platform counted the side button's presses as one run
+    /// of clicks, the left click a run of its own, since a press of another button starts a new run.</summary>
     public static void SideClick(Control control, MouseButton side, Point? at = null, int times = 1, bool afterClick = false)
     {
         Assert.True(side is MouseButton.XButton1 or MouseButton.XButton2, $"{side} is not a side button");
@@ -1306,8 +1307,9 @@ public static class Ui
             top.RemoveHandler(InputElement.PointerPressedEvent, pressed);
         }
         Clicked(top, point);
-        Assert.True(counts.SequenceEqual(Enumerable.Range(1, times + (afterClick ? 1 : 0))),
-            $"Presses with no pause between were counted as clicks {string.Join(", ", counts)}, not one run of them, so a quick hand's presses were not what ran");
+        int[] run = afterClick ? [1, .. Enumerable.Range(1, times)] : [.. Enumerable.Range(1, times)];
+        Assert.True(counts.SequenceEqual(run),
+            $"Presses with no pause between were counted as clicks {string.Join(", ", counts)}, not {string.Join(", ", run)}, so a quick hand's presses were not what ran");
         Settle();
     }
 

@@ -440,7 +440,8 @@ public sealed class NavigationTests : IDisposable
     }
 
     /// <summary>The mouse's Back button pressed three times with no pause steps back three places, though the platform
-    /// counts the presses as one run of clicks, and pressed right after a click at the same place steps back too.</summary>
+    /// counts the presses as one run of clicks, and pressed right after a left click at the same place, a run of its own,
+    /// steps back too.</summary>
     [AvaloniaFact]
     public void The_mouses_back_button_steps_back_at_each_press_of_a_quick_run_and_right_after_a_click()
     {

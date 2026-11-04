@@ -480,8 +480,8 @@ public sealed class Keymap
     public string? DragFor(MouseShortcut gesture) => byDrag.GetValueOrDefault(gesture);
 
     /// <summary>The action a press of the mouse runs whichever click of a run it is: its own click's, else, when the keymap
-    /// gives its button and modifiers no double-click, their one click's. The platform counts a run of presses whatever
-    /// their buttons, so a second Back pressed soon after the first, or after a click, comes as a double-click.</summary>
+    /// gives its button and modifiers no double-click, their one click's. The platform counts a run of one button's
+    /// presses, so a second Back pressed soon after the first comes as a double-click.</summary>
     public string? ActionForAnyClick(MouseShortcut gesture) =>
         ActionFor(gesture) ?? (gesture.Clicks > 1 && !byMouse.ContainsKey(gesture with { Clicks = 2 }) ? ActionFor(gesture with { Clicks = 1 }) : null);
 
