@@ -603,6 +603,7 @@ public sealed partial class GDScriptAnalyzer
             return new GDScriptType(GDScriptTypeKind.Enum, variantEnum.Name) { Values = variantEnum.Values, Meta = true };
         }
         GDScriptType found = Attribute(owner, name, context);
+        EnumValueDeclared(owner, name, found, context);
         if (context.Analysis.Tree is not null && Engine is not null && Missing(owner, attribute.Base, name, found, pseudo, context) is not null
             && found is { Kind: GDScriptTypeKind.Enum, Meta: true, Script: null, Owner: { } engine })
         {
@@ -610,6 +611,21 @@ public sealed partial class GDScriptAnalyzer
             return GDScriptType.Variant with { Meta = true, Owner = $"{engine}.{found.Name}" };
         }
         return found;
+    }
+
+    /// <summary>A script enum's value read off the enum (<c>FillArea.AREA</c>) recorded as declared where the enum gives it.</summary>
+    private void EnumValueDeclared(GDScriptType owner, GDScriptIdentifier name, GDScriptType found, Context context)
+    {
+        if (context.Analysis.Tree is null || owner is not { Kind: GDScriptTypeKind.Enum, Meta: true, Script: { } script, Class: { } holder })
+        {
+            return;
+        }
+        GDScriptType at = new(GDScriptTypeKind.Class, holder.Identifier?.Name ?? script) { Class = holder, Script = script, Offset = owner.Offset };
+        if (OwnNames(at).TryGetValue(owner.Name, out (GDScriptNode Node, int Offset) declared) && declared.Node is GDScriptEnum enumerated
+            && enumerated.Values.FirstOrDefault(v => v.Name.Name == name.Name).Name is { } value)
+        {
+            context.Analysis.Declared[name] = new GDScriptDeclaration(script, declared.Offset + value.Start, name.Name, found);
+        }
     }
 
     /// <summary>Godot's errors of an attribute's member that is not there (reduce_identifier_from_base, reduce_subscript),

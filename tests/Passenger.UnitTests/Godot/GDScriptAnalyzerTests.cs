@@ -174,6 +174,17 @@ public class GDScriptAnalyzerTests
     }
 
     [Fact]
+    public void An_enums_value_read_off_its_enum_is_declared_where_the_enum_gives_it()
+    {
+        string text = "extends Node\n\nenum Mood { CALM, ANGRY }\n\n\nfunc f() -> int:\n\treturn Mood.ANGRY + Inner.Kind.TWO\n\n\nclass Inner:\n\tenum Kind { ONE, TWO }\n";
+        (GDScriptAnalysis analysis, _) = Analyze(text);
+        Assert.Equal(text.IndexOf("ANGRY }", StringComparison.Ordinal), DeclaredAt(text.IndexOf("ANGRY +", StringComparison.Ordinal)));
+        Assert.Equal(text.IndexOf("TWO }", StringComparison.Ordinal), DeclaredAt(text.IndexOf("TWO\n", StringComparison.Ordinal)));
+
+        int? DeclaredAt(int offset) => analysis.NodeAt(offset + 1) is ({ } node, _) && node is GDScriptIdentifier name ? analysis.DeclarationOf(name)?.Start : null;
+    }
+
+    [Fact]
     public void A_loop_variables_and_a_pattern_binds_name_is_declared_where_it_stands_as_a_locals_is()
     {
         string text = "extends Node\n\n\nfunc f(items: Array) -> void:\n\tfor item in items:\n\t\tmatch item:\n\t\t\t[var first, ..]:\n\t\t\t\tprint(first, item)\n";
