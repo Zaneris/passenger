@@ -436,7 +436,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new ArgumentException($"No direction '{direction}'; there are callers, callees, supertypes, subtypes and implementations", nameof(direction));
         }
         HierarchyItem item = (calls ? await lsp.PrepareCallHierarchyAsync(offset) : await lsp.PrepareTypeHierarchyAsync(offset))
-            ?? throw new InvalidOperationException(calls ? "No method, property or event there" : "No type there");
+            ?? throw new InvalidOperationException(await NoHierarchyAsync(lsp, offset, calls));
         IReadOnlyList<(HierarchyItem Item, LspRange At)> found = direction switch
         {
             "callers" => [.. (await server.IncomingCallsAsync(item)).Select(c => (c.From, c.FromRanges.FirstOrDefault() ?? c.From.SelectionRange))],
@@ -447,6 +447,21 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         IReadOnlyList<Place> places = await Places(await csharp.WrittenAsync([.. found.Select(f => new LspLocation(f.Item.Uri, f.At))], cancel), cancel);
         return [.. found.Select((f, i) => new HierarchyEntry(f.Item.Name, f.Item.Detail, places[i].Path, places[i].Line, places[i].Column, places[i].Text))];
     });
+
+    /// <summary>Why the symbol at an offset has no hierarchy of the kind asked, naming the directions that follow it where
+    /// it has the other kind: a type no callers, a member no supertypes.</summary>
+    private static async Task<string> NoHierarchyAsync(LspDocument lsp, int offset, bool calls)
+    {
+        if (calls && await lsp.PrepareTypeHierarchyAsync(offset) is { } type)
+        {
+            return $"{type.Name} is a type, which has no callers or callees: direction supertypes, subtypes or implementations follows it";
+        }
+        if (!calls && await lsp.PrepareCallHierarchyAsync(offset) is { } member)
+        {
+            return $"{member.Name} is a member, which has no supertypes or subtypes: direction callers, callees or implementations follows it";
+        }
+        return calls ? "No method, property or event there" : "No type there";
+    }
 
     [McpServerTool(Name = McpTools.Rename, Title = "Rename a symbol", Destructive = true), Description(
         "Renames the symbol at a position everywhere it is used, as Rename does, and saves the files: a C# symbol's XAML too " +

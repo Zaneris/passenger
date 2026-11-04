@@ -172,6 +172,9 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal(("Words.cs", 8), (declared.GetProperty("path").GetString(), declared.GetProperty("line").GetInt32()));
         Assert.Equal(["Words.Count(string)", "Words.Count(string, int)"],
             (await Call(client, McpTools.Hierarchy, new() { ["symbol"] = "Words.Word" })).EnumerateArray().Select(c => c.GetProperty("name").GetString()));
+        CallToolResult ofType = await Result(client, McpTools.Hierarchy, new() { ["symbol"] = "Words" });
+        Assert.True(ofType.IsError == true && Text(ofType).Contains("Words is a type, which has no callers or callees: direction supertypes", StringComparison.Ordinal),
+            $"hierarchy of a type, its direction left as callers, answered: {Text(ofType)}");
 
         Assert.Equal("Renamed in 1 file: Aaa.cs", (await Call(client, McpTools.Rename, new() { ["symbol"] = "Tally.CountAll", ["newName"] = "All" })).GetString());
         Assert.Contains("public static int All(string[] texts)", File.ReadAllText(Path.Combine(Folder, "Aaa.cs")), StringComparison.Ordinal);
