@@ -219,13 +219,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                     + "Razor, a C# project's XAML, MSBuild files, JSON, YAML, HTML, CSS, SCSS, Less, JavaScript, TypeScript, Dockerfiles and compose files, "
                     + "Godot's scenes, shaders and scripts, and .editorconfig, .slnx and .http files");
             }
-            await Checked(marked, cancel);
+            TimeSpan waited = await Checked(marked, cancel);
             List<Finding> missing = [];
             if (marked.Unanswered is { Count: > 0 } unanswered)
             {
                 // Each check that has not answered for the text as it stands, within the wait or its own.
                 string who = unanswered.Count == 1 ? "it" : "they";
-                missing.Add(new Finding("info", null, $"Not yet checked as it stands by {string.Join(", ", unanswered)}: what {who} found before is listed",
+                string within = marked.IsChecking ? $", still checking after a wait of {(int)Math.Round(waited.TotalSeconds)} s" : string.Empty;
+                missing.Add(new Finding("info", null, $"Not yet checked as it stands by {string.Join(", ", unanswered)}{within}: what {who} found before is listed",
                     Relative(marked.Path), 1, 1));
             }
             // A GDScript's own checks are Passenger's reading's, Godot's server or none.
@@ -263,10 +264,18 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     });
 
     /// <summary>Waits, within <see cref="MarkersLimit"/>, for a file's own checks of its text as it stands (<see
-    /// cref="OpenDocument.IsChecking"/>), which its markers and the fixes for them answer from; the rest of the IDE's work
-    /// (a build, a test run, a busy console) is not waited for.</summary>
-    private static Task Checked(OpenDocument document, CancellationToken cancel) =>
-        When(() => !document.IsChecking, MarkersLimit, cancel, On(h => document.Checked += h, h => document.Checked -= h));
+    /// cref="OpenDocument.IsChecking"/>), which its markers and the fixes for them answer from, until the turn it comes back in
+    /// finds none under way: a check begun as the last one ended is waited for too, and its caller reads them in that turn.
+    /// The rest of the IDE's work (a build, a test run, a busy console) is not waited for. Gives back how long it waited.</summary>
+    private static async Task<TimeSpan> Checked(OpenDocument document, CancellationToken cancel)
+    {
+        long began = System.Diagnostics.Stopwatch.GetTimestamp();
+        while (document.IsChecking && System.Diagnostics.Stopwatch.GetElapsedTime(began) is var waited && waited < MarkersLimit)
+        {
+            await When(() => !document.IsChecking, MarkersLimit - waited, cancel, On(h => document.Checked += h, h => document.Checked -= h));
+        }
+        return System.Diagnostics.Stopwatch.GetElapsedTime(began);
+    }
 
     [McpServerTool(Name = McpTools.SymbolInfo, Title = "What a symbol is", ReadOnly = true), Description(
         "What the symbol at a position is, as the hover card says: its declaration and documentation (a JSON property's " +

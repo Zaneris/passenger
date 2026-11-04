@@ -31,7 +31,8 @@ public sealed class McpGodotSceneMarksTests : McpRig
             TestFolders.Write(folder, "main.tscn", Scene);
             Dictionary<string, string?> homes = new() { [GodotUserFolders.HomeVariable] = folder + "-home" };
             await using McpClient client = await Start(["--mcp", folder], environment: homes, languageServer: false);
-            Assert.Equal("[]", Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "main.tscn" })));
+            string first = Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "main.tscn" }));
+            Assert.True(first == "[]", $"The agent was told the scene it had not yet changed was not checked or was broken: {first}");
 
             await Call(client, McpTools.Edit, new() { ["path"] = "main.tscn", ["oldText"] = "parent=\"Hud\"", ["newText"] = "parent=\"Gone\"" });
             string marked = Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "main.tscn" }));

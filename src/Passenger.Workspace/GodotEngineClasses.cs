@@ -84,6 +84,15 @@ public sealed class GodotEngineClasses
                 }
             }
             Dictionary<(string Owner, string Nested, string Member), string> names = NamesOf(pe, metadata);
+            // Each class's method names apart, in the order read, so a class looks through its own alone.
+            Dictionary<string, List<(string Member, string Godot)>> methodNames = new(StringComparer.Ordinal);
+            foreach (((string owner, string nested, string member), string godot) in names)
+            {
+                if (nested == "MethodName")
+                {
+                    (methodNames.TryGetValue(owner, out List<(string Member, string Godot)>? owned) ? owned : methodNames[owner] = []).Add((member, godot));
+                }
+            }
             foreach ((TypeDefinitionHandle handle, string name) in named)
             {
                 TypeDefinition type = metadata.GetTypeDefinition(handle);
@@ -95,11 +104,11 @@ public sealed class GodotEngineClasses
                 string own = metadata.GetString(type.Name);
                 read.bases[name] = extended;
                 Dictionary<string, GodotEngineMethod> callable = new(StringComparer.Ordinal);
-                List<MethodDefinition> declaredMethods = [.. type.GetMethods().Select(metadata.GetMethodDefinition)];
-                foreach (((_, _, string member), string godot) in names.Where(n => n.Key.Owner == own && n.Key.Nested == "MethodName"))
+                ILookup<string, MethodDefinition> declaredMethods = type.GetMethods().Select(metadata.GetMethodDefinition).ToLookup(m => metadata.GetString(m.Name), StringComparer.Ordinal);
+                foreach ((string member, string godot) in methodNames.GetValueOrDefault(own) ?? [])
                 {
                     // Its overloads' widest and narrowest calls, by the C# method of the name the field is named after.
-                    List<(int Count, int Required)> overloads = [.. declaredMethods.Where(m => metadata.GetString(m.Name) == member).Select(m => ArityOf(metadata, m))];
+                    List<(int Count, int Required)> overloads = [.. declaredMethods[member].Select(m => ArityOf(metadata, m))];
                     callable[godot] = overloads.Count == 0 ? new GodotEngineMethod(godot, int.MaxValue, 0)
                         : new GodotEngineMethod(godot, overloads.Max(o => o.Count), overloads.Min(o => o.Required));
                 }
