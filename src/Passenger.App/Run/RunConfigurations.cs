@@ -73,7 +73,8 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
     {
         this.projects = projects;
         All = [.. RunConfiguration.Generate(projects, workspace?.Invoke(), SingleFileAppHosts).Select(Edited), .. own];
-        Chosen = All.FirstOrDefault(c => string.Equals(c.Name, keep, StringComparison.OrdinalIgnoreCase)) ?? All.FirstOrDefault();
+        // With none picked, an AppHost's before its services', which it runs as the person means.
+        Chosen = All.FirstOrDefault(c => string.Equals(c.Name, keep, StringComparison.OrdinalIgnoreCase)) ?? All.FirstOrDefault(c => c.Aspire) ?? All.FirstOrDefault();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 

@@ -69,6 +69,30 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         Assert.Equal(new[] { linked }, ConfigurationEdit.Over(source, loaded).LinkedAppHosts);
     }
 
+    /// <summary>In a solution with an AppHost, Run's first choice, none picked yet, is the AppHost's configuration, though
+    /// the solution lists one of its services first: Run brings the app up as the person means, never one service alone.</summary>
+    [AvaloniaFact]
+    public void In_a_solution_with_an_AppHost_Runs_first_choice_is_the_AppHosts_configuration()
+    {
+        Write("Host/Host.csproj", TestProjects.Console("<IsAspireHost>true</IsAspireHost>", $"<AspireHostingSDKVersion>{AspireApp.TemplatesVersion}</AspireHostingSDKVersion>"));
+        Write("Host/Program.cs", "System.Console.WriteLine(\"host\");\n");
+        Write("Host/Properties/launchSettings.json", "{ \"profiles\": { \"http\": { \"commandName\": \"Project\" } } }\n");
+        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Hello/Hello.csproj\" />\n  <Project Path=\"Host/Host.csproj\" />\n</Solution>\n");
+        MainWindow window = Keeping();
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Aspire) && window.Configurations.Any(c => !c.Aspire),
+                () => $"the AppHost's and Hello's configurations: {string.Join(", ", window.Configurations.Select(c => c.Name))}");
+            RunConfiguration? chosen = window.Session.Configurations.Chosen;
+            Assert.True(chosen is { Aspire: true },
+                $"Run's first choice in a solution with an AppHost is {chosen?.Name}, so Run starts that alone, outside its AppHost");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>While a run of a configuration is up, the toolbar, its chooser and Edit Configurations' row say "(running)"
     /// after its name, and stop saying it once the run has ended.</summary>
     [Gate]
