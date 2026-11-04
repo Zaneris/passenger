@@ -12,7 +12,8 @@ public class GDScriptRefactoringsTests
     private const string Api = """
         {
           "global_enums": [], "global_constants": [], "utility_functions": [], "singletons": [],
-          "builtin_classes": [{ "name": "String", "methods": [] }, { "name": "StringName", "methods": [] }, { "name": "Callable", "methods": [] }],
+          "builtin_classes": [{ "name": "String", "methods": [] }, { "name": "StringName", "methods": [] }, { "name": "Callable", "methods": [] },
+            { "name": "Array", "indexing_return_type": "Variant", "methods": [] }],
           "classes": [
             { "name": "Object", "methods": [{ "name": "call", "is_vararg": true, "return_value": { "type": "Variant" }, "arguments": [{ "name": "method", "type": "StringName" }] },
               { "name": "call_deferred", "is_vararg": true, "return_value": { "type": "Variant" }, "arguments": [{ "name": "method", "type": "StringName" }] }] },
@@ -168,6 +169,24 @@ public class GDScriptRefactoringsTests
             GDScriptRefactorings.Rename(taken, GDScriptRefactorings.MemberAt(taken, taken[1], Pencil.IndexOf("draw_move", StringComparison.Ordinal))!, "move_to").Refused);
         Assert.Contains("overrides Node2D's own, which Godot calls by its name",
             GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], Base.IndexOf("_draw_shape", StringComparison.Ordinal))!, "shape").Refused);
+    }
+
+    [Fact]
+    public void An_enum_named_as_a_type_is_declared_where_the_enum_is_and_renamed_there_as_where_code_reads_it()
+    {
+        const string Helper = "class_name Helper\nextends Node\n\nenum Mood { CALM, ANGRY }\n\nvar mood: Mood = Mood.CALM\n\n\n"
+            + "func feel(m: Mood) -> Mood:\n\tvar moods: Array[Mood] = [m]\n\treturn moods[0] as Mood\n";
+        const string User = "extends Node\n\nvar seen: Helper.Mood\n\n\nfunc _ready() -> void:\n\tseen = Helper.Mood.ANGRY\n\tprint(seen is Helper.Mood)\n";
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://helper.gd", Helper), ("res://user.gd", User));
+        int typed = User.IndexOf("Helper.Mood", StringComparison.Ordinal) + "Helper.".Length + 1;
+        Assert.True(scripts[1].Analysis.NodeAt(typed) is ({ } node, _) && node is GDScriptIdentifier { Name: "Mood" } named
+            && scripts[1].Analysis.DeclarationOf(named) is { Script: "res://helper.gd" } declared && declared.Start == Helper.IndexOf("Mood", StringComparison.Ordinal),
+            "Go to Declaration on Helper.Mood written as a type should go to helper.gd's enum Mood");
+        GDScriptRefactored renamed = GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], Helper.IndexOf("Mood", StringComparison.Ordinal))!, "Feeling");
+        Assert.Equal("class_name Helper\nextends Node\n\nenum Feeling { CALM, ANGRY }\n\nvar mood: Feeling = Feeling.CALM\n\n\n"
+            + "func feel(m: Feeling) -> Feeling:\n\tvar moods: Array[Feeling] = [m]\n\treturn moods[0] as Feeling\n", After(renamed, "res://helper.gd", Helper));
+        Assert.Equal("extends Node\n\nvar seen: Helper.Feeling\n\n\nfunc _ready() -> void:\n\tseen = Helper.Feeling.ANGRY\n\tprint(seen is Helper.Feeling)\n",
+            After(renamed, "res://user.gd", User));
     }
 
     [Fact]

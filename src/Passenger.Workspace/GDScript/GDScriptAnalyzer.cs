@@ -725,6 +725,20 @@ public sealed partial class GDScriptAnalyzer
         }
     }
 
+    /// <summary>A script's enum named as a type (<c>var m: Mood</c>, <c>Helper.Mood</c>) recorded as declared where the enum is.</summary>
+    private void NamesEnum(GDScriptIdentifier name, GDScriptType? type, Context context)
+    {
+        if (context.Analysis.Tree is null || type is not { Kind: GDScriptTypeKind.Enum, Script: { } script, Class: { } holder } || type.Name != name.Name)
+        {
+            return;
+        }
+        GDScriptType at = new(GDScriptTypeKind.Class, holder.Identifier?.Name ?? script) { Class = holder, Script = script, Offset = type.Offset };
+        if (OwnNames(at).TryGetValue(name.Name, out (GDScriptNode Node, int Offset) declared) && declared.Node is GDScriptEnum { Identifier: { } own })
+        {
+            context.Analysis.Declared[name] = new GDScriptDeclaration(script, declared.Offset + own.Start, name.Name, type with { Meta = true });
+        }
+    }
+
     /// <summary>A class's base written by name (<c>extends Inner</c>, <c>extends Outer.Inner</c>), each name of a script's
     /// class recorded as declared where the class is.</summary>
     private void ExtendsDeclared(GDScriptClass @class, Context context)
@@ -788,6 +802,7 @@ public sealed partial class GDScriptAnalyzer
             found = inherited.Type;
         }
         NamesClass(first, found, context);
+        NamesEnum(first, found, context);
         if (found is null && project.Autoload(first.Name) is { } autoload && Tree(project.Resolved(autoload)) is null)
         {
             // An autoload of a scene: what Godot types it as comes from the scene's instance, which this reading has not.
@@ -817,6 +832,7 @@ public sealed partial class GDScriptAnalyzer
                             ? $"Member \"{next.Name}\" under base \"{owner}\" is not a valid type." : $"Could not find type \"{next.Name}\" under base \"{owner}\".");
                     }
                     NamesClass(next, found, context);
+                    NamesEnum(next, found, context);
                     break;
                 case GDScriptTypeKind.Native:
                     found = i == 1 ? Engine?.Chain(owner.Name).Select(c => c.Enums.GetValueOrDefault(next.Name) is { } e ? NativeEnum(c.Name, e, meta: true) : null).FirstOrDefault(e => e is not null) : null;
