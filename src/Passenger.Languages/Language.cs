@@ -80,12 +80,25 @@ public sealed class Language
     private static readonly (string Scope, string Carried)[] EmbeddedAs =
         [("source.json.comments", "source.json"), ("source.json.lines", "source.json"), ("text.html.derivative", "text.html.basic")];
 
-    /// <summary>Each grammar's file by the scope it names, every language's, for the grammars that embed others, and by
-    /// the scopes of <see cref="EmbeddedAs"/>.</summary>
+    /// <summary>Grammars carried only for another's includes, each by the scope it names: YAML's, a grammar for each version
+    /// of YAML and one for YAML embedded in another document, which YAML's own grammar reads by.</summary>
+    private static readonly (string Scope, string File)[] Included =
+    [
+        ("source.yaml.1.0", "yaml-1.0.tmLanguage.json"), ("source.yaml.1.1", "yaml-1.1.tmLanguage.json"),
+        ("source.yaml.1.2", "yaml-1.2.tmLanguage.json"), ("source.yaml.1.3", "yaml-1.3.tmLanguage.json"),
+        ("source.yaml.embedded", "yaml-embedded.tmLanguage.json"),
+    ];
+
+    /// <summary>Each grammar's file by the scope it names, every language's and every one of <see cref="Included"/>, for
+    /// the grammars that embed others, and by the scopes of <see cref="EmbeddedAs"/>.</summary>
     private static readonly Lazy<Dictionary<string, string>> GrammarFiles = new(() =>
     {
         Dictionary<string, string> files = All.Select(l => l.Grammar).OfType<GrammarFile>()
             .DistinctBy(g => g.Scope).ToDictionary(g => g.Scope, g => g.File, StringComparer.Ordinal);
+        foreach ((string scope, string file) in Included)
+        {
+            files[scope] = file;
+        }
         foreach ((string scope, string carried) in EmbeddedAs)
         {
             files[scope] = files[carried];

@@ -817,10 +817,11 @@ Microsoft Corporation), unchanged, from the project its header names:
   bundle textmate/xml.tmbundle, under the TextMate bundle licence below.
 - `JSON.tmLanguage.json` (VS Code 1.144.0, `extensions/json`): from microsoft/vscode-JSON.tmLanguage
   (https://github.com/microsoft/vscode-JSON.tmLanguage), MIT, Copyright (c) 2015 simonzack, zertosh, benvie.
-- `yaml.tmLanguage.json` (VS Code 1.85.0, `extensions/yaml`): the YAML syntax of textmate/yaml.tmbundle
-  (https://github.com/textmate/yaml.tmbundle), MIT, Copyright (c) 2015 FichteFoll, as its `Syntaxes/YAML-license.txt`
-  says. It stays at 1.85.0: VS Code's own since is RedCMD/YAML-Syntax-Highlighter's (a grammar per YAML version),
-  which TextMateSharp did not read rightly when these grammars came in; its 2.0.4 is still its newest.
+- `yaml.tmLanguage.json`, with `yaml-1.0.tmLanguage.json`, `yaml-1.1.tmLanguage.json`, `yaml-1.2.tmLanguage.json`,
+  `yaml-1.3.tmLanguage.json` and `yaml-embedded.tmLanguage.json`, which it reads by (VS Code 1.144.0,
+  `extensions/yaml`): from RedCMD/YAML-Syntax-Highlighter (https://github.com/RedCMD/YAML-Syntax-Highlighter) at
+  commit 53d38bbc, its 1.3.2, MIT, Copyright 2024 RedCMD: a grammar for each version of YAML, a file read by the one
+  its `%YAML` directive names and by 1.2's where it names none.
 - `markdown.tmLanguage.json` (VS Code 1.144.0, `extensions/markdown-basics`): from microsoft/vscode-markdown-tm-grammar
   (https://github.com/microsoft/vscode-markdown-tm-grammar), MIT, Copyright (c) Microsoft 2018, derived from
   textmate/markdown.tmbundle, under the TextMate bundle licence below.
@@ -880,7 +881,7 @@ MIT License
 Copyright (c) 2015 - present Microsoft Corporation
 Copyright (c) 2014 GitHub Inc.
 Copyright (c) 2015 simonzack, zertosh, benvie
-Copyright (c) 2015 FichteFoll <fichtefoll2@googlemail.com>
+Copyright 2024 RedCMD
 Copyright (c) Microsoft 2018
 Copyright (c) Microsoft Corporation
 Copyright (c) 2012 Alex Sancho, http://alexsancho.name/

@@ -135,8 +135,9 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     public bool HasRead(TextSnapshot text) => table is { Complete: true } && ReferenceEquals(tableText, text) && since.Count == 0;
 
     /// <summary>The lines of <paramref name="text"/> that begin inside one of the grammar's strings (a CDATA section, a
-    /// template literal, a heredoc, a block scalar), whose leading whitespace is the string's own; null until the grammar
-    /// has read the whole text as it stands (<see cref="HasRead"/>).</summary>
+    /// template literal, a heredoc, a block scalar), whose leading whitespace is the string's own; never a YAML plain
+    /// scalar's next line, whose leading whitespace YAML folds away. Null until the grammar has read the whole text as it
+    /// stands (<see cref="HasRead"/>).</summary>
     public IReadOnlySet<int>? StringLines(TextSnapshot text)
     {
         if (!HasRead(text) || table is not { } lines)
@@ -148,7 +149,8 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         {
             for (AttributedScopeStack? scope = lines[line - 1].End?.Scopes; scope is not null; scope = scope.Parent)
             {
-                if (scope.ScopeName.StartsWith("string.", StringComparison.Ordinal))
+                if (scope.ScopeName.StartsWith("string.", StringComparison.Ordinal)
+                    && !scope.ScopeName.StartsWith("string.unquoted.plain", StringComparison.Ordinal))
                 {
                     inside.Add(line);
                     break;

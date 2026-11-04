@@ -92,7 +92,7 @@ internal sealed class Grammar
             Tidy(node);
             // A grammar embedded under another scope than its own (Markdown's jsonc blocks read by JSON's) is registered as that scope.
             node["scopeName"] = name;
-            if (name == "source.yaml")
+            if (name.StartsWith("source.yaml", StringComparison.Ordinal))
             {
                 KeysAreKeys(node);
             }
@@ -126,28 +126,34 @@ internal sealed class Grammar
     private static Stream Resource(string file) =>
         typeof(Grammar).Assembly.GetManifestResourceStream($"Grammars/{file}") ?? throw new InvalidOperationException($"No grammar {file} in {typeof(Grammar).Assembly.GetName().Name}");
 
-    /// <summary>Preserves Passenger's YAML key policy, including keys such as on, true and null, in a block mapping and a
-    /// flow mapping (<c>{ on: 1 }</c>) alike.</summary>
-    private static void KeysAreKeys(JsonNode grammar)
+    /// <summary>A plain key that reads as a typed scalar (on, true, null, 200) is a key, in a block mapping and a flow
+    /// mapping (<c>{ on: 1 }</c>) alike, in each YAML version's grammar: a key's rule reads no implicit type.</summary>
+    private static void KeysAreKeys(JsonNode? node)
     {
-        foreach ((string pair, string typed) in (ReadOnlySpan<(string, string)>)[("block-pair", "#flow-scalar-plain-out-implicit-type"), ("flow-pair", "#flow-scalar-plain-in-implicit-type")])
+        if (node is JsonObject rule)
         {
-            if (grammar["repository"]?[pair]?["patterns"] is not JsonArray rules)
+            if (rule["name"]?.GetValue<string>() is { } scopes && scopes.Contains("entity.name.tag.yaml", StringComparison.Ordinal)
+                && rule["patterns"] is JsonArray patterns)
             {
-                continue;
-            }
-            foreach (JsonObject rule in rules.OfType<JsonObject>())
-            {
-                if (rule["patterns"] is JsonArray keyRules)
+                for (int i = patterns.Count - 1; i >= 0; i--)
                 {
-                    for (int i = keyRules.Count - 1; i >= 0; i--)
+                    if (patterns[i] is JsonObject include && include["include"]?.GetValue<string>() is { } named
+                        && named[(named.IndexOf('#', StringComparison.Ordinal) + 1)..].StartsWith("tag-implicit-plain", StringComparison.Ordinal))
                     {
-                        if (keyRules[i] is JsonObject include && include["include"]?.GetValue<string>() == typed)
-                        {
-                            keyRules.RemoveAt(i);
-                        }
+                        patterns.RemoveAt(i);
                     }
                 }
+            }
+            foreach ((string _, JsonNode? value) in rule)
+            {
+                KeysAreKeys(value);
+            }
+        }
+        else if (node is JsonArray list)
+        {
+            foreach (JsonNode? item in list)
+            {
+                KeysAreKeys(item);
             }
         }
     }

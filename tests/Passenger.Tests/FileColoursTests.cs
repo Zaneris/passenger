@@ -383,6 +383,30 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
+    /// <summary>A YAML key is a key quoted or not, and one that reads as a typed scalar (off, 200) is a key under a
+    /// <c>%YAML 1.1</c> directive as under 1.2: its value's numbers, anchors and aliases stay plain, and a tag is one
+    /// keyword.</summary>
+    [AvaloniaFact]
+    public void A_yaml_files_quoted_keys_and_its_typed_keys_under_YAML_1_1_are_keys_and_its_numbers_anchors_and_tags_keep_their_colours()
+    {
+        MainWindow window = Window();
+        try
+        {
+            CodeEditor editor = Open(window, "versions.yml", "%YAML 1.1\n---\noff: no\n\"quoted key\": 'value'\n200: !!str 12\nbase: &shared 3.5\nother: *shared\n");
+            (string Stretch, TokenKind Kind)[] wanted =
+            [
+                ("off", TokenKind.YamlKey), ("\"quoted key\"", TokenKind.YamlKey), ("'value'", TokenKind.String), ("200", TokenKind.YamlKey),
+                ("!!str", TokenKind.Keyword), ("12", TokenKind.Text), ("&shared", TokenKind.Text), ("3.5", TokenKind.Text), ("*shared", TokenKind.Text),
+            ];
+            string[] wrong = [.. wanted.Where(w => KindOf(editor, w.Stretch) != w.Kind).Select(w => $"{w.Stretch} is {KindOf(editor, w.Stretch, settle: false)?.ToString() ?? "mixed"}, not {w.Kind}")];
+            Assert.True(wrong.Length == 0, $"A YAML file's keys, values and tags are not coloured as what they are: {string.Join("; ", wrong)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A quoted heredoc ends only at a line that is its delimiter alone, as bash ends one: a line of the body that
     /// starts with the delimiter and goes on (<c>END suffix</c>) is the heredoc's string, as are the lines after it up to
     /// the bare <c>END</c>, and with <c>&lt;&lt;-</c> up to the delimiter after tabs alone.</summary>
