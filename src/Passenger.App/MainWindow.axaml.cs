@@ -1102,8 +1102,10 @@ public partial class MainWindow : IdeWindow
         string language = Editors.Active is { Diff: null } file ? file.Language.Name : string.Empty;
         if (Editors.Active is { Diff: null } active && Web.WebLanguages.LanguageOf(active.Path) is not null)
         {
-            // A web file's server, not C#'s, is what it waits on.
-            return (session.Web?.StateOf(active) ?? session.Web?.DetailOf(active)) is { Length: > 0 } said ? $"{language} · {said}" : language;
+            // A web file's server, not C#'s, is what it waits on; one named as its language is said once (TypeScript's TypeScript).
+            return (session.Web?.StateOf(active) ?? session.Web?.DetailOf(active)) is { Length: > 0 } said
+                ? said.StartsWith(language + " ", StringComparison.Ordinal) ? said : $"{language} · {said}"
+                : language;
         }
         CSharpService? csharp = session.CSharp;
         string? shown = csharp?.Progress ?? (csharp is { IsReady: false, State: { Length: > 0 } state } ? state : null);

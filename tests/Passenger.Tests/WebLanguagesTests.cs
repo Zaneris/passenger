@@ -739,7 +739,9 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         {
             window.OpenFile(Path.Combine(PathNames.Canonical(folder), "main.ts"));
             Ui.Settle();
-            Ui.WaitFor(() => window.LanguageShown?.StartsWith("TypeScript · TypeScript ", StringComparison.Ordinal) == true, "the status bar to name the TypeScript in use");
+            // The language said once, its TypeScript's version beside it.
+            Ui.WaitFor(() => window.LanguageShown is { } shown && System.Text.RegularExpressions.Regex.IsMatch(shown, @"^TypeScript \d"),
+                () => $"the status bar to name the TypeScript in use, saying the language once ({window.LanguageShown})");
             Assert.DoesNotContain("Passenger's", window.LanguageShown, StringComparison.Ordinal);
         }
         finally
