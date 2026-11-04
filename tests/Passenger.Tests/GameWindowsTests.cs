@@ -47,11 +47,14 @@ public sealed partial class GameWindowsTests
         {
             start.Environment[name] = value;
         }
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
         ConcurrentQueue<string> said = new();
         using Process game = ChildProcesses.Start(start);
-        Task heard = ChildProcesses.Hear(game, said.Enqueue, said.Enqueue);
+        Task heard = Task.CompletedTask;
         try
         {
+            heard = ChildProcesses.Hear(game, said.Enqueue, said.Enqueue);
             string Said() => string.Join(" | ", said.TakeLast(12));
             bool Told(string words) => said.Any(l => l.Contains(words, StringComparison.Ordinal));
             nint window = 0;
