@@ -475,6 +475,12 @@ internal static class Rows
 		{
 			Console.WriteLine($"stepped {step}");
 		}
+		Closed();
+	}
+
+	// A method of its own, so Run's locals share no closure with its lambda and Call stays a local function of a struct closure.
+	private static void Closed()
+	{
 		List<string> outerList = ["grown"];
 		for (int round = 0; round < 1; round++)
 		{
