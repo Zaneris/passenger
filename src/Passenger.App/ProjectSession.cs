@@ -113,6 +113,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 setup.GodotEnvironment ?? new Dictionary<string, string>(), setup.Settings().GodotTestsWindowed && !setup.Unseen), cancel),
             GodotFolders = () => [.. Workspace?.GodotGames ?? [], .. Projects.Select(p => p.GodotFolder).OfType<string>()],
         };
+        Tests.Finder.StateFolder = setup.StateFolder;
         Containers = new Containers.FolderContainers(folder, setup.Engine());
         Vcs.Work = setup.Work;
         Vcs.Watching = setup.Watching;
@@ -1356,6 +1357,7 @@ public sealed class ProjectSession : IAsyncDisposable
     {
         IdeErrors.Observe(CSharp?.DisposeAsync().AsTask() ?? Task.CompletedTask);
         CSharp = null;
+        Tests.Finder.ServerLoading = false;
         if (!IsEnded && setup.StartsLanguageServer && Workspace is { } opening && (opening.Solution is not null || opening.Projects.Count > 0))
         {
             Settings.AppSettings shown = setup.Settings();
@@ -1385,6 +1387,7 @@ public sealed class ProjectSession : IAsyncDisposable
             };
             CSharpChanged?.Invoke(this, EventArgs.Empty);
             CSharpService started = CSharp;
+            Tests.Finder.ServerLoading = true;
             bool loaded = false;
             started.StateChanged += (_, _) =>
             {
@@ -1401,6 +1404,8 @@ public sealed class ProjectSession : IAsyncDisposable
                 if (CSharp == started)
                 {
                     GodotMarks.Changed();
+                    // The test projects' files are read at full pace once the server says the whole solution loaded.
+                    Tests.Finder.ServerLoading = !started.IsReady;
                 }
             };
             CSharp.Start(opening);
