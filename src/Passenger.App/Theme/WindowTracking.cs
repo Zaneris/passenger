@@ -24,7 +24,7 @@ public static partial class WindowTracking
     /// Francisco's least optical size, 17, is what macOS gives every size up to it.</summary>
     private const double WordsSize = 13;
 
-    /// <summary>The weights and styles of the window's words, whose faces are shaped as macOS draws them.</summary>
+    /// <summary>The weights of the window's words, whose upright faces are shaped as macOS draws them.</summary>
     private static readonly FontWeight[] Weights = [FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold];
 
     private static readonly HashSet<GlyphTypeface> varied = [];
@@ -39,10 +39,6 @@ public static partial class WindowTracking
     public static void Follow(Application app, FontFamily family)
     {
         (tracked, table, unitsPerEm) = OperatingSystem.IsMacOS() && TableOf(family) is (byte[] read, int em) ? (family, read, em) : (null, null, 0);
-        if (OperatingSystem.IsMacOS())
-        {
-            Vary(family);
-        }
         if (!hooked && tracked is not null)
         {
             hooked = true;
@@ -56,6 +52,19 @@ public static partial class WindowTracking
             foreach (Visual drawn in desktop.Windows.SelectMany(w => w.GetVisualDescendants()))
             {
                 Track(drawn);
+            }
+        }
+        if (OperatingSystem.IsMacOS())
+        {
+            try
+            {
+                Vary(family);
+            }
+            catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException or MarshalDirectiveException or TargetInvocationException
+                or MemberAccessException)
+            {
+                // Its words keep their tracking, shaped at the face's default instance.
+                IdeErrors.Write($"The window's typeface {family.Name} could not be set at macOS's optical size, so its words are set narrower than the system's own: {error.Message}");
             }
         }
     }
@@ -83,39 +92,41 @@ public static partial class WindowTracking
             ? (trak.ToArray(), face.Metrics.DesignEmHeight)
             : null;
 
-    /// <summary>Each face of a family the window's words take, shaped at the optical size macOS gives them and at its own
-    /// weight where it varies by them, as the system's own apps draw it: its shaper otherwise takes the font's default
-    /// instance (San Francisco's is its display size, 28, a tenth narrower than its text at 13 px). A face simulated or
-    /// already set is left as it is.</summary>
+    /// <summary>Each upright face of a variable family the window's words take, shaped at the optical size macOS gives them
+    /// and at its own weight, as the system's own apps draw it: its shaper otherwise takes the font's default instance (San
+    /// Francisco's is its display size, 28, a tenth narrower than its text at 13 px). Only the family's own faces are asked
+    /// for and set, never one another family stands in with, nor one simulated or already set.</summary>
     private static void Vary(FontFamily family)
     {
-        foreach (FontStyle style in (FontStyle[])[FontStyle.Normal, FontStyle.Italic])
+        if (!FontManager.Current.TryGetGlyphTypeface(new Typeface(family), out GlyphTypeface? own)
+            || !own.PlatformTypeface.TryGetTable(OpenTypeTag.Parse("fvar"), out _))
         {
-            foreach (FontWeight weight in Weights)
+            return;
+        }
+        foreach (FontWeight weight in Weights)
+        {
+            if (!FontManager.Current.TryGetGlyphTypeface(new Typeface(family, FontStyle.Normal, weight), out GlyphTypeface? face)
+                || face.FontSimulations != FontSimulations.None || face.FamilyName != own.FamilyName || varied.Contains(face)
+                || !face.PlatformTypeface.TryGetTable(OpenTypeTag.Parse("fvar"), out ReadOnlyMemory<byte> fvar))
             {
-                if (!FontManager.Current.TryGetGlyphTypeface(new Typeface(family, style, weight), out GlyphTypeface? face)
-                    || face.FontSimulations != FontSimulations.None || varied.Contains(face)
-                    || !face.PlatformTypeface.TryGetTable(OpenTypeTag.Parse("fvar"), out ReadOnlyMemory<byte> fvar))
+                continue;
+            }
+            varied.Add(face);
+            List<Variation> set = [];
+            foreach (FontAxis axis in FontAxes.Of(fvar.Span))
+            {
+                if (axis.Tag == FontAxes.OpticalSize)
                 {
-                    continue;
+                    set.Add(new Variation(axis.Tag, (float)axis.Held(WordsSize)));
                 }
-                varied.Add(face);
-                List<Variation> set = [];
-                foreach (FontAxis axis in FontAxes.Of(fvar.Span))
+                else if (axis.Tag == FontAxes.Weight)
                 {
-                    if (axis.Tag == FontAxes.OpticalSize)
-                    {
-                        set.Add(new Variation(axis.Tag, (float)axis.Held(WordsSize)));
-                    }
-                    else if (axis.Tag == FontAxes.Weight)
-                    {
-                        set.Add(new Variation(axis.Tag, (float)axis.Held((int)weight)));
-                    }
+                    set.Add(new Variation(axis.Tag, (float)axis.Held((int)weight)));
                 }
-                if (set.Count > 0 && ShaperFont(face) is { } font)
-                {
-                    SetVariations(font, [.. set], (uint)set.Count);
-                }
+            }
+            if (set.Count > 0 && ShaperFont(face) is { } font)
+            {
+                SetVariations(font, [.. set], (uint)set.Count);
             }
         }
     }
