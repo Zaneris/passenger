@@ -578,7 +578,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   `BreakpointStates`. Every kind of breakpoint is refused, matched and hit through one pipeline (`IHitBreakpoint`:
   `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a lambda on its statement's line keeps the
   lambda's column (`LambdaBreakpoints`).
-- **Tests window.** `TestFinder` (tests from code before any build), kept results across restarts `TestResultsState` (a
+- **Tests window.** `TestFinder` (tests from code before any build, each closed file's reading kept in the state's cache
+  by its stamp, `TestsCache`, two at a time while the server loads), kept results across restarts `TestResultsState` (a
   method's code stamp `DeclaredTest.Code`; this session's results too, `TestNode.Standing`), `TestRunners`;
   `VsTestRunner` is the only file that knows VSTest's object model (VSTest starts a debugged .NET test host itself and
   asks to attach, its launcher an `ITestHostLauncher3`: `LaunchTestHost` is never called for one; with Hot Reload on,
