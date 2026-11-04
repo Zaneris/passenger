@@ -66,16 +66,16 @@ public partial class MainWindow
         {
             return Said(working, false, $"{GodotProject.FileName} could not be saved: {unsaved}");
         }
-        (GodotAddonInstall? plan, FileText? had) = await BackgroundWork.Run(() =>
+        GodotAddonInstall? plan = await BackgroundWork.Run<GodotAddonInstall?>(() =>
         {
             if (FileText.Load(file) is not { } project)
             {
-                return ((GodotAddonInstall?)null, (FileText?)null);
+                return null;
             }
             IReadOnlyList<GodotPlugin> plugins = GodotPlugins.Read(folder, GodotAddon.Enabled(project.Text));
-            return (GodotAddon.Plan(folder, GodotAddonFiles.Carried, plugins, project.Text, path => File.Exists(path) ? FileText.Load(path)?.Text : null), project);
+            return GodotAddon.Plan(folder, GodotAddonFiles.Carried, plugins, project.Text, path => File.Exists(path) ? FileText.Load(path)?.Text : null);
         });
-        if (plan is null || had is null)
+        if (plan is null)
         {
             return Said(working, false, $"{PathNames.Shown(file, Folder)} could not be read");
         }
@@ -103,6 +103,12 @@ public partial class MainWindow
         List<string> paths = [.. plan.Files.Select(f => f.Path), .. plan.Project is null ? [] : new[] { file }];
         string? refused = await ChangeFileAsync(plan.Updated ? "Update Passenger's Godot Addon" : "Install Passenger's Godot Addon", paths, () =>
         {
+            // project.godot as it is once the gate is passed, with what Godot's editor or the person saved while asked.
+            FileText? settings = plan.Project is null ? null : FileText.Load(file);
+            if (plan.Project is not null && settings is null)
+            {
+                return $"{PathNames.Shown(file, Folder)} could not be read";
+            }
             foreach (GodotAddonFile written in plan.Files)
             {
                 if (written.Made || FileText.Load(written.Path) is not { } now)
@@ -114,9 +120,9 @@ public partial class MainWindow
                     _ = FileText.SaveOver(written.Path, now, written.Text);
                 }
             }
-            if (plan.Project is { } enabled)
+            if (settings is not null && GodotAddon.Enabling(settings.Text, plan.Res) is { } enabled)
             {
-                _ = FileText.SaveOver(file, had, enabled);
+                _ = FileText.SaveOver(file, settings, enabled);
             }
             return null;
         });

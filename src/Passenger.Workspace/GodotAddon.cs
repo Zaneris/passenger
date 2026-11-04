@@ -52,9 +52,15 @@ public static class GodotAddon
                 files.Add(new GodotAddonFile(path, text, now is null));
             }
         }
+        return new GodotAddonInstall(folder, res, files, Enabling(projectText, res), had is not null, null);
+    }
+
+    /// <summary>project.godot's text with the addon's plugin.cfg (<paramref name="res"/>) enabled after the plugins it
+    /// enables, or null where it is enabled already.</summary>
+    public static string? Enabling(string projectText, string res)
+    {
         List<string> enabled = Enabled(projectText);
-        string? written = enabled.Contains(res, StringComparer.Ordinal) ? null : GodotWrites.WithPlugins(projectText, [.. enabled, res]);
-        return new GodotAddonInstall(folder, res, files, written, had is not null, null);
+        return enabled.Contains(res, StringComparer.Ordinal) ? null : GodotWrites.WithPlugins(projectText, [.. enabled, res]);
     }
 
     /// <summary>The plugins project.godot's <c>[editor_plugins]</c> enables, by their res:// paths.</summary>
