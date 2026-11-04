@@ -118,6 +118,8 @@
   <ItemGroup>
     <AssemblyMetadata Include="TestSdkVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'Microsoft.NET.Test.Sdk')->'%(Version)')" />
     <AssemblyMetadata Include="XunitRunnerVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'xunit.runner.visualstudio')->'%(Version)')" />
+    <!-- And what both of its projects resolve through xunit.v3 that this project's graph takes at another version. -->
+    <PackageDownload Include="Microsoft.Bcl.AsyncInterfaces" Version="[$(XunitAsyncInterfacesVersion)]" />
     <!-- OpenTelemetry's, which the AspireGraphs' ServiceDefaults restore puts in the package cache, for ContainerTelemetryTests' app. -->
     <AssemblyMetadata Include="OpenTelemetryVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'OpenTelemetry.Extensions.Hosting')->'%(Version)')" />
     <AssemblyMetadata Include="AspNetCoreOpenApiVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'Microsoft.AspNetCore.OpenApi')->'%(Version)')" />

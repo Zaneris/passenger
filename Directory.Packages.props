@@ -48,6 +48,10 @@
     <GdUnit4RoslynAnalyzersVersion>3.11.0</GdUnit4RoslynAnalyzersVersion>
     <GdUnit4TestPlatformVersion>18.0.1</GdUnit4TestPlatformVersion>
     <MonoCecilVersion>0.11.6</MonoCecilVersion>
+    <!-- Microsoft.Bcl.AsyncInterfaces at the version xunit.v3's common package names, which the headless test projects
+         TestFramesTests make resolve where the tests' own graph takes a newer one (Azure.Core's): downloaded for the tests'
+         package cache, so their restore reaches no feed. -->
+    <XunitAsyncInterfacesVersion>6.0.0</XunitAsyncInterfacesVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Avalonia" Version="12.1.5" />
