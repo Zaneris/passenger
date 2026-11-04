@@ -10,8 +10,9 @@ namespace Passenger.Tests;
 
 /// <summary>Window > Editor Tabs and the tab's own menu: a pinned tab stands left of the others with a pin, stays
 /// through Close Other Tabs and Close All Tabs and comes back pinned with the folder; Reopen Closed Tab brings tabs
-/// back in the reverse of the order they closed, each where it stood with its caret; Close Tabs to the Left and to the
-/// Right leave the pinned ones; Unsplit and Unsplit All join the splits, keeping every tab.</summary>
+/// back in the reverse of the order they closed, each where it stood with its caret; closing the tab shown shows the one
+/// shown before it, its neighbour only where none was; Close Tabs to the Left and to the Right leave the pinned ones;
+/// Unsplit and Unsplit All join the splits, keeping every tab.</summary>
 public sealed class EditorTabsTests : IDisposable
 {
     private static readonly string[] Five = ["One.cs", "Two.cs", "Three.cs", "Four.cs", "Five.cs"];
@@ -162,6 +163,58 @@ public sealed class EditorTabsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file opened from another (by Go to File, as Go to Declaration opens one) comes in a tab just after it;
+    /// Close Tab's keys there show the file it was opened from, its caret where it was, never the tab that took the closed
+    /// one's place, and a close after that shows the tab shown before it again.</summary>
+    [AvaloniaFact]
+    public void Closing_the_tab_shown_shows_the_one_shown_before_it_with_its_caret_rather_than_its_neighbour()
+    {
+        MainWindow window = Keeping("One.cs", "Two.cs", "Three.cs");
+        EditorArea area = window.EditorArea;
+        EditorGroup group = area.ActiveGroup;
+        Ui.Click(TabName(group, "One.cs"));
+        Assert.Equal("One.cs", area.Active?.Name);
+        area.CodeEditor.GoTo(new TextPosition(3, 8));
+        Ui.Settle();
+
+        Ui.Press(window, Ui.Shortcut(AppActions.GoToFile));
+        window.KeyTextInput("Four");
+        Ui.Settle();
+        Ui.Press(window, "ENTER");
+        Assert.Equal(["One.cs", "Four.cs", "Two.cs", "Three.cs"], Names(group));
+        Assert.Equal("Four.cs", area.Active?.Name);
+
+        Ui.Press(window, Ui.Shortcut(AppActions.CloseTab));
+        Assert.True(area.Active?.Name == "One.cs", $"Closing Four.cs, opened from One.cs, showed {area.Active?.Name}, not the file it came from");
+        Assert.Equal(new TextPosition(3, 8), area.CodeEditor.CaretPosition);
+
+        // Three.cs was the tab shown last before One.cs; Two.cs is only its neighbour.
+        Ui.Press(window, Ui.Shortcut(AppActions.CloseTab));
+        Assert.True(area.Active?.Name == "Three.cs", $"Closing One.cs showed {area.Active?.Name}, not Three.cs, the tab shown before it");
+        Assert.Equal(["Two.cs", "Three.cs"], Names(group));
+        window.Close();
+    }
+
+    /// <summary>A folder opened again shows the tab it showed last, none of its others shown since: closing that one shows
+    /// the tab that took its place on the strip.</summary>
+    [AvaloniaFact]
+    public void Closing_the_tab_shown_where_no_other_tab_was_shown_shows_its_neighbour()
+    {
+        MainWindow first = Keeping("One.cs", "Two.cs", "Three.cs");
+        first.OpenFile("Two.cs");
+        Ui.Settle();
+        first.Close();
+
+        MainWindow second = Keeping();
+        EditorGroup group = second.EditorArea.ActiveGroup;
+        Assert.Equal(["One.cs", "Two.cs", "Three.cs"], Names(group));
+        Assert.Equal("Two.cs", second.EditorArea.Active?.Name);
+        Ui.Press(second, Ui.Shortcut(AppActions.CloseTab));
+        Assert.True(second.EditorArea.Active?.Name == "Three.cs", $"Closing Two.cs with no other tab shown showed {second.EditorArea.Active?.Name}, not Three.cs, its neighbour");
+        Assert.Equal(["One.cs", "Three.cs"], Names(group));
+        second.Close();
+    }
+
     [AvaloniaFact]
     public void Close_Tabs_to_the_Left_and_to_the_Right_close_those_on_that_side_but_the_pinned_ones()
     {
@@ -303,8 +356,11 @@ public sealed class EditorTabsTests : IDisposable
 
     private static string[] Names(EditorGroup group) => [.. group.Tabs.Select(t => t.Document.Name)];
 
-    private static Control Tab(EditorGroup group, string name) =>
-        group.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains(StyleClasses.TabName)).FindAncestorOfType<Border>()!;
+    private static Control Tab(EditorGroup group, string name) => TabName(group, name).FindAncestorOfType<Border>()!;
+
+    /// <summary>The name a tab shows, where a click on it shows its file.</summary>
+    private static TextBlock TabName(EditorGroup group, string name) =>
+        group.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains(StyleClasses.TabName));
 
     private static bool PinShown(EditorGroup group, string name) =>
         Tab(group, name).GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains(StyleClasses.TabPin)).IsEffectivelyVisible;

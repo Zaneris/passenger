@@ -47,6 +47,10 @@ public sealed class EditorGroup : DockPanel
 {
     private readonly EditorArea area;
     private readonly ObservableCollection<EditorTab> tabs = [];
+
+    /// <summary>The tabs this group has shown, the latest first, each once and only while it is on the strip: what the
+    /// group goes back to as its tab shown closes.</summary>
+    private readonly List<EditorTab> shownOrder = [];
     private readonly Dictionary<OpenDocument, (SelectionSet Selections, Vector Scroll)> views = [];
     private readonly Border tabBar;
     private readonly ItemsControl strip;
@@ -457,6 +461,8 @@ public sealed class EditorGroup : DockPanel
         }
         active = tabs.First(t => t.Document == document);
         active.IsActive = true;
+        shownOrder.Remove(active);
+        shownOrder.Insert(0, active);
         RevealActive();
         document.PropertyChanged += OnDocumentChanged;
         ClearPreview();
@@ -591,7 +597,8 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The banner's link, for a click on it.</summary>
     public Control BannerLinkControl => bannerLink;
 
-    /// <summary>Takes a file's tab away; the group shows its neighbour, or nothing when it was the last.</summary>
+    /// <summary>Takes a file's tab away. Where it was the tab shown, the group shows the one it showed before (the latest
+    /// first), its neighbour where it showed no other, or nothing when it was the last.</summary>
     public void Remove(OpenDocument document)
     {
         if (tabs.FirstOrDefault(t => t.Document == document) is not { } tab)
@@ -605,6 +612,7 @@ public sealed class EditorGroup : DockPanel
             tables.Forget(closed);
         }
         tabs.Remove(tab);
+        shownOrder.Remove(tab);
         document.Text.Changed -= OnTabTextChanged;
         markdown?.Forget(document);
         if (tab == active)
@@ -615,7 +623,7 @@ public sealed class EditorGroup : DockPanel
             active = null;
             if (tabs.Count > 0)
             {
-                Show(tabs[Math.Min(index, tabs.Count - 1)].Document);
+                Show((shownOrder.Count > 0 ? shownOrder[0] : tabs[Math.Min(index, tabs.Count - 1)]).Document);
                 if (keys)
                 {
                     // The view in the editor's place that had the keys has gone: what shows the next tab takes them.
