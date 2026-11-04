@@ -897,7 +897,7 @@ public static class Ui
         TimeSpan limit = SettleLimit.Scaled();
         if (!Settled(DateTime.UtcNow + limit))
         {
-            throw new TimeoutException($"The IDE was not quiet within {limit.TotalSeconds} s. Still busy:\n{Busy()}{IdeLogTail()}{ServerLogTail()}");
+            throw new TimeoutException($"The IDE was not quiet within {limit.TotalSeconds} s. Still busy:\n{Busy()}{ServerConversations()}{IdeLogTail()}{ServerLogTail()}");
         }
     }
 
@@ -978,6 +978,14 @@ public static class Ui
             + (unnamed > 0 ? $"\n  {unnamed} hold{(unnamed == 1 ? "" : "s")} of background work with no name" : string.Empty);
     }
 
+    /// <summary>Where each language server's conversation stands while requests wait on it: what it was asked, whether it
+    /// answers Passenger's check, what Passenger owes it, what has not yet reached it, and its last messages (#1233).</summary>
+    private static string ServerConversations()
+    {
+        string conversations = Passenger.Lsp.LanguageServer.Conversations();
+        return conversations.Length == 0 ? string.Empty : $"\nThe language servers' conversations:\n{conversations}";
+    }
+
     /// <summary>The end of the IDE's own log, which names an exception that left background work waiting for good.</summary>
     private static string IdeLogTail()
     {
@@ -1022,7 +1030,7 @@ public static class Ui
             DateTime settling = DateTime.UtcNow + SettleLimit.Scaled();
             if (!Settled(settling > until ? settling : until))
             {
-                throw new TimeoutException($"The IDE was not quiet while waiting {within.TotalSeconds} s for {what()}. Still busy:\n{Busy()}{IdeLogTail()}{ServerLogTail()}");
+                throw new TimeoutException($"The IDE was not quiet while waiting {within.TotalSeconds} s for {what()}. Still busy:\n{Busy()}{ServerConversations()}{IdeLogTail()}{ServerLogTail()}");
             }
         }
         // What it waited for may have landed with none of the window's jobs run since (a read that ended at once).

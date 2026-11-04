@@ -584,6 +584,8 @@ public partial class MainWindow
             };
             // A start or load running long is warned of with the log, which says where it is; its late end said plainly.
             service.LoadRanLong += (_, said) => status.Say(said.Text, said.Severity, said.Severity is null ? null : LogPlace);
+            // A request past its patience is said, never waited on in silence (#1233).
+            service.WaitedLong += (_, said) => status.Say(said.Text, said.Severity, LogPlace);
             WatchProblems(service);
             service.FollowIndent(Editors.Active);
         }

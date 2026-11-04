@@ -7,6 +7,10 @@ using StreamJsonRpc;
 
 namespace Passenger.Lsp;
 
+/// <summary>A request that waited past its server's patience: which and how long (<see cref="Asked"/>), and where the
+/// conversation with the server stood (<see cref="LanguageServer.Conversation"/>).</summary>
+public readonly record struct LongWait(string Asked, string Conversation);
+
 /// <summary>A language server process and the JSON-RPC connection to it over its standard input and
 /// output, or over TCP on a loopback port (Godot's, in its editor: one Passenger started, or the person's own). Requests and notifications go out typed, and each failure of the server's comes back as a
 /// <see cref="LanguageServerFailed"/>, the connection's own exceptions never past this class; what the server asks of
@@ -23,6 +27,13 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>How long the check may go unanswered before the server is called not responding. Roslyn answers it in
     /// milliseconds, through the queue every request goes through, even while it loads projects or runs a long request.</summary>
     public TimeSpan ResponseLimit { get; set; } = Waits.Of(TimeSpan.FromSeconds(10));
+
+    /// <summary>How long a request may wait before its wait is said (<see cref="Waited"/>), once, in the server's log too:
+    /// longer than any answer a person waits on, so what it says is the server's or Passenger's to explain.</summary>
+    public TimeSpan Patience { get; set; } = Waits.Of(TimeSpan.FromSeconds(30));
+
+    /// <summary>Servers running in this process, for a test's words on what each was doing as a wait gave up.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<LanguageServer, byte> Live = new();
 
     /// <summary>The check: the folding ranges of a document never opened, which Roslyn answers with none.</summary>
     private static readonly FoldingRangeParams Check = new(new TextDocumentIdentifier("file:///passenger-is-the-server-answering.cs"));
@@ -67,6 +78,8 @@ public sealed class LanguageServer : IAsyncDisposable
     }
     private long partialResults;
     private long checkedAt;
+    private long checkAnsweredAt;
+    private readonly HashSet<long> waitSaid = [];
     private int checking;
     private volatile bool hung;
     private volatile bool killed;
@@ -107,6 +120,7 @@ public sealed class LanguageServer : IAsyncDisposable
         WatchedFiles = new WatchedFiles(this);
         ProcessId = process?.Id ?? 0;
         this.who = who;
+        Live[this] = 0;
         rpc.Disconnected += (_, e) =>
         {
             if (!disposing)
@@ -130,6 +144,10 @@ public sealed class LanguageServer : IAsyncDisposable
     /// once then went unanswered for <see cref="ResponseLimit"/> (it is deadlocked, suspended or thrashing). Raised once,
     /// with what waited, on any thread; the server is left running for the caller to <see cref="Kill"/>.</summary>
     public event EventHandler<string>? NotResponding;
+
+    /// <summary>A request waited past <see cref="Patience"/>: raised once for it, on any thread, with which, how long, and
+    /// where the conversation stands (<see cref="Conversation"/>).</summary>
+    public event EventHandler<LongWait>? Waited;
 
     /// <summary>The copy of Roslyn's server this one runs from, in the state's cache (<see cref="RoslynServerFolder"/>); null
     /// where it runs from the app's own roslyn/, and for every other server.</summary>
@@ -723,9 +741,10 @@ public sealed class LanguageServer : IAsyncDisposable
     }
 
     /// <summary>A request someone waits for the answer to: one still waiting after <see cref="SlowRequest"/> has the
-    /// server checked, and raises <see cref="NotResponding"/> if that goes unanswered too. A
-    /// <see cref="LanguageServerFailed"/> when the server does not answer it.</summary>
-    public async Task<T?> RequestAsync<T>(string method, object parameters, CancellationToken cancel = default)
+    /// server checked, and raises <see cref="NotResponding"/> if that goes unanswered too; <paramref name="about"/> names
+    /// what it asks where the method alone does not (an extension handler's). A <see cref="LanguageServerFailed"/> when the
+    /// server does not answer it.</summary>
+    public async Task<T?> RequestAsync<T>(string method, object parameters, CancellationToken cancel = default, string? about = null)
     {
         long id = Interlocked.Increment(ref requests);
         if (method.StartsWith("passenger/", StringComparison.Ordinal))
@@ -734,7 +753,7 @@ public sealed class LanguageServer : IAsyncDisposable
         }
         lock (waiting)
         {
-            waiting[id] = (method, Stopwatch.GetTimestamp());
+            waiting[id] = (about is null ? method : $"{method} ({about[(about.LastIndexOf('.') + 1)..]})", Stopwatch.GetTimestamp());
         }
         try
         {
@@ -947,6 +966,7 @@ public sealed class LanguageServer : IAsyncDisposable
     {
         disposing = true;
         killed = true;
+        Live.TryRemove(this, out _);
         socket?.Dispose();
         // Its tree and its process group, so a BuildHost it was loading with goes too.
         if (process is not null)
@@ -959,6 +979,10 @@ public sealed class LanguageServer : IAsyncDisposable
     /// on the timer's thread each second.</summary>
     private void Watch()
     {
+        if (!disposing)
+        {
+            SayLongWaits();
+        }
         if (disposing || hung || Stopwatch.GetElapsedTime(Interlocked.Read(ref checkedAt)) < SlowRequest)
         {
             return;
@@ -1009,11 +1033,87 @@ public sealed class LanguageServer : IAsyncDisposable
         try
         {
             await rpc.InvokeWithParameterObjectAsync<JsonElement>(LspMethods.FoldingRange, Check);
+            Interlocked.Exchange(ref checkAnsweredAt, Stopwatch.GetTimestamp());
         }
         catch (Exception error) when (error is RemoteRpcException or ObjectDisposedException or IOException or OperationCanceledException)
         {
             // An error is an answer too, and a connection gone is Exited's to report.
         }
+    }
+
+    /// <summary>Each request that has waited past <see cref="Patience"/> said once, the conversation's words with it, into
+    /// the server's log and to <see cref="Waited"/>.</summary>
+    private void SayLongWaits()
+    {
+        List<(string Method, TimeSpan Age)> past = [];
+        lock (waiting)
+        {
+            waitSaid.RemoveWhere(id => !waiting.ContainsKey(id));
+            foreach ((long id, (string asked, long since)) in waiting)
+            {
+                TimeSpan age = Stopwatch.GetElapsedTime(since);
+                if (age >= Patience && waitSaid.Add(id))
+                {
+                    past.Add((asked, age));
+                }
+            }
+        }
+        if (past.Count == 0)
+        {
+            return;
+        }
+        (string method, TimeSpan longest) = past.MaxBy(p => p.Age);
+        LongWait wait = new($"{method} has waited {longest.TotalSeconds:0} s{(past.Count > 1 ? $", with {past.Count - 1} more past {Patience.TotalSeconds:0} s" : string.Empty)}",
+            Conversation());
+        Note($"{wait.Asked}: {wait.Conversation}");
+        Waited?.Invoke(this, wait);
+    }
+
+    /// <summary>Where the conversation with the server stands, in words: the requests waiting on it, the oldest first; when
+    /// it last answered a check and last sent anything; its requests Passenger has not answered; Passenger's messages not
+    /// yet taken in by it; and the last messages each way.</summary>
+    public string Conversation()
+    {
+        List<(string Method, TimeSpan Age)> asking;
+        lock (waiting)
+        {
+            asking = [.. waiting.Values.Select(w => (w.Method, Stopwatch.GetElapsedTime(w.Since))).OrderByDescending(w => w.Item2)];
+        }
+        IReadOnlyList<(string Method, long Since)> unanswered = messages.Unanswered;
+        long unsent = messages.Unsent;
+        long heard = messages.LastHeard;
+        long check = Interlocked.Read(ref checkAnsweredAt);
+        List<string> parts =
+        [
+            asking.Count == 0 ? "no request waits on it" : $"{asking.Count} request{(asking.Count == 1 ? "" : "s")} wait{(asking.Count == 1 ? "s" : "")} on it ("
+                + string.Join(", ", asking.Take(6).Select(a => $"{a.Method} {a.Age.TotalSeconds:0} s")) + (asking.Count > 6 ? ", …" : string.Empty) + ")",
+            check == 0 ? "it has answered no check" : $"it answered Passenger's check {Stopwatch.GetElapsedTime(check).TotalSeconds:0} s ago",
+            heard == 0 ? "it has sent nothing" : $"it last sent a message {Stopwatch.GetElapsedTime(heard).TotalSeconds:0} s ago",
+            unanswered.Count == 0 ? "Passenger owes it no answer"
+                : "Passenger has not yet answered its " + string.Join(", ", unanswered.Take(4).Select(u => $"{u.Method} ({Stopwatch.GetElapsedTime(u.Since).TotalSeconds:0} s)")),
+            unsent == 0 ? "every message Passenger wrote has reached it" : $"{unsent} of Passenger's messages have not yet reached its input",
+        ];
+        return $"{who}: {string.Join("; ", parts)}. Its last messages: {string.Join(", ", messages.Recent())}";
+    }
+
+    /// <summary>Where the conversation stands with each server of this process that has a request waiting, a line each;
+    /// empty with none, for a test's words as a wait gives up.</summary>
+    public static string Conversations()
+    {
+        List<string> lines = [];
+        foreach (LanguageServer server in Live.Keys)
+        {
+            bool asking;
+            lock (server.waiting)
+            {
+                asking = server.waiting.Count > 0;
+            }
+            if (asking || server.messages.Unanswered.Count > 0)
+            {
+                lines.Add(server.Conversation());
+            }
+        }
+        return string.Join('\n', lines);
     }
 
     /// <summary>Runs one of the server's own commands (<c>workspace/executeCommand</c>) that asks nothing of the client as it
@@ -1064,6 +1164,7 @@ public sealed class LanguageServer : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         disposing = true;
+        Live.TryRemove(this, out _);
         // However it goes, a write into the pipes closed under it included (Node's SIGPIPE, 141), it did not fail.
         if (process is not null)
         {
@@ -1651,11 +1752,12 @@ public sealed class LanguageServer : IAsyncDisposable
         /// <summary>A Razor file's HTML, which Razor sends before it asks HTML's answer at a place in it: the requests below,
         /// each as Razor received it wrapped with the file and its HTML's checksum (<see cref="RazorHtml"/>). Each goes to
         /// the HTML server when there is one; without it, a list answers empty, so Razor goes on with its own part (the C#'s
-        /// formatting, its components' completion), and one answers null. Awaited apart from the messages that follow.</summary>
+        /// formatting, its components' completion), and one answers null. The HTML is taken at once, and each request
+        /// awaited apart from the messages that follow.</summary>
         [JsonRpcMethod(LspMethods.RazorUpdateHtml)]
-        public async Task<object?> UpdateHtml(JsonElement update)
+        public object? UpdateHtml(JsonElement update)
         {
-            await Html.UpdateAsync(update).ConfigureAwait(false);
+            Html.UpdateNow(update);
             return null;
         }
 

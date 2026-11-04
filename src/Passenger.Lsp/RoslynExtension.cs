@@ -46,7 +46,7 @@ public static class RoslynExtension
         }
         string text = JsonSerializer.Serialize(message, message.GetType());
         JsonElement answer = await server.RequestAsync<JsonElement>(LspMethods.DispatchExtensionMessage,
-            new DispatchWorkspaceMessageParams(handler, text), cancel).ConfigureAwait(false);
+            new DispatchWorkspaceMessageParams(handler, text), cancel, about: handler).ConfigureAwait(false);
         return Answer<T>(answer, handler);
     }
 
@@ -64,7 +64,7 @@ public static class RoslynExtension
         try
         {
             answer = await server.RequestAsync<JsonElement>(LspMethods.DispatchDocumentExtensionMessage,
-                new DispatchExtensionMessageParams(handler, text, document), cancel).ConfigureAwait(false);
+                new DispatchExtensionMessageParams(handler, text, document), cancel, about: handler).ConfigureAwait(false);
         }
         catch (LanguageServerFailed failed) when (failed.Reason.Contains("No handler found", StringComparison.Ordinal))
         {

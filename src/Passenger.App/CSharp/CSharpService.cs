@@ -178,6 +178,10 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// with it (a warning), or C# was ready after it: what the status bar says of it; raised on the UI thread.</summary>
     public event EventHandler<ServerSaid>? LoadRanLong;
 
+    /// <summary>A request waited past its patience (<see cref="LanguageServer.Patience"/>), the server alive or not: what the
+    /// status bar says of it, a warning with the log, which says where the conversation stood; raised on the UI thread.</summary>
+    public event EventHandler<ServerSaid>? WaitedLong;
+
     /// <summary>The problems the server met loading the projects changed; raised on the UI thread.</summary>
     public event EventHandler? ProjectProblemsChanged;
 
@@ -1016,6 +1020,11 @@ public sealed partial class CSharpService : IAsyncDisposable
                 UiThread.Post(() => OnExited(started));
             };
             EventHandler<string> onHung = (_, why) => UiThread.Post(() => OnNotResponding(started, why));
+            EventHandler<LongWait> onWaited = (_, wait) =>
+            {
+                IdeErrors.Write($"C# language server (process {started.Server.ProcessId}): {wait.Asked}: {wait.Conversation}");
+                UiThread.Post(() => OnWaitedLong(started, wait));
+            };
             started.Loaded += onLoaded;
             started.Server.ColoursRefreshRequested += onColours;
             started.Server.DiagnosticsRefreshRequested += onDiagnostics;
@@ -1023,6 +1032,7 @@ public sealed partial class CSharpService : IAsyncDisposable
             started.Server.ProjectGiven += onGiven;
             started.Server.Exited += onExited;
             started.Server.NotResponding += onHung;
+            started.Server.Waited += onWaited;
             started.Server.HtmlServer = HtmlServer;
             Hook(() =>
             {
@@ -1035,6 +1045,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 started.Server.ProjectGiven -= onGiven;
                 started.Server.Exited -= onExited;
                 started.Server.NotResponding -= onHung;
+                started.Server.Waited -= onWaited;
             });
             session = started;
             ForgetArrivals();
@@ -1483,6 +1494,16 @@ public sealed partial class CSharpService : IAsyncDisposable
             return;
         }
         Replace(lost, workspace, "The C# language server ended");
+    }
+
+    /// <summary>A request of the session's server waited past its patience: said in the status bar, its words in the log.</summary>
+    private void OnWaitedLong(RoslynSession slow, LongWait wait)
+    {
+        if (disposed || session != slow)
+        {
+            return;
+        }
+        WaitedLong?.Invoke(this, new ServerSaid($"The C# language server is slow to answer: {wait.Asked}; the log says where it stands", ProblemSeverity.Warning));
     }
 
     /// <summary>The server stopped answering: it is ended at once, so every request waiting on it fails rather than

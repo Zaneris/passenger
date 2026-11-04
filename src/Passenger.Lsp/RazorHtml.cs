@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Passenger.Core;
 
 namespace Passenger.Lsp;
 
@@ -20,8 +21,12 @@ internal sealed class RazorHtml
     /// <summary>The HTML server, asked for as each question comes (it may be started again meanwhile), or null with none.</summary>
     public Func<CancellationToken, Task<LanguageServer?>>? Server { get; set; }
 
-    /// <summary>Each Razor file's HTML as the HTML server has it: in which server, at which version, by the file's URI.</summary>
-    private readonly Dictionary<string, (LanguageServer Server, int Version)> opened = new(StringComparer.Ordinal);
+    /// <summary>Each Razor file's HTML as the HTML server has it: in which server, at which version, which of Razor's
+    /// updates it holds (<see cref="given"/>), by the file's URI.</summary>
+    private readonly Dictionary<string, (LanguageServer Server, int Version, long Given)> opened = new(StringComparer.Ordinal);
+
+    /// <summary>How many times Razor has given each file's HTML, by the file's URI.</summary>
+    private readonly Dictionary<string, long> given = new(StringComparer.Ordinal);
 
     /// <summary>One file's HTML sent to the HTML server at a time, so a change never overtakes another.</summary>
     private readonly SemaphoreSlim sending = new(1, 1);
@@ -43,14 +48,33 @@ internal sealed class RazorHtml
         }
     }
 
-    /// <summary>Keeps a Razor file's HTML as Razor gave it, and the HTML server's document of it in step, before Razor's
-    /// question that needed it is asked.</summary>
-    public async Task UpdateAsync(JsonElement update)
+    /// <summary>Keeps a Razor file's HTML as Razor gave it, answered at once: Razor holds every question of the file that
+    /// needs its HTML until this is answered, so it never waits for the HTML server to start (Node.js on a loaded machine,
+    /// #1233). The HTML server's document of it is brought in step apart, and again by a question of it that comes first.</summary>
+    public void UpdateNow(JsonElement update)
     {
         Update(update);
-        if (Uri(update) is { } uri && await HtmlAsync().ConfigureAwait(false) is { } html)
+        if (Uri(update) is { } uri && Server is not null)
+        {
+            UnawaitedWork.Observe(BackgroundWork.Run(() => SyncLaterAsync(uri)));
+        }
+    }
+
+    private async Task SyncLaterAsync(string uri)
+    {
+        if (await HtmlAsync().ConfigureAwait(false) is { } html)
         {
             await SyncAsync(html, uri).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Whether the HTML server holds a file's HTML as Razor last gave it.</summary>
+    private bool Current(LanguageServer html, string uri)
+    {
+        lock (texts)
+        {
+            return opened.TryGetValue(uri, out (LanguageServer Server, int Version, long Given) sent) && sent.Server == html
+                && sent.Given == given.GetValueOrDefault(uri);
         }
     }
 
@@ -62,14 +86,16 @@ internal sealed class RazorHtml
         try
         {
             string? text;
-            (LanguageServer Server, int Version) was;
+            (LanguageServer Server, int Version, long Given) was;
             bool known;
+            long update;
             lock (texts)
             {
                 text = texts.GetValueOrDefault(uri);
                 known = opened.TryGetValue(uri, out was);
+                update = given.GetValueOrDefault(uri);
             }
-            if (text is null)
+            if (text is null || known && was.Server == html && was.Given == update)
             {
                 return;
             }
@@ -86,7 +112,7 @@ internal sealed class RazorHtml
             }
             lock (texts)
             {
-                opened[uri] = (html, version);
+                opened[uri] = (html, version, update);
             }
         }
         catch (LanguageServerFailed)
@@ -113,12 +139,7 @@ internal sealed class RazorHtml
         string? uri = Uri(forwarded);
         if (uri is not null)
         {
-            bool current;
-            lock (texts)
-            {
-                current = opened.TryGetValue(uri, out (LanguageServer Server, int Version) sent) && sent.Server == html;
-            }
-            if (!current)
+            if (!Current(html, uri))
             {
                 await SyncAsync(html, uri).ConfigureAwait(false);
             }
@@ -151,7 +172,6 @@ internal sealed class RazorHtml
     {
         string? uri;
         string? text = null;
-        bool sent = false;
         lock (texts)
         {
             // Razor spells the file's URI its own way: found by its path.
@@ -159,12 +179,19 @@ internal sealed class RazorHtml
             if (uri is not null)
             {
                 text = texts[uri];
-                sent = opened.ContainsKey(uri);
             }
         }
-        if (uri is null || text is null || !sent || await HtmlAsync().ConfigureAwait(false) is not { } html)
+        if (uri is null || text is null || await HtmlAsync().ConfigureAwait(false) is not { } html)
         {
             return [];
+        }
+        if (!Current(html, uri))
+        {
+            await SyncAsync(html, uri).ConfigureAwait(false);
+        }
+        lock (texts)
+        {
+            text = texts.GetValueOrDefault(uri) ?? text;
         }
         DocumentDiagnosticReport? report;
         try
@@ -218,6 +245,7 @@ internal sealed class RazorHtml
             lock (texts)
             {
                 texts[uri] = text.GetString()!;
+                given[uri] = given.GetValueOrDefault(uri) + 1;
             }
         }
     }
@@ -241,7 +269,8 @@ internal sealed class RazorHtml
             foreach (string uri in texts.Keys.Concat(opened.Keys).Distinct().Where(uri => DocumentUris.ToPath(uri) == path).ToList())
             {
                 texts.Remove(uri);
-                if (opened.Remove(uri, out (LanguageServer Server, int Version) sent))
+                given.Remove(uri);
+                if (opened.Remove(uri, out (LanguageServer Server, int Version, long Given) sent))
                 {
                     closing.Add((sent.Server, uri + VirtualSuffix));
                 }
