@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.Pipelines;
 using Passenger.Core;
+using Passenger.Dap;
 
 namespace Passenger.App.Debugging;
 
@@ -131,6 +132,25 @@ public sealed class InProcessEnd : AdapterEnd
     }
 
     public override void Kill() => End(-1);
+
+    /// <summary>An event the adapter sends its session over <paramref name="adapter"/>, its connection over this end, unless
+    /// the adapter has ended: one sent as it ends (the game's last output, its end, told on another thread than the end's)
+    /// has no session to hear it, so the write it finds closed is no failure.</summary>
+    public void SendEvent(DapConnection adapter, string name, object? body)
+    {
+        if (ended)
+        {
+            return;
+        }
+        try
+        {
+            adapter.SendEvent(name, body);
+        }
+        catch (IOException) when (ended)
+        {
+            // The session went as this was sent.
+        }
+    }
 
     /// <summary>What the adapter writes to its session: once the adapter has ended (an answer it finishes after its session's
     /// disconnect), a write fails as one to a process's closed pipe does, with an <see cref="IOException"/>, never the

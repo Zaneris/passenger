@@ -123,6 +123,12 @@
     <Compile Include="../../src/Passenger.App/Debugging/Signatures.cs" Link="App/Signatures.cs" />
   </ItemGroup>
 
+  <!-- How an in-process debug adapter's events reach its session over pipes in memory, and are let go once it ended,
+       compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Debugging/AdapterEnd.cs" Link="App/AdapterEnd.cs" />
+  </ItemGroup>
+
   <!-- Where a breakpoint in Avalonia XAML stops, read from the file's markup alone, compiled in since its project is the
        app's. -->
   <ItemGroup>

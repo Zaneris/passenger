@@ -696,19 +696,5 @@ public sealed class WebAssemblyAdapter
     private void Say(string line) => Tell(DapEvents.Output, new OutputEvent($"{line}\n", DapOutputCategories.Console));
 
     /// <summary>An event for the session, unless it has gone.</summary>
-    private void Tell(string eventName, object? body)
-    {
-        if (end.HasEnded)
-        {
-            return;
-        }
-        try
-        {
-            connection.SendEvent(eventName, body);
-        }
-        catch (InvalidOperationException) when (end.HasEnded)
-        {
-            // The session went as this was told.
-        }
-    }
+    private void Tell(string eventName, object? body) => end.SendEvent(connection, eventName, body);
 }

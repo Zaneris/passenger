@@ -290,21 +290,7 @@ public sealed class GodotScriptAdapter
     }
 
     /// <summary>An event for the session, unless it has gone: the game's last output, or its end, may come as the adapter ends.</summary>
-    private void Tell(string name, object? body)
-    {
-        if (end.HasEnded)
-        {
-            return;
-        }
-        try
-        {
-            connection.SendEvent(name, body);
-        }
-        catch (InvalidOperationException) when (end.HasEnded)
-        {
-            // The session went as this was told.
-        }
-    }
+    private void Tell(string name, object? body) => end.SendEvent(connection, name, body);
 
     /// <summary>Text typed into the console of a game launched, for its standard input; its end closes that input.</summary>
     private async Task<bool> InputAsync(InputArguments arguments)
