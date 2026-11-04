@@ -51,12 +51,12 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         JsonElement built = await Call(client, McpTools.Build);
         Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The filter's app did not build with the project it leaves out: {built}");
 
-        Assert.Equal(("Lib/Greeter.cs", 7), await DeclaredAsync(client, 2, 34));
-        Assert.Equal(("Lib/Greeter.cs", 5), await DeclaredAsync(client, 2, 59));
-        Assert.Equal(("Lib/Greeter.cs", 3), await DeclaredAsync(client, 1, 23));
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 7), await DeclaredAsync(client, 2, 34));
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 5), await DeclaredAsync(client, 2, 59));
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 3), await DeclaredAsync(client, 1, 23));
         // Its source changed since its assembly was built: the method of that name, however many parameters it takes now.
         TestFolders.Write(folder, "Lib/Greeter.cs", File.ReadAllText(Path.Combine(folder, "Lib/Greeter.cs")).Replace("Greet(string greeting)", "Greet(string greeting, int times = 1)", StringComparison.Ordinal));
-        Assert.Equal(("Lib/Greeter.cs", 7), await DeclaredAsync(client, 2, 34));
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 7), await DeclaredAsync(client, 2, 34));
         (string console, _) = await DeclaredAsync(client, 2, 16);
         Assert.Contains("MetadataAsSource", console, StringComparison.Ordinal);
 
