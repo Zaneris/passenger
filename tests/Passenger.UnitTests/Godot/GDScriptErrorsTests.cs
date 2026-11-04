@@ -8,8 +8,8 @@ namespace Passenger.UnitTests.Godot;
 /// checked against Godot 4.7.2's own server, which says the same, a twice-pushed error once), over a small API of the engine's: a name declared nowhere (with Godot 4's rename hint for a Godot 3 name), a built-in type or global
 /// enum standing on its own, a member a known base lacks, an engine's enum used as a value, a call of a function not found
 /// on self, a built-in value or type, an engine class or an enum, a type not found, a value of a type its target takes
-/// none of and a call given too few or too many arguments; and none of them where the class extends one this reading
-/// cannot read.</summary>
+/// none of and a call given too few or too many arguments, an operator, cast or type test given types it refuses; and none
+/// of them where the class extends one this reading cannot read.</summary>
 public class GDScriptErrorsTests
 {
     private const string Api = """
@@ -19,7 +19,10 @@ public class GDScriptErrorsTests
           "utility_functions": [{ "name": "print", "return_type": "void", "is_vararg": true, "arguments": [] }],
           "singletons": [],
           "builtin_classes": [
-            { "name": "Nil" }, { "name": "bool" }, { "name": "int" }, { "name": "float" }, { "name": "String" }, { "name": "StringName" },
+            { "name": "Nil" }, { "name": "bool", "operators": [{ "name": "==", "right_type": "bool", "return_type": "bool" }, { "name": "not", "return_type": "bool" }] },
+            { "name": "int", "operators": [{ "name": "+", "right_type": "int", "return_type": "int" }, { "name": "==", "right_type": "Variant", "return_type": "bool" },
+              { "name": "/", "right_type": "int", "return_type": "int" }, { "name": "<<", "right_type": "int", "return_type": "int" }, { "name": "unary-", "return_type": "int" }] },
+            { "name": "float" }, { "name": "String", "operators": [{ "name": "+", "right_type": "String", "return_type": "String" }] }, { "name": "StringName" },
             { "name": "Vector3", "members": [{ "name": "x", "type": "float" }, { "name": "y", "type": "float" }, { "name": "z", "type": "float" }],
               "constants": [{ "name": "ZERO", "type": "Vector3" }], "enums": [{ "name": "Axis", "values": [{ "name": "AXIS_X", "value": 0 }] }],
               "methods": [{ "name": "length", "return_type": "float", "is_const": true }], "constructors": [{ "index": 0 }] },
@@ -32,7 +35,7 @@ public class GDScriptErrorsTests
             { "name": "Node", "inherits": "Object", "methods": [{ "name": "_ready", "is_virtual": true },
               { "name": "_process", "is_virtual": true, "arguments": [{ "name": "delta", "type": "float" }] }],
               "properties": [{ "name": "name", "type": "StringName" }], "enums": [{ "name": "ProcessMode", "values": [{ "name": "PROCESS_MODE_INHERIT", "value": 0 }] }] },
-            { "name": "CharacterBody2D", "inherits": "Node" }
+            { "name": "CharacterBody2D", "inherits": "Node" }, { "name": "Resource", "inherits": "RefCounted" }
           ]
         }
         """;
@@ -144,6 +147,34 @@ public class GDScriptErrorsTests
             "32: Cannot get return value of call to \"nothing()\" because it returns \"void\".",
             "34: Cannot assign a value of type \"main.gd.Other\" as \"main.gd.MyEnum\".",
             "34: Value of type \"main.gd.Other\" cannot be assigned to a variable of type \"main.gd.MyEnum\".",
+        ], Errors(Script));
+    }
+
+    [Fact]
+    public void An_operator_cast_or_type_test_given_types_it_refuses_is_an_error_in_godots_words_on_its_line()
+    {
+        const string Script = "extends Node\n\nenum Mode { A, B }\nconst LIMIT = 3\nvar count: int = 0\nvar label: String = \"\"\nvar flag: bool = false\nvar node: Node\n\n\n"
+            + "func _ready() -> void:\n\tprint(true + true)\n\tprint(count + label)\n\tprint(LIMIT + \"x\")\n\tprint(1 / 0)\n\tprint(-1 << 2)\n\tprint(-label)\n"
+            + "\tprint(count == null, count + 1, label + \"x\", Mode.A + 1)\n\tprint(node == 1)\n\tflag += \"bar\"\n\tprint(count as Node)\n\tprint(label as int)\n"
+            + "\tprint(1 as Array)\n\tprint(Mode.A as String)\n\tprint(count is String)\n\tprint(node is Resource)\n\tprint(LIMIT is float)\n";
+        Assert.Equal(
+        [
+            "12: Invalid operands to operator +, bool and bool.",
+            "13: Invalid operands \"int\" and \"String\" for \"+\" operator.",
+            "14: Invalid operands to operator +, int and String.",
+            "15: Division by zero error in operator /.",
+            "16: Invalid operands for bit shifting. Only positive operands are supported. in operator <<.",
+            "17: Invalid operand of type \"String\" for unary operator \"unary-\".",
+            "19: Invalid operands \"Node\" and \"int\" for \"==\" operator.",
+            "20: Invalid operands \"bool\" and \"String\" for assignment operator.",
+            "21: Invalid cast. Cannot convert from \"int\" to \"Node\".",
+            "23: Cannot cast a value of type \"int\" as \"Array\".",
+            "23: Invalid cast. Cannot convert from \"int\" to \"Array\".",
+            "24: Cannot cast a value of type \"main.gd.Mode\" as \"String\".",
+            "24: Invalid cast. Cannot convert from \"main.gd.Mode\" to \"String\".",
+            "25: Expression is of type \"int\" so it can't be of type \"String\".",
+            "26: Expression is of type \"Node\" so it can't be of type \"Resource\".",
+            "27: Expression is of type \"int\" so it can't be of type \"float\".",
         ], Errors(Script));
     }
 

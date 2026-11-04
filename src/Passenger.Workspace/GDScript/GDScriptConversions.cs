@@ -64,6 +64,12 @@ public static class GDScriptConversions
     public static IReadOnlyList<string> From(string type) =>
         Into.TryGetValue(type, out string[]? from) ? [.. Order.Where(o => o != type && from.Contains(o))] : [];
 
+    /// <summary>Whether a built-in type's value converts to another at all, as <c>Variant::can_convert</c> has it: strictly,
+    /// or a String to a bool or a number, or anything but an object or null to a String.</summary>
+    public static bool Converts(string from, string to) =>
+        from == to || (from == "Nil" ? to == "Object"
+            : to is "bool" or "int" or "float" && from == "String" || to == "String" && from != "Object" || From(to).Contains(from));
+
     /// <summary>A constructor's first argument as Godot's reduce_call says what it may be: the type itself, then each that
     /// converts to it, joined as <c>Vector2" or "Vector2i</c> or <c>int", "bool", or "float</c> between the words' quotes.</summary>
     public static string Expected(string type)

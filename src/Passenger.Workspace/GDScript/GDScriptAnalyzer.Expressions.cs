@@ -412,7 +412,9 @@ public sealed partial class GDScriptAnalyzer
                 {
                     return GDScriptType.Builtin("bool", operand.Hard || unary.Operand is GDScriptTypeTest);
                 }
-                return Operation(operand, unary.Operator switch { K.Minus => "unary-", K.Plus => "unary+", _ => "~" }, null);
+                string unaryOperator = unary.Operator switch { K.Minus => "unary-", K.Plus => "unary+", _ => "~" };
+                UnaryErrors(unary, unaryOperator, operand, context);
+                return Operation(operand, unaryOperator, null);
             case GDScriptTernary ternary:
                 Reduce(ternary.Condition, context);
                 GDScriptType whenTrue = Reduce(ternary.True, context, root);
@@ -427,6 +429,10 @@ public sealed partial class GDScriptAnalyzer
             case GDScriptCast cast:
                 GDScriptType operandType = Reduce(cast.Operand, context);
                 GDScriptType castType = cast.Type is { } castTo ? ResolveType(castTo, context) : GDScriptType.Variant;
+                if (cast is { Operand: { } castFrom, Type: { } castNode })
+                {
+                    CastErrors(castFrom, castNode, operandType, castType, context);
+                }
                 if (!castType.IsVariant && (operandType.IsVariant || !operandType.Hard))
                 {
                     Warn(context, cast, "UNSAFE_CAST", castType.ToString());
@@ -438,7 +444,11 @@ public sealed partial class GDScriptAnalyzer
                 }
                 return castType;
             case GDScriptTypeTest test:
-                Reduce(test.Operand, context);
+                GDScriptType tested = Reduce(test.Operand, context);
+                if (test is { Operand: { } testOperand, Type: { } testNode })
+                {
+                    TypeTestErrors(testOperand, tested, ResolveType(testNode, context), context);
+                }
                 return GDScriptType.Builtin("bool");
             case GDScriptArray array:
                 foreach (GDScriptExpression element in array.Elements)
@@ -1019,14 +1029,18 @@ public sealed partial class GDScriptAnalyzer
     }
 
     /// <summary>Godot's error of a constant expression of a type a built-in or enum target takes none of
-    /// (update_const_expression_builtin_type), <paramref name="usage"/> what it is given to the target by.</summary>
-    private void ConstantConverted(GDScriptExpression value, GDScriptType given, GDScriptType target, string usage, Context context)
+    /// (update_const_expression_builtin_type), <paramref name="usage"/> what it is given to the target by, an int cast to
+    /// an enum taken; whether it said one.</summary>
+    private bool ConstantConverted(GDScriptExpression value, GDScriptType given, GDScriptType target, string usage, Context context, bool cast = false)
     {
         if (Folded(value, context) && target.Kind is GDScriptTypeKind.Builtin or GDScriptTypeKind.Enum && target.ToString() != given.ToString()
+            && !(cast && target is { Kind: GDScriptTypeKind.Enum, Meta: false } && given is { Kind: GDScriptTypeKind.Builtin, Name: "int" } or { Kind: GDScriptTypeKind.Enum, Meta: false })
             && !TypeCompatible(target, given, implicitly: true))
         {
             Error(context, value, $"Cannot {usage} a value of type \"{given}\" as \"{target}\".");
+            return true;
         }
+        return false;
     }
 
     /// <summary>Whether an expression's type is one this reading is sure Godot gives it, which a mismatch's error stands on:
@@ -1037,12 +1051,21 @@ public sealed partial class GDScriptAnalyzer
     {
         GDScriptLiteral or GDScriptArray or GDScriptDictionary => true,
         GDScriptUnary { Operator: K.Minus, Operand: GDScriptLiteral } => true,
-        GDScriptIdentifier name when context.Scope?.Find(name.Name) is { } local => local.Local?.Node is GDScriptAssignable { Type: not null } or GDScriptConstant { Initializer: GDScriptLiteral },
+        GDScriptIdentifier name when context.Scope?.Find(name.Name) is { } local => SureDeclared(local.Local?.Node),
         GDScriptIdentifier name => Member(context.Class, name.Name) is { Declaration: { Script: { } script, Start: var start } } && Tree(script) is { } tree
-            && AssignableAt(tree.Members.Select(m => (m.Node, m.Offset)), start) is GDScriptVariable { Type: not null } or GDScriptConstant { Type: not null } or GDScriptConstant { Initializer: GDScriptLiteral },
+            && SureDeclared(AssignableAt(tree.Members.Select(m => (m.Node, m.Offset)), start)),
         GDScriptCall { Callee: GDScriptIdentifier builtin } when Engine?.Builtins.ContainsKey(builtin.Name) == true && context.Scope?.Find(builtin.Name) is null => true,
         GDScriptCall { Callee: GDScriptIdentifier own } => Declared(own, context),
         GDScriptCall { Callee: GDScriptSubscript { IsAttribute: true, Base: GDScriptSelf, Attribute: { } method } } => Declared(method, context),
+        _ => false,
+    };
+
+    /// <summary>Whether a declaration's type is one Godot gives as Passenger does: written, or inferred from a literal.</summary>
+    private static bool SureDeclared(GDScriptNode? declared) => declared switch
+    {
+        GDScriptAssignable { Type: not null } => true,
+        GDScriptAssignable assignable when assignable.Infers || assignable is GDScriptConstant => assignable.Initializer
+            is GDScriptLiteral { Kind: not GDScriptLiteralKind.Null } or GDScriptArray or GDScriptDictionary or GDScriptUnary { Operator: K.Minus, Operand: GDScriptLiteral },
         _ => false,
     };
 
@@ -1080,10 +1103,15 @@ public sealed partial class GDScriptAnalyzer
         }
         if (target.Kind == GDScriptTypeKind.Builtin)
         {
-            // An object's Variant type is Object, which some built-in types (RID) take.
-            string variantType = source.Kind is GDScriptTypeKind.Native or GDScriptTypeKind.Class ? "Object" : source.Name;
+            // An object's Variant type is Object, which some built-in types (RID) take, an enum's value's an int and an enum's a Dictionary.
+            string variantType = source.Kind switch
+            {
+                GDScriptTypeKind.Native or GDScriptTypeKind.Class => "Object",
+                GDScriptTypeKind.Enum => source.Meta ? "Dictionary" : "int",
+                _ => source.Name,
+            };
             bool valid = source.Kind == GDScriptTypeKind.Builtin && source.Name == target.Name
-                || implicitly && source.Kind != GDScriptTypeKind.Enum && GDScriptConversions.From(target.Name).Contains(variantType)
+                || implicitly && (variantType == target.Name || GDScriptConversions.From(target.Name).Contains(variantType))
                 || target.Name == "int" && source is { Kind: GDScriptTypeKind.Enum, Meta: false };
             if (valid && target.Name is "Array" or "Dictionary" && source.Kind == GDScriptTypeKind.Builtin && source.Name == target.Name)
             {
@@ -1604,7 +1632,12 @@ public sealed partial class GDScriptAnalyzer
             Error(context, assignee, "Cannot assign a new value to a constant.");
             return;
         }
-        if (assignment.Operator != K.Equal || target.IsVariant || !target.Hard || value.IsVariant || !value.Hard || !Sure(assigned, context) || !Sure(assignee, context))
+        if (assignment.Operator != K.Equal)
+        {
+            CompoundErrors(assignment, assignee, target, assigned, value, context);
+            return;
+        }
+        if (target.IsVariant || !target.Hard || value.IsVariant || !value.Hard || !Sure(assigned, context) || !Sure(assignee, context))
         {
             return;
         }
@@ -1629,7 +1662,8 @@ public sealed partial class GDScriptAnalyzer
     /// enum's value, or a constant read off a built-in type, an enum or a class.</summary>
     private bool Folded(GDScriptExpression expression, Context context) => Constant(expression) is not null || expression switch
     {
-        GDScriptIdentifier name => IsConstant(name, context),
+        GDScriptIdentifier name => context.Scope?.Find(name.Name) is { } local ? local.Local?.Kind == LocalKind.Constant
+            : Member(context.Class, name.Name) is { Kind: "const" or "enum" },
         GDScriptSubscript { IsAttribute: true, Base: { } taken, Attribute: { } member } => context.Analysis.TypeOf(taken) switch
         {
             { Kind: GDScriptTypeKind.Enum, Meta: true } => true,
@@ -1644,6 +1678,7 @@ public sealed partial class GDScriptAnalyzer
     {
         GDScriptType left = Reduce(binary.Left, context);
         GDScriptType right = Reduce(binary.Right, context);
+        BinaryErrors(binary, left, right, context);
         bool hard = left.Hard && right.Hard;
         if (binary.Operator == K.Slash && left is { Kind: GDScriptTypeKind.Builtin, Name: "int" or "Vector2i" or "Vector3i" or "Vector4i" }
             && right is { Kind: GDScriptTypeKind.Builtin } && (right.Name == "int" || right.Name == left.Name))

@@ -11,7 +11,7 @@ namespace Passenger.Tests;
 
 /// <summary>Passenger's own reading of a GDScript gives the errors Godot's own server gives on the same scripts, in the same
 /// words on the same lines: a corpus of scripts, a family of Godot's analyzer's errors each (names not found, mismatched
-/// types and calls), opened in a window whose
+/// types and calls, operators, casts and type tests), opened in a window whose
 /// Godot's server serves them, each script's errors from Godot's diagnostics and from Passenger's marks set beside each
 /// other (an error Godot pushes twice at one place counted once). Without a Godot each test skips saying why; a Godot editor
 /// of its own, so run alone.</summary>
@@ -42,6 +42,24 @@ public sealed class GDScriptGodotErrorsTests
         + "func gives() -> int:\n\treturn \"a\"\n\n\nfunc _ready() -> void:\n\tcount = \"four\"\n\tLIMIT = 4\n\tMyEnum.A = 1\n\tvar s: String = 5\n\ttakes()\n"
         + "\ttakes(1, \"b\", 3)\n\ttakes(\"x\")\n\tvar v = nothing()\n\tprint(len(\"x\"), s, v, typed_float, n)\n\te = Other.Y\n\tvar w: Vector2 = Vector2.ZERO\n\tw = Color.RED\n";
 
+    /// <summary>Operators given types they take no pair of (constants folded by Godot said in its evaluation's words, an
+    /// integer divided by zero, a negative shift), compound assignments, casts to a type nothing converts to, and type tests
+    /// a value can never pass.</summary>
+    internal const string Operators = "extends Node\n\nenum Mode { A, B }\nconst LIMIT = 3\nconst NAMES = [\"a\"]\nvar count: int = 0\n"
+        + "var label: String = \"\"\nvar flag: bool = false\nvar items: Array[int] = []\nvar node: Node\n\n\n"
+        + "func _ready() -> void:\n\tprint(2.2 << 4)\n\tprint(true + true)\n"
+        + "\tprint({\"hello\": \"world\"} + {\"godot\": \"engine\"})\n\tprint(\"hello\" + [\"world\"])\n\tprint(count + label)\n"
+        + "\tprint(flag * 2)\n\tprint(LIMIT + \"x\")\n\tprint(count == label)\n\tprint(1 == \"1\")\n\tprint(-label)\n"
+        + "\tprint(~1.5)\n\tprint(1 / 0)\n\tprint(5 % 0)\n\tprint(-1 << 2)\n\tprint(1 in 2)\n\tprint(NAMES + 1)\n"
+        + "\tprint(Vector2(1, 2) + 1)\n\tprint(node + 1)\n\tprint(node == 1)\n\tprint(Mode + 1)\n\tprint(\"a\" and true)\n"
+        + "\tprint(count == null, label % count, -Mode.A, count in items, items + [1], node in items, node != null, not node)\n"
+        + "\tflag += \"bar\"\n\tcount -= label\n\tcount += 1\n\tprint(count as Array)\n\tprint(node as int)\n\tprint(1 as Array)\n"
+        + "\tprint(Mode.A as String)\n\tprint(node as Resource)\n"
+        + "\tprint(label as int, count as Mode, Mode.A as int, node as Node2D, 1.5 as int)\n\tprint(\"a\" as int)\n"
+        + "\tprint(count is String)\n\tprint(node is Resource)\n\tprint(LIMIT is float)\n\tprint(count is Missing)\n"
+        + "\tprint(Mode.A is String)\n\tprint(items is Array[String])\n\tprint(node is Node2D, Mode.A is int, items is Array)\n"
+        + "\tvar local := 1\n\tprint(local + \"x\")\n\tconst LOCAL := 2\n\tprint(LOCAL is String)\n";
+
     private readonly string folder;
     private readonly GodotFound? godot = GodotExecutables.Find(null);
 
@@ -57,6 +75,9 @@ public sealed class GDScriptGodotErrorsTests
 
     [AvaloniaFact]
     public void Values_its_targets_take_none_of_are_its_errors_in_its_words() => Compared(("mismatches.gd", Mismatches));
+
+    [AvaloniaFact]
+    public void Operators_casts_and_type_tests_godot_refuses_are_its_errors_in_its_words() => Compared(("operators.gd", Operators));
 
     /// <summary>The scripts written, opened one by one once Godot's server serves the project, and each one's errors from
     /// Godot's server and from Passenger's reading the same.</summary>

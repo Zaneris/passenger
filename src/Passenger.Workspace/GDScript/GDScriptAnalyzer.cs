@@ -50,7 +50,28 @@ public sealed partial class GDScriptAnalyzer
         {
             analysis.Found.Add(new GDScriptFinding(0, 0, "EMPTY_FILE", Message("EMPTY_FILE", [])));
         }
+        // Godot reads no body of a script one of whose classes it can't follow to its base, so none of its errors stand.
+        if (!InnerClasses(tree.Members.Select(m => (m.Node, m.Offset)), path).All(Knows))
+        {
+            analysis.Found.RemoveAll(f => f.Code is null);
+        }
         return analysis;
+    }
+
+    /// <summary>The classes a script declares inside its own, an inner class's too, each by its offset.</summary>
+    private static IEnumerable<GDScriptType> InnerClasses(IEnumerable<(GDScriptNode Node, int Offset)> members, string path)
+    {
+        foreach ((GDScriptNode node, int offset) in members)
+        {
+            if (node is GDScriptClass { Identifier: { } name } inner)
+            {
+                yield return new GDScriptType(GDScriptTypeKind.Class, name.Name) { Class = inner, Script = path, Offset = offset };
+                foreach (GDScriptType nested in InnerClasses(inner.Members.Select(m => (m, offset)), path))
+                {
+                    yield return nested;
+                }
+            }
+        }
     }
 
     /// <summary>The members (an inner class's too) whose type or return type is written as <c>Variant</c>, known before any
