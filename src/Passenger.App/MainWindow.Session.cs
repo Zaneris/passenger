@@ -283,6 +283,7 @@ public partial class MainWindow
         gameAudio?.Bind(next);
         BindVcs(next);
         BindBookmarks(next);
+        BindGamePane(next);
         BindErrorPins(next);
         BindEndpoints(next);
         BindMigrations(next);

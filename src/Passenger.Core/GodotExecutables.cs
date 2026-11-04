@@ -56,6 +56,9 @@ public static partial class GodotExecutables
     /// background process with no window and no Dock icon of its own: what it draws reaches no screen.</summary>
     public const string Embedded = "--embedded";
 
+    /// <summary>Whether a Godot of a version draws a game in another program's window given by <c>--wid</c>: from Godot 4.4.</summary>
+    public static bool Embeds(string? version) => version is not null && Numbers(version) >= new Version(4, 4);
+
     /// <summary>Whether a Godot of a version draws a game with no window on this system: macOS's embedded display, from
     /// Godot 4.5; on Windows and Linux, no.</summary>
     public static bool DrawsWithoutWindow(string? version) => OperatingSystem.IsMacOS() && version is not null && Numbers(version) >= new Version(4, 5);

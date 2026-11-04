@@ -30,6 +30,29 @@ public static class Refusals
     /// <summary>The folder has no C# language server: it has neither a solution nor a project, or its window starts none.</summary>
     public const string NoCSharp = "No C# language server runs for this folder";
 
+    /// <summary>What the Game window shows while it holds no game: which game draws there, and the keys that take the keys
+    /// back from a game that has them.</summary>
+    public static string NoGameInWindow(string keys) =>
+        "A Godot game whose run configuration starts it in Passenger's Game window draws here (Run › Edit Configurations, Starts). "
+        + $"While the game has the keys, {keys} or a click anywhere in Passenger takes them back";
+
+    /// <summary>No game draws in the Game window for the keys to be handed to.</summary>
+    public const string NoGameInPane = "No Godot game draws in the Game window: run one whose configuration starts it there";
+
+    /// <summary>A game that runs headless, as one nobody sees does, has no picture for the Game window.</summary>
+    public static string GameHeadless(string game) => $"{game} runs headless, with no picture to draw in the Game window";
+
+    /// <summary>A Godot before 4.4 has no embedding of a game in another program's window.</summary>
+    public static string GameEmbedsFrom(string? version) =>
+        $"Godot {version ?? "of no version said"} draws a game only in a window of its own: the Game window takes Godot 4.4 or newer";
+
+    /// <summary>The Game window holds a game on Windows and under X11 alone.</summary>
+    public const string GameNotEmbeddedHere = "Passenger draws a game in its Game window on Windows and on Linux under X11 (XWayland too); "
+        + "here a game draws in a window of its own";
+
+    /// <summary>The Game window holds one game at a time: another copy, or a game started meanwhile, draws in its own.</summary>
+    public static string GameWindowHolds(string game) => $"the Game window holds {game}";
+
     /// <summary>A C# file come under a project that the language server has not loaded into it (<see
     /// cref="CSharp.CSharpService.UnplacedAsync"/>), whose answers about the solution would leave it out.</summary>
     public static string NotTakenIn(string file, string project) =>

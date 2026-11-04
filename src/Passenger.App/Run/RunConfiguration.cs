@@ -75,6 +75,11 @@ public sealed record RunConfiguration
     /// messaging (<see cref="MainWindow"/>'s Run in Godot Editor).</summary>
     public bool GodotInEditor { get; init; }
 
+    /// <summary>For a Godot project's game, whether it draws in Passenger's Game window rather than a window of its own, its
+    /// window held over the window's place as Godot's editor holds a game it embeds (<see cref="Godot.GameWindows"/>); a
+    /// system or game that cannot runs it in its own, saying why.</summary>
+    public bool GodotInPane { get; init; }
+
     /// <summary>For a Godot project's game, the scene it starts in: its project.godot's main scene (null), the scene open in the
     /// editor as it starts (<see cref="CurrentScene"/>: a scene, or one a script open runs in), or a scene's res:// path.</summary>
     public string? GodotScene { get; init; }

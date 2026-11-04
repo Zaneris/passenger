@@ -222,6 +222,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
 
     public int? ProcessId { get; private set; }
 
+    /// <summary>The game, holding the keys in Passenger's Game window, heard the keys that hand them back to Passenger.</summary>
+    public event EventHandler? KeysAsked;
+
     /// <summary>"Godot 4.7.2".</summary>
     public string Framework => Version is { } version ? $"Godot {version}" : "Godot";
 
@@ -533,6 +536,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
                 break;
             case GodotAgent.Said when message.Data is List<object?> { Count: >= 2 } said && said[0] is long ask:
                 agentAsked.GetValueOrDefault(ask)?.TrySetResult(said);
+                break;
+            case GodotAgent.KeysAsked:
+                KeysAsked?.Invoke(this, EventArgs.Empty);
                 break;
             case GodotWords.MonitorNames:
                 customMonitors = GodotMonitors.Names(message.Data);

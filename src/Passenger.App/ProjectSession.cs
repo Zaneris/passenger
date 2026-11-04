@@ -609,12 +609,20 @@ public sealed class ProjectSession : IAsyncDisposable
     {
         UiThread.Check();
         (LaunchPlan listened, Godot.GodotGame? game) = Godot.GodotGame.Listen(plan, scripts);
+        if (game is not null && plan.GodotInPane && InPane is { } pane)
+        {
+            listened = pane(listened, game);
+        }
         if (game is not null)
         {
             TakeGame(game);
         }
         return (listened, game);
     }
+
+    /// <summary>What a game whose configuration draws it in the window's Game window is started with to draw there, the
+    /// window taking it to hold; the plan as it was, said why, where it cannot.</summary>
+    public Func<LaunchPlan, Godot.GodotGame, LaunchPlan>? InPane { get; set; }
 
     /// <summary>A game taken among <see cref="Games"/> and chosen: one a launch listens for, or one Godot's editor plays, heard
     /// through Passenger's addon there (<see cref="Godot.GodotGame.Relay"/>).</summary>

@@ -131,6 +131,9 @@ public sealed partial record LaunchPlan
     /// it headless whatever its arguments say.</summary>
     public bool GodotUnseen { get; init; }
 
+    /// <summary>Whether its Godot game is to draw in the window's Game window (<see cref="RunConfiguration.GodotInPane"/>).</summary>
+    public bool GodotInPane { get; init; }
+
     /// <summary>Whether it runs a Godot game of GDScript alone (<see cref="Passenger.Workspace.ProjectModel.IsScriptGame"/>): no
     /// C# of its own to build, debug or sample, its GDScript debugged by its GDScript session alone.</summary>
     public bool ScriptsAlone { get; init; }

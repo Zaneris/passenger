@@ -155,6 +155,7 @@ public static class GodotLaunch
             Godot = folder,
             GodotVersion = version,
             GodotUnseen = unseen,
+            GodotInPane = configuration.GodotInPane && !configuration.GodotEditor && !configuration.GodotInEditor,
             ScriptsAlone = project.IsScriptGame,
             GameName = project.IsScriptGame ? project.Name : null,
         };

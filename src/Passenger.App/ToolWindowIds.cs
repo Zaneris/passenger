@@ -25,6 +25,7 @@ public static class ToolWindowIds
     public const string Endpoints = "endpoints";
     public const string Requests = "requests";
     public const string LiveTree = "liveTree";
+    public const string Game = "game";
     public const string Aspire = "aspire";
     public const string Migrations = "migrations";
 }

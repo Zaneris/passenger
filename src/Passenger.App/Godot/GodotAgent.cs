@@ -15,6 +15,13 @@ public static partial class GodotAgent
     /// or why not.</summary>
     public const string Said = "passenger:said";
 
+    /// <summary>The message it sends as the game, holding the keys in Passenger's Game window, hears the keys that hand them
+    /// back (<see cref="KeysBack"/>'s call set them).</summary>
+    public const string KeysAsked = "passenger:keys";
+
+    /// <summary>Its call that sets the keys it hears for <see cref="KeysAsked"/>: a key's Godot name and its modifier flags.</summary>
+    public const string KeysBack = "keys_back";
+
     /// <summary>The call every other comes through, by its name, its ask and its other arguments, which waits while the
     /// helper's own members are still being made.</summary>
     public const string Asked = "asked";

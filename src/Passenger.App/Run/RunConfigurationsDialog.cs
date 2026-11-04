@@ -147,7 +147,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
         }, reshow: true);
         FrameworkBox.SelectionChanged += (_, _) => Edit(c => c with { Framework = FrameworkBox.SelectedIndex <= 0 ? string.Empty : FrameworkBox.SelectedItem as string ?? string.Empty });
         ProfileBox.SelectionChanged += (_, _) => Edit(FromProfile, reshow: true);
-        GodotBox.SelectionChanged += (_, _) => Edit(c => c with { GodotEditor = GodotBox.SelectedIndex == 1, GodotInEditor = GodotBox.SelectedIndex == 2 }, reshow: true);
+        GodotBox.SelectionChanged += (_, _) => Edit(c => c with { GodotEditor = GodotBox.SelectedIndex == 1, GodotInEditor = GodotBox.SelectedIndex == 2, GodotInPane = GodotBox.SelectedIndex == 3 },
+            reshow: true);
         SceneBox.SelectionChanged += (_, _) => Edit(c => c with
         {
             GodotScene = SceneBox.SelectedIndex == 1 ? RunConfiguration.CurrentScene : c.GodotScene == RunConfiguration.CurrentScene ? null : c.GodotScene,
@@ -226,7 +227,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             ServiceActions = AspireTable.Actions(every: true),
         });
         aspireRow = Row("Aspire resources", AspireTable, top: true, fields: ["serviceActions", "serviceProjects"]);
-        godotRow = Row("Starts", GodotBox, fields: ["godotEditor", "godotInEditor"]);
+        godotRow = Row("Starts", GodotBox, fields: ["godotEditor", "godotInEditor", "godotInPane"]);
         sceneRow = Row("Scene", SceneBox, fields: ["godotScene"]);
         copyRows[0] = Row("Copies", CopiesBox, fields: ["godotCopies"]);
         copyRows[1] = Row("Each copy's arguments", CopyArgumentsBox, top: true, fields: ["copyArguments"]);
@@ -415,7 +416,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     public ComboBox GodotBox { get; }
 
     /// <summary>The choices of <see cref="GodotBox"/>, the game's first.</summary>
-    public static readonly string[] GodotStarts = ["The game", "Godot's editor on the project", "The game, in Godot's editor"];
+    public static readonly string[] GodotStarts = ["The game", "Godot's editor on the project", "The game, in Godot's editor", "The game, in Passenger's Game window"];
 
     /// <summary>The scene a Godot project's game starts in: its main scene, or the one open in the editor as it starts.</summary>
     public ComboBox SceneBox { get; }
@@ -1020,7 +1021,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             ProfileBox.ItemsSource = (string[])["None", .. profiles.Select(p => p.Name)];
             ProfileBox.SelectedIndex = Math.Max(0, profiles.ToList().FindIndex(p => p.Name == shown.LaunchProfile) + 1);
             bool godot = !shown.IsContainer && project?.GodotFolder is not null;
-            GodotBox.SelectedIndex = shown.GodotEditor ? 1 : shown.GodotInEditor ? 2 : 0;
+            GodotBox.SelectedIndex = shown.GodotEditor ? 1 : shown.GodotInEditor ? 2 : shown.GodotInPane ? 3 : 0;
             SceneBox.SelectedIndex = shown.GodotScene == RunConfiguration.CurrentScene ? 1 : 0;
             CopiesBox.Value = shown.GodotCopies;
             CopyArgumentsBox.Text = string.Join(Environment.NewLine, shown.CopyArguments);

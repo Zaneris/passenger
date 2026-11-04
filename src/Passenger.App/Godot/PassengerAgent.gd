@@ -23,6 +23,10 @@ var _ends_step := false
 var _sized := false
 ## Where in the viewport the last press this helper gave landed, which a pick that found nothing is looked at again at.
 var _pressed_at := Vector2(INF, INF)
+## The key, and its modifiers, that hands the keys back to Passenger while the game holds them in its Game window (KEY_NONE
+## for none).
+var _keys_back := KEY_NONE
+var _keys_back_modifiers := 0
 ## The last member, so it is set only once every other member's default is (members are made in the order written).
 var _made = true
 
@@ -48,6 +52,23 @@ func _size_headless() -> void:
     var size := Vector2i(int(ProjectSettings.get_setting("display/window/size/viewport_width", 1152)), int(ProjectSettings.get_setting("display/window/size/viewport_height", 648)))
     var over := Vector2i(int(ProjectSettings.get_setting("display/window/size/window_width_override", 0)), int(ProjectSettings.get_setting("display/window/size/window_height_override", 0)))
     get_tree().root.size = over if over.x > 0 and over.y > 0 else size
+
+
+## The keys that hand the keys back to Passenger, heard in every input the game takes, before the game's own.
+func keys_back(ask: int, key: String, modifiers: int) -> void:
+    _keys_back = OS.find_keycode_from_string(key)
+    _keys_back_modifiers = modifiers
+    _say(ask, _keys_back != KEY_NONE, [] if _keys_back != KEY_NONE else ["Godot has no key %s" % key])
+
+
+func _input(event: InputEvent) -> void:
+    var key := event as InputEventKey
+    if _keys_back == KEY_NONE or key == null or not key.pressed or key.echo or key.keycode != _keys_back:
+        return
+    var modifiers := (SHIFT if key.shift_pressed else 0) | (CTRL if key.ctrl_pressed else 0) | (ALT if key.alt_pressed else 0) | (META if key.meta_pressed else 0)
+    if modifiers == _keys_back_modifiers:
+        get_viewport().set_input_as_handled()
+        EngineDebugger.send_message("passenger:keys", [])
 
 
 func _say(ask: int, done: bool, data: Array) -> void:

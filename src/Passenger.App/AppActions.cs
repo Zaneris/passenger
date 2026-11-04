@@ -100,6 +100,11 @@ public static class AppActions
     public const string PauseGameLoop = "app.godot.pauseLoop";
     public const string NextFrame = "app.godot.nextFrame";
 
+    // The Game window over a Godot game drawn in Passenger, and the keys handed to the game drawn there and taken back
+    // (heard by Passenger's helper in the game while it has them): no key of Rider's; the second Passenger's own.
+    public const string ShowGame = "app.godot.showGame";
+    public const string GameKeys = "app.godot.gameKeys";
+
     // A debugged Godot game's audio muted from the Debug window, kept with the folder: no key of Rider's.
     public const string MuteGameAudio = "app.godot.muteAudio";
 
@@ -604,7 +609,8 @@ public static class AppActions
     /// list names; one that does not read is passed over.</summary>
     public static Keymap Keymap(KeymapPreset preset, IReadOnlyDictionary<string, string[]> overrides)
     {
-        Keymap keymap = Base(preset);
+        // A chord no keymap here takes and a game is unlikely to want, as the game hears it while it has the keys.
+        Keymap keymap = Base(preset).Bind(GameKeys, "control F11");
         foreach ((string action, string[] shortcuts) in overrides)
         {
             List<Shortcut> keys = [];

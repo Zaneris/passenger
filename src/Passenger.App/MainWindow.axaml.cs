@@ -89,6 +89,7 @@ public partial class MainWindow : IdeWindow
         AddLiveTree();
         AddBreadcrumbs();
         AddBookmarks();
+        AddGamePane();
         AddEndpoints();
         AddGodotEditor();
         AddGodotProject();

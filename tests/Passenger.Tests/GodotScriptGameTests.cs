@@ -61,6 +61,29 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
         }
     }
 
+    /// <summary>A configuration that starts the game in Passenger's Game window runs it in a window of its own where it cannot
+    /// draw there: a headless game has no picture, so the Game window says why, holds no game, and the game runs as ever.</summary>
+    [AvaloniaFact]
+    public void A_game_started_in_the_Game_window_that_runs_headless_runs_in_its_own_window_the_Game_window_saying_why()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Choose(window);
+            RunConfiguration chosen = window.Configurations.Single(c => c.Name == "Ticker on Godot");
+            window.SetConfigurations([chosen with { GodotInPane = true }], "Ticker on Godot");
+            Ui.Launched(window, window.RunAsync(), "the game's start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => Run(window).Contains("tick 20", StringComparison.Ordinal), () => $"the game to say its word ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
+            Assert.Equal(Refusals.GameHeadless("Ticker on Godot"), window.GamePane.Said);
+            Assert.Null(window.GamePane.Game);
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>Debug starts the game under its GDScript session alone, in one tab of the configuration's name: a breakpoint in
     /// _process stops it there, a local's Set Value is greyed saying Godot sets no local, and the script's word set from
     /// Variables is what the game says once it runs on.</summary>
