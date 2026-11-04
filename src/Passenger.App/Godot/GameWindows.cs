@@ -100,9 +100,12 @@ public abstract partial class GameWindows : IDisposable
     {
     }
 
-    /// <summary>A game's window over Passenger's on Windows: a popup owned by the host's window, its input queue its own.</summary>
+    /// <summary>A game's window over Passenger's on Windows: a popup owned by the host's window, its input queue its own. Every
+    /// place it reads or sets is in the screen's own pixels, as Godot's are (<see cref="Physical"/>).</summary>
     private sealed partial class Win32(nint host) : GameWindows(host)
     {
+        /// <summary>DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2.</summary>
+        private const nint PerMonitorAware = -4;
         private const string User32 = "user32.dll";
         private const uint Owner = 4;
         private const uint NoZOrder = 0x4;
@@ -114,10 +117,18 @@ public abstract partial class GameWindows : IDisposable
         private const int VirtualScreenX = 76;
         private const int VirtualScreenY = 77;
 
-        protected override PixelPoint Origin => new(GetSystemMetrics(VirtualScreenX), GetSystemMetrics(VirtualScreenY));
+        protected override PixelPoint Origin
+        {
+            get
+            {
+                using Physical pixels = new();
+                return new(GetSystemMetrics(VirtualScreenX), GetSystemMetrics(VirtualScreenY));
+            }
+        }
 
         public override unsafe nint Find(int processId)
         {
+            using Physical pixels = new();
             Seeking seeking = new(processId, Host);
             GCHandle held = GCHandle.Alloc(seeking);
             try
@@ -156,6 +167,7 @@ public abstract partial class GameWindows : IDisposable
 
         public override void Hold(nint window, PixelRect place, bool shown)
         {
+            using Physical pixels = new();
             if (SetWindowPos(window, 0, place.X, place.Y, place.Width, place.Height, NoZOrder | NoActivate | AsyncPosition) == 0)
             {
                 IdeLog.Write(IdeLog.Ide, $"Game window: Windows refused to hold 0x{window:X} at {place.Width}x{place.Height} at {place.X},{place.Y} (error {Marshal.GetLastPInvokeError()})");
@@ -170,8 +182,28 @@ public abstract partial class GameWindows : IDisposable
 
         public override bool HasKeys(nint window) => GetForegroundWindow() == window;
 
-        public override PixelRect? PlaceOf(nint window) =>
-            GetWindowRect(window, out Rect at) != 0 ? new PixelRect(at.Left, at.Top, at.Right - at.Left, at.Bottom - at.Top) : null;
+        public override PixelRect? PlaceOf(nint window)
+        {
+            using Physical pixels = new();
+            return GetWindowRect(window, out Rect at) != 0 ? new PixelRect(at.Left, at.Top, at.Right - at.Left, at.Bottom - at.Top) : null;
+        }
+
+        /// <summary>The calling thread's places in the screen's own pixels while it lasts, whatever the process's DPI awareness
+        /// (a process Windows scales, as a test's is, reads and sets another's window in its scaled units), as before after.</summary>
+        private readonly struct Physical : IDisposable
+        {
+            private readonly nint before;
+
+            public Physical() => before = SetThreadDpiAwarenessContext(PerMonitorAware);
+
+            public void Dispose()
+            {
+                if (before != 0)
+                {
+                    SetThreadDpiAwarenessContext(before);
+                }
+            }
+        }
 
         private sealed class Seeking(int processId, nint host)
         {
@@ -207,6 +239,9 @@ public abstract partial class GameWindows : IDisposable
 
         [LibraryImport(User32)]
         private static partial int GetSystemMetrics(int index);
+
+        [LibraryImport(User32)]
+        private static partial nint SetThreadDpiAwarenessContext(nint context);
 
         [LibraryImport(User32)]
         private static partial int ShowWindow(nint window, int show);
