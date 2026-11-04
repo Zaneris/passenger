@@ -243,6 +243,41 @@ public sealed class GDScriptTests
         window.Close();
     }
 
+    /// <summary>A C# game's script keeps no .uid as the headless editor, past its start work, reloads a build of the game:
+    /// .NET's tools in it reload the built assembly within a second and make a .uid beside each C# script with none, which is
+    /// taken away as one it makes as it starts is; a .uid another program wrote beside a script before that build is kept.
+    /// Needs Godot's .NET build.</summary>
+    [AvaloniaFact]
+    public void A_uid_the_headless_editor_makes_as_it_reloads_a_game_built_after_its_start_work_is_taken_away()
+    {
+        Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
+        GodotTests.Game.Make(folder, godot!.Version!, godot.Packages!, "using Godot;\n\npublic partial class Main : Node\n{\n}\n",
+            "[gd_scene load_steps=3 format=3]\n\n[ext_resource type=\"Script\" path=\"res://Main.cs\" id=\"1\"]\n[ext_resource type=\"Script\" path=\"res://main.gd\" id=\"2\"]\n\n"
+            + "[node name=\"Main\" type=\"Node\"]\nscript = ExtResource(\"1\")\n\n[node name=\"Spinner\" type=\"Node2D\" parent=\".\"]\nscript = ExtResource(\"2\")\n");
+        TestFolders.Write(folder, "turner.gd", "extends Node\n");
+        Restore.Run(Path.Combine(folder, "Spinner.csproj"));
+        string uid = Path.Combine(folder, "Main.cs.uid");
+        string theirs = Path.Combine(folder, "turner.gd.uid");
+        string assembly = Path.Combine(folder, ".godot", "mono", "temp", "bin", "Debug", "Spinner.dll");
+        string project = PathNames.Canonical(folder);
+        string Log() => Ui.Shared(IdeLog.PathOf(IdeLog.Ide));
+        MainWindow window = Open();
+        Ui.WaitFor(() => Log().Contains($"GDScript: Godot's headless editor on {project} has done its start work", StringComparison.Ordinal),
+            "the headless editor's start work done", TimeSpan.FromMinutes(2));
+        Assert.False(File.Exists(uid), "The .uid the headless editor made beside Main.cs as it started was left in the project");
+        File.WriteAllText(theirs, "uid://cturner1\n");
+
+        window.Perform(AppActions.Build);
+        Ui.WaitFor(() => File.Exists(assembly), () => $"the game built ({window.Status})", TimeSpan.FromMinutes(3));
+        int before = Log().Split($"{Path.Combine(project, "Main.cs.uid")}, which Godot's headless editor made, is taken away").Length;
+        Ui.WaitFor(() => Log().Split($"{Path.Combine(project, "Main.cs.uid")}, which Godot's headless editor made, is taken away").Length > before || File.Exists(uid),
+            () => "the .uid the headless editor makes as it reloads the build", TimeSpan.FromSeconds(30));
+        Ui.Hold(TimeSpan.FromSeconds(5), "a .uid made as the build is reloaded waits 3 s, for the watcher to say what came with it, before it is taken away");
+        Assert.False(File.Exists(uid), "The .uid the headless editor made beside Main.cs as it reloaded the game's build was left in the project");
+        Assert.True(File.Exists(theirs), "A .uid another program wrote beside turner.gd before the build was taken away as the headless editor's");
+        window.Close();
+    }
+
     /// <summary>project.godot replaced whole by another program, as Git's checkout writes a file, is kept: as the headless
     /// editor starts, where the folder's watcher saw it come with another file, as one operation brings them; and later,
     /// alone, once the editor's start work is done, after which nothing written there is put back.</summary>

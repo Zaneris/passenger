@@ -16,9 +16,9 @@ namespace Passenger.App.Godot;
 /// editor Passenger starts for the project through ChildProcesses on a free loopback port, ended with the folder. A
 /// headless editor writes into the project as it starts: project.godot, saved by an editor plugin with what that editor
 /// holds, its layout, script states and .NET tools' messaging file, and a .uid or .import beside a file that has none; each
-/// is put back as it was, or taken away, as it writes them through its start work, another program's writes meanwhile
-/// kept, so the person's project and their own editor and tools are left as they were. From Godot 4.5 it runs in
-/// recovery mode, where no plugin or tool script of the project runs to write later.</summary>
+/// is put back as it was, or taken away, as it writes them through its start work, and a .uid it makes as it reloads a
+/// game's build later, another program's writes meanwhile kept, so the person's project and their own editor and tools are
+/// left as they were. From Godot 4.5 it runs in recovery mode, where no plugin or tool script of the project runs to write later.</summary>
 public static class GodotScripts
 {
     /// <summary>What a headless editor writes into the project as it starts that is the person's: the project's settings (a
@@ -263,11 +263,14 @@ public static class GodotScripts
     /// once it has scanned.</summary>
     private static readonly TimeSpan Scanning = TimeSpan.FromMinutes(5);
 
-    /// <summary>The files a headless editor writes over put back as it writes them, and those it makes taken away, through its
-    /// start work and until it has been quiet <see cref="Starting"/>, another program's writes meanwhile kept (<see cref="Before.PutBack"/>).
-    /// Past then nothing more is put back, so no later write of another's is taken for the editor's: in recovery mode
-    /// (<see cref="GodotExecutables.RecoveryMode"/>) no plugin or tool script runs in it to write later. It ends early once
-    /// the project has gone (a test's, deleted under it), said once.</summary>
+    /// <summary>How often a headless editor past its start work is looked at for a game's build it reloads.</summary>
+    private static readonly TimeSpan Reloads = TimeSpan.FromSeconds(1);
+
+    /// <summary>The files a headless editor writes over put back, and those it makes taken away, through its start work until
+    /// quiet <see cref="Starting"/>, another program's writes kept (<see cref="Before.PutBack"/>). Past then nothing it writes
+    /// over is put back, so no later write of another's is taken for the editor's (in recovery mode no plugin or tool script
+    /// runs in it); but until it ends, the .uid files it makes as .NET's tools in it reload a game's build (<see cref="Before.Built"/>)
+    /// are taken away as in its start work. It ends early once the project has gone (a test's, deleted under it), said once.</summary>
     private static async Task KeepAsync(Before before, Task<LanguageSession> starting)
     {
         using (before)
@@ -288,9 +291,40 @@ public static class GodotScripts
                 settled ??= answered is { } said && (!starting.IsCompletedSuccessfully || Stopwatch.GetElapsedTime(said) >= Scanning || before.Scanned)
                     ? Stopwatch.GetTimestamp() : null;
             }
-            if (before.PutBack(told))
+            if (!before.PutBack(told))
             {
-                IdeErrors.Write($"GDScript: Godot's headless editor on {before.Project} has done its start work, so what is written there is no longer put back");
+                return;
+            }
+            IdeErrors.Write($"GDScript: Godot's headless editor on {before.Project} has done its start work, so what it writes over there is no longer put back");
+            if (!starting.IsCompletedSuccessfully)
+            {
+                return;
+            }
+            LanguageServer server = starting.Result.Server;
+            DateTime built = before.Built;
+            // The build being reloaded (when it wrote, the earliest of a run of them) and when it was seen.
+            (DateTime Built, long Seen)? reloading = null;
+            while (!server.HasExited)
+            {
+                await Task.Delay(reloading is null ? Reloads : TimeSpan.FromMilliseconds(200));
+                if (before.Built is var now && now != built)
+                {
+                    reloading ??= (now, Stopwatch.GetTimestamp());
+                    built = now;
+                }
+                if (reloading is not { } build)
+                {
+                    continue;
+                }
+                if (!before.TakeAwayMade(told, build.Built))
+                {
+                    return;
+                }
+                // A build's reload is watched until it has been quiet a while, what it made decided.
+                if (Stopwatch.GetElapsedTime(Math.Max(build.Seen, before.LastFound)) >= Starting && !before.Deciding)
+                {
+                    reloading = null;
+                }
             }
         }
     }
@@ -368,6 +402,8 @@ public static class GodotScripts
 
         private readonly DateTime began = DateTime.UtcNow;
 
+        private readonly MadeFiles removes;
+
         /// <summary>When the files were last looked at, or the watch began.</summary>
         private long looked = Stopwatch.GetTimestamp();
 
@@ -376,6 +412,7 @@ public static class GodotScripts
         public Before(string project, MadeFiles removes = MadeFiles.None)
         {
             Project = project = PathNames.Canonical(project);
+            this.removes = removes;
             FileText.Writing += OnWriting;
             foreach (string name in Kept)
             {
@@ -416,6 +453,24 @@ public static class GodotScripts
         }
 
         public string Project { get; }
+
+        /// <summary>When a game's build last wrote its assemblies where Godot's .NET tools read them (under
+        /// <c>.godot/mono/temp/bin</c>), which a headless editor reloads within a second; the earliest time where none is there.</summary>
+        public DateTime Built
+        {
+            get
+            {
+                string bin = Path.Combine(Project, IgnoredFolders.GodotCache, "mono", "temp", "bin");
+                try
+                {
+                    return Directory.Exists(bin) ? Directory.EnumerateFiles(bin, "*.dll", SearchOption.AllDirectories).Select(File.GetLastWriteTimeUtc).DefaultIfEmpty().Max() : default;
+                }
+                catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+                {
+                    return default;
+                }
+            }
+        }
 
         /// <summary>Whether the project loads a GDExtension (a .gdextension file, or the editor's list of them), which Godot's
         /// recovery mode would leave out of what its language server knows. Found only by a watch that takes made files away.</summary>
@@ -460,6 +515,11 @@ public static class GodotScripts
             lock (gate)
             {
                 savedAt[canonical] = Stopwatch.GetTimestamp();
+                // A script Passenger makes has no .uid yet, which the editor would make.
+                if (removes.HasFlag(MadeFiles.Uids) && Uided.Contains(Path.GetExtension(canonical)) && !File.Exists(canonical + ".uid"))
+                {
+                    unmade.Add(canonical + ".uid");
+                }
                 foreach (string name in Kept)
                 {
                     if (PathNames.Same(canonical, Path.Combine(Project, name)))
@@ -616,6 +676,31 @@ public static class GodotScripts
             return true;
         }
 
+        /// <summary>What a headless editor made that was not there taken away as it reloads a game's build written at
+        /// <paramref name="built"/>, as <see cref="PutBack"/> does, the files it writes over left as they are: one there before
+        /// that build is another program's, kept. False once the project has gone, as its start work's watch has said.</summary>
+        public bool TakeAwayMade(HashSet<string> told, DateTime built)
+        {
+            if (!File.Exists(Path.Combine(Project, GodotProject.FileName)))
+            {
+                return false;
+            }
+            lock (gate)
+            {
+                foreach (string path in unmade.Where(p => File.Exists(p) && File.GetLastWriteTimeUtc(p) < built).ToList())
+                {
+                    unmade.Remove(path);
+                    pending.Remove(path);
+                    IdeErrors.Write($"GDScript: {path} was written before the game's build Godot's headless editor reloads, so it is another program's, kept");
+                }
+            }
+            long now = Stopwatch.GetTimestamp();
+            bool gitWrote = Passenger.Vcs.Git.WroteWorkTreeSince(looked);
+            looked = now;
+            RemoveMade(told, gitWrote, final: false, now);
+            return true;
+        }
+
         /// <summary>A kept file's change another's from now on, said.</summary>
         private void Theirs(string name, string said)
         {
@@ -692,8 +777,8 @@ public static class GodotScripts
                         {
                             continue;
                         }
+                        // Still unmade: the editor may make it again, as it reloads a game's build.
                         File.Delete(path);
-                        unmade.Remove(path);
                         pending.Remove(path);
                     }
                     IdeErrors.Write($"GDScript: {path}, which Godot's headless editor made, is taken away: the project's own Godot makes its own as it opens it");
