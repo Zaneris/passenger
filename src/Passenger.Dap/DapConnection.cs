@@ -364,13 +364,18 @@ public sealed class DapConnection : IAsyncDisposable
         return new IOException($"A DAP message with no Content-Length: '{(header.Length > 200 ? shown + "…" : shown)}'");
     }
 
+    /// <summary>A whole number a message cannot go without (its seq, an answer's request_seq): missing or of another kind, the
+    /// message does not read, as one whose JSON does not.</summary>
+    private static int Needed(JsonElement message, string name) =>
+        JsonMembers.Number(message, name) ?? throw new FormatException($"A DAP message's {name} is missing or no whole number");
+
     private void Receive(JsonElement message)
     {
         if (JsonMembers.Text(message, "type") == "response")
         {
-            int seq = message.GetProperty("request_seq").GetInt32();
+            int seq = Needed(message, "request_seq");
             // Read before the request is taken from those waiting, so an answer that does not read fails it with the rest.
-            bool succeeded = message.TryGetProperty("success", out JsonElement success) && success.GetBoolean();
+            bool succeeded = JsonMembers.Bool(message, "success") == true;
             if (!succeeded)
             {
                 pending.Fail(seq, asked => new DapException(JsonMembers.Text(message, "command") ?? asked.Command, JsonMembers.Text(message, "message") ?? "failed"));
@@ -382,7 +387,7 @@ public sealed class DapConnection : IAsyncDisposable
                 object? answer = null;
                 try
                 {
-                    answer = asked.Read(message.TryGetProperty("body", out JsonElement body) ? JsonMarshal.GetRawUtf8Value(body) : default);
+                    answer = asked.Read(JsonMembers.Value(message, "body") is { } body ? JsonMarshal.GetRawUtf8Value(body) : default);
                 }
                 catch (Exception error)
                 {
@@ -416,7 +421,7 @@ public sealed class DapConnection : IAsyncDisposable
                         break;
                     case "event":
                         string name = JsonMembers.Text(message, "event") ?? string.Empty;
-                        JsonElement body = message.TryGetProperty("body", out JsonElement found) ? found : default;
+                        JsonElement body = JsonMembers.Value(message, "body") ?? default;
                         if (eventHandlers.TryGetValue(name, out Action<JsonElement>? handler))
                         {
                             handler(body);
@@ -440,7 +445,7 @@ public sealed class DapConnection : IAsyncDisposable
 
     private async Task AnswerAsync(JsonElement request)
     {
-        int seq = request.GetProperty("seq").GetInt32();
+        int seq = Needed(request, "seq");
         string command = JsonMembers.Text(request, "command") ?? string.Empty;
         object? body = null;
         Exception? failed = null;
@@ -450,7 +455,7 @@ public sealed class DapConnection : IAsyncDisposable
             {
                 throw new DapException(command, $"Request '{command}' is not supported.");
             }
-            body = await handler(request.TryGetProperty("arguments", out JsonElement arguments) ? arguments : default).ConfigureAwait(false);
+            body = await handler(JsonMembers.Value(request, "arguments") ?? default).ConfigureAwait(false);
         }
         catch (Exception error)
         {
