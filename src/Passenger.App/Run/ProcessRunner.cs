@@ -454,7 +454,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
                         ChildProcesses.Errors(owned).Dispose();
                         if (takesInput)
                         {
-                            owned.StandardInput.Dispose();
+                            ChildProcesses.Input(owned).Dispose();
                         }
                     }
                     finally

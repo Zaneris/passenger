@@ -112,7 +112,7 @@ public sealed class ProfilingSession : IAsyncDisposable
 
     /// <summary>The program's standard input, kept open as a console's is for a program that waits on a read: what the
     /// person types goes here. None for a program attached to, whose input is another's.</summary>
-    public StreamWriter? Input => Attached ? null : process.StandardInput;
+    public StreamWriter? Input => Attached ? null : ChildProcesses.Input(process);
 
     /// <summary>What a run asks EventPipe for, here and in a container alike (<see cref="InContainer.TraceAsync"/>): the
     /// sampler, the runtime's events (verbose for the GC's allocation ticks, a type and a stack every 100 KB or so
