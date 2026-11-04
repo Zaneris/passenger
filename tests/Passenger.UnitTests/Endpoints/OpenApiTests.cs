@@ -279,4 +279,51 @@ public sealed class OpenApiTests
 
             """.Replace("\r\n", "\n", StringComparison.Ordinal), written);
     }
+
+    /// <summary>An upload whose only body is multipart has a part a field, a file's a text file's part the person fills in,
+    /// between its boundaries, so the request works as written.</summary>
+    [Fact]
+    public void An_uploads_request_has_a_multipart_body_of_a_part_a_field()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse("""
+            {
+              "openapi": "3.1.1",
+              "info": { "title": "Files", "version": "1.0.0" },
+              "paths": {
+                "/upload": {
+                  "post": {
+                    "operationId": "Upload",
+                    "requestBody": { "required": true, "content": { "multipart/form-data": { "schema": { "type": "object", "required": [ "file" ],
+                      "properties": { "file": { "$ref": "#/components/schemas/IFormFile" }, "note": { "type": "string" } } } } } },
+                    "responses": { "200": { "description": "OK" } }
+                  }
+                }
+              },
+              "components": { "schemas": { "IFormFile": { "type": "string", "format": "binary" } } }
+            }
+            """)!;
+        string written = OpenApiRequests.Entries(given, given.Operations, string.Empty, "Web_HostAddress", "http://localhost:5123");
+        Assert.Equal("""
+            @Web_HostAddress = http://localhost:5123
+
+            # OpenAPI: Upload
+            POST {{Web_HostAddress}}/upload
+            Accept: application/json
+            Content-Type: multipart/form-data; boundary=passenger
+
+            --passenger
+            Content-Disposition: form-data; name="file"; filename="file.txt"
+            Content-Type: text/plain
+
+            The file's text
+            --passenger
+            Content-Disposition: form-data; name="note"
+
+            string
+            --passenger--
+
+            ###
+
+            """.Replace("\r\n", "\n", StringComparison.Ordinal), written);
+    }
 }

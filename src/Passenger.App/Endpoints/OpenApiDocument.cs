@@ -14,6 +14,9 @@ public sealed record OpenApiOperation(string Method, string Path, string? Operat
     /// <summary>The schema of its form body (<c>application/x-www-form-urlencoded</c>), where it takes one.</summary>
     public JsonElement? FormSchema { get; init; }
 
+    /// <summary>The schema of its multipart body (<c>multipart/form-data</c>: a file's upload), where it takes one.</summary>
+    public JsonElement? MultipartSchema { get; init; }
+
     /// <summary>The operation's title: "GET /items/{id}".</summary>
     public string Title => $"{Method} {Path}";
 
@@ -158,6 +161,8 @@ public sealed class OpenApiDocument
         return new OpenApiOperation(method, path, JsonMembers.Text(operation, "operationId"), JsonMembers.Text(operation, "summary"), parameters, request, responses)
         {
             FormSchema = JsonMembers.Properties(requestBody, "content").Where(c => c.Name.StartsWith("application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase))
+                .Select(c => JsonMembers.Object(c.Value, "schema")).FirstOrDefault(),
+            MultipartSchema = JsonMembers.Properties(requestBody, "content").Where(c => c.Name.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase))
                 .Select(c => JsonMembers.Object(c.Value, "schema")).FirstOrDefault(),
         };
     }

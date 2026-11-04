@@ -303,7 +303,8 @@ public static class OpenApiSchemas
 /// operation a separator naming it, a variable for each path or required query parameter the file does not set yet (one
 /// named for its operation where an earlier one of this writing holds another value), the method and the URL from the
 /// project's address with each as a <c>{{variable}}</c>, an Accept header and each required header, and a JSON body made
-/// from its request schema (<see cref="OpenApiSchemas.Sample"/>), else a form body from its form schema.</summary>
+/// from its request schema (<see cref="OpenApiSchemas.Sample"/>), else a form body from its form schema, else a multipart
+/// body of a part a field, a file's a text file's part the person fills in.</summary>
 public static partial class OpenApiRequests
 {
     /// <summary>The requests for <paramref name="operations"/>, to go after <paramref name="existing"/>, the file's text: one
@@ -373,6 +374,25 @@ public static partial class OpenApiRequests
                     .AppendJoin('&', fields.Select(field => $"{Uri.EscapeDataString(field.Key)}={Uri.EscapeDataString(TextOf(field.Value))}"))
                     .Append('\n');
             }
+            else if (operation.MultipartSchema is { } multipart)
+            {
+                written.Append("Content-Type: multipart/form-data; boundary=").Append(Boundary).Append("\n\n");
+                foreach ((string name, JsonElement field) in Fields(document, multipart))
+                {
+                    written.Append("--").Append(Boundary).Append('\n');
+                    if (IsFile(document, field))
+                    {
+                        written.Append("Content-Disposition: form-data; name=\"").Append(name).Append("\"; filename=\"").Append(name).Append(".txt\"\n")
+                            .Append("Content-Type: text/plain\n\n").Append("The file's text\n");
+                    }
+                    else
+                    {
+                        written.Append("Content-Disposition: form-data; name=\"").Append(name).Append("\"\n\n")
+                            .Append(OpenApiSchemas.Sample(document, field) is { } sampled ? TextOf(sampled) : string.Empty).Append('\n');
+                    }
+                }
+                written.Append("--").Append(Boundary).Append("--\n");
+            }
             written.Append("\n###\n");
         }
         return written.ToString();
@@ -409,6 +429,34 @@ public static partial class OpenApiRequests
         parameter.Schema is { } schema && OpenApiSchemas.Sample(document, schema) is { } made
             ? TextOf(made is JsonArray { Count: > 0 } items ? items[0] : made)
             : parameter.Name;
+
+    /// <summary>The boundary between a multipart body's parts.</summary>
+    private const string Boundary = "passenger";
+
+    /// <summary>An object schema's fields in order, its <c>allOf</c> parts' too.</summary>
+    private static IEnumerable<(string Name, JsonElement Schema)> Fields(OpenApiDocument document, JsonElement written)
+    {
+        JsonElement schema = document.Resolve(written);
+        foreach (JsonElement part in JsonMembers.Items(schema, "allOf"))
+        {
+            foreach ((string Name, JsonElement Schema) field in Fields(document, part))
+            {
+                yield return field;
+            }
+        }
+        foreach (JsonProperty property in JsonMembers.Properties(schema, "properties"))
+        {
+            yield return (property.Name, property.Value);
+        }
+    }
+
+    /// <summary>Whether a field is a file (a string of binary format, as IFormFile's schema is), or files.</summary>
+    private static bool IsFile(OpenApiDocument document, JsonElement written)
+    {
+        JsonElement schema = document.Resolve(written);
+        return JsonMembers.Text(schema, "format") == "binary"
+            || JsonMembers.Object(schema, "items") is { } items && JsonMembers.Text(document.Resolve(items), "format") == "binary";
+    }
 
     /// <summary>A sample's value as a URL or form writes it: a string as it is, anything else as JSON writes it.</summary>
     private static string TextOf(JsonNode? made) => made is JsonValue value && value.TryGetValue(out string? text) ? text : made?.ToJsonString() ?? string.Empty;
