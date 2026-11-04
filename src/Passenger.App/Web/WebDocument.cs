@@ -378,8 +378,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
             }
             LspCommand request = new(asked, TsServerRequest, [JsonSerializer.SerializeToElement(asked), JsonSerializer.SerializeToElement(new { file = lsp.Uri })]);
             JsonElement answer = await running.Server.ExecuteCommandAsync(request, cancel);
-            if (!(answer.ValueKind == JsonValueKind.Object && answer.TryGetProperty("body", out JsonElement found)
-                && found.ValueKind == JsonValueKind.Array && found.GetArrayLength() == 0))
+            if (JsonMembers.Value(answer, "body") is not { ValueKind: JsonValueKind.Array } found || found.GetArrayLength() != 0)
             {
                 return;
             }

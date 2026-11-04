@@ -72,9 +72,9 @@ public sealed partial class CSharpDocument
             if (diagnostic.Source == ConfigurationDiagnosticSource
                 && (line is not { } on || diagnostic.Range.Start.Line <= on && on <= diagnostic.Range.End.Line)
                 && diagnostic.Data is { ValueKind: JsonValueKind.Object } data
-                && data.TryGetProperty("key", out JsonElement key) && key.GetString() is { } named)
+                && JsonMembers.Text(data, "key") is { } named)
             {
-                missing.Add((range, named, data.TryGetProperty("secret", out JsonElement secret) && secret.GetString() == "true"));
+                missing.Add((range, named, JsonMembers.Text(data, "secret") == "true"));
             }
         }
         return missing;

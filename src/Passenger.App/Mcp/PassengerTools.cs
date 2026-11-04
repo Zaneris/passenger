@@ -1026,8 +1026,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>A hover card's words as an agent reads them: Markdown made plain text, its code fences, backslash escapes,
     /// entities and line-break spaces taken out, the code in it kept as written, and no image's data.</summary>
     private static string HoverText(Hover hover) =>
-        hover.Contents is { ValueKind: System.Text.Json.JsonValueKind.Object } content && content.TryGetProperty("kind", out System.Text.Json.JsonElement kind)
-            && kind.ValueKind == System.Text.Json.JsonValueKind.String && kind.GetString() == "plaintext"
+        JsonMembers.Text(hover.Contents, "kind") == "plaintext"
             ? DataUri().Replace(Shapes.Text(hover.Contents), string.Empty).Trim()
             : Plain(Shapes.Text(hover.Contents));
 

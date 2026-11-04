@@ -710,8 +710,8 @@ public static class ContainerPlans
             {
                 return null;
             }
-            if (described.ValueKind != JsonValueKind.Array || described.GetArrayLength() == 0 || !described[0].TryGetProperty("Config", out JsonElement config)
-                || config.ValueKind != JsonValueKind.Object || !config.TryGetProperty("Env", out JsonElement environment) || environment.ValueKind != JsonValueKind.Array)
+            if (described.ValueKind != JsonValueKind.Array || described.GetArrayLength() == 0
+                || JsonMembers.Value(JsonMembers.Object(described[0], "Config"), "Env") is not { ValueKind: JsonValueKind.Array } environment)
             {
                 return null;
             }
@@ -1562,7 +1562,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
             JsonMembers.Scalar(r, "Publishers") is null ? JsonMembers.Scalar(r, "Ports") ?? string.Empty : Ports(r), JsonMembers.Scalar(r, "Name"),
             int.TryParse(JsonMembers.Scalar(r, "ExitCode"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int code) ? code : null))];
 
-        static string Ports(JsonElement row) => row.TryGetProperty("Publishers", out JsonElement publishers) && publishers.ValueKind == JsonValueKind.Array
+        static string Ports(JsonElement row) => JsonMembers.Value(row, "Publishers") is { ValueKind: JsonValueKind.Array } publishers
             ? string.Join(", ", publishers.EnumerateArray().Where(p => JsonMembers.Scalar(p, "PublishedPort") is not (null or "0"))
                 .Select(p => $"{JsonMembers.Scalar(p, "PublishedPort")}->{JsonMembers.Scalar(p, "TargetPort")}/{JsonMembers.Scalar(p, "Protocol")}").Distinct())
             : string.Empty;
@@ -1578,7 +1578,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
             return null;
         }
         IReadOnlyList<JsonElement> rows = await engine.JsonLinesAsync([.. Plan.Compose, "ps", "--format", "json", "--", service.Service], cancel);
-        List<ContainerPort> published = [.. rows.SelectMany(r => r.TryGetProperty("Publishers", out JsonElement publishers) && publishers.ValueKind == JsonValueKind.Array
+        List<ContainerPort> published = [.. rows.SelectMany(r => JsonMembers.Value(r, "Publishers") is { ValueKind: JsonValueKind.Array } publishers
                 ? publishers.EnumerateArray() : Enumerable.Empty<JsonElement>())
             .Where(p => JsonMembers.Scalar(p, "PublishedPort") is not (null or "0"))
             .Select(p => new ContainerPort(JsonMembers.Scalar(p, "PublishedPort")!, JsonMembers.Scalar(p, "TargetPort") ?? string.Empty, JsonMembers.Scalar(p, "Protocol") ?? "tcp"))];

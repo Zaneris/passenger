@@ -334,7 +334,9 @@ public static partial class ProjectTemplates
     private static async Task<TemplateCatalog> ParseAsync(string cache, string sdk)
     {
         using JsonDocument document = await ReadSharedAsync(cache);
-        List<JsonElement> all = [.. document.RootElement.GetProperty("TemplateInfo").EnumerateArray()];
+        List<JsonElement> all = JsonMembers.Value(document.RootElement, "TemplateInfo") is { ValueKind: JsonValueKind.Array } listed
+            ? [.. listed.EnumerateArray()]
+            : throw new InvalidOperationException($"dotnet new's template cache {cache} lists no templates");
         using HostFiles ide = new();
         List<ProjectTemplate> templates = Groups(all.Where(t => Tag(t, "type") is "project" or "solution" && Usable(t)), ide);
         List<ProjectTemplate> items = Groups(all.Where(t => Tag(t, "type") == "item" && Usable(t)), ide);

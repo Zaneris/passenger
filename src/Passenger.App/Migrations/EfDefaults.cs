@@ -51,7 +51,7 @@ public sealed record EfDefaults(string? Project, string? StartupProject, string?
                 return null;
             }
             string? Value(string name) =>
-                read.RootElement.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String && value.GetString() is { } text
+                JsonMembers.Text(read.RootElement, name) is { } text
                     && !string.IsNullOrWhiteSpace(text) ? text : null;
             string? Placed(string? path) => path is null ? null : PathNames.Canonical(Path.TrimEndingDirectorySeparator(Path.GetFullPath(path, root)));
             return new EfDefaults(Placed(Value("project")), Placed(Value("startupProject")), Value("context"), Value("framework"))

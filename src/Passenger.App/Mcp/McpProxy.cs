@@ -677,8 +677,7 @@ public sealed partial class McpProxy
         {
             using FileStream file = new(Path.Combine(State.StateStore.DefaultRoot, State.StateStore.SettingsFile), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             using JsonDocument settings = JsonDocument.Parse(file);
-            return settings.RootElement.ValueKind == JsonValueKind.Object
-                && settings.RootElement.TryGetProperty("traceProtocols", out JsonElement on) && on.ValueKind == JsonValueKind.True;
+            return JsonMembers.Bool(settings.RootElement, "traceProtocols") == true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {

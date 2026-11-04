@@ -376,7 +376,7 @@ internal sealed class AspireContainerOwnership
 
     /// <summary>The networks a row of <c>ps --format json</c> names: Docker's CLI joins them with commas, Podman's own lists them.</summary>
     private static string[] NetworksOf(JsonElement row) =>
-        row.ValueKind == JsonValueKind.Object && row.TryGetProperty("Networks", out JsonElement networks) && networks.ValueKind == JsonValueKind.Array
+        JsonMembers.Value(row, "Networks") is { ValueKind: JsonValueKind.Array } networks
             ? [.. networks.EnumerateArray().Where(network => network.ValueKind == JsonValueKind.String).Select(network => network.GetString()!)]
             : (JsonMembers.Scalar(row, "Networks") ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
@@ -628,14 +628,12 @@ internal sealed class AspireContainerOwnership
     private static string Hash(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
     private static string? String(JsonElement value, params string[] path)
     {
+        JsonElement? at = value;
         foreach (string name in path)
         {
-            if (value.ValueKind != JsonValueKind.Object || !value.TryGetProperty(name, out value))
-            {
-                return null;
-            }
+            at = JsonMembers.Value(at, name);
         }
-        return value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        return at is { ValueKind: JsonValueKind.String } text ? text.GetString() : null;
     }
 
     private static bool FullId(string? value) => value is { Length: 64 } && value.All(char.IsAsciiHexDigit);

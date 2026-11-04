@@ -565,14 +565,11 @@ internal sealed class ConnectedTool(McpServerTool tool, MainWindow? window, Agen
     {
         JsonElement schema = tool.InputSchema;
         List<(string Name, string Type)> parameters = [];
-        if (schema.TryGetProperty("properties", out JsonElement properties) && properties.ValueKind == JsonValueKind.Object)
+        if (JsonMembers.Object(schema, "properties") is { } properties)
         {
-            parameters.AddRange(properties.EnumerateObject().Select(p =>
-                (p.Name, p.Value.TryGetProperty("type", out JsonElement type) && type.ValueKind == JsonValueKind.String ? type.GetString()! : "any")));
+            parameters.AddRange(properties.EnumerateObject().Select(p => (p.Name, JsonMembers.Text(p.Value, "type") ?? "any")));
         }
-        HashSet<string> required = schema.TryGetProperty("required", out JsonElement needed) && needed.ValueKind == JsonValueKind.Array
-            ? [.. needed.EnumerateArray().Select(n => n.GetString() ?? string.Empty)]
-            : [];
+        HashSet<string> required = [.. JsonMembers.Texts(schema, "required")];
         List<string> wrong = [];
         foreach ((string name, JsonElement value) in arguments ?? new Dictionary<string, JsonElement>())
         {

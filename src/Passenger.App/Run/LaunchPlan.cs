@@ -492,8 +492,12 @@ public sealed partial record LaunchPlan
         try
         {
             using JsonDocument read = JsonDocument.Parse(output);
-            return read.RootElement.GetProperty("Properties").EnumerateObject()
-                .Where(p => p.Value.GetString() is { Length: > 0 })
+            if (JsonMembers.Object(read.RootElement, "Properties") is not { } properties)
+            {
+                return null;
+            }
+            return properties.EnumerateObject()
+                .Where(p => p.Value.ValueKind == JsonValueKind.String && p.Value.GetString()!.Length > 0)
                 .ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.OrdinalIgnoreCase);
         }
         catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException)

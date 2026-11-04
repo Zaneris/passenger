@@ -553,14 +553,17 @@ public static class WorkspaceEdits
     {
         public static Resource Read(JsonElement operation)
         {
-            string kind = operation.GetProperty("kind").GetString() ?? string.Empty;
-            string path = DocumentUris.ToPath(operation.GetProperty(kind == "rename" ? "oldUri" : "uri").GetString()!);
-            string? to = kind == "rename" ? DocumentUris.ToPath(operation.GetProperty("newUri").GetString()!) : null;
-            return new Resource(kind, path, to, operation.TryGetProperty("options", out JsonElement options) ? options : default);
+            string kind = JsonMembers.Text(operation, "kind") ?? string.Empty;
+            string path = DocumentUris.ToPath(Named(operation, kind == "rename" ? "oldUri" : "uri"));
+            string? to = kind == "rename" ? DocumentUris.ToPath(Named(operation, "newUri")) : null;
+            return new Resource(kind, path, to, JsonMembers.Value(operation, "options") ?? default);
         }
 
-        public bool Option(string name) =>
-            Options.ValueKind == JsonValueKind.Object && Options.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.True;
+        public bool Option(string name) => JsonMembers.Bool(Options, name) == true;
+
+        /// <summary>A file an operation cannot go without: missing or of another kind, the edit does not read.</summary>
+        private static string Named(JsonElement operation, string name) =>
+            JsonMembers.Text(operation, name) ?? throw new JsonException($"A language server's file operation's {name} is missing or no string");
     }
 }
 

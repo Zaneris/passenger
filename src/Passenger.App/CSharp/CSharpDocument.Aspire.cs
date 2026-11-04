@@ -46,8 +46,8 @@ public sealed partial class CSharpDocument
             if (diagnostic.Source == AspireDiagnosticSource
                 && (line is not { } on || diagnostic.Range.Start.Line <= on && on <= diagnostic.Range.End.Line)
                 && diagnostic.Data is { ValueKind: JsonValueKind.Object } data
-                && data.TryGetProperty("service", out JsonElement serviceName) && serviceName.GetString() is { } named
-                && data.TryGetProperty("resource", out JsonElement resourceName) && resourceName.GetString() is { } wanted)
+                && JsonMembers.Text(data, "service") is { } named
+                && JsonMembers.Text(data, "resource") is { } wanted)
             {
                 missing.Add((range, named, wanted));
             }
@@ -66,9 +66,9 @@ public sealed partial class CSharpDocument
             if (diagnostic.Source == AspireDiagnosticSource
                 && (line is not { } on || diagnostic.Range.Start.Line <= on && on <= diagnostic.Range.End.Line)
                 && diagnostic.Data is { ValueKind: JsonValueKind.Object } data
-                && data.TryGetProperty("connection", out JsonElement connection) && connection.GetString() is { } name)
+                && JsonMembers.Text(data, "connection") is { } name)
             {
-                unknown.Add((range, name, data.TryGetProperty("near", out JsonElement near) && near.GetString() is { Length: > 0 } names ? names.Split('\n') : []));
+                unknown.Add((range, name, JsonMembers.Text(data, "near") is { Length: > 0 } names ? names.Split('\n') : []));
             }
         }
         return unknown;
@@ -84,9 +84,9 @@ public sealed partial class CSharpDocument
             if (diagnostic.Source == AspireDiagnosticSource
                 && (line is not { } on || diagnostic.Range.Start.Line <= on && on <= diagnostic.Range.End.Line)
                 && diagnostic.Data is { ValueKind: JsonValueKind.Object } data
-                && data.TryGetProperty("parameter", out JsonElement parameter) && parameter.GetString() is { } name)
+                && JsonMembers.Text(data, "parameter") is { } name)
             {
-                unset.Add((range, name, data.TryGetProperty("secret", out JsonElement secret) && secret.GetString() == "true"));
+                unset.Add((range, name, JsonMembers.Text(data, "secret") == "true"));
             }
         }
         return unset;

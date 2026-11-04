@@ -657,7 +657,7 @@ public sealed class AspireModel : IDisposable
     internal static IReadOnlyList<Uri> Links(AspireResource resource) =>
     [
         .. AspireJson.Array(resource.Data, "urls")
-            .Where(url => !(url.TryGetProperty("isInactive", out JsonElement inactive) && inactive.ValueKind == JsonValueKind.True))
+            .Where(url => JsonMembers.Bool(url, "isInactive") != true)
             .Select(url => Uri.TryCreate(AspireJson.String(url, "url"), UriKind.Absolute, out Uri? target) && target.Scheme is "http" or "https" ? target : null)
             .OfType<Uri>(),
     ];

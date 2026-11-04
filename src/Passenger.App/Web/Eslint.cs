@@ -308,9 +308,8 @@ public sealed class EslintService : IAsyncDisposable
             return;
         }
         JsonElement body = message.Params;
-        string? Text(string name) => body.ValueKind == JsonValueKind.Object && body.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-        string? Document() => body.ValueKind == JsonValueKind.Object && body.TryGetProperty("document", out JsonElement document) && document.ValueKind == JsonValueKind.Object
-            && document.TryGetProperty("uri", out JsonElement uri) && uri.ValueKind == JsonValueKind.String ? Path.GetFileName(DocumentUris.ToPath(uri.GetString()!)) : null;
+        string? Text(string name) => JsonMembers.Text(body, name);
+        string? Document() => JsonMembers.Text(JsonMembers.Object(body, "document"), "uri") is { } uri ? Path.GetFileName(DocumentUris.ToPath(uri)) : null;
         switch (message.Method)
         {
             case "eslint/openDoc" when Text("url") is { } url && Uri.TryCreate(url, UriKind.Absolute, out Uri? page):
@@ -497,8 +496,7 @@ public sealed class EslintDocument : IDisposable
 
     private static EslintFix Named(CodeAction action)
     {
-        string? rule = action.Command?.Arguments is [JsonElement first, ..] && first.ValueKind == JsonValueKind.Object
-            && first.TryGetProperty("ruleId", out JsonElement id) && id.ValueKind == JsonValueKind.String ? id.GetString() : null;
+        string? rule = action.Command?.Arguments is [JsonElement first, ..] ? JsonMembers.Text(first, "ruleId") : null;
         string title = action.Command?.Command switch
         {
             "eslint.applySingleFix" when rule is not null => $"ESLint: Fix '{rule}'",

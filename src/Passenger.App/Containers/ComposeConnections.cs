@@ -62,7 +62,7 @@ internal static class ComposeConnections
         try
         {
             using JsonDocument read = JsonDocument.Parse(model);
-            if (!read.RootElement.TryGetProperty("services", out JsonElement all) || all.ValueKind != JsonValueKind.Object)
+            if (JsonMembers.Object(read.RootElement, "services") is not { } all)
             {
                 return ([], []);
             }
@@ -155,7 +155,7 @@ internal static class ComposeConnections
     /// <summary>The project a service runs: the one its build's Dockerfile builds, its context and Dockerfile the folder's.</summary>
     private static string? ProjectOf(JsonElement service, string folder, IReadOnlyList<ProjectModel> projects)
     {
-        if (!service.TryGetProperty("build", out JsonElement build) || build.ValueKind != JsonValueKind.Object
+        if (JsonMembers.Object(service, "build") is not { } build
             || JsonMembers.Scalar(build, "context") is not { } context || context.Contains("://", StringComparison.Ordinal))
         {
             return null;
@@ -176,7 +176,7 @@ internal static class ComposeConnections
     private static Dictionary<string, string?> Environment(JsonElement service)
     {
         Dictionary<string, string?> environment = new(StringComparer.OrdinalIgnoreCase);
-        if (service.TryGetProperty("environment", out JsonElement variables) && variables.ValueKind == JsonValueKind.Object)
+        if (JsonMembers.Object(service, "environment") is { } variables)
         {
             foreach (JsonProperty variable in variables.EnumerateObject())
             {

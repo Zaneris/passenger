@@ -93,7 +93,7 @@ public sealed class AspireClient(string? program = null)
                 _ = command.Description;
                 _ = command.Enabled;
                 _ = command.HasArguments;
-                if (command.Data.TryGetProperty("sortOrder", out JsonElement order) && order.ValueKind != JsonValueKind.Null
+                if (JsonMembers.Value(command.Data, "sortOrder") is { ValueKind: not JsonValueKind.Null } order
                     && (order.ValueKind != JsonValueKind.Number || !order.TryGetInt32(out _)))
                 {
                     throw new InvalidDataException("Aspire command 'sortOrder' must be an integer.");
@@ -123,7 +123,7 @@ public sealed class AspireClient(string? program = null)
             {
                 throw new IOException($"Aspire {SupportedVersion} must expose exactly one aspire-dashboard resource to connect to this AppHost");
             }
-            if (!dashboards[0].TryGetProperty("environment", out JsonElement environment) || environment.ValueKind != JsonValueKind.Object)
+            if (JsonMembers.Object(dashboards[0], "environment") is not { } environment)
             {
                 throw new IOException($"The Aspire {SupportedVersion} dashboard did not expose its authenticated resource-service connection");
             }

@@ -329,7 +329,7 @@ public sealed record ContainerSnapshot(IReadOnlyList<ComposeProject> Projects, I
     private static string ImageDetail(JsonElement image)
     {
         string? size = JsonMembers.Scalar(image, "Size");
-        if (image.TryGetProperty("Size", out JsonElement bytes) && bytes.ValueKind == JsonValueKind.Number && bytes.TryGetInt64(out long count))
+        if (JsonMembers.Value(image, "Size") is { ValueKind: JsonValueKind.Number } bytes && bytes.TryGetInt64(out long count))
         {
             size = count >= 1_000_000_000 ? string.Create(CultureInfo.InvariantCulture, $"{count / 1e9:0.##}GB")
                 : count >= 1_000_000 ? string.Create(CultureInfo.InvariantCulture, $"{count / 1e6:0.##}MB")

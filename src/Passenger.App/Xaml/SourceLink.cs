@@ -146,12 +146,9 @@ public sealed class SourceLink : ILibraryFiles
                 continue;
             }
             using JsonDocument json = JsonDocument.Parse(reader.GetBlobBytes(information.Value));
-            if (json.RootElement.TryGetProperty("documents", out JsonElement documents))
+            foreach (JsonProperty document in JsonMembers.Properties(json.RootElement, "documents"))
             {
-                foreach (JsonProperty document in documents.EnumerateObject())
-                {
-                    map[document.Name.Replace('\\', '/')] = document.Value.GetString() ?? string.Empty;
-                }
+                map[document.Name.Replace('\\', '/')] = document.Value.ValueKind == JsonValueKind.String ? document.Value.GetString()! : string.Empty;
             }
         }
         List<string> folders = [.. reader.Documents.Select(d => reader.GetString(reader.GetDocument(d).Name).Replace('\\', '/'))

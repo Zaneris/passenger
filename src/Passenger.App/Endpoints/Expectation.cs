@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Passenger.Core;
 
 namespace Passenger.App.Endpoints;
 
@@ -223,7 +224,7 @@ public sealed partial record Expectation(string Kind, string Subject, string Op,
                 at = at[index];
                 continue;
             }
-            if (at.ValueKind != JsonValueKind.Object || !at.TryGetProperty(name, out JsonElement next))
+            if (JsonMembers.Value(at, name) is not { } next)
             {
                 return null;
             }

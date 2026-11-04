@@ -206,13 +206,13 @@ public sealed class PrettierService : IAsyncDisposable
         {
             using JsonDocument read = JsonDocument.Parse(line);
             JsonElement answer = read.RootElement;
-            if (answer.ValueKind != JsonValueKind.Object || !answer.TryGetProperty("id", out JsonElement asked) || !asked.TryGetInt32(out int answered) || answered != id)
+            if (JsonMembers.Number(answer, "id") != id)
             {
                 return null;
             }
-            string? Text(string name) => answer.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-            bool Flag(string name) => answer.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.True;
-            int cursor = answer.TryGetProperty("cursor", out JsonElement at) && at.TryGetInt32(out int offset) ? offset : 0;
+            string? Text(string name) => JsonMembers.Text(answer, name);
+            bool Flag(string name) => JsonMembers.Bool(answer, name) == true;
+            int cursor = JsonMembers.Number(answer, "cursor") ?? 0;
             return new PrettierAnswer(Text("formatted"), cursor, Flag("ignored"), Flag("unsupported"), Text("error"), Text("version"));
         }
         catch (JsonException)

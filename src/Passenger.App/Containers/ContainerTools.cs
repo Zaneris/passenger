@@ -439,13 +439,13 @@ public static class ContainerTools
                 throw new ContainerToolsException($"Passenger's tools in {container} listed no programs");
             }
             return [.. document.RootElement.EnumerateArray()
-                .Where(p => p.ValueKind == JsonValueKind.Object && p.TryGetProperty("id", out JsonElement id) && id.ValueKind == JsonValueKind.Number && id.TryGetInt32(out _))
-                .Select(p => new DotnetProcess(p.GetProperty("id").GetInt32(), JsonMembers.Scalar(p, "name") ?? string.Empty,
+                .Where(p => JsonMembers.Number(p, "id") is not null)
+                .Select(p => new DotnetProcess(JsonMembers.Number(p, "id") ?? 0, JsonMembers.Scalar(p, "name") ?? string.Empty,
                     JsonMembers.Scalar(p, "commandLine") ?? string.Empty, JsonMembers.Scalar(p, "user") ?? string.Empty, true)
                 {
                     Container = container,
-                    HotReload = p.TryGetProperty("hotReload", out JsonElement hot) && hot.ValueKind == JsonValueKind.True,
-                    Note = p.TryGetProperty("optimized", out JsonElement optimized) && optimized.ValueKind == JsonValueKind.True ? ReleaseBuild : null,
+                    HotReload = JsonMembers.Bool(p, "hotReload") == true,
+                    Note = JsonMembers.Bool(p, "optimized") == true ? ReleaseBuild : null,
                     WhyNot = JsonMembers.Scalar(p, "whyNot"),
                 })];
         }

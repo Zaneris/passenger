@@ -440,7 +440,7 @@ public sealed class ContainerEngine
                 {
                     return (false, null, true);
                 }
-                if (info.TryGetProperty("SecurityOptions", out JsonElement options) && options.ValueKind == JsonValueKind.Array)
+                if (JsonMembers.Value(info, "SecurityOptions") is { ValueKind: JsonValueKind.Array } options)
                 {
                     return (options.EnumerateArray().Any(o => o.ValueKind == JsonValueKind.String && o.GetString() == "name=rootless"), null, true);
                 }

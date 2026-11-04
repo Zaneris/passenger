@@ -7,6 +7,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Telemetry;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -424,8 +425,7 @@ public sealed class AspireView : DockPanel, IDisposable
         }),
     ];
 
-    private static int Order(AspireResourceCommand command) => command.Data.TryGetProperty("sortOrder", out JsonElement order)
-        && order.ValueKind == JsonValueKind.Number && order.TryGetInt32(out int number) ? number : 0;
+    private static int Order(AspireResourceCommand command) => JsonMembers.Number(command.Data, "sortOrder") ?? 0;
 
     private void StopConsole()
     {
