@@ -306,7 +306,7 @@ scene() {
         git)
             # The Commit window, then the Git window's log widened past its dates, a commit on the merged branch chosen.
             shot "$name" "$theme" --file src/Greenhouse.Core/WateringPlan.cs --caret 26:9 --click 20,95 --key "meta+9" \
-                --drag 808,600,975,600 --click 414,602 --hover 700,200 ;;
+                --drag 808,600,975,600 --click 414,602 --hover 900,200 ;;
         find-in-files)
             # The popup's matches across the solution and the first one's preview.
             shot "$name" "$theme" --file src/Greenhouse.Cli/Program.cs --key "meta+shift+F" --type "Litres" \
@@ -344,7 +344,7 @@ scene() {
             services_ready
             solution="$services/GreenhouseServices.slnx" shot "$name" "$theme" --file src/Greenhouse.Api/Program.cs \
                 --caret 32:9 --key F9 --click 16,50 --drag 20,329,900,640 --click-name DebugButton --wait 30000 \
-                --drag 600,600,585,600 --wait 500 --drag 815,640,778,640 --wait 500 --click 870,531 --wait 1500 \
+                --drag 600,600,585,600 --wait 500 --drag 815,640,778,640 --wait 500 --click 921,531 --wait 1500 \
                 --hover 900,120 ;;
         godot-scene)
             # The game's C# beside its scene, whose tree Structure shows with each node's script.

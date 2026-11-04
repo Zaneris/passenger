@@ -10,8 +10,7 @@
     <PackageVersion Include="Avalonia.Headless" Version="$(AvaloniaVersion)" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
   </ItemGroup>
-  <!-- At Passenger's own versions (its Directory.Packages.props): xunit v3 on the 3.2 line, which it keeps for
-       Avalonia.Headless.XUnit. -->
+  <!-- xunit v3 stays on the 3.2 line, which Avalonia.Headless.XUnit takes. -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
