@@ -256,7 +256,9 @@ public sealed class DiffTabsTests : IDisposable
         // The file changed since the diff closed: the diff opened again shows it as it is now.
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "class Shop");
         window.KeyTextInput(" // edited");
-        Ui.Run(window, AppActions.ReopenClosedTab);
+        Assert.True(window.EditorArea.Active!.Text.Snapshot.ToString().Contains("class Shop // edited", StringComparison.Ordinal),
+            "Typed once the diff's tab had closed, the words went nowhere: Shop.cs, shown in its place, never took the keys the diff's side had");
+        Assert.True(window.Perform(AppActions.ReopenClosedTab), "Reopen Closed Tab could not run with a diff's tab closed");
         Ui.Landed(() => window.EditorArea.Diffs.Count == 1 && window.EditorArea.Active?.Diff is not null, "the closed diff's tab opened again by Reopen Closed Tab");
         Assert.Equal("Shop.cs: HEAD and your version", window.EditorArea.Active!.Title);
         DiffView again = Assert.IsType<DiffView>(window.EditorArea.ActiveGroup.Diff);

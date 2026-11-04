@@ -430,7 +430,8 @@ public sealed class EditorGroup : DockPanel
     }
 
     /// <summary>Shows a file's text, its asset preview or rendered release notes, or a diff, keeping the carets and scroll of the
-    /// text it replaces. A preview detaches the hidden text editor so editing commands cannot change the previous file.</summary>
+    /// text it replaces. A preview detaches the hidden text editor so editing commands cannot change the previous file; a view
+    /// in the editor's place that had the keys (a diff's side, a preview) gives them to what shows the file now.</summary>
     public void Show(OpenDocument document)
     {
         Add(document);
@@ -438,6 +439,16 @@ public sealed class EditorGroup : DockPanel
         {
             return;
         }
+        bool keys = preview?.IsKeyboardFocusWithin == true;
+        ShowIn(document);
+        if (keys)
+        {
+            FocusShown();
+        }
+    }
+
+    private void ShowIn(OpenDocument document)
+    {
         Keep();
         if (active is not null)
         {
@@ -598,12 +609,18 @@ public sealed class EditorGroup : DockPanel
         markdown?.Forget(document);
         if (tab == active)
         {
+            bool keys = preview?.IsKeyboardFocusWithin == true;
             ClearPreview();
             document.PropertyChanged -= OnDocumentChanged;
             active = null;
             if (tabs.Count > 0)
             {
                 Show(tabs[Math.Min(index, tabs.Count - 1)].Document);
+                if (keys)
+                {
+                    // The view in the editor's place that had the keys has gone: what shows the next tab takes them.
+                    FocusShown();
+                }
             }
             else
             {
