@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- xunit v3 on the Testing Platform's second line, an executable of its own with no test SDK, as the tests' xunit v3
+       projects on the platform alone resolve it; its Microsoft.Bcl.AsyncInterfaces is the tests' own download. -->
+  <ItemGroup>
+    <PackageDownload Include="xunit.v3" Version="[$(XunitAppVersion)]" />
+    <PackageDownload Include="xunit.v3.assert" Version="[$(XunitAppVersion)]" />
+    <PackageDownload Include="xunit.v3.common" Version="[$(XunitAppVersion)]" />
+    <PackageDownload Include="xunit.v3.core.mtp-v2" Version="[$(XunitAppVersion)]" />
+    <PackageDownload Include="xunit.v3.extensibility.core" Version="[$(XunitAppVersion)]" />
+    <PackageDownload Include="xunit.v3.mtp-v2" Version="[$(XunitAppVersion)]" />
+    <PackageDownload Include="xunit.v3.runner.common" Version="[$(XunitAppVersion)]" />
+    <PackageDownload Include="xunit.v3.runner.inproc.console" Version="[$(XunitAppVersion)]" />
+    <PackageDownload Include="xunit.analyzers" Version="[$(XunitAppAnalyzersVersion)]" />
+    <PackageDownload Include="System.Security.AccessControl" Version="[$(XunitAppAccessControlVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Platform" Version="[$(TestingPlatformTwoVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Platform.MSBuild" Version="[$(TestingPlatformTwoVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.Telemetry" Version="[$(TestingPlatformTwoVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[$(TestingPlatformTwoVersion)]" />
+  </ItemGroup>
+</Project>

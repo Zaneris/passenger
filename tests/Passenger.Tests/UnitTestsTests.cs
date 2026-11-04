@@ -367,8 +367,8 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
             "using Xunit;\n\nnamespace Own.Tests;\n\npublic class OwnTests\n{\n    [MyFact]\n    public void Via_its_own_attribute() { }\n}\n");
         Write(solution, "Sta.Tests/Sta.Tests.csproj",
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
-            "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"MSTest.TestAdapter\" Version=\"3.10.0\" />\n" +
-            "    <PackageReference Include=\"MSTest.TestFramework\" Version=\"3.10.0\" />\n  </ItemGroup>\n</Project>\n");
+            $"    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"MSTest.TestAdapter\" Version=\"{TestPackages.MSTestOnVSTest}\" />\n" +
+            $"    <PackageReference Include=\"MSTest.TestFramework\" Version=\"{TestPackages.MSTestOnVSTest}\" />\n  </ItemGroup>\n</Project>\n");
         string sta = Write(solution, "Sta.Tests/StaTests.cs",
             "using Microsoft.VisualStudio.TestTools.UnitTesting;\n\nnamespace Sta.Tests;\n\n[TestClass]\npublic class StaTests\n{\n    [STATestMethod]\n    public void On_its_own_thread() { }\n}\n");
         Write(solution, "Tests.slnx", "<Solution>\n  <Project Path=\"Own.Tests/Own.Tests.csproj\" />\n  <Project Path=\"Sta.Tests/Sta.Tests.csproj\" />\n</Solution>\n");
@@ -406,15 +406,15 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         string solution = NewFolder();
         Write(solution, "Named.NUnit/Named.NUnit.csproj",
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
-            "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"NUnit\" Version=\"4.4.0\" />\n" +
-            "    <PackageReference Include=\"NUnit3TestAdapter\" Version=\"5.2.0\" />\n  </ItemGroup>\n</Project>\n");
+            $"    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"NUnit\" Version=\"{TestPackages.NUnit}\" />\n" +
+            $"    <PackageReference Include=\"NUnit3TestAdapter\" Version=\"{TestPackages.NUnitAdapter}\" />\n  </ItemGroup>\n</Project>\n");
         Write(solution, "Named.NUnit/NamedCases.cs",
             "using NUnit.Framework;\n\nnamespace Named.NUnit;\n\npublic class NamedCases\n{\n    [TestCase(1, 1, 2, TestName = \"OnePlusOne\")]\n" +
             "    [TestCase(2, 2, 5, TestName = \"TwoPlusTwoIsFive\")]\n    public void Sums(int a, int b, int sum) => Assert.That(a + b, Is.EqualTo(sum));\n}\n");
         Write(solution, "Named.MSTest/Named.MSTest.csproj",
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
-            "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"MSTest.TestAdapter\" Version=\"3.10.0\" />\n" +
-            "    <PackageReference Include=\"MSTest.TestFramework\" Version=\"3.10.0\" />\n  </ItemGroup>\n</Project>\n");
+            $"    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"MSTest.TestAdapter\" Version=\"{TestPackages.MSTestOnVSTest}\" />\n" +
+            $"    <PackageReference Include=\"MSTest.TestFramework\" Version=\"{TestPackages.MSTestOnVSTest}\" />\n  </ItemGroup>\n</Project>\n");
         Write(solution, "Named.MSTest/NamedRows.cs",
             "using Microsoft.VisualStudio.TestTools.UnitTesting;\n\nnamespace Named.MSTest;\n\n[TestClass]\npublic class NamedRows\n{\n    [TestMethod]\n" +
             "    [DataRow(1, 1, 2, DisplayName = \"small\")]\n    [DataRow(2, 2, 5, DisplayName = \"wrong\")]\n    [DataRow(3, 3, 6)]\n" +
@@ -992,8 +992,8 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         string solution = NewFolder();
         Write(solution, "Fixtures.Tests/Fixtures.Tests.csproj",
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
-            "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"NUnit\" Version=\"4.4.0\" />\n" +
-            "    <PackageReference Include=\"NUnit3TestAdapter\" Version=\"5.2.0\" />\n  </ItemGroup>\n</Project>\n");
+            $"    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"NUnit\" Version=\"{TestPackages.NUnit}\" />\n" +
+            $"    <PackageReference Include=\"NUnit3TestAdapter\" Version=\"{TestPackages.NUnitAdapter}\" />\n  </ItemGroup>\n</Project>\n");
         Write(solution, "Fixtures.Tests/FixtureTests.cs",
             "using NUnit.Framework;\n\nnamespace Fixtures.Tests;\n\n[TestFixture(1)]\n[TestFixture(-1)]\npublic class Parameterised(int value)\n{\n" +
             "    [Test]\n    public void Positive() => Assert.That(value, Is.GreaterThan(0));\n}\n\n" +
@@ -1599,8 +1599,8 @@ public abstract class UnitTestsFolders : IDisposable
     {
         File.WriteAllText(Path.Combine(made, "Sums.Tests.csproj"),
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n" +
-            "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n" +
-            "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
+            $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+            $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n</Project>\n");
         File.WriteAllText(Path.Combine(made, "SumTests.cs"),
             "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class SumTests\n{\n    [Fact]\n    public void Two_and_two_make_four()\n    {\n        int sum = 2 + 2;\n        Assert.Equal(4, sum);\n    }\n\n" +
             "    [Fact]\n    public void Two_and_two_make_five()\n    {\n        Assert.Equal(5, 2 + 2);\n    }\n\n    [Theory]\n    [InlineData(1, 2)]\n    [InlineData(2, 4)]\n    public void Doubles(int value, int twice) => Assert.Equal(twice, value * 2);\n\n" +
@@ -1671,13 +1671,13 @@ public abstract class UnitTestsFolders : IDisposable
             ? $"    <TestFrameworks>{frameworks}</TestFrameworks>\n    <TargetFrameworks>$(TestFrameworks)</TargetFrameworks>\n"
             : $"    <TargetFramework>{frameworks}</TargetFramework>\n") +
         "    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n" +
-        "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n" +
-        "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n";
+        $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+        $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n</Project>\n";
 
     /// <summary>A test project of another framework's packages, never restored here.</summary>
     protected static string PackagesProject(params string[] packages) =>
         $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
-        "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n" +
+        $"    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n" +
         string.Concat(packages.Select(p => $"    <PackageReference Include=\"{p}\" Version=\"*\" />\n")) + "  </ItemGroup>\n</Project>\n";
 
     /// <summary>The Unit Tests window's rows as a person reads them, indented by depth.</summary>

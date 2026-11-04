@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- MSTest on VSTest, as a test project of it beside VSTest's SDK resolves it, the SDK's own graph the tests' restore
+       brings; and MSTest on its own runner, an executable with no test SDK, with the Testing Platform it runs on. -->
+  <ItemGroup>
+    <PackageDownload Include="MSTest.TestAdapter" Version="[$(MSTestOnVSTestVersion)];[$(MSTestRunnerVersion)]" />
+    <PackageDownload Include="MSTest.TestFramework" Version="[$(MSTestOnVSTestVersion)];[$(MSTestRunnerVersion)]" />
+    <PackageDownload Include="MSTest.Analyzers" Version="[$(MSTestOnVSTestVersion)];[$(MSTestRunnerVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Platform" Version="[$(MSTestOnVSTestPlatformVersion)];[$(TestingPlatformTwoVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Platform.MSBuild" Version="[$(MSTestOnVSTestPlatformVersion)];[$(TestingPlatformTwoVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.Telemetry" Version="[$(MSTestOnVSTestPlatformVersion)];[$(TestingPlatformTwoVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[$(MSTestOnVSTestPlatformVersion)];[$(TestingPlatformTwoVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.VSTestBridge" Version="[$(MSTestOnVSTestPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.TestPlatform.AdapterUtilities" Version="[$(TestAdapterUtilitiesVersion)]" />
+    <PackageDownload Include="Microsoft.TestPlatform.ObjectModel" Version="[$(MSTestRunnerObjectModelVersion)]" />
+  </ItemGroup>
+</Project>

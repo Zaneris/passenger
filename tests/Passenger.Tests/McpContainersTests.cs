@@ -53,6 +53,8 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         await Docker.SkipWithoutEngineAsync();
         await using StandInRegistry registry = new();
         string folder = Plain("mcp-image-");
+        // From nuget.org alone: a publish for the container's Linux platform takes .NET's packs for it.
+        TestFolders.Write(folder, "nuget.config", TestRun.FromNuGetOrg);
         string image = $"ptest{Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)}agentimage";
         (string key, string value) = (Docker.RunLabel.Split('=', 2)[0], Docker.RunLabel.Split('=', 2)[1]);
         TestFolders.Write(folder, "Shipped/Shipped.csproj", TestProjects.Console($"<ContainerBaseImage>{registry.BaseImage}</ContainerBaseImage>",

@@ -221,9 +221,12 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
         }
     }
 
-    /// <summary>A console app in the test's folder whose image builds on the base given and carries the run's label.</summary>
+    /// <summary>A console app in the test's folder whose image builds on the base given and carries the run's label, restored
+    /// from nuget.org alone: its publish for the container's Linux platform takes .NET's runtime and host packs for it,
+    /// which no restore of the solution's brings.</summary>
     private string WriteApp(string baseImage, params string[] properties)
     {
+        TestFolders.Write(folder, "nuget.config", TestRun.FromNuGetOrg);
         (string key, string value) = (Docker.RunLabel.Split('=', 2)[0], Docker.RunLabel.Split('=', 2)[1]);
         TestFolders.Write(folder, "Shipped/Shipped.csproj", TestProjects.Console([$"<ContainerBaseImage>{baseImage}</ContainerBaseImage>", .. properties])
             .With($"  <ItemGroup>\n    <ContainerLabel Include=\"{key}\" Value=\"{value}\" />\n  </ItemGroup>\n"));

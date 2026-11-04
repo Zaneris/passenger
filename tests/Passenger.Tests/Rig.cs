@@ -197,16 +197,17 @@ public sealed class TestRun : IAsyncDisposable
         AppDomain.CurrentDomain.ProcessExit += (_, _) => End(waiting: false);
     }
 
-    /// <summary>On macOS and Linux, NuGet's home for the run, which NuGet takes from DOTNET_CLI_HOME: its user nuget.config,
-    /// its credential providers and its HTTP cache are the run's, so no test reads the person's feeds or credentials or writes
-    /// their nuget.config. Its nuget.config names nuget.org and the person's package cache, named as NuGet names its default
-    /// (ending in a separator), so a restore downloads nothing new and writes the same NuGetPackageRoot into a project's
-    /// nuget.g.props as the person's builds do, leaving their next build nothing to compile again.</summary>
+    /// <summary>NuGet's settings for the run: a nuget.config in its folder, above every test's, clearing every feed and
+    /// mapping, so a test folder's restore takes only the feeds its own names, never nuget.org nor the person's (Windows'
+    /// user nuget.config is theirs); on macOS and Linux NuGet's home too (DOTNET_CLI_HOME), whose nuget.config names no feed
+    /// and the person's package cache as NuGet names its default (ending in a separator), so a restore writes the
+    /// NuGetPackageRoot their builds do, and whose credential providers and HTTP cache are the run's.</summary>
     private static void NuGetHome()
     {
+        File.WriteAllText(Path.Combine(Root, "nuget.config"), Feedless);
         if (OperatingSystem.IsWindows())
         {
-            // NuGet reads %APPDATA% there, so each test's folder clears its feeds; dotnet new's templates get the run's hive.
+            // dotnet new's templates get the run's hive.
             Passenger.App.Templates.ProjectTemplates.Hive = Directory.CreateDirectory(Path.Combine(Root, "dotnet-new")).FullName;
             return;
         }
@@ -218,7 +219,7 @@ public sealed class TestRun : IAsyncDisposable
             <?xml version="1.0" encoding="utf-8"?>
             <configuration>
               <packageSources>
-                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+                <clear />
               </packageSources>
               <config>
                 <add key="globalPackagesFolder" value="{cache}" />
@@ -233,6 +234,37 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false");
         Environment.SetEnvironmentVariable("DOTNET_NOLOGO", "1");
     }
+
+    /// <summary>The run's folder's nuget.config: no package source, audit source or package source mapping of a file NuGet
+    /// reads after it (the user's and the machine's), so a folder below names its own or has none.</summary>
+    public const string Feedless = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <packageSources>
+            <clear />
+          </packageSources>
+          <auditSources>
+            <clear />
+          </auditSources>
+          <packageSourceMapping>
+            <clear />
+          </packageSourceMapping>
+        </configuration>
+
+        """;
+
+    /// <summary>A test folder's nuget.config naming nuget.org alone, for a test whose restore takes packages no restore of
+    /// the solution's downloads (.NET's packs for a Linux container's platform), which is never one of the gate's.</summary>
+    public const string FromNuGetOrg = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <packageSources>
+            <clear />
+            <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+          </packageSources>
+        </configuration>
+
+        """;
 
     /// <summary>The person's own NuGet variables, which the run replaces with its own (null where they had none set).</summary>
     private static readonly Dictionary<string, string?> PersonsNuGetVariables = [];
@@ -1901,6 +1933,34 @@ public static class TestProjects
         + string.Concat(properties.Select(p => $"    {p}\n")) + "  </PropertyGroup>\n</Project>\n";
 }
 
+/// <summary>The versions of the test frameworks a test's own test project takes, whose packages the solution's restore puts
+/// in the package cache (VSTest's SDK as the tests' own, the rest through tests/UnitTestGraphs), so its restore, which
+/// names no feed, finds them there.</summary>
+public static class TestPackages
+{
+    /// <summary>Microsoft.NET.Test.Sdk, at the tests' own version.</summary>
+    public static string TestSdk { get; } = AvaloniaApp.Metadata("TestSdkVersion");
+
+    /// <summary>xunit v2.</summary>
+    public static string XunitTwo { get; } = AvaloniaApp.Metadata("XunitTwoVersion");
+
+    /// <summary>xunit.runner.visualstudio at the release that runs xunit v2 on VSTest.</summary>
+    public static string XunitTwoRunner { get; } = AvaloniaApp.Metadata("XunitTwoRunnerVersion");
+
+    /// <summary>MSTest's framework and adapter on VSTest.</summary>
+    public static string MSTestOnVSTest { get; } = AvaloniaApp.Metadata("MSTestOnVSTestVersion");
+
+    public static string NUnit { get; } = AvaloniaApp.Metadata("NUnitVersion");
+
+    public static string NUnitAdapter { get; } = AvaloniaApp.Metadata("NUnitAdapterVersion");
+
+    /// <summary>MSTest's framework and adapter on its own runner.</summary>
+    public static string MSTestRunner { get; } = AvaloniaApp.Metadata("MSTestRunnerVersion");
+
+    /// <summary>xunit v3 on the Testing Platform alone, its second line (the tests' own xunit v3 is on its first).</summary>
+    public static string XunitApp { get; } = AvaloniaApp.Metadata("XunitAppVersion");
+}
+
 public static class ExplorerRows
 {
     /// <summary>The Explorer's list of rows.</summary>
@@ -2097,11 +2157,12 @@ public sealed class InputWait : IDisposable
 /// what MSBuild leaves of it is the tests' own and ends with them, and no variable of dotnet test's holds its output open.</summary>
 public static class Restore
 {
-    /// <summary>The longest a restore may take: nuget.org slow, a cache cold.</summary>
+    /// <summary>The longest a restore may take, on a slow and busy machine.</summary>
     public static readonly TimeSpan Limit = TimeSpan.FromMinutes(5);
 
     /// <summary>The restore, which fails the test at once naming what it means and quoting what dotnet said: a project
-    /// not restored (offline, nuget.org down) would show up later as C# unavailable, far from the cause.</summary>
+    /// not restored (a package the cache lacks, which no feed of the run's gives) would show up later as C# unavailable, far
+    /// from the cause.</summary>
     public static Task<Passenger.Core.ChildResult> RunAsync(string target) => RunAsync(target, null);
 
     /// <summary>The restore (<see cref="RunAsync(string)"/>) run from <paramref name="from"/> where given, so that

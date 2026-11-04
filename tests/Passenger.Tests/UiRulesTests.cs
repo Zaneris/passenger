@@ -1116,7 +1116,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         try
         {
             window.Perform(AppActions.ShowNuGet);
-            Ui.Landed(() => window.NuGet.PackageSources.Feeds.Count > 0, "the package sources read");
+            // Read as files: the run's own nuget.config above the folder clears the machine's feed from those in effect.
+            Ui.Landed(() => window.NuGet.PackageSources.Files.Count > 0, "the package sources read");
             Ui.Click(((Panel)window.NuGet.Tabs).Children.OfType<ToggleButton>().Single(t => (string?)t.Content == "Sources"), settle: false);
             Ui.WaitFor(() => window.NuGet.ShowsSources && window.NuGet.Sources.Files.Any(f => f.Place == Passenger.Packages.ConfigPlace.Machine),
                 () => $"the Sources tab with the machine's nuget.config, where it lists [{string.Join(", ", window.NuGet.Sources.Files.Select(f => $"{f.Path} ({f.Place})"))}]");

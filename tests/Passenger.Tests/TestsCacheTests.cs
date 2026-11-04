@@ -19,7 +19,7 @@ public sealed class TestsCacheTests : IDisposable
     {
         TestFolders.Write(folder, "Cache.Tests/Cache.Tests.csproj",
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
-            "  <ItemGroup>\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n  </ItemGroup>\n</Project>\n");
+            $"  <ItemGroup>\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n  </ItemGroup>\n</Project>\n");
         TestFolders.Write(folder, "Cache.Tests/MyFactAttribute.cs", "using Xunit;\n\nnamespace Cache.Tests;\n\npublic sealed class MyFactAttribute : FactAttribute\n{\n}\n");
         TestFolders.Write(folder, "Cache.Tests/OwnTests.cs", "namespace Cache.Tests;\n\npublic class OwnTests\n{\n    [MyFact]\n    public void Via_its_own_attribute() { }\n}\n");
         TestFolders.Write(folder, "Cache.Tests/BaseChecks.cs",

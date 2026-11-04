@@ -126,6 +126,21 @@
     <AssemblyMetadata Include="ApiDescriptionServerVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'Microsoft.Extensions.ApiDescription.Server')->'%(Version)')" />
   </ItemGroup>
 
+  <!-- The test frameworks the unit testing tests' projects take beside VSTest's SDK above, whose packages the solution's
+       restore downloads (tests/UnitTestGraphs) for the package cache (TestPackages), and Serilog, which the evaluation
+       tests' project pins (ProjectEvaluationTests): none reaches a feed. -->
+  <ItemGroup>
+    <PackageDownload Include="Serilog" Version="[$(ProjectEvaluationSerilogVersion)]" />
+    <AssemblyMetadata Include="ProjectEvaluationSerilogVersion" Value="$(ProjectEvaluationSerilogVersion)" />
+    <AssemblyMetadata Include="XunitTwoVersion" Value="$(XunitTwoVersion)" />
+    <AssemblyMetadata Include="XunitTwoRunnerVersion" Value="$(XunitTwoRunnerVersion)" />
+    <AssemblyMetadata Include="MSTestOnVSTestVersion" Value="$(MSTestOnVSTestVersion)" />
+    <AssemblyMetadata Include="NUnitVersion" Value="$(NUnitVersion)" />
+    <AssemblyMetadata Include="NUnitAdapterVersion" Value="$(NUnitAdapterVersion)" />
+    <AssemblyMetadata Include="MSTestRunnerVersion" Value="$(MSTestRunnerVersion)" />
+    <AssemblyMetadata Include="XunitAppVersion" Value="$(XunitAppVersion)" />
+  </ItemGroup>
+
   <!-- WPF's reference pack, likewise, for the WPF app WpfXamlTests make (WpfApp.Feed), with the target they make it for
        and the version the SDK's own WPF needs there, which the tests check against the one pinned. -->
   <ItemGroup>
@@ -134,9 +149,15 @@
     <AssemblyMetadata Include="TargetFramework" Value="$(TargetFramework)" />
   </ItemGroup>
   <!-- This machine's .NET runtime pack at the SDK's own version, for the self-contained app PublishTests publish for this
-       system at the tests' own target: its restore finds the pack in the package cache, never reaching nuget.org. -->
+       system at the tests' own target, ASP.NET Core's, which a restore for a runtime takes beside it whether or not the app
+       references ASP.NET Core, and the trimmer's tasks, which a single file's publish takes: its restore finds them in the
+       package cache, never reaching nuget.org. -->
   <ItemGroup>
     <PackageDownload Include="Microsoft.NETCore.App.Runtime.$(NETCoreSdkRuntimeIdentifier)" Version="[$(BundledNETCoreAppPackageVersion)]" />
+    <PackageDownload Include="Microsoft.AspNetCore.App.Runtime.$(NETCoreSdkRuntimeIdentifier)"
+                     Version="[@(KnownFrameworkReference->WithMetadataValue('Identity', 'Microsoft.AspNetCore.App')->WithMetadataValue('TargetFramework', '$(BundledNETCoreAppTargetFramework)')->'%(LatestRuntimeFrameworkVersion)')]" />
+    <PackageDownload Include="Microsoft.NET.ILLink.Tasks"
+                     Version="[@(KnownILLinkPack->WithMetadataValue('TargetFramework', '$(BundledNETCoreAppTargetFramework)')->'%(ILLinkPackVersion)')]" />
   </ItemGroup>
   <Target Name="SdkWindowsDesktopRefVersion" BeforeTargets="GetAssemblyAttributes">
     <ItemGroup>

@@ -52,6 +52,12 @@
     <Project Path="tests/GodotGraphs/GdUnit4/GodotGraphs.GdUnit4.csproj" />
     <Project Path="tests/GodotGraphs/GoDotTest/GodotGraphs.GoDotTest.csproj" />
   </Folder>
+  <Folder Name="/tests/UnitTestGraphs/">
+    <Project Path="tests/UnitTestGraphs/MSTest/UnitTestGraphs.MSTest.csproj" />
+    <Project Path="tests/UnitTestGraphs/NUnit/UnitTestGraphs.NUnit.csproj" />
+    <Project Path="tests/UnitTestGraphs/Xunit2/UnitTestGraphs.Xunit2.csproj" />
+    <Project Path="tests/UnitTestGraphs/XunitV3/UnitTestGraphs.XunitV3.csproj" />
+  </Folder>
   <Folder Name="/tests/EfGraphs/">
     <Project Path="tests/EfGraphs/Npgsql/EfGraphs.Npgsql.csproj" />
     <Project Path="tests/EfGraphs/Sqlite/EfGraphs.Sqlite.csproj" />

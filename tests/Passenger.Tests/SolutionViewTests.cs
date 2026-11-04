@@ -559,7 +559,7 @@ public sealed class SolutionViewTests : IDisposable
         string a = Path.Combine(folder, "Shop.App", "Notes", "a.txt");
         string b = Path.Combine(folder, "Shop.App", "Notes", "b.txt");
         // Run Unit Tests is offered only on a project holding tests.
-        Write("Shop.Tests/Shop.Tests.csproj", TestProjects.Library().With("  <ItemGroup>\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n  </ItemGroup>\n"));
+        Write("Shop.Tests/Shop.Tests.csproj", TestProjects.Library().With($"  <ItemGroup>\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n  </ItemGroup>\n"));
         Write("Shop.Tests/ProductTests.cs", "using Xunit;\n\nnamespace Shop.Tests;\n\npublic class ProductTests\n{\n    [Fact]\n    public void Lists() { }\n}\n");
         Write("Shop.slnx", "<Solution>\n  <Project Path=\"Shop.App/Shop.App.csproj\" />\n  <Project Path=\"Shop.Core/Shop.Core.csproj\" />\n  <Project Path=\"Shop.Tests/Shop.Tests.csproj\" />\n</Solution>\n");
         MainWindow window = Open();

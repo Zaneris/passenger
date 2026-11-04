@@ -34,13 +34,17 @@ public sealed class ProjectEvaluationTests : IDisposable
 
         """;
 
+    /// <summary>Serilog's version, whose package the solution's restore puts in the package cache for the restore the
+    /// language server makes; Humanizer.Core's is one the solution's own projects take.</summary>
+    private static readonly string Serilog = AvaloniaApp.Metadata("ProjectEvaluationSerilogVersion");
+
     private readonly string folder = PathNames.Canonical(TestFolders.Create("evaluation-"));
 
     public ProjectEvaluationTests()
     {
         Write("Shop.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n</Solution>\n");
         Write("Directory.Build.props", $"<Project>\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <ShopLogs>true</ShopLogs>\n  </PropertyGroup>\n</Project>\n");
-        Write("Directory.Packages.props", """
+        Write("Directory.Packages.props", $"""
             <Project>
               <PropertyGroup>
                 <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
@@ -48,7 +52,7 @@ public sealed class ProjectEvaluationTests : IDisposable
               <ItemGroup>
                 <PackageVersion Include="Humanizer.Core" Version="2.14.1" />
                 <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
-                <PackageVersion Include="Serilog" Version="4.0.0" />
+                <PackageVersion Include="Serilog" Version="{Serilog}" />
               </ItemGroup>
             </Project>
 
@@ -72,7 +76,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         Assert.Equal(["Dependencies", "Shared", "Program.cs"], Children(window, "App"));
         Assert.Equal(["Text", "Helper.cs"], Children(window, "Shared"));
         Assert.Equal(["Words.cs"], Children(window, "Text"));
-        Assert.Equal([(TestProjects.Framework, null), ("Humanizer.Core", "2.14.1"), ("Serilog", "4.0.0")],
+        Assert.Equal([(TestProjects.Framework, null), ("Humanizer.Core", "2.14.1"), ("Serilog", Serilog)],
             Children(window, "Dependencies").Select(name => (name, Row(window, null, name).Detail)));
         Assert.Equal(PathNames.Canonical(Path.Combine(folder, "Shared", "Text", "Words.cs")), Row(window, NodeKind.File, "Words.cs").Path);
         window.Close();

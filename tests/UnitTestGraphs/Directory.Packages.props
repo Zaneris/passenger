@@ -1,0 +1,4 @@
+<Project>
+  <!-- The repo's own versions, whose properties pin the test frameworks'. -->
+  <Import Project="../../Directory.Packages.props" />
+</Project>
