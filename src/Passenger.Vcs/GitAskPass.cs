@@ -465,12 +465,15 @@ internal sealed class Prompting : IAsyncDisposable
     }
 
     /// <summary>The asker's answer, the operation's work taken again (<paramref name="again"/>) on the thread giving it, before
-    /// whatever waits for the answer goes on.</summary>
+    /// whatever waits for the answer goes on: by a continuation run there synchronously, since an await's is queued to the
+    /// thread pool from a thread of a context of its own (a window's), leaving the work let go meanwhile.</summary>
     private static async Task<GitAnswer> HeldAgainAsync(Func<Task<GitAnswer>> ask, Action again)
     {
         try
         {
-            return await ask().ConfigureAwait(false);
+            Task<GitAnswer> asked = ask();
+            await asked.ContinueWith(_ => again(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default).ConfigureAwait(false);
+            return await asked.ConfigureAwait(false);
         }
         finally
         {

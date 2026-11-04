@@ -315,7 +315,9 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         asked.KeyTextInput(StandInGitRemote.User);
         Ui.Press(asked, "TAB");
         asked.KeyTextInput(StandInGitRemote.Password);
-        Ui.Press(asked, "ENTER");
+        Ui.Press(asked, "ENTER", settle: false);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(BackgroundWork.Pending > 0, "Once signed in, the clone's work was let go while git still cloned, so a wait for the IDE to settle could end before the clone");
         Ui.Settle();
         Assert.True(dialog.Problem is null, $"The clone failed once signed in: {dialog.Problem}");
         Assert.True(File.Exists(Path.Combine(clones, "repo", "Readme.md")), "The clone made once signed in does not hold the repository's file");
