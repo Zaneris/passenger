@@ -301,6 +301,21 @@ public sealed class ContainerEngine
         }
     }
 
+    /// <summary>A container's name as the Containers window shows it, from its id or name; the id itself where the engine
+    /// does not say.</summary>
+    public async Task<string> NameOfAsync(string container, CancellationToken cancel = default)
+    {
+        try
+        {
+            ChildResult named = await RunAsync(["inspect", "-f", "{{.Name}}", container], AskLimit, cancel);
+            return named.Succeeded && named.Output.Trim().TrimStart('/') is { Length: > 0 } name ? name : container;
+        }
+        catch (Exception failed) when (failed is TimeoutException or System.ComponentModel.Win32Exception or IOException)
+        {
+            return container;
+        }
+    }
+
     /// <summary>The last state known, without asking.</summary>
     public EngineState? Known
     {

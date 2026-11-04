@@ -36,8 +36,9 @@ public partial class MainWindow
     private bool RequestsLooked => requestsView is { IsShown: true } || requestsAsked;
 
     /// <summary>A program whose requests are followed: what it is known by, what the window calls it, its project when known,
-    /// its process id where it runs, and where that is when not on this machine (a container's tools).</summary>
-    private sealed record RequestTarget(string Key, string Name, string? Project, int Process, ProfilePlace? Place);
+    /// its process id where it runs, and where that is when not on this machine (a container's tools), with the container's
+    /// name as the Containers window shows it (<paramref name="In"/>).</summary>
+    private sealed record RequestTarget(string Key, string Name, string? Project, int Process, ProfilePlace? Place, string? In = null);
 
     /// <summary>The Requests window's view, built as it is first shown or asked for; what it lists is <see cref="RequestLog"/>,
     /// kept while it is not.</summary>
@@ -137,7 +138,8 @@ public partial class MainWindow
             {
                 if (await services.ProgramAsync(service, Task.CompletedTask, CancellationToken.None) is { WhyNot: null } found)
                 {
-                    targets.Add(new RequestTarget($"{services.Name}:{service.Name}", program.Name, service.Project, found.Id, found.Recorded));
+                    string? container = found.Recorded is { } recorded ? await Engine.NameOfAsync(recorded.Where) : null;
+                    targets.Add(new RequestTarget($"{services.Name}:{service.Name}", program.Name, service.Project, found.Id, found.Recorded, container));
                 }
             }
             catch (Exception error) when (error is ServiceUnreachedException || services.Refused(error))
@@ -284,7 +286,7 @@ public partial class MainWindow
         if (followedRequests.Count > 0)
         {
             RequestLog.Following = "Following " + string.Join(", ", followedRequests.Values.Select(f =>
-                f.Target.Place is { } place ? $"{f.Target.Name} in {place.Where} (process {f.Target.Process})" : $"{f.Target.Name} (process {f.Target.Process})"));
+                f.Target.Place is { } place ? $"{f.Target.Name} in {f.Target.In ?? place.Where} (process {f.Target.Process})" : $"{f.Target.Name} (process {f.Target.Process})"));
         }
         else if (none is { Length: > 0 })
         {

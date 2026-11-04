@@ -133,6 +133,11 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
             Ui.Launched(window, window.RunAsync(), "the services to come up", TimeSpan.FromMinutes(5));
             Ui.WaitFor(() => window.RequestLog.Following.Contains("web of", StringComparison.Ordinal) && window.RequestLog.Following.Contains("api of", StringComparison.Ordinal),
                 "the Requests window to follow both services in their containers", TimeSpan.FromMinutes(2));
+            // Each service named by its container's name, as the Containers window names it, never by its id.
+            string webContainer = ContainerRunsTests.Container(project, "web");
+            string webName = Docker.Run("inspect", "-f", "{{.Name}}", webContainer).TrimStart('/');
+            Assert.True(window.RequestLog.Following.Contains($"in {webName} (process", StringComparison.Ordinal) && !window.RequestLog.Following.Contains(webContainer, StringComparison.Ordinal),
+                $"The Requests window names web's container other than by its name {webName}: {window.RequestLog.Following}");
             Assert.Equal("web 1", Ui.AwaitPumped(ContainerRunDebuggingTests.Get(ContainerRunsTests.Published(project, "web")), "web's answer", TimeSpan.FromMinutes(3.5)));
             Assert.Equal("api 1", Ui.AwaitPumped(ContainerRunDebuggingTests.Get(ContainerRunsTests.Published(project, "api")), "api's answer", TimeSpan.FromMinutes(3.5)));
             Ui.WaitFor(() => window.RequestLog.Requests.Count(r => r.Path == "/" && r.Status == 200) == 2, "both services' requests, listed as they ended", TimeSpan.FromSeconds(30));
