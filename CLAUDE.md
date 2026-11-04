@@ -263,7 +263,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   own `InvalidateVisual` draws only its ground), what is looked up from a drawn row kept in its `RowSlot`, a gutter
   column drawing beside one row, clipped to it (`IGutterColumn.Draw`); shapes are made at the origin and drawn through a
   translation (`CodeEditor.DrawShape`, `GutterFrame.DrawShape`), the error stripe draws touching marks of one look as
-  one rectangle, and runs of one look go to the formatter as one (`ScrollingTests`, `RetainedRowsTests`).
+  one rectangle, and runs of one look go to the formatter as one, neighbours taken from two copies of the line's text in
+  turn so Avalonia shapes none together and leaves its finalizer nothing (`ColouredRuns`; `FlingTests`,
+  `ScrollingTests`, `RetainedRowsTests`).
 - `Passenger.Languages`: C# coloured by Roslyn's parser in-process (`CSharpHighlighter`, also each open file's one
   syntax service, `OpenDocument.Syntax`: never a fresh parse; every in-process parse takes its options from
   `CSharpParsing`, a folder's file's through `CompilationSymbols`, `EditorArea.ParseOptions`, the XAML core's through
