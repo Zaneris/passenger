@@ -13,7 +13,7 @@ public class GDScriptWarningsTests
     private const string Api = """
         {
           "global_enums": [], "global_constants": [],
-          "utility_functions": [{ "name": "print", "return_type": "void", "arguments": [] }],
+          "utility_functions": [{ "name": "print", "return_type": "void", "arguments": [] }, { "name": "randf", "return_type": "float", "arguments": [] }],
           "singletons": [],
           "builtin_classes": [
             { "name": "Nil", "operators": [] }, { "name": "bool", "operators": [] },
@@ -21,7 +21,7 @@ public class GDScriptWarningsTests
               { "name": "+", "right_type": "int", "return_type": "int" }] },
             { "name": "float", "operators": [{ "name": "/", "right_type": "int", "return_type": "float" }, { "name": "/", "right_type": "float", "return_type": "float" }] },
             { "name": "String", "operators": [], "methods": [{ "name": "num_uint64", "return_type": "String", "is_static": true }] }, { "name": "Array", "methods": [] },
-            { "name": "Callable", "methods": [], "constructors": [{ "index": 0 }, { "index": 1, "arguments": [{ "name": "from", "type": "Callable" }] },
+            { "name": "Callable", "methods": [{ "name": "call", "return_type": "Variant", "is_vararg": true, "is_const": true }], "constructors": [{ "index": 0 }, { "index": 1, "arguments": [{ "name": "from", "type": "Callable" }] },
               { "index": 2, "arguments": [{ "name": "object", "type": "Object" }, { "name": "method", "type": "StringName" }] }] },
             { "name": "Signal", "methods": [{ "name": "emit", "return_type": "void" }] },
             { "name": "StringName", "methods": [] },

@@ -456,6 +456,9 @@ are typed), with the return types of `gdscript_utility_functions.cpp`'s function
 `language_server/gdscript_extend_parser.cpp`; its warnings and errors (`GDScriptAnalyzer.Warnings.cs`, `GDScriptWarnings.cs`
 and `GDScriptAnalysis`'s filtering by a project's settings and `@warning_ignore`) port where `gdscript_analyzer.cpp` and
 `gdscript_parser.cpp` push them, with `gdscript_warning.cpp` and `gdscript_warning.h`'s names, default levels and words.
+`GDScript/GodotRenames.json` is the table of the Godot 3 names Godot 4 renamed that the analyzer's errors hint at (its
+`renamed_in_godot_4_hint`), written by `just godot-renames` (`tools/godot-renames.py`) from
+`editor/project_upgrade/renames_map_3_to_4.cpp` at the same commit: the maps `check_for_renamed_identifier` reads.
 `GDScriptConversions.cs` is the table of `Variant::can_convert_strict` in `core/variant/variant.cpp` at the same commit
 (the same at 4.7.2-stable, ed1daf0bf001b61586d9930840f2f1394092c079), which a built-in type's constructor's warnings read.
 The scripts of the parser's and warnings' unit tests (`tests/Passenger.UnitTests/Godot/GDScriptParserTests.cs`,

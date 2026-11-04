@@ -385,15 +385,9 @@ public sealed partial class GDScriptAnalyzer
             case GDScriptIdentifier identifier:
                 return Identifier(identifier, context);
             case GDScriptSubscript { IsAttribute: true } attribute:
-                GDScriptType owner = Reduce(attribute.Base, context);
-                if (attribute.Attribute is { } named && Unsafe(owner, named.Name))
-                {
-                    Warn(context, attribute, "UNSAFE_PROPERTY_ACCESS", named.Name, owner.Name);
-                }
-                TemporaryModification(null, attribute, context);
-                return attribute.Attribute is { } name ? Attribute(owner, name, context) : GDScriptType.Variant;
+                return AttributeOf(attribute, context, pseudo: false);
             case GDScriptSubscript subscript:
-                GDScriptType indexed = Reduce(subscript.Base, context);
+                GDScriptType indexed = ReduceBase(subscript.Base, context);
                 Reduce(subscript.Index, context);
                 return Indexed(indexed);
             case GDScriptCall call:
@@ -476,6 +470,87 @@ public sealed partial class GDScriptAnalyzer
         }
     }
 
+    /// <summary>What a subscript is taken of, reduced as Godot's reduce_subscript reduces it: a name or an attribute that
+    /// may be a type on its own (a built-in type, a global enum, an engine's enum), any other expression as it is.</summary>
+    private GDScriptType ReduceBase(GDScriptExpression? taken, Context context)
+    {
+        GDScriptType type = taken switch
+        {
+            GDScriptIdentifier name => Identifier(name, context, asBase: true),
+            GDScriptSubscript { IsAttribute: true } attribute => AttributeOf(attribute, context, pseudo: true),
+            _ => Reduce(taken, context),
+        };
+        if (taken is GDScriptIdentifier or GDScriptSubscript { IsAttribute: true } && context.Analysis.Tree is not null)
+        {
+            context.Analysis.Types[taken] = type;
+        }
+        return type;
+    }
+
+    /// <summary>An attribute's type (<c>a.b</c>), its unsafe access warned of, and Godot's errors of a member it is not where
+    /// what it is taken of is known: an enum's value's property, a member an enum, a built-in type or a class does not have,
+    /// a property of null, and an engine's enum standing on its own unless <paramref name="pseudo"/> (it is what another
+    /// subscript is taken of).</summary>
+    private GDScriptType AttributeOf(GDScriptSubscript attribute, Context context, bool pseudo)
+    {
+        GDScriptType owner = ReduceBase(attribute.Base, context);
+        if (attribute.Attribute is { } named && Unsafe(owner, named.Name))
+        {
+            Warn(context, attribute, "UNSAFE_PROPERTY_ACCESS", named.Name, owner.Name);
+        }
+        TemporaryModification(null, attribute, context);
+        if (attribute.Attribute is not { } name)
+        {
+            return GDScriptType.Variant;
+        }
+        if (attribute.Base is GDScriptIdentifier { Name: "Variant" } && context.Scope?.Find("Variant") is null && Member(context.Class, "Variant") is null
+            && Engine?.GlobalEnums.GetValueOrDefault($"Variant.{name.Name}") is { } variantEnum)
+        {
+            if (!pseudo && context.Analysis.Tree is not null)
+            {
+                Error(context, name, $"Type \"{name.Name}\" in base \"Variant\" cannot be used on its own.");
+            }
+            return new GDScriptType(GDScriptTypeKind.Enum, variantEnum.Name) { Values = variantEnum.Values, Meta = true };
+        }
+        GDScriptType found = Attribute(owner, name, context);
+        if (context.Analysis.Tree is not null && Engine is not null && Missing(owner, name, found, pseudo, context) is not null
+            && found is { Kind: GDScriptTypeKind.Enum, Meta: true, Script: null, Owner: { } engine })
+        {
+            // An engine's enum on its own is no type Godot goes on with: a Variant standing for the enum's native class.
+            return GDScriptType.Variant with { Meta = true, Owner = $"{engine}.{found.Name}" };
+        }
+        return found;
+    }
+
+    /// <summary>Godot's errors of an attribute's member that is not there (reduce_identifier_from_base, reduce_subscript):
+    /// what it said, or null for none.</summary>
+    private string? Missing(GDScriptType owner, GDScriptIdentifier name, GDScriptType found, bool pseudo, Context context)
+    {
+        string? said = owner switch
+        {
+            { Kind: GDScriptTypeKind.Enum, Meta: false } => "Cannot get property from enum value.",
+            { Kind: GDScriptTypeKind.Enum, Meta: true, Values: { } values, ValuesPartial: false } when !values.ContainsKey(name.Name) => NotIn(owner),
+            { Kind: GDScriptTypeKind.Builtin, Name: "Nil", Meta: false, Hard: true } => $"Cannot get property \"{name.Name}\" on a null object.",
+            { Kind: GDScriptTypeKind.Builtin, Meta: true, Hard: true } when Engine!.Builtins.GetValueOrDefault(owner.Name) is { } builtin
+                && !builtin.Constants.ContainsKey(name.Name) && !builtin.Enums.ContainsKey(name.Name) && !builtin.Enums.Values.Any(e => e.Values.ContainsKey(name.Name)) => NotIn(owner),
+            { Kind: GDScriptTypeKind.Builtin, Meta: false, Hard: true, Name: not ("Dictionary" or "Nil") } when Engine!.Builtins.GetValueOrDefault(owner.Name) is { } builtin
+                && !builtin.Properties.ContainsKey(name.Name) && !builtin.Methods.ContainsKey(name.Name) => NotIn(owner),
+            { Kind: GDScriptTypeKind.Native or GDScriptTypeKind.Class, Meta: true } when name.Name != "new" && Member(owner.Instance, name.Name) is null && Knows(owner) => NotIn(owner),
+            _ => null,
+        };
+        if (said is null && !pseudo && found is { Kind: GDScriptTypeKind.Enum, Meta: true, Script: null, Owner: { } engine })
+        {
+            said = $"Type \"{name.Name}\" in base \"{engine}\" cannot be used on its own.";
+        }
+        if (said is not null)
+        {
+            Error(context, name, said);
+        }
+        return said;
+
+        string NotIn(GDScriptType of) => $"Cannot find member \"{name.Name}\" in base \"{of.Instance}\".";
+    }
+
     /// <summary>The text a preload's path is as Godot folds it: a string written, or a constant's name, of the function or
     /// of the class and the script classes it extends, whose value is one; null for any other.</summary>
     private string? ConstantText(GDScriptExpression? expression, Context context)
@@ -512,7 +587,10 @@ public sealed partial class GDScriptAnalyzer
             : GDScriptType.Native(project.ResourceClass(path));
     }
 
-    private GDScriptType Identifier(GDScriptIdentifier identifier, Context context)
+    /// <summary>A name's type as Godot's reduce_identifier gives it, and its errors where the class is read whole
+    /// (<see cref="Knows"/>): a name declared nowhere, and, but as what a subscript is taken of (<paramref name="asBase"/>,
+    /// Godot's can_be_builtin), a built-in type or a global enum on its own.</summary>
+    private GDScriptType Identifier(GDScriptIdentifier identifier, Context context, bool asBase = false)
     {
         GDScriptAnalysis analysis = context.Analysis;
         if (context.Scope?.Find(identifier.Name) is { } local)
@@ -547,8 +625,22 @@ public sealed partial class GDScriptAnalyzer
             Paint(context, identifier, GDScriptColour.Class);
             return GDScriptType.Native(engineSingleton);
         }
+        bool tells = analysis.Tree is not null && Knows(context.Class);
+        if (!asBase && tells && (identifier.Name == "Variant" || GlobalOrScopedType(identifier.Name, context.Class) is { Kind: GDScriptTypeKind.Builtin, Meta: true }))
+        {
+            if (identifier.Name != "Variant")
+            {
+                Error(context, identifier, "Builtin type cannot be used as a name on its own.");
+            }
+            Error(context, identifier, $"Identifier \"{identifier.Name}\" not declared in the current scope.{GodotRenames.Identifier(identifier.Name)}");
+            return GDScriptType.Variant.Soft;
+        }
         if (GlobalOrScopedType(identifier.Name, context.Class) is { } type)
         {
+            if (!asBase && tells && type is { Kind: GDScriptTypeKind.Enum, Meta: true, Script: null, Owner: null })
+            {
+                Error(context, identifier, $"Global enum \"{identifier.Name}\" cannot be used on its own.");
+            }
             Paint(context, identifier, ColourOf(type));
             if (type is { Kind: GDScriptTypeKind.Class, Script: { } script, Class: { } node })
             {
@@ -556,9 +648,10 @@ public sealed partial class GDScriptAnalyzer
             }
             return type;
         }
-        if (project.Autoload(identifier.Name) is { } autoload)
+        if (project.Autoload(identifier.Name) is { } written)
         {
             Paint(context, identifier, GDScriptColour.Class);
+            string autoload = project.Resolved(written);
             GDScriptType loaded = Tree(autoload) is { } tree ? ScriptClass(tree, autoload) : GDScriptType.Native("Node");
             analysis.Declared[identifier] = new GDScriptDeclaration(autoload, 0, identifier.Name, loaded);
             return loaded;
@@ -583,7 +676,30 @@ public sealed partial class GDScriptAnalyzer
             Paint(context, identifier, GDScriptColour.Constant);
             return GDScriptType.Builtin("int");
         }
+        if (tells && !InOuter(context.Class, identifier.Name))
+        {
+            Error(context, identifier, $"Identifier \"{identifier.Name}\" not declared in the current scope.{GodotRenames.Identifier(identifier.Name)}");
+        }
         return GDScriptType.Variant.Soft;
+    }
+
+    /// <summary>Whether a class an inner class is written in, or one of its bases, has a member of a name, which the inner
+    /// class's code reads through its scope (Godot's get_class_node_current_scope_classes).</summary>
+    private bool InOuter(GDScriptType scope, string name)
+    {
+        if (scope.Script is not { } path || Tree(path) is not { } tree || scope.Class is not { } inner || inner == tree.Class)
+        {
+            return false;
+        }
+        GDScriptType top = ScriptClass(tree, path);
+        foreach (GDScriptType outer in Enclosing(top, tree.Members.Select(m => (m.Node, m.Offset)), inner))
+        {
+            if (Member(outer, name) is not null)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>A node path's node's type as the scenes running the script give it, its script's class where it runs one,
@@ -884,6 +1000,10 @@ public sealed partial class GDScriptAnalyzer
                 context.Analysis.Declared[superName] = declared;
                 Paint(context, superName, GDScriptColour.Method);
             }
+            if (based is not null && call.FunctionName is { } absent && context.Analysis.Tree is not null && Knows(context.Class))
+            {
+                SuperMissing(call, based, absent, method, context);
+            }
             return method is { Kind: "func" } ? method.Type : GDScriptType.Variant.Soft;
         }
         switch (call.Callee)
@@ -897,6 +1017,11 @@ public sealed partial class GDScriptAnalyzer
                     if (local.Local is { } counted)
                     {
                         counted.Usages++;
+                    }
+                    // A local is no method (its Callable is called through call()); a built-in type's or utility's name is one.
+                    if (!(Engine?.Builtins.ContainsKey(name.Name) == true || IsBuiltinName(name.Name) || Engine?.Functions.ContainsKey(name.Name) == true))
+                    {
+                        NotFoundOnSelf(call, name, context);
                     }
                     return GDScriptType.Variant.Soft;
                 }
@@ -921,10 +1046,19 @@ public sealed partial class GDScriptAnalyzer
                     Paint(context, name, GDScriptColour.Method);
                     return FromApi(function.Returns);
                 }
-                Reduce(name, context);
+                if (name.Name == "Object" && context.Analysis.Tree is not null && Engine is not null && Member(context.Class, "Object") is null)
+                {
+                    Error(context, call, "Invalid constructor \"Object()\", use \"Object.new()\" instead.");
+                    return GDScriptType.Variant.Soft;
+                }
+                NotFoundOnSelf(call, name, context);
                 return GDScriptType.Variant.Soft;
             case GDScriptSubscript { IsAttribute: true, Attribute: { } method } attribute:
-                GDScriptType owner = Reduce(attribute.Base, context);
+                // A built-in type's name is its type here, as Godot's reduce_call takes it, never a name on its own.
+                GDScriptType owner = attribute.Base is GDScriptIdentifier typeName && context.Scope?.Find(typeName.Name) is null && Member(context.Class, typeName.Name) is null
+                    && (Engine?.Builtins.ContainsKey(typeName.Name) == true && typeName.Name != "Nil" || IsBuiltinName(typeName.Name))
+                    ? Recorded(typeName, GDScriptType.Builtin(typeName.Name) with { Meta = true }, context)
+                    : Reduce(attribute.Base, context);
                 if (attribute.Base is not GDScriptSelf && Unsafe(owner, method.Name))
                 {
                     Warn(context, call, "UNSAFE_METHOD_ACCESS", method.Name, owner.Name);
@@ -940,10 +1074,187 @@ public sealed partial class GDScriptAnalyzer
                 {
                     Paint(context, method, GDScriptColour.Method);
                 }
+                if (context.Analysis.Tree is not null && Engine is not null)
+                {
+                    MethodMissing(call, attribute, owner, method, context);
+                }
                 return called;
             default:
                 Reduce(call.Callee, context);
                 return GDScriptType.Variant.Soft;
+        }
+    }
+
+    /// <summary>Godot's errors of a <c>super</c> call: a function the classes it extends lack, an engine's virtual one (a
+    /// constructor among them) or a script's abstract one none of them defines.</summary>
+    private void SuperMissing(GDScriptCall call, GDScriptType based, string name, GDScriptMemberInfo? method, Context context)
+    {
+        bool virtualOfEngine = method is { Kind: "func", Declaration.EngineClass: { } engine }
+            && Engine!.Chain(engine).Select(c => c.Methods.GetValueOrDefault(name)).FirstOrDefault(m => m is not null) is { IsVirtual: true };
+        bool abstractOfScript = method is { Kind: "func", Declaration: { Script: { } script, Start: var start } } && Tree(script) is { } tree
+            && FunctionAt(tree.Members.Select(m => (m.Node, m.Offset)), start) is { IsAbstract: true };
+        if (virtualOfEngine || method is null && name == "_init")
+        {
+            Error(context, call, $"Cannot call the parent class' virtual function \"{name}()\" because it hasn't been defined.");
+        }
+        else if (abstractOfScript)
+        {
+            Error(context, call, $"Cannot call the parent class' abstract function \"{name}()\" because it hasn't been defined.");
+        }
+        else if (method is not { Kind: "func" })
+        {
+            Error(context, call, $"Function \"{name}()\" not found in base {based}.{GodotRenames.Call(name)}");
+        }
+    }
+
+    /// <summary>The function a script declares by its name's offset, its own class's or an inner class's; null for none.</summary>
+    private static GDScriptFunction? FunctionAt(IEnumerable<(GDScriptNode Node, int Offset)> members, int start)
+    {
+        foreach ((GDScriptNode node, int offset) in members)
+        {
+            if (node is GDScriptFunction { Identifier: { } name } function && offset + name.Start == start)
+            {
+                return function;
+            }
+            if (node is GDScriptClass inner && FunctionAt(inner.Members.Select(m => (m, offset)), start) is { } nested)
+            {
+                return nested;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>A type recorded for an expression, as <see cref="Reduce"/> records what it reduces.</summary>
+    private static GDScriptType Recorded(GDScriptExpression expression, GDScriptType type, Context context)
+    {
+        if (context.Analysis.Tree is not null)
+        {
+            context.Analysis.Types[expression] = type;
+        }
+        return type;
+    }
+
+    /// <summary>Godot's error of a call by a name the class has no method of (reduce_call on self): the name another member
+    /// holds (a Callable, a value of a type), else a function not found, where the class is read whole.</summary>
+    private void NotFoundOnSelf(GDScriptCall call, GDScriptIdentifier name, Context context)
+    {
+        // new() alone is the class's own constructor.
+        if (context.Analysis.Tree is null || name.Name == "new" || !Knows(context.Class))
+        {
+            return;
+        }
+        NotAFunction(call, context.Class, name.Name, context);
+        if (Member(context.Class, name.Name) is { Kind: not "func" } other && !other.Type.IsVariant)
+        {
+            Error(context, name, other.Type is { Kind: GDScriptTypeKind.Builtin, Name: "Callable" }
+                ? $"Name \"{name.Name}\" is a Callable. You can call it with \"{name.Name}.call()\" instead."
+                : $"Name \"{name.Name}\" called as a function but is a \"{other.Type}\".");
+            return;
+        }
+        if (!InOuter(context.Class, name.Name))
+        {
+            Error(context, name, $"Function \"{name.Name}()\" not found in base self.{GodotRenames.Call(name.Name)}");
+        }
+    }
+
+    /// <summary>Godot's error of a call by the name of a script class's member that is no function (get_function_signature),
+    /// a class it extends declaring it so, before any other said of the call.</summary>
+    private void NotAFunction(GDScriptCall call, GDScriptType owner, string name, Context context)
+    {
+        int depth = 0;
+        for (GDScriptType? at = owner.Instance; at is { Kind: GDScriptTypeKind.Class } && depth++ < 64; at = BaseOf(at))
+        {
+            if (OwnNames(at).TryGetValue(name, out (GDScriptNode Node, int Offset) named))
+            {
+                if (named.Node is not GDScriptFunction)
+                {
+                    Error(context, call, $"Member \"{name}\" is not a function.");
+                }
+                return;
+            }
+        }
+    }
+
+    /// <summary>Godot's errors of a method a call names that what it is called on lacks (reduce_call), where that is known:
+    /// on self, a built-in type's value or type, a class or engine class named, an enum.</summary>
+    private void MethodMissing(GDScriptCall call, GDScriptSubscript callee, GDScriptType owner, GDScriptIdentifier method, Context context)
+    {
+        string name = method.Name;
+        if (callee.Base is GDScriptSelf)
+        {
+            if (Member(context.Class, name) is not { Kind: "func" })
+            {
+                NotFoundOnSelf(call, method, context);
+            }
+            return;
+        }
+        switch (owner)
+        {
+            case { Kind: GDScriptTypeKind.Variant, Meta: true, Owner: { } native }:
+                Error(context, call, $"Native class {native} used in script doesn't exist or isn't exposed.");
+                Error(context, call, $"Static function \"{name}()\" not found in base \"Variant\".");
+                return;
+            case { Kind: GDScriptTypeKind.Enum, Meta: true } enumerated when enumerated.Script is null:
+                Error(context, callee, $"The native enum \"{enumerated.Name}\" does not behave like Dictionary and does not have methods of its own.");
+                Error(context, call, $"Static function \"{name}()\" not found in base \"{enumerated}\".");
+                return;
+            case { Kind: GDScriptTypeKind.Enum, Meta: true } enumerated:
+                if (Engine!.Builtins.GetValueOrDefault("Dictionary")?.Methods.GetValueOrDefault(name) is not { } dictionary)
+                {
+                    Error(context, callee, $"Enums only have Dictionary built-in methods. Function \"{name}()\" does not exist for enum \"{enumerated.Name}\".");
+                    Error(context, call, $"Static function \"{name}()\" not found in base \"{enumerated}\".");
+                }
+                else if (!dictionary.IsConst)
+                {
+                    Error(context, call, $"Cannot call non-const Dictionary function \"{name}()\" on enum \"{enumerated.Name}\".");
+                }
+                return;
+            case { Kind: GDScriptTypeKind.Builtin, Hard: true } builtin when Engine!.Builtins.GetValueOrDefault(builtin.Name) is { } api && !api.Methods.ContainsKey(name):
+                bool member = !builtin.Meta && api.Properties.ContainsKey(name) || builtin.Meta && (api.Constants.ContainsKey(name) || api.Enums.ContainsKey(name));
+                if (member)
+                {
+                    Error(context, callee, $"Name \"{name}\" called as a function but is a \"{MemberOf(builtin, name, context, null)}\".");
+                }
+                else if (builtin.Meta)
+                {
+                    Error(context, method, $"Cannot find member \"{name}\" in base \"{builtin.Instance}\".");
+                    Error(context, call, $"Static function \"{name}()\" not found in base \"{builtin}\".");
+                }
+                else if (builtin.Name != "Nil")
+                {
+                    // A Dictionary's names are its keys, never missing members; any other type's are its own.
+                    if (builtin.Name != "Dictionary")
+                    {
+                        Error(context, method, $"Cannot find member \"{name}\" in base \"{builtin}\".");
+                    }
+                    Error(context, callee, $"Function \"{name}()\" not found in base {builtin}.{GodotRenames.Call(name)}");
+                }
+                return;
+            case { Kind: GDScriptTypeKind.Class, Meta: false } instance when Knows(instance) && Member(instance, name) is { Kind: not "func" } held:
+                NotAFunction(call, instance, name, context);
+                if (!held.Type.IsVariant)
+                {
+                    Error(context, callee, held.Type is { Kind: GDScriptTypeKind.Builtin, Name: "Callable" }
+                        ? $"Name \"{name}\" is a Callable. You can call it with \"{name}.call()\" instead."
+                        : $"Name \"{name}\" called as a function but is a \"{held.Type}\".");
+                }
+                return;
+            case { Kind: GDScriptTypeKind.Native or GDScriptTypeKind.Class, Meta: true } named when name != "new" && Knows(named):
+                if (named.Kind == GDScriptTypeKind.Class)
+                {
+                    NotAFunction(call, named, name, context);
+                }
+                if (Member(named.Instance, name) is { Kind: not "func" } other && !other.Type.IsVariant)
+                {
+                    Error(context, callee, other.Type is { Kind: GDScriptTypeKind.Builtin, Name: "Callable" }
+                        ? $"Name \"{name}\" is a Callable. You can call it with \"{name}.call()\" instead."
+                        : $"Name \"{name}\" called as a function but is a \"{other.Type}\".");
+                }
+                else if (Member(named.Instance, name) is null)
+                {
+                    Error(context, call, $"Static function \"{name}()\" not found in base \"{named}\".");
+                }
+                return;
         }
     }
 

@@ -217,13 +217,25 @@ public sealed partial class GDScriptAnalyzer
         return found?.Instance;
     }
 
-    /// <summary>A name an <c>extends</c> writes first: an inner class of the script it is in (for an inner class), a
-    /// <c>class_name</c>, an engine class; never the class's own members, which come from what it extends.</summary>
+    /// <summary>A name an <c>extends</c> writes first: for an inner class, an inner class of a class it is written in or
+    /// of one they extend; a <c>class_name</c>; an engine class; never the class's own members, which come from what it extends.</summary>
     private GDScriptType? ExtendedType(string name, GDScriptType type)
     {
-        if (type.Script is { } path && Tree(path) is { } tree && type.Class != tree.Class && InnerClass(ScriptClass(tree, path), name) is { } sibling)
+        if (type.Script is { } path && Tree(path) is { } tree && type.Class is { } inner && inner != tree.Class)
         {
-            return sibling;
+            // An inner class's base is found among the classes it is written in and the script classes they extend.
+            List<GDScriptType> enclosing = Enclosing(ScriptClass(tree, path), tree.Members.Select(m => (m.Node, m.Offset)), inner);
+            for (int i = enclosing.Count - 1; i >= 0; i--)
+            {
+                int depth = 0;
+                for (GDScriptType? at = enclosing[i]; at is { Kind: GDScriptTypeKind.Class } && depth++ < 64; at = BaseOf(at))
+                {
+                    if (InnerClass(at, name) is { Kind: GDScriptTypeKind.Class } sibling && sibling.Class != inner)
+                    {
+                        return sibling;
+                    }
+                }
+            }
         }
         if (project.ClassPath(name) is { } global && Tree(global) is { } globalTree)
         {
@@ -539,17 +551,16 @@ public sealed partial class GDScriptAnalyzer
         {
             return GDScriptType.Variant;
         }
-        int depth = 0;
-        for (GDScriptType? at = scope.Instance; at is { Kind: GDScriptTypeKind.Class } && depth++ < 64; at = BaseOf(at))
+        foreach (GDScriptType at in ScopeClasses(scope))
         {
             if (InnerClass(at, name) is { } inner)
             {
                 return inner;
             }
-        }
-        if (scope.Script is { } path && Tree(path) is { } tree && scope.Class != tree.Class && InnerClass(ScriptClass(tree, path), name) is { } outer)
-        {
-            return outer;
+            if (ScopedConstantType(at, name) is { } constant)
+            {
+                return constant;
+            }
         }
         if (project.ClassPath(name) is { } global && Tree(global) is { } globalTree)
         {
@@ -567,9 +578,9 @@ public sealed partial class GDScriptAnalyzer
         {
             return new GDScriptType(GDScriptTypeKind.Enum, name) { Values = global2.Values, Meta = true };
         }
-        if (project.Autoload(name) is { } autoload && Tree(autoload) is { } autoloaded)
+        if (project.Autoload(name) is { } autoload && project.Resolved(autoload) is { } loaded && Tree(loaded) is { } autoloaded)
         {
-            return ScriptClass(autoloaded, autoload) with { Meta = true };
+            return ScriptClass(autoloaded, loaded) with { Meta = true };
         }
         return null;
     }
@@ -590,32 +601,237 @@ public sealed partial class GDScriptAnalyzer
         {
             return new GDScriptType(GDScriptTypeKind.Enum, variantType.Name) { Values = variantType.Values };
         }
-        GDScriptType? found = ConstantType(node.Chain[0].Name, context) ?? GlobalOrScopedType(node.Chain[0].Name, context.Class);
-        foreach (GDScriptIdentifier next in node.Chain.Skip(1))
+        GDScriptIdentifier first = node.Chain[0];
+        bool tells = context.Analysis.Tree is not null && Knows(context.Class);
+        GDScriptType? localType = null;
+        if (context.Scope?.Find(first.Name) is { Local: { } local } scoped)
         {
-            found = found switch
+            // A local constant may name a type; any other local never does.
+            if (local.Kind != LocalKind.Constant)
             {
-                { Kind: GDScriptTypeKind.Class } owner => InnerClass(owner.Instance, next.Name),
-                { Kind: GDScriptTypeKind.Native } engine => Engine?.Chain(engine.Name).Select(c => c.Enums.GetValueOrDefault(next.Name) is { } e ? NativeEnum(c.Name, e, meta: true) : null)
-                    .FirstOrDefault(e => e is not null),
-                { Kind: GDScriptTypeKind.Builtin } builtin => Engine?.Builtins.GetValueOrDefault(builtin.Name)?.Enums.GetValueOrDefault(next.Name) is { } e
-                    ? NativeEnum(builtin.Name, e, meta: true) : null,
-                _ => null,
-            };
+                return Unfound(tells, first, $"Local {LocalWords(local.Kind)} \"{first.Name}\" cannot be used as a type.");
+            }
+            // A constant written as Variant holding a class is still that class (Godot reads its value).
+            GDScriptType? held = scoped.Type.Meta ? scoped.Type
+                : local.Node is GDScriptConstant { Initializer: { } value } && context.Analysis.Types.GetValueOrDefault(value) is { Meta: true } valued ? valued : null;
+            if (held is null)
+            {
+                return Unfound(tells, first, $"Local constant \"{first.Name}\" is not a valid type.");
+            }
+            localType = held;
+        }
+        else if (context.Scope?.InSuites(first.Name) is { } later)
+        {
+            // Declared further on in its block: Godot's suite holds it already, its type not yet read.
+            return Unfound(tells, first, later == "constant" ? $"Local constant \"{first.Name}\" is not resolved at this point."
+                : $"Local {later} \"{first.Name}\" cannot be used as a type.");
+        }
+        if (first.Name == "Variant" && node.Chain.Count > 1)
+        {
+            return node.Chain.Count == 2 ? Unfound(tells, node.Chain[1], $"Name \"{node.Chain[1].Name}\" is not a nested type of \"Variant\".")
+                : Unfound(tells, node.Chain[2], "Variant only contains enum types, which do not have nested types.");
+        }
+        GDScriptType? found = localType ?? ConstantType(first.Name, context) ?? GlobalOrScopedType(first.Name, context.Class);
+        // An enum or inner class of a class it extends (an engine class's Node.ProcessMode, written ProcessMode) is a type too.
+        if (found is null && Member(context.Class, first.Name) is { Kind: "enum" or "class", Type.Meta: true } inherited)
+        {
+            found = inherited.Type;
+        }
+        if (found is null && project.Autoload(first.Name) is { } autoload && Tree(project.Resolved(autoload)) is null)
+        {
+            // An autoload of a scene: what Godot types it as comes from the scene's instance, which this reading has not.
+            return GDScriptType.Variant.Soft;
+        }
+        if (found is null && Member(context.Class, first.Name) is { } notType)
+        {
+            return Unfound(tells, node, $"\"{first.Name}\" is a {MemberWords(notType)} but does not contain a type.");
         }
         if (found is null)
         {
             // A type this reading cannot find is no Variant Godot would say: what it holds is unknown.
+            return Unfound(tells, node, $"Could not find type \"{first.Name}\" in the current scope.");
+        }
+        for (int i = 1; i < node.Chain.Count; i++)
+        {
+            GDScriptIdentifier next = node.Chain[i];
+            GDScriptType owner = found!;
+            switch (owner.Kind)
+            {
+                case GDScriptTypeKind.Class:
+                    found = InnerClass(owner.Instance, next.Name) ?? (Member(owner.Instance, next.Name) is { Kind: "const", Type: { Meta: true } preloaded } ? preloaded : null);
+                    if (found is null)
+                    {
+                        return Unfound(tells, node.Chain[1], Member(owner.Instance, next.Name) is not null
+                            ? $"Member \"{next.Name}\" under base \"{owner}\" is not a valid type." : $"Could not find type \"{next.Name}\" under base \"{owner}\".");
+                    }
+                    break;
+                case GDScriptTypeKind.Native:
+                    found = i == 1 ? Engine?.Chain(owner.Name).Select(c => c.Enums.GetValueOrDefault(next.Name) is { } e ? NativeEnum(c.Name, e, meta: true) : null).FirstOrDefault(e => e is not null) : null;
+                    if (found is null)
+                    {
+                        return i == 1 ? Unfound(tells, next, $"Could not find type \"{next.Name}\" in \"{first.Name}\".") : Unfound(tells, next, "Enums cannot contain nested types.");
+                    }
+                    break;
+                case GDScriptTypeKind.Builtin:
+                    found = i == 1 && Engine?.Builtins.GetValueOrDefault(owner.Name)?.Enums.GetValueOrDefault(next.Name) is { } e ? NativeEnum(owner.Name, e, meta: true) : null;
+                    if (found is null)
+                    {
+                        return i == 1 ? Unfound(tells && Engine is not null, next, $"Name \"{next.Name}\" is not a nested type of \"{first.Name}\".")
+                            : Unfound(tells, next, "Built-in types only contain enum types, which do not have nested types.");
+                    }
+                    break;
+                case GDScriptTypeKind.Enum when owner.Script is null && owner.Owner is null:
+                    return Unfound(tells, next, "Enums cannot contain nested types.");
+                default:
+                    return Unfound(tells, node.Chain[1], $"Could not find nested type \"{node.Chain[1].Name}\" under base \"{owner.Instance}\".");
+            }
+        }
+        GDScriptType type = found!.Instance with { Hard = true };
+        PaintType(node, found, context);
+        if (node.Elements.Count > 0)
+        {
+            string? wrong = type switch
+            {
+                { Kind: GDScriptTypeKind.Builtin, Name: "Array" } when node.Elements.Count != 1 => "Typed arrays require exactly one collection element type.",
+                { Kind: GDScriptTypeKind.Builtin, Name: "Dictionary" } when node.Elements.Count != 2 => "Typed dictionaries require exactly two collection element types.",
+                { Kind: GDScriptTypeKind.Builtin, Name: "Array" or "Dictionary" } => null,
+                _ => "Only arrays and dictionaries can specify collection element types.",
+            };
+            if (wrong is not null)
+            {
+                return Unfound(tells, node, wrong);
+            }
+        }
+        return node.Elements.Count > 0 ? type with { Elements = [.. node.Elements.Select(e => ResolveType(e, context))] } : type;
+
+        GDScriptType Unfound(bool said, GDScriptNode at, string message)
+        {
+            if (said)
+            {
+                Error(context, at, message);
+            }
             return GDScriptType.Variant.Soft;
         }
-        GDScriptType type = found.Instance with { Hard = true };
-        PaintType(node, found, context);
-        return node.Elements.Count > 0 ? type with { Elements = [.. node.Elements.Select(e => ResolveType(e, context))] } : type;
     }
 
+    /// <summary>Whether every class a class extends is read, through to an engine class the API holds: what an error of a
+    /// name Godot would not find stands on, a member of a class Passenger cannot read being no name it may say is missing.</summary>
+    private bool Knows(GDScriptType type)
+    {
+        if (Engine is not { } engine)
+        {
+            return false;
+        }
+        int depth = 0;
+        for (GDScriptType? at = type.Instance; at is not null && depth++ < 64; at = BaseOf(at))
+        {
+            if (at.Kind == GDScriptTypeKind.Native)
+            {
+                return engine.Classes.ContainsKey(at.Name);
+            }
+            if (at.Kind != GDScriptTypeKind.Class || at.Class is not { } node || at.Script is null)
+            {
+                return false;
+            }
+            if (node.ExtendsPath is { } written && Tree(Absolute(project.Resolved(written), at.Script)) is null
+                || node.ExtendsPath is null && node.Extends.Count > 0 && ExtendedType(node.Extends[0].Name, at) is null)
+            {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>A local's kind as Godot's SuiteNode::Local::get_name says it.</summary>
+    private static string LocalWords(LocalKind kind) => kind switch
+    {
+        LocalKind.Constant => "constant",
+        LocalKind.Parameter or LocalKind.Setter => "parameter",
+        LocalKind.Iterator => "for loop iterator",
+        LocalKind.Bind => "pattern bind",
+        _ => "variable",
+    };
+
+    /// <summary>A member's kind as Godot's ClassNode::Member::get_type_name says it.</summary>
+    private static string MemberWords(GDScriptMemberInfo member) => member.Kind switch
+    {
+        "func" => "function",
+        "signal" => "signal",
+        "const" when member.Type.Kind == GDScriptTypeKind.Enum && !member.Type.Meta => "enum value",
+        "const" => "constant",
+        "enum" => "enum",
+        "class" => "class",
+        _ => "variable",
+    };
+
     /// <summary>A constant of the class's scope that stands for a type (<c>const Enemy = preload("enemy.gd")</c>); null for none.</summary>
-    private GDScriptType? ConstantType(string name, Context context) =>
-        Member(context.Class, name) is { Kind: "const", Type: { Meta: true } meta } ? meta : null;
+    private GDScriptType? ConstantType(string name, Context context) => ScopeClasses(context.Class).Select(c => ScopedConstantType(c, name)).FirstOrDefault(t => t is not null);
+
+    /// <summary>The classes a class's code finds names in, as Godot's get_class_node_current_scope_classes lists them: the
+    /// class and the script classes it extends, then each class it is written in, nearest first, with theirs.</summary>
+    private IEnumerable<GDScriptType> ScopeClasses(GDScriptType scope)
+    {
+        List<GDScriptType> outers = [scope.Instance];
+        if (scope.Script is { } path && Tree(path) is { } tree && scope.Class is { } inner && inner != tree.Class)
+        {
+            List<GDScriptType> enclosing = Enclosing(ScriptClass(tree, path), tree.Members.Select(m => (m.Node, m.Offset)), inner);
+            enclosing.Reverse();
+            outers.AddRange(enclosing);
+        }
+        foreach (GDScriptType outer in outers)
+        {
+            int depth = 0;
+            for (GDScriptType? at = outer; at is { Kind: GDScriptTypeKind.Class } && depth++ < 64; at = BaseOf(at))
+            {
+                yield return at;
+            }
+        }
+    }
+
+    /// <summary>A constant a class declares itself that stands for a type: its own meta type, or a script or class its value
+    /// is though its type is written otherwise (<c>const Other: GDScript = preload(…)</c>); null for none.</summary>
+    private GDScriptType? ScopedConstantType(GDScriptType owner, string name)
+    {
+        if (!OwnNames(owner).TryGetValue(name, out (GDScriptNode Node, int Offset) named) || named.Node is not GDScriptConstant { Initializer: { } value } constant)
+        {
+            return null;
+        }
+        GDScriptType type = MemberType(constant, owner, named.Offset);
+        if (type.Meta)
+        {
+            return type;
+        }
+        if (!resolving.Add(value))
+        {
+            return null;
+        }
+        Context reading = new(new GDScriptAnalysis(null, owner.Script ?? string.Empty), owner.Instance, named.Offset, null, null);
+        GDScriptType read = Reduce(value, reading);
+        resolving.Remove(value);
+        return read is { Meta: true, Kind: GDScriptTypeKind.Class or GDScriptTypeKind.Native } ? read : null;
+    }
+
+    /// <summary>The classes that hold an inner class, from the script's own down to its nearest; none where it is not found.</summary>
+    private static List<GDScriptType> Enclosing(GDScriptType at, IEnumerable<(GDScriptNode Node, int Offset)> members, GDScriptClass inner)
+    {
+        foreach ((GDScriptNode node, int offset) in members)
+        {
+            if (node is not GDScriptClass { Identifier: { } name } nested)
+            {
+                continue;
+            }
+            if (nested == inner)
+            {
+                return [at];
+            }
+            GDScriptType held = new(GDScriptTypeKind.Class, name.Name) { Class = nested, Script = at.Script, Offset = offset };
+            if (Enclosing(held, nested.Members.Select(m => (m, offset)), inner) is { Count: > 0 } deeper)
+            {
+                return [at, .. deeper];
+            }
+        }
+        return [];
+    }
 
     private GDScriptType MemberType(GDScriptAssignable node, GDScriptType owner, int offset)
     {

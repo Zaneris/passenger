@@ -120,6 +120,11 @@ godot-shader-types:
 godot-theme:
     python3 -I tools/godot-theme.py
 
+# Rewrite src/Passenger.Workspace/GDScript/GodotRenames.json, the Godot 3 names Godot 4's GDScript analyzer hints at, as
+# its sources at one commit say them (tools/godot-renames.py).
+godot-renames:
+    python3 -I tools/godot-renames.py
+
 # Rewrite Theme/Icons.axaml from the list in tools/icons.py (fetches any icon not yet cached).
 icons:
     python3 -I tools/icons.py

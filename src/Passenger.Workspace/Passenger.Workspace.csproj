@@ -18,6 +18,7 @@
   <ItemGroup>
     <!-- Godot's shading language as its sources say it, written by just godot-shader-types (GodotShaderTable). -->
     <EmbeddedResource Include="GodotShaderTypes.json" LogicalName="Passenger.Workspace.GodotShaderTypes.json" />
+    <EmbeddedResource Include="GDScript/GodotRenames.json" LogicalName="Passenger.Workspace.GodotRenames.json" />
     <!-- Godot's default theme as its sources say it, written by just godot-theme (GodotThemeTable). -->
     <EmbeddedResource Include="GodotDefaultTheme.json" LogicalName="Passenger.Workspace.GodotDefaultTheme.json" />
   </ItemGroup>
