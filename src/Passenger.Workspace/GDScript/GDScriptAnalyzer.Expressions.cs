@@ -10,14 +10,17 @@ public sealed partial class GDScriptAnalyzer
         switch (member)
         {
             case GDScriptVariable variable:
-                GDScriptType type = variable.IsStatic || variable.Identifier is null ? AssignableType(variable, context, false) : MemberType(variable, context.Class, context.Offset);
+                // A static variable's value is read once, in its static place.
+                Context valued = variable.IsStatic ? context with { Static = string.Empty } : context;
+                GDScriptType type = variable.IsStatic || variable.Identifier is null
+                    ? AssignableType(variable, valued with { Analysis = new GDScriptAnalysis(null, analysis.Path) }, false) : MemberType(variable, context.Class, context.Offset);
                 Record(analysis, variable, type, context);
                 if (variable.Initializer is { } value
-                    && Reduce(value, context) is { Kind: GDScriptTypeKind.Builtin, Name: "int" } && variable.Type is not null && type is { Kind: GDScriptTypeKind.Enum, Meta: false })
+                    && Reduce(value, valued) is { Kind: GDScriptTypeKind.Builtin, Name: "int" } && variable.Type is not null && type is { Kind: GDScriptTypeKind.Enum, Meta: false })
                 {
                     Warn(context, value, "INT_AS_ENUM_WITHOUT_CAST");
                 }
-                Declaring(variable, type, "variable", local: false, context);
+                Declaring(variable, type, "variable", local: false, valued);
                 MemberVariableWarnings(variable, context);
                 if (variable.Type is { } memberType)
                 {
@@ -25,7 +28,7 @@ public sealed partial class GDScriptAnalyzer
                 }
                 if (variable.Getter is { Body: { } getter } get)
                 {
-                    WalkSuite(getter, context with { Scope = new Scope(null), Function = get, Returns = variable.Type is null ? null : type });
+                    WalkSuite(getter, context with { Scope = new Scope(null), Function = get, Returns = variable.Type is null ? null : type, Static = StaticAccessor(variable, "getter") });
                 }
                 if (variable.Setter is { Body: { } setter } set)
                 {
@@ -35,7 +38,7 @@ public sealed partial class GDScriptAnalyzer
                         scope.Add(parameter.Name, type, new GDScriptDeclaration(context.Analysis.Path, context.Offset + parameter.Start, parameter.Name, type), new Local(only, parameter, LocalKind.Setter));
                         Record(analysis, only, type, context);
                     }
-                    WalkSuite(setter, context with { Scope = scope, Function = set });
+                    WalkSuite(setter, context with { Scope = scope, Function = set, Static = StaticAccessor(variable, "setter") });
                 }
                 break;
             case GDScriptConstant constant:
@@ -96,7 +99,10 @@ public sealed partial class GDScriptAnalyzer
     private void WalkFunction(GDScriptFunction function, Context context)
     {
         Scope scope = new(context.Scope) { Function = true };
-        Context inside = context with { Scope = scope, Function = function, Returns = null };
+        Context inside = context with
+        {
+            Scope = scope, Function = function, Returns = null, Static = function.IsLambda ? context.Static : function.IsStatic ? FunctionName(function) : null,
+        };
         if (context.Analysis.Tree is not null)
         {
             context.Analysis.Types[function] = function.IsLambda ? GDScriptType.Variant.Soft : ReturnType(function, context.Class, context.Offset);
@@ -197,10 +203,12 @@ public sealed partial class GDScriptAnalyzer
                 return false;
             case GDScriptFor loop:
                 GDScriptType list = Reduce(loop.List, context);
+                GDScriptType? specified = loop.Type is { } declaredType ? ResolveType(declaredType, context) : null;
+                ForErrors(loop, list, specified, context);
                 Scope iteration = new(scope);
                 if (loop.Variable is { } variableName)
                 {
-                    GDScriptType element = loop.Type is { } declaredType ? ResolveType(declaredType, context) : Element(list, loop.List);
+                    GDScriptType element = specified ?? Element(list, loop.List);
                     analysis.Types[loop.Variable] = element;
                     Paint(context, variableName, GDScriptColour.Local);
                     iteration.Add(variableName.Name, element, new GDScriptDeclaration(analysis.Path, context.Offset + variableName.Start, variableName.Name, element), new Local(loop, variableName, LocalKind.Iterator));
@@ -392,7 +400,7 @@ public sealed partial class GDScriptAnalyzer
                 return AttributeOf(attribute, context, pseudo: false);
             case GDScriptSubscript subscript:
                 GDScriptType indexed = ReduceBase(subscript.Base, context);
-                Reduce(subscript.Index, context);
+                SubscriptErrors(subscript, indexed, Reduce(subscript.Index, context), context);
                 return Indexed(indexed);
             case GDScriptCall call:
                 return Call(call, context, root, awaited);
@@ -431,6 +439,7 @@ public sealed partial class GDScriptAnalyzer
                 GDScriptType castType = cast.Type is { } castTo ? ResolveType(castTo, context) : GDScriptType.Variant;
                 if (cast is { Operand: { } castFrom, Type: { } castNode })
                 {
+                    TypedLiteralErrors(castFrom, castType, context);
                     CastErrors(castFrom, castNode, operandType, castType, context);
                 }
                 if (!castType.IsVariant && (operandType.IsVariant || !operandType.Hard))
@@ -467,6 +476,7 @@ public sealed partial class GDScriptAnalyzer
                 }
                 return GDScriptType.Builtin("Dictionary");
             case GDScriptGetNode get:
+                GetNodeErrors(get, context);
                 return NodeTyped(get.Path, context);
             case GDScriptPreload preload:
                 Reduce(preload.Path, context);
@@ -632,6 +642,7 @@ public sealed partial class GDScriptAnalyzer
                 analysis.Declared[identifier] = declared;
             }
             Paint(context, identifier, ColourOf(member));
+            StaticAccessErrors(identifier, context);
             return member.Kind == "func" ? GDScriptType.Builtin("Callable") : member.Type;
         }
         if (Engine?.Singletons.GetValueOrDefault(identifier.Name) is { } engineSingleton)
@@ -649,7 +660,9 @@ public sealed partial class GDScriptAnalyzer
             Error(context, identifier, $"Identifier \"{identifier.Name}\" not declared in the current scope.{GodotRenames.Identifier(identifier.Name)}");
             return GDScriptType.Variant.Soft;
         }
-        if (GlobalOrScopedType(identifier.Name, context.Class) is { } type)
+        // An autoload's name is its node, never its script, as a value.
+        if (GlobalOrScopedType(identifier.Name, context.Class) is { } type && !(project.ClassPath(identifier.Name) is null && project.Autoload(identifier.Name) is { } autoloadName
+            && type is { Kind: GDScriptTypeKind.Class, Script: { } autoloadScript } && autoloadScript == project.Resolved(autoloadName) && type.Class == Tree(autoloadScript)?.Class))
         {
             if (!asBase && tells && type is { Kind: GDScriptTypeKind.Enum, Meta: true, Script: null, Owner: null })
             {
@@ -850,6 +863,10 @@ public sealed partial class GDScriptAnalyzer
         {
             Arguments(call, parameters, defaults, varargs, context);
         }
+        if (Knows(context.Class))
+        {
+            StaticCallErrors(call, context);
+        }
         if (!root && !awaited && returned is { IsVoid: true, Hard: true } && call.FunctionName is { } voidName && Knows(context.Class))
         {
             Error(context, call, $"Cannot get return value of call to \"{voidName}()\" because it returns \"void\".");
@@ -1017,6 +1034,10 @@ public sealed partial class GDScriptAnalyzer
             }
             return;
         }
+        if (context.Returns is { Hard: true } typed)
+        {
+            TypedLiteralErrors(value, typed, context);
+        }
         if (context.Returns is not { IsVariant: false, Hard: true } expected || given.IsVariant || !given.Hard || !Sure(value, context))
         {
             return;
@@ -1060,12 +1081,19 @@ public sealed partial class GDScriptAnalyzer
         _ => false,
     };
 
-    /// <summary>Whether a declaration's type is one Godot gives as Passenger does: written, or inferred from a literal.</summary>
-    private static bool SureDeclared(GDScriptNode? declared) => declared switch
+    /// <summary>Whether a declaration's type is one Godot gives as Passenger does: written, or inferred from a literal, a
+    /// built-in type's constant or its constructor.</summary>
+    private bool SureDeclared(GDScriptNode? declared) => declared switch
     {
         GDScriptAssignable { Type: not null } => true,
-        GDScriptAssignable assignable when assignable.Infers || assignable is GDScriptConstant => assignable.Initializer
-            is GDScriptLiteral { Kind: not GDScriptLiteralKind.Null } or GDScriptArray or GDScriptDictionary or GDScriptUnary { Operator: K.Minus, Operand: GDScriptLiteral },
+        GDScriptAssignable assignable when assignable.Infers || assignable is GDScriptConstant => assignable.Initializer switch
+        {
+            GDScriptLiteral { Kind: not GDScriptLiteralKind.Null } or GDScriptArray or GDScriptDictionary or GDScriptUnary { Operator: K.Minus, Operand: GDScriptLiteral } => true,
+            GDScriptSubscript { IsAttribute: true, Base: GDScriptIdentifier type, Attribute: { } constant } =>
+                Engine?.Builtins.GetValueOrDefault(type.Name)?.Constants.ContainsKey(constant.Name) == true,
+            GDScriptCall { Callee: GDScriptIdentifier type } => type.Name != "Nil" && Engine?.Builtins.ContainsKey(type.Name) == true,
+            _ => false,
+        },
         _ => false,
     };
 
@@ -1159,6 +1187,13 @@ public sealed partial class GDScriptAnalyzer
     private void Arguments(GDScriptCall call, IReadOnlyList<GDScriptType> parameters, int defaults, bool varargs, Context context)
     {
         string name = call.FunctionName ?? string.Empty;
+        for (int i = 0; i < call.Arguments.Count && i < parameters.Count; i++)
+        {
+            if (parameters[i].Hard)
+            {
+                TypedLiteralErrors(call.Arguments[i], parameters[i], context);
+            }
+        }
         if (call.Arguments.Count < parameters.Count - defaults)
         {
             Error(context, call, $"Too few arguments for \"{name}()\" call. Expected at least {parameters.Count - defaults} but received {call.Arguments.Count}.");
@@ -1631,6 +1666,10 @@ public sealed partial class GDScriptAnalyzer
         {
             Error(context, assignee, "Cannot assign a new value to a constant.");
             return;
+        }
+        if (target.Hard && Sure(assignee, context))
+        {
+            TypedLiteralErrors(assigned, target, context);
         }
         if (assignment.Operator != K.Equal)
         {

@@ -137,10 +137,15 @@ public sealed partial class GDScriptAnalyzer
         }
     }
 
-    /// <summary>Godot's errors of a declaration's value (resolve_assignable): a type <c>:=</c> cannot infer from null or a
-    /// value of no known type, and a value of a type the written one takes none of, a constant's said as its conversion first.</summary>
+    /// <summary>Godot's errors of a declaration's value (resolve_assignable): a collection written out of elements its typed
+    /// one takes none of, a type <c>:=</c> cannot infer from null, and a value of a type the written one takes none of, a
+    /// constant's said as its conversion first.</summary>
     private void InitializerErrors(GDScriptAssignable node, string name, string kind, GDScriptType type, GDScriptExpression given, GDScriptType value, Context context)
     {
+        if (node.Type is not null)
+        {
+            TypedLiteralErrors(given, type, context);
+        }
         if (node.Infers)
         {
             if (value is { Kind: GDScriptTypeKind.Builtin, Name: "Nil" } && given is GDScriptLiteral && node is not GDScriptConstant)

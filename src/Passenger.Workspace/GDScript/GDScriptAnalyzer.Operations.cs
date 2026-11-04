@@ -159,28 +159,28 @@ public sealed partial class GDScriptAnalyzer
         }
     }
 
-    /// <summary>Whether Godot folds an expression to a constant its operators evaluate: true for a constant whose value is not
-    /// shared, false for a variable, a call of the script's function or a shared value, null where Passenger can't say.</summary>
-    private bool? Folding(GDScriptExpression expression, GDScriptType type, Context context)
+    /// <summary>Whether Godot folds an expression to a constant its operators evaluate: a constant (<see cref="Constancy"/>)
+    /// whose value is not shared, false for a shared one.</summary>
+    private bool? Folding(GDScriptExpression expression, GDScriptType type, Context context) => Constancy(expression, context) switch
     {
-        if (Folded(expression, context))
-        {
-            return !(type.Kind is GDScriptTypeKind.Native or GDScriptTypeKind.Class || type is { Kind: GDScriptTypeKind.Enum, Meta: true }
-                || type.Kind == GDScriptTypeKind.Builtin && SharedBuiltins.Contains(type.Name));
-        }
-        return expression switch
-        {
-            GDScriptArray or GDScriptDictionary or GDScriptSelf => false,
-            GDScriptIdentifier name when context.Scope?.Find(name.Name) is not null => false,
-            GDScriptIdentifier name => Member(context.Class, name.Name) is { Kind: "var" } ? false : null,
-            GDScriptCall { Callee: GDScriptIdentifier own } when Declared(own, context) => false,
-            // A built-in type's constructor given constants is a constant itself.
-            GDScriptCall { Callee: GDScriptIdentifier builtin } call when Engine?.Builtins.ContainsKey(builtin.Name) == true && context.Scope?.Find(builtin.Name) is null
-                && type.Kind == GDScriptTypeKind.Builtin && !SharedBuiltins.Contains(type.Name) =>
-                call.Arguments.All(a => Folding(a, context.Analysis.TypeOf(a), context) == true) ? true : null,
-            _ => null,
-        };
-    }
+        true => !(type.Kind is GDScriptTypeKind.Native or GDScriptTypeKind.Class || type is { Kind: GDScriptTypeKind.Enum, Meta: true }
+            || type.Kind == GDScriptTypeKind.Builtin && SharedBuiltins.Contains(type.Name)),
+        var held => held,
+    };
+
+    /// <summary>Whether Godot holds an expression constant: true for a constant, a built-in type's constructor given
+    /// constants among them; false for a variable, an array or dictionary written out, self or a call of the script's
+    /// function; null where Passenger can't say.</summary>
+    private bool? Constancy(GDScriptExpression expression, Context context) => Folded(expression, context) ? true : expression switch
+    {
+        GDScriptArray or GDScriptDictionary or GDScriptSelf => false,
+        GDScriptIdentifier name when context.Scope?.Find(name.Name) is not null => false,
+        GDScriptIdentifier name => Member(context.Class, name.Name) is { Kind: "var" } ? false : null,
+        GDScriptCall { Callee: GDScriptIdentifier own } when Declared(own, context) => false,
+        GDScriptCall { Callee: GDScriptIdentifier builtin } call when Engine?.Builtins.ContainsKey(builtin.Name) == true && context.Scope?.Find(builtin.Name) is null =>
+            call.Arguments.All(a => Constancy(a, context) == true) ? true : null,
+        _ => null,
+    };
 
     /// <summary>A type's name in Variant's operator table: a built-in type's own, an enum's value an int and an enum a
     /// Dictionary, an object Object; null for a class or engine class named as a value.</summary>

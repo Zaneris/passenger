@@ -11,7 +11,7 @@ namespace Passenger.Tests;
 
 /// <summary>Passenger's own reading of a GDScript gives the errors Godot's own server gives on the same scripts, in the same
 /// words on the same lines: a corpus of scripts, a family of Godot's analyzer's errors each (names not found, mismatched
-/// types and calls, operators, casts and type tests), opened in a window whose
+/// types and calls, operators, casts and type tests, static misuse and collections), opened in a window whose
 /// Godot's server serves them, each script's errors from Godot's diagnostics and from Passenger's marks set beside each
 /// other (an error Godot pushes twice at one place counted once). Without a Godot each test skips saying why; a Godot editor
 /// of its own, so run alone.</summary>
@@ -60,6 +60,28 @@ public sealed class GDScriptGodotErrorsTests
         + "\tprint(Mode.A is String)\n\tprint(items is Array[String])\n\tprint(node is Node2D, Mode.A is int, items is Array)\n"
         + "\tvar local := 1\n\tprint(local + \"x\")\n\tconst LOCAL := 2\n\tprint(LOCAL is String)\n";
 
+    /// <summary>Static places reaching the instance (a static function, a static variable's value and setter, a lambda in
+    /// them), functions no instance is needed for called on classes, indices, loops and typed collections written out that
+    /// Godot refuses.</summary>
+    internal const string Statics = "extends Node\n\nsignal fired\nenum Mode { A, B }\nvar count: int = 0\nvar items: Array[int] = []\n"
+        + "var table: Dictionary[String, int] = {}\nvar keyed: Dictionary[int, int] = {}\nvar label: String = \"\"\n"
+        + "var flag: bool = false\nvar node: Node\nvar colour := Color.RED\nstatic var shared := 1\n"
+        + "static var from_func = non_static_func()\nstatic var callable_value = non_static_func\nstatic var with_setter:\n"
+        + "\tset(value):\n\t\tprint(count)\n\t\tnon_static_func()\n\n\nfunc non_static_func() -> int:\n\treturn 1\n\n\n"
+        + "static func static_func() -> void:\n\tnon_static_func()\n\tprint(count)\n\tprint(fired)\n\tprint(non_static_func)\n"
+        + "\tprint(shared)\n\tprint(name)\n\tget_child_count()\n\tprint($Child)\n\tvar f := func():\n\t\tnon_static_func()\n"
+        + "\tf.call()\n\tMode.size()\n\n\nfunc _ready() -> void:\n\tVector2.length()\n\tNode.get_name()\n\tInner.method()\n"
+        + "\tInner.static_method()\n\tNode.new()\n\tprint(items[label])\n\tprint(items[1.5])\n\tprint(items[Mode.A])\n"
+        + "\tprint(label[flag])\n\tprint(table[1])\n\tprint(table[label])\n\tprint(keyed[1.5])\n\tprint(keyed[label])\n"
+        + "\tprint(node[0])\n\tprint(node[\"name\"])\n\tprint(Mode[\"A\"])\n\tprint(count[0])\n\tprint(flag[0])\n"
+        + "\tprint(colour[label])\n\tprint(colour[1.5])\n\tfor x in true:\n\t\tpass\n\tfor x in node:\n\t\tpass\n"
+        + "\tfor x in colour:\n\t\tpass\n\tfor x in label:\n\t\tpass\n\tfor x in Vector2i(1, 2):\n\t\tpass\n\tfor x in range():\n"
+        + "\t\tpass\n\tfor x in range(1, 2, 3, 4):\n\t\tpass\n\tfor x: String in items:\n\t\tpass\n\tfor x: float in items:\n"
+        + "\t\tpass\n\tfor x: String in [1, 2]:\n\t\tpass\n\tfor x: int in {\"a\": 1}:\n\t\tpass\n\tfor x: Node in range(3):\n"
+        + "\t\tpass\n\tvar typed: Array[int] = [1, \"x\", 2.5]\n\tvar typed_dict: Dictionary[String, int] = {\"a\": \"b\", 1: 2}\n"
+        + "\titems = [\"x\"]\n\ttakes([1, \"x\"])\n\n\nfunc takes(_list: Array[String]) -> Array[int]:\n\treturn [\"a\"]\n\n\n"
+        + "class Inner:\n\tfunc method() -> void:\n\t\tpass\n\n\tstatic func static_method() -> void:\n\t\tpass\n";
+
     private readonly string folder;
     private readonly GodotFound? godot = GodotExecutables.Find(null);
 
@@ -78,6 +100,9 @@ public sealed class GDScriptGodotErrorsTests
 
     [AvaloniaFact]
     public void Operators_casts_and_type_tests_godot_refuses_are_its_errors_in_its_words() => Compared(("operators.gd", Operators));
+
+    [AvaloniaFact]
+    public void Static_misuse_indices_loops_and_typed_collections_godot_refuses_are_its_errors_in_its_words() => Compared(("statics.gd", Statics));
 
     /// <summary>The scripts written, opened one by one once Godot's server serves the project, and each one's errors from
     /// Godot's server and from Passenger's reading the same.</summary>

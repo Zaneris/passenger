@@ -8,8 +8,9 @@ namespace Passenger.UnitTests.Godot;
 /// checked against Godot 4.7.2's own server, which says the same, a twice-pushed error once), over a small API of the engine's: a name declared nowhere (with Godot 4's rename hint for a Godot 3 name), a built-in type or global
 /// enum standing on its own, a member a known base lacks, an engine's enum used as a value, a call of a function not found
 /// on self, a built-in value or type, an engine class or an enum, a type not found, a value of a type its target takes
-/// none of and a call given too few or too many arguments, an operator, cast or type test given types it refuses; and none
-/// of them where the class extends one this reading cannot read.</summary>
+/// none of and a call given too few or too many arguments, an operator, cast or type test given types it refuses, a static
+/// place reaching the instance, an index, loop or typed collection Godot refuses; and none of them where the class extends
+/// one this reading cannot read.</summary>
 public class GDScriptErrorsTests
 {
     private const string Api = """
@@ -32,7 +33,7 @@ public class GDScriptErrorsTests
           "classes": [
             { "name": "Object", "methods": [{ "name": "get", "return_value": { "type": "Variant" } }] },
             { "name": "RefCounted", "inherits": "Object" },
-            { "name": "Node", "inherits": "Object", "methods": [{ "name": "_ready", "is_virtual": true },
+            { "name": "Node", "inherits": "Object", "methods": [{ "name": "_ready", "is_virtual": true }, { "name": "get_name", "return_value": { "type": "StringName" } },
               { "name": "_process", "is_virtual": true, "arguments": [{ "name": "delta", "type": "float" }] }],
               "properties": [{ "name": "name", "type": "StringName" }], "enums": [{ "name": "ProcessMode", "values": [{ "name": "PROCESS_MODE_INHERIT", "value": 0 }] }] },
             { "name": "CharacterBody2D", "inherits": "Node" }, { "name": "Resource", "inherits": "RefCounted" }
@@ -175,6 +176,34 @@ public class GDScriptErrorsTests
             "25: Expression is of type \"int\" so it can't be of type \"String\".",
             "26: Expression is of type \"Node\" so it can't be of type \"Resource\".",
             "27: Expression is of type \"int\" so it can't be of type \"float\".",
+        ], Errors(Script));
+    }
+
+    [Fact]
+    public void A_static_place_reaching_the_instance_and_an_index_loop_or_typed_array_refused_are_errors_in_godots_words_on_their_lines()
+    {
+        const string Script = "extends Node\n\nsignal fired\nvar count: int = 0\nvar items: Array[int] = []\nvar label: String = \"\"\nvar flag: bool = false\n"
+            + "static var shared := 1\nstatic var from_func = instance_func()\n\n\nfunc instance_func() -> int:\n\treturn 1\n\n\n"
+            + "static func static_func() -> void:\n\tinstance_func()\n\tprint(count, fired, shared, name)\n\tprint($Child)\n\n\n"
+            + "func _ready() -> void:\n\tVector3.length()\n\tNode.get_name()\n\tprint(items[label])\n\tprint(flag[0])\n\tfor x in true:\n\t\tpass\n"
+            + "\tfor x in range():\n\t\tpass\n\tfor x: String in items:\n\t\tpass\n\tvar typed: Array[int] = [1, \"x\"]\n";
+        Assert.Equal(
+        [
+            "9: Cannot call non-static function \"instance_func()\" from a static variable initializer.",
+            "17: Cannot call non-static function \"instance_func()\" from the static function \"static_func()\".",
+            "18: Cannot access non-static variable \"count\" from the static function \"static_func()\".",
+            "18: Cannot access signal \"fired\" from the static function \"static_func()\".",
+            "18: Cannot access non-static variable \"name\" from the static function \"static_func()\".",
+            "19: Cannot use shorthand \"get_node()\" notation (\"$\") in a static function.",
+            "23: Cannot call non-static function \"length()\" on the class \"Vector3\" directly. Make an instance instead.",
+            "24: Cannot call non-static function \"get_name()\" on the class \"Node\" directly. Make an instance instead.",
+            "25: Invalid index type \"String\" for a base of type \"Array[int]\".",
+            "26: Cannot use subscript operator on a base of type \"bool\".",
+            "27: Unable to iterate on value of type \"bool\".",
+            "29: Invalid call for \"range()\" function. Expected at least 1 argument, none given.",
+            "31: Unable to iterate on value of type \"Array[int]\" with variable of type \"String\".",
+            "33: Cannot have an element of type \"String\" in an array of type \"Array[int]\".",
+            "33: Cannot include a value of type \"String\" as \"int\".",
         ], Errors(Script));
     }
 
