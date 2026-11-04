@@ -430,6 +430,29 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
         await Call(client, McpTools.Stop);
     }
 
+    /// <summary>run with Hot Reload says the game takes it, and hot_reload applies an edit to the method _Process calls, which
+    /// the game then prints, no debug session shown.</summary>
+    [Fact]
+    public async Task An_agent_runs_a_godot_game_with_hot_reload_and_applies_an_edit_it_then_prints()
+    {
+        try
+        {
+            await using McpClient client = await Start(["--mcp", game.Folder], environment: Homes);
+            JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Headless, ["hotReload"] = true, ["waitSeconds"] = 180 });
+            Assert.Contains($"with Hot Reload: {McpTools.HotReload} applies the editors' edits", ran.GetProperty("status").GetString(), StringComparison.Ordinal);
+            await Call(client, McpTools.Edit, new() { ["path"] = "Main.cs", ["oldText"] = "GD.Print($\"{Greeting} {frames}\");", ["newText"] = "GD.Print($\"reloaded {frames}\");" });
+            JsonElement applied = await Call(client, McpTools.HotReload, new() { ["waitSeconds"] = 60 });
+            Assert.True(applied.GetProperty("result").GetString() == "applied", $"The edit was not applied to the running game: {applied}");
+            await Until(async () => Text(await Call(client, McpTools.Output)).Contains("reloaded ", StringComparison.Ordinal), "the game to print what the edited method prints");
+            Assert.Equal("not debugging", (await Call(client, McpTools.Workspace)).GetProperty("debugger").GetString());
+            await Call(client, McpTools.Stop);
+        }
+        finally
+        {
+            File.WriteAllText(Path.Combine(game.Folder, "Main.cs"), GodotGameFolder.Script);
+        }
+    }
+
     /// <summary>A stop in the game's other language answers the call that let the game go, as one in its own does: debug_start
     /// with a breakpoint in GDScript alone answers with the GDScript stop, debug_continue of it with a stop in the C#, and
     /// debug_continue of that with the GDScript stop again, none of them waiting out its time and saying the game runs.</summary>
