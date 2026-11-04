@@ -438,13 +438,14 @@ Projects in `src/`; `find_symbol` finds the rest:
   (`CSharpService.GodotProjectsChanged`), and the open scenes are checked again whenever the server says it loaded
   projects (`CSharpService.ProjectsLoaded`), as a script moved or added changes what their code reads as. A Godot shader
   is `GodotShaderAssist` over Workspace's `GodotShaderCode`, its language the carried `GodotShaderTypes.json` as the
-  Godot found takes it (`GodotShaderCompiler.TableAsync`, probed per version), its marks Godot's own compiler's through
-  `PassengerShaders.gd` (`GodotShaderMarks`; a scene's own Shader's in `GodotSceneMarks` through `GodotStringPlaces`,
-  and its completion, cards and declarations through `GodotShaderAssist.SceneCodeAt`), one helper per rendering method
-  (`GodotDefinitions.RenderingMethod`), let go when no shader has been open or asked for a while
-  (`GodotShaderCompiler.Opened`/`Closed`, `IdleVariable`). A theme item's name is read through `GodotThemeTable` (the
-  carried `GodotDefaultTheme.json`, `just godot-theme`) and the project's themes (`GodotDefinitions.ThemeItems`), looked
-  up along `GodotDefinitions.ThemeChain` (the node's type variation first), and the person's open Godot editor is asked
+  Godot found takes it (probed once per version, `GodotEngineApis.ShaderTableAsync`), its marks every error and warning
+  at once from Passenger's port of Godot's preprocessor and compiler (`GodotShaderCheck` through `GodotShaderChecker`,
+  the project's settings `GodotShaderCheckOptions`, an include read alone, versions gated; no Godot runs for them)
+  (`GodotShaderMarks`; a scene's own Shader's in `GodotSceneMarks` through `GodotStringPlaces`, and its completion,
+  cards and declarations through `GodotShaderAssist.SceneCodeAt`), each rendering method's refusals its own
+  (`GodotDefinitions.RenderingMethod`). A theme item's name is read through `GodotThemeTable` (the carried
+  `GodotDefaultTheme.json`, `just godot-theme`) and the project's themes (`GodotDefinitions.ThemeItems`), looked up
+  along `GodotDefinitions.ThemeChain` (the node's type variation first), and the person's open Godot editor is asked
   through its IDE messaging server (`GodotIdeLink` over Workspace's `GodotIdeMessaging` and `GodotIdeClient`), never
   Passenger's own headless editors (`GodotScripts.Headless`). Edits added to a server's workspace edit for a file it
   already edits join that file's entry (`TypeRename.With`): `documentChanges` apply in order. A server's own command
@@ -768,39 +769,38 @@ site-shots` retakes its images.
   (`GodotGame.HeldAsync`). A node instancing a scene no text says (an imported model, a binary scene) keeps the names
   below it unknown (`GodotTreeNode.NodesUnread`); a GDScript signal's parameters are known only where written and its
   own emits agree, as Godot passes whatever an emit gives; a connection's flags may bind the sender as one more argument
-  (`GodotConnection.Bound`). Godot compiles a Shader only once its RID is asked for (`get_rid()`), with no warnings,
-  stopping at its first error, and a failed preprocess reaches the compiler as raw text, so a missing include is
-  Passenger's to name (`GodotShaderUnit.NoInclude`). A launch profile running Godot on the project
-  (`GodotExecutables.NamesGodot`: Chickensoft's `%GODOT%`) is the game's configuration (`RunConfiguration.NamesGodot`),
-  its `--path` the launch's (`WithoutPath`). A macOS export of an arm64 or universal game refuses a project without
-  `textures/vram_compression/import_etc2_astc`. Its .NET host rolls forward only to released runtimes, so a new game's
-  framework is one it can run (`GodotGames.Runnable`). Its IDE messaging's C# list of completion kinds has no font
-  sizes, a kind's number passing to the engine's own (9 font sizes, 10 styleboxes), so Passenger sends the engine's; an
-  editor importing as it opens answers no handshake until it is done (`GodotIdeLink` tries again after 10 s).
-  GodotTools' `_Build` runs before any addon's, so Passenger's addon sets its `SkipBuildBeforePlaying` while Passenger
-  builds; a game the editor's Play starts inherits the editor's environment, names its editor by `--editor-pid`, is
-  headless under a headless editor only through `editor/run/main_run_args`, and on Windows writes nothing to the
-  editor's stdout; an `EditorDebuggerPlugin` never captures Godot's own messages, which `ScriptEditorDebugger`'s
-  `debug_data` gives; the editor hears a game's `set_pid` before its session's `started`; `var_to_bytes` writes an
-  object the editor holds by id (`EncodedObjectAsID`) as its holder's own id, so the addon sends it as
-  `{"passenger:object": id}`; and a script can show no progress while `_build` blocks. The addon matches a session to
-  its `ScriptEditorDebugger` through the tab it adds (`add_session_tab`), never by its place in the tree; a relayed
-  message's data stays a `List<object?>`, as every reader matches one; Passenger's live-edit ids are negative, the
-  editor's counting up from one. `get_unsaved_scenes` exists only from 4.7, so an older Godot's open scenes count as
-  perhaps unsaved, and no Godot says whether a resource is unsaved, so one its inspector shows counts as held; the addon
-  reloads a scene only where Godot has it open and saved. A static function in an addon's script named after one of
-  Object's virtuals (`_set`) fails the whole script to compile; `remove_child` clears the owner of every node of the
-  branch whose owner is outside it, so a move, or an undo of a remove, sets the owners again. A headless game's window
-  is 64×64, so Passenger's helper gives it the project's `display/window/size` as it first comes in; Godot's project
-  script templates (`script_templates/`) are C# the game's build compiles unless removed
-  (`GodotScriptTemplates.Excluded`, `ProjectEdits.RemoveCompiled`), and without a .sln Godot writes the csproj again as
-  it makes a C# script; `PASSENGER_ADDON_TRACE` has the addon print each scene act it is asked for (the addon tests'
-  editors run with it); on Windows a test's Godot editor is two processes, the `_console.exe` wrapper and the editor,
-  both with `--editor`. IDE messaging's `Play` plays only the main scene, `DebugPlay`'s debugger fields are dead in
-  Godot 4 (Godot 3's Mono agent's), and `ReloadScripts` reloads the running games' scripts, the editor's own assemblies
-  reloaded by GodotTools' watcher every 0.5 s; Godot's JSON reads every number as a float. An agent's input and layout
-  reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing;
-  `PassengerTools.Godot.cs`).
+  (`GodotConnection.Bound`). Godot's runtime compiles a Shader only once its RID is asked for (`get_rid()`), with no
+  warnings, stopping at its first error and passing over a failed preprocess, so only the shader port's comparison test
+  reads Godot's own compile. A launch profile running Godot on the project (`GodotExecutables.NamesGodot`: Chickensoft's
+  `%GODOT%`) is the game's configuration (`RunConfiguration.NamesGodot`), its `--path` the launch's (`WithoutPath`). A
+  macOS export of an arm64 or universal game refuses a project without `textures/vram_compression/import_etc2_astc`. Its
+  .NET host rolls forward only to released runtimes, so a new game's framework is one it can run
+  (`GodotGames.Runnable`). Its IDE messaging's C# list of completion kinds has no font sizes, a kind's number passing to
+  the engine's own (9 font sizes, 10 styleboxes), so Passenger sends the engine's; an editor importing as it opens
+  answers no handshake until it is done (`GodotIdeLink` tries again after 10 s). GodotTools' `_Build` runs before any
+  addon's, so Passenger's addon sets its `SkipBuildBeforePlaying` while Passenger builds; a game the editor's Play
+  starts inherits the editor's environment, names its editor by `--editor-pid`, is headless under a headless editor only
+  through `editor/run/main_run_args`, and on Windows writes nothing to the editor's stdout; an `EditorDebuggerPlugin`
+  never captures Godot's own messages, which `ScriptEditorDebugger`'s `debug_data` gives; the editor hears a game's
+  `set_pid` before its session's `started`; `var_to_bytes` writes an object the editor holds by id (`EncodedObjectAsID`)
+  as its holder's own id, so the addon sends it as `{"passenger:object": id}`; and a script can show no progress while
+  `_build` blocks. The addon matches a session to its `ScriptEditorDebugger` through the tab it adds
+  (`add_session_tab`), never by its place in the tree; a relayed message's data stays a `List<object?>`, as every reader
+  matches one; Passenger's live-edit ids are negative, the editor's counting up from one. `get_unsaved_scenes` exists
+  only from 4.7, so an older Godot's open scenes count as perhaps unsaved, and no Godot says whether a resource is
+  unsaved, so one its inspector shows counts as held; the addon reloads a scene only where Godot has it open and saved.
+  A static function in an addon's script named after one of Object's virtuals (`_set`) fails the whole script to
+  compile; `remove_child` clears the owner of every node of the branch whose owner is outside it, so a move, or an undo
+  of a remove, sets the owners again. A headless game's window is 64×64, so Passenger's helper gives it the project's
+  `display/window/size` as it first comes in; Godot's project script templates (`script_templates/`) are C# the game's
+  build compiles unless removed (`GodotScriptTemplates.Excluded`, `ProjectEdits.RemoveCompiled`), and without a .sln
+  Godot writes the csproj again as it makes a C# script; `PASSENGER_ADDON_TRACE` has the addon print each scene act it
+  is asked for (the addon tests' editors run with it); on Windows a test's Godot editor is two processes, the
+  `_console.exe` wrapper and the editor, both with `--editor`. IDE messaging's `Play` plays only the main scene,
+  `DebugPlay`'s debugger fields are dead in Godot 4 (Godot 3's Mono agent's), and `ReloadScripts` reloads the running
+  games' scripts, the editor's own assemblies reloaded by GodotTools' watcher every 0.5 s; Godot's JSON reads every
+  number as a float. An agent's input and layout reach a game through Passenger's helper node (`PassengerAgent.gd`,
+  brought in by live editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
