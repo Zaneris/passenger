@@ -143,6 +143,33 @@ public sealed class GDScriptUsagesTests
         }
     }
 
+    /// <summary>A rename asked right after a script changed on disk, before the folder's watcher can have told of it, renames
+    /// in the script as the disk now has it, where it was refused as changed since it was read.</summary>
+    [AvaloniaFact]
+    public void A_rename_right_after_a_script_changed_on_disk_renames_in_it_as_the_disk_has_it()
+    {
+        (MainWindow window, TaskCompletionSource release) = Open();
+        try
+        {
+            OpenDocument document = window.EditorArea.Active!;
+            string changed = Enemy + "\n\nfunc again(player: Player):\n\tplayer.hit(\"again\")\n";
+            TestFolders.Write(folder, "enemy.gd", changed);
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "func hi");
+            Renamed(window, "strike");
+            bool renamed = Ui.Pumped(() => document.Text.Snapshot.ToString().Contains("func strike(", StringComparison.Ordinal), TimeSpan.FromSeconds(60));
+            Assert.True(renamed, $"The rename right after enemy.gd changed on disk was not made: {window.Status}");
+            Ui.PumpUntil(() => File.ReadAllText(Path.Combine(folder, "enemy.gd")).Contains("strike(\"again\")", StringComparison.Ordinal), "the rename in enemy.gd as the disk has it",
+                TimeSpan.FromSeconds(30));
+            Assert.Equal(changed.Replace("hit(", "strike(", StringComparison.Ordinal).Replace("\"hit\"", "\"strike\"", StringComparison.Ordinal),
+                File.ReadAllText(Path.Combine(folder, "enemy.gd")));
+        }
+        finally
+        {
+            window.Close();
+            release.SetResult();
+        }
+    }
+
     private static IReadOnlyList<string> Usages(FindView find) => [.. find.Rows.Where(r => r.Usage is not null).Select(r => r.Label)];
 
     /// <summary>Rename at the caret, the new name typed in its box and Enter pressed.</summary>

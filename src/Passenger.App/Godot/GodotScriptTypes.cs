@@ -1,3 +1,4 @@
+using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -151,6 +152,12 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         }
         GodotEngineApi? api = await apis.ApiAsync();
         GodotScenes scenes = await index.ScenesAsync(folder);
+        // A script written a moment ago, before the folder's watcher told of it, is read as the disk has it now.
+        if (await BackgroundWork.Run(() => Unheard(scenes, open)) is { Count: > 0 } unheard)
+        {
+            index.FilesChanged(unheard);
+            scenes = await index.ScenesAsync(folder);
+        }
         Func<string, bool>? lacks = index.LacksOf(folder);
         return await BackgroundWork.Run(() =>
         {
@@ -179,6 +186,37 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
                 lacks: lacks));
             return (IReadOnlyList<GDScriptRead>?)[.. trees.Select(t => new GDScriptRead(t.Key, analyzer.Analyze(t.Value, t.Key)))];
         });
+    }
+
+    /// <summary>How long after a script is written the folder's watcher may not yet have told of it.</summary>
+    private static readonly TimeSpan Telling = TimeSpan.FromSeconds(10);
+
+    /// <summary>The project's closed scripts written within <see cref="Telling"/> whose text on disk is not the one the
+    /// index holds: written since the index read them, the watcher not yet heard.</summary>
+    private static List<string> Unheard(GodotScenes scenes, IReadOnlyDictionary<string, string> open)
+    {
+        DateTime since = DateTime.UtcNow - Telling;
+        List<string> unheard = [];
+        foreach ((string res, string text) in scenes.Texts.Where(t => GodotScriptDeclarations.IsScript(t.Key)))
+        {
+            if (scenes.FileOf(res) is { } file && !open.ContainsKey(file) && WrittenAt(file) >= since && EditorArea.ReadText(file) is { } now && now != text)
+            {
+                unheard.Add(file);
+            }
+        }
+        return unheard;
+    }
+
+    private static DateTime WrittenAt(string file)
+    {
+        try
+        {
+            return File.GetLastWriteTimeUtc(file);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return DateTime.MinValue;
+        }
     }
 
     /// <summary>The project's autoloads that run a GDScript, by name, the res:// path of each's script; none outside a Godot project.</summary>
