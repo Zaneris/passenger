@@ -161,17 +161,13 @@ public partial class MainWindow
         {
             return Told($"{PathNames.Shown(file, Folder)} could not be read");
         }
-        if (edit.Change(had.Text) is not { } text)
+        if (edit.Change(had.Text) is null)
         {
             return Told(edit.Unchanged);
         }
-        if (await ChangeFileAsync(edit.Command, [file], () =>
+        if (await ChangeGodotProjectAsync(edit.Command, file, edit.Change) is { } refused)
         {
-            _ = FileText.SaveOver(file, had, text);
-            return null;
-        }) is { } refused)
-        {
-            return Told($"{GodotProject.FileName} could not be written: {refused}");
+            return Told(refused);
         }
         Editors.GodotPages?.Refresh();
         status.Text = edit.Done;
@@ -211,22 +207,9 @@ public partial class MainWindow
         {
             return Told($"{PathNames.Shown(file, Folder)} could not be read");
         }
-        GodotFile read = GodotFile.Parse(had.Text);
-        List<string> enabled = read.Sections.FirstOrDefault(s => s.Tag == GodotPlugins.Section)?.Property(GodotPlugins.Key) is { } listed
-            ? [.. GodotDefinitions.StringsIn(had.Text, listed.Value).Select(s => s.Text)] : [];
-        enabled.RemoveAll(r => r == plugin.Res);
-        if (enable)
+        if (Set(had.Text) is not null && await ChangeGodotProjectAsync($"{doing} Plugin {plugin.Name}", file, Set) is { } refused)
         {
-            enabled.Add(plugin.Res);
-        }
-        string text = GodotWrites.WithPlugins(had.Text, enabled);
-        if (text != had.Text && await ChangeFileAsync($"{doing} Plugin {plugin.Name}", [file], () =>
-        {
-            _ = FileText.SaveOver(file, had, text);
-            return null;
-        }) is { } refused)
-        {
-            return Told($"{GodotProject.FileName} could not be written: {refused}");
+            return Told(refused);
         }
         Editors.GodotPages?.Refresh();
         status.Text = $"{plugin.Name} is {(enable ? "enabled" : "disabled")} in {GodotProject.FileName}";
@@ -237,5 +220,38 @@ public partial class MainWindow
             status.Text = why;
             return why;
         }
+
+        // project.godot's text with the plugin put in the list of those enabled or taken out, or null where it is so already.
+        string? Set(string text)
+        {
+            GodotFile read = GodotFile.Parse(text);
+            List<string> enabled = read.Sections.FirstOrDefault(s => s.Tag == GodotPlugins.Section)?.Property(GodotPlugins.Key) is { } listed
+                ? [.. GodotDefinitions.StringsIn(text, listed.Value).Select(s => s.Text)] : [];
+            enabled.RemoveAll(r => r == plugin.Res);
+            if (enable)
+            {
+                enabled.Add(plugin.Res);
+            }
+            string written = GodotWrites.WithPlugins(text, enabled);
+            return written == text ? null : written;
+        }
     }
+
+    /// <summary>project.godot changed as one command of Undo, its new text worked out by <paramref name="change"/> inside the
+    /// change, from the file as it is once the gate is passed; left as it is where the change finds nothing to do then.
+    /// Null once done, else why not.</summary>
+    private async Task<string?> ChangeGodotProjectAsync(string command, string file, Func<string, string?> change) =>
+        await ChangeFileAsync(command, [file], () =>
+        {
+            // As it is now, with what Godot's editor or the person saved while the gate asked.
+            if (FileText.Load(file) is not { } now)
+            {
+                return $"{PathNames.Shown(file, Folder)} could not be read";
+            }
+            if (change(now.Text) is { } text)
+            {
+                _ = FileText.SaveOver(file, now, text);
+            }
+            return null;
+        }) is { } refused ? $"{GodotProject.FileName} could not be written: {refused}" : null;
 }

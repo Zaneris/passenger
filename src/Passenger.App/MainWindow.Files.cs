@@ -594,7 +594,8 @@ public partial class MainWindow
     /// disk's words for a write it refused.</summary>
     private async Task<string?> ChangeFileAsync(IReadOnlyCollection<string> paths, Func<string?> write, CommandHistory.Recording? into)
     {
-        if (await Editors.ClearAsync(paths) is { } held)
+        // Through the command's recording, so its writes of the open ones among them are not asked about again.
+        if (await (into is null ? Editors.ClearAsync(paths) : into.ClearAsync(paths)) is { } held)
         {
             return held;
         }

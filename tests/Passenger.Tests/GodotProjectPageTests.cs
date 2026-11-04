@@ -17,8 +17,8 @@ namespace Passenger.Tests;
 /// enables it in project.godot once asked, as one command Undo takes back; a preset added to export_presets.cfg on disk is
 /// shown as it comes; an autoload made a node from the page, once asked, is written so, Undo taking it back; and, each once
 /// asked, another scene made the main scene, an action added and given a mouse button, an event of an action taken out, an
-/// action taken out, a layer named and another's name cleared, each written where Godot saves it, Undo taking the last back.
-/// Godot is only asked its version.</summary>
+/// action taken out, a layer named and another's name cleared, each written where Godot saves it, Undo taking the last back;
+/// what Godot's editor saves there while the gate asks stays under the page's changes. Godot is only asked its version.</summary>
 public sealed class GodotProjectPageTests
 {
     private const string Project = """
@@ -209,7 +209,6 @@ public sealed class GodotProjectPageTests
     private static void Written(MainWindow window, string project, string text, string what) =>
         Ui.WaitFor(() => File.ReadAllText(project).Contains(text, StringComparison.Ordinal), () => $"project.godot to have {what} ({window.Status}): {File.ReadAllText(project)}");
 
-    /// <summary>The page the active group shows, once its facts are read.</summary>
     /// <summary>A main scene and an autoload project.godot names by their uids, as Godot 4.4 and newer write them, are shown by
     /// their res:// paths.</summary>
     [AvaloniaFact]
@@ -243,6 +242,62 @@ public sealed class GodotProjectPageTests
         }
     }
 
+    /// <summary>What Godot's editor saves in project.godot while the gate asks to write over what it holds there (a hold
+    /// the test stands in, as the addon would say it) stays: the page's plugin box and its new action each write their
+    /// change into project.godot as that save left it.</summary>
+    [AvaloniaFact]
+    public void What_godot_saves_while_the_gate_asks_stays_under_the_pages_changes()
+    {
+        string folder = TestFolders.Create("godot-page-held-");
+        TestFolders.Write(folder, GodotProject.FileName, Project);
+        TestFolders.Write(folder, Path.Combine("addons", "level_tools", "plugin.cfg"), "[plugin]\n\nname=\"Level Tools\"\ndescription=\"\"\nauthor=\"Ann\"\nversion=\"1.2\"\nscript=\"tools.gd\"\n");
+        MainWindow window = new()
+        {
+            Width = 1200, Height = 900, Autosaves = false, StartsLanguageServer = false,
+            GodotEnvironment = GodotUserFolders.Under(Path.Combine(folder, "..", Path.GetFileName(folder) + "-home")),
+        };
+        window.Show();
+        try
+        {
+            window.OpenFolder(folder);
+            Ui.Settle();
+            string project = Path.Combine(PathNames.Canonical(folder), GodotProject.FileName);
+            window.EditorArea.HeldElsewhere = path => PathNames.Same(PathNames.Canonical(path), project) ? "Godot's editor holds project.godot" : null;
+            List<string> asked = [];
+            window.Confirm = (title, _, _) =>
+            {
+                asked.Add(title);
+                if (title == "Write Over What Godot Holds?")
+                {
+                    // As the person reads the gate's question, Godot's editor saves the project's settings.
+                    File.WriteAllText(project, File.ReadAllText(project).Replace("config/name=\"Hopper\"\n", $"config/name=\"Hopper\"\nconfig/saved_{asked.Count}=true\n",
+                        StringComparison.Ordinal));
+                }
+                return Task.FromResult(true);
+            };
+            Ui.ChooseFromRowMenu(window, window.ExplorerView.Tree.Rows.Single(r => r.Path == project), "Godot Project");
+
+            Ui.Click(Shown(window).Body.GetVisualDescendants().OfType<CheckBox>().Single(b => b.Content as string == "Level Tools"));
+            Written(window, project, "enabled=PackedStringArray(\"res://addons/level_tools/plugin.cfg\")", "the plugin enabled");
+            Ui.Click(Named<TextBox>(window, GodotPageViewer.NewActionName));
+            window.KeyTextInput("dash");
+            Ui.ClickButton(Shown(window).Body, GodotPageViewer.AddActionWords);
+            Written(window, project, "dash={", "the action dash added");
+
+            string text = File.ReadAllText(project);
+            Assert.True(asked.SequenceEqual(["Enable Plugin?", "Write Over What Godot Holds?", "Add Input Action?", "Write Over What Godot Holds?"]),
+                $"Each change was to be asked, then the gate to ask before writing over what Godot holds; asked: {string.Join(" | ", asked)}");
+            Assert.True(text.Contains("config/saved_2=true\n", StringComparison.Ordinal) && text.Contains("config/saved_4=true\n", StringComparison.Ordinal)
+                && text.Contains("enabled=PackedStringArray(\"res://addons/level_tools/plugin.cfg\")", StringComparison.Ordinal),
+                $"project.godot was to keep what Godot's editor saved while each write's gate asked, under the plugin enabled and the action added:\n{text}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The page the active group shows, once its facts are read.</summary>
     private static GodotPageViewer Shown(MainWindow window)
     {
         Ui.WaitFor(() => window.EditorArea.ActiveGroup.GodotPage is { File: { IsReading: false, Facts: not null } }, "the Godot project's page, read");

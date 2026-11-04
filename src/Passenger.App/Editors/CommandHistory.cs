@@ -1121,7 +1121,8 @@ public sealed class CommandHistory
             {
                 return held;
             }
-            cleared.UnionWith(paths);
+            // As the open documents among them are named, which the writes' own gate looks for.
+            cleared.UnionWith(paths.Select(PathNames.Canonical));
             return null;
         }
 
