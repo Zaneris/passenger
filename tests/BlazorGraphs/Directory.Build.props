@@ -11,5 +11,8 @@
     <ArtifactsPath>$(MSBuildThisFileDirectory)../../artifacts</ArtifactsPath>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+    <!-- ASP.NET Core's static framework assets (Microsoft.AspNetCore.App.Internal.Assets), which the SDK downloads for a
+         project with .razor files, as every app of those templates has and these graphs have not. -->
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
   </PropertyGroup>
 </Project>
