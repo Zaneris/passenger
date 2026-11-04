@@ -1467,6 +1467,10 @@ public sealed partial class GDScriptAnalyzer
                 {
                     MethodMissing(call, attribute, owner, method, context);
                 }
+                if (method.Name == "free" && attribute.Base is GDScriptSelf && Engine?.Version >= new Version(4, 8) && context.Analysis.Tree is not null && Knows(context.Class))
+                {
+                    Error(context, call, "Calling \"self.free()\" can lead to bugs and crashes. Consider using \"queue_free()\" instead.");
+                }
                 return called;
             default:
                 Reduce(call.Callee, context);

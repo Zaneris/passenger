@@ -243,6 +243,12 @@ public sealed class GDScriptGodotErrorsTests
         + "\t\tpass\n\tvar inst := 1\n\tstatic var shared := 2\n\n\nclass R extends Q.inst:\n\tpass\n\n\n"
         + "class S extends Q.shared:\n\tpass\n\n\nclass T extends Engine:\n\tpass\n";
 
+    /// <summary>self.free() in a method, a lambda and an inner class, beside free() by its name alone and another node's
+    /// free(), which Godot 4.8 refuses and 4.7 takes, and a name declared nowhere that both refuse.</summary>
+    internal const string Frees = "extends Node\n\n\nfunc _ready() -> void:\n\tvar l := func lambda():\n\t\tself.free()\n\tself.free()\n"
+        + "\tfree()\n\tget_child(0).free()\n\tl.call()\n\tprint(nowhere)\n\n\nstatic func later() -> void:\n\tpass\n\n\n"
+        + "class Held extends Object:\n\tfunc drop() -> void:\n\t\tself.free()\n";
+
     private readonly string folder;
     private readonly GodotFound? godot = GodotExecutables.Find(null);
 
@@ -287,6 +293,9 @@ public sealed class GDScriptGodotErrorsTests
 
     [AvaloniaFact]
     public void Bases_it_refuses_are_its_errors_in_its_words() => Compared(("inherits.gd", Inherits), ("inner_base.gd", InnerBase), ("kinds.gd", BaseKinds));
+
+    [AvaloniaFact]
+    public void Self_free_is_its_error_in_its_words_where_it_is_one() => Compared(("frees.gd", Frees));
 
     [AvaloniaFact]
     public void Files_the_project_lacks_and_names_its_singletons_have_are_its_errors_in_its_words()

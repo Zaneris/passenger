@@ -10,8 +10,8 @@ namespace Passenger.UnitTests.Godot;
 /// tests, static places, indices, loops and typed collections, members' names, overrides, exports, files lacked and
 /// singleton autoloads, untyped overrides' returns, what must be constant, members reaching themselves and read from their
 /// classes, assignments to constants and read-only properties, new() refused, @onready refused, calls Godot makes as it
-/// reads, getters and setters, bases refused), Godot 4.8's words where they differ; and none where the class extends one
-/// this reading cannot read.</summary>
+/// reads, getters and setters, bases refused, 4.8's self.free()), Godot 4.8's words where they differ; and none where the
+/// class extends one this reading cannot read.</summary>
 public class GDScriptErrorsTests
 {
     private const string Api = """
@@ -37,7 +37,7 @@ public class GDScriptErrorsTests
             { "name": "Array", "methods": [] }, { "name": "Callable", "methods": [{ "name": "call", "return_type": "Variant", "is_vararg": true, "is_const": true }] }, { "name": "Signal", "methods": [] }
           ],
           "classes": [
-            { "name": "Object", "methods": [{ "name": "get", "return_value": { "type": "Variant" } }] },
+            { "name": "Object", "methods": [{ "name": "get", "return_value": { "type": "Variant" } }, { "name": "free" }] },
             { "name": "RefCounted", "inherits": "Object" },
             { "name": "Node", "inherits": "Object", "methods": [{ "name": "_ready", "is_virtual": true }, { "name": "get_name", "return_value": { "type": "StringName" } },
               { "name": "_process", "is_virtual": true, "arguments": [{ "name": "delta", "type": "float" }] }],
@@ -303,6 +303,16 @@ public class GDScriptErrorsTests
             "46: The rest parameter type must be \"Array\", but \"int\" is specified.",
             "50: Typed arrays are currently not supported for the rest parameter.",
         ], Errors(Script));
+    }
+
+    /// <summary>From Godot 4.8, self.free() in a method and a lambda, but not free() called by its name alone.</summary>
+    [Fact]
+    public void Self_free_is_an_error_in_godot_4_8s_words_on_its_line()
+    {
+        const string Script = "extends Node\n\n\nfunc _ready() -> void:\n\tvar l := func lambda():\n\t\tself.free()\n\tself.free()\n\tfree()\n\tl.call()\n";
+        const string Words = "Calling \"self.free()\" can lead to bugs and crashes. Consider using \"queue_free()\" instead.";
+        Assert.Empty(Errors(Script));
+        Assert.Equal([$"6: {Words}", $"7: {Words}"], Errors(Script, engine: Engine48));
     }
 
     /// <summary>Bases Godot refuses: a constant of no class, a variable, an engine singleton, a nested type of an engine
