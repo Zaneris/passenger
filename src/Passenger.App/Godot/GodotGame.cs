@@ -253,9 +253,35 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         {
             if (field != value)
             {
+                if (field is not null)
+                {
+                    field.StateChanged -= CountStop;
+                }
                 field = value;
+                if (value is not null)
+                {
+                    value.StateChanged += CountStop;
+                }
                 DebuggedChanged?.Invoke(this, EventArgs.Empty);
             }
+        }
+    }
+
+    /// <summary>How many times the game's Debug session has stopped it: a question sent before a stop is said stopped at
+    /// once (<see cref="Answer"/>), never waited out.</summary>
+    private int stops;
+
+    /// <summary>Ends at the game's next stop under the debugger.</summary>
+    private TaskCompletionSource nextStop = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private void CountStop(object? sender, EventArgs e)
+    {
+        if (sender is Debugging.DebugSession { State: Debugging.DebugState.Paused })
+        {
+            stops++;
+            TaskCompletionSource came = nextStop;
+            nextStop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            came.TrySetResult();
         }
     }
 
@@ -774,8 +800,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         UiThread.Check();
         TaskCompletionSource<(GodotNode? Tree, int Moves)> asked = treeAsked is { Task.IsCompleted: false } pending ? pending
             : treeAsked = new TaskCompletionSource<(GodotNode? Tree, int Moves)>(brought, TaskCreationOptions.RunContinuationsAsynchronously);
+        int sent = stops;
         await AskingAsync(asked.Task, GodotWords.RequestSceneTree);
-        (GodotNode? told, int moved) = await Answer(asked.Task, "with its scene tree");
+        (GodotNode? told, int moved) = await Answer(asked.Task, sent, "with its scene tree");
         return (told ?? throw new LiveAppException($"{Name} sent a scene tree Passenger could not read"), (int)asked.Task.AsyncState!, moved);
     }
 
@@ -802,8 +829,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         {
             asked = objectsAsked[id] = new TaskCompletionSource<GodotObjectState>(TaskCreationOptions.RunContinuationsAsynchronously);
         }
+        int sent = stops;
         await AskingAsync(asked.Task, GodotWords.InspectObjects, new List<object?> { (long)id }, false);
-        return await Answer(asked.Task, "with the node's properties");
+        return await Answer(asked.Task, sent, "with the node's properties");
     }
 
     /// <summary>Sets a property of an object to a value, which the game takes as it next reads its messages.</summary>
@@ -811,16 +839,26 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
 
     /// <summary>The answer to a question of the game's, <paramref name="what"/> naming the question its refusal says went
     /// unanswered; the refusal says too whether the game went on sending its other messages meanwhile (a question lost, else a
-    /// game or a connection held still), and the last error it raised meanwhile.</summary>
-    private async Task<T> Answer<T>(Task<T> asked, string? what = null)
+    /// game or a connection held still), and the last error it raised meanwhile. A game the debugger stopped since the
+    /// question was sent (<paramref name="stopsWhenSent"/>: a breakpoint in the handler a click ran) is said so at once.</summary>
+    private async Task<T> Answer<T>(Task<T> asked, int stopsWhenSent, string? what = null)
     {
         long since = System.Diagnostics.Stopwatch.GetTimestamp();
         TimeSpan limit = Waits.Of(AnswerLimit);
         AgentAsking? asking = Asking.Value;
         Mcp.AgentCall.Say($"Waiting for {Name} to answer{(what is null ? string.Empty : $" {what}")}");
+        Task stopped = stops != stopsWhenSent ? Task.CompletedTask : nextStop.Task;
         try
         {
-            return await asked.WaitAsync(limit, asking?.GiveUp ?? CancellationToken.None);
+            Task<T> answered = asked.WaitAsync(limit, asking?.GiveUp ?? CancellationToken.None);
+            if (await Task.WhenAny(answered, stopped) != answered)
+            {
+                UnawaitedWork.Dismiss(answered);
+                UnawaitedWork.Dismiss(asked);
+                throw new LiveAppException($"{Name} stopped under the debugger before it answered{(what is null ? string.Empty : $" {what}")}, as it ran what it was asked: "
+                    + "debug_state says where, and it answers once it runs on");
+            }
+            return await answered;
         }
         catch (OperationCanceledException) when (asking is { GiveUp.IsCancellationRequested: true })
         {
@@ -889,8 +927,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         picturesAsked[ask] = asked;
         try
         {
+            int sent = stops;
             await SendAsync(GodotWords.Screenshot, ask);
-            (int width, int height, string path) = await Answer(asked.Task, "with its picture");
+            (int width, int height, string path) = await Answer(asked.Task, sent, "with its picture");
             try
             {
                 return (await File.ReadAllBytesAsync(path), width, height);
@@ -972,6 +1011,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             {
                 CallsBesideMoved++;
             }
+            int sent = stops;
             // Through the one call the helper guards every other with.
             await SendAsync(GodotWords.LiveNodeCall, GodotLiveEditIds.Agent, GodotAgent.Asked, call, ask, new List<object?>(arguments));
             if (then is not null)
@@ -982,7 +1022,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
             List<object?> said;
             try
             {
-                said = await Answer(answer.Task, $"Passenger's helper's {call}");
+                said = await Answer(answer.Task, sent, $"Passenger's helper's {call}");
             }
             catch (LiveAppException)
             {

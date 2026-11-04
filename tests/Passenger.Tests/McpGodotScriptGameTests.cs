@@ -9,7 +9,7 @@ namespace Passenger.Tests;
 /// <summary>An agent debugging a Godot game of GDScript alone: app_tree, refused before it runs, names such a game among
 /// those it reaches, and reaches it once it does; a script it edits (and so saves) reloads in the game, which then says the
 /// edit's words, and hot_reload answers that Godot reloads each script as it is saved, with nothing else to apply, not that
-/// Hot Reload is off. Godot runs headless, its user folders the test's; without a Godot 4 it skips saying
+/// Hot Reload is off; a click stopping at a breakpoint is said so at once. Godot runs headless, its user folders the test's; without a Godot 4 it skips saying
 /// why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class McpGodotScriptGameTests : McpRig
@@ -55,6 +55,32 @@ public sealed class McpGodotScriptGameTests : McpRig
         Assert.True(reload.GetProperty("result").GetString() == "nothingToApply" && said.Contains("as it is saved", StringComparison.Ordinal)
             && !said.Contains("Hot Reload when debugging off", StringComparison.Ordinal),
             $"hot_reload on a game whose saved script had reloaded did not say that saved scripts reload: {reload}");
+        await Call(client, McpTools.Stop);
+    }
+
+    /// <summary>A scene of a button whose script counts each press.</summary>
+    private const string Presses = "extends Node2D\n\nvar count := 0\n\nfunc _ready() -> void:\n\t$Button.pressed.connect(_on_pressed)\n\n"
+        + "func _on_pressed() -> void:\n\tcount += 1\n\tprint(\"pressed \", count)\n";
+
+    /// <summary>A click whose handler stops at a breakpoint is said at once as the game stopped under the debugger, never
+    /// waited out and refused as a game paused, and debug_state says the stop.</summary>
+    [Fact]
+    public async Task A_click_that_stops_at_a_breakpoint_says_the_game_stopped()
+    {
+        File.WriteAllText(Path.Combine(folder, "main.tscn"), "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://press.gd\" id=\"1\"]\n\n"
+            + "[node name=\"Main\" type=\"Node2D\"]\nscript = ExtResource(\"1\")\n\n[node name=\"Button\" type=\"Button\" parent=\".\"]\n"
+            + "offset_right = 120.0\noffset_bottom = 40.0\ntext = \"Press\"\n");
+        File.WriteAllText(Path.Combine(folder, "press.gd"), Presses);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false,
+            environment: new() { [Passenger.App.Godot.GodotUserFolders.HomeVariable] = folder + "-home" });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "press.gd", ["line"] = 9 });
+        await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Ticker", ["waitSeconds"] = 10 });
+        await Until(async () => await Result(client, McpTools.AppTree) is { IsError: not true } tree && Text(tree).Contains("#Button", StringComparison.Ordinal), "the game's button");
+
+        CallToolResult clicked = await Result(client, McpTools.AppClick, new() { ["control"] = "#Button" });
+        Assert.True(clicked.IsError == true && Text(clicked).Contains("stopped under the debugger before it answered", StringComparison.Ordinal),
+            $"A click whose handler stopped at a breakpoint answered: {Text(clicked)}");
+        Assert.Equal("press.gd:9:1", (await Call(client, McpTools.DebugState)).GetProperty("location").GetString());
         await Call(client, McpTools.Stop);
     }
 
