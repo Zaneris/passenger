@@ -25,6 +25,7 @@ public sealed partial class GDScriptAnalyzer
                 Declaring(variable, type, "variable", local: false, valued);
                 ExportErrors(variable, type, context);
                 OnreadyErrors(variable, context);
+                PropertyFunctionsDeclared(variable, context);
                 MemberVariableWarnings(variable, context);
                 if (variable.Type is { } memberType)
                 {
@@ -343,6 +344,23 @@ public sealed partial class GDScriptAnalyzer
             if (value is not null)
             {
                 Bind(value, binds, context);
+            }
+        }
+    }
+
+    /// <summary>A property's getter and setter named (<c>set = set_active</c>) as where the class declares those functions,
+    /// so Go to Declaration, Find Usages and Rename take them as calls of them.</summary>
+    private void PropertyFunctionsDeclared(GDScriptVariable variable, Context context)
+    {
+        if (context.Analysis.Tree is null)
+        {
+            return;
+        }
+        foreach (GDScriptIdentifier? named in new[] { variable.GetterName, variable.SetterName })
+        {
+            if (named is not null && OwnNames(context.Class).TryGetValue(named.Name, out (GDScriptNode Node, int Offset) own) && own.Node is GDScriptFunction { Identifier: { } function })
+            {
+                context.Analysis.Declared[named] = new GDScriptDeclaration(context.Analysis.Path, own.Offset + function.Start, named.Name, GDScriptType.Builtin("Callable"));
             }
         }
     }

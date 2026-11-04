@@ -82,6 +82,18 @@ public class GDScriptRefactoringsTests
     }
 
     [Fact]
+    public void Renaming_a_function_a_property_names_as_its_setter_or_getter_renames_it_there_too()
+    {
+        string text = "extends Node\n\nvar active := true:\n\tset = set_active, get = is_active\n\n\nfunc set_active(value: bool) -> void:\n\tactive = value\n\n\n"
+            + "func is_active() -> bool:\n\treturn active\n";
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
+        GDScriptRefactored setter = GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("func set_active", StringComparison.Ordinal) + 6)!, "turn");
+        Assert.Contains("\tset = turn, get = is_active\n", After(setter, "res://main.gd", text));
+        GDScriptRefactored getter = GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("func is_active", StringComparison.Ordinal) + 6)!, "on");
+        Assert.Contains("\tset = set_active, get = on\n", After(getter, "res://main.gd", text));
+    }
+
+    [Fact]
     public void Extract_variable_declares_the_expression_before_its_statement_and_reads_it_there()
     {
         // Typed by := where its type is read, as an int literal's is; without the engine's operators, a product's is not.
