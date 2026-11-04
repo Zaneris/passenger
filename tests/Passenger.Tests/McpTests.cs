@@ -1157,6 +1157,24 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("caf\u00e9 cr\u00e8me \u2603\n", System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(menu)));
     }
 
+    /// <summary>An agent's history of lines past a file's end is refused naming how many lines the file has, never as lines
+    /// not committed yet; the file's last line still has its history.</summary>
+    [Fact]
+    public async Task An_agents_history_of_lines_past_a_files_end_says_how_many_lines_it_has()
+    {
+        string repository = TestFolders.Create("mcp-lines-");
+        DeleteAtEnd(repository);
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\ntwo\nthree");
+        await TestGit.InitAsync(repository);
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        CallToolResult past = await Result(client, McpTools.VcsLog, new() { ["path"] = "Notes.txt", ["startLine"] = 20, ["endLine"] = 30 });
+        Assert.True(past.IsError == true && Text(past).Contains("Notes.txt has 3 lines", StringComparison.Ordinal),
+            $"The history of lines past Notes.txt's end answered: {Text(past)}");
+        JsonElement last = Assert.Single((await Call(client, McpTools.VcsLog, new() { ["path"] = "Notes.txt", ["startLine"] = 3, ["endLine"] = 3 })).EnumerateArray());
+        Assert.Equal("First", last.GetProperty("subject").GetString());
+    }
+
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
     /// vcs_commit is refused naming the file, and nothing is committed.</summary>
     [Fact]

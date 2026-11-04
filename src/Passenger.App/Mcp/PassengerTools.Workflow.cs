@@ -174,9 +174,17 @@ public sealed partial class PassengerTools
             signatures = await Session.Vcs.Signatures.ReadAsync(repository, [.. commits.Select(c => c.Hash)]);
             return (IReadOnlyList<VcsCommit>)[.. commits.Select(c => Commit(c, null))];
         }
+        string full = Resolve(path);
+        // Lines past the file's end are no lines at all, never ones not committed yet.
+        if (lines is (_, int lastAsked) && !Directory.Exists(full)
+            && (Editors.Find(full) is { HoldsText: true } open ? open.Text.Snapshot : Passenger.App.Editors.EditorArea.Read(full)) is { } text
+            && lastAsked >= text.LineCount)
+        {
+            throw new ArgumentException($"{Relative(full)} has {Plural.Of(text.LineCount, "line")}, as editor_text numbers them: endLine {lastAsked + 1} is past its end", nameof(endLine));
+        }
         // Read now, so a rename made a moment ago is followed to where the last commit has the file.
         await Session.Vcs.RefreshAsync();
-        HistoryScope scope = await window.HistoryScopeAsync(Resolve(path), lines);
+        HistoryScope scope = await window.HistoryScopeAsync(full, lines);
         IReadOnlyList<HistoryCommit> history = await repository.HistoryAsync(scope, most);
         signatures = await Session.Vcs.Signatures.ReadAsync(repository, [.. history.Select(h => h.Commit.Hash)]);
         return [.. history.Select(h => Commit(h.Commit, h.Changes))];
