@@ -521,11 +521,12 @@ headless frame is GC pressure); a measure of a key's bytes collects first (LongT
 workspace pull, due timers fired, the last layout drawn. Not waited for: a running program, the state store's 0.5 s
 write delay (flush to read a state file), templates read ahead, the watcher's delay (wait for its `Changed`). Words
 describing the window as a wait gave up are a `Func<string>`. Wait with `Ui.WaitFor`, `Ui.PumpUntil` (the loop run, not
-settled), or `Waiting.Until`/`Within` off the UI thread; read a task's answer once it ended (`Ui.Await`,
-`Landed(task, what)`; `Ui.Idle` only where the window must run nothing); start a test's own work through
-`Waiting.Apart`; time that must pass is `Ui.Hold(time, why)`, `Ui.Stall` or `Waiting.For`. Every limit is a developer
-machine's time scaled by `TestRun.TimeScale` (`PASSENGER_TEST_TIME_SCALE`; CI 2 on macOS, 2.5 on Windows, 2 on Linux);
-the IDE's own waits scale by `PASSENGER_WAIT_SCALE`. `FLAKES.md` records each CI failure's cause.
+settled), or `Waiting.Until`/`Within` off the UI thread; read a task's answer once it ended (`Ui.Await`, `Landed(task,
+what)`; `Ui.Idle` only where the window must run nothing); start a test's own work through `Waiting.Apart`; time that
+must pass is `Ui.Hold(time, why)`, `Ui.Stall` or `Waiting.For`. Every limit is a `Deadline` (its clock stops while the
+machine sleeps), never the wall clock, of a developer machine's time scaled by `TestRun.TimeScale`
+(`PASSENGER_TEST_TIME_SCALE`; CI 2 on macOS, 2.5 on Windows, 2 on Linux); the IDE's own waits scale by
+`PASSENGER_WAIT_SCALE`. `FLAKES.md` records each CI failure's cause.
 
 **Isolation.** A run keeps to its own folder (`TestRun`): state, logs, sockets, test folders, shells' history, an empty
 Git configuration (no ssh-agent; its own GnuPG home and keys), NuGet's home on macOS and Linux, MSBuild's node salt,
@@ -538,8 +539,7 @@ container labels, user secrets, dotnet new's templates, Aspire's HOME and CLI, G
 `PASSENGER_REGEX_TIMEOUT_MS` (1 s each); a test holding a server to not answering sets that server's limits, never the
 run's. After each window test its windows close and what they started is waited out (`TestsLeaveNothingBehind`); each
 takes its own dispatcher (`UiThread.Own`). A plain `[Fact]` using `HeadlessUnitTestSession.Dispatch` must not end on the
-session's thread (`await Task.Yield()` before throwing). A sleeping Mac fails tests: full runs go under
-`caffeinate -is`.
+session's thread (`await Task.Yield()` before throwing). `just test` keeps the Mac awake for its run.
 
 **Collections and shared projects** (`Collections.cs`). Window tests run one at a time on the session's thread; beside
 them only `DebugSession.Collection` and `Beside` classes (no window, nothing shared changed, nothing held to a time). A
