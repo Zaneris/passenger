@@ -13,6 +13,10 @@ public sealed record GodotApiMethod(string Name, string Returns, IReadOnlyList<(
 
     /// <summary>Whether it leaves the value it is called on as it was, as the dump's is_const says.</summary>
     public bool IsConst { get; init; }
+
+    /// <summary>Each parameter's default as the dump writes it (<c>false</c>, <c>0</c>, <c>&amp;""</c>), null where a call
+    /// must give it; empty where none is known.</summary>
+    public IReadOnlyList<string?> Defaults { get; init; } = [];
 }
 
 /// <summary>An enum of Godot's API with its values by name.</summary>
@@ -77,13 +81,16 @@ public sealed class GodotEngineApi
     /// <summary>The Godot that wrote the dump, as its header says (4.8 for 4.8 beta 2); null where it says none.</summary>
     public Version? Version { get; private set; }
 
-    /// <summary>GDScript's own functions, which no dump of the API holds (modules/gdscript/gdscript_utility_functions.cpp).</summary>
-    private static readonly (string Name, string Returns, int Required, bool Varargs)[] GDScriptFunctions =
+    /// <summary>GDScript's own functions, which no dump of the API holds (modules/gdscript/gdscript_utility_functions.cpp),
+    /// each with its parameters as Godot's class reference names them.</summary>
+    private static readonly (string Name, string Returns, int Required, bool Varargs, (string Name, string Type)[] Parameters)[] GDScriptFunctions =
     [
-        ("convert", "Variant", 2, false), ("type_exists", "bool", 1, false), ("char", "String", 1, false), ("ord", "int", 1, false),
-        ("range", "Array", 0, true), ("load", "Resource", 1, false), ("inst_to_dict", "Dictionary", 1, false), ("dict_to_inst", "Object", 1, false),
-        ("Color8", "Color", 3, false), ("print_debug", "void", 0, true), ("print_stack", "void", 0, false), ("get_stack", "Array", 0, false),
-        ("len", "int", 1, false), ("is_instance_of", "bool", 2, false),
+        ("convert", "Variant", 2, false, [("what", "Variant"), ("type", "int")]), ("type_exists", "bool", 1, false, [("type", "StringName")]),
+        ("char", "String", 1, false, [("code", "int")]), ("ord", "int", 1, false, [("char", "String")]), ("range", "Array", 0, true, []),
+        ("load", "Resource", 1, false, [("path", "String")]), ("inst_to_dict", "Dictionary", 1, false, [("instance", "Object")]),
+        ("dict_to_inst", "Object", 1, false, [("dictionary", "Dictionary")]), ("Color8", "Color", 3, false, [("r8", "int"), ("g8", "int"), ("b8", "int"), ("a8", "int")]),
+        ("print_debug", "void", 0, true, []), ("print_stack", "void", 0, false, []), ("get_stack", "Array", 0, false, []), ("len", "int", 1, false, [("var", "Variant")]),
+        ("is_instance_of", "bool", 2, false, [("value", "Variant"), ("type", "Variant")]),
     ];
 
     /// <summary>Object's virtual methods a script may override, which no dump of the API lists.</summary>
@@ -164,9 +171,12 @@ public sealed class GodotEngineApi
             GodotApiMethod read = Method(function, Text(function, "return_type") ?? "void");
             api.Functions[read.Name] = read;
         }
-        foreach ((string name, string returns, int required, bool varargs) in GDScriptFunctions)
+        foreach ((string name, string returns, int required, bool varargs, (string, string)[] parameters) in GDScriptFunctions)
         {
-            api.Functions[name] = new GodotApiMethod(name, returns, [], required, varargs, false);
+            api.Functions[name] = new GodotApiMethod(name, returns, parameters, required, varargs, false)
+            {
+                Defaults = [.. parameters.Select((_, i) => i < required ? null : name == "Color8" ? "255" : null)],
+            };
         }
         if (api.Classes.GetValueOrDefault("Object") is { } baseObject)
         {
@@ -212,17 +222,21 @@ public sealed class GodotEngineApi
     private static GodotApiMethod Method(JsonElement method, string? type)
     {
         List<(string, string)> parameters = [];
+        List<string?> defaults = [];
         int required = 0;
         foreach (JsonElement argument in Array(method, "arguments"))
         {
             parameters.Add((Text(argument, "name") ?? string.Empty, Text(argument, "type") ?? "Variant"));
-            required += JsonMembers.Scalar(argument, "default_value") is null ? 1 : 0;
+            string? given = JsonMembers.Scalar(argument, "default_value");
+            defaults.Add(given);
+            required += given is null ? 1 : 0;
         }
         string returns = type ?? (JsonMembers.Object(method, "return_value") is { } value ? Text(value, "type") ?? "Variant" : "void");
         return new GodotApiMethod(Text(method, "name") ?? string.Empty, returns, parameters, required, Flag(method, "is_vararg"), Flag(method, "is_static"))
         {
             IsVirtual = Flag(method, "is_virtual"),
             IsConst = Flag(method, "is_const"),
+            Defaults = defaults,
         };
     }
 

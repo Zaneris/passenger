@@ -11,8 +11,8 @@ public sealed record GDScriptMemberInfo(string Name, string Kind, GDScriptType T
 /// <summary>The types Godot's analyzer gives a GDScript (a port of the typing of modules/gdscript/gdscript_analyzer.cpp,
 /// MIT): each member's and local's type (declared, inferred by <c>:=</c>, or by an untyped one's value, soft), each
 /// expression's, a class's members through its <c>extends</c> across the project's scripts and the engine's classes, and
-/// what each name is declared as. Godot's errors and warnings are its own server's; none here. Pure; a script's trees are
-/// read once each.</summary>
+/// what each name is declared as, with the warnings and errors its partial classes push where Godot's analyzer pushes them.
+/// Pure; a script's trees are read once each.</summary>
 public sealed partial class GDScriptAnalyzer
 {
     private readonly GDScriptProject project;
@@ -21,7 +21,11 @@ public sealed partial class GDScriptAnalyzer
 
     public GDScriptAnalyzer(GDScriptProject project) => this.project = project;
 
-    private GodotEngineApi? Engine => project.Engine;
+    /// <summary>What the scripts are read against: the project's scripts, class names, autoloads and the engine's API.</summary>
+    public GDScriptProject Project => project;
+
+    /// <summary>The engine's API the types are resolved against; null where none was dumped.</summary>
+    public GodotEngineApi? Engine => project.Engine;
 
     /// <summary>A script's analysis: every expression's and declaration's type, every name's declaration.</summary>
     public GDScriptAnalysis Analyze(GDScriptTree tree, string path)

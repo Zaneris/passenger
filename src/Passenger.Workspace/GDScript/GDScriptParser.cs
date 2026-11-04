@@ -123,6 +123,11 @@ internal sealed partial class GDScriptParser
         ["@rpc"] = (Targets.Function, 4, 4, false),
     };
 
+    /// <summary>The annotations Godot takes at a class's level (before the script, a member, or standing alone), else those a
+    /// statement takes, in the order Godot lists them.</summary>
+    internal static IEnumerable<string> AnnotationNames(bool classLevel) =>
+        KnownAnnotations.Where(a => (a.Value.Targets & (classLevel ? Targets.Script | Targets.ClassLevel | Targets.Standalone : Targets.Statement)) != 0).Select(a => a.Key);
+
     private static bool AppliesTo(GDScriptAnnotation annotation, Targets targets) =>
         KnownAnnotations.TryGetValue(annotation.Name, out (Targets Targets, int, int, bool) known) && (known.Targets & targets) != 0;
 

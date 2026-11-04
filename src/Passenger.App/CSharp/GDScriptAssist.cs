@@ -8,18 +8,18 @@ using Passenger.Workspace.GDScript;
 
 namespace Passenger.App.CSharp;
 
-/// <summary>A GDScript's answers from Passenger's own reading of it (<see cref="GodotScriptTypes"/>) while Godot's server
-/// for it has not started: completion of the names in scope and of a value's members, the hover card's declaration and
-/// type, Go to Declaration within the project's scripts, and a node's C# script's members (<see cref="GodotCSharpMembers"/>).
-/// Once Godot's server runs, its answers are the file's, joined by those C# members, which its server never reads.</summary>
-internal sealed class GDScriptAssist(AssistContext context, CodeCompletion completion, CodeNavigation navigation) : LanguageAssist
+/// <summary>A GDScript's answers from Passenger's own reading of it (<see cref="GodotScriptTypes"/>), first whether or not
+/// Godot's server for it runs: completion (<see cref="CompleteAsync"/>), the hover card's declaration and type, Go to
+/// Declaration within the project's scripts, and a node's C# script's members (<see cref="GodotCSharpMembers"/>), which
+/// Godot's server never reads. Where Passenger's reading has no answer, Godot's server is asked where it serves.</summary>
+internal sealed partial class GDScriptAssist(AssistContext context, CodeCompletion completion, ParameterInfo parameters, CodeNavigation navigation) : LanguageAssist
 {
-    private readonly Dictionary<CompletionItem, string> described = [];
-
-    /// <summary>Whether a file is a GDScript whose own server cannot answer yet.</summary>
+    /// <summary>Whether a file is a GDScript Passenger reads.</summary>
     private bool Answers(OpenDocument? document) =>
-        document is not null && GodotScriptTypes.IsScript(document.Path) && context.GodotScriptTypes?.Invoke() is not null
-        && context.WebOf(document) is not { Serving: true };
+        document is not null && GodotScriptTypes.IsScript(document.Path) && context.GodotScriptTypes?.Invoke() is not null;
+
+    /// <summary>Whether Godot's server serves a file, to be asked for what Passenger's reading cannot answer.</summary>
+    private bool Served(OpenDocument document) => context.WebOf(document) is { Serving: true };
 
     public override bool Typed(string text)
     {
@@ -28,70 +28,20 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
             return false;
         }
         char last = text[^1];
-        if (last == '.' || AssistContext.IsIdentifierChar(last) && !char.IsDigit(last) && context.WordStart(context.Caret) == context.Caret - 1)
+        int caret = context.Caret;
+        TextSnapshot snapshot = shown.Text.Snapshot;
+        char before = caret >= 2 && caret - 2 < snapshot.Length ? snapshot[caret - 2] : '\0';
+        // A member's dot, a name's first letter, an annotation's @, a node path's $, % or /, and a string's quote.
+        if (last is '.' or '@' or '$' or '%' or '/' or '"' or '\'')
+        {
+            IdeErrors.Observe(completion.Start(last.ToString()));
+        }
+        else if (AssistContext.IsIdentifierChar(last) && !char.IsDigit(last) && context.WordStart(caret) == caret - 1 && before is not ('$' or '%' or '@'))
         {
             IdeErrors.Observe(completion.Start(null));
         }
-        return true;
-    }
-
-    public override async Task<bool> CompleteAsync(string? trigger, bool incomplete)
-    {
-        if (context.Editors.Active is not { } shown || !Answers(shown) || context.GodotScriptTypes?.Invoke() is not { } types)
-        {
-            return false;
-        }
-        CancellationTokenSource cancel = completion.Asking();
-        TextSnapshot asked = shown.Text.Snapshot;
-        int caret = context.Caret;
-        int start = context.WordStart(caret);
-        GodotScriptTypes.Typed? typed = await types.TypedAsync(shown);
-        if (cancel.IsCancellationRequested || typed is null || context.Editors.Active != shown || shown.Text.Snapshot != asked)
-        {
-            return true;
-        }
-        bool afterDot = start > 0 && asked[start - 1] == '.';
-        List<GDScriptMemberInfo> members = afterDot ? MembersAfterDot(typed, start - 1) : InScope(typed, caret);
-        IReadOnlyList<GodotCSharpMember> csharp = afterDot ? await CSharpMembersAsync(context, shown, typed, start - 1) : [];
-        if (cancel.IsCancellationRequested || context.Editors.Active != shown || shown.Text.Snapshot != asked)
-        {
-            return true;
-        }
-        if (members.Count == 0 && csharp.Count == 0)
-        {
-            completion.Close();
-            return true;
-        }
-        described.Clear();
-        List<CompletionItem> items = [];
-        foreach (GodotCSharpMember member in csharp)
-        {
-            CompletionItem item = ItemOf(member);
-            items.Add(item);
-            described[item] = member.Shown;
-        }
-        foreach (GDScriptMemberInfo member in members.Where(m => csharp.All(c => c.Name != m.Name)))
-        {
-            CompletionItem item = new()
-            {
-                Label = member.Name,
-                Kind = member.Kind switch
-                {
-                    "func" => CompletionItemKind.Method,
-                    "const" => CompletionItemKind.Constant,
-                    "signal" => CompletionItemKind.Event,
-                    "enum" => CompletionItemKind.Enum,
-                    "class" => CompletionItemKind.Class,
-                    _ => CompletionItemKind.Variable,
-                },
-                Detail = member.Type.IsVariant ? member.Kind : member.Type.ToString(),
-                FilterText = member.Name,
-                SortText = member.Name.StartsWith('_') ? $"1{member.Name}" : $"0{member.Name}",
-            };
-            items.Add(item);
-            described[item] = Said(member);
-        }
-        completion.Open(new CodeCompletion.Completion(items, start, [], false) { Own = this });
+        // A call's signature after its bracket or comma; gone after its closing bracket.
+        parameters.AfterTyped(last);
         return true;
     }
 
@@ -157,49 +107,78 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
         return (member.Path, new TextPosition(line, at - snapshot.GetLineStart(line)));
     }
 
-    /// <summary>The members of the value before a dot: its type's, through its classes and the engine's.</summary>
-    private static List<GDScriptMemberInfo> MembersAfterDot(GodotScriptTypes.Typed typed, int dot)
-    {
-        if (typed.Analysis.NodeAt(dot - 1) is not ({ } node, _) || node is not GDScriptExpression)
-        {
-            return [];
-        }
-        GDScriptType owner = typed.Analysis.TypeOf(node);
-        return owner.IsVariant ? [] : [.. typed.Analyzer.Members(owner)];
-    }
-
-    /// <summary>The names a place may use: its function's locals declared before it, its class's members, then the
-    /// project's classes and autoloads.</summary>
-    private static List<GDScriptMemberInfo> InScope(GodotScriptTypes.Typed typed, int caret)
-    {
-        List<GDScriptMemberInfo> all = [.. typed.Analysis.LocalsAt(caret)];
-        HashSet<string> seen = new(all.Select(m => m.Name), StringComparer.Ordinal);
-        foreach (GDScriptMemberInfo member in typed.Analyzer.Members(GDScriptAnalyzer.ScriptClass(typed.Tree, typed.Analysis.Path)))
-        {
-            if (seen.Add(member.Name))
-            {
-                all.Add(member);
-            }
-        }
-        return all;
-    }
-
-    private static string Said(GDScriptMemberInfo member) =>
-        member.Kind == "func" ? $"func {member.Name}(){(member.Type.IsVariant ? string.Empty : $" -> {member.Type}")}"
-            : $"{member.Kind} {member.Name}{(member.Type.IsVariant ? string.Empty : $": {member.Type}")}";
-
     public override void Commit(CompletionItem item, int start)
     {
+        Offered? made = offered.GetValueOrDefault(item);
+        string insert = made?.Insert ?? item.Label;
+        int back = made?.Back ?? 0;
         TextSnapshot text = context.Editor.Document.Snapshot;
         int end = context.Caret;
-        while (end < text.Length && AssistContext.IsIdentifierChar(text[end]))
+        Replacing replaces = made?.Replaces ?? Replacing.Name;
+        while (end < text.Length && (replaces switch
+        {
+            Replacing.String => text[end] is not ('"' or '\'' or '\n'),
+            Replacing.Path => AssistContext.IsIdentifierChar(text[end]) || text[end] == '/',
+            _ => AssistContext.IsIdentifierChar(text[end]),
+        }))
         {
             end++;
         }
-        context.Editor.ApplyEdits([new TextEdit(start, Math.Max(0, end - start), item.Label)], SelectionSet.Single(start + item.Label.Length));
+        // A call's parentheses written after the name already are its own.
+        if (insert.EndsWith("()", StringComparison.Ordinal) && end < text.Length && text[end] == '(')
+        {
+            insert = insert[..^2];
+            back = 0;
+        }
+        context.Editor.ApplyEdits([new TextEdit(start, Math.Max(0, end - start), insert)], SelectionSet.Single(start + insert.Length - back));
     }
 
-    public override string? Describe(CompletionItem item) => described.GetValueOrDefault(item);
+    public override string? Describe(CompletionItem item) =>
+        (offered.GetValueOrDefault(item)?.What ?? (GlobalsNamed.TryGetValue(item, out Named? global) ? global : null)) is { } named && listedFrom is { } typed
+            ? SaidOf(typed, named) : null;
+
+    /// <summary>A function's or signal's signature where a name is one: a script's as written, the engine's as its API gives
+    /// it; null for any other.</summary>
+    private static GDScriptSignature? SignatureOf(GodotScriptTypes.Typed typed, Named named)
+    {
+        switch (named)
+        {
+            case OfScript { Member: { Kind: "func" or "signal", Declaration: { Script: { } script, Start: var start } } }:
+                GDScriptTree? tree = script == typed.Analysis.Path ? typed.Tree : typed.Analyzer.Project.Script(script);
+                return tree is not null && GDScriptSignature.DeclaredAt(tree, start) is ({ } node, int offset)
+                    ? node switch
+                    {
+                        GDScriptFunction function => GDScriptSignature.Of(function, tree.Text, offset),
+                        GDScriptSignal signal => GDScriptSignature.Of(signal, tree.Text, offset),
+                        _ => null,
+                    }
+                    : null;
+            case OfEngine { Kind: "func" or "signal" } engine when typed.Analyzer.Engine is { } api:
+                GodotApiMethod? method = engine.Owner == GlobalScope ? api.Functions.GetValueOrDefault(engine.Name)
+                    : api.Builtins.GetValueOrDefault(engine.Owner) is { } builtin ? builtin.Methods.GetValueOrDefault(engine.Name)
+                    : api.Chain(engine.Owner).Select(c => engine.Kind == "signal" ? c.Signals.GetValueOrDefault(engine.Name) : c.Methods.GetValueOrDefault(engine.Name))
+                        .FirstOrDefault(m => m is not null);
+                return method is null ? null : GDScriptSignature.Of(method, engine.Owner == GlobalScope ? null : engine.Owner, typed.Analyzer, engine.Kind);
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>How a card's first line writes what a name names: a function's or signal's signature, a variable's or
+    /// constant's type, a class by what it is.</summary>
+    private static string SaidOf(GodotScriptTypes.Typed typed, Named named) => named switch
+    {
+        OfScript or OfEngine when SignatureOf(typed, named) is { } signature => signature.ToString(),
+        OfScript { Member: var member } => $"{member.Kind} {member.Name}{(member.Type.IsVariant ? string.Empty : $": {member.Type}")}",
+        OfEngine engine => $"{engine.Kind} {(engine.Owner == GlobalScope ? string.Empty : engine.Owner + ".")}{engine.Name}{(engine.Type.IsVariant ? string.Empty : $": {engine.Type}")}",
+        OfClass { Kind: "autoload" } autoload => $"{autoload.Name}, an autoload",
+        OfClass { Kind: "class_name" } scripted => $"class {scripted.Name}",
+        OfClass { Kind: "type" } builtin => $"{builtin.Name}, a built-in type",
+        OfClass engineClass => typed.Analyzer.Engine?.Classes.GetValueOrDefault(engineClass.Name)?.Inherits is { } inherits ? $"class {engineClass.Name} extends {inherits}" : $"class {engineClass.Name}",
+        OfCSharp csharp => csharp.Member.Shown,
+        OfWords words => words.Said,
+        _ => string.Empty,
+    };
 
     /// <summary>The GDScript code style as Settings leaves it, which a file's .editorconfig overrides.</summary>
     public GDScriptFormatSettings Format { get; set; } = new();
@@ -363,6 +342,10 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
         }
         GDScriptDeclaration? declared = typed.Analysis.DeclarationOf(name);
         GDScriptType type = declared?.Type ?? typed.Analysis.TypeOf(name);
+        if (declared is null && type.IsVariant && Served(document))
+        {
+            return false;
+        }
         card.AddCode(type.IsVariant ? name.Name : $"{name.Name}: {type}");
         if (declared is { EngineClass: { } engine })
         {
@@ -378,6 +361,11 @@ internal sealed class GDScriptAssist(AssistContext context, CodeCompletion compl
             return false;
         }
         Declared? declared = await DeclaredAsync(shown, offset);
+        if (declared is null && Served(shown))
+        {
+            // Godot's server, for what Passenger's reading finds no declaration of.
+            return false;
+        }
         if (declared is null)
         {
             context.Say(Refusals.NoDeclaration);
