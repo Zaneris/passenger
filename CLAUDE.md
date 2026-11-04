@@ -138,9 +138,9 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   `FileText.Save` (atomic, metadata kept, a hard-linked file in place, a read-only one refused, Local History given the
   old bytes); a file the IDE makes `SaveNew` (its .editorconfig's end_of_line and charset), again `SaveOver`; one the
   window changes itself `MainWindow.ChangeFileAsync`; any other whole file `AtomicFile.Write`, a file that may be a link
-  (a shell's startup file) written to the file it names; a state file only the person may read `OwnFiles`; never
-  `File.WriteAll*`. An open project, solution, filter, nuget.config or Directory.Packages.props is saved before
-  Passenger writes it and loaded after (`SaveBeforeWriting`). Server edits pass `LineEndings.Fit` then
+  (a shell's startup file) written to the file it names (`AtomicFile.Target`); a state file only the person may read
+  `OwnFiles`; never `File.WriteAll*`. An open project, solution, filter, nuget.config or Directory.Packages.props is
+  saved before Passenger writes it and loaded after (`SaveBeforeWriting`). Server edits pass `LineEndings.Fit` then
   `Indentation.Fit`.
 - **A change of several files, or a move, is one command of global undo** (`EditorArea.Commands.Record`; `RecordWrites`
   for one that waits between writes; moves through `Recording.Move`, never a bare `EditorArea.MoveFile`; deletes kept).
@@ -368,6 +368,9 @@ a new name, and `just site-shots` retakes its images.
   through `AgentAnswers` and says what it left out. `save_all` stays a tool of its own, never asked about on a person's
   window (#278). `debug_evaluate`, `debug_input` and `breakpoint_set` are `Destructive` and ask the person the first
   time; every question closes unanswered after 2 minutes; calls send progress every 10 s (OpenCode gives up after 60 s).
+- **An await of a task the window's thread completes continues on the thread pool**, even with ConfigureAwait(false): what
+  must happen where the answer lands is an awaited `ContinueWith(…, ExecuteSynchronously)`; an await of work that may have
+  ended continues inline, so a view filling on its own turn awaits with `ConfigureAwaitOptions.ForceYielding`.
 - **Work every window shares** (a cache of tasks, a process-wide gate) runs on the thread pool, never the asking thread:
   a headless window test's thread never runs again once its test is over.
 - **A window the IDE opens of its own accord** (a notification, an agent's question) shows with `ShowActivated` false,
@@ -536,11 +539,11 @@ machine sleeps), never the wall clock, of a developer machine's time scaled by `
 Git configuration (no ssh-agent; its own GnuPG home and keys), NuGet's home on macOS and Linux, MSBuild's node salt,
 container labels, user secrets, dotnet new's templates, Aspire's HOME and CLI, Godot's user folders
 (`PASSENGER_GODOT_HOME`); `PersonsGodot` fails a run that writes the person's Godot folders. It never reaches nuget.org
-(local feeds, the restore-only `tests/*Graphs`, which name every package their test apps resolve, at its version: a CI
-cache restored by key prefix hides one missing), GitHub (`PASSENGER_RELEASES` dead), registries
-(`PASSENGER_BUILDKIT_CHECKS=off`), Docker Hub, symbol servers, Discord, the person's Passenger
-(`PASSENGER_START=headless`), or a host a browser asks of its own accord (`PASSENGER_BROWSER_PROXY`). It shortens
-`PASSENGER_EVAL_TIMEOUT_MS`, `PASSENGER_WATCH_LATER_MS` (3 s each), `PASSENGER_MCP_PROGRESS_MS` and
+(local feeds, the run folder's feedless nuget.config `TestRun.Feedless`, the restore-only `tests/*Graphs`, which name
+every package their test apps resolve, at its version: a CI cache restored by key prefix hides one missing), GitHub
+(`PASSENGER_RELEASES` dead), registries (`PASSENGER_BUILDKIT_CHECKS=off`), Docker Hub, symbol servers, Discord, the
+person's Passenger (`PASSENGER_START=headless`), or a host a browser asks of its own accord (`PASSENGER_BROWSER_PROXY`).
+It shortens `PASSENGER_EVAL_TIMEOUT_MS`, `PASSENGER_WATCH_LATER_MS` (3 s each), `PASSENGER_MCP_PROGRESS_MS` and
 `PASSENGER_REGEX_TIMEOUT_MS` (1 s each); a test holding a server to not answering sets that server's limits, never the
 run's. After each window test its windows close and what they started is waited out (`TestsLeaveNothingBehind`); each
 takes its own dispatcher (`UiThread.Own`). A plain `[Fact]` using `HeadlessUnitTestSession.Dispatch` must not end on the
