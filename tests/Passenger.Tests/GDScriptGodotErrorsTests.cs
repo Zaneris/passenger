@@ -12,8 +12,8 @@ namespace Passenger.Tests;
 /// <summary>Passenger's own reading of a GDScript gives the errors Godot's own server gives on the same scripts, in the same
 /// words on the same lines: a corpus of scripts, a family of Godot's analyzer's errors each (names not found, mismatched
 /// types and calls, operators, casts and type tests, static misuse and collections, declarations, files lacked, members
-/// reaching themselves, assignments and constructions, @onready, calls made as it reads, getters and setters), opened in a
-/// window whose Godot's server serves them, each script's errors from Godot's diagnostics and from Passenger's marks set
+/// reaching themselves, assignments and constructions, @onready, calls made as it reads, getters and setters, bases), opened
+/// in a window whose Godot's server serves them, each script's errors from Godot's diagnostics and from Passenger's marks set
 /// beside each other (an error Godot pushes twice at one place counted once). Without a Godot each test skips saying why;
 /// a Godot editor of its own, so run alone.</summary>
 [Collection(Alone.Name)]
@@ -217,6 +217,32 @@ public sealed class GDScriptGodotErrorsTests
     /// <summary>The base <see cref="Properties"/> extends, whose function it names, in which Godot finds no error.</summary>
     internal const string PropertiesBase = "extends Node\n\nfunc inherited_get() -> int:\n\treturn 1\n";
 
+    /// <summary>Bases Godot refuses: constants of no class, a variable, an engine singleton, nested types of an engine
+    /// class, not found or of no class, and a cycle.</summary>
+    internal const string Inherits = "class SomeClass:\n\tconst CONSTANT = 1\n\nconst CONSTANT = 1\n\nvar variable = 1\n\n# GH-75870\n\n"
+        + "class Class1 extends CONSTANT:\n\tpass\n\nclass Class2 extends variable:\n\tpass\n\n"
+        + "# GH-82081. `Time` is an engine singleton.\nclass Class3 extends Time:\n\tpass\n\n"
+        + "class Class4 extends RefCounted.Nested:\n\tpass\n\nclass Class5 extends SomeClass.UnknownClass:\n\tpass\n\n"
+        + "class Class6 extends SomeClass.CONSTANT:\n\tpass\n\nclass ClassA extends ClassB:\n\tpass\n"
+        + "class ClassB extends ClassA:\n\tpass\n\nfunc test():\n\tpass\n";
+
+    /// <summary>Classes extending themselves or their own members, some through the script's class_name, which from Godot
+    /// 4.8 are not looked for among a class's own members.</summary>
+    internal const string InnerBase = "class_name InnerBase\n\nclass A extends InnerA:\n\tclass InnerA:\n\t\tpass\n\nclass B extends InnerB:\n"
+        + "\tconst InnerB = A\n\nclass C extends InnerC.InnerInnerC:\n\tclass InnerC:\n\t\tclass InnerInnerC:\n"
+        + "\t\t\tpass\n\nclass D extends InnerBase.D:\n\tpass\n\nclass E extends InnerBase.E.InnerE:\n\tclass InnerE:\n"
+        + "\t\tpass\n\nclass F extends F:\n\tpass\n\nclass G extends G.InnerG:\n\tclass InnerG:\n\t\tpass\n\n"
+        + "class H extends InnerBase:\n\tpass\n\nconst _I = I\nclass I extends _I:\n\tpass\n\nconst _J = J\n"
+        + "class J extends _J.InnerJ:\n\tclass InnerJ:\n\t\tpass\n";
+
+    /// <summary>Members of each kind written as a base (a function, a signal, an enum), and nested types: of an engine
+    /// class, an instance's member, a static one, beside one Godot takes.</summary>
+    internal const string BaseKinds = "extends Node\n\nsignal fired\nenum Mode { A }\nvar held := 1\n\n\nfunc some_func() -> void:\n\tpass\n\n\n"
+        + "class K extends some_func:\n\tpass\n\n\nclass L extends fired:\n\tpass\n\n\nclass M extends Mode:\n\tpass\n\n"
+        + "\nclass N extends Node.Nested:\n\tpass\n\n\nclass O extends Q.Deep:\n\tpass\n\n\nclass Q:\n\tclass Deep:\n"
+        + "\t\tpass\n\tvar inst := 1\n\tstatic var shared := 2\n\n\nclass R extends Q.inst:\n\tpass\n\n\n"
+        + "class S extends Q.shared:\n\tpass\n\n\nclass T extends Engine:\n\tpass\n";
+
     private readonly string folder;
     private readonly GodotFound? godot = GodotExecutables.Find(null);
 
@@ -258,6 +284,9 @@ public sealed class GDScriptGodotErrorsTests
 
     [AvaloniaFact]
     public void Getters_and_setters_it_refuses_are_its_errors_in_its_words() => Compared([("props_base.gd", PropertiesBase)], ("props.gd", Properties));
+
+    [AvaloniaFact]
+    public void Bases_it_refuses_are_its_errors_in_its_words() => Compared(("inherits.gd", Inherits), ("inner_base.gd", InnerBase), ("kinds.gd", BaseKinds));
 
     [AvaloniaFact]
     public void Files_the_project_lacks_and_names_its_singletons_have_are_its_errors_in_its_words()

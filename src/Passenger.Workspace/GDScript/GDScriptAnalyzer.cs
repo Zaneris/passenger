@@ -86,6 +86,7 @@ public sealed partial class GDScriptAnalyzer
             ClassNameErrors(inner.Class!, inner: true, within);
             stops |= BaseLacked(inner.Class!, path, within) || !Knows(inner);
         }
+        stops |= ExtendsErrors(tree, path, self, analysis);
         if (stops)
         {
             List<GDScriptFinding> read = analysis.Found.GetRange(first, analysis.Found.Count - first);
@@ -95,9 +96,16 @@ public sealed partial class GDScriptAnalyzer
         return stops;
     }
 
-    /// <summary>Whether a class extends by path a file the project lacks, saying so in Godot's words.</summary>
+    /// <summary>Whether a class extends by path a file the project lacks, or from Godot 4.8 one that is no GDScript, saying
+    /// so in Godot's words.</summary>
     private bool BaseLacked(GDScriptClass node, string path, Context context)
     {
+        if (node.ExtendsPath is { } script && Engine?.Version >= new Version(4, 8) && !script.StartsWith("uid://", StringComparison.Ordinal)
+            && !script.EndsWith(".gd", StringComparison.OrdinalIgnoreCase))
+        {
+            Error(context, node, $"\"{Absolute(script, path)}\" is not a GDScript.");
+            return true;
+        }
         if (node.ExtendsPath is not { } written || Absolute(written, path) is not { } absolute || !Lacked(absolute))
         {
             return false;

@@ -10,8 +10,8 @@ namespace Passenger.UnitTests.Godot;
 /// tests, static places, indices, loops and typed collections, members' names, overrides, exports, files lacked and
 /// singleton autoloads, untyped overrides' returns, what must be constant, members reaching themselves and read from their
 /// classes, assignments to constants and read-only properties, new() refused, @onready refused, calls Godot makes as it
-/// reads, getters and setters), Godot 4.8's words where they differ; and none where the class extends one this reading
-/// cannot read.</summary>
+/// reads, getters and setters, bases refused), Godot 4.8's words where they differ; and none where the class extends one
+/// this reading cannot read.</summary>
 public class GDScriptErrorsTests
 {
     private const string Api = """
@@ -303,6 +303,52 @@ public class GDScriptErrorsTests
             "46: The rest parameter type must be \"Array\", but \"int\" is specified.",
             "50: Typed arrays are currently not supported for the rest parameter.",
         ], Errors(Script));
+    }
+
+    /// <summary>Bases Godot refuses: a constant of no class, a variable, an engine singleton, a nested type of an engine
+    /// class or not found or of no class, a cycle; and classes extending themselves or their own members, which from Godot
+    /// 4.8 are not looked for among a class's own members, with a base path of no GDScript.</summary>
+    [Fact]
+    public void A_base_godot_refuses_is_an_error_in_its_words_on_its_line()
+    {
+        const string Inherits = "class SomeClass:\n\tconst CONSTANT = 1\n\nconst CONSTANT = 1\n\nvar variable = 1\n\n# GH-75870\n\n"
+            + "class Class1 extends CONSTANT:\n\tpass\n\nclass Class2 extends variable:\n\tpass\n\n"
+            + "# GH-82081. `Time` is an engine singleton.\nclass Class3 extends Time:\n\tpass\n\n"
+            + "class Class4 extends RefCounted.Nested:\n\tpass\n\nclass Class5 extends SomeClass.UnknownClass:\n\tpass\n\n"
+            + "class Class6 extends SomeClass.CONSTANT:\n\tpass\n\nclass ClassA extends ClassB:\n\tpass\n"
+            + "class ClassB extends ClassA:\n\tpass\n\nfunc test():\n\tpass\n";
+        string[] refused =
+        [
+            "10: Constant \"CONSTANT\" is not a preloaded script or class.",
+            "13: Cannot use variable \"variable\" in extends chain.",
+            "17: Cannot inherit native class \"Time\" because it is an engine singleton.",
+            "20: Cannot get nested types for extension from non-GDScript type \"RefCounted\".",
+            "23: Could not find nested type \"UnknownClass\".",
+            "26: Identifier \"CONSTANT\" is not a preloaded script or class.",
+            "29: Cyclic inheritance.",
+        ];
+        Assert.Equal(refused, Errors(Inherits));
+        Assert.Equal(refused, Errors(Inherits, engine: Engine48));
+        const string InnerBase = "class_name InnerBase\n\nclass A extends InnerA:\n\tclass InnerA:\n\t\tpass\n\nclass B extends InnerB:\n"
+            + "\tconst InnerB = A\n\nclass C extends InnerC.InnerInnerC:\n\tclass InnerC:\n\t\tclass InnerInnerC:\n"
+            + "\t\t\tpass\n\nclass D extends InnerBase.D:\n\tpass\n\nclass E extends InnerBase.E.InnerE:\n\tclass InnerE:\n"
+            + "\t\tpass\n\nclass F extends F:\n\tpass\n\nclass G extends G.InnerG:\n\tclass InnerG:\n\t\tpass\n\n"
+            + "class H extends InnerBase:\n\tpass\n\nconst _I = I\nclass I extends _I:\n\tpass\n\nconst _J = J\n"
+            + "class J extends _J.InnerJ:\n\tclass InnerJ:\n\t\tpass\n";
+        Assert.Equal(["15: Cyclic inheritance.", "22: Cyclic inheritance.", "33: Cyclic inheritance."], Errors(InnerBase));
+        Assert.Equal(
+        [
+            "3: Could not find base class \"InnerA\".",
+            "7: Could not find base class \"InnerB\".",
+            "10: Could not find base class \"InnerC\".",
+            "15: Cyclic inheritance.",
+            "18: Classes can not inherit from their own members.",
+            "22: Cyclic inheritance.",
+            "25: Classes can not inherit from their own members.",
+            "33: Cyclic inheritance.",
+            "37: Classes can not inherit from their own members.",
+        ], Errors(InnerBase, engine: Engine48));
+        Assert.Equal(["1: \"res://thing.tscn\" is not a GDScript."], Errors("extends \"res://thing.tscn\"\n", engine: Engine48));
     }
 
     /// <summary>Properties' getters and setters Godot refuses: a setter's parameter typed as its property, a named function
