@@ -1716,7 +1716,7 @@ public sealed class DebugController : IDisposable
         Add(AppActions.RunToCursor, "Run to Cursor", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.RunToCursorAsync(c.File!.Path, c.Caret.Line), "run to the cursor")),
             (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused(), new("Run", 1, 6));
         Add(AppActions.SetNextStatement, "Set Next Statement", (d, c) => IdeErrors.Observe(d.SetNextStatementAsync(d.Session!, c.File!.Path, c.Caret.Line)),
-            (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused(), new("Run", 1, 7));
+            (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused() ?? (d.Session!.MovesNextStatement ? null : Refusals.NoNextStatement), new("Run", 1, 7));
         Add(AppActions.ShowExecutionPoint, "Show Execution Point", (d, _) =>
         {
             (string path, int line) = d.executionPoint!.Value;
@@ -1912,6 +1912,10 @@ public sealed class DebugController : IDisposable
             if (session.StoppedThread is not int thread)
             {
                 problem = "No thread is paused";
+            }
+            else if (!session.MovesNextStatement)
+            {
+                problem = Refusals.NoNextStatement;
             }
             else if (await session.GotoTargetAsync(path, line) is not { } target)
             {

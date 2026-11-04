@@ -149,6 +149,10 @@ public static class Refusals
     /// <summary>An action on a Godot project asked for in a folder that holds none.</summary>
     public const string NoGodotProject = "The open folder holds no Godot project (project.godot)";
 
+    /// <summary>Set Next Statement asked of a program whose debugger cannot move where a paused thread goes on (a Godot game's
+    /// GDScript).</summary>
+    public const string NoNextStatement = "The paused program's debugger cannot move where it goes on, so there is no Set Next Statement there";
+
     /// <summary>A build asked of a folder with no solution or project file MSBuild could build, which it would refuse in its own
     /// words (MSB1003).</summary>
     public const string NothingToBuild = "The open folder has no solution or project to build: open one, or a folder that holds one";

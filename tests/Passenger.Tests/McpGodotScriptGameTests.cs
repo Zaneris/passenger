@@ -63,9 +63,10 @@ public sealed class McpGodotScriptGameTests : McpRig
         + "func _on_pressed() -> void:\n\tcount += 1\n\tprint(\"pressed \", count)\n";
 
     /// <summary>A click whose handler stops at a breakpoint is said at once as the game stopped under the debugger, never
-    /// waited out and refused as a game paused, and debug_state says the stop.</summary>
+    /// waited out and refused as a game paused, and debug_state says the stop; Set Next Statement, which Godot's GDScript
+    /// debugger cannot do, is refused saying so, never in the protocol's words.</summary>
     [Fact]
-    public async Task A_click_that_stops_at_a_breakpoint_says_the_game_stopped()
+    public async Task A_click_that_stops_at_a_breakpoint_says_the_game_stopped_and_set_next_statement_says_its_debugger_has_none()
     {
         File.WriteAllText(Path.Combine(folder, "main.tscn"), "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://press.gd\" id=\"1\"]\n\n"
             + "[node name=\"Main\" type=\"Node2D\"]\nscript = ExtResource(\"1\")\n\n[node name=\"Button\" type=\"Button\" parent=\".\"]\n"
@@ -81,6 +82,9 @@ public sealed class McpGodotScriptGameTests : McpRig
         Assert.True(clicked.IsError == true && Text(clicked).Contains("stopped under the debugger before it answered", StringComparison.Ordinal),
             $"A click whose handler stopped at a breakpoint answered: {Text(clicked)}");
         Assert.Equal("press.gd:9:1", (await Call(client, McpTools.DebugState)).GetProperty("location").GetString());
+        CallToolResult next = await Result(client, McpTools.DebugSetNextStatement, new() { ["path"] = "press.gd", ["line"] = 10 });
+        Assert.True(next.IsError == true && Text(next).Contains(Passenger.App.Refusals.NoNextStatement, StringComparison.Ordinal),
+            $"Set Next Statement in a game's GDScript answered: {Text(next)}");
         await Call(client, McpTools.Stop);
     }
 

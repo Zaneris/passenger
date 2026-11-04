@@ -321,6 +321,9 @@ public sealed class DebugSession
     /// <summary>Why the debugger can set no data breakpoint where it runs, or null where it can.</summary>
     public string? DataBreakpointsUnavailable { get; private set; } = "The debugger has not started";
 
+    /// <summary>Whether the debugger can move where a paused thread goes on (Set Next Statement): Godot's GDScript one cannot.</summary>
+    public bool MovesNextStatement { get; private set; }
+
     public int? ExitCode { get; private set; }
 
     /// <summary>The program's process, once the adapter has said which it is.</summary>
@@ -484,6 +487,7 @@ public sealed class DebugSession
             });
             session.DataBreakpointsUnavailable = capabilities.SupportsDataBreakpoints == true ? null
                 : capabilities.DataBreakpointsUnavailable ?? "The debugger sets no data breakpoints";
+            session.MovesNextStatement = capabilities.SupportsGotoTargetsRequest == true;
             await session.connection.RequestAsync(request, arguments);
             await Task.WhenAny(session.initialized.Task, session.ending.Task).WaitAsync(TimeSpan.FromSeconds(30));
             session.GoingOn();
