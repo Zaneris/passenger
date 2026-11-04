@@ -100,8 +100,7 @@ public sealed partial record ShellPath(string Root, string? File, string Lines, 
         string had = System.IO.File.Exists(File) ? System.IO.File.ReadAllText(File) : string.Empty;
         string written = had.Length == 0 ? Lines : had.EndsWith('\n') ? $"{had}\n{Lines}" : $"{had}\n\n{Lines}";
         Directory.CreateDirectory(Path.GetDirectoryName(File)!);
-        string target = new FileInfo(File).LinkTarget is not null ? System.IO.File.ResolveLinkTarget(File, returnFinalTarget: true)?.FullName ?? File : File;
-        AtomicFile.Write(target, Encoding.UTF8.GetBytes(written));
+        AtomicFile.Write(AtomicFile.Target(File), Encoding.UTF8.GetBytes(written));
     }
 
     private static string Plural(string lines) => $"{lines.Count(c => c == '\n')} lines";

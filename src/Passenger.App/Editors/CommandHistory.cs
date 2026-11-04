@@ -672,11 +672,7 @@ public sealed class CommandHistory
     /// <summary>A file's length and last write time (through a link, its target's), or null when it is not there.</summary>
     private static (long Length, DateTime Written)? Stamp(string path)
     {
-        FileInfo info = new(path);
-        if (info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is FileInfo target)
-        {
-            info = target;
-        }
+        FileInfo info = new(AtomicFile.Target(path));
         return info.Exists ? (info.Length, info.LastWriteTimeUtc) : null;
     }
 

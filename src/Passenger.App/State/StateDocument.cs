@@ -664,7 +664,7 @@ internal static class StateFile
     public static void Replace(string path, JsonObject document, Action<(DateTime Written, long Length)>? placing = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        string target = new FileInfo(path).LinkTarget is not null ? File.ResolveLinkTarget(path, returnFinalTarget: true)?.FullName ?? path : path;
+        string target = AtomicFile.Target(path);
         if (FileText.IsReadOnly(target))
         {
             // Made read-only to keep it as it is: logged as a write that failed, never moved over.
