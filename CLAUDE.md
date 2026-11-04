@@ -141,9 +141,10 @@ App and the tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collecti
   with `FoldersUnder` and the open folder's files with `FilesUnder` (`IsSystemFile` passed over). Show one to a person
   with `PathNames.Shown`.
 - **Lines differ by reader.** Roslyn's server and compilers end a line at a lone '\r', U+0085, U+2028 and U+2029, an XML
-  reader (XAML's compilers, BAML, XamlIl) at a lone '\r' only. Every place crossing to a server, compiler, PDB or running
-  app goes through `ServerLines`/`ServerPlaces` (`Compiled`, `CountedByRoslyn`, `PositionOfCompiled`), never `new
-  TextPosition(line, character)`; the debugger's lines through `Debugging/BuiltLines`. MCP's places are the editor's.
+  reader (XAML's compilers, BAML, XamlIl) at a lone '\r' only. Every place crossing to a server, compiler, PDB or
+  running app goes through `ServerLines`/`ServerPlaces` (`Compiled`, `CountedByRoslyn`, `PositionOfCompiled`; many
+  places at once in one sweep of the text, `OffsetsOf`), never `new TextPosition(line, character)`; the debugger's lines
+  through `Debugging/BuiltLines`. MCP's places are the editor's.
 - **Writes go one way.** Every write of a file first passes `EditorArea.ClearAsync`, the one gate for what the person's
   Godot editor holds unsaved (`GodotHolds`; a person asked, an agent refused, `Refusals.HeldInGodot`), and `TrySave`
   refuses a held file unless the save was explicit or the gate let that open file through once; a command that writes
@@ -320,9 +321,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   recording in a container begins through `ContainerTrace.StartAsync`, passenger-tools' words are `ContainerToolsWords`.
   A run keeps its newest three memory snapshots' objects (`KeptSnapshots`); a program no dump can read is snapshot from
   its runtime's GC heap dump through the diagnostics port (`GcHeapDump`, the graph `HeapGraph.Building` as a dump's),
-  saying what that lacks (`MemorySnapshot.Lacks`). A heap dump is Passenger's own (`DumpTool`, deleted only once its
-  writer and reader end, `DeleteAfterAsync`; leftovers swept, `Sweep`): the runtime's createdump writes into the
-  program's stdout, and Windows' dumps only its parent.
+  saying what that lacks (`MemorySnapshot.Lacks`). A heap dump is Passenger's own, in the user's own folder (`DumpTool`,
+  `DumpTool.Folder`; deleted only once its writer and reader end, `DeleteAfterAsync`; leftovers swept, `Sweep`): the
+  runtime's createdump writes into the program's stdout, and Windows' dumps only its parent.
 - `Passenger.UpdateHandlers`: the startup hook that calls a debugged program's update handlers after Hot Reload, carried
   under `updatehandlers/`. `Passenger.Inspector` (+`.Wpf`): the Live Visual Tree's helper, loaded into the app by a
   startup hook, answering over a Unix socket (`Protocol.cs` compiled into both ends; what both say in `Serving.cs`'s
@@ -379,65 +380,65 @@ Projects in `src/`; `find_symbol` finds the rest:
   document reaches the file it was written in through `RoslynSession.WrittenAsync` (Razor's), else a read-only copy
   under the state's cache (`GeneratedCode`; an agent's tools on one answer from its text,
   `PassengerTools.NotGenerated`), never opened in the server, which would freeze its text into the compilation. A C#
-  symbol's uses in XAML come from one finder, `XamlService.UsesAsync` over `XamlNavigation.Uses` (Go to Declaration's
-  resolver) and `CodeSymbol`, a C# rename's edits there from it too (`XamlService.RenamesAsync`), and a rename started
-  in XAML is C#'s from its declaration (`XamlAssist.DeclaredRenameAsync`), the MVVM Toolkit's generated members
-  following through the extension's `ToolkitRenames`; what must read the C# as it stands awaits
-  `XamlService.CurrentAsync`. A build problem carries its inner build's framework (`Problem.Framework`), so a XAML
-  file's marks are the chosen framework's; an agent chooses it through `ide_action app.targetFramework`. A JS interop
-  call's function comes from Roslyn's binding in the extension (`JsInteropCalls`) over `JsFunctions`. A multi-targeted
-  project's framework is one choice (`TargetFrameworkChoices`, kept in `WorkspaceState`) that the XAML preview's build
-  (`XamlPreview.Output`), XAML's restore target and C#'s context (`CSharpService.ChosenContext`) follow: never a
-  framework's output taken by its newest write. A Godot game's C# is read against its scenes by `GodotScenes`
-  (Workspace: the reader, trees, paths, renames), followed through the watcher (`GodotSceneIndex`, which reads only what
-  changed, `Unread`, its maps changed a file at a time, `Project.Take`, one reading at a time, never a walk of every
-  file on the window's thread; an autoload's file through its uid, `GodotScenes.AutoloadFile`, never project.godot's
-  text), the extension's `GodotCode`, `GodotChecks`, and `GodotAssist` for `.tscn`/`.tres` (its marks `GodotSceneMarks`,
-  uids `GodotUids`; the extension's `GodotNames` for the generated names and the strings Godot's calls take,
-  `GodotPaths` for `res://` in C#; an engine member's Godot name GodotSharp's own, read from the IL of its
-  `PropertyName`/`MethodName`/`SignalName` static constructors (`GodotSharpNames`), its class reference's address
-  `GodotDocs`; a string naming what the project's files define, an input action, group, animation, autoload, shader
-  parameter or translation, through the extension's `GodotKinds` and Workspace's `GodotDefinitions`, `GodotChecks.Named`
-  the one answer, a C# string naming a member of the node it is on `GodotChecks.Members` (both over `Told`), a GDScript
-  member's C# uses the extension's `GodotNameStrings`, a GDScript's own strings and words `GodotScriptStrings`, the
-  projects' strings scanned only through the extension's `GodotKinds.WritesAsync` (each document's kept per text
-  version), a scene with no C# checked against the engine's classes read from the found Godot's GodotSharp.dll
-  (`GodotEngineClasses`, `GodotChecks.EngineAnswers`), a GDScript member renamed in its script taking its connections
-  and C# strings along (`GodotScriptRenameAsync`), and from a C# string naming it through its script
-  (`CSharpAssist.ScriptMemberAtAsync`, `CodeActions.RenameInScriptAsync`), a variable's scene keys
-  `CSharpAssist.SceneSets`, a Connect's other side `GodotStringRead.Handler`/`Connected`; a project.godot of GDScript
-  alone is a scene's project too (`ProjectSession.GodotOf`; the C# service's `BuiltGodotOf` a C# project's only), so
-  scene code reaches the scenes through `AssistContext.GodotOf` (`GodotSceneIndex.GameOf`), and a GDScript's class is
-  `GodotScenes.ChainOf` over `GodotScriptDeclarations`, read from `GDScriptTree` (Godot's own parser, ported: members
-  are runs between clean member starts, `Reparse` parsing only the edited run), typed by `GDScriptAnalyzer` (Godot's
-  analyzer, ported), the engine's types from the found Godot's extension_api.json (`GodotEngineApi`, dumped once per
-  version into the state's cache by `GodotEngineApis`: `GodotEngineClasses` has no member types, and Object's `free` is
-  in no dump; a warning only a newer Godot gives gated on the dump's version, `GodotEngineApi.Version`), a node path
-  typed from the scenes running the script (`GDScriptProject.NodeAt`, `GodotScriptTypes.NodesOf`), else Node, its Godot
-  warnings and errors `GDScriptAnalysis.Findings` (a script that doesn't parse gives its parse errors alone) (as
-  project.godot sets them, `GDScriptWarningSettings`) shown until Godot's server has pushed the file's own
-  (`WebDocument.ShowPassengers`), fixed by `GDScriptFixes` (several edits as one through `EditorFix.Edits`), and a
-  GDScript function's argument count answered only by `GodotScriptDeclared.Takes`, its names coloured by
-  `GDScriptAnalysis.Colours` through `ColourLayer` over the grammar, its Reformat Code `GDScriptFormatter` (by the style
-  guide's sections), refused unless `GDScriptFormatter.Differs` finds the same tokens, comments and tree, wrapping only
-  inside brackets (`GDScriptFormatter.Wrapping`), its options `GDScriptFormatSettings` (Settings › Code Style ›
-  GDScript, a file's .editorconfig over each), reformat on save in `CodeAssist.BeforeSave`, Order Script's Parts
-  `GDScriptFormatter.OrderParts`, never run by Reformat Code, its refactorings `GDScriptRefactorings` over
-  `GodotScriptTypes.ProjectReadAsync` (made by `CodeActions.GDScriptRefactorAsync`, a use Passenger can't see refusing,
-  `GDScriptUses.Unsure`; C#'s calls by a GDScript member's name come with their arguments after it, `GodotKindUse.Rest`,
-  which Change Signature rewrites, `CSharpAssist.GodotScriptCallEditsAsync`, a signal's scene handlers from
-  `CSharpAssist.GodotSignalHandlersAsync`); their fixes `GodotOffer` over the extension's `GodotFix` (members made by
-  Roslyn so the code builds) and Workspace's pure `GodotWrites`, a fix that asks first through `EditorFix.Confirms`;
-  Godot's generator assigns every field in generated code, so a field's values are read from the code's own documents);
-  a C# file no tab shows is pulled when shown or asked, never at a refresh (`CSharpService.Unseen`/`Shown`,
-  `CSharpDocument.Stale`); a node's C# script's members reach GDScript through `GodotCSharpMembers`; a C# file read
-  before its project's evaluation landed is pulled again once it does (`CSharpService.GodotProjectsChanged`), and the
-  open scenes are checked again whenever the server says it loaded projects (`CSharpService.ProjectsLoaded`), as a
-  script moved or added changes what their code reads as. A Godot shader is `GodotShaderAssist` over Workspace's
-  `GodotShaderCode`, its language the carried `GodotShaderTypes.json` as the Godot found takes it
-  (`GodotShaderCompiler.TableAsync`, probed per version), its marks Godot's own compiler's through `PassengerShaders.gd`
-  (`GodotShaderMarks`; a scene's own Shader's in `GodotSceneMarks` through `GodotStringPlaces`, and its completion,
-  cards and declarations through `GodotShaderAssist.SceneCodeAt`), one helper per rendering method
+  symbol's uses in XAML come from one finder (a project's XAML read only where it writes one of the symbol's
+  `CodeSymbol.Spellings`), `XamlService.UsesAsync` over `XamlNavigation.Uses` (Go to Declaration's resolver) and
+  `CodeSymbol`, a C# rename's edits there from it too (`XamlService.RenamesAsync`), and a rename started in XAML is C#'s
+  from its declaration (`XamlAssist.DeclaredRenameAsync`), the MVVM Toolkit's generated members following through the
+  extension's `ToolkitRenames`; what must read the C# as it stands awaits `XamlService.CurrentAsync`. A build problem
+  carries its inner build's framework (`Problem.Framework`), so a XAML file's marks are the chosen framework's; an agent
+  chooses it through `ide_action app.targetFramework`. A JS interop call's function comes from Roslyn's binding in the
+  extension (`JsInteropCalls`) over `JsFunctions`. A multi-targeted project's framework is one choice
+  (`TargetFrameworkChoices`, kept in `WorkspaceState`) that the XAML preview's build (`XamlPreview.Output`), XAML's
+  restore target and C#'s context (`CSharpService.ChosenContext`) follow: never a framework's output taken by its newest
+  write. A Godot game's C# is read against its scenes by `GodotScenes` (Workspace: the reader, trees, paths, renames),
+  followed through the watcher (`GodotSceneIndex`, which reads only what changed, `Unread`, its maps changed a file at a
+  time, `Project.Take`, one reading at a time, never a walk of every file on the window's thread; an autoload's file
+  through its uid, `GodotScenes.AutoloadFile`, never project.godot's text), the extension's `GodotCode`, `GodotChecks`,
+  and `GodotAssist` for `.tscn`/`.tres` (its marks `GodotSceneMarks`, uids `GodotUids`; the extension's `GodotNames` for
+  the generated names and the strings Godot's calls take, `GodotPaths` for `res://` in C#; an engine member's Godot name
+  GodotSharp's own, read from the IL of its `PropertyName`/`MethodName`/`SignalName` static constructors
+  (`GodotSharpNames`), its class reference's address `GodotDocs`; a string naming what the project's files define, an
+  input action, group, animation, autoload, shader parameter or translation, through the extension's `GodotKinds` and
+  Workspace's `GodotDefinitions`, `GodotChecks.Named` the one answer, a C# string naming a member of the node it is on
+  `GodotChecks.Members` (both over `Told`), a GDScript member's C# uses the extension's `GodotNameStrings`, a GDScript's
+  own strings and words `GodotScriptStrings`, the projects' strings scanned only through the extension's
+  `GodotKinds.WritesAsync` (each document's kept per text version), a scene with no C# checked against the engine's
+  classes read from the found Godot's GodotSharp.dll (`GodotEngineClasses`, `GodotChecks.EngineAnswers`), a GDScript
+  member renamed in its script taking its connections and C# strings along (`GodotScriptRenameAsync`), and from a C#
+  string naming it through its script (`CSharpAssist.ScriptMemberAtAsync`, `CodeActions.RenameInScriptAsync`), a
+  variable's scene keys `CSharpAssist.SceneSets`, a Connect's other side `GodotStringRead.Handler`/`Connected`; a
+  project.godot of GDScript alone is a scene's project too (`ProjectSession.GodotOf`; the C# service's `BuiltGodotOf` a
+  C# project's only), so scene code reaches the scenes through `AssistContext.GodotOf` (`GodotSceneIndex.GameOf`), and a
+  GDScript's class is `GodotScenes.ChainOf` over `GodotScriptDeclarations`, read from `GDScriptTree` (Godot's own
+  parser, ported: members are runs between clean member starts, `Reparse` parsing only the edited run), typed by
+  `GDScriptAnalyzer` (Godot's analyzer, ported), the engine's types from the found Godot's extension_api.json
+  (`GodotEngineApi`, dumped once per version into the state's cache by `GodotEngineApis`: `GodotEngineClasses` has no
+  member types, and Object's `free` is in no dump; a warning only a newer Godot gives gated on the dump's version,
+  `GodotEngineApi.Version`), a node path typed from the scenes running the script (`GDScriptProject.NodeAt`,
+  `GodotScriptTypes.NodesOf`), else Node, its Godot warnings and errors `GDScriptAnalysis.Findings` (a script that
+  doesn't parse gives its parse errors alone) (as project.godot sets them, `GDScriptWarningSettings`) shown until
+  Godot's server has pushed the file's own (`WebDocument.ShowPassengers`), fixed by `GDScriptFixes` (several edits as
+  one through `EditorFix.Edits`), and a GDScript function's argument count answered only by `GodotScriptDeclared.Takes`,
+  its names coloured by `GDScriptAnalysis.Colours` through `ColourLayer` over the grammar, its Reformat Code
+  `GDScriptFormatter` (by the style guide's sections), refused unless `GDScriptFormatter.Differs` finds the same tokens,
+  comments and tree, wrapping only inside brackets (`GDScriptFormatter.Wrapping`), its options `GDScriptFormatSettings`
+  (Settings › Code Style › GDScript, a file's .editorconfig over each), reformat on save in `CodeAssist.BeforeSave`,
+  Order Script's Parts `GDScriptFormatter.OrderParts`, never run by Reformat Code, its refactorings
+  `GDScriptRefactorings` over `GodotScriptTypes.ProjectReadAsync` (made by `CodeActions.GDScriptRefactorAsync`, a use
+  Passenger can't see refusing, `GDScriptUses.Unsure`; C#'s calls by a GDScript member's name come with their arguments
+  after it, `GodotKindUse.Rest`, which Change Signature rewrites, `CSharpAssist.GodotScriptCallEditsAsync`, a signal's
+  scene handlers from `CSharpAssist.GodotSignalHandlersAsync`); their fixes `GodotOffer` over the extension's `GodotFix`
+  (members made by Roslyn so the code builds) and Workspace's pure `GodotWrites`, a fix that asks first through
+  `EditorFix.Confirms`; Godot's generator assigns every field in generated code, so a field's values are read from the
+  code's own documents); a C# file no tab shows is pulled when shown or asked, never at a refresh
+  (`CSharpService.Unseen`/`Shown`, `CSharpDocument.Stale`); a node's C# script's members reach GDScript through
+  `GodotCSharpMembers`; a C# file read before its project's evaluation landed is pulled again once it does
+  (`CSharpService.GodotProjectsChanged`), and the open scenes are checked again whenever the server says it loaded
+  projects (`CSharpService.ProjectsLoaded`), as a script moved or added changes what their code reads as. A Godot shader
+  is `GodotShaderAssist` over Workspace's `GodotShaderCode`, its language the carried `GodotShaderTypes.json` as the
+  Godot found takes it (`GodotShaderCompiler.TableAsync`, probed per version), its marks Godot's own compiler's through
+  `PassengerShaders.gd` (`GodotShaderMarks`; a scene's own Shader's in `GodotSceneMarks` through `GodotStringPlaces`,
+  and its completion, cards and declarations through `GodotShaderAssist.SceneCodeAt`), one helper per rendering method
   (`GodotDefinitions.RenderingMethod`), let go when no shader has been open or asked for a while
   (`GodotShaderCompiler.Opened`/`Closed`, `IdleVariable`). A theme item's name is read through `GodotThemeTable` (the
   carried `GodotDefaultTheme.json`, `just godot-theme`) and the project's themes (`GodotDefinitions.ThemeItems`), looked
@@ -500,13 +501,13 @@ Projects in `src/`; `find_symbol` finds the rest:
   that node's), `GodotSceneProperties` over `GodotSceneValues`, a property written where Godot's save puts it and taken
   out at its default, its engine defaults from `PassengerClasses.gd` through `GodotEngineApis.ClassesAsync` and
   `GodotClassDefaults`, its exports `GodotMember.Inspected` for C# and `GDScriptExports`; Keep `GodotKeep`; a run's
-  errors pinned to lines `GodotErrorPins` through `ErrorPinColumn`, its console folded `GodotConsoleFold`; a running
-  game's member values at their lines' ends `GodotLiveValues`, into `OpenDocument.LiveValues` through the helper's
-  `values` call, members from `GodotMembers`; `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol
-  `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's build skipped while what its last build read and wrote stands,
-  a build under way waited out first), `TogetherBuild`; on Windows a build's first step lets go of the Avalonia
-  previewers holding its output (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time
-  (`ConsoleWritten`).
+  errors pinned to lines `GodotErrorPins` through `ErrorPinColumn` and brought to Problems together at most every 200 ms
+  (`ProblemsModel.RaiseGodot`), its console folded `GodotConsoleFold`; a running game's member values at their lines'
+  ends `GodotLiveValues`, into `OpenDocument.LiveValues` through the helper's `values` call, members from
+  `GodotMembers`; `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`),
+  `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build under way waited out
+  first), `TogetherBuild`; on Windows a build's first step lets go of the Avalonia previewers holding its output
+  (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time (`ConsoleWritten`).
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach, Restart
   and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time (`TakeStartAsync`);
   Stop ends every session and recording before the programs go. A project run's logs and traces go to a dashboard of its
