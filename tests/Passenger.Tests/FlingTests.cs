@@ -9,8 +9,8 @@ namespace Passenger.Tests;
 
 /// <summary>A fling through a long C# file leaves the collector little to promote: each line laid out in one run for each
 /// look, blanks adding none, each run shaped on its own so the formatter splits no buffer it would leave to its
-/// finalizer, and the colours of rows scrolled past let go while they are young, a long file keeping what a short one
-/// does. Counts, not times; collections forced and finalizers counted, so run alone.</summary>
+/// finalizer, and the colours and hints of rows scrolled past let go while they are young, a long file keeping what a
+/// short one does. Counts, not times; collections forced and finalizers counted, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class FlingTests
 {
@@ -67,14 +67,16 @@ public sealed class FlingTests
     }
 
     [AvaloniaFact]
-    public void A_fling_through_a_long_file_keeps_the_colours_a_short_ones_does()
+    public void A_fling_through_a_long_file_keeps_the_colours_and_hints_a_short_ones_does()
     {
-        (int Lines, int Rows) Kept(int lines)
+        (int Lines, int Hints, int Rows) Kept(int lines)
         {
             EditorRig rig = new(string.Join('\n', Enumerable.Range(0, lines).Select(Line)));
             using CSharpHighlighter csharp = new(rig.Document);
             CodeEditor editor = rig.Editor;
             editor.Highlighter = csharp;
+            editor.SetInlayHints([.. Enumerable.Range(0, lines).Where(i => i % 10 != 9)
+                .Select(i => new InlayHint(rig.Document.Snapshot.GetLineStart(i) + rig.Document.Snapshot.GetLine(i).ToString().IndexOf("3,", StringComparison.Ordinal), "width:", PadRight: true))]);
             Ui.Settle();
             Point over = editor.TranslatePoint(new Point(editor.Bounds.Width / 2, editor.Bounds.Height / 2), rig.Window)!.Value;
             double screen = Math.Floor(editor.Bounds.Height / 50);
@@ -83,14 +85,16 @@ public sealed class FlingTests
                 rig.Window.MouseWheel(over, new Vector(0, -screen));
                 Ui.Draw();
             }
-            (int, int) kept = (csharp.LinesKept, (int)(editor.Bounds.Height / editor.LineHeight));
+            (int, int, int) kept = (csharp.LinesKept, editor.RowHintsKept, (int)(editor.Bounds.Height / editor.LineHeight));
             rig.Window.Close();
             return kept;
         }
-        (int Lines, int Rows) few = Kept(500);
-        (int Lines, int Rows) many = Kept(8000);
+        (int Lines, int Hints, int Rows) few = Kept(500);
+        (int Lines, int Hints, int Rows) many = Kept(8000);
         Assert.True(many.Lines <= few.Lines + few.Rows,
             $"Flung through 8,000 lines, the highlighter kept {many.Lines} lines' colours, against {few.Lines} through 500: a line scrolled past is kept until it reaches the collector's oldest generation");
+        Assert.True(many.Hints <= few.Hints + few.Rows && many.Hints <= 3 * many.Rows,
+            $"Flung through 8,000 lines, the editor kept {many.Hints} rows' hints, against {few.Hints} through 500, with {many.Rows} rows on screen: the hints of rows scrolled past are kept");
     }
 
     /// <summary>The finalizable objects a full collection found dead, the queue emptied before: what the work since the last

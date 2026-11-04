@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
@@ -114,7 +116,8 @@ public sealed partial class CodeEditor
     private int FirstHintFrom(int offset) => Sorted.FirstAtOrAfter(decorations.InlayHints, static h => h.Offset, offset);
 
     /// <summary>The hints shown on a row: those at a wrap go on the row it starts. Kept for the row while the text, the hints
-    /// and how they are drawn stand (<see cref="rowGaps"/>), so a frame that draws them again makes none of them again.</summary>
+    /// and how they are drawn stand and the row is on screen (<see cref="rowGaps"/>), so a frame that draws them again makes
+    /// none of them again.</summary>
     private Gap[] HintsOn(RowSpan span)
     {
         HintList hints = decorations.InlayHints;
@@ -125,14 +128,16 @@ public sealed partial class CodeEditor
             return [];
         }
         (HintList, TextSnapshot, bool, bool, double, double) drawn = (hints, document.Snapshot, showTypeHints, showParameterHints, metrics.CharWidth, FontSize);
-        if (!rowGapsOf.Equals(drawn) || rowGaps.Count > 4096)
+        if (!rowGapsOf.Equals(drawn))
         {
             rowGaps.Clear();
             rowGapsOf = drawn;
         }
-        if (rowGaps.TryGetValue((span.Start, span.End), out Gap[]? kept) && Drawn(kept))
+        ref (Gap[] Gaps, long Used) kept = ref CollectionsMarshal.GetValueRefOrNullRef(rowGaps, (span.Start, span.End));
+        if (!Unsafe.IsNullRef(ref kept) && Drawn(kept.Gaps))
         {
-            return kept;
+            kept.Used = frameNumber;
+            return kept.Gaps;
         }
         int count = 0;
         for (int i = low; i < hints.Count && hints[i].Offset <= end; i++)
@@ -151,7 +156,7 @@ public sealed partial class CodeEditor
             double width = HintWidth(hint, out TextLine label);
             gaps[at++] = new Gap(hint.Offset - span.Start, width, label, hint.PadLeft, Trails(hint), hint);
         }
-        rowGaps[(span.Start, span.End)] = gaps;
+        rowGaps[(span.Start, span.End)] = (gaps, frameNumber);
         return gaps;
     }
 
@@ -187,10 +192,27 @@ public sealed partial class CodeEditor
         return true;
     }
 
-    /// <summary>Each row's hints as <see cref="HintsOn"/> found them, by where the row starts and ends, while what they were
-    /// found for (<see cref="rowGapsOf"/>: the hints, the text, which are shown, the font) stands.</summary>
-    private readonly Dictionary<(int Start, int End), Gap[]> rowGaps = [];
+    /// <summary>Each row's hints as <see cref="HintsOn"/> found them, by where the row starts and ends, and the last frame that
+    /// asked for them, while what they were found for (<see cref="rowGapsOf"/>: the hints, the text, which are shown, the
+    /// font) stands; let go with the labels they draw (<see cref="KeepRowGaps"/>), as their row leaves the screen.</summary>
+    private readonly Dictionary<(int Start, int End), (Gap[] Gaps, long Used)> rowGaps = [];
+
     private (HintList?, TextSnapshot?, bool, bool, double, double) rowGapsOf;
+
+    /// <summary>How many rows' hints are kept: those of the rows on screen and of the rows the last frames drew.</summary>
+    public int RowHintsKept => rowGaps.Count;
+
+    /// <summary>Lets go of the rows' hints last asked for before a frame, as the labels they draw are let go.</summary>
+    private void KeepRowGaps(long keepFrom)
+    {
+        foreach (((int, int) row, (Gap[] _, long used)) in rowGaps)
+        {
+            if (used < keepFrom)
+            {
+                rowGaps.Remove(row);
+            }
+        }
+    }
 
     /// <summary>Whether shown hints stand at an offset, and whether one of them ends the text before it (a type).</summary>
     private (bool Any, bool Trailing) HintsAt(int offset)
