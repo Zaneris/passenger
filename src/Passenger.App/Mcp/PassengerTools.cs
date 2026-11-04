@@ -2170,6 +2170,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new InvalidOperationException($"{action} takes no input");
         }
         IdeAction? named = window.Actions[action];
+        if (named is null && window.Actions[AppActions.Now(action)] is null)
+        {
+            throw new ArgumentException($"No action is called {action}: ide_actions lists them, a query narrowing it to those whose id, name or group holds it", nameof(action));
+        }
         if (named is { Group: GitGroup })
         {
             // Read now, as the vcs tools read it: the agent's shell may have begun a rebase a moment ago.
