@@ -19,7 +19,7 @@ its keys follow Rider's keymaps (their files are in the jars of `~/Applications/
 
 ```sh
 just build                 # Debug build of Passenger.slnx; warnings are errors
-just run [PATH] [args]     # the IDE on a folder or file (--file F, --caret L:C, --theme dark|light)
+just run [PATH] [args]     # the IDE on a folder or file (--file F, --caret L:C, --theme dark|light, --run|--debug [NAME])
 just screenshot X.png ...  # the main window drawn off-screen to a PNG, after the steps given
 just test [filter] [N] [--gate|--report]  # tests whose name matches (one lane, or both), in N processes, then the
                            # Alone classes (tools/test-run.py); results and logs in artifacts/test-results/local;
