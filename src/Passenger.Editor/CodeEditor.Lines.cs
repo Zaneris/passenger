@@ -37,6 +37,10 @@ public sealed partial class CodeEditor
     /// <summary>How many characters the editor has asked its highlighter to colour.</summary>
     public long CharactersColoured { get; private set; }
 
+    /// <summary>How many runs the lines the editor formatted were laid out in: each a glyph run the frame records, shapes and
+    /// draws, with the buffers the formatter splits for it.</summary>
+    public long RunsFormatted { get; private set; }
+
     /// <summary>How many characters the editor has read to place a long line's columns: what a key costs to measure.</summary>
     public long CharactersMeasured { get; private set; }
 
@@ -253,7 +257,9 @@ public sealed partial class CodeEditor
         TextRunProperties plain = only ?? Run(TokenKind.Text);
         ITextSource source = runs.Length == 0 ? new SingleRun(content, plain) : new ColouredRuns(content, runs, plain, Run);
         CharactersFormatted += content.Length;
-        return TextFormatter.Current.FormatLine(source, 0, double.PositiveInfinity, new LineProperties(plain, metrics.CharWidth * Indent.TabWidth))!;
+        TextLine line = TextFormatter.Current.FormatLine(source, 0, double.PositiveInfinity, new LineProperties(plain, metrics.CharWidth * Indent.TabWidth))!;
+        RunsFormatted += line.TextRuns.Count;
+        return line;
     }
 
     private double Measure(string text)
@@ -1381,11 +1387,16 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>A line's text in its colours, each stretch of one look (neighbouring runs whose kinds are drawn alike, and
-    /// the plain text between them) one run, so a line is as few glyph runs as it has looks: what each frame records and
-    /// draws again for every line on screen. The formatter asks for its runs in order, so the search for the run at a
-    /// place goes on from the last one found rather than from the first.</summary>
+    /// the plain text between them) one run, and plain blanks between them in the look of the run before (indentation in
+    /// the look after) where that draws a blank as plain text does, so a line is as few glyph runs as it has looks: what
+    /// each frame records, shapes and draws again for every line on screen. Neighbouring runs come from two copies of the
+    /// line in turn, so each is shaped on its own: the formatter shapes runs of one string together and splits the result,
+    /// leaving each buffer it splits to its finalizer, with the pooled arrays it holds. The formatter asks for its runs in
+    /// order, so the search for the run at a place goes on from the last one found rather than from the first.</summary>
     private sealed class ColouredRuns(string text, LineRun[] runs, TextRunProperties plain, Func<TokenKind, TextRunProperties> colour) : ITextSource
     {
+        private char[]? copy;
+        private int made;
         private int next;
         private int asked;
 
@@ -1398,23 +1409,60 @@ public sealed partial class CodeEditor
             if (textSourceIndex < asked)
             {
                 next = 0;
+                made = 0;
             }
             asked = textSourceIndex;
             int i = Past(next, textSourceIndex);
             TextRunProperties look = LookAt(i, textSourceIndex);
             int end = EndAt(i, textSourceIndex);
+            if (ReferenceEquals(look, plain) && end < text.Length && Blank(textSourceIndex, end))
+            {
+                int after = Past(i, end);
+                if (BlanksAlike(LookAt(after, end)))
+                {
+                    look = LookAt(after, end);
+                    i = after;
+                    end = EndAt(after, end);
+                }
+            }
             while (end < text.Length)
             {
                 i = Past(i, end);
-                if (!ReferenceEquals(LookAt(i, end), look))
+                TextRunProperties following = LookAt(i, end);
+                int stop = EndAt(i, end);
+                if (!ReferenceEquals(following, look) && !(ReferenceEquals(following, plain) && Blank(end, stop) && BlanksAlike(look)))
                 {
                     break;
                 }
-                end = EndAt(i, end);
+                end = stop;
             }
             next = i;
-            return new TextCharacters(text.AsMemory(textSourceIndex, end - textSourceIndex), look);
+            if ((made++ & 1) == 0)
+            {
+                return new TextCharacters(text.AsMemory(textSourceIndex, end - textSourceIndex), look);
+            }
+            copy ??= text.ToCharArray();
+            return new TextCharacters(copy.AsMemory(textSourceIndex, end - textSourceIndex), look);
         }
+
+        /// <summary>Whether the text from one place to another is spaces and tabs alone.</summary>
+        private bool Blank(int from, int to)
+        {
+            for (int at = from; at < to; at++)
+            {
+                if (text[at] is not (' ' or '\t'))
+                {
+                    return false;
+                }
+            }
+            return to > from;
+        }
+
+        /// <summary>Whether a look draws a blank as plain text does: the same face and size, nothing under or behind it.</summary>
+        private bool BlanksAlike(TextRunProperties look) =>
+            ReferenceEquals(look, plain)
+            || (look.Typeface == plain.Typeface && look.FontRenderingEmSize == plain.FontRenderingEmSize && look.BackgroundBrush is null
+                && look.TextDecorations is not { Count: > 0 } && look.BaselineAlignment == plain.BaselineAlignment);
 
         /// <summary>The first run from <paramref name="from"/> on that ends after a place: the one it is in, or the one after the
         /// plain text it is in.</summary>
