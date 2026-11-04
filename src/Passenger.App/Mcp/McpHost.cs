@@ -284,7 +284,8 @@ public static partial class McpHost
     /// <summary><c>--headless [PATH]</c>: a person's window on the headless platform, which <c>--mcp-attach</c> starts
     /// in place of the installed app under <see cref="McpProxy.StartVariable"/>, as does a launch no running Passenger
     /// took there: it listens for agents and asks before letting them in, as any window does, and takes launches, until
-    /// the input given ends (<see cref="StandardInput.Take"/>).</summary>
+    /// the input given ends (<see cref="StandardInput.Take"/>), or, with exit code 2, the run configuration its command
+    /// line starts could not start.</summary>
     public static int RunHeadless(LaunchOptions launch, Stream input)
     {
         PassengerApp.RunsHeadless();
@@ -303,6 +304,12 @@ public static partial class McpHost
         window.Start(launch);
 
         using CancellationTokenSource done = new();
+        int code = 0;
+        IdeErrors.Observe(Program.EndUnlessStartedAsync(window, refused =>
+        {
+            code = refused;
+            done.Cancel();
+        }));
         using System.Runtime.InteropServices.PosixSignalRegistration? terminated = EndOnSignal(() => UiThread.Post(done.Cancel));
         // Not held: it waits for the end of the input, which its starter's own end closes.
         IdeErrors.Observe(BackgroundWork.Unheld(() =>
@@ -319,7 +326,7 @@ public static partial class McpHost
         Dispatcher.UIThread.MainLoop(done.Token);
         PassengerApp.Quit();
         PassengerApp.End();
-        return 0;
+        return code;
     }
 
     /// <summary><c>--mcp-attach [PID] [FOLDER]</c>: the agent's server, joining the window over its folder at its first

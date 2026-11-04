@@ -330,16 +330,19 @@ public partial class MainWindow : IdeWindow
     /// <summary>Every file of the open folder, as Go to File searches them.</summary>
     public FileIndex FileIndex => session.Index;
 
-    /// <summary>Opens what the command line named: a folder, solution or project, files in it, a caret position. Named
-    /// nothing, what the system handed Passenger as it started (a solution double-clicked in the Finder), else the
-    /// window that keeps state reopens what was open as Passenger last quit, or shows the Welcome screen.</summary>
+    /// <summary>Opens what the command line named: a folder, solution or project, files in it, a caret position, and the
+    /// run configuration it starts there (<see cref="StartedRun"/>). Named nothing, what the system handed Passenger as it
+    /// started (a solution double-clicked in the Finder), else the window that keeps state reopens what was open as
+    /// Passenger last quit, or shows the Welcome screen.</summary>
     public void Start(LaunchOptions options)
     {
         started = true;
         IReadOnlyList<string> handed = PassengerApp.TakePending();
+        TaskCompletionSource<MainWindow>? begun = null;
         if ((options.Workspace ?? options.Folder) is { } path)
         {
-            PassengerApp.OpenProject(path, OpenTarget.ThisWindow, this);
+            begun = options.Starts is null ? null : new TaskCompletionSource<MainWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
+            PassengerApp.OpenProject(path, OpenTarget.ThisWindow, this, begun is null ? null : into => begun.TrySetResult(into));
         }
         else if (handed.Count > 0)
         {
@@ -368,6 +371,10 @@ public partial class MainWindow : IdeWindow
         if (session.Folder is null && Editors.Documents.Count == 0)
         {
             welcome.FocusSearch();
+        }
+        if (options.Starts is { } start)
+        {
+            StartedRun = begun is null ? Task.FromResult<string?>(start.NoFolder) : StartOnceBegunAsync(begun.Task, start);
         }
         PreloadTemplates();
         IdeErrors.Observe(ForgetUnmaskedCopiesAsync());

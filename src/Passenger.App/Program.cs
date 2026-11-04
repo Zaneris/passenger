@@ -142,6 +142,18 @@ internal static class Program
         }
     }
 
+    /// <summary>Ends Passenger as a malformed flag does, exit code 2 and why on standard error, where the command line's
+    /// <c>--run</c> or <c>--debug</c> could not start in the window it opened (<see cref="MainWindow.StartedRun"/>).</summary>
+    public static async Task EndUnlessStartedAsync(MainWindow window, Action<int> end)
+    {
+        if (await window.StartedRun is { } refused)
+        {
+            IdeErrors.Write($"Launch: {refused}");
+            Console.Error.WriteLine($"passenger: {refused}");
+            end(2);
+        }
+    }
+
     /// <summary>The theme, its dark or light and the code's colours the command line names, over those in force.</summary>
     public static void ApplyTheme(Application app, LaunchOptions options)
     {

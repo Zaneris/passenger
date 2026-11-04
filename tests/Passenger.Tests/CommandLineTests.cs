@@ -84,6 +84,24 @@ public sealed class CommandLineTests : IDisposable
             $"'passenger {arguments}' was to be refused with exit code 2 saying \"{reason}\"; it exited {code} and wrote:\n{error}");
     }
 
+    /// <summary>A run configuration started from the command line needs the folder it is of, given first, and a mode with a
+    /// window to run it in: refused at once otherwise, before any folder opens.</summary>
+    [Theory]
+    [InlineData("--run", "--run starts a run configuration of the folder Passenger opens, and none is given: passenger FOLDER --run [NAME], the folder first")]
+    [InlineData("--debug . --theme dark", "--debug starts a run configuration of the folder Passenger opens, and none is given: passenger FOLDER --debug [NAME], the folder first")]
+    [InlineData("--screenshot out.png --run Hello", "--run starts a run configuration of the folder Passenger opens, and none is given")]
+    [InlineData(". --run --debug", "--run and --debug each start a run configuration; give one of them")]
+    [InlineData(". --run Hello --run", "--run is given twice")]
+    [InlineData("--mcp . --run", "--mcp does not take --run; its agent starts a configuration with its run")]
+    [InlineData("--mcp-attach . --debug", "--mcp-attach joins a running Passenger's window and takes only its process id and a folder, not --debug")]
+    public async Task Run_or_debug_with_no_folder_before_it_or_in_a_mode_with_no_window_of_its_own_ends_Passenger_with_exit_code_2_and_the_reason(string arguments, string reason)
+    {
+        (int code, string error) = await Run(arguments);
+
+        Assert.True(code == 2 && error.StartsWith($"passenger: {reason}", StringComparison.Ordinal),
+            $"'passenger {arguments}' was to be refused with exit code 2 saying \"{reason}\"; it exited {code} and wrote:\n{error}");
+    }
+
     private const string Milliseconds = "a whole number of milliseconds above 0";
 
     [Theory]

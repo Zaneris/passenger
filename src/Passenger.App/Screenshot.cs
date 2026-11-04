@@ -109,6 +109,10 @@ public static class Screenshot
             {
                 RunAgent(window, agent);
             }
+            else if (step is ScriptStep.Launch launched)
+            {
+                settled &= Start(window, launched.Start);
+            }
             else
             {
                 // A dialog a step opened takes the next ones, as it takes a person's keys and clicks.
@@ -233,6 +237,22 @@ public static class Screenshot
         }
 
         static async Task<int> Ended(Task<Run.TerminalRun> starting) => await (await starting).Ended;
+    }
+
+    /// <summary>Runs or debugs a configuration as the window's own <c>--run</c> does, held as background work until its
+    /// action has run and its start handed over, so the picture waits for its build and start, never its program; refused
+    /// where it could not start, since the picture of a run that never began would be the wrong one. False when work was
+    /// still pending at the limit.</summary>
+    private static bool Start(MainWindow window, ConfigurationStart start)
+    {
+        Task<string?> starting = window.StartConfigurationAsync(start);
+        BackgroundWork.Track(starting);
+        bool settled = Settle();
+        if (starting.IsFaulted)
+        {
+            throw new StepRefused($"{start.Flag}: {starting.Exception!.GetBaseException().Message}");
+        }
+        return starting.IsCompletedSuccessfully && starting.Result is { } refused ? throw new StepRefused(refused) : settled;
     }
 
     /// <summary>A step the window cannot take as asked, which ends the screenshot with exit code 2 and why.</summary>

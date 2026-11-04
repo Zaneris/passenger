@@ -49,6 +49,12 @@
     <Compile Include="../../src/Passenger.App/HandedLaunch.cs" Link="App/HandedLaunch.cs" />
   </ItemGroup>
 
+  <!-- Which run configuration a launch's run or debug starts, and why it would refuse, from the words and names alone,
+       compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/ConfigurationStart.cs" Link="App/ConfigurationStart.cs" />
+  </ItemGroup>
+
   <!-- What .NET's browser debug proxy says of a stop and its values, read as JSON alone, compiled in since its project is
        the app's. -->
   <ItemGroup>

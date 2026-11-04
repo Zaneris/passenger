@@ -66,6 +66,7 @@ public partial class App : Application
                 IdeErrors.Write($"Passenger {Product.Version} ({Product.Commit ?? "no commit"}) on {RuntimeInformation.OSDescription} "
                     + $"({Product.Runtime}): window shown {Stopwatch.GetElapsedTime(Program.StartedAt).TotalSeconds:0.00} s after launch");
                 window.Start(Program.Options);
+                IdeErrors.Observe(Program.EndUnlessStartedAsync(window, desktop.Shutdown));
                 // The process asks for the latest release once, in this window, which hands the watch on as it closes.
                 IdeErrors.Observe(SayUpdatesAsync(updater, notUpdating));
                 window.WatchForUpdates();

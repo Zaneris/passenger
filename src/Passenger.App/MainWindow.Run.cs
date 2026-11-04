@@ -294,6 +294,64 @@ public partial class MainWindow
     /// <summary>Debugs the chosen configuration as Debug does: null once its session is open, else what stopped it.</summary>
     public Task<string?> DebugAsync(string? arguments = null) => buildRun.DebugAsync(arguments);
 
+    /// <summary>What the command line's <c>--run</c> or <c>--debug</c> came to (<see cref="StartConfigurationAsync"/>) in
+    /// the window that opened its folder: null once its action ran, or with neither given; else why not, which ends
+    /// Passenger at its start as a malformed flag does.</summary>
+    public Task<string?> StartedRun { get; private set; } = Task.FromResult<string?>(null);
+
+    private static async Task<string?> StartOnceBegunAsync(Task<MainWindow> begun, ConfigurationStart start) =>
+        await (await begun).StartConfigurationAsync(start);
+
+    /// <summary>Runs or debugs a configuration through Run's or Debug's action, as the person's key runs it, once the
+    /// folder's run configurations are made from its projects as MSBuild evaluated them: the one named chosen first, as the
+    /// toolbar's menu chooses it. Null once the action ran and handed its start over, its build, console and Game pane the
+    /// person's Run's (a failed build said as theirs is); else why not: no folder open, a name none of the folder's
+    /// configurations has (those it has listed), or why the action is greyed.</summary>
+    public async Task<string?> StartConfigurationAsync(ConfigurationStart start)
+    {
+        UiThread.Check();
+        ProjectSession reading = session;
+        if (reading.Folder is not { } folder)
+        {
+            return start.NoFolder;
+        }
+        string shown = PathNames.Shown(folder, folder);
+        // As an agent's open waits: the walk for its projects, its single-file AppHosts, then the evaluations those started.
+        await reading.WorkspaceRead;
+        await reading.AspireFilesRead;
+        await Task.Yield();
+        await reading.Models.Idle;
+        if (reading.IsEnded)
+        {
+            return $"{start.Flag}: {shown} closed before its run configurations were read";
+        }
+        RunConfigurations configurations = reading.Configurations;
+        if (start.WhyNot(shown, [.. configurations.All.Select(c => c.Name)]) is { } unknown)
+        {
+            return unknown;
+        }
+        if (start.Name is { } name)
+        {
+            configurations.Select(name);
+        }
+        Hearing heard = ActionWork.Hear();
+        string? why;
+        try
+        {
+            why = actions!.Run(start.Debug ? AppActions.Debug : AppActions.RunProgram);
+        }
+        finally
+        {
+            heard.Ran();
+        }
+        if (why is not null)
+        {
+            return $"{start.Flag}: {configurations.Chosen?.Name ?? shown} cannot {start.Verb}: {why}";
+        }
+        await heard.DoneAsync(CancellationToken.None);
+        return null;
+    }
+
     /// <summary>Debug Another Copy (<see cref="BuildRunController.DebugAnotherCopyAsync"/>): what stopped it, if anything, goes to
     /// the status bar; null once the copy's session is open.</summary>
     public async Task<string?> DebugAnotherCopyAsync()

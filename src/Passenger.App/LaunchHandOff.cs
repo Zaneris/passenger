@@ -16,10 +16,11 @@ public static partial class LaunchHandOff
     private static readonly TimeSpan AnswerLimit = TimeSpan.FromSeconds(30);
 
     /// <summary>Whether a launch is one to hand to a running Passenger: a person's window, never <c>--mcp</c>,
-    /// <c>--headless</c> or a screenshot, nor one asking for a run of its own (<c>--no-mcp</c>, a theme, look or scheme),
-    /// nor the one an agent's <c>--mcp-attach</c> started after the running Passenger would not open its folder.</summary>
+    /// <c>--headless</c> or a screenshot, nor one asking for a run of its own (<c>--no-mcp</c>, a theme, look or scheme, a
+    /// configuration started), nor the one an agent's <c>--mcp-attach</c> started after the running Passenger would not
+    /// open its folder.</summary>
     public static bool HandsOff(LaunchOptions options) =>
-        options is { Mcp: McpMode.None, Headless: false, Screenshot: null, ListenForAgents: true, Theme: null, Look: null, Scheme: null }
+        options is { Mcp: McpMode.None, Headless: false, Screenshot: null, ListenForAgents: true, Theme: null, Look: null, Scheme: null, Starts: null }
         && !Mcp.McpProxy.StartedForAgent;
 
     /// <summary>The launch the options name.</summary>
