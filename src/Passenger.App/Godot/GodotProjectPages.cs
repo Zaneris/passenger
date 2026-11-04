@@ -10,9 +10,21 @@ namespace Passenger.App.Godot;
 /// scene it loads (res:// and on disk, null where there is none), and whether it is a global the project's scripts name.</summary>
 public sealed record GodotPageAutoload(string Name, int Line, string? Res, string? File, bool Global);
 
-/// <summary>A layer project.godot names as its page shows it: its kind in words ("2D physics"), its number, its name and its
-/// line (from zero).</summary>
-public sealed record GodotPageLayer(string Kind, int Number, string Name, int Line);
+/// <summary>A layer project.godot names as its page shows it: its kind in words ("2D physics"), its number, its name, its
+/// line (from zero) and its kind as project.godot writes it (<see cref="GodotDefinitions.LayerKinds"/>).</summary>
+public sealed record GodotPageLayer(string Kind, int Number, string Name, int Line, string Written);
+
+/// <summary>A scene of a Godot project its page offers for the main scene: its res:// path and the uid its header gives.</summary>
+public sealed record GodotPageScene(string Res, string? Uid);
+
+/// <summary>A change of project.godot its page asks for (<see cref="GodotPageEdits"/>): the question's title, its words and
+/// its answer's, the title of its command of Undo, what is said where the person leaves it, where it changes nothing and
+/// once written, and the change of the file's text, null where it changes nothing.</summary>
+public sealed record GodotPageEdit(string Asked, string Question, string Yes, string Command, string Left, string Unchanged, string Done, Func<string, string?> Change)
+{
+    /// <summary>Why the page makes no such change, said before anything is asked; null where it asks.</summary>
+    public string? Refused { get; init; }
+}
 
 /// <summary>An input action of project.godot as its page shows it: its name, its line (from zero) and its events in words.</summary>
 public sealed record GodotPageAction(string Name, int Line, IReadOnlyList<string> Events);
@@ -24,7 +36,7 @@ public sealed record GodotPagePreset(GodotPreset Preset, IReadOnlyList<string> M
 /// <summary>What a Godot project's page shows, read off the window's thread: its name; the Godot found, in words, and whether
 /// it runs the project; the main scene; the autoloads; the input map, each action with its events; the export presets and
 /// the folder their templates are looked for in; the plugins under addons/; whether Godot's editor opens its scripts in
-/// this Passenger, in words; and the layers named.</summary>
+/// this Passenger, in words; the layers named; and the project's text scenes, which the main scene is chosen from.</summary>
 public sealed record GodotPageFacts(
     string Folder,
     string? Name,
@@ -38,12 +50,13 @@ public sealed record GodotPageFacts(
     IReadOnlyList<GodotPlugin> Plugins,
     string HandOff,
     bool HandedOff,
-    IReadOnlyList<GodotPageLayer> Layers);
+    IReadOnlyList<GodotPageLayer> Layers,
+    IReadOnlyList<GodotPageScene> Scenes);
 
 /// <summary>The pages of a window's Godot projects, one for each project.godot open (<see cref="GodotPageFile"/>), and what
 /// they do through the window: read a project's facts, go to a place in a file of it, open a file, run an action, enable or
-/// disable a plugin and make an autoload a global or a node, asked first; each read again as its files change on disk
-/// (<see cref="Follows"/>). Made and asked on the UI thread.</summary>
+/// disable a plugin and change project.godot as its rows ask (<see cref="GodotPageEdits"/>), asked first; each read again as
+/// its files change on disk (<see cref="Follows"/>). Made and asked on the UI thread.</summary>
 public sealed class GodotProjectPages
 {
     private readonly ConditionalWeakTable<OpenDocument, GodotPageFile> files = [];
@@ -69,8 +82,8 @@ public sealed class GodotProjectPages
     /// <summary>A plugin enabled or disabled in its project's project.godot, asked first; null once written, else why not.</summary>
     public required Func<string, GodotPlugin, bool, Task<string?>> SetPlugin { get; init; }
 
-    /// <summary>An autoload made a global or a node alone in its project's project.godot, asked first; null once written, else why not.</summary>
-    public required Func<string, GodotPageAutoload, bool, Task<string?>> SetAutoload { get; init; }
+    /// <summary>A change of a project's project.godot, by the project's folder, asked first; null once written, else why not.</summary>
+    public required Func<string, GodotPageEdit, Task<string?>> Edit { get; init; }
 
     /// <summary>Whether a file written on disk changes what a page shows beside its project.godot: the export presets, or a
     /// plugin's plugin.cfg.</summary>

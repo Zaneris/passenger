@@ -38,6 +38,9 @@ public sealed class GodotExportTests
     /// <summary>The template the preset's release export takes.</summary>
     internal static string Template => OperatingSystem.IsMacOS() ? "macos.zip" : OperatingSystem.IsWindows() ? $"windows_release_{Arch}.exe" : $"linux_release.{Arch}";
 
+    /// <summary>The template the preset's debug export takes: on macOS one archive holds both.</summary>
+    internal static string DebugTemplate => OperatingSystem.IsMacOS() ? "macos.zip" : OperatingSystem.IsWindows() ? $"windows_debug_{Arch}.exe" : $"linux_debug.{Arch}";
+
     [AvaloniaFact]
     public void Without_templates_the_dialog_names_those_the_preset_takes_and_an_export_is_refused_saying_so()
     {

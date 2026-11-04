@@ -5,9 +5,10 @@ using Passenger.Core;
 namespace Passenger.Tests;
 
 /// <summary>An agent's export of a Godot game through build's preset, on a project of GDScript alone whose Godot user folders
-/// hold no export templates: refused naming the template its preset takes, and a preset the project lacks refused naming
-/// those it has. Godot is only asked its version; without a Godot 4 the test skips saying why. Its Passenger is a process
-/// of its own, so it runs beside the window tests.</summary>
+/// hold no export templates: refused naming the template its preset takes, a debug one naming its debug template, debug
+/// without a preset refused as no export, and a preset the project lacks refused naming those it has. Godot is only asked
+/// its version; without a Godot 4 the test skips saying why. Its Passenger is a process of its own, so it runs beside the
+/// window tests.</summary>
 [Collection(Beside.Name)]
 public sealed class McpGodotExportTests : McpRig
 {
@@ -26,6 +27,13 @@ public sealed class McpGodotExportTests : McpRig
             string outcome = refused.GetProperty("outcome").GetString()!;
             Assert.False(refused.GetProperty("succeeded").GetBoolean(), $"An export without its templates succeeded: {outcome}");
             Assert.Contains($"has no {GodotExportTests.Template} among its export templates", outcome, StringComparison.Ordinal);
+
+            JsonElement debug = await Call(client, McpTools.Build, new() { ["preset"] = GodotExportTests.Preset, ["debug"] = true });
+            string debugged = debug.GetProperty("outcome").GetString()!;
+            Assert.False(debug.GetProperty("succeeded").GetBoolean(), $"A debug export without its templates succeeded: {debugged}");
+            Assert.Contains($"has no {GodotExportTests.DebugTemplate} among its export templates", debugged, StringComparison.Ordinal);
+            Assert.True(Text(await Result(client, McpTools.Build, new() { ["debug"] = true })).Contains("debug is a Godot export's", StringComparison.Ordinal),
+                "build with debug and no preset was not refused as no export");
 
             JsonElement unknown = await Call(client, McpTools.Build, new() { ["preset"] = "Elsewhere" });
             Assert.Contains($"has no preset Elsewhere: it has {GodotExportTests.Preset}", unknown.GetProperty("outcome").GetString(), StringComparison.Ordinal);

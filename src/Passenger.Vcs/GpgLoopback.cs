@@ -100,7 +100,7 @@ public static class GpgLoopback
     private static async Task<int> SignX509Async(string gpgsm, string[] args, string file, string socket)
     {
         (int code, byte[] signature, byte[] said) = await RunX509Async(gpgsm, ["--pinentry-mode", "error", "--output", "-", .. args, "--", file], null);
-        if (code != 0 && Encoding.UTF8.GetString(said).Contains("pinentry", StringComparison.OrdinalIgnoreCase))
+        if (code != 0 && Encoding.UTF8.GetString(said).Contains(WantsPassphrase, StringComparison.Ordinal))
         {
             int named = Array.FindIndex(args, a => a.Length > 1 && a[0] == '-' && a[1] != '-' && a.EndsWith('u'));
             string key = named >= 0 && named + 1 < args.Length ? args[named + 1] : "the signing certificate";
@@ -120,10 +120,18 @@ public static class GpgLoopback
         return code;
     }
 
-    /// <summary>One run of gpgsm, given <paramref name="input"/>: its exit code, what it wrote and what it said.</summary>
+    /// <summary>What gpgsm says where its agent wanted a passphrase and might not ask for one: sm/sign.c's "error creating
+    /// signature: %s <%s>" with GPG_ERR_NO_PIN_ENTRY's words (libgpg-error), the agent's answer in pinentry mode error. No
+    /// status line carries the cause (gpgsm's FAILURE gpgsm-exit names none), so its words are read untranslated.</summary>
+    private const string WantsPassphrase = "error creating signature: No pinentry";
+
+    /// <summary>One run of gpgsm, given <paramref name="input"/>, its words untranslated: its exit code, what it wrote and
+    /// what it said.</summary>
     private static async Task<(int Code, byte[] Output, byte[] Errors)> RunX509Async(string gpgsm, IReadOnlyList<string> args, string? input)
     {
         ProcessStartInfo start = ChildProcesses.Command(gpgsm, args);
+        start.Environment["LANGUAGE"] = "C";
+        start.Environment["LC_ALL"] = "C";
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;

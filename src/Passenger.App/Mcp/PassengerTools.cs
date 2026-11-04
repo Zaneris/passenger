@@ -1139,11 +1139,15 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     [McpServerTool(Name = McpTools.Build, Title = "Build", Destructive = true), Description(
         "Builds the solution (or the folder's project); with publish (a project), publishes it with profile, else its last " +
         "(DefaultContainer: its container image, into the engine; an AppHost through its publishers, to its last folder or aspire-output); " +
-        "with preset, exports the Godot project's game through that export_presets.cfg preset, Godot's output in run's. " +
+        "with preset, exports the Godot project's game through that export_presets.cfg preset (with debug, a debug export), Godot's output in run's. " +
         "Returns whether it succeeded, how it ended, every error and warning, the folder or image published to, and MSBuild's last " +
         "lines when it failed (output of build has them all).")]
-    public Task<BuildResult> Build(string? publish = null, string? profile = null, string? preset = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
+    public Task<BuildResult> Build(string? publish = null, string? profile = null, string? preset = null, bool debug = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
+        if (debug && preset is null)
+        {
+            throw new ArgumentException("debug is a Godot export's: give preset, the export_presets.cfg preset it exports through");
+        }
         if (publish is null && profile is not null)
         {
             throw new ArgumentException($"{profile} is a publish profile: give publish the project it is one of");
@@ -1156,7 +1160,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         ProjectModel? published = publish is null ? null : Project(publish);
         AgentCall.Follow(window.Actions.Work, published is null && game is null ? AppActions.Build : AppActions.Publish);
         // The build, publish or export goes on without an agent that gives up on it, shown in the Build or Run window.
-        BuildOutcome built = await (game is not null ? Builds.ExportGodotAsync(new GodotExportRequest(game, preset!))
+        BuildOutcome built = await (game is not null ? Builds.ExportGodotAsync(new GodotExportRequest(game, preset!, debug))
             : published is null ? Builds.BuildAsync(BuildCause.Explicit, CancellationToken.None)
             : Builds.PublishAsync(new PublishRequest(published.Path, profile ?? Session.Publishing.ProfileOf(published.Path)))).WaitAsync(cancel);
         IReadOnlyList<Finding> problems = [.. built.Problems.Select(p => new Finding(

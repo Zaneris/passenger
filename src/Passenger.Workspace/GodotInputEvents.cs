@@ -29,6 +29,52 @@ public static class GodotInputEvents
         "Right Shoulder", "D-pad Up", "D-pad Down", "D-pad Left", "D-pad Right", "Misc 1", "Paddle 1", "Paddle 2", "Paddle 3", "Paddle 4", "Touchpad",
     ];
 
+    private static readonly (string Name, long Code, long Unicode)[] GivenKeys = MadeKeys();
+
+    /// <summary>The events a person gives an action from the project page, by the names they show: a key pressed by its place
+    /// (the letters, the digits, Space, the named keys a game takes most and F1 to F12), then each of the mouse's buttons.</summary>
+    public static IReadOnlyList<string> Givable { get; } = [.. GivenKeys.Select(k => k.Name), .. MouseButtons.Skip(1)];
+
+    /// <summary>An event of <see cref="Givable"/> as Godot 4's editor writes it among an action's events; null for a name
+    /// it does not hold.</summary>
+    public static string? Written(string name)
+    {
+        foreach ((string key, long code, long unicode) in GivenKeys)
+        {
+            if (key == name)
+            {
+                return GodotWrites.KeyEvent(code, unicode);
+            }
+        }
+        int button = Array.IndexOf(MouseButtons, name);
+        return button > 0 ? GodotWrites.MouseButtonEvent(button) : null;
+    }
+
+    /// <summary>The keys of <see cref="Givable"/>, each with Godot's code and the character a press of it writes (none for a
+    /// named key).</summary>
+    private static (string, long, long)[] MadeKeys()
+    {
+        List<(string, long, long)> keys = [];
+        for (char c = 'A'; c <= 'Z'; c++)
+        {
+            keys.Add((c.ToString(), c, char.ToLowerInvariant(c)));
+        }
+        for (char c = '0'; c <= '9'; c++)
+        {
+            keys.Add((c.ToString(), c, c));
+        }
+        keys.Add(("Space", 32, 32));
+        foreach (string named in (string[])["Escape", "Enter", "Tab", "Backspace", "Left", "Up", "Right", "Down", "Shift", "Ctrl", "Alt"])
+        {
+            keys.Add((named, Special + Array.IndexOf(SpecialKeys, named), 0));
+        }
+        for (int f = 1; f <= 12; f++)
+        {
+            keys.Add(($"F{f.ToString(CultureInfo.InvariantCulture)}", Special + 0x1B + f, 0));
+        }
+        return [.. keys];
+    }
+
     /// <summary>An event said by its class and the fields its object gives, each the text of its value as written.</summary>
     public static string Shown(string type, IReadOnlyDictionary<string, string> fields)
     {

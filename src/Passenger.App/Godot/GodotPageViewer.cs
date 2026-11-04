@@ -10,8 +10,9 @@ namespace Passenger.App.Godot;
 
 /// <summary>An editor group's Godot project page: a bar over the editor of a project.godot (its Project and Text) and the
 /// page laid over the editor while it shows: the Godot found, the main scene, the autoloads, the input map, the export
-/// presets and their templates, the plugins, Godot's script editor and the layers, each row leading to its line or its file
-/// and a plugin enabled or disabled from its box.</summary>
+/// presets and their templates, the plugins, Godot's script editor and the layers, each row leading to its line or its file;
+/// a plugin enabled or disabled from its box, and the main scene, the input map's actions and events, an autoload's kind
+/// and the layers' names changed from their rows (<see cref="GodotPageEdits"/>).</summary>
 public sealed class GodotPageViewer
 {
     /// <summary>The words of the segment that shows the page.</summary>
@@ -153,18 +154,18 @@ public sealed class GodotPageViewer
 
         Section("Godot", [Row(Words(facts.Godot), null, null)]);
 
-        Section("Main Scene", facts.MainScene is ({ } res, int line, { } scene)
-            ? [Row(Link(res, () => pages.Open(scene)), Muted($"{GodotProject.FileName}:{line + 1}"), Link("Setting", () => pages.GoTo(project, line)))]
+        Section("Main Scene", [facts.MainScene is ({ } res, int line, { } scene)
+            ? Row(Link(res, () => pages.Open(scene)), Muted($"{GodotProject.FileName}:{line + 1}"), Link("Setting", () => pages.GoTo(project, line)))
             : facts.MainScene is ({ } missing, int at, null)
-                ? [Row(Words(missing), Muted($"not there · {GodotProject.FileName}:{at + 1}"), Link("Setting", () => pages.GoTo(project, at)))]
-                : [Empty($"{GodotProject.FileName} names no main scene")]);
+                ? Row(Words(missing), Muted($"not there · {GodotProject.FileName}:{at + 1}"), Link("Setting", () => pages.GoTo(project, at)))
+                : Empty($"{GodotProject.FileName} names no main scene"), .. MainSceneChoice(facts)]);
 
         Section("Autoloads", facts.Autoloads.Count == 0 ? [Empty("No autoloads")]
             : [.. facts.Autoloads.Select(a => Row(Link(a.Name, () => pages.GoTo(project, a.Line)), Autoload(facts.Folder, a),
                 a.File is { } loaded ? Link(a.Res!, () => pages.Open(loaded)) : Muted(a.Res ?? string.Empty)))]);
 
-        Section("Input Map", facts.Actions.Count == 0 ? [Empty("No input actions of the project's own")]
-            : [.. facts.Actions.Select(a => Row(Link(a.Name, () => pages.GoTo(project, a.Line)), Muted(a.Events.Count == 0 ? "no events" : string.Join(", ", a.Events)), null))]);
+        Section("Input Map", [.. facts.Actions.Count == 0 ? [Empty("No input actions of the project's own")] : facts.Actions.SelectMany(a => Action(facts.Folder, project, a)),
+            .. ActionMaking(facts)]);
 
         Section("Export Presets", facts.Presets.Count == 0 ? [Empty($"No {GodotExports.FileName}: Godot's editor makes it (Project, Export)")]
             : [.. facts.Presets.Select(p => Row(Link(p.Preset.Name, () => pages.GoTo(presets, p.Preset.Line)),
@@ -177,8 +178,10 @@ public sealed class GodotPageViewer
 
         Section("Script Editor", [Row(Words(facts.HandOff), null, facts.HandedOff ? null : Link(pages.TitleOf(AppActions.GodotScriptEditor), () => pages.Run(AppActions.GodotScriptEditor)))]);
 
-        Section("Layers", facts.Layers.Count == 0 ? [Empty($"{GodotProject.FileName} names no layers")]
-            : [.. facts.Layers.Select(l => Row(Link(l.Name, () => pages.GoTo(project, l.Line)), Muted($"{l.Kind} layer {l.Number}"), null))]);
+        Section("Layers", [.. facts.Layers.Count == 0 ? [Empty($"{GodotProject.FileName} names no layers")]
+            : facts.Layers.Select(l => Row(Link(l.Name, () => pages.GoTo(project, l.Line)), Muted($"{l.Kind} layer {l.Number}"),
+                Link(ClearLayerWords, () => Ask(facts.Folder, GodotPageEdits.NameLayer(l.Written, l.Number, string.Empty))))),
+            LayerNaming(facts)]);
         Body.Offset = scrolled;
         if (keys)
         {
@@ -258,15 +261,125 @@ public sealed class GodotPageViewer
     {
         StackPanel said = new() { Orientation = Orientation.Horizontal, Spacing = 12 };
         said.Children.Add(Muted(autoload.Global ? "global" : "node"));
-        said.Children.Add(Link(autoload.Global ? MakeNodeWords : MakeGlobalWords, () =>
-        {
-            if (file is { } shown)
-            {
-                IdeErrors.Observe(shown.Pages.SetAutoload(folder, autoload, !autoload.Global));
-            }
-        }));
+        said.Children.Add(Link(autoload.Global ? MakeNodeWords : MakeGlobalWords, () => Ask(folder, GodotPageEdits.Autoload(autoload, !autoload.Global))));
         return said;
     }
+
+    /// <summary>A change of project.godot asked of the window for the project shown.</summary>
+    private void Ask(string folder, GodotPageEdit edit)
+    {
+        if (file is { } shown)
+        {
+            IdeErrors.Observe(shown.Pages.Edit(folder, edit));
+        }
+    }
+
+    /// <summary>The row that makes a scene chosen among the project's the main scene: none where the project has no scene.</summary>
+    private IEnumerable<Control> MainSceneChoice(GodotPageFacts facts)
+    {
+        if (facts.Scenes.Count == 0)
+        {
+            yield break;
+        }
+        string? main = facts.MainScene?.Res;
+        ComboBox scenes = Choice(MainSceneName, facts.Scenes, facts.Scenes.FirstOrDefault(s => s.Res == main || s.Uid == main), s => s.Res);
+        bool byUid = main?.StartsWith(GodotUids.Scheme, StringComparison.Ordinal) == true;
+        yield return Row(scenes, Muted("the scene the game starts in"), Link(MakeMainWords, () =>
+        {
+            if (scenes.SelectedItem is GodotPageScene scene)
+            {
+                Ask(facts.Folder, GodotPageEdits.MainScene(scene, byUid));
+            }
+        }));
+    }
+
+    /// <summary>An input action's row, leading to its line and taking it out, and a row for each of its events taking it out.</summary>
+    private IEnumerable<Control> Action(string folder, string project, GodotPageAction action)
+    {
+        GodotProjectPages pages = file!.Pages;
+        yield return Row(Link(action.Name, () => pages.GoTo(project, action.Line)), Muted(action.Events.Count == 0 ? "no events" : Plural.Of(action.Events.Count, "event")),
+            Link(RemoveActionWords, () => Ask(folder, GodotPageEdits.RemoveAction(action))));
+        for (int i = 0; i < action.Events.Count; i++)
+        {
+            int at = i;
+            yield return Row(new TextBlock { Text = action.Events[i], Margin = new Thickness(16, 0, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis }, null,
+                Link(RemoveEventWords, () => Ask(folder, GodotPageEdits.RemoveEvent(action, at))));
+        }
+    }
+
+    /// <summary>The rows that add an action by the name typed, and an event chosen to an action chosen.</summary>
+    private IEnumerable<Control> ActionMaking(GodotPageFacts facts)
+    {
+        TextBox named = new() { Name = NewActionName, PlaceholderText = "New action's name" };
+        yield return Row(named, null, Link(AddActionWords, () => Ask(facts.Folder, GodotPageEdits.AddAction(named.Text ?? string.Empty))));
+        if (facts.Actions.Count == 0)
+        {
+            yield break;
+        }
+        ComboBox actions = Choice(EventActionName, facts.Actions, null, a => a.Name);
+        ComboBox events = Choice(NewEventName, GodotInputEvents.Givable, null, e => e);
+        events.MinWidth = 180;
+        yield return Row(actions, events, Link(AddEventWords, () =>
+        {
+            if (actions.SelectedItem is GodotPageAction action && events.SelectedItem is string given)
+            {
+                Ask(facts.Folder, GodotPageEdits.AddEvent(action, given));
+            }
+        }));
+    }
+
+    /// <summary>The row that names a layer chosen by kind and number, its numbers as many as the kind has.</summary>
+    private Control LayerNaming(GodotPageFacts facts)
+    {
+        ComboBox kinds = Choice(LayerKindName, GodotDefinitions.LayerKinds, null, GodotDefinitions.LayersShown);
+        ComboBox numbers = Choice(LayerNumberName, Numbers(GodotDefinitions.LayerKinds[0]), null, n => n);
+        kinds.SelectionChanged += (_, _) =>
+        {
+            if (kinds.SelectedItem is string kind && (numbers.ItemsSource as IReadOnlyList<string>)?.Count != GodotDefinitions.LayerCount(kind))
+            {
+                numbers.ItemsSource = Numbers(kind);
+                numbers.SelectedIndex = 0;
+            }
+        };
+        TextBox named = new() { Name = LayerNameName, PlaceholderText = "Layer's name", MinWidth = 180 };
+        return Row(kinds, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { numbers, named } }, Link(NameLayerWords, () =>
+        {
+            if (kinds.SelectedItem is string kind && numbers.SelectedItem is string number)
+            {
+                Ask(facts.Folder, GodotPageEdits.NameLayer(kind, int.Parse(number, System.Globalization.CultureInfo.InvariantCulture), named.Text ?? string.Empty));
+            }
+        }));
+
+        static IReadOnlyList<string> Numbers(string kind) => [.. Enumerable.Range(1, GodotDefinitions.LayerCount(kind)).Select(n => n.ToString(System.Globalization.CultureInfo.InvariantCulture))];
+    }
+
+    /// <summary>A list to choose from, of rows made once, the item given (else the first) chosen.</summary>
+    private static ComboBox Choice<T>(string name, IReadOnlyList<T> items, T? chosen, Func<T, string> shown)
+        where T : class
+    {
+        ComboBox box = new() { Classes = { StyleClasses.Compact }, Name = name, MaxDropDownHeight = 320 };
+        ReusedRows.Use(box, () =>
+        {
+            TextBlock row = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            return row.Showing<T>(item => row.Text = shown(item));
+        });
+        box.ItemsSource = items;
+        box.SelectedItem = chosen ?? items.FirstOrDefault();
+        return box;
+    }
+
+    /// <summary>The names of the page's lists and boxes that choose and name what a change writes.</summary>
+    public const string MainSceneName = "GodotMainScene", NewActionName = "GodotNewAction", EventActionName = "GodotEventAction", NewEventName = "GodotNewEvent",
+        LayerKindName = "GodotLayerKind", LayerNumberName = "GodotLayerNumber", LayerNameName = "GodotLayerName";
+
+    /// <summary>The words of the main scene's link that makes the scene chosen the main scene.</summary>
+    public const string MakeMainWords = "Make Main Scene…";
+
+    /// <summary>The words of the links that add an input action and an event to one, and take each out.</summary>
+    public const string AddActionWords = "Add Action…", RemoveActionWords = "Remove Action…", AddEventWords = "Add Event…", RemoveEventWords = "Remove Event…";
+
+    /// <summary>The words of the links that name a layer and take a layer's name out.</summary>
+    public const string NameLayerWords = "Name Layer…", ClearLayerWords = "Clear Name…";
 
     /// <summary>The words of an autoload's link that makes it a global the project's scripts name.</summary>
     public const string MakeGlobalWords = "Make Global…";

@@ -3,8 +3,9 @@ using Passenger.Workspace;
 namespace Passenger.UnitTests.Workspace;
 
 /// <summary>What a Godot project's page and its export read: export_presets.cfg's presets and the templates each takes, the
-/// folder a Godot keeps its templates in and the version they are of, an input action's events in words, and the plugins
-/// enabled written into project.godot.</summary>
+/// folder a Godot keeps its templates in and the version they are of, an input action's events in words, and what the page
+/// writes into project.godot: the plugins enabled, an autoload's star, the main scene, input actions and their events, and
+/// layer names, each where Godot's own save puts it.</summary>
 public class GodotProjectReadsTests
 {
     private const string Presets = """
@@ -145,4 +146,97 @@ public class GodotProjectReadsTests
         Assert.Null(scenes.AutoloadFile("Gone"));
         Assert.Equal("res://plain.gd", scenes.AutoloadFile("Plain"));
     }
+    /// <summary>The main scene is written over where project.godot sets one, else put after the project's name, description,
+    /// version and tags and before the rest, where Godot saves it; the scene set already is left.</summary>
+    [Fact]
+    public void The_main_scene_is_written_over_or_put_after_the_projects_name_and_tags()
+    {
+        const string Set = "config_version=5\n\n[application]\n\nconfig/name=\"Hopper\"\nrun/main_scene=\"res://main.tscn\"\nconfig/features=PackedStringArray(\"4.7\")\n";
+        Assert.Equal(Set.Replace("res://main.tscn", "res://menu.tscn", StringComparison.Ordinal), GodotWrites.WithMainScene(Set, "res://menu.tscn"));
+        Assert.Null(GodotWrites.WithMainScene(Set, "res://main.tscn"));
+        const string Unset = "config_version=5\n\n[application]\n\nconfig/name=\"Hopper\"\nconfig/tags=PackedStringArray(\"a\")\nconfig/features=PackedStringArray(\"4.7\")\n";
+        Assert.Equal("config_version=5\n\n[application]\n\nconfig/name=\"Hopper\"\nconfig/tags=PackedStringArray(\"a\")\nrun/main_scene=\"res://menu.tscn\"\nconfig/features=PackedStringArray(\"4.7\")\n",
+            GodotWrites.WithMainScene(Unset, "res://menu.tscn"));
+        Assert.Equal("config_version=5\n\n[application]\n\nrun/main_scene=\"res://menu.tscn\"\nconfig/features=PackedStringArray(\"4.7\")\n",
+            GodotWrites.WithMainScene("config_version=5\n\n[application]\n\nconfig/features=PackedStringArray(\"4.7\")\n", "res://menu.tscn"));
+    }
+
+    /// <summary>A new input action goes last in [input] with Godot's deadzone and no events; an event added goes last, the
+    /// first after the bracket and each next after a comma on a line of its own, as Godot writes them; one taken out leaves
+    /// the others so, the last leaving an empty list; and the action taken out goes whole, the section with it where it was
+    /// the last, as Godot writes no empty section.</summary>
+    [Fact]
+    public void Input_actions_and_their_events_are_added_and_taken_out_as_godot_writes_them()
+    {
+        const string Project = "config_version=5\n\n[application]\n\nconfig/name=\"Hopper\"\n\n[rendering]\n\nx=1\n";
+        string made = GodotWrites.WithAction(Project, "dash")!;
+        Assert.Equal("config_version=5\n\n[application]\n\nconfig/name=\"Hopper\"\n\n[input]\n\ndash={\n\"deadzone\": 0.2,\n\"events\": []\n}\n\n[rendering]\n\nx=1\n", made);
+        Assert.Null(GodotWrites.WithAction(made, "dash"));
+        string space = GodotWrites.KeyEvent(32, 32);
+        string left = GodotWrites.MouseButtonEvent(1);
+        string one = GodotWrites.WithEvent(made, "dash", space)!;
+        Assert.Contains($"\"events\": [{space}\n]\n}}", one, StringComparison.Ordinal);
+        string two = GodotWrites.WithEvent(one, "dash", left)!;
+        Assert.Contains($"\"events\": [{space}\n, {left}\n]\n}}", two, StringComparison.Ordinal);
+        Assert.Equal(["Space (physical)", "Left Mouse Button"], Defined(two).EventsOf("dash"));
+        Assert.Equal(one.Replace(space, left, StringComparison.Ordinal), GodotWrites.WithoutEvent(two, "dash", 0));
+        Assert.Equal(made, GodotWrites.WithoutEvent(one, "dash", 0));
+        Assert.Null(GodotWrites.WithoutEvent(one, "dash", 1));
+        Assert.Null(GodotWrites.WithEvent(made, "jump", space));
+        Assert.Equal(Project, GodotWrites.WithoutSetting(two, "input", "dash"));
+        string both = GodotWrites.WithAction(made, "jump")!;
+        Assert.Equal("config_version=5\n\n[application]\n\nconfig/name=\"Hopper\"\n\n[input]\n\njump={\n\"deadzone\": 0.2,\n\"events\": []\n}\n\n[rendering]\n\nx=1\n",
+            GodotWrites.WithoutSetting(GodotWrites.WithEvent(both, "dash", space)!, "input", "dash"));
+        Assert.Null(GodotWrites.WithoutSetting(Project, "input", "dash"));
+    }
+
+    /// <summary>The events the page gives are written as Godot's editor writes them, a key by its place and a button by its
+    /// index, and read back as the names they were given by.</summary>
+    [Fact]
+    public void Each_event_the_page_gives_is_read_back_as_its_name()
+    {
+        foreach (string given in GodotInputEvents.Givable)
+        {
+            string text = GodotWrites.WithEvent(GodotWrites.WithAction("[input]\n\n", "a")!, "a", GodotInputEvents.Written(given)!)!;
+            string shown = Defined(text).EventsOf("a").Single();
+            Assert.True(shown == given || shown == $"{given} (physical)", $"{given} is read back as {shown}");
+        }
+        Assert.Null(GodotInputEvents.Written("Nothing"));
+    }
+
+    /// <summary>A new action's name is refused where Godot's Input Map refuses it: empty, holding a character it refuses, or
+    /// one of Godot's own actions.</summary>
+    [Fact]
+    public void A_new_actions_name_is_refused_where_godot_refuses_it()
+    {
+        Assert.Null(GodotWrites.WhyNotActionName("dash"));
+        Assert.NotNull(GodotWrites.WhyNotActionName(" "));
+        Assert.NotNull(GodotWrites.WhyNotActionName("a/b"));
+        Assert.NotNull(GodotWrites.WhyNotActionName("ui_accept"));
+    }
+
+    /// <summary>A layer's name is written over where it is named, put among the others by kind then number where it is not,
+    /// as Godot saves them, and taken out where it is cleared, the section with it where it was the last.</summary>
+    [Fact]
+    public void A_layers_name_is_written_in_godots_order_and_taken_out_where_cleared()
+    {
+        const string Project = "config_version=5\n\n[layer_names]\n\n2d_physics/layer_1=\"World\"\n3d_render/layer_2=\"Sky\"\n\n[rendering]\n\nx=1\n";
+        Assert.Equal(Project.Replace("World", "Ground", StringComparison.Ordinal), GodotWrites.WithLayerName(Project, "2d_physics", 1, "Ground"));
+        Assert.Null(GodotWrites.WithLayerName(Project, "2d_physics", 1, "World"));
+        Assert.Equal("config_version=5\n\n[layer_names]\n\n2d_physics/layer_1=\"World\"\n2d_physics/layer_3=\"Enemy\"\n3d_render/layer_2=\"Sky\"\n\n[rendering]\n\nx=1\n",
+            GodotWrites.WithLayerName(Project, "2d_physics", 3, "Enemy"));
+        Assert.Equal("config_version=5\n\n[layer_names]\n\n2d_render/layer_4=\"Back\"\n2d_physics/layer_1=\"World\"\n3d_render/layer_2=\"Sky\"\n\n[rendering]\n\nx=1\n",
+            GodotWrites.WithLayerName(Project, "2d_render", 4, "Back"));
+        Assert.Equal("config_version=5\n\n[layer_names]\n\n2d_physics/layer_1=\"World\"\n3d_render/layer_2=\"Sky\"\navoidance/layer_1=\"Crowd\"\n\n[rendering]\n\nx=1\n",
+            GodotWrites.WithLayerName(Project, "avoidance", 1, "Crowd"));
+        Assert.Equal("config_version=5\n\n[layer_names]\n\n3d_render/layer_2=\"Sky\"\n\n[rendering]\n\nx=1\n", GodotWrites.WithLayerName(Project, "2d_physics", 1, string.Empty));
+        Assert.Null(GodotWrites.WithLayerName(Project, "2d_physics", 2, string.Empty));
+        Assert.Equal("config_version=5\n\n[rendering]\n\nx=1\n",
+            GodotWrites.WithLayerName(GodotWrites.WithLayerName(Project, "2d_physics", 1, string.Empty)!, "3d_render", 2, string.Empty));
+        Assert.Equal("config_version=5\n\n[layer_names]\n\n3d_physics/layer_5=\"Hit\"\n\n[rendering]\n\nx=1\n",
+            GodotWrites.WithLayerName("config_version=5\n\n[rendering]\n\nx=1\n", "3d_physics", 5, "Hit"));
+    }
+
+    private static GodotDefinitions Defined(string project) =>
+        new GodotScenes("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { [GodotDefinitions.ProjectRes] = project }).Defined;
 }

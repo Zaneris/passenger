@@ -15,8 +15,10 @@ namespace Passenger.Tests;
 /// Find Action: its main scene, its two autoloads with their files, its input action with its key and button, its export
 /// preset, its plugin and its layer each shown; a click on the action goes to its line in project.godot; the plugin's box
 /// enables it in project.godot once asked, as one command Undo takes back; a preset added to export_presets.cfg on disk is
-/// shown as it comes; and an autoload made a node from the page, once asked, is written so, Undo taking it back. Godot is
-/// only asked its version.</summary>
+/// shown as it comes; an autoload made a node from the page, once asked, is written so, Undo taking it back; and, each once
+/// asked, another scene made the main scene, an action added and given a mouse button, an event of an action taken out, an
+/// action taken out, a layer named and another's name cleared, each written where Godot saves it, Undo taking the last back.
+/// Godot is only asked its version.</summary>
 public sealed class GodotProjectPageTests
 {
     private const string Project = """
@@ -90,7 +92,7 @@ public sealed class GodotProjectPageTests
         GodotPageViewer page = Shown(window);
         string[] said = Said(page);
         foreach (string expected in (string[])["Hopper", "res://main.tscn", "Score", "res://score.gd", "global", "Music", "res://music.tscn", "node", "jump",
-            "Space (physical), Joypad Bottom Action", "Desktop", "Level Tools", "1.2 · Ann", "World", "2D physics layer 1"])
+            "2 events", "Space (physical)", "Joypad Bottom Action", "Desktop", "Level Tools", "1.2 · Ann", "World", "2D physics layer 1"])
         {
             Assert.True(said.Contains(expected), $"The page does not show {expected}: it shows [{string.Join(" | ", said)}]");
         }
@@ -138,8 +140,74 @@ public sealed class GodotProjectPageTests
         Ui.WaitFor(() => Shown(window).File!.Facts!.Autoloads.Single(a => a.Name == "Score").Global == false, "the page to show Score a node");
         Ui.Press(window, Ui.Shortcut(EditorActions.Undo));
         Ui.WaitFor(() => Open().Contains("Score=\"*res://score.gd\"", StringComparison.Ordinal), () => $"Undo to make Score a global again ({window.Status}): {Open()}");
+
+        Choose(window, GodotPageViewer.MainSceneName, item => item is GodotPageScene { Res: "res://music.tscn" });
+        Ui.ClickButton(Shown(window).Body, GodotPageViewer.MakeMainWords);
+        Agree(window, "Make Main Scene");
+        Written(window, project, "run/main_scene=\"res://music.tscn\"\nconfig/features", "the main scene made music.tscn in its place");
+
+        Ui.Click(Named<TextBox>(window, GodotPageViewer.NewActionName));
+        window.KeyTextInput("dash");
+        Ui.ClickButton(Shown(window).Body, GodotPageViewer.AddActionWords);
+        Agree(window, "Add Action");
+        Written(window, project, "}\ndash={\n\"deadzone\": 0.2,\n\"events\": []\n}\n\n[layer_names]", "the action dash added last to the input map");
+        Choose(window, GodotPageViewer.EventActionName, item => item is GodotPageAction { Name: "dash" });
+        Choose(window, GodotPageViewer.NewEventName, item => item as string == "Left Mouse Button");
+        Ui.ClickButton(Shown(window).Body, GodotPageViewer.AddEventWords);
+        Agree(window, "Add Event");
+        Written(window, project, "dash={\n\"deadzone\": 0.2,\n\"events\": [Object(InputEventMouseButton,", "dash given the left mouse button");
+        Ui.WaitFor(() => Shown(window).File!.Facts!.Actions.Single(a => a.Name == "dash").Events.SequenceEqual(["Left Mouse Button"]), "the page to show dash's button");
+
+        Ui.Click(LinkBeside(Shown(window), "Joypad Bottom Action", GodotPageViewer.RemoveEventWords));
+        Agree(window, "Remove Event");
+        Ui.WaitFor(() => !File.ReadAllText(project).Contains("InputEventJoypadButton", StringComparison.Ordinal), () => $"jump's joypad button taken out ({window.Status}): {File.ReadAllText(project)}");
+        Assert.Contains("\"physical_keycode\":32", File.ReadAllText(project), StringComparison.Ordinal);
+        Ui.Click(LinkBeside(Shown(window), "dash", GodotPageViewer.RemoveActionWords));
+        Agree(window, "Remove Action");
+        Ui.WaitFor(() => !File.ReadAllText(project).Contains("dash=", StringComparison.Ordinal), () => $"dash taken out of the input map ({window.Status}): {File.ReadAllText(project)}");
+
+        Choose(window, GodotPageViewer.LayerKindName, item => item as string == "3d_physics");
+        Choose(window, GodotPageViewer.LayerNumberName, item => item as string == "2");
+        Ui.Click(Named<TextBox>(window, GodotPageViewer.LayerNameName));
+        window.KeyTextInput("Hit");
+        Ui.ClickButton(Shown(window).Body, GodotPageViewer.NameLayerWords);
+        Agree(window, "Name Layer");
+        Written(window, project, "2d_physics/layer_1=\"World\"\n3d_physics/layer_2=\"Hit\"\n", "3D physics layer 2 named Hit after 2D physics layer 1");
+        Ui.Click(LinkBeside(Shown(window), "World", GodotPageViewer.ClearLayerWords));
+        Agree(window, "Clear Name");
+        Written(window, project, "[layer_names]\n\n3d_physics/layer_2=\"Hit\"\n", "2D physics layer 1's name taken out");
+        Ui.Press(window, Ui.Shortcut(EditorActions.Undo));
+        Ui.WaitFor(() => Open().Contains("2d_physics/layer_1=\"World\"", StringComparison.Ordinal), () => $"Undo to name 2D physics layer 1 World again ({window.Status}): {Open()}");
         window.Close();
     }
+
+    /// <summary>The page's list of a name with the item chosen, as a person picks it.</summary>
+    private static void Choose(MainWindow window, string name, Func<object?, bool> item)
+    {
+        ComboBox list = Named<ComboBox>(window, name);
+        list.SelectedItem = list.ItemsSource!.Cast<object?>().First(item);
+        Ui.Settle();
+    }
+
+    /// <summary>The page's control of a name.</summary>
+    private static T Named<T>(MainWindow window, string name)
+        where T : Control => Shown(window).Body.GetVisualDescendants().OfType<T>().Single(c => c.Name == name);
+
+    /// <summary>The link at the end of the page's row that shows the words given.</summary>
+    private static Button LinkBeside(GodotPageViewer page, string words, string link) => page.Body.GetVisualDescendants().OfType<Grid>()
+        .First(g => g.ColumnDefinitions.Count == 3 && g.Children.Any(c => c is TextBlock { Text: { } text } && text == words || c is Button { Content: string said } && said == words))
+        .Children.OfType<Button>().Single(b => b.Content as string == link);
+
+    /// <summary>The question before a change of project.godot answered with the words given.</summary>
+    private static void Agree(MainWindow window, string yes)
+    {
+        Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(), $"the question answered {yes}");
+        Ui.ClickButton(DialogButtonsTests.Check(window.OwnedWindows.OfType<ConfirmDialog>().Single()), yes);
+    }
+
+    /// <summary>project.godot on disk once it holds the text given.</summary>
+    private static void Written(MainWindow window, string project, string text, string what) =>
+        Ui.WaitFor(() => File.ReadAllText(project).Contains(text, StringComparison.Ordinal), () => $"project.godot to have {what} ({window.Status}): {File.ReadAllText(project)}");
 
     /// <summary>The page the active group shows, once its facts are read.</summary>
     private static GodotPageViewer Shown(MainWindow window)

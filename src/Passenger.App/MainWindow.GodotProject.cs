@@ -10,8 +10,8 @@ namespace Passenger.App;
 /// <summary>A Godot project's page (<see cref="GodotPageViewer"/>) over its project.godot's editor: Godot Project, from the
 /// project's row in the Explorer or Find Action, opens it. What it shows is read through Workspace's readers (the scenes'
 /// <see cref="GodotDefinitions"/>, <see cref="GodotExports"/>, <see cref="GodotPlugins"/>) and the Godot found; a row goes to
-/// its line or opens its file, and a plugin's box enables or disables it in project.godot, asked first, as one command of
-/// Undo.</summary>
+/// its line or opens its file, and a plugin's box, the main scene, the input map, the autoloads and the layers' names are
+/// changed in project.godot, asked first, each one command of Undo.</summary>
 public partial class MainWindow
 {
     private void AddGodotProject()
@@ -25,7 +25,7 @@ public partial class MainWindow
             TitleOf = action => actions![action]!.Title,
             Export = (folder, preset) => ShowGodotExport(folder, preset),
             SetPlugin = SetGodotPluginAsync,
-            SetAutoload = SetGodotAutoloadAsync,
+            Edit = EditGodotProjectAsync,
         };
         actions!.Add(new IdeAction(AppActions.GodotProject, "Godot Project", "Godot", c => ShowGodotProject(GodotProjectOf(c)!))
         {
@@ -122,30 +122,34 @@ public partial class MainWindow
                 : handedOff ? $"Godot {setUp.Version}'s editor opens this project's scripts in this Passenger, at their line"
                 : $"Godot {setUp.Version}'s editor opens its scripts in another editor";
             List<GodotPageLayer> layers = [.. GodotDefinitions.LayerKinds.SelectMany(kind => defined.Layers(kind).Where(l => l.Places.Count > 0)
-                .Select(l => new GodotPageLayer(GodotDefinitions.LayersShown(kind), int.Parse(l.Name, System.Globalization.CultureInfo.InvariantCulture), l.Detail, Line(l.Places[0]))))];
-            return new GodotPageFacts(folder, project.Name, godot, runs, main, autoloads, inputs, presets, templates, plugins, handOff, handedOff, layers);
+                .Select(l => new GodotPageLayer(GodotDefinitions.LayersShown(kind), int.Parse(l.Name, System.Globalization.CultureInfo.InvariantCulture), l.Detail, Line(l.Places[0]), kind)))];
+            List<GodotPageScene> listed = [.. scenes.Files.Where(f => f.Value.Header?.Tag == "gd_scene").OrderBy(f => f.Key, StringComparer.Ordinal)
+                .Select(f => new GodotPageScene(f.Key, f.Value.Header?.Text("uid")))];
+            return new GodotPageFacts(folder, project.Name, godot, runs, main, autoloads, inputs, presets, templates, plugins, handOff, handedOff, layers, listed);
         });
 
         static string Capital(string words) => words.Length == 0 ? words : char.ToUpperInvariant(words[0]) + words[1..];
     }
 
-    /// <summary>An autoload made a global the project's scripts name, or a node alone, in its project's project.godot once the
-    /// person agrees, as one command of Undo; null once written, else why not.</summary>
-    private async Task<string?> SetGodotAutoloadAsync(string folder, GodotPageAutoload autoload, bool global)
+    /// <summary>A change of a Godot project's project.godot its page asks for, once the person agrees, through the window's
+    /// own writes as one command of Undo; null once written, else why not.</summary>
+    private async Task<string?> EditGodotProjectAsync(string folder, GodotPageEdit edit)
     {
         UiThread.Check();
         string file = Path.Combine(folder, GodotProject.FileName);
-        string made = global ? "a global" : "a node";
-        bool agreed = await ConfirmAsync(global ? "Make Autoload Global?" : "Make Autoload a Node?",
-            $"Make {autoload.Name} ({autoload.Res}) {made} in {PathNames.Shown(file, Folder)}? {(global ? "Its scripts then name it as a global, as Godot's Autoload settings' Global Variable box does" : "Its scripts then reach it by its node's path alone")}.",
-            global ? "Make Global" : "Make Node", null);
+        if (edit.Refused is { } refusal)
+        {
+            return Told(refusal);
+        }
+        bool agreed = await ConfirmAsync(edit.Asked, edit.Question, edit.Yes, null);
+        // The keys go back to the page the link was on, which the write's reading draws again.
         if (Editors.ActiveGroup.GodotPage is { } shown)
         {
             shown.Body.Focus();
         }
         if (!agreed)
         {
-            return Told($"{autoload.Name} was left {(autoload.Global ? "a global" : "a node")}");
+            return Told(edit.Left);
         }
         if (SaveBeforeWriting([file]) is { } unsaved)
         {
@@ -155,11 +159,11 @@ public partial class MainWindow
         {
             return Told($"{PathNames.Shown(file, Folder)} could not be read");
         }
-        if (GodotWrites.WithAutoloadGlobal(had.Text, autoload.Name, global) is not { } text)
+        if (edit.Change(had.Text) is not { } text)
         {
-            return Told($"{autoload.Name} is {made} already, or {GodotProject.FileName} has no such autoload");
+            return Told(edit.Unchanged);
         }
-        if (await ChangeFileAsync($"Make Autoload {autoload.Name} {(global ? "Global" : "a Node")}", [file], () =>
+        if (await ChangeFileAsync(edit.Command, [file], () =>
         {
             _ = FileText.SaveOver(file, had, text);
             return null;
@@ -168,7 +172,7 @@ public partial class MainWindow
             return Told($"{GodotProject.FileName} could not be written: {refused}");
         }
         Editors.GodotPages?.Refresh();
-        status.Text = $"{autoload.Name} is {made} in {GodotProject.FileName}";
+        status.Text = edit.Done;
         return null;
 
         string Told(string why)

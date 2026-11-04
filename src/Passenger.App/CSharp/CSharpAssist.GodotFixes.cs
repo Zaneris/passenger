@@ -156,7 +156,7 @@ internal sealed partial class CSharpAssist
             return null;
         }
         string line = define.Kind == GodotStringKind.Group ? GodotWrites.GroupLine(was, Start(was, define) ?? 0, define.Name) ?? string.Empty
-            : $"{SettingKey(define.Name)}={SettingValue(define, GodotWrites.NewlineOf(was))}";
+            : $"{GodotWrites.SettingKey(define.Name)}={SettingValue(define, GodotWrites.NewlineOf(was))}";
         string where = define.Kind == GodotStringKind.Group ? $"{define.NodeName}'s header in {Path.GetFileName(path)}" : $"project.godot's [{define.Section}]";
         return $"{where} becomes:\n\n{line.Replace("\r\n", "\n", StringComparison.Ordinal)}";
     }
@@ -194,15 +194,11 @@ internal sealed partial class CSharpAssist
     /// <summary>A file's text with a name defined in it (<see cref="GodotWrites"/>); null where it is so already, or has no place.</summary>
     private static string? Written(string text, GodotDefine define) => define.Kind == GodotStringKind.Group
         ? Start(text, define) is { } start ? GodotWrites.WithGroup(text, start, define.Name) : null
-        : define.Section is { } section ? GodotWrites.WithSetting(text, section, SettingKey(define.Name), SettingValue(define, GodotWrites.NewlineOf(text))) : null;
+        : define.Section is { } section ? GodotWrites.WithSetting(text, section, GodotWrites.SettingKey(define.Name), SettingValue(define, GodotWrites.NewlineOf(text))) : null;
 
     /// <summary>Where the section of a group's node starts in its scene's text, found by its path in the scene.</summary>
     private static int? Start(string text, GodotDefine define) =>
         GodotFile.Parse(text).Nodes.FirstOrDefault(n => n.PathInScene == define.NodePath)?.Section.Start;
-
-    /// <summary>A name as project.godot writes a key: bare where Godot leaves it so, else quoted.</summary>
-    private static string SettingKey(string name) =>
-        name.Length > 0 && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '-') ? name : GodotWrites.Quoted(name);
 
     private static string SettingValue(GodotDefine define, string newline) =>
         define.Kind == GodotStringKind.Action ? GodotWrites.ActionValue(newline) : GodotWrites.AutoloadValue(define.Value ?? string.Empty);
