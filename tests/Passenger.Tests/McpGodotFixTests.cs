@@ -5,8 +5,8 @@ namespace Passenger.Tests;
 
 /// <summary>An agent fixing a Godot game's checks through code_actions and apply_code_action as a person does through Show
 /// Context Actions: outline gives the scene's nodes, script and connections, and the open scene's connection to a method its
-/// script lacks lists the method's making, which makes it in the script, saved, so the scene's mark goes. Without a Godot 4
-/// .NET build, it skips saying why.</summary>
+/// script lacks lists the method's making, which makes it in the script, saved, so the scene's mark goes; and outline names
+/// an imported model a node instances. Without a Godot 4 .NET build, the fix skips saying why.</summary>
 public sealed class McpGodotFixTests : McpRig
 {
     [Fact]
@@ -50,6 +50,35 @@ public sealed class McpGodotFixTests : McpRig
             Exception? failed = await Record.ExceptionAsync(() => Until(async () => !(marks = Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "main.tscn" })))
                 .Contains("has no method OnQuitPressed", StringComparison.Ordinal), "the scene's mark of the missing method to go"));
             Assert.True(failed is null, $"{failed?.Message}\nThe scene's marks: {marks}");
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>outline of a scene names the scene each node instances, an imported model's as a scene's, though no text says
+    /// the model's nodes. Needs no Godot: the scene is Passenger's own reading.</summary>
+    [Fact]
+    public async Task An_agents_outline_of_a_scene_names_an_imported_model_a_node_instances()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("godot-mcp-outline-"));
+        try
+        {
+            TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Outlined\"\n");
+            TestFolders.Write(folder, "flag.tscn", "[gd_scene format=3]\n\n[node name=\"Flag\" type=\"Node3D\"]\n");
+            TestFolders.Write(folder, "models/tree.glb", "glTF");
+            TestFolders.Write(folder, "main.tscn", "[gd_scene load_steps=3 format=3]\n\n[ext_resource type=\"PackedScene\" path=\"res://flag.tscn\" id=\"1_flag\"]\n"
+                + "[ext_resource type=\"PackedScene\" path=\"res://models/tree.glb\" id=\"2_tree\"]\n\n[node name=\"Main\" type=\"Node3D\"]\n\n"
+                + "[node name=\"Flag\" parent=\".\" instance=ExtResource(\"1_flag\")]\n\n[node name=\"Tree\" parent=\".\" instance=ExtResource(\"2_tree\")]\n");
+            await using ModelContextProtocol.Client.McpClient client = await Start(["--mcp", folder], languageServer: false);
+            Assert.Equal("""
+                Main : Node3D (node, line 6)
+                  Flag : Node3D (node, line 8)
+                    flag.tscn instance
+                  Tree (node, line 10)
+                    models/tree.glb instance
+                """, Text(await Call(client, McpTools.Outline, new() { ["path"] = "main.tscn" })).ReplaceLineEndings("\n"));
         }
         finally
         {

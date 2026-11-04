@@ -36,8 +36,9 @@ public sealed class GodotTreeNode
     /// <summary>The node whose scene it is part of; null for the tree's root.</summary>
     public GodotTreeNode? Owner { get; private set; }
 
-    /// <summary>The scene it instances (res://), where it is an instance; null for any other node.</summary>
-    public string? Instance { get; private set; }
+    /// <summary>The scene it instances (res://), where it is an instance, one no text says the nodes of too (an imported
+    /// model); null for any other node.</summary>
+    public string? Instance { get; internal set; }
 
     /// <summary>Whether it stands in for a scene loaded only when the game asks (<c>instance_placeholder</c>), whose
     /// nodes are not known.</summary>
@@ -688,7 +689,7 @@ public sealed class GodotScenes
             }
             else
             {
-                made = new GodotTreeNode(node.Name, parent, (scene, node)) { NodesUnread = node.Instance is not null };
+                made = new GodotTreeNode(node.Name, parent, (scene, node)) { NodesUnread = node.Instance is not null, Instance = file.External(node.Instance)?.Path };
                 made.Own(root);
             }
             made.Take(scene, node, file, declares: true);

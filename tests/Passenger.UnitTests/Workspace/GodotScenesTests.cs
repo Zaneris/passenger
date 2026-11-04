@@ -178,9 +178,11 @@ public class GodotScenesTests
         });
         GodotTreeNode chicken = scenes.Tree("res://chicken.tscn")!;
         Assert.True(chicken.NodesUnread);
+        Assert.Equal("res://chicken.glb", chicken.Instance);
         Assert.Equal("Halo", GodotScenes.Resolve(chicken, "Halo").Found?.Name);
         Assert.True(GodotScenes.Resolve(chicken, "Rig/Skeleton3D").Unknown, "The model's nodes are Godot's import's to say, not the scene's");
         GodotTreeNode world = scenes.Tree("res://world.tscn")!;
+        Assert.Equal("res://chicken.tscn", world.Child("Chicken")?.Instance);
         Assert.True(GodotScenes.Resolve(world, "Chicken/Rig/Skeleton3D/Mesh").Unknown, "An instance of the scene keeps the model's nodes unknown");
         Assert.Equal("Halo", GodotScenes.Resolve(world, "Chicken/Halo").Found?.Name);
         GodotResolved missing = GodotScenes.Resolve(world, "Chicken/Halo/Gone");

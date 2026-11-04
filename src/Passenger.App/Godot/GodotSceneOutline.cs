@@ -8,7 +8,8 @@ namespace Passenger.App.Godot;
 
 /// <summary>A Godot scene's outline as Godot builds its tree (<see cref="GodotScenes.Tree"/>): each node the scene writes, by
 /// its name and engine class, nested as the tree nests it (a node an instance brings in shown where the scene changes it,
-/// with the nodes on its way there); under each, its script and the scene it instances, leading to their files, and the
+/// with the nodes on its way there); under each, its script and the scene it instances (an imported model too), leading to
+/// their files, and the
 /// connections of its signals, each leading on to the handler its receiving node's script declares
 /// (<see cref="SymbolRow.Leads"/>). A row spans the lines of what writes it. Pure, but for whether a file is there.</summary>
 internal static class GodotSceneOutline
