@@ -11,6 +11,11 @@
     <SelfContained Condition="'$(RuntimeIdentifier)' != ''">true</SelfContained>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- A helper's runtimeconfig.json read as every other program's JSON is. -->
+    <Compile Include="../Passenger.Core/JsonMembers.cs" Link="JsonMembers.cs" />
+  </ItemGroup>
+
   <!-- The four files Passenger carries of it: what it runs as and is run by, without the runtime a self-contained build
        copies beside them. -->
   <Target Name="GetHelperHost" DependsOnTargets="GetTargetPath" Returns="@(HelperHostFile)">

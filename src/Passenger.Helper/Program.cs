@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Text.Json;
+using Passenger.Core;
 
 namespace Passenger.Helper;
 
@@ -55,19 +56,15 @@ public static class Program
             return;
         }
         using JsonDocument config = JsonDocument.Parse(File.ReadAllBytes(runtimeConfig), new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
-        if (config.RootElement.TryGetProperty("runtimeOptions", out JsonElement options) && options.ValueKind == JsonValueKind.Object
-            && options.TryGetProperty("configProperties", out JsonElement properties) && properties.ValueKind == JsonValueKind.Object)
+        foreach (JsonProperty property in JsonMembers.Properties(JsonMembers.Object(config.RootElement, "runtimeOptions"), "configProperties"))
         {
-            foreach (JsonProperty property in properties.EnumerateObject())
+            AppContext.SetData(property.Name, property.Value.ValueKind switch
             {
-                AppContext.SetData(property.Name, property.Value.ValueKind switch
-                {
-                    JsonValueKind.String => property.Value.GetString(),
-                    JsonValueKind.True => "true",
-                    JsonValueKind.False => "false",
-                    _ => property.Value.GetRawText(),
-                });
-            }
+                JsonValueKind.String => property.Value.GetString(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                _ => property.Value.GetRawText(),
+            });
         }
     }
 }

@@ -707,8 +707,8 @@ public sealed class LanguageServer : IAsyncDisposable
 
     /// <summary>Whether the server takes each change of a document as its whole text (<c>textDocumentSync</c>'s change kind
     /// Full, Godot's), not as the edits made.</summary>
-    public bool TakesWholeTexts => Capabilities.ValueKind == JsonValueKind.Object && Capabilities.TryGetProperty("textDocumentSync", out JsonElement sync)
-        && (sync.ValueKind == JsonValueKind.Number ? sync.GetInt32() == FullSync : JsonMembers.Number(sync, "change") == FullSync);
+    public bool TakesWholeTexts =>
+        (JsonMembers.Number(Capabilities, "textDocumentSync") ?? JsonMembers.Number(JsonMembers.Object(Capabilities, "textDocumentSync"), "change")) == FullSync;
 
     /// <summary>LSP's document sync by whole texts.</summary>
     private const int FullSync = 1;

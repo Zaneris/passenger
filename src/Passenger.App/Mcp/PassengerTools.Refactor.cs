@@ -162,7 +162,7 @@ public sealed partial class PassengerTools
             (Signature? signature, string? why) = await actions.GDScriptSignatureAsync(document, start);
             Signature had = signature ?? throw new InvalidOperationException($"Change Signature is not available here: {why}");
             name ??= had.Name;
-            parameters = signatureOptions.TryGetProperty("parameters", out JsonElement asked) && asked.ValueKind == JsonValueKind.Array
+            parameters = JsonMembers.Value(signatureOptions, "parameters") is { ValueKind: JsonValueKind.Array } asked
                 ? [.. asked.EnumerateArray().Select(p => GDScriptParameterOf(p, had))]
                 : [.. had.Parameters.Select((p, i) => new Passenger.Workspace.GDScript.GDScriptParameterChange(i, p.Name, p.Type, p.DefaultValue, string.Empty))];
         }
@@ -237,7 +237,7 @@ public sealed partial class PassengerTools
             throw new ArgumentException($"A constructor's name is its type's and it has no return type: change only {signature.Container}'s parameters");
         }
         List<ParameterChange> parameters = [];
-        if (!given.TryGetProperty("parameters", out JsonElement asked) || asked.ValueKind == JsonValueKind.Null)
+        if (JsonMembers.Value(given, "parameters") is not { ValueKind: not JsonValueKind.Null } asked)
         {
             parameters.AddRange(signature.Parameters.Select((p, i) => new ParameterChange(i, p.Modifier, p.Type, p.Name, p.DefaultValue, string.Empty)));
         }
@@ -607,7 +607,7 @@ public sealed partial class PassengerTools
 
     private static IReadOnlyList<string>? Texts(JsonElement element, string name)
     {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out JsonElement value) || value.ValueKind == JsonValueKind.Null)
+        if (JsonMembers.Value(element, name) is not { ValueKind: not JsonValueKind.Null } value)
         {
             return null;
         }

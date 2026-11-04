@@ -42,7 +42,7 @@ public static class WebAssemblyValues
     public static string Shown(JsonElement value)
     {
         string? type = JsonMembers.Text(value, "type");
-        JsonElement? raw = value.ValueKind == JsonValueKind.Object && value.TryGetProperty("value", out JsonElement held) ? held : null;
+        JsonElement? raw = JsonMembers.Value(value, "value");
         return type switch
         {
             "string" => raw is { ValueKind: JsonValueKind.String } text ? Quoted(text.GetString()!) : JsonMembers.Text(value, "description") ?? "null",
