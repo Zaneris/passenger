@@ -109,7 +109,7 @@ public partial class ManagedDebugger
         SuspendedLaunch launch;
         try
         {
-            launch = SuspendedLaunch.Start(Resolve(launchInfo.Program), launchInfo.Arguments, launchInfo.Cwd ?? Environment.CurrentDirectory, launchInfo.Env);
+            launch = SuspendedLaunch.Start(Resolve(launchInfo.Program), launchInfo.Arguments, launchInfo.Cwd ?? Environment.CurrentDirectory, launchInfo.Env, launchInfo.Unseen);
         }
         catch (Exception error)
         {

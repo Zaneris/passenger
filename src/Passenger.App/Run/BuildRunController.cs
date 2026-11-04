@@ -1233,7 +1233,7 @@ public sealed partial class BuildRunController
             // Its fork off the window's thread (#441): the program runs from now as Stop and IsRunning see it, its id known once started.
             string? notStarted = Started(watched
                 ? await session.Runner.StartDotnetAsync(Watch(plan), plan.WorkingDirectory, variables)
-                : await session.Runner.StartAsync(plan.Program, plan.Arguments, plan.WorkingDirectory, variables));
+                : await session.Runner.StartAsync(plan.Start(), variables));
             if (notStarted is null)
             {
                 parts.OpenBrowser(plan, session.Runner.Ended);

@@ -399,6 +399,7 @@ public sealed class DebugSession
             StopAtEntry = false,
             HotReload = hotReload,
             Presentations = Godot.GodotValues.Presentations,
+            Unseen = plan.OwnDesktop ? true : null,
         }, breakpoints, lines, log, output, runInTerminal, columns, starting, elsewhere, place);
     }
 
@@ -436,6 +437,7 @@ public sealed class DebugSession
             Cwd = plan.WorkingDirectory,
             Env = plan.Environment,
             Console = runInTerminal is null ? "internalConsole" : "integratedTerminal",
+            Unseen = plan.OwnDesktop ? true : null,
         }, breakpoints, lines, log, output, runInTerminal, columns, starting, elsewhere: false, place: null, engine: engine);
 
     /// <summary>Passenger's own adapter, started beside the app or where the program is (<see cref="AdapterStart"/>), forked

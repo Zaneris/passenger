@@ -11,4 +11,7 @@ public class LaunchInfo
 
     /// <summary>Whether the program's code may be changed as it runs (Hot Reload): its modules get Edit and Continue as they load.</summary>
     public bool HotReload { get; set; }
+
+    /// <summary>Whether no one is to see the program's windows: on Windows it runs on a desktop of its own.</summary>
+    public bool Unseen { get; set; }
 }

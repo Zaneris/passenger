@@ -216,16 +216,29 @@ public static class ChildProcesses
         Lifeline.Prepare(start);
         string command = Display(start);
         long began = Stopwatch.GetTimestamp();
-        Process process = new() { StartInfo = start, EnableRaisingEvents = true };
-        process.Exited += (_, _) => OnExited(process, start, command, began, answers);
-        try
+        Process process;
+        if (OperatingSystem.IsWindows() && OnOwnDesktops.TryGetValue(start, out string? why))
         {
-            process.Start();
+            OwnDesktopStart started = OwnDesktop.Start(start, suspended: false);
+            process = started.Process;
+            OwnStreams.AddOrUpdate(process, started);
+            process.EnableRaisingEvents = true;
+            process.Exited += (_, _) => OnExited(process, start, command, began, answers);
+            PassengerLog.Write($"Started {Path.GetFileName(start.FileName)} (process {process.Id}) on a desktop of its own: {why}");
         }
-        catch
+        else
         {
-            process.Dispose();
-            throw;
+            process = new() { StartInfo = start, EnableRaisingEvents = true };
+            process.Exited += (_, _) => OnExited(process, start, command, began, answers);
+            try
+            {
+                process.Start();
+            }
+            catch
+            {
+                process.Dispose();
+                throw;
+            }
         }
         Lifeline.Adopt(process);
         // An id the IDE ended before, whose end went untold (its process disposed first), is another child's now.
@@ -233,10 +246,33 @@ public static class ChildProcesses
         Started?.Invoke(null, new ChildStart(process.Id, command, start.WorkingDirectory) { Start = start });
         if (closeInput)
         {
-            process.StandardInput.Close();
+            Input(process).Close();
         }
         return process;
     }
+
+    /// <summary>The starts to be made on a desktop of their own (<see cref="OnDesktopOfItsOwn"/>), each with why.</summary>
+    private static readonly ConditionalWeakTable<ProcessStartInfo, string> OnOwnDesktops = new();
+
+    /// <summary>The streams of each child started on a desktop of its own, which its process, not .NET's start, has none of.</summary>
+    private static readonly ConditionalWeakTable<Process, OwnDesktopStart> OwnStreams = new();
+
+    /// <summary>Has a start on Windows make its program on a desktop of its own, never switched to and closed once it has
+    /// ended (<see cref="OwnDesktop"/>), so no window it makes reaches the person's screen or takes the keys from them;
+    /// <paramref name="why"/> goes to the log with its start. Elsewhere the start is as it was.</summary>
+    public static ProcessStartInfo OnDesktopOfItsOwn(ProcessStartInfo start, string why)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(why);
+        if (OperatingSystem.IsWindows())
+        {
+            OnOwnDesktops.AddOrUpdate(start, why);
+        }
+        return start;
+    }
+
+    /// <summary>A child's standard input, which every child's start redirects: its own writer where it runs on a desktop of
+    /// its own, else its process's.</summary>
+    public static StreamWriter Input(Process process) => OwnStreams.TryGetValue(process, out OwnDesktopStart? own) ? own.Input : process.StandardInput;
 
     /// <summary>Takes on a program started in the terminal's pseudo-terminal from <paramref name="start"/>, so it ends
     /// with the IDE and is logged as a child is: on macOS and Linux its own session and process group go on the
@@ -688,10 +724,14 @@ public static class ChildProcesses
     /// program that writes a line at a time costs no more than its lines; on Windows the process's own reader. Taken from
     /// the process before anything reads it, the same reader each time it is asked for, which the process's disposal
     /// leaves open and whose disposal ends a read under way.</summary>
-    public static TextReader Output(Process process) => Taken(process.StandardOutput);
+    public static TextReader Output(Process process) => OwnStreams.TryGetValue(process, out OwnDesktopStart? own)
+        ? own.Output ?? throw new InvalidOperationException("StandardOut has not been redirected")
+        : Taken(process.StandardOutput);
 
     /// <summary>A child's errors, redirected, as <see cref="Output"/> reads its output.</summary>
-    public static TextReader Errors(Process process) => Taken(process.StandardError);
+    public static TextReader Errors(Process process) => OwnStreams.TryGetValue(process, out OwnDesktopStart? own)
+        ? own.Error ?? throw new InvalidOperationException("StandardError has not been redirected")
+        : Taken(process.StandardError);
 
     /// <summary>Each of a child's streams' readers, by the process's own reader it was taken from.</summary>
     private static readonly ConditionalWeakTable<StreamReader, TextReader> Readers = new();

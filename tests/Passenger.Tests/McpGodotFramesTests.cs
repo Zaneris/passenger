@@ -7,9 +7,10 @@ using SkiaSharp;
 namespace Passenger.Tests;
 
 /// <summary>An agent sees a running Godot game's frames with no window on the person's screen: its own Passenger runs the
-/// game through Godot's embedded display on macOS (a background process with no window or Dock icon), so app_screenshot
-/// gives what the game draws. On a system where Godot draws nothing without a window (Windows, Linux) or a Godot before 4.5
-/// it skips saying why. Run alone: it holds a game to its frames.</summary>
+/// game through Godot's embedded display on macOS (a background process with no window or Dock icon), on Windows in a window
+/// of a desktop of its own that nobody switches to, on Linux in a window of Xvfb's, so app_screenshot gives what the game
+/// draws. On Linux without Xvfb, or on macOS with a Godot before 4.5, it skips saying why. Run alone: it holds a game to its
+/// frames.</summary>
 [Collection(Alone.Name)]
 public sealed class McpGodotFramesTests : McpRig
 {
@@ -27,7 +28,9 @@ public sealed class McpGodotFramesTests : McpRig
             : $"The Godot found cannot run a Godot 4 game: {godot.WhyNotScripts}");
         Assert.SkipUnless(GodotExecutables.DrawsWithoutWindow(godot!.Version), OperatingSystem.IsMacOS()
             ? $"Godot {godot.Version} has no embedded display: Godot 4.5 and newer draw a game on macOS with no window"
-            : "Godot draws a game here only in a window, which would show on the person's screen: an agent's game runs headless, with no frames");
+            : OperatingSystem.IsLinux() ? "Xvfb is not installed: an agent's own Passenger draws a game on Linux in an X server of its own that shows nowhere, "
+                + "and without one runs it headless, with no frames (install the xvfb package)"
+            : $"Godot {godot.Version} is no Godot 4, which an agent's own Passenger draws on a desktop of its own");
         File.WriteAllText(Path.Combine(folder, "project.godot"), "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Stepper\"\n"
             + "run/main_scene=\"res://main.tscn\"\nconfig/features=PackedStringArray(\"4.7\")\n\n[display]\n\nwindow/size/viewport_width=640\nwindow/size/viewport_height=360\n");
         File.WriteAllText(Path.Combine(folder, "main.tscn"), "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://main.gd\" id=\"1\"]\n\n"

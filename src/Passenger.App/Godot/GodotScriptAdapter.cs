@@ -209,6 +209,10 @@ public sealed class GodotScriptAdapter
         {
             start.Environment[name] = value;
         }
+        if (arguments.Unseen == true)
+        {
+            ChildProcesses.OnDesktopOfItsOwn(start, $"{game.Name} is an agent's game, drawn where no one sees it for its frames");
+        }
         Tell(DapEvents.Output, new OutputEvent($"{ChildProcesses.Shown(start)}\n", DapOutputCategories.Console));
         System.Diagnostics.Process process;
         try

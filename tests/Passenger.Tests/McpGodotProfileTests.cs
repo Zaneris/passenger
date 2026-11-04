@@ -129,8 +129,9 @@ public sealed class McpGodotProfileTests : McpRig, IClassFixture<GodotProfileGam
         Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"The game ended as it started: {ran}");
         Assert.Contains("Passenger its remote debugger", ran.GetProperty("status").GetString(), StringComparison.Ordinal);
         string said = await Ready(client);
-        // Headless, or on macOS Godot's embedded display, whose frames reach no screen.
-        string unseen = GodotExecutables.DrawsWithoutWindow(game.Godot!.Version) ? "display [embedded]" : "display [headless]";
+        // Headless, or where the system draws an unseen game: macOS's embedded display, a desktop of its own on Windows, Xvfb on Linux.
+        string unseen = !GodotExecutables.DrawsWithoutWindow(game.Godot!.Version) ? "display [headless]"
+            : OperatingSystem.IsMacOS() ? "display [embedded]" : OperatingSystem.IsWindows() ? "display [Windows]" : "display [X11]";
         Assert.True(said.Contains(unseen, StringComparison.Ordinal), $"An agent's game did not run with no window, so it would be on the person's screen:\n{said}");
         Assert.False(said.Contains("GODOT []", StringComparison.Ordinal), $"The game was not given the GODOT its profile names:\n{said}");
         string tree = Text(await Call(client, McpTools.AppTree));

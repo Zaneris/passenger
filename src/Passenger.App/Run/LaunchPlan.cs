@@ -131,6 +131,19 @@ public sealed partial record LaunchPlan
     /// it headless whatever its arguments say.</summary>
     public bool GodotUnseen { get; init; }
 
+    /// <summary>Whether the program runs on Windows on a desktop of its own, which nobody switches to (an agent's own Godot
+    /// game, drawn there for its frames): its start through ChildProcesses, and the debugger's, says so
+    /// (<see cref="Passenger.Core.ChildProcesses.OnDesktopOfItsOwn"/>).</summary>
+    public bool OwnDesktop { get; init; }
+
+    /// <summary>The start of the plan's program through ChildProcesses, on a desktop of its own where the plan says so
+    /// (<see cref="OwnDesktop"/>).</summary>
+    public System.Diagnostics.ProcessStartInfo Start()
+    {
+        System.Diagnostics.ProcessStartInfo start = Passenger.Core.ChildProcesses.Command(Program, Arguments, WorkingDirectory);
+        return OwnDesktop ? Passenger.Core.ChildProcesses.OnDesktopOfItsOwn(start, $"{Name} is an agent's game, drawn where no one sees it for its frames") : start;
+    }
+
     /// <summary>Whether its Godot game is to draw in the window's Game window (<see cref="RunConfiguration.GodotInPane"/>).</summary>
     public bool GodotInPane { get; init; }
 

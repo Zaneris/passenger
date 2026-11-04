@@ -126,12 +126,21 @@ public static class GodotLaunch
             }
         }
         List<string> arguments = [.. Chosen(setting)?.Arguments ?? []];
+        bool ownDesktop = false;
         // Nobody would see its window: Godot runs headless, but an agent's own game draws where the system can with none, for its frames.
         if (unseen && !GodotExecutables.RunsHeadless([.. arguments, .. own]))
         {
-            arguments.AddRange(PassengerApp.ForAgent && !configuration.GodotEditor && GodotExecutables.DrawsWithoutWindow(version)
-                ? GodotExecutables.EmbeddedArguments(game.WindowSize.Width, game.WindowSize.Height)
-                : [GodotExecutables.Headless]);
+            // Windows' desktop of its own takes a start of Passenger's own, which the terminal's (its console, its copies) is not.
+            bool drawn = PassengerApp.ForAgent && !configuration.GodotEditor && GodotExecutables.DrawsWithoutWindow(version)
+                && (!OperatingSystem.IsWindows() || (configuration.Console == ConsoleKind.Internal && configuration.GodotCopies <= 1));
+            string? display = drawn && OperatingSystem.IsLinux() ? await Godot.VirtualDisplays.OpenAsync(cancel) : null;
+            drawn &= !OperatingSystem.IsLinux() || display is not null;
+            arguments.AddRange(drawn ? GodotExecutables.UnseenArguments(game.WindowSize.Width, game.WindowSize.Height) : [GodotExecutables.Headless]);
+            ownDesktop = drawn && OperatingSystem.IsWindows();
+            if (display is not null && drawn)
+            {
+                environment = new Dictionary<string, string>(environment, StringComparer.Ordinal) { [Godot.VirtualDisplays.Variable] = display };
+            }
         }
         arguments.AddRange(["--path", folder]);
         if (configuration.GodotEditor)
@@ -165,6 +174,7 @@ public static class GodotLaunch
             Godot = folder,
             GodotVersion = version,
             GodotUnseen = unseen,
+            OwnDesktop = ownDesktop,
             GodotInPane = configuration.GodotInPane && !configuration.GodotEditor && !configuration.GodotInEditor,
             ScriptsAlone = project.IsScriptGame,
             GameName = project.IsScriptGame ? project.Name : null,

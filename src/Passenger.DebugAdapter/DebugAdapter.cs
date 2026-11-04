@@ -379,6 +379,7 @@ public sealed class DebugAdapter
                 StopAtEntry = arguments.StopAtEntry ?? false,
                 LaunchRequestConsoleType = console,
                 HotReload = hotReload,
+                Unseen = arguments.Unseen ?? false,
             };
             debugger.Present(arguments.Presentations ?? []);
             await Locked(() => debugger.Launch(launch, arguments.JustMyCode ?? true));

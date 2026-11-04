@@ -34,8 +34,8 @@ public sealed class GodotUnseenTests : McpRig
     private const string Lonely = "Lonely";
 
     /// <summary>An agent's own Passenger, started outside a test run (no PASSENGER_START), runs the game with no window though
-    /// neither its configuration nor the Godot setting asks it to: headless, or on macOS through Godot's embedded display, a
-    /// background process whose frames reach no screen.</summary>
+    /// neither its configuration nor the Godot setting asks it to: headless, or drawn where no screen shows it, on macOS
+    /// through Godot's embedded display, on Windows in a window of a desktop of its own, on Linux in Xvfb's.</summary>
     [Fact]
     public async Task An_agents_own_passenger_runs_a_godot_game_with_no_window_though_nothing_it_was_given_says_so()
     {
@@ -43,7 +43,7 @@ public sealed class GodotUnseenTests : McpRig
         await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["godotExecutable"] = godot.Executable } });
         JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Lonely, ["waitSeconds"] = 60 });
         IReadOnlyList<string> started = await godot.StartedAsync($"the game's start ({ran})");
-        string unseen = GodotExecutables.DrawsWithoutWindow("4.7.2") ? GodotExecutables.Embedded : GodotExecutables.Headless;
+        string unseen = !GodotExecutables.DrawsWithoutWindow("4.7.2") ? GodotExecutables.Headless : OperatingSystem.IsMacOS() ? GodotExecutables.Embedded : "--resolution";
         Assert.True(started.Contains(unseen), $"The agent's own Passenger started Godot with a window, as {string.Join(' ', started)}");
     }
 

@@ -280,7 +280,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         process = started;
         running = true;
         TaskCompletionSource<int> ending = waited ?? (ended = new(TaskCreationOptions.RunContinuationsAsynchronously));
-        ConsoleInput? input = takesInput ? ProgramInput.Of(started.StandardInput) : null;
+        ConsoleInput? input = takesInput ? ProgramInput.Of(ChildProcesses.Input(started)) : null;
         if (input is not null)
         {
             console.Input = input;

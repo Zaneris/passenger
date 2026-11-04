@@ -66,9 +66,21 @@ public static partial class GodotExecutables
     /// <summary>Whether a Godot of a version has <see cref="RecoveryMode"/>: from Godot 4.5.</summary>
     public static bool HasRecoveryMode(string? version) => version is not null && Numbers(version) >= new Version(4, 5);
 
-    /// <summary>Whether a Godot of a version draws a game with no window on this system: macOS's embedded display, from
-    /// Godot 4.5; on Windows and Linux, no.</summary>
-    public static bool DrawsWithoutWindow(string? version) => OperatingSystem.IsMacOS() && version is not null && Numbers(version) >= new Version(4, 5);
+    /// <summary>Whether a Godot of a version draws a game here with no window on the person's screen: on macOS through its
+    /// embedded display, from Godot 4.5; on Windows any Godot 4, in a window on a desktop of its own (<see cref="OwnDesktop"/>);
+    /// on Linux where Xvfb is installed, in a window on an X server of Passenger's own that shows nowhere.</summary>
+    public static bool DrawsWithoutWindow(string? version) => version is not null && (OperatingSystem.IsMacOS() ? Numbers(version) >= new Version(4, 5)
+        : OperatingSystem.IsWindows() ? Numbers(version) >= new Version(4, 0)
+        : OperatingSystem.IsLinux() && Numbers(version) >= new Version(4, 0) && Programs.OnPath(VirtualDisplay) is not null);
+
+    /// <summary>The X server that draws to memory alone, which Linux's games no one sees draw on.</summary>
+    public const string VirtualDisplay = "Xvfb";
+
+    /// <summary>The arguments that have a game no one sees draw at a size, no sound heard: macOS's embedded display
+    /// (<see cref="EmbeddedArguments"/>); elsewhere a window of its own where no one sees it, on Linux an X11 one.</summary>
+    public static IReadOnlyList<string> UnseenArguments(int width, int height) => OperatingSystem.IsMacOS() ? EmbeddedArguments(width, height)
+        : [.. OperatingSystem.IsLinux() ? (string[])["--display-driver", "x11"] : [], "--resolution",
+            string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{width}x{height}"), "--audio-driver", "Dummy"];
 
     /// <summary>The arguments that have a game Passenger is the debugger of draw through the embedded display at a size, no
     /// sound heard: the display takes the window and process of the editor it would sit in, which Passenger's are.</summary>

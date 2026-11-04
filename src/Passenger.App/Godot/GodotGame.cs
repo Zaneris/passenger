@@ -99,6 +99,11 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start(1);
         GodotGame game = new(plan.Name, folder, plan.GodotVersion, GodotExecutables.RunsHeadless(plan.Arguments), plan.GodotUnseen, plan.ScriptsAlone, listener, scripts);
+        if (VirtualDisplays.Serves(plan.Environment.GetValueOrDefault(VirtualDisplays.Variable)))
+        {
+            game.drawsOnServer = true;
+            VirtualDisplays.Hold();
+        }
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         List<string> arguments = [.. plan.Arguments];
         List<string> debugging = [RemoteDebug, $"tcp://127.0.0.1:{port}"];
@@ -823,8 +828,16 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         new((long)node.Id, node.Type.StartsWith("res://", StringComparison.Ordinal) ? Path.GetFileName(node.Type) : node.Type, node.Name, [], false,
             node.SceneFile.Length > 0, node.Visible, [.. node.Children.Where(c => !GodotAgent.Is(c)).Select(ElementOf)]);
 
+    /// <summary>Whether the game draws on Passenger's own X server (<see cref="VirtualDisplays"/>), held while it runs.</summary>
+    private bool drawsOnServer;
+
     /// <summary>Why a game Godot runs headless has no picture.</summary>
-    public string HeadlessPicture => Unseen
+    public string HeadlessPicture => Unseen && OperatingSystem.IsLinux() && PassengerApp.ForAgent
+        ? $"{Name} runs headless, and Godot draws nothing for a headless game, so there is no picture of it: an agent's own Passenger draws its games on Linux "
+            + (Programs.OnPath(GodotExecutables.VirtualDisplay) is null
+                ? "on an X server of its own that shows nowhere, Xvfb, which is not installed here: install it (the xvfb package), then run the game again"
+                : "on an X server of its own that shows nowhere, Xvfb, which did not start here (Passenger's log says why)")
+        : Unseen
         ? $"{Name} runs headless, as every Godot game a Passenger nobody sees starts does (an agent's own, a test's, a screenshot's), and Godot draws "
             + "nothing for a headless game, so there is no picture of it: a person's Passenger runs it with a window"
         : $"{Name} runs headless (--headless among its arguments), and Godot draws nothing for a headless game, "
@@ -1390,6 +1403,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         ending.Cancel();
         listener?.Stop();
         stream?.Dispose();
+        if (drawsOnServer)
+        {
+            VirtualDisplays.Release();
+        }
         Ended();
     }
 }
