@@ -1,4 +1,4 @@
-using Godot;
+namespace GreenhouseGame;
 
 /// <summary>The greenhouse: its rain tank, the day it is, and the sprinkler that waters the benches each morning.</summary>
 public partial class Greenhouse : Node2D
