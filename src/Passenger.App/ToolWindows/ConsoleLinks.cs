@@ -271,6 +271,11 @@ public sealed partial class ConsoleLinks : IHighlighter
             Claim(found, new FoundLink(path.Index, message.Groups["close"].Index + 1 - path.Index,
                 new FileLink(source, Position(message.Groups["line"], message.Groups["column"])) { CompiledLines = compiled }));
         }
+        else if (CompilerFile().Match(line, skip, line.Length - skip) is { Success: true } placeless && Resolve(placeless.Groups["path"].Value, project: ProjectOf(line)) is { } whole)
+        {
+            Group path = placeless.Groups["path"];
+            Claim(found, new FoundLink(path.Index, path.Length, new FileLink(whole, default)));
+        }
         found.Sort((a, b) => a.Start.CompareTo(b.Start));
         FoundLink[] links = claimed.TryGetValue(line, out FoundLink[]? said) ? Merged(said, found) : [.. found];
         if (lines.Count >= Kept)
@@ -426,6 +431,11 @@ public sealed partial class ConsoleLinks : IHighlighter
     /// before it when Visual Studio numbered the projects. The path may hold parentheses of its own ("Shop (copy)").</summary>
     [GeneratedRegex(@"^\s*(?:\d+>)?(?<path>[^\s>][^\r\n]*?)\((?<line>\d{1,9})(?:,(?<column>\d{1,9}))?(?:[-,]\d{1,9})*(?<close>\))\s*:")]
     private static partial Regex Compiler();
+
+    /// <summary>A compiler's or MSBuild's message about a file as a whole, which names no place in it: "Views/Main.axaml :
+    /// Avalonia warning AVLN3001: ...", "1>" before it when Visual Studio numbered the projects.</summary>
+    [GeneratedRegex(@"^\s*(?:\d+>)?(?<path>[^\s>][^\r\n]*?)\s*:\s*(?:[A-Za-z][\w.]*\s+)?(?:error|warning)\s+[A-Za-z]+\d+\s*:")]
+    private static partial Regex CompilerFile();
 
     /// <summary>What follows a compiler's message's place: its severity and code, MSBuild's subcategory perhaps before them
     /// ("Avalonia error AVLN2000:", "error MC3000:").</summary>

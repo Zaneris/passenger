@@ -239,6 +239,39 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         window.Close();
     }
 
+    /// <summary>A compiler's message about a file as a whole, which names no place in it (MSBuild's "file : warning
+    /// AVLN3001: ...", as Avalonia's XAML compiler writes one), links its file in the Build window, a path with a space in it
+    /// whole, and the link opens it.</summary>
+    [AvaloniaFact]
+    public void A_build_message_naming_a_file_but_no_place_in_it_links_the_file_and_opens_it()
+    {
+        Write("src/Hello/Hello.csproj",
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n" +
+            "  <Target Name=\"Placeless\" BeforeTargets=\"Build\">\n" +
+            "    <Warning File=\"Views/Tools Window.axaml\" Code=\"AVLN3001\" Text=\"XAML resource won't be reachable via runtime loader\" />\n" +
+            "  </Target>\n</Project>\n");
+        Write("src/Hello/Views/Tools Window.axaml", "<UserControl xmlns=\"https://github.com/avaloniaui\" />\n");
+        string axaml = PathNames.Canonical(Path.Combine(Folder, "src", "Hello", "Views", "Tools Window.axaml"));
+        MainWindow window = Open();
+        Ui.Press(window, Ui.Shortcut(AppActions.Build));
+        Ui.Settle();
+
+        OutputView build = window.BottomPanel.Build;
+        TextSnapshot text = build.Document.Snapshot;
+        int line = Enumerable.Range(0, text.LineCount).FirstOrDefault(l => text.GetLineText(l).Contains(" : warning AVLN3001", StringComparison.Ordinal), -1);
+        Assert.True(line >= 0, $"The Build window shows no warning about the file as a whole:\n{text}");
+        string said = text.GetLineText(line);
+        FoundLink link = Assert.Single(build.Links.In(said), l => l.Target is FileLink);
+        Assert.True(link.Target is FileLink { Path: var linked, Position: var at } && PathNames.Same(linked, axaml) && at == default
+            && said.Substring(link.Start, link.Length).EndsWith("Tools Window.axaml", StringComparison.Ordinal),
+            $"The warning's file is linked as {said.Substring(link.Start, link.Length)} to {link.Target}, not as the file {axaml} as a whole, in: {said}");
+
+        Click(window, build.Editor, text.GetLine(line).Start + link.Start + 1);
+        Assert.True(window.EditorArea.Active?.Path is { } opened && PathNames.Same(opened, axaml),
+            $"A click on the warning's file opened {window.EditorArea.Active?.Path ?? "nothing"}, not {axaml}");
+        window.Close();
+    }
+
     /// <summary>One program under dotnet watch, never built before: a saved edit changes what it does with no restart; Apply
     /// Hot Reload Changes in the Run window saves and says what dotnet watch made of it; a parameter added with a default,
     /// which leaves the callers calling the method the update deletes, is said as the restart dotnet watch makes, however
