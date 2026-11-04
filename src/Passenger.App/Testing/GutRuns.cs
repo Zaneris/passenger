@@ -24,22 +24,16 @@ public static partial class GutRuns
     /// what GUT printed under it.</summary>
     public sealed record Result(string Status, TimeSpan Time, string? Message, int Line, string? Output);
 
-    /// <summary>GUT's arguments for these tests, its JUnit XML written to <paramref name="results"/>: their scripts, and where
-    /// they are one test, or one inner class's, that test or class alone (GUT takes any whose name holds the one given; a
-    /// test it runs beside them is no result asked for).</summary>
+    /// <summary>GUT's arguments for these tests, its JUnit XML written to <paramref name="results"/>: their scripts alone, the
+    /// folders and choices a .gutconfig.json names emptied, and where they are one test, or one inner class's, that test or
+    /// class alone (GUT takes any whose name holds the one given; a test it runs beside them is no result asked for).</summary>
     public static IReadOnlyList<string> Arguments(IReadOnlyList<Chosen> tests, string results)
     {
-        List<string> arguments = ["-s", CommandLine, "-gexit", "-gdisable_colors", $"-gjunit_xml_file={results.Replace('\\', '/')}",
-            $"-gtest={string.Join(',', tests.Select(t => t.Script).Distinct(StringComparer.Ordinal))}"];
-        if (tests is [{ } one])
-        {
-            arguments.Add($"-gunit_test_name={one.Method}");
-        }
-        if (tests.Select(t => (t.Script, t.Inner)).Distinct().ToList() is [(_, { } inner)])
-        {
-            arguments.Add($"-ginner_class={inner}");
-        }
-        return arguments;
+        string? inner = tests.Select(t => (t.Script, t.Inner)).Distinct().ToList() is [(_, { } only)] ? only : null;
+        // An option given empty overrides the config's: its folders' scripts, or a test, script or inner class it picks, run otherwise.
+        return ["-s", CommandLine, "-gexit", "-gdisable_colors", $"-gjunit_xml_file={results.Replace('\\', '/')}",
+            $"-gtest={string.Join(',', tests.Select(t => t.Script).Distinct(StringComparer.Ordinal))}", "-gdir=", "-gselect=",
+            $"-gunit_test_name={(tests is [{ } one] ? one.Method : string.Empty)}", $"-ginner_class={inner}"];
     }
 
     /// <summary>Each test's result by its <see cref="Chosen.Key"/>, from GUT's JUnit XML (a suite per script or inner class,

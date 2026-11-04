@@ -12,7 +12,7 @@ public class GutRunsTests
     public void One_test_runs_by_its_script_and_its_name_its_results_written_where_asked()
     {
         Assert.Equal(["-s", GutRuns.CommandLine, "-gexit", "-gdisable_colors", "-gjunit_xml_file=C:/runs/out.xml", "-gtest=res://test/unit/test_math.gd",
-            "-gunit_test_name=test_adds"], GutRuns.Arguments([Adds], @"C:\runs\out.xml"));
+            "-gdir=", "-gselect=", "-gunit_test_name=test_adds", "-ginner_class="], GutRuns.Arguments([Adds], @"C:\runs\out.xml"));
     }
 
     [Fact]
@@ -20,10 +20,23 @@ public class GutRunsTests
     {
         IReadOnlyList<string> inner = GutRuns.Arguments([Adds with { Inner = "TestInner" }, new("res://test/unit/test_math.gd", "TestInner", "test_two")], "/out.xml");
         Assert.Contains("-ginner_class=TestInner", inner);
-        Assert.DoesNotContain(inner, a => a.StartsWith("-gunit_test_name", StringComparison.Ordinal));
+        Assert.Contains("-gunit_test_name=", inner);
         IReadOnlyList<string> scripts = GutRuns.Arguments([Adds, new("res://test/test_b.gd", null, "test_b"), Adds with { Method = "test_more" }], "/out.xml");
         Assert.Contains("-gtest=res://test/unit/test_math.gd,res://test/test_b.gd", scripts);
-        Assert.DoesNotContain(scripts, a => a.StartsWith("-gunit_test_name", StringComparison.Ordinal) || a.StartsWith("-ginner_class", StringComparison.Ordinal));
+        Assert.Contains("-gunit_test_name=", scripts);
+        Assert.Contains("-ginner_class=", scripts);
+    }
+
+    /// <summary>GUT's command line takes an option given empty over its .gutconfig.json's, which would otherwise add every
+    /// script of the folders it names to the run, or pick the tests, scripts and inner classes it names.</summary>
+    [Fact]
+    public void A_run_empties_the_folders_and_choices_a_gut_config_names_so_the_chosen_scripts_run_alone()
+    {
+        IReadOnlyList<string> arguments = GutRuns.Arguments([Adds, new("res://test/test_b.gd", null, "test_b")], "/out.xml");
+        foreach (string emptied in new[] { "-gdir=", "-gselect=", "-gunit_test_name=", "-ginner_class=" })
+        {
+            Assert.True(arguments.Contains(emptied), $"GUT would take its config's {emptied[2..^1]} beside the chosen scripts: {string.Join(' ', arguments)}");
+        }
     }
 
     private const string Xml = """
