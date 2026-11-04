@@ -174,7 +174,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             // Only the person answers Passenger's questions for agents and changes its Settings: no agent's input reaches them.
             agent.GetMethod("Guard", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [(Func<object, string?>)MainWindow.KeptFromAgents]);
             agent.GetMethod("Start", BindingFlags.Public | BindingFlags.Static)!
-                .Invoke(null, [socket, Thread.CurrentThread, typeof(Avalonia.AvaloniaObject).Assembly.GetName().Version!.ToString(), null]);
+                .Invoke(null, [socket, Thread.CurrentThread, typeof(Avalonia.AvaloniaObject).Assembly.GetName().Version!.ToString(), null, false, false]);
         }
         catch (Exception error) when (error is IOException or BadImageFormatException or TypeLoadException or MissingMethodException or TargetInvocationException)
         {
