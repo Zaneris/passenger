@@ -105,7 +105,8 @@ public sealed class TestFinder
     /// the same test on its line now, which the project's told tests now hold in their place. No <see cref="Changed"/>.</summary>
     public event EventHandler<(string Path, IReadOnlyDictionary<TestItem, TestItem> Moved)>? Moved;
 
-    /// <summary>A test project's files were found to derive other test attributes: open files are read again with them.</summary>
+    /// <summary>A test project's files were found to derive other test attributes, or a GUT project's config changed which
+    /// scripts hold its tests: open files are read again.</summary>
     public event EventHandler? AttributesChanged;
 
     /// <summary>A file was read, whose tests' code may have changed (<see cref="CodeOf"/>), told or not.</summary>
@@ -255,6 +256,17 @@ public sealed class TestFinder
         {
             Scan(Folder, every, godotFolders);
             return;
+        }
+        // GUT's config changed: which scripts hold its tests, read again, open ones too.
+        List<ProjectModel> configured = [.. Projects.Where(p => p.IsScriptGame && changes.Paths.Any(path => PathNames.Same(path, Path.Combine(p.Folder, GutScripts.ConfigFile))))];
+        if (configured.Count > 0)
+        {
+            foreach (string file in configured.SelectMany(p => listed.GetValueOrDefault(p.Path) ?? []))
+            {
+                onDisk.Forget(file);
+            }
+            Read(configured, timed: false);
+            AttributesChanged?.Invoke(this, EventArgs.Empty);
         }
         List<string> paths = [.. changes.Paths.Where(p => !open.ContainsKey(p))];
         List<ProjectModel> touched = [.. Projects.Where(project => paths.Any(path => PathNames.Within(path, project.Folder) || PathNames.Within(project.Folder, path)))];
@@ -433,7 +445,7 @@ public sealed class TestFinder
     /// GUT's of the Godot project in <paramref name="gut"/> with the test classes its scripts derive, unless it has not
     /// changed since they were read; one being written is read once the watcher says so again. A worker's.</summary>
     private void ReadFile(string path, CSharpParseOptions symbols, IReadOnlySet<string> attributes, string? gut, TestsCache? kept) =>
-        onDisk.Get(path, file => gut is not null ? GutScripts.Read(File.ReadAllText(file), gut, file, attributes).Tests : Parse(file, symbols, attributes, kept));
+        onDisk.Get(path, file => gut is not null ? GutScripts.Read(File.ReadAllText(file), gut, file, attributes, GutScripts.ConfigOf(gut)).Tests : Parse(file, symbols, attributes, kept));
 
     /// <summary>A closed C# file's tests: those the cache kept where the file and what it is read with are as they were,
     /// else parsed from the bytes its stamp was taken of, and kept. A worker's.</summary>

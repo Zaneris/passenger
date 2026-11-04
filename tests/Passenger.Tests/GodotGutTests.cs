@@ -277,6 +277,42 @@ public sealed class GodotGutTests : IDisposable
         }
     }
 
+    /// <summary>Where the project's .gutconfig.json names GUT's folders, the tests are those of the scripts under them with
+    /// GUT's prefix, as GUT runs them: not a template outside them nor a helper without the prefix, though a test class
+    /// outside them still makes those extending it tests; and once the config names another folder, its tests come in.
+    /// Needs no Godot: nothing runs.</summary>
+    [AvaloniaFact]
+    public void Where_a_gut_config_names_its_folders_the_tests_are_its_scripts_under_them()
+    {
+        TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
+        TestFolders.Write(folder, "addons/gut/gut_cmdln.gd", CommandLine);
+        TestFolders.Write(folder, "addons/gut/test.gd", GutTest);
+        TestFolders.Write(folder, GutScripts.ConfigFile, "{\n  \"dirs\": [\"res://test/unit/\"],\n  \"prefix\": \"test_\"\n}\n");
+        TestFolders.Write(folder, "test/tools/spin_tester.gd", "class_name SpinTester\nextends GutTest\n\n\nfunc test_in_the_base():\n\tpass\n");
+        TestFolders.Write(folder, "test/unit/test_spins.gd", "extends SpinTester\n\n\nfunc test_spins():\n\tpass\n");
+        TestFolders.Write(folder, "test/unit/helpers.gd", "extends GutTest\n\n\nfunc test_helped():\n\tpass\n");
+        TestFolders.Write(folder, "test/integration/test_turns.gd", "extends GutTest\n\n\nfunc test_turns():\n\tpass\n");
+        TestFolders.Write(folder, "templates/test_.gd", "extends GutTest\n\n\nfunc test_template():\n\tpass\n");
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        window.Show();
+        try
+        {
+            window.OpenFolder(folder);
+            string Shown() => string.Join(", ", window.Tests.Tree.Methods.Select(m => m.FullName));
+            Ui.WaitFor(() => Method(window, "test_spins") is not null, () => $"the test under GUT's folder, extending a test class outside it ({Shown()}; {window.Tests.Tree.EmptyText})");
+            Assert.True(window.Tests.Tree.Methods.Select(m => m.Name).Order(StringComparer.Ordinal).SequenceEqual(["test_spins"]),
+                $"Tests listed outside GUT's folders or without its prefix: {Shown()}");
+
+            TestFolders.Write(folder, GutScripts.ConfigFile, "{\n  \"dirs\": [\"res://test/unit/\", \"res://test/integration/\"],\n  \"prefix\": \"test_\"\n}\n");
+            Ui.WaitFor(() => Method(window, "test_turns") is not null, () => $"the tests of the folder the config now names ({Shown()})");
+            Assert.Null(Method(window, "test_template"));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>The editor's line (from zero) of the tests' first line holding <paramref name="code"/>.</summary>
     private static int Line(string code) => Tests.Split('\n').ToList().FindIndex(l => l.Contains(code, StringComparison.Ordinal));
 

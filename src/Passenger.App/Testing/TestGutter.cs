@@ -188,7 +188,7 @@ public sealed class TestGutter
         string? folder = ProjectsOf?.Invoke(document.Path).Where(p => Path.GetFileName(p) == Passenger.Workspace.GodotProject.FileName).Select(Path.GetDirectoryName).FirstOrDefault();
         IReadOnlySet<string>? bases = OwnAttributes?.Invoke(document.Path);
         (FileTests tests, FilePlaces places) = folder is null ? (FileTests.None, FilePlaces.None)
-            : await BackgroundWork.Run(() => GutScripts.Read(text.ToString(), folder, document.Path, bases));
+            : await BackgroundWork.Run(() => GutScripts.Read(text.ToString(), folder, document.Path, bases, GutScripts.ConfigOf(folder)));
         if (asked != file.Asked || !ReferenceEquals(document.Text.Snapshot, text) || !files.ContainsKey(document))
         {
             return;

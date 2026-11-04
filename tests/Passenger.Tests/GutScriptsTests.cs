@@ -4,7 +4,8 @@ namespace Passenger.Tests;
 
 /// <summary>GUT's test classes as <see cref="GutScripts.Read"/> reads a project's GDScript before any run: a script
 /// extending GutTest derives its class_name and res:// path as test classes, and a script or inner class extending one of
-/// those, by name, by its path or by a path from its own folder, is one too. Its text alone: no window.</summary>
+/// those, by name, by its path or by a path from its own folder, is one too; and a .gutconfig.json's choice of the scripts
+/// GUT runs. Its text alone: no window.</summary>
 [Collection(Beside.Name)]
 public sealed class GutScriptsTests
 {
@@ -54,5 +55,41 @@ public sealed class GutScriptsTests
     {
         Passenger.App.Testing.FileTests read = Read("test/test_misc.gd", "extends GutTest\n\n\nclass TestOutput:\n\textends BaseTest\n\n\tfunc test_prints():\n\t\tpass\n", Bases);
         Assert.Equal(["test.test_misc+TestOutput.test_prints"], read.Tests.Select(t => $"{t.Type}.{t.Method}"));
+    }
+
+    [Fact]
+    public void A_gut_config_takes_the_scripts_under_its_folders_with_its_prefix_and_suffix_and_those_it_names()
+    {
+        GutScripts.Config config = GutScripts.Config.Read("""
+            {
+              // GUT's own repository's, trimmed
+              "dirs": ["res://test/unit", "res://test/integration/"],
+              "prefix": "test_",
+              "tests": ["res://scenes/check_scene.gd"],
+            }
+            """)!;
+        Assert.True(config.Takes(Folder, Path.Combine(Folder, "test", "unit", "test_math.gd")));
+        Assert.True(config.Takes(Folder, Path.Combine(Folder, "test", "integration", "test_scene.gd")));
+        Assert.True(config.Takes(Folder, Path.Combine(Folder, "scenes", "check_scene.gd")));
+        Assert.False(config.Takes(Folder, Path.Combine(Folder, "test", "unit", "helpers.gd")), "A script without GUT's prefix was taken");
+        Assert.False(config.Takes(Folder, Path.Combine(Folder, "test", "unit", "deep", "test_deep.gd")), "A subfolder's script was taken without include_subdirs");
+        Assert.False(config.Takes(Folder, Path.Combine(Folder, "templates", "test_.gd")), "A script outside GUT's folders was taken");
+        Assert.True(GutScripts.Config.Read("{\"dirs\": [\"res://test/\"], \"include_subdirs\": true, \"prefix\": \"spec_\", \"suffix\": \"_spec.gd\"}")!
+            .Takes(Folder, Path.Combine(Folder, "test", "deep", "spec_math_spec.gd")));
+        Assert.Null(GutScripts.Config.Read("{\"log_level\": 1}"));
+        Assert.Null(GutScripts.Config.Read("not json"));
+    }
+
+    [Fact]
+    public void A_script_the_config_does_not_take_holds_no_tests_and_still_derives_its_test_class()
+    {
+        GutScripts.Config config = GutScripts.Config.Read("{\"dirs\": [\"res://test/unit/\"]}")!;
+        Passenger.App.Testing.FileTests outside = GutScripts.Read("class_name BaseTest\nextends GutTest\n\n\nfunc test_in_the_base():\n\tpass\n", Folder,
+            Path.Combine(Folder, "test", "tools", "base_test.gd"), config: config).Tests;
+        Assert.Empty(outside.Tests);
+        Assert.Contains("BaseTest", outside.Attributes);
+        Passenger.App.Testing.FileTests inside = GutScripts.Read("extends BaseTest\n\n\nfunc test_adds():\n\tpass\n", Folder,
+            Path.Combine(Folder, "test", "unit", "test_math.gd"), Bases, config).Tests;
+        Assert.Single(inside.Tests);
     }
 }

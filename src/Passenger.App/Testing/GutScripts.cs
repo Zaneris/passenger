@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Passenger.Core;
 using Passenger.Workspace;
@@ -9,7 +11,8 @@ namespace Passenger.App.Testing;
 /// <c>func test_…</c> its tests, and each inner class of it that extends one and is named Test… a class of its own, nested
 /// in it. A test class is named by the script's path in its project, folders as a namespace ("test.unit.test_math", an
 /// inner class after a '+'), so a test is the same test wherever it is found, and a project carries GUT where its
-/// addons/gut holds GUT's command line.</summary>
+/// addons/gut holds GUT's command line. Where its .gutconfig.json names GUT's folders or scripts, those alone hold tests
+/// (<see cref="Config"/>), every script still read for the test classes it derives.</summary>
 public static partial class GutScripts
 {
     /// <summary>The test framework a GUT test is told as having been found by, which <see cref="GutRunner"/> runs.</summary>
@@ -17,6 +20,73 @@ public static partial class GutScripts
 
     /// <summary>Whether a Godot project carries GUT.</summary>
     public static bool Carried(string folder) => File.Exists(Path.Combine(folder, "addons", "gut", "gut_cmdln.gd"));
+
+    /// <summary>The file GUT's command line reads its options from, in the project's folder.</summary>
+    public const string ConfigFile = ".gutconfig.json";
+
+    /// <summary>GUT's choice of the scripts it runs, as its .gutconfig.json gives it: those under its folders (<c>dirs</c>,
+    /// their subfolders' only with <c>include_subdirs</c>) whose names begin with its <c>prefix</c> and end with its
+    /// <c>suffix</c>, and the scripts its <c>tests</c> name, by res:// path.</summary>
+    public sealed record Config(IReadOnlyList<string> Dirs, bool Subdirs, string Prefix, string Suffix, IReadOnlyList<string> Tests)
+    {
+        /// <summary>A config's choice read from its text; null where it names no folder nor script (GUT's panel then
+        /// chooses, from settings of the person's own), or does not read as JSON.</summary>
+        public static Config? Read(string text)
+        {
+            try
+            {
+                using JsonDocument read = JsonDocument.Parse(text, LenientJson.Document);
+                JsonElement root = read.RootElement;
+                IReadOnlyList<string> dirs = [.. JsonMembers.Texts(root, "dirs").Where(d => d.Length > 0).Select(d => d.EndsWith('/') ? d : d + "/")];
+                IReadOnlyList<string> tests = JsonMembers.Texts(root, "tests");
+                return dirs.Count == 0 && tests.Count == 0 ? null
+                    : new Config(dirs, JsonMembers.Bool(root, "include_subdirs") ?? false, JsonMembers.Text(root, "prefix") ?? "test_", JsonMembers.Text(root, "suffix") ?? ".gd", tests);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>Whether GUT runs a script of the project in <paramref name="folder"/>.</summary>
+        public bool Takes(string folder, string path)
+        {
+            string script = ResourceOf(folder, path);
+            if (Tests.Contains(script, StringComparer.Ordinal))
+            {
+                return true;
+            }
+            string name = Path.GetFileName(path);
+            return name.StartsWith(Prefix, StringComparison.Ordinal) && name.EndsWith(Suffix, StringComparison.Ordinal)
+                && Dirs.Any(dir => script.StartsWith(dir, StringComparison.Ordinal) && (Subdirs || !script.AsSpan(dir.Length).Contains('/')));
+        }
+    }
+
+    /// <summary>Each project's config as last read, by its folder, with the file's time and length it was read at.</summary>
+    private static readonly ConcurrentDictionary<string, (DateTime Written, long Length, Config? Config)> Configs = new(PathNames.Comparer);
+
+    /// <summary>A project's GUT config (<see cref="Config.Read"/>), read again only once its file has changed; null for
+    /// none. Any thread's.</summary>
+    public static Config? ConfigOf(string folder)
+    {
+        FileInfo file = new(Path.Combine(folder, ConfigFile));
+        try
+        {
+            file.Refresh();
+            (DateTime written, long length) = file.Exists ? (file.LastWriteTimeUtc, file.Length) : (default, -1);
+            if (Configs.TryGetValue(folder, out (DateTime Written, long Length, Config? Config) known) && known.Written == written && known.Length == length)
+            {
+                return known.Config;
+            }
+            Config? config = file.Exists ? Config.Read(File.ReadAllText(file.FullName)) : null;
+            Configs[folder] = (written, length, config);
+            return config;
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>Whether a file is a GDScript file a project's tests may be in: not GUT's own nor another addon's, nor
     /// Godot's build folder's.</summary>
@@ -47,9 +117,10 @@ public static partial class GutScripts
 
     /// <summary>What the project's script at <paramref name="path"/> declares for testing (<see cref="FileTests"/>, its
     /// <see cref="FileTests.Attributes"/> its class_name and res:// path where it is a test class, so a script extending it
-    /// is one too) and where its classes and functions are (<see cref="FilePlaces"/>), read line by line, lines the
-    /// editor's from zero; <paramref name="bases"/> the project's other test classes so known.</summary>
-    public static (FileTests Tests, FilePlaces Places) Read(string text, string folder, string path, IReadOnlySet<string>? bases = null)
+    /// is one too; no tests where <paramref name="config"/> names other scripts) and where its classes and functions are
+    /// (<see cref="FilePlaces"/>), read line by line, lines the editor's from zero; <paramref name="bases"/> the project's
+    /// other test classes so known.</summary>
+    public static (FileTests Tests, FilePlaces Places) Read(string text, string folder, string path, IReadOnlySet<string>? bases = null, Config? config = null)
     {
         string type = TypeOf(folder, path);
         string resource = ResourceOf(folder, path);
@@ -127,6 +198,11 @@ public static partial class GutScripts
                 types.Insert(0, (type, Math.Max(extendsLine, 0)));
             }
             tests.Add(new DeclaredTest(owner, method, at, [], false) { Code = Code(lines, at, last) });
+        }
+        if (config?.Takes(folder, path) == false)
+        {
+            types.Clear();
+            tests.Clear();
         }
         if (types.Any(t => t.Item1 == type) || typePlaces.Count > 0)
         {
