@@ -6,8 +6,7 @@
 #   sudo ./install.sh --system           for everyone: /opt/passenger, /usr/local/bin/passenger-ide, /usr/share/applications
 #   ./install.sh --uninstall [--system]  removes what that install added, and leaves the settings (~/.local/share/Passenger)
 #   ./install.sh --from FOLDER [--system] installs the unpacked passenger/ folder FOLDER rather than this script's own
-#   ./install.sh --from FOLDER --keep-replaced  keeps the release it replaces beside FOLDER, given to its owner, until
-#                                        Passenger's next start removes it, as Passenger's own update does
+#   ./install.sh --from FOLDER --keep-replaced  also keeps the release it replaces beside FOLDER until the next start
 # Installing a newer release's folder the same way replaces the old files and keeps the settings; the installed script
 # run again refreshes the menu entry, icons and command.
 set -eu
