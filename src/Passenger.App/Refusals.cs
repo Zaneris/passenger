@@ -46,9 +46,18 @@ public static class Refusals
     public static string GameEmbedsFrom(string? version) =>
         $"Godot {version ?? "of no version said"} draws a game only in a window of its own: the Game window takes Godot 4.4 or newer";
 
-    /// <summary>The Game window holds a game on Windows and under X11 alone.</summary>
-    public const string GameNotEmbeddedHere = "Passenger draws a game in its Game window on Windows and on Linux under X11 (XWayland too); "
+    /// <summary>The Game window holds a game on Windows, on macOS and under X11 alone.</summary>
+    public const string GameNotEmbeddedHere = "Passenger draws a game in its Game window on Windows, on macOS and on Linux under X11 (XWayland too); "
         + "here a game draws in a window of its own";
+
+    /// <summary>On macOS a game draws in the Game window through Godot's embedded display, from Godot 4.5.</summary>
+    public static string GameEmbedsOnMacFrom(string? version) =>
+        $"Godot {version ?? "of no version said"} draws a game only in a window of its own on macOS: the Game window takes Godot 4.5 or newer there, "
+        + "whose embedded display shares the game's picture";
+
+    /// <summary>A macOS whose QuartzCore has no CALayerHost cannot show a game's shared picture.</summary>
+    public const string GameNoLayerHost = "this macOS has no CALayerHost, through which the Game window shows a game's picture, "
+        + "so a game draws in a window of its own";
 
     /// <summary>The Game window holds one game at a time: another copy, or a game started meanwhile, draws in its own.</summary>
     public static string GameWindowHolds(string game) => $"the Game window holds {game}";

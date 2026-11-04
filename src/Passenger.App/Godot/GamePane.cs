@@ -4,12 +4,21 @@ using Passenger.Core;
 
 namespace Passenger.App.Godot;
 
+/// <summary>How the Game window holds a game: not at all, the game's own window held over it, or its layer drawn in it.</summary>
+public enum GamePaneHolds
+{
+    Nothing,
+    Window,
+    Layer,
+}
+
 /// <summary>The Game window: a Godot game whose configuration draws it in Passenger (<see cref="Run.RunConfiguration.GodotInPane"/>)
 /// held over it, the game's own window kept on the pane's place on the screen as the pane moves, resizes, shows and hides,
 /// and hidden while the main window is minimized (<see cref="GameWindows"/>). The game takes the keys as the person clicks
 /// it or the pane takes them; Passenger takes them back as the person clicks anywhere in it, as the pane loses them, and on
-/// the keys the game's helper hears for it (<see cref="KeysAsked"/>). While it holds no game it says why.</summary>
-public sealed class GamePane : Border
+/// the keys the game's helper hears for it (<see cref="KeysAsked"/>). On macOS a game draws in it as a layer instead
+/// (<see cref="HoldLayer"/>). While it holds no game it says why.</summary>
+public sealed partial class GamePane : Border, IOwnKeys
 {
     /// <summary>How long a game's window is looked for once its process is known.</summary>
     private static readonly TimeSpan Finding = TimeSpan.FromSeconds(60);
@@ -19,6 +28,7 @@ public sealed class GamePane : Border
     private static readonly TimeSpan Settling = TimeSpan.FromSeconds(10);
 
     private readonly TextBlock words;
+    private readonly Panel content = new();
     private GameWindows? windows;
     private GodotGame? game;
     private nint window;
@@ -30,11 +40,24 @@ public sealed class GamePane : Border
     {
         Focusable = true;
         words = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = empty };
-        Child = words;
+        content.Children.Add(words);
+        Child = content;
         Empty = empty;
-        LayoutUpdated += (_, _) => Follow();
-        GotFocus += (_, _) => GiveKeys();
-        LostFocus += (_, _) => TakeKeysBack();
+        LayoutUpdated += (_, _) =>
+        {
+            Follow();
+            SendSize();
+        };
+        GotFocus += (_, _) =>
+        {
+            GiveKeys();
+            LayerFocused(true);
+        };
+        LostFocus += (_, _) =>
+        {
+            TakeKeysBack();
+            LayerFocused(false);
+        };
     }
 
     /// <summary>What it says while it holds no game and none was refused it.</summary>
@@ -193,9 +216,15 @@ public sealed class GamePane : Border
         }
     }
 
-    /// <summary>The game's window given the keys: the pane took them (its action, a click on its tab).</summary>
+    /// <summary>The game's window given the keys: the pane took them (its action, a click on its tab); a layered game's are
+    /// the pane's own.</summary>
     public void GiveKeys()
     {
+        if (Layered && !IsFocused)
+        {
+            Focus();
+            return;
+        }
         if (window != 0 && windows is not null && shown)
         {
             windows.Focus(window);
@@ -217,7 +246,7 @@ public sealed class GamePane : Border
     {
         if (sender == game && game is { State: LiveTree.LiveAppState.Ended } ended)
         {
-            bool came = window != 0;
+            bool came = window != 0 || layered && ended.EmbeddedContext is not null;
             Let();
             if (!came)
             {
@@ -233,6 +262,7 @@ public sealed class GamePane : Border
         {
             was.StateChanged -= GameStateChanged;
             was.KeysAsked -= GameAskedKeys;
+            LetLayer(was);
         }
         game = null;
         window = 0;

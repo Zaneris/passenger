@@ -79,6 +79,21 @@ public static class GodotWords
     public const string ReloadScripts = "reload_scripts";
     public const string Screenshot = "scene:rq_screenshot";
     public const string Screenshotted = "game_view:get_screenshot";
+
+    /// <summary>A game on macOS's embedded display tells the id of the context it shares its layer through.</summary>
+    public const string EmbeddedContext = "game_view:set_context_id";
+
+    /// <summary>A game on the embedded display asks for a mouse mode (visible, hidden, captured, confined).</summary>
+    public const string EmbeddedMouseMode = "game_view:mouse_set_mode";
+
+    /// <summary>What the embedded display takes from the program it is shown in: its size in pixels, an input event in its
+    /// codec's bytes, its state, a window event, an application notification, and the mouse mode it is to take.</summary>
+    public const string EmbedWindowSize = "embed:window_size";
+    public const string EmbedEvent = "embed:event";
+    public const string EmbedState = "embed:ds_state";
+    public const string EmbedWindowEvent = "embed:win_event";
+    public const string EmbedNotification = "embed:notification";
+    public const string EmbedMouseMode = "embed:mouse_set_mode";
     public const string LiveSetRoot = "scene:live_set_root";
     public const string LiveNodePath = "scene:live_node_path";
     public const string LiveCreateNode = "scene:live_create_node";

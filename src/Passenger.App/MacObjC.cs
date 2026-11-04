@@ -23,6 +23,29 @@ internal static partial class MacObjC
     [LibraryImport(Runtime, EntryPoint = "objc_msgSend", StringMarshalling = StringMarshalling.Utf8)]
     public static partial nint Send(nint receiver, nint selector, string argument);
 
+    [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
+    public static partial nint Send(nint receiver, nint selector, [MarshalAs(UnmanagedType.U1)] bool argument);
+
+    [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
+    public static partial nint Send(nint receiver, nint selector, uint argument);
+
+    [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
+    public static partial nint Send(nint receiver, nint selector, double argument);
+
+    [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
+    public static partial nint Send(nint receiver, nint selector, CGPoint argument);
+
+    [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
+    public static partial nint Send(nint receiver, nint selector, CGRect argument);
+
+    /// <summary>A point as CoreGraphics takes it, two doubles.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly record struct CGPoint(double X, double Y);
+
+    /// <summary>A rectangle as CoreGraphics takes it, its origin and size, four doubles.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly record struct CGRect(double X, double Y, double Width, double Height);
+
     /// <summary>A message answering a BOOL, its last argument where an NSError is put (left as it was if none is).</summary>
     [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
     [return: MarshalAs(UnmanagedType.U1)]

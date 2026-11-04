@@ -288,6 +288,20 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// <summary>The game said its process, as it does first of all, before its .NET runtime starts.</summary>
     public event EventHandler<int>? ProcessFound;
 
+    /// <summary>The id of the context a game on macOS's embedded display shares the layer it draws to through, once told; null before.</summary>
+    public uint? EmbeddedContext { get; private set; }
+
+    /// <summary>A game on the embedded display told its context's id (<see cref="EmbeddedContext"/>).</summary>
+    public event EventHandler? EmbeddedContextTold;
+
+    /// <summary>A game on the embedded display asked for a mouse mode: Godot's DisplayServer.MouseMode, 0 visible, 1 hidden,
+    /// 2 captured, 3 confined, 4 confined and hidden.</summary>
+    public event EventHandler<int>? MouseModeAsked;
+
+    /// <summary>Tells a game on the embedded display what the program it is shown in gives it (<see cref="GodotWords.EmbedEvent"/>
+    /// and the rest), answered by nothing.</summary>
+    public void Embed(string what, object? value) => Send(what, value);
+
     /// <summary>The scene Godot's editor edits, for a relayed game: what its live editing is set back to after Passenger's.</summary>
     public string EditorScene { get; set; } = string.Empty;
 
@@ -539,6 +553,13 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
                 break;
             case GodotWords.NothingSelected when Picking != GodotPicking.Off:
                 Pick(null);
+                break;
+            case GodotWords.EmbeddedContext when message.Data is [long shared]:
+                EmbeddedContext = (uint)shared;
+                EmbeddedContextTold?.Invoke(this, EventArgs.Empty);
+                break;
+            case GodotWords.EmbeddedMouseMode when message.Data is [long mode]:
+                MouseModeAsked?.Invoke(this, (int)mode);
                 break;
             case GodotWords.Screenshotted when message.Data is [long id, long width, long height, string path]:
                 picturesAsked.GetValueOrDefault(id)?.TrySetResult(((int)width, (int)height, path));

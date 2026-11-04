@@ -75,6 +75,11 @@
     <Compile Include="../../src/Passenger.App/Aspire/DeployLogins.cs" Link="App/DeployLogins.cs" />
   </ItemGroup>
 
+  <!-- The input events and state macOS's embedded display takes, in Godot's codec's bytes, compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Godot/GodotInputCodec.cs" Link="App/GodotInputCodec.cs" />
+  </ItemGroup>
+
   <!-- What godot_editor tells an agent of the scene Godot's editor edits, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Mcp/GodotEditedScenes.cs" Link="App/GodotEditedScenes.cs" />

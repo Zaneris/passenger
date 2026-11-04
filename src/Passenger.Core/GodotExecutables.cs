@@ -84,9 +84,16 @@ public static partial class GodotExecutables
 
     /// <summary>The arguments that have a game Passenger is the debugger of draw through the embedded display at a size, no
     /// sound heard: the display takes the window and process of the editor it would sit in, which Passenger's are.</summary>
-    public static IReadOnlyList<string> EmbeddedArguments(int width, int height) =>
+    public static IReadOnlyList<string> EmbeddedArguments(int width, int height) => [.. EmbeddedIn(width, height), "--audio-driver", "Dummy"];
+
+    /// <summary>The arguments that have a game draw through macOS's embedded display at a size in pixels, the display taking the
+    /// window and process of the editor it sits in, which Passenger's are: what the Game window shows, heard as it plays.</summary>
+    public static IReadOnlyList<string> EmbeddedIn(int width, int height) =>
         [Embedded, "--wid", "1", "--editor-pid", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "--resolution", string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{width}x{height}"), "--audio-driver", "Dummy"];
+            "--resolution", string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{width}x{height}")];
+
+    /// <summary>Whether a Godot of a version draws a game through macOS's embedded display, which the Game window shows: from 4.5.</summary>
+    public static bool DrawsEmbedded(string? version) => version is not null && Numbers(version) >= new Version(4, 5);
 
     /// <summary>Whether Godot given these arguments runs headless: <see cref="Headless"/>, or the headless display driver.</summary>
     public static bool RunsHeadless(IReadOnlyList<string> arguments) =>

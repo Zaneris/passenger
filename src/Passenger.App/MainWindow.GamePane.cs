@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Input;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
@@ -22,6 +23,9 @@ public partial class MainWindow
     {
         Godot.GamePane pane = new(Refusals.NoGameInWindow(Actions.Shortcut(AppActions.GameKeys) ?? "Give the Keys to the Game"));
         pane.KeysAsked += (_, _) => TakeKeysFromGame();
+        // A layered game hears every key but those that take its keys back.
+        pane.Keeps = e => AppActions.Keymap().ShortcutsFor(AppActions.KeysIn(AppActions.GameKeys))
+            .Any(s => s.Second is null && s.First.Key == e.Key && s.First.Modifiers == e.KeyModifiers);
         return pane;
     }
 
@@ -30,11 +34,17 @@ public partial class MainWindow
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Game, "Game", IconKeys.Preview, () => GamePane, Docking.ToolAnchor.RightTop) { Action = AppActions.ShowGame });
         Actions.Add(new IdeAction(AppActions.GameKeys, "Give the Keys to the Game", "Run", _ =>
         {
+            // The same keys take them back from a game drawn as a layer, whose keys are Passenger's to hear.
+            if (GamePane is { Layered: true, IsFocused: true })
+            {
+                TakeKeysFromGame();
+                return;
+            }
             Dock.Activate(ToolWindowIds.Game);
             GamePane.GiveKeys();
         })
         {
-            WhyNot = _ => gamePane is { GameWindow: not 0 } ? null : Refusals.NoGameInPane,
+            WhyNot = _ => gamePane is { GameWindow: not 0 } or { Layered: true } ? null : Refusals.NoGameInPane,
         });
     }
 
@@ -46,13 +56,10 @@ public partial class MainWindow
     private LaunchPlan InPane(LaunchPlan plan, Godot.GodotGame game)
     {
         UiThread.Check();
-        Godot.GameWindows? windows = Unseen ? null : GamePane.Windows(this);
-        string? why = Unseen || plan.GodotUnseen || GodotExecutables.RunsHeadless(plan.Arguments) ? Refusals.GameHeadless(plan.Name)
-            : !GodotExecutables.Embeds(plan.GodotVersion) ? Refusals.GameEmbedsFrom(plan.GodotVersion)
-            : windows is null ? Refusals.GameNotEmbeddedHere
-            : GamePane.Game is { State: not LiveAppState.Ended } held ? Refusals.GameWindowHolds(held.Name)
-            : null;
-        if (why is not null || windows is null)
+        Godot.GameWindows? windows = Unseen || OperatingSystem.IsMacOS() ? null : GamePane.Windows(this);
+        (Godot.GamePaneHolds holds, string? why) = InPaneChoice(plan.Name, Unseen, plan.GodotUnseen || GodotExecutables.RunsHeadless(plan.Arguments), plan.GodotVersion,
+            OperatingSystem.IsMacOS(), windows is not null, Godot.GameLayer.Hosts, GamePane.Game is { State: not LiveAppState.Ended } holding ? holding.Name : null);
+        if (holds == Godot.GamePaneHolds.Nothing)
         {
             GamePane.Refused(why ?? Refusals.GameNotEmbeddedHere);
             status.Text = $"{plan.Name} draws in a window of its own: {why}";
@@ -72,14 +79,35 @@ public partial class MainWindow
             }
             own.Add(argument);
         }
-        // The game opens its window on the pane's place where the pane has one, as Godot's editor starts an embedded game.
-        IReadOnlyList<string> embedding = windows.ArgumentsAt(GamePane.ScreenPlace());
+        // On the pane's place where it has one, as Godot's editor starts an embedded game; on macOS its display at the pane's size.
+        PixelSize size = GamePane.ScreenPlace()?.Size ?? new PixelSize(1280, 720);
+        IReadOnlyList<string> embedding = holds == Godot.GamePaneHolds.Layer ? GodotExecutables.EmbeddedIn(size.Width, size.Height) : windows!.ArgumentsAt(GamePane.ScreenPlace());
         List<string> arguments = [.. plan.Arguments.Take(plan.Leading), .. embedding, .. own];
         Dock.ShowBehind(ToolWindowIds.Game);
-        GamePane.Hold(game);
-        IdeErrors.Observe(HandKeysBackAsync(game));
+        if (holds == Godot.GamePaneHolds.Layer)
+        {
+            GamePane.HoldLayer(game);
+        }
+        else
+        {
+            GamePane.Hold(game);
+            IdeErrors.Observe(HandKeysBackAsync(game));
+        }
         return plan with { Arguments = arguments, Leading = plan.Leading + embedding.Count };
     }
+
+    /// <summary>How the Game window holds a game, or why it holds none: the game's own window held over it (Windows, X11, from
+    /// Godot 4.4, where the window has an embedding), or its layer drawn in it (macOS, from Godot 4.5, where QuartzCore has a
+    /// CALayerHost); none for a game nobody sees or run headless, or while the pane holds another, each with the words why.</summary>
+    public static (Godot.GamePaneHolds Holds, string? WhyNot) InPaneChoice(string game, bool unseen, bool headless, string? version, bool macOS,
+        bool embedding, bool layerHost, string? holding) =>
+        unseen || headless ? (Godot.GamePaneHolds.Nothing, Refusals.GameHeadless(game))
+        : macOS && !GodotExecutables.DrawsEmbedded(version) ? (Godot.GamePaneHolds.Nothing, Refusals.GameEmbedsOnMacFrom(version))
+        : macOS && !layerHost ? (Godot.GamePaneHolds.Nothing, Refusals.GameNoLayerHost)
+        : !macOS && !GodotExecutables.Embeds(version) ? (Godot.GamePaneHolds.Nothing, Refusals.GameEmbedsFrom(version))
+        : !macOS && !embedding ? (Godot.GamePaneHolds.Nothing, Refusals.GameNotEmbeddedHere)
+        : holding is not null ? (Godot.GamePaneHolds.Nothing, Refusals.GameWindowHolds(holding))
+        : (macOS ? Godot.GamePaneHolds.Layer : Godot.GamePaneHolds.Window, null);
 
     /// <summary>The keys of Give the Keys to the Game told to Passenger's helper in the game once its first scene is open, so
     /// the same keys, pressed while the game has them, hand them back; where the helper cannot hear them, only a click does.</summary>
