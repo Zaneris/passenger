@@ -562,14 +562,15 @@ public sealed class LanguageServer : IAsyncDisposable
         while (true)
         {
             TcpClient client = new() { NoDelay = true };
+            bool connected = false;
             try
             {
                 await client.ConnectAsync(IPAddress.Loopback, port, cancel).ConfigureAwait(false);
+                connected = true;
                 return client;
             }
             catch (SocketException refused)
             {
-                client.Dispose();
                 if (process is null)
                 {
                     throw new LanguageServerFailed($"nothing listens on port {port}", LspMethods.Initialize, refused) { Ended = true };
@@ -581,6 +582,13 @@ public sealed class LanguageServer : IAsyncDisposable
                 if (Stopwatch.GetElapsedTime(began) > limit)
                 {
                     throw new LanguageServerFailed($"it did not listen on port {port} in {limit.TotalSeconds:0} s", LspMethods.Initialize, refused);
+                }
+            }
+            finally
+            {
+                if (!connected)
+                {
+                    client.Dispose();
                 }
             }
             await Task.Delay(TimeSpan.FromMilliseconds(100), cancel).ConfigureAwait(false);
