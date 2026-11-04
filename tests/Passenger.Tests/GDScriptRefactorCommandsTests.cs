@@ -161,6 +161,55 @@ public sealed class GDScriptRefactorCommandsTests
         }
     }
 
+    /// <summary>A rename Passenger can't see every use of asks the person, naming the places, and made anyway leaves them,
+    /// one Undo taking it back.</summary>
+    [AvaloniaFact]
+    public void A_rename_with_uses_passenger_cant_see_asks_naming_them_and_made_anyway_leaves_them_as_one_command()
+    {
+        const string Dynamic = "extends Node\n\n\nfunc poke(player: Node, method: String):\n\tplayer.call(method)\n";
+        TestFolders.Write(folder, "dynamic.gd", Dynamic);
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home"), GodotHeadlessAtOpen = true };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<int>? held = godot is { Exists: true } ? window.Session.Web?.HoldNextConfigure(release.Task) : null;
+        try
+        {
+            Assert.Null(window.OpenFile(Path.Combine(folder, "player.gd")));
+            if (held is not null)
+            {
+                Ui.AwaitPumped(held, "Godot's GDScript server held at its start", TimeSpan.FromMinutes(1));
+            }
+            OpenDocument document = window.EditorArea.Active!;
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            string Text() => document.Text.Snapshot.ToString();
+            List<(string Text, string Yes)> asked = [];
+            window.Confirm = (_, text, yes) =>
+            {
+                asked.Add((text, yes));
+                return Task.FromResult(true);
+            };
+            Ui.PlaceAfter(editor, "func twi");
+            Named(window, AppActions.Rename, "double");
+            Ui.PumpUntil(() => Text().Contains("func double(x):", StringComparison.Ordinal), "twice renamed anyway", TimeSpan.FromSeconds(30));
+            (string question, string answer) = Assert.Single(asked);
+            Assert.True(question.Contains("dynamic.gd:5: names a method by what it reads at run time", StringComparison.Ordinal) && answer == "Rename Anyway",
+                $"The question named no place Passenger can't see, or offered no Rename Anyway: {question} ({answer})");
+            Assert.Contains("\tprint(double(3) + 1)\n", Text(), StringComparison.Ordinal);
+            Assert.Equal(Dynamic, File.ReadAllText(Path.Combine(folder, "dynamic.gd")));
+            Ui.PumpUntil(() => window.Status?.Contains("leaving 1 place it can't see", StringComparison.Ordinal) == true, "the rename to say the place it left",
+                TimeSpan.FromSeconds(30));
+            editor.Focus();
+            Undone(window, document, Player);
+        }
+        finally
+        {
+            window.Close();
+            release.SetResult();
+        }
+    }
+
     private static void Select(CodeEditor editor, string text, string? within = null)
     {
         string all = editor.Document.Snapshot.ToString();

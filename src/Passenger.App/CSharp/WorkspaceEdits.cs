@@ -575,6 +575,10 @@ public sealed record RefactorOutcome(string Said, string? Problem, IReadOnlyList
     /// new function), in the text as it left it; null where it asked none.</summary>
     public LspLocation? RenameAt { get; init; }
 
+    /// <summary>For a refusal only for uses it can't see: what a person is asked, naming them, and the change made anyway,
+    /// leaving them; null for any other.</summary>
+    public FixConfirmed? Anyway { get; init; }
+
     public static RefactorOutcome Refused(string problem) => new(problem, problem, [], []);
 }
 

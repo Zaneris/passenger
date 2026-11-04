@@ -23,8 +23,8 @@ public static partial class GDScriptRefactorings
     /// names it by, in every script, a function's overrides with it (<see cref="FamilyOf"/>). Refused where the name is no
     /// GDScript name or a class it renames in, or one built on them or they on it, has a member of it, the member is
     /// Godot's own (<c>_ready</c>, an engine class's), or a place may use it where Passenger can't see whose member it
-    /// reads (<see cref="GDScriptUses.Unsure"/>).</summary>
-    public static GDScriptRefactored Rename(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target, string name)
+    /// reads (<see cref="GDScriptUses.Unsure"/>), unless <paramref name="anyway"/>, which leaves them, naming them.</summary>
+    public static GDScriptRefactored Rename(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target, string name, bool anyway = false)
     {
         if (WhyNotName(name) is { } bad)
         {
@@ -57,9 +57,9 @@ public static partial class GDScriptRefactorings
         }
         List<GDScriptUses> found = [.. family.Select(member => UsesOf(scripts, member))];
         List<GDScriptPlace> blocking = [.. found.SelectMany(u => u.Unsure).Distinct()];
-        if (blocking.Count > 0)
+        if (blocking.Count > 0 && !anyway)
         {
-            return GDScriptRefactored.No($"Rename can't see every use of '{target.Named}' ({Places(blocking)})", blocking);
+            return GDScriptRefactored.No($"Rename can't see every use of '{target.Named}' ({Places(blocking)})", blocking) with { Unseen = true };
         }
         Dictionary<string, List<TextEdit>> edits = new(StringComparer.Ordinal);
         void Edit(string script, int start, int length) => (edits.TryGetValue(script, out List<TextEdit>? list) ? list : edits[script] = []).Add(new TextEdit(start, length, name));
@@ -82,7 +82,7 @@ public static partial class GDScriptRefactorings
                 Edit(named.Script.Script, quote + 1, target.Named.Length);
             }
         }
-        return new GDScriptRefactored([.. edits.Select(e => new GDScriptEdits(e.Key, [.. e.Value.DistinctBy(t => t.Start).OrderBy(t => t.Start)]))], null, []);
+        return new GDScriptRefactored([.. edits.Select(e => new GDScriptEdits(e.Key, [.. e.Value.DistinctBy(t => t.Start).OrderBy(t => t.Start)]))], null, blocking);
     }
 
     /// <summary>A function and the functions of its name it overrides or that override it: the farthest of the scripts it is

@@ -472,9 +472,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "declares it and its services read it; a Godot node's name (in a scene, or a GetNode path) in its scenes and the code's paths; " +
         "a Godot input action, group, animation, autoload, shader parameter or translation key a string names, where defined and in each such string; " +
         "a XAML element's name with its code-behind's uses; a JSON property (in " +
-        "package.json's scripts, every npm run of one); a compose file's names, its override's too. MSBuild files have none.")]
+        "package.json's scripts, every npm run of one); a compose file's names, its override's too. MSBuild files have none. " +
+        "force renames a GDScript member where uses Passenger can't see remain, leaving them.")]
     public Task<string> Rename(string newName, string? path = null, int? line = null, int? column = null, string? symbol = null,
-        bool renameFiles = true,
+        bool renameFiles = true, bool force = false,
         CancellationToken cancel = default) => OnUi(cancel, () => Patience.RunAsync(Editors.Commands, () => Session.CSharp?.Session, async patience =>
     {
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
@@ -482,11 +483,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (Godot.GodotScriptTypes.IsScript(at.Path))
         {
             OpenDocument script = await DocumentAsync(at.Path, cancel);
-            if (await window.Assist.GDScriptRenameAsync(script, Offset(script, at.Line, at.Column), newName) is { } scriptRenamed)
+            if (await window.Assist.GDScriptRenameAsync(script, Offset(script, at.Line, at.Column), newName, force) is { } scriptRenamed)
             {
                 if (scriptRenamed.Problem is { } refused)
                 {
-                    throw new InvalidOperationException(refused);
+                    throw new InvalidOperationException(scriptRenamed.Anyway is null ? refused : $"{refused}; force: true renames it anyway, leaving them");
                 }
                 await SaveLandedAsync(cancel);
                 return $"{scriptRenamed.Said}: {string.Join(", ", scriptRenamed.Files.Select(f => Relative(f.Path)))}";
@@ -578,7 +579,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await SaveLandedAsync(cancel);
             return $"{made.Said}: {string.Join(", ", made.Files.Select(f => Relative(f.Path)).Distinct())}";
         }
-        return await SymbolRenamed(await window.Assist.Actions.RenameSymbolAsync(served.Document, offset, newName, renameFiles, patience), cancel);
+        RefactorOutcome renaming = await window.Assist.Actions.RenameSymbolAsync(served.Document, offset, newName, renameFiles, patience);
+        // A C# string naming a GDScript member renames it as from its script, uses Passenger can't see held back the same.
+        if (renaming.Anyway is { } anyway)
+        {
+            renaming = force ? await anyway.Make(patience) : renaming with { Problem = $"{renaming.Problem}; force: true renames it anyway, leaving them" };
+        }
+        return await SymbolRenamed(renaming, cancel);
     }, AgentCall.Say, cancel));
 
     /// <summary>A symbol's rename's answer, its files saved: the files it changed and moved, and those left as edited meanwhile.</summary>

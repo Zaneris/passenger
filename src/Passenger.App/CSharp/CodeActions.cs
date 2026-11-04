@@ -117,6 +117,19 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
     }
 
+    /// <summary>What a refactoring came to said, or where it was refused only for uses it can't see, the person asked
+    /// whether to make it anyway (<see cref="RefactorOutcome.Anyway"/>).</summary>
+    private void Told(string title, RefactorOutcome made)
+    {
+        if (made.Anyway is { } anyway && ConfirmFix is not null)
+        {
+            // Not awaited: the question holds no background work, so a settle waits on the IDE, never on the person.
+            IdeErrors.Observe(ConfirmAndMakeAsync(title, anyway));
+            return;
+        }
+        context.Say(made.Problem ?? made.Said);
+    }
+
     /// <summary>A fix's question asked of the person (<see cref="ConfirmFix"/>) as the files stand, then the fix made as
     /// background work once they agree, what it came to said; nothing when they do not.</summary>
     private async Task ConfirmAndMakeAsync(string title, FixConfirmed confirms)
@@ -441,7 +454,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             try
             {
                 RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, patience => RenameSymbolAsync(document, held, name, box.RenamesFiles, patience));
-                context.Say(made.Problem ?? made.Said);
+                Told("Rename", made);
             }
             catch (LanguageServerFailed failed)
             {

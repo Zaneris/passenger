@@ -112,8 +112,11 @@ public class GDScriptRefactoringsTests
         {
             IReadOnlyList<GDScriptRead> held = ReadWith(Engine, ("res://helper.gd", Helper), ("res://other.gd", Other), ("res://user.gd", User + "\n\n" + unsure));
             GDScriptRefactored refused = GDScriptRefactorings.Rename(held, GDScriptRefactorings.MemberAt(held, held[0], Helper.IndexOf("clear", StringComparison.Ordinal))!, "wipe");
-            Assert.True(refused.Places.Count == 1 && refused.Places[0].Script == "res://user.gd",
+            Assert.True(refused.Places.Count == 1 && refused.Places[0].Script == "res://user.gd" && refused.Unseen,
                 $"A call on a Node, which may run Helper, or on a value of no type, and only that, should hold back the rename:\n{unsure}\n{refused.Refused}");
+            GDScriptRefactored anyway = GDScriptRefactorings.Rename(held, GDScriptRefactorings.MemberAt(held, held[0], Helper.IndexOf("clear", StringComparison.Ordinal))!, "wipe", anyway: true);
+            Assert.Contains("func wipe() -> void:", After(anyway, "res://helper.gd", Helper));
+            Assert.Equal(refused.Places, anyway.Places);
         }
     }
 

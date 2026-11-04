@@ -7,7 +7,8 @@ namespace Passenger.Tests;
 
 /// <summary>An agent's <c>refactor</c> of a GDScript: Change Signature described, then applied through every call and the
 /// string naming the function; Extract Variable over a selection; Safe Delete of a used function refused naming its uses;
-/// each saved. No project.godot, so no Godot server starts, nor C#'s.</summary>
+/// a rename held back by a call by a run-time name made with force; each saved. No project.godot, so no Godot server
+/// starts, nor C#'s.</summary>
 public sealed class McpGDScriptRefactorTests : McpRig
 {
     private const string Script = "extends Node\n\n\nfunc hit(target, amount = 1):\n\tprint(target, amount)\n\n\nfunc _ready():\n\thit(\"a\")\n\thit(\"b\", 3)\n\tcall(\"hit\", \"c\")\n";
@@ -41,6 +42,20 @@ public sealed class McpGDScriptRefactorTests : McpRig
 
         CallToolResult refused = await Result(client, McpTools.Refactor, new() { ["kind"] = "safe_delete", ["path"] = "main.gd", ["line"] = 4, ["column"] = 7 });
         Assert.True(refused.IsError == true && Text(refused).Contains("'strike' is still used", StringComparison.Ordinal), $"Safe Delete of a used function answered: {Text(refused)}");
+    }
+
+    [Fact]
+    public async Task An_agents_rename_a_call_names_at_run_time_holds_back_is_refused_naming_force_and_made_with_it_leaves_the_call()
+    {
+        string folder = TestFolders.Create("mcp-gdscript-rename-");
+        string path = TestFolders.Write(folder, "main.gd", "extends Node\n\n\nfunc hit(target):\n\tprint(target)\n\n\nfunc by_name(method: String) -> void:\n\tcall(method, 1)\n\thit(2)\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult refused = await Result(client, McpTools.Rename, new() { ["path"] = "main.gd", ["line"] = 4, ["column"] = 7, ["newName"] = "strike" });
+        Assert.True(refused.IsError == true && Text(refused).Contains("names a method by what it reads at run time", StringComparison.Ordinal)
+            && Text(refused).Contains("force: true", StringComparison.Ordinal), $"The rename held back by call(method) answered: {Text(refused)}");
+        CallToolResult forced = await Result(client, McpTools.Rename, new() { ["path"] = "main.gd", ["line"] = 4, ["column"] = 7, ["newName"] = "strike", ["force"] = true });
+        Assert.True(forced.IsError != true && Text(forced).Contains("leaving 1 place it can't see", StringComparison.Ordinal), $"The forced rename answered: {Text(forced)}");
+        Assert.Equal("extends Node\n\n\nfunc strike(target):\n\tprint(target)\n\n\nfunc by_name(method: String) -> void:\n\tcall(method, 1)\n\tstrike(2)\n", File.ReadAllText(path));
     }
 
     [Fact]

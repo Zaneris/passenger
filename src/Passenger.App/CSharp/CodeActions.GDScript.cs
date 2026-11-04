@@ -290,9 +290,10 @@ internal sealed partial class CodeActions
 
 
     /// <summary>Rename of a GDScript's member or local at an offset by Passenger's reading of every script of the project, the
-    /// scenes' connections and C# strings naming a member following it, as one command; null where the name there is no
-    /// member or local of a script's (the engine's, a class's), for the language server.</summary>
-    internal async Task<RefactorOutcome?> GDScriptRenameAsync(OpenDocument document, int offset, string name)
+    /// scenes' connections and C# strings naming a member following it, as one command; refused for uses it can't see
+    /// unless <paramref name="anyway"/>, offering to make it anyway (<see cref="RefactorOutcome.Anyway"/>); null where the
+    /// name there is no member or local of a script's (the engine's, a class's), for the language server.</summary>
+    internal async Task<RefactorOutcome?> GDScriptRenameAsync(OpenDocument document, int offset, string name, bool anyway = false)
     {
         if (!IsGDScript(document) || await GDScriptsAsync(document) is not ({ } scripts, { } own, var folder))
         {
@@ -308,7 +309,22 @@ internal sealed partial class CodeActions
         GDScriptRefactored made;
         if (GDScriptRefactorings.MemberAt(scripts, own, offset) is { } target)
         {
-            made = GDScriptRefactorings.Rename(scripts, target, name);
+            made = GDScriptRefactorings.Rename(scripts, target, name, anyway);
+            if (made.Unseen)
+            {
+                TextSnapshot asked = document.Text.Snapshot;
+                IReadOnlyList<string> unseen = Shown(scripts, made.Places);
+                bool one = made.Places.Count == 1;
+                return RefactorOutcome.Refused($"{title} was not applied: {made.Refused}") with
+                {
+                    Anyway = new FixConfirmed(
+                        () => Task.FromResult(document.Text.Snapshot == asked ? $"Passenger can't see whether {(one ? "this place uses" : "these places use")} {old}:\n\n"
+                            + $"{string.Join("\n", unseen)}\n\nRename it to {name} anyway, leaving {(one ? "it as it is" : "them as they are")}?" : null),
+                        "Rename Anyway",
+                        async _ => document.Text.Snapshot == asked && await GDScriptRenameAsync(document, offset, name, anyway: true) is { } forced ? forced
+                            : RefactorOutcome.Refused($"{title} was not applied: the file changed, so it no longer fits")),
+                };
+            }
             if (made.Refused is null && folder is not null)
             {
                 // An override's family renames together, each declaration's scenes and C# with it.
@@ -326,7 +342,23 @@ internal sealed partial class CodeActions
         {
             return null;
         }
-        return await ApplyGDScriptAsync(title, $"Rename {old} to {name}", made, scripts, folder, document, beside, "Renamed");
+        RefactorOutcome renamed = await ApplyGDScriptAsync(title, $"Rename {old} to {name}", made, scripts, folder, document, beside, "Renamed");
+        return renamed.Problem is null && made.Places.Count > 0
+            ? renamed with { Said = $"{renamed.Said}, leaving {Plural.Of(made.Places.Count, "place")} it can't see as {(made.Places.Count == 1 ? "it is" : "they are")} ({string.Join("; ", Shown(scripts, made.Places))})" }
+            : renamed;
+    }
+
+    /// <summary>Places in the scripts as a person reads them: each script's path and line, and what is there, a few at most.</summary>
+    private static IReadOnlyList<string> Shown(IReadOnlyList<GDScriptRead> scripts, IReadOnlyList<GDScriptPlace> places)
+    {
+        List<string> shown = [.. places.Take(8).Select(p => scripts.FirstOrDefault(s => s.Script == p.Script) is { } read
+            ? $"{p.Script.Replace("res://", string.Empty, StringComparison.Ordinal)}:{read.Text.AsSpan(0, Math.Min(p.Start, read.Text.Length)).Count('\n') + 1}: {p.What}"
+            : $"{p.Script}: {p.What}")];
+        if (places.Count > 8)
+        {
+            shown.Add($"and {Plural.Of(places.Count - 8, "more place")}");
+        }
+        return shown;
     }
 
     /// <summary>What a member's script's document answers beside the scripts, asked of the script declaring it, lent where
@@ -412,7 +444,7 @@ internal sealed partial class CodeActions
             try
             {
                 RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, patience => RenameSymbolAsync(document, held, name, false, patience));
-                context.Say(made.Problem ?? made.Said);
+                Told("Rename", made);
             }
             catch (LanguageServerFailed failed)
             {

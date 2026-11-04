@@ -12,6 +12,10 @@ public readonly record struct GDScriptPlace(string Script, int Start, int End, s
 /// <summary>What a refactoring made: each script's edits; or why it made none, with the places that stopped it.</summary>
 public sealed record GDScriptRefactored(IReadOnlyList<GDScriptEdits> Scripts, string? Refused, IReadOnlyList<GDScriptPlace> Places)
 {
+    /// <summary>Whether it was refused only for the places it names, uses Passenger can't see, which the change made anyway
+    /// leaves as they are.</summary>
+    public bool Unseen { get; init; }
+
     public static GDScriptRefactored No(string why, IReadOnlyList<GDScriptPlace>? places = null) => new([], why, places ?? []);
 
     public static GDScriptRefactored Of(string script, IReadOnlyList<TextEdit> edits) => new([new GDScriptEdits(script, [.. edits.OrderBy(e => e.Start)])], null, []);

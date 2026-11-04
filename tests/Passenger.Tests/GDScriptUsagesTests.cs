@@ -11,7 +11,7 @@ namespace Passenger.Tests;
 /// <summary>Find Usages and Rename of a GDScript's member or local by Passenger's own reading of the project's scripts,
 /// Godot's server held at its start where a Godot is found (never started where none is): a function's calls in another
 /// script, by name and by a string, and the scene's connection to it are listed and renamed together as one command one
-/// Undo takes back, a local's only in its function; a rename a use Passenger can't see would leave wrong is refused saying
+/// Undo takes back, a local's only in its function; a rename a use Passenger can't see would leave wrong asks first saying
 /// where. A Godot editor of its own each where one is found, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GDScriptUsagesTests
@@ -111,22 +111,28 @@ public sealed class GDScriptUsagesTests
         }
     }
 
-    /// <summary>A script calling the function on a value of no type written may call it unseen, so its rename is refused,
-    /// saying where, and nothing changes.</summary>
+    /// <summary>A script calling the function on a value of no type written may call it unseen, so its rename asks first,
+    /// saying where, and declined changes nothing.</summary>
     [AvaloniaFact]
-    public void Rename_is_refused_where_a_use_passenger_cant_see_would_be_left_wrong()
+    public void A_rename_with_a_use_passenger_cant_see_asks_first_naming_it_and_declined_changes_nothing()
     {
         TestFolders.Write(folder, "other.gd", "extends Node\n\n\nfunc poke(thing):\n\tthing.hit(1)\n");
         (MainWindow window, TaskCompletionSource release) = Open();
         try
         {
             OpenDocument document = window.EditorArea.Active!;
+            List<string> asked = [];
+            window.Confirm = (_, text, _) =>
+            {
+                asked.Add(text);
+                return Task.FromResult(false);
+            };
             Ui.PlaceAfter(window.EditorArea.CodeEditor, "func hi");
             Renamed(window, "strike");
-            bool refused = Ui.Pumped(() => window.Status?.StartsWith("Rename was not applied", StringComparison.Ordinal) == true, TimeSpan.FromSeconds(60));
-            Assert.True(refused, $"The rename refused: {window.Status}");
-            Assert.Contains("other.gd", window.Status, StringComparison.Ordinal);
-            Assert.Contains("on a value whose script is not read", window.Status, StringComparison.Ordinal);
+            bool asks = Ui.Pumped(() => asked.Count > 0, TimeSpan.FromSeconds(60));
+            Assert.True(asks, $"The rename asked nothing: {window.Status}");
+            Assert.True(Assert.Single(asked).Contains("other.gd:5: its 'hit' is on a value whose script is not read", StringComparison.Ordinal),
+                $"The question named no place Passenger can't see: {asked[0]}");
             Assert.Equal(Player, document.Text.Snapshot.ToString());
             Assert.Equal(Enemy, File.ReadAllText(Path.Combine(folder, "enemy.gd")));
         }
