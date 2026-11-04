@@ -1,18 +1,22 @@
+using System.Text;
 using System.Xml;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Rendering.SceneGraph;
 using Avalonia.Skia;
+using Passenger.Core;
 using SkiaSharp;
+using Svg;
+using Svg.Model;
 using Svg.Skia;
 
 namespace Passenger.App.Editors;
 
 /// <summary>An SVG document drawn by Svg.Skia as a picture of its own size, which a frame draws again at whatever size it is
 /// given, so it stays sharp at every zoom. Read off the UI thread; what it draws is never let go while a frame may still
-/// draw it, the collector freeing it once nothing holds it. Images it names resolve only on this machine, never over the
-/// network.</summary>
+/// draw it, the collector freeing it once nothing holds it. The images and documents it names are read from its file's
+/// folder and those below it alone, never from elsewhere on the disk or over the network, which it says it left out.</summary>
 public sealed class SvgPicture : IImage
 {
     /// <summary>The most units a side of a drawing may measure, beyond which it is no picture to show.</summary>
@@ -27,19 +31,23 @@ public sealed class SvgPicture : IImage
         Svg.SvgDocument.ResolveExternalElements = Svg.ExternalType.Local;
     }
 
-    private SvgPicture(SKSvg svg, SKPicture picture)
+    private SvgPicture(SKSvg svg, SKPicture picture, string? leftOut)
     {
         this.svg = svg;
         this.picture = picture;
+        LeftOut = leftOut;
         Size = new Size(picture.CullRect.Width, picture.CullRect.Height);
     }
 
     /// <summary>Its size in units: the SVG's own width and height, else its view box's.</summary>
     public Size Size { get; }
 
-    /// <summary>An SVG's text drawn, or why it cannot be: XML that does not read, another root than <c>&lt;svg&gt;</c>, or
-    /// nothing of a size to draw.</summary>
-    public static (SvgPicture? Picture, string? Problem) Read(string text)
+    /// <summary>What the picture leaves out of what its text names, and why; null where it leaves out nothing.</summary>
+    public string? LeftOut { get; }
+
+    /// <summary>An SVG's text drawn, what it names read from <paramref name="file"/>'s folder, or why it cannot be: XML that
+    /// does not read, another root than <c>&lt;svg&gt;</c>, or nothing of a size to draw.</summary>
+    public static (SvgPicture? Picture, string? Problem) Read(string text, string? file)
     {
         SKSvg svg;
         try
@@ -48,7 +56,10 @@ public sealed class SvgPicture : IImage
             {
                 return (null, root is null ? "The file holds no SVG to draw" : $"The file's root is <{root}>, where an SVG's is <svg>");
             }
-            svg = SKSvg.CreateFromSvg(text);
+            svg = new SKSvg();
+            using MemoryStream bytes = new(Encoding.UTF8.GetBytes(text));
+            SvgDocumentLoadOptions under = new() { ExternalResources = SvgExternalResourcePolicy.SameOrigin };
+            svg.Load(bytes, new SvgParameters(null, null, null, under), file is not null && Path.IsPathFullyQualified(file) ? new Uri(file) : null);
         }
         catch (XmlException error)
         {
@@ -62,7 +73,37 @@ public sealed class SvgPicture : IImage
         {
             return (null, "The SVG has nothing of a size to draw");
         }
-        return (new SvgPicture(svg, drawn), null);
+        return (new SvgPicture(svg, drawn, svg.SourceDocument is { } document ? LeftOutOf(document) : null), null);
+    }
+
+    /// <summary>The addresses a document names that its file's folder does not hold, as written, with why each is left out;
+    /// null for none.</summary>
+    private static string? LeftOutOf(SvgDocument document)
+    {
+        List<string> outside = [];
+        List<string> web = [];
+        foreach (SvgElement element in document.Descendants())
+        {
+            if (element.TryGetEffectiveHrefString(out string href) && SvgExternalResourceResolver.TryResolveResourceUri(element, href, out Uri at)
+                && !SvgExternalResourceResolver.AllowsExternalResource(element, at))
+            {
+                List<string> kind = at.IsAbsoluteUri && !at.IsFile ? web : outside;
+                if (!kind.Contains(href.Trim(), StringComparer.Ordinal))
+                {
+                    kind.Add(href.Trim());
+                }
+            }
+        }
+        List<string> said = [];
+        if (outside.Count > 0)
+        {
+            said.Add($"{Plural.Listed(outside)}, outside the SVG's folder");
+        }
+        if (web.Count > 0)
+        {
+            said.Add($"{Plural.Listed(web)}, on the web");
+        }
+        return said.Count == 0 ? null : $"Not drawn: {string.Join("; ", said)}";
     }
 
     /// <summary>The local name of a text's first element, null for none; its document type read past, never followed.</summary>

@@ -182,6 +182,76 @@ public sealed class AssetPreviewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>An SVG's image named by an address relative to the SVG is read from the SVG's folder, one below it too, and
+    /// drawn in its picture, which names nothing left out; its address edited to another image beside the SVG, the picture
+    /// draws that one.</summary>
+    [AvaloniaFact]
+    public void An_SVGs_image_named_relative_to_it_is_drawn_from_its_folder()
+    {
+        string art = Path.Combine(folder, "art");
+        Directory.CreateDirectory(Path.Combine(art, "parts"));
+        File.WriteAllBytes(Path.Combine(art, "parts", "leaf.png"), ImageBytes(".png", 10, 10, SKColors.Lime));
+        File.WriteAllBytes(Path.Combine(art, "sun.png"), ImageBytes(".png", 10, 10, SKColors.Yellow));
+        File.WriteAllText(Path.Combine(art, "badge.svg"),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\">\n  <rect width=\"40\" height=\"20\" fill=\"#0000ff\"/>\n"
+            + "  <image href=\"parts/leaf.png\" width=\"20\" height=\"20\"/>\n</svg>\n");
+        MainWindow window = Open();
+        Assert.Null(window.OpenFile(Path.Combine("art", "badge.svg")));
+        Ui.Settle();
+        SvgPreview preview = window.EditorArea.ActiveGroup.Svg ?? throw new Xunit.Sdk.XunitException("The SVG shows no picture beside its text");
+        ZoomedPicture picture = preview.Picture;
+        Ui.WaitFor(() => picture.Picture is SvgPicture, () => $"the SVG drawn ({preview.Problem})");
+        Image image = Assert.Single(preview.GetVisualDescendants().OfType<Image>());
+        Color At(double x, double y) => Ui.Pixel(window, image.TranslatePoint(new Point(x * picture.Zoom, y * picture.Zoom), window)!.Value);
+        Assert.True(At(10, 10) == Colors.Lime && At(30, 10) == Colors.Blue,
+            $"The picture draws {At(10, 10)} where its image beside it is, {At(30, 10)} beside the image: its relative address was not read from its folder");
+        Assert.Null(preview.LeftOut);
+
+        Typing.Replace(window, "parts/leaf.png", "sun.png");
+        Ui.WaitFor(() => At(10, 10) == Colors.Yellow, () => $"the picture to draw the image the address typed names, not {At(10, 10)}");
+        Assert.Null(preview.LeftOut);
+        window.Close();
+    }
+
+    /// <summary>An SVG's images named outside the SVG's folder (a way up out of it, a path from the disk's root, a file's
+    /// address) are not drawn, nor one on the web fetched; the rest of the picture is, and the banner over it names each
+    /// left out and why.</summary>
+    [AvaloniaFact]
+    public void An_SVG_draws_no_image_from_outside_its_folder_or_the_web_and_says_why()
+    {
+        string outside = Path.Combine(PathNames.Canonical(folder), "red.png");
+        File.WriteAllBytes(outside, ImageBytes(".png", 10, 10, SKColors.Red));
+        string address = new Uri(outside).AbsoluteUri;
+        const string Web = "https://example.invalid/red.png";
+        string art = Path.Combine(folder, "art");
+        Directory.CreateDirectory(art);
+        File.WriteAllText(Path.Combine(art, "badge.svg"),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"20\">\n  <rect width=\"100\" height=\"20\" fill=\"#0000ff\"/>\n"
+            + "  <image href=\"../red.png\" width=\"20\" height=\"20\"/>\n"
+            + $"  <image href=\"{outside}\" x=\"20\" width=\"20\" height=\"20\"/>\n"
+            + $"  <image href=\"{address}\" x=\"40\" width=\"20\" height=\"20\"/>\n"
+            + $"  <image href=\"{Web}\" x=\"60\" width=\"20\" height=\"20\"/>\n</svg>\n");
+        MainWindow window = Open();
+        Assert.Null(window.OpenFile(Path.Combine("art", "badge.svg")));
+        Ui.Settle();
+        SvgPreview preview = window.EditorArea.ActiveGroup.Svg ?? throw new Xunit.Sdk.XunitException("The SVG shows no picture beside its text");
+        ZoomedPicture picture = preview.Picture;
+        Ui.WaitFor(() => picture.Picture is SvgPicture, () => $"the SVG drawn ({preview.Problem})");
+        Image image = Assert.Single(preview.GetVisualDescendants().OfType<Image>());
+        Color At(double x, double y) => Ui.Pixel(window, image.TranslatePoint(new Point(x * picture.Zoom, y * picture.Zoom), window)!.Value);
+        Assert.True(At(90, 10) == Colors.Blue, $"The picture draws {At(90, 10)} where it names nothing but its ground");
+        Assert.True(new[] { 10, 30, 50, 70 }.All(x => At(x, 10) != Colors.Red),
+            $"The picture drew an image from outside the SVG's folder: {string.Join(", ", new[] { 10, 30, 50, 70 }.Select(x => At(x, 10)))}");
+
+        string? said = preview.LeftOut;
+        Assert.True(said is not null && said.Contains("../red.png", StringComparison.Ordinal) && said.Contains(outside, StringComparison.Ordinal)
+            && said.Contains(address, StringComparison.Ordinal) && said.Contains("outside the SVG's folder", StringComparison.Ordinal)
+            && said.Contains(Web, StringComparison.Ordinal) && said.Contains("on the web", StringComparison.Ordinal),
+            $"The banner over the picture should name each image left out and why, but said: {said}");
+        Assert.Contains(preview.GetVisualDescendants().OfType<Banner>(), banner => banner.IsEffectivelyVisible && banner.Said == said);
+        window.Close();
+    }
+
     [AvaloniaTheory]
     [InlineData(".ttf", "JetBrainsMono-Regular.ttf", FontStyle.Normal)]
     [InlineData(".otf", "JetBrainsMono-Italic.ttf", FontStyle.Italic)]
@@ -553,7 +623,7 @@ public sealed class AssetPreviewTests : IDisposable
     private static AssetPreviewControl Preview(EditorGroup group) => Assert.Single(group.GetVisualDescendants().OfType<AssetPreviewControl>());
 
     /// <summary>Small real raster files without external fixtures; GIF and BMP use minimal headers, ICO carries a PNG.</summary>
-    private static byte[] ImageBytes(string extension, int width = 64, int height = 32)
+    private static byte[] ImageBytes(string extension, int width = 64, int height = 32, SKColor? colour = null)
     {
         if (extension == ".gif")
         {
@@ -575,7 +645,7 @@ public sealed class AssetPreviewTests : IDisposable
             return bytes;
         }
         using SKBitmap bitmap = new(width, height);
-        bitmap.Erase(SKColors.CornflowerBlue);
+        bitmap.Erase(colour ?? SKColors.CornflowerBlue);
         using SKImage image = SKImage.FromBitmap(bitmap);
         SKEncodedImageFormat format = extension.ToLowerInvariant() switch
         {
