@@ -214,7 +214,11 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
                     starting = null;
                     IdeErrors.Write($"Preview of {Path.GetFileName(preview.Document.Document.Path)}: first frame {frame.Width}x{frame.Height} after {clock.ElapsedMilliseconds} ms");
                 }
-                IdeErrors.Observe(from.Send(new FrameReceivedMessage { SequenceId = frame.SequenceId }));
+                // Unanswered while a load is on its way: its new window counts frames from one and would take this answer as its own.
+                if (unanswered.Count == 0)
+                {
+                    IdeErrors.Observe(from.Send(new FrameReceivedMessage { SequenceId = frame.SequenceId }));
+                }
                 if (unplaced is { } drawn && unanswered.Count == 0 && inspector is { State: LiveTree.LiveAppState.Connected } live)
                 {
                     unplaced = null;
