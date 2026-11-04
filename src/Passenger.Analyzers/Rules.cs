@@ -89,6 +89,18 @@ internal static class Rules
             + "for another's parent and which HasExited finds running, counts as ended, and a process Windows will not open for "
             + "HasExited (another user's, an elevated one) is asked by its id.");
 
+    public static readonly DiagnosticDescriptor BareJsonRead = new(
+        "PSG0008",
+        "A JSON member is read past JsonMembers",
+        "JsonElement.{0} throws on a value of another kind: read the member through JsonMembers",
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "What another program or a person wrote may hold anything anywhere: TryGetProperty throws on a value that is no "
+            + "object and GetProperty on a member missing too, where JsonMembers takes an element of any kind, or none, and reads "
+            + "a member as the kind it should be (Text, Number, Bool, Object, Items, Texts, Properties, or Value of any kind), "
+            + "null for one of another kind. A member a message cannot go without is read so, then thrown on by name.");
+
     public static readonly DiagnosticDescriptor KeysUnread = new(
         "PSG9001",
         "A resource keys file is not read",

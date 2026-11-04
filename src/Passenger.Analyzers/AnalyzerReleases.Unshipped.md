@@ -12,5 +12,6 @@ PSG0004 | Passenger | Warning | BlockingWaits
 PSG0005 | Passenger | Warning | CatchAlls
 PSG0006 | Passenger | Warning | BareTaskRuns
 PSG0007 | Passenger | Warning | ProcessEnds
+PSG0008 | Passenger | Warning | BareJsonReads
 PSG9001 | Passenger | Error | ResourceKeys
 PSG9002 | Passenger | Error | StyleClassNames
