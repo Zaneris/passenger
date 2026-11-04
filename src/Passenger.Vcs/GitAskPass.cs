@@ -422,23 +422,35 @@ internal sealed class Prompting : IAsyncDisposable
         else
         {
             IDisposable away = apart();
-            Task<GitAnswer> asked = asker.Ask(question, asking.Token);
-            // Taken again on the thread giving the answer, so no wait finds the work quiet before git goes on.
-            Task back = asked.ContinueWith(_ => away.Dispose(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            int taken = 0;
+            Task<GitAnswer> asked = HeldAgainAsync(() => asker.Ask(question, asking.Token), Again);
             try
             {
-                // Refused apart from the asker, whose answer may need a window's thread that runs no more.
-                answer = await asked.WaitAsync(refusing);
-                await back;
+                // Refused or ended apart from the asker, whose answer may need a window's thread that runs no more.
+                answer = await asked.WaitAsync(asking.Token);
             }
             catch (OperationCanceledException) when (refusing.IsCancellationRequested)
             {
+                UnawaitedWork.Dismiss(asked);
                 answer = GitAnswer.No(NotGiven(question));
             }
             catch (OperationCanceledException) when (ending.IsCancellationRequested)
             {
+                UnawaitedWork.Dismiss(asked);
                 answer = GitAnswer.No($"{question.Asks} was not given before git ended");
-                await back;
+            }
+            finally
+            {
+                Again();
+            }
+
+            // Taken again once, as the answer comes or the question goes unanswered, so no wait finds the work quiet before git goes on.
+            void Again()
+            {
+                if (Interlocked.Exchange(ref taken, 1) == 0)
+                {
+                    away.Dispose();
+                }
             }
         }
         if (answer.Text is null)
@@ -450,6 +462,20 @@ internal sealed class Prompting : IAsyncDisposable
             next = (url, password);
         }
         return answer;
+    }
+
+    /// <summary>The asker's answer, the operation's work taken again (<paramref name="again"/>) on the thread giving it, before
+    /// whatever waits for the answer goes on.</summary>
+    private static async Task<GitAnswer> HeldAgainAsync(Func<Task<GitAnswer>> ask, Action again)
+    {
+        try
+        {
+            return await ask().ConfigureAwait(false);
+        }
+        finally
+        {
+            again();
+        }
     }
 
     /// <summary>What a question refused as its folder closes says.</summary>
