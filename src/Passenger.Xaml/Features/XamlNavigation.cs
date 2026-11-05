@@ -197,11 +197,29 @@ public static class XamlNavigation
             return new XamlSymbol(whole, Path.GetFileName(path), [new XamlTarget(XamlTargetKind.File, Path.GetFileName(path)) { Path = path }]);
         }
         if (meaning.Property is { } property && file.Types.Resolve(file.Dialect.ValueTypeOf(property.ValueType)) is { Kind: ClrTypeKind.Enum } @enum
-            && @enum.Members.FirstOrDefault(m => m.Kind == MemberKind.Field && string.Equals(m.Name, value.Trim(), StringComparison.OrdinalIgnoreCase)) is { } member)
+            && ListedAt(file.Text, whole, offset) is var listed
+            && @enum.Members.FirstOrDefault(m => m.Kind == MemberKind.Field && file.Text.AsSpan(listed.Start, listed.Length).Equals(m.Name, StringComparison.OrdinalIgnoreCase)) is { } member)
         {
-            return new XamlSymbol(whole, member.Name, [MemberTarget(member)]);
+            return new XamlSymbol(listed, member.Name, [MemberTarget(member)]);
         }
         return null;
+    }
+
+    /// <summary>The one of a value's comma-separated parts an offset is in, as flags list an enum's members, its spaces left out.</summary>
+    private static TextRange ListedAt(string text, TextRange value, int offset)
+    {
+        int start = offset;
+        while (start > value.Start && text[start - 1] != ',')
+        {
+            start--;
+        }
+        int end = offset;
+        while (end < value.End && text[end] != ',')
+        {
+            end++;
+        }
+        ReadOnlySpan<char> part = text.AsSpan(start, end - start);
+        return new TextRange(start + (part.Length - part.TrimStart().Length), part.Trim().Length);
     }
 
     /// <summary>An element's name, which leads to itself and is what rename and its uses work from.</summary>

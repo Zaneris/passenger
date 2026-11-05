@@ -207,6 +207,40 @@ public sealed class CodeRenameTests
     }
 
     [Fact]
+    public void A_member_listed_in_a_flags_value_is_a_use_of_it_and_a_rename_respells_it_alone()
+    {
+        const string Model = """
+            namespace Shop;
+
+            [System.Flags]
+            public enum Kinds
+            {
+                Ready = 1,
+                Done = 2,
+            }
+
+            public class Lamp
+            {
+                public Kinds State { get; set; }
+            }
+
+            """;
+        const string Markup = """
+            <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         xmlns:vm="using:Shop" x:Class="Shop.LampView">
+                <vm:Lamp State="Done, ready" />
+            </UserControl>
+            """;
+        XamlFile view = XamlFiles.Read("LampView.axaml", Markup, AvaloniaDialect.Instance, ("Lamp.cs", Model));
+        CodeSymbol symbol = Assert.IsType<CodeSymbol>(CodeSymbol.Of("F:Shop.Kinds.Ready", null));
+        IReadOnlyList<TextRange> uses = XamlNavigation.Uses(view, symbol.NamesIn(view.Types), symbol.Is);
+        Assert.Equal("ready", Markup.Substring(Assert.Single(uses).Start, uses[0].Length));
+        (IReadOnlyList<TextEdit> edits, string? problem) = XamlRefactorings.CodeRename(view, symbol, uses, "Waiting");
+        Assert.True(problem is null, $"Renaming Ready was refused: {problem}");
+        Assert.Equal(Markup.Replace("ready", "Waiting", StringComparison.Ordinal), XamlFiles.Applied(Markup, edits));
+    }
+
+    [Fact]
     public void A_use_that_does_not_spell_the_symbols_name_is_not_respelled()
     {
         CodeSymbol symbol = Assert.IsType<CodeSymbol>(CodeSymbol.Of("F:Shop.Order.TotalProperty", null));
