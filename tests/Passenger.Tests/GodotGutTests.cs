@@ -68,10 +68,63 @@ public sealed class GodotGutTests : IDisposable
 
         """;
 
-    /// <summary>GUT's command line: the scripts -gtest names, the tests -gunit_test_name picks (every test where it is empty,
-    /// as GUT takes it), a JUnit file as GUT's.</summary>
+    /// <summary>GUT's base of a pre-run hook, as GUT names what a run gives one and asks of it.</summary>
+    internal const string HookScript = """
+        var gut = null
+        var _aborted := false
+
+
+        func run():
+        	pass
+
+
+        func abort():
+        	_aborted = true
+
+
+        func should_abort():
+        	return _aborted
+
+        """;
+
+    /// <summary>GUT's command line: the scripts -gtest names collected with their inner classes named Test…, the hook
+    /// -gpre_run_script names given the run's collector before anything runs, the tests -gunit_test_name picks (every test
+    /// where it is empty, as GUT takes it), a JUnit file as GUT's.</summary>
     internal const string CommandLine = """
         extends SceneTree
+
+
+        class Collected:
+        	var path := ""
+        	var inner_class_name := &""
+        	var tests := []
+
+
+        class CollectedTest:
+        	var name := ""
+
+
+        class Collector:
+        	var scripts := []
+
+
+        var collector := Collector.new()
+
+
+        func get_test_collector():
+        	return collector
+
+
+        func _collect(path: String, inner: StringName, script: GDScript) -> void:
+        	var collected := Collected.new()
+        	collected.path = path
+        	collected.inner_class_name = inner
+        	for method in script.get_script_method_list():
+        		if str(method.name).begins_with("test_"):
+        			var test := CollectedTest.new()
+        			test.name = method.name
+        			collected.tests.append(test)
+        	collector.scripts.append(collected)
 
 
         func _initialize() -> void:
@@ -79,20 +132,38 @@ public sealed class GodotGutTests : IDisposable
         	for argument in OS.get_cmdline_args():
         		if argument.begins_with("-g") and argument.contains("="):
         			options[argument.get_slice("=", 0)] = argument.substr(argument.find("=") + 1)
+        	for path in str(options.get("-gtest", "")).split(",", false):
+        		var script: GDScript = load(path)
+        		_collect(path, &"", script)
+        		var constants := script.get_script_constant_map()
+        		for constant in constants:
+        			if str(constant).begins_with("Test") and constants[constant] is GDScript:
+        				_collect(path, constant, constants[constant])
+        	if str(options.get("-gpre_run_script", "")) != "":
+        		var hook = load(options["-gpre_run_script"]).new()
+        		hook.gut = self
+        		await hook.run()
+        		if hook.should_abort():
+        			quit(1)
+        			return
         	var suites := ""
         	var failed := 0
         	var total := 0
-        	for path in str(options.get("-gtest", "")).split(",", false):
-        		var script: GDScript = load(path)
-        		print("\n", path)
+        	for collected in collector.scripts:
+        		var script: GDScript = load(collected.path)
+        		var suite: String = collected.path
+        		if collected.inner_class_name != &"":
+        			script = script.get_script_constant_map()[collected.inner_class_name]
+        			suite += "." + collected.inner_class_name
+        		print("\n", suite)
         		var test = script.new()
         		root.add_child(test)
         		var cases := ""
         		var ran := 0
         		var fails := 0
-        		for method in script.get_script_method_list():
-        			var name: String = method.name
-        			if not name.begins_with("test_") or (str(options.get("-gunit_test_name", "")) != "" and not name.contains(options["-gunit_test_name"])):
+        		for case in collected.tests:
+        			var name: String = case.name
+        			if str(options.get("-gunit_test_name", "")) != "" and not name.contains(options["-gunit_test_name"]):
         				continue
         			print("* ", name)
         			test.failures.clear()
@@ -104,8 +175,8 @@ public sealed class GodotGutTests : IDisposable
         				status = "fail"
         				fails += 1
         				failure = "<failure message=\"failed\"><![CDATA[%s]]></failure>" % test.failures[0]
-        			cases += "<testcase name=\"%s\" assertions=\"1\" status=\"%s\" classname=\"%s\" time=\"0.001\" >\n%s</testcase>\n" % [name, status, path.trim_prefix("res://"), failure]
-        		suites += "<testsuite name=\"%s\" tests=\"%d\" failures=\"%d\" skipped=\"0\" time=\"0.001\" >\n%s</testsuite>\n" % [path.trim_prefix("res://"), ran, fails, cases]
+        			cases += "<testcase name=\"%s\" assertions=\"1\" status=\"%s\" classname=\"%s\" time=\"0.001\" >\n%s</testcase>\n" % [name, status, suite.trim_prefix("res://"), failure]
+        		suites += "<testsuite name=\"%s\" tests=\"%d\" failures=\"%d\" skipped=\"0\" time=\"0.001\" >\n%s</testsuite>\n" % [suite.trim_prefix("res://"), ran, fails, cases]
         		print("%d/%d passed." % [ran - fails, ran])
         		total += ran
         		failed += fails
@@ -116,6 +187,14 @@ public sealed class GodotGutTests : IDisposable
         	quit(1 if failed > 0 else 0)
 
         """;
+
+    /// <summary>The stand-in for GUT, as a project carries it under addons/gut.</summary>
+    internal static void WriteGut(string folder)
+    {
+        TestFolders.Write(folder, "addons/gut/gut_cmdln.gd", CommandLine);
+        TestFolders.Write(folder, "addons/gut/test.gd", GutTest);
+        TestFolders.Write(folder, "addons/gut/hook_script.gd", HookScript);
+    }
 
     private string TestsPath => Path.Combine(folder, "test", "test_spinner.gd");
 
@@ -175,6 +254,135 @@ public sealed class GodotGutTests : IDisposable
         }
     }
 
+    /// <summary>Tests whose names hold one another's, in the script and in two inner classes.</summary>
+    private const string Alike = """
+        extends GutTest
+
+
+        func test_a():
+        	assert_eq(1, 1, "one is one")
+
+
+        func test_ab():
+        	assert_eq(1, 2, "the test that holds the name of another")
+
+
+        func test_c():
+        	assert_eq(1, 1, "one is one")
+
+
+        class TestInner:
+        	extends GutTest
+
+        	func test_a():
+        		assert_eq(1, 1, "one is one")
+
+        	func test_z():
+        		assert_eq(1, 2, "the test beside the chosen one")
+
+
+        class TestInnerToo:
+        	extends GutTest
+
+        	func test_a():
+        		assert_eq(1, 2, "the test of the class that holds the name of another")
+
+        """;
+
+    private static TestNode Of(MainWindow window, string fullName) => window.Tests.Tree.Methods.Single(m => m.FullName == fullName);
+
+    /// <summary>Runs tests by their full names and says what ran: GUT's picking by name would take test_ab with test_a and
+    /// TestInnerToo with TestInner, and every test of a script with two of it.</summary>
+    private static void RunsAlone(MainWindow window, params string[] chosen)
+    {
+        Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [.. chosen.Select(name => Of(window, name))]), $"the run of {string.Join(", ", chosen)}", TimeSpan.FromMinutes(3));
+        string[] ran = [.. window.Tests.RunOutcomes.Select(o => o.Test.FullyQualifiedName).Order(StringComparer.Ordinal)];
+        Assert.True(ran.SequenceEqual(chosen.Order(StringComparer.Ordinal)), $"Chosen {string.Join(", ", chosen)}, GUT ran {string.Join(", ", ran)} ({window.BottomPanel.Tests.Status}; {window.BottomPanel.Build.Document.Snapshot})");
+        Assert.All(window.Tests.RunOutcomes, o => Assert.True(o.State == TestState.Passed, $"{o.Test.FullyQualifiedName} did not pass: {o.Message}"));
+    }
+
+    /// <summary>A run does what was chosen: one test, though another's name holds its name; two of a script's three; a test of
+    /// an inner class, though the script and another class hold one of its name.</summary>
+    [AvaloniaFact]
+    public void A_run_of_GUT_tests_takes_the_tests_chosen_and_no_other_whose_name_holds_theirs()
+    {
+        Assert.SkipWhen(godot is not { WhyNotScripts: null }, "No Godot 4 that runs GDScript was found: install one to run this test");
+        Make();
+        TestFolders.Write(folder, "test/test_spinner.gd", Alike);
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        window.Show();
+        try
+        {
+            window.OpenFolder(folder);
+            Ui.WaitFor(() => window.Tests.Tree.Methods.Count() == 6, () => $"the tests shown ({string.Join(", ", window.Tests.Tree.Methods.Select(m => m.FullName))}; {window.Tests.Tree.EmptyText})");
+            RunsAlone(window, "test.test_spinner.test_a");
+            RunsAlone(window, "test.test_spinner.test_a", "test.test_spinner.test_c");
+            RunsAlone(window, "test.test_spinner+TestInner.test_a");
+            RunsAlone(window, "test.test_spinner.test_c", "test.test_spinner+TestInner.test_a");
+            Assert.True(Of(window, "test.test_spinner.test_ab").State == TestState.NotRun, $"A test no run chose has a result: {Of(window, "test.test_spinner.test_ab").Details}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A hook of the project's own, which a run's hook stands in for on GUT's command line, still runs before the
+    /// tests of a run that chooses some of a script's.</summary>
+    [AvaloniaFact]
+    public void A_gut_configs_own_pre_run_hook_still_runs_for_tests_chosen()
+    {
+        Assert.SkipWhen(godot is not { WhyNotScripts: null }, "No Godot 4 that runs GDScript was found: install one to run this test");
+        Make();
+        TestFolders.Write(folder, "test/test_spinner.gd", Alike);
+        TestFolders.Write(folder, "test/own_hook.gd", "extends \"res://addons/gut/hook_script.gd\"\n\n\nfunc run():\n\tFileAccess.open(\"res://own-hook-ran\", FileAccess.WRITE).close()\n");
+        TestFolders.Write(folder, GutScripts.ConfigFile, "{\n  \"pre_run_script\": \"res://test/own_hook.gd\"\n}\n");
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        window.Show();
+        try
+        {
+            window.OpenFolder(folder);
+            Ui.WaitFor(() => Method(window, "test_c") is not null, () => $"the tests shown ({window.Tests.Tree.EmptyText})");
+            RunsAlone(window, "test.test_spinner.test_c");
+            Assert.True(File.Exists(Path.Combine(folder, "own-hook-ran")), "The project's own pre-run hook did not run for a run of one test");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A whole script's run takes what it inherits, which no row shows: its failure counts in the run's tally, reaches
+    /// an agent's answer through the run's outcomes, and is named in the Build window's words.</summary>
+    [AvaloniaFact]
+    public void A_test_a_script_inherits_is_told_where_a_run_of_the_script_ran_it()
+    {
+        Assert.SkipWhen(godot is not { WhyNotScripts: null }, "No Godot 4 that runs GDScript was found: install one to run this test");
+        Make();
+        TestFolders.Write(folder, "tools/spin_tester.gd", "class_name SpinTester\nextends GutTest\n\n\nfunc test_inherited():\n\tassert_eq(1, 2, \"the inherited test\")\n");
+        TestFolders.Write(folder, "test/test_spinner.gd", "extends SpinTester\n\n\nfunc test_own():\n\tassert_eq(1, 1, \"one is one\")\n");
+        TestFolders.Write(folder, GutScripts.ConfigFile, "{\n  \"dirs\": [\"res://test/\"]\n}\n");
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        window.Show();
+        try
+        {
+            window.OpenFolder(folder);
+            Ui.WaitFor(() => Method(window, "test_own") is not null, () => $"the test shown ({window.Tests.Tree.EmptyText})");
+            Assert.True(window.Perform(AppActions.RunAllTests));
+            Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "test_own")?.State == TestState.Passed, () => $"the run ({window.BottomPanel.Tests.Status})", TimeSpan.FromMinutes(3));
+            Assert.Null(Method(window, "test_inherited"));
+            TestOutcome inherited = Assert.Single(window.Tests.RunOutcomes, o => o.Test.FullyQualifiedName == "test.test_spinner.test_inherited");
+            Assert.True(inherited.State == TestState.Failed, $"The inherited test's failure was told as {inherited.State}");
+            Assert.True(window.BottomPanel.Tests.Status.StartsWith("Tests passed: 1, failed: 1 of 2", StringComparison.Ordinal), $"The run's tally leaves it out: {window.BottomPanel.Tests.Status}");
+            Assert.Contains("GUT also ran 1 test no row shows, 1 failed", window.BottomPanel.Build.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            Assert.Contains("test.test_spinner.test_inherited failed: [1] expected to equal [2]", window.BottomPanel.Build.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A C# class of the game's, which the GUT test below calls.</summary>
     private const string Turner = """
         using Godot;
@@ -209,8 +417,7 @@ public sealed class GodotGutTests : IDisposable
         GodotTests.Game.Make(folder, godot!.Version!, godot.Packages!, "using Godot;\n\npublic partial class Main : Node\n{\n}\n",
             "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://Main.cs\" id=\"1\"]\n\n[node name=\"Main\" type=\"Node\"]\nscript = ExtResource(\"1\")\n");
         TestFolders.Write(folder, "Turner.cs", Turner);
-        TestFolders.Write(folder, "addons/gut/gut_cmdln.gd", CommandLine);
-        TestFolders.Write(folder, "addons/gut/test.gd", GutTest);
+        WriteGut(folder);
         TestFolders.Write(folder, "test/test_turner.gd", CallsCSharp);
         Restore.Run(Path.Combine(folder, "Spinner.csproj"));
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
@@ -249,8 +456,7 @@ public sealed class GodotGutTests : IDisposable
     public void Tests_extending_the_projects_own_test_class_are_found_and_leave_once_it_is_no_test_class()
     {
         TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
-        TestFolders.Write(folder, "addons/gut/gut_cmdln.gd", CommandLine);
-        TestFolders.Write(folder, "addons/gut/test.gd", GutTest);
+        WriteGut(folder);
         TestFolders.Write(folder, "test/tools/spin_tester.gd", "class_name SpinTester\nextends GutTest\n\n\nfunc spun():\n\treturn 2\n");
         TestFolders.Write(folder, "test/tools/turn_tester.gd", "class_name TurnTester extends SpinTester\n");
         TestFolders.Write(folder, "test/test_named.gd", "extends SpinTester\n\n\nfunc test_by_name():\n\tassert_eq(spun(), 2)\n");
@@ -285,8 +491,7 @@ public sealed class GodotGutTests : IDisposable
     public void Where_a_gut_config_names_its_folders_the_tests_are_its_scripts_under_them()
     {
         TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
-        TestFolders.Write(folder, "addons/gut/gut_cmdln.gd", CommandLine);
-        TestFolders.Write(folder, "addons/gut/test.gd", GutTest);
+        WriteGut(folder);
         TestFolders.Write(folder, GutScripts.ConfigFile, "{\n  \"dirs\": [\"res://test/unit/\"],\n  \"prefix\": \"test_\"\n}\n");
         TestFolders.Write(folder, "test/tools/spin_tester.gd", "class_name SpinTester\nextends GutTest\n\n\nfunc test_in_the_base():\n\tpass\n");
         TestFolders.Write(folder, "test/unit/test_spins.gd", "extends SpinTester\n\n\nfunc test_spins():\n\tpass\n");
@@ -323,8 +528,7 @@ public sealed class GodotGutTests : IDisposable
     {
         string features = string.Join('.', (godot!.Version ?? "4.7").Split('.').Take(2));
         TestFolders.Write(folder, "project.godot", $"config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"{features}\")\n");
-        TestFolders.Write(folder, "addons/gut/gut_cmdln.gd", CommandLine);
-        TestFolders.Write(folder, "addons/gut/test.gd", GutTest);
+        WriteGut(folder);
         TestFolders.Write(folder, "test/test_spinner.gd", Tests);
     }
 }

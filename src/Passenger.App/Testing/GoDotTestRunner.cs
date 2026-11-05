@@ -99,7 +99,7 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
-            Delete(output);
+            GodotTestRuns.Delete(output, "GoDotTest's log");
             return new RunSummary(Stopwatch.GetElapsedTime(began), true, false, null);
         }
         IReadOnlyDictionary<string, GoDotTests.Result> results;
@@ -115,7 +115,7 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
         }
         finally
         {
-            Delete(output);
+            GodotTestRuns.Delete(output, "GoDotTest's log");
         }
         if (results.Count == 0)
         {
@@ -202,19 +202,6 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
         named.Select(t => t.Method[..t.Method.LastIndexOf('.')]).Distinct(StringComparer.Ordinal).ToList() is { Count: > 1 } classes
             ? $"GoDotTest names {Plural.Listed(classes)} alike ({key.Split("::")[0]}), so it ran them together and told one result for {key}"
             : null;
-
-    /// <summary>A run's log let go of; one Godot still holds (Windows) is left for the system's temporary folder.</summary>
-    private static void Delete(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (Exception kept) when (kept is IOException or UnauthorizedAccessException)
-        {
-            IdeErrors.Write($"Unit tests: GoDotTest's log {path} is left: {kept.Message}");
-        }
-    }
 
     public void Dispose()
     {

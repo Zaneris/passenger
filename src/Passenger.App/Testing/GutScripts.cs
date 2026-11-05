@@ -62,6 +62,20 @@ public static partial class GutScripts
         }
     }
 
+    /// <summary>The script a GUT config's text runs before its tests; null for none, or a text that does not read as JSON.</summary>
+    public static string? PreRunScript(string text)
+    {
+        try
+        {
+            using JsonDocument read = JsonDocument.Parse(text, LenientJson.Document);
+            return JsonMembers.Text(read.RootElement, "pre_run_script") is { Length: > 0 } script ? script : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Each project's config as last read, by its folder, with the file's time and length it was read at.</summary>
     private static readonly ConcurrentDictionary<string, (DateTime Written, long Length, Config? Config)> Configs = new(PathNames.Comparer);
 

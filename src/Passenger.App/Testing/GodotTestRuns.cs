@@ -36,6 +36,31 @@ public static class GodotTestRuns
         return new Given(variables, found is { WhyNot: null } ? null : $"GdUnit4's tests that need Godot's engine cannot run: {found?.WhyNot ?? GodotLaunch.NotFound}", start);
     }
 
+    /// <summary>What a run says of the tests it ran beside the chosen ones, each failure with its words: a framework's run of a
+    /// script or suite takes what the code does not declare, which no row shows (a test a script inherits); null for none.</summary>
+    public static string? RanBeside(string framework, IReadOnlyList<TestOutcome> others)
+    {
+        if (others.Count == 0)
+        {
+            return null;
+        }
+        IEnumerable<string> failed = others.Where(o => o.State == TestState.Failed).Select(o => $"\n  {o.Test.FullyQualifiedName} failed{(o.Message is { } why ? $": {why}" : string.Empty)}");
+        return $"{framework} also ran {Plural.Of(others.Count, "test")} no row shows, {others.Count(o => o.State == TestState.Failed)} failed{string.Concat(failed)}";
+    }
+
+    /// <summary>A file a run wrote let go of; one Godot still holds (Windows) is left for the system's temporary folder.</summary>
+    public static void Delete(string path, string what)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception kept) when (kept is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Unit tests: {what} {path} is left: {kept.Message}");
+        }
+    }
+
     /// <summary>A test project's environment with the Godot variables it does not set itself.</summary>
     public static IReadOnlyDictionary<string, string> With(IReadOnlyDictionary<string, string> environment, IReadOnlyDictionary<string, string> godot)
     {

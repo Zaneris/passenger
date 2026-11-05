@@ -6,9 +6,9 @@ namespace Passenger.App.Testing;
 /// a Testing Platform application (xUnit v3, MSTest's runner, TUnit) through <see cref="TestingPlatformRunner"/>, every
 /// other through VSTest (<see cref="VsTestRunner"/>, started the first time one needs it), a Godot project's GUT tests,
 /// found from its GDScript, through GUT's command line (<see cref="GutRunner"/>), and a Godot C# game's GoDotTest tests,
-/// found from its code, in the game (<see cref="GoDotTestRunner"/>), which takes each game's tests the code declares
-/// (<paramref name="declared"/>) and where each game's run starts (<paramref name="goDotStart"/>). So a solution of all of
-/// them shows them in one tree, and Run All runs them all.</summary>
+/// found from its code, in the game (<see cref="GoDotTestRunner"/>), each of those two taking the tests the code declares
+/// (<paramref name="declared"/>) and the game's where its run starts (<paramref name="goDotStart"/>). So a solution of all
+/// of them shows them in one tree, and Run All runs them all.</summary>
 public sealed class TestRunners(string folder, Func<string, CancellationToken, Task<ITestRunner>>? startVsTest = null,
     Func<string, IReadOnlyList<TestItem>>? declared = null, Func<string, Task<GoDotTests.Start>>? goDotStart = null) : ITestRunner
 {
@@ -27,7 +27,7 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
     }
 
     private readonly TestingPlatformRunner platform = new();
-    private readonly GutRunner gut = new();
+    private readonly GutRunner gut = new(declared);
     private readonly GoDotTestRunner goDot = new(declared ?? (_ => []), goDotStart);
     private readonly Func<string, CancellationToken, Task<ITestRunner>> startVsTest = startVsTest ?? VsTestRunner.StartAsync;
     private ITestRunner? vsTest;

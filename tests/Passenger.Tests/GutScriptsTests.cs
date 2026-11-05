@@ -93,6 +93,15 @@ public sealed class GutScriptsTests
         Assert.Single(inside.Tests);
     }
 
+    [Fact]
+    public void A_gut_configs_pre_run_script_is_read_and_a_text_naming_none_says_so()
+    {
+        Assert.Equal("res://hooks/pre.gd", GutScripts.PreRunScript("{\n  // the project's own\n  \"pre_run_script\": \"res://hooks/pre.gd\",\n}\n"));
+        Assert.Null(GutScripts.PreRunScript("{\"pre_run_script\": \"\"}"));
+        Assert.Null(GutScripts.PreRunScript("{\"dirs\": [\"res://test/\"]}"));
+        Assert.Null(GutScripts.PreRunScript("not json"));
+    }
+
     /// <summary>The whole of a function goes into what its result is compared by: its last line, and an inner class's too.</summary>
     [Fact]
     public void A_tests_code_changes_with_a_literal_on_its_last_line_and_not_with_the_tests_around_it()

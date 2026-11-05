@@ -132,8 +132,7 @@ public sealed class McpGodotScriptGameTests : McpRig
         string gut = PathNames.Canonical(TestFolders.Create("godot-mcp-gut-"));
         DeleteAtEnd(gut);
         TestFolders.Write(gut, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
-        TestFolders.Write(gut, "addons/gut/gut_cmdln.gd", GodotGutTests.CommandLine);
-        TestFolders.Write(gut, "addons/gut/test.gd", GodotGutTests.GutTest);
+        GodotGutTests.WriteGut(gut);
         TestFolders.Write(gut, "test/tools/spin_tester.gd", "class_name SpinTester\nextends GutTest\n\n\nfunc spun():\n\treturn 2\n");
         TestFolders.Write(gut, "test/test_named.gd", "extends SpinTester\n\n\nfunc test_by_name():\n\tassert_eq(spun(), 2, \"spun twice\")\n");
         await using McpClient client = await Start(["--mcp", gut], languageServer: false,
