@@ -644,7 +644,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     }
 
     /// <summary>The Explorer's row of a file or folder chosen, with the keys.</summary>
-    private static void Choose(MainWindow window, string path)
+    internal static void Choose(MainWindow window, string path)
     {
         string shown = PathNames.Canonical(path);
         window.ExplorerView.Reveal(shown);

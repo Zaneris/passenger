@@ -79,6 +79,7 @@ public sealed class GodotGamesTests : IDisposable
 
         Assert.Equal([game], read.ScriptGames([]));
         Assert.Empty(read.ScriptGames([elsewhere]));
+        Assert.Equal([csharp], WorkspaceModel.BuildingGodot([elsewhere, ProjectModel.Unevaluated(Write(Path.Combine("src", "Other.csproj"), "<Project />\n"))], game));
         ProjectModel scripts = ProjectModel.OfScriptGame(game);
         Assert.True(scripts is { IsScriptGame: true, Name: "Ticker", Exists: true } && scripts.GodotFolder == game && scripts.Path == Path.Combine(game, GodotProject.FileName),
             $"A game of GDScript alone stands as {scripts.Path}, named {scripts.Name}, its Godot folder {scripts.GodotFolder}");

@@ -183,8 +183,8 @@ internal static class GodotGenerated
         return uses;
     }
 
-    /// <summary>Every string written as its characters in the C# of the projects in a Godot project's folder that Godot's calls
-    /// take naming a member of the kind and name asked for on an engine class's object, each once though a project builds it
+    /// <summary>Every string written as its characters in the C# of a Godot project (<see cref="GodotKinds.ProjectsOf"/>) that Godot's
+    /// calls take naming a member of the kind and name asked for on an engine class's object, each once though a project builds it
     /// for several frameworks, with the scripts its class runs as and the node the object is where the code tells it
     /// (<see cref="GodotKinds.NodeOf"/>), so a GDScript's member is found among them by the node its scenes run it on.</summary>
     public static async Task<GodotKindUses> MemberStringsAsync(Solution solution, GodotNameStringsAsked asked, CancellationToken cancel)
@@ -192,8 +192,7 @@ internal static class GodotGenerated
         List<GodotKindUse> uses = [];
         HashSet<(string, int)> seen = [];
         HashSet<string> names = [asked.Name];
-        foreach (Project project in solution.Projects.Where(p => System.IO.Path.GetDirectoryName(p.FilePath) is { } home
-            && (SamePath(home, asked.Folder) || Passenger.Core.PathNames.IsUnder(home, asked.Folder))))
+        foreach (Project project in GodotKinds.ProjectsOf(solution, asked.Folder, asked.Projects))
         {
             foreach (Document document in project.Documents)
             {
@@ -228,15 +227,14 @@ internal static class GodotGenerated
         return new GodotKindUses(uses);
     }
 
-    /// <summary>The strings written as their characters in the C# of the projects in a Godot project's folder that give a
-    /// res:// path naming one asked for, or inside a folder asked for; each once, though a project builds it for several
-    /// frameworks.</summary>
+    /// <summary>The strings written as their characters in the C# of a Godot project (<see cref="GodotKinds.ProjectsOf"/>) that
+    /// give a res:// path naming one asked for, or inside a folder asked for; each once, though a project builds it for
+    /// several frameworks.</summary>
     public static async Task<GodotPathsFound> PathsAsync(Solution solution, GodotPathsAsked asked, CancellationToken cancel)
     {
         List<GodotPathUse> uses = [];
         HashSet<(string, int)> seen = [];
-        foreach (Project project in solution.Projects.Where(p => System.IO.Path.GetDirectoryName(p.FilePath) is { } home
-            && (SamePath(home, asked.Folder) || Passenger.Core.PathNames.IsUnder(home, asked.Folder))))
+        foreach (Project project in GodotKinds.ProjectsOf(solution, asked.Folder, asked.Projects))
         {
             foreach (Document document in project.Documents)
             {

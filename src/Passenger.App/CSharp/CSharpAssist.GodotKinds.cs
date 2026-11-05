@@ -407,9 +407,9 @@ internal sealed partial class CSharpAssist
 
     /// <summary>The strings and numbers of the code naming a name of a kind (Passenger's extension's), those of an animation
     /// player, tree or material told to be another than one whose files write the name left out, a layer's among its own layers.</summary>
-    private static async Task<IReadOnlyList<GodotKindUse>> CodeUsesAsync(RoslynSession session, KindNamed named)
+    private async Task<IReadOnlyList<GodotKindUse>> CodeUsesAsync(RoslynSession session, KindNamed named)
     {
-        GodotKindUses uses = await session.ExtensionAsync<GodotKindUses>(Handlers.GodotKindStrings, new GodotKindAsked(named.Read.Folder, named.Kind, named.Name));
+        GodotKindUses uses = await session.ExtensionAsync<GodotKindUses>(Handlers.GodotKindStrings, new GodotKindAsked(named.Read.Folder, named.Kind, named.Name, GodotBuilding(named.Read.Folder)));
         HashSet<(string, int)> reached = [.. named.Places.Select(p => (p.Res, p.Start))];
         return [.. uses.Uses.Where(use => named.Kind switch
         {

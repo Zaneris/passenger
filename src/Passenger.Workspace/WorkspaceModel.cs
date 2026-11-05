@@ -75,6 +75,11 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
         return GodotGames.Where(g => !built.Any(b => PathNames.Same(b, g)));
     }
 
+    /// <summary>The project files of those of some projects that build a Godot project's game, as each's evaluation says it
+    /// (<see cref="ProjectModel.GodotFolder"/>), wherever they lie beside its folder.</summary>
+    public static IReadOnlyList<string> BuildingGodot(IEnumerable<ProjectModel> projects, string folder) =>
+        [.. projects.Where(p => p.GodotFolder is { } game && PathNames.Same(game, folder)).Select(p => p.Path)];
+
     /// <summary>A folder read through the solution or project it was opened by, else its own solution: a listing of the
     /// folder's top and the files the solution names, quick enough for the window's thread. Null for a folder without one
     /// (or one that does not read), whose projects only a walk of its folders finds.</summary>

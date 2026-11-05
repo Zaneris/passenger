@@ -171,7 +171,12 @@ internal static class GodotKinds
         return [.. added];
     }
 
-    /// <summary>Every string of a kind naming a name in the C# of the projects in a Godot project's folder, each once though a
+    /// <summary>The projects of a Godot project's C#: those in its folder, and those the window says build its game, wherever
+    /// their project files lie (<paramref name="building"/>, as their evaluation says it).</summary>
+    internal static IEnumerable<Project> ProjectsOf(Solution solution, string folder, IReadOnlyList<string> building) => solution.Projects.Where(p => building.Any(b => SamePath(b, p.FilePath))
+        || System.IO.Path.GetDirectoryName(p.FilePath) is { } home && (SamePath(home, folder) || Passenger.Core.PathNames.IsUnder(home, folder)));
+
+    /// <summary>Every string of a kind naming a name in the C# of a Godot project (<see cref="ProjectsOf"/>), each once though a
     /// project builds it for several frameworks, told as <see cref="Read"/> tells it: for an autoload, the name in each node
     /// path through <c>/root/Name</c>; for a layer, each constant a <c>layerNumber</c> is given of its number, its layers
     /// as its member.</summary>
@@ -180,8 +185,7 @@ internal static class GodotKinds
         List<GodotKindUse> uses = [];
         HashSet<(string, int)> seen = [];
         HashSet<string> names = [asked.Kind == GodotStringKind.Autoload ? Root + asked.Name : asked.Name];
-        foreach (Project project in solution.Projects.Where(p => System.IO.Path.GetDirectoryName(p.FilePath) is { } home
-            && (SamePath(home, asked.Folder) || Passenger.Core.PathNames.IsUnder(home, asked.Folder))))
+        foreach (Project project in ProjectsOf(solution, asked.Folder, asked.Projects))
         {
             foreach (Document document in project.Documents)
             {

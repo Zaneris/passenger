@@ -1415,6 +1415,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 Texts = setup.Editors.Texts,
                 Unseen = document => !setup.Editors.HasTab(document),
                 GodotOf = BuiltGodotOf,
+                GodotProjects = folder => WorkspaceModel.BuildingGodot(Projects, folder),
                 GodotScenes = GodotScenes,
                 GodotIde = GodotIde,
                 GodotCodeRead = GodotMarks.Changed,

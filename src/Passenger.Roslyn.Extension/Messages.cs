@@ -449,18 +449,21 @@ public sealed record GodotCallRest(
     [property: JsonPropertyName("to")] Place To,
     [property: JsonPropertyName("arguments")] IReadOnlyList<string> Arguments);
 
-/// <summary>The strings of a kind naming one name, asked for in the C# of the projects of a Godot project's folder.</summary>
+/// <summary>The strings of a kind naming one name, asked for in the C# of a Godot project: the projects in its folder and those
+/// building its game wherever they lie (<paramref name="Projects"/>, by project file).</summary>
 public sealed record GodotKindAsked(
     [property: JsonPropertyName("folder")] string Folder,
     [property: JsonPropertyName("kind")] GodotStringKind Kind,
-    [property: JsonPropertyName("name")] string Name);
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);
 
 /// <summary>The strings Godot's calls take naming a member of a kind by a name on an engine class's object, asked for in the
-/// C# of the projects of a Godot project's folder.</summary>
+/// C# of a Godot project, as <see cref="GodotKindAsked"/> reads it.</summary>
 public sealed record GodotNameStringsAsked(
     [property: JsonPropertyName("folder")] string Folder,
     [property: JsonPropertyName("kind")] GodotNameKind Kind,
-    [property: JsonPropertyName("name")] string Name);
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);
 
 /// <summary>A string Godot's calls take naming a signal, a method or a property (<c>EmitSignal("Scored")</c>,
 /// <c>new Callable(this, "OnScored")</c>, <c>Set("Speed", 2)</c>), as the file gives it: what it names, where it is written
@@ -719,9 +722,12 @@ public sealed record GodotNameUse(
     [property: JsonPropertyName("end")] Place End,
     [property: JsonPropertyName("before")] string Before);
 
-/// <summary>The res:// strings asked for in the C# of the projects of a Godot project's folder: those naming one of the
-/// paths, a folder's (ending in '/') any path inside it.</summary>
-public sealed record GodotPathsAsked([property: JsonPropertyName("folder")] string Folder, [property: JsonPropertyName("paths")] IReadOnlyList<string> Paths);
+/// <summary>The res:// strings asked for in the C# of a Godot project, as <see cref="GodotKindAsked"/> reads it: those naming one
+/// of the paths, a folder's (ending in '/') any path inside it.</summary>
+public sealed record GodotPathsAsked(
+    [property: JsonPropertyName("folder")] string Folder,
+    [property: JsonPropertyName("paths")] IReadOnlyList<string> Paths,
+    [property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);
 
 /// <summary>Each res:// string found, in its file, with what it says and where its characters are written.</summary>
 public sealed record GodotPathsFound([property: JsonPropertyName("uses")] IReadOnlyList<GodotPathUse> Uses);

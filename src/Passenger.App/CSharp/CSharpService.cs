@@ -1704,6 +1704,9 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <see cref="Passenger.Workspace.ProjectModel.GodotFolder"/>); null for any other file, and without a session.</summary>
     public Func<string, string?>? GodotOf { get; init; }
 
+    /// <summary>The project files of the session's projects that build a Godot project's game, by its folder; none without a session.</summary>
+    public Func<string, IReadOnlyList<string>>? GodotProjects { get; init; }
+
     /// <summary>The folder's Godot scenes and resources, read once and followed; none without a session.</summary>
     public Godot.GodotSceneIndex? GodotScenes { get; init; }
 

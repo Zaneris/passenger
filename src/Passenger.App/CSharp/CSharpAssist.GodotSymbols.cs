@@ -248,6 +248,9 @@ internal sealed partial class CSharpAssist
                 .Select(file => new PlacedEdits(file.Key, [.. file.Select(u => new LspTextEdit(u.Range, name))], named.Read.ResPathOf(file.Key) is { } res && named.Read.Files.TryGetValue(res, out GodotFile? read) ? read.Text : null))]
             : [];
 
+    /// <summary>The project files of the projects building a Godot project's game, as the extension is told them.</summary>
+    private IReadOnlyList<string> GodotBuilding(string folder) => context.CSharp?.GodotProjects?.Invoke(folder) ?? [];
+
     /// <summary>The uses of a GDScript's member at an offset (the name there, where its class, it or a script it extends,
     /// declares one) beside its own language's: each scene's connection calling it or made to it, and each key setting it as a
     /// variable, on a node whose class takes in the declaring script, and each string of the project's C# naming it on a node
@@ -293,7 +296,7 @@ internal sealed partial class CSharpAssist
         GodotKindUses found;
         try
         {
-            found = await session.ExtensionAsync<GodotKindUses>(Handlers.GodotNameStrings, new GodotNameStringsAsked(folder, kind, name));
+            found = await session.ExtensionAsync<GodotKindUses>(Handlers.GodotNameStrings, new GodotNameStringsAsked(folder, kind, name, GodotBuilding(folder)));
         }
         catch (LanguageServerFailed)
         {
@@ -615,7 +618,7 @@ internal sealed partial class CSharpAssist
                 GodotPathsFound found;
                 try
                 {
-                    found = await session.ExtensionAsync<GodotPathsFound>(Handlers.GodotPaths, new GodotPathsAsked(folder, [.. paths.Select(p => p.From)]));
+                    found = await session.ExtensionAsync<GodotPathsFound>(Handlers.GodotPaths, new GodotPathsAsked(folder, [.. paths.Select(p => p.From)], GodotBuilding(folder)));
                 }
                 catch (LanguageServerFailed)
                 {
