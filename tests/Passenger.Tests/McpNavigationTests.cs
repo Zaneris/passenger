@@ -47,9 +47,13 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
         TestFolders.Write(folder, "App.slnf", "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [ \"App\\\\App.csproj\" ]\n  }\n}\n");
         await Restore.RunAsync(Path.Combine(folder, "Shop.slnx"));
+        // Built by one server for the next to load: an assembly missing as a server loads its project stays missing from it.
+        await using (McpClient building = await Start(["--mcp", Path.Combine(folder, "App.slnf")]))
+        {
+            JsonElement built = await Call(building, McpTools.Build);
+            Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The filter's app did not build with the project it leaves out: {built}");
+        }
         await using McpClient client = await Start(["--mcp", Path.Combine(folder, "App.slnf")]);
-        JsonElement built = await Call(client, McpTools.Build);
-        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The filter's app did not build with the project it leaves out: {built}");
 
         Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 7), await DeclaredAsync(client, 2, 34));
         Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 5), await DeclaredAsync(client, 2, 59));

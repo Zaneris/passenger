@@ -108,6 +108,10 @@ public sealed class HeadStart
     private static List<string> Projects(WorkspaceModel read) =>
         [.. read.Projects.Where(p => p.Exists).Select(p => p.Path).Distinct(StringComparer.Ordinal)];
 
+    /// <summary>The projects the language server loads: those read, but any the solution filter leaves out.</summary>
+    private static List<string> Loaded(WorkspaceModel read) =>
+        read.Filter is { } filter ? [.. Projects(read).Where(filter.Projects.Contains)] : Projects(read);
+
     private async Task<ProjectModelCache> EvaluateAsync()
     {
         Dictionary<string, EvaluatedProject> complete = new(StringComparer.Ordinal);
@@ -147,7 +151,7 @@ public sealed class HeadStart
         try
         {
             WorkspaceModel read = await Read;
-            if (await hosting is not { } host || Projects(read) is not { Count: > 0 } projects)
+            if (await hosting is not { } host || Loaded(read) is not { Count: > 0 } projects)
             {
                 return new ProjectBuildCache();
             }
@@ -282,7 +286,7 @@ public sealed class HeadStart
             {
                 return null;
             }
-            List<ProjectToOpen> projects = [.. Projects(read).Select(path => builds.Projects.TryGetValue(path, out KeptBuild? kept)
+            List<ProjectToOpen> projects = [.. Loaded(read).Select(path => builds.Projects.TryGetValue(path, out KeptBuild? kept)
                 ? new ProjectToOpen(path, kept.Read(), ProjectBuilds.Said(kept.Diagnostics)) : new ProjectToOpen(path, null))];
             return new FedProjects([], projects, projects.Any(p => p.Infos is not null) ? head.buildsBegan : null);
         }
