@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ModelContextProtocol.Client;
 using Passenger.App.Godot;
 using Passenger.App.Mcp;
@@ -7,8 +8,8 @@ namespace Passenger.Tests;
 
 /// <summary>An agent's tools on a Godot shader answer as its editor does: diagnostics gives Godot's front end's error at its
 /// line, as the agent's edit left the shader and once it mended it; definition goes to an include's function; symbol_info
-/// says what a built-in is; usages lists a uniform's uses; outline its declarations. It needs no Godot; one found is probed
-/// for its shading language once. Run alone: that probe starts a Godot of its own.</summary>
+/// says what a built-in is; usages lists a uniform's uses; outline its declarations; a shader read only in part says so. It
+/// needs no Godot; one found is probed for its shading language once. Run alone: that probe starts a Godot of its own.</summary>
 [Collection(Alone.Name)]
 public sealed class McpGodotShaderTests : McpRig
 {
@@ -57,6 +58,32 @@ public sealed class McpGodotShaderTests : McpRig
             Assert.True(uses.Contains("\"count\":2", StringComparison.Ordinal), $"usages of speed were to list its declaration and its use: {uses}");
             string outline = Text(await Call(client, McpTools.Outline, new() { ["path"] = "water.gdshader" }));
             Assert.Contains("uniform float speed : hint_range(0.0, 10.0) = 1.0; (uniform, line 4)", outline, StringComparison.Ordinal);
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+            TestFolders.Delete(folder + "-home");
+        }
+    }
+
+    /// <summary>A shader past what Passenger reads marks no error, so the note is all that tells an agent it went unchecked.</summary>
+    [Fact]
+    public async Task An_agents_diagnostics_of_a_shader_nested_past_what_passenger_reads_say_it_was_read_in_part()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("godot-mcp-shader-part-"));
+        try
+        {
+            TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Part\"\n");
+            TestFolders.Write(folder, "deep.gdshader", "shader_type spatial;\n\nvoid fragment() {\n\tfloat a = " + new string('(', 20_000) + "1.0" + new string(')', 20_000) + ";\n}\n");
+            Dictionary<string, string?> homes = new() { [GodotUserFolders.HomeVariable] = folder + "-home" };
+            await using McpClient client = await Start(["--mcp", folder], environment: homes, languageServer: false);
+            JsonElement note = default;
+            Assert.True(await Waiting.UntilAsync(async () => (await Call(client, McpTools.Diagnostics, new() { ["path"] = "deep.gdshader" })).EnumerateArray()
+                .FirstOrDefault(f => f.GetProperty("message").GetString()!.StartsWith("Passenger read no deeper", StringComparison.Ordinal))
+                is { ValueKind: JsonValueKind.Object } found
+                && (note = found).ValueKind == JsonValueKind.Object, TimeSpan.FromSeconds(120), TestContext.Current.CancellationToken), "The agent was never told the shader was read only in part");
+            Assert.Equal(("info", 4), (note.GetProperty("severity").GetString(), note.GetProperty("line").GetInt32()));
+            Assert.Contains("the rest of the shader is unread", note.GetProperty("message").GetString(), StringComparison.Ordinal);
         }
         finally
         {

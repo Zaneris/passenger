@@ -8,7 +8,7 @@ namespace Passenger.Tests;
 
 /// <summary>An agent's diagnostics of a GDScript give a warning's name as its code and Godot's words alone as its message,
 /// as a C# mark's: Godot's server's where a Godot is found (its headless editor's user folders the test's, so run alone),
-/// else Passenger's own reading's, which say the same.</summary>
+/// else Passenger's own reading's, which say the same; and of a script read only in part, the note that says so.</summary>
 [Collection(Alone.Name)]
 public sealed class McpGDScriptMarksTests : McpRig
 {
@@ -30,6 +30,35 @@ public sealed class McpGDScriptMarksTests : McpRig
                 is { ValueKind: JsonValueKind.Object } found
                 && (unused = found).ValueKind == JsonValueKind.Object, "the unused variable's warning with UNUSED_VARIABLE as its code");
             Assert.Equal(("warning", Words, 5), (unused.GetProperty("severity").GetString(), unused.GetProperty("message").GetString(), unused.GetProperty("line").GetInt32()));
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+            TestFolders.Delete(folder + "-home");
+        }
+    }
+
+    /// <summary>A script past what Passenger reads marks no error, so the note is all that tells an agent it went unchecked.</summary>
+    [Fact]
+    public async Task An_agents_diagnostics_of_a_script_nested_past_what_passenger_reads_say_it_was_read_in_part()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("godot-mcp-gdscript-part-"));
+        try
+        {
+            TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Part\"\n");
+            TestFolders.Write(folder, "deep.gd", "extends Node\n\n\nvar deep = " + new string('(', 2_000) + "1" + new string(')', 2_000) + "\n");
+            Dictionary<string, string?> homes = new() { [GodotUserFolders.HomeVariable] = folder + "-home" };
+            await using McpClient client = await Start(["--mcp", folder], environment: homes);
+            JsonElement note = default;
+            await Until(async () =>
+            {
+                JsonElement said = await Call(client, McpTools.Diagnostics, new() { ["path"] = "deep.gd" });
+                Assert.True(said.GetArrayLength() > 0, "An agent looking as the script opened found it clean, though it was read only in part");
+                note = said.EnumerateArray().FirstOrDefault(f => f.GetProperty("message").GetString()!.StartsWith("Passenger read no deeper", StringComparison.Ordinal));
+                return note.ValueKind == JsonValueKind.Object;
+            }, "the note that the script was read only in part");
+            Assert.Equal(("info", 4), (note.GetProperty("severity").GetString(), note.GetProperty("line").GetInt32()));
+            Assert.Contains("the rest of the script is unread", note.GetProperty("message").GetString(), StringComparison.Ordinal);
         }
         finally
         {

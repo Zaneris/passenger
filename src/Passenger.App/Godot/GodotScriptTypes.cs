@@ -77,7 +77,14 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         }
         documents[document] = kept;
         document.Text.Changed += kept.Typed;
-        IdeErrors.Observe(TypeAsync(document));
+        IdeErrors.Observe(FirstTypedAsync(document));
+    }
+
+    /// <summary>The script as it opened typed, held as a check so an agent's first look waits for its marks.</summary>
+    private async Task FirstTypedAsync(OpenDocument document)
+    {
+        using OpenDocument.CheckHold hold = document.Checking(Checker);
+        await TypeAsync(document);
     }
 
     /// <summary>The exports a scene's script gives a node, its own and those of the scripts it extends, read from its text as

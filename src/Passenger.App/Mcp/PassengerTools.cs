@@ -200,7 +200,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     // The Problems window's lists are this tool's with no path: a tool of their own cost every session's list more.
     [McpServerTool(Name = McpTools.Diagnostics, Title = "Errors and warnings", ReadOnly = true), Description(
-        "A file's errors and warnings as the editor marks them, fresh: C#'s from the language server (its messages too), any " +
+        "A file's errors, warnings and notes as the editor marks them, fresh: C#'s from the language server (its messages too), any " +
         "other's once its checks have run (XAML's, an MSBuild file's evaluation and NuGet advisories, a web language's server " +
         "and ESLint). With no path, what the Problems window lists beyond a file's: toolset (each project's load warnings and " +
         "errors), build (the last build's, whoever started it) and solution (every file's, while settings' solutionWideAnalysis " +
@@ -241,10 +241,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 missing.Add(new Finding("info", null, web.Unready("Checking it beyond the container engine", marked), Relative(marked.Path), 1, 1));
             }
             TextSnapshot text = marked.Text.Snapshot;
-            return (IReadOnlyList<Finding>)[.. marked.Markers.Where(m => m.Kind is MarkerKind.Error or MarkerKind.Warning).Select(m =>
+            return (IReadOnlyList<Finding>)[.. marked.Markers.Where(m => m.Kind is not MarkerKind.Unnecessary).Select(m =>
             {
                 TextPosition at = text.GetPosition(Math.Min(m.Range.Start, text.Length));
-                return new Finding(m.Kind == MarkerKind.Error ? "error" : "warning", m.Code, m.Said, Relative(marked.Path), at.Line + 1, at.Column + 1);
+                return new Finding(m.Kind switch { MarkerKind.Error => "error", MarkerKind.Warning => "warning", _ => "info" }, m.Code, m.Said, Relative(marked.Path), at.Line + 1, at.Column + 1);
             }), .. missing];
         }
         (OpenDocument document, LspDocument lsp) = await Code(path, cancel);
