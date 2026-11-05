@@ -683,6 +683,7 @@ public sealed class LanguageServer : IAsyncDisposable
     private void Abandon()
     {
         disposing = true;
+        Live.TryRemove(this, out _);
         watch.Dispose();
         rpc.Dispose();
         socket?.Dispose();
@@ -1104,6 +1105,9 @@ public sealed class LanguageServer : IAsyncDisposable
         }
         return string.Join('\n', lines);
     }
+
+    /// <summary>How many servers this process holds that log to a folder, for a test that a start leaves none behind.</summary>
+    public static int LiveIn(string logFolder) => Live.Keys.Count(server => server.LogFolder == logFolder);
 
     /// <summary>Runs one of the server's own commands (<c>workspace/executeCommand</c>) that asks nothing of the client as it
     /// runs (TypeScript's tsserver requests): an edit it asks for is refused.</summary>

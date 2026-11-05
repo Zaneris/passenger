@@ -9,7 +9,8 @@ namespace Passenger.Tests;
 /// <summary>A language server reached over TCP on a loopback port, as Godot's editor serves GDScript, against a stand-in
 /// that answers with the bytes Godot 4.7.2's server sent: the client's frames carry their Content-Length alone (Godot
 /// reads the length at the header's start), it is told the folder's path as well as its URI, and a server that says it
-/// works on another folder is known to; with nothing listening, the start fails as a server that ended.</summary>
+/// works on another folder is known to; with nothing listening, the start fails as a server that ended; and a start that
+/// fails or is given up holds no server after it.</summary>
 [Collection(Beside.Name)]
 public sealed class LanguageServerPortTests
 {
@@ -55,6 +56,38 @@ public sealed class LanguageServerPortTests
         LanguageServerFailed failed = await Assert.ThrowsAsync<LanguageServerFailed>(() => LanguageSession.StartAsync(start, TestContext.Current.CancellationToken));
         Assert.True(failed.Ended, $"A port nothing listens on failed the start as a refusal: {failed.Reason}");
         Assert.Contains("nothing listens on port", failed.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_start_the_server_fails_leaves_no_server_held()
+    {
+        string folder = TestFolders.Create("lsp-port-");
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        ServerStart start = Start(folder, listener);
+        Task<LanguageSession> starting = LanguageSession.StartAsync(start, TestContext.Current.CancellationToken);
+        using (TcpClient client = await listener.AcceptTcpClientAsync(TestContext.Current.CancellationToken))
+        {
+            await ReadAsync(client.GetStream());
+        }
+        await Assert.ThrowsAsync<LanguageServerFailed>(() => starting);
+        Assert.True(LanguageServer.LiveIn(start.LogFolder) == 0, "A server that ended as it was initialized is held for the rest of the IDE's life");
+    }
+
+    [Fact]
+    public async Task A_start_given_up_leaves_no_server_held()
+    {
+        string folder = TestFolders.Create("lsp-port-");
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        ServerStart start = Start(folder, listener);
+        using CancellationTokenSource giving = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        Task<LanguageSession> starting = LanguageSession.StartAsync(start, giving.Token);
+        using TcpClient client = await listener.AcceptTcpClientAsync(TestContext.Current.CancellationToken);
+        await ReadAsync(client.GetStream());
+        await giving.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);
+        Assert.True(LanguageServer.LiveIn(start.LogFolder) == 0, "A server whose start was given up is held for the rest of the IDE's life");
     }
 
     private static ServerStart Start(string folder, TcpListener listener) =>
