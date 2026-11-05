@@ -11,8 +11,9 @@ namespace Passenger.App.Testing;
 /// <c>func test_…</c> its tests, and each inner class of it that extends one and is named Test… a class of its own, nested
 /// in it. A test class is named by the script's path in its project, folders as a namespace ("test.unit.test_math", an
 /// inner class after a '+'), so a test is the same test wherever it is found, and a project carries GUT where its
-/// addons/gut holds GUT's command line. Where its .gutconfig.json names GUT's folders or scripts, those alone hold tests
-/// (<see cref="Config"/>), every script still read for the test classes it derives.</summary>
+/// addons/gut holds GUT's command line. A class has the tests its base has too (<see cref="GutBases"/>), as GUT runs them.
+/// Where its .gutconfig.json names GUT's folders or scripts, those alone hold tests (<see cref="Config"/>), every script
+/// still read for the test classes it derives.</summary>
 public static partial class GutScripts
 {
     /// <summary>The test framework a GUT test is told as having been found by, which <see cref="GutRunner"/> runs.</summary>
@@ -130,15 +131,15 @@ public static partial class GutScripts
     }
 
     /// <summary>What the project's script at <paramref name="path"/> declares for testing (<see cref="FileTests"/>, its
-    /// <see cref="FileTests.Attributes"/> its class_name and res:// path where it is a test class, so a script extending it
-    /// is one too; no tests where <paramref name="config"/> names other scripts) and where its classes and functions are
-    /// (<see cref="FilePlaces"/>), read line by line, lines the editor's from zero; <paramref name="bases"/> the project's
-    /// other test classes so known.</summary>
+    /// <see cref="FileTests.Attributes"/> its class_name, res:// path and tests where it is a test class, so a script extending
+    /// it is one too and has them; no tests where <paramref name="config"/> names other scripts) and where its classes and
+    /// functions are (<see cref="FilePlaces"/>), read line by line, lines the editor's from zero, a test inherited on the line
+    /// of the class that runs it; <paramref name="bases"/> the project's other test classes so known.</summary>
     public static (FileTests Tests, FilePlaces Places) Read(string text, string folder, string path, IReadOnlySet<string>? bases = null, Config? config = null)
     {
         string type = TypeOf(folder, path);
         string resource = ResourceOf(folder, path);
-        bool IsGut(string named) => IsGutTest(named, resource, bases);
+        bool IsGut(string testClass) => IsGutTest(testClass, bases);
         string[] lines = text.Split('\n');
         List<(string, int)> types = [];
         List<DeclaredTest> tests = [];
@@ -148,6 +149,9 @@ public static partial class GutScripts
         int extendsLine = -1;
         bool scriptTests = false;
         string? className = null;
+        string? scriptBase = null;
+        // The inner classes that are test classes: each, what it extends and the line it is on.
+        List<(string Owner, string Base, int Line)> inheriting = [];
         // The inner class being read: its name, the line it is on, whether it extends GutTest and is GUT's.
         (string Name, int Line, bool Tests)? inner = null;
         bool innerHeld = false;
@@ -169,22 +173,33 @@ public static partial class GutScripts
                 if (head.Groups["base"] is { Success: true } extended)
                 {
                     extendsLine = at;
-                    scriptTests = IsGut(extended.Value);
+                    scriptBase = BaseOf(extended.Value, resource);
+                    scriptTests = IsGut(scriptBase);
                 }
                 continue;
             }
             if (top && InnerClass().Match(line) is { Success: true } declared)
             {
                 string name = declared.Groups["name"].Value;
-                bool gut = name.StartsWith("Test", StringComparison.Ordinal) && IsGut(declared.Groups["base"].Value);
+                string extended = BaseOf(declared.Groups["base"].Value, resource);
+                bool gut = name.StartsWith("Test", StringComparison.Ordinal) && IsGut(extended);
                 inner = (name, at, gut);
                 innerHeld = false;
+                if (gut)
+                {
+                    inheriting.Add(($"{type}+{name}", extended, at));
+                }
                 typePlaces.Add(new DeclaredPlace($"{type}+{name}", null, at, at, End(lines, at)));
                 continue;
             }
             if (!top && inner is { Tests: false } plain && Extends().Match(line.TrimStart()) is { Success: true } innerExtends && plain.Name.StartsWith("Test", StringComparison.Ordinal))
             {
-                inner = plain with { Tests = IsGut(innerExtends.Groups["base"].Value) };
+                string extended = BaseOf(innerExtends.Groups["base"].Value, resource);
+                inner = plain with { Tests = IsGut(extended) };
+                if (inner.Value.Tests)
+                {
+                    inheriting.Add(($"{type}+{plain.Name}", extended, plain.Line));
+                }
                 continue;
             }
             if (Function().Match(line) is not { Success: true } function)
@@ -213,6 +228,23 @@ public static partial class GutScripts
             }
             tests.Add(new DeclaredTest(owner, method, at, [], false) { Code = TestCode.OfScript(string.Join('\n', lines[at..(last + 1)])) });
         }
+        if (scriptTests)
+        {
+            inheriting.Insert(0, (type, scriptBase!, Math.Max(extendsLine, 0)));
+        }
+        foreach ((string owner, string extended, int line) in inheriting)
+        {
+            // One it declares itself is its own, on its own line.
+            foreach (string method in GutBases.TestsOf(bases, extended).Where(test => !methodPlaces.Any(p => p.Type == owner && p.Method == test)))
+            {
+                if (!types.Any(t => t.Item1 == owner))
+                {
+                    types.Insert(owner == type ? 0 : types.Count, (owner, line));
+                }
+                tests.Add(new DeclaredTest(owner, method, line, [], false));
+            }
+        }
+        List<string> passedOn = [.. tests.Where(t => t.Type == type).Select(t => t.Method)];
         if (config?.Takes(folder, path) == false)
         {
             types.Clear();
@@ -225,46 +257,46 @@ public static partial class GutScripts
         HashSet<string> derived = new(StringComparer.Ordinal);
         if (scriptTests)
         {
-            derived.Add(resource);
-            if (className is not null)
+            foreach (string testClass in ((string?[])[resource, className]).OfType<string>())
             {
-                derived.Add(className);
+                derived.Add(testClass);
+                derived.UnionWith(passedOn.Select(method => GutBases.Entry(testClass, method)));
             }
         }
         return (new FileTests(types, tests, methods) { Attributes = derived }, new FilePlaces(typePlaces, methodPlaces));
     }
 
-    /// <summary>Whether what a script of <paramref name="resource"/> extends is GUT's test class: GutTest by its name, GUT's
-    /// test.gd by its path, or one of <paramref name="bases"/> by its class_name or path (a relative one from the script's
-    /// folder).</summary>
-    private static bool IsGutTest(string named, string resource, IReadOnlySet<string>? bases)
+    /// <summary>Whether a class is GUT's test class: GutTest by its name, GUT's test.gd by its path, or one of
+    /// <paramref name="bases"/> (<see cref="BaseOf"/> names it as they do).</summary>
+    private static bool IsGutTest(string testClass, IReadOnlySet<string>? bases) =>
+        testClass is "GutTest" or "res://addons/gut/test.gd" || bases?.Contains(testClass) == true;
+
+    /// <summary>What a script of <paramref name="resource"/> extends as test classes are known: a class by its name, a script
+    /// by its res:// path (a relative one from the script's folder).</summary>
+    private static string BaseOf(string named, string resource)
     {
-        if (named == "GutTest")
-        {
-            return true;
-        }
         if (named.Length < 2 || named[0] is not ('"' or '\'') || named[^1] != named[0])
         {
-            return bases?.Contains(named) == true;
+            return named;
         }
         string script = named[1..^1];
-        if (!script.StartsWith("res://", StringComparison.Ordinal))
+        if (script.StartsWith("res://", StringComparison.Ordinal))
         {
-            List<string> parts = [.. resource["res://".Length..].Split('/')[..^1]];
-            foreach (string part in script.Split('/'))
-            {
-                if (part == ".." && parts.Count > 0)
-                {
-                    parts.RemoveAt(parts.Count - 1);
-                }
-                else if (part is not ("." or "" or ".."))
-                {
-                    parts.Add(part);
-                }
-            }
-            script = "res://" + string.Join('/', parts);
+            return script;
         }
-        return script == "res://addons/gut/test.gd" || bases?.Contains(script) == true;
+        List<string> parts = [.. resource["res://".Length..].Split('/')[..^1]];
+        foreach (string part in script.Split('/'))
+        {
+            if (part == ".." && parts.Count > 0)
+            {
+                parts.RemoveAt(parts.Count - 1);
+            }
+            else if (part is not ("." or "" or ".."))
+            {
+                parts.Add(part);
+            }
+        }
+        return "res://" + string.Join('/', parts);
     }
 
     /// <summary>The last line (from zero) of a function or an inner class beginning at <paramref name="start"/>: the last

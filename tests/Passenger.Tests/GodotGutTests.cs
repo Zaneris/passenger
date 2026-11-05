@@ -352,8 +352,8 @@ public sealed class GodotGutTests : IDisposable
         }
     }
 
-    /// <summary>A whole script's run takes what it inherits, which no row shows: its failure counts in the run's tally, reaches
-    /// an agent's answer through the run's outcomes, and is named in the Build window's words.</summary>
+    /// <summary>A whole script's run takes what it inherits, which has its row under the script: its failure shows there,
+    /// counts in the run's tally and reaches an agent's answer through the run's outcomes.</summary>
     [AvaloniaFact]
     public void A_test_a_script_inherits_is_told_where_a_run_of_the_script_ran_it()
     {
@@ -367,15 +367,14 @@ public sealed class GodotGutTests : IDisposable
         try
         {
             window.OpenFolder(folder);
-            Ui.WaitFor(() => Method(window, "test_own") is not null, () => $"the test shown ({window.Tests.Tree.EmptyText})");
+            Ui.WaitFor(() => Method(window, "test_own") is not null && Method(window, "test_inherited") is not null, () => $"the tests shown ({window.Tests.Tree.EmptyText})");
+            Assert.Equal("test.test_spinner.test_inherited", Method(window, "test_inherited")!.FullName);
             Assert.True(window.Perform(AppActions.RunAllTests));
             Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "test_own")?.State == TestState.Passed, () => $"the run ({window.BottomPanel.Tests.Status})", TimeSpan.FromMinutes(3));
-            Assert.Null(Method(window, "test_inherited"));
+            Assert.True(Method(window, "test_inherited")!.State == TestState.Failed, $"The inherited test's row shows {Method(window, "test_inherited")!.State}:\n{Method(window, "test_inherited")!.Details}");
             TestOutcome inherited = Assert.Single(window.Tests.RunOutcomes, o => o.Test.FullyQualifiedName == "test.test_spinner.test_inherited");
             Assert.True(inherited.State == TestState.Failed, $"The inherited test's failure was told as {inherited.State}");
             Assert.True(window.BottomPanel.Tests.Status.StartsWith("Tests passed: 1, failed: 1 of 2", StringComparison.Ordinal), $"The run's tally leaves it out: {window.BottomPanel.Tests.Status}");
-            Assert.Contains("GUT also ran 1 test no row shows, 1 failed", window.BottomPanel.Build.Document.Snapshot.ToString(), StringComparison.Ordinal);
-            Assert.Contains("test.test_spinner.test_inherited failed: [1] expected to equal [2]", window.BottomPanel.Build.Document.Snapshot.ToString(), StringComparison.Ordinal);
         }
         finally
         {
@@ -530,10 +529,50 @@ public sealed class GodotGutTests : IDisposable
         }
     }
 
+    /// <summary>A test a script inherits has its row under each script and inner class that runs it, by a class name, a path or
+    /// a chain of them, at the line of the class running it; one a script declares again is its own, once, on its own line; a
+    /// script that only inherits holds tests; and once its base no longer has a test it leaves them all. Needs no Godot:
+    /// nothing runs.</summary>
+    [AvaloniaFact]
+    public void A_test_a_script_inherits_shows_under_the_script_that_runs_it_and_leaves_with_its_base()
+    {
+        TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
+        WriteGut(folder);
+        TestFolders.Write(folder, "test/tools/spin_tester.gd", "class_name SpinTester\nextends GutTest\n\n\nfunc test_spins():\n\tpass\n\n\nfunc test_turns():\n\tpass\n");
+        TestFolders.Write(folder, "test/tools/turn_tester.gd", "class_name TurnTester extends SpinTester\n");
+        TestFolders.Write(folder, "test/test_named.gd", "extends SpinTester\n\n\nfunc test_turns():\n\tpass\n");
+        TestFolders.Write(folder, "test/test_chain.gd", "# Through a chain.\nextends TurnTester\n");
+        TestFolders.Write(folder, "test/test_inner.gd", "extends GutTest\n\n\nclass TestSpins:\n\textends \"res://test/tools/spin_tester.gd\"\n");
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        window.Show();
+        string Shown() => string.Join(", ", window.Tests.Tree.Methods.Select(m => m.FullName).Order(StringComparer.Ordinal));
+        TestNode? Named(string fullName) => window.Tests.Tree.Methods.FirstOrDefault(m => m.FullName == fullName);
+        try
+        {
+            window.OpenFolder(folder);
+            string[] inherited = ["test.test_named.test_spins", "test.test_chain.test_spins", "test.test_chain.test_turns", "test.test_inner+TestSpins.test_spins", "test.test_inner+TestSpins.test_turns"];
+            Ui.WaitFor(() => inherited.All(name => Named(name) is not null), () => $"every test inherited shown under what runs it ({Shown()}; {window.Tests.Tree.EmptyText})");
+            Assert.Equal(1, window.Tests.Tree.Methods.Count(m => m.FullName == "test.test_named.test_turns"));
+            Assert.Equal(4, Named("test.test_named.test_turns")!.FromCode!.Line);
+            Assert.Equal(1, Named("test.test_named.test_spins")!.FromCode!.Line);
+            Assert.Equal(2, Named("test.test_chain.test_spins")!.FromCode!.Line);
+            Assert.True(PathNames.Same(Named("test.test_chain.test_spins")!.FromCode!.Path!, PathNames.Canonical(Path.Combine(folder, "test", "test_chain.gd"))),
+                "An inherited test is to be the script's that runs it, which is the script GUT is given");
+
+            TestFolders.Write(folder, "test/tools/spin_tester.gd", "class_name SpinTester\nextends GutTest\n\n\nfunc test_turns():\n\tpass\n");
+            Ui.WaitFor(() => window.Tests.Tree.Methods.All(m => m.Name != "test_spins"), () => $"the test its base no longer has to leave them all ({Shown()})");
+            Assert.NotNull(Named("test.test_chain.test_turns"));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Where the project's .gutconfig.json names GUT's folders, the tests are those of the scripts under them with
-    /// GUT's prefix, as GUT runs them: not a template outside them nor a helper without the prefix, though a test class
-    /// outside them still makes those extending it tests; and once the config names another folder, its tests come in.
-    /// Needs no Godot: nothing runs.</summary>
+    /// GUT's prefix, as GUT runs them, what they inherit among them: not a template outside them nor a helper without the
+    /// prefix, though a test class outside them still makes those extending it tests; and once the config names another
+    /// folder, its tests come in. Needs no Godot: nothing runs.</summary>
     [AvaloniaFact]
     public void Where_a_gut_config_names_its_folders_the_tests_are_its_scripts_under_them()
     {
@@ -552,7 +591,8 @@ public sealed class GodotGutTests : IDisposable
             window.OpenFolder(folder);
             string Shown() => string.Join(", ", window.Tests.Tree.Methods.Select(m => m.FullName));
             Ui.WaitFor(() => Method(window, "test_spins") is not null, () => $"the test under GUT's folder, extending a test class outside it ({Shown()}; {window.Tests.Tree.EmptyText})");
-            Assert.True(window.Tests.Tree.Methods.Select(m => m.Name).Order(StringComparer.Ordinal).SequenceEqual(["test_spins"]),
+            Ui.WaitFor(() => Method(window, "test_in_the_base") is not null, () => $"the test the script inherits from the class outside GUT's folder ({Shown()})");
+            Assert.True(window.Tests.Tree.Methods.Select(m => m.FullName).Order(StringComparer.Ordinal).SequenceEqual(["test.unit.test_spins.test_in_the_base", "test.unit.test_spins.test_spins"]),
                 $"Tests listed outside GUT's folders or without its prefix: {Shown()}");
 
             TestFolders.Write(folder, GutScripts.ConfigFile, "{\n  \"dirs\": [\"res://test/unit/\", \"res://test/integration/\"],\n  \"prefix\": \"test_\"\n}\n");
