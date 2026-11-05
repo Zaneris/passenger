@@ -28,6 +28,13 @@ public static class CorDebugControllerExtensions
             Marshal.ThrowExceptionForHR(instance.TryContinue(fIsOutOfBand));
         }
 
+        /// <inheritdoc cref="M:Passenger.Debugger.Interop.ICorDebugController.TryEnumerateThreads(Passenger.Debugger.Interop.ICorDebugThreadEnum@)" />
+        public IEnumerable<ICorDebugThread> EnumerateThreads()
+        {
+            Marshal.ThrowExceptionForHR(instance.TryEnumerateThreads(out ICorDebugThreadEnum ppThreads));
+            return CorDebugEnums.Walk<ICorDebugThread>(ppThreads.TryNext);
+        }
+
         /// <inheritdoc cref="M:Passenger.Debugger.Interop.ICorDebugController.TrySetAllThreadsDebugState(Passenger.Debugger.Interop.CorDebugThreadState,Passenger.Debugger.Interop.ICorDebugThread)" />
         public void SetAllThreadsDebugState(CorDebugThreadState state, ICorDebugThread pExceptThisThread)
         {

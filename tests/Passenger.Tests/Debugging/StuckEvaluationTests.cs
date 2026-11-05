@@ -24,7 +24,7 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         await using DebugSession host = await LaunchToBreakpoints(Stop, worker);
         StoppedEvent stop = await host.WaitForStoppedEvent();
         int thread = stop.ThreadId!.Value;
-        EvaluateResponse stuck = await host.EvaluateAsync((await host.TopFrameAsync(thread)).Id, "Reads.Input");
+        EvaluateResponse stuck = await host.EvaluateAsync((await host.TopFrameAsync(thread)).Id, "Reads.Input", mayStand: true);
         Assert.Contains("could not be stopped", stuck.Result, StringComparison.Ordinal);
 
         await host.ContinueAsync();
@@ -49,7 +49,7 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         StoppedEvent stop = await host.WaitForStoppedEvent();
         Assert.Equal(StopReasons.Exception, stop.Reason);
         int thread = stop.ThreadId!.Value;
-        EvaluateResponse stuck = await host.EvaluateAsync((await host.TopFrameAsync(thread)).Id, "Reads.Input");
+        EvaluateResponse stuck = await host.EvaluateAsync((await host.TopFrameAsync(thread)).Id, "Reads.Input", mayStand: true);
         Assert.Contains("could not be stopped", stuck.Result, StringComparison.Ordinal);
 
         // No code runs on the thread while the evaluation does.
@@ -177,22 +177,26 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
             .WaitForInitializedEvent();
         await host.BreakpointsAsync([Line(Stop)], Source).ConfigurationDoneAsync();
         StoppedEvent stop = await host.WaitForStoppedEvent();
-        EvaluateResponse stuck = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "Reads.Input");
+        EvaluateResponse stuck = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "Reads.Input", mayStand: true);
         Assert.Contains("could not be stopped", stuck.Result, StringComparison.Ordinal);
 
         Assert.True(await host.DisconnectAsync(DebugSession.RequestLimit), "The detach was not answered: it waited for an evaluation that had had its time, which never returns");
     }
 
     /// <summary>An evaluation at a stop that takes a lock another thread holds there waits on it until the program goes on,
-    /// and is never aborted there, which would leave the lock held for good. Once the program goes on the evaluation runs to
-    /// its end, and the lock is every thread's again: another thread's evaluation takes it, and so does that thread.</summary>
+    /// and is never aborted there, which would leave the lock held for good, and the engine's log says where it and the
+    /// holder stand. Once the program goes on the evaluation runs to its end, and the lock is every thread's again: another
+    /// thread's evaluation takes it, and so does that thread.</summary>
     [Fact]
     public async Task An_evaluation_waiting_on_a_lock_a_paused_thread_holds_leaves_the_lock_free_once_the_program_goes_on()
     {
         await using DebugSession host = await LaunchCase("locks", Held, Later);
         StoppedEvent stop = await host.WaitForStoppedEvent();
-        EvaluateResponse waits = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "Locks.Taken");
+        EvaluateResponse waits = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "Locks.Taken", mayStand: true);
         Assert.Contains("could not be stopped", waits.Result, StringComparison.Ordinal);
+        string log = host.EngineLog();
+        Assert.True(log.Contains("Locks.get_Taken()", StringComparison.Ordinal) && log.Contains("<Run>", StringComparison.Ordinal),
+            $"An evaluation waiting on a paused thread left no word of where the two stand, so a failure past its time could not say what it waited for:\n{log}");
 
         await host.ContinueAsync();
         await TheLockIsFreeOnceTheFirstEvaluationRanToItsEnd(host);
@@ -225,7 +229,7 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         string after = "Console.WriteLine($\"let out, {Turns} turns\");";
         await using DebugSession host = await LaunchCase("finally", "Console.WriteLine(\"a finally next\");", after);
         StoppedEvent stop = await host.WaitForStoppedEvent();
-        EvaluateResponse held = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, getter);
+        EvaluateResponse held = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, getter, mayStand: true);
         Assert.True(held.Result.Contains("could not be stopped, as it runs a catch or finally block", StringComparison.Ordinal),
             $"The evaluation held in its finally block was given another reason it could not be stopped: {held.Result}");
 

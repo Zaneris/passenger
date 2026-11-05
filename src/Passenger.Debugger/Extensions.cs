@@ -283,6 +283,7 @@ public static class Extensions
             bool ended = await Task.WhenAny(waiting, Task.Delay(EvaluationTimeout, leaving)) == waiting;
             bool lookedAt = !ended && !leaving.IsCancellationRequested;
             bool asked = false;
+            bool told = false;
             string? lastWhy = null;
             if (lookedAt)
             {
@@ -299,6 +300,11 @@ public static class Extensions
                     {
                         evalStatus.Log?.Invoke($"The program could not be held to look at the evaluation on thread {thread.Id}: 0x{held:X8}");
                         break;
+                    }
+                    if (!told)
+                    {
+                        told = true;
+                        evalStatus.TellThreads?.Invoke(thread);
                     }
                     string? why = asked ? null : evalStatus.WhyNoAbortTakes(thread);
                     if (!asked && why is null)
@@ -343,6 +349,7 @@ public static class Extensions
                     evalStatus.DueAt.Remove(thread.Id);
                     evalStatus.Log?.Invoke(asked ? $"The abort asked of the evaluation on thread {thread.Id} has not taken; it is left to run on"
                         : $"The evaluation on thread {thread.Id} is left to run on, unaborted");
+                    evalStatus.TellThreads?.Invoke(thread);
                 }
                 evalStatus.ImplicitOff = $"Implicit evaluation is disabled: an evaluation took longer than {EvaluationTimeout.TotalSeconds:0.#} s. It is enabled again once the program runs on";
                 if (!ended || aborted)

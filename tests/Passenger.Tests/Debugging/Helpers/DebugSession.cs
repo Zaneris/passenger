@@ -356,8 +356,19 @@ public sealed class DebugSession : IAsyncDisposable
     public async Task<List<DapVariable>> VariablesAsync(int variablesReference) =>
         [.. (await RequestAsync<VariablesResponse>(DapCommands.Variables, new VariablesArguments(variablesReference))).Variables];
 
-    public Task<EvaluateResponse> EvaluateAsync(int frameId, string expression, bool letThreadsRun = false) =>
-        RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, "repl", letThreadsRun ? true : null));
+    /// <summary>An expression's answer in a frame. One past its time fails the test here, with the whole answer, where the
+    /// engine found the program's threads and their native stacks, which a comparison of the answer would cut off, unless
+    /// the test is of such an evaluation (<paramref name="mayStand"/>).</summary>
+    public async Task<EvaluateResponse> EvaluateAsync(int frameId, string expression, bool letThreadsRun = false, bool mayStand = false)
+    {
+        EvaluateResponse answer = await RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, "repl", letThreadsRun ? true : null));
+        if (!mayStand && answer.Result.Contains("The evaluation took longer than", StringComparison.Ordinal))
+        {
+            string log = EngineLog();
+            Assert.Fail($"{expression} was answered: {answer.Result}\nThe engine's log from it:\n{log[Math.Max(0, log.LastIndexOf($"Evaluate: {expression}", StringComparison.Ordinal))..]}{ProgramStacks()}");
+        }
+        return answer;
+    }
 
     public async Task<DebugSession> ContinueAsync()
     {
@@ -583,6 +594,12 @@ public sealed class DebugSession : IAsyncDisposable
         }
         return $"What the adapter said last:\n  {said}\nThe engine's log ends:\n  {string.Join("\n  ", logged)}{Stacks()}";
     }
+
+    /// <summary>On macOS, where a program the test started stands inside its runtime, which the engine sees no frame of: every
+    /// thread that has entered managed code, and the runtime's tiering worker.</summary>
+    private string ProgramStacks() => debuggee is { } program
+        ? NativeStacks.Describe("Where the program's threads stood", program.Id, "CallDescrWorkerInternal", "TieredCompilationManager")
+        : string.Empty;
 
     /// <summary>On macOS, where the adapter's debugger and the debuggee's runtime were waiting: the engine's log says which
     /// step never ended, this says in which call.</summary>

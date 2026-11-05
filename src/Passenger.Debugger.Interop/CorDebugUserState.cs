@@ -10,6 +10,7 @@ namespace Passenger.Debugger.Interop;
 /// <para>Use the <see cref="M:Passenger.Debugger.Interop.ICorDebugThread.TryGetUserState(Passenger.Debugger.Interop.CorDebugUserState@)">ICorDebugThread::GetUserState</see> method to retrieve a thread's user state.</para>
 /// <para>Documentation adapted from <see href="https://learn.microsoft.com/dotnet/core/unmanaged-api/debugging/icordebug/cordebuguserstate-enumeration">Microsoft Learn</see>.</para>
 /// </remarks>
+[Flags]
 public enum CorDebugUserState
 {
     /// <summary>

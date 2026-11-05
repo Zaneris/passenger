@@ -68,7 +68,7 @@ public class StoredTracesTests(ITestOutputHelper testOutputHelper)
             stop = await host.ContinueAsync().WaitForStoppedEvent();
             Assert.Equal(StopReasons.Exception, stop.Reason);
             int thread = stop.ThreadId!.Value;
-            EvaluateResponse slow = await host.EvaluateAsync((await host.TopFrameAsync(thread)).Id, "Slow.Forever");
+            EvaluateResponse slow = await host.EvaluateAsync((await host.TopFrameAsync(thread)).Id, "Slow.Forever", mayStand: true);
             Assert.True(slow.Result.Contains("longer than", StringComparison.Ordinal), $"The endless getter's evaluation said {slow.Result}, not that it ran past its time");
 
             // Thrown in the user's code, it stops in its first frame, before the frames above are walked.

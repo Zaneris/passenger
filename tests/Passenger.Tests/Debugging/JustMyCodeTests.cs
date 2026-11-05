@@ -48,7 +48,7 @@ public class JustMyCodeTests(ITestOutputHelper testOutputHelper)
         Assert.Equal((Source, Line("Attributed.Hidden();")), (stop.ReadStopInfo().filePath, stop.ReadStopInfo().line));
 
         int frame = (await host.TopFrameAsync(thread)).Id;
-        EvaluateResponse timedOut = await host.EvaluateAsync(frame, "Slow.Forever");
+        EvaluateResponse timedOut = await host.EvaluateAsync(frame, "Slow.Forever", mayStand: true);
         Assert.Contains("was stopped", timedOut.Result, StringComparison.Ordinal);
         EvaluateResponse after = await host.EvaluateAsync(frame, "1 + 1");
         Assert.Equal("2", after.Result);

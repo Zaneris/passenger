@@ -49,6 +49,51 @@ public partial class ManagedDebugger
         return null;
     }
 
+    /// <summary>How many of a thread's innermost frames the engine's log names for an evaluation past its time.</summary>
+    private const int FramesTold = 12;
+
+    /// <summary>Where each thread of the held program stands, an evaluation's own first, the runtime's own threads among them,
+    /// which hold still with the rest: what an evaluation past its time waits on, if anything, one of the others holds, and
+    /// the runtime's frames among theirs (a type's initializer, a JIT compilation) say what.</summary>
+    private string WhereThreadsStand(ICorDebugThread evaluating)
+    {
+        int id = evaluating.Id;
+        string said = $"The evaluation on thread {id} is past its time, and the threads stand so:\n{WhereThreadStands(evaluating)}";
+        try
+        {
+            return string.Join('\n', evaluating.Process.EnumerateThreads().Where(thread => thread.Id != id).Select(WhereThreadStands).Prepend(said));
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return $"{said}\n  The other threads could not be listed: {error.Message}";
+        }
+    }
+
+    /// <summary>A thread's name, its states and its innermost frames, or why they could not be read.</summary>
+    private string WhereThreadStands(ICorDebugThread thread)
+    {
+        int id = thread.Id;
+        try
+        {
+            string user = thread.TryGetUserState(out CorDebugUserState state) is Cor.S_OK ? state.ToString() : "user state unread";
+            string debug = thread.TryGetDebugState(out CorDebugThreadState held) is Cor.S_OK ? held.ToString() : "debug state unread";
+            IEnumerable<string> frames = thread.EnumerateChains()
+                .SelectMany(chain => chain.IsManaged ? chain.EnumerateFrames().Select(FrameTold) : ["[Native code]"]);
+            return $"  {id} ({thread.GetThreadNameOrNull() ?? "no name"}, {user}, {debug}): {string.Join(" < ", frames.Take(FramesTold))}";
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return $"  {id}: not read: {error.Message}";
+        }
+    }
+
+    private string FrameTold(ICorDebugFrame frame) => frame switch
+    {
+        ICorDebugILFrame code when FindModule(code.Function.Module) is { } module => GetMethodFormattedName(module, code.Function.Token, code.TypeParameters),
+        ICorDebugInternalFrame stub => stub.FrameType.ToDisplayName(),
+        _ => UnknownMethod,
+    };
+
     /// <summary>The frames of the evaluation a thread runs, above the one it began from.</summary>
     private static IEnumerable<ICorDebugILFrame> EvaluationFrames(ICorDebugThread thread)
     {

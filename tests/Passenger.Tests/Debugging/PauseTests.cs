@@ -108,7 +108,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         string after = await Count();
         Assert.True(after == before, $"The paused program's other thread counted on from {before} to {after} while its properties were listed");
 
-        EvaluateResponse waited = await host.EvaluateAsync(frame, "Counter.Next");
+        EvaluateResponse waited = await host.EvaluateAsync(frame, "Counter.Next", mayStand: true);
         string log = host.EngineLog();
         Assert.True(waited.Result.Contains("another thread", StringComparison.Ordinal),
             $"An evaluation spinning until the paused thread counts was answered \"{waited.Result}\", where it was to be stopped saying it may wait on "
@@ -129,7 +129,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         StoppedEvent stopped = await host.WaitForStoppedEvent();
         int frame = (await host.TopFrameAsync(stopped.ThreadId!.Value)).Id;
 
-        EvaluateResponse stuck = await host.EvaluateAsync(frame, "locked.Value");
+        EvaluateResponse stuck = await host.EvaluateAsync(frame, "locked.Value", mayStand: true);
         Assert.True(NeedsThreads(stuck), $"A property read under a lock a held thread holds was answered \"{stuck.Result}\", not marked as needing another thread to run");
         // Still running, the first shows that nothing let the thread holding the lock run.
         EvaluateResponse refused = await host.EvaluateAsync(frame, "locked.Value");

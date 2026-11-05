@@ -258,6 +258,7 @@ public partial class ManagedDebugger
             AbortWhenDue = (thread, eval, after) => Core.UnawaitedWork.Observe(AbortWhenDueAsync(thread, eval, after)),
             WhyNoAbortTakes = WhyNoAbortTakes,
             Log = logger,
+            TellThreads = logger is null ? null : thread => logger(WhereThreadsStand(thread)),
         };
         _asyncStepper = new AsyncStepper(this);
         // The runtime's callback thread writes, and so does whichever thread hands back an event put off during an evaluation.
@@ -1364,6 +1365,11 @@ internal sealed class EvalStatus
 
     /// <summary>The engine's log, for what becomes of an evaluation past its time.</summary>
     internal Action<string>? Log { get; init; }
+
+    /// <summary>Says in the engine's log where the program's threads stand, at the first look at an evaluation past its time
+    /// on the thread given and again as it is left to run on, so a thread that moved between is told from one that stood
+    /// still (<see cref="ManagedDebugger.WhereThreadsStand"/>).</summary>
+    internal Action<ICorDebugThread>? TellThreads { get; init; }
 
     /// <summary>Why code the debugger would run of itself (a getter, a ToString, a proxy) is not run, once an
     /// evaluation has timed out, until the program next runs on.</summary>
