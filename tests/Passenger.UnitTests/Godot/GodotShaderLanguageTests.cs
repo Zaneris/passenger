@@ -401,6 +401,36 @@ public class GodotShaderLanguageTests
         Assert.Contains(Check($"shader_type spatial;\n\nvoid fragment() {{\n\t{end}").Messages, m => m.Error);
     }
 
+    /// <summary>Godot looks a case label's value up unasked whether it worked one out, and crashes where it didn't, as it
+    /// doesn't for what <c>~</c> gives.</summary>
+    [Theory]
+    [InlineData("\tconst int X = ~1;\n", "int", "0")]
+    [InlineData("\tconst uint X = ~1u;\n", "uint", "0u")]
+    public void A_case_label_of_a_constant_with_no_worked_out_value_is_an_error(string constant, string type, string zero)
+    {
+        string code = $"shader_type spatial;\n\nvoid fragment() {{\n{constant}\t{type} i = {zero};\n\tswitch (i) {{\n\t\tcase X:\n\t\t\tbreak;\n\t\tdefault:\n\t\t\tbreak;\n\t}}\n}}\n";
+        GodotShaderMessage said = Assert.Single(Check(code).Messages);
+        Assert.Equal((true, 7), (said.Error, said.Line));
+        GodotShaderMark mark = Assert.Single(new GodotShaderUnit("res://shader.gdshader", code, new Dictionary<string, string>(), []).MarksIn(null, [said]));
+        Assert.Equal("X", code[mark.Start..mark.End]);
+    }
+
+    [Fact]
+    public void A_case_label_of_a_shader_s_constant_with_no_worked_out_value_is_an_error()
+    {
+        string code = "shader_type spatial;\n\nconst int X = ~1;\n\nvoid fragment() {\n\tint i = 0;\n\tswitch (i) {\n\t\tcase X:\n\t\t\tbreak;\n\t}\n}\n";
+        GodotShaderMessage said = Assert.Single(Check(code).Messages);
+        Assert.Equal((true, 8), (said.Error, said.Line));
+    }
+
+    /// <summary>A constant whose value is known is what a case label takes.</summary>
+    [Fact]
+    public void A_case_label_of_a_constant_with_a_worked_out_value_stands()
+    {
+        Assert.Empty(Check("shader_type spatial;\n\nvoid fragment() {\n\tconst int X = 1 + 2;\n\tint i = 0;\n\tswitch (i) {\n\t\tcase X:\n\t\t\tbreak;\n\t\tdefault:\n\t\t\tbreak;\n\t}\n}\n",
+            new GodotShaderCheckOptions { Warnings = null }).Messages);
+    }
+
     private static GodotShaderChecked Check(string code, GodotShaderCheckOptions options) =>
         GodotShaderCheck.Check(new GodotShaderUnit("res://shader.gdshader", code, new Dictionary<string, string>(), []), GodotShaderTable.Carried, options);
 

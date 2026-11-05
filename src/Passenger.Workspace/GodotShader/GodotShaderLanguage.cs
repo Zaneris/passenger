@@ -461,6 +461,10 @@ public sealed partial class GodotShaderLanguage
     /// process: no error, as Godot may well compile it, and the check's last word.</summary>
     internal const string TooDeep = "Passenger read no deeper than this, so the rest of the shader is unread and unmarked and its warnings aren't checked.";
 
+    /// <summary>What is said of a case label of a constant Godot worked out no value for (<c>~1</c>): Godot takes its first
+    /// value without asking and crashes, saying nothing of its own.</summary>
+    private const string CaseLabelUnknown = "Godot works out no value for '%s', and crashes compiling it as a case label.";
+
     private void SetError(string message)
     {
         if (errorSet)

@@ -779,6 +779,11 @@ public sealed partial class GodotShaderLanguage
                         FindIdentifier(pBlock, false, pFunctionInfo, vn.Name, found);
                         List<Scalar> v = found.ConstantValues ?? [];
                         DataType dataType = found.DataType;
+                        if (v.Count == 0)
+                        {
+                            SetError(Format(CaseLabelUnknown, vn.Name));
+                            return Err.ParseError;
+                        }
                         if (dataType == DataType.Int)
                         {
                             if (pBlock.Constants.Contains(v[0].Sint))
