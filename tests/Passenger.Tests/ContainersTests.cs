@@ -590,6 +590,58 @@ public sealed class ContainersTests
         }
     }
 
+    /// <summary>A .NET service's metrics are read only while they are shown: hiding the Containers window ends a reading, a
+    /// program found after it hid starts none, and shown again the row chosen is read again. The stand-in's program is held
+    /// paused, so the pane says what it follows without a session.</summary>
+    [AvaloniaFact]
+    public void Hiding_the_Containers_window_ends_a_services_metrics_and_a_lookup_under_way_starts_none()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        string folder = TestFolders.Create("ctr-metrics-hidden-");
+        (string cli, _) = StandInEngine(folder, up: true);
+        MainWindow window = new() { Width = 1200, Height = 800, Engine = new ContainerEngine(cli: cli) };
+        window.Show();
+        window.OpenFolder(TestFolders.Create("ctr-metrics-hidden-window-"));
+        Ui.Settle();
+        try
+        {
+            ContainersView view = Shown(window);
+            Queue<TaskCompletionSource<(int Process, Passenger.Profiler.ProfilePlace Place)?>> lookups = [];
+            view.DotnetOf = (_, _) =>
+            {
+                TaskCompletionSource<(int Process, Passenger.Profiler.ProfilePlace Place)?> lookup = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                lookups.Enqueue(lookup);
+                return lookup.Task;
+            };
+            view.Metrics.Paused = (_, _) => true;
+            Passenger.Profiler.ProfilePlace place = new(_ => throw new InvalidOperationException("The stand-in's metrics were read"), "a stand-in", path => path);
+            string paused = Refusals.MetricsWhilePaused("web");
+            Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Service && r.Service == "web"), "web's row");
+            view.ShowTab(RunWindows.StatsTab);
+            Ui.WaitFor(() => lookups.Count == 1, "web's program to be looked for");
+            lookups.Dequeue().SetResult((1, place));
+            Ui.WaitFor(() => view.Metrics.Said == paused, () => $"web's metrics to be followed, not \"{view.Metrics.Said}\"");
+            Assert.True(view.Metrics.IsVisible, "web's metrics had no room under its Stats");
+
+            window.DockHost.Hide(ToolWindowIds.Containers);
+            Ui.Settle();
+            Assert.True(view.Metrics.Said.Length == 0 && !view.Metrics.IsVisible, $"With the Containers window hidden, web's metrics were still read: \"{view.Metrics.Said}\"");
+
+            window.ShowToolWindow(ToolWindowIds.Containers);
+            Ui.WaitFor(() => lookups.Count == 1, "web's program to be looked for again as its Stats show once more");
+            TaskCompletionSource<(int Process, Passenger.Profiler.ProfilePlace Place)?> underWay = lookups.Dequeue();
+            window.DockHost.Hide(ToolWindowIds.Containers);
+            Ui.Settle();
+            underWay.SetResult((1, place));
+            Ui.Settle();
+            Assert.True(view.Metrics.Said.Length == 0 && !view.Metrics.IsVisible, $"A lookup that ended with the window hidden began a reading: \"{view.Metrics.Said}\"");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>The Files tab copies a container's file only into Passenger's cache, never a huge one, and as the person's
     /// alone: the cache's folders 0700 and the copy 0600 whatever the umask, as a secret's file may be one; a file opened
     /// again shows its new text.</summary>

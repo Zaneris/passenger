@@ -375,6 +375,7 @@ public sealed class ContainersView : DockPanel
         FollowOthers();
         Log.Stop();
         Stats.Stop();
+        ShowMetrics(null);
         Details.Show(null);
         ImageDetails.Show(null);
         Telemetry.Watch(null, null);
