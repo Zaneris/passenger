@@ -21,18 +21,11 @@ internal sealed class RazorHtml
     /// <summary>The HTML server, asked for as each question comes (it may be started again meanwhile), or null with none.</summary>
     public Func<CancellationToken, Task<LanguageServer?>>? Server { get; set; }
 
-    /// <summary>Each Razor file's HTML as the HTML server has it: in which server, at which version, which of Razor's
-    /// updates it holds (<see cref="given"/>), by the file's URI.</summary>
-    private readonly Dictionary<string, (LanguageServer Server, int Version, long Given)> opened = new(StringComparer.Ordinal);
-
-    /// <summary>How many times Razor has given each file's HTML, by the file's URI.</summary>
-    private readonly Dictionary<string, long> given = new(StringComparer.Ordinal);
-
-    /// <summary>One file's HTML sent to the HTML server at a time, so a change never overtakes another.</summary>
-    private readonly SemaphoreSlim sending = new(1, 1);
+    /// <summary>Each open file's HTML as Razor gave it, and what the HTML server holds of it.</summary>
+    private readonly RazorHtmlCopies copies = new();
 
     /// <summary>The HTML server to ask, or null when there is none or it could not start.</summary>
-    private async Task<LanguageServer?> HtmlAsync()
+    private async Task<HtmlServer?> HtmlAsync()
     {
         if (Server is not { } server)
         {
@@ -40,7 +33,7 @@ internal sealed class RazorHtml
         }
         try
         {
-            return await server(CancellationToken.None).ConfigureAwait(false) is { HasExited: false } running ? running : null;
+            return await server(CancellationToken.None).ConfigureAwait(false) is { HasExited: false } running ? new HtmlServer(running) : null;
         }
         catch (LanguageServerFailed)
         {
@@ -64,64 +57,7 @@ internal sealed class RazorHtml
     {
         if (await HtmlAsync().ConfigureAwait(false) is { } html)
         {
-            await SyncAsync(html, uri).ConfigureAwait(false);
-        }
-    }
-
-    /// <summary>Whether the HTML server holds a file's HTML as Razor last gave it.</summary>
-    private bool Current(LanguageServer html, string uri)
-    {
-        lock (texts)
-        {
-            return opened.TryGetValue(uri, out (LanguageServer Server, int Version, long Given) sent) && sent.Server == html
-                && sent.Given == given.GetValueOrDefault(uri);
-        }
-    }
-
-    /// <summary>Sends the HTML server a file's HTML as last given: opened in it the first time (or in a server started
-    /// again), its whole text after.</summary>
-    private async Task SyncAsync(LanguageServer html, string uri)
-    {
-        await sending.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            string? text;
-            (LanguageServer Server, int Version, long Given) was;
-            bool known;
-            long update;
-            lock (texts)
-            {
-                text = texts.GetValueOrDefault(uri);
-                known = opened.TryGetValue(uri, out was);
-                update = given.GetValueOrDefault(uri);
-            }
-            if (text is null || known && was.Server == html && was.Given == update)
-            {
-                return;
-            }
-            string virtualUri = uri + VirtualSuffix;
-            int version = known && was.Server == html ? was.Version + 1 : 1;
-            if (version == 1)
-            {
-                await html.NotifyAsync(LspMethods.DidOpen, new DidOpenTextDocumentParams(new TextDocumentItem(virtualUri, "html", version, text))).ConfigureAwait(false);
-            }
-            else
-            {
-                await html.NotifyAsync(LspMethods.DidChange, new DidChangeTextDocumentParams(new VersionedTextDocumentIdentifier(virtualUri, version),
-                    [new TextDocumentContentChangeEvent(null, text)])).ConfigureAwait(false);
-            }
-            lock (texts)
-            {
-                opened[uri] = (html, version, update);
-            }
-        }
-        catch (LanguageServerFailed)
-        {
-            // Gone: a server started again is sent the file afresh.
-        }
-        finally
-        {
-            sending.Release();
+            await copies.SyncAsync(html, uri).ConfigureAwait(false);
         }
     }
 
@@ -138,9 +74,9 @@ internal sealed class RazorHtml
         string? uri = Uri(forwarded);
         if (uri is not null)
         {
-            if (!Current(html, uri))
+            if (!copies.Current(html, uri))
             {
-                await SyncAsync(html, uri).ConfigureAwait(false);
+                await copies.SyncAsync(html, uri).ConfigureAwait(false);
             }
             if (asked is JsonObject named && named["textDocument"] is JsonObject document)
             {
@@ -149,7 +85,7 @@ internal sealed class RazorHtml
         }
         try
         {
-            JsonElement answer = await html.RequestAsync<JsonElement>(method, asked).ConfigureAwait(false);
+            JsonElement answer = await html.Server.RequestAsync<JsonElement>(method, asked).ConfigureAwait(false);
             if (uri is null || answer.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
             {
                 return answer.ValueKind == JsonValueKind.Undefined ? null : answer.Clone();
@@ -169,33 +105,19 @@ internal sealed class RazorHtml
     /// the file's HTML there.</summary>
     public async Task<IReadOnlyList<Diagnostic>> DiagnosticsAsync(string path, string file, CancellationToken cancel)
     {
-        string? uri;
-        string? text = null;
-        lock (texts)
-        {
-            // Razor spells the file's URI its own way: found by its path.
-            uri = texts.Keys.FirstOrDefault(known => DocumentUris.ToPath(known) == path);
-            if (uri is not null)
-            {
-                text = texts[uri];
-            }
-        }
-        if (uri is null || text is null || await HtmlAsync().ConfigureAwait(false) is not { } html)
+        if (copies.UriOf(path) is not { } uri || copies.Text(uri) is not { } text || await HtmlAsync().ConfigureAwait(false) is not { } html)
         {
             return [];
         }
-        if (!Current(html, uri))
+        if (!copies.Current(html, uri))
         {
-            await SyncAsync(html, uri).ConfigureAwait(false);
+            await copies.SyncAsync(html, uri).ConfigureAwait(false);
         }
-        lock (texts)
-        {
-            text = texts.GetValueOrDefault(uri) ?? text;
-        }
+        text = copies.Text(uri) ?? text;
         DocumentDiagnosticReport? report;
         try
         {
-            report = await html.RequestAsync<DocumentDiagnosticReport>(LspMethods.DocumentDiagnostic,
+            report = await html.Server.RequestAsync<DocumentDiagnosticReport>(LspMethods.DocumentDiagnostic,
                 new DocumentDiagnosticParams(new TextDocumentIdentifier(uri + VirtualSuffix)), cancel).ConfigureAwait(false);
         }
         catch (LanguageServerFailed)
@@ -234,50 +156,26 @@ internal sealed class RazorHtml
 
     private static readonly object Nothing = new { isIncomplete = false, items = Array.Empty<object>() };
 
-    private readonly Dictionary<string, string> texts = new(StringComparer.Ordinal);
-
     /// <summary>Keeps a Razor file's HTML as Razor last gave it.</summary>
     public void Update(JsonElement update)
     {
         if (Uri(update) is { } uri && JsonMembers.Text(update, "text") is { } text)
         {
-            lock (texts)
-            {
-                texts[uri] = text;
-                given[uri] = given.GetValueOrDefault(uri) + 1;
-            }
+            copies.Give(uri, text);
         }
     }
 
     /// <summary>A file's HTML as Razor last gave it, by its path: Razor spells a file's URI its own way.</summary>
-    public string? TextOf(string path)
-    {
-        lock (texts)
-        {
-            return texts.FirstOrDefault(known => DocumentUris.ToPath(known.Key) == path).Value;
-        }
-    }
+    public string? TextOf(string path) => copies.UriOf(path) is { } uri ? copies.Text(uri) : null;
 
     /// <summary>Lets go of a closed file's HTML, by its path: Razor spells a file's URI its own way. The HTML server's
-    /// document of it is closed too.</summary>
+    /// document of it is closed too, behind what is on its way there.</summary>
     public void Forget(string path)
     {
-        List<(LanguageServer Server, string Uri)> closing = [];
-        lock (texts)
+        copies.Forget(path);
+        if (Server is not null)
         {
-            foreach (string uri in texts.Keys.Concat(opened.Keys).Distinct().Where(uri => DocumentUris.ToPath(uri) == path).ToList())
-            {
-                texts.Remove(uri);
-                given.Remove(uri);
-                if (opened.Remove(uri, out (LanguageServer Server, int Version, long Given) sent))
-                {
-                    closing.Add((sent.Server, uri + VirtualSuffix));
-                }
-            }
-        }
-        foreach ((LanguageServer server, string uri) in closing.Where(c => !c.Server.HasExited))
-        {
-            server.Notify(LspMethods.DidClose, new DidCloseTextDocumentParams(new TextDocumentIdentifier(uri)));
+            UnawaitedWork.Observe(BackgroundWork.Run(() => copies.CloseAsync(path)));
         }
     }
 
@@ -285,14 +183,7 @@ internal sealed class RazorHtml
     /// attributes after a space inside a start tag; an empty list anywhere else, which Razor merges with its own.</summary>
     public object Completion(JsonElement forwarded)
     {
-        string? html = null;
-        if (Uri(forwarded) is { } uri)
-        {
-            lock (texts)
-            {
-                html = texts.GetValueOrDefault(uri);
-            }
-        }
+        string? html = Uri(forwarded) is { } uri ? copies.Text(uri) : null;
         JsonElement? position = JsonMembers.Object(JsonMembers.Object(forwarded, "request"), "position");
         if (html is null || JsonMembers.Number(position, "line") is not { } line || JsonMembers.Number(position, "character") is not { } character
             || Offset(html, line, character) is not { } at)
@@ -372,4 +263,21 @@ internal sealed class RazorHtml
     }
 
     private static string? Uri(JsonElement message) => JsonMembers.Text(JsonMembers.Object(message, "textDocument"), "uri");
+
+    /// <summary>The HTML server's documents of Razor's files, each under the name Razor gives its HTML; two of one server are
+    /// the same.</summary>
+    private sealed record HtmlServer(LanguageServer Server) : IHtmlDocuments
+    {
+        public bool HasExited => Server.HasExited;
+
+        public Task OpenAsync(string uri, int version, string text) =>
+            Server.NotifyAsync(LspMethods.DidOpen, new DidOpenTextDocumentParams(new TextDocumentItem(uri + VirtualSuffix, "html", version, text)));
+
+        public Task ChangeAsync(string uri, int version, string text) =>
+            Server.NotifyAsync(LspMethods.DidChange, new DidChangeTextDocumentParams(new VersionedTextDocumentIdentifier(uri + VirtualSuffix, version),
+                [new TextDocumentContentChangeEvent(null, text)]));
+
+        public Task CloseAsync(string uri) =>
+            Server.NotifyAsync(LspMethods.DidClose, new DidCloseTextDocumentParams(new TextDocumentIdentifier(uri + VirtualSuffix)));
+    }
 }
