@@ -365,7 +365,7 @@ internal sealed partial class ComposeCheck(EngineChecks owner, OpenDocument docu
         {
             return new Finding(ProblemSeverity.Error, message, file, text.GetPosition(named.Start), own ? named : null)
             {
-                Fixes = own ? now => ComposeFixes.For(now, fault) : null,
+                Fixes = own ? (now, _) => ComposeFixes.For(now, fault) : null,
             };
         }
         TextRange range = Lines(text, 0, 0);

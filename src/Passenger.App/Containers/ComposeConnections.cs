@@ -135,7 +135,7 @@ internal static class ComposeConnections
                     found.Add(new Finding(ProblemSeverity.Warning, said, path, text.GetPosition(range.Start), range)
                     {
                         Weak = true,
-                        Fixes = to is null ? null : now => ComposeFixes.SetVariable(now, to.Service, to.Variable, to.Value, to.Detail),
+                        Fixes = to is null ? null : (now, _) => ComposeFixes.SetVariable(now, to.Service, to.Variable, to.Value, to.Detail),
                     });
                     gaps.Add(new ComposeGap(path, service, name, project, readIn, said, Weak: true) { Fix = to is null ? null : (to.Value, to.Detail) });
                     continue;
@@ -144,7 +144,7 @@ internal static class ComposeConnections
                 string never = $"{service} runs {projectName}, which reads the connection string {name}: the service's environment never sets {missing.Variable}";
                 found.Add(new Finding(ProblemSeverity.Warning, never, path, text.GetPosition(range.Start), range)
                 {
-                    Fixes = now => ComposeFixes.SetVariable(now, missing.Service, missing.Variable, missing.Value, missing.Detail),
+                    Fixes = (now, _) => ComposeFixes.SetVariable(now, missing.Service, missing.Variable, missing.Value, missing.Detail),
                 });
                 gaps.Add(new ComposeGap(path, service, name, project, readIn, never, Weak: false) { Fix = (missing.Value, missing.Detail) });
             }

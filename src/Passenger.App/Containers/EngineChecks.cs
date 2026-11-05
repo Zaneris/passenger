@@ -68,7 +68,7 @@ public sealed class EngineChecks : IDisposable
             return false;
         }
         scouted.Add(document.Path);
-        foreach (string image in DockerfileCheck.BaseImages(document.Text.Snapshot).Select(b => b.Image))
+        foreach (string image in DockerfileImages.Of(document.Text.Snapshot).Select(b => b.Image))
         {
             ScoutReports.TryRemove(image, out _);
         }
@@ -204,7 +204,7 @@ public sealed class EngineChecks : IDisposable
         int line = text.GetLineFromOffset(Math.Clamp(offset, 0, text.Length));
         return [.. check.Faults
             .Where(f => text.GetLineFromOffset(Math.Min(f.Range.Start, text.Length)) <= line && line <= text.GetLineFromOffset(Math.Min(f.Range.End, text.Length)))
-            .SelectMany(f => f.Fixes(text))];
+            .SelectMany(f => f.Fixes(text, f.Range))];
     }
 
     /// <summary>Follows the engine's state, so a start or stop of it checks every file again (or takes their problems away).</summary>
@@ -256,10 +256,10 @@ public sealed class EngineChecks : IDisposable
 /// file read with it (an override), at <see cref="Position"/> only.</summary>
 internal sealed record Finding(ProblemSeverity Severity, string Message, string Path, TextPosition Position, TextRange? Range)
 {
-    /// <summary>Passenger's own fixes for it, worked out on the file's text as it stands when they are asked for: a name
-    /// Compose says a service uses that the file does not declare (<see cref="ComposeFixes.For"/>), a connection string a
-    /// .NET service reads that its environment never sets (<see cref="ComposeFixes.SetVariable"/>).</summary>
-    public Func<TextSnapshot, IReadOnlyList<CSharp.EditorFix>>? Fixes { get; init; }
+    /// <summary>Passenger's own fixes for it, worked out on the file's text as it stands when they are asked for, given where
+    /// it is marked there: a name Compose says a service uses that the file does not declare (<see cref="ComposeFixes.For"/>),
+    /// a connection string a .NET service reads that its environment never sets (<see cref="ComposeFixes.SetVariable"/>).</summary>
+    public Func<TextSnapshot, TextRange, IReadOnlyList<CSharp.EditorFix>>? Fixes { get; init; }
 
     /// <summary>A warning of less weight, marked as information is (a connection string the settings give at localhost).</summary>
     public bool Weak { get; init; }
@@ -295,7 +295,7 @@ internal abstract class EngineCheck : IDisposable
 
     private readonly WebDocument web;
     private readonly Debounce later;
-    private readonly AnchoredList<(TextRange Range, Func<TextSnapshot, IReadOnlyList<CSharp.EditorFix>> Fixes)> faults =
+    private readonly AnchoredList<(TextRange Range, Func<TextSnapshot, TextRange, IReadOnlyList<CSharp.EditorFix>> Fixes)> faults =
         new(f => f.Range, (f, range) => (range, f.Fixes));
     private CancellationTokenSource? running;
     private bool disposed;
@@ -331,7 +331,7 @@ internal abstract class EngineCheck : IDisposable
 
     /// <summary>What the check found that Passenger's own fixes take, each where it is marked with its fixes, carried with the
     /// text typed after, as the markers are.</summary>
-    public IReadOnlyList<(TextRange Range, Func<TextSnapshot, IReadOnlyList<CSharp.EditorFix>> Fixes)> Faults => faults.Items;
+    public IReadOnlyList<(TextRange Range, Func<TextSnapshot, TextRange, IReadOnlyList<CSharp.EditorFix>> Fixes)> Faults => faults.Items;
 
     /// <summary>Whether the file is checked again once typing pauses, rather than only as it opens and is saved.</summary>
     protected abstract bool AsTyped { get; }
@@ -541,7 +541,7 @@ internal sealed class DockerfileCheck(EngineChecks owner, OpenDocument document,
     private async Task<IReadOnlyList<Finding>> ScoutAsync(ContainerEngine engine, string path, TextSnapshot snapshot, CancellationToken cancel)
     {
         List<Finding> found = [];
-        foreach (BaseImage base_ in BaseImages(snapshot))
+        foreach (BaseImage base_ in DockerfileImages.Of(snapshot))
         {
             if (!Owner.ScoutReports.TryGetValue(base_.Image, out ScoutReport? report))
             {
@@ -558,66 +558,24 @@ internal sealed class DockerfileCheck(EngineChecks owner, OpenDocument document,
                 string fixedBy = report.Recommended is { } tag ? $"; Scout recommends {base_.Repository}:{tag}" : string.Empty;
                 found.Add(new Finding(ProblemSeverity.Warning, $"Docker Scout: {base_.Image} has {report.Counts}{fixedBy}", path, snapshot.GetPosition(line.Start), line)
                 {
-                    Fixes = report.Recommended is { } recommended ? now => Fix(now, base_, recommended) : null,
+                    Fixes = report.Recommended is { } recommended ? (now, marked) => Fix(now, marked, base_, recommended) : null,
                 });
             }
         }
         return found;
     }
 
-    /// <summary>The fix of a base image's tag on the text as it stands: its tag (or its name, with none) given the tag Scout
-    /// recommends, one edit; none once the line names another image.</summary>
-    private static IReadOnlyList<CSharp.EditorFix> Fix(TextSnapshot now, BaseImage was, string tag)
+    /// <summary>The fix of a base image's tag on the text as it stands: the tag (or the name, with none) of the FROM its
+    /// finding marks, however many others name that image, given the tag Scout recommends, one edit; none once that line
+    /// names another image.</summary>
+    private static IReadOnlyList<CSharp.EditorFix> Fix(TextSnapshot now, TextRange marked, BaseImage was, string tag)
     {
-        if (BaseImages(now).FirstOrDefault(b => b.Image == was.Image) is not { } at)
+        if (DockerfileImages.Marked(now, marked, was.Image) is not { } at)
         {
             return [];
         }
         string image = $"{at.Repository}:{tag}";
         return [new CSharp.EditorFix($"Use {image}", $"The base image Docker Scout recommends in place of {at.Image}", at.Range, image)];
-    }
-
-    /// <summary>A FROM's image: its line, its stretch of the text, the image as written and its repository (the image without
-    /// its tag or digest).</summary>
-    internal sealed record BaseImage(int Line, TextRange Range, string Image, string Repository);
-
-    /// <summary>The images a Dockerfile's FROMs name, but scratch, an earlier stage's name, and one an ARG gives
-    /// (<c>$VERSION</c>), which only a build knows.</summary>
-    internal static IReadOnlyList<BaseImage> BaseImages(TextSnapshot text)
-    {
-        List<BaseImage> found = [];
-        HashSet<string> stages = new(StringComparer.OrdinalIgnoreCase);
-        for (int line = 0; line < text.LineCount; line++)
-        {
-            string said = text.GetLineText(line);
-            string trimmed = said.TrimStart();
-            if (trimmed.Length < 5 || !trimmed.StartsWith("FROM", StringComparison.OrdinalIgnoreCase) || trimmed[4] is not (' ' or '\t'))
-            {
-                continue;
-            }
-            int at = said.Length - trimmed.Length + 4;
-            string[] words = said[at..].Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
-            int index = Array.FindIndex(words, w => !w.StartsWith("--", StringComparison.Ordinal));
-            if (index < 0)
-            {
-                continue;
-            }
-            string image = words[index];
-            bool named = !image.Equals("scratch", StringComparison.OrdinalIgnoreCase) && !image.Contains('$', StringComparison.Ordinal) && !stages.Contains(image);
-            if (index + 2 < words.Length && words[index + 1].Equals("AS", StringComparison.OrdinalIgnoreCase))
-            {
-                stages.Add(words[index + 2]);
-            }
-            if (!named)
-            {
-                continue;
-            }
-            int start = text.GetLine(line).Start + said.IndexOf(image, at, StringComparison.Ordinal);
-            string bare = image.Split('@')[0];
-            int colon = bare.LastIndexOf(':');
-            found.Add(new BaseImage(line, new TextRange(start, image.Length), image, colon > bare.LastIndexOf('/') ? bare[..colon] : bare));
-        }
-        return found;
     }
 
     /// <summary>BuildKit's checks of the text: its rules' warnings and a build error it should say.</summary>

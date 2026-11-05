@@ -109,6 +109,40 @@ public sealed class DockerScoutTests
         }
     }
 
+    /// <summary>Two stages on one image are marked each on its own FROM, and the fix offered on the second changes the second,
+    /// the first left as it was.</summary>
+    [AvaloniaFact]
+    public void The_fix_on_the_second_of_two_FROMs_naming_one_image_changes_that_FROM_alone()
+    {
+        SkipWithoutDockerCli();
+        string folder = TestFolders.Create("docker-scout-");
+        string dockerfile = TestFolders.Write(folder, "Dockerfile", $"FROM {Base} AS build\nRUN true\n\nFROM {Base} AS final\nCOPY . .\n");
+        using StandInScout scout = new(folder, plugin: true);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile(PathNames.Canonical(dockerfile));
+            Ui.Settle();
+            OpenDocument document = window.EditorArea.Active!;
+            Assert.True(window.Perform(AppActions.ScoutBaseImages), "Check Base Images with Docker Scout did not run");
+            string expected = $"Docker Scout: {Base} has 1 critical, 1 high, 1 medium; Scout recommends mcr.microsoft.com/dotnet/aspnet:8.0.11";
+            Ui.WaitFor(() => document.Markers.Count(m => m.Message == expected) == 2,
+                () => $"both FROMs marked, not [{string.Join(", ", document.Markers.Select(m => m.Message))}]");
+
+            window.EditorArea.CodeEditor.Selections = SelectionSet.Single(document.Text.Snapshot.ToString().LastIndexOf("aspnet", StringComparison.Ordinal));
+            Ui.Run(window, AppActions.QuickFix);
+            Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the second FROM's fixes");
+            Ui.Press(window, "ENTER");
+            Ui.Settle();
+            Assert.Equal($"FROM {Base} AS build\nRUN true\n\nFROM mcr.microsoft.com/dotnet/aspnet:8.0.11 AS final\nCOPY . .\n", document.Text.Snapshot.ToString());
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
     [AvaloniaFact]
     public void Without_docker_scout_a_check_says_why_and_how_to_get_it()
     {
