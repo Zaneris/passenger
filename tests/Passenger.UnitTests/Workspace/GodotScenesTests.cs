@@ -505,6 +505,54 @@ public class GodotScenesTests
         return text;
     }
 
+    /// <summary>An include follows the file it names; one written from the shader's folder is left while both move together
+    /// and written from the top once the move leaves it naming another; a uid:// names the file wherever it went.</summary>
+    [Theory]
+    [InlineData("#include \"res://common/noise.gdshaderinc\"\n", "res://shader.gdshader", "res://common/noise.gdshaderinc", "res://lib/noise.gdshaderinc", "#include \"res://lib/noise.gdshaderinc\"\n")]
+    [InlineData("#include \"res://common/noise.gdshaderinc\"\n", "res://shader.gdshader", "res://common/", "res://lib/", "#include \"res://lib/noise.gdshaderinc\"\n")]
+    [InlineData("#include \"noise.gdshaderinc\"\n", "res://common/shader.gdshader", "res://common/noise.gdshaderinc", "res://lib/noise.gdshaderinc", "#include \"res://lib/noise.gdshaderinc\"\n")]
+    [InlineData("#include \"noise.gdshaderinc\"\n", "res://common/shader.gdshader", "res://common/shader.gdshader", "res://fx/shader.gdshader", "#include \"res://common/noise.gdshaderinc\"\n")]
+    [InlineData("#include \"../noise.gdshaderinc\"\n", "res://fx/shader.gdshader", "res://noise.gdshaderinc", "res://lib/noise.gdshaderinc", "#include \"res://lib/noise.gdshaderinc\"\n")]
+    [InlineData("#include \"noise.gdshaderinc\"\n", "res://common/shader.gdshader", "res://common/", "res://lib/", "#include \"noise.gdshaderinc\"\n")]
+    [InlineData("#include \"uid://abc\"\n", "res://shader.gdshader", "res://common/", "res://lib/", "#include \"uid://abc\"\n")]
+    [InlineData("// #include \"res://common/noise.gdshaderinc\"\n", "res://shader.gdshader", "res://common/", "res://lib/", "// #include \"res://common/noise.gdshaderinc\"\n")]
+    public void A_shaders_includes_follow_files_and_folders_moved(string code, string shader, string from, string to, string moved)
+    {
+        Assert.Equal(moved, Apply(code, GodotScenes.MovedShaderEdits(code, shader, [(from, to)])));
+    }
+
+    /// <summary>A Shader a scene writes itself holds its includes in a string, its quotes escaped.</summary>
+    [Fact]
+    public void A_scenes_own_shader_follows_a_moved_include_where_the_file_writes_it()
+    {
+        const string Scene = """
+            [gd_scene format=3]
+
+            [sub_resource type="Shader" id="Shader_1"]
+            code = "shader_type canvas_item;
+            #include \"res://common/noise.gdshaderinc\"
+            #include \"beside.gdshaderinc\"
+            "
+
+            [node name="Main" type="Node2D"]
+
+            """;
+
+        Assert.Equal(Scene.Replace("res://common/noise", "res://lib/noise", StringComparison.Ordinal).Replace("\\\"beside", "\\\"res://lib/beside", StringComparison.Ordinal),
+            Apply(Scene, GodotScenes.MovedEdits(GodotFile.Parse(Scene), [("res://common/noise.gdshaderinc", "res://lib/noise.gdshaderinc"), ("res://beside.gdshaderinc", "res://lib/beside.gdshaderinc")], "res://level.tscn")));
+    }
+
+    [Fact]
+    public void A_shader_resource_follows_a_moved_include_and_a_string_of_another_resource_says_nothing_of_one()
+    {
+        const string Shader = "[gd_resource type=\"Shader\" format=3]\n\n[resource]\ncode = \"#include \\\"res://a.gdshaderinc\\\"\n\"\n";
+        const string Other = "[gd_resource type=\"Resource\" format=3]\n\n[resource]\ncode = \"#include \\\"res://a.gdshaderinc\\\"\n\"\n";
+        (string, string)[] moves = [("res://a.gdshaderinc", "res://b.gdshaderinc")];
+
+        Assert.Contains("#include \\\"res://b.gdshaderinc\\\"", Apply(Shader, GodotScenes.MovedEdits(GodotFile.Parse(Shader), moves, "res://s.tres")), StringComparison.Ordinal);
+        Assert.Empty(GodotScenes.MovedEdits(GodotFile.Parse(Other), moves, "res://o.tres"));
+    }
+
     /// <summary>A GDScript's strings follow a move as Godot reads them: a res:// path in any string, each in its own quotes, and
     /// a path written from the script's folder in a preload or extends where the move leaves it naming another; a comment, a
     /// string that says no moved path, and a load's relative string, which Godot reads from the top, are left.</summary>

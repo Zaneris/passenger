@@ -572,9 +572,9 @@ internal sealed partial class CSharpAssist
 
     /// <summary>The edits the Godot projects' files take once files and folders of theirs have moved (the Explorer's move or
     /// rename, already made): every res:// path naming a moved file, or a file inside a moved folder, written anew in each
-    /// scene, resource, GDScript and project.godot and in each C# string; by file at its path now, in the server's places, each read as
-    /// it stands as this is asked, whatever the index has heard. With the .uid and .import files beside each moved file, which
-    /// go with it, an .import's own path to its file following.</summary>
+    /// scene, resource, GDScript, shader's <c>#include</c> and project.godot and in each C# string; by file at its path now, in the
+    /// server's places, each read as it stands as this is asked, whatever the index has heard. With the .uid and .import files
+    /// beside each moved file, which go with it, an .import's own path to its file following.</summary>
     internal async Task<(IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> Files, IReadOnlyList<(string From, string To)> Beside)> GodotFollowAsync(
         IReadOnlyList<(string From, string To)> moved)
     {
@@ -616,13 +616,17 @@ internal sealed partial class CSharpAssist
             // Each text the moves reach, where it is read from and its path once every move is made: the scenes, project.godot, the .import files moving.
             List<(string Path, string From)> texts = [.. scenes.Files.Keys.Select(scenes.FileOf).OfType<string>().Select(f => (f, f)), (Path.Combine(folder, "project.godot"), Path.Combine(folder, "project.godot")),
                 .. beside.Where(b => b.Item1.EndsWith(".import", StringComparison.OrdinalIgnoreCase)).Select(b => (b.Item2, b.Item1))];
-            // A script's text is read at its path now, its paths written from the folder it was in.
-            List<(string Path, string Res)> scripts = [.. scenes.Texts.Keys.Where(GodotScriptDeclarations.IsScript).Select(res => (Path: scenes.FileOf(res), res)).Where(s => s.Path is not null).Select(s => (s.Path!, s.res))];
+            // A script's or shader's text is read at its path now, its paths written from the folder it was in.
+            List<(string Path, string Res)> scripts = [.. scenes.Texts.Keys.Where(res => GodotScriptDeclarations.IsScript(res) || Godot.GodotShaderMarks.IsShader(res))
+                .Select(res => (Path: scenes.FileOf(res), res)).Where(s => s.Path is not null).Select(s => (s.Path!, s.res))];
             List<(string, string)> back = [.. paths.Select(p => (p.To, p.From))];
+            string Was(string res) => GodotScenes.Moved(back, res) ?? res;
             IReadOnlyList<(string Path, string Text, IReadOnlyList<TextEdit> Edits)> edited = await BackgroundWork.Run(() => (IReadOnlyList<(string, string, IReadOnlyList<TextEdit>)>)
-                [.. texts.Select(t => (t.Path, Text: open.Text(t.From))).Where(t => t.Text is not null).Select(t => (t.Path, t.Text!, GodotScenes.MovedEdits(GodotFile.Parse(t.Text!), paths))).Where(t => t.Item3.Count > 0),
+                [.. texts.Select(t => (t.Path, Text: open.Text(t.From))).Where(t => t.Text is not null)
+                    .Select(t => (t.Path, t.Text!, GodotScenes.MovedEdits(GodotFile.Parse(t.Text!), paths, Was(GodotScenes.ResPathOf(folder, t.Path) ?? "res://")))).Where(t => t.Item3.Count > 0),
                 .. scripts.Select(s => (s.Path, s.Res, Text: open.Text(s.Path))).Where(s => s.Text is not null)
-                    .Select(s => (s.Path, s.Text!, GodotScenes.MovedScriptEdits(s.Text!, GodotScenes.Moved(back, s.Res) ?? s.Res, paths))).Where(s => s.Item3.Count > 0)]);
+                    .Select(s => (s.Path, s.Text!, GodotScriptDeclarations.IsScript(s.Res) ? GodotScenes.MovedScriptEdits(s.Text!, Was(s.Res), paths) : GodotScenes.MovedShaderEdits(s.Text!, Was(s.Res), paths)))
+                    .Where(s => s.Item3.Count > 0)]);
             foreach ((string path, string text, IReadOnlyList<TextEdit> edits) in edited)
             {
                 ServerLines lines = ServerLines.Of(TextSnapshot.From(text));

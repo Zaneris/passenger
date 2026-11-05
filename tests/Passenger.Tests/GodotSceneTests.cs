@@ -669,6 +669,41 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
+    /// <summary>A shader include moved in the Explorer takes the shaders' #include along, one written from the shader's folder
+    /// among them, as one command with the rest, or the shader no longer compiles; one Undo puts them back.</summary>
+    [AvaloniaFact]
+    public void A_shader_include_moved_in_the_explorer_is_followed_by_the_shaders_naming_it()
+    {
+        const string shaderCode = "shader_type canvas_item;\n\n#include \"res://noise.gdshaderinc\"\n#include \"noise.gdshaderinc\"\n";
+        string shader = game.PathOf("glow.gdshader");
+        string include = game.PathOf("noise.gdshaderinc");
+        File.WriteAllText(shader, shaderCode);
+        File.WriteAllText(include, "float noise() { return 0.0; }\n");
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
+            Choose(window, include);
+            Ui.Run(window, EditorActions.Cut);
+            Choose(window, game.PathOf("actors"));
+            Ui.Run(window, EditorActions.Paste);
+            string moved = shaderCode.Replace("\"res://noise.gdshaderinc\"", "\"res://actors/noise.gdshaderinc\"", StringComparison.Ordinal)
+                .Replace("\"noise.gdshaderinc\"", "\"res://actors/noise.gdshaderinc\"", StringComparison.Ordinal);
+            Ui.WaitFor(() => File.ReadAllText(shader) == moved, () => $"the shader's includes to follow the file ({window.Status}): {File.ReadAllText(shader)}");
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            Choose(window, game.PathOf("actors"));
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => File.ReadAllText(shader) == shaderCode && File.Exists(include), () => $"Undo to put the shader and its include back ({window.Status}): {File.ReadAllText(shader)}");
+        }
+        finally
+        {
+            window.Close();
+            File.Delete(shader);
+            File.Delete(include);
+            File.Delete(game.PathOf(Path.Combine("actors", "noise.gdshaderinc")));
+        }
+    }
+
     /// <summary>The Explorer's row of a file or folder chosen, with the keys.</summary>
     internal static void Choose(MainWindow window, string path)
     {

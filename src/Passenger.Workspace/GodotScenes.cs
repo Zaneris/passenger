@@ -677,14 +677,25 @@ public sealed class GodotScenes
         return null;
     }
 
-    /// <summary>The edits a Godot text file (a scene, a resource, project.godot, an .import) takes as files and folders move
-    /// (<see cref="Moved"/>): each string it gives a res:// path in that names one moved, an external resource's path, a
-    /// property's, an autoload's after its '*'.</summary>
-    public static IReadOnlyList<TextEdit> MovedEdits(GodotFile file, IReadOnlyList<(string From, string To)> moves)
+    /// <summary>The edits a Godot text file (<paramref name="res"/>, its res:// path before the moves: a scene, a resource,
+    /// project.godot, an .import) takes as files and folders move (<see cref="Moved"/>): each string it gives a res:// path in
+    /// that names one moved, an external resource's path, a property's, an autoload's after its '*', and each <c>#include</c>
+    /// of a Shader it writes itself (<see cref="MovedShaderEdits"/>), where the file writes it.</summary>
+    public static IReadOnlyList<TextEdit> MovedEdits(GodotFile file, IReadOnlyList<(string From, string To)> moves, string res = "res://")
     {
         List<TextEdit> edits = [];
         foreach (GodotSection section in file.Sections)
         {
+            if (IsShaderOf(file, section) && section.Property("code")?.Value is { Text: { } code } written
+                && MovedShaderEdits(code, section.Tag == "sub_resource" ? $"{res}::{section.Text("id")}" : res, moves) is { Count: > 0 } moved)
+            {
+                int[] places = GodotStringPlaces.Of(file.Text, written.TextStart, written.TextEnd);
+                foreach (TextEdit edit in moved)
+                {
+                    (int start, int end) = GodotStringPlaces.RangeOf(places, edit.Start, edit.End);
+                    edits.Add(new TextEdit(start, end - start, GodotWrites.Escaped(edit.Text)));
+                }
+            }
             foreach (GodotEntry entry in section.Attributes.Concat(section.Properties))
             {
                 if (entry.Value is not { Call: null, Plain: true, Text: { } text } value)
@@ -696,6 +707,30 @@ public sealed class GodotScenes
                 {
                     edits.Add(new TextEdit(value.TextStart + star, value.TextEnd - value.TextStart - star, GodotWrites.Escaped(now)));
                 }
+            }
+        }
+        return edits;
+    }
+
+    /// <summary>Whether a section of a text file is a Shader or shader include it writes itself, its <c>code</c> its own.</summary>
+    private static bool IsShaderOf(GodotFile file, GodotSection section) => section.Tag == "sub_resource" ? section.Text("type") is "Shader" or "ShaderInclude"
+        : section.Tag == "resource" && file.Header?.Text("type") is "Shader" or "ShaderInclude";
+
+    /// <summary>The edits a shader's code (<paramref name="shader"/>, its res:// path before the moves, a scene's own Shader's
+    /// by that scene's and <c>::id</c>) takes as files and folders move (<see cref="Moved"/>): each <c>#include</c> naming one
+    /// moved, or written from the shader's folder where its own move leaves it naming another, written anew from the top. A
+    /// uid:// names the file wherever it goes.</summary>
+    public static IReadOnlyList<TextEdit> MovedShaderEdits(string code, string shader, IReadOnlyList<(string From, string To)> moves)
+    {
+        List<TextEdit> edits = [];
+        string now = Moved(moves, shader) ?? shader;
+        foreach (GodotShaderInclude include in GodotShaderCode.Read(code).Includes.Where(i => i.Path.Length > 0 && (!i.Path.Contains("://", StringComparison.Ordinal) || i.Path.StartsWith("res://", StringComparison.Ordinal))))
+        {
+            string was = GodotShaderUnit.Resolved(shader, include.Path);
+            string went = Moved(moves, was) ?? was;
+            if (GodotShaderUnit.Resolved(now, include.Path) != went)
+            {
+                edits.Add(new TextEdit(include.Start, include.End - include.Start, went));
             }
         }
         return edits;
