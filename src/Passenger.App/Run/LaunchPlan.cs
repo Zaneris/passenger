@@ -68,6 +68,13 @@ public sealed partial record LaunchPlan
     /// <summary>The file the build makes and the launch needs (the project's assembly), checked once the build is done.</summary>
     public string? Built { get; init; }
 
+    /// <summary>The file its project builds, whichever program it names: what a <c>dotnet run</c> it names starts.</summary>
+    public string? Target { get; init; }
+
+    /// <summary>What desktop app its project says it is (<see cref="DesktopPrograms.OfProject"/>), for a program no build has
+    /// made yet; null for any other project.</summary>
+    public string? DesktopProject { get; init; }
+
     public ConsoleKind Console { get; init; }
 
     /// <summary>Where the browser opens once the program listens, or null when the configuration opens none.</summary>
@@ -196,7 +203,7 @@ public sealed partial record LaunchPlan
         }
         return !Directory.Exists(WorkingDirectory) && (built || !WorksWhereBuilt)
             ? $"Could not {verb} {ProgramName}: its working folder {WorkingDirectory} does not exist"
-            : UnseenApps.WhyNot(this, verb);
+            : UnseenApps.WhyNot(this, verb, watched: !built);
     }
 
     /// <summary>Whether the program runs in the folder its build puts it in, which a project never built lacks until its
@@ -242,6 +249,7 @@ public sealed partial record LaunchPlan
                 Environment = variables,
                 Project = scripts.Path,
                 Console = configuration.Console,
+                Unseen = headless,
             };
         }
         ProjectModel project = projects.FirstOrDefault(p => PathNames.Same(p.Path, configuration.Project))
@@ -346,6 +354,8 @@ public sealed partial record LaunchPlan
             RunsOn = framework ?? project.TargetFrameworks.FirstOrDefault(),
             Build = configuration.BuildBeforeLaunch ? new BuildStep(project.Path, framework) : null,
             Built = built,
+            Target = target,
+            DesktopProject = DesktopPrograms.OfProject(project, projects),
             Console = configuration.Console,
             BrowserUrl = configuration.LaunchBrowser && configuration.BrowserUrl.Length > 0 ? Expand(configuration.BrowserUrl) : null,
             Page = configuration.BrowserUrl.Length > 0 ? BrowserLaunch.Address(Expand(configuration.BrowserUrl)) is { } page ? BrowserLaunch.Shown(page) : null : null,
@@ -400,7 +410,7 @@ public sealed partial record LaunchPlan
     {
         IReadOnlyList<string> given = CommandLine.Split(properties.GetValueOrDefault(MSBuildNames.RunArguments));
         string command = properties.GetValueOrDefault(MSBuildNames.RunCommand) ?? string.Empty;
-        if (IsDotnet(command))
+        if (DesktopPrograms.IsDotnet(command))
         {
             return given is ["exec", { } assembly, ..] && PathNames.Same(PathNames.Canonical(assembly), target) ? [.. given.Skip(2)] : [];
         }
@@ -414,7 +424,7 @@ public sealed partial record LaunchPlan
     {
         string command = properties.GetValueOrDefault(MSBuildNames.RunCommand) ?? string.Empty;
         IReadOnlyList<string> given = CommandLine.Split(properties.GetValueOrDefault(MSBuildNames.RunArguments));
-        if (IsDotnet(command))
+        if (DesktopPrograms.IsDotnet(command))
         {
             IReadOnlyList<string> run = given is ["exec", ..] ? [.. given.Skip(1)] : given;
             return run is [{ } assembly, ..] && assembly.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) && !PathNames.Same(PathNames.Canonical(assembly), target)
@@ -422,9 +432,6 @@ public sealed partial record LaunchPlan
         }
         return command.Length > 0 && !IsAppHost(command, target) ? (command, given) : null;
     }
-
-    private static bool IsDotnet(string command) =>
-        string.Equals(System.IO.Path.GetFileNameWithoutExtension(command), "dotnet", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Whether a RunCommand is the apphost the SDK makes beside the assembly, which runs it.</summary>
     private static bool IsAppHost(string command, string target) =>

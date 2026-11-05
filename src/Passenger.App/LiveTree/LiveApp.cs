@@ -237,7 +237,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// inspector, which lets the app run on without it.</summary>
     public static LiveApp? For(LaunchPlan plan, IReadOnlyList<string>? overlays = null, bool wpf = true)
     {
-        if (plan.Built is not { } built)
+        if ((UnseenApps.Inspected(plan) ?? plan.Built) is not { } built)
         {
             return null;
         }

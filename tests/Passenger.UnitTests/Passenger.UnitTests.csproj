@@ -205,6 +205,12 @@
     <Compile Include="../../src/Passenger.App/Run/BuiltInputs.cs" Link="App/BuiltInputs.cs" />
   </ItemGroup>
 
+  <!-- What desktop app a program's start runs, from its command line and the files beside it in a temporary folder,
+       compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Run/DesktopPrograms.cs" Link="App/DesktopPrograms.cs" />
+  </ItemGroup>
+
   <!-- What a publish profile is written with for the Publish dialog's options, from their values alone, compiled in since
        its project is the app's. -->
   <ItemGroup>

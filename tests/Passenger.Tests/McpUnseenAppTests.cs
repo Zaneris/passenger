@@ -22,6 +22,9 @@ public class DesktopAgentAppFolder : IAsyncLifetime
     /// <summary>The app's project file.</summary>
     protected virtual string Project => AvaloniaApp.DesktopProject();
 
+    /// <summary>The app's Properties/launchSettings.json, where it has one.</summary>
+    protected virtual string? LaunchSettings => null;
+
     /// <summary>The app's Program.cs.</summary>
     protected virtual string Program => $$"""
         using Avalonia;
@@ -44,6 +47,10 @@ public class DesktopAgentAppFolder : IAsyncLifetime
     {
         AvaloniaApp.Debuggee(Folder, "AgentApp", Project);
         File.WriteAllText(Path.Combine(Folder, "Program.cs"), Program);
+        if (LaunchSettings is { } profiles)
+        {
+            File.WriteAllText(Path.Combine(Directory.CreateDirectory(Path.Combine(Folder, "Properties")).FullName, "launchSettings.json"), profiles);
+        }
         await Restore.RunAsync(Folder);
     }, Folder));
 
@@ -61,6 +68,18 @@ public class DesktopAgentAppFolder : IAsyncLifetime
 public sealed class HeadlessCarryingAppFolder : DesktopAgentAppFolder
 {
     protected override string Project => AvaloniaApp.DesktopProject("Avalonia.Headless");
+}
+
+/// <summary>The desktop app run by a launch profile that names its program, the app's assembly under dotnet, rather than its
+/// project's.</summary>
+public sealed class NamedProgramAppFolder : DesktopAgentAppFolder
+{
+    /// <summary>The configuration the profile makes.</summary>
+    public const string Configuration = "AgentApp: Named";
+
+    protected override string LaunchSettings => """
+        { "profiles": { "Named": { "commandName": "Executable", "executablePath": "dotnet", "commandLineArgs": "$(TargetPath)" } } }
+        """;
 }
 
 /// <summary>The desktop app whose own Main chooses its platform: asked for it the headless one, after UsePlatformDetect has
@@ -102,17 +121,20 @@ public sealed class PlatformChoosingAppFolder : DesktopAgentAppFolder
 /// inspector starts it through its BuildAvaloniaApp() on Avalonia's headless platform in the Main's place, before the Main,
 /// so no window reaches a screen and the app tools see and use it as they do any app's.</summary>
 [Collection(Alone.Name)]
-public sealed class McpUnseenAppTests : McpRig, IClassFixture<DesktopAgentAppFolder>, IClassFixture<HeadlessCarryingAppFolder>, IClassFixture<PlatformChoosingAppFolder>
+public sealed class McpUnseenAppTests : McpRig, IClassFixture<DesktopAgentAppFolder>, IClassFixture<HeadlessCarryingAppFolder>, IClassFixture<PlatformChoosingAppFolder>,
+    IClassFixture<NamedProgramAppFolder>
 {
     private readonly string appFolder;
     private readonly string carryingFolder;
     private readonly string choosingFolder;
+    private readonly string namedFolder;
 
-    public McpUnseenAppTests(DesktopAgentAppFolder app, HeadlessCarryingAppFolder carrying, PlatformChoosingAppFolder choosing)
+    public McpUnseenAppTests(DesktopAgentAppFolder app, HeadlessCarryingAppFolder carrying, PlatformChoosingAppFolder choosing, NamedProgramAppFolder named)
     {
         appFolder = app.Folder;
         carryingFolder = carrying.Folder;
         choosingFolder = choosing.Folder;
+        namedFolder = named.Folder;
     }
 
     /// <summary>Run with no window on any screen: its window and picture are the app's own, a click and a XAML edit Hot
@@ -170,6 +192,21 @@ public sealed class McpUnseenAppTests : McpRig, IClassFixture<DesktopAgentAppFol
         JsonElement ran = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 3600, ["hotReload"] = false });
         Assert.True(ran.GetProperty("stillRunning").GetBoolean() && ran.GetProperty("status").GetString()!.Contains("its BuildAvaloniaApp() started in place of its Main", StringComparison.Ordinal),
             $"The package alone was taken to mean the app draws headless, which would leave its Main to open its windows on the person's screen: {ran}");
+        Assert.DoesNotContain(DesktopAgentAppFolder.MainRan, Text(await Call(client, McpTools.Output)), StringComparison.Ordinal);
+        await Call(client, McpTools.Stop);
+    }
+
+    /// <summary>A launch profile naming the app's assembly under dotnet starts the same desktop app, so it goes the same way,
+    /// though the project's build is not what the plan runs.</summary>
+    [Fact]
+    public async Task A_desktop_app_a_launch_profile_names_is_started_on_the_headless_platform_in_its_mains_place()
+    {
+        await using McpClient client = await Start(["--mcp", namedFolder], languageServer: false);
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The app did not build: {built}");
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = NamedProgramAppFolder.Configuration, ["waitSeconds"] = 3600 });
+        Assert.True(ran.GetProperty("stillRunning").GetBoolean() && ran.GetProperty("status").GetString()!.Contains("its BuildAvaloniaApp() started in place of its Main", StringComparison.Ordinal),
+            $"The named desktop app was started as it is, where its windows would reach the person's screen: {ran}");
         Assert.DoesNotContain(DesktopAgentAppFolder.MainRan, Text(await Call(client, McpTools.Output)), StringComparison.Ordinal);
         await Call(client, McpTools.Stop);
     }
