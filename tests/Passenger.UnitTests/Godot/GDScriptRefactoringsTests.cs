@@ -304,6 +304,37 @@ public class GDScriptRefactoringsTests
     }
 
     [Fact]
+    public void Inline_variable_is_refused_where_what_its_value_reads_through_a_name_changes_before_a_use()
+    {
+        string Refused(string body)
+        {
+            string text = $"var hp = 5\n\n\nfunc bump():\n\thp = 100\n\treturn 1\n\n\nfunc f(values, other):\n{body}";
+            return GDScriptRefactorings.InlineVariable(One(text), text.IndexOf("old =", StringComparison.Ordinal)).Refused ?? "made";
+        }
+        Assert.Contains("'values', which its value reads, is changed", Refused("\tvar old = values[0]\n\tvalues[0] = 2\n\tprint(old)\n"));
+        Assert.Contains("'values', which its value reads, is changed", Refused("\tvar old = values.size\n\tvalues.size = 2\n\tprint(old)\n"));
+        Assert.Contains("'values', which its value reads, is changed", Refused("\tvar old = values[0]\n\tvalues[0] += 2\n\tprint(old)\n"));
+        Assert.Contains("'values', which its value reads, is changed", Refused("\tvar old = values.a[0]\n\tvalues.a[1].b = 2\n\tprint(old)\n"));
+        // Through another name, or by a call on it.
+        Assert.Contains("may be changed before a use", Refused("\tvar old = values[0]\n\tother[0] = 2\n\tprint(old)\n"));
+        Assert.Contains("after a call", Refused("\tvar old = values[0]\n\tvalues.clear()\n\tprint(old)\n"));
+        Assert.Contains("read anew in a branch", Refused("\tvar old = values[0]\n\tif other:\n\t\tprint(old)\n"));
+        // Godot reads a plain variable only as the call it is passed to runs, so inlined it would come after the call beside it.
+        Assert.Contains("after a call", Refused("\tvar old = hp\n\tprint(old, bump())\n"));
+        // A call moved past a read of what it may change.
+        Assert.Contains("'hp' reads what it may change", Refused("\tvar old = bump()\n\tvar seen = hp\n\tprint(old, seen)\n"));
+        // An array read twice is one array, its value written twice two.
+        Assert.Contains("makes a new one each time", Refused("\tvar old = []\n\told.append(1)\n\tprint(old)\n"));
+
+        string kept = "func f(values):\n\tvar old = values[0]\n\tvalues[0] = old + 1\n";
+        Assert.Equal("func f(values):\n\tvalues[0] = values[0] + 1\n", After(GDScriptRefactorings.InlineVariable(One(kept), kept.IndexOf("old =", StringComparison.Ordinal)), "res://main.gd", kept));
+        string alias = "func f(values):\n\tvar same = values\n\tsame.append(1)\n\tprint(same)\n";
+        Assert.Equal("func f(values):\n\tvalues.append(1)\n\tprint(values)\n", After(GDScriptRefactorings.InlineVariable(One(alias), alias.IndexOf("same =", StringComparison.Ordinal)), "res://main.gd", alias));
+        string once = "func f():\n\tvar made = [1]\n\tprint(made)\n";
+        Assert.Equal("func f():\n\tprint([1])\n", After(GDScriptRefactorings.InlineVariable(One(once), once.IndexOf("made =", StringComparison.Ordinal)), "res://main.gd", once));
+    }
+
+    [Fact]
     public void Extract_function_moves_the_statements_into_a_function_after_theirs_with_the_locals_they_read_as_parameters()
     {
         string text = "func f(a: int) -> void:\n\tvar b = a + 1\n\tvar c = b * 2\n\tprint(c)\n\tprint(b)\n";

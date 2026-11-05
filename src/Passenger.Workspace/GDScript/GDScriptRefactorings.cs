@@ -366,9 +366,22 @@ public static partial class GDScriptRefactorings
         return null;
     }
 
+    /// <summary>What runs between a local's declaration and a use of it that can't change places with its value, from the
+    /// statements after the declaration to what runs before the use in its own; null for nothing.</summary>
+    private static GDScriptNode? RunsBetween(GDScriptEffects effects, GDScriptExpression value, GDScriptNode declaration, GDScriptIdentifier use, GDScriptNode body,
+        Dictionary<GDScriptNode, GDScriptNode?> parents)
+    {
+        GDScriptEffect effect = effects.Of(value);
+        GDScriptNode statement = StatementOf(use, parents)?.Statement ?? use;
+        GDScriptNode? before = Below(body).Where(n => parents.GetValueOrDefault(n) is GDScriptSuite && n.Start > declaration.End && n.Start < statement.Start).OrderBy(n => n.Start)
+            .SelectMany(s => effects.InOrder(s)).FirstOrDefault(n => !GDScriptEffects.Commute(effects.Own(n), effect));
+        return before ?? effects.RunsFirst(use, statement, effect, effects.MayBeLate(value));
+    }
+
     /// <summary>Inline Variable: a local's value put where each use reads it, its declaration taken out; refused where it is
-    /// assigned again, where what its value reads changes before a use, where a value that calls would run more often, and
-    /// where a value read anew would run in a loop, under a branch or after a call it did not run after.</summary>
+    /// assigned again, where what its value reads changes before a use, through its name or what it holds, where a value that
+    /// calls would run more often or one that makes an array would make several, and where a value read anew would run in a
+    /// loop, under a branch or on the other side of what runs between.</summary>
     public static GDScriptRefactored InlineVariable(GDScriptAnalysis analysis, int offset)
     {
         if (analysis.Tree is not { } tree || FunctionAt(tree, offset) is not { Function.Body: { } body } located)
@@ -397,24 +410,39 @@ public static partial class GDScriptRefactorings
             }
         }
         // What the value reads must stand as it was until the last use.
+        GDScriptEffects effects = analysis.Effects;
+        GDScriptEffect effect = effects.Of(value);
+        bool calls = effect == GDScriptEffect.Acts;
+        bool steady = effect == GDScriptEffect.None;
         HashSet<(string?, int)> read = [.. Below(value).OfType<GDScriptIdentifier>().Select(analysis.DeclarationOf).OfType<GDScriptDeclaration>().Select(d => (d.Script, d.Start))];
         int last = uses.Count > 0 ? uses[^1].End : variable.End;
-        foreach (GDScriptAssignment assignment in Below(body).OfType<GDScriptAssignment>().Where(a => a.Start > variable.End && a.Start < last))
+        foreach (GDScriptAssignment assignment in Below(body).OfType<GDScriptAssignment>().Where(a => a.Start > variable.End && a.End < last).OrderBy(a => a.Start))
         {
-            if (assignment.Assignee is GDScriptIdentifier target && analysis.DeclarationOf(target) is { } changed && read.Contains((changed.Script, changed.Start)))
+            GDScriptExpression? written = assignment.Assignee;
+            while (written is GDScriptSubscript { Base: { } inside })
             {
-                return GDScriptRefactored.No($"'{changed.Name}', which its value reads, is assigned before a use",
-                    [new GDScriptPlace(analysis.Path, located.Offset + assignment.Start, located.Offset + assignment.End, "assigned")]);
+                written = inside;
+            }
+            GDScriptPlace place = new(analysis.Path, located.Offset + assignment.Start, located.Offset + assignment.End, "assigned");
+            if (written is GDScriptIdentifier target && analysis.DeclarationOf(target) is { } changed && read.Contains((changed.Script, changed.Start)))
+            {
+                return GDScriptRefactored.No($"'{changed.Name}', which its value reads, is {(written == assignment.Assignee ? "assigned" : "changed")} before a use", [place]);
+            }
+            // Another name may reach what it reads through an array, a dictionary or an object.
+            if (!steady && assignment.Assignee is GDScriptSubscript)
+            {
+                return GDScriptRefactored.No("what it reads may be changed before a use", [place]);
             }
         }
-        bool calls = Below(value).Any(n => n is GDScriptCall or GDScriptAwait);
         if (calls && uses.Count != 1)
         {
             return GDScriptRefactored.No(uses.Count == 0 ? $"'{own.Name}' is never read, and its value calls" : $"its value calls, and would be called {uses.Count} times");
         }
-        // A value read anew may give another answer: each time in a loop, sometimes under a branch, changed by a call before.
-        bool steady = Below(value).OfType<GDScriptIdentifier>().All(i => analysis.TypeOf(i).Meta
-            || analysis.DeclarationOf(i) is { } d && d.Script == analysis.Path && d.Start >= located.Offset + located.Function.Start && d.Start <= located.Offset + located.Function.End);
+        if (uses.Count > 1 && effects.Makes(value))
+        {
+            return GDScriptRefactored.No($"its value makes a new one each time, and its {uses.Count} reads share one");
+        }
+        // A value read anew may give another answer: each time in a loop, sometimes under a branch, changed by what runs before.
         foreach (GDScriptIdentifier use in uses)
         {
             if (Unsettled(use, variable, parents) is { } why && (calls || !steady || why == "a loop"))
@@ -422,14 +450,15 @@ public static partial class GDScriptRefactorings
                 return GDScriptRefactored.No($"its value would be read anew in {why}, where it may give another answer",
                     [new GDScriptPlace(analysis.Path, located.Offset + use.Start, located.Offset + use.End, why)]);
             }
-            if ((calls || !steady) && Below(body).FirstOrDefault(n => n is GDScriptCall or GDScriptAwait && n.Start > variable.End && n.Start < use.Start && n.End < use.End) is { } between)
+            if (!steady && RunsBetween(effects, value, variable, use, body, parents) is { } between)
             {
-                return GDScriptRefactored.No("its value would be read after a call that may change what it reads",
+                return GDScriptRefactored.No(effects.Own(between) == GDScriptEffect.Acts ? "its value would be read after a call that may change what it reads"
+                    : $"its value calls, and would run after '{text[(located.Offset + between.Start)..(located.Offset + between.End)]}' reads what it may change",
                     [new GDScriptPlace(analysis.Path, located.Offset + between.Start, located.Offset + between.End, "called first")]);
             }
         }
-        string written = text[(located.Offset + value.Start)..(located.Offset + value.End)];
-        List<TextEdit> edits = [.. uses.Select(u => new TextEdit(located.Offset + u.Start, u.End - u.Start, Placed(written, u, Compound(value), parents)))];
+        string inlined = text[(located.Offset + value.Start)..(located.Offset + value.End)];
+        List<TextEdit> edits = [.. uses.Select(u => new TextEdit(located.Offset + u.Start, u.End - u.Start, Placed(inlined, u, Compound(value), parents)))];
         int start = LineStart(text, located.Offset + variable.Start);
         edits.Add(new TextEdit(start, NextLine(text, located.Offset + variable.End) - start, string.Empty));
         return GDScriptRefactored.Of(analysis.Path, edits);
