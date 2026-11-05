@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The site's pictures, site/images/<scene>-<dark|light>.webp, retaken from the sample solutions beside this script:
 # just site-shots [SCENE...] (every headless scene when none is named), after just build, on macOS with libwebp's cwebp
-# and img2webp; godot-game, taken only when named, runs in a window on the screen (game.py). Each sample is copied to a
-# folder of its own under TMPDIR and given a git history there; its tools' state stays under artifacts/site-shots and
+# and img2webp; godot-game, taken only when named, runs in a window on the screen (game.py), and html-preview, taken only
+# when named too, in the Windows VM (vm-shots.sh), since neither draws in a window nobody sees. Each sample is copied to
+# a folder of its own under TMPDIR and given a git history there; its tools' state stays under artifacts/site-shots and
 # Passenger's beside the copy, never the person's. SITE_SHOTS_FLAGS (--window-buttons by default, so macOS's are in
 # every main-window picture) is added to every capture's command line; SITE_SHOTS_REUSE=1 takes the pictures in the
 # last run's copy without making it again; SITE_SHOTS_THEMES=dark (or light) takes one theme's. A step's point is in the
@@ -27,8 +28,8 @@ command -v cwebp > /dev/null || { echo "site-shots: cwebp is not on the PATH (br
 all_scenes=(editor debugger git find-in-files profiler xaml project-files web live-tree agent themes aspire requests
     godot-scene godot-values godot-live-tree godot-profile blazor-wasm usages resx gdscript godot-shader godot-tests
     aspire-metrics)
-# Taken only when named: a window on the screen (game.py).
-windowed_scenes=(godot-game)
+# Taken only when named: a window someone could see, on the screen (game.py) or in the Windows VM (vm-shots.sh).
+windowed_scenes=(godot-game html-preview)
 scenes=("$@")
 if [[ ${#scenes[@]} -eq 0 ]]; then
     scenes=("${all_scenes[@]}")
@@ -543,6 +544,10 @@ read -r -a themes <<< "${SITE_SHOTS_THEMES:-dark light}"
 for scene_name in "${scenes[@]}"; do
     if [[ $scene_name == godot-game ]]; then
         windowed_game "${themes[@]}"
+        continue
+    fi
+    if [[ $scene_name == html-preview ]]; then
+        SITE_SHOTS_THEMES="${themes[*]}" "$repo/tools/site-shots/vm-shots.sh" "$images"
         continue
     fi
     for theme in "${themes[@]}"; do
