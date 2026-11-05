@@ -69,6 +69,27 @@ public sealed class GodotProjectAboveTests : IClassFixture<GodotProjectAboveTest
         }
     }
 
+    /// <summary>The project sets its Godot folder in its body, too late for Godot.NET.Sdk to build into it: the generators
+    /// were told, but the build lands beside the project, where Godot finds no assembly. Problems says so, and what to set.</summary>
+    [AvaloniaFact]
+    public void A_project_above_its_godot_folder_is_told_where_its_build_misses_it()
+    {
+        MainWindow window = game.Open(game.PathOf(Path.Combine("game", "Main.cs")));
+        try
+        {
+            Ui.WaitFor(() => window.BottomPanel.Problems.ToolsetProblems.Any(p => p.Message.Contains("does not build Spinner.csproj for its Godot folder game", StringComparison.Ordinal)),
+                () => $"Problems to say what the project lacks ({window.Status}): {string.Join("; ", window.BottomPanel.Problems.ToolsetProblems.Select(p => p.Message))}");
+            string said = window.BottomPanel.Problems.ToolsetProblems.First(p => p.Message.Contains("Godot.NET.Sdk", StringComparison.Ordinal)).Message;
+            Assert.Contains("its build goes to", said, StringComparison.Ordinal);
+            Assert.Contains("Set GodotProjectDir to a full path in a PropertyGroup before", said, StringComparison.Ordinal);
+            Assert.DoesNotContain("source generators", said, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     public sealed class Game : SharedProject
     {
         public Game()

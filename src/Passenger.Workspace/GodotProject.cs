@@ -26,6 +26,34 @@ public sealed record GodotProject(string Folder, string? Name, string? MainScene
         }
     }
 
+    /// <summary>Why Godot.NET.Sdk's build of a C# project does not reach the Godot folder its evaluation names, else null. The
+    /// SDK reads GodotProjectDir in its props, before a project's body: set there, the source generators still name its scripts
+    /// from the folder they were given (<paramref name="generators"/>, in base 64), and a relative one they read from the
+    /// compiler's own folder, either way no scene's res:// path; and its build lands beside the project, where Godot finds no
+    /// assembly (<paramref name="target"/>). Only a full path set before the props reaches both.</summary>
+    public static string? WhyNotBuiltFor(string project, string folder, string godot, string written, string? generators, string? target)
+    {
+        string told = Decoded(generators) ?? written;
+        string? scripts = !Path.IsPathRooted(told) ? $"Godot's source generators read {told} from the compiler's own folder, so no scene reaches its classes"
+            : PathNames.Same(Path.TrimEndingDirectorySeparator(PathNames.Canonical(told)), godot) ? null : $"Godot's source generators name its scripts from {told}, so no scene reaches its classes";
+        string? built = target is { Length: > 0 } && !PathNames.IsUnder(PathNames.Canonical(Path.Combine(folder, target.Replace('\\', Path.DirectorySeparatorChar))), Path.Combine(godot, ".godot"))
+            ? $"its build goes to {Path.GetDirectoryName(target)}, where Godot looks for no assembly" : null;
+        return (scripts, built) is (null, null) ? null
+            : $"Godot.NET.Sdk does not build {project} for its Godot folder {Path.GetFileName(godot)}: {string.Join("; ", new[] { scripts, built }.OfType<string>())}. "
+            + "Set GodotProjectDir to a full path in a PropertyGroup before <Import Project=\"Sdk.props\" Sdk=\"Godot.NET.Sdk\" Version=\"…\" />, where the SDK reads it";
+    }
+
+    /// <summary>Base 64's text; null for none, or what is not base 64.</summary>
+    private static string? Decoded(string? base64)
+    {
+        if (base64 is not { Length: > 0 })
+        {
+            return null;
+        }
+        byte[] bytes = new byte[base64.Length];
+        return Convert.TryFromBase64String(base64, bytes, out int length) ? Encoding.UTF8.GetString(bytes, 0, length) : null;
+    }
+
     /// <summary>The project a project.godot's text says, of its folder.</summary>
     public static GodotProject Parse(string folder, string text)
     {

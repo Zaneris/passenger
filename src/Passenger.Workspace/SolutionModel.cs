@@ -338,6 +338,12 @@ public sealed record ProjectModel(
             ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(Folder, folder.Replace('\\', System.IO.Path.DirectorySeparatorChar))))
             : null;
 
+    /// <summary>What keeps its build from reaching its Godot folder, as its evaluation says (<see cref="GodotProject.WhyNotBuiltFor"/>);
+    /// null for a build that reaches it, and for a project of any other SDK.</summary>
+    public string? GodotLayoutProblem => !IsScriptGame && GodotFolder is { } folder && Property(CarriedProperties.GodotProjectDir) is { } written
+        ? GodotProject.WhyNotBuiltFor(System.IO.Path.GetFileName(Path), Folder, folder, written, Property(CarriedProperties.GodotProjectDirBase64), Property(CarriedProperties.TargetPath))
+        : null;
+
     /// <summary>Whether it stands for a Godot project of GDScript alone, by its project.godot (<see cref="OfScriptGame"/>):
     /// Godot runs its game as it is, with no C# project to evaluate or build. Run, Debug and Profile alone are given one.</summary>
     public bool IsScriptGame => System.IO.Path.GetFileName(Path) == GodotProject.FileName;

@@ -84,4 +84,75 @@ public sealed class GodotGamesTests : IDisposable
         Assert.True(scripts is { IsScriptGame: true, Name: "Ticker", Exists: true } && scripts.GodotFolder == game && scripts.Path == Path.Combine(game, GodotProject.FileName),
             $"A game of GDScript alone stands as {scripts.Path}, named {scripts.Name}, its Godot folder {scripts.GodotFolder}");
     }
+
+    /// <summary>A project evaluated with these: GodotProjectDir as it stands after its body, the generators' folder as the
+    /// SDK's props wrote it from what stood before the body, and where its build lands.</summary>
+    private ProjectModel Evaluated(string written, string? generators, string? target)
+    {
+        string csharp = Write("Game.csproj", "<Project />\n");
+        Dictionary<string, Passenger.Host.EvaluatedProperty> properties = new() { [Passenger.Host.CarriedProperties.GodotProjectDir] = new(written, true) };
+        if (generators is not null)
+        {
+            properties[Passenger.Host.CarriedProperties.GodotProjectDirBase64] = new(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(generators)), false);
+        }
+        if (target is not null)
+        {
+            properties[Passenger.Host.CarriedProperties.TargetPath] = new(target, false);
+        }
+        return ProjectModel.Unevaluated(csharp) with { Evaluated = new Passenger.Host.EvaluatedProject { Path = csharp, Properties = properties } };
+    }
+
+    /// <summary>A project above its Godot folder setting GodotProjectDir in its body, full or relative, has
+    /// [ScriptPath("res://game/Main.cs")] and its build beside the project, and Godot finds no class for res://Main.cs.</summary>
+    [Theory]
+    [InlineData("{root}/game/")]
+    [InlineData("game")]
+    public void A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss(string written)
+    {
+        Directory.CreateDirectory(Path.Combine(root, "game"));
+        string problem = Assert.IsType<string>(Evaluated(written.Replace("{root}", root, StringComparison.Ordinal), $"{root}/", $"{root}/.godot/mono/temp/bin/Debug/Game.dll").GodotLayoutProblem);
+
+        Assert.Contains($"Godot's source generators name its scripts from {root}/", problem, StringComparison.Ordinal);
+        Assert.Contains($"its build goes to {root}/.godot/mono/temp/bin/Debug", problem, StringComparison.Ordinal);
+        Assert.Contains("Set GodotProjectDir to a full path in a PropertyGroup before <Import Project=\"Sdk.props\"", problem, StringComparison.Ordinal);
+    }
+
+    /// <summary>The generators read a relative folder from the compiler's, a [ScriptPath] then climbing from there to the game,
+    /// so setting the base 64 too doesn't mend a relative value.</summary>
+    [Fact]
+    public void A_relative_godot_folder_given_to_the_generators_is_said_to_be_read_from_the_compilers_folder()
+    {
+        Directory.CreateDirectory(Path.Combine(root, "game"));
+        string problem = Assert.IsType<string>(Evaluated("game/", "game/", $"{root}/game/.godot/mono/temp/bin/Debug/Game.dll").GodotLayoutProblem);
+
+        Assert.Contains("Godot's source generators read game/ from the compiler's own folder", problem, StringComparison.Ordinal);
+        Assert.DoesNotContain("its build goes to", problem, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_project_whose_generators_are_right_is_told_only_where_its_build_goes()
+    {
+        Directory.CreateDirectory(Path.Combine(root, "game"));
+        string problem = Assert.IsType<string>(Evaluated($"{root}/game/", $"{root}/game/", $"{root}/.godot/mono/temp/bin/Debug/Game.dll").GodotLayoutProblem);
+
+        Assert.DoesNotContain("source generators", problem, StringComparison.Ordinal);
+        Assert.Contains("its build goes to", problem, StringComparison.Ordinal);
+    }
+
+    /// <summary>A folder set before the SDK's props reaches both, and the project beside its project.godot never needed to.</summary>
+    [Fact]
+    public void A_project_whose_scripts_and_build_reach_its_godot_folder_is_told_nothing()
+    {
+        Directory.CreateDirectory(Path.Combine(root, "game"));
+
+        Assert.Null(Evaluated($"{root}/game/", $"{root}/game/", $"{root}/game/.godot/mono/temp/bin/Debug/Game.dll").GodotLayoutProblem);
+        Assert.Null(Evaluated($"{root}/", $"{root}/", $"{root}/.godot/mono/temp/bin/Debug/Game.dll").GodotLayoutProblem);
+        Assert.Null((Evaluated($"{root}/game/", null, null) with { Evaluated = null }).GodotLayoutProblem);
+    }
+
+    [Fact]
+    public void A_project_of_another_sdk_says_nothing_of_a_godot_folder()
+    {
+        Assert.Null(ProjectModel.Unevaluated(Write("App.csproj", "<Project />\n")).GodotLayoutProblem);
+    }
 }

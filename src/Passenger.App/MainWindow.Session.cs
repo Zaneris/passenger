@@ -444,6 +444,7 @@ public partial class MainWindow
             {
                 Explorer.UpdateProjects(next.Workspace!, evaluated.Projects);
                 FollowSymbols();
+                ShowProjectProblems();
                 if (evaluated.TestsChanged)
                 {
                     FindTests();

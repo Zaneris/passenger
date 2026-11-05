@@ -229,6 +229,10 @@ public static class CarriedProperties
     /// project's own folder unless it names another); set by no other SDK.</summary>
     public const string GodotProjectDir = "GodotProjectDir";
 
+    /// <summary>The folder Godot's source generators name a project's scripts from, in base 64, which Godot.NET.Sdk's props
+    /// write from <see cref="GodotProjectDir"/> as it stands before the project's own body.</summary>
+    public const string GodotProjectDirBase64 = "GodotProjectDirBase64";
+
     /// <summary>The path a Razor class library's static web assets are served under (<c>_content/Name</c> unless it names
     /// its own), which a page that links them names.</summary>
     public const string StaticWebAssetBasePath = "StaticWebAssetBasePath";
@@ -246,7 +250,7 @@ public static class CarriedProperties
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
         NuGetPackageRoot, NuGetPackageFolders, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
-        DirectoryPackagesPropsPath, GodotProjectDir, StaticWebAssetBasePath, PackageId, AspireHostingSDKVersion,
+        DirectoryPackagesPropsPath, GodotProjectDir, GodotProjectDirBase64, StaticWebAssetBasePath, PackageId, AspireHostingSDKVersion,
     ];
 }
 

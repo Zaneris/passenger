@@ -33,11 +33,14 @@ public partial class MainWindow
     public ProblemSeverity? StatusSeverity => status.Severity;
 
     /// <summary>Problems' Toolset, Environment: each project's load warnings and errors, under the project, its file the
-    /// place to go to and the advisory or page its message names the link.</summary>
+    /// place to go to and the advisory or page its message names the link; and what a project's build lacks to reach its Godot
+    /// folder, which nothing else says.</summary>
     private void ShowProjectProblems()
     {
         Bottom.Problems.ShowToolset([.. (session.CSharp?.ProjectProblems ?? []).Select(p => new Problem(p.Severity, p.Message, null, p.Project, new TextPosition(0, 0),
-            Path.GetFileNameWithoutExtension(p.Project)) { Link = Problem.LinkIn(p.Message) })]);
+            Path.GetFileNameWithoutExtension(p.Project)) { Link = Problem.LinkIn(p.Message) }),
+            .. Projects.Select(p => (p.Path, Message: p.GodotLayoutProblem)).Where(p => p.Message is not null)
+                .Select(p => new Problem(ProblemSeverity.Warning, p.Message!, null, p.Path, new TextPosition(0, 0), Path.GetFileNameWithoutExtension(p.Path)))]);
     }
 
     /// <summary>Turns solution-wide analysis on or off, as the status bar's icon does, and keeps the choice.</summary>

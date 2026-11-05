@@ -399,7 +399,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         found = [.. found, .. await window.Assist.Languages.Xaml.CodeUsesAsync(named), .. DocumentUris.Besides(godot, found)];
         // Answered now, saying which files that could use it the server has yet to take in.
         IReadOnlyList<(string Path, string Project)> untaken = server.Web is null && Session.CSharp is { } csharp ? await csharp.UntakenAsync(served.Document, offset, cancel) : [];
-        return ByFile(taken, await Places(found, cancel)) with { Note = untaken.Count > 0 ? Refusals.Untaken([.. untaken.Select(u => Relative(u.Path))]) : null };
+        // A project whose scripts no scene reaches lists none of its scenes, and says why.
+        string[] notes = [.. new[] { untaken.Count > 0 ? Refusals.Untaken([.. untaken.Select(u => Relative(u.Path))]) : null, Session.ProjectOf(served.Document.Path)?.GodotLayoutProblem }.OfType<string>()];
+        return ByFile(taken, await Places(found, cancel)) with { Note = notes.Length > 0 ? string.Join(". ", notes) : null };
     });
 
     /// <summary>usages' answer: its places in order (<see cref="Sorted"/>), each file named once.</summary>
@@ -3338,7 +3340,8 @@ public sealed record Finding(string Severity, string? Code, string Message, stri
 public sealed record Place(string Path, int Line, int Column, string Text);
 
 /// <summary>usages' answer: the C# symbol the place took, as its card names it, how many places, each file's places as
-/// "line:column text", and what it went without (files the C# language server has yet to take in), when it did.</summary>
+/// "line:column text", and what it went without (files the C# language server has yet to take in, a Godot project's scenes
+/// its build doesn't reach), when it did.</summary>
 public sealed record UsagesFound(string? Symbol, int Count, IReadOnlyList<FilePlaces> Files, string? Note = null);
 
 public sealed record FilePlaces(string Path, IReadOnlyList<string> Places);
