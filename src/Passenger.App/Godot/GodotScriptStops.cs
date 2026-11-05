@@ -195,6 +195,11 @@ public static class GodotScriptBreakpoints
         return code.Length > 0 && !code.StartsWith('#');
     }
 
+    /// <summary>The expression a breakpoint's condition is asked as, whose value is whether it holds: the game's own truth of
+    /// its value, as its <c>if</c> reads it, which no value sent back could always say (an empty array, an identity transform,
+    /// a value too large to send, a null Callable).</summary>
+    public static string Truth(string condition) => $"not not ({condition})";
+
     /// <summary>A tracepoint's message in pieces: its own words, and each <c>{expression}</c> to be read in the frame it stops
     /// in, a <c>,nq</c> after it left out; <c>{{</c> and <c>}}</c> are braces.</summary>
     public static IReadOnlyList<(string Text, bool Expression)> Pieces(string message)

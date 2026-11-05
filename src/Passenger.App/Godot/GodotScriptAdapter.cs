@@ -929,7 +929,7 @@ public sealed class GodotScriptAdapter
         {
             try
             {
-                holds = Truthy((await ReadAsync(condition, 0)).Value);
+                holds = (await ReadAsync(GodotScriptBreakpoints.Truth(condition), 0)).Value is true;
             }
             catch (DapException unread)
             {
@@ -977,17 +977,6 @@ public sealed class GodotScriptAdapter
         }
         return said.ToString();
     }
-
-    /// <summary>A value as GDScript's <c>if</c> reads it.</summary>
-    private static bool Truthy(object? value) => value switch
-    {
-        null => false,
-        bool flag => flag,
-        long whole => whole != 0,
-        double real => real != 0,
-        string text => text.Length > 0,
-        _ => true,
-    };
 
     private void Say(string line) => Tell(DapEvents.Output, new OutputEvent(line, DapOutputCategories.Console));
 

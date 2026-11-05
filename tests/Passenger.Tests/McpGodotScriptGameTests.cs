@@ -9,8 +9,8 @@ namespace Passenger.Tests;
 /// <summary>An agent debugging a Godot game of GDScript alone: app_tree, refused before it runs, names such a game among
 /// those it reaches, and reaches it once it does; a script it edits (and so saves) reloads in the game, which then says the
 /// edit's words, and hot_reload answers that Godot reloads each script as it is saved, with nothing else to apply, not that
-/// Hot Reload is off; a click stopping at a breakpoint is said so at once. Godot runs headless, its user folders the test's; without a Godot 4 it skips saying
-/// why. Debugged, so run alone.</summary>
+/// Hot Reload is off; a click stopping at a breakpoint is said so at once; a condition holds as the game's own if reads it.
+/// Godot runs headless, its user folders the test's; without a Godot 4 it skips saying why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class McpGodotScriptGameTests : McpRig
 {
@@ -90,6 +90,36 @@ public sealed class McpGodotScriptGameTests : McpRig
         CallToolResult next = await Result(client, McpTools.DebugSetNextStatement, new() { ["path"] = "press.gd", ["line"] = 10 });
         Assert.True(next.IsError == true && Text(next).Contains(Passenger.App.Refusals.NoNextStatement, StringComparison.Ordinal),
             $"Set Next Statement in a game's GDScript answered: {Text(next)}");
+        await Call(client, McpTools.Stop);
+    }
+
+    /// <summary>Members false to a game's <c>if</c> though no plain reading of the value says so, each a line's condition, then
+    /// a member true.</summary>
+    private const string Truths = "extends Node\n\nvar empty_list := []\nvar empty_map := {}\nvar zero_vector := Vector2.ZERO\nvar empty_name := &\"\"\n"
+        + "var plain_basis := Basis()\nvar black := Color()\nvar no_call := Callable()\nvar some_list := [0]\n\n\nfunc _process(_delta: float) -> void:\n"
+        + "\tvar first := 1\n\tvar second := 2\n\tvar third := 3\n\tvar fourth := 4\n\tvar fifth := 5\n\tvar sixth := 6\n\tvar seventh := 7\n\tvar last := 8\n";
+
+    /// <summary>A conditional breakpoint holds as the game's own <c>if</c> reads its value: each line whose condition is a
+    /// value Godot takes for false lets the game go on, and the game stops at the one Godot takes for true.</summary>
+    [Fact]
+    public async Task A_conditional_breakpoint_holds_as_the_games_own_if_reads_its_value()
+    {
+        File.WriteAllText(Path.Combine(folder, "ticker.gd"), Truths);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false,
+            environment: new() { [Passenger.App.Godot.GodotUserFolders.HomeVariable] = folder + "-home" });
+        string[] lines = Truths.Split('\n');
+        string[] conditions = ["empty_list", "empty_map", "zero_vector", "empty_name", "plain_basis", "black", "no_call", "some_list"];
+        string[] statements = ["var first", "var second", "var third", "var fourth", "var fifth", "var sixth", "var seventh", "var last"];
+        foreach ((string condition, string statement) in conditions.Zip(statements))
+        {
+            int line = Array.FindIndex(lines, l => l.Contains(statement, StringComparison.Ordinal)) + 1;
+            await Call(client, McpTools.BreakpointSet, new() { ["path"] = "ticker.gd", ["line"] = line, ["condition"] = condition });
+        }
+        await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Ticker", ["arguments"] = "--headless", ["waitSeconds"] = 60 });
+        int stopped = Array.FindIndex(lines, l => l.Contains("var last", StringComparison.Ordinal)) + 1;
+        JsonElement state = await Call(client, McpTools.DebugState);
+        Assert.True(state.GetProperty("location").GetString() == $"ticker.gd:{stopped}:1",
+            $"The game stopped at {state.GetProperty("location")}, where every condition before line {stopped} is false to the game's own if: {state}");
         await Call(client, McpTools.Stop);
     }
 

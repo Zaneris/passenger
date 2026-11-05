@@ -121,6 +121,13 @@ public class GodotScriptStopsTests
     }
 
     [Fact]
+    public void A_condition_is_asked_of_the_game_as_the_truth_of_its_value_whatever_it_is_written_with()
+    {
+        Assert.Equal("not not (items)", GodotScriptBreakpoints.Truth("items"));
+        Assert.Equal("not not (a or b)", GodotScriptBreakpoints.Truth("a or b"));
+    }
+
+    [Fact]
     public void A_tracepoints_message_parts_its_words_from_the_expressions_read_where_it_stops()
     {
         Assert.Equal([("count is ", false), ("counter", true), (" of {all}", false)], GodotScriptBreakpoints.Pieces("count is {counter} of {{all}}"));
