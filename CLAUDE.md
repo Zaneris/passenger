@@ -340,6 +340,8 @@ a new name, and `just site-shots` retakes its images.
 - **Roslyn's server takes file watching all or nothing**: offered it, it watches nothing itself. A deleted file reaches
   it only once its projects loaded again without it (`ProjectMethods.Deleted`): told first, it reads the missing file, a
   second each, before any answer needing the compilation (dotnet/roslyn#86236).
+- **Roslyn's server keeps what it first read of a reference**, a failed read too, and waits 5 s after a change:
+  references go through `ReferencesOnDisk` (the extension), a build's end through `CSharpService.Built`.
 - **Roslyn's server passes over an option answered empty**, so an option goes back to its default only as the default's
   value (`CSharpService.OwnScope`), never null; a running server can't take an option left out.
 - **Roslyn's server writes its MEF caches beside its DLLs**, so in a macOS bundle (a file added breaks the seal, #450)

@@ -144,6 +144,10 @@ public sealed partial class CSharpService : IAsyncDisposable
         }
     }
 
+    /// <summary>Has the server let go of what the window does not load: a project it took up with a server started ahead of
+    /// what the folder keeps, or one that was loading as it was unloaded, whose load unloading alone would not stop.</summary>
+    private void LetGoOfUnloaded() => IdeErrors.Observe(UnloadAsync([.. UnloadedNow?.Invoke().Select(p => p.Path) ?? []]));
+
     /// <summary>The projects the server holds changed: the files' projects may be others.</summary>
     private void ProjectsChanged()
     {
@@ -1067,7 +1071,11 @@ public sealed partial class CSharpService : IAsyncDisposable
                 Generated.Changed();
             });
             // Projects loaded: the file shown's first, then the rest, or one loaded again.
-            EventHandler onProjects = (_, _) => UiThread.Post(ProjectsChanged);
+            EventHandler onProjects = (_, _) => UiThread.Post(() =>
+            {
+                ProjectsChanged();
+                LetGoOfUnloaded();
+            });
             EventHandler<ProjectGiven> onGiven = (_, built) => OnProjectGiven(started.Server, built);
             EventHandler<string> onExited = (_, _) =>
             {
@@ -1103,8 +1111,8 @@ public sealed partial class CSharpService : IAsyncDisposable
                 started.Server.Waited -= onWaited;
             });
             session = started;
-            // Next turn, by when the window has what it keeps: one started ahead of that, or unloaded as it started, may be held.
-            UiThread.Post(() => IdeErrors.Observe(UnloadAsync([.. UnloadedNow?.Invoke().Select(p => p.Path) ?? []])));
+            // Next turn, by when the window has what it keeps; one still loading goes as its load ends.
+            UiThread.Post(LetGoOfUnloaded);
             ForgetArrivals();
             watching?.Dispose();
             if (handed is not null)
