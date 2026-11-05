@@ -370,6 +370,33 @@ public class GDScriptRefactoringsTests
         Assert.Contains("reads 'b'", GDScriptRefactorings.IntroduceParameter(One(local), Over(local, "a + b"), "sum").Refused);
     }
 
+    [Fact]
+    public void Introduce_parameter_is_refused_for_what_a_default_would_run_at_another_time_or_share_between_rounds()
+    {
+        string Introduced(string body, string selected)
+        {
+            string text = $"const LIMIT = 3\nenum Mood {{ CALM }}\nvar hp = 5\n\n\nfunc Trigger():\n\treturn 1\n\n\nfunc go(flag):\n{body}";
+            GDScriptRefactored made = GDScriptRefactorings.IntroduceParameter(One(text), Over(text, selected, text.Split(selected).Length - 2), "value");
+            return made.Refused ?? After(made, "res://main.gd", text);
+        }
+        Assert.Contains("read as the function is called", Introduced("\tif flag:\n\t\tprint(Trigger())\n", "Trigger()"));
+        Assert.Contains("read as the function is called", Introduced("\tprint(Stranger())\n", "Stranger()"));
+        Assert.Contains("read as the function is called", Introduced("\tprint(randi())\n", "randi()"));
+        Assert.Contains("it reads 'hp'", Introduced("\thp = 2\n\tprint(hp + 1)\n", "hp + 1"));
+        Assert.Contains("it reads 'flag'", Introduced("\tprint(flag.size + 1)\n", "flag.size + 1"));
+        Assert.Contains("it reads 'Hud'", Introduced("\tprint(Hud.score + 1)\n", "Hud.score + 1"));
+        Assert.Contains("a new one each time round", Introduced("\tfor i in 2:\n\t\tvar a = [1]\n\t\ta.append(2)\n", "[1]"));
+        Assert.Contains("a new one each time round", Introduced("\twhile flag:\n\t\tvar a = {}\n\t\ta[1] = 2\n", "{}"));
+        Assert.Contains("a new one each time round", Introduced("\tfor i in 2:\n\t\tvar a = PackedInt32Array()\n", "PackedInt32Array()"));
+        Assert.Contains("func go(flag, value := [1]):", Introduced("\tvar a = [1]\n\ta.append(2)\n", "[1]"));
+        Assert.Contains("func go(flag, value := Vector2(1, 2)):", Introduced("\tif flag:\n\t\tprint(Vector2(1, 2))\n", "Vector2(1, 2)"));
+        Assert.Contains("func go(flag, value = abs(-3)):", Introduced("\tfor i in 2:\n\t\tprint(abs(-3))\n", "abs(-3)"));
+        Assert.Contains("func go(flag, value := LIMIT):", Introduced("\tprint(LIMIT)\n", "LIMIT"));
+        Assert.Contains("Mood.CALM):", Introduced("\tprint(Mood.CALM)\n", "Mood.CALM"));
+        Assert.Contains("PI):", Introduced("\tprint(PI)\n", "PI"));
+        Assert.Contains("Vector2.ZERO):", Introduced("\tprint(Vector2.ZERO)\n", "Vector2.ZERO"));
+    }
+
     private const string Helper = "class_name Helper\nextends Node\n\n\nfunc twice(x):\n\treturn x * 2\n\n\nfunc run():\n\tprint(twice(3) + 1)\n";
     private const string User = "extends Helper\n\n\nfunc go():\n\tvar y = twice(4 + 1)\n\tprint(y)\n";
 

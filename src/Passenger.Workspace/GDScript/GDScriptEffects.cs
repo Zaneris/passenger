@@ -105,7 +105,7 @@ internal sealed class GDScriptEffects
 
     private GDScriptEffect OfName(GDScriptIdentifier name)
     {
-        if (analysis.TypeOf(name).Meta || IsLocal(name))
+        if (analysis.TypeOf(name).Meta || IsLocal(name) || name.Name is "PI" or "TAU" or "INF" or "NAN")
         {
             return GDScriptEffect.None;
         }

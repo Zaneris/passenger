@@ -464,9 +464,25 @@ public static partial class GDScriptRefactorings
         return GDScriptRefactored.Of(analysis.Path, edits);
     }
 
+    /// <summary>Whether a node lies where it may run more than once for a run of its function: a loop's body or a while's
+    /// condition, or a lambda.</summary>
+    private static bool Repeats(GDScriptNode node, Dictionary<GDScriptNode, GDScriptNode?> parents)
+    {
+        GDScriptNode below = node;
+        for (GDScriptNode? at = parents.GetValueOrDefault(node); at is not null; below = at, at = parents.GetValueOrDefault(at))
+        {
+            if (at is GDScriptLambda or GDScriptWhile || at is GDScriptFor { Loop: { } loop } && loop == below)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>Introduce Parameter: the expression selected made a parameter of its function with it as its default, after
-    /// the others, so every call passes what it did; refused for an expression that reads a local, a variable or what a
-    /// call gives, which a default would read at another time.</summary>
+    /// the others, so every call passes what it did. A default runs as the function is called, wherever the expression
+    /// stood, so one that reads a local, a variable or what a call gives is refused, as is one that makes an array or
+    /// object where the expression made a new one each time round.</summary>
     public static GDScriptRefactored IntroduceParameter(GDScriptAnalysis analysis, TextRange selection, string name)
     {
         if (analysis.Tree is not { } tree)
@@ -490,9 +506,10 @@ public static partial class GDScriptRefactorings
         {
             return GDScriptRefactored.No("the function takes the rest of its arguments, after which no parameter goes");
         }
+        GDScriptEffects effects = analysis.Effects;
         foreach (GDScriptNode node in Below(expression))
         {
-            if (node is GDScriptCall { Callee: not GDScriptIdentifier { Name: [>= 'A' and <= 'Z', ..] } } or GDScriptAwait or GDScriptSelf or GDScriptGetNode or GDScriptLambda)
+            if (node is GDScriptAwait or GDScriptSelf or GDScriptGetNode or GDScriptLambda || node is GDScriptCall call && effects.Own(call) != GDScriptEffect.None)
             {
                 return GDScriptRefactored.No("its value would be read as the function is called: choose an expression of constants and literals");
             }
@@ -502,6 +519,14 @@ public static partial class GDScriptRefactorings
             {
                 return GDScriptRefactored.No($"it reads '{identifier.Name}', which a default can't");
             }
+        }
+        if (effects.InOrder(expression).FirstOrDefault(n => effects.Own(n) != GDScriptEffect.None) is { } changing)
+        {
+            return GDScriptRefactored.No($"it reads '{text[(located.Offset + changing.Start)..(located.Offset + changing.End)]}', which a default would read as the function is called");
+        }
+        if (effects.Makes(expression) && Repeats(expression, Parents(body)))
+        {
+            return GDScriptRefactored.No("it makes a new one each time round, and a default makes one for the call");
         }
         if (function.Parameters.Any(p => p.Identifier?.Name == name) || Taken(analysis, located.Offset + expression.Start, name) is { } taken && !taken.StartsWith("the script", StringComparison.Ordinal))
         {
