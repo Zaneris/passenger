@@ -285,7 +285,8 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
         using ChangeTracker asked = new(document.Text);
         TextSnapshot snapshot = asked.Snapshot;
         string text = snapshot.ToString();
-        GDScriptFormatted ordered = await BackgroundWork.Run(() => GDScriptFormatter.OrderParts(text.ReplaceLineEndings("\n")));
+        GodotEngineApi? engine = context.GodotScriptTypes?.Invoke() is { } types && await types.TypedAsync(document) is { } typed ? typed.Analyzer.Engine : null;
+        GDScriptFormatted ordered = await BackgroundWork.Run(() => GDScriptFormatter.OrderParts(text.ReplaceLineEndings("\n"), engine));
         if (ordered.Refused is { } why)
         {
             return $"{what} was not applied: {why}";

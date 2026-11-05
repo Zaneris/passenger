@@ -140,6 +140,27 @@ public class GDScriptFormatterTests
     }
 
     [Fact]
+    public void Order_parts_is_refused_where_a_value_that_calls_would_run_on_the_other_side_of_another()
+    {
+        const string Record = "\n\nfunc record(what):\n\treturn what\n";
+        string? Refused(string variables) => GDScriptFormatter.OrderParts($"extends Node\n\n{variables}{Record}").Refused;
+        Assert.Contains("'second''s value would run before '_first''s", Refused("var _first = record(\"first\")\nvar second = record(\"second\")\n"));
+        Assert.Contains("'exported''s value would run before 'plain''s", Refused("var plain = record(\"a\")\n@export var exported = record(\"b\")\n"));
+        // A call may read what a value it passes sets, however plain that value.
+        Assert.Contains("'second''s value would run before '_first''s", Refused("var _first = 1\nvar second = record(\"second\")\n"));
+        Assert.Contains("'second''s value would run before '_first''s", Refused("@onready var _first = record($A)\n@onready var second = $B\n"));
+        Assert.Null(Refused("var _first = 1\nvar second = [2, Vector2(1, 2).x, abs(-3)]\n"));
+        Assert.Null(Refused("var _first\nvar second = record(\"second\")\n"));
+        // Those that keep their order, and those that run at another time, may be called.
+        Assert.Null(Refused("var first = record(\"a\")\nvar second = record(\"b\")\nvar _third = record(\"c\")\n"));
+        Assert.Null(Refused("var plain = record(\"a\")\nstatic var counted = record(\"b\")\n@onready var ready_one = record(\"c\")\n"));
+        string engineMade = "extends Node\n\nvar _timer = Timer.new()\nvar second = 2\n";
+        Assert.NotNull(GDScriptFormatter.OrderParts(engineMade).Refused);
+        GodotEngineApi engine = GodotEngineApi.Read("""{ "classes": [{ "name": "Object" }, { "name": "Node", "inherits": "Object" }, { "name": "Timer", "inherits": "Node" }] }"""u8);
+        Assert.Null(GDScriptFormatter.OrderParts(engineMade, engine).Refused);
+    }
+
+    [Fact]
     public void A_long_line_with_nothing_to_wrap_safely_is_left_as_written()
     {
         // A string, a comment, a subscript, a lambda's brackets and a line no shorter for wrapping are left alone.

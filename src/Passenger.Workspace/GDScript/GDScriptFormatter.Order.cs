@@ -17,9 +17,10 @@ public static partial class GDScriptFormatter
 
     /// <summary>Order Script's Parts: a script's top-level members, each with its comments, in the style guide's Code order
     /// (<see cref="GroupOf"/>), public before private in each; two blank lines around a function or class, one between other
-    /// groups. Refused where a value would read a member coming after it, where export groups or regions hold members by
-    /// place, and unless the result holds the same members and comments and parses.</summary>
-    public static GDScriptFormatted OrderParts(string text)
+    /// groups. Refused where a value would read a member coming after it, where a value that calls would run on the other
+    /// side of another, what calls read through <paramref name="engine"/> where there is one, where export groups or regions
+    /// hold members by place, and unless the result holds the same members and comments and parses.</summary>
+    public static GDScriptFormatted OrderParts(string text, GodotEngineApi? engine = null)
     {
         GDScriptTree tree = GDScriptTree.Parse(text);
         if (tree.Errors.Count > 0)
@@ -83,7 +84,7 @@ public static partial class GDScriptFormatter
         }
         List<(GDScriptMember Member, int Start, int End, int Group, int Index)> ordered = [.. blocks.OrderBy(b => b.Group)
             .ThenBy(b => NameOfMember(b.Member.Node)?.StartsWith('_') == true ? 1 : 0).ThenBy(b => b.Index)];
-        if (Reads(tree, blocks, ordered) is { } refused)
+        if (Reads(tree, blocks, ordered, engine) is { } refused)
         {
             return new GDScriptFormatted([], text, refused);
         }
@@ -152,12 +153,16 @@ public static partial class GDScriptFormatter
         _ => null,
     };
 
-    /// <summary>Why a variable's or constant's value, or an enum's, would read a member coming after it in the new order,
-    /// where it came before it; null where none would.</summary>
+    /// <summary>When a variable's value runs: as the class loads, as an object is made, or as its node is ready.</summary>
+    private static int PhaseOf(GDScriptVariable variable) => variable.IsStatic ? 0 : variable.Annotations.Any(a => a.Name == "@onready") ? 2 : 1;
+
+    /// <summary>Why the new order can't stand: a variable's or constant's value, or an enum's, would read a member coming
+    /// after it, where it came before it, or two variables' values running in one phase in the order written would change
+    /// places where one calls, which may read or change what the other sets; null where neither.</summary>
     private static string? Reads(GDScriptTree tree, List<(GDScriptMember Member, int Start, int End, int Group, int Index)> blocks,
-        List<(GDScriptMember Member, int Start, int End, int Group, int Index)> ordered)
+        List<(GDScriptMember Member, int Start, int End, int Group, int Index)> ordered, GodotEngineApi? engine)
     {
-        GDScriptAnalysis analysis = new GDScriptAnalyzer(GDScriptProject.Alone(null)).Analyze(tree, "res://ordered.gd");
+        GDScriptAnalysis analysis = new GDScriptAnalyzer(GDScriptProject.Alone(engine)).Analyze(tree, "res://ordered.gd");
         Dictionary<int, int> places = [];
         for (int i = 0; i < ordered.Count; i++)
         {
@@ -189,6 +194,19 @@ public static partial class GDScriptFormatter
                 if (other >= 0 && other != index && other < index && places[other] > places[index])
                 {
                     return $"'{name}''s value reads '{read.Name}', which would come after it";
+                }
+            }
+        }
+        List<(GDScriptVariable Variable, int Index, GDScriptEffect Effect)> valued = [.. blocks.Where(b => b.Member.Node is GDScriptVariable { Initializer: not null })
+            .Select(b => ((GDScriptVariable)b.Member.Node, b.Index, analysis.Effects.Of(((GDScriptVariable)b.Member.Node).Initializer!)))];
+        for (int i = 0; i < valued.Count; i++)
+        {
+            foreach ((GDScriptVariable later, int index, GDScriptEffect effect) in valued.Skip(i + 1))
+            {
+                if (places[index] < places[valued[i].Index] && PhaseOf(later) == PhaseOf(valued[i].Variable)
+                    && (effect == GDScriptEffect.Acts || valued[i].Effect == GDScriptEffect.Acts))
+                {
+                    return $"'{later.Identifier?.Name}''s value would run before '{valued[i].Variable.Identifier?.Name}''s, and one of them calls";
                 }
             }
         }
