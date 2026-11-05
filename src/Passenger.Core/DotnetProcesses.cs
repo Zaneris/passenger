@@ -170,18 +170,32 @@ public static partial class DotnetProcesses
     }
 
     /// <summary>Whether a process Passenger holds runs: one it started by .NET's hold on it, which hears of its end however
-    /// soon another process takes its id; one it found as <see cref="Runs(int)"/> finds it, a zombie ended. A process it
-    /// never started or has let go of is not running.</summary>
+    /// soon another process takes its id, so once this says it has ended its exit code reads; one it found as
+    /// <see cref="Runs(int)"/> finds it, a zombie ended. A process it never started or has let go of is not running.</summary>
     public static bool Runs(System.Diagnostics.Process process)
     {
         try
         {
-            return !process.HasExited && (OperatingSystem.IsWindows() || !Zombie(process.Id));
+            return !process.HasExited && (OperatingSystem.IsWindows() || !Zombie(process.Id) || Started(process));
         }
         catch (System.ComponentModel.Win32Exception)
         {
             // Windows opens another user's process, or an elevated one, for no question of .NET's.
             return Runs(process.Id);
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Whether this <see cref="System.Diagnostics.Process"/> started its process: a zombie of its own is .NET's to
+    /// take, which it is about to, where a process found by its id has no start to give.</summary>
+    private static bool Started(System.Diagnostics.Process process)
+    {
+        try
+        {
+            return process.StartInfo is not null;
         }
         catch (InvalidOperationException)
         {
