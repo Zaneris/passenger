@@ -54,17 +54,24 @@
     <XunitAsyncInterfacesVersion>6.0.0</XunitAsyncInterfacesVersion>
     <!-- The test frameworks the tests' own test projects take beside VSTest's SDK at its version below, and what each
          depends on that no other restore brings, downloaded for the tests' package cache (tests/UnitTestGraphs), so their
-         restores reach no feed: xunit v2 and its VSTest adapter; MSTest on VSTest; NUnit and its adapter; MSTest on its own
-         runner and xunit v3 on the Testing Platform's second line, where the tests' own xunit v3 is on its first. -->
+         restores reach no feed: xunit v2 and its VSTest adapter; MSTest on VSTest; NUnit and its adapter, on VSTest and on
+         the Testing Platform alone, and NUnit 4 with the adapter of its day on VSTest; MSTest on its own runner and xunit v3
+         on the Testing Platform's second line, where the tests' own xunit v3 is on its first. -->
     <XunitTwoVersion>2.9.3</XunitTwoVersion>
     <XunitTwoAbstractionsVersion>2.0.3</XunitTwoAbstractionsVersion>
     <XunitTwoAnalyzersVersion>1.18.0</XunitTwoAnalyzersVersion>
     <XunitTwoRunnerVersion>3.1.5</XunitTwoRunnerVersion>
     <MSTestOnVSTestVersion>3.10.0</MSTestOnVSTestVersion>
     <MSTestOnVSTestPlatformVersion>1.8.0</MSTestOnVSTestPlatformVersion>
-    <NUnitVersion>4.4.0</NUnitVersion>
-    <NUnitAdapterVersion>5.2.0</NUnitAdapterVersion>
-    <NUnitPlatformVersion>1.9.0</NUnitPlatformVersion>
+    <NUnitVersion>5.0.0</NUnitVersion>
+    <NUnitAdapterVersion>6.3.1</NUnitAdapterVersion>
+    <NUnitPlatformVersion>2.4.1</NUnitPlatformVersion>
+    <NUnitAdapterUtilitiesVersion>18.10.1</NUnitAdapterUtilitiesVersion>
+    <NUnitRunnerObjectModelVersion>18.9.0</NUnitRunnerObjectModelVersion>
+    <NUnitDependencyModelVersion>8.0.2</NUnitDependencyModelVersion>
+    <NUnitFourVersion>4.4.0</NUnitFourVersion>
+    <NUnitFourAdapterVersion>5.2.0</NUnitFourAdapterVersion>
+    <NUnitFourPlatformVersion>1.9.0</NUnitFourPlatformVersion>
     <TestAdapterUtilitiesVersion>17.13.0</TestAdapterUtilitiesVersion>
     <MSTestRunnerVersion>4.5.1</MSTestRunnerVersion>
     <MSTestRunnerObjectModelVersion>18.10.1</MSTestRunnerObjectModelVersion>

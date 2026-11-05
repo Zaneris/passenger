@@ -2,6 +2,16 @@ using System.Buffers;
 
 namespace Passenger.App.Testing;
 
+/// <summary>Where a test or a group of them stands.</summary>
+public enum TestState
+{
+    NotRun,
+    Running,
+    Passed,
+    Failed,
+    Skipped,
+}
+
 /// <summary>A test as the IDE knows it, whoever found it: the code (a method with a test attribute) or a runner's
 /// discovery, which finds each of a theory's data rows too. Its id is its project and full name, and a data row's name,
 /// so the same test found again, or found by the other, is the same test and a run's results land where the code put
@@ -56,7 +66,7 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
     /// method's or has no arguments.</summary>
     public static string? RowOf(string fullyQualifiedName, string displayName)
     {
-        if (Instance(fullyQualifiedName) is { } instance)
+        if (Instance(fullyQualifiedName, displayName) is { } instance)
         {
             return instance;
         }
@@ -75,8 +85,9 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
     }
 
     /// <summary>A test of a fixture's instance, its class named with the arguments or type arguments it was made with, as
-    /// its class and method from its full name ("Fixture(1).Method" of "A.B.Fixture(1).Method"); null for any other.</summary>
-    private static string? Instance(string fullyQualifiedName)
+    /// its class from its full name and its method from its display name, which alone holds a case's arguments on the
+    /// Testing Platform ("Fixture(1).Method(2)" of "A.B.Fixture(1).Method" shown "Method(2)"); null for any other.</summary>
+    private static string? Instance(string fullyQualifiedName, string displayName)
     {
         int type = -1;
         int method = -1;
@@ -88,7 +99,13 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
                 (type, method) = (method, at);
             }
         }
-        return method > 0 && fullyQualifiedName.AsSpan(type + 1, method - type - 1).IndexOfAny('(', '<') >= 0 ? fullyQualifiedName[(type + 1)..] : null;
+        if (method <= 0 || fullyQualifiedName.AsSpan(type + 1, method - type - 1).IndexOfAny('(', '<') < 0)
+        {
+            return null;
+        }
+        return displayName.AsSpan().StartsWith(fullyQualifiedName.AsSpan(0, method + 1), StringComparison.Ordinal)
+            ? displayName[(type + 1)..]
+            : string.Concat(fullyQualifiedName.AsSpan(type + 1, method - type), displayName);
     }
 
     /// <summary>The longest method name compared on the stack; a longer one is written into a rented array.</summary>
@@ -256,55 +273,6 @@ public sealed record TestAttachment(string Name, string Path)
         string path = uriOrPath.StartsWith("file:", StringComparison.OrdinalIgnoreCase) && Uri.TryCreate(uriOrPath, UriKind.Absolute, out Uri? uri) ? uri.LocalPath : uriOrPath;
         return new TestAttachment(name.Length > 0 ? name : System.IO.Path.GetFileName(path), path);
     }
-}
-
-/// <summary>A test host a runner would start, to be started under the debugger instead, with the framework it runs on
-/// ("net10.0") where the runner knows it.</summary>
-public sealed record TestHostStart(string FileName, IReadOnlyList<string> Arguments, string? WorkingDirectory, IReadOnlyDictionary<string, string> Environment,
-    string? Framework = null);
-
-/// <summary>What a debugged test host is started with for Hot Reload: the variables its runtime and Passenger's update
-/// handlers hook take, and the hook, which the attach to it takes.</summary>
-public sealed record TestHostReload(IReadOnlyDictionary<string, string> Variables, Debugging.UpdateHandlerHook Hook);
-
-/// <summary>Debugging for a runner: it hands over the test host it would start, or names the one it started.</summary>
-public interface ITestDebugLauncher
-{
-    /// <summary>Starts the test host under the debugger, its process id once it runs.</summary>
-    Task<int> LaunchAsync(TestHostStart start);
-
-    /// <summary>What the test host a test assembly runs in is started with for Hot Reload, while the debugger has it on;
-    /// null while it is off, or where the assembly's .NET takes no hook.</summary>
-    TestHostReload? Reload(string assembly, IReadOnlyDictionary<string, string> environment);
-
-    /// <summary>Attaches the debugger to a test host the runner started (with Hot Reload and its hook, where it was
-    /// started for them); true once the debugger has hold of it.</summary>
-    Task<bool> AttachAsync(int processId, TestHostReload? reload = null);
-
-    /// <summary>Starts a Godot run of a project's tests (GUT's, GoDotTest's) under the debugger as Debug starts its game: its
-    /// GDScript under the GDScript debugger, and its C# under .NET's where the game has C# (<paramref name="csharp"/>), the
-    /// debugger's own arguments after the first <paramref name="leading"/>; done once it has started, with the run's end. Each
-    /// line the game writes is handed to <paramref name="heard"/> as the debug session hears it, on the session's thread.</summary>
-    Task<Task> DebugGameAsync(TestHostStart start, string folder, int leading, bool csharp, Action<string>? heard = null);
-}
-
-/// <summary>What finds and runs a folder's tests: VSTest's vstest.console (<see cref="VsTestRunner"/>), Microsoft.Testing.Platform's
-/// own protocol (<see cref="TestingPlatformRunner"/>), or both behind one (<see cref="TestRunners"/>). It works in the IDE's
-/// own tests and outcomes, so nothing above it knows which. Each call is canceled by its token: a discovery stops looking,
-/// a run stops after what has run.</summary>
-public interface ITestRunner : IDisposable
-{
-    /// <summary>Whether it can be asked again: not once a canceled discovery never said it had stopped.</summary>
-    bool IsUsable { get; }
-
-    /// <summary>The tests in built assemblies, each with its assembly's project and target framework.</summary>
-    Task<IReadOnlyList<TestItem>> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default);
-
-    /// <summary>Runs tests it discovered, their outcomes told a batch at a time as they come; under the debugger when a
-    /// launcher is given, with these variables in the test hosts' environment, and a Godot it starts started as
-    /// <paramref name="godot"/> says.</summary>
-    Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
-        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default);
 }
 
 /// <summary>How a run ended: how long its tests took, and whether it was stopped or broke off.</summary>

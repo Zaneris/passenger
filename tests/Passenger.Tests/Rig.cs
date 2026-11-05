@@ -1951,9 +1951,15 @@ public static class TestPackages
     /// <summary>MSTest's framework and adapter on VSTest.</summary>
     public static string MSTestOnVSTest { get; } = AvaloniaApp.Metadata("MSTestOnVSTestVersion");
 
+    /// <summary>NUnit and its adapter, on VSTest or on NUnit's own runner.</summary>
     public static string NUnit { get; } = AvaloniaApp.Metadata("NUnitVersion");
 
     public static string NUnitAdapter { get; } = AvaloniaApp.Metadata("NUnitAdapterVersion");
+
+    /// <summary>NUnit 4 and the adapter of its day, on VSTest.</summary>
+    public static string NUnitFour { get; } = AvaloniaApp.Metadata("NUnitFourVersion");
+
+    public static string NUnitFourAdapter { get; } = AvaloniaApp.Metadata("NUnitFourAdapterVersion");
 
     /// <summary>MSTest's framework and adapter on its own runner.</summary>
     public static string MSTestRunner { get; } = AvaloniaApp.Metadata("MSTestRunnerVersion");

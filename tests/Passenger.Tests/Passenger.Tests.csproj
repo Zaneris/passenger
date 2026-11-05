@@ -137,6 +137,8 @@
     <AssemblyMetadata Include="MSTestOnVSTestVersion" Value="$(MSTestOnVSTestVersion)" />
     <AssemblyMetadata Include="NUnitVersion" Value="$(NUnitVersion)" />
     <AssemblyMetadata Include="NUnitAdapterVersion" Value="$(NUnitAdapterVersion)" />
+    <AssemblyMetadata Include="NUnitFourVersion" Value="$(NUnitFourVersion)" />
+    <AssemblyMetadata Include="NUnitFourAdapterVersion" Value="$(NUnitFourAdapterVersion)" />
     <AssemblyMetadata Include="MSTestRunnerVersion" Value="$(MSTestRunnerVersion)" />
     <AssemblyMetadata Include="XunitAppVersion" Value="$(XunitAppVersion)" />
   </ItemGroup>

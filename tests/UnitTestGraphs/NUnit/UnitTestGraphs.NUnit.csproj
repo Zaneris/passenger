@@ -1,14 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- NUnit and its VSTest adapter, as a test project of them beside VSTest's SDK resolves them, the SDK's own graph the
-       tests' restore brings. -->
+  <!-- NUnit and its adapter as a test project of them resolves them, beside VSTest's SDK, whose own graph the tests' restore
+       brings, or on NUnit's runner, an executable with no test SDK; and NUnit 4 with the adapter of its day beside the SDK. -->
   <ItemGroup>
-    <PackageDownload Include="NUnit" Version="[$(NUnitVersion)]" />
-    <PackageDownload Include="NUnit3TestAdapter" Version="[$(NUnitAdapterVersion)]" />
-    <PackageDownload Include="Microsoft.Testing.Platform" Version="[$(NUnitPlatformVersion)]" />
-    <PackageDownload Include="Microsoft.Testing.Platform.MSBuild" Version="[$(NUnitPlatformVersion)]" />
-    <PackageDownload Include="Microsoft.Testing.Extensions.Telemetry" Version="[$(NUnitPlatformVersion)]" />
-    <PackageDownload Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[$(NUnitPlatformVersion)]" />
-    <PackageDownload Include="Microsoft.Testing.Extensions.VSTestBridge" Version="[$(NUnitPlatformVersion)]" />
-    <PackageDownload Include="Microsoft.TestPlatform.AdapterUtilities" Version="[$(TestAdapterUtilitiesVersion)]" />
+    <PackageDownload Include="NUnit" Version="[$(NUnitFourVersion)];[$(NUnitVersion)]" />
+    <PackageDownload Include="NUnit3TestAdapter" Version="[$(NUnitFourAdapterVersion)];[$(NUnitAdapterVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Platform" Version="[$(NUnitFourPlatformVersion)];[$(NUnitPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Platform.MSBuild" Version="[$(NUnitFourPlatformVersion)];[$(NUnitPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.Telemetry" Version="[$(NUnitFourPlatformVersion)];[$(NUnitPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[$(NUnitFourPlatformVersion)];[$(NUnitPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.VSTestBridge" Version="[$(NUnitFourPlatformVersion)];[$(NUnitPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.TestPlatform.AdapterUtilities" Version="[$(TestAdapterUtilitiesVersion)];[$(NUnitAdapterUtilitiesVersion)]" />
+    <PackageDownload Include="Microsoft.TestPlatform.ObjectModel" Version="[$(NUnitRunnerObjectModelVersion)]" />
+    <PackageDownload Include="Microsoft.Extensions.DependencyModel" Version="[$(NUnitDependencyModelVersion)]" />
   </ItemGroup>
 </Project>

@@ -12,10 +12,10 @@ using Passenger.Lsp;
 namespace Passenger.App.Testing;
 
 /// <summary>Tests found and run through Microsoft.Testing.Platform's own protocol, for a test project that is a Testing
-/// Platform application (xUnit v3, MSTest's runner, TUnit): the built program started with <c>--server</c> and the port
-/// it connects back to, then asked over JSON-RPC to find or to run tests, one request a process. Its test nodes stay in
-/// here, each told as the IDE's own test and its results as outcomes. What a test host warns of or fails with is in the
-/// logs folder's vstest.log, and with Trace protocol messages on every message it sends.</summary>
+/// Platform application (xUnit v3, MSTest's and NUnit's runners, TUnit): the built program started with <c>--server</c>
+/// and the port it connects back to, then asked over JSON-RPC to find or to run tests, one request a process. Its test
+/// nodes stay in here, each told as the IDE's own test and its results as outcomes. What a test host warns of or fails with
+/// is in the logs folder's vstest.log, and with Trace protocol messages on every message it sends.</summary>
 public sealed class TestingPlatformRunner : ITestRunner
 {
     /// <summary>The assembly attribute the platform's build gives a Testing Platform application (IsTestingPlatformApplication).</summary>

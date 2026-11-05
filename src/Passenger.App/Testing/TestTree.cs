@@ -4,16 +4,6 @@ using Passenger.Core;
 
 namespace Passenger.App.Testing;
 
-/// <summary>Where a test or a group of them stands.</summary>
-public enum TestState
-{
-    NotRun,
-    Running,
-    Passed,
-    Failed,
-    Skipped,
-}
-
 public enum TestNodeKind
 {
     Project,

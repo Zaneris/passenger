@@ -224,6 +224,12 @@
     <Compile Include="../../src/Passenger.App/Debugging/HotReloadOutcome.cs" Link="App/HotReloadOutcome.cs" />
   </ItemGroup>
 
+  <!-- What a runner's names for a test say of its method and its row, from the names alone, compiled in since its project is
+       the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Testing/TestModel.cs" Link="App/TestModel.cs" />
+  </ItemGroup>
+
   <!-- What desktop app a program's start runs, from its command line and the files beside it in a temporary folder,
        compiled in since its project is the app's. -->
   <ItemGroup>
