@@ -375,6 +375,49 @@ public sealed class GodotGutTests : IDisposable
             TestOutcome inherited = Assert.Single(window.Tests.RunOutcomes, o => o.Test.FullyQualifiedName == "test.test_spinner.test_inherited");
             Assert.True(inherited.State == TestState.Failed, $"The inherited test's failure was told as {inherited.State}");
             Assert.True(window.BottomPanel.Tests.Status.StartsWith("Tests passed: 1, failed: 1 of 2", StringComparison.Ordinal), $"The run's tally leaves it out: {window.BottomPanel.Tests.Status}");
+
+            Assert.False(Method(window, "test_inherited")!.CodeChanged, "An inherited test whose code did not change says it did");
+            TestFolders.Write(folder, "tools/spin_tester.gd", "class_name SpinTester\nextends GutTest\n\n\nfunc test_inherited():\n\tassert_eq(2, 2, \"the inherited test\")\n");
+            Ui.WaitFor(() => Method(window, "test_inherited")!.CodeChanged, "the inherited test, whose body changed in its base since it ran, to say so");
+            Assert.False(Method(window, "test_own")!.CodeChanged, "A test whose code did not change says it did");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A test a script inherits stands on the code of the script declaring it, closed or as it is typed, through a chain
+    /// of them: a result is only old by that code, which the deriving script's own text never shows. Needs no Godot: nothing runs.</summary>
+    [AvaloniaFact]
+    public void A_test_a_script_inherits_has_the_code_of_the_script_declaring_it_as_that_changes()
+    {
+        string tester = Path.Combine(folder, "test", "tools", "spin_tester.gd");
+        string chain = Path.Combine(folder, "test", "test_chain.gd");
+        string Body(string said) => $"class_name SpinTester\nextends GutTest\n\n\nfunc test_spins():\n\tassert_eq(1, {said})\n";
+        TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
+        WriteGut(folder);
+        TestFolders.Write(folder, "test/tools/spin_tester.gd", Body("1"));
+        TestFolders.Write(folder, "test/tools/turn_tester.gd", "class_name TurnTester extends SpinTester\n");
+        TestFolders.Write(folder, "test/test_chain.gd", "extends TurnTester\n");
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        window.Show();
+        ulong? Code() => window.Tests.Finder.CodeOf(chain, "test.test_chain.test_spins");
+        try
+        {
+            window.OpenFolder(folder);
+            Ui.WaitFor(() => Code() is not null, () => $"the inherited test's code read ({window.Tests.Tree.EmptyText})");
+            ulong? read = Code();
+            Assert.True(read != 0, "An inherited test's code is no number that moves with what it says");
+
+            TestFolders.Write(folder, "test/tools/spin_tester.gd", Body("2"));
+            Ui.WaitFor(() => Code() != read, "the code of the inherited test to follow what its base's file now says");
+            ulong? written = Code();
+
+            Assert.Null(window.OpenFile(tester));
+            Ui.Settle();
+            Typing.Replace(window, "assert_eq(1, 2)", "assert_eq(1, 3)");
+            Ui.WaitFor(() => Code() != written, "the code of the inherited test to follow what is typed in its base");
         }
         finally
         {

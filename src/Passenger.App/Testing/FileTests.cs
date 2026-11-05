@@ -12,11 +12,15 @@ public sealed record DeclaredTest(string Type, string Method, int Line, IReadOnl
     /// result is of the code there now. A read that differs in it alone is the same (<see cref="SameAs"/>).</summary>
     public ulong Code { get; init; }
 
+    /// <summary>The file of the script declaring a test the file inherits, which holds its code and lines
+    /// (<see cref="FileTests.PassedOn"/>); null for a test the file declares itself.</summary>
+    public string? DeclaredIn { get; init; }
+
     public bool SameAs(DeclaredTest other) => Line == other.Line && SameTest(other);
 
     /// <summary>The same test, on whatever line.</summary>
     public bool SameTest(DeclaredTest other) =>
-        Type == other.Type && Method == other.Method && Abstract == other.Abstract && Traits.SequenceEqual(other.Traits) && Cases.SequenceEqual(other.Cases);
+        Type == other.Type && Method == other.Method && Abstract == other.Abstract && DeclaredIn == other.DeclaredIn && Traits.SequenceEqual(other.Traits) && Cases.SequenceEqual(other.Cases);
 }
 
 /// <summary>What a file declares for testing: the types that hold tests and the tests, with the lines their names are on,
@@ -28,6 +32,11 @@ public sealed record FileTests(IReadOnlyList<(string Type, int Line)> Types, IRe
     public static readonly FileTests None = new([], [], new HashSet<string>(StringComparer.Ordinal));
 
     public IReadOnlySet<string> Attributes { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>The code of each test it declares for those extending it, by the test's name (<see cref="DeclaredTest.Code"/>),
+    /// whether or not it tells that test, and outside <see cref="SameAs"/> as a test's own code is: a change of it reads no other
+    /// file again.</summary>
+    public IReadOnlyDictionary<string, ulong> PassedOn { get; init; } = new Dictionary<string, ulong>(StringComparer.Ordinal);
 
     /// <summary>Whether a later read says the same: typing inside a method's body changes nothing of it.</summary>
     public bool SameAs(FileTests other) =>

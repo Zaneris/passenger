@@ -235,18 +235,23 @@ public static partial class GutScripts
         foreach ((string owner, string extended, int line) in inheriting)
         {
             // One it declares itself is its own, on its own line.
-            foreach (string method in GutBases.TestsOf(bases, extended).Where(test => !methodPlaces.Any(p => p.Type == owner && p.Method == test)))
+            foreach ((string method, string declaring) in GutBases.TestsOf(bases, extended).Where(test => !methodPlaces.Any(p => p.Type == owner && p.Method == test.Method)))
             {
                 if (!types.Any(t => t.Item1 == owner))
                 {
                     types.Insert(owner == type ? 0 : types.Count, (owner, line));
                 }
-                tests.Add(new DeclaredTest(owner, method, line, [], false));
+                tests.Add(new DeclaredTest(owner, method, line, [], false) { DeclaredIn = declaring });
                 // A method of the file as far as a runner's test of it goes, which would read as gone otherwise.
                 methods.Add(method);
             }
         }
-        List<string> passedOn = [.. tests.Where(t => t.Type == type).Select(t => t.Method)];
+        List<DeclaredTest> passedOn = [.. tests.Where(t => t.Type == type)];
+        Dictionary<string, ulong> codes = new(StringComparer.Ordinal);
+        foreach (DeclaredTest test in passedOn.Where(t => t.DeclaredIn is null))
+        {
+            codes[test.Method] = test.Code;
+        }
         if (config?.Takes(folder, path) == false)
         {
             types.Clear();
@@ -262,10 +267,10 @@ public static partial class GutScripts
             foreach (string testClass in ((string?[])[resource, className]).OfType<string>())
             {
                 derived.Add(testClass);
-                derived.UnionWith(passedOn.Select(method => GutBases.Entry(testClass, method)));
+                derived.UnionWith(passedOn.Select(test => GutBases.Entry(testClass, test.Method, test.DeclaredIn ?? path)));
             }
         }
-        return (new FileTests(types, tests, methods) { Attributes = derived }, new FilePlaces(typePlaces, methodPlaces));
+        return (new FileTests(types, tests, methods) { Attributes = derived, PassedOn = codes }, new FilePlaces(typePlaces, methodPlaces));
     }
 
     /// <summary>Whether a class is GUT's test class: GutTest by its name, GUT's test.gd by its path, or one of

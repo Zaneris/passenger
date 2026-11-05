@@ -117,12 +117,12 @@ public sealed class TestFinder
     /// <summary>A file was read, whose tests' code may have changed (<see cref="CodeOf"/>), told or not.</summary>
     public event EventHandler? CodeRead;
 
-    /// <summary>A test method's code as its file now reads (<see cref="DeclaredTest.Code"/>), an open file's as typed; null
-    /// where the file has not been read or declares no such test.</summary>
+    /// <summary>A test method's code as its file now reads (<see cref="DeclaredTest.Code"/>), a test it inherits as the file
+    /// declaring it reads, an open file's as typed; null where the file has not been read or declares no such test.</summary>
     public ulong? CodeOf(string path, string fullName)
     {
         UiThread.Check();
-        FileTests? read = open.GetValueOrDefault(path) ?? onDisk.Kept(path);
+        FileTests? read = ReadOf(path);
         int dot = fullName.LastIndexOf('.');
         if (read is null || dot < 0)
         {
@@ -133,11 +133,15 @@ public sealed class TestFinder
             if (test.Method.Length == fullName.Length - dot - 1 && fullName.AsSpan(dot + 1).SequenceEqual(test.Method)
                 && test.Type.Length == dot && fullName.AsSpan(0, dot).SequenceEqual(test.Type))
             {
-                return test.Code;
+                return test.DeclaredIn is not { } script ? test.Code
+                    : ReadOf(script) is { } declaring && declaring.PassedOn.TryGetValue(test.Method, out ulong code) ? code : null;
             }
         }
         return null;
     }
+
+    /// <summary>What a file now declares: an open file's as typed, a closed one's as last read; null where it has not been read.</summary>
+    private FileTests? ReadOf(string path) => open.GetValueOrDefault(path) ?? onDisk.Kept(path);
 
     /// <summary>The test attributes the project of a file derives from a framework's, its methods tests by them too; a GUT
     /// project's, the class names and paths of its scripts that are test classes (<see cref="GutScripts.Read"/>).</summary>
