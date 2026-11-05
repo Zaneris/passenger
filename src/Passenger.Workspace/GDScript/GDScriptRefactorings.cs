@@ -181,21 +181,49 @@ public static partial class GDScriptRefactorings
         return text[lineStart..at];
     }
 
-    /// <summary>The script's indentation unit, as its first indented line shows it: a tab unless spaces.</summary>
-    private static string Unit(string text)
+    /// <summary>The script's indentation unit, as its first indented line of code shows it: a tab unless spaces.</summary>
+    private static string Unit(GDScriptTree tree)
     {
-        foreach (string line in text.Split('\n'))
+        HashSet<int> inStrings = [.. tree.Members.SelectMany(m => StringLines(m.Node, m.Offset, tree.Text))];
+        int at = 0;
+        foreach (string line in tree.Text.Split('\n'))
         {
-            if (line.Length > 0 && line[0] == '\t')
+            if (!inStrings.Contains(at) && line.Length > 0 && line[0] == '\t')
             {
                 return "\t";
             }
-            if (line.Length > 0 && line[0] == ' ' && line.TrimStart().Length > 0)
+            if (!inStrings.Contains(at) && line.Length > 0 && line[0] == ' ' && line.TrimStart().Length > 0)
             {
                 return new string(' ', line.Length - line.TrimStart(' ').Length);
             }
+            at += line.Length + 1;
         }
         return "\t";
+    }
+
+    /// <summary>Where each line begun inside a string of a node starts: what it starts with is the string's, no indentation.</summary>
+    private static IEnumerable<int> StringLines(GDScriptNode node, int offset, string text)
+    {
+        foreach (GDScriptLiteral literal in Below(node).OfType<GDScriptLiteral>())
+        {
+            int start = offset + literal.Start;
+            int end = offset + literal.End;
+            for (int newline = text.IndexOf('\n', start, end - start); newline >= 0; newline = text.IndexOf('\n', newline + 1, end - newline - 1))
+            {
+                yield return newline + 1;
+            }
+        }
+    }
+
+    /// <summary>A text's lines, its offset in a script given, each as <paramref name="moved"/> says but those begun in a string.</summary>
+    private static IEnumerable<string> Reindented(string lines, int start, IReadOnlySet<int> inStrings, Func<string, string> moved)
+    {
+        int at = start;
+        foreach (string line in lines.Split('\n'))
+        {
+            yield return inStrings.Contains(at) ? line : moved(line);
+            at += line.Length + 1;
+        }
     }
 
     /// <summary>Whether an expression must be put in parentheses where it takes another's place inside a larger one.</summary>
@@ -647,15 +675,17 @@ public static partial class GDScriptRefactorings
             return GDScriptRefactored.No($"the statements set {Plural.Listed([.. outputs.Select(o => $"'{o.Name}'")])}, which are read after them: one function returns one value");
         }
         bool awaits = chosen.SelectMany(Below).Any(n => n is GDScriptAwait);
-        string unit = Unit(text);
+        string unit = Unit(tree);
         int lineFrom = LineStart(text, firstStart);
         int lineTo = NextLine(text, lastEnd);
         string indent = IndentOf(text, lineFrom);
         string functionIndent = IndentOf(text, LineStart(text, offset + function.Start));
         StringBuilder made = new();
-        foreach (string line in text[lineFrom..lineTo].TrimEnd('\n').Split('\n'))
+        HashSet<int> inStrings = [.. chosen.SelectMany(c => StringLines(c, offset, text))];
+        foreach (string line in Reindented(text[lineFrom..lineTo].TrimEnd('\n'), lineFrom, inStrings,
+            line => functionIndent + unit + (line.StartsWith(indent, StringComparison.Ordinal) ? line[indent.Length..] : line.TrimStart())))
         {
-            made.Append(functionIndent).Append(unit).Append(line.StartsWith(indent, StringComparison.Ordinal) ? line[indent.Length..] : line.TrimStart()).Append('\n');
+            made.Append(line).Append('\n');
         }
         GDScriptDeclaration? output = outputs.Count == 1 ? outputs[0] : null;
         if (output is not null)

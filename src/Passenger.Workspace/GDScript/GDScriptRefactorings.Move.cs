@@ -95,11 +95,11 @@ public static partial class GDScriptRefactorings
         // Taken out of its script with its doc comments, and put last in the other.
         TextRange lines = MemberLines(own.Text, target);
         string moved = own.Text[lines.Start..NextLine(own.Text, target.Offset + function.End)].TrimEnd('\n');
-        string from = Unit(own.Text);
-        string into = Unit(to.Text);
+        string from = Unit(own.Tree);
+        string into = Unit(to.Tree);
         if (from != into)
         {
-            moved = string.Join('\n', moved.Split('\n').Select(line => Reunit(line, from, into)));
+            moved = string.Join('\n', Reindented(moved, lines.Start, new HashSet<int>(StringLines(function, target.Offset, own.Text)), line => Reunit(line, from, into)));
         }
         Edit(target.Script, new TextEdit(lines.Start, lines.Length, string.Empty));
         string gap = to.Text.Length == 0 ? string.Empty : to.Text.EndsWith('\n') ? "\n\n" : "\n\n\n";

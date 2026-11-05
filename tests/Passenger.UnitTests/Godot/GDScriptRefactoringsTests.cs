@@ -658,6 +658,31 @@ public class GDScriptRefactoringsTests
     }
 
     [Fact]
+    public void Moving_or_extracting_code_leaves_a_multi_line_strings_lines_as_they_are()
+    {
+        const string Words = "\"\"\"\n    four spaces\n\ta tab\n\n        eight\n no\"\"\"";
+        string spaces = $"static func say():\n    var words = {Words}\n    if words:\n        return (words\n            + {Words})\n";
+        string own = $"class_name Own\nextends Node\n\n\n{spaces}";
+        const string Tabs = "class_name Other\nextends Node\n\n\nfunc kept():\n\tpass\n";
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://own.gd", own), ("res://other.gd", Tabs));
+        GDScriptRefactored moved = GDScriptRefactorings.Move(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], own.IndexOf("say", StringComparison.Ordinal))!, "res://other.gd",
+            new Dictionary<string, string>(), []);
+        string landed = After(moved, "res://other.gd", Tabs);
+        Assert.Contains($"static func say():\n\tvar words = {Words}\n\tif words:\n\t\treturn (words\n\t\t\t+ {Words})\n", landed);
+
+        string nested = $"func f():\n\tif true:\n\t\tvar words = {Words}\n\t\tprint(words)\n";
+        string extracted = After(GDScriptRefactorings.ExtractFunction(One(nested), Over(nested, $"var words = {Words}\n\t\tprint(words)"), "speak"), "res://main.gd", nested);
+        Assert.EndsWith($"func speak() -> void:\n\tvar words = {Words}\n\tprint(words)\n", extracted);
+
+        // A string's lines are no indentation for the script's unit to be read from.
+        string tabbed = $"const WORDS = {Words}\n\n\nstatic func say():\n\tprint(WORDS)\n\tif WORDS:\n\t\tprint(2)\n";
+        const string Spaced = "class_name Spaced\nextends Node\n\n\nfunc kept():\n  pass\n";
+        IReadOnlyList<GDScriptRead> toSpaces = Read(("res://own.gd", "class_name Own\n" + tabbed.Replace("print(WORDS)", "print(1)").Replace("if WORDS", "if 1")), ("res://other.gd", Spaced));
+        GDScriptTarget say = GDScriptRefactorings.MemberAt(toSpaces, toSpaces[0], toSpaces[0].Text.IndexOf("say", StringComparison.Ordinal))!;
+        Assert.Contains("static func say():\n  print(1)\n  if 1:\n    print(2)\n", After(GDScriptRefactorings.Move(toSpaces, say, "res://other.gd", new Dictionary<string, string>(), []), "res://other.gd", Spaced));
+    }
+
+    [Fact]
     public void Rearranged_gives_a_csharp_calls_arguments_in_the_new_order()
     {
         IReadOnlyList<GDScriptParameterChange> was = [new(0, "target", string.Empty, string.Empty, string.Empty), new(1, "amount", string.Empty, "1", string.Empty)];
