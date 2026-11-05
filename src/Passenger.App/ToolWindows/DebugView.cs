@@ -113,13 +113,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
         DockPanel variablesPane = new() { Children = { evaluate, moved, variables } };
 
         // The frames a third of the window and the variables the rest, so a narrow window narrows both.
-        Grid split = new() { ColumnDefinitions = new ColumnDefinitions("*,1,2*") };
-        Grid.SetColumn(framesPane, 0);
-        HairlineDivider divider = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
-        Grid.SetColumn(variablesPane, 2);
-        split.Children.Add(framesPane);
-        split.Children.Add(divider);
-        split.Children.Add(variablesPane);
+        PaneSplit split = new(framesPane, variablesPane, "*,1,2*");
         placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
         ActionTips.SetWords(placeholder, AppActions.Debug, keys => keys is null ? "Not debugging." : $"Not debugging. Debug starts with {keys}.");
         debugger = new Panel { Children = { split, placeholder } };
@@ -130,10 +124,8 @@ public sealed class DebugView : DockPanel, IOwnKeys
         debuggerTab.Click += (_, _) => model.ShowTab(console: false);
         consoleTab.Click += (_, _) => model.ShowTab(console: true);
         telemetryTab.Click += (_, _) => model.ShowTelemetry();
-        StackPanel top = new()
+        ToolFlow top = new()
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 2,
             Margin = new Thickness(6, 3),
             Children =
             {

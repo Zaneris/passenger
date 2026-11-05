@@ -16,7 +16,7 @@ public static class ToolBars
     public const double Width = 36;
 
     /// <summary>A bar along a window's top, docked there, holding <paramref name="content"/> over its rule. A bar whose
-    /// parts wrap (the Migrations window's, in a narrow window) grows a row at a time.</summary>
+    /// parts wrap (<see cref="ToolFlow"/>, the Migrations window's, in a narrow window) grows a row at a time.</summary>
     public static Border Top(Control content)
     {
         Border bar = new() { [DockPanel.DockProperty] = Dock.Top, MinHeight = Height, BorderThickness = new Thickness(0, 0, 0, 1), Child = content };

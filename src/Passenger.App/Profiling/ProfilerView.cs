@@ -74,7 +74,7 @@ public sealed class ProfilerView : DockPanel
     private readonly TreeRows<CallRow> traces = [];
     private readonly ListBox types;
     private readonly ListBox backTraces;
-    private readonly Grid allocations;
+    private readonly PaneSplit allocations;
     private readonly TextBlock collectionsSummary;
     private readonly ListBox collections;
     private readonly DockPanel garbage;
@@ -149,12 +149,7 @@ public sealed class ProfilerView : DockPanel
                 Open(row.Node.Name, row.Node.Code);
             }
         };
-        allocations = new Grid { ColumnDefinitions = new ColumnDefinitions("2*,1,3*") };
-        HairlineDivider between = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
-        Grid.SetColumn(backTraces, 2);
-        allocations.Children.Add(types);
-        allocations.Children.Add(between);
-        allocations.Children.Add(backTraces);
+        allocations = new PaneSplit(types, backTraces, "2*,1,3*");
         collectionsSummary = new TextBlock { Margin = new Thickness(12, 8), TextWrapping = TextWrapping.Wrap };
         collections = new ListBox
         {

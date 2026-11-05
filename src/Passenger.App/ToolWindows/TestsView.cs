@@ -109,20 +109,14 @@ public sealed class TestsView : DockPanel
         model.Rows.CollectionChanged += (_, _) => ShowPlaceholder();
         model.EmptyTextChanged += (_, _) => ShowPlaceholder();
 
-        Grid split = new() { ColumnDefinitions = new ColumnDefinitions("2*,1,3*") };
-        HairlineDivider divider = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
         DockPanel.SetDock(Frames, Dock.Top);
-        result = new() { [Grid.ColumnProperty] = 2, Children = { Frames } };
+        result = new() { Children = { Frames } };
         result.SizeChanged += (_, e) => Frames.Fit(e.NewSize.Height);
-        split.Children.Add(new Panel { Children = { tree, placeholder } });
-        split.Children.Add(divider);
-        split.Children.Add(result);
+        PaneSplit split = new(new Panel { Children = { tree, placeholder } }, result, "2*,1,3*", "3*,1,2*");
 
         // Above the tree: what changes it, then a filter for each outcome; the search on the right.
         search = FilterBox.Of();
-        search[DockProperty] = Dock.Right;
-        search.Width = 220;
-        search.Margin = new Thickness(6, 0);
+        ToolFlow.SetFills(search, new ToolLayout.Fills(160, 220));
         search.TextChanged += (_, _) => model.SearchFor(search.Text ?? string.Empty);
         search.KeyDown += OnSearchKey;
         groupBy = ToolButtons.Of(IconKeys.GroupBy, "Group By", ShowGroupBy);
@@ -133,12 +127,9 @@ public sealed class TestsView : DockPanel
             // A click toggles the button itself; what it shows is what was chosen.
             ShowFilters();
         };
-        StackPanel bar = new()
+        ToolFlow bar = new()
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 2,
-            Margin = new Thickness(6, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(6, 2),
             Children =
             {
                 groupBy,
@@ -153,9 +144,9 @@ public sealed class TestsView : DockPanel
             filters[state] = (button, count);
             bar.Children.Add(button);
         }
-        DockPanel top = new() { Children = { search, bar, status } };
-        DockPanel.SetDock(bar, Dock.Left);
-        Border topBar = ToolBars.Top(top);
+        ToolFlow.SetFills(status, new ToolLayout.Fills(120));
+        bar.Children.AddRange([status, search]);
+        Border topBar = ToolBars.Top(bar);
         ShowFilters();
         ShowPlaceholder();
         stop = ToolButtons.Of(AppActions.StopTests, IconKeys.Stop, "Stop", Request);

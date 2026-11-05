@@ -67,7 +67,7 @@ public sealed class AspireView : DockPanel, IDisposable
         AppSelector = new ComboBox { MaxWidth = 300, MinWidth = 200, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
         AutomationProperties.SetName(AppSelector, "Aspire AppHost");
         ToolTip.SetTip(AppSelector, "Running AppHost (every request uses its absolute project path)");
-        StackPanel bar = RunWindowFrame.Tools(AppSelector);
+        ToolFlow bar = RunWindowFrame.Tools(AppSelector);
         // Its Refresh, then the service actions (titled once bound), then the resource's own.
         foreach ((string action, string icon, string tip) in (ReadOnlySpan<(string, string, string)>)[
             (AppActions.AspireDiscover, IconKeys.Search, "Discover running Aspire AppHosts"),
@@ -83,8 +83,8 @@ public sealed class AspireView : DockPanel, IDisposable
             bar.Children.Add(button);
         }
         commands = tools.Single(t => t.Action == AppActions.AspireCommand).Button;
-        DockPanel top = new() { Children = { bar, status } };
-        DockPanel.SetDock(bar, Dock.Left);
+        ToolFlow.SetFills(status, new ToolLayout.Fills(120));
+        bar.Children.Add(status);
 
         ResourceList = new ListBox
         {
@@ -133,7 +133,7 @@ public sealed class AspireView : DockPanel, IDisposable
             [TelemetryTab] = Telemetry.Both,
             [AspireModel.AppHostTab] = WithHeader(readiness, appHostConsole),
         };
-        tabs = RunWindowFrame.Build(this, top, new Panel { Children = { ResourceList, empty } }, page, AspireModel.Pages, AspireModel.PageAction, "aspire", Request);
+        tabs = RunWindowFrame.Build(this, bar, new Panel { Children = { ResourceList, empty } }, page, AspireModel.Pages, AspireModel.PageAction, "aspire", Request);
         DetachedFromVisualTree += (_, _) => this.model.SetDisplayVisible(false);
         PropertyChanged += (_, change) =>
         {

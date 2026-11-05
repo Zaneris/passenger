@@ -142,7 +142,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         placeholder = new EmptyState();
         placeholder.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
 
-        filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Text or hash", Width = 240, Margin = new Thickness(8, 0) };
+        filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Text or hash", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+        ToolFlow.SetFills(filter, new ToolLayout.Fills(120, 246));
         filter.TextChanged += (_, _) => Filter();
         Button refresh = ToolButtons.Of(AppActions.GitLogRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action));
         // The Branch filter, shown while the log is filtered to a branch, its x showing every branch again.
@@ -162,7 +163,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { branchFilterText, clearBranch } },
         };
         branchFilter.Bind(Border.BackgroundProperty, branchFilter.GetResourceObservable(TokenKeys.Selected));
-        Border top = ToolBars.Top(new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { filter, branchFilter, refresh } });
+        Border top = ToolBars.Top(new ToolFlow { Margin = new Thickness(8, 2), Children = { filter, branchFilter, refresh } });
 
         Grid right = new() { RowDefinitions = new RowDefinitions("*,1,*") };
         HairlineDivider between = new(GridResizeDirection.Rows) { [Grid.RowProperty] = 1 };
@@ -170,25 +171,14 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         right.Children.Add(fileList);
         right.Children.Add(between);
         right.Children.Add(details);
-        Grid split = new() { ColumnDefinitions = new ColumnDefinitions("3*,1,2*") };
-        HairlineDivider divider = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
-        Grid.SetColumn(right, 2);
-        split.Children.Add(new Panel { Children = { list, placeholder } });
-        split.Children.Add(divider);
-        split.Children.Add(right);
+        PaneSplit split = new(new Panel { Children = { list, placeholder } }, right, "3*,1,2*");
         if (scope is null && range is null)
         {
             Branches = new BranchesPanel(vcs);
             Branches.FilterRequested += (_, branch) => FilterBranch(branch);
             Branches.NavigateRequested += (_, branch) => IdeErrors.Observe(SelectHashAsync(branch.Hash));
-            Grid withBranches = new() { ColumnDefinitions = new ColumnDefinitions("240,1,*") };
-            HairlineDivider beside = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
-            Grid.SetColumn(split, 2);
-            withBranches.Children.Add(Branches);
-            withBranches.Children.Add(beside);
-            withBranches.Children.Add(split);
             Children.Add(top);
-            Children.Add(withBranches);
+            Children.Add(new PaneSplit(Branches, split, "240,1,*", "*,1,3*"));
         }
         else
         {

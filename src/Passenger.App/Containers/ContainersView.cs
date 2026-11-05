@@ -78,7 +78,7 @@ public sealed class ContainersView : DockPanel
         Telemetry.LinkClicked += (_, link) => LinkClicked?.Invoke(this, link);
         Telemetry.ShownChanged += (_, _) => ShowChosen();
 
-        StackPanel tools = RunWindowFrame.Tools();
+        ToolFlow tools = RunWindowFrame.Tools();
         // Its Refresh, then the service actions, then a container's own.
         foreach ((string action, string icon) in (ReadOnlySpan<(string, string)>)[
             (AppActions.ContainersRefresh, IconKeys.Rerun),

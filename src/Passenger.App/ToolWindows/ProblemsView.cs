@@ -32,22 +32,20 @@ public sealed class ProblemsView : DockPanel
     public ProblemsView(ProblemsModel model)
     {
         this.model = model;
-        StackPanel strip = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 0), VerticalAlignment = VerticalAlignment.Center };
+        ToolFlow bar = new() { Margin = new Thickness(8, 2) };
         foreach (ProblemsTab tab in Enum.GetValues<ProblemsTab>())
         {
             ToggleButton button = new() { Classes = { StyleClasses.PanelTab } };
             button.Click += (_, _) => model.Shown = tab;
             tabs[tab] = button;
-            strip.Children.Add(button);
+            bar.Children.Add(button);
         }
         search = FilterBox.Of();
-        search[DockProperty] = Dock.Right;
-        search.Width = 200;
-        search.Margin = new Thickness(6, 0);
+        ToolFlow.SetFills(search, new ToolLayout.Fills(160, 200));
         search.Text = model.Filter.Text;
         search.TextChanged += (_, _) => model.Filter = model.Filter with { Text = (search.Text ?? string.Empty).Trim() };
         search.KeyDown += OnSearchKey;
-        StackPanel shown = new() { [DockProperty] = Dock.Right, Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+        StackPanel shown = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
         foreach ((ProblemSeverity severity, string name, string icon, string brush) in Severities)
         {
             ToggleButton button = ToolButtons.Counted(icon, brush, $"Show {name}", out TextBlock count);
@@ -55,7 +53,8 @@ public sealed class ProblemsView : DockPanel
             severities[severity] = (button, count);
             shown.Children.Add(button);
         }
-        Border bar = ToolBars.Top(new DockPanel { Children = { search, shown, strip } });
+        bar.Children.AddRange([ToolFlow.Spring(), shown, search]);
+        Border topBar = ToolBars.Top(bar);
         list = new ListBox
         {
             Classes = { StyleClasses.Tree },
@@ -64,8 +63,8 @@ public sealed class ProblemsView : DockPanel
         ReusedRows.Use(list, Row);
         empty = new TextBlock { Classes = { StyleClasses.EmptyText } };
         // The list comes first among the parts, so the window's action gives it the keys and Find's give them the filter.
-        Grid.SetRow(bar, 0);
-        Children.Add(new Grid { RowDefinitions = new RowDefinitions("Auto,*"), Children = { new Panel { [Grid.RowProperty] = 1, Children = { empty, list } }, bar } });
+        Grid.SetRow(topBar, 0);
+        Children.Add(new Grid { RowDefinitions = new RowDefinitions("Auto,*"), Children = { new Panel { [Grid.RowProperty] = 1, Children = { empty, list } }, topBar } });
         list.DoubleTapped += (_, _) => Choose();
         list.AddHandler(KeyDownEvent, (_, e) =>
         {

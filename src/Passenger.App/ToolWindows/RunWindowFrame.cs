@@ -6,10 +6,10 @@ using Avalonia.Layout;
 namespace Passenger.App.ToolWindows;
 
 /// <summary>The frame the windows that list a run's services (Containers, Aspire) are built on, one layout in both: their
-/// toolbar of action buttons along the top (<see cref="ToolBars.Top"/>), the rows on the left with their empty words over
-/// them, and on the right the chosen row's tabs, those of <see cref="RunWindows.Tabs"/> the window has in their order, each
-/// an action that Find Action reaches and a click runs, over the page the window shows; the tabs scroll where the window is
-/// too narrow for them.</summary>
+/// toolbar of action buttons along the top (<see cref="ToolBars.Top"/>), the rows with their empty words over them, and
+/// beside them (<see cref="PaneSplit"/>) the chosen row's tabs, those of <see cref="RunWindows.Tabs"/> the window has in
+/// their order, each an action that Find Action reaches and a click runs, over the page the window shows; the tabs scroll
+/// where the window is too narrow for them.</summary>
 public static class RunWindowFrame
 {
     /// <summary>Builds the frame into <paramref name="window"/>: <paramref name="toolbar"/> along its top, <paramref name="rows"/>
@@ -33,20 +33,16 @@ public static class RunWindowFrame
             strip.Children.Add(tab);
         }
         Border tabBar = ToolBars.Top(new ScrollViewer { Content = strip, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled });
-        DockPanel right = new() { [Grid.ColumnProperty] = 2, Children = { tabBar, page } };
-        Grid panes = new() { ColumnDefinitions = new ColumnDefinitions("2*,1,3*") };
-        panes.Children.Add(rows);
-        panes.Children.Add(new HairlineDivider(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 });
-        panes.Children.Add(right);
-        window.Children.Add(panes);
+        DockPanel right = new() { Children = { tabBar, page } };
+        window.Children.Add(new PaneSplit(rows, right, "2*,1,3*"));
         return made;
     }
 
     /// <summary>The toolbar's row of buttons, each running one of the window's actions (<see cref="ToolButtons"/>), with what
     /// else the bar holds before them.</summary>
-    public static StackPanel Tools(params Control[] before)
+    public static ToolFlow Tools(params Control[] before)
     {
-        StackPanel tools = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center };
+        ToolFlow tools = new() { Margin = new Thickness(6, 2) };
         tools.Children.AddRange(before);
         return tools;
     }

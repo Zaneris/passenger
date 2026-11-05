@@ -108,14 +108,8 @@ public sealed class HistoryTab : DockPanel
             split.Children.Add(diffHost);
             right = split;
         }
-        Grid body = new() { ColumnDefinitions = new ColumnDefinitions("2*,1,5*") };
-        HairlineDivider divider = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
-        Grid.SetColumn(right, 2);
-        body.Children.Add(new Panel { Children = { list, placeholder } });
-        body.Children.Add(divider);
-        body.Children.Add(right);
         Children.Add(top);
-        Children.Add(body);
+        Children.Add(new PaneSplit(new Panel { Children = { list, placeholder } }, right, "2*,1,5*"));
 
         onStoreChanged = (_, _) => IdeErrors.Observe(LoadAsync());
         store.Changed += onStoreChanged;

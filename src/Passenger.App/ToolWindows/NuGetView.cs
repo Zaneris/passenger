@@ -70,8 +70,8 @@ public sealed class NuGetView : DockPanel
     public NuGetView(FolderPackages folder)
     {
         model = folder;
-        search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Search packages", Margin = new Thickness(8, 0) };
-        chooser = new ComboBox { Classes = { StyleClasses.Compact }, MinWidth = 130, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Search packages", VerticalAlignment = VerticalAlignment.Center };
+        chooser = new ComboBox { Classes = { StyleClasses.Compact }, MinWidth = 130, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 8, 0) };
         ToolTip.SetTip(chooser, "The feeds searched");
         chooser.SelectionChanged += (_, _) =>
         {
@@ -97,16 +97,9 @@ public sealed class NuGetView : DockPanel
             Hold(null);
             IdeErrors.Observe(RefreshAsync());
         };
-        // In a narrow window the search and the count give way, so the feed chooser, Prerelease and Refresh keep their room.
-        Grid row = new() { ColumnDefinitions = new ColumnDefinitions("3*,Auto,Auto,Auto,2*"), VerticalAlignment = VerticalAlignment.Center };
-        row.ColumnDefinitions[0].MaxWidth = 276;
-        Control[] parts = [search, chooser, prerelease, refresh, status];
-        for (int i = 0; i < parts.Length; i++)
-        {
-            Grid.SetColumn(parts[i], i);
-            row.Children.Add(parts[i]);
-        }
-        Border top = ToolBars.Top(row);
+        ToolFlow.SetFills(search, new ToolLayout.Fills(140, 260));
+        ToolFlow.SetFills(status, new ToolLayout.Fills(120));
+        Border top = ToolBars.Top(new ToolFlow { Margin = new Thickness(8, 2), Children = { search, chooser, prerelease, refresh, status } });
 
         list = new ListBox
         {
@@ -130,14 +123,8 @@ public sealed class NuGetView : DockPanel
         DockPanel right = new();
         right.Children.Add(log);
         right.Children.Add(new ScrollViewer { Content = details });
-        Grid split = new() { ColumnDefinitions = new ColumnDefinitions("2*,1,3*") };
-        HairlineDivider divider = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
-        Grid.SetColumn(right, 2);
-        split.Children.Add(list);
-        split.Children.Add(divider);
-        split.Children.Add(right);
         packages.Children.Add(top);
-        packages.Children.Add(split);
+        packages.Children.Add(new PaneSplit(list, right, "2*,1,3*"));
 
         Sources = new NuGetSourcesView(this);
         Children.Add(body);

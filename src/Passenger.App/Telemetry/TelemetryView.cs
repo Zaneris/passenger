@@ -77,12 +77,7 @@ public sealed class TelemetryView : IDisposable
             output.Links.Folders = () => Folders?.Invoke() ?? [];
         }
         LogsPage = WithHeader(PageBar(logsStatus, logTrace), Split(StructuredLogs, logDetails));
-        Grid traceBody = new() { ColumnDefinitions = new ColumnDefinitions("*,1,2*") };
-        traceBody.Children.Add(new Border { Classes = { StyleClasses.Framed }, Child = TraceList });
-        traceBody.Children.Add(new HairlineDivider(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 });
-        Control spanBody = Split(SpanList, spanDetails);
-        spanBody[Grid.ColumnProperty] = 2;
-        traceBody.Children.Add(spanBody);
+        PaneSplit traceBody = new(new Border { Classes = { StyleClasses.Framed }, Child = TraceList }, Split(SpanList, spanDetails), "*,1,2*");
         TracesPage = WithHeader(PageBar(tracesStatus, spanLogs), traceBody);
         Clear();
     }

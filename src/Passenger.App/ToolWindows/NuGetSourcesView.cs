@@ -15,7 +15,7 @@ namespace Passenger.App.ToolWindows;
 /// added, edited and deleted in that file; its Properties; and the Summary, the feeds a restore uses. A feed disabled is
 /// disabled in the file that names it; one enabled is enabled wherever a file had disabled it, as dotnet nuget enables it.
 /// The machine's files NuGet never writes, and neither does the tab.</summary>
-public sealed class NuGetSourcesView : Grid
+public sealed class NuGetSourcesView : Panel
 {
     private readonly NuGetView owner;
     private readonly ListBox files;
@@ -27,7 +27,6 @@ public sealed class NuGetSourcesView : Grid
     public NuGetSourcesView(NuGetView owner)
     {
         this.owner = owner;
-        ColumnDefinitions = new ColumnDefinitions("2*,1,5*");
         files = new ListBox { Classes = { StyleClasses.Tree } };
         ReusedRows.Use(files, FileRow);
         files.SelectionChanged += (_, _) =>
@@ -43,11 +42,7 @@ public sealed class NuGetSourcesView : Grid
         problem.Margin = new Thickness(14, 0, 14, 8);
         right.Children.Add(problem);
         right.Children.Add(new ScrollViewer { Content = details });
-        HairlineDivider divider = new(GridResizeDirection.Columns) { [ColumnProperty] = 1 };
-        SetColumn(right, 2);
-        Children.Add(files);
-        Children.Add(divider);
-        Children.Add(right);
+        Children.Add(new PaneSplit(files, right, "2*,1,5*"));
     }
 
     /// <summary>The files in effect, as listed.</summary>
@@ -308,7 +303,7 @@ public sealed class NuGetSourcesView : Grid
 
     private static void Add(Grid grid, Control control, int column)
     {
-        SetColumn(control, column);
+        Grid.SetColumn(control, column);
         grid.Children.Add(control);
     }
 

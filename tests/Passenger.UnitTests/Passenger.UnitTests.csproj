@@ -40,6 +40,11 @@
     <Compile Include="../../src/Passenger.App/Containers/DockerfileStages.cs" Link="App/DockerfileStages.cs" />
   </ItemGroup>
 
+  <!-- How a tool window shares out its room, from widths alone, compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/ToolWindows/ToolLayout.cs" Link="App/ToolLayout.cs" />
+  </ItemGroup>
+
   <!-- Which files are a package's, by a package folder's layout, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Packages/PackageFolders.cs" Link="App/PackageFolders.cs" />

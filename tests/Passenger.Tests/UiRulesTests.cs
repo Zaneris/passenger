@@ -2059,6 +2059,19 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + $"make each with DialogFooter (Default, Cancel, OkCancel, or Popup in a popup):\n{string.Join("\n", found)}");
     }
 
+    /// <summary>A tool window's two panes are a PaneSplit, so a side dock's width stands them one over the other: panes side
+    /// by side over a divider of their own stay that way however narrow, the Git window's log a line of letters. The dock's
+    /// areas, an editor's splits and a dialog's panes are no tool window's.</summary>
+    [Fact]
+    public void Every_tool_windows_two_panes_are_a_PaneSplit()
+    {
+        string[] found = [.. UiFiles()
+            .Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal) && !f.Path.EndsWith("/PaneSplit.cs", StringComparison.Ordinal) && !f.Path.EndsWith("/HairlineSplitter.cs", StringComparison.Ordinal)
+                && !f.Path.EndsWith("Dialog.cs", StringComparison.Ordinal) && !f.Path.Contains("/Docking/", StringComparison.Ordinal) && !f.Path.Contains("/Editors/", StringComparison.Ordinal))
+            .SelectMany(f => Regex.Matches(f.Text, @"HairlineDivider\(GridResizeDirection\.Columns").Select(m => $"{f.Path}:{LineOf(f.Text, m.Index)}"))];
+        Assert.True(found.Length == 0, $"{found.Length} tool windows' panes stand side by side however narrow the window: make each a PaneSplit:\n{string.Join("\n", found)}");
+    }
+
     /// <summary>Every tool window's bars are the shared pieces, ToolBars.Top along its top and ToolBars.Side down its left,
     /// so each is one height, one width and one rule, and a banner over what it speaks of is Banner: a bar built by hand (a
     /// fixed height over a rule or docked at the top, a strip down the left beside one, a ToolColumn of its own) fails here,

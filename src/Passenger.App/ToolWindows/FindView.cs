@@ -106,12 +106,7 @@ public sealed class FindView : DockPanel
             ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Path))),
         ]);
         preview = new CodeEditor { IsReadOnly = true, ShowErrorStripe = false, LineCommentPrefix = null, FontSize = 12.5, Document = new TextDocument() };
-        Grid body = new() { ColumnDefinitions = new ColumnDefinitions("*,1,*") };
-        HairlineDivider divider = new(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 };
-        preview[Grid.ColumnProperty] = 2;
-        body.Children.Add(list);
-        body.Children.Add(divider);
-        body.Children.Add(preview);
+        PaneSplit body = new(list, preview, "*,1,*");
         placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
         ActionTips.SetWords(placeholder, AppActions.FindUsages, keys => $"{ActionTips.Named("Find Usages", keys)} lists a symbol's usages here");
         note = MutedText.Wrapped(string.Empty);
