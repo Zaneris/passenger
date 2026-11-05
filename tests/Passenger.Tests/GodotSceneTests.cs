@@ -736,8 +736,8 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
-    /// <summary>An export set on a sub-resource running the script is its key too: the rename takes it with the node's, or the
-    /// resource would load its default.</summary>
+    /// <summary>An export set on a sub-resource running the script is its key too: Safe Delete lists it among the uses it would
+    /// break, and the rename takes it with the node's, or the resource would load its default.</summary>
     [AvaloniaFact]
     public void Renaming_an_export_renames_its_key_on_a_sub_resource_running_the_script()
     {
@@ -749,6 +749,11 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
             CodeEditor editor = window.EditorArea.CodeEditor;
             Ui.PlaceAfter(editor, "public float Spe");
+            Ui.Run(window, AppActions.SafeDelete);
+            Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(), () => $"Safe Delete to list the export's keys ({window.Status})");
+            ConfirmDialog asked = DialogButtonsTests.Check(window.OwnedWindows.OfType<ConfirmDialog>().Single());
+            Assert.Contains("Speed = 9.0", asked.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? string.Empty));
+            Ui.ClickButton(asked, "Cancel");
             Ui.Run(window, AppActions.Rename);
             Ui.WaitFor(() => window.Assist.Renaming == "Speed", () => $"Rename's box on the export ({window.Assist.Renaming}; {window.Status})");
             window.KeyTextInput("Power");

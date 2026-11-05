@@ -151,12 +151,19 @@ public sealed class GodotFile
 
     /// <summary>Every call of a name a value holds, at its top or inside its arrays, dictionaries and other calls but never
     /// inside its strings (<c>SubResource("Box_x")</c> in <c>[SubResource("Box_x")]</c>), each with what its one argument
-    /// says (a string's characters, or an old file's number) and where that lies.</summary>
+    /// says (a string's characters, or an old file's number) and where that lies; a NodePath's <c>^"…"</c> among NodePath's.</summary>
     public IEnumerable<(string Argument, int Start, int End)> CallsIn(GodotValue value, string call)
     {
         int at = value.Start;
         while (at < value.End)
         {
+            if (Text[at] == '^' && call == "NodePath" && at + 1 < value.End && Text[at + 1] == '"')
+            {
+                (string path, int closing, int after) = Quoted(Text, at + 1);
+                yield return (path, at + 2, closing);
+                at = after;
+                continue;
+            }
             if (Text[at] == '"')
             {
                 at = Quoted(Text, at).Next;

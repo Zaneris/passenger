@@ -238,6 +238,7 @@ public class GodotScenesTests
             Mapped = { "a": NodePath("Hud/Score"), "b": [NodePath("%Score")] }
             Words = "NodePath(\"Hud/Score\")"
             Far = NodePath("/root/Hud/Score")
+            Short = ^"Hud/Score"
 
             [node name="Hud" type="CanvasLayer" parent="."]
             Near = NodePath("Score")
