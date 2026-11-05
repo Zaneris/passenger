@@ -196,4 +196,16 @@ public class GodotShadersTests
         Assert.Equal(("../lib/gone.gdshaderinc", "Shader include file does not exist: res://lib/gone.gdshaderinc"), (shader[mark.Start..mark.End], mark.Message));
         Assert.Equal("res://shaders/a.gdshaderinc", GodotShaderUnit.Resolved("res://level.tscn::Shader_x", "shaders/./a.gdshaderinc"));
     }
+
+    [Theory]
+    [InlineData("void fragment(){float answer = 1.0; ALPHA = answer;}")]
+    [InlineData("void fragment() {float answer = 1.0; ALPHA = answer;}")]
+    [InlineData("void fragment() { float answer = 1.0; ALPHA = answer; }")]
+    [InlineData("void fragment(){/* first */float answer = 1.0; ALPHA = answer;}")]
+    [InlineData("void fragment(){\n\tfloat answer = 1.0;\n\tALPHA = answer;\n}")]
+    public void A_local_is_read_however_close_it_stands_to_its_function_s_brace(string function)
+    {
+        GodotShaderDeclaration local = Assert.Single(GodotShaderCode.Read($"shader_type spatial;\n{function}\n").Declarations, d => d.Kind == GodotShaderDeclared.Local);
+        Assert.Equal(("answer", "float", "fragment"), (local.Name, local.Type, local.Function));
+    }
 }

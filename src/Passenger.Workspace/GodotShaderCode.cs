@@ -422,7 +422,7 @@ public sealed class GodotShaderCode
     /// or a <c>for</c>'s first part starts.</summary>
     private void ReadLocals(GodotShaderFunction function, HashSet<string> structs, List<GodotShaderDeclaration> declared)
     {
-        int first = TokenBefore(function.BodyStart + 1) + 1;
+        int first = TokenBefore(function.BodyStart) + 1;
         List<int> blocks = [function.BodyEnd];
         for (int j = first; j < tokens.Count && tokens[j].Start < function.BodyEnd; j++)
         {
