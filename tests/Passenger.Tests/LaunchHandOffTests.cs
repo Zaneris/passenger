@@ -66,6 +66,44 @@ public sealed class LaunchHandOffTests
             $"The window on {open} was to keep its folder and the new one to come forward; it is on {window.Folder}, the front one on {PassengerApp.Front?.Folder}");
     }
 
+    /// <summary>The folder's kept tabs are put back as its window opens: the launch's file and caret come after them.</summary>
+    [AvaloniaFact]
+    public void A_launch_for_a_folder_with_kept_tabs_ends_at_its_own_caret_in_a_file_kept_at_another()
+    {
+        string state = TestFolders.Create("launch-state-");
+        string open = TestFolders.Create("launch-open-");
+        TestFolders.Write(open, "notes.txt", "open\n");
+        string other = PathNames.Canonical(TestFolders.Create("launch-other-"));
+        string script = TestFolders.Write(other, "Enemy.cs", "one\ntwo\nthree\n");
+        MainWindow keeping = Keeping(state, other);
+        keeping.OpenFile(script);
+        Ui.Settle();
+        Assert.Equal((script, new TextPosition(0, 0)), Caret(keeping));
+        keeping.Close();
+        Ui.Settle();
+        MainWindow window = Keeping(state, open);
+
+        Launched([other, "--file", script, "--caret", "3:2"], StateStore.DefaultRoot);
+
+        Ui.WaitFor(() => PassengerApp.Windows.Any(w => w != window && w.Folder == other), () => $"a window on {other}; they are on {string.Join(", ", PassengerApp.Windows.Select(w => w.Folder ?? "nothing"))}");
+        MainWindow opened = PassengerApp.Windows.Single(w => w.Folder == other);
+        Ui.Settle();
+        Assert.True(Caret(opened) == (script, new TextPosition(2, 1)), $"The launch asked for 3:2 in {script}; the folder's kept tabs left {opened.EditorArea.Active?.Path ?? "nothing"} at {Caret(opened).At}");
+        opened.Close();
+        window.Close();
+    }
+
+    /// <summary>A window keeping its folder's tabs in the state given.</summary>
+    private static MainWindow Keeping(string state, string folder)
+    {
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, StateFolder = state };
+        window.Show();
+        window.KeepLayout();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        return window;
+    }
+
     [AvaloniaFact]
     public void With_no_Passenger_running_a_launch_is_the_Passenger_and_the_next_launch_goes_to_it()
     {

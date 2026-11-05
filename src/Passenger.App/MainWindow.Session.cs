@@ -219,6 +219,7 @@ public partial class MainWindow
         ShowUnreadSolution();
         Remember();
         IdeErrors.Observe(KeepSnapshotsAsync());
+        RunWaitingToOpen(folder);
     }
 
     /// <summary>What the open folder had in the window goes, kept with it in the store first: its editors close, each saved

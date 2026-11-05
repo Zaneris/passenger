@@ -53,6 +53,37 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>What waits for the folder opening in this window, with that folder (<see cref="OnceOpen"/>).</summary>
+    private readonly List<(string Folder, Action Then)> waitingToOpen = [];
+
+    /// <summary>Runs something once the folder opening here is open, now where none is opening: a folder's kept tabs and
+    /// carets are put back as it opens, over whatever came before them.</summary>
+    internal void OnceOpen(Action then)
+    {
+        if (session.Folder is null && FolderHeld is { } opening)
+        {
+            waitingToOpen.Add((opening, then));
+        }
+        else
+        {
+            then();
+        }
+    }
+
+    /// <summary>What waited for a folder, now it is open; what waited for one left before it opened goes.</summary>
+    private void RunWaitingToOpen(string folder)
+    {
+        (string Folder, Action Then)[] waiting = [.. waitingToOpen];
+        waitingToOpen.Clear();
+        foreach ((string opening, Action then) in waiting)
+        {
+            if (PathNames.Same(opening, folder))
+            {
+                then();
+            }
+        }
+    }
+
     private void AddProjectWindows()
     {
         actions!.Add(new IdeAction(AppActions.NextProjectWindow, "Next Solution Window", "Window", _ => PassengerApp.Step(this, 1))

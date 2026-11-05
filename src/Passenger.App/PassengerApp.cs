@@ -264,9 +264,9 @@ public static class PassengerApp
     }
 
     /// <summary>A person's launch another Passenger process handed over (<see cref="LaunchHandOff"/>): its files and caret
-    /// go to the innermost window whose folder holds what it names, else its folder or workspace opens as File, Open opens
-    /// one in a window of its own (the one in front when that has nothing open), a launch naming nothing going to the
-    /// window in front; that window comes forward, the person's own act. The answer the launch is told.</summary>
+    /// go, once its folder is open, to the innermost window whose folder holds what it names, else its folder or workspace
+    /// opens as File, Open opens one in a window of its own (the one in front when that has nothing open), a launch naming
+    /// nothing going to the window in front; that window comes forward, the person's own act. The answer the launch is told.</summary>
     internal static string TakeLaunch(HandedLaunch launch)
     {
         UiThread.Check();
@@ -293,7 +293,7 @@ public static class PassengerApp
         }
         IdeErrors.Write($"Launch: handed over for {launch.Workspace ?? launch.Folder ?? "no folder"}"
             + $"{(launch.Files.Count > 0 ? $", {Plural.Listed(launch.Files)}" : string.Empty)}, taken by the window on {into.FolderHeld ?? "no folder"}");
-        into.TakeLaunch(launch.Files, launch.Caret);
+        into.OnceOpen(() => into.TakeLaunch(launch.Files, launch.Caret));
         BringForward(into);
         if (!into.IsActive)
         {
