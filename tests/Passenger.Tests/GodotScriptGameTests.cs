@@ -109,6 +109,55 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
         }
     }
 
+    /// <summary>Two text boxes, one holding the keys, the other freed once told, and a third taken out of the tree.</summary>
+    private const string Boxes = "extends Node\n\nvar kept := LineEdit.new()\nvar freed := LineEdit.new()\nvar outside := LineEdit.new()\n"
+        + "var drop := false:\n\tset(value):\n\t\tfreed.free()\n\t\tremove_child(outside)\n\t\tprint(\"dropped\")\n\n\n"
+        + "func _ready() -> void:\n\tkept.name = \"Kept\"\n\tfreed.name = \"Freed\"\n\toutside.name = \"Outside\"\n"
+        + "\tadd_child(kept)\n\tadd_child(freed)\n\tadd_child(outside)\n\tkept.grab_focus()\n";
+
+    /// <summary>Input aimed at a control gone since it was found (freed, or taken out of the tree) is refused saying so, never
+    /// given to what has the keys, whose text stays as it was; input aimed at nothing goes where the keys are, as ever.</summary>
+    [AvaloniaFact]
+    public void Input_aimed_at_a_control_gone_since_it_was_found_is_refused_and_reaches_no_other()
+    {
+        File.WriteAllText(TickerPath, Boxes);
+        MainWindow window = Open();
+        try
+        {
+            Choose(window);
+            Ui.Launched(window, window.RunAsync(), "the game's start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.Session.Game is { State: Passenger.App.LiveTree.LiveAppState.Connected }, () => $"the game to connect ({window.Status})", TimeSpan.FromMinutes(1));
+            Passenger.App.Godot.GodotGame running = window.Session.Game!;
+            List<Passenger.App.Godot.GodotNode> nodes = [.. Ui.AwaitPumped(running.SceneTreeAsync(), "the game's tree", TimeSpan.FromMinutes(1)).All()];
+            long Id(string name) => (long)nodes.First(n => n.Name == name).Id;
+            (long freed, long outside) = (Id("Freed"), Id("Outside"));
+            Ui.AwaitPumped(running.SetPropertyAsync(nodes.First(n => n.Name == "Main").Id, "drop", true), "the game told to drop its text boxes", TimeSpan.FromMinutes(1));
+            Ui.PumpUntil(() => Run(window).Contains("dropped", StringComparison.Ordinal), "the game to drop its text boxes", TimeSpan.FromMinutes(1));
+
+            foreach ((string call, object?[] arguments) in new (string, object?[])[]
+            {
+                ("type", [freed, "stale", false]),
+                ("type", [outside, "stale", false]),
+                ("key", [freed, new List<object?> { new List<object?> { "A", 0L } }]),
+                ("click", [freed, false, 0.0, 0.0, 1L, 1L, 0L]),
+            })
+            {
+                Task<List<object?>> asked = running.AskAsync(call, arguments);
+                Ui.PumpUntil(() => asked.IsCompleted, $"the helper's answer to {call} at a control gone", TimeSpan.FromMinutes(1));
+                Assert.True(asked.Exception?.InnerException?.Message == "the node is gone",
+                    $"{call} at a control gone came to {(asked.IsCompletedSuccessfully ? $"[{string.Join(", ", asked.Result)}]" : asked.Exception?.InnerException?.Message)}");
+            }
+
+            List<object?> typed = Ui.AwaitPumped(running.AskAsync("type", 0L, "here", false), "typing with no control aimed at", TimeSpan.FromMinutes(1));
+            Assert.Equal("here", typed[^1]);
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>Run of a game whose asset has no .import beside it, which a game cannot load, imports the project first: the
     /// asset is written with none, opening the folder makes none (no Godot editor starts at a script's opening), and Run's
     /// import makes it for the game, which loads the asset.</summary>

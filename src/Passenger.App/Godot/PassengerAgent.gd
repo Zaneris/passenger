@@ -97,6 +97,18 @@ func _node(id: int) -> Node:
     return found if found is Node else null
 
 
+## Whether a node aimed at has gone, freed or out of the tree, which is said: input aimed at it reaches nothing else. An id of
+## 0 aims at none.
+func _gone(ask: int, id: int) -> bool:
+    if id == 0:
+        return false
+    var node := _node(id)
+    if node != null and node.is_inside_tree():
+        return false
+    _say(ask, false, ["the node is gone"])
+    return true
+
+
 func _box(node: Node) -> Array:
     if node is Control:
         var rect: Rect2 = node.get_global_rect()
@@ -209,10 +221,9 @@ func _named(node: Node) -> String:
 func _aim(ask: int, id: int, has_point: bool, x: float, y: float) -> Variant:
     if id == 0:
         return Vector2(x, y)
-    var node := _node(id)
-    if node == null:
-        _say(ask, false, ["the node is gone"])
+    if _gone(ask, id):
         return null
+    var node := _node(id)
     if not node is Control:
         _say(ask, false, ["%s is no Control, so it has no place a pointer goes to: give x and y in the window" % _named(node)])
         return null
@@ -259,6 +270,8 @@ func click(ask: int, id: int, has_point: bool, x: float, y: float, button: int, 
         return
     _pressed_at = at
     var under: Control = await _hover(at, modifiers)
+    if _gone(ask, id):
+        return
     var target := _node(id)
     if target != null and under != null and under != target and not target.is_ancestor_of(under):
         _say(ask, false, ["%s is covered by %s at %d,%d" % [_named(target), _named(under), at.x, at.y]])
@@ -309,6 +322,8 @@ func scroll(ask: int, id: int, has_point: bool, x: float, y: float, dx: float, d
     if at == null:
         return
     var under: Control = await _hover(at, modifiers)
+    if _gone(ask, id):
+        return
     var screen: Vector2 = get_viewport().get_final_transform() * at
     for turn in [[dy, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_UP], [dx, MOUSE_BUTTON_WHEEL_RIGHT, MOUSE_BUTTON_WHEEL_LEFT]]:
         for i in int(round(absf(turn[0]))):
@@ -342,6 +357,8 @@ func _focus(id: int) -> Control:
 
 
 func key(ask: int, id: int, chords: Array) -> void:
+    if _gone(ask, id):
+        return
     _focus(id)
     for chord in chords:
         var code := OS.find_keycode_from_string(chord[0])
@@ -366,6 +383,8 @@ func key(ask: int, id: int, chords: Array) -> void:
 
 
 func type(ask: int, id: int, text: String, replace: bool) -> void:
+    if _gone(ask, id):
+        return
     var aimed := _node(id)
     if aimed != null and not (aimed is Control and aimed.focus_mode != Control.FOCUS_NONE):
         _say(ask, false, ["%s takes no focus, so nothing typed would reach it: a LineEdit, a TextEdit or another control that takes the focus does" % _named(aimed)])
