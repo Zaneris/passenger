@@ -213,14 +213,14 @@ public sealed class TestNode : Observable, ITreeRow
     /// <summary>How many of a method's failed results an agent's answer writes out.</summary>
     public const int MostFailuresWritten = 10;
 
-    /// <summary>A method's results as an agent's answer gives them: a lone result as <see cref="DetailsOf"/> writes it, else
-    /// its failed rows so written, at most <see cref="MostFailuresWritten"/>, and the rest counted by how they ended ("2,999
-    /// other rows passed").</summary>
+    /// <summary>A method's results as an agent's answer gives them: a lone result as <see cref="DetailsOf"/> writes it but for
+    /// a row's name, which says which of the method's cases failed, else its failed rows so written, at most
+    /// <see cref="MostFailuresWritten"/>, and the rest counted by how they ended ("2,999 other rows passed").</summary>
     public static string FailuresOf(IReadOnlyList<TestOutcome> results, int outputTail)
     {
-        if (results.Count == 1)
+        if (results is [{ } lone])
         {
-            return DetailsOf(results, outputTail);
+            return DetailOf(lone, named: lone.Row is not null, outputTail);
         }
         List<TestOutcome> failed = [.. results.Where(r => r.State == TestState.Failed)];
         int left = Math.Max(0, failed.Count - MostFailuresWritten);

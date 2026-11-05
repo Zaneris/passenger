@@ -1,9 +1,13 @@
+using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using ModelContextProtocol.Client;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Editors;
+using Passenger.App.Mcp;
 using Passenger.App.Testing;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -265,6 +269,67 @@ public sealed class NUnitDebuggingTests : NUnitFolders
     }
 }
 
+/// <summary>NUnit as an agent meets it, however it is installed: a run's answer says which case of a method failed.</summary>
+public sealed class NUnitMcpTests : McpRig
+{
+    /// <summary>A method of two named cases, one failing, and a method whose only case is named and fails.</summary>
+    private const string Named = """
+        using NUnit.Framework;
+
+        namespace Cases.Tests;
+
+        public class Arithmetic
+        {
+            public static readonly TestCaseData[] Titled = [new TestCaseData(1, 1).SetName("OneIsOne"), new TestCaseData(1, 2).SetName("OneIsTwo")];
+
+            public static readonly TestCaseData[] Alone = [new TestCaseData(2, 3).SetName("TwoIsThree")];
+
+            [TestCaseSource(nameof(Titled))]
+            public void Compared(int a, int b) => Assert.That(a, Is.EqualTo(b));
+
+            [TestCaseSource(nameof(Alone))]
+            public void Lone(int a, int b) => Assert.That(a, Is.EqualTo(b));
+        }
+
+        """;
+
+    [Theory]
+    [InlineData(NUnitInstall.OnVSTest)]
+    [InlineData(NUnitInstall.OnItsRunner)]
+    [InlineData(NUnitInstall.FourOnVSTest)]
+    public async Task An_agents_run_names_a_failing_case_named_in_place_of_its_method(NUnitInstall install)
+    {
+        await using McpClient client = await Start(["--mcp", await Restored(install, Named)], languageServer: false);
+        JsonElement run = await Call(client, McpTools.TestsRun);
+        Assert.StartsWith("Tests passed: 1, failed: 2 of 3", run.GetProperty("summary").GetString(), StringComparison.Ordinal);
+        Assert.StartsWith("OneIsTwo: Failed", Details(run, "Cases.Tests.Arithmetic.Compared"), StringComparison.Ordinal);
+        Assert.StartsWith("TwoIsThree: Failed", Details(run, "Cases.Tests.Arithmetic.Lone"), StringComparison.Ordinal);
+
+        JsonElement alone = await Call(client, McpTools.TestsRun, new() { ["filter"] = "Lone" });
+        Assert.StartsWith("Tests passed: 0, failed: 1 of 1", alone.GetProperty("summary").GetString(), StringComparison.Ordinal);
+        Assert.StartsWith("TwoIsThree: Failed", Details(alone, "Cases.Tests.Arithmetic.Lone"), StringComparison.Ordinal);
+    }
+
+    /// <summary>What a run's answer says of a test's failure.</summary>
+    private static string Details(JsonElement run, string test) =>
+        run.GetProperty("failures").EnumerateArray().Where(f => f.GetProperty("test").GetString() == test).Select(f => f.GetProperty("details").GetString()).FirstOrDefault()
+            ?? throw new Xunit.Sdk.XunitException($"The run's answer has no failure of {test}: {run}");
+
+    /// <summary>A folder holding a project that takes NUnit as given, with the code given, restored.</summary>
+    private async Task<string> Restored(NUnitInstall install, string code)
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-nunit-"));
+        DeleteAtEnd(folder);
+        await TestFolders.PrepareAsync(async () =>
+        {
+            File.WriteAllText(Path.Combine(folder, "Sums.Tests.csproj"), NUnitFolders.Project(install));
+            File.WriteAllText(Path.Combine(folder, "Cases.cs"), code);
+            await Restore.RunAsync(folder);
+        }, folder);
+        return folder;
+    }
+}
+
 /// <summary>How a test project takes NUnit.</summary>
 public enum NUnitInstall
 {
@@ -343,7 +408,8 @@ public abstract class NUnitFolders : UnitTestsFolders
         return window;
     }
 
-    private static string Project(NUnitInstall install) => install switch
+    /// <summary>The project file that takes NUnit as given.</summary>
+    internal static string Project(NUnitInstall install) => install switch
     {
         NUnitInstall.OnItsRunner => Project(
             "    <OutputType>Exe</OutputType>\n    <EnableNUnitRunner>true</EnableNUnitRunner>\n", TestPackages.NUnit, TestPackages.NUnitAdapter, testSdk: false),
