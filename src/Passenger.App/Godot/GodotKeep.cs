@@ -173,12 +173,16 @@ public static class GodotKeep
     }
 
     /// <summary>A value written as the default of a C# script's <c>[Export]</c> member of the property's name: its
-    /// initializer replaced, or one given to an auto-property or field that has none. Null where the script has no such
+    /// initializer replaced, or one given to an auto-property or field that has none. The script is the file's class named
+    /// as the file is, the one Godot runs, nested classes and any other beside it no part of it. Null where it has no such
     /// member, or its declared type takes no value written here.</summary>
     public static GodotKept? InCode(string file, string code, CSharpParseOptions options, string property, object? value, GodotProperty? declared)
     {
         SyntaxNode root = CSharpSyntaxTree.ParseText(code, options).GetRoot();
-        foreach (MemberDeclarationSyntax member in root.DescendantNodes().OfType<MemberDeclarationSyntax>())
+        string script = System.IO.Path.GetFileNameWithoutExtension(file);
+        IEnumerable<MemberDeclarationSyntax> members = root.DescendantNodes(n => n is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax)
+            .OfType<ClassDeclarationSyntax>().Where(c => c.Identifier.ValueText == script).SelectMany(c => c.Members);
+        foreach (MemberDeclarationSyntax member in members)
         {
             if (!member.AttributeLists.SelectMany(l => l.Attributes).Any(a => a.Name.ToString() is "Export" or "ExportAttribute" or "Godot.Export" or "Godot.ExportAttribute"))
             {

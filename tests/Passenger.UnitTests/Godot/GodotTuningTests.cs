@@ -175,6 +175,51 @@ public class GodotTuningTests
         Assert.Equal("    private int lives = 7;", lives!.After);
     }
 
+    private const string TwoClasses = """
+        using Godot;
+
+        namespace Game;
+
+        public partial class Other : Node
+        {
+            [Export]
+            public float Speed { get; set; } = 1f;
+        }
+
+        public partial class Main : Node
+        {
+            [Export]
+            public float Speed { get; set; } = 2f;
+
+            public partial class Inner : Node
+            {
+                [Export]
+                public float Reach { get; set; } = 3f;
+            }
+        }
+
+        """;
+
+    private const string BareScene = "[gd_scene format=3]\n\n[node name=\"Main\" type=\"Node\"]\n";
+
+    [Fact]
+    public void A_value_is_kept_in_the_script_class_the_node_runs_never_another_class_of_its_file()
+    {
+        (GodotKept? kept, string? why) = GodotKeep.Plan(Main, "Speed", 5.0, Property("Speed", GodotType.Float), Files(("res://main.tscn", BareScene), ("res://Main.cs", TwoClasses)), _ => CSharpParsing.Default);
+        Assert.True(kept is not null, why);
+        Assert.True(kept is { InCode: true, Line: 13, After: "    public float Speed { get; set; } = 5f;" }, $"Keep rewrote line {kept.Line} of {kept.File}: {kept.After}");
+        Assert.Contains("= 1f;", Applied(kept), StringComparison.Ordinal);
+
+        // A member of a class nested in it is no member of the node's.
+        (GodotKept? nested, _) = GodotKeep.Plan(Main, "Reach", 9.0, Property("Reach", GodotType.Float), Files(("res://main.tscn", BareScene), ("res://Main.cs", TwoClasses)), _ => CSharpParsing.Default);
+        Assert.True(nested is { InCode: false, After: "Reach = 9.0" }, $"{nested}");
+
+        // A file naming no class after itself holds no script a node runs, so the scene keeps the value.
+        (GodotKept? named, _) = GodotKeep.Plan(new GodotNodePlace([("Main", "res://main.tscn")], "res://Elsewhere.cs"), "Speed", 5.0, Property("Speed", GodotType.Float),
+            Files(("res://main.tscn", BareScene), ("res://Elsewhere.cs", TwoClasses)), _ => CSharpParsing.Default);
+        Assert.True(named is { InCode: false, After: "Speed = 5.0" }, $"{named}");
+    }
+
     [Fact]
     public void A_value_neither_sets_is_a_line_added_to_the_node_in_its_scene_an_instance_in_the_scene_that_holds_it()
     {
