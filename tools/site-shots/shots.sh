@@ -525,7 +525,7 @@ scene() {
 }
 
 # The godot-game scene, every theme in one sitting: Squash the Creeps playing in the Game window, Player.cs's members'
-# values at their lines; of each theme's pictures, the one SITE_SHOTS_FRAME names (the third by default) is the site's.
+# values at their lines; of each theme's pictures, the one SITE_SHOTS_FRAME names (the seventh by default) is the site's.
 windowed_game() {
     creeps_ready
     local state=/private/tmp/pss-game theme
@@ -534,7 +534,7 @@ windowed_game() {
         "$work/png/godot-game" "$@"
     # At the site's width: the window opens at its own size, which the accessibility API cannot change.
     for theme in "$@"; do
-        sips --resampleWidth 2400 "$work/png/godot-game-$theme-${SITE_SHOTS_FRAME:-2}.png" \
+        sips --resampleWidth 2400 "$work/png/godot-game-$theme-${SITE_SHOTS_FRAME:-6}.png" \
             --out "$work/png/godot-game-$theme.png" > /dev/null
         encode "$work/png/godot-game-$theme.png" "$images/godot-game-$theme.webp"
     done

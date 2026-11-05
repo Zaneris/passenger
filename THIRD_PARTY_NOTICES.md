@@ -1092,3 +1092,11 @@ Passenger's change: a field that takes only certain words (`pull_policy`'s patte
 volume's `type`, a bind's `recursive` and `selinux`, a schedule's `concurrency` and `missed_fires`, a watch's `action`,
 an update's and a rollback's `order`, `gpus`' `all` and a dependency's `condition`) also takes a value holding a
 variable, which Compose replaces before it reads it (`$defs/interpolated`, added).
+
+## Squash the Creeps (3D) with C#
+
+`site/images/godot-game-dark.webp` and `godot-game-light.webp` picture Squash the Creeps (3D) with C#, from the Godot demo
+projects (https://github.com/godotengine/godot-demo-projects, `mono/squash_the_creeps` at commit
+b761b4cd5718a7118f2c95eb55f181d0a5f004f1), running in the Game window: © Godot Engine contributors, MIT licence, its
+score and words in its Montserrat, under the SIL Open Font License 1.1. `tools/site-shots/shots.sh` fetches the game to
+take them; Passenger carries none of it.

@@ -19,8 +19,10 @@ passenger, folder, state, configuration, file, caret, out = sys.argv[1:8]
 themes = sys.argv[8:]
 here = os.path.dirname(os.path.abspath(__file__))
 logs = os.path.join(state, "logs")
-# How many pictures each theme's run takes, a second apart, from which the scene's is chosen.
-FRAMES = 6
+# How many pictures each theme's run takes, from which the scene's is chosen, and how far apart, in seconds: the player
+# dies within seconds of the game's start, so they begin as it draws.
+FRAMES = 12
+APART = 0.3
 # What the IDE's log says once the game's layer is shown in the Game window (GamePane.Layer.cs).
 DRAWN = "layer shared through context"
 
@@ -42,6 +44,11 @@ def window(pid, *arguments):
     return done.stdout.strip() if done.returncode == 0 else None
 
 
+def in_front(pid):
+    """Starts bringing the window in front, which takes seconds the game's first ones are not to wait for."""
+    return subprocess.Popen(["swift", os.path.join(here, "window.swift"), "front", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def logged(text):
     for name in os.listdir(logs) if os.path.isdir(logs) else []:
         path = os.path.join(logs, name)
@@ -57,7 +64,7 @@ workspace = os.path.join(state, "workspaces", f"{os.path.basename(folder)}-{hash
 write(os.path.join(workspace, "layout.json"), {"version": 1, "windows": {
     "explorer": {"anchor": "LeftTop", "order": 0, "shown": False},
     "game": {"anchor": "RightTop", "order": 0, "shown": True},
-    "liveTree": {"anchor": "RightBottom", "order": 0, "shown": False}}, "rightWidth": 700})
+    "liveTree": {"anchor": "RightBottom", "order": 0, "shown": False}}, "rightWidth": 480, "bottomHeight": 190})
 write(os.path.join(workspace, "workspace.json"), {"version": 1, "godotEditorOffered": True})
 with open(os.path.join(here, "..", "..", "Directory.Build.props"), encoding="utf-8") as props:
     version = re.search(r"<Version>([^<]+)</Version>", props.read()).group(1)
@@ -73,23 +80,22 @@ for theme in themes:
                                env=dict(os.environ, PASSENGER_SETTINGS=state), stdout=log, stderr=subprocess.STDOUT)
         try:
             shown = None
-            for _ in range(240):
+            for _ in range(1200):
                 if ide.poll() is not None:
                     fail(f"Passenger ended with exit code {ide.returncode} before the game drew (passenger-{theme}.log)")
                 shown = shown or window(ide.pid, "id")
                 if shown and logged(DRAWN):
                     break
-                time.sleep(1)
+                time.sleep(0.2)
             else:
                 fail("the game drew nothing in the Game window within 4 minutes")
-            window(ide.pid, "front")
-            time.sleep(3)
-            shown = window(ide.pid, "id") or shown
+            fronted = in_front(ide.pid)
             for frame in range(FRAMES):
+                time.sleep(APART)
                 picture = f"{out}-{theme}-{frame}.png"
                 subprocess.run(["screencapture", "-x", "-o", "-l", shown, picture], check=True, timeout=60)
                 print(f"game: {picture}", flush=True)
-                time.sleep(1)
+            fronted.wait(timeout=60)
         finally:
             ide.send_signal(signal.SIGTERM)
             try:
