@@ -103,7 +103,7 @@ public static partial class ScopedCss
     [GeneratedRegex(@"<([a-z][a-z0-9]*(?:-[a-z0-9]+)*)(?=[\s/>])", RegexOptions.CultureInvariant)]
     private static partial Regex Tags();
 
-    [GeneratedRegex(@"\b(?<name>class|id)\s*=\s*""(?<value>[^""]*)""", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(?<name>class|id)\s*=\s*(?:""(?<value>[^""]*)""|'(?<value>[^']*)')", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex Attributes();
 
     [GeneratedRegex(@"^-?[A-Za-z_][\w-]*$", RegexOptions.CultureInvariant)]

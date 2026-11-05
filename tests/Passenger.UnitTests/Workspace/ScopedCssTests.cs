@@ -28,6 +28,14 @@ public class ScopedCssTests
     }
 
     [Fact]
+    public void A_class_or_id_is_read_in_either_of_markups_quotes()
+    {
+        (_, IReadOnlyList<string> classes, IReadOnlyList<string> ids) = ScopedCss.Names("<div class='card selected' id='main'></div>\n<p class = \"lead\" id=\"note\" title='it\"s'></p>\n");
+        Assert.Equal(["card", "selected", "lead"], classes);
+        Assert.Equal(["main", "note"], ids);
+    }
+
+    [Fact]
     public void A_scoped_stylesheet_styles_the_component_or_page_it_is_named_for()
     {
         Assert.Equal(Path.Combine("Pages", "Bell.razor"), ScopedCss.MarkupOf(Path.Combine("Pages", "Bell.razor.css")));
