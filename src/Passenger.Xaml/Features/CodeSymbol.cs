@@ -48,13 +48,17 @@ public sealed class CodeSymbol
     /// <summary>The words a XAML file must hold to use it, known without its project's types: its name, a markup
     /// extension's without <c>Extension</c> too, and the property and the commands the MVVM Toolkit makes of a field and a
     /// method. A file holding none of them has no use of it, so its project's C# need not be read to know.</summary>
-    public IReadOnlyList<string> Spellings => kind switch
+    private IReadOnlyList<string> Spellings => kind switch
     {
         'T' => name.EndsWith("Extension", StringComparison.Ordinal) && name.Length > "Extension".Length ? [name, name[..^"Extension".Length]] : [name],
         'F' when ToolkitNames.PropertyOf(name) is { } property => [name, property],
         'M' => [name, ToolkitNames.CommandOf(name), ToolkitNames.CancelCommandOf(name)],
         _ => [name],
     };
+
+    /// <summary>Whether a XAML text may use it, known without its project's types: it holds a spelling, in any letter case, as
+    /// XAML reads an enum's member. A text that does not has no use of it.</summary>
+    public bool MayBeIn(string text) => Spellings.Any(s => text.Contains(s, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The names a XAML file of a project may write it as.</summary>
     public IReadOnlyList<string> NamesIn(TypeSystem types)

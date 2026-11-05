@@ -195,6 +195,17 @@ public sealed class CodeRenameTests
             XamlFiles.Applied(Markup, edits));
     }
 
+    [Theory]
+    [InlineData("F:Shop.Status.Ready", "<views:Card State=\"ready\" />", true)]
+    [InlineData("F:Shop.Status.Ready", "<views:Card State=\"Ready, Done\" />", true)]
+    [InlineData("F:Shop.Status.Ready", "<views:Card State=\"Done\" />", false)]
+    [InlineData("M:Shop.Order.LoadAsync", "{Binding LoadCancelCommand}", true)]
+    [InlineData("M:Shop.Order.OnSave", "{Binding SaveCommand}", true)]
+    public void A_xaml_text_may_use_a_symbol_it_spells_in_any_letter_case_and_no_other(string id, string text, bool expected)
+    {
+        Assert.Equal(expected, Assert.IsType<CodeSymbol>(CodeSymbol.Of(id, null)).MayBeIn(text));
+    }
+
     [Fact]
     public void A_use_that_does_not_spell_the_symbols_name_is_not_respelled()
     {

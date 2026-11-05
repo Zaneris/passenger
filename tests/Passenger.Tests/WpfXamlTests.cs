@@ -325,6 +325,41 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>WPF reads an enum's member in any letter case, so a rename of one in C#, with no XAML of the project read yet,
+    /// reaches a window that spells it otherwise: the project is read for it, and the use takes the new name.</summary>
+    [AvaloniaFact]
+    public void Renaming_an_enum_member_in_csharp_reaches_wpf_xaml_spelling_it_in_another_case_in_a_project_not_read_yet()
+    {
+        string bound = Gallery.Window.Replace("<TextBlock Text=\"{Binding Content, ElementName=Go}\" />",
+            "<TextBlock Text=\"{Binding Content, ElementName=Go}\" />\n        <vm:Lamp State=\"ready\" />", StringComparison.Ordinal);
+        app.Rewrite("MainWindow.xaml", bound);
+        app.Write([("ViewModels/Lamp.cs", """
+            using System.Windows.Controls;
+
+            namespace Gallery.ViewModels;
+
+            public enum Phase
+            {
+                Ready,
+                Done,
+            }
+
+            public class Lamp : Control
+            {
+                public Phase State { get; set; }
+            }
+
+            """)]);
+        string view = app.PathOf("MainWindow.xaml");
+        MainWindow window = app.Open(app.PathOf("ViewModels/Lamp.cs"));
+
+        XamlTests.RenameInCode(window, "    Rea", "Waiting");
+
+        string renamed = bound.Replace("State=\"ready\"", "State=\"Waiting\"", StringComparison.Ordinal);
+        Ui.WaitFor(() => File.ReadAllText(view) == renamed, () => $"the window's use of the enum's member to follow its rename ({window.Status}):\n{File.ReadAllText(view)}");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void An_elements_x_name_renames_with_its_code_behinds_uses_and_go_to_declaration_from_the_code_lands_on_it()
     {

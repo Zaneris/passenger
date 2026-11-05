@@ -574,7 +574,7 @@ public sealed class XamlService : IDisposable
     }
 
     /// <summary>The projects given whose XAML has been read, each read first where no open file has had it read and its
-    /// folders hold XAML (that writes one of <paramref name="naming"/>'s spellings, where given, as no other can use it:
+    /// folders hold XAML (that may use <paramref name="naming"/>, where given, as no other can:
     /// reading a project's XAML reads every C# file of it), with the C# typed in that they have yet to read taken in; none
     /// once the service has ended.</summary>
     private async Task<IReadOnlyList<XamlProject>> ReadAsync(IEnumerable<string> projectFiles, CodeSymbol? naming = null)
@@ -588,13 +588,12 @@ public sealed class XamlService : IDisposable
         List<string> unread = [.. given.Where(p => !projects.ContainsKey(p) && !withoutXaml.Contains(p))];
         int came = xamlMayHaveCome;
         Func<string, TextSnapshot?> open = OpenSnapshots();
-        IReadOnlyList<string> spellings = naming?.Spellings ?? [];
         HashSet<string> named = new(PathNames.Comparer);
         HashSet<string> holding = await BackgroundWork.Run(() => unread.Where(p =>
         {
             (bool holds, int walked) = XamlProjectBuilder.HoldsXaml(p);
             Interlocked.Add(ref filesWalked, walked);
-            if (holds && (naming is null || XamlProjectBuilder.XamlHolds(p, spellings, f => open(f)?.ToString())))
+            if (holds && (naming is null || XamlProjectBuilder.XamlHolds(p, naming, f => open(f)?.ToString())))
             {
                 lock (named)
                 {
