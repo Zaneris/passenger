@@ -263,6 +263,69 @@ public sealed class OpenApiTests
         Assert.Equal("""{"at":"2000-01-01T00:00:00Z","state":"new","qty":3,"next":null}""", OpenApiSchemas.Sample(given, order.RootElement)!.ToJsonString());
     }
 
+    /// <summary>A request never sends what a server sets: a member marked readOnly stays out of a body, however the schema
+    /// marks it, on the member, through its $ref, beside it (3.1), in its allOf or in a part beside the one that declares it,
+    /// at any depth, an array's items and an example the schema gives too, required or not.</summary>
+    [Fact]
+    public void A_body_made_from_a_schema_leaves_out_what_its_schema_marks_read_only_wherever_it_marks_it()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse("""
+            { "openapi": "3.1.1", "paths": {}, "components": { "schemas": {
+              "Text": { "type": "string" },
+              "Stamp": { "type": "string", "readOnly": true },
+              "OnMember": { "type": "object", "required": [ "id" ], "properties": { "id": { "type": "integer", "readOnly": true }, "name": { "type": "string" } } },
+              "ThroughReference": { "type": "object", "properties": { "at": { "$ref": "#/components/schemas/Stamp" }, "name": { "type": "string" } } },
+              "BesideReference": { "type": "object", "properties": { "at": { "$ref": "#/components/schemas/Text", "readOnly": true }, "name": { "type": "string" } } },
+              "InMembersAllOf": { "type": "object", "properties": { "at": { "allOf": [ { "$ref": "#/components/schemas/Text" }, { "readOnly": true } ] }, "name": { "type": "string" } } },
+              "Base": { "type": "object", "properties": { "id": { "type": "integer", "readOnly": true }, "name": { "type": "string" } } },
+              "InParts": { "allOf": [ { "$ref": "#/components/schemas/Base" }, { "properties": { "note": { "type": "string" } } } ] },
+              "Plain": { "type": "object", "properties": { "id": { "type": "integer" }, "name": { "type": "string" } } },
+              "BesidePart": { "allOf": [ { "$ref": "#/components/schemas/Plain" }, { "properties": { "id": { "readOnly": true } } } ] },
+              "Nested": { "type": "object", "properties": { "owner": { "$ref": "#/components/schemas/OnMember" }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/InParts" } } } },
+              "WithExample": { "type": "object", "example": { "id": 7, "name": "tea", "owner": { "id": 8, "name": "ann" }, "items": [ { "id": 9, "name": "cup" } ] },
+                "properties": { "id": { "type": "integer", "readOnly": true }, "name": { "type": "string" }, "owner": { "$ref": "#/components/schemas/OnMember" },
+                  "items": { "type": "array", "items": { "$ref": "#/components/schemas/OnMember" } } } },
+              "Chosen": { "oneOf": [ { "$ref": "#/components/schemas/Plain" }, { "$ref": "#/components/schemas/OnMember" } ] },
+              "ChosenAlone": { "oneOf": [ { "$ref": "#/components/schemas/OnMember" }, { "$ref": "#/components/schemas/Plain" } ] } } } }
+            """)!;
+        string Sampled(string schema)
+        {
+            using JsonDocument held = JsonDocument.Parse($$"""{ "$ref": "#/components/schemas/{{schema}}" }""");
+            return OpenApiSchemas.Sample(given, held.RootElement)!.ToJsonString();
+        }
+        Assert.Equal("""{"name":"string"}""", Sampled("OnMember"));
+        Assert.Equal("""{"name":"string"}""", Sampled("ThroughReference"));
+        Assert.Equal("""{"name":"string"}""", Sampled("BesideReference"));
+        Assert.Equal("""{"name":"string"}""", Sampled("InMembersAllOf"));
+        Assert.Equal("""{"name":"string","note":"string"}""", Sampled("InParts"));
+        Assert.Equal("""{"name":"string"}""", Sampled("BesidePart"));
+        Assert.Equal("""{"owner":{"name":"string"},"items":[{"name":"string","note":"string"}]}""", Sampled("Nested"));
+        Assert.Equal("""{"name":"tea","owner":{"name":"ann"},"items":[{"name":"cup"}]}""", Sampled("WithExample"));
+        // What is read-only in an option the body did not take stays: it holds of that option's bodies alone.
+        Assert.Equal("""{"id":0,"name":"string"}""", Sampled("Chosen"));
+        Assert.Equal("""{"name":"string"}""", Sampled("ChosenAlone"));
+    }
+
+    /// <summary>A form's and a multipart body's fields are made from a schema too, so what a server sets is no field of either.</summary>
+    [Fact]
+    public void A_form_or_multipart_request_written_for_an_operation_has_no_field_its_schema_marks_read_only()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse("""
+            { "openapi": "3.1.1", "paths": { "/forms": { "post": { "operationId": "Form", "requestBody": { "content": { "application/x-www-form-urlencoded": { "schema": { "$ref": "#/components/schemas/Upload" } } } },
+                "responses": { "204": { "description": "None" } } } },
+              "/files": { "post": { "operationId": "File", "requestBody": { "content": { "multipart/form-data": { "schema": { "$ref": "#/components/schemas/Derived" } } } },
+                "responses": { "204": { "description": "None" } } } } },
+              "components": { "schemas": {
+                "Upload": { "type": "object", "properties": { "id": { "type": "integer", "readOnly": true }, "title": { "type": "string" } } },
+                "Derived": { "allOf": [ { "$ref": "#/components/schemas/Upload" } ] } } } }
+            """)!;
+        string written = OpenApiRequests.Entries(given, given.Operations, string.Empty, "host", null);
+        Assert.Contains("title=string\n", written, StringComparison.Ordinal);
+        Assert.Contains("name=\"title\"", written, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=", written, StringComparison.Ordinal);
+        Assert.DoesNotContain("name=\"id\"", written, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void An_openapi_3_0_nullable_member_takes_null_and_a_closed_object_refuses_members_it_does_not_have()
     {

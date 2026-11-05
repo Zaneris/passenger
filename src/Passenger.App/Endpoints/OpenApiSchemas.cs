@@ -16,11 +16,11 @@ public sealed record SchemaBreak(string At, string Said)
 }
 
 /// <summary>An OpenAPI document's schemas put to use: a response's value held to one, each place it breaks it said
-/// (<see cref="Check"/>), and a value made from one for a request's body (<see cref="Sample"/>). The parts read are those a
-/// response's body is checked by: types (with 3.0's <c>nullable</c> and 3.1's lists), <c>enum</c>, a string's <c>pattern</c>,
-/// an object's <c>required</c>, which a <c>writeOnly</c> member keeps to requests, <c>properties</c> and
-/// <c>additionalProperties</c>, an array's <c>items</c>, and <c>allOf</c>, <c>anyOf</c> and <c>oneOf</c>; the rest (lengths,
-/// bounds, formats) is not checked.</summary>
+/// (<see cref="Check"/>), and a value made from one for a request's body (<see cref="Sample"/>), which a <c>readOnly</c> member
+/// stays out of. The parts read are those a response's body is checked by: types (with 3.0's <c>nullable</c> and 3.1's
+/// lists), <c>enum</c>, a string's <c>pattern</c>, an object's <c>required</c>, which a <c>writeOnly</c> member keeps to
+/// requests, <c>properties</c> and <c>additionalProperties</c>, an array's <c>items</c>, and <c>allOf</c>, <c>anyOf</c> and
+/// <c>oneOf</c>; the rest (lengths, bounds, formats) is not checked.</summary>
 public static class OpenApiSchemas
 {
     /// <summary>How deep into a value a check goes.</summary>
@@ -137,7 +137,7 @@ public static class OpenApiSchemas
             bool kept = true;
             foreach (string required in JsonMembers.Texts(schema, "required"))
             {
-                if (JsonMembers.Value(value, required) is null && !WriteOnly(whole, required))
+                if (JsonMembers.Value(value, required) is null && !Marked(document, whole, required, "writeOnly", everyOption: true))
                 {
                     kept = Broken(breaks, $"{at}/{Escaped(required)}", "is missing, though its schema requires it");
                     if (breaks is null)
@@ -163,35 +163,6 @@ public static class OpenApiSchemas
                 kept &= held;
             }
             return kept;
-        }
-
-        /// <summary>Whether any schema of those held over an object marks a member write-only, which is never in a
-        /// response.</summary>
-        private bool WriteOnly(JsonElement whole, string name) =>
-            Joined(whole).Any(schema => JsonMembers.Value(JsonMembers.Object(schema, "properties"), name) is { } member
-                && Joined(member).Any(part => JsonMembers.Bool(part, "writeOnly") == true));
-
-        /// <summary>A schema and those held over the same value with it: what its <c>$ref</c> names, beside which 3.1 may write
-        /// more, and its <c>allOf</c>'s, <c>anyOf</c>'s and <c>oneOf</c>'s, each reference followed once.</summary>
-        private IEnumerable<JsonElement> Joined(JsonElement written)
-        {
-            HashSet<string> followed = [];
-            Stack<JsonElement> waiting = new([written]);
-            while (waiting.TryPop(out JsonElement schema))
-            {
-                if (JsonMembers.Text(schema, "$ref") is { } reference && followed.Add(reference) && document.Resolve(schema) is var named && !Same(named, schema))
-                {
-                    waiting.Push(named);
-                }
-                yield return schema;
-                foreach (string joining in (string[])["allOf", "anyOf", "oneOf"])
-                {
-                    foreach (JsonElement part in JsonMembers.Items(schema, joining))
-                    {
-                        waiting.Push(part);
-                    }
-                }
-            }
         }
 
         /// <summary>What a choice says of a value that keeps to none of its options, or to more than one of a
@@ -235,9 +206,6 @@ public static class OpenApiSchemas
             return (schema, JsonMembers.Text(written, "$ref") is { } reference && !Same(schema, written) ? reference : place);
         }
 
-        private static bool Same(JsonElement one, JsonElement other) =>
-            JsonMarshal.GetRawUtf8Value(one).Overlaps(JsonMarshal.GetRawUtf8Value(other), out int offset) && offset == 0;
-
         /// <summary>An option as a break names it: the schema its <c>$ref</c> names, else its place in the list.</summary>
         private static string Option(IReadOnlyList<JsonElement> options, int option) =>
             JsonMembers.Text(options[option], "$ref") is { } reference
@@ -255,6 +223,40 @@ public static class OpenApiSchemas
 
         private static string Numbered(int number) => number.ToString(CultureInfo.InvariantCulture);
     }
+
+    private static bool Same(JsonElement one, JsonElement other) =>
+        JsonMarshal.GetRawUtf8Value(one).Overlaps(JsonMarshal.GetRawUtf8Value(other), out int offset) && offset == 0;
+
+    /// <summary>A schema and those held over the same value with it: what its <c>$ref</c> names, beside which 3.1 may write
+    /// more, its <c>allOf</c>'s, and its <c>anyOf</c>'s and <c>oneOf</c>'s, each option or, without
+    /// <paramref name="everyOption"/>, the first alone, which a body is made of; each reference followed once.</summary>
+    private static IEnumerable<JsonElement> Joined(OpenApiDocument document, JsonElement written, bool everyOption)
+    {
+        HashSet<string> followed = [];
+        Stack<JsonElement> waiting = new([written]);
+        while (waiting.TryPop(out JsonElement schema))
+        {
+            if (JsonMembers.Text(schema, "$ref") is { } reference && followed.Add(reference) && document.Resolve(schema) is var named && !Same(named, schema))
+            {
+                waiting.Push(named);
+            }
+            yield return schema;
+            foreach (string joining in (string[])["allOf", "anyOf", "oneOf"])
+            {
+                foreach (JsonElement part in JsonMembers.Items(schema, joining).Take(everyOption || joining == "allOf" ? int.MaxValue : 1))
+                {
+                    waiting.Push(part);
+                }
+            }
+        }
+    }
+
+    /// <summary>Whether any schema of those held over an object marks a member so (<c>readOnly</c>, <c>writeOnly</c>): the mark
+    /// holds wherever it is written, on the member, through or beside its <c>$ref</c>, in its <c>allOf</c>, or in a part that
+    /// declares the member again.</summary>
+    private static bool Marked(OpenApiDocument document, JsonElement whole, string name, string mark, bool everyOption) =>
+        Joined(document, whole, everyOption).Any(schema => JsonMembers.Value(JsonMembers.Object(schema, "properties"), name) is { } member
+            && Joined(document, member, everyOption).Any(part => JsonMembers.Bool(part, mark) == true));
 
     /// <summary>The types a schema allows: its <c>type</c>, one or a list, with null where 3.0's <c>nullable</c> says.</summary>
     private static IReadOnlyList<string> TypesOf(JsonElement schema)
@@ -325,8 +327,50 @@ public static class OpenApiSchemas
 
     /// <summary>A value made from a schema, as a request's body starts: its example or default where it gives one, else its
     /// first enum value, else of its first type (an object's every member, an array of one item, a string by its format,
-    /// 0, false); null where the schema says nothing of what it is.</summary>
-    public static JsonNode? Sample(OpenApiDocument document, JsonElement schema) => Make(document, schema, 0, []);
+    /// 0, false), what a request does not send left out at every depth (<see cref="LeftOut"/>); null where the schema says
+    /// nothing of what it is.</summary>
+    public static JsonNode? Sample(OpenApiDocument document, JsonElement schema)
+    {
+        JsonNode? made = Make(document, schema, 0, []);
+        Sendable(document, schema, made);
+        return made;
+    }
+
+    /// <summary>Whether a request leaves a member of an object out: any schema held over the object marks it read-only, which
+    /// the server sets, required or not. Of a choice, the first option's marks hold, as the first is what a body is made of.</summary>
+    public static bool LeftOut(OpenApiDocument document, JsonElement whole, string name) => Marked(document, whole, name, "readOnly", everyOption: false);
+
+    /// <summary>A value made from a schema with what a request leaves out taken from it, its members' and items' too.</summary>
+    private static void Sendable(OpenApiDocument document, JsonElement schema, JsonNode? made)
+    {
+        IEnumerable<JsonElement> over = Joined(document, schema, everyOption: false);
+        switch (made)
+        {
+            case JsonObject members:
+                foreach ((string name, JsonNode? member) in members.ToList())
+                {
+                    if (LeftOut(document, schema, name))
+                    {
+                        members.Remove(name);
+                        continue;
+                    }
+                    foreach (JsonElement beneath in over.Select(s => JsonMembers.Value(JsonMembers.Object(s, "properties"), name) ?? JsonMembers.Object(s, "additionalProperties")).OfType<JsonElement>())
+                    {
+                        Sendable(document, beneath, member);
+                    }
+                }
+                break;
+            case JsonArray items:
+                foreach (JsonElement beneath in over.Select(s => JsonMembers.Object(s, "items")).OfType<JsonElement>())
+                {
+                    foreach (JsonNode? item in items)
+                    {
+                        Sendable(document, beneath, item);
+                    }
+                }
+                break;
+        }
+    }
 
     /// <summary>A sample as an .http body or a dialog's: indented JSON.</summary>
     public static string SampleText(OpenApiDocument document, JsonElement schema) =>
@@ -491,7 +535,7 @@ public static partial class OpenApiRequests
             else if (operation.MultipartSchema is { } multipart)
             {
                 written.Append("Content-Type: multipart/form-data; boundary=").Append(Boundary).Append("\n\n");
-                foreach ((string name, JsonElement field) in Fields(document, multipart))
+                foreach ((string name, JsonElement field) in Fields(document, multipart).Where(f => !OpenApiSchemas.LeftOut(document, multipart, f.Name)))
                 {
                     written.Append("--").Append(Boundary).Append('\n');
                     if (IsFile(document, field))
