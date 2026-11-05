@@ -9,11 +9,12 @@ using Passenger.Text;
 namespace Passenger.App.Editors;
 
 /// <summary>An HTML file's page beside its editor, a group's own, in the system's own web view (WebView2, WKWebView,
-/// WebKitGTK): given the text as the editor has it, its relative addresses read from the file's folder, and given it
-/// again as typing pauses, at the place it was scrolled to (<see cref="PagePlace"/>). The web view keeps nothing between
-/// runs (its data under the state's cache, private). A link followed in it opens where Passenger opens one, a web page in
-/// the browser and a file in the editor, the page itself staying. A Linux without WebKitGTK 4.1 says so in the page's
-/// place; a window nobody sees is given the page with no web view to show it.</summary>
+/// WebKitGTK): given the text as the editor has it, its relative addresses read from the file's folder (on Windows served
+/// from it, <see cref="ServedPage"/>), and given it again as typing pauses, at the place it was scrolled to
+/// (<see cref="PagePlace"/>). The web view keeps nothing between runs (its data under the state's cache, private). A link
+/// followed in it opens where Passenger opens one, a web page in the browser and a file in the editor, the page itself
+/// staying. A Linux without WebKitGTK 4.1 says so in the page's place; a window nobody sees is given the page with no web
+/// view to show it.</summary>
 public sealed class HtmlPreview : Panel
 {
     /// <summary>How long typing pauses before the page is given the text again.</summary>
@@ -29,6 +30,13 @@ public sealed class HtmlPreview : Panel
     private readonly TextBlock said = new() { Classes = { StyleClasses.EmptyText }, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
     private NativeWebView? view;
     private OpenDocument? document;
+
+    /// <summary>On Windows, what answers the web view's requests of the page and its folder; null elsewhere, before the
+    /// web view is ready, and where WebView2 refused.</summary>
+    private WebView2Pages? served;
+
+    /// <summary>The page last served, whose addresses name its folder's files.</summary>
+    private ServedPage? serving;
 
     /// <summary>The address the page was last given as its own, which its own load may navigate to.</summary>
     private Uri? loading;
@@ -136,7 +144,55 @@ public sealed class HtmlPreview : Panel
         }
         held = shown;
         landing = true;
-        web.NavigateToString(page.Html, page.Base);
+        Navigate(web, shown.Path, page);
+    }
+
+    /// <summary>The web view given the page: as text with its folder for its relative addresses, or on Windows, whose
+    /// WebView2 reads no folder for a text, served from its folder at an address of Passenger's own. There nothing is given
+    /// before the web view is ready, which gives the page as it comes (<see cref="OnAdapter"/>).</summary>
+    private void Navigate(NativeWebView web, string path, (string Html, Uri Base) page)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            web.NavigateToString(page.Html, page.Base);
+        }
+        else if (served is { } pages)
+        {
+            ServedPage next = new(path, page.Html, area.Root());
+            pages.Serve(next);
+            serving = next;
+            web.Navigate(next.Address);
+        }
+        else if (web.TryGetPlatformHandle() is not null)
+        {
+            web.NavigateToString(page.Html, page.Base);
+        }
+    }
+
+    /// <summary>A web view ready, again once shown again: its WebView2 is asked to serve the page, which is given now, as
+    /// the new web view holds no page yet.</summary>
+    private void OnAdapter(object? sender, WebViewAdapterEventArgs e)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        served?.Dispose();
+        served = e.TryGetPlatformHandle() is IWindowsWebView2PlatformHandle handle ? WebView2Pages.Over(handle) : null;
+        held = null;
+        if (document is not null)
+        {
+            IdeErrors.Observe(GiveAsync());
+        }
+    }
+
+    private void OnAdapterGone(object? sender, WebViewAdapterEventArgs e)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            served?.Dispose();
+            served = null;
+        }
     }
 
     /// <summary>Where the page in the web view is scrolled to; null where the web view cannot say.</summary>
@@ -197,6 +253,11 @@ public sealed class HtmlPreview : Panel
             e.Handled = true;
             Follow(e.Request);
         };
+        if (OperatingSystem.IsWindows())
+        {
+            view.AdapterCreated += OnAdapter;
+            view.AdapterDestroyed += OnAdapterGone;
+        }
         Children.Add(view);
         return view;
     }
@@ -205,7 +266,7 @@ public sealed class HtmlPreview : Panel
     private void OnNavigating(object? sender, WebViewNavigationStartingEventArgs e)
     {
         if (e.Request is not { } to || to.Scheme is "about" or "data" || !to.IsAbsoluteUri || loading is { } own && SamePage(to, own)
-            || Given is { } given && SamePage(to, given.Base))
+            || Given is { } given && SamePage(to, given.Base) || serving is { } page && SamePage(to, page.Address))
         {
             return;
         }
@@ -216,14 +277,26 @@ public sealed class HtmlPreview : Panel
     private static bool SamePage(Uri to, Uri page) =>
         to.IsFile == page.IsFile && string.Equals(to.GetLeftPart(UriPartial.Path), page.GetLeftPart(UriPartial.Path), StringComparison.Ordinal);
 
-    /// <summary>A link followed: a web page in the browser, a file of the disk in the editor.</summary>
+    /// <summary>A link followed: a web page in the browser, a file of the disk or of the served page's folder in the
+    /// editor.</summary>
     private void Follow(Uri? to)
     {
-        if (to is { Scheme: "http" or "https" })
+        if (to is not { IsAbsoluteUri: true })
+        {
+            return;
+        }
+        if (string.Equals(to.Host, ServedPage.Host, StringComparison.OrdinalIgnoreCase))
+        {
+            if (serving?.FileOf(to) is { } file)
+            {
+                area.OpenLinked(file);
+            }
+        }
+        else if (to.Scheme is "http" or "https")
         {
             area.Browse(to);
         }
-        else if (to is { IsFile: true })
+        else if (to.IsFile)
         {
             area.OpenLinked(to.LocalPath);
         }
