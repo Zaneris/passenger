@@ -18,8 +18,9 @@ namespace Passenger.Tests;
 /// before, its link's integrity checked; a package's static web asset under <c>_content/Kit/</c>, or under its own base
 /// path, read from the package folder its restore resolved, and a referenced library's under the base path it sets; the component's own scoped stylesheet, a parent's ::deep
 /// classes in its child; the host page's style block and a link under its base href; an HTML file's; a class's rules on
-/// the hover card and Go to Declaration to its rule, read-only; and a class no stylesheet defines marked, quietly, once
-/// every stylesheet linked was read. On a Blazor app made by <c>dotnet new blazor</c>, its warm server shared.</summary>
+/// the hover card and Go to Declaration to its rule, read-only; a class no stylesheet defines marked, quietly, once every
+/// stylesheet linked was read; and what a page's stylesheets could not give said, never called complete. On a Blazor app
+/// made by <c>dotnet new blazor</c>, its warm server shared.</summary>
 public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
 {
     private readonly StyledShop app;
@@ -186,6 +187,44 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void A_stylesheet_is_downloaded_again_once_its_link_gives_another_integrity_and_what_is_not_that_integrity_is_kept_nowhere()
+    {
+        NoCopies();
+        app.Latest = StyledShop.LatestBefore;
+        MainWindow window = OpenAllowingDownloads();
+        Assert.Contains("from-before", Classes(window, "latest-before.html").Classes.Keys);
+
+        app.Latest = StyledShop.LatestAfter;
+        PageClasses after = Classes(window, "latest-after.html");
+        Assert.True(after.Complete, $"The page's new integrity found the copy of the old bytes: {string.Join("; ", after.Unread)}");
+        Assert.Contains("from-after", after.Classes.Keys);
+        Assert.DoesNotContain("from-before", after.Classes.Keys);
+
+        int asked = app.LatestFetched;
+        PageClasses ahead = Classes(window, "latest-ahead.html");
+        Assert.False(ahead.Complete, "A page's integrity no bytes the CDN serves meet gave a stylesheet all the same");
+        Assert.Contains("integrity", Assert.Single(ahead.Unread), StringComparison.Ordinal);
+        Classes(window, "latest-ahead.html");
+        Assert.Equal(asked + 1, app.LatestFetched);
+        window.Close();
+
+        MainWindow again = OpenAllowingDownloads();
+        Assert.Contains("from-after", Classes(again, "latest-after.html").Classes.Keys);
+        Assert.Equal(asked + 1, app.LatestFetched);
+        again.Close();
+    }
+
+    private MainWindow OpenAllowingDownloads() => app.Open(null, before: w => w.ApplySettings(w.Settings with { DownloadStylesheets = true }), languageServer: false);
+
+    /// <summary>The classes a page of the library's wwwroot links, once its evaluation says it serves that folder.</summary>
+    private PageClasses Classes(MainWindow window, string page)
+    {
+        Ui.WaitFor(() => window.Projects.Any(p => p.Name == "Gear" && p.IsWeb), "the library's evaluation, which says it serves its wwwroot");
+        string path = PathNames.Canonical(app.PathOf(Path.Combine("Gear", "wwwroot", page)));
+        return Ui.Landed(window.Session.Stylesheets.ClassesAsync(path, CancellationToken.None), $"the classes {page} links");
+    }
+
     /// <summary>No copy of a stylesheet on the web is kept: one another test downloaded would be used without asking the CDN.</summary>
     private static void NoCopies()
     {
@@ -207,11 +246,18 @@ public sealed class StyledShop : SharedProject
     public const string Bootstrap = ".btn{display:inline-block;padding:.375rem .75rem}.btn-primary{color:#fff;background-color:#0d6efd}"
         + ".btn-outline-secondary{color:#6c757d;border-color:#6c757d}@media (min-width:768px){.col-md-6{width:50%}}";
 
+    /// <summary>What the stand-in CDN's latest.css holds at first, and once it moved on.</summary>
+    public const string LatestBefore = ".from-before{color:red}";
+
+    public const string LatestAfter = ".from-after{color:green}";
+
     private const string Component = "@page \"/styled\"\n\n<h1 class=\"halo\">Styled</h1>\n\n<p class=\"\"></p>\n\n"
         + "<button class=\"btn btn-primary\">Go</button>\n<div class=\"btn-primry kit-card gear-spin\"></div>\n";
 
     private readonly StandInHttp cdn;
     private int fetched;
+    private int latestFetched;
+    private volatile string latest = LatestBefore;
 
     public StyledShop()
         : base("styled-")
@@ -224,12 +270,27 @@ public sealed class StyledShop : SharedProject
                 await exchange.ReplyAsync(200, "text/css", Bootstrap);
                 return;
             }
+            if (exchange.Path.EndsWith("/latest.css", StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref latestFetched);
+                await exchange.ReplyAsync(200, "text/css", latest);
+                return;
+            }
             await exchange.ReplyAsync(404, "text/plain", "not here");
         });
     }
 
     /// <summary>How many times the stand-in CDN was asked for its stylesheet.</summary>
     public int Fetched => Volatile.Read(ref fetched);
+
+    /// <summary>How many times the stand-in CDN was asked for latest.css.</summary>
+    public int LatestFetched => Volatile.Read(ref latestFetched);
+
+    /// <summary>What the stand-in CDN serves as latest.css now.</summary>
+    public string Latest
+    {
+        set => latest = value;
+    }
 
     public override async ValueTask InitializeAsync()
     {
@@ -287,12 +348,29 @@ public sealed class StyledShop : SharedProject
             File.WriteAllText(PathOf("Gear/Gear.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk.Razor\">\n  <PropertyGroup>\n"
                 + $"    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <StaticWebAssetBasePath>gear</StaticWebAssetBasePath>\n  </PropertyGroup>\n</Project>\n");
             File.WriteAllText(PathOf("Gear/wwwroot/gear.css"), ".gear-spin {\n    rotate: 90deg;\n}\n");
+            WritePages();
             string project = await File.ReadAllTextAsync(PathOf("Shop.csproj"));
             File.WriteAllText(PathOf("Shop.csproj"), project.Replace("</Project>", "  <ItemGroup>\n    <PackageReference Include=\"Kit\" Version=\"1.0.0\" />\n    <PackageReference Include=\"Lamp\" Version=\"1.0.0\" />\n"
                 + "    <ProjectReference Include=\"Gear/Gear.csproj\" />\n  </ItemGroup>\n\n  <PropertyGroup>\n    <DefaultItemExcludes>$(DefaultItemExcludes);Gear/**</DefaultItemExcludes>\n  </PropertyGroup>\n\n</Project>", StringComparison.Ordinal));
             Directory.CreateDirectory(PathOf("bin"));
         }, Folder);
         await PrepareAsync();
+    }
+
+    /// <summary>The library's pages, each what one way of naming a stylesheet needs. They are the library's, as the app's
+    /// Razor files take the app's pages alone: what they leave unread leaves the app's complete.</summary>
+    private void WritePages()
+    {
+        void Write(string name, string text)
+        {
+            string path = PathOf($"Gear/wwwroot/{name}");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, text);
+        }
+        string LinkOf(string text) => $"<link rel=\"stylesheet\" href=\"{cdn.Root}/latest.css\" integrity=\"sha384-{Convert.ToBase64String(SHA384.HashData(Encoding.UTF8.GetBytes(text)))}\" />\n";
+        Write("latest-before.html", LinkOf(LatestBefore));
+        Write("latest-after.html", LinkOf(LatestAfter));
+        Write("latest-ahead.html", LinkOf(".from-ahead{color:blue}"));
     }
 
     public override async ValueTask DisposeAsync()
