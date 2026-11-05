@@ -13,7 +13,7 @@ namespace Passenger.App.Godot;
 /// descriptions alone (<see cref="GodotClassReference"/>); and the shading language's table as its compiler takes it
 /// (<see cref="ShaderTableAsync"/>). None where no Godot is found or its dump fails, which leaves GDScript typed by its
 /// own scripts and built-in types alone, its cards without the engine's words, and shaders read by the carried table.</summary>
-internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDictionary<string, string>?> folders)
+public sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDictionary<string, string>?> folders)
 {
     /// <summary>How long a dump may take: Godot's start on a machine's first run, its classes written.</summary>
     private static readonly TimeSpan Dumping = TimeSpan.FromSeconds(60);
@@ -79,32 +79,9 @@ internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDicti
     private async Task<GodotClassReference?> LoadReferenceAsync(GodotFound found, string key)
     {
         string kept = Path.Combine(ReferenceFolder, $"{key}.json");
-        if (!File.Exists(kept))
+        if (!File.Exists(kept) && !await InOwnFolderAsync(ReferenceFolder, working => DumpReferenceAsync(found, kept, working)))
         {
-            string working = Path.Combine(ReferenceFolder, "dumping-" + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            Directory.CreateDirectory(working);
-            ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--dump-extension-api-with-docs"], working);
-            foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
-            {
-                start.Environment[name] = value;
-            }
-            ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
-            string dumped = Path.Combine(working, "extension_api.json");
-            if (!File.Exists(dumped))
-            {
-                IdeErrors.Write($"Godot ({found.Executable}) wrote no extension_api.json with its documentation: {ExitCodes.Said(result.ExitCode)}");
-                return null;
-            }
-            try
-            {
-                AtomicFile.Write(kept, GodotClassReference.Reduce(await File.ReadAllBytesAsync(dumped)));
-            }
-            catch (System.Text.Json.JsonException e)
-            {
-                IdeErrors.Write($"Godot's API with its documentation from {found.Executable} could not be read: {e.Message}");
-                return null;
-            }
-            Directory.Delete(working, recursive: true);
+            return null;
         }
         try
         {
@@ -114,6 +91,56 @@ internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDicti
         {
             IdeErrors.Write($"Godot's class reference kept at {kept} could not be read: {e.Message}");
             return null;
+        }
+    }
+
+    /// <summary>Godot's dump with its documentation written into <paramref name="working"/>, kept as its descriptions alone.</summary>
+    private async Task<bool> DumpReferenceAsync(GodotFound found, string kept, string working)
+    {
+        ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--dump-extension-api-with-docs"], working);
+        foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
+        {
+            start.Environment[name] = value;
+        }
+        ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
+        string dumped = Path.Combine(working, "extension_api.json");
+        if (!File.Exists(dumped))
+        {
+            IdeErrors.Write($"Godot ({found.Executable}) wrote no extension_api.json with its documentation: {ExitCodes.Said(result.ExitCode)}");
+            return false;
+        }
+        try
+        {
+            AtomicFile.Write(kept, GodotClassReference.Reduce(await File.ReadAllBytesAsync(dumped)));
+        }
+        catch (System.Text.Json.JsonException e)
+        {
+            IdeErrors.Write($"Godot's API with its documentation from {found.Executable} could not be read: {e.Message}");
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>A reading of a Godot's, run in a folder made for it alone under <paramref name="under"/>, gone however it ended:
+    /// Godots of two versions may be read at one moment, each writing the same names there.</summary>
+    private static async Task<T> InOwnFolderAsync<T>(string under, Func<string, Task<T>> read)
+    {
+        string working = Path.Combine(under, $"reading-{Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)}-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(working);
+        try
+        {
+            return await read(working);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(working, recursive: true);
+            }
+            catch (Exception left) when (left is IOException or UnauthorizedAccessException)
+            {
+                IdeErrors.Write($"A reading of Godot left {working} behind: {left.Message}");
+            }
         }
     }
 
@@ -156,26 +183,9 @@ internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDicti
     private async Task<GodotClassDefaults?> LoadClassesAsync(GodotFound found, string key)
     {
         string kept = Path.Combine(ClassesFolder, $"{key}.json");
-        if (!File.Exists(kept))
+        if (!File.Exists(kept) && !await InOwnFolderAsync(ClassesFolder, working => ReadClassesAsync(found, kept, working)))
         {
-            string working = Path.Combine(ClassesFolder, "reading-" + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            Directory.CreateDirectory(working);
-            AtomicFile.Write(Path.Combine(working, "project.godot"), "config_version=5\n"u8.ToArray());
-            AtomicFile.Write(Path.Combine(working, "PassengerClasses.gd"), ClassesScript.Value);
-            string written = Path.Combine(working, "classes.json");
-            ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--path", working, "--script", "res://PassengerClasses.gd", "--", written], working);
-            foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
-            {
-                start.Environment[name] = value;
-            }
-            ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
-            if (!File.Exists(written))
-            {
-                IdeErrors.Write($"Godot ({found.Executable}) wrote no reading of its classes: {ExitCodes.Said(result.ExitCode)}");
-                return null;
-            }
-            AtomicFile.Write(kept, await File.ReadAllBytesAsync(written));
-            Directory.Delete(working, recursive: true);
+            return null;
         }
         try
         {
@@ -186,6 +196,27 @@ internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDicti
             IdeErrors.Write($"Godot's classes kept at {kept} could not be read: {e.Message}");
             return null;
         }
+    }
+
+    /// <summary>Godot's reading of its classes, its script run on an empty project in <paramref name="working"/>, kept.</summary>
+    private async Task<bool> ReadClassesAsync(GodotFound found, string kept, string working)
+    {
+        AtomicFile.Write(Path.Combine(working, "project.godot"), "config_version=5\n"u8.ToArray());
+        AtomicFile.Write(Path.Combine(working, "PassengerClasses.gd"), ClassesScript.Value);
+        string written = Path.Combine(working, "classes.json");
+        ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--path", working, "--script", "res://PassengerClasses.gd", "--", written], working);
+        foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
+        {
+            start.Environment[name] = value;
+        }
+        ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
+        if (!File.Exists(written))
+        {
+            IdeErrors.Write($"Godot ({found.Executable}) wrote no reading of its classes: {ExitCodes.Said(result.ExitCode)}");
+            return false;
+        }
+        AtomicFile.Write(kept, await File.ReadAllBytesAsync(written));
+        return true;
     }
 
     private static string ShaderFolder => Path.Combine(State.StateStore.DefaultRoot, "cache", "godot", "shader-built-ins");
@@ -241,40 +272,9 @@ internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDicti
     {
         GodotShaderTable carried = GodotShaderTable.Carried;
         string kept = Path.Combine(ShaderFolder, $"{key}.json");
-        if (!File.Exists(kept))
+        if (!File.Exists(kept) && !await InOwnFolderAsync(ShaderFolder, working => ProbeShadersAsync(found, carried, kept, working)))
         {
-            string working = Path.Combine(ShaderFolder, "probing-" + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            Directory.CreateDirectory(working);
-            IReadOnlyList<GodotShaderProbe> probes = carried.Probes();
-            AtomicFile.Write(Path.Combine(working, "project.godot"), "config_version=5\n"u8.ToArray());
-            AtomicFile.Write(Path.Combine(working, "PassengerShaderProbes.gd"), ProbesScript.Value);
-            string asked = Path.Combine(working, "probes.json");
-            string refusedAt = Path.Combine(working, "refused.json");
-            AtomicFile.Write(asked, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(probes.Select(p => p.Code).ToArray()));
-            ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--path", working, "--script", "res://PassengerShaderProbes.gd", "--", asked, refusedAt], working);
-            foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
-            {
-                start.Environment[name] = value;
-            }
-            ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
-            if (!File.Exists(refusedAt))
-            {
-                IdeErrors.Write($"Godot ({found.Executable}) wrote no probe of its shading language: {ExitCodes.Said(result.ExitCode)}");
-                return carried;
-            }
-            try
-            {
-                using System.Text.Json.JsonDocument read = System.Text.Json.JsonDocument.Parse(await File.ReadAllBytesAsync(refusedAt));
-                string[] refused = [.. read.RootElement.EnumerateArray().Select(e => e.TryGetInt32(out int index) && index >= 0 && index < probes.Count ? probes[index].Key : null)
-                    .OfType<string>().Order(StringComparer.Ordinal)];
-                AtomicFile.Write(kept, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(refused));
-            }
-            catch (Exception e) when (e is System.Text.Json.JsonException or InvalidOperationException)
-            {
-                IdeErrors.Write($"Godot's probe of its shading language from {found.Executable} could not be read: {e.Message}");
-                return carried;
-            }
-            Directory.Delete(working, recursive: true);
+            return carried;
         }
         try
         {
@@ -288,10 +288,46 @@ internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDicti
         }
     }
 
+    /// <summary>Godot's probe of the carried table, its script run on an empty project in <paramref name="working"/>, what it
+    /// refused kept.</summary>
+    private async Task<bool> ProbeShadersAsync(GodotFound found, GodotShaderTable carried, string kept, string working)
+    {
+        IReadOnlyList<GodotShaderProbe> probes = carried.Probes();
+        AtomicFile.Write(Path.Combine(working, "project.godot"), "config_version=5\n"u8.ToArray());
+        AtomicFile.Write(Path.Combine(working, "PassengerShaderProbes.gd"), ProbesScript.Value);
+        string asked = Path.Combine(working, "probes.json");
+        string refusedAt = Path.Combine(working, "refused.json");
+        AtomicFile.Write(asked, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(probes.Select(p => p.Code).ToArray()));
+        ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--path", working, "--script", "res://PassengerShaderProbes.gd", "--", asked, refusedAt], working);
+        foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
+        {
+            start.Environment[name] = value;
+        }
+        ChildResult result = await ChildProcesses.RunAsync(start, limit: Waits.Of(Dumping));
+        if (!File.Exists(refusedAt))
+        {
+            IdeErrors.Write($"Godot ({found.Executable}) wrote no probe of its shading language: {ExitCodes.Said(result.ExitCode)}");
+            return false;
+        }
+        try
+        {
+            using System.Text.Json.JsonDocument read = System.Text.Json.JsonDocument.Parse(await File.ReadAllBytesAsync(refusedAt));
+            string[] refused = [.. read.RootElement.EnumerateArray().Select(e => e.TryGetInt32(out int index) && index >= 0 && index < probes.Count ? probes[index].Key : null)
+                .OfType<string>().Order(StringComparer.Ordinal)];
+            AtomicFile.Write(kept, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(refused));
+        }
+        catch (Exception e) when (e is System.Text.Json.JsonException or InvalidOperationException)
+        {
+            IdeErrors.Write($"Godot's probe of its shading language from {found.Executable} could not be read: {e.Message}");
+            return false;
+        }
+        return true;
+    }
+
     private async Task<GodotEngineApi?> LoadAsync(GodotFound found, string key)
     {
         string kept = Path.Combine(Folder, $"{key}.json");
-        if (!File.Exists(kept) && !await DumpAsync(found, kept))
+        if (!File.Exists(kept) && !await InOwnFolderAsync(Folder, working => DumpAsync(found, kept, working)))
         {
             return null;
         }
@@ -306,11 +342,9 @@ internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDicti
         }
     }
 
-    /// <summary>Godot's dump written into a folder of its own, then moved into the cache.</summary>
-    private async Task<bool> DumpAsync(GodotFound found, string kept)
+    /// <summary>Godot's dump written into <paramref name="working"/>, then moved into the cache.</summary>
+    private async Task<bool> DumpAsync(GodotFound found, string kept, string working)
     {
-        string working = Path.Combine(Folder, "dumping-" + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        Directory.CreateDirectory(working);
         ProcessStartInfo start = ChildProcesses.Command(found.Executable, [GodotExecutables.Headless, "--dump-extension-api"], working);
         foreach ((string name, string value) in folders() ?? GodotUserFolders.Under(Path.Combine(Folder, "home")))
         {
@@ -324,7 +358,6 @@ internal sealed class GodotEngineApis(Func<string?> setting, Func<IReadOnlyDicti
             return false;
         }
         AtomicFile.Write(kept, await File.ReadAllBytesAsync(dumped));
-        Directory.Delete(working, recursive: true);
         IdeErrors.Write($"Godot's API for GDScript's types dumped from {found.Executable} into {kept}");
         return true;
     }
