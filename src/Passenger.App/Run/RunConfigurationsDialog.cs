@@ -111,7 +111,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             TextBlock name = new();
             return name.Showing<object>(item => name.Text = item is ProjectModel p ? p.Name : item.ToString());
         });
-        GodotBox = new ComboBox { Classes = { StyleClasses.Form }, ItemsSource = GodotStarts, Name = "GodotBox" };
+        GodotBox = new ComboBox { Classes = { StyleClasses.Form }, ItemsSource = godotStartItems, Name = "GodotBox" };
         SceneBox = new ComboBox { Classes = { StyleClasses.Form }, ItemsSource = SceneStarts, Name = "SceneBox" };
         CopiesBox = new NumericUpDown { Minimum = 1, Maximum = GameCopies.Most, Increment = 1, FormatString = "0", Width = 140, Name = "CopiesBox" };
         ToolTip.SetTip(CopiesBox, "How many copies of the game a launch starts side by side (a server and its clients), each a run of its own with its own console: "
@@ -417,6 +417,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
 
     /// <summary>The choices of <see cref="GodotBox"/>, the game's first.</summary>
     public static readonly string[] GodotStarts = ["The game", "Godot's editor on the project", "The game, in Godot's editor", "The game, in Passenger's Game window"];
+
+    private readonly ComboBoxItem[] godotStartItems = [.. GodotStarts.Select(start => new ComboBoxItem { Content = start })];
 
     /// <summary>The scene a Godot project's game starts in: its main scene, or the one open in the editor as it starts.</summary>
     public ComboBox SceneBox { get; }
@@ -1084,11 +1086,17 @@ public sealed class RunConfigurationsDialog : IdeWindow
             note.Text = NoteOn(shown, project, shown.WhyNotHere(projects));
             note.IsVisible = note.Text.Length > 0;
             // What makes a generated one the one it is, its link to its source, changes only in a copy.
-            foreach (Control identity in (Control[])[NameBox, ProjectBox, ProfileBox, GodotBox])
+            string link = $"Its link to its {SourceName(shown)}, which a copy can change";
+            foreach (Control identity in (Control[])[NameBox, ProjectBox, ProfileBox])
             {
                 identity.IsEnabled = !shown.Generated;
-                ToolTip.SetTip(identity, shown.Generated ? $"Its link to its {SourceName(shown)}, which a copy can change" : null);
+                ToolTip.SetTip(identity, shown.Generated ? link : null);
             }
+            // Whether it opens Godot's editor is that link too; how a generated one's game starts is the person's.
+            GodotBox.IsEnabled = !(shown.Generated && shown.GodotEditor);
+            ToolTip.SetTip(GodotBox, GodotBox.IsEnabled ? null : link);
+            godotStartItems[1].IsEnabled = !shown.Generated;
+            ToolTip.SetTip(godotStartItems[1], shown.Generated ? link : null);
         }
         finally
         {

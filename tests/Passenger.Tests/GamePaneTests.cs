@@ -134,6 +134,30 @@ public sealed class GamePaneTests
         Assert.DoesNotContain(IdeErrors.Errors, e => e.Message.Contains("is not connected", StringComparison.Ordinal));
     }
 
+    [AvaloniaFact]
+    public void A_generated_game_configuration_chooses_the_game_window_and_keeps_it_and_the_editors_stays_its_own()
+    {
+        using Rig rig = Rig.Open();
+        Ui.WaitFor(() => rig.Window.Configurations.Any(c => c.Generated && c.Name == "Pane"), () => $"the game's configuration ({string.Join(", ", rig.Window.Configurations.Select(c => c.Name))})", TimeSpan.FromMinutes(1));
+
+        RunConfigurationsDialog dialog = rig.Window.ShowRunConfigurations();
+        Assert.True(dialog.Choose($"Pane: {RunConfiguration.GodotEditorName}"), "Edit Configurations lists no Godot Editor configuration");
+        Ui.Settle();
+        Assert.False(dialog.GodotBox.IsEnabled, "The Godot Editor configuration, whose link to its project is that it opens the editor, can start something else");
+
+        Assert.True(dialog.Choose("Pane"), "Edit Configurations lists no game configuration");
+        Ui.Settle();
+        Assert.True(dialog.GodotBox.IsEnabled, "Starts is greyed on the generated game configuration, so the Game window takes a copy of it");
+        Assert.False(((Avalonia.Controls.ComboBoxItem)dialog.GodotBox.Items[1]!).IsEnabled, "A generated game configuration can turn into the Godot Editor one, which is its link to its project");
+        dialog.GodotBox.SelectedIndex = 3;
+        Ui.Settle();
+        Ui.Click(dialog.OkButton);
+        Ui.Settle();
+
+        RunConfiguration game = rig.Window.Configurations.Single(c => c.Name == "Pane");
+        Assert.True(game is { Generated: true, GodotInPane: true }, $"The choice of the Game window was not kept on the generated configuration: {game}");
+    }
+
     /// <summary>A headless window on a Godot project of GDScript alone, with what the tests hold of it.</summary>
     private sealed class Rig : IDisposable
     {
