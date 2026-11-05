@@ -38,6 +38,8 @@ public sealed partial class GamePane : Border, IOwnKeys
     public GamePane(string empty)
     {
         Focusable = true;
+        // A control draws nothing without one, so the pointer over the game would pass through to what lies under the pane.
+        Background = Avalonia.Media.Brushes.Transparent;
         words = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = empty };
         content.Children.Add(words);
         Child = content;
