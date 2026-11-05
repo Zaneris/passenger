@@ -204,6 +204,10 @@ public sealed class GodotFile
     public static bool IsText(string path) =>
         path.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".tres", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Whether a file is a resource Godot writes as bytes, as it may an Animation or an AnimationLibrary.</summary>
+    public static bool IsBinary(string path) =>
+        path.EndsWith(".res", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".anim", StringComparison.OrdinalIgnoreCase);
+
     public static GodotFile Parse(string text)
     {
         List<int> starts = [0];

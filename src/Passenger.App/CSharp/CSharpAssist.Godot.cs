@@ -481,9 +481,9 @@ internal sealed partial class CSharpAssist
 
     /// <summary>Nodes renamed, as one command of global undo: in each scene, where it is declared and every path through it
     /// (<see cref="GodotScenes.Renames"/>), and in the code of every script of the scenes that hold it, each GetNode path whose
-    /// name leads to it, C#'s and GDScript's (<see cref="GodotScenes.ScriptRenames"/>, the scripts they extend too); refused for
-    /// a name Godot would not take or one beside it has, a string that can't say the name, or a file other than as it was
-    /// read, which <paramref name="patience"/> asks again for. The window's and an agent's alike.</summary>
+    /// name leads to it, C#'s and GDScript's (<see cref="GodotScenes.ScriptRenames"/>, the scripts they extend too), saying the
+    /// binary animations it can't write; refused for a name Godot would not take or one beside it has, a string that can't say
+    /// the name, or a file other than as it was read, which <paramref name="patience"/> asks again for.</summary>
     internal async Task<RefactorOutcome> RenameNodesAsync(GodotRead read, IReadOnlyList<GodotTreeNode> nodes, string old, string name, Patience? patience = null)
     {
         GodotScenes scenes = read.Scenes;
@@ -496,9 +496,11 @@ internal sealed partial class CSharpAssist
         }
         Dictionary<string, List<TextEdit>> edits = new(PathNames.Comparer);
         Dictionary<string, string> made = new(PathNames.Comparer);
+        SortedSet<string> binary = new(StringComparer.Ordinal);
         foreach (GodotTreeNode node in nodes)
         {
-            foreach ((string res, IReadOnlyList<TextEdit> sceneEdits) in await BackgroundWork.Run(() => scenes.Renames(node, name)))
+            (IReadOnlyDictionary<string, IReadOnlyList<TextEdit>> renames, IReadOnlyList<string> left) = await BackgroundWork.Run(() => (scenes.Renames(node, name), scenes.RenameLeaves(node)));
+            foreach ((string res, IReadOnlyList<TextEdit> sceneEdits) in renames)
             {
                 if (scenes.FileOf(res) is { } file)
                 {
@@ -506,6 +508,7 @@ internal sealed partial class CSharpAssist
                     Add(file, sceneEdits);
                 }
             }
+            binary.UnionWith(left.Select(l => Path.GetFileName(l)));
         }
         List<(string Scene, GodotTreeNode Node)> copies = [.. nodes.SelectMany(n => scenes.CopiesOf(n))];
         HashSet<string> scripts = [.. copies.SelectMany(c => c.Node.Root.Below()).Select(n => n.Script).Where(GodotChecks.IsCSharp).OfType<string>()];
@@ -581,7 +584,8 @@ internal sealed partial class CSharpAssist
         {
             return RefactorOutcome.Refused(refused);
         }
-        return new RefactorOutcome($"Renamed {old} to {name} in {Plural.Of(changes.Count, "file")}", null,
+        string leaving = binary.Count == 0 ? string.Empty : $", leaving {Plural.Listed([.. binary])}, whose animations are binary and may still name {old}";
+        return new RefactorOutcome($"Renamed {old} to {name} in {Plural.Of(changes.Count, "file")}{leaving}", null,
             [.. edits.Select(e => new RefactoredFile(e.Key, "changed", [.. e.Value.Select(t => TextSnapshot.From(made[e.Key]).GetLineFromOffset(t.Start) + 1).Distinct()]))], []);
 
         void Add(string file, IEnumerable<TextEdit> more)

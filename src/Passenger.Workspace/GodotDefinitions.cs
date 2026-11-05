@@ -418,6 +418,33 @@ public sealed class GodotDefinitions
         }
     }
 
+    /// <summary>The binary files a player's libraries lead to, a library's own or an animation's of a text library, whose
+    /// tracks are no text to read or write. By res:// path.</summary>
+    internal IEnumerable<string> BinaryAnimations(GodotTreeNode player)
+    {
+        foreach ((string res, GodotValue value) in LibrariesOf(player).Values)
+        {
+            if (BinaryOf(res, value) is { } library)
+            {
+                yield return library;
+            }
+            else if (Resource(res, value) is ({ } at, { } section) && section.Property("_data") is { } data)
+            {
+                foreach (Entry entry in DictionaryOf(scenes.Files[at].Text, data.Value))
+                {
+                    if (BinaryOf(at, entry.Value) is { } animation)
+                    {
+                        yield return animation;
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>The binary file an external resource's value names; null for any other value.</summary>
+    private string? BinaryOf(string res, GodotValue value) => value is { Call: "ExtResource", Text: { } id } && scenes.Files.TryGetValue(res, out GodotFile? file)
+        && file.External(id)?.Path is { } path && GodotFile.IsBinary(path) ? path : null;
+
     /// <summary>The libraries a player's sections give it, by name, each with the file and value naming it.</summary>
     private Dictionary<string, (string Res, GodotValue Value)> LibrariesOf(GodotTreeNode player)
     {

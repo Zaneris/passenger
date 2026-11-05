@@ -5,7 +5,7 @@ namespace Passenger.Tests;
 
 /// <summary>An agent's renames of a Godot node, one straight after another and after a file written beside them: each finds
 /// the closed scene as it stands, however long the folder's watcher takes to tell of it. A project of text files alone, so
-/// neither C#'s server nor Godot starts.</summary>
+/// neither C#'s server nor Godot starts. What a rename can't write, it says.</summary>
 public sealed class McpGodotRenameTests : McpRig
 {
     private const string Player = "[gd_scene format=3]\n\n[node name=\"Player\" type=\"Node2D\"]\n\n[node name=\"Sprite\" type=\"Node2D\" parent=\".\"]\n";
@@ -31,5 +31,22 @@ public sealed class McpGodotRenameTests : McpRig
         File.WriteAllText(level, "; Written by another program.\n" + File.ReadAllText(level));
         await Call(client, McpTools.Rename, At("Skin"));
         Assert.Equal("; Written by another program.\n" + Level.Replace("Player/Sprite", "Player/Skin", StringComparison.Ordinal), File.ReadAllText(level));
+    }
+
+    [Fact]
+    public async Task An_agents_rename_says_the_binary_animations_it_leaves()
+    {
+        string folder = TestFolders.Create("mcp-godot-binary-");
+        TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Renames\"\n");
+        TestFolders.Write(folder, "moves.res", "RSRC");
+        TestFolders.Write(folder, "player.tscn", "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"AnimationLibrary\" path=\"res://moves.res\" id=\"1_moves\"]\n\n"
+            + "[node name=\"Player\" type=\"Node2D\"]\n\n[node name=\"Sprite\" type=\"Node2D\" parent=\".\"]\n\n[node name=\"Moves\" type=\"AnimationPlayer\" parent=\".\"]\n"
+            + "libraries = {\n&\"\": ExtResource(\"1_moves\")\n}\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+
+        string said = (await Call(client, McpTools.Rename, new() { ["path"] = "player.tscn", ["line"] = 7, ["column"] = 14, ["newName"] = "Body" })).GetString()!;
+
+        Assert.True(said.Contains("moves.res", StringComparison.Ordinal) && said.Contains("binary", StringComparison.Ordinal),
+            $"The rename left an animation it can't write reaching a node no longer there, and said only: {said}");
     }
 }

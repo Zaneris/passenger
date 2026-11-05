@@ -628,6 +628,33 @@ public sealed class GodotScenes
         }
     }
 
+    /// <summary>The binary files a node's rename can't write though an animation of theirs may name it (<see
+    /// cref="GodotDefinitions.BinaryAnimations"/>): each player's in a scene holding the node that leads tracks to it, which
+    /// no track does to the player's root or what lies above that, reached by "..". By res:// path, in order.</summary>
+    public IReadOnlyList<string> RenameLeaves(GodotTreeNode node)
+    {
+        SortedSet<string> left = new(StringComparer.Ordinal);
+        foreach (GodotTreeNode tree in CopiesOf(node).Select(c => c.Node.Root).Distinct())
+        {
+            foreach (GodotTreeNode player in tree.Below().Where(GodotDefinitions.IsPlayer))
+            {
+                if (TracksRoot(player) is { } root && !AndAbove(root).Any(n => n.Same(node)))
+                {
+                    left.UnionWith(Defined.BinaryAnimations(player));
+                }
+            }
+        }
+        return [.. left];
+
+        static IEnumerable<GodotTreeNode> AndAbove(GodotTreeNode from)
+        {
+            for (GodotTreeNode? at = from; at is not null; at = at.Parent)
+            {
+                yield return at;
+            }
+        }
+    }
+
     /// <summary>Each NodePath of the built-in resources a node's section holds, at any depth of them, with whether it leads
     /// from the scene's root, as a ViewportTexture's does, rather than from that node. An Animation's lead from its player, and
     /// an external resource holds no scene's paths.</summary>

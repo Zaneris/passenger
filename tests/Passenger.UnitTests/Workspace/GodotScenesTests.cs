@@ -658,6 +658,73 @@ public class GodotScenesTests
         Assert.Contains("target = NodePath(\"../Overlay\")", Apply(scene, scenes.Renames(scenes.Tree("res://main.tscn")!.Child("Hud")!, "Overlay")["res://main.tscn"]), StringComparison.Ordinal);
     }
 
+    private const string BinaryLibrary = """
+        [gd_scene format=3]
+
+        [ext_resource type="AnimationLibrary" path="res://moves.res" id="1_moves"]
+
+        [node name="Main" type="Node2D"]
+
+        [node name="Hud" type="CanvasLayer" parent="."]
+
+        [node name="Score" type="Label" parent="Hud"]
+
+        [node name="Moves" type="AnimationPlayer" parent="."]
+        libraries = {
+        &"": ExtResource("1_moves")
+        }
+
+        """;
+
+    /// <summary>Binary tracks are no text to change: a rename that can't reach them has to say so, as the animation stops
+    /// reaching the node with no other word why.</summary>
+    [Fact]
+    public void A_rename_says_the_binary_library_of_a_player_whose_tracks_may_name_the_node()
+    {
+        GodotScenes scenes = BuiltInScenes(BinaryLibrary);
+
+        Assert.Equal(["res://moves.res"], scenes.RenameLeaves(scenes.Tree("res://main.tscn")!.Child("Hud")!.Child("Score")!));
+    }
+
+    [Fact]
+    public void A_rename_says_a_binary_animation_of_a_text_library()
+    {
+        const string TextLibrary = """
+            [gd_scene format=3]
+
+            [ext_resource type="Animation" path="res://blink.anim" id="1_blink"]
+
+            [sub_resource type="AnimationLibrary" id="AnimationLibrary_1"]
+            _data = {
+            &"blink": ExtResource("1_blink")
+            }
+
+            [node name="Main" type="Node2D"]
+
+            [node name="Hud" type="CanvasLayer" parent="."]
+
+            [node name="Moves" type="AnimationPlayer" parent="."]
+            libraries/ = SubResource("AnimationLibrary_1")
+
+            """;
+        GodotScenes scenes = BuiltInScenes(TextLibrary);
+
+        Assert.Equal(["res://blink.anim"], scenes.RenameLeaves(scenes.Tree("res://main.tscn")!.Child("Hud")!));
+    }
+
+    [Fact]
+    public void A_rename_says_nothing_of_text_animations_of_a_root_no_track_names_or_of_a_scene_with_no_player()
+    {
+        GodotScenes animated = AnimatedScenes(Animated);
+        Assert.Empty(animated.RenameLeaves(animated.Tree("res://main.tscn")!.Child("Hud")!));
+
+        GodotScenes binary = BuiltInScenes(BinaryLibrary);
+        Assert.Empty(binary.RenameLeaves(binary.Tree("res://main.tscn")!));
+
+        GodotScenes none = BuiltInScenes(BuiltIn);
+        Assert.Empty(none.RenameLeaves(none.Tree("res://main.tscn")!.Child("Hud")!));
+    }
+
     private static string Apply(string text, IReadOnlyList<TextEdit> edits)
     {
         foreach (TextEdit edit in edits.OrderByDescending(e => e.Start))
