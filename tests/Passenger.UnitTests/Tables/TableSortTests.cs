@@ -28,6 +28,13 @@ public sealed class TableSortTests
     }
 
     [Fact]
+    public void A_column_of_dates_sorts_by_when_they_are_those_of_the_first_centuries_included()
+    {
+        Table table = Csv("When\n2026-01-01\n0099-12-31\n0001-02-01\n0100-01-01\n");
+        Assert.Equal(["0001-02-01", "0099-12-31", "0100-01-01", "2026-01-01"], Column(TableSort.By(table, 0, descending: false), 0));
+    }
+
+    [Fact]
     public void A_column_mixing_kinds_sorts_as_text_its_digits_as_numbers_and_case_aside()
     {
         CultureInfo was = CultureInfo.CurrentCulture;

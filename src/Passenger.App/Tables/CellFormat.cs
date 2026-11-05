@@ -24,6 +24,9 @@ internal sealed class CellFormat
     /// <summary>The 1904 date system's day 0 as a serial of the 1900 system.</summary>
     public const double Day1904 = 1462;
 
+    /// <summary>The first year a serial reaches, as OLE Automation's dates run.</summary>
+    public const int FirstSerialYear = 100;
+
     private readonly Kinds kind;
     private readonly string? net;
 

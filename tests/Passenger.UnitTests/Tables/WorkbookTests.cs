@@ -15,6 +15,14 @@ public class WorkbookTests
     private const string DateStyles = "<numFmts><numFmt numFmtId=\"165\" formatCode=\"yyyy\\-mm\\-dd\"/></numFmts><cellXfs><xf numFmtId=\"0\"/><xf numFmtId=\"165\"/></cellXfs>";
 
     [Fact]
+    public void A_date_cell_earlier_than_a_workbooks_dates_reach_shows_as_written_and_the_sheet_opens()
+    {
+        Table sheet = Sheet(Book("<row r=\"1\"><c r=\"A1\" t=\"d\"><v>0001-02-01</v></c><c r=\"B1\" t=\"d\"><v>2023-03-15</v></c></row>", date1904: false, DateStyles));
+        Assert.Equal("0001-02-01", sheet.Cell(0, 0));
+        Assert.Equal(new DateTime(2023, 3, 15).ToString("d", CultureInfo.CurrentCulture), sheet.Cell(0, 1));
+    }
+
+    [Fact]
     public void An_ISO_date_in_a_1904_date_workbook_shows_the_date_as_written_whatever_its_style()
     {
         Table sheet = Sheet(Book("<row r=\"1\"><c r=\"A1\" t=\"d\"><v>2023-03-15</v></c><c r=\"B1\" t=\"d\" s=\"1\"><v>2023-03-15T00:00:00</v></c>"

@@ -69,8 +69,8 @@ public enum CellKind
     Text,
 }
 
-/// <summary>A cell as a sort compares it: its kind, and a number's value or a date's day (OLE Automation's, as a
-/// workbook keeps it); text is compared as the cell shows it.</summary>
+/// <summary>A cell as a sort compares it: its kind, and a number's value or a date's ticks, which reach every date
+/// <see cref="DateTime"/> reads; text is compared as the cell shows it.</summary>
 public readonly record struct CellValue(CellKind Kind, double Value = 0);
 
 /// <summary>A CSV or TSV file's records, read as RFC 4180 reads them: a quoted field may hold the separator, quotes doubled
@@ -121,7 +121,7 @@ public sealed class CsvTable : Table
         const DateTimeStyles Dated = DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.NoCurrentDateDefault;
         if (DateTime.TryParse(field, CultureInfo.CurrentCulture, Dated, out DateTime date) || DateTime.TryParse(field, CultureInfo.InvariantCulture, Dated, out date))
         {
-            return new CellValue(CellKind.Date, date.ToOADate());
+            return new CellValue(CellKind.Date, date.Ticks);
         }
         return new CellValue(CellKind.Text);
     }

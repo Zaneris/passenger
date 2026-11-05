@@ -191,7 +191,7 @@ public sealed class Workbook
             "inlineStr" => SheetCell.Of(column, inline?.ToString()),
             "str" or "e" => SheetCell.Of(column, value),
             "b" => SheetCell.Of(column, value is null ? null : value == "1" ? "TRUE" : "FALSE"),
-            "d" => DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime date)
+            "d" => DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime date) && date.Year >= CellFormat.FirstSerialYear
                 ? SheetCell.Date(column, date.ToOADate() - (from1904 ? CellFormat.Day1904 : 0), style) : SheetCell.Of(column, value),
             _ => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) ? SheetCell.Number(column, number, style) : SheetCell.Of(column, value),
         };
