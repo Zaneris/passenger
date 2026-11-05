@@ -129,15 +129,16 @@ public sealed partial class CSharpService : IAsyncDisposable
         {
             return;
         }
+        bool held;
         try
         {
-            await running.UnloadAsync(projects);
+            held = await running.UnloadAsync(projects);
         }
         catch (LanguageServerFailed)
         {
             return;
         }
-        if (session == running)
+        if (held && session == running)
         {
             ProjectsChanged();
         }
@@ -1102,6 +1103,8 @@ public sealed partial class CSharpService : IAsyncDisposable
                 started.Server.Waited -= onWaited;
             });
             session = started;
+            // Next turn, by when the window has what it keeps: one started ahead of that, or unloaded as it started, may be held.
+            UiThread.Post(() => IdeErrors.Observe(UnloadAsync([.. UnloadedNow?.Invoke().Select(p => p.Path) ?? []])));
             ForgetArrivals();
             watching?.Dispose();
             if (handed is not null)

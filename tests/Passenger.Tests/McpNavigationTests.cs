@@ -1,8 +1,11 @@
 using System.Text.Json;
+using Avalonia.Headless.XUnit;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Passenger.App;
 using Passenger.App.Mcp;
+using Passenger.App.State;
+using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.Tests;
@@ -35,6 +38,14 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A restored app and the library a solution filter leaves out of it, neither built.</summary>
     private async Task<string> AppWithoutItsLibraryAsync()
     {
+        string folder = AppAndLibrary();
+        await Restore.RunAsync(Path.Combine(folder, "Shop.slnx"));
+        return folder;
+    }
+
+    /// <summary>An app and the library a solution filter leaves out of it, not yet restored.</summary>
+    private string AppAndLibrary()
+    {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-unloaded-"));
         DeleteAtEnd(folder);
         TestFolders.Write(folder, "Lib/Lib.csproj", TestProjects.Library());
@@ -44,7 +55,6 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         TestFolders.Write(folder, "App/Program.cs", "Lib.Greeter greeter = new(\"Ada\");\nSystem.Console.WriteLine(greeter.Greet(\"Hello\") + greeter.Who);\n");
         TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
         TestFolders.Write(folder, "App.slnf", "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [ \"App\\\\App.csproj\" ]\n  }\n}\n");
-        await Restore.RunAsync(Path.Combine(folder, "Shop.slnx"));
         return folder;
     }
 
@@ -124,6 +134,37 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             await Call(client, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "ListBox#Rows/\"Lib\"" });
             await Call(client, McpTools.IdeAction, new() { ["action"] = action });
         }
+    }
+
+    /// <summary>A window keeping the folder's state takes up the language server started ahead, which loaded every project
+    /// before anything read what the folder keeps: the project the person left unloaded is taken out of it, so the server
+    /// holds what the window says is loaded. An agent's own Passenger keeps no state, so this window is built by hand.</summary>
+    [AvaloniaFact]
+    public void A_project_kept_unloaded_leaves_the_language_server_a_window_takes_up_from_its_head_start()
+    {
+        string folder = AppAndLibrary();
+        Restore.Run(Path.Combine(folder, "Shop.slnx"));
+        string lib = Path.Combine(folder, "Lib", "Lib.csproj");
+        string state = PathNames.Canonical(TestFolders.Create("mcp-kept-"));
+        DeleteAtEnd(state);
+        TestFolders.Write(ProjectState.FolderOf(state, folder), "workspace.json", JsonSerializer.Serialize(new { version = 1, unloadedProjects = new[] { lib } }));
+        LaunchOptions launch = LaunchOptions.Parse([Path.Combine(folder, "Shop.slnx")]);
+        MainWindow window = new() { Width = 1200, Height = 800, AgentsAllowed = false, AgentsOwn = true, StateFolder = state, HeadStart = HeadStart.Begin(launch, languageServer: true) };
+        try
+        {
+            window.Show();
+            window.KeepLayout();
+            window.Start(launch);
+            Ui.WaitFor(() => window.CSharpService?.Session is { IsLoaded: true }, "the language server started ahead to load the projects", TimeSpan.FromMinutes(2));
+            Assert.Equal(["App"], window.Session.Projects.Select(p => p.Name));
+            Ui.WaitFor(() => Found("Greeter") == 0, () => $"Lib, kept unloaded, to leave the language server (it knows {Found("Greeter")} Greeter)", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        int Found(string name) => Ui.Await(window.CSharpService!.Session!.SymbolsNamedAsync(name, 5), $"the language server's symbols named {name}", TimeSpan.FromMinutes(1)).Symbols.Count;
     }
 
     /// <summary>A symbol of a project a solution filter leaves out, which C# reads only as its built assembly, is declared in

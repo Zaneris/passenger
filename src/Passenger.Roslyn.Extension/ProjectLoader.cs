@@ -63,14 +63,16 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
     }
 
     /// <summary>Takes projects out of the solution: what references one reads its assembly from now on, as a project never
-    /// loaded is read.</summary>
-    public async Task Unload(UnloadProjectsParams request)
+    /// loaded is read. Whether it held any of them.</summary>
+    public async Task<bool> Unload(UnloadProjectsParams request)
     {
+        bool held = false;
         foreach (string project in request.Projects)
         {
             given.TryRemove(project, out _);
-            await TryUnloadProjectAsync(project).ConfigureAwait(false);
+            held |= await TryUnloadProjectAsync(project).ConfigureAwait(false);
         }
+        return held;
     }
 
     /// <summary>Loads again the projects that hold any of the files as documents, which lets go of those gone from disk, and
@@ -227,11 +229,7 @@ internal sealed class UnloadProjectsHandler(PassengerProjectLoader loader) : ILs
 
     public bool RequiresLSPSolution => false;
 
-    public async Task<bool> HandleRequestAsync(UnloadProjectsParams request, RequestContext context, CancellationToken cancellationToken)
-    {
-        await loader.Unload(request).ConfigureAwait(false);
-        return true;
-    }
+    public Task<bool> HandleRequestAsync(UnloadProjectsParams request, RequestContext context, CancellationToken cancellationToken) => loader.Unload(request);
 }
 
 [ExportCSharpVisualBasicLspServiceFactory(typeof(UnloadProjectsHandler), WellKnownLspServerKinds.Any)]

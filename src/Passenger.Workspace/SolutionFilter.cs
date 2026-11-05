@@ -7,6 +7,10 @@ namespace Passenger.Workspace;
 /// path from the filter's folder) and the projects of that solution it keeps (theirs from the solution's), each canonical.</summary>
 public sealed record SolutionFilter(string Path, string Solution, IReadOnlySet<string> Projects)
 {
+    /// <summary>Whether the filter leaves a project out: one of the solution's it does not name, never a program beside the
+    /// solution, which is none of the solution's projects.</summary>
+    public bool LeavesOut(ProjectModel project) => !project.IsProgram && !Projects.Contains(project.Path);
+
     /// <summary>Whether a file is a solution filter.</summary>
     public static bool Is(string path) => System.IO.Path.GetExtension(path).Equals(".slnf", StringComparison.OrdinalIgnoreCase);
 

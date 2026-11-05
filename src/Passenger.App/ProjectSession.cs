@@ -377,7 +377,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Unloaded.ExceptWith(filteredOut);
         filteredOut.Clear();
         filter = read.Filter;
-        foreach (ProjectModel project in filter is { } kept ? read.Projects.Where(p => !p.IsProgram && !kept.Projects.Contains(p.Path) && !loaded.Contains(p.Path)) : [])
+        foreach (ProjectModel project in filter is { } kept ? read.Projects.Where(p => kept.LeavesOut(p) && !loaded.Contains(p.Path)) : [])
         {
             if (Unloaded.Add(project.Path))
             {

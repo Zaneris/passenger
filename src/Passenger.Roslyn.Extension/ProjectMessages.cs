@@ -13,7 +13,8 @@ public static class ProjectMethods
     /// load is complete (workspace/projectInitializationComplete).</summary>
     public const string Load = "passenger/loadProjects";
 
-    /// <summary>A request: <see cref="UnloadProjectsParams"/>, the projects to let go of, answered true once it has.</summary>
+    /// <summary>A request: <see cref="UnloadProjectsParams"/>, the projects to let go of, answered once it has: true if it
+    /// held any of them.</summary>
     public const string Unload = "passenger/unloadProjects";
 
     /// <summary>A request the server makes of Passenger: <see cref="ProjectInfoParams"/> to <see cref="ProjectInfoResult"/>.</summary>

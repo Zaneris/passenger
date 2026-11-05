@@ -110,7 +110,7 @@ public sealed class HeadStart
 
     /// <summary>The projects the language server loads: those read, but any the solution filter leaves out.</summary>
     private static List<string> Loaded(WorkspaceModel read) =>
-        read.Filter is { } filter ? [.. Projects(read).Where(filter.Projects.Contains)] : Projects(read);
+        [.. read.Projects.Where(p => p.Exists && read.Filter?.LeavesOut(p) != true).Select(p => p.Path).Distinct(StringComparer.Ordinal)];
 
     private async Task<ProjectModelCache> EvaluateAsync()
     {
