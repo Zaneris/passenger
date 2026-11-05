@@ -57,8 +57,9 @@ internal sealed class AppAvaloniaContext(string what, string hook) : AssemblyLoa
     /// Reload's) and the headless platform (an app nobody is to see).</summary>
     private static readonly string[] Carried = ["Avalonia.Markup.Xaml.Loader", "Avalonia.Headless"];
 
-    /// <summary>Whether the program's own build carries Avalonia's headless platform, as an app drawing there itself does.</summary>
-    public static bool ProgramCarriesHeadless() => StartupHooks.TrustedAssembly("Avalonia.Headless.dll") is not null;
+    /// <summary>Whether the program's own code uses Avalonia's headless platform, so its Main may draw there itself. A build
+    /// that only carries the platform, for its tests or through a package, leaves no reference in the program.</summary>
+    public static bool ProgramUsesHeadless() => Assembly.GetEntryAssembly()?.GetReferencedAssemblies().Any(a => a.Name == "Avalonia.Headless") == true;
 
     /// <summary>The Avalonia the program will load, from the assemblies the runtime was given for it (null when it has
     /// none), and whether the hooks serve it: its major version theirs.</summary>

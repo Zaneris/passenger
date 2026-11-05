@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
 using Passenger.Core;
 using Passenger.Inspector;
 
@@ -8,7 +9,8 @@ using Passenger.Inspector;
 /// Avalonia, turns on Avalonia's own diagnostics for the profiler's frames, and starts the inspector in a context of its own.
 /// Nothing it does stops the app, but where nobody is to see it (<see cref="Wire.UnseenVariable"/>): there an app whose Main
 /// would draw where people see it is started by the hook on Avalonia's headless platform in the Main's place
-/// (<see cref="Unseen"/>), or where it cannot be, ends before its Main unless a desktop of its own hides it.</summary>
+/// (<see cref="Unseen"/>), or where it cannot be, ends before its Main unless a desktop of its own hides it. A Main whose own
+/// code uses that platform chooses for itself, and ends if it starts one of a screen (<see cref="KeepOffScreens"/>).</summary>
 internal static class StartupHook
 {
     /// <summary>The switch Avalonia's Diagnostic class reads once, as Avalonia first measures or renders: on, Avalonia makes its
@@ -16,8 +18,14 @@ internal static class StartupHook
     /// session has its events on).</summary>
     private const string AvaloniaDiagnostics = "Avalonia.Diagnostics.Diagnostic.IsEnabled";
 
-    /// <summary>The exit code of an app nobody is to see that ended before its Main, which would have drawn where people see it.</summary>
+    /// <summary>The exit code of an app nobody is to see that ended before it drew where people see it.</summary>
     internal const int EndedUnseen = 1;
+
+    /// <summary>Avalonia's platforms that draw where people see them, by their assemblies.</summary>
+    private static readonly string[] ScreenPlatforms = ["Avalonia.Native", "Avalonia.X11", "Avalonia.Win32", "Avalonia.LinuxFramebuffer"];
+
+    /// <summary>Says to Passenger why the app ends over the inspector's own connection, once it has one.</summary>
+    private static Action<string>? told;
 
     public static void Initialize()
     {
@@ -30,9 +38,13 @@ internal static class StartupHook
         {
             return;
         }
-        // An app whose build carries the headless platform is taken to draw there itself, as a test's app does: its Main runs.
-        bool itself = unseen is not null && AppAvaloniaContext.ProgramCarriesHeadless();
+        // Only a Main whose own code uses the headless platform can choose it, so only such a Main runs: what it chooses is seen as it starts.
+        bool itself = unseen is not null && AppAvaloniaContext.ProgramUsesHeadless();
         bool ends = unseen == Wire.UnseenEnds && !itself;
+        if (itself && unseen == Wire.UnseenEnds)
+        {
+            KeepOffScreens(socket);
+        }
         // The app as its BuildAvaloniaApp() builds it on the headless platform, which the hook starts in place of its Main.
         Func<string[], int>? start = null;
         try
@@ -83,6 +95,7 @@ internal static class StartupHook
                 agent.GetMethod("Preview", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [preview]);
             }
             agent.GetMethod("Start", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [socket, main, avalonia!.ToString(), overlays, unseen == Wire.UnseenEnds, start is not null]);
+            told = agent.GetMethod(nameof(Agent.Tell), BindingFlags.Public | BindingFlags.Static)!.CreateDelegate<Action<string>>();
         }
         catch (Exception error)
         {
@@ -101,13 +114,36 @@ internal static class StartupHook
         }
     }
 
-    /// <summary>Ends an app nobody is to see before its Main, which would draw where people see it, saying why to Passenger
-    /// and in the app's own console, which outlasts a socket the app's end may close unread.</summary>
-    private static void End(string socket, Version? avalonia, string why)
+    /// <summary>Ends an app nobody is to see the moment its Main starts a platform of a screen: at the platform's first call
+    /// into the system, before it has a window or a place in the Dock. Only loaded, as a builder choosing the headless
+    /// platform after <c>UsePlatformDetect</c> leaves it, a platform has called nothing and nothing ends.</summary>
+    private static void KeepOffScreens(string socket) =>
+        AppDomain.CurrentDomain.AssemblyLoad += (_, loaded) =>
+        {
+            if (loaded.LoadedAssembly.GetName().Name is { } platform && ScreenPlatforms.Contains(platform))
+            {
+                NativeLibrary.SetDllImportResolver(loaded.LoadedAssembly, (_, _, _) =>
+                {
+                    End(socket, null, $"The app's Main started {platform}, which draws where people see it", "as it started");
+                    return IntPtr.Zero;
+                });
+            }
+        };
+
+    /// <summary>Ends an app nobody is to see before it draws where people see it, saying why to Passenger and in the app's
+    /// own console, which outlasts a socket the app's end may close unread.</summary>
+    private static void End(string socket, Version? avalonia, string why, string when = "before its Main")
     {
-        string said = $"{why}. It was ended before its Main, as a Passenger nobody sees opens no window on the person's screen";
+        string said = $"{why}. It was ended {when}, as a Passenger nobody sees opens no window on the person's screen";
         Console.Error.WriteLine(said);
-        Connection.Refuse(socket, avalonia, said);
+        if (told is { } say)
+        {
+            say(said);
+        }
+        else
+        {
+            Connection.Refuse(socket, avalonia, said);
+        }
         Environment.Exit(EndedUnseen);
     }
 

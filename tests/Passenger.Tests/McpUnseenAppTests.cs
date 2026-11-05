@@ -9,7 +9,7 @@ namespace Passenger.Tests;
 /// <summary>tests/Debuggees/AgentApp made a desktop app as a person's is, written once for the class and restored: on the
 /// desktop's own platforms (Avalonia.Desktop), its BuildAvaloniaApp() choosing them (UsePlatformDetect). Its Main starts no
 /// UI: it says it ran and ends, so a Passenger that let it run would fail the test with no window opened.</summary>
-public sealed class DesktopAgentAppFolder : IAsyncLifetime
+public class DesktopAgentAppFolder : IAsyncLifetime
 {
     /// <summary>What the app's Main writes, never written where its BuildAvaloniaApp() is started in its place.</summary>
     public const string MainRan = "AgentApp's Main ran";
@@ -19,25 +19,31 @@ public sealed class DesktopAgentAppFolder : IAsyncLifetime
         Folder = PathNames.Canonical(TestFolders.Create("desktopapp-"));
     }
 
+    /// <summary>The app's project file.</summary>
+    protected virtual string Project => AvaloniaApp.DesktopProject();
+
+    /// <summary>The app's Program.cs.</summary>
+    protected virtual string Program => $$"""
+        using Avalonia;
+
+        namespace AgentApp;
+
+        public static class Program
+        {
+            public static int Main(string[] args)
+            {
+                System.Console.WriteLine("{{MainRan}}");
+                return 3;
+            }
+
+            public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont();
+        }
+        """;
+
     public ValueTask InitializeAsync() => new(TestFolders.PrepareAsync(async () =>
     {
-        AvaloniaApp.Debuggee(Folder, "AgentApp", AvaloniaApp.DesktopProject());
-        File.WriteAllText(Path.Combine(Folder, "Program.cs"), $$"""
-            using Avalonia;
-
-            namespace AgentApp;
-
-            public static class Program
-            {
-                public static int Main(string[] args)
-                {
-                    System.Console.WriteLine("{{MainRan}}");
-                    return 3;
-                }
-
-                public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont();
-            }
-            """);
+        AvaloniaApp.Debuggee(Folder, "AgentApp", Project);
+        File.WriteAllText(Path.Combine(Folder, "Program.cs"), Program);
         await Restore.RunAsync(Folder);
     }, Folder));
 
@@ -50,15 +56,64 @@ public sealed class DesktopAgentAppFolder : IAsyncLifetime
     }
 }
 
+/// <summary>The desktop app carrying Avalonia's headless platform too, as an app does for its tests, none of its own code
+/// using it.</summary>
+public sealed class HeadlessCarryingAppFolder : DesktopAgentAppFolder
+{
+    protected override string Project => AvaloniaApp.DesktopProject("Avalonia.Headless");
+}
+
+/// <summary>The desktop app whose own Main chooses its platform: asked for it the headless one, after UsePlatformDetect has
+/// loaded the desktop's, else X11, set up with no window, which no Mac or Windows has to start and nothing opens on Linux.</summary>
+public sealed class PlatformChoosingAppFolder : DesktopAgentAppFolder
+{
+    /// <summary>The argument that has its Main choose the headless platform.</summary>
+    public const string Unseen = "--unseen";
+
+    /// <summary>What the app writes once a platform of a screen has started.</summary>
+    public const string PlatformStarted = "AgentApp's platform started";
+
+    protected override string Project => AvaloniaApp.DesktopProject("Avalonia.Headless");
+
+    protected override string Program => $$"""
+        using Avalonia;
+        using Avalonia.Headless;
+
+        namespace AgentApp;
+
+        public static class Program
+        {
+            public static int Main(string[] args)
+            {
+                if (args is ["{{Unseen}}"])
+                {
+                    return AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont()
+                        .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).StartWithClassicDesktopLifetime(args);
+                }
+                AppBuilder.Configure<App>().UseX11().UseSkia().UseHarfBuzz().WithInterFont().SetupWithoutStarting();
+                System.Console.WriteLine("{{PlatformStarted}}");
+                return 3;
+            }
+        }
+        """;
+}
+
 /// <summary>An agent's own Passenger running a desktop app whose Main would open its window on the screen: the app's
 /// inspector starts it through its BuildAvaloniaApp() on Avalonia's headless platform in the Main's place, before the Main,
 /// so no window reaches a screen and the app tools see and use it as they do any app's.</summary>
 [Collection(Alone.Name)]
-public sealed class McpUnseenAppTests : McpRig, IClassFixture<DesktopAgentAppFolder>
+public sealed class McpUnseenAppTests : McpRig, IClassFixture<DesktopAgentAppFolder>, IClassFixture<HeadlessCarryingAppFolder>, IClassFixture<PlatformChoosingAppFolder>
 {
     private readonly string appFolder;
+    private readonly string carryingFolder;
+    private readonly string choosingFolder;
 
-    public McpUnseenAppTests(DesktopAgentAppFolder app) => appFolder = app.Folder;
+    public McpUnseenAppTests(DesktopAgentAppFolder app, HeadlessCarryingAppFolder carrying, PlatformChoosingAppFolder choosing)
+    {
+        appFolder = app.Folder;
+        carryingFolder = carrying.Folder;
+        choosingFolder = choosing.Folder;
+    }
 
     /// <summary>Run with no window on any screen: its window and picture are the app's own, a click and a XAML edit Hot
     /// Reload applies reach it, its Main never runs; then debugged and profiled the same way, its arguments its Main's.</summary>
@@ -102,5 +157,43 @@ public sealed class McpUnseenAppTests : McpRig, IClassFixture<DesktopAgentAppFol
         JsonElement frames = (await Call(client, McpTools.Profile, new() { ["arguments"] = "--quit-once-drawn" })).GetProperty("frames");
         Assert.True(frames.GetProperty("count").GetInt32() > 0, $"The profile of the desktop app on the headless platform has no frames: {frames}");
         Assert.DoesNotContain(DesktopAgentAppFolder.MainRan, Text(await Call(client, McpTools.Output)), StringComparison.Ordinal);
+    }
+
+    /// <summary>Carrying the headless platform says nothing of the Main beside it: the app goes as it goes without the package,
+    /// so its Main, which would draw on the screen, never runs.</summary>
+    [Fact]
+    public async Task A_desktop_app_that_only_carries_the_headless_platform_is_started_on_it_in_its_mains_place()
+    {
+        await using McpClient client = await Start(["--mcp", carryingFolder], languageServer: false);
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The app did not build: {built}");
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 3600, ["hotReload"] = false });
+        Assert.True(ran.GetProperty("stillRunning").GetBoolean() && ran.GetProperty("status").GetString()!.Contains("its BuildAvaloniaApp() started in place of its Main", StringComparison.Ordinal),
+            $"The package alone was taken to mean the app draws headless, which would leave its Main to open its windows on the person's screen: {ran}");
+        Assert.DoesNotContain(DesktopAgentAppFolder.MainRan, Text(await Call(client, McpTools.Output)), StringComparison.Ordinal);
+        await Call(client, McpTools.Stop);
+    }
+
+    /// <summary>A Main whose own code uses the headless platform chooses for itself: the platform loaded and left is no end,
+    /// the headless one comes up with no Main left out, and one of a screen ends the app as it starts, before it has done
+    /// anything there. Windows puts the app on a desktop of its own instead.</summary>
+    [Fact]
+    public async Task A_main_choosing_its_platform_runs_on_the_headless_one_and_ends_as_it_starts_one_of_a_screen()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows runs an app nobody is to see on a desktop of its own, where its Main needs no stopping");
+        await using McpClient client = await Start(["--mcp", choosingFolder], languageServer: false);
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The app did not build: {built}");
+
+        JsonElement headless = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 3600, ["hotReload"] = false, ["arguments"] = PlatformChoosingAppFolder.Unseen });
+        string up = headless.GetProperty("status").GetString()!;
+        Assert.True(headless.GetProperty("stillRunning").GetBoolean() && up.Contains("on Avalonia's headless platform", StringComparison.Ordinal) && !up.Contains("in place of its Main", StringComparison.Ordinal),
+            $"A Main choosing the headless platform did not come up there itself: {headless}");
+        await Call(client, McpTools.Stop);
+
+        JsonElement ended = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 3600, ["hotReload"] = false });
+        Assert.True(!ended.GetProperty("stillRunning").GetBoolean() && ended.GetProperty("status").GetString()!.Contains("It was ended as it started", StringComparison.Ordinal),
+            $"A Main starting a platform of a screen was not ended as it did, saying why: {ended}");
+        Assert.DoesNotContain(PlatformChoosingAppFolder.PlatformStarted, Text(await Call(client, McpTools.Output)), StringComparison.Ordinal);
     }
 }

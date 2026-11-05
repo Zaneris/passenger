@@ -14,6 +14,9 @@ public static class Agent
     /// <summary>How often it looks for the app's UI before it is up.</summary>
     private static readonly TimeSpan Look = TimeSpan.FromMilliseconds(100);
 
+    /// <summary>The app as the serve loop reaches it, once the hook has started serving it.</summary>
+    private static AvaloniaUi? ui;
+
     /// <summary>The app's UI dispatcher, once the app has made it.</summary>
     internal static Dispatcher? Ui { get; private set; }
 
@@ -39,7 +42,10 @@ public static class Agent
     /// (<see cref="Wire.UnseenEnds"/>).</param>
     /// <param name="mainLeftOut">Whether the hook starts the app itself in place of its Main (<see cref="Unseen"/>).</param>
     public static void Start(string socket, Thread main, string avalonia, string? overlays, bool ends, bool mainLeftOut) =>
-        Serving.Start(socket, new AvaloniaUi(main, avalonia, overlays, ends, mainLeftOut));
+        Serving.Start(socket, ui = new AvaloniaUi(main, avalonia, overlays, ends, mainLeftOut));
+
+    /// <summary>Says to Passenger, as the app's first word, why the app is about to end.</summary>
+    public static void Tell(string said) => ui?.Tell(said);
 
     /// <summary>The app's UI dispatcher once the app has made it and its Application: the main thread's in a desktop app, or
     /// whichever thread made Avalonia's, read without making one.</summary>
@@ -82,8 +88,12 @@ public static class Agent
         private Inspector? inspector;
         private bool headless;
 
+        /// <summary>The connection to Passenger, once made; none where Passenger is not listening.</summary>
+        private Connection? connected;
+
         public void Listen(Connection connection)
         {
+            connected = connection;
             // A designer's bindings fail for want of the data the app gives them, which no one is told of.
             if (Previewed is null)
             {
@@ -97,12 +107,11 @@ public static class Agent
             headless = DrawsHeadless();
             if (ends && !headless)
             {
-                // A Main its build's headless platform was taken to set up chose another: ended before its windows are shown, if it can be.
-                string said = "The app draws where people see it, though its build carries Avalonia's headless platform. "
+                // A Main left to choose its platform chose one the hook does not know: ended before its windows are shown, if it can be.
+                string said = "The app draws where people see it, on a platform other than Avalonia's headless one. "
                     + "It was ended as its windows came, as a Passenger nobody sees opens no window on the person's screen";
                 Console.Error.WriteLine(said);
-                connection.Send(new Reply { Event = Wire.Hello, Hello = Hello(said) });
-                connection.Drain();
+                Tell(said);
                 Environment.Exit(StartupHook.EndedUnseen);
             }
             Ui = dispatcher;
@@ -114,6 +123,13 @@ public static class Agent
         }
 
         public Hello Hello(string? problem) => new(Wire.Version, Environment.ProcessId, avalonia, problem) { Headless = headless, MainLeftOut = mainLeftOut };
+
+        /// <summary>Says why the app is ending as its hello, written before the connection closes with it.</summary>
+        public void Tell(string said)
+        {
+            connected?.Send(new Reply { Event = Wire.Hello, Hello = Hello(said) });
+            connected?.Drain();
+        }
 
         public async Task<Reply> AnswerAsync(Request request)
         {
