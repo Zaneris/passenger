@@ -111,7 +111,7 @@ public sealed class Language
     private Language([IdentifierOf(typeof(LanguageIds))] string id, string name, IReadOnlyList<FilePattern> patterns, string? line = null,
         (string Start, string End)? block = null, int indent = 4, GrammarFile? grammar = null, Func<TextDocument, IFoldFinder>? folds = null,
         LanguageService service = LanguageService.None, MarkupKind markup = MarkupKind.None, bool reindentsPaste = true, bool parsed = false, bool tabs = false,
-        bool spacesAlone = false)
+        bool spacesAlone = false, Func<TextSnapshot, IReadOnlySet<int>>? literals = null)
     {
         Id = id;
         Name = name;
@@ -126,6 +126,7 @@ public sealed class Language
         ReindentsPaste = reindentsPaste;
         Parsed = parsed;
         IndentsWithSpacesAlone = spacesAlone;
+        Literals = literals;
         All.Add(this);
     }
 
@@ -141,7 +142,7 @@ public sealed class Language
 
     public static readonly Language Dockerfile = new("dockerfile", "Dockerfile",
         ["Dockerfile", "Dockerfile.*", "Containerfile", "Containerfile.*", "*.dockerfile"], line: "#",
-        grammar: new("source.dockerfile", "docker.tmLanguage.json"), service: LanguageService.Dockerfile);
+        grammar: new("source.dockerfile", "docker.tmLanguage.json"), service: LanguageService.Dockerfile, literals: LiteralLines.Heredocs);
 
     public static readonly Language Dotenv = new("dotenv", "Dotenv", [".env", ".env.*", "*.env"], line: "#");
 
@@ -154,7 +155,7 @@ public sealed class Language
         grammar: new("source.cs", "csharp.tmLanguage.json"), service: LanguageService.CSharp, parsed: true);
 
     public static readonly Language Razor = new(LanguageIds.Razor, "Razor", ["*" + RazorFiles.Component, "*" + RazorFiles.Page], block: ("@*", "*@"),
-        grammar: new("text.aspnetcorerazor", "aspnetcorerazor.tmLanguage.json", Tags.Html), service: LanguageService.CSharp);
+        grammar: new("text.aspnetcorerazor", "aspnetcorerazor.tmLanguage.json", Tags.Html), service: LanguageService.CSharp, literals: LiteralLines.Preformatted);
 
     /// <summary>XAML, MSBuild's files and the rest of XML are one markup to the editor, each named and answered as its own.</summary>
     public static readonly Language Xaml = XmlKind("xaml", "XAML", ["*.axaml", "*.paml", "*.xaml"], LanguageService.Xaml);
@@ -184,7 +185,7 @@ public sealed class Language
         grammar: new("text.html.markdown", "markdown.tmLanguage.json"), reindentsPaste: false);
 
     public static readonly Language Html = new("html", "HTML", ["*.html", "*.htm"], block: ("<!--", "-->"),
-        grammar: new("text.html.basic", "html.tmLanguage.json", Tags.Html), service: LanguageService.Html, markup: MarkupKind.Html);
+        grammar: new("text.html.basic", "html.tmLanguage.json", Tags.Html), service: LanguageService.Html, markup: MarkupKind.Html, literals: LiteralLines.Preformatted);
 
     public static readonly Language Css = new("css", "CSS", ["*.css"], block: ("/*", "*/"),
         grammar: new("source.css", "css.tmLanguage.json"), service: LanguageService.Css);
@@ -224,7 +225,7 @@ public sealed class Language
     /// an import's, whose embedded scripts and shaders are coloured as their own files are.</summary>
     public static readonly Language GodotResource = new("gdresource", "Godot Resource",
         [new FilePattern("*.tscn", "gdscene"), "*.tres", "project.godot", "*.import", "*.gdextension"], line: ";",
-        grammar: new("source.gdresource", "GDResource.tmLanguage.json"));
+        grammar: new("source.gdresource", "GDResource.tmLanguage.json"), literals: LiteralLines.GodotStrings);
 
     public static readonly Language GodotShader = new("gdshader", "Godot Shader", ["*.gdshader", "*.gdshaderinc"], line: "//", block: ("/*", "*/"),
         grammar: new("source.gdshader", "GDShader.tmLanguage.json"));
@@ -264,6 +265,10 @@ public sealed class Language
     /// <summary>Whether a tab can't indent the language's files: a reader takes the file for broken with one there.</summary>
     public bool IndentsWithSpacesAlone { get; }
 
+    /// <summary>What finds the lines of a file of the language whose whitespace its reader keeps though its grammar's strings
+    /// don't show them; null for a language with none.</summary>
+    public Func<TextSnapshot, IReadOnlySet<int>>? Literals { get; }
+
     internal GrammarFile? Grammar { get; }
 
     /// <summary>What scans a file of the language for its folds, where its colours' parse does not find them.</summary>
@@ -302,7 +307,7 @@ public sealed class Language
 
     private static Language XmlKind(string id, string name, IReadOnlyList<FilePattern> patterns, LanguageService service) =>
         new(id, name, patterns, block: ("<!--", "-->"), indent: 2, grammar: new("text.xml", "xml.tmLanguage.json", Tags.Xml), folds: FoldScan.Xml,
-            service: service, markup: MarkupKind.Xml);
+            service: service, markup: MarkupKind.Xml, literals: LiteralLines.XmlText);
 
     private FilePattern? PatternOf(string path)
     {

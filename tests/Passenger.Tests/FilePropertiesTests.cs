@@ -352,6 +352,40 @@ public sealed class FilePropertiesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>What a file's reader keeps though no string shows it stays as it is, the lines around it converting: Markdown's
+    /// code, a Dockerfile's heredoc, a resource's value over lines, HTML's preformatted text, a Godot resource's script.</summary>
+    [AvaloniaFact]
+    public void Converting_indentation_leaves_code_blocks_heredocs_and_text_a_reader_keeps()
+    {
+        Dictionary<string, (string Before, string After)> files = new(StringComparer.Ordinal)
+        {
+            ["page.md"] = ("- one\n    - two\n\n```python\ndef f():\n    return 1\n```\n\n    indented\n        code\n", "- one\n\t- two\n\n```python\ndef f():\n    return 1\n```\n\n    indented\n        code\n"),
+            ["Dockerfile"] = ("FROM alpine\nRUN true \\\n    && true\nCOPY <<EOT /etc/app.conf\n    keep = 1\nEOT\n", "FROM alpine\nRUN true \\\n\t&& true\nCOPY <<EOT /etc/app.conf\n    keep = 1\nEOT\n"),
+            ["strings.xml"] = ("<root>\n    <data name=\"a\">\n        <value>one\n        two</value>\n    </data>\n</root>\n", "<root>\n\t<data name=\"a\">\n\t\t<value>one\n        two</value>\n\t</data>\n</root>\n"),
+            ["page.html"] = ("<body>\n    <pre>\n    keep\n    </pre>\n    <p>words</p>\n</body>\n", "<body>\n\t<pre>\n    keep\n    </pre>\n\t<p>words</p>\n</body>\n"),
+            ["held.tres"] = ("[resource]\nscript/source = \"extends Node\n\nfunc f():\n    pass\n\"\nsizes = [\n    1\n]\n", "[resource]\nscript/source = \"extends Node\n\nfunc f():\n    pass\n\"\nsizes = [\n\t1\n]\n"),
+        };
+        MainWindow? window = null;
+        foreach ((string name, (string before, string after)) in files)
+        {
+            Write(name, before);
+            if (window is null)
+            {
+                window = Open(name);
+            }
+            else
+            {
+                window.OpenFile(name);
+                Ui.Settle();
+            }
+            window.EditorArea.Active!.ChosenIndent = new Passenger.Text.IndentOptions(4, UseTabs: false, TabWidth: 4);
+            Click(window, "IndentButton");
+            Choose(window, "Convert Indentation to Tabs");
+            Assert.Equal(after, Text(window));
+        }
+        window!.Close();
+    }
+
     /// <summary>A click on the caret's place in the status bar opens Go to Line:Column, and the line given is where the
     /// caret goes.</summary>
     [AvaloniaFact]

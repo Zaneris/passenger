@@ -847,12 +847,12 @@ public sealed class OpenDocument : Observable
         : null;
 
     /// <summary>The lines that begin inside a string, whose leading whitespace is the string's text: C#'s verbatim and raw
-    /// strings from its syntax, another language's from where its grammar's states say a string runs on; none for a file
-    /// that holds no strings.</summary>
+    /// strings from its syntax, another language's from where its grammar's states say a string runs on, with those its
+    /// language finds apart (<see cref="Language.Literals"/>); none for a file that holds no strings.</summary>
     private IReadOnlySet<int>? LinesInStrings() => parser switch
     {
         CSharpHighlighter csharp => StringLines.Of(csharp.Current.Root, csharp.Current.Text),
-        TextMateHighlighter grammar => grammar.StringLines(Text.Snapshot),
+        TextMateHighlighter grammar when grammar.StringLines(Text.Snapshot) is { } read => Language.Literals?.Invoke(Text.Snapshot).Union(read).ToHashSet() ?? read,
         _ => null,
     };
 

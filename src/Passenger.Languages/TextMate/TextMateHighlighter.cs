@@ -134,11 +134,11 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     /// known for every line.</summary>
     public bool HasRead(TextSnapshot text) => table is { Complete: true } && ReferenceEquals(tableText, text) && since.Count == 0;
 
-    /// <summary>The lines of <paramref name="text"/> that begin inside one of the grammar's strings (a CDATA section, a
-    /// template literal, a heredoc, a block scalar), whose leading whitespace is the string's own; never a YAML plain
-    /// scalar's next line, whose leading whitespace YAML folds away. A block scalar's string has no end to read and, with
-    /// its indentation left to its first line, opens on that line: each of its lines is one that ends in it, under a line
-    /// that ends in the scalar. Null until the grammar has read the whole text as it stands (<see cref="HasRead"/>).</summary>
+    /// <summary>The lines of <paramref name="text"/> that begin inside one of the grammar's strings or a Markdown code block,
+    /// whose leading whitespace is their own; never a YAML plain scalar's next line, which YAML folds. A block scalar's string
+    /// has no end to read and may open on its first line, so its lines are those ending in it under a line ending in the
+    /// scalar; a line ending in an indented code block is the block's. Null until the grammar has read the whole text as it
+    /// stands (<see cref="HasRead"/>).</summary>
     public IReadOnlySet<int>? StringLines(TextSnapshot text)
     {
         if (!HasRead(text) || table is not { } lines)
@@ -149,7 +149,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         for (int line = 1; line < lines.Count; line++)
         {
             StateStack? before = lines[line - 1].End;
-            if (InScope(before, IsRunningString) || (InScope(before, IsBlockScalar) && InScope(lines[line].End, IsBlockString)))
+            if (InScope(before, IsRunningString) || (InScope(before, IsBlockScalar) && InScope(lines[line].End, IsBlockString)) || InScope(lines[line].End, IsIndentedCode))
             {
                 inside.Add(line);
             }
@@ -169,8 +169,10 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         return false;
     }
 
-    private static bool IsRunningString(string scope) =>
-        scope.StartsWith("string.", StringComparison.Ordinal) && !IsBlockString(scope) && !scope.StartsWith("string.unquoted.plain", StringComparison.Ordinal);
+    private static bool IsRunningString(string scope) => scope.StartsWith("markup.fenced_code", StringComparison.Ordinal)
+        || (scope.StartsWith("string.", StringComparison.Ordinal) && !IsBlockString(scope) && !scope.StartsWith("string.unquoted.plain", StringComparison.Ordinal));
+
+    private static bool IsIndentedCode(string scope) => scope.StartsWith("markup.raw.block", StringComparison.Ordinal);
 
     private static bool IsBlockString(string scope) => scope.StartsWith("string.unquoted.block", StringComparison.Ordinal);
 
