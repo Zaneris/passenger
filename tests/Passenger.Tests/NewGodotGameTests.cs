@@ -160,6 +160,35 @@ public sealed class NewGodotGameTests : IDisposable
         }
     }
 
+    /// <summary>A GDScript game on a Godot older than 4, by its download's name, is noted and refused before anything is made,
+    /// as its Run would refuse that Godot.</summary>
+    [AvaloniaFact]
+    public void A_gdscript_game_on_a_godot_older_than_4_is_refused_saying_where_godot_4_comes_from()
+    {
+        string old = TestFolders.Create("old-godot-");
+        string three = TestFolders.Write(old, "Godot_v3.5.3-stable_x11.64", string.Empty);
+        MainWindow window = Started();
+        NewProjectDialog dialog = new(place, null, godot: three);
+        IdeErrors.Observe(dialog.ShowDialog(window));
+        try
+        {
+            Ui.WaitFor(() => dialog.TemplatesRead.IsCompleted, "dotnet new's templates to be read", TimeSpan.FromMinutes(3));
+            Choose(dialog, "GDScript");
+            Ui.WaitFor(() => dialog.WindowsNote is not null, "the game to be noted as lacking Godot 4");
+            Assert.Contains("is Godot 3.5.3", dialog.WindowsNote, StringComparison.Ordinal);
+            Ui.Click(dialog.CreateButton);
+            Ui.WaitFor(() => dialog.Problem is not null, "Create to be refused");
+            Assert.StartsWith("A Godot game needs Godot 4: ", dialog.Problem, StringComparison.Ordinal);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(place));
+        }
+        finally
+        {
+            dialog.Close();
+            window.Close();
+            TestFolders.Delete(old);
+        }
+    }
+
     /// <summary>New Solution from the Welcome screen, the Godot 4 Game chosen in a language and named Spinner, in the test's folder.</summary>
     private NewProjectDialog Chosen(MainWindow window, string language)
     {

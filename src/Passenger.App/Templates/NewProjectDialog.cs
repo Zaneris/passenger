@@ -681,29 +681,9 @@ public sealed class NewProjectDialog : IdeWindow
         };
     }
 
-    /// <summary>Why a Godot game cannot be made here, in words that say how to get Godot: none found, or for C# one that
-    /// cannot run it or names no version for its project's Godot.NET.Sdk; null while the Godot is still looked for, or it can.</summary>
-    private string? GodotWhyNot()
-    {
-        if (template is not { GodotGame: true } || !godotFound.IsCompletedSuccessfully)
-        {
-            return null;
-        }
-        GodotFound? found = godotFound.Result;
-        string how = $"Godot 4 comes from {GodotDownloads}";
-        if (found is not { Exists: true })
-        {
-            return found is null ? $"A Godot game needs Godot, and {GodotLaunch.NotFound}. {how}" : $"A Godot game needs Godot: {found.WhyNot}. {how}";
-        }
-        if (!ScriptGame && found.WhyNot is { } why)
-        {
-            return $"A Godot game in C# needs Godot's .NET build: {why}. {how}";
-        }
-        return !ScriptGame && found.Version is null ? $"{found.Executable} says no version, which its game's Godot.NET.Sdk takes" : null;
-    }
-
-    /// <summary>Godot's download page, where both its builds come from.</summary>
-    private const string GodotDownloads = "godotengine.org/download";
+    /// <summary>Why a Godot game cannot be made here (<see cref="GodotGames.WhyNot"/>); null while the Godot is still looked for, or it can.</summary>
+    private string? GodotWhyNot() => template is not { GodotGame: true } || !godotFound.IsCompletedSuccessfully ? null
+        : GodotGames.WhyNot(godotFound.Result, ScriptGame, GodotLaunch.NotFound);
 
     /// <summary>Passenger's own Godot game beside dotnet new's templates, its C# project on those frameworks the console app
     /// offers that Godot runs, as far as the runtimes are read yet.</summary>

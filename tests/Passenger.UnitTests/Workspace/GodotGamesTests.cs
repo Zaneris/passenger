@@ -22,6 +22,21 @@ public sealed class GodotGamesTests : IDisposable
 
     private const string Named = "config_version=5\n\n[application]\n\nconfig/name=\"Ticker\"\n";
 
+    /// <summary>A game of GDScript alone takes any Godot 4, .NET or not, as its Run does, and no older Godot: its project
+    /// would be written for one that cannot open it.</summary>
+    [Fact]
+    public void A_gdscript_game_is_refused_a_godot_older_than_4_saying_where_godot_4_comes_from()
+    {
+        GodotFound three = new("/opt/Godot_v3.5.3-stable_x11.64", "the PATH") { Exists = true, Version = "3.5.3" };
+        GodotFound four = three with { Version = "4.7.2" };
+
+        Assert.Equal("A Godot game needs Godot 4: /opt/Godot_v3.5.3-stable_x11.64 is Godot 3.5.3: Passenger runs Godot 4's projects. Godot 4 comes from godotengine.org/download",
+            GodotGames.WhyNot(three, scripts: true, "none"));
+        Assert.Null(GodotGames.WhyNot(four, scripts: true, "none"));
+        Assert.StartsWith("A Godot game in C# needs Godot's .NET build: ", GodotGames.WhyNot(four, scripts: false, "none"), StringComparison.Ordinal);
+        Assert.Equal("A Godot game needs Godot, and none. Godot 4 comes from godotengine.org/download", GodotGames.WhyNot(null, scripts: true, "none"));
+    }
+
     [Fact]
     public void A_project_godot_with_no_project_beside_it_is_a_game_of_gdscript_alone_and_one_beside_a_csproj_is_not()
     {

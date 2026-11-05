@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Workspace;
 
 /// <summary>A new Godot 4 game's files, as Godot's editor writes a new project's: its project.godot (the main scene its game
@@ -12,6 +14,30 @@ public static class GodotGames
 
     /// <summary>What the script prints as the game starts.</summary>
     public const string Greeting = "Hello from Godot!";
+
+    /// <summary>Godot's download page, where both its builds come from.</summary>
+    private const string Downloads = "godotengine.org/download";
+
+    /// <summary>Why a game cannot be made on the Godot found, in words that say how to get Godot: none found
+    /// (<paramref name="none"/> saying so), one not there, one that cannot run a game of GDScript alone
+    /// (<paramref name="scripts"/>) or of C#, or for C# one naming no version for its project's Godot.NET.Sdk; null where it can.</summary>
+    public static string? WhyNot(GodotFound? found, bool scripts, string none)
+    {
+        string how = $"Godot 4 comes from {Downloads}";
+        if (found is not { Exists: true })
+        {
+            return found is null ? $"A Godot game needs Godot, and {none}. {how}" : $"A Godot game needs Godot: {found.WhyNot}. {how}";
+        }
+        if (scripts)
+        {
+            return found.WhyNotScripts is { } old ? $"A Godot game needs Godot 4: {old}. {how}" : null;
+        }
+        if (found.WhyNot is { } why)
+        {
+            return $"A Godot game in C# needs Godot's .NET build: {why}. {how}";
+        }
+        return found.Version is null ? $"{found.Executable} says no version, which its game's Godot.NET.Sdk takes" : null;
+    }
 
     /// <summary>A game's files: <paramref name="version"/> is the Godot found's ("4.7.2"), <paramref name="framework"/> the
     /// project's target framework and <paramref name="packages"/> the folder of Godot's own packages, for C#.</summary>
