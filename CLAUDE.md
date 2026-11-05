@@ -137,11 +137,11 @@ tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 14
   through; a command writing outside its recording asks first (`Recording.ClearAsync`). A workspace file:
   `FileText.Save` (atomic, metadata kept, a hard-linked file in place, a read-only one refused, Local History given the
   old bytes); a file the IDE makes `SaveNew` (its .editorconfig's end_of_line and charset), again `SaveOver`; one the
-  window changes itself `MainWindow.ChangeFileAsync`; any other whole file `AtomicFile.Write`, a file that may be a link
-  (a shell's startup file) written to the file it names (`AtomicFile.Target`); a state file only the person may read
-  `OwnFiles`; never `File.WriteAll*`. An open project, solution, filter, nuget.config or Directory.Packages.props is
-  saved before Passenger writes it and loaded after (`SaveBeforeWriting`). Server edits pass `LineEndings.Fit` then
-  `Indentation.Fit`.
+  window changes itself `MainWindow.ChangeFileAsync`; a file landed byte for byte (a publisher's output) `LandedFiles`;
+  any other whole file `AtomicFile.Write`, a file that may be a link (a shell's startup file) written to the file it
+  names (`AtomicFile.Target`); a state file only the person may read `OwnFiles`; never `File.WriteAll*`. An open
+  project, solution, filter, nuget.config or Directory.Packages.props is saved before Passenger writes it and loaded
+  after (`SaveBeforeWriting`). Server edits pass `LineEndings.Fit` then `Indentation.Fit`.
 - **A change of several files, or a move, is one command of global undo** (`EditorArea.Commands.Record`; `RecordWrites`
   for one that waits between writes; moves through `Recording.Move`, never a bare `EditorArea.MoveFile`; deletes kept).
   A closed file changes through `Recording.Change`, written off the window's thread, every write of closed files in turn
@@ -287,8 +287,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   SHA256-checked; Podman both ways. A container publish (`-t:PublishContainer`; several platforms need
   `RuntimeIdentifiers` too, NETSDK1047 otherwise, and containerd's image store) is judged by the SDK's "Pushed image"
   line: an unreachable base image is only a warning while dotnet exits 0, and its registry client tries HTTPS first even
-  on localhost; a push takes docker's login (server names only). Vulnerabilities only when asked: without the plugin
-  docker answers `scout … --format` with "unknown flag", so find it by `docker scout version`.
+  on localhost; a push takes the logins the SDK reads (`RegistryLogins`, server names only). Vulnerabilities only when
+  asked: without the plugin docker answers `scout … --format` with "unknown flag", so find it by `docker scout version`.
 - **Aspire.** `AspireController` checks bearer tokens first; deploy logins are read from each tool's files, never by
   running a cloud CLI; metrics only while shown. MetricsEventSource's CollectionStart and Stop reach TraceEvent as
   `Collection/Start` and `Collection/Stop`, and a histogram's count is the interval's.
