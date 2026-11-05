@@ -268,6 +268,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
     {
         private readonly object made;
         private readonly ResourceDictionary? resources;
+        private readonly INameScope? scope;
         private readonly List<TriggerBase> triggers;
         private readonly List<System.Windows.Input.InputBinding> inputs;
         private readonly List<System.Windows.Input.CommandBinding> commands;
@@ -284,6 +285,7 @@ internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
                 FrameworkContentElement content => content.Resources,
                 _ => null,
             };
+            scope = made is DependencyObject named ? NameScope.GetNameScope(named) : null;
             triggers = made is FrameworkElement { Triggers: { } own } ? [.. own] : [];
             inputs = made is UIElement { InputBindings: { } keys } ? [.. keys.OfType<System.Windows.Input.InputBinding>()] : [];
             commands = made is UIElement { CommandBindings: { } bound } ? [.. bound.OfType<System.Windows.Input.CommandBinding>()] : [];
@@ -369,6 +371,14 @@ internal sealed class XamlReloads(Func<IReadOnlyList<Visual>> tops)
             }
             if (made is DependencyObject root)
             {
+                if (scope is null)
+                {
+                    root.ClearValue(NameScope.NameScopeProperty);
+                }
+                else
+                {
+                    NameScope.SetNameScope(root, scope);
+                }
                 foreach (DependencyProperty property in Locals(root).Keys.Where(p => !locals.ContainsKey(p)))
                 {
                     root.ClearValue(property);

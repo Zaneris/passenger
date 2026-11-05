@@ -183,6 +183,62 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
         }
     }
 
+    /// <summary>What a text the app writes at each beat says at its next one.</summary>
+    private static void Beats(LiveApp app, string name, string words)
+    {
+        string? seen = Text(app, name);
+        Ui.WaitFor(() => Text(app, name) is { } said && said != seen && said.StartsWith(words, StringComparison.Ordinal),
+            () => $"the app, at its next beat, to say {words} ({Text(app, name)})");
+    }
+
+    private static string? Text(LiveApp app, string name) => Find(Ui.Await(app.AgentTreeAsync([]), "the app's tree").Roots, name)?.Text;
+
+    /// <summary>An edit WPF refuses part way through its load leaves the window's name scope as it was: the window still finds
+    /// by name what it holds, what the load never reached among it.</summary>
+    [AvaloniaFact]
+    public void An_edit_wpf_refuses_part_way_through_its_load_leaves_what_the_window_holds_found_by_name()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string code = Path.Combine(folder, "MainWindow.xaml.cs");
+        File.WriteAllText(code, File.ReadAllText(code).Replace("using System.Windows.Input;\n", "using System.Windows.Input;\nusing System.Windows.Threading;\n", StringComparison.Ordinal)
+            .Replace("using System.Windows.Input;\r\n", "using System.Windows.Input;\r\nusing System.Windows.Threading;\r\n", StringComparison.Ordinal)
+            .Replace("private int clicks;", "private int clicks;\n    private int beats;", StringComparison.Ordinal)
+            .Replace("DataContext = new MainViewModel();", Finding, StringComparison.Ordinal));
+        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace(Counter, $"<TextBlock x:Name=\"Found\" />\n{Counter}", StringComparison.Ordinal));
+        MainWindow window = Ui.OpenFolder(folder, 1400, 900, languageServer: false);
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
+            LiveApp app = window.Session.RunApp!;
+            Beats(app, "Found", "finds True, beat ");
+
+            window.OpenFile(Xaml);
+            Typing.Replace(window, Counter, $"<TextBlok Text=\"typo\" />\n{Counter}");
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() => window.Status?.Contains("TextBlok", StringComparison.Ordinal) == true, () => $"the status bar to say why the edit did not apply ({window.Status})");
+            Beats(app, "Found", "finds True, beat ");
+        }
+        finally
+        {
+            if (window.Runner.IsRunning)
+            {
+                Ui.Run(window, AppActions.Stop);
+                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
+            }
+            window.Close();
+        }
+    }
+
+    /// <summary>What <see cref="An_edit_wpf_refuses_part_way_through_its_load_leaves_what_the_window_holds_found_by_name"/>'s
+    /// window says at each beat: whether it finds by name the text the refused edit's load never reaches.</summary>
+    private const string Finding = """
+        DataContext = new MainViewModel();
+                DispatcherTimer beat = new() { Interval = TimeSpan.FromMilliseconds(50) };
+                beat.Tick += (_, _) => Found.Text = $"finds {FindName("Counter") is not null}, beat {++beats}";
+                beat.Start();
+        """;
+
     /// <summary>Two files of one name in two folders, whose elements stand at the same lines and columns: asked what it made at
     /// a place in one, the app answers that file's element and not the other's.</summary>
     [AvaloniaFact]
