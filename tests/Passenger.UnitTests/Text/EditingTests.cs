@@ -87,6 +87,251 @@ public class EditingTests
     }
 
     [Theory]
+    [InlineData("<StackPanel>\n    <Grid>|\n</StackPanel>", ">", MarkupKind.Xml, "<StackPanel>\n    <Grid>|</Grid>\n</StackPanel>")]
+    [InlineData("<Grid.RowDefinitions>|", ">", MarkupKind.Xml, "<Grid.RowDefinitions>|</Grid.RowDefinitions>")]
+    [InlineData("<local:Card Title=\"a > b\">|", ">", MarkupKind.Xml, "<local:Card Title=\"a > b\">|</local:Card>")]
+    [InlineData("<StackPanel><Grid>|<Grid></Grid></StackPanel>", ">", MarkupKind.Xml, "<StackPanel><Grid>|</Grid><Grid></Grid></StackPanel>")]
+    [InlineData("<a>|\n<b>|", ">", MarkupKind.Xml, "<a>|</a>\n<b>|</b>")]
+    [InlineData("<div>|", ">", MarkupKind.Html, "<div>|</div>")]
+    [InlineData("<ul>\n    <li>|\n    <li>Two</li>\n</ul>", ">", MarkupKind.Html, "<ul>\n    <li>|</li>\n    <li>Two</li>\n</ul>")]
+    [InlineData("<StackPanel>\n    <Grid>\n    </|", "/", MarkupKind.Xml, "<StackPanel>\n    <Grid>\n    </Grid>|")]
+    [InlineData("<Grid><Button /></|>", "/", MarkupKind.Xml, "<Grid><Button /></Grid>|")]
+    [InlineData("<Grid><Border></|</Border></Grid>", "/", MarkupKind.Xml, "<Grid><Border></|Border></Grid>")]
+    [InlineData("<div><p>One</|", "/", MarkupKind.Html, "<div><p>One</p>|")]
+    public void Typing_a_start_tags_close_writes_its_end_tag_after_the_caret_and_an_end_tags_slash_the_open_elements_name(string before, string typed,
+        MarkupKind markup, string after)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(before);
+        Assert.Equal(after, Marked.After(text, TextEditing.CloseTag(text, selections, typed, markup)));
+    }
+
+    [Theory]
+    [InlineData("<नाम>|")]
+    [InlineData("<cafe\u0301>|")]
+    [InlineData("<a\u00B7b>|")]
+    public void A_start_tags_close_writes_the_whole_of_an_xml_name_its_combining_marks_included(string before)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(before);
+        string? after = Marked.After(text, TextEditing.CloseTag(text, selections, ">", MarkupKind.Xml));
+        string name = before[1..^2];
+        Assert.Equal($"<{name}>|</{name}>", after);
+        Assert.Equal(name, System.Xml.Linq.XDocument.Parse(after!.Replace("|", string.Empty, StringComparison.Ordinal)).Root!.Name.LocalName);
+    }
+
+    [Fact]
+    public void A_start_tags_close_and_an_end_tags_slash_write_a_name_past_the_basic_plane_and_a_long_name_whole()
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse("<\U0001D4B3y>|");
+        Assert.Equal("<\U0001D4B3y>|</\U0001D4B3y>", Marked.After(text, TextEditing.CloseTag(text, selections, ">", MarkupKind.Xml)));
+        string name = new('n', 300);
+        (text, selections) = Marked.Parse($"<{name}>|");
+        Assert.Equal($"<{name}>|</{name}>", Marked.After(text, TextEditing.CloseTag(text, selections, ">", MarkupKind.Xml)));
+        (text, selections) = Marked.Parse($"<{name}>x</|");
+        Assert.Equal($"<{name}>x</{name}>|", Marked.After(text, TextEditing.CloseTag(text, selections, "/", MarkupKind.Xml)));
+    }
+
+    [Theory]
+    [InlineData("<Grid />|", ">", MarkupKind.Xml)]
+    [InlineData("<StackPanel></Grid>|", ">", MarkupKind.Xml)]
+    [InlineData("<Grid>|\n    <Button />\n</Grid>", ">", MarkupKind.Xml)]
+    [InlineData("<!-- <Grid>| -->", ">", MarkupKind.Xml)]
+    [InlineData("<Grid Tag=\"<b>|\"", ">", MarkupKind.Xml)]
+    [InlineData("<Root><![CDATA[ <Grid>| ]]></Root>", ">", MarkupKind.Xml)]
+    [InlineData("<?xml version=\"1.0\"?>|", ">", MarkupKind.Xml)]
+    [InlineData("<Grid>|", ">", MarkupKind.None)]
+    [InlineData("<br>|", ">", MarkupKind.Html)]
+    [InlineData("<!DOCTYPE html>|", ">", MarkupKind.Html)]
+    [InlineData("<script>if (a <b>|", ">", MarkupKind.Html)]
+    [InlineData("<div>|<p>Text</div>", ">", MarkupKind.Html)]
+    [InlineData("</|", "/", MarkupKind.Xml)]
+    [InlineData("<Grid></|Grid>", "/", MarkupKind.Xml)]
+    [InlineData("<Grid>|", "x", MarkupKind.Xml)]
+    public void No_end_tag_is_written_for_a_self_closed_or_empty_element_one_closed_already_or_a_comment_value_cdata_or_script(string before, string typed, MarkupKind markup)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(before);
+        Assert.Null(Marked.After(text, TextEditing.CloseTag(text, selections, typed, markup)));
+    }
+
+    [Theory]
+    [InlineData("<div>x|</div>", "</div>", MarkupKind.Html, "<div>x</div>|")]
+    [InlineData("<div>|</div>", "</div>", MarkupKind.Html, "<div></div>|")]
+    [InlineData("<div><p>|</p></div>", "</p></div>", MarkupKind.Html, "<div><p></p></div>|")]
+    [InlineData("<Grid.Row>x|</Grid.Row>", "</Grid.Row>", MarkupKind.Xml, "<Grid.Row>x</Grid.Row>|")]
+    [InlineData("<a>|</a>\n<a>|</a>", "</a>", MarkupKind.Xml, "<a></a>|\n<a></a>|")]
+    [InlineData("<a>|", "</a>", MarkupKind.Xml, "<a></a>|")]
+    [InlineData("<div>x\n</", "div>", MarkupKind.Html, "<div>x\n</div>|", "|")]
+    [InlineData("<div>\n    x\n    |\n</div>", "</div>", MarkupKind.Html, "<div>\n    x\n</div>|")]
+    [InlineData("<div>\r\n    x\r\n    |  \r\n\r\n</div>\r\n", "</div>", MarkupKind.Html, "<div>\r\n    x\r\n</div>|\r\n")]
+    [InlineData("<Grid>\n    <Border>\n        |\n    </Border>\n</Grid>", "</Border>", MarkupKind.Xml, "<Grid>\n    <Border>\n    </Border>|\n</Grid>")]
+    [InlineData("<div>x|\n</div>", "</div>", MarkupKind.Html, "<div>x</div>|")]
+    [InlineData("<div>|\n    </div>", "</div>", MarkupKind.Html, "<div></div>|")]
+    [InlineData("<div>|   </div>", "</div>", MarkupKind.Html, "<div></div>|")]
+    [InlineData("<a>\n  |\n</a>\n<a>\n    |\n</a>", "</a>", MarkupKind.Xml, "<a>\n</a>|\n<a>\n</a>|")]
+    public void An_end_tag_typed_key_by_key_over_the_one_written_leaves_one_end_tag_the_caret_after_it(string before, string keys, MarkupKind markup, string after, string caretAt = "")
+    {
+        Assert.Equal(after, TypedKeyByKey(before + caretAt, caretAt.Length > 0 ? "/" + keys : keys, markup, caretAt.Length > 0));
+    }
+
+    [Theory]
+    [InlineData("<div>x|</div>", "</span", "<div>x</span|</div>")]
+    [InlineData("<div>x|</div>", "</dix", "<div>x</dix|</div>")]
+    [InlineData("<div>x|</div>", "<span", "<div>x<span|</div>")]
+    [InlineData("<div>|</div>", "</divx>", "<div></divx>|</div>")]
+    [InlineData("<div>\n    x\n    |\n</div>", "</span", "<div>\n    x\n    </span|\n</div>")]
+    [InlineData("<div>\n    x\n    |\n</div>", "</dix", "<div>\n    x\n    </dix|\n</div>")]
+    [InlineData("<div>\n    <p>\n        |\n\n    </p>\n</div>", "</px", "<div>\n    <p>\n        </px|\n\n    </p>\n</div>")]
+    [InlineData("<div>\n|\n    </div>", "</dix", "<div>\n</dix|\n    </div>")]
+    [InlineData("<div>x|\n    </div>", "</dix", "<div>x</dix|\n    </div>")]
+    [InlineData("<a>\n  |\n</a>\n<a>\n    |\n</a>", "</ax", "<a>\n  </ax|\n</a>\n<a>\n    </ax|\n</a>")]
+    public void A_key_that_differs_from_the_end_tag_being_typed_over_lands_as_typed_the_tag_left_whole(string before, string keys, string after)
+    {
+        Assert.Equal(after, TypedKeyByKey(before, keys, MarkupKind.Html));
+    }
+
+    [Theory]
+    [InlineData("<div>\n    </|\n</div>", "<div>\n</|div>")]
+    [InlineData("<div>\n        </|\n\n    </div>", "<div>\n    </|div>")]
+    [InlineData("<div>\n</|\n    </div>", "<div>\n    </|div>")]
+    [InlineData("<div>x</|\n</div>", "<div>x</|div>")]
+    [InlineData("<div>    </|\n</div>", "<div>    </|div>")]
+    public void A_slash_above_the_elements_written_end_tag_joins_it_and_undo_puts_back_what_was_typed(string typed, string joined)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(typed);
+        TextDocument document = new(text.ToString());
+        EditPlan plan = TextEditing.CloseTag(document.Snapshot, selections, "/", MarkupKind.Html)!;
+        document.Edit(plan.Edits, selections, plan.Selections, plan.Kind);
+        Assert.Equal(joined, Marked.Show(document.Snapshot, plan.Selections));
+        Assert.True(plan.EndTags!.Ahead);
+        SelectionSet undone = document.Undo()!;
+        Assert.Equal(typed, Marked.Show(document.Snapshot, undone));
+    }
+
+    [Theory]
+    [InlineData("<div>\n    <div>\n        x\n        </|\n</div>", "<div>\n    <div>\n        x\n        </div>|\n</div>")]
+    [InlineData("<div><div>x</|</div>", "<div><div>x</div>|</div>")]
+    [InlineData("<section><div><div>x</|\n</div></section>", "<section><div><div>x</div>|\n</div></section>")]
+    [InlineData("<div><div><div>x</|</div>\n</div>", "<div><div><div>x</div>|</div>\n</div>")]
+    public void An_end_tag_an_element_of_its_name_holding_the_open_one_needs_is_left_to_it_and_the_open_one_gets_its_own(string typed, string after)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(typed);
+        Assert.Equal(after, Marked.After(text, TextEditing.CloseTag(text, selections, "/", MarkupKind.Html)));
+    }
+
+    [Theory]
+    [InlineData("<div>\n    <div>\n        </|\n    </div>\n</div>", "<div>\n    <div>\n    </|div>\n</div>")]
+    [InlineData("<div><div>x</|</div></div>", "<div><div>x</|div></div>")]
+    [InlineData("<div>\n    </|\n</div>\n<div>", "<div>\n</|div>\n<div>")]
+    [InlineData("<div><section><div>x</|\n</div></section></div>", "<div><section><div>x</|div></section></div>")]
+    [InlineData("<div><div><p>x</p>\n    </|\n</div><b><i></i></b></div>", "<div><div><p>x</p>\n</|div><b><i></i></b></div>")]
+    public void An_end_tag_whose_element_is_the_one_open_is_joined_with_elements_of_its_name_around_it(string typed, string after)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(typed);
+        Assert.Equal(after, Marked.After(text, TextEditing.CloseTag(text, selections, "/", MarkupKind.Html)));
+    }
+
+    [Theory]
+    [InlineData("<div>\n    </|\u00A0\n</div>", "<div>\n    </div>|\u00A0\n</div>")]
+    [InlineData("<div>\n    </|\n    y\n</div>", "<div>\n    </div>|\n    y\n</div>")]
+    [InlineData("<div>\n    </|\n</span>", "<div>\n    </div>|\n</span>")]
+    public void A_slash_with_more_than_white_space_before_the_next_end_tag_of_its_element_writes_a_tag_of_its_own(string typed, string after)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(typed);
+        Assert.Equal(after, Marked.After(text, TextEditing.CloseTag(text, selections, "/", MarkupKind.Html)));
+    }
+
+    [Theory]
+    [InlineData("<div>\n    </|\n</div>\n</|", "<div>\n</div>|\n</|")]
+    public void A_caret_with_no_element_open_leaves_the_others_past_the_tag_they_join_with_nothing_to_type_over(string typed, string after)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(typed);
+        EditPlan plan = TextEditing.CloseTag(text, selections, "/", MarkupKind.Html)!;
+        Assert.Equal(after, Marked.Show(text.Apply(plan.Edits), plan.Selections));
+        Assert.Null(plan.EndTags);
+    }
+
+    [Theory]
+    [InlineData("<p>hi</", "/ and", "<p>hi</p> and|")]
+    [InlineData("<p>hi</", "/pal", "<p>hi</p>pal|")]
+    public void Words_typed_after_an_end_tag_a_slash_wrote_go_after_it_a_letter_shared_with_its_name_included(string before, string keys, string after)
+    {
+        Assert.Equal(after, TypedKeyByKey(before + "|", keys, MarkupKind.Html, slashFirst: true));
+    }
+
+    [Fact]
+    public void Backspace_while_an_end_tag_is_typed_over_takes_back_a_key_and_never_a_letter_of_the_tag()
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse("<div>x</|</div>");
+        EditPlan joined = TextEditing.CloseTag(text, selections, "/", MarkupKind.Html)!;
+        EndTagTyping typing = joined.EndTags!;
+        TextSnapshot over = text.Apply(joined.Edits);
+        Assert.Equal("<div>x</|div>", Marked.Show(over, joined.Selections));
+        SelectionSet past = typing.Past(joined.Selections, "d");
+        EndTagTyping passed = typing.After("d")!;
+        Assert.Equal("<div>x</d|iv>", Marked.Show(over, past));
+        Assert.True(passed.CanStepBack);
+        SelectionSet back = passed.Back(over, past);
+        Assert.Equal("<div>x</|div>", Marked.Show(over, back));
+        Assert.False(passed.StepBack(over, past).CanStepBack);
+    }
+
+    [Theory]
+    [InlineData("<div>\n    </|\n</div>", "<div>\n</|div>", "    </|\n</div>")]
+    [InlineData("<div>x</|\n  </div>", "<div>x</|div>", "x</|\n  </div>")]
+    public void Backspace_over_an_end_tag_joined_from_above_steps_back_to_the_slash_and_then_puts_back_what_stood_there(string typed, string joined, string putBack)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(typed);
+        EditPlan plan = TextEditing.CloseTag(text, selections, "/", MarkupKind.Html)!;
+        TextSnapshot over = text.Apply(plan.Edits);
+        EndTagTyping typing = plan.EndTags!;
+        SelectionSet past = typing.Past(plan.Selections, "d");
+        EndTagTyping passed = typing.After("d")!;
+        SelectionSet back = passed.Back(over, past);
+        Assert.Equal(joined, Marked.Show(over, back));
+        EndTagTyping stepped = passed.StepBack(over, past);
+        Assert.False(stepped.CanStepBack);
+        EditPlan left = stepped.PutBack(back)!;
+        Assert.EndsWith(putBack, Marked.Show(over.Apply(left.Edits), left.Selections));
+    }
+
+    /// <summary>Keys typed one at a time as the editor takes them: passing the end tag typed over, else that tag left whole
+    /// and the key typed, closing what it closes. With <paramref name="slashFirst"/> the text ends in the "&lt;" of an end tag
+    /// typed already, and the first key is its '/'.</summary>
+    private static string TypedKeyByKey(string before, string keys, MarkupKind markup, bool slashFirst = false)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(before);
+        EndTagTyping? typing = null;
+        foreach (char key in keys)
+        {
+            string typed = key.ToString();
+            if (typing is not null && typing.Passes(typed))
+            {
+                selections = typing.Past(selections, typed);
+                typing = typing.After(typed);
+                continue;
+            }
+            if (typing?.PutBack(selections) is { } back)
+            {
+                text = text.Apply(back.Edits);
+                selections = back.Selections;
+            }
+            typing = null;
+            if (!(slashFirst && key == '/' && text[selections.Primary.Caret - 1] == '/'))
+            {
+                EditPlan plan = TextEditing.Type(text, selections, typed);
+                text = text.Apply(plan.Edits);
+                selections = plan.Selections;
+            }
+            if (TextEditing.CloseTag(text, selections, typed, markup) is { } closing)
+            {
+                text = text.Apply(closing.Edits);
+                selections = closing.Selections;
+                typing = closing.EndTags;
+            }
+        }
+        return Marked.Show(text, selections);
+    }
+
+    [Theory]
     [InlineData("one\ntw|o", "on|e")]
     [InlineData("|one\r\ntwo", "|two")]
     [InlineData("one\n|two\nthree", "one\n|three")]

@@ -49,9 +49,9 @@ public sealed class AspireExternalDataTests(AspireApp project) : IClassFixture<A
         try
         {
             // Asked every two seconds, as a person would look, while the AppHost builds and starts.
-            Assert.True(Waiting.Until(() => (listed = Listed(cli, project.Host)).Length > 0 || run.HasExited, TimeSpan.FromMinutes(3), TimeSpan.FromSeconds(2)),
+            Assert.True(Waiting.Until(() => (listed = Listed(cli, project.Host)).Length > 0 || !DotnetProcesses.Runs(run), TimeSpan.FromMinutes(3), TimeSpan.FromSeconds(2)),
                 $"aspire run brought up no AppHost that aspire ps lists:\n{Said(said)}");
-            Assert.False(run.HasExited, $"aspire run ended (exit {(run.HasExited ? run.ExitCode : 0)}):\n{Said(said)}");
+            Assert.True(DotnetProcesses.Runs(run), $"aspire run ended (exit {(!DotnetProcesses.Runs(run) ? run.ExitCode : 0)}):\n{Said(said)}");
             window = project.OpenHost();
             Assert.Empty(window.AspireRuntime.Apps);
             FindAction(window, "Discover Aspire AppHosts");

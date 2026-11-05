@@ -29,16 +29,25 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.Settings, Title = "The IDE's settings", ReadOnly = true), Description(
         "Every setting the Settings dialog has, by its settings.json name (editorFontSize, theme...), with its value, kind, " +
         "choices and range; kept is false for an --mcp Passenger's own defaults, kept nowhere.")]
-    public Task<SettingsInfo> GetSettings(CancellationToken cancel = default) => OnUi(cancel, () =>
+    public Task<SettingsInfo> GetSettings(CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         JsonObject values = SettingsNode(window.Settings);
-        return Task.FromResult(new SettingsInfo(window.SettingsKept, [.. SettingProperties.Select(p =>
+        // A font's own names alone: the families installed (hundreds) are said by their count, each taken by its name.
+        Dictionary<string, (IReadOnlyList<string> Choices, string? Note)> fonts = [];
+        foreach (FontSetting font in Declared.All.OfType<FontSetting>())
+        {
+            IReadOnlyList<string> installed = await font.InstalledAsync();
+            fonts[font.Property] = (font.Offered, installed.Count == 0 ? null
+                : AgentAnswers.More(installed.Count, "installed family", "settings_set takes any by its name, and refuses one not installed here", "installed families"));
+        }
+        return new SettingsInfo(window.SettingsKept, [.. SettingProperties.Select(p =>
         {
             Type type = Nullable.GetUnderlyingType(p.Value.PropertyType) ?? p.Value.PropertyType;
             (double Min, double Max)? range = SettingRange(p.Key, p.Value);
-            return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value),
-                type.IsEnum ? Enum.GetNames(type) : null, range?.Min, range?.Max);
-        })]));
+            (IReadOnlyList<string> Choices, string? Note)? font = fonts.TryGetValue(p.Value.Name, out (IReadOnlyList<string>, string?) offered) ? offered : null;
+            IReadOnlyList<string>? choices = type.IsEnum ? Enum.GetNames(type) : font?.Choices;
+            return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value), choices, range?.Min, range?.Max) { Note = font?.Note };
+        })]);
     });
 
     [McpServerTool(Name = McpTools.SettingsSet, Title = "Change settings", Destructive = true), Description(
@@ -199,7 +208,8 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.ReplaceInFiles, Title = "Replace in Files", Destructive = true), Description(
         "Replaces every match find_in_files finds (its text, options, scope and mask) with replacement, as Replace All does, as " +
         "one Undo step: an open file's saved; a closed one's in its own encoding (UTF-8 where that cannot hold the " +
-        "replacement, as the answer says). A regex's replacement takes its groups ($1, ${name}). Returns how many matches in " +
+        "replacement, as the answer says). A regex's replacement takes its groups ($1, ${name}) and \\n, \\t, \\\\ for a line break, a tab, a backslash; " +
+        "every line break is written as the file's own. Returns how many matches in " +
         "which files, and each file left as it was with why.")]
     public Task<string> ReplaceInFiles(string text, string replacement, bool matchCase = false, bool wholeWords = false, bool regex = false,
         string scope = "solution",
@@ -220,6 +230,10 @@ public sealed partial class PassengerTools
             return searched.StoppedIn(Relative) is { } stopped ? $"Nothing was replaced: {stopped}" : "Nothing matches, so nothing was replaced";
         }
         List<string> files = [.. searched.Replaceable.Select(m => m.Path).Distinct()];
+        if (await Editors.ClearAsync(files) is { } held)
+        {
+            throw new InvalidOperationException(held);
+        }
         FilesReplaced done = await window.ReplaceInFilesAsync(query, replacement, searched);
         List<string> said = [.. done.Converted];
         // The open files' saves are the replace's, in its change set; what the person saves meanwhile stays theirs.
@@ -277,6 +291,10 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException($"{Refusals.ReadOnly(name)}, so nothing changed");
         }
+        if (await Editors.ClearAsync([document.Path]) is { } held)
+        {
+            throw new InvalidOperationException(held);
+        }
         if (found.Count == 0)
         {
             throw new InvalidOperationException($"{name} has no \"{Shorter(oldText)}\" as written (case, spaces and line breaks included), so nothing changed; editor_text shows the file as the editor has it");
@@ -291,10 +309,26 @@ public sealed partial class PassengerTools
         document.Text.BreakUndoGroup();
         document.Text.Edit(edits, document.Selections, TextEditing.MapThrough(document.Selections, edits));
         document.Text.BreakUndoGroup();
-        string saved = Editors.SaveSaying(document) is { } refused ? $"not saved: {refused}" : "saved";
+        // A save its encoding could not hold is written as UTF-8, which the agent is told as the status bar tells the person.
+        string? converted = null;
+        void Converted(object? sender, string said) => converted = said;
+        document.Converted += Converted;
+        string saved;
+        try
+        {
+            saved = Editors.SaveSaying(document) is { } refused ? $"not saved: {refused}" : "saved";
+        }
+        finally
+        {
+            document.Converted -= Converted;
+        }
         if (saved == "saved" && await Passenger.App.Editors.EditorArea.LandedAsync(null, cancel) is { } unlanded)
         {
             saved = $"not saved: {unlanded}";
+        }
+        else if (converted is not null)
+        {
+            saved = $"saved ({converted})";
         }
         // Each edit's lines as they are now: offsets move by what the edits before it added.
         TextSnapshot after = document.Text.Snapshot;
@@ -379,6 +413,10 @@ public sealed partial class PassengerTools
         (IReadOnlyList<HistoryEvent> events, IReadOnlyDictionary<string, string?> known) = history.Snapshot();
         bool isFolder = Directory.Exists(full);
         IReadOnlyList<HistoryRow> rows = await BackgroundWork.Run(() => isFolder ? HistoryRows.OfFolder(events, full) : HistoryRows.OfFile(events, known, full), cancel);
+        if (rows.Count == 0 && !isFolder && !File.Exists(full))
+        {
+            throw new InvalidOperationException($"No file or folder is at {Relative(full)}, and Local History holds no change of one there");
+        }
         if (set is not long chosen)
         {
             (IReadOnlyList<HistoryRow> newest, string? older) = AgentAnswers.Listed(rows, MostHistoryRows, "change set",
@@ -479,10 +517,11 @@ public sealed partial class PassengerTools
         }
         ToolWindows.ProblemsModel view = window.BottomPanel.Problems;
         return new ProblemsInfo([.. view.ToolsetProblems.Select(Found)], [.. view.Problems.Select(Found)],
-            Session.CSharp?.SolutionProblems is { } solution ? [.. solution.Select(p => new Finding(p.Diagnostic.Severity == Lsp.DiagnosticSeverity.Error ? "error" : "warning", p.Diagnostic.Code,
+            Session.CSharp?.SolutionProblems is { } solution ? [.. solution.Where(p => p.Diagnostic.Severity is Lsp.DiagnosticSeverity.Error or Lsp.DiagnosticSeverity.Warning)
+                .Select(p => new Finding(p.Diagnostic.Severity == Lsp.DiagnosticSeverity.Error ? "error" : "warning", p.Diagnostic.Code,
                 p.Diagnostic.Message, Relative(p.Path), p.At.Line + 1, p.At.Column + 1))] : null);
 
-        Finding Found(Problem p) => new(p.Severity == ProblemSeverity.Error ? "error" : "warning", p.Code, p.Message,
+        Finding Found(Problem p) => new(p.Severity switch { ProblemSeverity.Error => "error", ProblemSeverity.Warning => "warning", _ => "info" }, p.Code, p.Message,
             p.Path is { } at ? Relative(at) : p.Project, p.Position.Line + 1, p.Position.Column + 1);
     });
 }
@@ -491,7 +530,11 @@ public sealed partial class PassengerTools
 public sealed record SettingsInfo(bool Kept, IReadOnlyList<SettingInfo> Settings);
 
 /// <summary>A setting by its name in settings.json: its value, its kind, the choices it takes or the range it is brought into.</summary>
-public sealed record SettingInfo(string Name, JsonElement Value, string Kind, IReadOnlyList<string>? Choices, double? Min, double? Max);
+public sealed record SettingInfo(string Name, JsonElement Value, string Kind, IReadOnlyList<string>? Choices, double? Min, double? Max)
+{
+    /// <summary>What its choices leave out and how to ask for it: a font's installed families.</summary>
+    public string? Note { get; init; }
+}
 
 /// <summary>A setting an agent changed: as it was, as it is now in force, and why that is not what was asked, when it is not.</summary>
 public sealed record SettingChange(string Name, JsonElement Before, JsonElement After, string? Note);

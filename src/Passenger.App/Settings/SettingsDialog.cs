@@ -15,12 +15,15 @@ public sealed partial class SettingsDialog : IdeWindow
     public const string Appearance = "Appearance";
     public const string SystemPage = "System Settings";
     public const string UpdatesPage = "Updates";
+    public const string ExplorerPage = "Explorer";
     public const string EditorPage = "Editor";
     public const string CodeFoldingPage = "Code Folding";
     public const string LiveTemplatesPage = "Live Templates";
     public const string PostfixPage = "Postfix Completion";
     public const string XamlCodeStylePage = "Code Style: XAML";
+    public const string GDScriptCodeStylePage = "Code Style: GDScript";
     public const string TerminalPage = "Terminal";
+    public const string VersionControlPage = "Version Control";
     public const string BuildPage = "Build";
     public const string RunPage = "Run";
     public const string HotReloadPage = "Hot Reload";
@@ -28,7 +31,9 @@ public sealed partial class SettingsDialog : IdeWindow
     public const string EslintPage = "ESLint";
     public const string PrettierPage = "Prettier";
     public const string SchemasPage = "Remote JSON Schemas";
+    public const string StylesheetsPage = "Remote Stylesheets";
     public const string DockerPage = "Docker";
+    public const string GodotPage = "Godot";
     public const string KeymapPage = "Keymap";
     public const string McpPage = "MCP Server";
     public const string DiscordPage = "Discord";
@@ -54,8 +59,8 @@ public sealed partial class SettingsDialog : IdeWindow
     /// <summary>The names of <see cref="DiscordShown"/>'s choices, in its order.</summary>
     public static readonly string[] DiscordChoices = ["Passenger only", "The solution", "The solution and the file"];
 
-    private static readonly string[] Order = [Appearance, SystemPage, UpdatesPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, LiveTemplatesPage,
-        BuildPage, RunPage, HotReloadPage, NodePage, EslintPage, PrettierPage, SchemasPage, DockerPage, TerminalPage, McpPage, DiscordPage, DiagnosticsPage, KeymapPage];
+    private static readonly string[] Order = [Appearance, SystemPage, UpdatesPage, ExplorerPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, GDScriptCodeStylePage, LiveTemplatesPage,
+        VersionControlPage, BuildPage, RunPage, HotReloadPage, NodePage, EslintPage, PrettierPage, SchemasPage, StylesheetsPage, DockerPage, GodotPage, TerminalPage, McpPage, DiscordPage, DiagnosticsPage, KeymapPage];
 
     /// <summary>The names of Attributes format's choices, in <see cref="Passenger.Xaml.Features.XamlAttributeStyle"/>'s
     /// order.</summary>
@@ -72,6 +77,7 @@ public sealed partial class SettingsDialog : IdeWindow
     /// <summary>The words a search finds every option of a page by, beside each option's own.</summary>
     internal const string FoldingWords = "fold by default folding collapse collapsed open opening region";
     internal const string XamlWords = "xaml axaml xml code style formatting reformat format layout wpf avalonia";
+    internal const string GDScriptWords = "gdscript gd godot code style formatting reformat format layout style guide";
     internal const string EslintWords = "eslint lint linter linting javascript typescript code quality tools problems inspections";
     internal const string PrettierWords = "prettier format formatter formatting reformat code style javascript typescript css json";
     internal const string McpWords = "mcp model context protocol agents ai claude codex opencode attach socket";
@@ -199,6 +205,10 @@ public sealed partial class SettingsDialog : IdeWindow
     {
         Working = change(Working);
         ok.IsEnabled = applyButton.IsEnabled = Refused is null;
+        foreach ((_, Control editor, SettingWhen when) in dependents)
+        {
+            Follow(editor, when);
+        }
     }
 
     private void Filter()
@@ -249,6 +259,7 @@ public sealed partial class SettingsDialog : IdeWindow
         {
             Add(Declared.MainMenuBar);
         }
+        Add(Declared.WindowFontFamily);
 
         Add(Declared.ReopenProjectsOnStartup);
         StackPanel openIn = new() { Orientation = Orientation.Horizontal, Spacing = 16 };
@@ -280,12 +291,19 @@ public sealed partial class SettingsDialog : IdeWindow
 
         Add(Declared.CheckForUpdates);
 
+        Add(Declared.AlwaysSelectOpenedFile);
+        Add(Declared.OpenFilesWithSingleClick);
+        Add(Declared.NestFiles);
+
         Add(Declared.ColourScheme);
+        Add(Declared.EditorFontFamily);
         Add(Declared.EditorFontSize);
         Add(Declared.EditorLineSpacing);
         Add(Declared.Ligatures);
         Add(Declared.ShowLineNumbers);
         Add(Declared.RainbowBraces);
+        Add(Declared.CloseTags);
+        Add(Declared.XamlWorkspace);
         Add(Declared.SolutionWideAnalysis);
         Add(Declared.ParameterHints);
         Add(Declared.TypeHints);
@@ -312,6 +330,11 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.FoldXmlTags);
 
         AddXamlCodeStyle();
+        Add(Declared.GDScriptWrapLongLines);
+        Add(Declared.GDScriptLineLength);
+        Add(Declared.GDScriptBlankLines);
+        Add(Declared.GDScriptTrailingCommas);
+        Add(Declared.GDScriptFormatOnSave);
 
         Postfix = new PostfixTemplatesPane(Working, Change);
         AddPage(PostfixPage, Postfix, "postfix templates completion expression dot autopopup "
@@ -319,6 +342,9 @@ public sealed partial class SettingsDialog : IdeWindow
         Templates = new LiveTemplatesPane(TemplateChange.Applied(Working.LiveTemplates), list => Change(s => s with { LiveTemplates = TemplateChange.Of(list) }));
         AddPage(LiveTemplatesPage, Templates, "live templates c# shortcut abbreviation snippet expand tab surround with generation availability mnemonic variables macros "
             + string.Join(' ', CSharp.LiveTemplates.BuiltIn.Select(t => $"{t.Abbreviation} {t.Description}")));
+
+        Add(Declared.OpenDiffsIn);
+        Add(Declared.DiffHighlighting);
 
         CheckBox implicitly = Check(Working.OpenBuildWindowOnImplicitBuild, v => Change(s => s with { OpenBuildWindowOnImplicitBuild = v }));
         implicitly.IsEnabled = Working.OpenBuildWindowOnBuild;
@@ -336,8 +362,10 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.HotReloadWhileDebugging);
         Add(Declared.HotReload);
         Add(Declared.HotReloadOnSave);
+        Add(Declared.XamlHotReloadOnSave);
         Add(Declared.RestartOnRudeEdit);
         Add(Declared.ConsoleBufferKb);
+        Add(Declared.DebugBrowser);
 
         string? onPath = Passenger.Core.Programs.Node();
         TextBox node = new() { Classes = { StyleClasses.Search }, Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = onPath ?? "Not found on the PATH", Width = 320 };
@@ -347,10 +375,20 @@ public sealed partial class SettingsDialog : IdeWindow
             + "as the login shell finds it. Without one, those files keep their colours only.");
         AddCodeQualityTools();
         Add(Declared.DownloadJsonSchemas);
+        Add(Declared.DownloadStylesheets);
         Add(Declared.DockerHubTags);
         Add(Declared.BuildKitChecks);
+        Add(Declared.GodotExecutable);
+        Add(Declared.GodotLiveValues);
+        Add(Declared.GodotTestsWindowed);
+        Add(Declared.GodotDebugPlays);
+        Add(Declared.GodotSelectionFollows);
 
         Add(Declared.TerminalFontSize);
+        Add(Declared.TerminalFontFamily);
+        Add(Declared.TerminalCopyOnSelection);
+        Add(Declared.TerminalCursorBlinking);
+        Add(Declared.TerminalCursorStyle);
         Add(Declared.TerminalShell);
 
         AddAgents(agents);
@@ -396,8 +434,30 @@ public sealed partial class SettingsDialog : IdeWindow
     private void Add(Setting setting)
     {
         SettingRow row = setting.Row ?? throw new ArgumentException("A setting with no row of its own goes in a row the dialog builds", nameof(setting));
-        Add(row.Page, row.Label, setting.Editor(Working, Change), row.Words, row.Note);
+        Control editor = setting.Editor(Working, Change);
+        Add(row.Page, row.Label, editor, row.Words, row.Note);
+        if (row.When is { } when)
+        {
+            // Greyed, saying why, while the setting it follows leaves it no effect.
+            ToolTip.SetShowOnDisabled(editor, true);
+            dependents.Add((row.Label, editor, when));
+            Follow(editor, when);
+        }
     }
+
+    /// <summary>The rows another setting greys, each with what it takes effect under.</summary>
+    private readonly List<(string Label, Control Editor, SettingWhen When)> dependents = [];
+
+    private void Follow(Control editor, SettingWhen when)
+    {
+        bool holds = when.Holds(Working);
+        editor.IsEnabled = holds;
+        ToolTip.SetTip(editor, holds ? null : when.Why);
+    }
+
+    /// <summary>Why a row is greyed as the settings stand; null where it takes effect, or is no row another greys.</summary>
+    public string? WhyGreyed(string label) =>
+        dependents.FirstOrDefault(d => d.Label == label) is { Editor: { } editor, When: { } when } && !when.Holds(Working) && !editor.IsEnabled ? when.Why : null;
 
     /// <summary>A page that is one control of its own (the live templates' list and editor), the whole of its width, found
     /// by a search for any of its words.</summary>

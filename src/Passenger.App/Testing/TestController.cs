@@ -54,17 +54,70 @@ public sealed class TestController : IAsyncDisposable
         this.projects = projects;
         this.workspaceModel = workspaceModel;
         this.log = log;
-        this.startRunner = startRunner ?? ((workspace, _) => Task.FromResult<ITestRunner>(new TestRunners(workspace)));
+        this.startRunner = startRunner ?? ((workspace, _) => Task.FromResult<ITestRunner>(new TestRunners(workspace, declared: Declared, goDotStart: GoDotStartAsync)));
         Finder.Changed += (_, found) =>
         {
             code = found;
             Load();
+            ReadGoDotStarts();
         };
         Finder.Moved += (_, moved) => Tree.Move(moved.Path, moved.Moved);
+        Finder.CodeRead += (_, _) => Tree.CheckCode();
+        Tree.CodeOf = method => method.FromCode is { Path: { } path } declared ? Finder.CodeOf(path, declared.FullyQualifiedName) : null;
         Load();
     }
 
     public TestTree Tree { get; }
+
+    /// <summary>Where a GoDotTest game's run of its tests starts, by its project (<see cref="GoDotTests.StartOf"/>); its main
+    /// scene where nothing reads the game's scenes.</summary>
+    public Func<string, Task<GoDotTests.Start>>? GoDotStartOf { get; set; }
+
+    /// <summary>Where each GoDotTest game's tests start as last read, by project path, which the run actions grey by.</summary>
+    private readonly Dictionary<string, GoDotTests.Start> goDotStarts = new(PathNames.Comparer);
+
+    /// <summary>Where a GoDotTest game's tests start, read now and kept for the run actions.</summary>
+    private async Task<GoDotTests.Start> GoDotStartAsync(string project)
+    {
+        GoDotTests.Start start = GoDotStartOf is { } of ? await of(project) : GoDotTests.Start.Main;
+        await UiThread.InvokeAsync(() => goDotStarts[project] = start);
+        return start;
+    }
+
+    /// <summary>Where each GoDotTest game's tests start, read again as the code the tests are found in changes.</summary>
+    private void ReadGoDotStarts()
+    {
+        if (GoDotStartOf is null)
+        {
+            return;
+        }
+        foreach (ProjectModel game in projects().Where(GoDotTests.Carried))
+        {
+            IdeErrors.Observe(GoDotStartAsync(game.Path));
+        }
+    }
+
+    /// <summary>Why the tests of these methods (every one shown, where none is named) are not run: each is a GoDotTest game's
+    /// whose scenes never run its tests, as last read; null where any may run.</summary>
+    public string? NeverRuns(IEnumerable<TestNode>? methods = null)
+    {
+        UiThread.Check();
+        List<string?> games = [.. (methods ?? Tree.Methods).Select(m => m.ProjectPath).Distinct(StringComparer.Ordinal)];
+        foreach (string game in games.OfType<string>().Where(g => !goDotStarts.ContainsKey(g) && !reading.Contains(g)))
+        {
+            // A game not read yet is read now, for the next asking.
+            if (GoDotStartOf is not null && projects().FirstOrDefault(p => PathNames.Same(p.Path, game)) is { } project && GoDotTests.Carried(project))
+            {
+                reading.Add(game);
+                IdeErrors.Observe(GoDotStartAsync(game));
+            }
+        }
+        return games.Count > 0 && games.All(p => p is not null && goDotStarts.TryGetValue(p, out GoDotTests.Start? start) && start.Never)
+            ? string.Join("; ", games.Select(g => Refusals.GoDotTestStart(Path.GetFileNameWithoutExtension(g)!, goDotStarts[g!]))) : null;
+    }
+
+    /// <summary>The games whose start a read has been begun for, so asking again begins none.</summary>
+    private readonly HashSet<string> reading = new(PathNames.Comparer);
 
     /// <summary>The window's work under way, which a run shows itself in from its first moment to its end, Stop ending it;
     /// null with no window to show it in.</summary>
@@ -114,6 +167,18 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>A run of tests ended, not stopped: how it ended.</summary>
     public event EventHandler<RunSummary>? Ran;
 
+    /// <summary>A run ended, however: the results of each method it ran that told any, by the method's identity, to keep
+    /// for a later session (<see cref="Keep"/>).</summary>
+    public event EventHandler<IReadOnlyDictionary<string, KeptRun>>? ResultsToKeep;
+
+    /// <summary>An earlier session's results, which the tree shows as an earlier run's until each test runs again.</summary>
+    public void Keep(IReadOnlyDictionary<string, KeptRun> runs)
+    {
+        UiThread.Check();
+        Tree.Keep(runs);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>How the last run ended; null while one is under way, or when the last was stopped or refused.</summary>
     private RunSummary? ended;
 
@@ -121,11 +186,27 @@ public sealed class TestController : IAsyncDisposable
     /// (not running, no CLI), or the <see cref="EngineVariables.DockerHost"/> of its current context, for a test host that has none set.</summary>
     public Func<CancellationToken, Task<(string? Problem, string? DockerHost)>>? ContainerEngine { get; set; }
 
+    /// <summary>Asks before a run of a Godot project's tests what its test hosts are given and how its Godot starts
+    /// (<see cref="GodotTestRuns.Variables"/>), on a worker.</summary>
+    public Func<CancellationToken, Task<GodotTestRuns.Given>>? GodotVariables { get; set; }
+
+    /// <summary>The folders of the workspace's Godot projects, whose GDScript GUT's tests may be in.</summary>
+    public Func<IReadOnlyList<string>> GodotFolders { get; init; } = () => [];
+
     /// <summary>A test to debug: the debugger launches the test host the runner gives and says what process it is.</summary>
     public Func<TestHostStart, Task<int>>? LaunchUnderDebugger { get; set; }
 
-    /// <summary>A test to debug in a test host the runner started itself: the debugger attaches to it, true once it has.</summary>
-    public Func<int, Task<bool>>? AttachDebugger { get; set; }
+    /// <summary>A Godot run of GUT's or GoDotTest's tests to debug: the debugger starts it as Debug starts its game
+    /// (<see cref="ITestDebugLauncher.DebugGameAsync"/>).</summary>
+    public Func<TestHostStart, string, int, bool, Action<string>?, Task<Task>>? DebugGame { get; set; }
+
+    /// <summary>A test to debug in a test host the runner started itself: the debugger attaches to it (with Hot Reload and
+    /// its hook where the host was started for them), true once it has.</summary>
+    public Func<int, TestHostReload?, Task<bool>>? AttachDebugger { get; set; }
+
+    /// <summary>What a debugged test host of a test assembly is started with for Hot Reload while the debugger has it on;
+    /// null while off.</summary>
+    public Func<string, IReadOnlyDictionary<string, string>, TestHostReload?>? ReloadFor { get; set; }
 
     /// <summary>Starts a project-scoped Aspire endpoint before its test host is launched.</summary>
     public Func<ProjectModel, bool, CancellationToken, Task<AspireTestRun?>>? BeginAspireTest { get; set; }
@@ -147,7 +228,7 @@ public sealed class TestController : IAsyncDisposable
         }
         if (projectsRead)
         {
-            Finder.Scan(workspace, workspace is null ? [] : projects());
+            Finder.Scan(workspace, workspace is null ? [] : projects(), workspace is null ? [] : GodotFolders());
         }
         else if (workspace != Finder.Folder)
         {
@@ -162,6 +243,9 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>Whether the tests are still being found from code, as the window's "Looking for tests…" says: the folder's
     /// projects not yet walked, or its test projects' files still being read.</summary>
     public bool IsLooking => awaitingProjects || Finder.IsLooking;
+
+    /// <summary>Whether a run builds before it starts: the folder has .NET projects, which a game of GDScript alone does not.</summary>
+    public bool Builds => projects().Any(p => p.Exists && !p.IsScriptGame);
 
     /// <summary>Builds, then finds the tests of every test project. Null once found, or what stopped it.</summary>
     public async Task<string?> DiscoverAsync(string workspace)
@@ -281,6 +365,17 @@ public sealed class TestController : IAsyncDisposable
                 return choice.None ?? (chosen is null ? "There are no tests to run" : "None of these tests was found in the test projects as built");
             }
             List<TestNode> methods = [.. tests.Select(Tree.Node).OfType<TestNode>().Select(n => n.Kind == TestNodeKind.Row ? n.Parent! : n).Distinct()];
+            // A GoDotTest game none of whose scenes runs its tests is said before Godot starts, its start read as it stands.
+            foreach (string game in tests.Select(t => t.Project).Distinct(StringComparer.Ordinal).Where(p => projects().Any(m => PathNames.Same(m.Path, p) && GoDotTests.Carried(m))))
+            {
+                await GoDotStartAsync(game);
+            }
+            if (NeverRuns(methods) is { } never)
+            {
+                Summary = prefix + never;
+                Message?.Invoke(this, Summary);
+                return never;
+            }
             HashSet<string> containerized = [.. projects().Where(p => p.Packages.Any(n => n.Name.StartsWith("Testcontainers", StringComparison.OrdinalIgnoreCase)))
                 .Select(p => p.Path).Where(p => tests.Any(t => t.Project == p))];
             string? dockerHost = null;
@@ -297,10 +392,24 @@ public sealed class TestController : IAsyncDisposable
                     return said;
                 }
             }
+            // The C# games' tests and GUT's of each Godot project (its project.godot), which run on Godot.
+            HashSet<string> csharp = [.. projects().Where(p => p.GodotFolder is not null && !p.IsScriptGame).Select(p => p.Path).Where(p => tests.Any(t => t.Project == p))];
+            HashSet<string> games = [.. csharp, .. tests.Where(t => t.Framework == GutScripts.Framework).Select(t => t.Project)];
+            IReadOnlyDictionary<string, string> godot = new Dictionary<string, string>();
+            GodotStart? godotStart = null;
+            if (games.Count > 0 && GodotVariables is { } godotOf)
+            {
+                (godot, string? noCSharp, godotStart) = await godotOf(stop.Token);
+                if (noCSharp is not null && csharp.Count > 0)
+                {
+                    log(noCSharp);
+                }
+            }
             lastRun = chosen ?? [];
             RunMethods = methods;
             RunOutcomes = [];
             working?.Say($"{prefix}Running {Plural.Of(tests.Count, "test")}…");
+            DateTimeOffset began = DateTimeOffset.Now;
             Tree.Begin(tests);
             RunSummary? summary = null;
             List<AspireTestRun> aspireRuns = [];
@@ -313,6 +422,10 @@ public sealed class TestController : IAsyncDisposable
                 // Each test project's tests run with its launch profile's environment, so projects whose differ run apart.
                 Dictionary<string, IReadOnlyDictionary<string, string>> environments = tests.Select(t => t.Project).Distinct(StringComparer.Ordinal)
                     .ToDictionary(p => p, p => containerized.Contains(p) ? WithDockerHost(EnvironmentOf(p), dockerHost) : EnvironmentOf(p), StringComparer.Ordinal);
+                foreach (string game in games)
+                {
+                    environments[game] = GodotTestRuns.With(environments[game], godot);
+                }
                 if (BeginAspireTest is { } beginAspire)
                 {
                     foreach (string path in environments.Keys.ToArray())
@@ -340,13 +453,16 @@ public sealed class TestController : IAsyncDisposable
                     {
                         break;
                     }
-                    RunSummary part = await runner!.RunAsync(
-                        [.. group.Select(t => t.Test)],
+                    List<TestItem> its = [.. group.Select(t => t.Test)];
+                    Task<RunSummary> Run() => runner!.RunAsync(
+                        its,
                         UiThread.Marshal<IReadOnlyList<TestOutcome>>(Apply),
                         log: UiThread.Marshal(log),
                         debugger: debug ? new DebugLauncher(this) : null,
                         environment: group.First().Environment,
+                        godot: godotStart,
                         cancel: stop.Token);
+                    RunSummary part = await PuttingBackAsync(GdUnit4Installs(its), Run);
                     summary = summary is null ? part : summary.And(part);
                 }
                 // A runner may tell an outcome on another thread behind the run's end: every one is in before the end is.
@@ -356,6 +472,7 @@ public sealed class TestController : IAsyncDisposable
             {
                 // However the run ends, a runner's failure included, what it began and never heard of is no longer running.
                 Tree.End();
+                Keep(methods, began);
                 await Task.WhenAll(aspireRuns.Select(aspire => aspire.DisposeAsync().AsTask()));
             }
             RunOutcomes = summary.Outcomes;
@@ -395,6 +512,44 @@ public sealed class TestController : IAsyncDisposable
                 ReleaseWork();
                 Changed?.Invoke(this, EventArgs.Empty);
             }
+        }
+    }
+
+    /// <summary>The Godot projects GdUnit4's adapter will write its test runner into for these tests, its headless editor
+    /// run on each then: the C# games' whose tests VSTest runs where the runner is not there yet. A worker's look at each.</summary>
+    private Task<List<string>> GdUnit4Installs(IReadOnlyList<TestItem> tests)
+    {
+        List<string> games = [.. projects().Where(p => p is { IsTestProject: true, IsScriptGame: false, GodotFolder: not null } && tests.Any(t => t.Project == p.Path))
+            .Select(p => p.GodotFolder!).Distinct(PathNames.Comparer)];
+        return games.Count == 0 ? Task.FromResult(games) : BackgroundWork.Run(() => games.Where(g => !File.Exists(GdUnit4Settings.RunnerScene(g))).ToList());
+    }
+
+    /// <summary>A run, what a headless editor writes over in each of these Godot projects as it runs put back once it ends.</summary>
+    private static async Task<RunSummary> PuttingBackAsync(Task<List<string>> projects, Func<Task<RunSummary>> run)
+    {
+        Func<Task<RunSummary>> kept = run;
+        foreach (string project in await projects)
+        {
+            Func<Task<RunSummary>> inner = kept;
+            kept = () => Godot.GodotScripts.PuttingBackAsync(project, inner);
+        }
+        return await kept();
+    }
+
+    /// <summary>Tells the results the run's methods told, those of a method shown under two groups once.</summary>
+    private void Keep(IReadOnlyList<TestNode> methods, DateTimeOffset began)
+    {
+        Dictionary<string, KeptRun> runs = new(StringComparer.Ordinal);
+        foreach (TestNode method in methods)
+        {
+            if (method.Identity?.Kept is { } identity && !runs.ContainsKey(identity) && method.Results.Any(r => r.Earlier is null))
+            {
+                runs[identity] = KeptRun.Of(method.Results, began, method.RanCode);
+            }
+        }
+        if (runs.Count > 0)
+        {
+            ResultsToKeep?.Invoke(this, runs);
         }
     }
 
@@ -447,11 +602,11 @@ public sealed class TestController : IAsyncDisposable
     private List<TestItem> Chosen(IEnumerable<TestNode> rows)
     {
         List<TestItem> tests = [];
-        HashSet<string> seen = new(StringComparer.Ordinal);
+        HashSet<TestItem> seen = new(TestItem.ById);
         foreach (TestNode row in rows.SelectMany(Now))
         {
             IEnumerable<TestItem> its = row.Kind == TestNodeKind.Row ? row.Item is { } item ? [item] : row.Parent!.Items : row.Methods.SelectMany(m => m.Items);
-            tests.AddRange(its.Where(t => seen.Add(t.Key)));
+            tests.AddRange(its.Where(seen.Add));
         }
         return tests;
     }
@@ -487,7 +642,8 @@ public sealed class TestController : IAsyncDisposable
     private void Load()
     {
         IReadOnlyList<ProjectModel> tests = Finder.Projects;
-        Tree.Load([.. tests.Select(p => new ProjectTests(p.Path, Path.GetFileNameWithoutExtension(p.Path), code.GetValueOrDefault(p.Path) ?? CodeTests.None, sources.GetValueOrDefault(p.Path) ?? NoSources)
+        // A Godot project's GUT tests under its game's name, the GDScript said where its C# project's tests share it.
+        Tree.Load([.. tests.Select(p => new ProjectTests(p.Path, NameOf(p, tests), code.GetValueOrDefault(p.Path) ?? CodeTests.None, sources.GetValueOrDefault(p.Path) ?? NoSources)
         {
             DeclaredFramework = p.TargetFrameworks is [{ } only] && !only.Contains('$', StringComparison.Ordinal) ? only : null,
         })]);
@@ -495,6 +651,12 @@ public sealed class TestController : IAsyncDisposable
             : awaitingProjects || Finder.IsLooking ? "Looking for tests…"
             : tests.Count == 0 ? "No test projects: none references xUnit, NUnit or MSTest"
             : "No tests in the test projects yet";
+    }
+
+    private static string NameOf(ProjectModel project, IReadOnlyList<ProjectModel> tests)
+    {
+        string name = project.IsScriptGame ? project.Name : Path.GetFileNameWithoutExtension(project.Path);
+        return project.IsScriptGame && tests.Any(p => !p.IsScriptGame && Path.GetFileNameWithoutExtension(p.Path) == name) ? $"{name} (GDScript)" : name;
     }
 
     /// <summary>Lets go of another folder's runner and what was discovered in it.</summary>
@@ -537,7 +699,8 @@ public sealed class TestController : IAsyncDisposable
 
     private async Task<string?> DiscoverCore(string workspace, bool build, CancellationToken cancel)
     {
-        if (build && await this.build(cancel) is { Succeeded: false } unbuilt)
+        // A folder of GDScript alone has nothing to build for GUT's tests.
+        if (build && Builds && await this.build(cancel) is { Succeeded: false } unbuilt)
         {
             return unbuilt.Message;
         }
@@ -551,13 +714,16 @@ public sealed class TestController : IAsyncDisposable
             Forget(workspace);
         }
         IReadOnlyList<ProjectModel> tests = [.. projects().Where(p => p.Exists && p.IsTestProject)];
-        if (tests.Count == 0)
+        // GUT's tests, of each Godot project carrying GUT (its project.godot), and GoDotTest's, of each C# game carrying it.
+        List<(ProjectModel Project, string Framework)> declaring = [.. Finder.Projects.Where(p => p.IsScriptGame).Select(p => (p, GutScripts.Framework)),
+            .. Finder.Projects.Where(p => !p.IsTestProject && GoDotTests.Carried(p)).Select(p => (p, GoDotTests.Framework))];
+        if (tests.Count == 0 && declaring.Count == 0)
         {
             sources = new(StringComparer.Ordinal);
             Load();
             return "There are no test projects: none references a test SDK or adapter";
         }
-        IReadOnlyList<TestAssembly> assemblies = await Assemblies(tests, workspace, cancel);
+        IReadOnlyList<TestAssembly> assemblies = tests.Count == 0 ? [] : await Assemblies(tests, workspace, cancel);
         List<TestAssembly> built = [];
         foreach (TestAssembly assembly in assemblies)
         {
@@ -602,13 +768,23 @@ public sealed class TestController : IAsyncDisposable
             next[project.Key] = sources.TryGetValue(project.Key, out IReadOnlyList<TestSource>? was)
                 && was.Select(s => (s.Framework, s.Tests)).SequenceEqual(now.Select(s => (s.Framework, s.Tests))) ? was : now;
         }
+        // GUT's and GoDotTest's tests are the code's, told as found by their runners.
+        foreach ((ProjectModel project, string framework) in declaring)
+        {
+            List<TestItem> found = [.. Declared(project.Path).Select(t => t with { Framework = framework })];
+            next[project.Path] = sources.TryGetValue(project.Path, out IReadOnlyList<TestSource>? was) && was is [{ } known] && known.Tests.SequenceEqual(found)
+                ? was : [new TestSource(framework, found)];
+        }
         sources = next;
         Load();
-        int count = built.Sum(a => discovered[a.Path].Tests.Count);
-        int projectCount = built.Select(a => a.Project).Distinct().Count();
+        int count = built.Sum(a => discovered[a.Path].Tests.Count) + declaring.Sum(d => next[d.Project.Path][0].Tests.Count);
+        int projectCount = built.Select(a => a.Project).Distinct().Count() + declaring.Count;
         Message?.Invoke(this, $"Found {Plural.Of(count, "test")} in {Plural.Of(projectCount, "project")}");
         return null;
     }
+
+    /// <summary>The tests a project's code declares as last read, by its path.</summary>
+    private IReadOnlyList<TestItem> Declared(string project) => (code.GetValueOrDefault(project) ?? CodeTests.None).Tests;
 
     /// <summary>The test projects' assemblies, from MSBuild once for these projects as the folder last read them.</summary>
     private async Task<IReadOnlyList<TestAssembly>> Assemblies(IReadOnlyList<ProjectModel> tests, string workspace, CancellationToken cancel)
@@ -680,17 +856,39 @@ public sealed class TestController : IAsyncDisposable
                 })
                 : throw new InvalidOperationException("No debugger can start the test host");
 
-        public Task<bool> AttachAsync(int processId) =>
+        public Task<Task> DebugGameAsync(TestHostStart start, string folder, int leading, bool csharp, Action<string>? heard = null) =>
+            owner.DebugGame is { } debug
+                ? UiThread.InvokeAsync<Task>(() =>
+                {
+                    if (!IsCurrent)
+                    {
+                        return Task.FromCanceled<Task>(new CancellationToken(canceled: true));
+                    }
+                    owner.ReleaseWork();
+                    return debug(start, folder, leading, csharp, heard);
+                })
+                : throw new InvalidOperationException("No debugger can start the game's tests");
+
+        public TestHostReload? Reload(string assembly, IReadOnlyDictionary<string, string> environment) => owner.ReloadFor?.Invoke(assembly, environment);
+
+        public Task<bool> AttachAsync(int processId, TestHostReload? reload = null) =>
             owner.AttachDebugger is { } attach
                 ? UiThread.InvokeAsync(() =>
                 {
                     if (!IsCurrent)
                     {
+                        reload?.Hook.Dispose();
                         return Task.FromResult(false);
                     }
                     owner.ReleaseWork();
-                    return attach(processId);
+                    return attach(processId, reload);
                 })
-                : Task.FromResult(false);
+                : Unattached(reload);
+
+        private static Task<bool> Unattached(TestHostReload? reload)
+        {
+            reload?.Hook.Dispose();
+            return Task.FromResult(false);
+        }
     }
 }

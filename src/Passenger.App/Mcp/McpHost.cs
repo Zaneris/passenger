@@ -22,10 +22,6 @@ namespace Passenger.App.Mcp;
 /// connection is a server of its own over the same tools.</summary>
 public static partial class McpHost
 {
-    /// <summary>The IDE has no window, only the headless platform's (whose frames a screenshot takes). The process's, as
-    /// the platform is: <c>--mcp</c> runs on the headless one alone.</summary>
-    public static bool IsHeadless { get; private set; }
-
     /// <summary>The variable that, set to <c>off</c>, has an <c>--mcp</c> Passenger start no C# language server
     /// (<see cref="MainWindow.StartsLanguageServer"/>), for an agent that asks nothing of C#.</summary>
     [IdentifierHome]
@@ -77,7 +73,10 @@ public static partial class McpHost
         "build, run, tests_list and tests_run build (and publish), run and test. To debug: breakpoint_set, then debug_start (or debug_attach), debug_step, " +
         "debug_evaluate, debug_state and debug_continue, each waiting for the program to stop and saying where, with the locals " +
         "where it stopped. An Avalonia or WPF app that run or debug_start starts is looked at and used as a person tests it: app_windows, app_tree, " +
-        "app_screenshot, app_click, app_type, app_key, app_scroll, app_binding_errors. Also version control (vcs_status, " +
+        "app_screenshot, app_click, app_type, app_key, app_scroll, app_binding_errors. A Godot game the same, Passenger its remote debugger: its " +
+        "nodes are the elements, input reaching it through a helper node Passenger adds under its root; ide_action app.godot.pauseLoop " +
+        "and app.godot.nextFrame pause its loop and step it a frame, and with app.liveTree.selectElement on, app_click picks the node at " +
+        "a point. Also version control (vcs_status, " +
         "vcs_commit), NuGet (nuget_search, nuget_install), Problems and Local History (diagnostics with no path, local_history), the settings (settings, " +
         "settings_set), the container engine (containers, container_exec, container_action) and Passenger's own " +
         "window (the app_ tools with app ide, ide_action).\n\n" +
@@ -89,7 +88,8 @@ public static partial class McpHost
         "save_all, stop and stepping never ask), and before it opens another folder in their window. A call waits for each answer 2 " +
         "minutes at most, telling its progress meanwhile when asked to; one refused or left unanswered says so, and a later call asks " +
         "again. A file the agent opens or edits there comes in a tab behind the person's, whose tab, caret and keys stay as they were. " +
-        "Passenger --mcp FOLDER is an agent's own IDE with no window, which asks nothing.";
+        "Passenger --mcp FOLDER is an agent's own IDE with no window, which asks nothing and runs apps where nobody sees them " +
+        "(an Avalonia app on its headless platform), saying so when one cannot run there.";
 
     /// <summary>The server as an agent sees it, whichever way it is reached.</summary>
     internal static Implementation ServerInfo => new()
@@ -229,7 +229,8 @@ public static partial class McpHost
     /// it), so an agent asking as it connects finds the tools at once; each call waits for the IDE.</summary>
     public static int RunStdio(LaunchOptions launch, Stream input)
     {
-        IsHeadless = true;
+        PassengerApp.RunsHeadless();
+        PassengerApp.RunsForAgent();
         Stream output = Console.OpenStandardOutput();
         // Standard output is the protocol's alone, and standard error the agent may never read: the console goes to the log.
         IdeLog.TakeConsole();
@@ -259,13 +260,12 @@ public static partial class McpHost
         AppBuilder.Configure<App>()
             .UseSkia()
             .UseHarfBuzz()
-            .WithInterFont()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
             .AfterSetup(builder => Program.ApplyTheme(builder.Instance!, launch))
             .SetupWithoutStarting();
 
         // The agent's own IDE, which no other agent joins.
-        MainWindow window = new() { Width = 1600, Height = 1000, AgentsAllowed = false, AgentsOwn = true, StartsLanguageServer = StartsLanguageServer, HeadStart = ahead };
+        MainWindow window = new() { Width = 1600, Height = 1000, AgentsAllowed = false, AgentsOwn = true, TakesLaunches = false, StartsLanguageServer = StartsLanguageServer, HeadStart = ahead };
         IdeErrors.Write($"Passenger {Product.Version} ({Product.Commit ?? "no commit"}) for an agent, with no window shown: its window built "
             + $"{System.Diagnostics.Stopwatch.GetElapsedTime(Program.StartedAt).TotalSeconds:0.00} s after launch");
         window.SetRenderScaling(2);
@@ -282,27 +282,34 @@ public static partial class McpHost
     }
 
     /// <summary><c>--headless [PATH]</c>: a person's window on the headless platform, which <c>--mcp-attach</c> starts
-    /// in place of the installed app under <see cref="McpProxy.StartVariable"/>: it listens for agents and asks before
-    /// letting them in, as any window does, until the input given ends (<see cref="StandardInput.Take"/>).</summary>
+    /// in place of the installed app under <see cref="McpProxy.StartVariable"/>, as does a launch no running Passenger
+    /// took there: it listens for agents and asks before letting them in, as any window does, and takes launches, until
+    /// the input given ends (<see cref="StandardInput.Take"/>), or, with exit code 2, the run configuration its command
+    /// line starts could not start.</summary>
     public static int RunHeadless(LaunchOptions launch, Stream input)
     {
-        IsHeadless = true;
+        PassengerApp.RunsHeadless();
         // Its starter reads nothing of its output or error: the console goes to the log.
         IdeLog.TakeConsole();
         AppBuilder.Configure<App>()
             .UseSkia()
             .UseHarfBuzz()
-            .WithInterFont()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
             .AfterSetup(builder => Program.ApplyTheme(builder.Instance!, launch))
             .SetupWithoutStarting();
 
-        MainWindow window = new() { Width = 1600, Height = 1000 };
+        MainWindow window = new() { Width = 1600, Height = 1000, AgentsAllowed = launch.ListenForAgents };
         window.SetRenderScaling(2);
         window.Show();
         window.Start(launch);
 
         using CancellationTokenSource done = new();
+        int code = 0;
+        IdeErrors.Observe(Program.EndUnlessStartedAsync(window, refused =>
+        {
+            code = refused;
+            done.Cancel();
+        }));
         using System.Runtime.InteropServices.PosixSignalRegistration? terminated = EndOnSignal(() => UiThread.Post(done.Cancel));
         // Not held: it waits for the end of the input, which its starter's own end closes.
         IdeErrors.Observe(BackgroundWork.Unheld(() =>
@@ -319,7 +326,7 @@ public static partial class McpHost
         Dispatcher.UIThread.MainLoop(done.Token);
         PassengerApp.Quit();
         PassengerApp.End();
-        return 0;
+        return code;
     }
 
     /// <summary><c>--mcp-attach [PID] [FOLDER]</c>: the agent's server, joining the window over its folder at its first
@@ -339,7 +346,7 @@ public static partial class McpHost
         }
         foreach (string path in Directory.EnumerateFiles(sockets))
         {
-            if (!path.EndsWith(AtomicFile.Temporary, StringComparison.Ordinal) && ProcessOf(path) is int pid && !Running(pid))
+            if (!path.EndsWith(AtomicFile.Temporary, StringComparison.Ordinal) && ProcessOf(path) is int pid && !DotnetProcesses.Runs(pid))
             {
                 try
                 {
@@ -348,19 +355,6 @@ public static partial class McpHost
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
                 }
-            }
-        }
-
-        static bool Running(int pid)
-        {
-            try
-            {
-                using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(pid);
-                return !process.HasExited;
-            }
-            catch (ArgumentException)
-            {
-                return false;
             }
         }
     }

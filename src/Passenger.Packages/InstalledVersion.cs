@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Packages;
 
 /// <summary>What choosing a version does to a project's references of a package: moves one up (an update), only down (a

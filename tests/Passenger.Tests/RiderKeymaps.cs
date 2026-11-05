@@ -4,9 +4,10 @@ using Passenger.Editor;
 namespace Passenger.Tests;
 
 /// <summary>Rider's keymaps as the files in Rider's jars write them, for the actions the keymap tests check: each
-/// keymap's parent and its own list of an action's keys, empty where it takes the parent's away, and the keys plugins'
-/// descriptors add to a keymap. An action's keys resolve as IntelliJ resolves them: the keymap's own list, else its
-/// parent's, Mac OS X 10.5+ taking $default's with Ctrl and Cmd swapped; then what the descriptors add.</summary>
+/// keymap's parent and its own list of an action's keys and mouse shortcuts, empty where it takes the parent's away, and
+/// the keys plugins' descriptors add to a keymap. An action's keys resolve as IntelliJ resolves them: the keymap's own
+/// list, else its parent's, Mac OS X 10.5+ taking $default's with Ctrl and Cmd swapped; then what the descriptors
+/// add.</summary>
 internal static class RiderKeymaps
 {
     private const string Default = "$default";
@@ -29,6 +30,10 @@ internal static class RiderKeymaps
             ["EditorRight"] = ["RIGHT"],
             ["EditorTextStart"] = ["control HOME"],
             ["EditorTextEnd"] = ["control END"],
+            ["ContextHelp"] = ["F1"],
+            ["ExternalJavaDoc"] = ["shift F1"],
+            ["ShowUsages"] = ["control alt F7"],
+            ["QuickEvaluateExpression"] = ["control alt F8", "alt button1"],
         }),
         [MacOS] = (Default, new()
         {
@@ -38,16 +43,23 @@ internal static class RiderKeymaps
             ["EditorDown"] = ["DOWN", "control N"],
             ["EditorLeft"] = ["LEFT", "control B"],
             ["EditorRight"] = ["RIGHT", "control F"],
+            ["ContextHelp"] = ["meta shift F1"],
+            ["ExternalJavaDoc"] = ["shift F1"],
         }),
         ["Visual Studio"] = (Default, new()
         {
             ["ParameterInfo"] = ["shift control SPACE"],
             ["NewElement"] = ["control N", "alt INSERT"],
+            ["ExternalJavaDoc"] = ["shift F1"],
+            ["ShowUsages"] = ["shift alt F12"],
         }),
         ["Visual Studio OSX"] = (MacOS, new()
         {
             ["Generate"] = ["control meta N"],
             ["NewElement"] = ["meta N", "alt INSERT"],
+            ["ContextHelp"] = ["F1"],
+            ["ExternalJavaDoc"] = ["shift F1", "meta F1"],
+            ["ShowUsages"] = ["shift alt F12"],
         }),
         ["VSCode"] = (Default, new()
         {
@@ -59,6 +71,9 @@ internal static class RiderKeymaps
             ["EditorToggleCase"] = [],
             ["EditorCloneCaretAbove"] = ["ctrl alt up", "shift ctrl alt up"],
             ["EditorCloneCaretBelow"] = ["ctrl alt down", "shift ctrl alt down"],
+            ["ContextHelp"] = [],
+            ["ShowUsages"] = ["shift f12"],
+            ["QuickEvaluateExpression"] = ["ctrl alt f8"],
         }),
         ["VSCode OSX"] = (MacOS, new()
         {
@@ -74,6 +89,8 @@ internal static class RiderKeymaps
             ["EditorTextEnd"] = ["meta down"],
             ["EditorCloneCaretAbove"] = ["shift meta alt up", "meta alt up"],
             ["EditorCloneCaretBelow"] = ["shift meta alt down", "meta alt down"],
+            ["ShowUsages"] = ["shift f12"],
+            ["QuickEvaluateExpression"] = ["meta alt f8"],
         }),
     };
 
@@ -91,6 +108,8 @@ internal static class RiderKeymaps
     {
         (KeymapPreset.VSCode, true) => "VSCode OSX",
         (KeymapPreset.VSCode, false) => "VSCode",
+        (KeymapPreset.IntelliJ, true) => MacOS,
+        (KeymapPreset.IntelliJ, false) => Default,
         (_, true) => "Visual Studio OSX",
         _ => "Visual Studio",
     };
@@ -98,14 +117,30 @@ internal static class RiderKeymaps
     /// <summary>An action's keys in one of Rider's keymaps.</summary>
     public static IReadOnlyList<Shortcut> Resolve(string keymap, string action)
     {
-        (string? parent, Dictionary<string, string[]> own) = Files[keymap];
-        IEnumerable<Shortcut> keys = own.TryGetValue(action, out string[]? listed) ? listed.Select(Shortcut.Parse)
-            : parent is null ? []
-            : keymap == MacOS && parent == Default ? Resolve(parent, action).Select(Swapped)
-            : Resolve(parent, action);
+        IEnumerable<Shortcut> keys = Listed(keymap, action).Where(t => !MouseShortcut.IsMouse(t)).Select(Shortcut.Parse);
         IEnumerable<Shortcut> added = Descriptors.Where(d => d.Keymap == keymap && d.Action == action).Select(d => Shortcut.Parse(d.Keys));
         return [.. keys.Concat(added).Distinct()];
     }
+
+    /// <summary>An action's mouse shortcuts in one of Rider's keymaps.</summary>
+    public static IReadOnlyList<MouseShortcut> ResolveMouse(string keymap, string action) =>
+        [.. Listed(keymap, action).Where(MouseShortcut.IsMouse).Select(MouseShortcut.Parse).Distinct()];
+
+    /// <summary>What a keymap's own list, else its parent's, has for an action, keys and gestures alike: an action's element
+    /// lists both, so a list of keys alone takes the parent's gestures away too.</summary>
+    private static IEnumerable<string> Listed(string keymap, string action)
+    {
+        (string? parent, Dictionary<string, string[]> own) = Files[keymap];
+        return own.TryGetValue(action, out string[]? listed) ? listed
+            : parent is null ? []
+            : keymap == MacOS && parent == Default ? Listed(parent, action).Select(Swapped)
+            : Listed(parent, action);
+    }
+
+    /// <summary>A key's or gesture's text with Ctrl and Cmd swapped, as Mac OS X 10.5+ takes $default's.</summary>
+    private static string Swapped(string text) => MouseShortcut.IsMouse(text) ? Swapped(MouseShortcut.Parse(text)).Notation() : Swapped(Shortcut.Parse(text)).Notation();
+
+    private static MouseShortcut Swapped(MouseShortcut gesture) => gesture with { Modifiers = Swapped(new Keystroke(Key.A, gesture.Modifiers)).Modifiers };
 
     private static Shortcut Swapped(Shortcut shortcut) => new(Swapped(shortcut.First), shortcut.Second is { } second ? Swapped(second) : null);
 

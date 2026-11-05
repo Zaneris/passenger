@@ -4,7 +4,8 @@ using Passenger.App.ToolWindows;
 namespace Passenger.Tests;
 
 /// <summary>A source's lines pumped into a merged log under its name (a container's in the Containers window): every line
-/// shown, its last too where it ends with no line break, and a line that never breaks shown in pieces as it comes.</summary>
+/// shown, its last too where it ends with no line break, and a line that never breaks shown in pieces as it comes; plain
+/// output copied once on its way in and once into the console's text; and a flood past what the console keeps cut to its end.</summary>
 public sealed class ConsoleSinkTests
 {
     private const string Prefix = "web | ";
@@ -36,6 +37,57 @@ public sealed class ConsoleSinkTests
             reader.End();
             Ui.Await(pumped, "the source's end pumped");
         }
+    }
+
+    /// <summary>Plain output, no control code in it, costs what the console keeps of it and little more: what writes it
+    /// copies it into room kept from batch to batch, allocating under 128 bytes a kilobyte (1,024 characters) once warm,
+    /// and the window's thread takes each batch as one string and copies it once into the console's text, under 5.5 KB a
+    /// kilobyte: a copy more of it would pass either bound.</summary>
+    [AvaloniaFact]
+    public void Plain_output_is_copied_once_as_it_is_written_and_once_into_the_consoles_text()
+    {
+        OutputView console = new(toolbar: false);
+        string batch = string.Concat(Enumerable.Repeat(new string('x', 79) + "\n", 205));
+        for (int i = 0; i < 4; i++)
+        {
+            console.Sink.Write(batch);
+            console.Flush();
+        }
+        const int Batches = 40;
+        long written = 0;
+        long taken = 0;
+        for (int i = 0; i < Batches; i++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            console.Sink.Write(batch);
+            long between = GC.GetAllocatedBytesForCurrentThread();
+            console.Flush();
+            taken += GC.GetAllocatedBytesForCurrentThread() - between;
+            written += between - before;
+        }
+        double kilobytes = Batches * batch.Length / 1024.0;
+        Assert.True(written / kilobytes < 128, $"Writing plain output allocated {written / kilobytes:N0} bytes a kilobyte of it: it is copied more than once on its way in");
+        Assert.True(taken / kilobytes < 5.5 * 1024, $"Taking plain output into the console allocated {taken / kilobytes:N0} bytes a kilobyte of it on the window's thread: it is copied more than once into the text");
+        Assert.Equal(44 * batch.Length, console.Document.Snapshot.Length);
+    }
+
+    /// <summary>A flood of more than twice what the console keeps, written while it takes no batch, as a program writing
+    /// without pause outruns the window: what waits is cut to the newest as it comes, and the console shows the end of
+    /// what was written whole and in order, wherever the cuts fell.</summary>
+    [AvaloniaFact]
+    public void A_flood_past_what_the_console_keeps_shows_the_end_of_it_whole_and_in_order()
+    {
+        OutputView console = new(toolbar: false) { Limit = 20_000 };
+        System.Text.StringBuilder written = new();
+        for (int i = 0; i < 1_000; i++)
+        {
+            string line = $"line {i:D4} {new string((char)('a' + (i % 26)), 60 + (i % 97))}\n";
+            written.Append(line);
+            console.Sink.Write(line);
+        }
+        string shown = Shown(console);
+        Assert.True(shown.Length is > 10_000 and <= 20_000, $"The console kept {shown.Length:N0} characters of a flood of {written.Length:N0}, keeping 20,000");
+        Assert.True(written.ToString().EndsWith(shown, StringComparison.Ordinal), $"The console's text is not the end of what was written: it begins \"{shown[..Math.Min(40, shown.Length)]}\"");
     }
 
     private static string Shown(OutputView console)

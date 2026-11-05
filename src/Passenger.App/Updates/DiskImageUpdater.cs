@@ -20,7 +20,7 @@ public sealed partial class DiskImageUpdater : Updater
     /// <summary>The app made ready, named so LaunchServices never takes it for an app to open until it is in place.</summary>
     private const string Staged = "Passenger.update";
 
-    private const string Sums = "SHA256SUMS";
+    private const string Sums = ReleaseSums.Name;
 
     private static readonly TimeSpan ToolLimit = TimeSpan.FromMinutes(10);
 
@@ -105,7 +105,7 @@ public sealed partial class DiskImageUpdater : Updater
             }
         }
         Directory.CreateDirectory(folder);
-        string expected = Expected(await Releases.ReadTextAsync(sums, cancel).ConfigureAwait(false), download.Name)
+        string expected = ReleaseSums.Of(await Releases.ReadTextAsync(sums, cancel).ConfigureAwait(false), download.Name)
             ?? throw new UpdateRefusedException($"the release's {Sums} gives no SHA-256 for {download.Name}");
         string saved = Path.Combine(folder, download.Name);
         string actual = await Releases.DownloadAsync(download, saved, progress, cancel).ConfigureAwait(false);
@@ -316,11 +316,6 @@ public sealed partial class DiskImageUpdater : Updater
         return read.Succeeded ? read.Output.Trim() : null;
     }
 
-    /// <summary>The SHA-256 SHA256SUMS gives a file, in lowercase hex: sha256sum's lines, text or binary mode.</summary>
-    private static string? Expected(string sums, string name) =>
-        sums.Split('\n').Select(line => SumLine().Match(line.TrimEnd('\r'))).FirstOrDefault(m => m.Success && m.Groups[2].Value == name)
-            ?.Groups[1].Value.ToLowerInvariant();
-
     /// <summary>Every download made ready but <paramref name="keep"/>'s, an image still mounted let go of first.</summary>
     private async Task CleanAsync(string? keep)
     {
@@ -450,7 +445,4 @@ public sealed partial class DiskImageUpdater : Updater
 
     [GeneratedRegex(@"^TeamIdentifier=(.+)$", RegexOptions.Multiline)]
     private static partial Regex Team();
-
-    [GeneratedRegex(@"^([0-9A-Fa-f]{64}) [ *](.+)$")]
-    private static partial Regex SumLine();
 }

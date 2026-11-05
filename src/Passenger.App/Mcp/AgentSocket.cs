@@ -372,9 +372,19 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
     }
 
     /// <summary>The connection ended: the window stops counting it.</summary>
+    /// <summary>Something of the agent's session that ends as it goes (the files its calls keep open), on the UI thread.</summary>
+    internal void WhenLeft(Action ending) => leaving.Add(ending);
+
+    private readonly List<Action> leaving = [];
+
     internal void Left(MainWindow window)
     {
         UiThread.Check();
+        foreach (Action ending in leaving)
+        {
+            ending();
+        }
+        leaving.Clear();
         if (Admitted)
         {
             Admitted = false;
@@ -513,7 +523,7 @@ internal sealed class ConnectedTool(McpServerTool tool, MainWindow? window, Agen
             connection.Named(request.Server.ClientInfo);
             return connection.AdmitAsync(window!, told, cancel);
         });
-        if (refused is null && shown.Annotations is not ({ ReadOnlyHint: true } or { DestructiveHint: false }))
+        if (refused is null && shown.Annotations is not ({ ReadOnlyHint: true } or { DestructiveHint: false }) && !ChangesNothing(shown, request.Params?.Arguments))
         {
             refused = await UiThread.InvokeAsync(() => connection.AllowAsync(window!, shown, request.Params?.Arguments, told, cancel));
         }
@@ -543,20 +553,23 @@ internal sealed class ConnectedTool(McpServerTool tool, MainWindow? window, Agen
 
     private static CallToolResult Refused(string why) => new() { IsError = true, Content = [new TextContentBlock { Text = why }] };
 
+    /// <summary>Whether a call of a tool that may change something changes nothing by what it is given, and so asks nobody:
+    /// godot_editor's reads (<see cref="PassengerTools.GodotEditorReads"/>).</summary>
+    private static bool ChangesNothing(Tool tool, IDictionary<string, JsonElement>? arguments) =>
+        tool.Name == McpTools.GodotEditor && arguments is not null && arguments.TryGetValue("action", out JsonElement action)
+        && action.ValueKind == JsonValueKind.String && PassengerTools.GodotEditorReads.Contains(action.GetString()!.Trim().ToLowerInvariant());
+
     /// <summary>What is wrong with a call's arguments by its tool's schema (a parameter it lacks, a required one missing, a
     /// value of another type), with every parameter it takes, else null: the SDK answers each with no word of which.</summary>
     private static string? Misgiven(Tool tool, IDictionary<string, JsonElement>? arguments)
     {
         JsonElement schema = tool.InputSchema;
         List<(string Name, string Type)> parameters = [];
-        if (schema.TryGetProperty("properties", out JsonElement properties) && properties.ValueKind == JsonValueKind.Object)
+        if (JsonMembers.Object(schema, "properties") is { } properties)
         {
-            parameters.AddRange(properties.EnumerateObject().Select(p =>
-                (p.Name, p.Value.TryGetProperty("type", out JsonElement type) && type.ValueKind == JsonValueKind.String ? type.GetString()! : "any")));
+            parameters.AddRange(properties.EnumerateObject().Select(p => (p.Name, JsonMembers.Text(p.Value, "type") ?? "any")));
         }
-        HashSet<string> required = schema.TryGetProperty("required", out JsonElement needed) && needed.ValueKind == JsonValueKind.Array
-            ? [.. needed.EnumerateArray().Select(n => n.GetString() ?? string.Empty)]
-            : [];
+        HashSet<string> required = [.. JsonMembers.Texts(schema, "required")];
         List<string> wrong = [];
         foreach ((string name, JsonElement value) in arguments ?? new Dictionary<string, JsonElement>())
         {

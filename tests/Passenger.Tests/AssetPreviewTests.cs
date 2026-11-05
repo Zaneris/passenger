@@ -54,7 +54,7 @@ public sealed class AssetPreviewTests : IDisposable
         Image image = Assert.Single(preview.GetVisualDescendants().OfType<Image>());
         Assert.Same(document.Asset.Bitmap, image.Source);
         Assert.True(image.IsEffectivelyVisible && image.Bounds.Width > 0 && image.Bounds.Height > 0, "The decoded image has no visible room");
-        Assert.Equal(Stretch.Uniform, image.Stretch);
+        Assert.True(preview.Picture?.Zoom == 1, $"A small image shows at {preview.Picture?.Zoom:P0}, where it is never enlarged until it is zoomed");
         Assert.Contains(preview.GetVisualDescendants().OfType<TextBlock>(), text => text.Text!.Contains($"{width} × {height} pixels", StringComparison.Ordinal));
         window.Close();
     }
@@ -82,6 +82,202 @@ public sealed class AssetPreviewTests : IDisposable
         Point ground = preview.TranslatePoint(new Point(1, preview.Bounds.Height / 2), window)!.Value;
         Assert.Equal(Colors.Red, Ui.Pixel(window, red));
         Assert.Equal(Ui.Pixel(window, ground), Ui.Pixel(window, clear));
+        window.Close();
+    }
+
+    /// <summary>An image's preview zooms as a person zooms it: the keys step it in, each pixel a square of its own colour,
+    /// to its actual size and in again with the wheel and the command modifier, and Fit Zoom to Window fills the pane with
+    /// it, its red square red and its blue ground blue at every zoom.</summary>
+    [AvaloniaFact]
+    public void An_image_preview_zooms_in_to_its_actual_size_and_to_fit_drawing_its_pixels_as_they_are()
+    {
+        using (SKBitmap bitmap = new(100, 75))
+        {
+            bitmap.Erase(SKColors.Blue);
+            using SKCanvas canvas = new(bitmap);
+            using SKPaint paint = new() { Color = SKColors.Red };
+            canvas.DrawRect(25, 25, 25, 25, paint);
+            using SKImage source = SKImage.FromBitmap(bitmap);
+            using SKData encoded = source.Encode(SKEncodedImageFormat.Png, 100);
+            File.WriteAllBytes(Path.Combine(folder, "square.png"), encoded.ToArray());
+        }
+        MainWindow window = Open();
+        Assert.Null(window.OpenFile("square.png"));
+        Ui.Settle();
+        AssetPreviewControl preview = Preview(window.EditorArea.ActiveGroup);
+        ZoomedPicture picture = preview.Picture!;
+        Image image = Assert.Single(preview.GetVisualDescendants().OfType<Image>());
+        Assert.Equal(new Size(100, 75), picture.DrawnSize);
+        void Drawn(string when)
+        {
+            double zoom = picture.Zoom;
+            Color red = Ui.Pixel(window, image.TranslatePoint(new Point(37 * zoom, 37 * zoom), window)!.Value);
+            Color blue = Ui.Pixel(window, image.TranslatePoint(new Point(10 * zoom, 65 * zoom), window)!.Value);
+            Assert.True(red == Colors.Red && blue == Colors.Blue, $"{when}, at {zoom:P0}, the preview draws {red} in its red square and {blue} on its blue ground");
+        }
+
+        Assert.True(preview.Focus());
+        string command = OperatingSystem.IsMacOS() ? "meta" : "control";
+        for (int i = 0; i < 5; i++)
+        {
+            Ui.Press(window, $"{command} EQUALS");
+        }
+        Assert.Equal(new Size(400, 300), picture.DrawnSize);
+        Drawn("Zoomed in five steps");
+        Ui.Press(window, $"{command} SLASH");
+        Assert.Equal(new Size(100, 75), picture.DrawnSize);
+        window.MouseWheel(picture.TranslatePoint(new Point(picture.Bounds.Width / 2, picture.Bounds.Height / 2), window)!.Value, new Vector(0, 1),
+            OperatingSystem.IsMacOS() ? Avalonia.Input.RawInputModifiers.Meta : Avalonia.Input.RawInputModifiers.Control);
+        Ui.Settle();
+        Assert.Equal(new Size(125, 93.75), picture.DrawnSize);
+
+        Ui.Click(preview.GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) as string == "Fit Zoom to Window"));
+        Assert.True(picture.Zoom > 2 && Math.Abs(Math.Min(picture.Bounds.Width - picture.DrawnSize.Width, picture.Bounds.Height - picture.DrawnSize.Height) - (2 * ZoomedPicture.Gap) - 2) < 1,
+            $"Fit Zoom to Window drew the picture {picture.DrawnSize} in a pane of {picture.Bounds.Size}");
+        Drawn("Fitted to the pane");
+        window.Close();
+    }
+
+    /// <summary>A picture needing less than the first zoom step to fit opens whole, and Zoom Out leaves it there rather than
+    /// raising it to that step, where Zoom In goes up to it.</summary>
+    [AvaloniaFact]
+    public void A_picture_too_large_for_the_first_zoom_step_opens_whole_and_zoom_out_never_raises_it()
+    {
+        using (SKBitmap bitmap = new(12000, 30))
+        {
+            bitmap.Erase(SKColors.Blue);
+            using SKImage source = SKImage.FromBitmap(bitmap);
+            using SKData encoded = source.Encode(SKEncodedImageFormat.Png, 100);
+            File.WriteAllBytes(Path.Combine(folder, "banner.png"), encoded.ToArray());
+        }
+        MainWindow window = Open();
+        Assert.Null(window.OpenFile("banner.png"));
+        Ui.Settle();
+        AssetPreviewControl preview = Preview(window.EditorArea.ActiveGroup);
+        ZoomedPicture picture = preview.Picture!;
+        Assert.True(picture.Zoom < 0.1 && picture.DrawnSize.Width <= picture.Bounds.Width - (2 * ZoomedPicture.Gap),
+            $"A picture 12,000 wide opened at {picture.Zoom:P1}, drawn {picture.DrawnSize} in a pane of {picture.Bounds.Size}, so part of it lay outside the view");
+        double fitted = picture.Zoom;
+        Assert.True(preview.Focus());
+        string command = OperatingSystem.IsMacOS() ? "meta" : "control";
+        Ui.Press(window, $"{command} MINUS");
+        Assert.Equal(fitted, picture.Zoom);
+        Ui.Press(window, $"{command} EQUALS");
+        Assert.Equal(0.1, picture.Zoom);
+        window.Close();
+    }
+
+    /// <summary>An SVG opens as its text with its picture beside it, drawn as a drawing, so zoomed in its circle's edge is as
+    /// sharp as at its size (a point half a unit outside it the ground's own colour, where an enlarged bitmap would blend
+    /// them); its text edited, the picture follows; and the toggle hides and shows it.</summary>
+    [AvaloniaFact]
+    public void An_SVG_is_drawn_beside_its_text_sharp_at_every_zoom_and_its_picture_follows_its_text_edited()
+    {
+        File.WriteAllText(Path.Combine(folder, "badge.svg"),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"40\">\n  <rect width=\"40\" height=\"40\" fill=\"#0000ff\"/>\n"
+            + "  <circle cx=\"20\" cy=\"20\" r=\"20\" fill=\"#ff0000\"/>\n</svg>\n");
+        MainWindow window = Open();
+        Assert.Null(window.OpenFile("badge.svg"));
+        Ui.Settle();
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        SvgPreview preview = group.Svg ?? throw new Xunit.Sdk.XunitException("The SVG shows no picture beside its text");
+        Assert.True(group.Editor.IsEffectivelyVisible && window.EditorArea.Active!.HoldsText, "The SVG's text should stay in the editor beside its picture");
+        ZoomedPicture picture = preview.Picture;
+        Ui.WaitFor(() => picture.Picture is SvgPicture, () => $"the SVG drawn ({preview.Problem})");
+        Image image = Assert.Single(preview.GetVisualDescendants().OfType<Image>());
+        Color At(double x, double y) => Ui.Pixel(window, image.TranslatePoint(new Point(x * picture.Zoom, y * picture.Zoom), window)!.Value);
+        Assert.Equal(new Size(40, 40), picture.DrawnSize);
+        Assert.True(At(20, 20) == Colors.Red && At(1, 1) == Colors.Blue, $"The picture draws {At(20, 20)} in its circle and {At(1, 1)} in its corner");
+
+        Assert.True(preview.Focus());
+        string command = OperatingSystem.IsMacOS() ? "meta" : "control";
+        for (int i = 0; i < 5; i++)
+        {
+            Ui.Press(window, $"{command} EQUALS");
+        }
+        Assert.Equal(new Size(160, 160), picture.DrawnSize);
+        Assert.True(At(5.5, 5.5) == Colors.Blue && At(6.1, 6.1) == Colors.Red,
+            $"Zoomed to {picture.Zoom:P0}, the circle's edge blends: {At(5.5, 5.5)} half a unit outside it, {At(6.1, 6.1)} inside it");
+
+        Typing.Replace(window, "#ff0000", "#00ff00");
+        Ui.WaitFor(() => At(20, 20) == Colors.Lime, () => $"the picture to follow the circle's colour typed, not {At(20, 20)}");
+        Assert.Equal(new Size(160, 160), picture.DrawnSize);
+
+        Assert.True(group.PreviewToggle.IsVisible && group.PreviewToggle.IsChecked == true, "The tab strip's preview toggle should show the picture is on");
+        Ui.Click(group.PreviewToggle);
+        Assert.True(group.Svg is null && group.PreviewToggle.IsChecked == false, "The toggle left the SVG's picture beside it");
+        Ui.Click(group.PreviewToggle);
+        Assert.NotNull(group.Svg);
+        window.Close();
+    }
+
+    /// <summary>An SVG's image named by an address relative to the SVG is read from the SVG's folder, one below it too, and
+    /// drawn in its picture, which names nothing left out; its address edited to another image beside the SVG, the picture
+    /// draws that one.</summary>
+    [AvaloniaFact]
+    public void An_SVGs_image_named_relative_to_it_is_drawn_from_its_folder()
+    {
+        string art = Path.Combine(folder, "art");
+        Directory.CreateDirectory(Path.Combine(art, "parts"));
+        File.WriteAllBytes(Path.Combine(art, "parts", "leaf.png"), ImageBytes(".png", 10, 10, SKColors.Lime));
+        File.WriteAllBytes(Path.Combine(art, "sun.png"), ImageBytes(".png", 10, 10, SKColors.Yellow));
+        File.WriteAllText(Path.Combine(art, "badge.svg"),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\">\n  <rect width=\"40\" height=\"20\" fill=\"#0000ff\"/>\n"
+            + "  <image href=\"parts/leaf.png\" width=\"20\" height=\"20\"/>\n</svg>\n");
+        MainWindow window = Open();
+        Assert.Null(window.OpenFile(Path.Combine("art", "badge.svg")));
+        Ui.Settle();
+        SvgPreview preview = window.EditorArea.ActiveGroup.Svg ?? throw new Xunit.Sdk.XunitException("The SVG shows no picture beside its text");
+        ZoomedPicture picture = preview.Picture;
+        Ui.WaitFor(() => picture.Picture is SvgPicture, () => $"the SVG drawn ({preview.Problem})");
+        Image image = Assert.Single(preview.GetVisualDescendants().OfType<Image>());
+        Color At(double x, double y) => Ui.Pixel(window, image.TranslatePoint(new Point(x * picture.Zoom, y * picture.Zoom), window)!.Value);
+        Assert.True(At(10, 10) == Colors.Lime && At(30, 10) == Colors.Blue,
+            $"The picture draws {At(10, 10)} where its image beside it is, {At(30, 10)} beside the image: its relative address was not read from its folder");
+        Assert.Null(preview.LeftOut);
+
+        Typing.Replace(window, "parts/leaf.png", "sun.png");
+        Ui.WaitFor(() => At(10, 10) == Colors.Yellow, () => $"the picture to draw the image the address typed names, not {At(10, 10)}");
+        Assert.Null(preview.LeftOut);
+        window.Close();
+    }
+
+    /// <summary>An SVG's images named outside the SVG's folder (a way up out of it, a path from the disk's root, a file's
+    /// address) are not drawn, nor one on the web fetched; the rest of the picture is, and the banner over it names each
+    /// left out and why.</summary>
+    [AvaloniaFact]
+    public void An_SVG_draws_no_image_from_outside_its_folder_or_the_web_and_says_why()
+    {
+        string outside = Path.Combine(PathNames.Canonical(folder), "red.png");
+        File.WriteAllBytes(outside, ImageBytes(".png", 10, 10, SKColors.Red));
+        string address = new Uri(outside).AbsoluteUri;
+        const string Web = "https://example.invalid/red.png";
+        string art = Path.Combine(folder, "art");
+        Directory.CreateDirectory(art);
+        File.WriteAllText(Path.Combine(art, "badge.svg"),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"20\">\n  <rect width=\"100\" height=\"20\" fill=\"#0000ff\"/>\n"
+            + "  <image href=\"../red.png\" width=\"20\" height=\"20\"/>\n"
+            + $"  <image href=\"{outside}\" x=\"20\" width=\"20\" height=\"20\"/>\n"
+            + $"  <image href=\"{address}\" x=\"40\" width=\"20\" height=\"20\"/>\n"
+            + $"  <image href=\"{Web}\" x=\"60\" width=\"20\" height=\"20\"/>\n</svg>\n");
+        MainWindow window = Open();
+        Assert.Null(window.OpenFile(Path.Combine("art", "badge.svg")));
+        Ui.Settle();
+        SvgPreview preview = window.EditorArea.ActiveGroup.Svg ?? throw new Xunit.Sdk.XunitException("The SVG shows no picture beside its text");
+        ZoomedPicture picture = preview.Picture;
+        Ui.WaitFor(() => picture.Picture is SvgPicture, () => $"the SVG drawn ({preview.Problem})");
+        Image image = Assert.Single(preview.GetVisualDescendants().OfType<Image>());
+        Color At(double x, double y) => Ui.Pixel(window, image.TranslatePoint(new Point(x * picture.Zoom, y * picture.Zoom), window)!.Value);
+        Assert.True(At(90, 10) == Colors.Blue, $"The picture draws {At(90, 10)} where it names nothing but its ground");
+        Assert.True(new[] { 10, 30, 50, 70 }.All(x => At(x, 10) != Colors.Red),
+            $"The picture drew an image from outside the SVG's folder: {string.Join(", ", new[] { 10, 30, 50, 70 }.Select(x => At(x, 10)))}");
+
+        string? said = preview.LeftOut;
+        Assert.True(said is not null && said.Contains("../red.png", StringComparison.Ordinal) && said.Contains(outside, StringComparison.Ordinal)
+            && said.Contains(address, StringComparison.Ordinal) && said.Contains("outside the SVG's folder", StringComparison.Ordinal)
+            && said.Contains(Web, StringComparison.Ordinal) && said.Contains("on the web", StringComparison.Ordinal),
+            $"The banner over the picture should name each image left out and why, but said: {said}");
+        Assert.Contains(preview.GetVisualDescendants().OfType<Banner>(), banner => banner.IsEffectivelyVisible && banner.Said == said);
         window.Close();
     }
 
@@ -456,7 +652,7 @@ public sealed class AssetPreviewTests : IDisposable
     private static AssetPreviewControl Preview(EditorGroup group) => Assert.Single(group.GetVisualDescendants().OfType<AssetPreviewControl>());
 
     /// <summary>Small real raster files without external fixtures; GIF and BMP use minimal headers, ICO carries a PNG.</summary>
-    private static byte[] ImageBytes(string extension, int width = 64, int height = 32)
+    private static byte[] ImageBytes(string extension, int width = 64, int height = 32, SKColor? colour = null)
     {
         if (extension == ".gif")
         {
@@ -478,7 +674,7 @@ public sealed class AssetPreviewTests : IDisposable
             return bytes;
         }
         using SKBitmap bitmap = new(width, height);
-        bitmap.Erase(SKColors.CornflowerBlue);
+        bitmap.Erase(colour ?? SKColors.CornflowerBlue);
         using SKImage image = SKImage.FromBitmap(bitmap);
         SKEncodedImageFormat format = extension.ToLowerInvariant() switch
         {

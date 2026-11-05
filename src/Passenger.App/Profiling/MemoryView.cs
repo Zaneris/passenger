@@ -159,7 +159,7 @@ public sealed class MemoryView : DockPanel
         objects = List(() =>
         {
             Avalonia.Controls.Documents.Run type = new();
-            Avalonia.Controls.Documents.Run address = new() { FontFamily = CodeEditor.CodeFont, FontSize = 12 };
+            Avalonia.Controls.Documents.Run address = new Avalonia.Controls.Documents.Run { FontSize = 12 }.InCodeFont();
             TextBlock name = Cell();
             address.Bind(Avalonia.Controls.Documents.TextElement.ForegroundProperty, name.GetResourceObservable(TokenKeys.TextMuted));
             // An object: its type, then its address in the code font, muted.
@@ -401,6 +401,7 @@ public sealed class MemoryView : DockPanel
             case SnapshotPage { Snapshot: var snapshot }:
                 summary.Text = $"{snapshot.Objects:N0} objects, {Size(snapshot.Bytes)} live, in {snapshot.Types.Count:N0} types; taken at "
                     + $"{snapshot.Taken:HH:mm:ss} in {snapshot.Took.TotalSeconds:0.0} s ({snapshot.Phases})"
+                    + (snapshot.Lacks is { } lacks ? $". {lacks}" : string.Empty)
                     + (snapshot.Gone is { } gone ? $". {gone}: its types are listed, its objects no longer open" : string.Empty);
                 types.ItemsSource = snapshot.Types;
                 types.SelectedIndex = snapshot.Types.Count > 0 ? 0 : -1;
@@ -725,7 +726,7 @@ public sealed class MemoryView : DockPanel
         TextBlock[] cells = new TextBlock[count];
         for (int i = 0; i < count; i++)
         {
-            cells[i] = new TextBlock { FontFamily = CodeEditor.CodeFont, FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            cells[i] = new TextBlock { FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         }
         return cells;
     }

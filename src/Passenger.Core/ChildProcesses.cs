@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Passenger.Core;
@@ -45,7 +46,8 @@ public static class ChildProcesses
     public static Func<ProcessStartInfo, string> Shown { get; set; } = Display;
 
     /// <summary>A program and its arguments, to run in a folder (the IDE's own when none is given), its PWD that folder as
-    /// the disk names it (<see cref="NameFolder"/>).</summary>
+    /// the disk names it (<see cref="NameFolder"/>). A headless Godot goes without its HID gamepads
+    /// (<see cref="GodotExecutables.HidGamepads"/>), here so that none is started with them.</summary>
     public static ProcessStartInfo Command(string program, IEnumerable<string> arguments, string? folder = null)
     {
         ProcessStartInfo start = new(program, arguments);
@@ -58,6 +60,10 @@ public static class ChildProcesses
             start.Environment.Remove(variable);
         }
         NameFolder(start, folder);
+        if (GodotExecutables.RunsHeadless(start.ArgumentList))
+        {
+            start.Environment.TryAdd(GodotExecutables.HidGamepads, GodotExecutables.HidGamepadsOff);
+        }
         return start;
     }
 
@@ -85,9 +91,70 @@ public static class ChildProcesses
     /// says) and with no first-run banner. It builds in its own process and worker nodes, never in MSBuild's server, which
     /// would outlive it; a node left for the next build is the IDE's alone, so it ends with the IDE
     /// (<see cref="Lifeline"/>). A <see cref="FileNotFoundException"/> when there is none.</summary>
-    public static ProcessStartInfo DotnetCommand(IEnumerable<string> arguments, string? folder = null)
+    public static ProcessStartInfo DotnetCommand(IEnumerable<string> arguments, string? folder = null) =>
+        AsDotnet(Command(Dotnet.Host(), arguments, folder));
+
+    /// <summary>The helper host carried beside the app (src/Passenger.Helper), by its name.</summary>
+    public const string HelperHost = "passenger-helper";
+
+    /// <summary>One of Passenger's own helper programs (an assembly the app carries: Roslyn's server, the project host, the
+    /// debug adapter) with these arguments, on the runtime Passenger itself runs on, never the person's dotnet: run by the
+    /// helper host's apphost beside the app, which beside a self-contained app takes its runtime, else by the muxer of the
+    /// runtime this build runs on, at its version, with the .NET command line's environment (<see cref="DotnetCommand"/>).
+    /// A <see cref="FileNotFoundException"/> when the host is missing.</summary>
+    public static ProcessStartInfo HelperCommand(string assembly, IEnumerable<string> arguments, string? folder = null)
     {
-        ProcessStartInfo start = Command(Dotnet.Host(), arguments, folder);
+        string runtime = Path.TrimEndingDirectorySeparator(RuntimeEnvironment.GetRuntimeDirectory());
+        string beside = AppContext.BaseDirectory;
+        string helper = Path.Combine(beside, HelperHost + ".dll");
+        string program = Path.Combine(beside, HelperHost + (OperatingSystem.IsWindows() ? ".exe" : string.Empty));
+        string muxer = Path.GetFullPath(Path.Combine(runtime, "..", "..", "..", OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet"));
+        List<string> words = [];
+        // A runtime with no muxer of its own (one found through DOTNET_ROOT) is found again by the apphost, as the app's was.
+        if (!PathNames.Same(runtime, Path.TrimEndingDirectorySeparator(beside)) && File.Exists(muxer))
+        {
+            program = muxer;
+            words.AddRange(["exec", "--fx-version", Path.GetFileName(runtime), helper]);
+        }
+        if (!File.Exists(program) || !File.Exists(helper))
+        {
+            throw new FileNotFoundException($"Passenger's helper host is missing from {beside}", program);
+        }
+        return AsDotnet(Command(program, [.. words, assembly, .. arguments], folder));
+    }
+
+    /// <summary>A helper of the solution's (Roslyn's server, the project host) started with the runtime compacting its heap,
+    /// which a solution's growing and shrinking leaves fragmented and no person waits on: in Passenger's own solution it
+    /// took Roslyn's server from about 2,500 MB to 1,950 and the project host from 350–480 to 270 (#1153). A setting of
+    /// the person's own stands; never a helper whose programs inherit it, as the debug adapter's debuggee would.</summary>
+    public static ProcessStartInfo ConservingMemory(ProcessStartInfo start)
+    {
+        start.Environment.TryAdd(RuntimeVariables.ConserveMemory, HelperConservesMemory);
+        return start;
+    }
+
+    /// <summary>The <see cref="RuntimeVariables.ConserveMemory"/> of <see cref="ConservingMemory"/>.</summary>
+    public const string HelperConservesMemory = "7";
+
+    /// <summary>A helper's start (<see cref="HelperCommand"/>) naming the person's .NET command line (<see cref="Dotnet.Host"/>)
+    /// as the one MSBuild, its SDK resolvers and its tools take for the installation, as the command line names itself to
+    /// the builds it runs: the helper's own host is none of the person's. Where there is none, none is named.</summary>
+    public static ProcessStartInfo NamingDotnet(ProcessStartInfo start)
+    {
+        try
+        {
+            start.Environment[RuntimeVariables.HostPath] = Dotnet.Host();
+        }
+        catch (FileNotFoundException)
+        {
+            start.Environment.Remove(RuntimeVariables.HostPath);
+        }
+        return start;
+    }
+
+    /// <summary>A start given the .NET command line's environment (<see cref="DotnetCommand"/>).</summary>
+    private static ProcessStartInfo AsDotnet(ProcessStartInfo start)
+    {
         start.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
         start.Environment["DOTNET_NOLOGO"] = "1";
         // MSBuild writes UTF-8, which is how its output is read, on every Windows: by itself it does only from 10 1909 on.
@@ -100,6 +167,11 @@ public static class ChildProcesses
         start.Environment[MSBuildNames.NodeHandshakeSalt] = $"{salt}passenger-{Environment.ProcessId}";
         // Set by dotnet test for what it runs: each node would hold the command's output open as its own.
         start.Environment.Remove(MSBuildNames.EnsureStdOutForTaskProcesses);
+        // An SDK's own, from a Passenger started under one (dotnet run, dotnet test): the command finds the SDK its folder picks.
+        foreach (string variable in (string[])[MSBuildNames.ExePath, MSBuildNames.ExtensionsPath, MSBuildNames.SdksPath, MSBuildNames.LoadMicrosoftTargetsReadOnly])
+        {
+            start.Environment.Remove(variable);
+        }
         return start;
     }
 
@@ -107,9 +179,14 @@ public static class ChildProcesses
     /// comes (<see cref="AnswerAsync"/>): <see cref="DotnetCommand"/> with the command line's telemetry off, so it ends
     /// with its answer, where it would send its telemetry for seconds after it, its folder held meanwhile on Windows (no
     /// one could delete or rename it).</summary>
-    public static ProcessStartInfo DotnetQuestion(IEnumerable<string> arguments, string folder)
+    public static ProcessStartInfo DotnetQuestion(IEnumerable<string> arguments, string folder) => Asked(DotnetCommand(arguments, folder));
+
+    /// <summary><see cref="DotnetQuestion(IEnumerable{string}, string)"/> of the dotnet at <paramref name="host"/>, an
+    /// installation's own, in place of <see cref="Dotnet.Host"/>.</summary>
+    public static ProcessStartInfo DotnetQuestion(string host, IEnumerable<string> arguments, string folder) => Asked(AsDotnet(Command(host, arguments, folder)));
+
+    private static ProcessStartInfo Asked(ProcessStartInfo start)
     {
-        ProcessStartInfo start = DotnetCommand(arguments, folder);
         start.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
         return start;
     }
@@ -149,16 +226,29 @@ public static class ChildProcesses
         Lifeline.Prepare(start);
         string command = Display(start);
         long began = Stopwatch.GetTimestamp();
-        Process process = new() { StartInfo = start, EnableRaisingEvents = true };
-        process.Exited += (_, _) => OnExited(process, start, command, began, answers);
-        try
+        Process process;
+        if (OperatingSystem.IsWindows() && OnOwnDesktops.TryGetValue(start, out string? why))
         {
-            process.Start();
+            OwnDesktopStart started = OwnDesktop.Start(start, suspended: false);
+            process = started.Process;
+            OwnStreams.AddOrUpdate(process, started);
+            process.EnableRaisingEvents = true;
+            process.Exited += (_, _) => OnExited(process, start, command, began, answers);
+            PassengerLog.Write($"Started {Path.GetFileName(start.FileName)} (process {process.Id}) on a desktop of its own: {why}");
         }
-        catch
+        else
         {
-            process.Dispose();
-            throw;
+            process = new() { StartInfo = start, EnableRaisingEvents = true };
+            process.Exited += (_, _) => OnExited(process, start, command, began, answers);
+            try
+            {
+                process.Start();
+            }
+            catch
+            {
+                process.Dispose();
+                throw;
+            }
         }
         Lifeline.Adopt(process);
         // An id the IDE ended before, whose end went untold (its process disposed first), is another child's now.
@@ -166,10 +256,33 @@ public static class ChildProcesses
         Started?.Invoke(null, new ChildStart(process.Id, command, start.WorkingDirectory) { Start = start });
         if (closeInput)
         {
-            process.StandardInput.Close();
+            Input(process).Close();
         }
         return process;
     }
+
+    /// <summary>The starts to be made on a desktop of their own (<see cref="OnDesktopOfItsOwn"/>), each with why.</summary>
+    private static readonly ConditionalWeakTable<ProcessStartInfo, string> OnOwnDesktops = new();
+
+    /// <summary>The streams of each child started on a desktop of its own, which its process, not .NET's start, has none of.</summary>
+    private static readonly ConditionalWeakTable<Process, OwnDesktopStart> OwnStreams = new();
+
+    /// <summary>Has a start on Windows make its program on a desktop of its own, never switched to and closed once it has
+    /// ended (<see cref="OwnDesktop"/>), so no window it makes reaches the person's screen or takes the keys from them;
+    /// <paramref name="why"/> goes to the log with its start. Elsewhere the start is as it was.</summary>
+    public static ProcessStartInfo OnDesktopOfItsOwn(ProcessStartInfo start, string why)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(why);
+        if (OperatingSystem.IsWindows())
+        {
+            OnOwnDesktops.AddOrUpdate(start, why);
+        }
+        return start;
+    }
+
+    /// <summary>A child's standard input, which every child's start redirects: its own writer where it runs on a desktop of
+    /// its own, else its process's.</summary>
+    public static StreamWriter Input(Process process) => OwnStreams.TryGetValue(process, out OwnDesktopStart? own) ? own.Input : process.StandardInput;
 
     /// <summary>Takes on a program started in the terminal's pseudo-terminal from <paramref name="start"/>, so it ends
     /// with the IDE and is logged as a child is: on macOS and Linux its own session and process group go on the
@@ -190,16 +303,9 @@ public static class ChildProcesses
     /// a pipe it still writes to closed under it included (SIGPIPE's 141), it did not fail. <see cref="Kill"/> says it too.</summary>
     public static void Ending(Process process)
     {
-        try
+        if (DotnetProcesses.Runs(process))
         {
-            if (!process.HasExited)
-            {
-                EndedHere[process.Id] = 0;
-            }
-        }
-        catch (Exception error) when (error is InvalidOperationException or Win32Exception)
-        {
-            // It had ended, or was never started.
+            EndedHere[process.Id] = 0;
         }
     }
 
@@ -243,16 +349,17 @@ public static class ChildProcesses
 
     /// <summary><see cref="RunAsync(ProcessStartInfo, string, TimeSpan?, CancellationToken, IReadOnlyCollection{int}, int?)"/>
     /// for a child whose output is bytes: <paramref name="input"/> written to it as they are, what it writes handed to
-    /// <paramref name="read"/> as it comes and the rest passed over, its errors read whole. A read that fails ends the
-    /// child, and the task fails with what the read threw; so it does, with an <see cref="IOException"/>, where something
-    /// the child left running holds its output open past its end.</summary>
+    /// <paramref name="read"/> as it comes and the rest passed over, its errors read whole, the child handed to
+    /// <paramref name="started"/> as it starts. A read that fails ends the child, and the task fails with what the read
+    /// threw; so it does, with an <see cref="IOException"/>, where what the child left running holds its output open.</summary>
     public static async Task<ChildRead<T>> RunAsync<T>(ProcessStartInfo start, Func<Stream, Task<T>> read, ReadOnlyMemory<byte> input = default,
-        IReadOnlyCollection<int>? answers = null, CancellationToken cancel = default)
+        IReadOnlyCollection<int>? answers = null, CancellationToken cancel = default, Action<Process>? started = null)
     {
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         using Process process = await StartOffAsync(start, answers);
+        started?.Invoke(process);
         using CancellationTokenSource ending = CancellationTokenSource.CreateLinkedTokenSource(cancel);
         Reading errors = new(Errors(process));
         Task<T> output = ReadThroughAsync(process, read);
@@ -620,10 +727,14 @@ public static class ChildProcesses
     /// program that writes a line at a time costs no more than its lines; on Windows the process's own reader. Taken from
     /// the process before anything reads it, the same reader each time it is asked for, which the process's disposal
     /// leaves open and whose disposal ends a read under way.</summary>
-    public static TextReader Output(Process process) => Taken(process.StandardOutput);
+    public static TextReader Output(Process process) => OwnStreams.TryGetValue(process, out OwnDesktopStart? own)
+        ? own.Output ?? throw new InvalidOperationException("StandardOut has not been redirected")
+        : Taken(process.StandardOutput);
 
     /// <summary>A child's errors, redirected, as <see cref="Output"/> reads its output.</summary>
-    public static TextReader Errors(Process process) => Taken(process.StandardError);
+    public static TextReader Errors(Process process) => OwnStreams.TryGetValue(process, out OwnDesktopStart? own)
+        ? own.Error ?? throw new InvalidOperationException("StandardError has not been redirected")
+        : Taken(process.StandardError);
 
     /// <summary>Each of a child's streams' readers, by the process's own reader it was taken from.</summary>
     private static readonly ConditionalWeakTable<StreamReader, TextReader> Readers = new();

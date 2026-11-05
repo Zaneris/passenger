@@ -27,7 +27,7 @@ internal sealed partial class CSharpAssist
     private async Task<(LocalizedKey Read, LocalizedResource Resource, ResourceSet? Set)?> LocalizedAtAsync(LspDocument lsp, OpenDocument document, int offset,
         CancellationToken cancel = default)
     {
-        if (!lsp.IsRazor && (document.Syntax?.Current is not { } parsed || !ReferenceEquals(parsed.Text, lsp.Text.Snapshot)
+        if (!lsp.IsRazor && ((document.Syntax is { } parsing ? await parsing.CurrentAsync() : null) is not { } parsed || !ReferenceEquals(parsed.Text, lsp.Text.Snapshot)
             || !new[] { parsed.Root.FindToken(Math.Max(0, offset - 1)), parsed.Root.FindToken(offset) }.Any(t => t.IsKind(SyntaxKind.StringLiteralToken) || t.IsKind(SyntaxKind.IdentifierToken))))
         {
             return null;

@@ -20,7 +20,7 @@ public sealed class MSBuildDocument : IDisposable
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(400);
 
     /// <summary>Who checks the file, as an agent is told while its check is under way.</summary>
-    private const string Checker = "the project's MSBuild evaluation";
+    internal const string Checker = "the project's MSBuild evaluation";
 
     private readonly MSBuildService service;
     private readonly Debounce inspecting;
@@ -281,7 +281,7 @@ public sealed class MSBuildDocument : IDisposable
             return [];
         }
         return [.. packages.Select(p => (p.Range, Advice: Advise(known, p.Id, p.Version))).Where(p => p.Advice is not null)
-            .Select(p => new Marker(p.Range, MarkerKind.Warning, $"{p.Advice!.Value.Code}: {p.Advice.Value.Message}"))];
+            .Select(p => Marker.Coded(p.Range, MarkerKind.Warning, p.Advice!.Value.Code, p.Advice.Value.Message))];
     }
 
     /// <summary>NuGet's audit words for a package version's gravest known advisory (NU1901 low to NU1904 critical).</summary>
@@ -305,8 +305,7 @@ public sealed class MSBuildDocument : IDisposable
         }
         TextSnapshot text = Document.Text.Snapshot;
         XmlTree tree = Tree;
-        IEnumerable<Marker> found = diagnostics.Select(d => new Marker(RangeOf(text, tree, d), d.Error ? MarkerKind.Error : MarkerKind.Warning,
-            (d.Code is { Length: > 0 } code ? $"{code}: " : string.Empty) + Plain(d.Message)));
+        IEnumerable<Marker> found = diagnostics.Select(d => Marker.Coded(RangeOf(text, tree, d), d.Error ? MarkerKind.Error : MarkerKind.Warning, d.Code, Plain(d.Message)));
         // Text typed at a problem's start goes before it.
         Document.Markers = [.. found.Concat(advisories).Select(m => m with { Range = Clamped(m.Range, text.Length), StartGravity = AnchorGravity.After })];
     }

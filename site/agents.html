@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Passenger: a C# and .NET MCP server for coding agents</title>
-    <meta name="description" content="Give Claude Code, Codex or OpenCode a whole C# IDE: Passenger's MCP server builds, debugs, profiles and drives your app. How to set it up.">
+    <meta name="description" content="Give Claude Code, Codex or OpenCode a whole C# IDE: Passenger's MCP server builds, debugs, profiles and drives your app or Godot game. How to set it up.">
     <link rel="canonical" href="https://passenger-ide.net/agents">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
@@ -14,19 +14,19 @@
     <meta property="og:locale" content="en_US">
     <meta property="og:url" content="https://passenger-ide.net/agents">
     <meta property="og:title" content="Passenger: a C# and .NET MCP server for coding agents">
-    <meta property="og:description" content="Give Claude Code, Codex or OpenCode a whole C# IDE: Passenger's MCP server builds, debugs, profiles and drives your app. How to set it up.">
-    <meta property="og:image" content="https://passenger-ide.net/images/social-622499b6.png">
+    <meta property="og:description" content="Give Claude Code, Codex or OpenCode a whole C# IDE: Passenger's MCP server builds, debugs, profiles and drives your app or Godot game. How to set it up.">
+    <meta property="og:image" content="https://passenger-ide.net/images/social-f846e4c2.png">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="Passenger's Requests window beside the words: Debug the whole stack. The free IDE for C# and .NET.">
+    <meta property="og:image:alt" content="A Godot game's GDScript in Passenger, each member's value after its line as the game plays, beside the words: Now for Godot 4 games. The free IDE for C# and .NET.">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:site" content="@Zaneris">
     <meta name="twitter:creator" content="@Zaneris">
     <meta name="twitter:title" content="Passenger: a C# and .NET MCP server for coding agents">
-    <meta name="twitter:description" content="Give Claude Code, Codex or OpenCode a whole C# IDE: Passenger's MCP server builds, debugs, profiles and drives your app. How to set it up.">
-    <meta name="twitter:image" content="https://passenger-ide.net/images/social-622499b6.png">
-    <meta name="twitter:image:alt" content="Passenger's Requests window beside the words: Debug the whole stack. The free IDE for C# and .NET.">
+    <meta name="twitter:description" content="Give Claude Code, Codex or OpenCode a whole C# IDE: Passenger's MCP server builds, debugs, profiles and drives your app or Godot game. How to set it up.">
+    <meta name="twitter:image" content="https://passenger-ide.net/images/social-f846e4c2.png">
+    <meta name="twitter:image:alt" content="A Godot game's GDScript in Passenger, each member's value after its line as the game plays, beside the words: Now for Godot 4 games. The free IDE for C# and .NET.">
     <meta name="theme-color" content="#0F131C" media="(prefers-color-scheme: dark)">
     <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#2F6BF2">
@@ -81,6 +81,12 @@
                         would: a picture of each window, the tree of its controls with their text and state, and clicks,
                         typing, keys and scrolling sent to the window, which never takes your focus or moves your pointer. It
                         reads the app's binding errors and can break on a property's change.</p>
+                    <h3>It plays the game it builds</h3>
+                    <p>A Godot game is tried the same way: its scene tree and values, a picture of its frame, clicks and
+                        keys, a breakpoint's stop in C# or GDScript, and every copy running. On macOS, on Windows, and on
+                        Linux where Xvfb is installed, a game or an app it runs for itself puts no window on your screen.
+                        Through Passenger's addon it changes scenes in your Godot editor, each change one step of Godot's
+                        Undo.</p>
                     <h3>It works as you do</h3>
                     <p>It finds where things are declared and used, reads the warnings, renames, fixes and formats code as the
                         IDE does, in C#, Razor, XAML, the web languages and project files alike. It builds, runs and tests,
@@ -108,8 +114,8 @@
                 </div>
                 <div>
                     <dt>Services</dt>
-                    <dd>A compose service or an Aspire resource run, debugged, profiled or stopped, its log, its logs and
-                        traces, and the containers' actions.</dd>
+                    <dd>A compose service or an Aspire resource run, debugged, profiled or stopped, its log, its logs,
+                        traces and metrics, and the containers' actions.</dd>
                 </div>
                 <div>
                     <dt>Web apps and data</dt>
@@ -120,6 +126,11 @@
                     <dt>The app</dt>
                     <dd>Its windows, controls and their details, pictures, clicks, typing, keys, scrolling and binding
                         errors.</dd>
+                </div>
+                <div>
+                    <dt>Godot</dt>
+                    <dd>A game's tree, values, frames and input, each copy running, and scenes changed in your Godot
+                        editor.</dd>
                 </div>
                 <div>
                     <dt>Files, Git and NuGet</dt>
@@ -171,9 +182,9 @@
                 <ul class="paths">
                     <li><span>macOS</span><code>/Applications/Passenger.app/Contents/MacOS/Passenger</code></li>
                     <li><span>Windows</span><code>%LOCALAPPDATA%\PassengerIDE\current\Passenger.exe</code></li>
-                    <li><span>Linux</span><code>~/.local/bin/passenger</code></li>
+                    <li><span>Linux</span><code>~/.local/bin/passenger-ide</code></li>
                 </ul>
-                <p>Installed for everyone on Linux, it is <code>/usr/local/bin/passenger</code>. Any other agent that can add
+                <p>Installed for everyone on Linux, it is <code>/usr/local/bin/passenger-ide</code>. Any other agent that can add
                     an MCP server connects the same way: the command, then <code>--mcp-attach</code>.</p>
             </div>
             <div>
@@ -267,6 +278,7 @@ args = ["--mcp-attach"]</pre>
             <a href="/">Home</a>
             <a href="https://github.com/Zaneris/passenger">GitHub</a>
             <a href="https://x.com/Zaneris">X (@Zaneris)</a>
+            <a href="/godot">Godot</a>
             <a href="/containers">Containers and Aspire</a>
             <a href="/linux">Linux</a>
             <a href="https://github.com/Zaneris/passenger/blob/main/LICENSE">Licence</a>

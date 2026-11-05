@@ -46,9 +46,9 @@ public sealed class DebugSession : IAsyncDisposable
         engineLog = kept ?? Path.Combine(TestRun.Root, $"engine-{Guid.NewGuid():N}.log");
         // The symbols it decompiles go where the run's IDE keeps them (its state folder's), unless a test names a folder.
         string symbols = symbolCache ?? Passenger.App.Debugging.DebugSession.SymbolCache;
-        List<string> arguments = [path, AdapterFlags.Interpreter, AdapterFlags.EngineLogging + engineLog, AdapterFlags.SymbolCache + symbols];
+        List<string> arguments = [AdapterFlags.Interpreter, AdapterFlags.EngineLogging + engineLog, AdapterFlags.SymbolCache + symbols];
         // Started as the IDE starts it, so a test run that is killed leaves no adapter or program behind.
-        ProcessStartInfo start = ChildProcesses.DotnetCommand(arguments);
+        ProcessStartInfo start = ChildProcesses.HelperCommand(path, arguments);
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
@@ -272,7 +272,7 @@ public sealed class DebugSession : IAsyncDisposable
     }
 
     public async Task<DebugSession> LaunchAsync(string program, bool stopAtEntry, bool justMyCode, IReadOnlyList<string>? arguments = null, string console = "internalConsole",
-        IReadOnlyDictionary<string, string>? environment = null)
+        IReadOnlyDictionary<string, string>? environment = null, IReadOnlyList<DapTypePresentation>? presentations = null)
     {
         await RequestAsync(DapCommands.Launch, new LaunchArguments
         {
@@ -283,6 +283,7 @@ public sealed class DebugSession : IAsyncDisposable
             Console = console,
             JustMyCode = justMyCode,
             StopAtEntry = stopAtEntry,
+            Presentations = presentations,
         });
         return this;
     }
@@ -355,8 +356,8 @@ public sealed class DebugSession : IAsyncDisposable
     public async Task<List<DapVariable>> VariablesAsync(int variablesReference) =>
         [.. (await RequestAsync<VariablesResponse>(DapCommands.Variables, new VariablesArguments(variablesReference))).Variables];
 
-    public Task<EvaluateResponse> EvaluateAsync(int frameId, string expression) =>
-        RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, "repl"));
+    public Task<EvaluateResponse> EvaluateAsync(int frameId, string expression, bool letThreadsRun = false) =>
+        RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, "repl", letThreadsRun ? true : null));
 
     public async Task<DebugSession> ContinueAsync()
     {
@@ -519,7 +520,7 @@ public sealed class DebugSession : IAsyncDisposable
         adapter.Dispose();
         if (debuggee is not null)
         {
-            if (!debuggee.HasExited)
+            if (DotnetProcesses.Runs(debuggee))
             {
                 ChildProcesses.Kill(debuggee);
             }
@@ -587,10 +588,10 @@ public sealed class DebugSession : IAsyncDisposable
     /// step never ended, this says in which call.</summary>
     private string Stacks()
     {
-        string stacks = adapter.HasExited ? string.Empty : NativeStacks.Describe("Where the adapter's debugger was", adapter.Id, "libmscordbi", "libdbgshim");
-        if (debuggee is { HasExited: false })
+        string stacks = !DotnetProcesses.Runs(adapter) ? string.Empty : NativeStacks.Describe("Where the adapter's debugger was", adapter.Id, "libmscordbi", "libdbgshim");
+        if (debuggee is { } running && DotnetProcesses.Runs(running))
         {
-            stacks += NativeStacks.Describe("Where the debuggee's runtime was", debuggee.Id, "Debugger", "DbgTransport", "TwoWayPipe");
+            stacks += NativeStacks.Describe("Where the debuggee's runtime was", running.Id, "Debugger", "DbgTransport", "TwoWayPipe");
         }
         return stacks;
     }
@@ -608,7 +609,7 @@ public sealed class DebugSession : IAsyncDisposable
             }
         }
         // A test runner under a debugger hands these on, and they change the debuggee's stacks (ReadyToRun code).
-        foreach (string variable in (string[])["COMPLUS_FORCEENC", "COMPLUS_ReadyToRun", "COMPLUS_ZapDisable", "DOTNET_GCConserveMemory", "DOTNET_GCHeapCount", "DOTNET_GCNoAffinitize", RuntimeVariables.ModifiableAssemblies, "DOTNET_MULTILEVEL_LOOKUP", "DOTNET_TieredPGO", RuntimeVariables.GcServer, "_NO_DEBUG_HEAP"])
+        foreach (string variable in (string[])["COMPLUS_FORCEENC", "COMPLUS_ReadyToRun", "COMPLUS_ZapDisable", RuntimeVariables.ConserveMemory, "DOTNET_GCHeapCount", "DOTNET_GCNoAffinitize", RuntimeVariables.ModifiableAssemblies, "DOTNET_MULTILEVEL_LOOKUP", "DOTNET_TieredPGO", RuntimeVariables.GcServer, "_NO_DEBUG_HEAP"])
         {
             start.Environment.Remove(variable);
         }
@@ -715,8 +716,9 @@ public static class DebugSessionChain
         await (await chain).AttachAsync(processId, justMyCode);
 
     public static async Task<DebugSession> LaunchAsync(this Task<DebugSession> chain, string program, bool stopAtEntry, bool justMyCode,
-        IReadOnlyList<string>? arguments = null, string console = "internalConsole", IReadOnlyDictionary<string, string>? environment = null) =>
-        await (await chain).LaunchAsync(program, stopAtEntry, justMyCode, arguments, console, environment);
+        IReadOnlyList<string>? arguments = null, string console = "internalConsole", IReadOnlyDictionary<string, string>? environment = null,
+        IReadOnlyList<DapTypePresentation>? presentations = null) =>
+        await (await chain).LaunchAsync(program, stopAtEntry, justMyCode, arguments, console, environment, presentations);
 
     public static async Task<DebugSession> BreakpointsAsync(this Task<DebugSession> chain) => await (await chain).BreakpointsAsync();
 

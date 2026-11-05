@@ -626,6 +626,43 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The system's watcher saying it overflowed while a batch is handed over, after the batch was looked at for a
+    /// burst at risk, as a burst's last changes overflow it on a busy machine: what it lost is looked for all the same, so a
+    /// file deleted unheard then is found gone, and Go to File lets go of it.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_overflow_said_as_a_batch_is_handed_over_has_what_it_lost_found(bool eachFolder)
+    {
+        Write("One.cs", "class One { }\n");
+        Write("Brief.cs", "class Brief { }\n");
+        MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
+        Ui.Hold(TimeSpan.FromSeconds(3.5), "the watcher's record of the folder to be older than what an overflow may have lost");
+        FolderWatcher watcher = window.FolderWatcher!;
+        Ui.PumpUntil(() => window.FileIndex.Files.Contains("Brief.cs"), "the file in Go to File");
+        List<FileSystemWatcher> watchers = [.. watcher.Watches.Values];
+        int said = 0;
+        watcher.WhileNextHandOver(() =>
+        {
+            watchers.ForEach(w => w.EnableRaisingEvents = false);
+            File.Delete(Path.Combine(folder, "Brief.cs"));
+            RaiseError(watcher.Watches[folder], new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
+            Volatile.Write(ref said, 1);
+        });
+        try
+        {
+            Write("Heard.cs", "class Heard { }\n");
+            Ui.PumpUntil(() => Volatile.Read(ref said) == 1, "the next batch's hand-over");
+            Ui.PumpUntil(() => !window.FileIndex.Files.Contains("Brief.cs"),
+                $"Go to File to let go of the file deleted unheard as the watcher overflowed, which it still lists among {string.Join(", ", window.FileIndex.Files)}", TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            watchers.ForEach(w => w.EnableRaisingEvents = true);
+        }
+        window.Close();
+    }
+
     /// <summary>A folder of fifty files moved into the folder from elsewhere, then out again, as a person's mv or file
     /// manager moves one: each of its files is handed over with it, come and then gone, in the batch the folder comes or
     /// goes in, the folder never read again whole, and Go to File follows.</summary>

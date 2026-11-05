@@ -15,9 +15,6 @@ namespace Passenger.App.CSharp;
 /// members is its row of the stop's values (<see cref="AddValues"/>), which the card then takes the pointer and the keys for.</summary>
 internal sealed partial class InfoCard : Border, IHoverCard
 {
-    // Styled as the Border it is, so the theme's Border.popup reaches it.
-    protected override Type StyleKeyOverride => typeof(Border);
-
     /// <summary>The most a card of words is wide; one of a value's rows takes a width of the popups' (<see cref="PopupFrame"/>).</summary>
     private const double WordsWidth = 640;
 
@@ -41,6 +38,18 @@ internal sealed partial class InfoCard : Border, IHoverCard
 
     public bool IsEmpty => parts.Children.Count == 0;
 
+    /// <summary>Whether it holds something to use (a sound's Play), so it takes the pointer and stays while the pointer is on it.</summary>
+    public bool Usable { get; private set; }
+
+    /// <summary>Plays a sound a preview offers; nothing without it.</summary>
+    public Action<string>? Play { get; set; }
+
+    /// <summary>The largest a preview's picture is drawn, in logical units.</summary>
+    private const double PictureSize = 128;
+
+    /// <summary>The pictures its previews decoded, let go as it is cleared.</summary>
+    private readonly List<Avalonia.Media.Imaging.Bitmap> pictures = [];
+
     /// <summary>The rows of a value the card shows, null for a card of words alone.</summary>
     public Debugging.VariablesList? Values { get; private set; }
 
@@ -48,6 +57,7 @@ internal sealed partial class InfoCard : Border, IHoverCard
     public string Text => string.Join('\n', parts.Children.Select(part => part switch
     {
         TextBlock words => words.Text,
+        Panel row => string.Join(' ', row.Children.OfType<TextBlock>().Select(t => t.Text)),
         Debugging.VariablesList values => string.Join('\n', values.Tree.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Name} = {r.TypeLabel}{r.Shown}")),
         _ => null,
     }).OfType<string>());
@@ -55,7 +65,13 @@ internal sealed partial class InfoCard : Border, IHoverCard
     public void Clear()
     {
         parts.Children.Clear();
+        foreach (Avalonia.Media.Imaging.Bitmap picture in pictures)
+        {
+            picture.Dispose();
+        }
+        pictures.Clear();
         Values = null;
+        Usable = false;
         fitted = 0;
         IsHitTestVisible = false;
         MaxWidth = WordsWidth;
@@ -95,12 +111,11 @@ internal sealed partial class InfoCard : Border, IHoverCard
     public void AddCode(string code) => parts.Children.Add(new TextBlock
     {
         Text = code,
-        FontFamily = CodeEditor.CodeFont,
         FontFeatures = Fonts.NoLigatures,
         FontSize = 12.5,
         TextWrapping = TextWrapping.Wrap,
         Foreground = Brush(TokenKeys.Text),
-    });
+    }.InCodeFont());
 
     public void AddText(string text, IBrush? colour = null) => parts.Children.Add(new TextBlock
     {
@@ -111,6 +126,59 @@ internal sealed partial class InfoCard : Border, IHoverCard
     });
 
     void IHoverCard.AddText(string text) => AddText(text);
+
+    public void AddChart(Control chart) => parts.Children.Add(chart);
+
+    /// <summary>A file's preview: a picture drawn small (decoded off the window's thread), a sound with a button that plays
+    /// it, a scene's top nodes in the code's font, each over its words.</summary>
+    public void AddPreview(FilePreview preview)
+    {
+        switch (preview.Kind)
+        {
+            case PreviewKind.Picture:
+                Image picture = new() { MaxWidth = PictureSize, MaxHeight = PictureSize, Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly, HorizontalAlignment = HorizontalAlignment.Left };
+                parts.Children.Add(picture);
+                IdeErrors.Observe(ShowPictureAsync(picture, preview.File));
+                AddText(preview.Named);
+                break;
+            case PreviewKind.Sound:
+                Button play = ToolButtons.Of(IconKeys.Run, "Play", () => Play?.Invoke(preview.File));
+                parts.Children.Add(new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    Children = { play, new TextBlock { Text = preview.Named, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, Foreground = Brush(TokenKeys.TextMuted) } },
+                });
+                Usable = true;
+                IsHitTestVisible = true;
+                break;
+            default:
+                AddText(preview.Named);
+                if (preview.Nodes.Count > 0)
+                {
+                    AddCode(string.Join('\n', preview.Nodes.Select((n, i) => i == 0 ? n : $"  {n}")));
+                }
+                break;
+        }
+    }
+
+    /// <summary>A picture into its place once decoded, at most the pixels its largest size takes on this screen.</summary>
+    private async Task ShowPictureAsync(Image picture, string file)
+    {
+        double scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 2;
+        if (await Godot.GodotResources.PreviewAsync(file, (int)Math.Ceiling(PictureSize * Math.Max(scale, 1))) is not { } made)
+        {
+            return;
+        }
+        if (picture.Parent != parts)
+        {
+            // Cleared while it decoded: another card's words stand there now.
+            made.Dispose();
+            return;
+        }
+        pictures.Add(made);
+        picture.Source = made;
+    }
 
     /// <summary>A language server's hover, its Markdown shown (<see cref="AddMarkdown"/>).</summary>
     public void AddHover(Lsp.Hover hover)
@@ -229,9 +297,6 @@ internal sealed class CompletionSlot(CompletionRow row) : System.ComponentModel.
 /// changes the words in the rows' controls rather than making them anew: the list's containers and their controls stay.</summary>
 internal sealed class CompletionPopup : Border
 {
-    // Styled as the Border it is, so the theme's Border.popup reaches it.
-    protected override Type StyleKeyOverride => typeof(Border);
-
     private readonly AvaloniaList<CompletionSlot> slots = [];
 
     /// <summary>The item the selection was last said to be on, so a filter that leaves it there says nothing.</summary>
@@ -360,12 +425,11 @@ internal sealed class CompletionRowView : DockPanel
         };
         label = new TextBlock
         {
-            FontFamily = CodeEditor.CodeFont,
             FontFeatures = Fonts.NoLigatures,
             FontSize = 12.5,
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
-        };
+        }.InCodeFont();
         Children.Add(badge);
         Children.Add(detail);
         Children.Add(label);
@@ -386,9 +450,6 @@ internal sealed class CompletionRowView : DockPanel
 /// click to choose, a choice's digit to choose it at once.</summary>
 internal sealed class ChoicePopup : Border
 {
-    // Styled as the Border it is, so the theme's Border.popup reaches it.
-    protected override Type StyleKeyOverride => typeof(Border);
-
     private readonly ListBox list;
 
     /// <summary>What is offered, by its words.</summary>
@@ -463,10 +524,11 @@ internal sealed class ChoicePopup : Border
     /// <summary>A choice's row: its digit when the list has them, its words, and its detail muted, in code's font for code.</summary>
     private static Control ChoiceRow(bool numbered)
     {
-        TextBlock digit = new() { FontFamily = CodeEditor.CodeFont, Width = 10, IsVisible = numbered, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock digit = new TextBlock { Width = 10, IsVisible = numbered, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new() { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 460, VerticalAlignment = VerticalAlignment.Center };
         StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 10, Height = ListRow.Height, Children = { digit, text, detail } };
+        string? detailFont = null;
         return row.Showing<Choice>(choice =>
         {
             digit.Text = choice.Mnemonic?.ToString();
@@ -474,7 +536,7 @@ internal sealed class ChoicePopup : Border
             text.Text = choice.Text;
             detail.Text = choice.Detail;
             detail.Foreground = InfoCard.Brush(TokenKeys.TextMuted);
-            detail.FontFamily = choice.DetailIsCode ? CodeEditor.CodeFont : FontFamily.Default;
+            detail.Resource(TextBlock.FontFamilyProperty, ref detailFont, choice.DetailIsCode ? CodeFonts.Key : null);
         });
     }
 
@@ -498,29 +560,27 @@ internal sealed class ChoicePopup : Border
 /// chooses it, if it has one.</summary>
 internal sealed record Choice(string Text, string Detail, object Value, bool DetailIsCode = false, char? Mnemonic = null);
 
-/// <summary>Inline rename: the name in a box over itself, all of it selected; Enter renames. For a
+/// <summary>Inline rename: the name in a box over itself, all of it selected; Enter renames (a new name's box, under its
+/// own caption, names what a refactoring makes). For a
 /// type declared in files named after it, Also rename files to reflect this change is a check box under it, with the
 /// files it would rename, clicked while the keys stay with the name.</summary>
 internal sealed class RenameBox : Border
 {
-    // Styled as the Border it is, so the theme's Border.popup reaches it.
-    protected override Type StyleKeyOverride => typeof(Border);
-
     private readonly TextBox name;
     private readonly StackPanel body;
     private CheckBox? renameFiles;
 
-    public RenameBox(string current)
+    public RenameBox(string current, string caption = "Rename")
     {
         Classes.Add(StyleClasses.Popup);
         Padding = new Thickness(8, 6);
-        name = new TextBox { Text = current, Classes = { StyleClasses.Search }, MinWidth = 220, FontFamily = CodeEditor.CodeFont };
+        name = new TextBox { Text = current, Classes = { StyleClasses.Search }, MinWidth = 220 }.InCodeFont();
         body = new StackPanel
         {
             Spacing = 4,
             Children =
             {
-                new TextBlock { Text = "Rename", Classes = { StyleClasses.Muted }, FontSize = 11 },
+                new TextBlock { Text = caption, Classes = { StyleClasses.Muted }, FontSize = 11 },
                 name,
             },
         };

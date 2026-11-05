@@ -367,8 +367,8 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
             "using Xunit;\n\nnamespace Own.Tests;\n\npublic class OwnTests\n{\n    [MyFact]\n    public void Via_its_own_attribute() { }\n}\n");
         Write(solution, "Sta.Tests/Sta.Tests.csproj",
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
-            "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"MSTest.TestAdapter\" Version=\"3.10.0\" />\n" +
-            "    <PackageReference Include=\"MSTest.TestFramework\" Version=\"3.10.0\" />\n  </ItemGroup>\n</Project>\n");
+            $"    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"MSTest.TestAdapter\" Version=\"{TestPackages.MSTestOnVSTest}\" />\n" +
+            $"    <PackageReference Include=\"MSTest.TestFramework\" Version=\"{TestPackages.MSTestOnVSTest}\" />\n  </ItemGroup>\n</Project>\n");
         string sta = Write(solution, "Sta.Tests/StaTests.cs",
             "using Microsoft.VisualStudio.TestTools.UnitTesting;\n\nnamespace Sta.Tests;\n\n[TestClass]\npublic class StaTests\n{\n    [STATestMethod]\n    public void On_its_own_thread() { }\n}\n");
         Write(solution, "Tests.slnx", "<Solution>\n  <Project Path=\"Own.Tests/Own.Tests.csproj\" />\n  <Project Path=\"Sta.Tests/Sta.Tests.csproj\" />\n</Solution>\n");
@@ -406,15 +406,15 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         string solution = NewFolder();
         Write(solution, "Named.NUnit/Named.NUnit.csproj",
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
-            "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"NUnit\" Version=\"4.4.0\" />\n" +
-            "    <PackageReference Include=\"NUnit3TestAdapter\" Version=\"5.2.0\" />\n  </ItemGroup>\n</Project>\n");
+            $"    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"NUnit\" Version=\"{TestPackages.NUnit}\" />\n" +
+            $"    <PackageReference Include=\"NUnit3TestAdapter\" Version=\"{TestPackages.NUnitAdapter}\" />\n  </ItemGroup>\n</Project>\n");
         Write(solution, "Named.NUnit/NamedCases.cs",
             "using NUnit.Framework;\n\nnamespace Named.NUnit;\n\npublic class NamedCases\n{\n    [TestCase(1, 1, 2, TestName = \"OnePlusOne\")]\n" +
             "    [TestCase(2, 2, 5, TestName = \"TwoPlusTwoIsFive\")]\n    public void Sums(int a, int b, int sum) => Assert.That(a + b, Is.EqualTo(sum));\n}\n");
         Write(solution, "Named.MSTest/Named.MSTest.csproj",
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
-            "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"MSTest.TestAdapter\" Version=\"3.10.0\" />\n" +
-            "    <PackageReference Include=\"MSTest.TestFramework\" Version=\"3.10.0\" />\n  </ItemGroup>\n</Project>\n");
+            $"    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"MSTest.TestAdapter\" Version=\"{TestPackages.MSTestOnVSTest}\" />\n" +
+            $"    <PackageReference Include=\"MSTest.TestFramework\" Version=\"{TestPackages.MSTestOnVSTest}\" />\n  </ItemGroup>\n</Project>\n");
         Write(solution, "Named.MSTest/NamedRows.cs",
             "using Microsoft.VisualStudio.TestTools.UnitTesting;\n\nnamespace Named.MSTest;\n\n[TestClass]\npublic class NamedRows\n{\n    [TestMethod]\n" +
             "    [DataRow(1, 1, 2, DisplayName = \"small\")]\n    [DataRow(2, 2, 5, DisplayName = \"wrong\")]\n    [DataRow(3, 3, 6)]\n" +
@@ -992,8 +992,8 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         string solution = NewFolder();
         Write(solution, "Fixtures.Tests/Fixtures.Tests.csproj",
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
-            "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"NUnit\" Version=\"4.4.0\" />\n" +
-            "    <PackageReference Include=\"NUnit3TestAdapter\" Version=\"5.2.0\" />\n  </ItemGroup>\n</Project>\n");
+            $"    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"NUnit\" Version=\"{TestPackages.NUnit}\" />\n" +
+            $"    <PackageReference Include=\"NUnit3TestAdapter\" Version=\"{TestPackages.NUnitAdapter}\" />\n  </ItemGroup>\n</Project>\n");
         Write(solution, "Fixtures.Tests/FixtureTests.cs",
             "using NUnit.Framework;\n\nnamespace Fixtures.Tests;\n\n[TestFixture(1)]\n[TestFixture(-1)]\npublic class Parameterised(int value)\n{\n" +
             "    [Test]\n    public void Positive() => Assert.That(value, Is.GreaterThan(0));\n}\n\n" +
@@ -1252,6 +1252,57 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Assert.Equal([TestState.NotRun], second.Tests.Tree.Outcomes);
         second.Close();
     }
+
+    /// <summary>A run's results come back when the folder opens again, before any build: each test's outcome, time, data rows
+    /// and failure as they were, marked in its row and its details as an earlier run's with when; a test whose code changed
+    /// while the folder was closed says so, one whose code did not says nothing; a run makes them this session's; and a test
+    /// whose code changes after this session's run says so too.</summary>
+    [AvaloniaFact]
+    public void A_runs_results_come_back_as_an_earlier_runs_when_the_folder_opens_again_until_the_tests_run_again()
+    {
+        string settings = NewFolder();
+        MainWindow first = Keeping(settings, Folder);
+        Assert.True(first.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !first.Tests.IsBusy && Method(first, "Two_and_two_make_four")?.State == TestState.Passed, "the run of every test", TimeSpan.FromSeconds(120));
+        TimeSpan took = Method(first, "Two_and_two_make_five")!.Duration;
+        Assert.Null(Method(first, "Two_and_two_make_five")!.EarlierRun);
+        Assert.DoesNotContain(ShownTexts(first), t => t?.StartsWith("earlier run", StringComparison.Ordinal) == true);
+        first.Close();
+        Write("SumTests.cs", File.ReadAllText(Source).Replace("Assert.Equal(5, 2 + 2);", "Assert.Equal(5, 2 + 3);", StringComparison.Ordinal));
+
+        MainWindow second = Keeping(settings, Folder);
+        Ui.WaitFor(() => Method(second, "Two_and_two_make_five")?.State == TestState.Failed, "the failed test's result from the earlier run, before any build");
+        TestNode five = Method(second, "Two_and_two_make_five")!;
+        Assert.Equal(TestState.Passed, Method(second, "Two_and_two_make_four")!.State);
+        Assert.Equal(TestState.Skipped, Method(second, "Not_yet")!.State);
+        Assert.Equal(["Doubles(value: 1, twice: 2)", "Doubles(value: 2, twice: 4)"], Method(second, "Doubles")!.Children.Select(r => r.Name));
+        Assert.Equal(TestState.Failed, second.Tests.Tree.Roots[0].State);
+        Assert.True(five.Duration == took, $"The failed test took {took} in the earlier run, and is said to have taken {five.Duration}");
+        Assert.NotNull(five.EarlierRun);
+        Assert.StartsWith("From an earlier run, at ", five.Details, StringComparison.Ordinal);
+        Assert.Contains("SumTests.cs:line 17", five.Details, StringComparison.Ordinal);
+        Ui.WaitFor(() => five.CodeChanged, "the failed test, whose code changed while the folder was closed, to say so");
+        Assert.False(Method(second, "Two_and_two_make_four")!.CodeChanged, "A test whose code did not change says it did");
+        Assert.Contains("; the test's code has changed since", five.Details, StringComparison.Ordinal);
+        Ui.Settle();
+        List<string?> said = ShownTexts(second);
+        Assert.True(said.Any(t => t?.StartsWith("earlier run, ", StringComparison.Ordinal) == true && t.EndsWith("; code changed", StringComparison.Ordinal)),
+            $"No row says its result is from an earlier run and its code changed since: the window says {string.Join(" | ", said)}");
+
+        Assert.True(second.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !second.Tests.IsBusy && Method(second, "Two_and_two_make_five")?.State == TestState.Passed, "the second run, in which the changed test passes", TimeSpan.FromSeconds(120));
+        Assert.All(second.Tests.Tree.Methods, m => Assert.True(m.EarlierRun is null && !m.CodeChanged, $"{m.Name} still shows an earlier run's results after this run"));
+        Ui.Settle();
+        Assert.DoesNotContain(ShownTexts(second), t => t?.StartsWith("earlier run", StringComparison.Ordinal) == true);
+
+        Write("SumTests.cs", File.ReadAllText(Source).Replace("Assert.Equal(5, 2 + 3);", "Assert.Equal(5, 3 + 2);", StringComparison.Ordinal));
+        Ui.WaitFor(() => Method(second, "Two_and_two_make_five")?.CodeChanged == true, "the test this session ran, whose code changed since, to say so");
+        Assert.False(Method(second, "Two_and_two_make_four")!.CodeChanged, "A test whose code did not change since this session's run says it did");
+        Assert.StartsWith(TestNode.ChangedSinceWords, Method(second, "Two_and_two_make_five")!.Details, StringComparison.Ordinal);
+        Ui.Settle();
+        Assert.True(ShownTexts(second).Contains("code changed"), $"No row says its code changed since this session's run: the window says {string.Join(" | ", ShownTexts(second))}");
+        second.Close();
+    }
 }
 
 /// <summary>Debug Tests from the window, on <see cref="UnitTestsFolders"/>' Sums.Tests. Debugged through the window, so the
@@ -1305,6 +1356,41 @@ public sealed class UnitTestsDebuggingTests : UnitTestsFolders, IClassFixture<Re
         Assert.True(greets.State == TestState.Passed, $"A test ran without its project's launch profile's variables, which Rider gives it:\n{greets.Details}");
         Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [greets], debug: true), "the test debugged", TimeSpan.FromSeconds(120));
         Assert.True(greets.State == TestState.Passed, $"A test debugged ran without its project's launch profile's variables:\n{greets.Details}");
+        window.Close();
+    }
+
+    /// <summary>A test debugged with Hot Reload on: an edit applied while it is paused at a breakpoint reaches the test host
+    /// VSTest started and the debugger attached to, whose update handlers run as it goes on, through Passenger's hook.</summary>
+    [AvaloniaFact]
+    public void A_test_host_debugged_with_hot_reload_runs_its_update_handlers_after_an_edit_applied_at_a_breakpoint()
+    {
+        string ran = Path.Combine(Folder, "handlers.txt");
+        Write("UpdateProbe.cs", "[assembly: System.Reflection.Metadata.MetadataUpdateHandler(typeof(Sums.Tests.UpdateProbe))]\n\nnamespace Sums.Tests;\n\n"
+            + "internal static class UpdateProbe\n{\n" + $"    public static void UpdateApplication(Type[]? types) => File.WriteAllText(@\"{ran}\", \"ran\");\n}}\n");
+        string tests = Write("ReloadTests.cs", "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class ReloadTests\n{\n    [Fact]\n    public void Reloads()\n    {\n"
+            + "        int value = Value();\n        for (int i = 0; i < 300 && !File.Exists(@\"" + ran + "\"); i++)\n        {\n            Thread.Sleep(100);\n        }\n"
+            + "        Assert.True(File.Exists(@\"" + ran + "\"), \"the update handlers never ran\");\n    }\n\n    private static int Value() => 1;\n}\n");
+        MainWindow window = Open(languageServer: true);
+        window.OpenFile(tests);
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(9, 8));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        Ui.Run(window, AppActions.DebugTests);
+        Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames.Count > 0, "the stop in the test", TimeSpan.FromSeconds(120));
+
+        TextSnapshot text = editor.Document.Snapshot;
+        int one = text.ToString().IndexOf("Value() => 1", StringComparison.Ordinal) + "Value() => ".Length;
+        editor.ApplyEdits([new TextEdit(one, 1, "2")]);
+        Ui.Settle();
+        Assert.True(window.Perform(AppActions.ApplyHotReloadChanges), $"Apply Hot Reload Changes could not run on the debugged test host: {window.Status}");
+        Ui.WaitFor(() => window.Debugger.LastApplied is { Result: HotReloadResult.Applied } && window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is null,
+            () => $"the edit applied to the test host; Hot Reload said: {window.Debugger.LastApplied?.Said} ({window.Status})", TimeSpan.FromSeconds(60));
+        Ui.Run(window, AppActions.Resume);
+        Ui.WaitFor(() => !window.Tests.IsBusy, "the run to end", TimeSpan.FromSeconds(60));
+        TestNode reloads = Method(window, "Reloads")!;
+        Assert.True(File.Exists(ran), $"The debugged test host's update handlers never ran after the edit was applied:\n{reloads.Details}");
+        Assert.Equal(TestState.Passed, reloads.State);
         window.Close();
     }
 
@@ -1513,8 +1599,8 @@ public abstract class UnitTestsFolders : IDisposable
     {
         File.WriteAllText(Path.Combine(made, "Sums.Tests.csproj"),
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n" +
-            "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n" +
-            "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
+            $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+            $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n</Project>\n");
         File.WriteAllText(Path.Combine(made, "SumTests.cs"),
             "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class SumTests\n{\n    [Fact]\n    public void Two_and_two_make_four()\n    {\n        int sum = 2 + 2;\n        Assert.Equal(4, sum);\n    }\n\n" +
             "    [Fact]\n    public void Two_and_two_make_five()\n    {\n        Assert.Equal(5, 2 + 2);\n    }\n\n    [Theory]\n    [InlineData(1, 2)]\n    [InlineData(2, 4)]\n    public void Doubles(int value, int twice) => Assert.Equal(twice, value * 2);\n\n" +
@@ -1585,13 +1671,13 @@ public abstract class UnitTestsFolders : IDisposable
             ? $"    <TestFrameworks>{frameworks}</TestFrameworks>\n    <TargetFrameworks>$(TestFrameworks)</TargetFrameworks>\n"
             : $"    <TargetFramework>{frameworks}</TargetFramework>\n") +
         "    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n" +
-        "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n" +
-        "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n";
+        $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+        $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n</Project>\n";
 
     /// <summary>A test project of another framework's packages, never restored here.</summary>
     protected static string PackagesProject(params string[] packages) =>
         $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
-        "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n" +
+        $"    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n" +
         string.Concat(packages.Select(p => $"    <PackageReference Include=\"{p}\" Version=\"*\" />\n")) + "  </ItemGroup>\n</Project>\n";
 
     /// <summary>The Unit Tests window's rows as a person reads them, indented by depth.</summary>
@@ -1654,9 +1740,10 @@ public abstract class UnitTestsFolders : IDisposable
 
     /// <summary>A window on the test's Sums.Tests with its tests' file open, with no C# language server, which finding,
     /// running and debugging tests ask nothing of.</summary>
-    protected MainWindow Open()
+    /// <summary>A window on the folder, the C# language server started only where a test asks it something (Hot Reload).</summary>
+    protected MainWindow Open(bool languageServer = false)
     {
-        MainWindow window = Ui.OpenFolder(Folder, languageServer: false);
+        MainWindow window = Ui.OpenFolder(Folder, languageServer: languageServer);
         window.OpenFile(Source);
         Ui.Settle();
         return window;

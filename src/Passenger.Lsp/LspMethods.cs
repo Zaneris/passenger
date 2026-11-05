@@ -70,6 +70,9 @@ public static class LspMethods
 
     public const string WorkDoneProgressCreate = "window/workDoneProgress/create";
     public const string ShowMessage = "window/showMessage";
+
+    /// <summary>Godot's word, as it is initialized, that it works on another folder than the client's: the project open in it.</summary>
+    public const string GodotChangeWorkspace = "gdscript_client/changeWorkspace";
     public const string ShowMessageRequest = "window/showMessageRequest";
     public const string ShowDocument = "window/showDocument";
     public const string LogMessage = "window/logMessage";

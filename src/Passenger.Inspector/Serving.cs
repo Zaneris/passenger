@@ -131,7 +131,10 @@ internal abstract class Inspecting<T>(Connection connection) where T : class
                 Wire.Input => new Reply { Id = request.Id, Done = Do(request.Input ?? throw new Refusal("No input was given")) },
                 Wire.Watch => Done(request, () => Watch(request)),
                 Wire.Values => new Reply { Id = request.Id, Values = ValuesOf(request) },
+                Wire.Made => new Reply { Id = request.Id, Values = MadeAt(request.Xaml ?? throw new Refusal("No XAML file was named")) },
+                Wire.Placed => new Reply { Id = request.Id, Placed = PlacedIn(request.Xaml?.File ?? throw new Refusal("No XAML file was named")) },
                 Wire.Overlays => new Reply { Id = request.Id, Windows = SetOverlays(request) },
+                Wire.Reload => new Reply { Id = request.Id, Reloaded = Reload(request.Change ?? throw new Refusal("No XAML file was given")) },
                 _ => new Reply { Id = request.Id, Error = $"The inspector does not know '{request.Method}'" },
             };
         }
@@ -184,8 +187,19 @@ internal abstract class Inspecting<T>(Connection connection) where T : class
     /// <summary>A XAML file's bindings with their values; refused by a framework that reads none.</summary>
     protected abstract XamlValues ValuesOf(Request request);
 
+    /// <summary>The element made at each place of a XAML file asked of, by its id, no bindings read: of several made there,
+    /// the one nearest the element chosen, else the first; a place the app made nothing at is left out.</summary>
+    protected abstract XamlValues MadeAt(XamlRead read);
+
+    /// <summary>Where each shown element made from a XAML file of this name is, in the newest window that shows any;
+    /// refused by a framework whose previewer says it itself.</summary>
+    protected virtual List<PlacedBox> PlacedIn(string file) => throw new Refusal("This app's inspector does not place its XAML's elements");
+
     /// <summary>The renderer debug overlays asked for set, and the windows as they are then; refused by a framework with none.</summary>
     protected abstract List<AppWindow> SetOverlays(Request request);
+
+    /// <summary>A XAML file's text applied to what the app made from it, or why it could not be.</summary>
+    protected abstract XamlReloaded Reload(XamlChange change);
 
     /// <summary>Whether an element is one the tree leaves out (the inspector's own), whose coming is no change in the app.</summary>
     protected abstract bool LeftOut(T element);
@@ -260,7 +274,7 @@ internal abstract class Driving<T, TTop> where T : class where TTop : class, T
         T? target = element == top && action.X is not null ? null : element;
         return action.Kind switch
         {
-            InputKinds.Click => Click(top, target, action),
+            InputKinds.Click => ChosenWithoutAim(top, target, action) ?? Click(top, target, action),
             InputKinds.Scroll => Scroll(top, target, action),
             InputKinds.Type => Type(top, element, action),
             InputKinds.Key => Keys(top, element, action),
@@ -270,6 +284,11 @@ internal abstract class Driving<T, TTop> where T : class where TTop : class, T
 
     /// <summary>Why an element the framework does not show is not acted on, in its own words.</summary>
     protected abstract string Hidden { get; }
+
+    /// <summary>A click on an element chosen rather than pointed at, wherever it is shown, before any aim refuses one out of
+    /// view (an open drop-down's item, which only as many items as the screen it opens on has room for may show); null for
+    /// every other, aimed as <see cref="At"/> aims it. None by default.</summary>
+    protected virtual InputDone? ChosenWithoutAim(TTop top, T? element, InputAction action) => null;
 
     protected abstract T? Find(long id);
 

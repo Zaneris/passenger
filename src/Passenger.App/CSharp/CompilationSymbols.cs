@@ -13,11 +13,12 @@ namespace Passenger.App.CSharp;
 public static class CompilationSymbols
 {
     /// <summary>A file's: the project of the language server's context it is shown in (<paramref name="context"/>, the
-    /// server's name for it), else the project holding it, for the framework that context names, else its first.</summary>
-    public static CSharpParseOptions Of(IReadOnlyList<ProjectModel> projects, string path, string? context = null)
+    /// server's name for it), else the project holding it, for the framework that context names, else the one
+    /// <paramref name="chosen"/> answers for the project, else its first.</summary>
+    public static CSharpParseOptions Of(IReadOnlyList<ProjectModel> projects, string path, string? context = null, Func<ProjectModel, string?>? chosen = null)
     {
         ProjectModel? project = Named(projects, path, context) ?? ProjectModel.Owning(projects, path);
-        return project is null ? CSharpParsing.Default : Of(project, context is null ? null : ProjectContext.FrameworkOf(context));
+        return project is null ? CSharpParsing.Default : Of(project, (context is null ? null : ProjectContext.FrameworkOf(context)) ?? chosen?.Invoke(project));
     }
 
     /// <summary>A project's, for one of its frameworks (its first when not given, or not one of its own).</summary>
@@ -30,7 +31,7 @@ public static class CompilationSymbols
 
     /// <summary>The project a server's context names, as Roslyn names a project after its file: of several of that name,
     /// the one holding the file.</summary>
-    private static ProjectModel? Named(IReadOnlyList<ProjectModel> projects, string path, string? context)
+    internal static ProjectModel? Named(IReadOnlyList<ProjectModel> projects, string path, string? context)
     {
         if (context is null)
         {

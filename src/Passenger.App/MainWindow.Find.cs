@@ -13,7 +13,8 @@ using Passenger.Text;
 namespace Passenger.App;
 
 /// <summary>Find Usages in the Find window: the language server's usages told apart by what each does there (read from
-/// the file's syntax), put under their projects and files, each search kept as a tab.</summary>
+/// the file's syntax), put under their projects and files, each search kept as a tab; Show Usages' the same usages in a
+/// popup under the caret, which hands them to the Find window on asking.</summary>
 public partial class MainWindow
 {
     private FindView? find;
@@ -35,10 +36,10 @@ public partial class MainWindow
             ExpandAll = () => Find.ExpandAll(),
             CollapseAll = () => Find.CollapseAll(),
         });
-        assist.UsagesFound += (_, found) => ShowUsages(found.Title, found.Usages, found.Note);
+        assist.UsagesFound += (_, found) => IdeErrors.Observe(ShowUsagesAsync(found));
         actions!.Running += (_, running) =>
         {
-            if (running.Action.Id == AppActions.FindUsages)
+            if (running.Action.Id is AppActions.FindUsages or AppActions.ShowUsages)
             {
                 usagesAsked = running.Context is { ByAgent: false, Focused: Visual focused }
                     ? new UsagesAsked(focused, (focused as CodeEditor)?.Document.Snapshot, (focused as CodeEditor)?.Selections, popups.Shown)
@@ -64,13 +65,13 @@ public partial class MainWindow
             && (Focused is not CodeEditor editor || (editor.Document.Snapshot == Text && editor.Selections == Carets));
     }
 
-    private void ShowUsages(string title, IReadOnlyList<LspLocation> locations, string? note) => IdeErrors.Observe(ShowUsagesAsync(title, locations, note));
-
     /// <summary>The usages under what each does there, read from each file's syntax off the UI thread: an open file's
     /// shared parse as it stands, a file not open read from disk and parsed there, a source generator's code in its copy
-    /// (<see cref="GeneratedCode"/>); with what the search went without.</summary>
-    private async Task ShowUsagesAsync(string title, IReadOnlyList<LspLocation> locations, string? note)
+    /// (<see cref="GeneratedCode"/>); with what the search went without. Show Usages' go to its popup while the person
+    /// still waits where they asked, else to the Find window.</summary>
+    private async Task ShowUsagesAsync(UsagesFound found)
     {
+        (string title, IReadOnlyList<LspLocation> locations, string? note) = (found.Title, found.Usages, found.Note);
         int search = ++usageSearches;
         if (session.CSharp is { } csharp)
         {
@@ -115,6 +116,38 @@ public partial class MainWindow
         {
             return;
         }
+        if (found.PopupAt is { } at && usagesAsked is { Focused: CodeEditor editor } asked && asked.Stands(popups))
+        {
+            ShowUsagesPopup(editor, at, title, usages, note);
+            return;
+        }
+        ShowInFind(title, usages, note);
+    }
+
+    /// <summary>Show Usages' popup under the offset it was asked at: a usage chosen is gone to, and Open in Find Window
+    /// lists them there.</summary>
+    private void ShowUsagesPopup(CodeEditor editor, int at, string title, IReadOnlyList<Usage> usages, string? note)
+    {
+        Navigation.UsagesPopup popup = new(title, usages, note);
+        popup.FindWindowRequested += (_, _) =>
+        {
+            popups.Close();
+            ShowInFind(title, usages, note);
+        };
+        Point under = editor.PointOf(Math.Min(at, editor.Document.Snapshot.Length)) + new Point(0, editor.LineHeight + 2);
+        popups.Show(popup, usage =>
+        {
+            if (usage is not null)
+            {
+                NavigateTo(usage.Path, new TextPosition(usage.Line, usage.Column));
+            }
+        }, popups.PointIn(editor, under));
+        status.Text = $"{title}: {usages.Count} found{(note is null ? string.Empty : $"; {char.ToLowerInvariant(note[0])}{note[1..]}")}";
+    }
+
+    /// <summary>Usages in a tab of the Find window, which takes the keys where the person still waits for them.</summary>
+    private void ShowInFind(string title, IReadOnlyList<Usage> usages, string? note)
+    {
         Find.Show(title, usages, note);
         ShowToolWindow(ToolWindowIds.Find);
         // The usages take the keys where the person still waits for them, once a window just shown has laid out rows to take them.

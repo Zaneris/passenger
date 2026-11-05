@@ -66,12 +66,20 @@ public static class MSBuildNames
     public const string TargetFileName = "TargetFileName";
     public const string ProjectDepsFileName = "ProjectDepsFileName";
     public const string ProjectRuntimeConfigFileName = "ProjectRuntimeConfigFileName";
+    public const string IntermediateOutputPath = "IntermediateOutputPath";
+    public const string BaseIntermediateOutputPath = "BaseIntermediateOutputPath";
+
+    /// <summary>Where Microsoft.Extensions.ApiDescription.Server writes a build's OpenAPI documents.</summary>
+    public const string OpenApiDocumentsDirectory = "OpenApiDocumentsDirectory";
 
     /// <summary>The Design assembly a project names for dotnet ef in place of EF Core's.</summary>
     public const string DesignAssembly = "DesignAssembly";
 
     /// <summary>The program dotnet run starts.</summary>
     public const string RunCommand = "RunCommand";
+
+    /// <summary>The version of Godot.NET.Sdk a Godot project builds with, as the SDK sets it.</summary>
+    public const string GodotSdkVersion = "PackageVersion_Godot_NET_Sdk";
 
     /// <summary>The arguments dotnet run gives it (StartArguments' too).</summary>
     public const string RunArguments = "RunArguments";
@@ -88,6 +96,16 @@ public static class MSBuildNames
     public const string DockerfileTag = "DockerfileTag";
     public const string ContainerPort = "ContainerPort";
     public const string ContainerImageTag = "ContainerImageTag";
+
+    /// <summary>The registry an SDK container's image is pushed to; none for the engine on this machine.</summary>
+    public const string ContainerRegistry = "ContainerRegistry";
+
+    /// <summary>An SDK container's several tags, the one tag's place where it has more than one.</summary>
+    public const string ContainerImageTags = "ContainerImageTags";
+
+    /// <summary>The runtime an SDK container is made for, and the several of an image of more than one platform.</summary>
+    public const string ContainerRuntimeIdentifier = "ContainerRuntimeIdentifier";
+    public const string ContainerRuntimeIdentifiers = "ContainerRuntimeIdentifiers";
 
     // A Docker Compose project's (.dcproj).
     public const string DockerComposeBaseFilePath = "DockerComposeBaseFilePath";
@@ -121,4 +139,9 @@ public static class MSBuildNames
 
     /// <summary>The target that works out the SDK container's base image, after which ContainerBaseImage holds it.</summary>
     public const string ComputeContainerBaseImage = "ComputeContainerBaseImage";
+
+    /// <summary>The targets that make a web app's static web assets made by its build again, its scoped CSS's bundle among
+    /// them, with no compile.</summary>
+    public const string GenerateComputedBuildStaticWebAssets = "GenerateComputedBuildStaticWebAssets";
+    public const string ResolveReferencedProjectsStaticWebAssets = "ResolveReferencedProjectsStaticWebAssets";
 }

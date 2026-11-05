@@ -86,6 +86,10 @@ public partial class MainWindow
 
     private string? NeedsFolder(ActionContext _) => Folder is null ? Refusals.NoFolder : null;
 
+    /// <summary>A folder open whose tests can run: with a .NET SDK where a run builds first, and with none where it does not,
+    /// as GUT's tests of a game of GDScript alone.</summary>
+    private string? NeedsTestBuild(ActionContext context) => NeedsFolder(context) ?? (WithoutSdk() is { } none && session.Tests.Builds ? none : null);
+
     /// <summary>Why Expand All or Collapse All cannot run: no tool window with rows to open or close has the keys.</summary>
     private static string? NoTree(ActionContext context, Action? does, string verb) =>
         does is not null ? null : context.ToolWindow is { } window ? $"{window.Title} has no rows to {verb}" : $"No tool window with rows to {verb} has the keys";
@@ -100,6 +104,12 @@ public partial class MainWindow
         ToolWindowIds.Aspire => aspireView?.Find,
         _ => null,
     };
+
+    /// <summary>The diff of the diff window the keys are in (one of its own over the IDE's), whose Find is its own; null
+    /// elsewhere, a diff's tab among them, whose Find is the editors'.</summary>
+    private static Vcs.DiffView? DiffWindowOf(ActionContext context) =>
+        context.Focused is Avalonia.Visual focused && Avalonia.VisualTree.VisualExtensions.FindAncestorOfType<Vcs.DiffWindow>(focused, includeSelf: true) is { } window
+            ? window.View : null;
 
     /// <summary>The scope of the rows chosen in the Explorer while it has the keys; null elsewhere, for the scope
     /// kept.</summary>
@@ -132,12 +142,20 @@ public partial class MainWindow
         Add(A.Exit, "Exit", "IDE", _ => PassengerApp.Quit(), menu: OperatingSystem.IsMacOS() ? null : ("File", 4, 0));
         Add(A.FindAction, "Find Action…", "IDE", _ => ShowFindAction(), menu: ("Help", 0, 0));
 
-        // The Unit Tests window takes Find's keys for its search while it has them, a console's window for its text.
+        // Unit Tests, Problems and the Explorer take Find's keys for their filters, a console's window for its text.
         Add(A.Find, "Find", "IDE", c =>
         {
             if (c.ToolWindow?.Id == ToolWindowIds.Tests)
             {
                 Bottom.Tests.FocusSearch();
+            }
+            else if (c.ToolWindow?.Id == ToolWindowIds.Problems)
+            {
+                ProblemsWindow.FocusSearch();
+            }
+            else if (c.ToolWindow?.Id == ToolWindowIds.Explorer && Explorer.Tree.Root is not null)
+            {
+                Explorer.FocusFilter();
             }
             else if (c.ToolWindow?.Id == ToolWindowIds.Aspire)
             {
@@ -147,15 +165,22 @@ public partial class MainWindow
             {
                 console.Open(replace: false);
             }
+            else if (DiffWindowOf(c) is { } window)
+            {
+                window.ShowFind(replace: false);
+            }
             else
             {
                 Editors.ShowFind(replace: false);
             }
-        }, c => c.ToolWindow?.Id == ToolWindowIds.Tests || ConsoleFind(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 0));
-        Add(A.Replace, "Replace", "IDE", _ => Editors.ShowFind(replace: true), Refusals.NeedsFile, ("Edit/Find", 0, 1));
-        Add(A.FindNext, "Find Next", "IDE", c => (ConsoleFind(c) ?? Editors.FindBar).Next(), c => ConsoleFind(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 2));
-        Add(A.FindPrevious, "Find Previous", "IDE", c => (ConsoleFind(c) ?? Editors.FindBar).Previous(), c => ConsoleFind(c) is not null ? null : Refusals.NeedsFile(c),
-            ("Edit/Find", 0, 3));
+        }, c => c.ToolWindow?.Id is ToolWindowIds.Tests or ToolWindowIds.Problems || c.ToolWindow?.Id == ToolWindowIds.Explorer && Explorer.Tree.Root is not null || ConsoleFind(c) is not null
+            || DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 0));
+        Add(A.Replace, "Replace", "IDE", c => (DiffWindowOf(c) is { } window ? (Action<bool>)window.ShowFind : Editors.ShowFind)(true),
+            c => DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 1));
+        Add(A.FindNext, "Find Next", "IDE", c => (ConsoleFind(c) ?? DiffWindowOf(c)?.Find ?? Editors.FindBar).Next(),
+            c => ConsoleFind(c) is not null || DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 2));
+        Add(A.FindPrevious, "Find Previous", "IDE", c => (ConsoleFind(c) ?? DiffWindowOf(c)?.Find ?? Editors.FindBar).Previous(),
+            c => ConsoleFind(c) is not null || DiffWindowOf(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 3));
         Add(A.FindInFiles, "Find in Files…", "IDE", c => ShowFindInFiles(replace: false, ExplorerScope(c)), NeedsFolder, ("Edit/Find", 1, 0));
         Add(A.ReplaceInFiles, "Replace in Files…", "IDE", c => ShowFindInFiles(replace: true, ExplorerScope(c)), NeedsFolder, ("Edit/Find", 1, 1));
         Add(A.ExtendSelection, "Extend Selection", "Editor", _ => ExtendSelection(), Refusals.NeedsFile, ("Edit", 2, 1));
@@ -282,6 +307,11 @@ public partial class MainWindow
 
         Add(A.RunProgram, "Run", "Run", _ => RunSelected(), _ => Unconfigured("run"), ("Run", 0, 0));
         Add(A.Debug, "Debug", "Run", _ => DebugSelected(), _ => Unconfigured("debug"), ("Run", 0, 1));
+        Add(A.RunCurrentScene, "Run Current Scene", "Run", _ => IdeErrors.Observe(buildRun.RunCurrentSceneAsync()), _ => buildRun.WhyNotRunScene(), ("Run", 0, 2));
+        Add(A.RunAnotherCopy, "Run Another Copy", "Run", _ => IdeErrors.Observe(buildRun.RunAnotherCopyAsync()),
+            _ => session.Configurations.Chosen is { } chosen ? buildRun.WhyNotRunAnotherCopy(chosen) : Unconfigured("run"), ("Run", 0, 2), works: A.RunProgram);
+        Add(A.DebugAnotherCopy, "Debug Another Copy", "Run", _ => IdeErrors.Observe(DebugAnotherCopyAsync()),
+            _ => session.Configurations.Chosen is { } chosen ? buildRun.WhyNotAnotherCopy(chosen) : Unconfigured("debug"), ("Run", 0, 2), works: A.Debug);
         // No key in Rider's Visual Studio keymaps.
         Add(A.EditConfigurations, "Edit Configurations…", "Run", _ => ShowRunConfigurations(), NeedsFolder, ("Run", 0, 5));
         // Edit Configurations' button, on the configuration chosen there; elsewhere, on the toolbar's.
@@ -338,12 +368,14 @@ public partial class MainWindow
         }, Refusals.NeedsFile, ("Run", 2, 2));
         Add(A.ViewBreakpoints, "View Breakpoints and Exceptions…", "Debug", _ => ShowBreakpoints(null), menu: ("Run", 2, 3));
 
-        string? Unbuildable(ActionContext _) => Folder is null ? Refusals.NoFolderTo("build") : IsBuilding ? Refusals.Building : null;
+        string? Unbuildable(ActionContext _) => Folder is null ? Refusals.NoFolderTo("build") : IsBuilding ? Refusals.Building
+            : session.Workspace is { Solution: null, Projects.Count: 0, GodotGames.Count: > 0 } ? Refusals.NothingToBuildOfScripts : WithoutSdk();
 
         string? NoneSelected(ActionContext context) => Unbuildable(context)
             ?? (SelectedProjects().Count == 0 ? "No project is chosen in the Explorer or open in the editor" : null);
 
-        string? Unconfigured(string verb) => Configuration is null ? session.NothingTo(verb) : null;
+        string? Unconfigured(string verb) => Configuration is null ? WithoutSdk() ?? session.NothingTo(verb)
+            : Configuration is { Kind: Run.RunKind.Project, RunsScriptGame: false } ? WithoutSdk() : null;
     }
 
     /// <summary>The unit tests' actions: in context (the Unit Tests window's chosen rows while it has the keys, else the
@@ -353,14 +385,15 @@ public partial class MainWindow
         Add(A.RunTests, "Run Unit Tests", "Unit Tests", c => RunTestsInContext(c, debug: false), NoTestHere, ("Tests", 0, 0));
         Add(A.DebugTests, "Debug Unit Tests", "Unit Tests", c => RunTestsInContext(c, debug: true), NoTestHere, ("Tests", 0, 1), works: A.RunTests);
         Add(A.RunTestsUntilFailure, "Run Unit Tests Until Failure", "Unit Tests", c => RunTestsInContext(c, debug: false, untilFailure: true), NoTestHere, ("Tests", 0, 2), works: A.RunTests);
-        Add(A.RunAllTests, "Run All Tests", "Unit Tests", _ => RunTests(() => session.Tests.RunAsync(Folder!)), NeedsFolder, ("Tests", 0, 3), works: A.RunTests);
-        Add(A.RerunTests, "Rerun Unit Tests", "Unit Tests", _ => RunTests(() => session.Tests.RerunAsync(Folder!)), NeedsFolder, ("Tests", 1, 0));
-        Add(A.RerunFailedTests, "Rerun Failed Tests", "Unit Tests", _ => RunTests(() => session.Tests.RerunFailedAsync(Folder!)), NeedsFolder, ("Tests", 1, 1));
+        Add(A.RunAllTests, "Run All Tests", "Unit Tests", _ => RunTests(() => session.Tests.RunAsync(Folder!)), c => NeedsTestBuild(c) ?? session.Tests.NeverRuns(), ("Tests", 0, 3),
+            works: A.RunTests);
+        Add(A.RerunTests, "Rerun Unit Tests", "Unit Tests", _ => RunTests(() => session.Tests.RerunAsync(Folder!)), NeedsTestBuild, ("Tests", 1, 0));
+        Add(A.RerunFailedTests, "Rerun Failed Tests", "Unit Tests", _ => RunTests(() => session.Tests.RerunFailedAsync(Folder!)), NeedsTestBuild, ("Tests", 1, 1));
         Add(A.StopTests, "Stop Unit Tests", "Unit Tests", _ => session.Tests.Stop(), NothingRunning, ("Tests", 1, 2));
 
         // Where the Explorer has the keys, its rows say what to run, never the editor's caret.
-        string? NoTestHere(ActionContext context) => NeedsFolder(context)
-            ?? (ChosenTests(context) is not null || ChosenProjects(context) is not null ? null
+        string? NoTestHere(ActionContext context) => NeedsTestBuild(context)
+            ?? (ChosenTests(context) is { } chosen ? session.Tests.NeverRuns(chosen) : ChosenProjects(context) is not null ? null
                 : ExplorerHasKeys(context) ? "No project chosen in the Explorer holds tests"
                 : TestAtCaret(context) is null ? "No test is at the caret" : null);
 
@@ -393,9 +426,27 @@ public partial class MainWindow
 
     /// <summary>The test a file's line is in, as its code declares it or a runner found it; null where there is none.</summary>
     private Testing.DeclaredPlace? TestAt(OpenDocument file, int line) =>
-        file.Syntax is { } syntax ? Testing.TestsAtCaret.At(syntax.Current, line, testGutter.Knows) : null;
+        file.Syntax is { } syntax ? Testing.TestsAtCaret.At(syntax.Current, line, testGutter.Knows) : testGutter.ScriptTestAt(file, line);
 
     /// <summary>Adds one of the window's actions, listed in one place of the menus if given.</summary>
+    /// <summary>A key the keymap gives one action where another takes it by place (<see cref="AppActions.KeysIn"/>): New
+    /// Item in the Explorer, Rerun in the Run window, Edit Breakpoint on a breakpoint's line. True once taken.</summary>
+    private bool PlaceTakes(string action)
+    {
+        ActionContext context = actions!.Context();
+        string? taken = Here(A.NewItem, ExplorerHasKeys(context))
+            ?? Here(A.Rerun, context.ToolWindow?.Id == ToolWindowIds.Run)
+            ?? Here(A.EditBreakpoint, context is { ToolWindow: null, File: { } file } && session.Debug.Breakpoints.In(file.Path).Any(b => b.Line == context.Caret.Line));
+        if (taken is null)
+        {
+            return false;
+        }
+        Request(taken, context);
+        return true;
+
+        string? Here(string id, bool place) => place && id != action && AppActions.KeysIn(id) == action ? id : null;
+    }
+
     private void Add(string id, string title, string group, Action<ActionContext> run, Func<ActionContext, string?>? whyNot = null, (string Path, int Group, int Order)? menu = null,
         IReadOnlyList<string>? words = null, string? works = null) =>
         actions!.Add(new IdeAction(id, title, group, run)

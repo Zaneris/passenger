@@ -48,8 +48,7 @@ public static class ContainerProcesses
             JsonElement inspected = await engine.JsonAsync(["inspect", "--type", "container", id], cancel);
             JsonElement container = inspected.ValueKind == JsonValueKind.Array && inspected.GetArrayLength() > 0 ? inspected[0] : default;
             name = (JsonMembers.Scalar(container, "Name") ?? id).TrimStart('/');
-            bool dotnetImage = container.ValueKind == JsonValueKind.Object && container.TryGetProperty("Config", out JsonElement config)
-                && config.ValueKind == JsonValueKind.Object && config.TryGetProperty("Env", out JsonElement env) && env.ValueKind == JsonValueKind.Array
+            bool dotnetImage = JsonMembers.Value(JsonMembers.Object(container, "Config"), "Env") is { ValueKind: JsonValueKind.Array } env
                 && env.EnumerateArray().Any(v => v.ValueKind == JsonValueKind.String && v.GetString() is { } variable
                     && (variable == "DOTNET_RUNNING_IN_CONTAINER=true" || variable.StartsWith("DOTNET_VERSION=", StringComparison.Ordinal)));
             IReadOnlyList<DotnetProcess> outside = await TopAsync(engine, name, dotnetImage, cancel);

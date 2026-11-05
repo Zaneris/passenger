@@ -1,17 +1,21 @@
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Media;
 using Passenger.Profiler;
 
 namespace Passenger.App.Profiling;
 
-/// <summary>An Avalonia app's frames as bars, one a frame in order, each as tall as its time: measuring, arranging and
-/// recording what to render on the UI thread, the rest of its UI work, then the compositor drawing it; a line at a 60 Hz
-/// frame's 16.7 ms. The scale is the frames' usual (a first frame many times longer is cut short, marked at its top), so
-/// one slow start leaves the rest readable. A click chooses a frame, which the Frames page then shows alone; a click on it
-/// again, all of them.</summary>
+/// <summary>A part of a frame's bar: its time, the colour token it is drawn in, and how strongly.</summary>
+public readonly record struct FramePart(double Ms, string Brush, double Opacity = 1);
+
+/// <summary>Frames as bars, one a frame in order, each as tall as its time and stacked from its parts, the first at the
+/// bottom (an Avalonia app's measuring, arranging, recording what to render, the rest of its UI work and the compositor; a
+/// Godot game's physics, scripts and the engine's own); a line at a 60 Hz frame's 16.7 ms. The scale is the frames' usual (a
+/// first frame many times longer is cut short, marked at its top), so one slow start leaves the rest readable. A click
+/// chooses a frame, which the page then shows alone; a click on it again, all of them.</summary>
 public sealed class FrameChart : Control
 {
     private const double Bar = 7;
@@ -20,8 +24,10 @@ public sealed class FrameChart : Control
     private const double Budget = 1000.0 / 60;
     private const double Tall = 64;
 
-    private IReadOnlyList<UiFrame> frames = [];
+    private IReadOnlyList<IReadOnlyList<FramePart>> frames = [];
     private int? chosen;
+
+    static FrameChart() => AffectsRender<FrameChart>(TextElement.FontFamilyProperty);
 
     public FrameChart()
     {
@@ -32,8 +38,8 @@ public sealed class FrameChart : Control
     /// <summary>A frame was chosen (by its index), or none.</summary>
     public event EventHandler<int?>? Chosen;
 
-    /// <summary>The frames drawn, in order.</summary>
-    public IReadOnlyList<UiFrame> Frames
+    /// <summary>The frames drawn, in order, each its parts.</summary>
+    public IReadOnlyList<IReadOnlyList<FramePart>> Frames
     {
         get => frames;
         set
@@ -58,8 +64,8 @@ public sealed class FrameChart : Control
 
     protected override Size MeasureOverride(Size availableSize) => new(Axis + (frames.Count * (Bar + Gap)) + 8, Tall);
 
-    /// <summary>A frame's height in milliseconds: its UI thread's work and the compositor's after.</summary>
-    private static double Total(UiFrame frame) => Math.Max(frame.DurationMs, frame.LayoutMs + frame.RecordMs) + frame.CompositeMs;
+    /// <summary>A frame's height in milliseconds: its parts together.</summary>
+    private static double Total(IReadOnlyList<FramePart> frame) => frame.Sum(p => Math.Max(0, p.Ms));
 
     public override void Render(DrawingContext context)
     {
@@ -74,27 +80,27 @@ public sealed class FrameChart : Control
         double span = Math.Max(Budget * 2, Math.Min(totals[^1], UiFrames.Percentile(totals, 0.9) * 1.5));
         double scale = (bottom - top) / span;
         IBrush muted = Brush(TokenKeys.TextMuted, Brushes.Transparent);
-        Typeface face = new("Inter");
+        Typeface face = new(TextElement.GetFontFamily(this));
 
         double budget = bottom - (Budget * scale);
         context.DrawLine(new Pen(muted, 0.5, new DashStyle([3, 3], 0)), new Point(Axis - 4, budget), new Point(Bounds.Width, budget));
         Label(context, "16.7 ms", budget, face, muted);
         Label(context, span >= 1000 ? $"{span / 1000:0.0} s" : $"{span:0} ms", top, face, muted);
 
-        IBrush measure = Brush(TokenKeys.Graph_0, Brushes.Transparent);
-        IBrush arrange = Brush(TokenKeys.Graph_1, Brushes.Transparent);
-        IBrush record = Brush(TokenKeys.Graph_2, Brushes.Transparent);
-        IBrush composite = Brush(TokenKeys.Graph_3, Brushes.Transparent);
+        Dictionary<string, IBrush> brushes = [];
         for (int i = 0; i < frames.Count; i++)
         {
-            UiFrame frame = frames[i];
+            IReadOnlyList<FramePart> frame = frames[i];
             double x = Axis + (i * (Bar + Gap));
             double y = bottom;
-            Stack(measure, frame.MeasureMs, 1);
-            Stack(arrange, frame.ArrangeMs, 1);
-            Stack(record, frame.RecordMs, 1);
-            Stack(muted, Math.Max(0, frame.DurationMs - frame.LayoutMs - frame.RecordMs), 0.35);
-            Stack(composite, frame.CompositeMs, 1);
+            foreach (FramePart part in frame)
+            {
+                if (!brushes.TryGetValue(part.Brush, out IBrush? brush))
+                {
+                    brushes[part.Brush] = brush = Brush(part.Brush, Brushes.Transparent);
+                }
+                Stack(brush, part.Ms, part.Opacity);
+            }
             if (Total(frame) > span)
             {
                 // Cut short: its top is the scale's, marked.

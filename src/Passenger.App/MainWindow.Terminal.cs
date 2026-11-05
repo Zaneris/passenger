@@ -53,10 +53,25 @@ public partial class MainWindow
         return panel;
     }
 
-    /// <summary>The terminal's font and shell as Settings give them; a shell no longer set given back to the system's.</summary>
+    /// <summary>The terminal's font and shell as Settings give them: the code font in force unless it has a font of its own,
+    /// and a shell no longer set given back to the system's.</summary>
     private static void FollowTerminalSettings(ToolWindows.TerminalPanel panel, Passenger.App.Settings.AppSettings next, Passenger.App.Settings.AppSettings? before)
     {
         panel.View.FontSize = next.TerminalFontSize;
+        if (before is null || before.TerminalFontFamily != next.TerminalFontFamily)
+        {
+            if (Editor.CodeFonts.Named(next.TerminalFontFamily) is { } own)
+            {
+                panel.View.FontFamily = own;
+            }
+            else
+            {
+                panel.View.ClearValue(Terminal.TerminalView.FontFamilyProperty);
+            }
+        }
+        panel.View.CopyOnSelection = next.TerminalCopyOnSelection;
+        panel.View.CursorBlinking = next.TerminalCursorBlinking;
+        panel.View.CursorStyle = next.TerminalCursorStyle;
         if (next.TerminalShell is { } shell && Run.CommandLine.Split(shell) is { Count: > 0 } parts)
         {
             panel.Shell = (parts[0], [.. parts.Skip(1)]);

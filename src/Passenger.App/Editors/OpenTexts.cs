@@ -21,6 +21,9 @@ public sealed class OpenTexts
         }
     }
 
+    /// <summary>The open files' paths.</summary>
+    public IEnumerable<string> Paths => open.Keys;
+
     /// <summary>An open file's text; null for one not open.</summary>
     public TextSnapshot? Open(string path) => open.GetValueOrDefault(path);
 

@@ -1508,8 +1508,8 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         {
             using JsonDocument read = JsonDocument.Parse(data.Length == 0 ? "[]" : data);
             return [.. read.RootElement.EnumerateArray().Select(c => new EfContext(
-                c.TryGetProperty("name", out JsonElement name) ? name.GetString() ?? string.Empty : string.Empty,
-                c.TryGetProperty("fullName", out JsonElement full) ? full.GetString() ?? string.Empty : string.Empty))
+                JsonMembers.Text(c, "name") ?? string.Empty,
+                JsonMembers.Text(c, "fullName") ?? string.Empty))
                 .Where(c => c.Name.Length > 0)];
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException)
@@ -1524,11 +1524,11 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         {
             using JsonDocument read = JsonDocument.Parse(data.Length == 0 ? "[]" : data);
             return [.. read.RootElement.EnumerateArray().Select(m => new MigrationRow(
-                m.GetProperty("id").GetString() ?? string.Empty,
-                m.TryGetProperty("name", out JsonElement name) ? name.GetString() ?? string.Empty : string.Empty,
-                m.TryGetProperty("applied", out JsonElement applied) && applied.ValueKind is JsonValueKind.True or JsonValueKind.False ? applied.GetBoolean() : null))];
+                JsonMembers.Text(m, "id") ?? string.Empty,
+                JsonMembers.Text(m, "name") ?? string.Empty,
+                JsonMembers.Bool(m, "applied")))];
         }
-        catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException)
+        catch (Exception error) when (error is JsonException or InvalidOperationException)
         {
             return [];
         }

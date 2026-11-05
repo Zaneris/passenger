@@ -65,16 +65,20 @@ internal sealed partial class AsyncStepper
     private AsyncStep? _currentAsyncStep;
     private AsyncBreakpoint? _notifyDebuggerBreakpoint;
 
+    /// <summary>The label of the async method a step out leaves through its builder, while its task gives a value: listed as
+    /// what it returned once its caller's await is told the task has completed.</summary>
+    private string? _steppedOutOf;
+
     public AsyncStepper(ManagedDebugger debugger)
     {
         _debugger = debugger;
     }
 
-    /// <summary>
-    /// Call SetNotificationForWaitCompletion on the async builder
-    /// </summary>
+    /// <summary>Asks an async method's builder to have its task tell the debugger as its caller's await completes; a builder
+    /// that cannot be asked (a ValueTask's) gives its task, which is asked itself.</summary>
     private async Task<bool> SetNotificationForWaitCompletion(ICorDebugValue builder, ICorDebugThread thread)
     {
+        ICorDebugHandleValue? task = null;
         try
         {
             ICorDebugObjectValue objectValue = builder.UnwrapDebugValueToObject();
@@ -83,9 +87,20 @@ internal sealed partial class AsyncStepper
             ICorDebugValue boolValue = eval.NewBooleanValue(true);
 
             ICorDebugFunction? function = _debugger.FindMethodOnType(objectValue.ExactType, "SetNotificationForWaitCompletion", [boolValue], false, false);
+            ICorDebugValue told = builder;
+            ICorDebugType[] typeParameterArgs = objectValue.ExactType.TypeParameters;
+            if (function is null)
+            {
+                task = await GetObjectIdForDebugger(builder, thread) ?? throw new InvalidOperationException("The builder has neither SetNotificationForWaitCompletion nor a task");
+                // Task's own, which takes no type arguments: the box's are its state machine's.
+                eval = thread.CreateEval();
+                boolValue = eval.NewBooleanValue(true);
+                function = _debugger.FindMethodOnType(task.Dereference().ExactType, "SetNotificationForWaitCompletion", [boolValue], false, false);
+                told = task;
+                typeParameterArgs = [];
+            }
             ArgumentNullException.ThrowIfNull(function);
 
-            ICorDebugType[] typeParameterArgs = objectValue.ExactType.TypeParameters;
             ICorDebugValue? result = await eval.CallParameterizedFunctionAsync(
                 _debugger.ProcessRuntimeEventsUntilEvalEvent,
                 _debugger.EvalStatus,
@@ -93,7 +108,7 @@ internal sealed partial class AsyncStepper
                 typeParameterArgs.Length,
                 typeParameterArgs,
                 2,
-                [builder, boolValue]
+                [told, boolValue]
             );
             if (result is not null)
             {
@@ -107,6 +122,10 @@ internal sealed partial class AsyncStepper
             // A call into the program, whose failure (its throw, its abort, the runtime's refusal) leaves the step a plain one.
             _debugger.Log($"The async step out could not ask the builder to tell of its end: {error}");
             return false;
+        }
+        finally
+        {
+            task?.TryDispose();
         }
     }
 
@@ -229,12 +248,15 @@ internal sealed partial class AsyncStepper
                         return (false, null);
                     }
 
+                    // Read before the call into the program, after which the frame is the program's no longer.
+                    string? steppedOutOf = _debugger.AsyncMethodGivingValue(ilFrame!);
                     bool success = await SetNotificationForWaitCompletion(builder, thread);
                     if (success)
                     {
                         bool notifyBpSuccess = SetupNotifyDebuggerOfWaitCompletionBreakpoint();
                         if (notifyBpSuccess)
                         {
+                            _steppedOutOf = steppedOutOf;
                             return (true, false);
                         }
                     }
@@ -278,7 +300,12 @@ internal sealed partial class AsyncStepper
     {
         if (_runtimeStep is { } runtime && runtime.Resume.Breakpoint == breakpoint)
         {
-            return (true, TakeRuntimeResume(runtime, thread) ? null : false);
+            return (true, await TakeRuntimeResume(runtime, thread) ? null : false);
+        }
+        if (_runtimeStep is { } leaving && leaving.ReturnAt(breakpoint) is int local)
+        {
+            TakeRuntimeReturn(leaving, thread, local);
+            return (true, false);
         }
 
         if (_notifyDebuggerBreakpoint is not null &&
@@ -286,6 +313,11 @@ internal sealed partial class AsyncStepper
         {
             _notifyDebuggerBreakpoint?.Dispose();
             _notifyDebuggerBreakpoint = null;
+            if (_steppedOutOf is { } method)
+            {
+                _steppedOutOf = null;
+                _debugger.TakeTaskResult(thread, method);
+            }
 
             // The breakpoint's handler steps into the hook, on to the awaiting continuation's next user code.
             return (true, true);
@@ -445,7 +477,7 @@ internal sealed partial class AsyncStepper
             return null;
         }
 
-        ICorDebugHandleValue? objectId = await GetObjectIdForDebugger(builder, frame);
+        ICorDebugHandleValue? objectId = await GetObjectIdForDebugger(builder, frame.Chain.Thread);
         return objectId;
     }
 
@@ -503,7 +535,7 @@ internal sealed partial class AsyncStepper
         }
     }
 
-    private async Task<ICorDebugHandleValue?> GetObjectIdForDebugger(ICorDebugValue builder, ICorDebugILFrame frame)
+    private async Task<ICorDebugHandleValue?> GetObjectIdForDebugger(ICorDebugValue builder, ICorDebugThread thread)
     {
 
         ICorDebugObjectValue objectValue = builder.UnwrapDebugValueToObject();
@@ -525,7 +557,7 @@ internal sealed partial class AsyncStepper
         }
 
         ICorDebugFunction getMethod = module.GetFunctionFromToken(getMethodDef);
-        ICorDebugEval eval = frame.Chain.Thread.CreateEval();
+        ICorDebugEval eval = thread.CreateEval();
 
         ICorDebugValue? result = await eval.CallParameterizedFunctionAsync(
             _debugger.ProcessRuntimeEventsUntilEvalEvent,
@@ -579,6 +611,7 @@ internal sealed partial class AsyncStepper
         _runtimeStep = null;
         _notifyDebuggerBreakpoint?.Dispose();
         _notifyDebuggerBreakpoint = null;
+        _steppedOutOf = null;
     }
 
     public void Dispose()

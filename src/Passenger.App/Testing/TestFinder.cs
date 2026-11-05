@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text;
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.CSharp;
 using Passenger.App.Workspace;
@@ -9,23 +11,24 @@ namespace Passenger.App.Testing;
 
 /// <summary>The tests the test projects' code declares, found before any build: each test project's C# files read off
 /// the UI thread with Roslyn's parser, an open file from its own parse as it is typed (the gutter's read of it, never a
-/// parse of its own), and a file another program changed read again when the folder watcher says so. What it finds is
-/// told a project at a time, only when it changed. A UI-thread object.</summary>
+/// parse of its own), and a file another program changed read again when the folder watcher says so; and each Godot
+/// project that carries GUT, its GDScript read for GUT's tests (<see cref="GutScripts"/>), stood for by its project.godot.
+/// What it finds is told a project at a time, only when it changed. A UI-thread object.</summary>
 public sealed class TestFinder
 {
     /// <summary>The test frameworks' own packages: a project referencing one holds tests, adapter or not.</summary>
     private static readonly HashSet<string> FrameworkPackages = new(StringComparer.OrdinalIgnoreCase)
     {
-        "xunit", "xunit.core", "xunit.v3", "xunit.v3.core", "NUnit", "MSTest", "MSTest.TestFramework",
+        "xunit", "xunit.core", "xunit.v3", "xunit.v3.core", "NUnit", "MSTest", "MSTest.TestFramework", "gdUnit4.api", GoDotTests.Package,
     };
 
     /// <summary>Closed files' reads by path, with the write time and length they were read at: a file read again only
     /// once it has changed. Filled by the workers that read them.</summary>
     private readonly FileMemo<FileTests> onDisk = new();
 
-    /// <summary>The preprocessor symbols each test project's closed files were last read with, by its path: read with
-    /// others, they are read again.</summary>
-    private readonly Dictionary<string, CSharpParseOptions> readWith = new(StringComparer.Ordinal);
+    /// <summary>The preprocessor symbols each test project's closed files are read with, by its path: changed, they are read
+    /// again. Its workers read it as they read each file (<see cref="ReadFile"/>).</summary>
+    private readonly ConcurrentDictionary<string, CSharpParseOptions> readWith = new(StringComparer.Ordinal);
 
     /// <summary>Open files' reads, which stand for the file while it is open.</summary>
     private readonly Dictionary<string, FileTests> open = new(StringComparer.Ordinal);
@@ -38,9 +41,9 @@ public sealed class TestFinder
     /// (<see cref="CodeTests.Tests"/>, whose items a move of lines replaces in place) and where each file's begin in it.</summary>
     private readonly Dictionary<string, ToldTests> told = new(StringComparer.Ordinal);
 
-    /// <summary>The test attributes each test project's files derive from a framework's, by its path, which its files were
-    /// last read with.</summary>
-    private readonly Dictionary<string, IReadOnlySet<string>> own = new(StringComparer.Ordinal);
+    /// <summary>The test attributes each test project's files derive from a framework's, by its path, which its files are
+    /// read with. Its workers read it as they read each file (<see cref="ReadFile"/>).</summary>
+    private readonly ConcurrentDictionary<string, IReadOnlySet<string>> own = new(StringComparer.Ordinal);
 
     private static readonly IReadOnlySet<string> NoAttributes = new HashSet<string>(StringComparer.Ordinal);
 
@@ -51,6 +54,42 @@ public sealed class TestFinder
     private static readonly IReadOnlySet<string> NoMethods = new HashSet<string>(StringComparer.Ordinal);
 
     private IReadOnlyList<ProjectModel> every = [];
+
+    /// <summary>The folder's reads kept across openings, for the folder <see cref="Folder"/> names; none without a state
+    /// folder to keep them in.</summary>
+    private TestsCache? cache;
+    private int parsed;
+    private volatile bool serverLoading;
+
+    /// <summary>How many files are read at once while the language server loads the solution, leaving it the cores.</summary>
+    private const int ReadersWhileLoading = 2;
+
+    /// <summary>How many files are read before the readers are counted again by whether the server still loads.</summary>
+    private const int ReadsCounted = 64;
+
+    /// <summary>The state folder whose cache keeps each folder's reads across openings (<see cref="TestsCache"/>); none
+    /// keeps nothing.</summary>
+    public string? StateFolder { get; set; }
+
+    /// <summary>How many closed C# files Roslyn's parser has read for their tests, those the cache had not counted out.</summary>
+    public int Parsed => Volatile.Read(ref parsed);
+
+    /// <summary>How many times the folder's projects were taken to be read (<see cref="Scan"/>).</summary>
+    public int Scans { get; private set; }
+
+    /// <summary>Whether the language server is still loading the solution, while which files are read
+    /// <see cref="ReadersWhileLoading"/> at a time: set from the session's word that projects loaded.</summary>
+    public bool ServerLoading
+    {
+        get => serverLoading;
+        set => serverLoading = value;
+    }
+
+    /// <summary>The cache's file of the folder open, and how many bytes it holds.</summary>
+    public long CacheSize => cache?.Size ?? 0;
+
+    /// <summary>The Godot projects' folders, those carrying GUT among <see cref="Projects"/>.</summary>
+    private IReadOnlyList<string> godotFolders = [];
     private int asks;
     private int listings;
 
@@ -70,10 +109,45 @@ public sealed class TestFinder
     /// the same test on its line now, which the project's told tests now hold in their place. No <see cref="Changed"/>.</summary>
     public event EventHandler<(string Path, IReadOnlyDictionary<TestItem, TestItem> Moved)>? Moved;
 
-    /// <summary>A test project's files were found to derive other test attributes: open files are read again with them.</summary>
+    /// <summary>Held by a test: what a listing awaits once it has taken what it reads by and before it reads anything, for a
+    /// test of what goes on while one is under way.</summary>
+    public Func<Task>? BeforeReading { get; set; }
+
+    /// <summary>A test project's files were found to derive other test attributes, or a GUT project's config changed which
+    /// scripts hold its tests: open files are read again.</summary>
     public event EventHandler? AttributesChanged;
 
-    /// <summary>The test attributes the project of a file derives from a framework's, its methods tests by them too.</summary>
+    /// <summary>A file was read, whose tests' code may have changed (<see cref="CodeOf"/>), told or not.</summary>
+    public event EventHandler? CodeRead;
+
+    /// <summary>A test method's code as its file now reads (<see cref="DeclaredTest.Code"/>), a test it inherits as the file
+    /// declaring it reads, an open file's as typed; null where the file has not been read or declares no such test.</summary>
+    public ulong? CodeOf(string path, string fullName)
+    {
+        UiThread.Check();
+        FileTests? read = ReadOf(path);
+        int dot = fullName.LastIndexOf('.');
+        if (read is null || dot < 0)
+        {
+            return null;
+        }
+        foreach (DeclaredTest test in read.Tests)
+        {
+            if (test.Method.Length == fullName.Length - dot - 1 && fullName.AsSpan(dot + 1).SequenceEqual(test.Method)
+                && test.Type.Length == dot && fullName.AsSpan(0, dot).SequenceEqual(test.Type))
+            {
+                return test.DeclaredIn is not { } script ? test.Code
+                    : ReadOf(script) is { } declaring && declaring.PassedOn.TryGetValue(test.Method, out ulong code) ? code : null;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>What a file now declares: an open file's as typed, a closed one's as last read; null where it has not been read.</summary>
+    private FileTests? ReadOf(string path) => open.GetValueOrDefault(path) ?? onDisk.Kept(path);
+
+    /// <summary>The test attributes the project of a file derives from a framework's, its methods tests by them too; a GUT
+    /// project's, the class names and paths of its scripts that are test classes (<see cref="GutScripts.Read"/>).</summary>
     public IReadOnlySet<string> AttributesOf(string path)
     {
         UiThread.Check();
@@ -81,17 +155,20 @@ public sealed class TestFinder
     }
 
     /// <summary>Whether a project holds tests: it says it is a test project or references a test adapter, or references
-    /// xUnit, NUnit or MSTest itself.</summary>
+    /// xUnit, NUnit, MSTest, GdUnit4 or GoDotTest itself.</summary>
     public static bool HoldsTests(ProjectModel project) =>
         project.Exists && (project.IsTestProject || project.Packages.Any(p => FrameworkPackages.Contains(p.Name)));
 
-    /// <summary>Reads the workspace's test projects, those read before again only where their files changed.</summary>
-    public void Scan(string? workspace, IReadOnlyList<ProjectModel> projects)
+    /// <summary>Reads the workspace's test projects, and its Godot projects that carry GUT (<paramref name="godot"/> their
+    /// folders), those read before again only where their files changed.</summary>
+    public void Scan(string? workspace, IReadOnlyList<ProjectModel> projects, IReadOnlyList<string>? godot = null)
     {
         UiThread.Check();
+        Scans++;
         if (workspace != Folder)
         {
             Folder = workspace;
+            cache = StateFolder is { } root && workspace is not null ? new TestsCache(TestsCache.PathFor(root, workspace)) : null;
             onDisk.Clear();
             listed.Clear();
             told.Clear();
@@ -100,25 +177,27 @@ public sealed class TestFinder
             toldFrom.Clear();
         }
         every = projects;
-        Projects = [.. projects.Where(HoldsTests)];
-        foreach (ProjectModel project in Projects)
+        godotFolders = [.. (godot ?? []).Distinct(PathNames.Comparer)];
+        Projects = [.. projects.Where(HoldsTests), .. godotFolders.Where(GutScripts.Carried).Select(ProjectModel.OfScriptGame)];
+        foreach (ProjectModel project in Projects.Where(p => !p.IsScriptGame))
         {
             CSharpParseOptions symbols = CompilationSymbols.Of(project);
-            if (readWith.TryGetValue(project.Path, out CSharpParseOptions? before) && !ReferenceEquals(before, symbols))
+            bool others = readWith.TryGetValue(project.Path, out CSharpParseOptions? before) && !ReferenceEquals(before, symbols);
+            readWith[project.Path] = symbols;
+            if (others)
             {
                 foreach (string file in listed.GetValueOrDefault(project.Path) ?? [])
                 {
                     onDisk.Forget(file);
                 }
             }
-            readWith[project.Path] = symbols;
         }
         HashSet<string> current = [.. Projects.Select(p => p.Path)];
         foreach (string gone in told.Keys.Where(p => !current.Contains(p)).ToList())
         {
             told.Remove(gone);
             listed.Remove(gone);
-            own.Remove(gone);
+            own.TryRemove(gone, out _);
             toldFrom.Remove(gone);
         }
         Read(Projects, timed: true);
@@ -128,11 +207,14 @@ public sealed class TestFinder
     public void OpenRead(string path, FileTests tests)
     {
         UiThread.Check();
-        if (open.TryGetValue(path, out FileTests? was) && was.SameAs(tests))
+        // Kept whatever it says, as its tests' code may have changed where nothing else of them did.
+        bool same = open.TryGetValue(path, out FileTests? was) && was.SameAs(tests);
+        open[path] = tests;
+        CodeRead?.Invoke(this, EventArgs.Empty);
+        if (same)
         {
             return;
         }
-        open[path] = tests;
         if (Owner(path) is not { } project)
         {
             return;
@@ -182,6 +264,24 @@ public sealed class TestFinder
     public void FolderChanged(FolderChanges changes)
     {
         UiThread.Check();
+        // GUT come to a Godot project, or gone from one, makes it a test project, or no longer one.
+        if (changes.Paths.Any(path => godotFolders.Any(folder => PathNames.IsUnder(path, Path.Combine(folder, "addons")))
+            && godotFolders.Any(folder => GutScripts.Carried(folder) != Projects.Any(p => p.IsScriptGame && PathNames.Same(p.Folder, folder)))))
+        {
+            Scan(Folder, every, godotFolders);
+            return;
+        }
+        // GUT's config changed: which scripts hold its tests, read again, open ones too.
+        List<ProjectModel> configured = [.. Projects.Where(p => p.IsScriptGame && changes.Paths.Any(path => PathNames.Same(path, Path.Combine(p.Folder, GutScripts.ConfigFile))))];
+        if (configured.Count > 0)
+        {
+            foreach (string file in configured.SelectMany(p => listed.GetValueOrDefault(p.Path) ?? []))
+            {
+                onDisk.Forget(file);
+            }
+            Read(configured, timed: false);
+            AttributesChanged?.Invoke(this, EventArgs.Empty);
+        }
         List<string> paths = [.. changes.Paths.Where(p => !open.ContainsKey(p))];
         List<ProjectModel> touched = [.. Projects.Where(project => paths.Any(path => PathNames.Within(path, project.Folder) || PathNames.Within(project.Folder, path)))];
         if (touched.Count == 0)
@@ -207,8 +307,13 @@ public sealed class TestFinder
 
         async Task ReadAsync()
         {
-            (string Path, CSharpParseOptions Symbols, IReadOnlySet<string> Own)[] reads = [.. changed.Select(path => (path, CompilationSymbols.Of(every, path), AttributesOf(path)))];
-            await BackgroundWork.Run(() => Parallel.ForEach(reads, read => ReadFile(read.Path, read.Symbols, read.Own)));
+            (string Path, Reading With)[] reads = [.. changed.Select(path => (path, new Reading(Owner(path)?.Path, CompilationSymbols.Of(every, path), AttributesOf(path), GutFolder(path))))];
+            TestsCache? kept = cache;
+            await BackgroundWork.Run(() =>
+            {
+                Parallel.ForEach(reads, read => ReadFile(read.Path, read.With, kept));
+                kept?.Save();
+            });
             Tell([.. projects.Where(Projects.Contains)]);
         }
     }
@@ -238,8 +343,15 @@ public sealed class TestFinder
     public static bool IsOf(TestNode method, IReadOnlySet<string> projects) =>
         projects.Count == 0 || method.ProjectPath is not { } project || projects.Contains(project);
 
-    /// <summary>The test project a file belongs to: of the projects holding it, the nearest, when that one holds tests.</summary>
-    private ProjectModel? Owner(string path) => ProjectModel.Owning(every, path) is { } owner && Projects.Contains(owner) ? owner : null;
+    /// <summary>The test project a file belongs to: of the projects holding it, the nearest, when that one holds tests; a
+    /// GDScript file's, the Godot project carrying GUT that holds it.</summary>
+    private ProjectModel? Owner(string path) => GutFolder(path) is { } folder ? Projects.First(p => p.IsScriptGame && PathNames.Same(p.Folder, folder))
+        : ProjectModel.Owning(every, path) is { } owner && Projects.Contains(owner) ? owner : null;
+
+    /// <summary>The folder of the nearest Godot project carrying GUT that holds a GDScript file GUT's tests may be in; null
+    /// for any other file.</summary>
+    private string? GutFolder(string path) =>
+        Projects.Where(p => p.IsScriptGame && GutScripts.Holds(p.Folder, path)).MaxBy(p => p.Folder.Length)?.Folder;
 
     /// <summary>Lists the test projects' C# files again and reads those changed on disk since they were read, then tells
     /// what changed: what a run's build took in, ahead of the folder watcher's word of it.</summary>
@@ -264,7 +376,10 @@ public sealed class TestFinder
         }
         IReadOnlyList<ProjectModel> others = every;
         Dictionary<string, IReadOnlySet<string>> owns = projects.ToDictionary(p => p.Path, p => own.GetValueOrDefault(p.Path) ?? NoAttributes, StringComparer.Ordinal);
+        TestsCache? kept = cache;
+        bool whole = Projects.Where(p => !p.IsScriptGame).All(projects.Contains);
         long began = Stopwatch.GetTimestamp();
+        int parsedBefore = Parsed;
         listings++;
         return ReadAsync();
 
@@ -272,18 +387,26 @@ public sealed class TestFinder
         {
             try
             {
-                Dictionary<string, IReadOnlyList<string>> files = await BackgroundWork.Run(() => List(projects, others, owns));
+                await (BeforeReading?.Invoke() ?? Task.CompletedTask);
+                (Dictionary<string, IReadOnlyList<string>> files, Dictionary<string, IReadOnlySet<string>> readWith) =
+                    await BackgroundWork.Run(() => List(projects, others, owns, kept, whole));
                 List<ProjectModel> latest = [.. projects.Where(p => asked.GetValueOrDefault(p.Path) == mine[p.Path] && Projects.Contains(p))];
                 foreach (ProjectModel project in latest)
                 {
                     listed[project.Path] = files[project.Path];
+                    // The attributes the cache last read the project with, which its files are told as read with.
+                    if (!own.ContainsKey(project.Path) && !ReferenceEquals(readWith[project.Path], NoAttributes))
+                    {
+                        own[project.Path] = readWith[project.Path];
+                    }
                 }
                 listings--;
                 Tell(latest, always: true);
                 if (timed && latest.Count > 0)
                 {
                     int tests = latest.Sum(p => told.TryGetValue(p.Path, out ToldTests was) ? was.Tests.Tests.Count : 0);
-                    IdeErrors.Write($"Unit tests: {tests} found in the code of {Core.Plural.Of(latest.Count, "test project")} in {Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s");
+                    IdeErrors.Write($"Unit tests: {tests} found in the code of {Core.Plural.Of(latest.Count, "test project")} in {Stopwatch.GetElapsedTime(began).TotalSeconds:0.00} s, "
+                        + $"{Core.Plural.Of(Parsed - parsedBefore, "file")} parsed");
                 }
             }
             catch (Exception error)
@@ -295,27 +418,78 @@ public sealed class TestFinder
     }
 
     /// <summary>Each project's C# files, but those of build output, dependencies, hidden folders and projects inside it,
-    /// each read once it has changed since it was last read. A worker's.</summary>
-    private Dictionary<string, IReadOnlyList<string>> List(IReadOnlyList<ProjectModel> projects, IReadOnlyList<ProjectModel> solution,
-        IReadOnlyDictionary<string, IReadOnlySet<string>> owns)
+    /// each read once it has changed since it was last read, a project whose attributes are not yet known read with those
+    /// the cache last read it with; and the attributes each was read with. Read a few at a time while the language server
+    /// loads the solution; the cache written after, a listing of <paramref name="whole"/> the test projects dropping what
+    /// it no longer names. A worker's.</summary>
+    private (Dictionary<string, IReadOnlyList<string>> Files, Dictionary<string, IReadOnlySet<string>> ReadWith) List(IReadOnlyList<ProjectModel> projects,
+        IReadOnlyList<ProjectModel> solution, IReadOnlyDictionary<string, IReadOnlySet<string>> owns, TestsCache? kept, bool whole)
     {
         Dictionary<string, IReadOnlyList<string>> found = new(StringComparer.Ordinal);
-        List<(string Path, CSharpParseOptions Symbols, IReadOnlySet<string> Own)> all = [];
+        Dictionary<string, IReadOnlySet<string>> readWith = new(StringComparer.Ordinal);
+        List<(string Path, Reading With)> all = [];
         foreach (ProjectModel project in projects)
         {
-            List<string> files = [.. FolderWalk.ProjectFiles(project, solution, ".cs")];
+            bool gut = project.IsScriptGame;
+            List<string> files = [.. gut ? GutScripts.Files(project.Folder) : FolderWalk.ProjectFiles(project, solution, ".cs")];
             found[project.Path] = files;
-            CSharpParseOptions symbols = CompilationSymbols.Of(project);
-            all.AddRange(files.Select(file => (file, symbols, owns[project.Path])));
+            IReadOnlySet<string> attributes = ReferenceEquals(owns[project.Path], NoAttributes) && !gut ? kept?.AttributesOf(project.Path) ?? NoAttributes : owns[project.Path];
+            readWith[project.Path] = attributes;
+            CSharpParseOptions symbols = gut ? CSharpParseOptions.Default : CompilationSymbols.Of(project);
+            all.AddRange(files.Select(file => (file, new Reading(project.Path, symbols, attributes, gut ? project.Folder : null))));
         }
-        Parallel.ForEach(all, read => ReadFile(read.Path, read.Symbols, read.Own));
-        return found;
+        for (int at = 0; at < all.Count; at += ReadsCounted)
+        {
+            ParallelOptions readers = new() { MaxDegreeOfParallelism = serverLoading ? ReadersWhileLoading : -1 };
+            Parallel.ForEach(all.GetRange(at, Math.Min(ReadsCounted, all.Count - at)), readers, read => ReadFile(read.Path, read.With, kept));
+        }
+        if (kept is not null)
+        {
+            foreach (ProjectModel project in projects.Where(p => !p.IsScriptGame))
+            {
+                kept.KeepAttributes(project.Path, readWith[project.Path]);
+            }
+            kept.Save(whole ? new HashSet<string>(all.Where(r => r.With.Gut is null).Select(r => r.Path), PathNames.Comparer) : null,
+                whole ? new HashSet<string>(projects.Select(p => p.Path), PathNames.Comparer) : null);
+        }
+        return (found, readWith);
     }
 
-    /// <summary>Reads a closed file's tests with its project's symbols and derived test attributes unless it has not changed
-    /// since they were read; one being written is read once the watcher says so again. A worker's.</summary>
-    private void ReadFile(string path, CSharpParseOptions symbols, IReadOnlySet<string> attributes) =>
-        onDisk.Get(path, file => TestsAtCaret.Read(File.ReadAllText(file), symbols, attributes));
+    /// <summary>What a closed file is read with: its project's symbols and test attributes as they stood when it was asked
+    /// for, which stand where the project has none yet, and the Godot project whose GUT a GDScript file is read for.</summary>
+    private readonly record struct Reading(string? Project, CSharpParseOptions Symbols, IReadOnlySet<string> Attributes, string? Gut);
+
+    /// <summary>Reads a closed file's tests with its project's symbols and derived test attributes as they stand as it is read,
+    /// or a GDScript file's as GUT's with the test classes its scripts derive, unless it has not changed since they were read;
+    /// one being written is read once the watcher says so again. They are taken here, after the read has its place: what a
+    /// change forgets went before it, and a listing begun earlier that reads after it reads by it. A worker's.</summary>
+    private void ReadFile(string path, Reading reading, TestsCache? kept) => onDisk.Get(path, file =>
+    {
+        IReadOnlySet<string> attributes = reading.Project is { } project && own.TryGetValue(project, out IReadOnlySet<string>? derived) ? derived : reading.Attributes;
+        if (reading.Gut is { } gut)
+        {
+            return GutScripts.Read(File.ReadAllText(file), gut, file, attributes, GutScripts.ConfigOf(gut)).Tests;
+        }
+        return Parse(file, reading.Project is { } its && readWith.TryGetValue(its, out CSharpParseOptions? symbols) ? symbols : reading.Symbols, attributes, kept);
+    });
+
+    /// <summary>A closed C# file's tests: those the cache kept where the file and what it is read with are as they were,
+    /// else parsed from the bytes its stamp was taken of, and kept. A worker's.</summary>
+    private FileTests Parse(string file, CSharpParseOptions symbols, IReadOnlySet<string> attributes, TestsCache? kept)
+    {
+        byte[] bytes = File.ReadAllBytes(file);
+        TestsCache.Stamp stamp = TestsCache.StampOf(file, bytes);
+        string with = TestsCache.ReadWith(symbols, attributes);
+        if (kept?.Find(file, stamp, with) is { } read)
+        {
+            return read;
+        }
+        Interlocked.Increment(ref parsed);
+        using StreamReader text = new(new MemoryStream(bytes), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        FileTests tests = TestsAtCaret.Read(text.ReadToEnd(), symbols, attributes);
+        kept?.Keep(file, stamp, with, tests);
+        return tests;
+    }
 
     /// <summary>Tells the projects' tests as their files now read, open ones from their own parse, for those that changed
     /// (or all of them, once a listing has ended, which may have found none).</summary>
@@ -340,7 +514,7 @@ public sealed class TestFinder
             // A file made in the editor and not yet listed.
             foreach ((string path, FileTests typed) in open)
             {
-                if (!files.ContainsKey(path) && ProjectModel.Owning(every, path) == project)
+                if (!files.ContainsKey(path) && Owner(path) == project)
                 {
                     files[path] = typed;
                 }
@@ -368,6 +542,7 @@ public sealed class TestFinder
                 tests.AddRange(read.Tests.Where(t => !t.Abstract).Select(t => new TestItem(project.Path, $"{t.Type}.{t.Method}", t.Method)
                 {
                     Path = path,
+                    DeclaredIn = t.DeclaredIn,
                     Line = t.Line + 1,
                     Traits = t.Traits,
                     Cases = t.Cases,
@@ -387,6 +562,7 @@ public sealed class TestFinder
         {
             Changed?.Invoke(this, Projects.Where(p => told.ContainsKey(p.Path)).ToDictionary(p => p.Path, p => told[p.Path].Tests, StringComparer.Ordinal));
         }
+        CodeRead?.Invoke(this, EventArgs.Empty);
         if (derived.Count > 0)
         {
             Read(derived, timed: false);

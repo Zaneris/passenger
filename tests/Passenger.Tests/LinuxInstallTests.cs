@@ -20,8 +20,11 @@ public sealed class LinuxInstallTests
     private const UnixFileMode Runnable = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead
         | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
 
-    /// <summary>Another program of the command's name in the bin folder (a gem's <c>passenger</c>), a link to one, or a
-    /// folder, is left as it was, and the install stops naming it before it has installed anything.</summary>
+    /// <summary>The command's name on the PATH.</summary>
+    private const string Command = "passenger-ide";
+
+    /// <summary>Another program of the command's name in the bin folder, a link to one, or a folder, is left as it was,
+    /// and the install stops naming it before it has installed anything.</summary>
     [Theory]
     [InlineData("program")]
     [InlineData("link")]
@@ -35,14 +38,14 @@ public sealed class LinuxInstallTests
         }
         string root = PathNames.Canonical(TestFolders.Create("install-"));
         string home = Directory.CreateDirectory(Path.Combine(root, "home")).FullName;
-        string command = Path.Combine(Directory.CreateDirectory(Path.Combine(home, ".local", "bin")).FullName, "passenger");
+        string command = Path.Combine(Directory.CreateDirectory(Path.Combine(home, ".local", "bin")).FullName, Command);
         switch (what)
         {
             case "program":
                 Program(command);
                 break;
             case "link":
-                File.CreateSymbolicLink(command, Program(Path.Combine(Directory.CreateDirectory(Path.Combine(root, "gems", "bin")).FullName, "passenger")));
+                File.CreateSymbolicLink(command, Program(Path.Combine(Directory.CreateDirectory(Path.Combine(root, "gems", "bin")).FullName, Command)));
                 break;
             default:
                 File.WriteAllText(Path.Combine(Directory.CreateDirectory(command).FullName, "notes.txt"), "kept");
@@ -53,20 +56,78 @@ public sealed class LinuxInstallTests
         ChildResult install = await Install(Unpacked(Path.Combine(root, "download"), "1"), home);
 
         Assert.True(Held(command) == before,
-            $"An install over {what} at ~/.local/bin/passenger made it {Held(command)} where it was {before}: what the person had there is gone");
-        Assert.False(install.Succeeded, $"An install over {what} at ~/.local/bin/passenger went ahead without its command: {install.Output}");
+            $"An install over {what} at ~/.local/bin/{Command} made it {Held(command)} where it was {before}: what the person had there is gone");
+        Assert.False(install.Succeeded, $"An install over {what} at ~/.local/bin/{Command} went ahead without its command: {install.Output}");
         Assert.True(install.Error.Contains(command, StringComparison.Ordinal),
-            $"An install refused over {what} at ~/.local/bin/passenger did not say where: {install.Said}");
+            $"An install refused over {what} at ~/.local/bin/{Command} did not say where: {install.Said}");
         Assert.False(Directory.Exists(Path.Combine(home, ".local", "opt", "passenger")),
-            $"An install refused over {what} at ~/.local/bin/passenger installed the app all the same, with no command to start it");
+            $"An install refused over {what} at ~/.local/bin/{Command} installed the app all the same, with no command to start it");
+    }
 
-        [UnsupportedOSPlatform("windows")]
-        static string Program(string path)
+    /// <summary>The command's former name, <c>passenger</c>: an earlier install's link of it, leading to the install, moves
+    /// to <c>passenger-ide</c> as the install is updated, and an uninstall takes either away; Phusion Passenger's own
+    /// <c>passenger</c>, a program or a link to one, is left as it was, the install going ahead beside it.</summary>
+    [Theory]
+    [InlineData("ours")]
+    [InlineData("program")]
+    [InlineData("link")]
+    public async Task An_install_moves_its_former_passenger_link_to_the_new_name_and_leaves_phusions_passenger_as_it_was(string what)
+    {
+        if (OperatingSystem.IsWindows())
         {
-            File.WriteAllText(path, "#!/bin/sh\necho 'Phusion Passenger(R) 6.0.27'\n");
-            File.SetUnixFileMode(path, Runnable);
-            return path;
+            Assert.Skip(NoShell);
+            return;
         }
+        string root = PathNames.Canonical(TestFolders.Create("install-"));
+        string home = Directory.CreateDirectory(Path.Combine(root, "home")).FullName;
+        string bin = Directory.CreateDirectory(Path.Combine(home, ".local", "bin")).FullName;
+        string former = Path.Combine(bin, "passenger");
+        string command = Path.Combine(bin, Command);
+        string installed = Path.Combine(home, ".local", "opt", "passenger");
+        ChildResult install = await Install(Unpacked(Path.Combine(root, "first"), "1"), home);
+        Assert.True(install.Succeeded, $"The first release's install failed: {install.Said}");
+        switch (what)
+        {
+            case "ours":
+                File.CreateSymbolicLink(former, Path.Combine(installed, "passenger"));
+                break;
+            case "program":
+                Program(former);
+                break;
+            default:
+                File.CreateSymbolicLink(former, Program(Path.Combine(Directory.CreateDirectory(Path.Combine(root, "gems", "bin")).FullName, "passenger")));
+                break;
+        }
+        string before = Held(former);
+
+        install = await Install(Unpacked(Path.Combine(root, "second"), "2"), home);
+
+        Assert.True(install.Succeeded, $"An update with {what} at ~/.local/bin/passenger refused: {install.Said}");
+        Assert.True(new FileInfo(command).LinkTarget == Path.Combine(installed, "passenger"),
+            $"An update with {what} at ~/.local/bin/passenger left ~/.local/bin/{Command} {Held(command)}, not leading to the install");
+        if (what == "ours")
+        {
+            Assert.True(!File.Exists(former) && new FileInfo(former).LinkTarget is null,
+                $"An update left the earlier install's ~/.local/bin/passenger {Held(former)} beside ~/.local/bin/{Command}");
+            File.CreateSymbolicLink(former, Path.Combine(installed, "passenger"));
+            install = await Install(Path.Combine(installed, "install.sh"), home, uninstall: true);
+            Assert.True(install.Succeeded, $"The uninstall refused: {install.Said}");
+            Assert.True(new FileInfo(former).LinkTarget is null && new FileInfo(command).LinkTarget is null,
+                $"The uninstall left ~/.local/bin/passenger {Held(former)} and ~/.local/bin/{Command} {Held(command)}");
+        }
+        else
+        {
+            Assert.True(Held(former) == before,
+                $"An update made Phusion Passenger's {what} at ~/.local/bin/passenger {Held(former)} where it was {before}: the person's program is gone");
+        }
+    }
+
+    [UnsupportedOSPlatform("windows")]
+    private static string Program(string path)
+    {
+        File.WriteAllText(path, "#!/bin/sh\necho 'Phusion Passenger(R) 6.0.27'\n");
+        File.SetUnixFileMode(path, Runnable);
+        return path;
     }
 
     /// <summary>A link at the command's path leading to another Passenger (an unpacked folder linked by hand), or to this
@@ -81,7 +142,7 @@ public sealed class LinuxInstallTests
         }
         string root = PathNames.Canonical(TestFolders.Create("install-"));
         string home = Directory.CreateDirectory(Path.Combine(root, "home")).FullName;
-        string command = Path.Combine(Directory.CreateDirectory(Path.Combine(home, ".local", "bin")).FullName, "passenger");
+        string command = Path.Combine(Directory.CreateDirectory(Path.Combine(home, ".local", "bin")).FullName, Command);
         string installed = Path.Combine(home, ".local", "opt", "passenger");
         string earlier = Unpacked(Path.Combine(root, "earlier"), "1");
         File.CreateSymbolicLink(command, Path.Combine(Path.GetDirectoryName(earlier)!, "passenger"));
@@ -141,11 +202,81 @@ public sealed class LinuxInstallTests
             $"The update left {string.Join(", ", Directory.EnumerateFileSystemEntries(opt).Select(Path.GetFileName))} in ~/.local/opt");
     }
 
-    /// <summary>Runs an unpacked folder's install.sh for one person, <paramref name="home"/> theirs, with a folder of
-    /// programs before the PATH's own where one is given.</summary>
-    private static async Task<ChildResult> Install(string script, string home, string? programs = null)
+    /// <summary>The installed install.sh given another unpacked release with <c>--from</c> installs that one in its place,
+    /// and run again with nothing given refreshes the menu entry where it is, leaving the install as it is.</summary>
+    [Fact]
+    public async Task An_installed_install_sh_installs_the_release_from_names_and_run_again_refreshes_the_menu_entry()
     {
-        ProcessStartInfo start = ChildProcesses.Command("/bin/sh", [script], home);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip(NoShell);
+            return;
+        }
+        string root = PathNames.Canonical(TestFolders.Create("install-"));
+        string home = Directory.CreateDirectory(Path.Combine(root, "home")).FullName;
+        string installed = Path.Combine(home, ".local", "opt", "passenger");
+        string entry = Path.Combine(home, ".local", "share", "applications", App + ".desktop");
+        ChildResult install = await Install(Unpacked(Path.Combine(root, "first"), "1"), home);
+        Assert.True(install.Succeeded, $"The first release's install failed: {install.Said}");
+        string second = Path.GetDirectoryName(Unpacked(Path.Combine(root, "second"), "2"))!;
+
+        install = await Install(Path.Combine(installed, "install.sh"), home, from: second);
+
+        Assert.True(install.Succeeded, $"The installed install.sh given --from {second} refused: {install.Said}");
+        Assert.True(File.ReadAllText(Path.Combine(installed, "app", "release.txt")) == "2",
+            $"The installed install.sh given --from the second release left ~/.local/opt/passenger {Held(installed)}");
+        Assert.True(Directory.EnumerateFileSystemEntries(Path.GetDirectoryName(installed)!).Select(Path.GetFileName).SequenceEqual(["passenger"]),
+            $"The install --from left {string.Join(", ", Directory.EnumerateFileSystemEntries(Path.GetDirectoryName(installed)!).Select(Path.GetFileName))} in ~/.local/opt");
+
+        File.Delete(entry);
+        string before = Held(installed);
+        install = await Install(Path.Combine(installed, "install.sh"), home);
+
+        Assert.True(install.Succeeded, $"The installed install.sh run again refused: {install.Said}");
+        Assert.True(File.ReadAllText(entry).Contains($"Exec=\"{installed}/passenger\" %f", StringComparison.Ordinal),
+            $"The installed install.sh run again did not make the menu entry naming the install's launcher: {Held(entry)}");
+        Assert.True(Held(installed) == before, $"The installed install.sh run again changed the install, to {Held(installed)} from {before}");
+    }
+
+    /// <summary>The installed install.sh given an update's unpacked release with <c>--keep-replaced</c>, as Passenger's
+    /// update of an install for everyone runs it, installs that release and keeps the one it replaced beside the release's
+    /// folder, in the update's own folder, for the new one's start to remove: nothing is left beside the install.</summary>
+    [Fact]
+    public async Task An_install_keeping_the_release_replaced_leaves_it_in_the_updates_folder_and_nothing_beside_the_install()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip(NoShell);
+            return;
+        }
+        string root = PathNames.Canonical(TestFolders.Create("install-"));
+        string home = Directory.CreateDirectory(Path.Combine(root, "home")).FullName;
+        string installed = Path.Combine(home, ".local", "opt", "passenger");
+        ChildResult install = await Install(Unpacked(Path.Combine(root, "first"), "1"), home);
+        Assert.True(install.Succeeded, $"The first release's install failed: {install.Said}");
+        string update = Path.Combine(root, "updates", "2");
+        string second = Path.GetDirectoryName(Unpacked(update, "2"))!;
+
+        install = await Install(Path.Combine(installed, "install.sh"), home, from: second, keepReplaced: true);
+
+        Assert.True(install.Succeeded, $"The installed install.sh given --from {second} --keep-replaced refused: {install.Said}");
+        Assert.True(File.ReadAllText(Path.Combine(installed, "app", "release.txt")) == "2",
+            $"The install keeping the release replaced left ~/.local/opt/passenger {Held(installed)}, not the second release");
+        string kept = Path.Combine(update, "replaced");
+        Assert.True(File.Exists(Path.Combine(kept, "app", "release.txt")) && File.ReadAllText(Path.Combine(kept, "app", "release.txt")) == "1",
+            $"The install keeping the release replaced left the update's folder {Held(update)}, without the first release");
+        Assert.True(Directory.EnumerateFileSystemEntries(Path.GetDirectoryName(installed)!).Select(Path.GetFileName).SequenceEqual(["passenger"]),
+            $"The install keeping the release replaced left {string.Join(", ", Directory.EnumerateFileSystemEntries(Path.GetDirectoryName(installed)!).Select(Path.GetFileName))} in ~/.local/opt");
+    }
+
+    /// <summary>Runs an unpacked folder's install.sh for one person, <paramref name="home"/> theirs, with a folder of
+    /// programs before the PATH's own where one is given, installing another unpacked folder where one is (keeping the
+    /// release it replaces where asked), or removing the install.</summary>
+    private static async Task<ChildResult> Install(string script, string home, string? programs = null, string? from = null, bool uninstall = false,
+        bool keepReplaced = false)
+    {
+        string[] arguments = uninstall ? [script, "--uninstall"] : from is null ? [script] : keepReplaced ? [script, "--from", from, "--keep-replaced"] : [script, "--from", from];
+        ProcessStartInfo start = ChildProcesses.Command("/bin/sh", arguments, home);
         start.Environment["HOME"] = home;
         start.Environment["XDG_DATA_HOME"] = Path.Combine(home, ".local", "share");
         start.Environment.Remove("SUDO_USER");

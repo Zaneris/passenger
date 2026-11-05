@@ -24,6 +24,8 @@ public partial class App : Application
     {
         AvaloniaXamlLoader.Load(this);
         Themes.TakeAccentFromTokens(this);
+        Passenger.Editor.CodeFonts.Use(this, Passenger.Editor.CodeEditor.CodeFont);
+        WindowFonts.Use(this, WindowFonts.Carried);
         if (classHandlersAdded)
         {
             return;
@@ -64,9 +66,9 @@ public partial class App : Application
                 IdeErrors.Write($"Passenger {Product.Version} ({Product.Commit ?? "no commit"}) on {RuntimeInformation.OSDescription} "
                     + $"({Product.Runtime}): window shown {Stopwatch.GetElapsedTime(Program.StartedAt).TotalSeconds:0.00} s after launch");
                 window.Start(Program.Options);
+                IdeErrors.Observe(Program.EndUnlessStartedAsync(window, desktop.Shutdown));
                 // The process asks for the latest release once, in this window, which hands the watch on as it closes.
-                IdeErrors.Write(updater is null ? $"Updates: this copy only says when a newer release is out: {notUpdating}"
-                    : $"Updates: this copy installs updates, in {updater.Installed}");
+                IdeErrors.Observe(SayUpdatesAsync(updater, notUpdating));
                 window.WatchForUpdates();
                 // The notes of a version updated to, once; one an agent started to work in leaves them to the person's next start.
                 if (Mcp.McpProxy.StartedForAgent)
@@ -91,6 +93,20 @@ public partial class App : Application
             }
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>Logs what this copy does about updates: only says a release is out, or, once whether a package manager owns
+    /// it is known, is updated by that manager, by hand, or by itself.</summary>
+    private static async Task SayUpdatesAsync(Updates.Updater? updater, string notUpdating)
+    {
+        if (updater is null)
+        {
+            IdeErrors.Write($"Updates: this copy only says when a newer release is out: {notUpdating}");
+            return;
+        }
+        // Not held: the package databases asked answer a line of the log, which nothing drawn waits for.
+        string updated = await BackgroundWork.Unheld(() => updater.UpdatedByAsync(CancellationToken.None));
+        IdeErrors.Write($"Updates: {updated}");
     }
 
     private static void OnActivated(object? sender, ActivatedEventArgs e)

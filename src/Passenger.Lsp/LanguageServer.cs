@@ -1,12 +1,18 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 using Passenger.Core;
 using StreamJsonRpc;
 
 namespace Passenger.Lsp;
 
+/// <summary>A request that waited past its server's patience: which and how long (<see cref="Asked"/>), and where the
+/// conversation with the server stood (<see cref="LanguageServer.Conversation"/>).</summary>
+public readonly record struct LongWait(string Asked, string Conversation);
+
 /// <summary>A language server process and the JSON-RPC connection to it over its standard input and
-/// output. Requests and notifications go out typed, and each failure of the server's comes back as a
+/// output, or over TCP on a loopback port (Godot's, in its editor: one Passenger started, or the person's own). Requests and notifications go out typed, and each failure of the server's comes back as a
 /// <see cref="LanguageServerFailed"/>, the connection's own exceptions never past this class; what the server asks of
 /// the client (its settings, a capability it registers, a refresh) is answered here and surfaced as events, each raised
 /// on any thread, as is what it tells the person (<see cref="Logged"/>, <see cref="Shown"/>, <see cref="Progressed"/>).
@@ -15,12 +21,19 @@ public sealed class LanguageServer : IAsyncDisposable
 {
     /// <summary>How long a request waits before the server is checked: one this old may be slow work (usages across a
     /// large solution) or a server that will never answer. Settable, with <see cref="ResponseLimit"/>, so a test waits
-    /// them out quickly.</summary>
-    public TimeSpan SlowRequest { get; set; } = TimeSpan.FromSeconds(5);
+    /// them out quickly; both as much longer on a slower machine as <see cref="Waits"/> says.</summary>
+    public TimeSpan SlowRequest { get; set; } = Waits.Of(TimeSpan.FromSeconds(5));
 
     /// <summary>How long the check may go unanswered before the server is called not responding. Roslyn answers it in
     /// milliseconds, through the queue every request goes through, even while it loads projects or runs a long request.</summary>
-    public TimeSpan ResponseLimit { get; set; } = TimeSpan.FromSeconds(10);
+    public TimeSpan ResponseLimit { get; set; } = Waits.Of(TimeSpan.FromSeconds(10));
+
+    /// <summary>How long a request may wait before its wait is said (<see cref="Waited"/>), once, in the server's log too:
+    /// longer than any answer a person waits on, so what it says is the server's or Passenger's to explain.</summary>
+    public TimeSpan Patience { get; set; } = Waits.Of(TimeSpan.FromSeconds(30));
+
+    /// <summary>Servers running in this process, for a test's words on what each was doing as a wait gave up.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<LanguageServer, byte> Live = new();
 
     /// <summary>The check: the folding ranges of a document never opened, which Roslyn answers with none.</summary>
     private static readonly FoldingRangeParams Check = new(new TextDocumentIdentifier("file:///passenger-is-the-server-answering.cs"));
@@ -28,7 +41,11 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>Servers started in this IDE, for the handshake salt of each one's MSBuild nodes.</summary>
     private static int started;
 
-    private readonly Process process;
+    /// <summary>The server's process, null for one another program runs, reached on its port alone.</summary>
+    private readonly Process? process;
+
+    /// <summary>The connection to a server reached over TCP, null for one on its standard input and output.</summary>
+    private readonly TcpClient? socket;
     private readonly JsonRpc rpc;
     private readonly CountedMessages messages;
     private readonly ClientTarget client;
@@ -42,8 +59,27 @@ public sealed class LanguageServer : IAsyncDisposable
     private readonly List<Hold> holding = [];
     private readonly Timer watch;
     private long requests;
+    private long changes;
+
+    /// <summary>A count of what may have changed the server's answers since it started: each notification it was sent (an
+    /// open, a change or close of a document, files changed on disk, options), each of Passenger's own project
+    /// requests, and each time it said its projects loaded or its diagnostics changed. Roslyn's server watches nothing
+    /// itself, so an answer pulled at one count stands while the count does.</summary>
+    public long Changes => Interlocked.Read(ref changes);
+
+    /// <summary>Counts one more of what may change the server's answers (<see cref="Changes"/>): a method of the protocol's
+    /// own ($/cancelRequest, $/progress) is none.</summary>
+    private void Changing(string method)
+    {
+        if (!method.StartsWith("$/", StringComparison.Ordinal))
+        {
+            Interlocked.Increment(ref changes);
+        }
+    }
     private long partialResults;
     private long checkedAt;
+    private long checkAnsweredAt;
+    private readonly HashSet<long> waitSaid = [];
     private int checking;
     private volatile bool hung;
     private volatile bool killed;
@@ -67,9 +103,10 @@ public sealed class LanguageServer : IAsyncDisposable
     private CommandRun? commandRun;
     private readonly SemaphoreSlim commandRuns = new(1, 1);
 
-    private LanguageServer(Process process, JsonRpc rpc, CountedMessages messages, ClientTarget client, ServerLog log, Task errorsHeard, string logFolder,
-        IReadOnlyDictionary<string, object>? options, Func<string?, object?>? configure = null, Func<string, CancellationToken, Task<string>>? content = null)
+    private LanguageServer(Process? process, TcpClient? socket, string who, JsonRpc rpc, CountedMessages messages, ClientTarget client, ServerLog log, Task errorsHeard,
+        string logFolder, IReadOnlyDictionary<string, object>? options, Func<string?, object?>? configure = null, Func<string, CancellationToken, Task<string>>? content = null)
     {
+        this.socket = socket;
         this.configure = configure;
         this.content = content;
         this.options = new Dictionary<string, object>(options ?? new Dictionary<string, object>(), StringComparer.Ordinal);
@@ -81,8 +118,9 @@ public sealed class LanguageServer : IAsyncDisposable
         this.errorsHeard = errorsHeard;
         LogFolder = logFolder;
         WatchedFiles = new WatchedFiles(this);
-        ProcessId = process.Id;
-        who = $"{Named(process.StartInfo)}, process {process.Id}";
+        ProcessId = process?.Id ?? 0;
+        this.who = who;
+        Live[this] = 0;
         rpc.Disconnected += (_, e) =>
         {
             if (!disposing)
@@ -107,12 +145,20 @@ public sealed class LanguageServer : IAsyncDisposable
     /// with what waited, on any thread; the server is left running for the caller to <see cref="Kill"/>.</summary>
     public event EventHandler<string>? NotResponding;
 
+    /// <summary>A request waited past <see cref="Patience"/>: raised once for it, on any thread, with which, how long, and
+    /// where the conversation stands (<see cref="Conversation"/>).</summary>
+    public event EventHandler<LongWait>? Waited;
+
     /// <summary>The copy of Roslyn's server this one runs from, in the state's cache (<see cref="RoslynServerFolder"/>); null
     /// where it runs from the app's own roslyn/, and for every other server.</summary>
     public string? ServerCopy { get; private set; }
 
-    /// <summary>The server's process id, kept once the process is gone.</summary>
+    /// <summary>The server's process id, kept once the process is gone; 0 for a server another program runs.</summary>
     public int ProcessId { get; }
+
+    /// <summary>The folder the server said it works on as it was initialized, where that is another than the one it was
+    /// started for (<see cref="LspMethods.GodotChangeWorkspace"/>: a Godot editor open on another project); else null.</summary>
+    public string? OtherFolder { get; private set; }
 
     /// <summary>A message the server logged (<c>window/logMessage</c>), every one of which is in its own log too; raised on
     /// any thread.</summary>
@@ -256,6 +302,9 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>Lets go of what Razor gave the client of a closed Razor file's HTML.</summary>
     internal void ForgetRazorHtml(string path) => client.Html.Forget(path);
 
+    /// <summary>A Razor file's HTML as Razor last gave it, its C# blanked out; null before it gave any.</summary>
+    internal string? RazorHtmlOf(string path) => client.Html.TextOf(path);
+
     /// <summary>The HTML server's diagnostics of a Razor file's HTML, on the lines it has as the file does.</summary>
     internal Task<IReadOnlyList<Diagnostic>> RazorHtmlDiagnosticsAsync(string path, string text, CancellationToken cancel) =>
         client.Html.DiagnosticsAsync(path, text, cancel);
@@ -362,21 +411,7 @@ public sealed class LanguageServer : IAsyncDisposable
         set.TryGetValue(name, out object? value) ? value : Settings.TryGetValue(name, out object? own) ? own : null;
 
     /// <summary>The process has ended, or been ended by <see cref="Kill"/>, or let go of (<see cref="DisposeAsync"/>).</summary>
-    public bool HasExited
-    {
-        get
-        {
-            try
-            {
-                return killed || process.HasExited;
-            }
-            catch (InvalidOperationException)
-            {
-                // Disposed: the process is no longer this server's to ask about.
-                return true;
-            }
-        }
-    }
+    public bool HasExited => killed || (process is null ? ended is not null || socket is not { Connected: true } : !DotnetProcesses.Runs(process));
 
     /// <summary>Starts the Roslyn language server Passenger ships (under <c>roslyn/</c> beside the app, run from its copy
     /// in <paramref name="stateCache"/> where it may not write there, <see cref="RoslynServerFolder"/>), initializes it for
@@ -395,14 +430,15 @@ public sealed class LanguageServer : IAsyncDisposable
         Directory.CreateDirectory(logFolder);
         List<string> arguments =
         [
-            server, "--stdio", "--logLevel", "Information", "--telemetryLevel", "off",
+            "--stdio", "--logLevel", "Information", "--telemetryLevel", "off",
             "--extensionLogDirectory", logFolder, "--clientProcessId", Environment.ProcessId.ToString(),
         ];
         if (File.Exists(RoslynExtension.Assembly))
         {
             arguments.AddRange(["--extension", RoslynExtension.Assembly]);
         }
-        ProcessStartInfo start = ChildProcesses.DotnetCommand(arguments);
+        // On the runtime Passenger runs on, whatever the machine has: with no .NET at all, a lone file still has its help.
+        ProcessStartInfo start = ChildProcesses.ConservingMemory(ChildProcesses.NamingDotnet(ChildProcesses.HelperCommand(server, arguments)));
         // A server's MSBuild nodes are its own: a restart ends them, which would cut short a build that took one up.
         start.Environment[MSBuildNames.NodeHandshakeSalt] += $"-server-{Interlocked.Increment(ref started)}";
         // The server's restore takes no properties, and off Windows a WPF project restores only with this (NETSDK1100).
@@ -448,8 +484,115 @@ public sealed class LanguageServer : IAsyncDisposable
     public static Task<LanguageServer> StartAsync(ServerStart start, CancellationToken cancel)
     {
         Directory.CreateDirectory(start.LogFolder);
-        return StartCoreAsync(start.Process, start.Folder, start.LogFolder, start.Capabilities, start.InitializationOptions, null,
-            start.Configuration ?? (_ => null), start.Content, cancel);
+        return start.Port is { } port
+            ? StartOnPortAsync(start, port, cancel)
+            : StartCoreAsync(start.Process ?? throw new ArgumentException("A server on its standard input and output needs its program", nameof(start)), start.Folder,
+                start.LogFolder, start.Capabilities, start.InitializationOptions, null, start.Configuration ?? (_ => null), start.Content, cancel);
+    }
+
+    /// <summary>A server reached over TCP on a loopback port: its program started first where the start names one, its
+    /// output and errors heard into its log, and connected to once it listens; else the one already listening there.</summary>
+    private static async Task<LanguageServer> StartOnPortAsync(ServerStart start, int port, CancellationToken cancel)
+    {
+        Process? process = null;
+        if (start.Process is { } program)
+        {
+            program.RedirectStandardInput = true;
+            program.RedirectStandardOutput = true;
+            program.RedirectStandardError = true;
+            process = ChildProcesses.Start(program);
+            ChildProcesses.HoldFamily(process);
+        }
+        ServerLog log;
+        try
+        {
+            log = process is null ? ServerLog.Begin(start.LogFolder, $"port{port}") : ServerLog.Begin(start.LogFolder, process.Id);
+        }
+        catch
+        {
+            if (process is not null)
+            {
+                End(process);
+            }
+            throw;
+        }
+        Task heard = process is null ? Task.CompletedTask : HearAllAsync(process, log);
+        UnawaitedWork.Observe(heard);
+        TcpClient socket;
+        try
+        {
+            socket = await ConnectAsync(port, process, start.Listening, cancel).ConfigureAwait(false);
+        }
+        catch
+        {
+            if (process is not null)
+            {
+                End(process);
+            }
+            log.Dispose();
+            throw;
+        }
+        SocketStream stream = new(socket.GetStream());
+        TracedStream input = new(stream, process?.Id ?? port, "-->", static () => Trace);
+        TracedStream output = new(stream, process?.Id ?? port, "<--", static () => Trace, across: input);
+        string who = process is null ? $"the server on port {port}" : $"{Named(process.StartInfo)}, process {process.Id} on port {port}";
+        return await ConnectedAsync(process, socket, who, input, output, log, heard, start.Folder, start.LogFolder, start.Capabilities, start.InitializationOptions,
+            null, start.Configuration ?? (_ => null), start.Content, start.TellsRootPath, cancel).ConfigureAwait(false);
+    }
+
+    /// <summary>The connection to a server listening on a loopback port, tried while the program started to serve there
+    /// runs, until it listens or <paramref name="limit"/> passes; tried once where no program was started.</summary>
+    private static async Task<TcpClient> ConnectAsync(int port, Process? process, TimeSpan limit, CancellationToken cancel)
+    {
+        long began = Stopwatch.GetTimestamp();
+        while (true)
+        {
+            TcpClient client = new() { NoDelay = true };
+            bool connected = false;
+            try
+            {
+                await client.ConnectAsync(IPAddress.Loopback, port, cancel).ConfigureAwait(false);
+                connected = true;
+                return client;
+            }
+            catch (SocketException refused)
+            {
+                if (process is null)
+                {
+                    throw new LanguageServerFailed($"nothing listens on port {port}", LspMethods.Initialize, refused) { Ended = true };
+                }
+                if (!DotnetProcesses.Runs(process))
+                {
+                    throw new LanguageServerFailed($"it ended ({ExitCodes.Said(process.ExitCode)}) before it listened on port {port}", LspMethods.Initialize, refused) { Ended = true };
+                }
+                if (Stopwatch.GetElapsedTime(began) > limit)
+                {
+                    throw new LanguageServerFailed($"it did not listen on port {port} in {limit.TotalSeconds:0} s", LspMethods.Initialize, refused);
+                }
+            }
+            finally
+            {
+                if (!connected)
+                {
+                    client.Dispose();
+                }
+            }
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancel).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>A server program's output and errors heard into its log to their end, which closes the log: one reached
+    /// over TCP says nothing of the protocol on them.</summary>
+    private static async Task HearAllAsync(Process process, ServerLog log)
+    {
+        try
+        {
+            await ChildProcesses.Hear(process, output: log.Write, errors: log.Write).ConfigureAwait(false);
+        }
+        finally
+        {
+            log.Dispose();
+        }
     }
 
     private static async Task<LanguageServer> StartCoreAsync(ProcessStartInfo start, string folder, string logFolder, JsonElement capabilities,
@@ -477,7 +620,16 @@ public sealed class LanguageServer : IAsyncDisposable
         }
         Task errorsHeard = HearErrorsAsync(process, log);
         UnawaitedWork.Observe(errorsHeard);
+        return await ConnectedAsync(process, null, $"{Named(process.StartInfo)}, process {process.Id}", input, output, log, errorsHeard, folder, logFolder, capabilities,
+            initializationOptions, options, configure, content, false, cancel).ConfigureAwait(false);
+    }
 
+    /// <summary>The JSON-RPC connection made over a server's streams, initialized for a folder; a start given up or failed
+    /// leaves no server behind.</summary>
+    private static async Task<LanguageServer> ConnectedAsync(Process? process, TcpClient? socket, string who, TracedStream input, TracedStream output, ServerLog log,
+        Task errorsHeard, string folder, string logFolder, JsonElement capabilities, object? initializationOptions, IReadOnlyDictionary<string, object>? options,
+        Func<string?, object?>? configure, Func<string, CancellationToken, Task<string>>? content, bool rootPath, CancellationToken cancel)
+    {
         SystemTextJsonFormatter formatter = new() { JsonSerializerOptions = Json.Options };
         CountedMessages handler = new(input, output, formatter);
         ClientTarget client = new();
@@ -485,7 +637,7 @@ public sealed class LanguageServer : IAsyncDisposable
         JsonRpc rpc = new(handler) { SynchronizationContext = new Microsoft.VisualStudio.Threading.NonConcurrentSynchronizationContext(sticky: false) };
         ToldCancellation.Use(rpc);
         rpc.AddLocalRpcTarget(client, new JsonRpcTargetOptions { UseSingleObjectParameterDeserialization = true });
-        LanguageServer server2 = new(process, rpc, handler, client, log, errorsHeard, logFolder, options, configure, content);
+        LanguageServer server2 = new(process, socket, who, rpc, handler, client, log, errorsHeard, logFolder, options, configure, content);
         client.Owner = server2;
         rpc.StartListening();
 
@@ -493,17 +645,19 @@ public sealed class LanguageServer : IAsyncDisposable
         {
             string root = DocumentUris.FromPath(folder);
             InitializeParams initialize = new(Environment.ProcessId, root, [new WorkspaceFolder(root, Path.GetFileName(folder))], capabilities,
-                InitializationOptions: initializationOptions);
+                InitializationOptions: initializationOptions, RootPath: rootPath ? folder : null);
             // Given up at once, not cancelled: a start given up ends the server, so it fails with the connection, unseen.
             Task<JsonElement> answer = rpc.InvokeWithParameterObjectAsync<JsonElement>(LspMethods.Initialize, initialize, CancellationToken.None);
             UnawaitedWork.Dismiss(answer);
             JsonElement result = await answer.WaitAsync(cancel).ConfigureAwait(false);
-            server2.Capabilities = result.GetProperty("capabilities");
-            if (server2.Capabilities.TryGetProperty("semanticTokensProvider", out JsonElement tokens) && tokens.TryGetProperty("legend", out JsonElement legend))
+            server2.Capabilities = JsonMembers.Object(result, "capabilities") ?? default;
+            if (JsonMembers.Value(JsonMembers.Value(server2.Capabilities, "semanticTokensProvider"), "legend") is { } legend)
             {
                 server2.Legend = legend.Deserialize<SemanticTokensLegend>(Json.Options);
             }
             cancel.ThrowIfCancellationRequested();
+            // What it said before its answer (Godot's word of the folder it works on) is heard before its start returns.
+            await server2.HandledSoFarAsync().ConfigureAwait(false);
             await rpc.NotifyWithParameterObjectAsync(LspMethods.Initialized, new { }).ConfigureAwait(false);
         }
         catch (Exception error)
@@ -529,24 +683,32 @@ public sealed class LanguageServer : IAsyncDisposable
     private void Abandon()
     {
         disposing = true;
+        Live.TryRemove(this, out _);
         watch.Dispose();
         rpc.Dispose();
-        End(process);
+        socket?.Dispose();
+        if (process is not null)
+        {
+            End(process);
+        }
         log.Dispose();
     }
 
     /// <summary>Whether the server said it answers a request (its capability for it, such as <c>renameProvider</c>, there
     /// and not false).</summary>
     public bool Provides(string capability) =>
-        Capabilities.ValueKind == JsonValueKind.Object && Capabilities.TryGetProperty(capability, out JsonElement value)
-        && value.ValueKind is not (JsonValueKind.False or JsonValueKind.Null or JsonValueKind.Undefined);
+        JsonMembers.Value(Capabilities, capability) is { ValueKind: not (JsonValueKind.False or JsonValueKind.Null or JsonValueKind.Undefined) };
+
+    /// <summary>Whether the server takes each change of a document as its whole text (<c>textDocumentSync</c>'s change kind
+    /// Full, Godot's), not as the edits made.</summary>
+    public bool TakesWholeTexts =>
+        (JsonMembers.Number(Capabilities, "textDocumentSync") ?? JsonMembers.Number(JsonMembers.Object(Capabilities, "textDocumentSync"), "change")) == FullSync;
+
+    /// <summary>LSP's document sync by whole texts.</summary>
+    private const int FullSync = 1;
 
     /// <summary>The characters after which the server offers completion unasked (<c>completionProvider.triggerCharacters</c>).</summary>
-    public IReadOnlyList<string> CompletionTriggers =>
-        Capabilities.ValueKind == JsonValueKind.Object && Capabilities.TryGetProperty("completionProvider", out JsonElement provider)
-        && provider.ValueKind == JsonValueKind.Object && provider.TryGetProperty("triggerCharacters", out JsonElement triggers) && triggers.ValueKind == JsonValueKind.Array
-            ? [.. triggers.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.String).Select(t => t.GetString()!)]
-            : [];
+    public IReadOnlyList<string> CompletionTriggers => JsonMembers.Texts(JsonMembers.Object(Capabilities, "completionProvider"), "triggerCharacters");
 
     /// <summary>The server's error stream heard into its log to its end, which closes the log.</summary>
     private static async Task HearErrorsAsync(Process process, ServerLog log)
@@ -569,14 +731,19 @@ public sealed class LanguageServer : IAsyncDisposable
     }
 
     /// <summary>A request someone waits for the answer to: one still waiting after <see cref="SlowRequest"/> has the
-    /// server checked, and raises <see cref="NotResponding"/> if that goes unanswered too. A
-    /// <see cref="LanguageServerFailed"/> when the server does not answer it.</summary>
-    public async Task<T?> RequestAsync<T>(string method, object parameters, CancellationToken cancel = default)
+    /// server checked, and raises <see cref="NotResponding"/> if that goes unanswered too; <paramref name="about"/> names
+    /// what it asks where the method alone does not (an extension handler's). A <see cref="LanguageServerFailed"/> when the
+    /// server does not answer it.</summary>
+    public async Task<T?> RequestAsync<T>(string method, object parameters, CancellationToken cancel = default, string? about = null)
     {
         long id = Interlocked.Increment(ref requests);
+        if (method.StartsWith("passenger/", StringComparison.Ordinal))
+        {
+            Changing(method);
+        }
         lock (waiting)
         {
-            waiting[id] = (method, Stopwatch.GetTimestamp());
+            waiting[id] = (about is null ? method : $"{method} ({about[(about.LastIndexOf('.') + 1)..]})", Stopwatch.GetTimestamp());
         }
         try
         {
@@ -596,6 +763,7 @@ public sealed class LanguageServer : IAsyncDisposable
     /// when the server can no longer take it.</summary>
     public async Task NotifyAsync(string method, object parameters)
     {
+        Changing(method);
         try
         {
             await rpc.NotifyWithParameterObjectAsync(method, parameters);
@@ -620,13 +788,15 @@ public sealed class LanguageServer : IAsyncDisposable
 
     /// <summary>Holds the next request or notification of a method whose parameters <paramref name="which"/> takes unsent
     /// until <paramref name="until"/> ends, as a server busy with it holds its answer, or one slow to take in a file
-    /// changed on disk, for a test of what goes on meanwhile.</summary>
-    public void HoldNext(string method, Func<object, bool> which, Task until)
+    /// changed on disk, for a test of what goes on meanwhile. Done once one is held.</summary>
+    public Task HoldNext(string method, Func<object, bool> which, Task until)
     {
+        Hold hold = new(method, which, until, Answered: false, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
         lock (holding)
         {
-            holding.Add(new Hold(method, which, until, Answered: false, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)));
+            holding.Add(hold);
         }
+        return hold.Holding.Task;
     }
 
     /// <summary>Sends the next request of a method whose parameters <paramref name="which"/> takes and holds its answer until
@@ -758,7 +928,11 @@ public sealed class LanguageServer : IAsyncDisposable
 
     /// <summary>Sends a notification nothing waits on (a document's change, its closing). One the server can no longer
     /// take, having ended or been ended, is dropped: a server started again is sent the open documents afresh.</summary>
-    public void Notify(string method, object parameters) => UnawaitedWork.Observe(NotifyOrDropAsync(method, parameters));
+    public void Notify(string method, object parameters)
+    {
+        Changing(method);
+        UnawaitedWork.Observe(NotifyOrDropAsync(method, parameters));
+    }
 
     private async Task NotifyOrDropAsync(string method, object parameters)
     {
@@ -782,14 +956,23 @@ public sealed class LanguageServer : IAsyncDisposable
     {
         disposing = true;
         killed = true;
+        Live.TryRemove(this, out _);
+        socket?.Dispose();
         // Its tree and its process group, so a BuildHost it was loading with goes too.
-        ChildProcesses.Kill(process);
+        if (process is not null)
+        {
+            ChildProcesses.Kill(process);
+        }
     }
 
     /// <summary>Checks the server, at most once in <see cref="SlowRequest"/>, while a request has waited that long; runs
     /// on the timer's thread each second.</summary>
     private void Watch()
     {
+        if (!disposing)
+        {
+            SayLongWaits();
+        }
         if (disposing || hung || Stopwatch.GetElapsedTime(Interlocked.Read(ref checkedAt)) < SlowRequest)
         {
             return;
@@ -840,12 +1023,91 @@ public sealed class LanguageServer : IAsyncDisposable
         try
         {
             await rpc.InvokeWithParameterObjectAsync<JsonElement>(LspMethods.FoldingRange, Check);
+            Interlocked.Exchange(ref checkAnsweredAt, Stopwatch.GetTimestamp());
         }
         catch (Exception error) when (error is RemoteRpcException or ObjectDisposedException or IOException or OperationCanceledException)
         {
             // An error is an answer too, and a connection gone is Exited's to report.
         }
     }
+
+    /// <summary>Each request that has waited past <see cref="Patience"/> said once, the conversation's words with it, into
+    /// the server's log and to <see cref="Waited"/>.</summary>
+    private void SayLongWaits()
+    {
+        List<(string Method, TimeSpan Age)> past = [];
+        lock (waiting)
+        {
+            waitSaid.RemoveWhere(id => !waiting.ContainsKey(id));
+            foreach ((long id, (string asked, long since)) in waiting)
+            {
+                TimeSpan age = Stopwatch.GetElapsedTime(since);
+                if (age >= Patience && waitSaid.Add(id))
+                {
+                    past.Add((asked, age));
+                }
+            }
+        }
+        if (past.Count == 0)
+        {
+            return;
+        }
+        (string method, TimeSpan longest) = past.MaxBy(p => p.Age);
+        LongWait wait = new($"{method} has waited {longest.TotalSeconds:0} s{(past.Count > 1 ? $", with {past.Count - 1} more past {Patience.TotalSeconds:0} s" : string.Empty)}",
+            Conversation());
+        Note($"{wait.Asked}: {wait.Conversation}");
+        Waited?.Invoke(this, wait);
+    }
+
+    /// <summary>Where the conversation with the server stands, in words: the requests waiting on it, the oldest first; when
+    /// it last answered a check and last sent anything; its requests Passenger has not answered; Passenger's messages not
+    /// yet taken in by it; and the last messages each way.</summary>
+    public string Conversation()
+    {
+        List<(string Method, TimeSpan Age)> asking;
+        lock (waiting)
+        {
+            asking = [.. waiting.Values.Select(w => (w.Method, Stopwatch.GetElapsedTime(w.Since))).OrderByDescending(w => w.Item2)];
+        }
+        IReadOnlyList<(string Method, long Since)> unanswered = messages.Unanswered;
+        long unsent = messages.Unsent;
+        long heard = messages.LastHeard;
+        long check = Interlocked.Read(ref checkAnsweredAt);
+        List<string> parts =
+        [
+            asking.Count == 0 ? "no request waits on it" : $"{asking.Count} request{(asking.Count == 1 ? "" : "s")} wait{(asking.Count == 1 ? "s" : "")} on it ("
+                + string.Join(", ", asking.Take(6).Select(a => $"{a.Method} {a.Age.TotalSeconds:0} s")) + (asking.Count > 6 ? ", …" : string.Empty) + ")",
+            check == 0 ? "it has answered no check" : $"it answered Passenger's check {Stopwatch.GetElapsedTime(check).TotalSeconds:0} s ago",
+            heard == 0 ? "it has sent nothing" : $"it last sent a message {Stopwatch.GetElapsedTime(heard).TotalSeconds:0} s ago",
+            unanswered.Count == 0 ? "Passenger owes it no answer"
+                : "Passenger has not yet answered its " + string.Join(", ", unanswered.Take(4).Select(u => $"{u.Method} ({Stopwatch.GetElapsedTime(u.Since).TotalSeconds:0} s)")),
+            unsent == 0 ? "every message Passenger wrote has reached it" : $"{unsent} of Passenger's messages have not yet reached its input",
+        ];
+        return $"{who}: {string.Join("; ", parts)}. Its last messages: {string.Join(", ", messages.Recent())}";
+    }
+
+    /// <summary>Where the conversation stands with each server of this process that has a request waiting, a line each;
+    /// empty with none, for a test's words as a wait gives up.</summary>
+    public static string Conversations()
+    {
+        List<string> lines = [];
+        foreach (LanguageServer server in Live.Keys)
+        {
+            bool asking;
+            lock (server.waiting)
+            {
+                asking = server.waiting.Count > 0;
+            }
+            if (asking || server.messages.Unanswered.Count > 0)
+            {
+                lines.Add(server.Conversation());
+            }
+        }
+        return string.Join('\n', lines);
+    }
+
+    /// <summary>How many servers this process holds that log to a folder, for a test that a start leaves none behind.</summary>
+    public static int LiveIn(string logFolder) => Live.Keys.Count(server => server.LogFolder == logFolder);
 
     /// <summary>Runs one of the server's own commands (<c>workspace/executeCommand</c>) that asks nothing of the client as it
     /// runs (TypeScript's tsserver requests): an edit it asks for is refused.</summary>
@@ -872,10 +1134,7 @@ public sealed class LanguageServer : IAsyncDisposable
 
     /// <summary>Whether the server runs a command itself: one its <c>executeCommandProvider</c> lists. Roslyn's lists none,
     /// leaving its commands to the client (<see cref="ClientCommands"/>).</summary>
-    public bool Runs(string command) =>
-        Capabilities.ValueKind == JsonValueKind.Object && Capabilities.TryGetProperty("executeCommandProvider", out JsonElement provider)
-        && provider.ValueKind == JsonValueKind.Object && provider.TryGetProperty("commands", out JsonElement commands) && commands.ValueKind == JsonValueKind.Array
-        && commands.EnumerateArray().Any(c => c.ValueKind == JsonValueKind.String && c.GetString() == command);
+    public bool Runs(string command) => JsonMembers.Texts(JsonMembers.Object(Capabilities, "executeCommandProvider"), "commands").Contains(command);
 
     /// <summary>A call hierarchy item's callers, each with where the calls are.</summary>
     public async Task<IReadOnlyList<IncomingCall>> IncomingCallsAsync(HierarchyItem item, CancellationToken cancel = default) =>
@@ -895,8 +1154,12 @@ public sealed class LanguageServer : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         disposing = true;
+        Live.TryRemove(this, out _);
         // However it goes, a write into the pipes closed under it included (Node's SIGPIPE, 141), it did not fail.
-        ChildProcesses.Ending(process);
+        if (process is not null)
+        {
+            ChildProcesses.Ending(process);
+        }
         watch.Dispose();
         try
         {
@@ -914,6 +1177,13 @@ public sealed class LanguageServer : IAsyncDisposable
         {
         }
         rpc.Dispose();
+        socket?.Dispose();
+        if (process is null)
+        {
+            // Another program's server goes on without this connection.
+            log.Dispose();
+            return;
+        }
         using (CancellationTokenSource limit = new(TimeSpan.FromSeconds(2)))
         {
             // Its error stream read into its log to its end too, which holds its last words.
@@ -947,6 +1217,82 @@ public sealed class LanguageServer : IAsyncDisposable
         ["csharp_enable_inlay_hints_for_collection_expressions"] = false,
     };
 
+    /// <summary>A server's socket read as its pipe is: the connection reset or aborted by the other end (the server's program
+    /// gone) is the end of the stream, as a pipe's writer gone is, never a fault of the read nothing awaits; a write after it
+    /// fails, as the connection lost.</summary>
+    private sealed class SocketStream(NetworkStream inner) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            try
+            {
+                return inner.Read(buffer);
+            }
+            catch (IOException reset) when (Ended(reset))
+            {
+                return 0;
+            }
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                return await inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            }
+            catch (IOException reset) when (Ended(reset))
+            {
+                return 0;
+            }
+        }
+
+        public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
+
+        public override void Write(ReadOnlySpan<byte> buffer) => inner.Write(buffer);
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            inner.WriteAsync(buffer, offset, count, cancellationToken);
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+            inner.WriteAsync(buffer, cancellationToken);
+
+        public override void Flush() => inner.Flush();
+
+        public override Task FlushAsync(CancellationToken cancellationToken) => inner.FlushAsync(cancellationToken);
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        private static bool Ended(IOException error) =>
+            error.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset or SocketError.ConnectionAborted or SocketError.Shutdown };
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                inner.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+    }
+
     /// <summary>The server's log: its standard error and the messages it logs (a project load that never ends says where
     /// it stopped), a file to each server, since Windows lets no second writer open a file one has open and a server
     /// started again while the last one's log is still held would otherwise fail to start. Shared for reading and
@@ -963,7 +1309,11 @@ public sealed class LanguageServer : IAsyncDisposable
         /// <summary>A new server's log, named by when it began, so the names sort oldest first, and by its process, the id
         /// the IDE's log names when it ends; the oldest logs past <see cref="Kept"/> are deleted, but those of servers
         /// still running (another window's, another IDE's on the same settings).</summary>
-        public static ServerLog Begin(string folder, int processId)
+        public static ServerLog Begin(string folder, int processId) => Begin(folder, processId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        /// <summary>A new server's log named by what it is (<c>port6005</c> for one another program runs), which no process
+        /// keeps from deletion.</summary>
+        public static ServerLog Begin(string folder, string named)
         {
             string[] older;
             try
@@ -985,7 +1335,7 @@ public sealed class LanguageServer : IAsyncDisposable
                     // Open somewhere that shares no deletion (a reader on Windows): it goes another time.
                 }
             }
-            return new ServerLog(Path.Combine(folder, $"server-{DateTime.Now:yyyyMMdd-HHmmss}-{processId}.log"));
+            return new ServerLog(Path.Combine(folder, $"server-{DateTime.Now:yyyyMMdd-HHmmss}-{named}.log"));
         }
 
         /// <summary>Whether a log's process, the last part of its name, is running: its own or, its id reused, another's,
@@ -1067,9 +1417,7 @@ public sealed class LanguageServer : IAsyncDisposable
         /// <summary>Whether a registration is one of Razor's: Razor's are each for its files, by a document selector,
         /// where Roslyn's are for every file.</summary>
         private static bool ForRazor(Registration registration) =>
-            registration.RegisterOptions is { ValueKind: JsonValueKind.Object } options && options.TryGetProperty("documentSelector", out JsonElement selector)
-            && selector.ValueKind == JsonValueKind.Array && selector.EnumerateArray().Any(filter =>
-                filter.ValueKind == JsonValueKind.Object && filter.TryGetProperty("language", out JsonElement language) && language.GetString() == LanguageIds.Razor);
+            JsonMembers.Items(registration.RegisterOptions, "documentSelector").Any(filter => JsonMembers.Text(filter, "language") == LanguageIds.Razor);
 
         public IReadOnlyList<string?> DiagnosticSources
         {
@@ -1081,6 +1429,16 @@ public sealed class LanguageServer : IAsyncDisposable
                     List<string?> named = diagnosticSources.Where(s => s is not null).ToList();
                     return named.Count > 0 ? named : [null];
                 }
+            }
+        }
+
+        /// <summary>Godot's word that it works on another folder than it was told: its own project's.</summary>
+        [JsonRpcMethod(LspMethods.GodotChangeWorkspace)]
+        public void GodotChangeWorkspace(JsonElement said)
+        {
+            if (Owner is { } owner && JsonMembers.Text(said, "path") is { } path)
+            {
+                owner.OtherFolder = path;
             }
         }
 
@@ -1135,7 +1493,7 @@ public sealed class LanguageServer : IAsyncDisposable
             {
                 JsonValueKind.String => asked.GetString(),
                 JsonValueKind.Array when asked.GetArrayLength() > 0 && asked[0].ValueKind == JsonValueKind.String => asked[0].GetString(),
-                JsonValueKind.Object when asked.TryGetProperty("uri", out JsonElement named) && named.ValueKind == JsonValueKind.String => named.GetString(),
+                JsonValueKind.Object => JsonMembers.Text(asked, "uri"),
                 _ => null,
             };
             if (uri is null || Owner?.content is not { } content)
@@ -1170,8 +1528,7 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.ApplyEdit)]
         public async Task<object> ApplyEdit(JsonElement request)
         {
-            if (Owner is not { } owner || Volatile.Read(ref owner.commandRun) is not { } run || request.ValueKind != JsonValueKind.Object
-                || !request.TryGetProperty("edit", out JsonElement edit))
+            if (Owner is not { } owner || Volatile.Read(ref owner.commandRun) is not { } run || JsonMembers.Value(request, "edit") is not { } edit)
             {
                 return new { applied = false, failureReason = "Passenger makes a server's edits only for a command it runs" };
             }
@@ -1184,12 +1541,10 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.TypeScriptRename)]
         public object? TypeScriptRename(JsonElement place)
         {
-            if (Owner is { } owner && Volatile.Read(ref owner.commandRun) is { } run && place.ValueKind == JsonValueKind.Object
-                && place.TryGetProperty("textDocument", out JsonElement document) && document.ValueKind == JsonValueKind.Object
-                && document.TryGetProperty("uri", out JsonElement uri) && uri.ValueKind == JsonValueKind.String
-                && place.TryGetProperty("position", out JsonElement position) && position.Deserialize<LspPosition>(Json.Options) is { } at)
+            if (Owner is { } owner && Volatile.Read(ref owner.commandRun) is { } run && JsonMembers.Text(JsonMembers.Object(place, "textDocument"), "uri") is { } uri
+                && JsonMembers.Value(place, "position") is { } position && position.Deserialize<LspPosition>(Json.Options) is { } at)
             {
-                run.RenameAt = new LspLocation(uri.GetString()!, new LspRange(at, at));
+                run.RenameAt = new LspLocation(uri, new LspRange(at, at));
             }
             return null;
         }
@@ -1235,12 +1590,11 @@ public sealed class LanguageServer : IAsyncDisposable
         public void TypeScriptVersion(JsonElement version)
         {
             Owner?.log.Write($"{DateTime.Now:HH:mm:ss.fff} TypeScript {version}");
-            if (Owner is { } owner && version.ValueKind == JsonValueKind.Object && version.TryGetProperty("version", out JsonElement number)
-                && number.ValueKind == JsonValueKind.String)
+            if (Owner is { } owner && JsonMembers.Text(version, "version") is { } number)
             {
-                string? source = version.TryGetProperty("source", out JsonElement from) && from.ValueKind == JsonValueKind.String ? from.GetString() : null;
-                owner.TypeScript = (number.GetString()!, source);
-                owner.TypeScriptVersion?.Invoke(owner, (number.GetString()!, source));
+                string? source = JsonMembers.Text(version, "source");
+                owner.TypeScript = (number, source);
+                owner.TypeScriptVersion?.Invoke(owner, (number, source));
             }
         }
 
@@ -1253,8 +1607,7 @@ public sealed class LanguageServer : IAsyncDisposable
             }
             foreach (Registration registration in request.Registrations.Where(ForRazor))
             {
-                if (registration.Method == LspMethods.SemanticTokens && registration.RegisterOptions is { } options
-                    && options.TryGetProperty("legend", out JsonElement legend))
+                if (registration.Method == LspMethods.SemanticTokens && JsonMembers.Value(registration.RegisterOptions, "legend") is { } legend)
                 {
                     RazorLegend = legend.Deserialize<SemanticTokensLegend>(Json.Options);
                 }
@@ -1262,10 +1615,8 @@ public sealed class LanguageServer : IAsyncDisposable
             // Razor's are left out: a Razor file's diagnostics are its one source, pulled as the file's own.
             foreach (Registration registration in request.Registrations.Where(r => r.Method == LspMethods.DocumentDiagnostic && !ForRazor(r)))
             {
-                string? identifier = registration.RegisterOptions is { ValueKind: JsonValueKind.Object } options
-                    && options.TryGetProperty("identifier", out JsonElement id) ? id.GetString() : null;
-                bool workspace = registration.RegisterOptions is { ValueKind: JsonValueKind.Object } registered
-                    && registered.TryGetProperty("workspaceDiagnostics", out JsonElement flag) && flag.ValueKind == JsonValueKind.True;
+                string? identifier = JsonMembers.Text(registration.RegisterOptions, "identifier");
+                bool workspace = JsonMembers.Bool(registration.RegisterOptions, "workspaceDiagnostics") == true;
                 lock (diagnosticSources)
                 {
                     if (!diagnosticSources.Contains(identifier))
@@ -1286,16 +1637,13 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.UnregisterCapability)]
         public object? UnregisterCapability(JsonElement? request = null)
         {
-            if (request is { ValueKind: JsonValueKind.Object } given
-                && (given.TryGetProperty("unregisterations", out JsonElement list) || given.TryGetProperty("unregistrations", out list))
-                && list.ValueKind == JsonValueKind.Array)
+            if ((JsonMembers.Value(request, "unregisterations") ?? JsonMembers.Value(request, "unregistrations")) is { ValueKind: JsonValueKind.Array } list)
             {
                 foreach (JsonElement taken in list.EnumerateArray())
                 {
-                    if (taken.ValueKind == JsonValueKind.Object && taken.TryGetProperty("id", out JsonElement id) && id.ValueKind == JsonValueKind.String
-                        && taken.TryGetProperty("method", out JsonElement method) && method.GetString() == LspMethods.DidChangeWatchedFiles)
+                    if (JsonMembers.Text(taken, "id") is { } id && JsonMembers.Text(taken, "method") == LspMethods.DidChangeWatchedFiles)
                     {
-                        Owner?.WatchedFiles.Unregister(id.GetString()!);
+                        Owner?.WatchedFiles.Unregister(id);
                     }
                 }
             }
@@ -1329,6 +1677,7 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.ProjectInitializationComplete)]
         public void ProjectsLoaded(JsonElement? message = null)
         {
+            Owner?.Changing(LspMethods.ProjectInitializationComplete);
             Owner?.WatchedFiles.Loaded();
             Owner?.ProjectsLoaded?.Invoke(Owner, EventArgs.Empty);
         }
@@ -1344,6 +1693,7 @@ public sealed class LanguageServer : IAsyncDisposable
                 return new Roslyn.Extension.ProjectInfoResult(null, "Passenger has no design-time builds to give");
             }
             DateTime at = DateTime.UtcNow;
+            owner.Changing(Roslyn.Extension.ProjectMethods.Info);
             FedProject fed = await feed.InfoAsync(asked.Path, CancellationToken.None).ConfigureAwait(false);
             owner.WatchedFiles.Tell(fed.Changed);
             owner.ProjectGiven?.Invoke(owner, new ProjectGiven(asked.Path, at));
@@ -1361,6 +1711,7 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.DiagnosticRefresh)]
         public object? RefreshDiagnostics(JsonElement? request = null)
         {
+            Owner?.Changing(LspMethods.DiagnosticRefresh);
             Owner?.DiagnosticsRefreshRequested?.Invoke(Owner, EventArgs.Empty);
             return null;
         }
@@ -1379,11 +1730,12 @@ public sealed class LanguageServer : IAsyncDisposable
         /// <summary>A Razor file's HTML, which Razor sends before it asks HTML's answer at a place in it: the requests below,
         /// each as Razor received it wrapped with the file and its HTML's checksum (<see cref="RazorHtml"/>). Each goes to
         /// the HTML server when there is one; without it, a list answers empty, so Razor goes on with its own part (the C#'s
-        /// formatting, its components' completion), and one answers null. Awaited apart from the messages that follow.</summary>
+        /// formatting, its components' completion), and one answers null. The HTML is taken at once, and each request
+        /// awaited apart from the messages that follow.</summary>
         [JsonRpcMethod(LspMethods.RazorUpdateHtml)]
-        public async Task<object?> UpdateHtml(JsonElement update)
+        public object? UpdateHtml(JsonElement update)
         {
-            await Html.UpdateAsync(update).ConfigureAwait(false);
+            Html.UpdateNow(update);
             return null;
         }
 
@@ -1447,6 +1799,8 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.LinkedEditingRange)]
         public object? HtmlLinkedEditing(JsonElement? forwarded = null) => null;
 
+        /// <summary>Asked by Razor after an '=' alone, for an attribute's quotes, which Passenger's typing never asks
+        /// for: its tags are closed from Razor's own answer and its HTML (<see cref="LspDocument.AutoInsertAsync"/>).</summary>
         [JsonRpcMethod(LspMethods.OnAutoInsert)]
         public object? HtmlAutoInsert(JsonElement? forwarded = null) => null;
 
@@ -1456,6 +1810,6 @@ public sealed class LanguageServer : IAsyncDisposable
 
         /// <summary>The request Razor wrapped, which a resolve answers unchanged: HTML has nothing to add to it.</summary>
         private static JsonElement? Asked(JsonElement forwarded) =>
-            forwarded.ValueKind == JsonValueKind.Object && forwarded.TryGetProperty("request", out JsonElement request) ? request.Clone() : null;
+            JsonMembers.Value(forwarded, "request")?.Clone();
     }
 }

@@ -3,8 +3,15 @@ using Passenger.Text;
 
 namespace Passenger.App.Navigation;
 
-/// <summary>A place the caret was: its file, its offset in the text and that offset's line.</summary>
-public sealed record HistoryPlace(string Path, int Offset, int Line);
+/// <summary>A place the caret was: its file, its offset in the text and that offset's line, and, for a diff's tab, the diff
+/// (whose file's side the offset is in), never the file's own tab.</summary>
+public sealed record HistoryPlace(string Path, int Offset, int Line)
+{
+    public Vcs.DiffContent? Diff { get; init; }
+
+    /// <summary>Whether two places are in the same tab: the same file, each its diff's or neither.</summary>
+    public bool SameTab(HistoryPlace other) => Path == other.Path && Diff?.Key == other.Diff?.Key;
+}
 
 /// <summary>Back and Forward, Last and Next Edit Location, and the places Recent Locations lists. A navigation (go to
 /// definition, a usage, a bookmark) puts the place it left behind and forgets what was ahead, and so does a file left
@@ -49,7 +56,7 @@ public sealed class NavigationHistory
     {
         for (int i = behind.Count - 1; i >= 0; i--)
         {
-            if (behind[i].Switched && behind[i].Place.Path == from.Path)
+            if (behind[i].Switched && behind[i].Place.SameTab(from))
             {
                 behind[i].Detach();
                 behind.RemoveAt(i);
@@ -126,7 +133,7 @@ public sealed class NavigationHistory
     public HistoryPlace? Back(HistoryPlace? here, Func<string, bool> exists)
     {
         HistoryPlace? target = Take(behind, exists);
-        while (target is not null && here is not null && target.Path == here.Path && target.Offset == here.Offset)
+        while (target is not null && here is not null && target.SameTab(here) && target.Offset == here.Offset)
         {
             target = Take(behind, exists);
         }
@@ -154,7 +161,7 @@ public sealed class NavigationHistory
         {
             return null;
         }
-        if (here is not null && (here.Path != target.Path || here.Line != target.Line))
+        if (here is not null && (!here.SameTab(target) || here.Line != target.Line))
         {
             PutBehind(here);
         }
@@ -281,7 +288,7 @@ public sealed class NavigationHistory
         Keep(behind, Made(place, switched));
     }
 
-    private static bool Near(HistoryPlace one, HistoryPlace other) => one.Path == other.Path && Math.Abs(one.Line - other.Line) < NearLines;
+    private static bool Near(HistoryPlace one, HistoryPlace other) => one.SameTab(other) && Math.Abs(one.Line - other.Line) < NearLines;
 
     private static void Keep(List<Spot> places, Spot place)
     {

@@ -85,14 +85,13 @@ public sealed class CredentialProviders
         await connection.AskAsync("Handshake", new { ProtocolVersion = "2.0.0", MinimumProtocolVersion = "1.0.0" }, Step, cancel);
         await connection.AskAsync("Initialize", new { ClientVersion = "7.0.0", Culture = "en-US", RequestTimeout = "00:01:00" }, Step, cancel);
         JsonElement claims = await connection.AskAsync("GetOperationClaims", new { }, Step, cancel);
-        if (!claims.TryGetProperty("Claims", out JsonElement list) || list.ValueKind != JsonValueKind.Array || !list.EnumerateArray().Any(c => c.GetString() == "Authentication"))
+        if (!JsonMembers.Texts(claims, "Claims").Contains("Authentication"))
         {
             return null;
         }
         JsonElement answer = await connection.AskAsync("GetAuthenticationCredentials",
             new { Uri = feed.AbsoluteUri, IsRetry = isRetry, IsNonInteractive = true, CanShowDialog = false }, Answer, cancel);
-        return answer.TryGetProperty("Username", out JsonElement user) && user.GetString() is { } username
-            && answer.TryGetProperty("Password", out JsonElement secret) && secret.GetString() is { Length: > 0 } password
+        return JsonMembers.Text(answer, "Username") is { } username && JsonMembers.Text(answer, "Password") is { Length: > 0 } password
             ? new FeedCredentials(username, password)
             : null;
     }
@@ -137,7 +136,7 @@ public sealed class CredentialProviders
             {
                 waiting.TryRemove(id, out _);
             }
-            string? code = response.ValueKind == JsonValueKind.Object && response.TryGetProperty("ResponseCode", out JsonElement said) ? said.GetString() : null;
+            string? code = JsonMembers.Text(response, "ResponseCode");
             return code == "Success" ? response : throw new InvalidOperationException($"{name} answered {method} with {code ?? "nothing"}");
         }
 
@@ -192,10 +191,10 @@ public sealed class CredentialProviders
                     }
                     using JsonDocument read = JsonDocument.Parse(line);
                     JsonElement message = read.RootElement;
-                    string id = message.GetProperty("RequestId").GetString() ?? string.Empty;
-                    string type = message.GetProperty("Type").GetString() ?? string.Empty;
-                    string method = message.TryGetProperty("Method", out JsonElement named) ? named.GetString() ?? string.Empty : string.Empty;
-                    JsonElement payload = message.TryGetProperty("Payload", out JsonElement given) ? given.Clone() : default;
+                    string id = JsonMembers.Text(message, "RequestId") ?? string.Empty;
+                    string type = JsonMembers.Text(message, "Type") ?? string.Empty;
+                    string method = JsonMembers.Text(message, "Method") ?? string.Empty;
+                    JsonElement payload = JsonMembers.Value(message, "Payload")?.Clone() ?? default;
                     if (type == "Request")
                     {
                         await AnswerAsync(id, method);
@@ -206,7 +205,7 @@ public sealed class CredentialProviders
                     }
                     else if (type == "Fault" && waiting.TryGetValue(id, out TaskCompletionSource<JsonElement>? failed))
                     {
-                        string why = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("Message", out JsonElement text) ? text.GetString() ?? "a fault" : "a fault";
+                        string why = JsonMembers.Text(payload, "Message") ?? "a fault";
                         failed.TrySetException(new InvalidOperationException($"{name} answered {method} with {why}"));
                     }
                 }

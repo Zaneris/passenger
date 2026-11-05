@@ -46,8 +46,8 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         // The list opens in the frame that has the server's answer, where the syntax at the dot is read.
         window.KeyTextInput(".");
         long opening = 0;
-        DateTime limit = DateTime.UtcNow + TimeSpan.FromSeconds(60).Scaled();
-        while (!window.Assist.IsCompletionOpen && DateTime.UtcNow < limit)
+        Deadline limit = Deadline.In(TimeSpan.FromSeconds(60).Scaled());
+        while (!window.Assist.IsCompletionOpen && !limit.Passed)
         {
             before = GC.GetAllocatedBytesForCurrentThread();
             Ui.Hold(TimeSpan.FromMilliseconds(10), "one frame, whose allocations are measured");
@@ -150,8 +150,8 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         int fresh = editor.Selections.Primary.Caret - "value0;".Length;
         int moved = Digits.Length + Statement.Length;
         long landing = 0;
-        DateTime limit = DateTime.UtcNow + TimeSpan.FromSeconds(90).Scaled();
-        while ((KindAt(fresh) != TokenKind.Local || BackgroundWork.Pending > 0) && DateTime.UtcNow < limit)
+        Deadline limit = Deadline.In(TimeSpan.FromSeconds(90).Scaled());
+        while ((KindAt(fresh) != TokenKind.Local || BackgroundWork.Pending > 0) && !limit.Passed)
         {
             Assert.True(KindAt(near + moved) == TokenKind.Local, $"While the server's colours were out the local's use below lost its colour: {KindAt(near + moved)}");
             long before = GC.GetAllocatedBytesForCurrentThread();
@@ -392,8 +392,8 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
     private static long Frames(Func<bool> done, int most)
     {
         long largest = 0;
-        DateTime limit = DateTime.UtcNow + TimeSpan.FromSeconds(60).Scaled();
-        for (int frame = 0; frame < most && !done() && DateTime.UtcNow < limit; frame++)
+        Deadline limit = Deadline.In(TimeSpan.FromSeconds(60).Scaled());
+        for (int frame = 0; frame < most && !done() && !limit.Passed; frame++)
         {
             long before = GC.GetAllocatedBytesForCurrentThread();
             Ui.Hold(TimeSpan.FromMilliseconds(10), "one frame, whose allocations are measured");

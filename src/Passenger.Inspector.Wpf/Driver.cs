@@ -32,6 +32,11 @@ internal sealed class Driver(Inspector inspector) : Driving<DependencyObject, Vi
 
     protected override Visual? TopOf(DependencyObject element) => OpenTop(element) ?? Inspector.TopOf(element);
 
+    /// <summary>An open drop-down's item, clicked where it stands in its list as a person's click reaches it after scrolling:
+    /// its own pattern, else WPF's mouse button events on it, which ComboBoxItem takes to choose itself and close the list.</summary>
+    protected override InputDone? ChosenWithoutAim(Visual top, DependencyObject? element, InputAction action) =>
+        DropDownItem(element, action) is { } item ? Done(top, null, ClickOn(item, item, twice: false), Shown.TextOf(item)) : null;
+
     protected override InputDone Click(Visual top, DependencyObject? element, InputAction action)
     {
         Point at = Aim(top, element, action, "click");
@@ -83,6 +88,14 @@ internal sealed class Driver(Inspector inspector) : Driving<DependencyObject, Vi
         Raise(hit, twice);
         return hit;
     }
+
+    /// <summary>The item of an open ComboBox's drop-down a plain left click names, shown: chosen through its own pattern, as a
+    /// person scrolls the list to it and clicks it; null for any other element or click.</summary>
+    private static ComboBoxItem? DropDownItem(DependencyObject? element, InputAction action) =>
+        element is ComboBoxItem { IsVisible: true } item && action is { X: null, Y: null, Button: null or "left", Count: null or 1 } && action.Modifiers is null or { Count: 0 }
+            && ItemsControl.ItemsControlFromItemContainer(item) is ComboBox { IsDropDownOpen: true }
+            ? item
+            : null;
 
     /// <summary>Acts on an element through the automation pattern a click acts through, if it has one; false when it has none.</summary>
     private bool Acted(DependencyObject element, bool twice)

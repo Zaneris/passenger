@@ -20,6 +20,10 @@ internal sealed partial class CodeCompletion
     private readonly InfoCard itemCard = new();
     private readonly Dictionary<CompletionItem, LiveTemplate> templatesOffered = [];
     private readonly Dictionary<CompletionItem, (PostfixTemplate Template, PostfixTarget Target)> postfixOffered = [];
+
+    /// <summary>The templates and scope the live templates offered were made for: a list asked again where both stand
+    /// offers the items made before.</summary>
+    private (TemplateSet Set, TemplateScope Scope)? templatesFor;
     private CancellationTokenSource? completing;
     private CancellationTokenSource? describing;
     private Completion? open;
@@ -188,6 +192,7 @@ internal sealed partial class CodeCompletion
     public void Open(Completion list)
     {
         templatesOffered.Clear();
+        templatesFor = null;
         postfixOffered.Clear();
         open = list;
         Filter();
@@ -195,7 +200,18 @@ internal sealed partial class CodeCompletion
 
     /// <summary>What a language lists ahead of its server's items, merged by label: where the name they complete starts,
     /// the items, and the text after the caret they replace (null for the server's items' own).</summary>
-    public readonly record struct OwnItems(int Start, IReadOnlyList<CompletionItem> Items, string? Tail);
+    public readonly record struct OwnItems(int Start, IReadOnlyList<CompletionItem> Items, string? Tail)
+    {
+        /// <summary>The characters beyond a name's that narrow the list rather than close it (a path's '/').</summary>
+        public string? WordCharacters { get; init; }
+
+        /// <summary>Whether a server's item is the same as one of these by its name alone, its label's call parentheses
+        /// (Godot's <c>get_tree()</c>, <c>emit(…)</c>) taken off.</summary>
+        public bool ByName { get; init; }
+    }
+
+    /// <summary>A label as its name alone: <c>get_tree()</c>, <c>emit(…)</c> as get_tree, emit.</summary>
+    private static string NameOf(string label) => label.EndsWith(')') && label.IndexOf('(', StringComparison.Ordinal) is > 0 and int open ? label[..open] : label;
 
     /// <summary>The language server's list at the caret: a language's own items first (<paramref name="own"/>), unless
     /// <paramref name="first"/> lists its own alone; then the server's, the live templates that may go here (not in a web
@@ -219,7 +235,7 @@ internal sealed partial class CodeCompletion
             {
                 HashSet<string> labels = [.. mine.Items.Select(i => i.Label)];
                 // A server's item that would replace another stretch than the name's could not go in where the name does.
-                served = [.. served.Where(i => !labels.Contains(i.Label) && (i.TextEdit is not { } replaced || lsp.OffsetOf(replaced.Range.Start) == mine.Start))];
+                served = [.. served.Where(i => !labels.Contains(mine.ByName ? NameOf(i.Label) : i.Label) && (i.TextEdit is not { } replaced || lsp.OffsetOf(replaced.Range.Start) == mine.Start))];
             }
             if (cancel.IsCancellationRequested || (served.Count == 0 && named is null))
             {
@@ -233,22 +249,37 @@ internal sealed partial class CodeCompletion
                 ? lsp.OffsetOf(edit.Range.Start)
                 : lsp.IsRazor ? RazorWordStart(caret, served) : web is not null ? WebAssist.WebWordStart(web, Editor.Document.Snapshot, caret) : context.WordStart(caret));
             // The live templates that may go here are listed with the server's items, ahead of a keyword they share.
-            TemplateScope scope = context.Syntax is { } syntax ? TemplateScopes.At(syntax, caret).Scope : TemplateScope.None;
-            templatesOffered.Clear();
-            foreach (LiveTemplate template in web is null ? Templates.In(scope) : [])
+            TemplateScope scope = web is null && context.Syntax is { } syntax ? TemplateScopes.At(syntax, caret).Scope : TemplateScope.None;
+            if (templatesFor != (Templates, scope))
             {
-                templatesOffered[new CompletionItem { Label = template.Abbreviation, Kind = CompletionItemKind.Snippet, Detail = template.Description, SortText = "!" + template.Abbreviation }] = template;
+                templatesOffered.Clear();
+                foreach (LiveTemplate template in Templates.In(scope))
+                {
+                    templatesOffered[new CompletionItem { Label = template.Abbreviation, Kind = CompletionItemKind.Snippet, Detail = template.Description, SortText = "!" + template.Abbreviation }] = template;
+                }
+                templatesFor = (Templates, scope);
             }
             postfixOffered.Clear();
             foreach ((PostfixTemplate postfix, PostfixTarget target) in Templates.PostfixInCompletion ? Postfixes(Math.Min(start, caret), caret) : [])
             {
                 postfixOffered[new CompletionItem { Label = postfix.Name, Kind = CompletionItemKind.Snippet, Detail = postfix.Example, SortText = "~" + postfix.Name }] = (postfix, target);
             }
-            open = new Completion([.. named?.Items ?? [], .. served, .. templatesOffered.Keys, .. postfixOffered.Keys], Math.Min(start, Editor.Selections.Primary.Caret),
-                list?.ItemDefaults?.CommitCharacters ?? [], list?.IsIncomplete ?? false)
+            IReadOnlyList<CompletionItem> ahead = named?.Items ?? [];
+            CompletionItem[] offered = [.. templatesOffered.Keys, .. postfixOffered.Keys];
+            int listStart = Math.Min(start, Editor.Selections.Primary.Caret);
+            string listTail = named is { Tail: { } tail } ? tail : web is not null ? Tail(asked, served, caret) : string.Empty;
+            string lead = web is not null && start < caret && caret <= asked.Length ? asked.GetText(start, caret - start) : string.Empty;
+            // Gathered on the thread pool: an incomplete list of every type in reach is asked again at each key.
+            CompletionItem[] items = await BackgroundWork.Run<CompletionItem[]>(() => [.. ahead, .. served, .. offered], cancel.Token);
+            if (cancel.IsCancellationRequested)
             {
-                Tail = named is { Tail: { } tail } ? tail : web is not null ? Tail(asked, served, caret) : string.Empty,
-                Lead = web is not null && start < caret && caret <= asked.Length ? asked.GetText(start, caret - start) : string.Empty,
+                return;
+            }
+            open = new Completion(items, listStart, list?.ItemDefaults?.CommitCharacters ?? [], list?.IsIncomplete ?? false)
+            {
+                Tail = listTail,
+                WordCharacters = named?.WordCharacters ?? string.Empty,
+                Lead = lead,
             };
             Filter();
         }
@@ -610,10 +641,9 @@ internal sealed partial class CodeCompletion
         itemCard.IsVisible = false;
         if (completion.IsVisible && completion.Selected is { } chosen && open?.Own is { } language)
         {
-            if (language.Describe(chosen.Item) is { Length: > 0 } documentation)
+            itemCard.Clear();
+            if (language.Describe(chosen.Item, itemCard) && !itemCard.IsEmpty)
             {
-                itemCard.Clear();
-                itemCard.AddText(documentation);
                 itemCard.IsVisible = true;
                 popups.PlaceBeside(itemCard, completion);
             }

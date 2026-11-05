@@ -44,7 +44,7 @@ public sealed record DiscordIpc(IReadOnlyList<string> Places)
         {
             return ["discord-ipc"];
         }
-        string[] folders = [.. new[] { "XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP" }
+        string[] folders = [.. new[] { Core.SocketFolders.RuntimeVariable, "TMPDIR", "TMP", "TEMP" }
             .Select(Environment.GetEnvironmentVariable)
             .OfType<string>()
             .Where(Path.IsPathRooted)

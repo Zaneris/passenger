@@ -211,7 +211,7 @@ h3 { margin: 0 0 8px; font-size: 19px; line-height: 1.3; font-weight: 650; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 @media (min-width: 720px) { .grid.two { grid-template-columns: 1fr 1fr; } }
 .grid + .feature, .feature + .grid { margin-top: 64px; }
-.card { padding: 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.card { padding: 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); scroll-margin-top: 84px; }
 .card p { margin: 0; color: var(--muted); }
 .card p + p { margin-top: 10px; }
 .card .more { display: inline-block; margin-top: 12px; font-weight: 600; }

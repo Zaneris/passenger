@@ -14,6 +14,9 @@ internal static class RowExpressions
             : declaring is null ? $"{Operand(owner)}.{Name(member)}"
             : $"(({declaring}){Operand(owner)}).{Name(member)}";
 
+    /// <summary>An expression on a value, made of its members and calls (GetChildren()), from the value's own.</summary>
+    public static string? Called(string? owner, string expression) => owner is null ? null : $"{Operand(owner)}.{expression}";
+
     /// <summary>A variable's or member's name as an expression names it: a keyword's after an @ (@class).</summary>
     public static string Name(string name) => SyntaxFacts.GetKeywordKind(name) is SyntaxKind.None ? name : $"@{name}";
 

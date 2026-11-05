@@ -310,6 +310,21 @@ public sealed class XamlProjectBuilder
         return (false, walked);
     }
 
+    /// <summary>Whether a XAML file of a project's own folders, as <paramref name="open"/> gives an open one's text, else as
+    /// on disk, may use a C# symbol (<see cref="Features.CodeSymbol.MayBeIn"/>).</summary>
+    public static bool XamlHolds(string projectPath, Features.CodeSymbol symbol, Func<string, string?> open)
+    {
+        IEnumerable<string> extensions = AvaloniaDialect.Instance.Extensions.Concat(WpfDialect.Instance.Extensions);
+        foreach (string file in ProjectFolders.Under(Path.GetDirectoryName(projectPath)!).SelectMany(f => ProjectInputs.FilesIn(f, "*")))
+        {
+            if (extensions.Contains(Path.GetExtension(file).ToLowerInvariant()) && symbol.MayBeIn(open(file) ?? ReadText(file)))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>The project's own XAML files: those in its own folders (<see cref="ProjectFolders.Under"/>).</summary>
     private IEnumerable<string> XamlFilesUnder(string folder) =>
         ProjectFolders.Under(folder).SelectMany(f => ProjectInputs.FilesIn(f, "*")).Where(f => Dialect.Extensions.Contains(Path.GetExtension(f).ToLowerInvariant()));

@@ -4,7 +4,7 @@ namespace Passenger.Lsp;
 
 /// <summary>A document's URI as the protocol has it and its path as the IDE has it, one from the other. The path is
 /// always the canonical one (<see cref="PathNames.Canonical"/>), whichever spelling the server used, so a location it
-/// gives finds the open file it names.</summary>
+/// gives finds the open file it names, and two URIs of one file are one document however each spells it.</summary>
 public static class DocumentUris
 {
     public static string FromPath(string path) => new Uri(PathNames.Canonical(path)).AbsoluteUri;
@@ -18,6 +18,21 @@ public static class DocumentUris
             local = local[1..];
         }
         return PathNames.Canonical(local);
+    }
+
+    /// <summary>Whether two URIs name one document: the same text, or two files whose paths (<see cref="ToPath"/>) name one
+    /// place as the file system compares names, however each spells it.</summary>
+    public static bool Same(string uri, string other) =>
+        uri == other || Uri.TryCreate(uri, UriKind.Absolute, out Uri? one) && one.IsFile && Uri.TryCreate(other, UriKind.Absolute, out Uri? two) && two.IsFile
+            && PathNames.Same(ToPath(uri), ToPath(other));
+
+    /// <summary>The locations of <paramref name="own"/> that none of <paramref name="served"/> names already: one starting at
+    /// the same place of the same document (<see cref="Same"/>), as a server's answer and Passenger's own finding may both
+    /// hold a usage. Each kept in its order.</summary>
+    public static IReadOnlyList<LspLocation> Besides(IEnumerable<LspLocation> own, IEnumerable<LspLocation> served)
+    {
+        ILookup<LspPosition, string> at = served.ToLookup(s => s.Range.Start, s => s.Uri);
+        return [.. own.Where(o => !at[o.Range.Start].Any(uri => Same(uri, o.Uri)))];
     }
 
     /// <summary>The file name a source generator gave a document Roslyn's server names by a URI of its own (no file on

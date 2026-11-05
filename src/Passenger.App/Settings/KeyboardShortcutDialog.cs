@@ -92,7 +92,7 @@ public sealed class KeyboardShortcutDialog : IdeWindow
 
     /// <summary>An action as the dialog names one: its name, then where it is, greyed ("Comment in Main Menu |
     /// Code").</summary>
-    private static DockPanel Named(string title, string where)
+    internal static DockPanel Named(string title, string where)
     {
         TextBlock name = new() { Text = title };
         TextBlock place = new() { Text = $" in {where}", TextTrimming = TextTrimming.CharacterEllipsis };

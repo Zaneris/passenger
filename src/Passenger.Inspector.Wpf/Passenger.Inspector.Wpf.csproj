@@ -31,6 +31,11 @@
     <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
     <!-- The serve loop, the request switch and the words both inspectors answer in, and where the debugger stops them. -->
     <Compile Include="../Passenger.Inspector/Serving.cs" Link="Serving.cs" />
+    <!-- XAML Hot Reload's reading of a XAML file's two texts and what it refuses, as both inspectors read them. -->
+    <Compile Include="../Passenger.Inspector/XamlRoot.cs" Link="XamlRoot.cs" />
+    <Compile Include="../Passenger.Inspector/XamlReloading.cs" Link="XamlReloading.cs" />
+    <!-- Which of the files an app's build recorded is the XAML file asked of, as both inspectors tell. -->
+    <Compile Include="../Passenger.Inspector/XamlPlaces.cs" Link="XamlPlaces.cs" />
     <Compile Include="../Passenger.Inspector/Breaks.cs" Link="Breaks.cs" />
     <!-- The failed bindings told and counted, and a failure's nearest names, one definition for both inspectors. -->
     <Compile Include="../Passenger.Inspector/BindingFailures.cs" Link="BindingFailures.cs" />
@@ -43,6 +48,8 @@
     <!-- A XAML file's path as the disk names it, as the rest of Passenger reads one. -->
     <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
     <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
+    <!-- A socket's path checked against what a Unix socket's address holds, as Passenger checks the paths it makes. -->
+    <Compile Include="../Passenger.Core/SocketFolders.Limit.cs" Link="SocketFolders.Limit.cs" />
     <!-- A property breakpoint's hit count is kept here, where its changes are seen, in the debugger's own words. -->
     <Compile Include="../Passenger.Dap/HitCondition.cs" Link="HitCondition.cs" />
   </ItemGroup>

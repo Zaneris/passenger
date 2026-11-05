@@ -171,7 +171,7 @@ internal sealed partial class ComposeCheck(EngineChecks owner, OpenDocument docu
             try
             {
                 using JsonDocument read = JsonDocument.Parse(said.Output);
-                if (!read.RootElement.TryGetProperty(Probe, out JsonElement list) || list.ValueKind != JsonValueKind.Array || list.GetArrayLength() != asked.Length)
+                if (JsonMembers.Value(read.RootElement, Probe) is not { ValueKind: JsonValueKind.Array } list || list.GetArrayLength() != asked.Length)
                 {
                     return false;
                 }
@@ -234,7 +234,7 @@ internal sealed partial class ComposeCheck(EngineChecks owner, OpenDocument docu
         JsonElement at = root;
         foreach (string step in path)
         {
-            if (at.ValueKind == JsonValueKind.Object && at.TryGetProperty(step, out JsonElement inner))
+            if (JsonMembers.Value(at, step) is { } inner)
             {
                 at = inner;
             }
@@ -365,7 +365,7 @@ internal sealed partial class ComposeCheck(EngineChecks owner, OpenDocument docu
         {
             return new Finding(ProblemSeverity.Error, message, file, text.GetPosition(named.Start), own ? named : null)
             {
-                Fixes = own ? now => ComposeFixes.For(now, fault) : null,
+                Fixes = own ? (now, _) => ComposeFixes.For(now, fault) : null,
             };
         }
         TextRange range = Lines(text, 0, 0);

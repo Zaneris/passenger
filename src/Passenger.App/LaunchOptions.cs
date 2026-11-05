@@ -8,9 +8,11 @@ using Passenger.Workspace;
 
 namespace Passenger.App;
 
-/// <summary>The command line: <c>passenger [PATH] [--file F]... [--caret L:C] [--theme T] [--look L] [--scheme S]</c>,
-/// PATH a folder, a file, or a solution or project opened as the workspace; a screenshot with the steps before it; or
-/// the Model Context Protocol server: <c>--mcp [PATH]</c> (an IDE with no window, on standard input and output),
+/// <summary>The command line: <c>passenger [PATH] [--file F]... [--caret L:C [--zero-based]] [--theme T] [--look L] [--scheme S]
+/// [--run [NAME] | --debug [NAME]]</c>, PATH a folder, a file, or a solution or project opened as the workspace, whose run
+/// configuration NAME (as Edit Configurations names it; the one chosen without) Run or Debug starts once its projects are
+/// read, a name none has fatal; a screenshot with the steps before it, <c>--run</c> and <c>--debug</c> steps too; or the
+/// Model Context Protocol server: <c>--mcp [PATH]</c> (an IDE with no window, on standard input and output),
 /// <c>--mcp-attach [PID] [FOLDER]</c> (the agent's server, joining the window over the folder at its first call), and
 /// <c>--no-mcp</c> (a window that never lets agents in; a screenshot's lets in only its own <c>--agent</c>);
 /// <c>--headless</c> is a person's window with nobody at it. A flag it does not know, a value it cannot read or out of
@@ -50,6 +52,10 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
     /// <summary>The code's colours <c>--scheme</c> names over the ones kept, or null for those.</summary>
     public ColourScheme? Scheme { get; init; }
 
+    /// <summary>The run configuration <c>--run</c> or <c>--debug</c> starts in the window once the folder opened has read
+    /// its projects (<see cref="MainWindow.StartedRun"/>), or null; a screenshot's is one of its steps.</summary>
+    public ConfigurationStart? Starts { get; init; }
+
     public static LaunchOptions Empty { get; } = new(null, [], null, null, null);
 
     /// <summary>The options the arguments ask for, the folder and files among them paths that exist, as the disk names
@@ -62,7 +68,8 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         HashSet<string> once = [];
         string? path = null;
         List<string> named = [];
-        TextPosition? caret = null;
+        string? caretText = null;
+        bool zeroBased = false;
         ThemeChoice? theme = null;
         global::Passenger.App.Look? look = null;
         ColourScheme? scheme = null;
@@ -78,9 +85,17 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         int? attachTo = null;
         bool listen = true;
         bool headless = false;
+        ConfigurationStart? start = null;
+        // Whether a screenshot's step opened a folder before its start's step, for a start given no PATH.
+        bool openedFirst = false;
         for (int i = 0; i < args.Count; i++)
         {
             string flag = args[i];
+            if (flag.Length == 0)
+            {
+                // Names nothing: Godot's editor fills in an empty project for a script outside its project.
+                continue;
+            }
             given.Add(flag);
             if (!flag.StartsWith('-'))
             {
@@ -120,7 +135,10 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                     named.Add(Value(args, ref i, flag));
                     break;
                 case "--caret":
-                    caret = ParseCaret(Value(args, ref i, flag));
+                    caretText = Value(args, ref i, flag);
+                    break;
+                case "--zero-based":
+                    zeroBased = true;
                     break;
                 case "--theme":
                     theme = ParseTheme(Value(args, ref i, flag));
@@ -183,6 +201,15 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                         ? PathNames.Canonical(opened)
                         : throw new FormatException($"--open takes a file or folder that is there, not '{opened}'")));
                     break;
+                case "--run" or "--debug":
+                    if (start is not null)
+                    {
+                        throw new FormatException("--run and --debug each start a run configuration; give one of them");
+                    }
+                    openedFirst = steps.Any(s => s is ScriptStep.Open);
+                    start = ConfigurationStart.Read(args, ref i);
+                    steps.Add(new ScriptStep.Launch(start));
+                    break;
                 case "--agent":
                     string agentText = Value(args, ref i, flag);
                     steps.Add(new ScriptStep.Agent(agentText, AgentCommand(agentText)));
@@ -221,6 +248,8 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         }
 
         CheckMode(given, mcp, shot is not null, listen);
+        TextPosition? caret = caretText is not null ? ParseCaret(caretText, zeroBased)
+            : zeroBased ? throw new FormatException("--zero-based says --caret counts its line and column from 0, and no --caret is given") : null;
         if (headless && (mcp != McpMode.None || shot is not null || !listen))
         {
             throw new FormatException("--headless is a person's window with nobody at it, a test run's: it takes a path, files and a caret, not --mcp, --mcp-attach, --screenshot or --no-mcp");
@@ -234,8 +263,16 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         {
             throw new FormatException("--caret needs a file to put the caret in, the PATH or a --file");
         }
+        if (start is not null && folder is null && !(shot is not null && openedFirst))
+        {
+            throw new FormatException(start.NoFolder);
+        }
         ScreenshotOptions? screenshot = shot is null ? null : Checked(new ScreenshotOptions(shot, size, scale, steps, crop) { WindowButtons = windowButtons }, cropText, points);
-        return new LaunchOptions(folder, files, caret, theme, screenshot) { Workspace = workspace, Mcp = mcp, AttachTo = attachTo, ListenForAgents = listen, Headless = headless, Look = look, Scheme = scheme };
+        return new LaunchOptions(folder, files, caret, theme, screenshot)
+        {
+            Workspace = workspace, Mcp = mcp, AttachTo = attachTo, ListenForAgents = listen, Headless = headless, Look = look, Scheme = scheme,
+            Starts = shot is null ? start : null,
+        };
     }
 
     /// <summary>Refuses the first flag the chosen mode does not take: a window takes all but a screenshot's, a screenshot
@@ -254,6 +291,10 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         if (mcp == McpMode.Stdio && screenshot)
         {
             throw new FormatException("--mcp does not take --screenshot; its agent takes one with the screenshot tool");
+        }
+        if (mcp == McpMode.Stdio && given.FirstOrDefault(g => g is "--run" or "--debug") is { } starting)
+        {
+            throw new FormatException($"--mcp does not take {starting}; its agent starts a configuration with its {(global::Passenger.App.Mcp.McpTools.Run)} and {(global::Passenger.App.Mcp.McpTools.DebugStart)} tools");
         }
         if (!listen && (mcp == McpMode.Stdio || screenshot))
         {
@@ -407,18 +448,21 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
     }
 
     /// <summary>"12:5" is line 12, column 5, as the status bar shows them (from one).</summary>
-    private static TextPosition ParseCaret(string text)
+    /// <summary>A caret's line and column, counted from 1, or from 0 as Godot's editor fills them in for a C# script
+    /// (<c>--zero-based</c>).</summary>
+    private static TextPosition ParseCaret(string text, bool zeroBased)
     {
+        int first = zeroBased ? 0 : 1;
         string[] parts = text.Split(':');
-        int column = 1;
-        if (parts.Length > 2 || !Counted(parts[0], out int line) || (parts.Length == 2 && !Counted(parts[1], out column)))
+        int column = first;
+        if (parts.Length > 2 || !Counted(parts[0], first, out int line) || (parts.Length == 2 && !Counted(parts[1], first, out column)))
         {
-            throw new FormatException($"--caret takes LINE or LINE:COLUMN from 1, not '{text}'");
+            throw new FormatException($"--caret takes LINE or LINE:COLUMN from {first}{(zeroBased ? " with --zero-based" : string.Empty)}, not '{text}'");
         }
-        return new TextPosition(line - 1, column - 1);
+        return new TextPosition(line - first, column - first);
 
-        static bool Counted(string part, out int value) =>
-            int.TryParse(part, NumberStyles.None, CultureInfo.InvariantCulture, out value) && value >= 1;
+        static bool Counted(string part, int first, out int value) =>
+            int.TryParse(part, NumberStyles.None, CultureInfo.InvariantCulture, out value) && value >= first;
     }
 
     /// <summary>"cmd+shift+L", or "meta shift L" as keymaps write it.</summary>
@@ -491,6 +535,11 @@ public abstract record ScriptStep
     /// <summary>A folder, solution or project opened as File, Open opens the one chosen: with one open already, Open
     /// Solution asks where (Settings' default), and a window of its own opens on New Window.</summary>
     public sealed record Open(string Path) : ScriptStep;
+
+    /// <summary>A run configuration of the folder open run or debugged as the window's own <c>--run</c> or <c>--debug</c>
+    /// starts it (<see cref="MainWindow.StartConfigurationAsync"/>), its build and start waited for, never its program;
+    /// one that cannot start is refused.</summary>
+    public sealed record Launch(ConfigurationStart Start) : ScriptStep;
 }
 
 /// <summary>How the command line asks for the Model Context Protocol server.</summary>

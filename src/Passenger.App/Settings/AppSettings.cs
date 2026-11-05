@@ -37,6 +37,12 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// them.</summary>
     public bool MainMenuBar { get; init; }
 
+    /// <summary>The window's typeface by its family's name, <see cref="WindowFontNames.SystemUi"/> for the system's own UI
+    /// font, or null for the Inter Passenger carries.</summary>
+    public string? WindowFontFamily { get; init; }
+
+    /// <summary>The code font by its family's name, or null for the one Passenger carries.</summary>
+    public string? EditorFontFamily { get; init; }
     public double EditorFontSize { get; init; } = 13;
     public double EditorLineSpacing { get; init; } = 1.2;
     public bool Ligatures { get; init; }
@@ -44,6 +50,14 @@ public sealed record AppSettings : IStateDocument<AppSettings>
 
     /// <summary>Rainbow braces: brackets coloured by how deeply they nest.</summary>
     public bool RainbowBraces { get; init; } = true;
+
+    /// <summary>In XAML, XML, MSBuild's files and HTML, a start tag's '>' writes its end tag after the caret, and "&lt;/"
+    /// the open element's name.</summary>
+    public bool CloseTags { get; init; } = true;
+
+    /// <summary>The XAML workspace: an Avalonia or WPF file opens beside its preview and, while its app runs, its Live Visual
+    /// Tree, an element chosen in any of the three chosen in the others.</summary>
+    public bool XamlWorkspace { get; init; }
 
     /// <summary>Parameter name hints: an argument's parameter shown before it where the call does not say it.</summary>
     public bool ParameterHints { get; init; } = true;
@@ -72,6 +86,11 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// scrolls.</summary>
     public bool WheelZoom { get; init; }
     public double TerminalFontSize { get; init; } = 13;
+    /// <summary>The terminal's own font by its family's name, or null for the code font in force.</summary>
+    public string? TerminalFontFamily { get; init; }
+    public bool TerminalCopyOnSelection { get; init; }
+    public bool TerminalCursorBlinking { get; init; }
+    public Passenger.Terminal.CursorShape TerminalCursorStyle { get; init; } = Passenger.Terminal.CursorShape.Block;
 
     /// <summary>Code Folding, Fold by default: the comments a file begins with fold as it opens (a file keeps the folds
     /// it closed with instead, once it has some).</summary>
@@ -106,6 +125,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
 
     /// <summary>Hot Reload on file save: a C# file saved while the program is debugged applies its edits.</summary>
     public bool HotReloadOnSave { get; init; }
+
+    /// <summary>XAML Hot Reload on file save: a XAML file saved applies the XAML edits to the Avalonia or WPF app run or
+    /// debugged, which takes them through Passenger's inspector.</summary>
+    public bool XamlHotReloadOnSave { get; init; } = true;
 
     /// <summary>An edit Hot Reload cannot apply (a rude edit) restarts the debugged program, built again with the same
     /// configuration and breakpoints, without asking; off, the restart is asked first.</summary>
@@ -167,12 +190,24 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// one keymap is never put over the other.</summary>
     public Dictionary<string, string[]> VSCodeShortcuts { get; init; } = [];
 
+    /// <summary>The person's shortcuts over the IntelliJ IDEA keymap's, kept apart from the others' as VS Code's are.</summary>
+    public Dictionary<string, string[]> IntelliJShortcuts { get; init; } = [];
+
     /// <summary>The person's shortcuts over the keymap they chose (a method, so the settings agents list leave it out).</summary>
-    public Dictionary<string, string[]> OwnShortcuts() => Keymap == Passenger.Editor.KeymapPreset.VSCode ? VSCodeShortcuts : Shortcuts;
+    public Dictionary<string, string[]> OwnShortcuts() => Keymap switch
+    {
+        Passenger.Editor.KeymapPreset.VSCode => VSCodeShortcuts,
+        Passenger.Editor.KeymapPreset.IntelliJ => IntelliJShortcuts,
+        _ => Shortcuts,
+    };
 
     /// <summary>These settings with these as the person's shortcuts over the keymap they chose.</summary>
-    public AppSettings WithOwnShortcuts(Dictionary<string, string[]> shortcuts) =>
-        Keymap == Passenger.Editor.KeymapPreset.VSCode ? this with { VSCodeShortcuts = shortcuts } : this with { Shortcuts = shortcuts };
+    public AppSettings WithOwnShortcuts(Dictionary<string, string[]> shortcuts) => Keymap switch
+    {
+        Passenger.Editor.KeymapPreset.VSCode => this with { VSCodeShortcuts = shortcuts },
+        Passenger.Editor.KeymapPreset.IntelliJ => this with { IntelliJShortcuts = shortcuts },
+        _ => this with { Shortcuts = shortcuts },
+    };
 
     /// <summary>The live templates as the person left them, by template: a built-in one's changes (its key the shortcut
     /// it ships with), and the whole of each they added (<see cref="TemplateChange"/>).</summary>
@@ -194,6 +229,26 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>The Node.js the JavaScript, TypeScript, HTML, CSS and JSON language servers run on, or null for the
     /// first on the PATH as the login shell finds it.</summary>
     public string? NodeInterpreter { get; init; }
+
+    /// <summary>The Chromium browser a Blazor app's WebAssembly half is debugged in, with arguments given every start of it,
+    /// as one command line; null for the one found (<see cref="Passenger.Core.ChromiumBrowsers"/>).</summary>
+    public string? DebugBrowser { get; init; }
+
+    /// <summary>The Godot a Godot project's game and editor run on, with arguments given every start of it, as one command
+    /// line; null for the one found (<see cref="Passenger.Core.GodotExecutables"/>).</summary>
+    public string? GodotExecutable { get; init; }
+
+    /// <summary>Whether a running Godot game's values show after its scripts' members in the code.</summary>
+    public bool GodotLiveValues { get; init; } = true;
+
+    /// <summary>Whether the game GUT's and GoDotTest's tests run in shows its window, where it runs headless otherwise.</summary>
+    public bool GodotTestsWindowed { get; init; }
+
+    /// <summary>Whether a game Godot's editor plays through Passenger's addon is held at its start and debugged here.</summary>
+    public bool GodotDebugPlays { get; init; } = true;
+
+    /// <summary>Whether a node selected in Godot's editor shows here: its scene at the node, its script at its class.</summary>
+    public bool GodotSelectionFollows { get; init; } = true;
 
     /// <summary>ESLint's "Run for files" at first.</summary>
     public const string DefaultEslintFiles = "**/*.{js,ts,jsx,tsx,cjs,cts,mjs,mts,html,vue}";
@@ -236,6 +291,11 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>Remote JSON Schemas, "Allow downloading JSON Schemas from remote sources": a JSON file's own
     /// <c>$schema</c> on the web is downloaded to check and complete it. Those Passenger carries never are.</summary>
     public bool DownloadJsonSchemas { get; init; } = true;
+
+    /// <summary>Remote Stylesheets, "Allow downloading the stylesheets a page links from the web": a stylesheet a page links
+    /// by its address on the web (a CDN's) is downloaded to complete, describe and check its classes. Off until the person
+    /// allows it, so a page's links are never fetched unasked.</summary>
+    public bool DownloadStylesheets { get; init; }
 
     /// <summary>"Complete image tags from Docker Hub": the Dockerfile server asks Docker Hub for an image's tags, naming the
     /// image, as <c>FROM image:</c> is completed. Off, it asks Docker Hub nothing and offers no tags.</summary>
@@ -285,6 +345,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// diff's Settings changes it for every diff after.</summary>
     public DiffHighlighting DiffHighlighting { get; init; } = DiffHighlighting.Words;
 
+    /// <summary>Where a diff opens (Show Diff, Compare With, a commit's file in the log, Compare Files): a window of its
+    /// own over the IDE's at first, or a tab of the editors.</summary>
+    public DiffPlace OpenDiffsIn { get; init; } = DiffPlace.Window;
+
     /// <summary>Highlight Words in a change bar's popup: the words that changed marked in what the lines were and in
     /// the file while the popup is open; the popup's toggle changes it.</summary>
     public bool ChangePopupWords { get; init; } = true;
@@ -293,11 +357,26 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// (Counter.razor.cs under Counter.razor), on until the Explorer's File Nesting... turns it off.</summary>
     public bool NestFiles { get; init; } = true;
 
+    /// <summary>The Explorer's Always Select Opened File: the file shown chosen in it as another is shown or opened, on
+    /// until its options turn it off.</summary>
+    public bool AlwaysSelectOpenedFile { get; init; } = true;
+
+    /// <summary>The Explorer's Open Files with Single Click: a plain click on a file's row opens it, the keys left on the
+    /// row; off until its options turn it on.</summary>
+    public bool OpenFilesWithSingleClick { get; init; }
+
     /// <summary>The code style for XAML (the XML formatter's options, with an attribute order and empty-element style),
     /// which Reformat Code lays out Avalonia's and WPF's XAML by, a file's .editorconfig over it.</summary>
     public Passenger.Xaml.Features.XamlFormatSettings XamlFormat { get; init; } = new();
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, DiscordKeptAsItWas];
+    /// <summary>The code style for GDScript beyond its indentation (line length, blank lines, trailing commas), which
+    /// Reformat Code lays scripts out by after Godot's style guide, a file's .editorconfig over it.</summary>
+    public Passenger.Workspace.GDScript.GDScriptFormatSettings GDScriptFormat { get; init; } = new();
+
+    /// <summary>"Reformat on save": a save (File, Save All) first reformats each changed GDScript as Reformat Code does.</summary>
+    public bool GDScriptFormatOnSave { get; init; }
+
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, DiscordKeptAsItWas, MouseShortcutsKept];
 
     /// <summary><see cref="AgentFolders"/> is a set: a folder let in always from one window while another's Settings takes
     /// back a different one stays let in.</summary>
@@ -307,7 +386,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <see cref="Clamped"/> reads them: written so, the former id leaves the file, and an action's shortcuts reset stay so.</summary>
     public static void Renamed(JsonObject settings)
     {
-        foreach (string property in new[] { nameof(Shortcuts), nameof(VSCodeShortcuts) })
+        foreach (string property in new[] { nameof(Shortcuts), nameof(VSCodeShortcuts), nameof(IntelliJShortcuts) })
         {
             if (settings[StateFile.Options.PropertyNamingPolicy!.ConvertName(property)] is not JsonObject shortcuts)
             {
@@ -338,6 +417,35 @@ public sealed record AppSettings : IStateDocument<AppSettings>
         settings["discordShows"] = nameof(DiscordShown.PassengerOnly);
     }
 
+    /// <summary>Version 2 to 3: an action's own shortcuts, which now give it its mouse shortcuts too, keep those its keymap
+    /// gives it, as version 2 kept them beside the person's keys.</summary>
+    private static void MouseShortcutsKept(JsonObject settings)
+    {
+        foreach ((string property, Passenger.Editor.KeymapPreset preset) in new[]
+        {
+            (nameof(Shortcuts), Passenger.Editor.KeymapPreset.VisualStudio),
+            (nameof(VSCodeShortcuts), Passenger.Editor.KeymapPreset.VSCode),
+            (nameof(IntelliJShortcuts), Passenger.Editor.KeymapPreset.IntelliJ),
+        })
+        {
+            if (settings[StateFile.Options.PropertyNamingPolicy!.ConvertName(property)] is not JsonObject shortcuts)
+            {
+                continue;
+            }
+            Passenger.Editor.Keymap keymap = AppActions.Keymap(preset, new Dictionary<string, string[]>());
+            foreach ((string action, JsonNode? keys) in shortcuts)
+            {
+                if (keys is JsonArray list)
+                {
+                    foreach (Passenger.Editor.MouseShortcut gesture in keymap.MouseShortcutsFor(AppActions.Now(action)))
+                    {
+                        list.Add(gesture.Notation());
+                    }
+                }
+            }
+        }
+    }
+
     /// <summary>A hand-edited or later build's value this build cannot use is brought into range, or back to its default
     /// (each setting of one value as <see cref="Declared"/> says); a shortcut that does not parse is the keymap's to pass over.</summary>
     public AppSettings Clamped()
@@ -347,6 +455,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
         {
             Shortcuts = Readable(Shortcuts),
             VSCodeShortcuts = Readable(VSCodeShortcuts),
+            IntelliJShortcuts = Readable(IntelliJShortcuts),
             LiveTemplates = (LiveTemplates ?? []).Where(t => t.Value is not null).ToDictionary(t => t.Key, t => t.Value.Clamped()),
             PostfixTemplates = PostfixTemplates ?? [],
             NodeInterpreter = string.IsNullOrWhiteSpace(NodeInterpreter) ? null : NodeInterpreter.Trim(),
@@ -356,6 +465,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
             PrettierFiles = string.IsNullOrWhiteSpace(PrettierFiles) ? defaults.PrettierFiles : PrettierFiles.Trim(),
             SoftWrapFiles = SoftWrapFiles ?? defaults.SoftWrapFiles,
             XamlFormat = (XamlFormat ?? defaults.XamlFormat).Clamped(),
+            GDScriptFormat = (GDScriptFormat ?? defaults.GDScriptFormat).Clamped(),
             AgentFolders = [.. (AgentFolders ?? []).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(Passenger.Core.PathNames.Comparer)],
         };
         foreach (Setting setting in Declared.All)
@@ -457,6 +567,13 @@ public enum OpenProjectIn
     NewWindow,
     CurrentWindow,
     Ask,
+}
+
+/// <summary>Where a diff opens, in the order Settings lists them.</summary>
+public enum DiffPlace
+{
+    Window,
+    Tab,
 }
 
 /// <summary>What Discord's activity names beyond Passenger, in the order Settings lists them.</summary>

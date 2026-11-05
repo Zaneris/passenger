@@ -32,9 +32,8 @@ public sealed class ErrorsPopup : UserControl
             TextWrapping = TextWrapping.NoWrap,
             AcceptsReturn = true,
             Height = 220,
-            FontFamily = CodeEditor.CodeFont,
             FontSize = 11.5,
-        };
+        }.InCodeFont();
         list.SelectionChanged += (_, _) =>
         {
             IdeError? chosen = list.SelectedItem as IdeError;

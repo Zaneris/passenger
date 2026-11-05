@@ -16,9 +16,13 @@ public static class MarkupNames
     /// <summary>Whether an HTML element never closes (br, img, input, ...), its name in any case.</summary>
     public static bool IsVoid(ReadOnlySpan<char> name) => VoidNames.Contains(name);
 
-    public static bool IsNameStart(char c) => char.IsLetter(c) || c is '_' or ':';
+    /// <summary>Whether a character can start a name, by XML's NameStartChar, a character past the basic plane by either half.</summary>
+    public static bool IsNameStart(char c) => c is ':' or '_' or (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or (>= '\u00C0' and <= '\u00D6') or (>= '\u00D8' and <= '\u00F6')
+        or (>= '\u00F8' and <= '\u02FF') or (>= '\u0370' and <= '\u037D') or (>= '\u037F' and <= '\u1FFF') or '\u200C' or '\u200D' or (>= '\u2070' and <= '\u218F')
+        or (>= '\u2C00' and <= '\u2FEF') or (>= '\u3001' and <= '\uDB7F') or (>= '\uDC00' and <= '\uDFFF') or (>= '\uF900' and <= '\uFDCF') or (>= '\uFDF0' and <= '\uFFFD');
 
-    public static bool IsNameChar(char c) => char.IsLetterOrDigit(c) || c is '_' or '-' or '.' or ':';
+    /// <summary>Whether a character goes on in a name, by XML's NameChar: a combining mark as much as a letter.</summary>
+    public static bool IsNameChar(char c) => IsNameStart(c) || c is '-' or '.' or (>= '0' and <= '9') or '\u00B7' or (>= '\u0300' and <= '\u036F') or '\u203F' or '\u2040';
 
     /// <summary>Reads one character of a declaration after its "&lt;!", counting its internal subset's brackets: whether it
     /// is the '&gt;' that ends it.</summary>

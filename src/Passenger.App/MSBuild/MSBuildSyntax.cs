@@ -109,16 +109,17 @@ public static class MSBuildSyntax
         _ => false,
     };
 
-    /// <summary>The entry of a semicolon-separated list (targets, frameworks) that holds an offset: its text and range.</summary>
+    /// <summary>The entry of a semicolon-separated list (targets, frameworks, an item's files) that holds an offset: its text,
+    /// XML's references read, and its range as written.</summary>
     public static (string Text, TextRange Range) EntryAt(string text, int start, int end, int offset)
     {
         int from = offset;
-        while (from > start && text[from - 1] != ';')
+        while (from > start && !Separates(text, start, from - 1))
         {
             from--;
         }
         int to = offset;
-        while (to < end && text[to] != ';')
+        while (to < end && !Separates(text, start, to))
         {
             to++;
         }
@@ -130,7 +131,24 @@ public static class MSBuildSyntax
         {
             to--;
         }
-        return (text[from..to], TextRange.FromBounds(from, Math.Max(from, to)));
+        return (XmlEntities.Decode(text[from..to]), TextRange.FromBounds(from, Math.Max(from, to)));
+    }
+
+    /// <summary>Whether the character at <paramref name="at"/> of a list begun at <paramref name="start"/> parts two entries: a
+    /// semicolon, but for one closing a character reference (<c>r&amp;amp;d</c>), which is the XML's and no list's.</summary>
+    private static bool Separates(string text, int start, int at)
+    {
+        if (text[at] != ';')
+        {
+            return false;
+        }
+        int before = text.AsSpan(start, at - start).LastIndexOfAny('&', ';');
+        if (before < 0 || text[start + before] != '&')
+        {
+            return true;
+        }
+        string reference = text[(start + before)..(at + 1)];
+        return XmlEntities.Decode(reference) == reference;
     }
 
     /// <summary>An attribute's value as written, or a metadata element's text, of an element: <c>Version="1.0"</c> or

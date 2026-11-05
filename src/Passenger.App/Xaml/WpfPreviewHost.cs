@@ -9,7 +9,6 @@ using Passenger.Core;
 using Passenger.Text;
 using Passenger.WpfPreview;
 using Passenger.Xaml.Projects;
-using Passenger.Xaml.Syntax;
 
 namespace Passenger.App.Xaml;
 
@@ -59,7 +58,7 @@ internal sealed class WpfPreviewHost : IPreviewHost
         ProjectInputs inputs = builder.Current.Inputs;
         if (XamlPreview.Output(inputs, configured: false) is not { } built)
         {
-            preview.Say($"Build {Path.GetFileNameWithoutExtension(inputs.ProjectPath)} to preview its XAML: the previewer draws its last build");
+            preview.SayUnbuilt(inputs);
             return null;
         }
         if (!File.Exists(Previewer))
@@ -105,8 +104,9 @@ internal sealed class WpfPreviewHost : IPreviewHost
     {
         string name = Path.GetFileNameWithoutExtension(assembly);
         string configuration = Path.Combine(shadow, name + ".runtimeconfig.json");
-        // A class library has no runtime configuration, and one older than .NET 8 runs no previewer built for 8.
-        bool own = !File.Exists(configuration) || XamlPreview.Framework(inputs.TargetFramework) is not { Major: >= 8 };
+        // A class library has no runtime configuration, and a build for one older than .NET 8 runs no previewer built for 8.
+        string? runs = await BackgroundWork.Run(() => XamlPreview.FrameworkOfBuild(assembly));
+        bool own = runs is null || XamlPreview.Framework(runs) is not { Major: >= 8 };
         if (own)
         {
             configuration = Path.ChangeExtension(Previewer, ".runtimeconfig.json");
@@ -223,7 +223,7 @@ internal sealed class WpfPreviewHost : IPreviewHost
                 {
                     using MemoryStream bytes = new(png);
                     frame = new Bitmap(bytes);
-                    elements = sent is null ? [] : Place(sent, reply.Elements ?? []);
+                    elements = sent is null ? [] : XamlPreview.Placed(sent, [.. (reply.Elements ?? []).Select(b => (b.Line, b.Column, new Rect(b.X, b.Y, b.Width, b.Height)))]);
                 }
                 UiThread.Post(() => Received(reply, frame, sent, elements));
             }
@@ -279,30 +279,6 @@ internal sealed class WpfPreviewHost : IPreviewHost
         preview.Tell();
     }
 
-    /// <summary>The previewer's boxes on the elements of the text it drew: a box's line and column are its element's name
-    /// (or its '&lt;'), as an XML reader places it, a lone '\r' ending a line (<see cref="Lsp.ServerLines.OfXml"/>).</summary>
-    private static List<PreviewElement> Place(TextSnapshot text, IReadOnlyList<WpfPreviewBox> boxes)
-    {
-        XmlTree tree = XmlTree.Parse(text.ToString());
-        Lsp.ServerLines lines = Lsp.ServerLines.OfXml(text);
-        List<PreviewElement> placed = [];
-        foreach (WpfPreviewBox box in boxes)
-        {
-            if (box.Line < 1 || box.Line > lines.LineCount)
-            {
-                continue;
-            }
-            int offset = lines.OffsetOf(box.Line - 1, Math.Max(0, box.Column - 1));
-            XmlElement? element = tree.Elements.Where(e => e.Start <= offset && offset <= e.NameEnd).MaxBy(e => e.Start);
-            if (element is not null)
-            {
-                placed.Add(new PreviewElement(TextRange.FromBounds(element.Start, element.StartTagEnd), TextRange.FromBounds(element.Start, element.End),
-                    new Rect(box.X, box.Y, Math.Max(0, box.Width), Math.Max(0, box.Height))));
-            }
-        }
-        return placed;
-    }
-
     /// <summary>A file's pack URI in the project's assembly, which relative URIs in it resolve against as in the build.</summary>
     private string BaseUri(string path)
     {
@@ -346,25 +322,13 @@ internal sealed class WpfPreviewHost : IPreviewHost
         {
             string name = Path.GetFileName(folder);
             int dash = name.IndexOf('-', StringComparison.Ordinal);
-            if (dash > 0 && int.TryParse(name[..dash], out int owner) && owner != Environment.ProcessId && !Running(owner))
+            if (dash > 0 && int.TryParse(name[..dash], out int owner) && owner != Environment.ProcessId && !DotnetProcesses.Runs(owner))
             {
                 Delete(folder);
             }
         }
     }
 
-    private static bool Running(int id)
-    {
-        try
-        {
-            using Process found = Process.GetProcessById(id);
-            return !found.HasExited;
-        }
-        catch (Exception missing) when (missing is ArgumentException or InvalidOperationException)
-        {
-            return false;
-        }
-    }
 
     private static void Delete(string folder)
     {

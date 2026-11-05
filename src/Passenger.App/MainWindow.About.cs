@@ -27,9 +27,9 @@ public partial class MainWindow
     public NativeMenu ApplicationMenu()
     {
         // macOS's application menu names the application after About.
-        NativeMenuItem about = new($"{actions![AppActions.About]!.Title} Passenger") { Command = new MenuCommand(() => InFront().Request(AppActions.About)) };
-        NativeMenuItem updates = new(actions[AppActions.CheckForUpdates]!.Title) { Command = new MenuCommand(() => InFront().Request(AppActions.CheckForUpdates)) };
-        NativeMenuItem settings = new(actions[AppActions.ShowSettings]!.Title)
+        NativeMenuItem about = new(NativeWords($"{actions![AppActions.About]!.Title} Passenger")) { Command = new MenuCommand(() => InFront().Request(AppActions.About)) };
+        NativeMenuItem updates = new(NativeWords(actions[AppActions.CheckForUpdates]!.Title)) { Command = new MenuCommand(() => InFront().Request(AppActions.CheckForUpdates)) };
+        NativeMenuItem settings = new(NativeWords(actions[AppActions.ShowSettings]!.Title))
         {
             Gesture = actions.MenuBarGesture(AppActions.ShowSettings),
             Command = new MenuCommand(() => InFront().Request(AppActions.ShowSettings)),

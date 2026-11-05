@@ -478,8 +478,8 @@ public sealed class NewSolutionTests : IDisposable
         }
         Assert.True(expected.Count > 0, $"dotnet new list listed no project templates:\n{said}");
         List<string> missing = [];
-        // Those not installed, the known packages' kinds dotnet new has not got, are no row of its list.
-        List<ProjectTemplate> unmatched = [.. dialog.Templates.Where(t => t.Pack is null)];
+        // Those not installed, the known packages' kinds dotnet new has not got, are no row of its list, nor Passenger's own.
+        List<ProjectTemplate> unmatched = [.. dialog.Templates.Where(t => t.Pack is null && !t.GodotGame)];
         foreach (Listed row in expected)
         {
             ProjectTemplate? match = unmatched.FirstOrDefault(t => t.ShortNames.SequenceEqual(row.ShortNames) && t.Languages.SequenceEqual(row.Languages)

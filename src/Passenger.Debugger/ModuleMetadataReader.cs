@@ -82,27 +82,32 @@ public partial class ModuleMetadataReader : IDisposable
     {
         foreach (CustomAttributeHandle handle in attributes)
         {
-            EntityHandle constructor = reader.GetCustomAttribute(handle).Constructor;
-            EntityHandle type = constructor.Kind switch
-            {
-                HandleKind.MemberReference => reader.GetMemberReference((MemberReferenceHandle)constructor).Parent,
-                HandleKind.MethodDefinition => reader.GetMethodDefinition((MethodDefinitionHandle)constructor).GetDeclaringType(),
-                _ => default,
-            };
-            string? name = type.Kind switch
-            {
-                HandleKind.TypeReference when reader.GetTypeReference((TypeReferenceHandle)type) is var reference =>
-                    $"{reader.GetString(reference.Namespace)}.{reader.GetString(reference.Name)}",
-                HandleKind.TypeDefinition when reader.GetTypeDefinition((TypeDefinitionHandle)type) is var definition =>
-                    $"{reader.GetString(definition.Namespace)}.{reader.GetString(definition.Name)}",
-                _ => null,
-            };
-            if (name is not null && names.Contains(name, StringComparer.Ordinal))
+            if (AttributeTypeName(reader, reader.GetCustomAttribute(handle)) is { } name && names.Contains(name, StringComparer.Ordinal))
             {
                 return true;
             }
         }
         return false;
+    }
+
+    /// <summary>The namespace and name of an attribute's type, null where its constructor names none.</summary>
+    internal static string? AttributeTypeName(MetadataReader reader, CustomAttribute attribute)
+    {
+        EntityHandle constructor = attribute.Constructor;
+        EntityHandle type = constructor.Kind switch
+        {
+            HandleKind.MemberReference => reader.GetMemberReference((MemberReferenceHandle)constructor).Parent,
+            HandleKind.MethodDefinition => reader.GetMethodDefinition((MethodDefinitionHandle)constructor).GetDeclaringType(),
+            _ => default,
+        };
+        return type.Kind switch
+        {
+            HandleKind.TypeReference when reader.GetTypeReference((TypeReferenceHandle)type) is var reference =>
+                $"{reader.GetString(reference.Namespace)}.{reader.GetString(reference.Name)}",
+            HandleKind.TypeDefinition when reader.GetTypeDefinition((TypeDefinitionHandle)type) is var definition =>
+                $"{reader.GetString(definition.Namespace)}.{reader.GetString(definition.Name)}",
+            _ => null,
+        };
     }
 
     internal (int MethodToken, int ILOffset)? ResolveManagedEntryPoint()

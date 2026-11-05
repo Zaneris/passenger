@@ -202,7 +202,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
             StoppedEvent stopped = await host.WaitForStoppedEvent();
             Assert.True((stopped.Reason, stopped.Line) == (StopReasons.Breakpoint, first),
                 $"Launch {launch} in the terminal stopped for {stopped.Reason} at line {stopped.Line}, not at the breakpoint on Main's first line ({first})");
-            Assert.True(terminal.Program is { HasExited: false } program && (await host.TopFrameAsync(stopped.ThreadId!.Value)).Name.Contains("Main", StringComparison.Ordinal),
+            Assert.True(terminal.Program is { } program && DotnetProcesses.Runs(program) && (await host.TopFrameAsync(stopped.ThreadId!.Value)).Name.Contains("Main", StringComparison.Ordinal),
                 $"Launch {launch} stopped somewhere other than in the program the terminal started");
         }
     }

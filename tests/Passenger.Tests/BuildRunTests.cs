@@ -239,6 +239,39 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         window.Close();
     }
 
+    /// <summary>A compiler's message about a file as a whole, which names no place in it (MSBuild's "file : warning
+    /// AVLN3001: ...", as Avalonia's XAML compiler writes one), links its file in the Build window, a path with a space in it
+    /// whole, and the link opens it.</summary>
+    [AvaloniaFact]
+    public void A_build_message_naming_a_file_but_no_place_in_it_links_the_file_and_opens_it()
+    {
+        Write("src/Hello/Hello.csproj",
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n" +
+            "  <Target Name=\"Placeless\" BeforeTargets=\"Build\">\n" +
+            "    <Warning File=\"Views/Tools Window.axaml\" Code=\"AVLN3001\" Text=\"XAML resource won't be reachable via runtime loader\" />\n" +
+            "  </Target>\n</Project>\n");
+        Write("src/Hello/Views/Tools Window.axaml", "<UserControl xmlns=\"https://github.com/avaloniaui\" />\n");
+        string axaml = PathNames.Canonical(Path.Combine(Folder, "src", "Hello", "Views", "Tools Window.axaml"));
+        MainWindow window = Open();
+        Ui.Press(window, Ui.Shortcut(AppActions.Build));
+        Ui.Settle();
+
+        OutputView build = window.BottomPanel.Build;
+        TextSnapshot text = build.Document.Snapshot;
+        int line = Enumerable.Range(0, text.LineCount).FirstOrDefault(l => text.GetLineText(l).Contains(" : warning AVLN3001", StringComparison.Ordinal), -1);
+        Assert.True(line >= 0, $"The Build window shows no warning about the file as a whole:\n{text}");
+        string said = text.GetLineText(line);
+        FoundLink link = Assert.Single(build.Links.In(said), l => l.Target is FileLink);
+        Assert.True(link.Target is FileLink { Path: var linked, Position: var at } && PathNames.Same(linked, axaml) && at == default
+            && said.Substring(link.Start, link.Length).EndsWith("Tools Window.axaml", StringComparison.Ordinal),
+            $"The warning's file is linked as {said.Substring(link.Start, link.Length)} to {link.Target}, not as the file {axaml} as a whole, in: {said}");
+
+        Click(window, build.Editor, text.GetLine(line).Start + link.Start + 1);
+        Assert.True(window.EditorArea.Active?.Path is { } opened && PathNames.Same(opened, axaml),
+            $"A click on the warning's file opened {window.EditorArea.Active?.Path ?? "nothing"}, not {axaml}");
+        window.Close();
+    }
+
     /// <summary>One program under dotnet watch, never built before: a saved edit changes what it does with no restart; Apply
     /// Hot Reload Changes in the Run window saves and says what dotnet watch made of it; a parameter added with a default,
     /// which leaves the callers calling the method the update deletes, is said as the restart dotnet watch makes, however
@@ -1382,6 +1415,62 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             quiet.LetGo(listen);
             Ui.WaitFor(() => Output(window).Contains("Now listening on:", StringComparison.Ordinal), "the quiet site to listen", TimeSpan.FromMinutes(2));
             Ui.Hold(TimeSpan.FromSeconds(1.5), "the quiet site running a while, listening: no browser is to open meanwhile");
+            Assert.Single(window.Browsed);
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.Runner.IsRunning, "the site to stop");
+            window.Close();
+        }
+    }
+
+    /// <summary>Under Run with Hot Reload, a web project whose profile launches the browser opens its launch URL once,
+    /// through the window, once it listens; dotnet watch opens none of its own, which would run the program its
+    /// DOTNET_WATCH_BROWSER_PATH names: a stand-in here, writing where it was sent.</summary>
+    [AvaloniaFact]
+    public void Under_hot_reload_a_web_project_whose_profile_launches_the_browser_opens_it_once_through_the_window_and_never_through_dotnet_watch()
+    {
+        int port = AspireApp.FreePort();
+        Write("Sample.slnx", "<Solution>\n  <Project Path=\"src/Hello/Hello.csproj\" />\n  <Project Path=\"src/Site/Site.csproj\" />\n</Solution>\n");
+        Write("src/Site/Site.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
+        Write("src/Site/Program.cs", "WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/orders\", () => \"Orders\");\napp.Run();\n");
+        string sent = Path.Combine(Folder, "dotnet-watch-browsed");
+        string browser;
+        if (OperatingSystem.IsWindows())
+        {
+            browser = Path.Combine(Folder, "browser.cmd");
+            File.WriteAllText(browser, $"@echo off\r\necho %* >> \"{sent}\"\r\n");
+        }
+        else
+        {
+            browser = Path.Combine(Folder, "browser");
+            File.WriteAllText(browser, $"#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{sent}'\n");
+            File.SetUnixFileMode(browser, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        System.Text.Json.Nodes.JsonObject profiles = new()
+        {
+            ["Browse"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["commandName"] = "Project", ["launchBrowser"] = true, ["launchUrl"] = "orders", ["applicationUrl"] = $"http://127.0.0.1:{port}",
+                ["environmentVariables"] = new System.Text.Json.Nodes.JsonObject { ["DOTNET_WATCH_BROWSER_PATH"] = browser },
+            },
+        };
+        Write("src/Site/Properties/launchSettings.json", new System.Text.Json.Nodes.JsonObject { ["profiles"] = profiles }.ToJsonString());
+        Restore.Run(Path.Combine(Folder, "src", "Site"));
+        MainWindow window = Open();
+        window.ApplySettings(window.Settings with { HotReload = true });
+        try
+        {
+            Assert.True(window.SelectConfiguration("Site: Browse"));
+            window.Perform(AppActions.RunProgram);
+            WaitWatched(window, () => window.Browsed.Count > 0, "the browser to open once the site listens under dotnet watch", TimeSpan.FromMinutes(3));
+            Uri opened = Assert.Single(window.Browsed);
+            Assert.Equal($"http://127.0.0.1:{port}/orders", opened.AbsoluteUri);
+            WaitWatched(window, () => Output(window).Contains("Now listening on:", StringComparison.Ordinal) && Output(window).Contains("Waiting for changes", StringComparison.Ordinal),
+                "dotnet watch to watch the listening site", TimeSpan.FromMinutes(1));
+            Ui.Hold(TimeSpan.FromSeconds(2), "the site listening under dotnet watch, which launches its own browser as the site says it listens");
+            Assert.False(File.Exists(sent), $"dotnet watch opened a browser of its own at {(File.Exists(sent) ? File.ReadAllText(sent).Trim() : null)}, beside the window's");
             Assert.Single(window.Browsed);
         }
         finally

@@ -9,6 +9,21 @@ public class RestoredVersionsTests
 {
     private static RestoredVersions Read(string json) => RestoredVersions.Read(new MemoryStream(Encoding.UTF8.GetBytes(json)));
 
+    /// <summary>A restore lists what a package brings beside what the project names, in any of its frameworks.</summary>
+    [Fact]
+    public void A_restore_holds_a_package_of_any_of_its_frameworks_whatever_brought_it()
+    {
+        RestoredVersions restored = Read("""
+            { "targets": {
+                "net10.0": { "Vendor.Controls/1.0.0": { "type": "package", "dependencies": { "Avalonia": "12.1.5" } }, "Avalonia/12.1.5": { "type": "package" } },
+                "net11.0": { "Serilog/4.0.0": { "type": "package" }, "Shared/1.0.0": { "type": "project" } } } }
+            """);
+        Assert.True(restored.Holds("avalonia"), "A package only another package brings was not found in the restore");
+        Assert.True(restored.Holds("Serilog"), "A package of the second framework was not found in the restore");
+        Assert.False(restored.Holds("Shared"), "A project was taken for a package");
+        Assert.False(RestoredVersions.None.Holds("Avalonia"), "Nothing restored holds a package");
+    }
+
     [Fact]
     public void Each_frameworks_packages_are_read_by_the_name_the_project_gives_it_a_runtimes_targets_and_projects_passed_over()
     {

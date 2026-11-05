@@ -34,6 +34,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
                 Id = 1,
                 Message = "Breakpoint has not been processed by the debugger.",
                 Verified = false,
+                Reason = "pending",
                 Line = MyIntSet
             }
         };

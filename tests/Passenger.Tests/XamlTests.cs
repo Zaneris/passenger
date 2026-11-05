@@ -1334,6 +1334,25 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         }
     }
 
+    /// <summary>Find Usages of a view model's property no XAML file names reads no project's XAML, which would read every C#
+    /// file of the project for its types; one the window binds has its project's XAML read once, the binding among its
+    /// usages.</summary>
+    [AvaloniaFact]
+    public void Find_usages_of_a_property_no_xaml_names_reads_no_projects_xaml_and_of_one_bound_reads_it_once()
+    {
+        MainWindow window = app.Open(app.PathOf("ViewModels/MainViewModel.cs"));
+        Assert.True(window.XamlService.ProjectsRead == 0, $"{window.XamlService.ProjectsRead} projects' XAML was read before any Find Usages, so what one reads cannot be told");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "int Cou");
+        IReadOnlyList<string> counted = FoundUsages(window);
+        Assert.True(window.XamlService.ProjectsRead == 0, "Find Usages of Count, which no XAML file names, read the project's XAML and all its C# to look for uses");
+        Assert.DoesNotContain(counted, u => u.Contains(".axaml:", StringComparison.Ordinal));
+
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "string Gree");
+        Assert.Contains("MainWindow.axaml:11 <TextBlock Name=\"Title\" Text=\"{Binding Greeting}\" />", FoundUsages(window));
+        Assert.Equal(1, window.XamlService.ProjectsRead);
+        window.Close();
+    }
+
     /// <summary>A view model's property used only in a <c>&lt;Binding&gt;</c> element, a <c>&lt;Binding.Path&gt;</c>'s
     /// text, a <c>?.</c> path or a step after an indexer has that XAML among its usages: Find Usages from the C# lists it,
     /// Safe Delete refuses naming it, and Go to Declaration from each lands on the property.</summary>
@@ -1415,6 +1434,120 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
                 $"Go to Declaration from the XAML binding {property} did not land on it: {window.EditorArea.Active?.Name}: {CaretLine(window.EditorArea.CodeEditor)}");
         }
         window.Close();
+    }
+
+    /// <summary>The gallery's view model with a command and a static member beside the property its window binds.</summary>
+    private const string BoundViewModel = """
+        using System;
+        using System.Windows.Input;
+
+        namespace Gallery.ViewModels;
+
+        public class MainViewModel
+        {
+            public string Greeting { get; set; } = "Hello";
+
+            public Person Owner { get; } = new();
+
+            public int Count { get; set; }
+
+            public ICommand Save { get; } = new Relay();
+
+            public static string Motto => "Tea";
+        }
+
+        public class Person
+        {
+            public string Name { get; set; } = "Ada";
+
+            public int Age { get; set; }
+        }
+
+        public sealed class Relay : ICommand
+        {
+            public event EventHandler? CanExecuteChanged
+            {
+                add { }
+                remove { }
+            }
+
+            public bool CanExecute(object? parameter) => true;
+
+            public void Execute(object? parameter)
+            {
+            }
+        }
+
+        """;
+
+    /// <summary>The gallery's window binding the view model's property three ways under its x:DataType, its command, and its
+    /// static member through x:Static, its button's Click handled by the code-behind.</summary>
+    private static readonly string BoundWindow = Gallery.Handled(Gallery.Window).Replace("    <TextBlock Text=\"{Binding #Go.Content}\" />\n",
+        "    <TextBlock Text=\"{Binding #Go.Content}\" />\n        <TextBox Text=\"{Binding Path=Greeting, Mode=TwoWay}\" />\n"
+        + "        <TextBlock Text=\"{CompiledBinding Greeting}\" />\n        <TextBlock Text=\"{x:Static vm:MainViewModel.Motto}\" />\n"
+        + "        <Button Content=\"Save\" Command=\"{Binding Save}\" />\n", StringComparison.Ordinal);
+
+    /// <summary>A view model's property, command and static member and the window's handler, each renamed from its C# in the
+    /// window, take along the XAML that uses them (bindings by path under the window's x:DataType, a compiled binding,
+    /// x:Static, a Click), the window's XAML not open; one Undo puts the property's rename back in both files, and the app
+    /// builds once all are renamed, its compiled bindings and handler resolving each new name.</summary>
+    [AvaloniaFact]
+    public void Renaming_a_bound_property_a_command_a_static_member_and_a_handler_in_csharp_renames_the_xaml_using_them_and_the_app_builds()
+    {
+        app.Rewrite("ViewModels/MainViewModel.cs", BoundViewModel);
+        app.Rewrite("MainWindow.axaml", BoundWindow);
+        app.Rewrite("MainWindow.axaml.cs", Gallery.HandlingCodeBehind);
+        string view = app.PathOf("MainWindow.axaml");
+        MainWindow window = app.Open(app.PathOf("ViewModels/MainViewModel.cs"));
+        List<string> asked = [];
+        window.Confirm = (_, text, _) =>
+        {
+            asked.Add(text);
+            return Task.FromResult(true);
+        };
+        OpenDocument model = window.EditorArea.Active!;
+
+        RenameInCode(window, "string Gree", "Salutation");
+        string salutation = BoundWindow.Replace("Binding Greeting}", "Binding Salutation}", StringComparison.Ordinal)
+            .Replace("Path=Greeting", "Path=Salutation", StringComparison.Ordinal).Replace("CompiledBinding Greeting", "CompiledBinding Salutation", StringComparison.Ordinal);
+        Assert.True(File.ReadAllText(view) == salutation, $"The window's bindings did not follow the property's rename ({window.Status}):\n{File.ReadAllText(view)}");
+        Assert.Equal(BoundViewModel.Replace("string Greeting", "string Salutation", StringComparison.Ordinal), model.Text.Snapshot.ToString());
+        Assert.Equal("Renamed in 2 files", window.Status);
+
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, EditorActions.Undo);
+        Ui.Settle();
+        Assert.True(asked.Count == 1 && asked[0].StartsWith("Undo Rename Greeting to Salutation? It changes ", StringComparison.Ordinal), $"The person's Undo asked: {string.Join(" | ", asked)}");
+        Assert.True(File.ReadAllText(view) == BoundWindow, $"One Undo did not put the window's bindings back:\n{File.ReadAllText(view)}");
+        Assert.Equal(BoundViewModel, model.Text.Snapshot.ToString());
+
+        RenameInCode(window, "string Gree", "Salutation");
+        RenameInCode(window, "ICommand Sa", "Store");
+        RenameInCode(window, "string Mot", "Slogan");
+        window.OpenFile(app.PathOf("MainWindow.axaml.cs"));
+        Ui.Settle();
+        RenameInCode(window, "void OnG", "OnStart");
+        string all = salutation.Replace("Command=\"{Binding Save}\"", "Command=\"{Binding Store}\"", StringComparison.Ordinal)
+            .Replace("MainViewModel.Motto", "MainViewModel.Slogan", StringComparison.Ordinal).Replace("Click=\"OnGo\"", "Click=\"OnStart\"", StringComparison.Ordinal);
+        Assert.True(File.ReadAllText(view) == all, $"The window's XAML did not follow the command's, the static member's and the handler's renames ({window.Status}):\n{File.ReadAllText(view)}");
+
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        string said = $"{Ui.Said(window)}: {string.Join("; ", window.BottomPanel.Problems.Problems.Select(p => $"{p.Code} {p.Where} {p.Message}"))}";
+        Assert.True(window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true, $"The app did not build once its XAML followed the renames: {said}");
+        window.Close();
+    }
+
+    /// <summary>Rename at the end of a piece of the active file, the new name typed into its box and Enter pressed.</summary>
+    internal static void RenameInCode(MainWindow window, string after, string name)
+    {
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, AppActions.Rename);
+        Ui.WaitFor(() => window.Assist.Renaming is not null, "the rename box to open");
+        window.KeyTextInput(name);
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
     }
 
     /// <summary>Safe Delete's question names the XAML that would no longer compile, which the test then declines.</summary>
@@ -1579,8 +1712,8 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
 
     /// <summary>Rename on a named element's field in the code-behind a moment after the element's rename was written to its
     /// XAML on disk, as an agent's rename writes it, the language server not yet told of the XAML's change and so knowing
-    /// no field of the new name: the rename waits for the server to read the XAML, saying so, then renames the element in
-    /// it and the field's use.</summary>
+    /// no field of the new name: the rename waits for the server to read the XAML, saying so, however long the steps
+    /// between took (a loaded machine's), then renames the element in it and the field's use.</summary>
     [AvaloniaFact]
     public void An_elements_field_renamed_from_the_code_behind_a_moment_after_its_xaml_was_written_waits_for_the_server_to_read_it()
     {
@@ -1589,7 +1722,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Ui.Settle();
         Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
         TaskCompletionSource told = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        server.HoldNext(Passenger.Lsp.LspMethods.DidChangeWatchedFiles,
+        Task held = server.HoldNext(Passenger.Lsp.LspMethods.DidChangeWatchedFiles,
             p => System.Text.Json.JsonSerializer.Serialize(p).Contains("MainWindow.axaml\"", StringComparison.Ordinal), told.Task);
         try
         {
@@ -1601,8 +1734,12 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
             Ui.WaitFor(() => window.Assist.Renaming == "Start", "the rename box on the field's name");
             window.KeyTextInput("Begin");
             Ui.Press(window, "ENTER", settle: false);
-            Assert.True(Ui.Pumped(() => window.Status?.StartsWith("Waiting for the language server to read MainWindow.axaml", StringComparison.Ordinal) == true, TimeSpan.FromSeconds(5)),
-                $"The rename did not wait for the language server to read the XAML written a moment before, which knows no field of the new name yet: the status says {window.Status}");
+            // The rename waits for the server for up to its patience's limit, its first answer included.
+            TimeSpan within = Passenger.App.CSharp.Patience.Limit;
+            Assert.True(Ui.Pumped(() => window.Status?.StartsWith("Waiting for the language server to read MainWindow.axaml", StringComparison.Ordinal) == true, within),
+                $"Within {within.Scaled().TotalSeconds:0} s the rename did not say it waits for the language server to read the XAML written a moment before, "
+                + $"which knows no field of the new name yet ({(held.IsCompleted ? "the XAML's change was held unsent to the server" : "the watcher had not told the server of the XAML's change")}): "
+                + $"the status says {window.Status}");
         }
         finally
         {
@@ -1977,6 +2114,105 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Ui.Settle();
         Assert.True(window.PreviewOf(shown) is null && group.PreviewToggle.IsChecked == false, "The tab strip's toggle left XAML Preview on");
         window.Close();
+    }
+
+    /// <summary>The Avalonia preview places the file's elements as Avalonia's designer draws them, through Passenger's
+    /// inspector loaded into it: the element at the caret is outlined from its first placing, a click on an element in the
+    /// frame selects its start tag and outlines it, a caret in the panel's tag outlines the panel, and one in the window's
+    /// own tag the window.</summary>
+    [AvaloniaFact]
+    public void An_avalonia_preview_outlines_the_carets_element_and_a_click_on_one_selects_its_start_tag()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        Ui.PlaceAfter(editor, "<Button Name=\"G");
+        Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
+        Ui.Settle();
+        Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document) ?? throw new InvalidOperationException("XAML Preview showed no preview beside the file");
+        Passenger.App.Xaml.XamlPreviewPane pane = window.PreviewPaneOf(document)!;
+        Passenger.App.Xaml.PreviewElement? Placed(string tag) =>
+            preview.Elements.FirstOrDefault(e => e.Tag.Start == editor.Document.Snapshot.ToString().IndexOf(tag, StringComparison.Ordinal));
+        Ui.WaitFor(() => Placed("<Button Name=\"Go\"") is { } placed && pane.Outlined == placed.Box,
+            () => $"the Go button outlined at the caret once the preview placed its elements ({preview.Status}; {preview.Elements.Count} placed)", TimeSpan.FromSeconds(60));
+        Assert.True(Placed("<Button Name=\"Go\"")!.Box is { Width: > 0, Height: > 0 }, $"The Go button was placed at {Placed("<Button Name=\"Go\"")!.Box}");
+
+        Passenger.App.Xaml.PreviewElement title = Placed("<TextBlock Name=\"Title\"") ?? throw new InvalidOperationException("The preview placed no Title");
+        Point at = pane.Frame.TranslatePoint(new Point(title.Box.X + 4, title.Box.Center.Y), window) ?? throw new InvalidOperationException("The preview's frame is not on the window");
+        window.MouseDown(at, MouseButton.Left);
+        window.MouseUp(at, MouseButton.Left);
+        Ui.Settle();
+        string text = editor.Document.Snapshot.ToString();
+        int start = text.IndexOf("<TextBlock Name=\"Title\"", StringComparison.Ordinal);
+        int end = text.IndexOf("/>", start, StringComparison.Ordinal) + 2;
+        Assert.Equal(new Selection(end, start), editor.Selections.Primary with { PreferredX = double.NaN });
+        Assert.Equal(title.Box, pane.Outlined);
+
+        Ui.PlaceAfter(editor, "<StackPanel Margin");
+        Ui.Settle();
+        Assert.Equal(Placed("<StackPanel Margin")?.Box, pane.Outlined);
+        Ui.PlaceAfter(editor, "<Wind");
+        Ui.Settle();
+        Assert.True(Placed("<Window") is { } root && pane.Outlined == root.Box && root.Box.Width > 0, $"The window's tag outlined {pane.Outlined}, not the window");
+        Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(document) is null, "XAML Preview stayed on");
+        window.Close();
+    }
+
+    /// <summary>In the XAML workspace, with no app running, the preview shows under its frame what the caret's element sets
+    /// itself, as its XAML says it: the title's binding with its path, the button's own content and its resource with its key,
+    /// and the Name each takes as a property; turned off, it shows none.</summary>
+    [AvaloniaFact]
+    public void In_the_xaml_workspace_the_preview_shows_what_the_carets_element_sets_itself_while_no_app_runs()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.PlaceAfter(editor, "<TextBlock Name=\"T");
+        window.ApplySettings(window.Settings with { XamlWorkspace = true });
+        Ui.WaitFor(() => window.PreviewPaneOf(document) is { PropertiesShown.Element: "TextBlock #Title" },
+            () => $"the title's own values under the preview, where it shows {window.PreviewPaneOf(document)?.PropertiesShown.Element}");
+        Passenger.App.Xaml.XamlPreviewPane pane = window.PreviewPaneOf(document)!;
+        Assert.Equal([("Name", "Title", "Local"), ("Text", "{Binding Greeting}", "Binding · Greeting")], pane.PropertiesShown.Values);
+
+        Ui.PlaceAfter(editor, "<Button Name=\"G");
+        Ui.WaitFor(() => pane.PropertiesShown.Element == "Button #Go", () => $"the button's own values under the preview, not {pane.PropertiesShown.Element}'s");
+        Assert.Equal([("Name", "Go", "Local"), ("Content", "Go", "Local"), ("Background", "{StaticResource Accent}", "Resource · Accent")], pane.PropertiesShown.Values);
+
+        window.ApplySettings(window.Settings with { XamlWorkspace = false });
+        Ui.Settle();
+        Assert.Null(pane.PropertiesShown.Element);
+        if (window.PreviewOf(document) is not null)
+        {
+            Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(document) is null, "XAML Preview stayed on");
+        }
+        window.Close();
+    }
+
+    /// <summary>In the XAML workspace, an attribute the caret's element cannot have is said under the preview in the check's
+    /// words for it, never as a value the element sets.</summary>
+    [AvaloniaFact]
+    public void In_the_xaml_workspace_an_attribute_its_element_cannot_have_is_said_unknown_as_the_check_says()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        try
+        {
+            OpenDocument document = window.EditorArea.Active!;
+            Typing.Replace(window, "<Button Name=\"Go\" Content=\"Go\"", "<Button Name=\"Go\" Contnt=\"Go\"");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "<Button Name=\"G");
+            window.ApplySettings(window.Settings with { XamlWorkspace = true });
+            Ui.WaitFor(() => window.PreviewPaneOf(document) is { PropertiesShown.Element: "Button #Go" } pane
+                && pane.PropertiesShown.Values.Any(v => v.Property == "Contnt" && v.From != "Local"),
+                () => $"the button's misspelt Contnt said unknown under the preview, where it shows {string.Join(", ", window.PreviewPaneOf(document)?.PropertiesShown.Values ?? [])}");
+            (string Property, string Value, string From) said = window.PreviewPaneOf(document)!.PropertiesShown.Values.Single(v => v.Property == "Contnt");
+            Assert.Equal("Cannot resolve property 'Contnt' on Button", said.From);
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { XamlWorkspace = false });
+            window.Close();
+        }
     }
 
     /// <summary>A window wider than the preview's pane is drawn smaller by the previewer itself, at the scale the pane has
@@ -2510,18 +2746,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         }
 
         // A previewer Passenger started that has since ended.
-        static bool Ended(int id)
-        {
-            try
-            {
-                using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
-                return process.HasExited;
-            }
-            catch (ArgumentException)
-            {
-                return true;
-            }
-        }
+        static bool Ended(int id) => !DotnetProcesses.Runs(id);
     }
 
     /// <summary>A view of the gallery's, filled with a colour.</summary>

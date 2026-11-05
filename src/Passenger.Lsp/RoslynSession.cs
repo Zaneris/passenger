@@ -236,6 +236,11 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
         }
     }
 
+    /// <summary>Has a server fed by the client let go of projects, which it answers from no longer; done once it has, with
+    /// whether it held any of them.</summary>
+    public async Task<bool> UnloadAsync(IReadOnlyList<string> projects) =>
+        Fed && projects.Count > 0 && await Server.RequestAsync<bool>(ProjectMethods.Unload, new UnloadProjectsParams(projects)).ConfigureAwait(false);
+
     /// <summary>Has a server fed by the client that has loaded its projects load them again, from the design-time builds
     /// it asks for, and waits for that load as for its first: <see cref="IsLoaded"/> until it says it has. For a server
     /// taken up after files came.</summary>
@@ -280,10 +285,13 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     public async Task<IReadOnlyList<Roslyn.Extension.TextHeld>> HeldTextsAsync(IReadOnlyList<string> paths, CancellationToken cancel = default) =>
         (await ExtensionAsync<Roslyn.Extension.TextsHeld>(Roslyn.Extension.Handlers.DocumentTexts, new Roslyn.Extension.TextsAsked(paths), cancel).ConfigureAwait(false)).Texts;
 
-    /// <summary>The solution's documents written on disk at or after a time (UTC), or gone from it since, which the server
-    /// may hold as they were.</summary>
-    public async Task<IReadOnlyList<Roslyn.Extension.DocumentWritten>> WrittenSinceAsync(DateTime since, CancellationToken cancel = default) =>
-        (await ExtensionAsync<Roslyn.Extension.WrittenFound>(Roslyn.Extension.Handlers.DocumentsWritten, new Roslyn.Extension.WrittenAsked(since), cancel).ConfigureAwait(false)).Documents;
+    /// <summary>The solution's documents written on disk at or after a time (UTC), or gone from it since, and those heard
+    /// changed that no command has seen the server read since, which it may hold as they were.</summary>
+    public Task<WrittenLately> WrittenSinceAsync(DateTime since, CancellationToken cancel = default) => WrittenLately.AskAsync(Server, since, cancel);
+
+    /// <summary>Has the server read now the assemblies its projects reference that a build wrote; done once it holds them.</summary>
+    public Task<Roslyn.Extension.ReferencesTaken> ReadReferencesAsync(CancellationToken cancel = default) =>
+        ExtensionAsync<Roslyn.Extension.ReferencesTaken>(Roslyn.Extension.Handlers.ReferencesRead, new Roslyn.Extension.ReferencesAsked(), cancel);
 
     /// <summary>A message to Passenger's extension about the solution that nothing waits on, as a debugging session ends.</summary>
     public void TellExtension(string handler, object message) => RoslynExtension.TellWorkspace(Server, handler, message);
@@ -398,6 +406,13 @@ public sealed class LspDocument : IDisposable
     /// <summary>When the latest colours and diagnostics the server gave were asked for and when they came.</summary>
     private (long Asked, long Came) coloured;
     private (long Asked, long Came) diagnosed;
+
+    /// <summary>A pull of the document's diagnostics, with the text's version and the server's count of changes it was
+    /// asked at (<see cref="LastDiagnosticsAsync"/>).</summary>
+    private sealed record Pulled(IReadOnlyList<Diagnostic> Items, int Version, long Changes);
+
+    /// <summary>The last pull of each part (<see cref="DiagnosticPull"/>, by its value).</summary>
+    private readonly Pulled?[] pulled = new Pulled?[3];
 
     internal LspDocument(IDocumentHost session, string uri, TextDocument text, [IdentifierOf(typeof(LanguageIds))] string? languageId = null)
     {
@@ -700,15 +715,19 @@ public sealed class LspDocument : IDisposable
     public async Task<IReadOnlyList<Roslyn.Extension.TextHeld>> HeldTextsAsync(IReadOnlyList<string> paths, CancellationToken cancel = default) =>
         (await RoslynExtension.AskWorkspaceAsync<Roslyn.Extension.TextsHeld>(Server, Roslyn.Extension.Handlers.DocumentTexts, new Roslyn.Extension.TextsAsked(paths), cancel).ConfigureAwait(false)).Texts;
 
-    /// <summary>The documents of the solution written on disk at or after a time (UTC), or gone from it since, which the
-    /// document's server may hold as they were.</summary>
-    public async Task<IReadOnlyList<Roslyn.Extension.DocumentWritten>> WrittenSinceAsync(DateTime since, CancellationToken cancel = default) =>
-        (await RoslynExtension.AskWorkspaceAsync<Roslyn.Extension.WrittenFound>(Server, Roslyn.Extension.Handlers.DocumentsWritten, new Roslyn.Extension.WrittenAsked(since), cancel).ConfigureAwait(false)).Documents;
+    /// <summary>The documents of the solution written on disk at or after a time (UTC), or gone from it since, and those
+    /// heard changed that no command has seen the document's server read since, which it may hold as they were.</summary>
+    public Task<WrittenLately> WrittenSinceAsync(DateTime since, CancellationToken cancel = default) => WrittenLately.AskAsync(Server, since, cancel);
 
     /// <summary>The symbol at an offset, the one a name there refers to or a declaration there declares, with its
     /// documentation id; none where there is no symbol.</summary>
     public async Task<Roslyn.Extension.NamedSymbol?> SymbolAtAsync(int offset, CancellationToken cancel = default) =>
         (await ExtensionAsync<Roslyn.Extension.SymbolsFound>(Roslyn.Extension.Handlers.SymbolAt, new Roslyn.Extension.Caret(PlaceOf(offset)), cancel).ConfigureAwait(false)).Symbols.FirstOrDefault();
+
+    /// <summary>The uses of what the MVVM Toolkit makes of the field or method at an offset, with the names they take as it
+    /// is renamed to <paramref name="name"/> (<see cref="Roslyn.Extension.ToolkitFound"/>); none for any other symbol.</summary>
+    public Task<Roslyn.Extension.ToolkitFound> ToolkitRenamesAsync(int offset, string name, CancellationToken cancel = default) =>
+        ExtensionAsync<Roslyn.Extension.ToolkitFound>(Roslyn.Extension.Handlers.ToolkitRenames, new Roslyn.Extension.ToolkitAsked(PlaceOf(offset), name), cancel);
 
     /// <summary>An offset as the extension's messages give a place.</summary>
     public Roslyn.Extension.Place PlaceOf(int offset)
@@ -732,7 +751,7 @@ public sealed class LspDocument : IDisposable
         {
             return [];
         }
-        return [.. found.EnumerateArray().Select(symbol => symbol.TryGetProperty("location", out _)
+        return [.. found.EnumerateArray().Select(symbol => JsonMembers.Value(symbol, "location") is not null
             ? symbol.Deserialize<SymbolInformation>(Json.Options) is { } flat ? new DocumentSymbol(flat.Name, null, flat.Kind, flat.Location.Range, flat.Location.Range) : null
             : symbol.Deserialize<DocumentSymbol>(Json.Options)).OfType<DocumentSymbol>()];
     }
@@ -751,6 +770,26 @@ public sealed class LspDocument : IDisposable
     public async Task<IReadOnlyList<LspTextEdit>> FormatAsync(TextRange range, IndentOptions indent, EditorConfig conventions, CancellationToken cancel = default) =>
         await Server.RequestAsync<List<LspTextEdit>>(LspMethods.RangeFormatting,
             new DocumentRangeFormattingParams(Identifier, RangeOf(range), FormattingOptions.Of(indent, conventions, Text.Snapshot)), cancel) ?? [];
+
+    /// <summary>What the server writes on its own after a character typed at an offset, the caret past it (Razor's end
+    /// tag after a start tag's '>'); null where it writes nothing.</summary>
+    public async Task<AutoInserted?> AutoInsertAsync(int offset, string typed, IndentOptions indent, EditorConfig conventions, CancellationToken cancel = default) =>
+        await Server.RequestAsync<AutoInserted>(LspMethods.OnAutoInsert,
+            new AutoInsertParams(Identifier, PositionOf(offset), typed, FormattingOptions.Of(indent, conventions, Text.Snapshot)), cancel) is { TextEdit: not null } answer
+            ? answer : null;
+
+    /// <summary>A Razor file's HTML as Razor makes it of the text as it stands, its C# blanked out so its places are the
+    /// file's: a fold's question, the cheapest, has Razor give it first. Null for a file not Razor's, or one Razor gave
+    /// none for.</summary>
+    public async Task<string?> RazorHtmlAsync(CancellationToken cancel = default)
+    {
+        if (!IsRazor)
+        {
+            return null;
+        }
+        await Read(Server.RequestAsync<JsonElement>(LspMethods.FoldingRange, new FoldingRangeParams(new TextDocumentIdentifier(Uri)), cancel));
+        return Server.RazorHtmlOf(DocumentUris.ToPath(Uri));
+    }
 
     /// <summary>The whole document's tokens; <paramref name="sent"/>, when given, is told where the request reached the
     /// server among its words that its colours moved.</summary>
@@ -830,7 +869,7 @@ public sealed class LspDocument : IDisposable
     {
         JsonElement result = await Read(Server.RequestAsync<JsonElement>(LspMethods.InlayHintResolve,
             new { position = hint.Position, label = hint.Label, kind = hint.Kind, data = hint.Data }, cancel));
-        return result.ValueKind == JsonValueKind.Object && result.TryGetProperty("tooltip", out JsonElement tooltip) ? Shapes.Text(tooltip) : string.Empty;
+        return JsonMembers.Value(result, "tooltip") is { } tooltip ? Shapes.Text(tooltip) : string.Empty;
     }
 
     /// <summary>Roslyn's source of what analyzers report in a document from analysing its whole project, which it has with
@@ -848,6 +887,29 @@ public sealed class LspDocument : IDisposable
     public Task<(IReadOnlyList<Diagnostic> Diagnostics, int Version)> DiagnosticsAsync(CancellationToken cancel = default) =>
         DiagnosticsAsync(DiagnosticPull.All, cancel);
 
+    /// <summary>Every diagnostic the server has for the document as <see cref="DiagnosticsAsync(CancellationToken)"/> pulls
+    /// them, answered from the last such pull where neither the text nor anything the server was told has changed since
+    /// (<see cref="LanguageServer.Changes"/>): an agent's second ask of a file costs the server nothing. Pulled afresh
+    /// for a Razor file, another server's, and with solution-wide analysis on (<paramref name="wholeSolution"/>), whose
+    /// project-wide part comes later.</summary>
+    public async Task<(IReadOnlyList<Diagnostic> Diagnostics, int Version)> LastDiagnosticsAsync(bool wholeSolution, CancellationToken cancel = default)
+    {
+        int version = Text.Version;
+        long changes = Server.Changes;
+        bool Stands(Pulled? last) => last is not null && last.Version == version && last.Changes == changes;
+        if (!wholeSolution && Stands(pulled[(int)DiagnosticPull.All]))
+        {
+            return (pulled[(int)DiagnosticPull.All]!.Items, version);
+        }
+        // The window's own pull of the file's sources, then of its project-wide one, answers as one of every source would.
+        if (!wholeSolution && Stands(pulled[(int)DiagnosticPull.Own]) && (!PullsProjectWide || Stands(pulled[(int)DiagnosticPull.ProjectWide])))
+        {
+            IEnumerable<Diagnostic> wide = PullsProjectWide ? pulled[(int)DiagnosticPull.ProjectWide]!.Items : [];
+            return ([.. pulled[(int)DiagnosticPull.Own]!.Items.Concat(wide).DistinctBy(d => (d.Range, d.Message, d.Code))], version);
+        }
+        return await DiagnosticsAsync(DiagnosticPull.All, cancel);
+    }
+
     /// <summary>The document's diagnostics from the sources <paramref name="part"/> names, as
     /// <see cref="DiagnosticsAsync(CancellationToken)"/> pulls every one; the project-wide part of a server that pushes them,
     /// or has no such source, is empty.</summary>
@@ -861,6 +923,8 @@ public sealed class LspDocument : IDisposable
         TextSnapshot text = Text.Snapshot;
         TextDocumentIdentifier identifier = Identifier;
         long asked = System.Diagnostics.Stopwatch.GetTimestamp();
+        // Counted before the pull is sent, so a change sent while it runs leaves the answer stale.
+        long changes = Server.Changes;
         List<Diagnostic> all = [];
         IReadOnlyList<string?> sources = IsRazor || session is not RoslynSession ? (part == DiagnosticPull.ProjectWide ? [] : [null])
             : [.. Server.DiagnosticSources.Where(s => part == DiagnosticPull.All || (s == ProjectWideSource) == (part == DiagnosticPull.ProjectWide))];
@@ -881,6 +945,10 @@ public sealed class LspDocument : IDisposable
             .DistinctBy(d => (d.Range, d.Message, d.Code))
             .ToList();
         Came(ref diagnosed, asked);
+        if (session is RoslynSession && !IsRazor)
+        {
+            pulled[(int)part] = new Pulled(distinct, version, changes);
+        }
         return (distinct, version);
     }
 
@@ -892,6 +960,9 @@ public sealed class LspDocument : IDisposable
 
     public int OffsetOf(LspPosition position) => ServerLines.Of(Text.Snapshot).OffsetOf(position);
 
+    /// <summary>The offsets of many places at once, as <see cref="ServerLines.OffsetsOf"/> gives them.</summary>
+    public int[] OffsetsOf(IReadOnlyList<LspPosition> positions) => ServerLines.Of(Text.Snapshot).OffsetsOf(positions);
+
     /// <summary>The edits sent last to first, the order an incremental sync is read in, so each change's place in the text
     /// before the edit is its place in the text the changes sent before it left. Edits that touch go as one change: the
     /// later one can decide whether a '\r' where they meet ends a line. A change that begins or ends between the halves of
@@ -901,6 +972,13 @@ public sealed class LspDocument : IDisposable
     {
         ServerLines before = ServerLines.Of(e.Before);
         ServerLines.After(e);
+        if (Server.TakesWholeTexts)
+        {
+            // A server that takes only whole texts (Godot's) reads a change's text as the document's.
+            Sent(e.Version, changed: !session.Pushes.EachText || Changes(e));
+            Server.Notify(LspMethods.DidChange, new DidChangeTextDocumentParams(new VersionedTextDocumentIdentifier(Uri, e.Version), [new(null, e.After.ToString())]));
+            return;
+        }
         List<TextDocumentContentChangeEvent> changes = [];
         for (int last = e.Edits.Count - 1; last >= 0;)
         {

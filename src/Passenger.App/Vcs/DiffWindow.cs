@@ -4,11 +4,12 @@ using Avalonia.Input;
 namespace Passenger.App.Vcs;
 
 /// <summary>A diff in a window of its own over the IDE's; Escape closes it.</summary>
-public sealed class DiffWindow : IdeWindow
+public sealed class DiffWindow : IdeWindow, IDiffHost
 {
-    public DiffWindow(string title, DiffView view)
+    public DiffWindow(DiffContent shown, DiffView view)
     {
-        Title = title;
+        Shown = shown;
+        Title = shown.Title;
         Width = 1200;
         Height = 760;
         MinWidth = 600;
@@ -27,5 +28,9 @@ public sealed class DiffWindow : IdeWindow
         Opened += (_, _) => view.Right.Focus();
     }
 
+    public DiffContent Shown { get; }
+
     public DiffView View { get; }
+
+    public void GiveWay() => Close();
 }

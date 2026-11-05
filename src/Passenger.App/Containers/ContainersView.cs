@@ -65,6 +65,10 @@ public sealed class ContainersView : DockPanel
         Stats = new ContainerStatsPane(chosen);
         Files = new ContainerFilesPane(chosen, parts.StateFolder);
         Details = new ContainerDetailsPane(chosen, parts.Browse, () => State?.Endpoint);
+        ImageDetails = new ImageDetailsPane(chosen);
+        statsPage = new Grid { RowDefinitions = new RowDefinitions("*,0"), Children = { Stats, Metrics } };
+        Grid.SetRow(Metrics, 1);
+        Metrics.IsVisible = false;
         Telemetry = new TelemetryView(AppActions.ContainersShowTrace, AppActions.ContainersShowRelatedLogs, id =>
         {
             Request(id);
@@ -169,11 +173,28 @@ public sealed class ContainersView : DockPanel
 
     public ContainerDetailsPane Details { get; }
 
+    /// <summary>An image's Details tab, its known vulnerabilities through Docker Scout once asked.</summary>
+    public ImageDetailsPane ImageDetails { get; }
+
+    /// <summary>A .NET service's metrics under its Stats, read in its container while the tab is shown.</summary>
+    public MetricsPane Metrics { get; } = new();
+
+    /// <summary>A .NET service's program in its container, by its Compose project and service: its process there and the
+    /// place Passenger's tools reach it by; null for one that is no .NET service of the folder's run, or not running.</summary>
+    public Func<string, string, Task<(int Process, Profiler.ProfilePlace Place)?>>? DotnetOf { get; set; }
+
+    /// <summary>The Stats tab: the engine's stats, a .NET service's metrics under them.</summary>
+    private readonly Grid statsPage;
+
+    /// <summary>The service whose program the metrics were last found for, and each search counted, so a late one is let go.</summary>
+    private string? metricsOf;
+    private int metricsAsked;
+
     /// <summary>The Telemetry tab's logs and traces, a log's trace and a span's logs the window's actions.</summary>
     public TelemetryView Telemetry { get; }
 
     /// <summary>Where a Compose project's logs and traces are read, by its name: the container run of this window's folder
-    /// that runs Passenger's dashboard for it; null for any other.</summary>
+    /// that runs Passenger's dashboard for it, or a project run's dashboard's own; null for any other.</summary>
     public Func<string, TelemetrySource?>? TelemetryOf { get; set; }
 
     /// <summary>What the engine held at the last read.</summary>
@@ -354,7 +375,9 @@ public sealed class ContainersView : DockPanel
         FollowOthers();
         Log.Stop();
         Stats.Stop();
+        ShowMetrics(null);
         Details.Show(null);
+        ImageDetails.Show(null);
         Telemetry.Watch(null, null);
     }
 
@@ -593,14 +616,22 @@ public sealed class ContainersView : DockPanel
     }
 
     /// <summary>The chosen row's details: a container's Log, Stats, Files and Details, a service's Log, Stats and its
-    /// container's Details, a project's or an AppHost's Log and Stats, nothing for the rest; streamed only while shown.</summary>
+    /// container's Details, a project's or an AppHost's Log and Stats, an image's Details alone, nothing for the rest;
+    /// streamed only while shown.</summary>
     private void ShowChosen()
     {
         ContainerRow? row = Chosen;
         bool container = row?.Container is not null;
-        bool detailed = row is { Kind: ContainerRowKind.Service or ContainerRowKind.Container } && row.Containers.Count > 0;
+        bool image = row is { Kind: ContainerRowKind.Image, Object: not null };
+        bool detailed = row is { Kind: ContainerRowKind.Service or ContainerRowKind.Container } && row.Containers.Count > 0 || image;
         // A service its run left unstarted has no container to stream from: the pane says what starts it.
-        bool streams = shown && row is { Kind: ContainerRowKind.Project or ContainerRowKind.AppHost or ContainerRowKind.Service or ContainerRowKind.Container, LeftUnstarted: false };
+        bool streams = shown && (row is { Kind: ContainerRowKind.Project or ContainerRowKind.AppHost or ContainerRowKind.Service or ContainerRowKind.Container, LeftUnstarted: false } || image);
+        if (image)
+        {
+            shownTab = DetailsTab;
+        }
+        tabs[LogTab].IsVisible = !image;
+        tabs[StatsTab].IsVisible = !image;
         nothingChosen.Text = row is { LeftUnstarted: true } ? ContainerCommands.NotStarted(row) : NothingChosen;
         TelemetrySource? telemetry = (row?.Project?.Name ?? row?.Container?.Project) is { } project ? TelemetryOf?.Invoke(project) : null;
         tabs[FilesTab].IsVisible = container;
@@ -619,18 +650,59 @@ public sealed class ContainersView : DockPanel
         detail.IsVisible = streams;
         detail.Content = shownTab switch
         {
-            StatsTab => Stats,
+            StatsTab => statsPage,
             FilesTab => Files,
-            DetailsTab => Details,
+            DetailsTab => image ? ImageDetails : Details,
             TelemetryTab => Telemetry.Both,
             _ => Log,
         };
         Log.Show(streams && shownTab == LogTab ? row : null);
         Stats.Show(streams && shownTab == StatsTab ? row : null);
+        ShowMetrics(streams && shownTab == StatsTab ? row : null);
         Files.Show(streams && shownTab == FilesTab ? row : null);
-        Details.Show(streams && shownTab == DetailsTab ? row : null);
-        // A service's or container's own records; a project's every service's.
-        Telemetry.Watch(streams && shownTab == TelemetryTab ? telemetry : null, Telemetry.Shown, row?.Service ?? row?.Container?.Service);
+        Details.Show(streams && shownTab == DetailsTab && !image ? row : null);
+        ImageDetails.Show(streams && image ? row!.Object : null);
+        // A service's or container's own records; a project's every service's, as the dashboard's own row's are.
+        string? service = row?.Service ?? row?.Container?.Service;
+        Telemetry.Watch(streams && shownTab == TelemetryTab ? telemetry : null, Telemetry.Shown, service == ContainerTelemetry.Service ? null : service);
+    }
+
+    /// <summary>A .NET service's metrics under its Stats while they are shown, its program found once as it is chosen (the
+    /// engine asked for it), none for any other row.</summary>
+    private void ShowMetrics(ContainerRow? row)
+    {
+        string? key = row is { Kind: ContainerRowKind.Service, Project: { } project, Service: { } service } && DotnetOf is not null ? $"{project.Name}/{service}" : null;
+        if (key == metricsOf)
+        {
+            return;
+        }
+        metricsOf = key;
+        int asked = ++metricsAsked;
+        Metrics.Show(null, null);
+        Metered(false);
+        if (key is null)
+        {
+            return;
+        }
+        IdeErrors.Observe(FindAsync(row!.Project!.Name, row.Service!));
+
+        async Task FindAsync(string project, string service)
+        {
+            (int Process, Profiler.ProfilePlace Place)? found = await DotnetOf!(project, service);
+            if (asked != metricsAsked || found is not { } program)
+            {
+                return;
+            }
+            Metered(true);
+            Metrics.Show(service, program.Process, null, program.Place);
+        }
+    }
+
+    /// <summary>Whether the Stats tab gives a .NET service's metrics room under the engine's stats.</summary>
+    private void Metered(bool shown)
+    {
+        Metrics.IsVisible = shown;
+        statsPage.RowDefinitions[1].Height = shown ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
     }
 
     /// <summary>Runs an action's command on a row as the window's one action of that id under way, the status bar saying

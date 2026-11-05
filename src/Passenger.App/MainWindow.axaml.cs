@@ -65,7 +65,10 @@ public partial class MainWindow : IdeWindow
         status = new StatusBar(StatusMessage, StatusText, StatusIcon, StatusWorking, CaretButton, CaretText, IndentButton, IndentText, LanguageText, LineSeparatorButton, LineEndingText,
             EncodingButton, EncodingText);
         popups = new PopupHost(Overlay, OverlayHost, Editors, () => session.Debug.Breakpoints);
-        navigator = new Navigation.Navigator(new Navigation.NavigatorParts(Editors, () => session, popups, status, path => OpenFile(path), Editors.TextOf));
+        navigator = new Navigation.Navigator(new Navigation.NavigatorParts(Editors, () => session, popups, status, path => OpenFile(path), Editors.TextOf)
+        {
+            Declare = () => Request(AppActions.GoToDeclaration),
+        });
         // One keymap for the whole window, seen before any control: editor actions go to the editor with the focus.
         windowKeys = new IdeKeys(this, keys, popups, OnEscape, OnKey, OnSideButton, OnActivity, OnLeft);
         windowKeys.Attach(this);
@@ -86,7 +89,12 @@ public partial class MainWindow : IdeWindow
         AddLiveTree();
         AddBreadcrumbs();
         AddBookmarks();
+        AddGamePane();
         AddEndpoints();
+        AddGodotEditor();
+        AddGodotProject();
+        AddGodotExport();
+        AddDotnet();
         AddRoutes();
         AddRequestMarks();
         AddRequests();
@@ -105,6 +113,7 @@ public partial class MainWindow : IdeWindow
         AddConflicts();
         AddErrors();
         AddAbout();
+        AddContextHelp();
         AddUpdates();
         AddWhatsNew();
         AddAgents();
@@ -112,8 +121,17 @@ public partial class MainWindow : IdeWindow
         AddShutdown();
         AddOwnWindows();
         AddPreview();
+        AddXamlWorkspace();
         AddMarkdownPreview();
         Explorer.FileOpened += (_, path) => OpenFile(path);
+        Explorer.IndexedFiles = IndexedFiles;
+        Explorer.FileClicked += (_, path) =>
+        {
+            if (OpenFile(path) is null)
+            {
+                Explorer.FocusRows();
+            }
+        };
         Editors.ActiveChanged += (_, _) => FollowInExplorer();
         // An unbuilt Structure window asks for the file itself; a C# file's outline waits out the pause.
         Editors.ActiveChanged += (_, _) =>
@@ -134,9 +152,14 @@ public partial class MainWindow : IdeWindow
             {
                 structure?.Invalidate();
             }
+            if (sceneProperties?.Shown is { } shown && PathNames.Same(shown.File, document.Path))
+            {
+                sceneProperties.ReadAgain();
+            }
         };
         Editors.ActiveChanged += (_, _) => UpdateStatus();
         Editors.ActiveChanged += (_, _) => session.CSharp?.FollowIndent(Editors.Active);
+        Editors.ActiveChanged += (_, _) => session.CSharp?.Shown(Editors.Active);
         // The indent widget and the line break follow a file's .editorconfig changed, or its save.
         Editors.Opened += (_, document) => document.PropertyChanged += (_, e) =>
         {
@@ -149,6 +172,7 @@ public partial class MainWindow : IdeWindow
         Editors.CaretMoved += (_, _) => UpdateCaret();
         Editors.SaveFailed += (_, problem) => status.Text = problem;
         Editors.OpenFailed += (_, problem) => status.Text = problem;
+        Editors.Refused += (_, problem) => status.Text = problem;
         Editors.Opened += (_, document) => session.Attach(document);
         Editors.Closed += (_, document) => session.Detach(document);
         Editors.ForEachEditor(editor => editor.ProblemsRequested += (_, _) => ShowToolWindow(ToolWindowIds.Problems));
@@ -159,6 +183,12 @@ public partial class MainWindow : IdeWindow
             {
                 Request(action);
             }
+        });
+        // A click its gesture's drag shares (Alt-click beside Alt-drag's column) runs only where it can, a column's start saying nothing.
+        Editors.ForEachEditor(editor => editor.ClickRuns = action =>
+        {
+            ActionContext context = actions!.Context();
+            return editor == Editors.CodeEditor && actions.WhyNot(action, context) is null && Request(action, context);
         });
         Editors.ForEachEditor(editor => editor.CaretLimitReached += (_, _) =>
             status.Text = string.Create(CultureInfo.InvariantCulture, $"Cannot create more than {SelectionSet.MaxCount:N0} carets"));
@@ -220,11 +250,16 @@ public partial class MainWindow : IdeWindow
         });
         assist = new CodeAssist(Editors, Editors.AssistLayer, () => session.CSharp)
         {
-            Xaml = () => session.Xaml, MSBuild = () => session.MSBuild, Web = () => session.Web, Projects = () => session.Workspace?.Projects ?? [],
+            Xaml = () => session.Xaml, MSBuild = () => session.MSBuild, Web = () => session.Web, GodotScenes = () => session.GodotScenes,
+            GodotShaders = () => session.GodotShaders,
+            GodotScriptTypes = () => session.GodotScriptTypes,
+            Stylesheets = () => session.Stylesheets,
+            Projects = () => session.Workspace?.Projects ?? [],
         };
         assist.Navigate += (_, target) => NavigateTo(target.Path, target.Position);
         assist.Message += (_, message) => status.Text = message;
         assist.Browse += (_, page) => Browse(page);
+        assist.Play += (_, file) => IdeErrors.Observe(PlaySoundAsync(file));
         assist.FilesChanging = FollowingAsync;
         assist.HttpRouteTargets = HttpRouteTargets;
         assist.RouteCallers = RouteCallers;
@@ -258,11 +293,14 @@ public partial class MainWindow : IdeWindow
         assist.DebuggerValue = async (offset, cancel) => Editors.Active is { } shown && Debugging.XamlBreakpoints.Compiled(shown.Path)
             ? bindingValues!.HoverAt(shown, offset)
             : await session.Debug.HoverAt(offset, cancel);
-        // Passenger's own fixes: bindings, compose names, Aspire, configuration and localized keys.
+        assist.GutterWords = line => Editors.Active is { } beside ? GutterWordsOf(beside, line) : null;
+        assist.AnnotationCard = (annotation, card) => Editors.Active is { } annotated && godotValues is { } live && live.Card(annotated, annotation, card);
+        // Passenger's own fixes: bindings, compose names, Aspire, configuration and localized keys, Godot's checks; each language's own come from its assist.
         assist.EditorFixes = (file, offset) => [.. Passenger.App.LiveTree.BindingErrors.Fixes(file, offset, session.FailedBindings.Select(b => b.Failure)),
             .. session.Web?.Checks.Fixes(file, offset) ?? [], .. assist.AspireFixes(file, offset), .. assist.ComposeReadFixes(file, offset), .. MigrationFixes(file, offset),
-            .. assist.ConfigurationFixes(file, offset), .. assist.LocalizationFixes(file, offset)];
+            .. assist.ConfigurationFixes(file, offset), .. assist.LocalizationFixes(file, offset), .. assist.GodotFixes(file, offset, session.GodotMarks)];
         assist.AskValue = AskValueAsync;
+        assist.ConfirmFix = (title, text, yes) => Confirm(title, text, yes);
         // The session as each call finds it.
         assist.ConfigurationOf = path => session.ConfigurationOf(path);
         assist.ConfiguredBy = path => session.ConfiguredBy(path);
@@ -292,16 +330,19 @@ public partial class MainWindow : IdeWindow
     /// <summary>Every file of the open folder, as Go to File searches them.</summary>
     public FileIndex FileIndex => session.Index;
 
-    /// <summary>Opens what the command line named: a folder, solution or project, files in it, a caret position. Named
-    /// nothing, what the system handed Passenger as it started (a solution double-clicked in the Finder), else the
-    /// window that keeps state reopens what was open as Passenger last quit, or shows the Welcome screen.</summary>
+    /// <summary>Opens what the command line named: a folder, solution or project, files in it, a caret position, and the
+    /// run configuration it starts there (<see cref="StartedRun"/>). Named nothing, what the system handed Passenger as it
+    /// started (a solution double-clicked in the Finder), else the window that keeps state reopens what was open as
+    /// Passenger last quit, or shows the Welcome screen.</summary>
     public void Start(LaunchOptions options)
     {
         started = true;
         IReadOnlyList<string> handed = PassengerApp.TakePending();
+        TaskCompletionSource<MainWindow>? begun = null;
         if ((options.Workspace ?? options.Folder) is { } path)
         {
-            PassengerApp.OpenProject(path, OpenTarget.ThisWindow, this);
+            begun = options.Starts is null ? null : new TaskCompletionSource<MainWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
+            PassengerApp.OpenProject(path, OpenTarget.ThisWindow, this, begun is null ? null : into => begun.TrySetResult(into));
         }
         else if (handed.Count > 0)
         {
@@ -331,18 +372,22 @@ public partial class MainWindow : IdeWindow
         {
             welcome.FocusSearch();
         }
+        if (options.Starts is { } start)
+        {
+            StartedRun = begun is null ? Task.FromResult<string?>(start.NoFolder) : StartOnceBegunAsync(begun.Task, start);
+        }
         PreloadTemplates();
         IdeErrors.Observe(ForgetUnmaskedCopiesAsync());
     }
 
     private string? followed;
 
-    /// <summary>Chooses the file shown in the Explorer as another is shown, a tab switched to as well as a file opened;
-    /// a row chosen there meanwhile stays chosen until then.</summary>
+    /// <summary>Chooses the file shown in the Explorer as another is shown, a tab switched to as well as a file opened,
+    /// while Always Select Opened File is on; a row chosen there meanwhile stays chosen until then.</summary>
     private void FollowInExplorer()
     {
         string? shown = Editors.Active?.Path;
-        if (shown is not null && shown != followed)
+        if (shown is not null && shown != followed && settings.AlwaysSelectOpenedFile)
         {
             Explorer.Reveal(shown);
         }
@@ -360,7 +405,7 @@ public partial class MainWindow : IdeWindow
         }
         session.Opened(full);
         // Behind the file shown (an agent's), it is not the Explorer's to follow.
-        if (Editors.Active?.Path == full)
+        if (Editors.Active?.Path == full && settings.AlwaysSelectOpenedFile)
         {
             Explorer.Reveal(full);
         }
@@ -387,12 +432,20 @@ public partial class MainWindow : IdeWindow
         {
             if (!shifted)
             {
-                if (!BranchesTake(action))
+                if (!BranchesTake(action) && !PlaceTakes(action))
                 {
                     Request(action);
                 }
                 e.Handled = true;
             }
+            return;
+        }
+        if (!shifted && action is EditorActions.Undo or EditorActions.Redo && (focused is Tables.CellGrid
+            || Editors.ActiveGroup.GodotPage is { } page && focused is Visual inPage && (inPage == page.Body || page.Body.IsVisualAncestorOf(inPage))))
+        {
+            // A table or a Godot project's page over a file's text takes back that text's edits, its own among them, as the Edit menu does.
+            Request(action);
+            e.Handled = true;
             return;
         }
         if (EditorWithKeys(window, focused) is not { } editor)
@@ -465,6 +518,9 @@ public partial class MainWindow : IdeWindow
     }
 
     public bool IsPopupOpen => popups.IsOpen;
+
+    /// <summary>The popups over this window and the others it opens.</summary>
+    public PopupHost Popups => popups;
 
     /// <summary>What the open popup is (Go to File, a breakpoint's properties, the Breakpoints window), or null.</summary>
     public Control? Popup => popups.Open;
@@ -595,7 +651,8 @@ public partial class MainWindow : IdeWindow
         {
             Action = AppActions.FocusExplorer,
             HeaderTools = Explorer.TakeHeaderTools(),
-            Options = Explorer.Options,
+            Options = ExplorerOptions,
+            HeaderAction = (AppActions.SelectOpenedFile, IconKeys.Locate, SelectOpenedFileTitle),
             Chosen = () => Explorer.SelectedNodes,
             // Opening every row would read every folder on disk, build output and packages too: it closes them alone.
             CollapseAll = Explorer.Tree.CollapseAll,
@@ -603,7 +660,7 @@ public partial class MainWindow : IdeWindow
         });
         // Shown however it is (its action, its stripe button, a layout), it asks for the file shown then itself.
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Structure, "Structure", IconKeys.Structure, MakeStructure, Docking.ToolAnchor.LeftBottom) { Action = AppActions.ShowStructure });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Run, "Run", IconKeys.RunOutline, Bottom.Run, Docking.ToolAnchor.BottomLeft) { Action = AppActions.ShowRun, ActionTitle = "Run Tool Window" });
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Run, "Run", IconKeys.RunOutline, Bottom.RunWindow, Docking.ToolAnchor.BottomLeft) { Action = AppActions.ShowRun, ActionTitle = "Run Tool Window" });
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Debug, "Debug", IconKeys.Debug, () => debugView = new ToolWindows.DebugView(Bottom.Debug), Docking.ToolAnchor.BottomLeft)
         {
             Action = AppActions.ShowDebug,
@@ -644,7 +701,10 @@ public partial class MainWindow : IdeWindow
         Dock.LayoutChanged += (_, _) => KeepDock();
         findSettings = store.Find.Value;
         Editors.ShowsMarkdownPreview = store.Previews.Value.Markdown;
+        Editors.ShowsSvgPreview = store.Previews.Value.Svg;
+        Editors.ShowsHtmlPreview = store.Previews.Value.Html;
         ShowPreviews(store.Previews.Value.Xaml);
+        liveTree!.KeepSplits(store.LiveTree.Value, kept => state?.LiveTree.Set(kept));
         assist.RenameSettings = store.Refactorings.Value;
         assist.RenameSettingsChanged += (_, _) => state?.Refactorings.Set(assist.RenameSettings);
         keepsWorkspace = true;
@@ -665,6 +725,10 @@ public partial class MainWindow : IdeWindow
     /// IDE; off for a window that asks nothing of C#, an <c>--mcp</c> Passenger's through
     /// <see cref="Mcp.McpHost.LanguageServerVariable"/>.</summary>
     public bool StartsLanguageServer { get; init; } = true;
+
+    /// <summary>Whether nobody sees the window, as nobody sees any of this process's (<see cref="PassengerApp.ShowsNoWindow"/>):
+    /// every Godot game and editor it starts then runs headless, and it plays no sound.</summary>
+    public bool Unseen { get; init; } = PassengerApp.ShowsNoWindow;
 
     /// <summary>The store of the window a person uses, the process's for its state folder, taken the first time it keeps
     /// something; null in a headless one.</summary>
@@ -760,12 +824,16 @@ public partial class MainWindow : IdeWindow
         EditorWindows = Editors.CaptureWindows(),
         RecentFiles = [.. session.RecentFiles],
         UnloadedProjects = [.. session.KeptUnloaded],
+        TargetFrameworks = session.Frameworks.Kept,
         Folds = session.Folds.Capture(Editors.Documents),
+        GodotEditorOffered = godotEditorOffered,
+        GodotTemplatesStyle = godotTemplatesStyle,
     });
 
     /// <summary>The open folder's state as the store kept it, once the window keeps state: its layout (else the one
-    /// changed last in any window), breakpoints, bookmarks, the Unit Tests window's view and the log's favourite branches,
-    /// the session's own (<see cref="ProjectSession.Keep"/>), and its editors, the one shown the latest recent file.</summary>
+    /// changed last in any window), breakpoints, bookmarks, the Unit Tests window's view and its tests' last results, the
+    /// log's favourite branches, the session's own (<see cref="ProjectSession.Keep"/>), and its editors, the one shown the
+    /// latest recent file.</summary>
     private void RestoreWorkspace()
     {
         if (!keepsWorkspace || session.Folder is not { } folder)
@@ -785,7 +853,9 @@ public partial class MainWindow : IdeWindow
         }
         // Before the folder's documents are this window's, so what restoring them changes is not written back.
         RestoreUnitTests(opening.UnitTests.Value);
+        session.Tests.Keep(opening.UnitTestResults.Value.Methods);
         branchFavorites = opening.GitBranches.Value;
+        session.Vcs.SignOff = opening.Commit.Value.SignOff;
         if (gitView?.Log.Branches is { } branches)
         {
             branches.Favorites = branchFavorites;
@@ -801,6 +871,10 @@ public partial class MainWindow : IdeWindow
         {
             session.Opened(shown.Path);
         }
+        godotEditorOffered = kept.GodotEditorOffered;
+        godotTemplatesStyle = kept.GodotTemplatesStyle;
+        OfferGodotEditor();
+        ListenForGodotEditors();
     }
 
     /// <summary>The Structure tool window, built as it is first shown or asked for.</summary>
@@ -810,10 +884,10 @@ public partial class MainWindow : IdeWindow
     private ToolWindows.StructureView MakeStructure()
     {
         structure = new ToolWindows.StructureView();
-        structure.Follow(() => Editors.Active is { } shown
-            ? (shown.Path, shown.Name, session.OutlineOf(shown), Editors.CodeEditor.CaretPosition.Line)
-            : null);
-        structure.GoToRequested += (_, row) => NavigateTo(row.Path, row.Position);
+        structure.Follow(() => Editors.Active is { } shown ? (shown.Path, shown.Name, Editors.CodeEditor.CaretPosition.Line) : null,
+            () => Editors.Active is { } shown ? session.OutlineOf(shown) : null);
+        structure.GoToRequested += (_, row) => navigator.GoTo(row);
+        structure.Chosen += (_, row) => IdeErrors.Observe(ShowSceneNodeAsync(row));
         structure.UsagesRequested += (_, row) =>
         {
             NavigateTo(row.Path, row.Position);
@@ -855,16 +929,20 @@ public partial class MainWindow : IdeWindow
         });
     }
 
-    /// <summary>Unload Project: the project shows dimmed with nothing under it, and leaves the run configurations, the
-    /// solution's builds and the test runner until it is reloaded, which the language server loads it for (one a solution
-    /// filter left out too); the folder keeps the choice.</summary>
+    /// <summary>Unload Project: the project shows dimmed with nothing under it, and leaves the language server, the run
+    /// configurations, the solution's builds and the test runner until it is reloaded, which the server loads it for (one a
+    /// solution filter left out too); the folder keeps the choice.</summary>
     public void SetUnloaded(string project, bool unloaded)
     {
         if (!session.ChooseUnloaded(project, unloaded))
         {
             return;
         }
-        if (!unloaded)
+        if (unloaded)
+        {
+            IdeErrors.Observe(LeaveLanguageServerAsync(project));
+        }
+        else
         {
             session.CSharp?.Reload([project]);
         }
@@ -874,6 +952,14 @@ public partial class MainWindow : IdeWindow
         FindTests();
         ShowSolutionProblems();
         KeepWorkspace();
+    }
+
+    /// <summary>The language server let go of a project unloaded, the action under way until it has, so what an agent asks
+    /// next has none of it.</summary>
+    private async Task LeaveLanguageServerAsync(string project)
+    {
+        using Working? work = actions!.Work.Begin(AppActions.UnloadProject, $"Unloading {Path.GetFileNameWithoutExtension(project)}", stoppable: false);
+        await (session.CSharp?.UnloadAsync([project]) ?? Task.CompletedTask);
     }
 
     /// <summary>A breakpoint's properties beside its line in the gutter, its condition ready to type.</summary>
@@ -918,7 +1004,7 @@ public partial class MainWindow : IdeWindow
             Debugging.LineBreakpoint? inside = session.Debug.OnLambda(document, lambda);
             MenuItem choice = Choice(name, inside is not null, () => session.Debug.ToggleLambda(document, lambda));
             // Its code as the editor draws it.
-            choice.FontFamily = CodeEditor.CodeFont;
+            choice.InCodeFont();
             choice.FontFeatures = CSharp.Fonts.Features(settings.Ligatures);
             items.Add(choice);
             if (inside is not null)
@@ -932,7 +1018,7 @@ public partial class MainWindow : IdeWindow
         }
         foreach ((string name, Debugging.LineBreakpoint breakpoint) in set)
         {
-            MenuItem edit = new() { Header = (set.Count == 1 ? "Edit Breakpoint…" : $"Edit {name}…").Replace("_", "__", StringComparison.Ordinal) };
+            MenuItem edit = new() { Header = set.Count == 1 ? "Edit Breakpoint…" : $"Edit {name}…" };
             edit.Click += (_, _) => ShowBreakpointPopup(breakpoint);
             items.Add(edit);
         }
@@ -940,14 +1026,14 @@ public partial class MainWindow : IdeWindow
 
         static MenuItem Choice(string name, bool on, Action toggle)
         {
-            MenuItem item = new() { Header = name.Replace("_", "__", StringComparison.Ordinal), ToggleType = MenuItemToggleType.CheckBox, IsChecked = on };
+            MenuItem item = new() { Header = name, ToggleType = MenuItemToggleType.CheckBox, IsChecked = on };
             item.Click += (_, _) => toggle();
             return item;
         }
     }
 
     /// <summary>A press on an icon of the gutter's marks: a test's menu, a route's or an .http request's, a run
-    /// configuration's or a colour's picker; false where the line has none of these.</summary>
+    /// configuration's, a colour's picker or a scene mark's menu; false where the line has none of these.</summary>
     private bool PressMark(CodeEditor editor, OpenDocument document, GutterClick click)
     {
         if (document.TestMarks.Any(m => m.Line == click.Line))
@@ -972,7 +1058,7 @@ public partial class MainWindow : IdeWindow
             ShowRunMarkMenu(editor, document, click.Line);
             return true;
         }
-        return PickColour(editor, document, click);
+        return PickColour(editor, document, click) || ShowSceneMarkMenu(editor, document, click.Line);
     }
 
     /// <summary>The Breakpoints window, a breakpoint chosen in it.</summary>
@@ -1031,11 +1117,14 @@ public partial class MainWindow : IdeWindow
     /// reports under way (its projects loading, and how far) whenever there is some.</summary>
     private string LanguageLabel()
     {
-        string language = Editors.Active?.Language.Name ?? string.Empty;
-        if (Editors.Active is { } active && Web.WebLanguages.LanguageOf(active.Path) is not null)
+        // A diff's tab names no language of its own.
+        string language = Editors.Active is { Diff: null } file ? file.Language.Name : string.Empty;
+        if (Editors.Active is { Diff: null } active && Web.WebLanguages.LanguageOf(active.Path) is not null)
         {
-            // A web file's server, not C#'s, is what it waits on.
-            return (session.Web?.StateOf(active) ?? session.Web?.DetailOf(active)) is { Length: > 0 } said ? $"{language} · {said}" : language;
+            // A web file's server, not C#'s, is what it waits on; one named as its language is said once (TypeScript's TypeScript).
+            return (session.Web?.StateOf(active) ?? session.Web?.DetailOf(active)) is { Length: > 0 } said
+                ? said.StartsWith(language + " ", StringComparison.Ordinal) ? said : $"{language} · {said}"
+                : language;
         }
         CSharpService? csharp = session.CSharp;
         string? shown = csharp?.Progress ?? (csharp is { IsReady: false, State: { Length: > 0 } state } ? state : null);

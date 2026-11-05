@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.App.Editors;
 using Passenger.App.LiveTree;
+using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
@@ -123,6 +124,8 @@ public sealed class DebugController : IDisposable
         EventHandler<(string Expression, bool Watch)> evaluated = (_, request) => IdeErrors.Observe(Evaluate(request.Expression, request.Watch));
         EventHandler<(VariableNode Node, string Value)> set = (_, request) => IdeErrors.Observe(SetValue(request.Node, request.Value));
         EventHandler<VariableNode> watchData = (_, node) => IdeErrors.Observe(ToggleDataBreakpointAsync(node));
+        EventHandler<VariableNode> ranAgain = (_, node) => IdeErrors.Observe(RunWithThreadsAsync(node, view.Tree));
+        EventHandler readAgain = (_, _) => IdeErrors.Observe(ShowVariables());
         EventHandler<VariableNode> textOpened = (_, node) => TextOpened?.Invoke(this, node.Value);
         EventHandler<DebugTab> tabChosen = (_, tab) => IdeErrors.Observe(ChooseAsync(tab));
         EventHandler<DebugTab> tabClosed = (_, tab) => IdeErrors.Observe(CloseTabAsync(tab));
@@ -139,6 +142,8 @@ public sealed class DebugController : IDisposable
         view.DataWatch = DataWatchAsync;
         view.PlaceOf = PlaceOf;
         view.DataBreakpointRequested += watchData;
+        view.RunWithThreadsRequested += ranAgain;
+        view.ReadAgainRequested += readAgain;
         view.TextOpened += textOpened;
         Breakpoints.DataChanged += (_, _) => TellRefusedData();
         view.WatchRemoved += unwatched;
@@ -154,6 +159,8 @@ public sealed class DebugController : IDisposable
             view.EvaluateRequested -= evaluated;
             view.SetValueRequested -= set;
             view.DataBreakpointRequested -= watchData;
+            view.RunWithThreadsRequested -= ranAgain;
+            view.ReadAgainRequested -= readAgain;
             view.TextOpened -= textOpened;
             view.WatchRemoved -= unwatched;
         };
@@ -246,6 +253,9 @@ public sealed class DebugController : IDisposable
     /// <summary>An EF Core query's SQL read in Variables or the hover card, to open whole in a read-only editor tab.</summary>
     public event EventHandler<string>? TextOpened;
 
+    /// <summary>Quick Evaluate Expression's value, read for the editor's card at an offset of the file shown.</summary>
+    public event EventHandler<(int Offset, CSharp.DebuggerHover Value)>? QuickValueRead;
+
     /// <summary>The session started, stopped, ran on or ended.</summary>
     public event EventHandler? StateChanged;
 
@@ -269,7 +279,11 @@ public sealed class DebugController : IDisposable
     public Func<bool> HotReloadOn { get; init; } = () => false;
 
     /// <summary>The chosen session's Hot Reload, while it has one.</summary>
-    public HotReload? HotReload => chosen is { HotReload: { } reload, IsLive: true, Session: not null } ? reload : null;
+    public HotReload? HotReload => Reloaded is { HotReload: { } reload, IsLive: true, Session: not null } ? reload : null;
+
+    /// <summary>The tab Hot Reload's changes go to: the chosen one, or the one it is the companion of (a Godot game's C#, whose
+    /// GDScript tab is chosen).</summary>
+    private DebugTab? Reloaded => chosen is { Companion: { IsLive: true } of } ? of : chosen;
 
     /// <summary>The edits followed for programs built and not yet debugged (<see cref="Building"/>).</summary>
     private readonly List<BuiltEdits> building = [];
@@ -341,7 +355,7 @@ public sealed class DebugController : IDisposable
         return edits;
     }
 
-    private HotReload? hotReload => chosen?.HotReload;
+    private HotReload? hotReload => Reloaded?.HotReload;
 
     /// <summary>What the last Apply Changes came to, until the next.</summary>
     public HotReloadOutcome? LastApplied { get; private set; }
@@ -357,13 +371,34 @@ public sealed class DebugController : IDisposable
     private Task<Applying>? applying;
 
     /// <summary>Why Apply Changes cannot run: nothing debugged, a session without Hot Reload, or one that stopped taking
-    /// changes.</summary>
+    /// changes; none while its app's XAML has edits, which need no Edit and Continue.</summary>
     public string? WhyNotApply() => NotLive()
-        ?? (Session!.State == DebugState.Starting ? StillStarting
-        : hotReload is null ? (Session!.Attached
-            ? "Hot Reload applies changes to a program the debugger launched, not to one it attached to"
-            : $"This program was launched with Hot Reload when debugging off ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)})")
+        ?? (Reloaded!.Session!.State == DebugState.Starting ? StillStarting
+        : Reloaded.App?.Xaml is { Changed: true } ? null
+        : Reloaded.Session.Engine == DebugEngine.WebAssembly ? BrowserReload
+        : hotReload is null ? (Reloaded.Session.Engine == DebugEngine.GDScript ? ReloadedAsSaved ?? LaunchedWithout
+            : Reloaded.Session.Attached ? "Hot Reload applies changes to a program the debugger launched, not to one it attached to"
+            : LaunchedWithout)
         : hotReload.WhyNot);
+
+    /// <summary>Why a program launched with Settings' Hot Reload while debugging off takes no changes.</summary>
+    private static string LaunchedWithout => $"This program was launched with Hot Reload when debugging off ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)})";
+
+    /// <summary>Whether the Godot game a GDScript session debugs reloads each of its scripts as it is saved (its start took
+    /// Hot Reload): the window's games answer.</summary>
+    public Func<DebugSession, bool> ReloadsScripts { get; init; } = _ => false;
+
+    /// <summary>What Apply Changes says of the chosen game's GDScript session where Godot reloads each script as it is saved:
+    /// there is nothing else to apply. Null for any other session, or one whose game takes no saved script.</summary>
+    public string? ReloadedAsSaved => NotLive() is null && Reloaded is { HotReload: null, Session: { Engine: DebugEngine.GDScript } scripts } tab && ReloadsScripts(scripts)
+        ? ScriptsReloadAsSaved(tab.Name) : null;
+
+    /// <summary>What Apply Changes says of a game whose GDScript Godot reloads as each file is saved.</summary>
+    public static string ScriptsReloadAsSaved(string name) => $"Godot reloads each GDScript file of {name} in the game as it is saved, with nothing else to apply";
+
+    /// <summary>Why the debugger in the browser applies no Hot Reload changes.</summary>
+    public const string BrowserReload = "Hot Reload of a Blazor app's WebAssembly half comes through dotnet watch's browser refresh, not the debugger in the browser: "
+        + "Run the app with Hot Reload to have its page take changes";
 
     /// <summary>Apply Hot Reload Changes to the chosen program debugged with Hot Reload and its group, restarting none.</summary>
     public async Task<HotReloadOutcome> ApplyChangesAsync() => (await ApplyAsync(Debugged(), null)).Outcome;
@@ -374,7 +409,7 @@ public sealed class DebugController : IDisposable
 
     /// <summary>The chosen program debugged with Hot Reload, then the others of its group (a container run's services debugged
     /// together), which take its edits with it; none when Apply Changes cannot run on it.</summary>
-    private List<IHotReloadTarget> Debugged() => WhyNotApply() is null && chosen is { } applied
+    private List<IHotReloadTarget> Debugged() => WhyNotApply() is null && Reloaded is { } applied
         ? [applied, .. view.Sessions.Where(t => t != applied && applied.Group is { } group && t.Group == group
             && t is { IsLive: true, HotReload.WhyNot: null, Session: not null })]
         : [];
@@ -402,8 +437,8 @@ public sealed class DebugController : IDisposable
     /// an agent's, a resume's): one at a time, so one asked while another is under way waits for it and then applies only
     /// what still has edits, sending no program a second update for the same edits. Each target's console says what its
     /// apply came to; those that need a restart for their edits are restarted as <paramref name="restart"/> says (none when
-    /// null). Answers what they came to, said as one.</summary>
-    internal async Task<HotReloadApplied> ApplyAsync(IReadOnlyList<IHotReloadTarget> targets, HotReloadRestart? restart)
+    /// null). Answers what they came to, said as one; <paramref name="xamlOnly"/>, of their apps' XAML alone.</summary>
+    internal async Task<HotReloadApplied> ApplyAsync(IReadOnlyList<IHotReloadTarget> targets, HotReloadRestart? restart, bool xamlOnly = false)
     {
         UiThread.Check();
         Applying? before = null;
@@ -413,13 +448,13 @@ public sealed class DebugController : IDisposable
         }
         if (before is not null)
         {
-            targets = [.. targets.Where(target => target.HotReload is { Changed: true })];
+            targets = [.. targets.Where(target => (!xamlOnly && target.HotReload is { Changed: true }) || target is DebugTab { App.Xaml.Changed: true })];
             if (targets.Count == 0)
             {
                 return new HotReloadApplied(before.Outcome, false);
             }
         }
-        Task<Applying> mine = ApplyOnceAsync(targets);
+        Task<Applying> mine = ApplyOnceAsync(targets, xamlOnly);
         applying = mine;
         Applying done;
         try
@@ -449,7 +484,7 @@ public sealed class DebugController : IDisposable
     /// as its own.</summary>
     private sealed record Applying(HotReloadOutcome Outcome, HotReloadOutcome? Services, DebugTab? Tab, HotReloadOutcome? Program);
 
-    private async Task<Applying> ApplyOnceAsync(IReadOnlyList<IHotReloadTarget> targets)
+    private async Task<Applying> ApplyOnceAsync(IReadOnlyList<IHotReloadTarget> targets, bool xamlOnly)
     {
         using IDisposable held = BackgroundWork.Scope();
         if (targets.Count == 0)
@@ -467,8 +502,7 @@ public sealed class DebugController : IDisposable
             foreach (IHotReloadTarget target in targets)
             {
                 DebugSession? session = (target as DebugTab)?.Session;
-                each.Add((target, session, target.HotReload is { } reload ? await reload.ApplyAsync()
-                    : new HotReloadOutcome(HotReloadResult.Failed, $"{target.Name} is not debugged with Hot Reload")));
+                each.Add((target, session, await ApplyTargetAsync(target, xamlOnly)));
             }
             tabs = [.. each.Where(e => !e.Target.Quiet).Select(e => ((DebugTab)e.Target, e.Session, e.Outcome))];
             foreach ((DebugTab tab, DebugSession? session, HotReloadOutcome its) in tabs)
@@ -496,6 +530,10 @@ public sealed class DebugController : IDisposable
         foreach ((IHotReloadTarget target, HotReloadOutcome its) in quiet)
         {
             target.Say($"Hot Reload: {its.Said}", Unapplied(its));
+            if (its.Code.Result == HotReloadResult.Applied && target is RunningReload run)
+            {
+                ToldHandlers(run);
+            }
         }
         // The program applied to is its own tab's, whichever is chosen now; one ended or restarted meanwhile is told nothing.
         DebugTab? applied = tabs.Count > 0 ? tabs[0].Tab : null;
@@ -516,16 +554,74 @@ public sealed class DebugController : IDisposable
         static bool Unapplied(HotReloadOutcome its) => its.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply);
     }
 
-    /// <summary>A tab's program that took an apply: the files' lines as the update was made of them are its program's from
-    /// now (the built lines forget the edits it took in), their breakpoints are bound again in the new code, and a paused
-    /// program's stop shown is read again where it now is. True when it took the edits, its marks to be drawn again.</summary>
-    private async Task<bool> TakenAsync(DebugTab tab, DebugSession? applied, HotReloadOutcome its)
+    /// <summary>A program's edits applied: its C# first (with edits of its own, or nothing else to apply), so a handler or field
+    /// its XAML names is there, then its app's XAML (<see cref="LiveTree.XamlHotReload"/>).</summary>
+    private static async Task<HotReloadOutcome> ApplyTargetAsync(IHotReloadTarget target, bool xamlOnly)
     {
+        LiveTree.XamlHotReload? xaml = (target as DebugTab)?.App?.Xaml ?? (target as RunningReload)?.App?.Xaml;
+        xaml = xaml is { Changed: true } ? xaml : null;
+        HotReloadOutcome? code = !xamlOnly && target.HotReload is { } reload && (xaml is null || (reload.Changed && reload.WhyNot is null))
+            ? await reload.ApplyAsync()
+            : null;
+        HotReloadOutcome? markup = xaml is null ? null : await xaml.ApplyAsync(paused: (target as DebugTab)?.Session?.State == DebugState.Paused);
+        return HotReloadOutcome.Both(code, markup) ?? new HotReloadOutcome(HotReloadResult.Failed, $"{target.Name} is not debugged with Hot Reload");
+    }
+
+    /// <summary>The update handlers of a program run with Hot Reload told of an update it took (<see cref="ToldHandlers(DebugTab, DebugSession)"/>).</summary>
+    private void ToldHandlers(RunningReload run)
+    {
+        run.Browser?.Updated();
+        if (run.Handlers is { } hook)
+        {
+            hook.Updated();
+        }
+        else if (run.Session.Elsewhere && toldUnhandled.Add(run))
+        {
+            run.Says(HandlersUnreached, false);
+        }
+    }
+
+    /// <summary>The program's update handlers told of an update it took, so a Blazor component renders it at once; a program
+    /// in a container or on another machine, which Passenger's hook cannot reach, says once that its handlers are not called.</summary>
+    private static void ToldHandlers(DebugTab tab, DebugSession session)
+    {
+        if (tab.Handlers is { } hook)
+        {
+            hook.Updated();
+        }
+        else if (session.Elsewhere && !tab.ToldUnhandled)
+        {
+            tab.ToldUnhandled = true;
+            tab.Console.Append($"{HandlersUnreached}\n");
+        }
+    }
+
+    /// <summary>Files changed on disk: the pages of each web app debugged with Hot Reload kept up with its static files.</summary>
+    public void FilesChanged(IReadOnlyCollection<string> paths)
+    {
+        UiThread.Check();
+        foreach (BrowserRefresh browser in view.Sessions.Where(t => t.IsLive).Select(t => t.Browser).Concat(running.Select(r => r.Browser)).OfType<BrowserRefresh>())
+        {
+            browser.Changed(paths);
+        }
+    }
+
+    /// <summary>Why a program in a container or on another machine shows an update only as its code next runs.</summary>
+    internal const string HandlersUnreached = "Hot Reload: Passenger's hook cannot reach a program in a container or on another machine, so its update handlers "
+        + "are not called: a Blazor component shows an edit only as it next renders";
+
+    /// <summary>A tab's program that took an apply's C#, whatever its XAML came to: the files' lines as the update was made of
+    /// them are its program's from now (the built lines forget the edits it took in), their breakpoints are bound again in the
+    /// new code, and a paused program's stop shown is read again where it now is. True when it took the edits, its marks to
+    /// be drawn again.</summary>
+    private async Task<bool> TakenAsync(DebugTab tab, DebugSession? applied, HotReloadOutcome outcome)
+    {
+        HotReloadOutcome its = outcome.Code;
         if (its.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply) || disposed || tab.Session is not { } session || session != applied || !tab.IsLive)
         {
             return false;
         }
-        List<string> files = [.. its.Files.Select(PathNames.Canonical)];
+        List<string> files = [.. its.Files.Where(f => !Xaml.XamlService.IsXaml(f)).Select(PathNames.Canonical)];
         // The stop shown keeps its place in the text, then the files' lines are the program's.
         bool shown = tab == chosen;
         (string Path, int Line)? shownAt = shown && executionPoint is { } point && files.Contains(point.Path) ? (point.Path, Current(point.Path, point.Line)) : null;
@@ -538,6 +634,12 @@ public sealed class DebugController : IDisposable
             executionPoint = (now.Path, Built(now.Path, now.Line));
         }
         await session.SendBreakpointsAgainAsync(files);
+        // An update of code alone: XAML Hot Reload changes no module.
+        if (its.Result == HotReloadResult.Applied && its.Modules.Count > 0)
+        {
+            ToldHandlers(tab, session);
+            tab.Browser?.Updated();
+        }
         if (its.Result == HotReloadResult.Applied && session.State == DebugState.Paused && session.StoppedThread is int thread && tab == chosen && !disposed)
         {
             try
@@ -557,18 +659,30 @@ public sealed class DebugController : IDisposable
     /// debugged; the plan's last session, still debugged, is stopped first. With <paramref name="elsewhere"/> the program
     /// runs on another machine (<see cref="DebugSession.Elsewhere"/>). Null once the session is open (the program may have
     /// ended already), else why it could not.</summary>
-    public Task<string?> StartAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, LiveApp? app = null, BuiltEdits? edits = null)
-        => StartInTabAsync(plan, elsewhere, place, app: app, edits: edits);
+    public Task<string?> StartAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, LiveApp? app = null, BuiltEdits? edits = null,
+        string? copies = null)
+        => StartInTabAsync(plan, elsewhere, place, app: app, edits: edits, copies: copies);
 
-    private Task<string?> StartInTabAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, DebugTab? tab = null, LiveApp? app = null,
-        BuiltEdits? edits = null)
+    /// <summary>Starts a plan's program in a tab, one of the <paramref name="copies"/> of a game a configuration (named)
+    /// starts where given.</summary>
+    private async Task<string?> StartInTabAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, DebugTab? tab = null, LiveApp? app = null,
+        BuiltEdits? edits = null, string? copies = null)
     {
         Func<RunInTerminalArguments, Task<Run.TerminalRun>>? inTerminal = !elsewhere && place is null && plan.Console == Run.ConsoleKind.Terminal && RunInTerminal is { } run
-            ? arguments => run(plan.Name, arguments)
+            ? arguments => Run.GodotConsole.RunAsync(plan, arguments, asked => run(plan.Name, asked))
             : null;
         bool hotReloadOn = HotReloadOn();
-        return OpenAsync((built, log, output, starting) => DebugSession.LaunchAsync(plan, Breakpoints, built, log, output, inTerminal, ColumnOf, hotReloadOn, starting, elsewhere, place),
-            plan.Name, launched: true, inTerminal: inTerminal is not null, hotReloadOn: hotReloadOn, tab: tab, app: app, plan: plan, edits: edits);
+        // A program on this machine debugged with Hot Reload runs its update handlers as each update lands, through Passenger's hook.
+        UpdateHandlerHook? hook = null;
+        if (hotReloadOn && !elsewhere && place is null && UpdateHandlerHook.For(plan) is ({ } made, { } hooked))
+        {
+            (hook, plan) = (made, hooked);
+        }
+        // A web app's pages kept up with its static files and its updates, through the SDK's own browser refresh.
+        (BrowserRefresh? browser, Run.LaunchPlan refreshed, string? unkept) = hotReloadOn && !elsewhere && place is null ? await BrowserRefresh.ForAsync(plan) : (null, plan, null);
+        return await OpenAsync((built, log, output, starting) => DebugSession.LaunchAsync(refreshed, Breakpoints, built, log, output, inTerminal, ColumnOf, hotReloadOn, starting, elsewhere, place),
+            plan.Name, launched: true, inTerminal: inTerminal is not null, hotReloadOn: hotReloadOn, group: copies, tab: tab, app: app, plan: refreshed, edits: edits, hook: hook,
+            browser: browser, unkept: unkept, copy: copies is not null);
     }
 
     /// <summary>The column (from one) a line (from zero) asks the debugger for, in the file's text (an open file's as it is
@@ -603,30 +717,153 @@ public sealed class DebugController : IDisposable
         return code < span.End ? code - span.Start + 1 : null;
     }
 
-    /// <summary>Attaches the debugger to a running .NET process beside any other program debugged, its output going
-    /// where it always went. With <paramref name="hotReload"/> the program was started held with
-    /// DOTNET_MODIFIABLE_ASSEMBLIES=debug, so Hot Reload is offered as for a launch while Settings has it on;
-    /// <paramref name="elsewhere"/> runs it on another machine, <paramref name="place"/> the adapter where it is, and an
-    /// inspected <paramref name="app"/> is held by its tab. Null once the session is open, else why it could not.</summary>
+    /// <summary>Attaches the debugger to a running .NET process beside any other program debugged. With <paramref name="hotReload"/>
+    /// it was started held with DOTNET_MODIFIABLE_ASSEMBLIES=debug, so Hot Reload is offered while Settings has it on, told
+    /// to <paramref name="handlers"/>; <paramref name="elsewhere"/> runs it on another machine, <paramref name="place"/> the
+    /// adapter where it is; <paramref name="startedElsewhere"/>, said in its console, names another program keeping it, which
+    /// Stop lets it go on in (<see cref="DebugTab.StopLetsGo"/>). Null once the session is open, else why it could not.</summary>
     public Task<string?> AttachAsync(int processId, string name, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null, string? group = null,
-        LiveApp? app = null, BuiltEdits? edits = null)
+        LiveApp? app = null, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null, string? startedElsewhere = null)
     {
         bool hotReloadOn = hotReload && HotReloadOn();
         return OpenAsync((built, log, output, starting) => DebugSession.AttachAsync(processId, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn, elsewhere, place), name,
-            launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app, edits: edits);
+            launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app, edits: edits, hook: hotReloadOn ? handlers : Unheld(handlers),
+            browser: hotReloadOn ? browser : Unheld(browser), attachedWords: startedElsewhere, stopLetsGo: startedElsewhere is not null);
+    }
+
+    /// <summary>What no session will tell of an update (a hook, a browser refresh), let go of: null.</summary>
+    private static T? Unheld<T>(T? held) where T : class, IDisposable
+    {
+        held?.Dispose();
+        return null;
+    }
+
+    /// <summary>What a Godot game Debug starts begins its GDScript with: the enabled breakpoints in the project's scripts at
+    /// their lines now, and whether its script errors stop it (GDScript Errors on); none of either while muted.</summary>
+    public Godot.GodotScriptStart ScriptStart(string folder) => new(
+        Breakpoints.Muted ? [] : [.. Breakpoints.All.Where(b => b.Enabled && Godot.GodotScriptAdapter.Takes(b.Path))
+            .Select(b => (Resource: Passenger.Workspace.GodotScenes.ResPathOf(folder, b.Path), Line: b.Line + 1))
+            .Where(b => b.Resource is not null).Select(b => (b.Resource!, b.Line))],
+        !Breakpoints.Muted && Breakpoints.ScriptErrors.Enabled);
+
+    /// <summary>A GDScript file a game has reloaded as saved: its GDScript sessions' lines of it are the file's now, and its
+    /// breakpoints go to them there.</summary>
+    public async Task ScriptReloadedAsync(string path)
+    {
+        UiThread.Check();
+        foreach (DebugTab tab in view.Sessions.Where(t => t.IsLive && t.Session is { Engine: DebugEngine.GDScript }).ToList())
+        {
+            tab.Lines?.Reset(path);
+            await tab.Session!.SendBreakpointsAgainAsync([path]);
+        }
+    }
+
+    /// <summary>What a Godot game's GDScript tab is called after the game's own.</summary>
+    public static string ScriptsTab(string name) => $"{name} (GDScript)";
+
+    /// <summary>Debugs a Godot game's GDScript beside its C#: a session of its own over the game's connection
+    /// (<see cref="Godot.GodotScriptAdapter"/>), in a tab beside the game's (<see cref="DebugTab.Companion"/>), which stays
+    /// chosen until a script stops; Stop there ends the game, as Stop of its C# does, and Detach lets its scripts run on
+    /// unstopped. Null once the session is open, else why not.</summary>
+    public Task<string?> DebugScriptsAsync(Godot.GodotGame game, string name)
+    {
+        UiThread.Check();
+        DebugTab? companion = view.Sessions.FirstOrDefault(t => t.Name == name && t.IsLive);
+        InProcessEnd end = new($"GDScript adapter of {name}");
+        Godot.GodotScriptAdapter adapter = new(game, end, () => StopAsync(name));
+        adapter.Start();
+        return OpenAsync((built, log, output, starting) => DebugSession.AttachInProcessAsync(end, DebugEngine.GDScript, name, Breakpoints, built, log, output, ColumnOf, starting),
+            ScriptsTab(name), launched: false, companion: companion, attachedWords: $"{name}'s GDScript is debugged here; what the game writes is in {name}'s tab");
+    }
+
+    /// <summary>Debugs a Godot game of GDScript alone (<see cref="Run.LaunchPlan.ScriptsAlone"/>): its GDScript session, in a tab
+    /// of the plan's name, launches the game itself (<see cref="Godot.GodotScriptAdapter"/>), its console the game's output, or
+    /// a tab of the Terminal window when its configuration uses the terminal, and Stop there ends it. Null once the session is
+    /// open, else why not.</summary>
+    public Task<string?> LaunchScriptsAsync(Run.LaunchPlan plan, Godot.GodotGame game, string? copies = null)
+    {
+        UiThread.Check();
+        Func<RunInTerminalArguments, Task<Run.TerminalRun>>? inTerminal = plan.Console == Run.ConsoleKind.Terminal && RunInTerminal is { } run
+            ? arguments => Run.GodotConsole.RunAsync(plan, arguments, asked => run(plan.Name, asked))
+            : null;
+        InProcessEnd end = new($"GDScript adapter of {plan.Name}");
+        Godot.GodotScriptAdapter adapter = new(game, end, null);
+        adapter.Start();
+        return OpenAsync((built, log, output, starting) => DebugSession.LaunchInProcessAsync(end, DebugEngine.GDScript, plan, Breakpoints, built, log, output, inTerminal,
+            ColumnOf, starting), plan.Name, launched: true, inTerminal: inTerminal is not null, group: copies, plan: plan, copy: copies is not null);
+    }
+
+    /// <summary>The live tabs of a configuration's game, one copy or several (<see cref="Run.GameCopies"/>), each by its place from one.</summary>
+    public IReadOnlyList<(DebugTab Tab, int Copy)> CopiesOf(string configuration) =>
+        [.. view.Sessions.Where(t => t.IsLive && t.Companion is null).Select(t => (Tab: t, Of: Run.GameCopies.Of(t.Name)))
+            .Where(c => c.Of.Configuration == configuration).Select(c => (c.Tab, c.Of.Copy))];
+
+    /// <summary>Makes the live tabs of a configuration's game copies of it, so Stop ends them with one more launched beside them.</summary>
+    public void JoinCopies(string configuration)
+    {
+        UiThread.Check();
+        foreach ((DebugTab tab, _) in CopiesOf(configuration))
+        {
+            tab.Copy = true;
+            tab.Group = configuration;
+        }
+    }
+
+    /// <summary>What a Blazor app's WebAssembly tab is called after the app's own.</summary>
+    public static string BrowserTab(string name) => $"{name} (WebAssembly)";
+
+    /// <summary>Where each folder's browser profile for debugging is kept: its own place in the state.</summary>
+    private string BrowserProfiles => Folder is { } open ? Passenger.App.State.ProjectState.FolderOf(Passenger.App.State.StateStore.DefaultRoot, open)
+        : Path.Combine(Passenger.App.State.StateStore.DefaultRoot, "cache");
+
+    /// <summary>Debugs a Blazor Web App's WebAssembly half beside its server: a session of its own in a Chromium browser
+    /// (<see cref="WebAssemblyAdapter"/>), in a tab beside the server's (<see cref="DebugTab.Companion"/>), which stays
+    /// chosen until the page stops; Stop there stops the app, as Stop of the server does. Null once the session is open,
+    /// else why not.</summary>
+    public Task<string?> DebugBrowserAsync(Run.LaunchPlan plan, BrowserDebugging browser)
+    {
+        UiThread.Check();
+        string name = plan.Name;
+        DebugTab? companion = view.Sessions.FirstOrDefault(t => t.Name == name && t.IsLive);
+        InProcessEnd end = new($"WebAssembly adapter of {name}");
+        WebAssemblyAdapter adapter = new(browser, BrowserProfiles, name, end, () => StopAsync(name));
+        adapter.Start();
+        return OpenAsync((built, log, output, starting) => DebugSession.AttachInProcessAsync(end, DebugEngine.WebAssembly, BrowserTab(name), Breakpoints, built, log, output,
+            ColumnOf, starting), BrowserTab(name), launched: false, companion: companion, inBrowser: (browser.Projects, plan.Project!),
+            attachedWords: $"{name}'s components in the browser are debugged here, in {browser.Browser.Name}; what the server writes is in {name}'s tab");
+    }
+
+    /// <summary>Debugs a standalone Blazor WebAssembly app in a Chromium browser: its WebAssembly session, in a tab of the
+    /// plan's name, launches the development server itself (<see cref="WebAssemblyAdapter"/>), its console the server's
+    /// output and the page's, and Stop there ends both. Null once the session is open, else why not.</summary>
+    public Task<string?> LaunchBrowserAsync(Run.LaunchPlan plan, BrowserDebugging browser)
+    {
+        UiThread.Check();
+        InProcessEnd end = new($"WebAssembly adapter of {plan.Name}");
+        WebAssemblyAdapter adapter = new(browser, BrowserProfiles, plan.Name, end, null);
+        adapter.Start();
+        return OpenAsync((built, log, output, starting) => DebugSession.LaunchInProcessAsync(end, DebugEngine.WebAssembly, plan, Breakpoints, built, log, output, null,
+            ColumnOf, starting), plan.Name, launched: true, plan: plan, inBrowser: (browser.Projects, plan.Project!));
     }
 
     /// <summary>Launches another program in a native tab, with hooks installed before its adapter starts.</summary>
     public Task<DebugLaunch> StartAdditionalAsync(Run.LaunchPlan plan, CancellationToken cancellation = default, Action<DebugTab>? configure = null)
         => OpenAdditionalAsync(plan.Name, tab => StartInTabAsync(plan, tab: tab), null, cancellation, configure);
 
-    /// <summary>Attaches another process in a native tab without replacing a sibling session.</summary>
-    public Task<DebugLaunch> AttachAdditionalAsync(int pid, string name, CancellationToken cancellation = default, Action<DebugTab>? configure = null)
+    /// <summary>Attaches another process in a native tab without replacing a sibling session; one started for Hot Reload with
+    /// Passenger's update handlers hook (<paramref name="reload"/>: a test host VSTest started) takes both while Settings has
+    /// Hot Reload on, the hook let go otherwise.</summary>
+    public Task<DebugLaunch> AttachAdditionalAsync(int pid, string name, CancellationToken cancellation = default, Action<DebugTab>? configure = null,
+        UpdateHandlerHook? reload = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pid);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        // Started for Hot Reload (DOTNET_MODIFIABLE_ASSEMBLIES=debug) with its update handlers' hook, as Settings has it on.
+        bool hotReloadOn = reload is not null && HotReloadOn();
+        UpdateHandlerHook? hook = hotReloadOn ? reload : Unheld(reload);
         return OpenAdditionalAsync(name, tab => OpenAsync((built, log, output, starting) =>
-            DebugSession.AttachAsync(pid, Breakpoints, built, log, output, ColumnOf, starting), name, launched: false, tab: tab), pid, cancellation, configure);
+            DebugSession.AttachAsync(pid, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn), name, launched: false, hotReloadOn: hotReloadOn, hook: hook, tab: tab),
+            pid, cancellation, configure);
     }
 
     private async Task<DebugLaunch> OpenAdditionalAsync(string name, Func<DebugTab, Task<string?>> open, int? attachedProcessId,
@@ -707,17 +944,26 @@ public sealed class DebugController : IDisposable
     /// Reload's changes together; its tab holds an inspected <paramref name="app"/> and given <paramref name="edits"/>.</summary>
     private async Task<string?> OpenAsync(Func<BuiltLines, Action<string>, Action<OutputEvent>, Action<DebugSession>, Task<DebugSession>> open, string name, bool launched,
         bool inTerminal = false, bool hotReloadOn = false, AdapterPlace? place = null, string? group = null, DebugTab? tab = null, LiveApp? app = null,
-        Run.LaunchPlan? plan = null, BuiltEdits? edits = null)
+        Run.LaunchPlan? plan = null, BuiltEdits? edits = null, UpdateHandlerHook? hook = null, DebugTab? companion = null, string? attachedWords = null,
+        BrowserRefresh? browser = null, string? unkept = null, (IReadOnlyList<string> Projects, string Program)? inBrowser = null, bool copy = false,
+        bool stopLetsGo = false)
     {
         UiThread.Check();
+        // A start that opens no session lets go of its update handlers' hook and its pages' refresh with it.
+        string Unopened(string why)
+        {
+            hook?.Dispose();
+            browser?.Dispose();
+            return why;
+        }
         // A start that comes after its folder was left would open in the next folder's Debug window, which is not its own.
         if (disposed)
         {
-            return $"Could not debug {name}: its folder was closed";
+            return Unopened($"Could not debug {name}: its folder was closed");
         }
         if (ending)
         {
-            return "The workspace is ending";
+            return Unopened("The workspace is ending");
         }
         // A program debugged again takes its last session's place, which is let go first.
         if (tab is null && view.Sessions.FirstOrDefault(t => t.Name == name && t.IsLive) is { } again)
@@ -725,22 +971,43 @@ public sealed class DebugController : IDisposable
             if (again.Session is { Attached: true } held && HotReloadChanged(held))
             {
                 edits?.Dispose();
-                return LetsNoDebuggerGo(name);
+                return Unopened(LetsNoDebuggerGo(name));
             }
             await EndAsync(again);
             if (disposed)
             {
-                return $"Could not debug {name}: its folder was closed";
+                return Unopened($"Could not debug {name}: its folder was closed");
             }
         }
         if (disposed || ending)
         {
-            return "The workspace ended during launch";
+            return Unopened("The workspace ended during launch");
         }
         tab ??= Place(name);
+        tab.Companion = companion;
         tab.Group = group ?? tab.Group;
+        tab.Copy = copy;
+        tab.StopLetsGo = stopLetsGo;
         tab.App = app ?? tab.App;
         tab.Plan = plan;
+        view.TelemetryChanged();
+        tab.Handlers?.Dispose();
+        tab.Handlers = hook;
+        tab.Browser?.Dispose();
+        tab.Browser = browser;
+        DebugTab says = tab;
+        if (hook is not null)
+        {
+            hook.Says = (line, error) => says.Console.Append($"{line}\n", error);
+        }
+        if (browser is not null)
+        {
+            browser.Says = (line, error) => says.Console.Append($"{line}\n", error);
+        }
+        if (unkept is not null)
+        {
+            tab.Console.Append($"{unkept}\n");
+        }
         // Followed since the build read the files where it began there, else from now: an edit made since is one Apply takes.
         BuiltEdits own = edits ?? Building(hotReloadOn);
         BuiltLines built = own.Lines;
@@ -753,7 +1020,11 @@ public sealed class DebugController : IDisposable
         tab.Lines = built;
         tab.HotReload = reload;
         await FollowClosedLambdasAsync();
-        await ChooseAsync(tab);
+        // A companion's tab is chosen once its program stops there, its program's own staying in front until then.
+        if (companion is null)
+        {
+            await ChooseAsync(tab);
+        }
         if (disposed || ending || tab.OpeningStopped || !view.Sessions.Contains(tab))
         {
             reload?.End();
@@ -761,8 +1032,11 @@ public sealed class DebugController : IDisposable
             tab.OnStateChanged();
             return $"Debugging {name} ended before launch completed";
         }
-        view.SetState(DebugState.Starting);
-        view.ShowDetachable(false);
+        if (tab == chosen)
+        {
+            view.SetState(DebugState.Starting);
+            view.ShowDetachable(false);
+        }
         OutputView shown = tab.Console;
         if (inTerminal)
         {
@@ -774,11 +1048,15 @@ public sealed class DebugController : IDisposable
         }
         else if (!launched)
         {
-            shown.Append($"{AttachedConsole}\n");
+            shown.Append($"{attachedWords ?? AttachedConsole}\n");
         }
         if (plan?.NotDebugged is { } notDebugged)
         {
             shown.Append($"{notDebugged}\n");
+        }
+        foreach (string note in plan?.Notes ?? [])
+        {
+            shown.Append($"{note}\n");
         }
         Message?.Invoke(this, $"Debugging {name}");
         DebugSession? starting = null;
@@ -803,6 +1081,7 @@ public sealed class DebugController : IDisposable
             {
                 starting = made;
                 tab.Session = made;
+                made.InBrowser = inBrowser ?? (plan is { InBrowser.Count: > 0, Project: { } project, Browser: null } ? (plan.InBrowser, project) : null);
                 if (disposed || ending || tab.OpeningStopped || !view.Sessions.Contains(tab))
                 {
                     // Stopped as its adapter started, before there was a session to stop: its start fails as one stopped.
@@ -916,11 +1195,21 @@ public sealed class DebugController : IDisposable
         IdeErrors.Observe(Task.Delay(TimeSpan.FromSeconds(2)).ContinueWith(_ => ChildProcesses.Kill(process), TaskScheduler.Default));
     }
 
-    /// <summary>A program run with Hot Reload through the debugger rather than dotnet watch (a container run's service, whose
-    /// image has no SDK): attached quietly, no breakpoint sent and no stop shown, so Apply Hot Reload Changes and a save
-    /// apply the edits to it; ended with its run. Its built lines follow the edits for a restart on its build.</summary>
+    /// <summary>A program run with Hot Reload through the debugger rather than dotnet watch (a run's service: a container's,
+    /// whose image has no SDK, or an Aspire AppHost's; a Godot game, which runs no startup hook): attached quietly, no breakpoint
+    /// sent and no stop shown, so Apply Hot Reload Changes and a save apply the edits to it; ended with its run. Its built lines
+    /// follow the edits for a restart on its build.</summary>
     public sealed record RunningReload(string Name, DebugSession Session, HotReload Reload, BuiltLines Lines, Action<string, bool> Says) : IHotReloadTarget
     {
+        /// <summary>Passenger's hook in its program, which runs its update handlers after each update; null where it has none.</summary>
+        internal UpdateHandlerHook? Handlers { get; init; }
+
+        /// <summary>The SDK's browser refresh of its pages, a web service's; null for any other.</summary>
+        internal BrowserRefresh? Browser { get; init; }
+
+        /// <summary>The Avalonia or WPF app it is, its inspector in it, whose XAML edits apply after its C#; null for any other.</summary>
+        internal LiveTree.LiveApp? App { get; init; }
+
         HotReload? IHotReloadTarget.HotReload => Reload;
 
         bool IHotReloadTarget.Quiet => true;
@@ -930,19 +1219,26 @@ public sealed class DebugController : IDisposable
 
     private readonly List<RunningReload> running = [];
 
+    /// <summary>The programs run with Hot Reload told once that their update handlers are not called.</summary>
+    private readonly HashSet<RunningReload> toldUnhandled = [];
+
     /// <summary>The programs run with Hot Reload through the debugger, while they run.</summary>
     public IReadOnlyList<RunningReload> Running => running;
 
-    /// <summary>Attaches quietly for Hot Reload alone to a program run, which a container run's Run with Hot Reload held at its
-    /// start with DOTNET_MODIFIABLE_ASSEMBLIES=debug: the attach lets it go. What its applies come to is said by
-    /// <paramref name="says"/>, where its output is. Null once attached, else why not.</summary>
+    /// <summary>Attaches quietly for Hot Reload alone to a program run, which Run with Hot Reload (a run's service, a Godot
+    /// game) held at its start with DOTNET_MODIFIABLE_ASSEMBLIES=debug: the attach lets it go. What its applies come to is said by
+    /// <paramref name="says"/>, where its output is, each told to <paramref name="handlers"/> it started with. Null once
+    /// attached, else why not.</summary>
     public async Task<string?> AttachForHotReloadAsync(int processId, string name, Action<string, bool> says, AdapterPlace? place = null,
-        CancellationToken cancellation = default, BuiltEdits? edits = null)
+        CancellationToken cancellation = default, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null,
+        LiveTree.LiveApp? app = null)
     {
         UiThread.Check();
         if (disposed)
         {
             edits?.Dispose();
+            handlers?.Dispose();
+            browser?.Dispose();
             return $"Could not attach to {name} for Hot Reload: its folder was closed";
         }
         // Followed since the build read the files where it began there, else from now: an edit made meanwhile is one Apply takes.
@@ -967,7 +1263,15 @@ public sealed class DebugController : IDisposable
             {
                 throw new OperationCanceledException("The workspace ended during Hot Reload attach");
             }
-            RunningReload reload = new(name, session, tracked, built, says);
+            RunningReload reload = new(name, session, tracked, built, says) { Handlers = handlers, Browser = browser, App = app };
+            if (handlers is not null)
+            {
+                handlers.Says = says;
+            }
+            if (browser is not null)
+            {
+                browser.Says = says;
+            }
             tracked.Opened(session);
             own.Take();
             running.Add(reload);
@@ -976,6 +1280,8 @@ public sealed class DebugController : IDisposable
                 if (session.State == DebugState.Ended && running.Remove(reload))
                 {
                     reload.Reload.End();
+                    reload.Handlers?.Dispose();
+                    reload.Browser?.Dispose();
                     StateChanged?.Invoke(this, EventArgs.Empty);
                 }
                 else if (session.State == DebugState.Paused && running.Contains(reload))
@@ -989,6 +1295,8 @@ public sealed class DebugController : IDisposable
         }
         catch (Exception error) when (error is DapException or IOException or InvalidOperationException or TimeoutException)
         {
+            handlers?.Dispose();
+            browser?.Dispose();
             if (attaching is not null)
             {
                 await attaching.CloseAsync();
@@ -997,6 +1305,8 @@ public sealed class DebugController : IDisposable
         }
         catch
         {
+            handlers?.Dispose();
+            browser?.Dispose();
             if (attaching is not null)
             {
                 await attaching.CloseAsync();
@@ -1027,6 +1337,16 @@ public sealed class DebugController : IDisposable
         tab.App = app;
         tab.Lines = reload.Lines;
         tab.HotReload = reload.Reload;
+        tab.Handlers = reload.Handlers;
+        tab.Browser = reload.Browser;
+        if (reload.Handlers is { } hook)
+        {
+            hook.Says = (line, error) => tab.Console.Append($"{line}\n", error);
+        }
+        if (reload.Browser is { } browser)
+        {
+            browser.Says = (line, error) => tab.Console.Append($"{line}\n", error);
+        }
         tab.Session = quiet;
         quiet.StateChanged += (_, _) => IdeErrors.Observe(OnStateChanged(tab));
         StateChanged?.Invoke(this, EventArgs.Empty);
@@ -1072,14 +1392,7 @@ public sealed class DebugController : IDisposable
         {
             return only;
         }
-        HotReloadResult result = each.Select(e => e.Outcome.Result).OrderBy(r => r switch
-        {
-            HotReloadResult.Errors => 0,
-            HotReloadResult.RestartNeeded => 1,
-            HotReloadResult.Failed => 2,
-            HotReloadResult.Applied => 3,
-            _ => 4,
-        }).First();
+        HotReloadResult result = each.Select(e => e.Outcome.Result).Aggregate(HotReloadOutcome.Worse);
         // Nothing applied says more when Roslyn said why (a stale project's file).
         List<string> said = [.. each.Where(e => e.Outcome.Result != HotReloadResult.NothingToApply || e.Outcome.Problems.Count > 0).Select(e => $"{e.Name}: {e.Outcome.Said}")];
         return new HotReloadOutcome(result, said.Count == 0 ? HotReload.NothingApplied([]) : string.Join("; ", said))
@@ -1139,6 +1452,7 @@ public sealed class DebugController : IDisposable
         }
         TabsChanged?.Invoke(this, EventArgs.Empty);
         view.ShowConsole(tab.Console);
+        view.TelemetryChanged();
         NextShown();
         frame = null;
         Stop = null;
@@ -1182,8 +1496,9 @@ public sealed class DebugController : IDisposable
         {
             await EndAsync(tab);
         }
-        // Its program's output followed from outside goes with it, ended or not.
+        // Its program's output followed from outside goes with it, ended or not, as does its run's dashboard.
         StopFollowing(tab);
+        OwnDashboard(tab)?.Dispose();
         int at = view.Sessions.IndexOf(tab);
         if (at < 0 || disposed)
         {
@@ -1213,9 +1528,11 @@ public sealed class DebugController : IDisposable
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>The tab to show once the chosen one's program has ended: one paused, else the last that is debugged.</summary>
+    /// <summary>The tab to show once the chosen one's program has ended: one paused, else the last that is debugged, a
+    /// companion's (a Godot game's GDScript) only once its program's own has ended, as it is chosen only once it stops.</summary>
     private DebugTab? Next() =>
-        view.Sessions.FirstOrDefault(t => t.IsLive && t.Session?.State == DebugState.Paused) ?? view.Sessions.LastOrDefault(t => t.IsLive && t.Session is not null);
+        view.Sessions.FirstOrDefault(t => t.IsLive && t.Session?.State == DebugState.Paused)
+        ?? view.Sessions.LastOrDefault(t => t.IsLive && t.Session is not null && t.Companion is not { IsLive: true });
 
     /// <summary>The sessions Stop ended while they started, whose failed start is said as stopped rather than as a failure.</summary>
     private readonly HashSet<DebugSession> stoppedStarting = [];
@@ -1223,12 +1540,19 @@ public sealed class DebugController : IDisposable
     /// <summary>Input for the program, which a session that has ended, or an adapter gone, may never take: its end says so.</summary>
     private static void Send(Task sending) => UnawaitedWork.Dismiss(sending);
 
-    /// <summary>Stop: the chosen program ends, or, with none chosen that is debugged, every one does (Stop All).</summary>
+    /// <summary>Stop: the chosen program ends, with every copy of it where it is one of a game's copies
+    /// (<see cref="DebugTab.Copy"/>), or, with none chosen that is debugged, every one does (Stop All).</summary>
     public Task StopAsync()
     {
         UiThread.Check();
-        return chosen is { IsLive: true } tab ? StopAsync(tab) : StopAllAsync();
+        return chosen is { IsLive: true } tab
+            ? (tab.Companion ?? tab) is { Copy: true, Group: { } copies } ? Task.WhenAll([.. view.Sessions.Where(t => t.IsLive && t.Copy && t.Group == copies).Select(StopAsync)]) : StopAsync(tab)
+            : StopAllAsync();
     }
+
+    /// <summary>The dashboard a tab's program's logs and traces go to, its run's own (never a companion's, whose plan is its
+    /// program's); null for any other.</summary>
+    private static Telemetry.RunDashboard? OwnDashboard(DebugTab tab) => tab.Plan?.Dashboard is { } dashboard && dashboard.Name == tab.Name ? dashboard : null;
 
     /// <summary>Stop All: every program debugged ends, as Stop ends one.</summary>
     public Task StopAllAsync()
@@ -1247,7 +1571,8 @@ public sealed class DebugController : IDisposable
     }
 
     /// <summary>Stop on one tab: the program the debugger started ends, at once while the debugger still waits for its
-    /// runtime; one it is still attaching to is let go, running on, as nothing of the session has reached it.</summary>
+    /// runtime; one it is still attaching to is let go, running on, as nothing of the session has reached it, as is one
+    /// another program keeps (<see cref="DebugTab.StopLetsGo"/>) unless Hot Reload changed it.</summary>
     public async Task StopAsync(DebugTab tab)
     {
         UiThread.Check();
@@ -1256,6 +1581,13 @@ public sealed class DebugController : IDisposable
         {
             return;
         }
+        if (tab.StopLetsGo && session is { Attached: true, State: DebugState.Running or DebugState.Paused } && !HotReloadChanged(session))
+        {
+            await session.DetachAsync();
+            return;
+        }
+        // A program the debugger ends takes its run's dashboard down with it.
+        OwnDashboard(tab)?.Dispose();
         if (session.State == DebugState.Starting)
         {
             stoppedStarting.Add(session);
@@ -1379,14 +1711,14 @@ public sealed class DebugController : IDisposable
                 DebugState.Starting => StillStarting,
                 _ => null,
             }, new("Run", 1, 1));
-        Add(AppActions.StepOver, "Step Over", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOverAsync(), "step over")), (d, _) => d.NotPaused(), new("Run", 1, 2));
-        Add(AppActions.StepInto, "Step Into", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepIntoAsync(), "step into")), (d, _) => d.NotPaused(), new("Run", 1, 3));
-        Add(AppActions.SmartStepInto, "Smart Step Into", (d, c) => IdeErrors.Observe(d.SmartStepIntoAsync()), (d, _) => d.NotPaused(), new("Run", 1, 4));
-        Add(AppActions.StepOut, "Step Out", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOutAsync(), "step out")), (d, _) => d.NotPaused(), new("Run", 1, 5));
+        Add(AppActions.StepOver, "Step Over", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOverAsync(), "step over")), (d, _) => d.NotSteppable(), new("Run", 1, 2));
+        Add(AppActions.StepInto, "Step Into", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepIntoAsync(), "step into")), (d, _) => d.NotSteppable(), new("Run", 1, 3));
+        Add(AppActions.SmartStepInto, "Smart Step Into", (d, c) => IdeErrors.Observe(d.SmartStepIntoAsync()), (d, _) => d.NotSteppable(), new("Run", 1, 4));
+        Add(AppActions.StepOut, "Step Out", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOutAsync(), "step out")), (d, _) => d.NotSteppable(), new("Run", 1, 5));
         Add(AppActions.RunToCursor, "Run to Cursor", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.RunToCursorAsync(c.File!.Path, c.Caret.Line), "run to the cursor")),
             (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused(), new("Run", 1, 6));
         Add(AppActions.SetNextStatement, "Set Next Statement", (d, c) => IdeErrors.Observe(d.SetNextStatementAsync(d.Session!, c.File!.Path, c.Caret.Line)),
-            (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused(), new("Run", 1, 7));
+            (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused() ?? (d.Session!.MovesNextStatement ? null : Refusals.NoNextStatement), new("Run", 1, 7));
         Add(AppActions.ShowExecutionPoint, "Show Execution Point", (d, _) =>
         {
             (string path, int line) = d.executionPoint!.Value;
@@ -1394,7 +1726,9 @@ public sealed class DebugController : IDisposable
         }, (d, _) => d.NotPaused() ?? (d.executionPoint is null ? "Where the program is paused has no source" : null), new("Run", 1, 8));
         Add(AppActions.Evaluate, "Evaluate Expression…", (d, c) => d.view.FocusEvaluate(c.Symbol ?? string.Empty), (d, _) => d.NotPaused(), new("Run", 1, 9));
         Add(AppActions.AddToWatches, "Add to Watches", (d, c) => IdeErrors.Observe(d.Evaluate(c.Symbol!, watch: true)),
-            (d, c) => d.NotPaused() ?? (c.Symbol is { Length: > 0 } ? null : "No expression is at the caret"), null);
+            (d, c) => d.NotPaused() ?? (c.Symbol is { Length: > 0 } ? null : Refusals.NoExpression), null);
+        Add(AppActions.QuickEvaluate, "Quick Evaluate Expression", (d, c) => IdeErrors.Observe(d.QuickEvaluateAsync(c)),
+            (d, c) => d.NotPaused() ?? (c.File is null ? Refusals.NoFile : c.Symbol is { Length: > 0 } ? null : Refusals.NoExpression), new("Run", 1, 10));
         Add(AppActions.Detach, "Detach", (d, c) => IdeErrors.Observe(d.DetachAsync()), (d, _) => d.WhyNotDetach(), new("Run", 0, 8));
         // Every breakpoint stays as it is, and none stops the program until it is chosen again.
         actions.Add(new IdeAction(AppActions.MuteBreakpoints, "Mute Breakpoints", "Debug", _ => current().Breakpoints.SetMuted(!current().Breakpoints.Muted))
@@ -1460,6 +1794,10 @@ public sealed class DebugController : IDisposable
 
     /// <summary>Why a step cannot go now: nothing is being debugged, or the program runs.</summary>
     private string? NotPaused() => NotLive() ?? (Session!.State != DebugState.Paused ? "The program is not paused" : null);
+
+    /// <summary>Why no step goes on from the stop now: the program is not paused, or its debugger steps on from no stop of the
+    /// kind it is at (a Godot script error's).</summary>
+    private string? NotSteppable() => NotPaused() ?? Session!.NoSteps;
 
     /// <summary>Why the chosen session takes no action now: nothing is being debugged, or the tab chosen is one that ended.</summary>
     private string? NotLive() => !IsDebugging ? NothingDebugged
@@ -1577,6 +1915,10 @@ public sealed class DebugController : IDisposable
             {
                 problem = "No thread is paused";
             }
+            else if (!session.MovesNextStatement)
+            {
+                problem = Refusals.NoNextStatement;
+            }
             else if (await session.GotoTargetAsync(path, line) is not { } target)
             {
                 problem = $"Line {line + 1} is not in the method the program is paused in";
@@ -1646,6 +1988,41 @@ public sealed class DebugController : IDisposable
         UpdateMarks(document);
     }
 
+    /// <summary>The line breakpoints the programs debugged will not stop at, as Problems lists them: each at its line, with
+    /// why and how to put it right (<see cref="BreakpointStates.Problem"/>); none while nothing is debugged.</summary>
+    public IReadOnlyList<Problem> BreakpointProblems()
+    {
+        UiThread.Check();
+        bool debugging = IsDebugging;
+        List<Problem> problems = [];
+        foreach (string path in Breakpoints.Files)
+        {
+            foreach (LineBreakpoint breakpoint in Breakpoints.In(path))
+            {
+                if (BreakpointStates.Problem(breakpoint, debugging, Breakpoints.Muted) is { } why)
+                {
+                    problems.Add(new Problem(ProblemSeverity.Warning, why, null, path, new TextPosition(breakpoint.Line, 0), null));
+                }
+            }
+        }
+        return problems;
+    }
+
+    /// <summary>What the gutter's hover says of the breakpoints on a line (from zero) of a file: each one's state and what it
+    /// carries (<see cref="BreakpointStates"/>); null for a line with none.</summary>
+    public IReadOnlyList<string>? GutterWords(string path, int line)
+    {
+        UiThread.Check();
+        List<string> words = [];
+        // The open file's parse as its text stands, which tells a line no code runs on.
+        Passenger.Languages.CSharp.ParsedText? parsed = editors.Find(path) is { } open && open.Syntax?.Current is { } current && ReferenceEquals(current.Text, open.Text.Snapshot) ? current : null;
+        foreach (LineBreakpoint breakpoint in Breakpoints.In(path).Where(b => b.Line == line))
+        {
+            words.AddRange(BreakpointStates.Words(breakpoint, IsDebugging, Breakpoints.Muted, IsDebugging ? null : BreakpointStates.UnrunAt(parsed, breakpoint)));
+        }
+        return words.Count == 0 ? null : words;
+    }
+
     /// <summary>Makes an open C# file's breakpoints whose lambdas are gone from its text as it stands their lines' own
     /// (<see cref="LambdaBreakpoints.Gone"/>).</summary>
     private void FollowLambdas(OpenDocument document)
@@ -1684,15 +2061,34 @@ public sealed class DebugController : IDisposable
     /// <summary>Whether a save while the program is debugged applies the edits (Settings' Apply changes on file save).</summary>
     public Func<bool> HotReloadOnSave { get; init; } = () => false;
 
-    /// <summary>An apply a save asked for, run once the saves of one Save All are done.</summary>
+    /// <summary>An apply a save asked for, run once the saves of one Save All are done, and whether one of them was a XAML
+    /// file's.</summary>
     private bool applyOnSave;
+    private bool xamlOnSave;
 
     private void OnSaved(object? sender, EventArgs e)
     {
         // A program run with Hot Reload takes a save's edits, whatever else is debugged.
-        bool run = running.Any(r => r.Reload.Changed);
+        bool xamlSaved = sender is OpenDocument saved && Xaml.XamlService.IsXaml(saved.Path) && XamlOnSave();
+        bool run = running.Any(r => r.Reload.Changed || (xamlSaved && r.App?.Xaml is { Changed: true }));
         bool debugged = HotReload is { Changed: true } && HotReloadOnSave() && WhyNotApply() is null;
-        if (applyOnSave || !run && !debugged)
+        bool xaml = xamlSaved && view.Sessions.Any(t => t.IsLive && t.App?.Xaml is { Changed: true });
+        ApplyOnSave(run, debugged, xaml);
+    }
+
+    /// <summary>XAML files written on disk while not open, which the apps debugged took as edits: applied to them as a XAML
+    /// file's save would apply it.</summary>
+    public void XamlWritten()
+    {
+        UiThread.Check();
+        ApplyOnSave(XamlOnSave() && running.Any(r => r.App?.Xaml is { Changed: true }), false, XamlOnSave() && view.Sessions.Any(t => t.IsLive && t.App?.Xaml is { Changed: true }));
+    }
+
+    /// <summary>An apply a save asked for: of the programs run with Hot Reload, of the session debugged, of the XAML of the apps debugged.</summary>
+    private void ApplyOnSave(bool run, bool debugged, bool xaml)
+    {
+        xamlOnSave |= xaml;
+        if (applyOnSave || !run && !debugged && !xaml)
         {
             return;
         }
@@ -1701,14 +2097,32 @@ public sealed class DebugController : IDisposable
         Dispatcher.UIThread.Post(() =>
         {
             applyOnSave = false;
+            bool markupSaved = xamlOnSave;
+            xamlOnSave = false;
             if (!disposed && Session == savedSession)
             {
-                IdeErrors.Observe(SavedAsync());
+                IdeErrors.Observe(SavedAsync(markupSaved));
             }
         });
 
-        Task SavedAsync() => ApplyAsync([.. run ? running : [], .. debugged && HotReload is { Changed: true } ? Debugged() : []], SettingsRestart);
+        // The C# applied first, with its programs' XAML; then, for a XAML file saved, the XAML of every other program debugged.
+        async Task SavedAsync(bool markupSaved)
+        {
+            List<IHotReloadTarget> code = [.. run ? running : [], .. debugged && HotReload is { Changed: true } ? Debugged() : []];
+            if (code.Count > 0)
+            {
+                await ApplyAsync(code, SettingsRestart);
+            }
+            List<IHotReloadTarget> markup = [.. view.Sessions.Where(t => markupSaved && t.IsLive && !code.Contains(t) && t.App?.Xaml is { Changed: true })];
+            if (markup.Count > 0 && !disposed)
+            {
+                await ApplyAsync(markup, SettingsRestart, xamlOnly: true);
+            }
+        }
     }
+
+    /// <summary>Whether a XAML file's save applies the XAML edits to the apps debugged (Settings' XAML Hot Reload on save).</summary>
+    public Func<bool> XamlOnSave { get; init; } = () => false;
 
     /// <summary>Apply Hot Reload Changes: the programs run with Hot Reload through the debugger take the edits whenever
     /// they have any (or nothing else would take them), whatever else is debugged, and the chosen session debugged with Hot
@@ -1743,7 +2157,8 @@ public sealed class DebugController : IDisposable
             string code = $"{expression} = {(value.Type is { Length: > 0 } type && value.Result != type ? $"{{{type}}} " : "")}{VariableNode.Cut(value.Result)}";
             return new CSharp.DebuggerHover(code)
             {
-                Values = value.VariablesReference > 0 ? HoverValues(session, at, stop, expression, value) : null,
+                // One that did not end with the other threads held is a row too, to be run again from its link.
+                Values = value.VariablesReference > 0 || VariableNode.SaysNeedsThreads(value.PresentationHint) ? HoverValues(session, at, stop, expression, value) : null,
                 Gone = gone,
             };
         }
@@ -1757,10 +2172,66 @@ public sealed class DebugController : IDisposable
         }
     }
 
+    /// <summary>Quick Evaluate Expression: the selection, else the expression the hover reads at the caret, evaluated in the
+    /// chosen frame of the stop shown as the Evaluate box runs one, its value the card's row at the expression's start,
+    /// which opens into its members as a hovered value's does; one that does not evaluate is a row of what went wrong. The
+    /// card goes with the stop, and nothing shows once the text changed meanwhile.</summary>
+    private async Task QuickEvaluateAsync(ActionContext context)
+    {
+        UiThread.Check();
+        if (Session is not { State: DebugState.Paused } session || frame is not { } at || context.Symbol is not { Length: > 0 } expression)
+        {
+            return;
+        }
+        using IDisposable held = BackgroundWork.Scope();
+        CodeEditor editor = context.Editor;
+        TextSnapshot text = editor.Document.Snapshot;
+        Selection primary = editor.Selections.Primary;
+        int start = primary.IsEmpty ? Math.Max(0, ExpressionStart(text, primary.Caret)) : primary.Start;
+        int stop = shown;
+        CancellationToken gone = stopShown.Token;
+        EvaluateResponse? value = null;
+        string? error = null;
+        try
+        {
+            value = await session.EvaluateAsync(expression, at.Id, QuickContext);
+        }
+        catch (DapException failed)
+        {
+            error = failed.Reason;
+        }
+        if (stop != shown || editor.Document.Snapshot != text)
+        {
+            return;
+        }
+        VariablesList rows = HoverValues(session, at, stop, expression, value, QuickContext, error);
+        QuickValueRead?.Invoke(this, (start, new CSharp.DebuggerHover(expression) { Values = rows, Gone = gone }));
+    }
+
+    /// <summary>How Quick Evaluate Expression asks for its value: as the Evaluate box does, a call run as it is written.</summary>
+    private const string QuickContext = "repl";
+
+    /// <summary>Where the expression the hover reads at an offset begins (<see cref="ExpressionAt"/>), or -1 with none.</summary>
+    private static int ExpressionStart(TextSnapshot text, int offset)
+    {
+        if (ExpressionAt(text, offset) is not { } expression)
+        {
+            return -1;
+        }
+        int end = Math.Min(offset, text.Length);
+        while (end < text.Length && IsWordChar(text[end]))
+        {
+            end++;
+        }
+        return Math.Max(0, end - expression.Length);
+    }
+
     /// <summary>A hovered value's rows: its own, opening into its members as the Variables view's rows do, each asked of the
     /// stop it was read at and of no other; its rows' actions are the Variables view's own (Add to Watches, Inspect, Set
-    /// Value, a data breakpoint), and a value set there shows the hovered value read again with what was open still open.</summary>
-    private VariablesList HoverValues(DebugSession session, DapStackFrame at, int stop, string expression, EvaluateResponse value)
+    /// Value, a data breakpoint), and a value set there shows the value read again, as <paramref name="context"/> reads it,
+    /// with what was open still open. One that did not evaluate is its <paramref name="error"/>'s row.</summary>
+    private VariablesList HoverValues(DebugSession session, DapStackFrame at, int stop, string expression, EvaluateResponse? value, string context = "hover",
+        string? error = null)
     {
         VariablesTree tree = new()
         {
@@ -1768,15 +2239,20 @@ public sealed class DebugController : IDisposable
                 ? await session.VariablesAsync(reference)
                 : throw new DapException(DapCommands.Variables, "The program has gone on from the stop this value was read at"),
         };
-        tree.Show([Hovered(value)]);
+        tree.Show([value is not null ? Hovered(value) : new VariableNode(expression, error ?? string.Empty, null, 0, 0, VariableRole.Error)]);
         VariablesList list = new(tree) { DataWatch = DataWatchAsync };
         list.EvaluateRequested += (_, request) => IdeErrors.Observe(Evaluate(request.Expression, request.Watch));
         list.DataBreakpointRequested += (_, node) => IdeErrors.Observe(ToggleDataBreakpointAsync(node));
         list.SetValueRequested += (_, request) => IdeErrors.Observe(SetHoveredAsync(request.Node, request.Value));
+        list.RunWithThreadsRequested += (_, node) => IdeErrors.Observe(RunWithThreadsAsync(node, tree, at));
         list.TextOpened += (_, node) => TextOpened?.Invoke(this, node.Value);
         return list;
 
-        VariableNode Hovered(EvaluateResponse read) => new(expression, read.Result, read.Type, read.VariablesReference, 0, VariableRole.Value) { EvaluateName = expression };
+        VariableNode Hovered(EvaluateResponse read) => new(expression, read.Result, read.Type, read.VariablesReference, 0, VariableRole.Value)
+        {
+            EvaluateName = expression,
+            NeedsThreads = VariableNode.SaysNeedsThreads(read.PresentationHint),
+        };
 
         async Task SetHoveredAsync(VariableNode node, string typed)
         {
@@ -1786,7 +2262,7 @@ public sealed class DebugController : IDisposable
             }
             try
             {
-                EvaluateResponse again = await session.EvaluateAsync(expression, at.Id, "hover");
+                EvaluateResponse again = await session.EvaluateAsync(expression, at.Id, context);
                 if (stop == shown)
                 {
                     await list.ShowAgain([Hovered(again)]);
@@ -1862,6 +2338,10 @@ public sealed class DebugController : IDisposable
             StopFollowing(tab);
             tab.HasEnded = true;
             tab.HotReload?.End();
+            tab.Handlers?.Dispose();
+            tab.Handlers = null;
+            tab.Browser?.Dispose();
+            tab.Browser = null;
             tab.Lines = null;
         }
         tab.Console.Flush();
@@ -1869,6 +2349,11 @@ public sealed class DebugController : IDisposable
         if (disposed || !view.Sessions.Contains(tab))
         {
             return;
+        }
+        // XAML applied while the program was paused, whose UI answers once it runs.
+        if (session.State == DebugState.Running && tab.App?.Xaml is { Waiting: true, Changed: true })
+        {
+            IdeErrors.Observe(ApplyAsync([tab], SettingsRestart, xamlOnly: true));
         }
         if (tab != chosen)
         {
@@ -1898,6 +2383,7 @@ public sealed class DebugController : IDisposable
         view.ShowDetachable(session.Attached && session.State is DebugState.Running or DebugState.Paused);
         // Every stop is new and every run lets the last one's frames and values go: none is asked of again.
         NextShown();
+        view.SayMoved(null);
         frame = null;
         Stop = null;
         clearing.Stop();
@@ -1953,12 +2439,14 @@ public sealed class DebugController : IDisposable
     {
         string said = Said(tab);
         List<DebugTab> live = [.. view.Sessions.Where(t => t.IsLive && t.Session is not null)];
-        if (live.Count == 0 || live is [var only] && only == tab)
+        // A Godot game's GDScript tab and its C# one are one program.
+        int programs = live.Count(t => t.Companion is not { IsLive: true });
+        if (live.Count == 0 || programs <= 1 && live.All(t => t == tab || t.Companion == tab || tab.Companion == t))
         {
             return said;
         }
         string[] paused = [.. live.Where(t => t.Session!.State == DebugState.Paused).Select(t => t.Name)];
-        return $"{said}; {Plural.Of(live.Count, "program")} debugged"
+        return $"{said}; {Plural.Of(programs, "program")} debugged"
             + (paused.Length > 0 ? $", {Plural.Listed(paused)} paused" : string.Empty);
     }
 
@@ -2274,6 +2762,7 @@ public sealed class DebugController : IDisposable
         if (frame == current && stop == shown)
         {
             view.Tree.Show(rows);
+            view.SayMoved(null);
             ShowInlineValues(current, values);
             LocalsShown();
         }
@@ -2362,11 +2851,101 @@ public sealed class DebugController : IDisposable
         try
         {
             EvaluateResponse value = await session.EvaluateAsync(expression, frame.Id, role == VariableRole.Watch ? "watch" : "repl");
-            return new VariableNode(expression, value.Result, value.Type, value.VariablesReference, 0, role);
+            return new VariableNode(expression, value.Result, value.Type, value.VariablesReference, 0, role) { NeedsThreads = VariableNode.SaysNeedsThreads(value.PresentationHint) };
         }
         catch (DapException error)
         {
             return new VariableNode(expression, error.Reason, null, 0, 0, role == VariableRole.Watch ? VariableRole.Watch : VariableRole.Error);
+        }
+    }
+
+    /// <summary>Runs a row's expression again with every thread of the program let go, as the person chose on a row whose
+    /// evaluation did not end with the others held: what it reads takes the row's place in <paramref name="tree"/> (the
+    /// Variables view's, or a hover card's read in <paramref name="within"/>), and what the other threads passed over
+    /// meanwhile is said. Nothing else runs an evaluation so.</summary>
+    public async Task RunWithThreadsAsync(VariableNode node, VariablesTree tree, DapStackFrame? within = null)
+    {
+        UiThread.Check();
+        if (Session is not { State: DebugState.Paused } session || (within ?? frame) is not { } current)
+        {
+            Message?.Invoke(this, $"{VariablesList.RunWithThreads}: {NotPaused() ?? "The program is not paused"}");
+            return;
+        }
+        if (node.Expression is not { } expression)
+        {
+            Message?.Invoke(this, $"{VariablesList.RunWithThreads}: {node.NoExpression}");
+            return;
+        }
+        // Held until the row is in, so a picture taken after the choice shows what it read.
+        using IDisposable held = BackgroundWork.Scope();
+        int stop = shown;
+        EvaluateResponse read;
+        try
+        {
+            read = await session.EvaluateAsync(expression, current.Id, node.Role == VariableRole.Watch ? "watch" : "repl", letThreadsRun: true);
+        }
+        catch (DapException error)
+        {
+            Message?.Invoke(this, $"Could not run {expression} with every thread: {error.Reason}");
+            return;
+        }
+        if (stop != shown)
+        {
+            return;
+        }
+        tree.Replace(node, VariableNode.RanAgain(node, read));
+        if (read.PassedOver is { } passed)
+        {
+            Message?.Invoke(this, passed);
+        }
+        await ThreadsRanAsync(session, expression, read);
+    }
+
+    /// <summary>Once an evaluation has run with every thread of the chosen session let go (the window's, or an agent's):
+    /// Threads and Call Stack as they are now, the shown thread's chosen frame kept where it still is, or else its top one
+    /// chosen and its values read; where the frame was kept, Variables says its values were read before every thread ran.</summary>
+    public async Task ThreadsRanAsync(DebugSession session, string expression, EvaluateResponse read)
+    {
+        UiThread.Check();
+        using IDisposable held = BackgroundWork.Scope();
+        if (disposed || Session != session || session.State != DebugState.Paused || session.StoppedThread is not int stopped)
+        {
+            return;
+        }
+        int stop = shown;
+        IReadOnlyList<DapThread> threads;
+        int thread;
+        IReadOnlyList<DapStackFrame> stack;
+        try
+        {
+            threads = await session.ThreadsAsync();
+            // The shown thread, unless it ended meanwhile.
+            thread = view.SelectedThread is { } picked && threads.Any(t => t.Id == picked.Id) ? picked.Id : stopped;
+            stack = await session.StackTraceAsync(thread);
+        }
+        catch (DapException)
+        {
+            // The program went on or ended first: its next stop is shown whole.
+            return;
+        }
+        if (stop != shown || Session != session)
+        {
+            return;
+        }
+        if (frame is { } current && stack.FirstOrDefault(f => f.Id == current.Id && f.Name == current.Name && f.Line == current.Line && f.Column == current.Column) is { } kept)
+        {
+            frame = kept;
+            view.ShowFrames(threads, threads.FirstOrDefault(t => t.Id == thread), stack, kept);
+            string off = read.ImplicitOff is null ? string.Empty : ", and implicit evaluation stays off until the program runs on";
+            view.SayMoved($"Every thread ran while {expression} was evaluated, so the values read before it may have moved{off}");
+            return;
+        }
+        // Its thread moved under an evaluation on another: shown where it is now, its editor left where it was.
+        DapStackFrame? top = stack.FirstOrDefault(f => f.Source?.Path is not null) ?? stack.FirstOrDefault();
+        view.ShowFrames(threads, threads.FirstOrDefault(t => t.Id == thread), stack, top);
+        if (top is not null)
+        {
+            await ChooseFrame(top, navigate: false);
         }
     }
 

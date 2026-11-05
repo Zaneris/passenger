@@ -3,21 +3,25 @@
              x:Class="Passenger.App.Explorer.ExplorerView">
     <DockPanel Background="{DynamicResource Passenger.Panel}">
         <DockPanel Name="OwnHeader" DockPanel.Dock="Top" Margin="12,6,8,2">
-            <!-- The view switch: the solution's projects, or the folder as it is on disk. -->
+            <!-- The view switch: the solution's projects, or the folder as it is on disk. Narrowed, its name gives way. -->
             <Button Name="ViewSwitch" DockPanel.Dock="Right" Classes="widget" IsVisible="False" Click="OnViewSwitchClicked"
                     ToolTip.Tip="Switch between the solution and the files on disk">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <TextBlock Name="ViewName" Text="Solution" FontSize="12" VerticalAlignment="Center" />
-                    <PathIcon Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
-                </StackPanel>
+                <DockPanel>
+                    <PathIcon DockPanel.Dock="Right" Margin="5,0,0,0" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
+                    <TextBlock Name="ViewName" Text="Solution" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                </DockPanel>
             </Button>
             <TextBlock Classes="paneTitle" Text="Explorer" VerticalAlignment="Center" />
         </DockPanel>
-        <Panel Name="Surface">
-            <TextBlock Name="Hint" Classes="muted" Text="Nothing open"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <ListBox Name="Rows" Classes="tree" IsVisible="False" SelectionMode="Multiple"
-                     DoubleTapped="OnRowDoubleTapped" />
-        </Panel>
+        <!-- The filter's bar goes in the first row, after the tree among the parts, so the Explorer's action gives the
+             tree's row the keys and only Find's keys give them to the filter; the last row says what it left out. -->
+        <Grid Name="Body" RowDefinitions="Auto,*,Auto">
+            <Panel Name="Surface" Grid.Row="1">
+                <TextBlock Name="Hint" Classes="muted" Text="Nothing open"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <ListBox Name="Rows" Classes="tree" IsVisible="False" SelectionMode="Multiple"
+                         DoubleTapped="OnRowDoubleTapped" />
+            </Panel>
+        </Grid>
     </DockPanel>
 </UserControl>

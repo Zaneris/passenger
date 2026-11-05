@@ -230,6 +230,10 @@ public static class Extensions
     /// <summary>Why a read's evaluation did not run, or was left to end in the program: a continue, a step or a stop came for
     /// the program, which does not wait for it (<see cref="ManagedDebugger.Leaving"/>).</summary>
     internal const string NotEvaluated = "Not evaluated: the program went on";
+
+    /// <summary>Why an evaluation run with every other thread held may not end: what a row says when one did not, which
+    /// marks it as one to run again with every thread let go (<see cref="PresentationHintModels.AttributesValue.FailedNeedingThreads"/>).</summary>
+    internal const string NeedsThreads = "it probably needs another thread to run, which stays paused while it does";
     private const string GaveWay = "The program went on before the evaluation ended";
 
     private static async Task<ICorDebugValue?> RunEvalAsync(ICorDebugEval eval, Func<Task<CorDebugManagedCallbackEventArgs>> processEventsUntilEvalEventFunc, EvalStatus evalStatus, bool throwOnException, Action startEval, Func<EvalCompleteCorDebugManagedCallbackEventArgs, ICorDebugValue?> onComplete)
@@ -249,7 +253,7 @@ public static class Extensions
         }
         if (evalStatus.Abandoned.ContainsKey(thread.Id))
         {
-            throw new ManagedDebugger.EvalException("An evaluation that could not be stopped is still running on this thread, so no other can run on it until it returns");
+            throw new ManagedDebugger.EvalException($"An evaluation that could not be stopped is still running on this thread, so no other can run on it until it returns: {NeedsThreads}");
         }
 
         try
@@ -268,8 +272,11 @@ public static class Extensions
         Task<CorDebugManagedCallbackEventArgs> waiting = Task.FromCanceled<CorDebugManagedCallbackEventArgs>(new CancellationToken(true));
         try
         {
-            // Only the evaluation's thread runs: the others' values hold still and none meets a breakpoint unseen.
-            process.SetAllThreadsDebugState(CorDebugThreadState.THREAD_SUSPEND, thread);
+            // Only the evaluation's thread runs, unless the person let every thread go: the others' values hold still and none meets a breakpoint unseen.
+            if (!evalStatus.LetThreadsRun)
+            {
+                process.SetAllThreadsDebugState(CorDebugThreadState.THREAD_SUSPEND, thread);
+            }
             process.Continue(false);
             waiting = Read();
             long began = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -340,9 +347,11 @@ public static class Extensions
                 evalStatus.ImplicitOff = $"Implicit evaluation is disabled: an evaluation took longer than {EvaluationTimeout.TotalSeconds:0.#} s. It is enabled again once the program runs on";
                 if (!ended || aborted)
                 {
+                    string took = $"The evaluation took longer than {EvaluationTimeout.TotalSeconds:0.#} s{(evalStatus.LetThreadsRun ? " with every thread let go" : "")}";
+                    string why = evalStatus.LetThreadsRun ? "" : $": {NeedsThreads}";
                     throw new ManagedDebugger.EvalException(aborted
-                        ? $"The evaluation took longer than {EvaluationTimeout.TotalSeconds:0.#} s and was stopped: it may wait on another thread, which stays paused while it runs"
-                        : $"The evaluation took longer than {EvaluationTimeout.TotalSeconds:0.#} s and could not be stopped, as {(asked ? "the abort asked of it has not taken" : lastWhy ?? "the program could not be held to look at it")}: it runs on in the program until it returns, the program paused meanwhile");
+                        ? $"{took} and was stopped{why}"
+                        : $"{took} and could not be stopped, as {(asked ? "the abort asked of it has not taken" : lastWhy ?? "the program could not be held to look at it")}, so it runs on in the program until it returns, the program paused meanwhile{why}");
                 }
                 // It ended of itself as it was looked at: its value is read as any other's.
             }

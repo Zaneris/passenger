@@ -33,11 +33,14 @@ public partial class MainWindow
     public ProblemSeverity? StatusSeverity => status.Severity;
 
     /// <summary>Problems' Toolset, Environment: each project's load warnings and errors, under the project, its file the
-    /// place to go to and the advisory or page its message names the link.</summary>
+    /// place to go to and the advisory or page its message names the link; and what a project's build lacks to reach its Godot
+    /// folder, which nothing else says.</summary>
     private void ShowProjectProblems()
     {
         Bottom.Problems.ShowToolset([.. (session.CSharp?.ProjectProblems ?? []).Select(p => new Problem(p.Severity, p.Message, null, p.Project, new TextPosition(0, 0),
-            Path.GetFileNameWithoutExtension(p.Project)) { Link = Problem.LinkIn(p.Message) })]);
+            Path.GetFileNameWithoutExtension(p.Project)) { Link = Problem.LinkIn(p.Message) }),
+            .. Projects.Select(p => (p.Path, Message: p.GodotLayoutProblem)).Where(p => p.Message is not null)
+                .Select(p => new Problem(ProblemSeverity.Warning, p.Message!, null, p.Path, new TextPosition(0, 0), Path.GetFileNameWithoutExtension(p.Path)))]);
     }
 
     /// <summary>Turns solution-wide analysis on or off, as the status bar's icon does, and keeps the choice.</summary>
@@ -131,12 +134,19 @@ public partial class MainWindow
         string? project = null;
         foreach (Marker marker in file.Markers)
         {
-            if (marker.Kind is not (MarkerKind.Error or MarkerKind.Warning))
+            ProblemSeverity? severity = marker.Kind switch
+            {
+                MarkerKind.Error => ProblemSeverity.Error,
+                MarkerKind.Warning => ProblemSeverity.Warning,
+                MarkerKind.Info => ProblemSeverity.Message,
+                _ => null,
+            };
+            if (severity is null)
             {
                 continue;
             }
             int start = Math.Min(marker.Range.Start, text.Length);
-            problems.Add(new Problem(marker.Kind == MarkerKind.Error ? ProblemSeverity.Error : ProblemSeverity.Warning, marker.Message, null,
+            problems.Add(new Problem(severity.Value, marker.Message, null,
                 file.Path, text.GetPosition(start), project ??= ProjectNameOf(file.Path)) { Link = marker.Link, LinkText = marker.LinkText });
         }
         Bottom.Problems.ShowFile(file.Name, problems);
@@ -166,7 +176,12 @@ public partial class MainWindow
 
     /// <summary>One of the solution's problems as Problems lists it, under its file's project.</summary>
     private static Problem ProblemOf(SolutionProblem problem, string project) => new(
-        problem.Diagnostic.Severity == DiagnosticSeverity.Error ? ProblemSeverity.Error : ProblemSeverity.Warning,
+        problem.Diagnostic.Severity switch
+        {
+            DiagnosticSeverity.Error => ProblemSeverity.Error,
+            DiagnosticSeverity.Warning => ProblemSeverity.Warning,
+            _ => ProblemSeverity.Message,
+        },
         problem.Diagnostic.Message,
         problem.Diagnostic.Code,
         problem.Path,

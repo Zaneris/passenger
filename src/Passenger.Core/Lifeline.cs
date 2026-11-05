@@ -111,14 +111,21 @@ internal static partial class Lifeline
     /// nodes once the restore has ended), which no walk of its tree finds. Elsewhere its process group does that already.</summary>
     public static void HoldFamily(Process process)
     {
-        if (!OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows())
         {
-            return;
+            HoldFamily(process.Id, process.SafeHandle);
         }
+    }
+
+    /// <summary><see cref="HoldFamily(Process)"/> of a process by its id and a handle of it, as one started here rather than
+    /// by .NET (<see cref="OwnDesktop"/>), which no runtime job ends with Passenger: its own job does as its handle closes.</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public static void HoldFamily(int id, SafeProcessHandle process)
+    {
         SafeFileHandle job = CreateJobObject(IntPtr.Zero, null);
         JobLimits limits = new() { LimitFlags = KillOnJobClose };
         if (job.IsInvalid || !SetInformationJobObject(job, ExtendedLimitInformation, ref limits, Marshal.SizeOf<JobLimits>())
-            || !AssignProcessToJobObject(job, process.SafeHandle))
+            || !AssignProcessToJobObject(job, process))
         {
             // Held by nothing more than its tree, as every other child is.
             job.Dispose();
@@ -126,7 +133,7 @@ internal static partial class Lifeline
         }
         lock (Gate)
         {
-            Families[process.Id] = job;
+            Families[id] = job;
         }
     }
 
@@ -202,7 +209,7 @@ internal static partial class Lifeline
     /// where there is no shell to be it: children still run, only nothing ends them on a crash.</summary>
     private static Process? Watchdog()
     {
-        if (unavailable || watchdog is { HasExited: false })
+        if (unavailable || watchdog is { } running && DotnetProcesses.Runs(running))
         {
             return watchdog;
         }

@@ -1,4 +1,6 @@
 using System.Text.RegularExpressions;
+using Passenger.App.Editors;
+using Passenger.App.Godot;
 using Passenger.App.Web;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -11,7 +13,8 @@ namespace Passenger.App.CSharp;
 
 /// <summary>The same popups and commands over a JavaScript, TypeScript, HTML, CSS or JSON file, answered by its
 /// language server (<see cref="WebLanguages"/>): completion after the server's own trigger characters, names that run
-/// on through the language's own characters, and, where the JSON server has none, Go to Declaration from a package.json
+/// on through the language's own characters, a component's scoped stylesheet completing its markup's elements, classes
+/// and ids first (<see cref="ScopedCss"/>), a GDScript's node's C# script's members beside Godot's server, and, where the JSON server has none, Go to Declaration from a package.json
 /// dependency to its installed package and Rename of a JSON property, a package.json script's runs with it.</summary>
 internal sealed partial class WebAssist(AssistContext context, PopupPlacement popups, CodeCompletion completion, ParameterInfo parameters, CodeActions actions) : LanguageAssist
 {
@@ -35,9 +38,52 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         }
         if (web.Lsp is { } lsp)
         {
-            await completion.ServerListAsync(lsp, trigger, incomplete, web);
+            OpenDocument? shown = context.Editors.Active;
+            string? markup = shown is null ? null : ScopedCss.MarkupOf(shown.Path);
+            Func<TextSnapshot, int, CancellationToken, Task<CodeCompletion.OwnItems?>>? own = markup is not null ? (asked, caret, cancel) => ScopedItemsAsync(markup, asked, caret, cancel)
+                : shown is not null && GodotScriptTypes.IsScript(shown.Path) ? (asked, caret, _) => CSharpItemsAsync(shown, asked, caret)
+                : null;
+            await completion.ServerListAsync(lsp, trigger, incomplete, web, own);
         }
         return true;
+    }
+
+    /// <summary>What Godot's server cannot list after a node's dot in a GDScript (<c>$Player.</c>): the members of the C# script
+    /// the scenes run on the node, listed first, each once beside the server's; null elsewhere.</summary>
+    private async Task<CodeCompletion.OwnItems?> CSharpItemsAsync(OpenDocument document, TextSnapshot asked, int caret)
+    {
+        int start = context.WordStart(caret);
+        if (start < 2 || asked[start - 1] != '.' || context.GodotScriptTypes?.Invoke() is not { } types || await types.TypedAsync(document) is not { } typed
+            || document.Text.Snapshot != asked)
+        {
+            return null;
+        }
+        IReadOnlyList<Godot.GodotCSharpMember> members = await GDScriptAssist.CSharpMembersAsync(context, document, typed, start - 1);
+        return members.Count == 0 ? null : new CodeCompletion.OwnItems(start, [.. members.Select(GDScriptAssist.ItemOf)], null) { ByName = true };
+    }
+
+    /// <summary>What a component's scoped stylesheet lists first where a selector is written: the elements its markup writes,
+    /// after a '.' the classes it gives, after a '#' its ids; null elsewhere, or for markup that cannot be read.</summary>
+    private async Task<CodeCompletion.OwnItems?> ScopedItemsAsync(string markup, TextSnapshot asked, int caret, CancellationToken cancel)
+    {
+        OpenTexts texts = context.Editors.Texts();
+        return await BackgroundWork.Run(() =>
+        {
+            if (ScopedCss.SelectorAt(asked.ToString(), caret) is not ({ } start, var mark) || texts.TextOf(markup) is not { } written)
+            {
+                return (CodeCompletion.OwnItems?)null;
+            }
+            (IReadOnlyList<string> elements, IReadOnlyList<string> classes, IReadOnlyList<string> ids) = ScopedCss.Names(written.ToString());
+            (IReadOnlyList<string> names, CompletionItemKind kind) = mark switch
+            {
+                '.' => (classes, CompletionItemKind.Value),
+                '#' => (ids, CompletionItemKind.Value),
+                _ => (elements, CompletionItemKind.Keyword),
+            };
+            string detail = $"in {Path.GetFileName(markup)}";
+            return names.Count == 0 ? null
+                : new CodeCompletion.OwnItems(start, [.. names.Select(n => new CompletionItem { Label = n, Kind = kind, Detail = detail, SortText = "!" + n })], null);
+        }, cancel);
     }
 
     public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
@@ -48,14 +94,50 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         }
         if (web.Lsp is { } lsp)
         {
+            // A node's C# script's member: the server's card where it has one, else Passenger's.
+            if (GodotScriptTypes.IsScript(document.Path) && await GDScriptAssist.CSharpMemberAtAsync(context, document, offset) is { } member)
+            {
+                if (await ServerHoverOrNullAsync(lsp, offset, cancel) is { } said && Shapes.Text(said.Contents).Trim().Length > 0)
+                {
+                    card.AddHover(said);
+                }
+                else
+                {
+                    GDScriptAssist.Describe(card, member);
+                }
+                return true;
+            }
             await QuickInfo.ServerHoverAsync(lsp, card, offset, cancel);
         }
         return true;
     }
 
+    private static async Task<Hover?> ServerHoverOrNullAsync(LspDocument lsp, int offset, CancellationToken cancel)
+    {
+        try
+        {
+            return await lsp.HoverAsync(offset, cancel);
+        }
+        catch (LanguageServerFailed)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Go to Declaration where the server has none (JSON's); the server's own (<see cref="CSharpAssist"/>) otherwise.</summary>
     public override async Task<bool> DefinitionAsync(int offset)
     {
+        // A node's C# script's member, which Godot's server never reads, goes to its C# file.
+        if (context.WebCurrent is { Lsp: not null } served && context.Editors.Active is { } shown && GodotScriptTypes.IsScript(shown.Path)
+            && await GDScriptAssist.CSharpMemberAtAsync(context, shown, offset) is { } member)
+        {
+            (string Path, TextPosition Position) place = await GDScriptAssist.PlaceOfAsync(context, member);
+            if (context.Editors.Active == shown)
+            {
+                context.Navigate(place);
+            }
+            return true;
+        }
         if (context.WebCurrent is not { Lsp: not null } web || web.Provides("definitionProvider"))
         {
             return false;
@@ -75,7 +157,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         return new Declared(place is { } found ? Declared.Served([found], ServerPlaces.Texts(context.Editors)) : [], said);
     }
 
-    public override Task<bool> UsagesAsync(int offset)
+    public override Task<bool> UsagesAsync(int offset, bool inPopup)
     {
         if (context.WebCurrent is not { Lsp: not null } web || web.Provides("referencesProvider"))
         {
@@ -123,7 +205,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
             IdeErrors.Observe(completion.Start(null));
         }
         // A script's call shows its signature after its bracket or comma; any file's closing bracket or semicolon hides it.
-        if (web.Kind is WebServerKind.TypeScript or WebServerKind.Html || last is ')' or ';')
+        if (web.Kind is WebServerKind.TypeScript or WebServerKind.Html or WebServerKind.GDScript || last is ')' or ';')
         {
             parameters.AfterTyped(last);
         }
@@ -131,12 +213,13 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
 
     /// <summary>A character of a web language's name beyond an identifier's: CSS's and HTML's '-' (background-color,
     /// --accent, data-id), JavaScript's '$', a Dockerfile's flags' '-' (--from), YAML's keys' and names' '-' and '.'
-    /// (x-common, my-api), and in JSON the quotes a property's name is written in.</summary>
+    /// (x-common, my-api), none of GDScript's, and in JSON the quotes a property's name is written in.</summary>
     public static bool IsWebWordChar(WebDocument web, char c) => web.Kind switch
     {
         WebServerKind.Css or WebServerKind.Html or WebServerKind.Dockerfile => c == '-',
         WebServerKind.TypeScript => c == '$',
         WebServerKind.Yaml => c is '-' or '.',
+        WebServerKind.GDScript => false,
         _ => c is '"' or '-' or '.' or '@' or '/',
     };
 

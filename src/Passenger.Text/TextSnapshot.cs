@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text;
 
 namespace Passenger.Text;
@@ -87,9 +88,17 @@ public sealed class TextSnapshot
         }
     }
 
+    /// <summary>How many lines this thread has sought from the rope's root, each a walk down it: what a batch of places
+    /// costs, counted rather than timed.</summary>
+    public static long LinesSought => sought;
+
+    [ThreadStatic]
+    private static long sought;
+
     public int GetLineStart(int line)
     {
         CheckLine(line);
+        sought++;
         return Rope.OffsetAfterBreaks(root, line);
     }
 
@@ -135,6 +144,38 @@ public sealed class TextSnapshot
     {
         LineSpan line = GetLine(Math.Clamp(position.Line, 0, LineCount - 1));
         return line.Start + Math.Clamp(position.Column, 0, line.Length);
+    }
+
+    /// <summary>The offsets of many lines and columns, each as <see cref="GetOffset"/> gives it, in any order: taken in the
+    /// order of their lines and the text read forward from one to the next where they lie near, so places on nearby lines
+    /// cost a read of the lines between them rather than a walk down the rope each.</summary>
+    public void GetOffsets(ReadOnlySpan<TextPosition> positions, Span<int> offsets)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(offsets.Length, positions.Length);
+        int count = positions.Length;
+        int[] lines = ArrayPool<int>.Shared.Rent(count);
+        int[] order = ArrayPool<int>.Shared.Rent(count);
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                lines[i] = Math.Clamp(positions[i].Line, 0, LineCount - 1);
+                order[i] = i;
+            }
+            Array.Sort(lines, order, 0, count);
+            using LineWalk walk = new(this);
+            for (int k = 0; k < count; k++)
+            {
+                LineSpan line = walk.To(lines[k]);
+                int at = order[k];
+                offsets[at] = line.Start + Math.Clamp(positions[at].Column, 0, line.Length);
+            }
+        }
+        finally
+        {
+            ArrayPool<int>.Shared.Return(lines);
+            ArrayPool<int>.Shared.Return(order);
+        }
     }
 
     public TextSnapshot Replace(int start, int length, string text)

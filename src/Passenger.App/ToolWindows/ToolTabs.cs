@@ -33,6 +33,8 @@ public static class ToolTabs
             IsChecked = open,
             // Its name gives way before its ×, ending in an ellipsis, down to a few letters, so every tab stays to choose.
             [ShrinkingRow.LeastProperty] = 88,
+            // Given less room than it wants, it takes all of it, its ellipsis where the room ends rather than a letter before.
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Content = new DockPanel { Children = { button, name } },
         };
         // Heard before the toggle, which takes no press but the left button's.

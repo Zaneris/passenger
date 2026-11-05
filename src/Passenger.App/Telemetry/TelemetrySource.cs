@@ -1,5 +1,17 @@
 namespace Passenger.App.Telemetry;
 
+/// <summary>A run whose logs and traces a dashboard collects, every kind's alike (an AppHost's, a container run's, a project
+/// run's): its name, whether it has stopped, and where its records are read while it has them.</summary>
+public interface ITelemetryRun
+{
+    string Name { get; }
+
+    bool IsStopped { get; }
+
+    /// <summary>Where its records are read, null while it has none.</summary>
+    TelemetrySource? Telemetry { get; }
+}
+
 /// <summary>Where a run's structured logs and traces are read: an Aspire dashboard's telemetry API on this machine and
 /// its API key.</summary>
 public sealed record TelemetrySource(Uri Endpoint, string ApiKey)

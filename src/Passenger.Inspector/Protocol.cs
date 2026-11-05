@@ -8,14 +8,14 @@ using System.Text.Json.Serialization;
 // also tells without being asked (a Reply with an Event): hello once its UI runs, treeChanged as controls come and go,
 // picked when the person points at one, bindingFailed as a binding fails (from before hello), untold when it could not
 // tell all it had. While the app is paused its binding values are read through the debugger's evaluation of
-// BindingValues.Read.
+// BindingValues.Read. A XAML file's edit reaches what the app made from it through reload (XAML Hot Reload).
 namespace Passenger.Inspector;
 
 /// <summary>The names both ends agree on.</summary>
 public static class Wire
 {
     /// <summary>Bumped by a change either end must know of: a hello of another version is refused, saying so.</summary>
-    public const int Version = 8;
+    public const int Version = 9;
 
     /// <summary>The app's environment: the socket's path, where it connects.</summary>
     [IdentifierHome]
@@ -29,6 +29,23 @@ public static class Wire
     /// <summary>A WPF app's environment: the launched project's folder, where its XAML is when its build's symbols do not say.</summary>
     [IdentifierHome]
     public const string ProjectVariable = "PASSENGER_INSPECTOR_PROJECT";
+
+    /// <summary>The app's environment: the XAML file Avalonia's designer previews, whose each load the inspector has record
+    /// where in the file it made each element, for <see cref="Placed"/>.</summary>
+    [IdentifierHome]
+    public const string PreviewVariable = "PASSENGER_INSPECTOR_PREVIEW";
+
+    /// <summary>The app's environment where nobody is to see it (a Passenger nobody sees launched it): its Avalonia draws on
+    /// the headless platform, and where it would draw elsewhere it ends before its Main (<see cref="UnseenEnds"/>) or runs
+    /// on, on a desktop of its own (<see cref="UnseenRuns"/>).</summary>
+    [IdentifierHome]
+    public const string UnseenVariable = "PASSENGER_INSPECTOR_UNSEEN";
+
+    /// <summary><see cref="UnseenVariable"/>'s value where nothing hides an app's windows but its headless platform.</summary>
+    public const string UnseenEnds = "ends";
+
+    /// <summary><see cref="UnseenVariable"/>'s value where the app runs on a desktop of its own, which nobody sees.</summary>
+    public const string UnseenRuns = "runs";
 
     /// <summary>The app's environment: a file the inspector traces its start and its answers to.</summary>
     [IdentifierHome]
@@ -44,6 +61,9 @@ public static class Wire
     public const string Watch = "watch";
     public const string Values = "values";
     public const string Overlays = "overlays";
+    public const string Reload = "reload";
+    public const string Made = "made";
+    public const string Placed = "placed";
 
     /// <summary>Avalonia's renderer debug overlays, by the names of its RendererDebugOverlays flags, in its order.</summary>
     public static readonly IReadOnlyList<string> OverlayNames = ["Fps", "DirtyRects", "LayoutTimeGraph", "RenderTimeGraph"];
@@ -76,7 +96,9 @@ public static class Wire
 
 /// <summary>What Passenger asks: the windows' tree, an element's details, Select Element on or off, an element outlined in
 /// the app (none to take the outline away), the windows alone, a picture of a window (or of the element's part of it),
-/// input to the app, or a property breakpoint's watch on an element's property (On false to end it).</summary>
+/// input to the app, a property breakpoint's watch on an element's property (On false to end it), a XAML file's text
+/// applied, the elements the app made at places of a XAML file (Made, with <see cref="Xaml"/>), or where it shows each element
+/// made from a XAML file (Placed).</summary>
 public sealed record Request(int Id, string Method, long? Element = null, bool? On = null)
 {
     /// <summary>With Watch: the property, by the name the element's details list it under (Owner.Name when attached).</summary>
@@ -103,13 +125,35 @@ public sealed record Request(int Id, string Method, long? Element = null, bool? 
 
     public InputAction? Input { get; init; }
 
-    /// <summary>With Values: the XAML file and its elements whose bindings to read.</summary>
+    /// <summary>With Values: the XAML file and its elements whose bindings to read; with Made, the elements to find, the one
+    /// chosen telling apart the instances of one made more than once.</summary>
     public XamlRead? Xaml { get; init; }
 
     /// <summary>With Overlays: the renderer debug overlays every window of the app shows from now (<see cref="Wire.OverlayNames"/>),
     /// none to take them away; answered with the windows.</summary>
     public IReadOnlyList<string>? Overlays { get; init; }
+
+    /// <summary>With Reload: the XAML file's text to apply to what the app made from it.</summary>
+    public XamlChange? Change { get; init; }
 }
+
+/// <summary>A XAML file's text to apply to what the app made from it (XAML Hot Reload): the file's path as the disk names
+/// it, its text now and as the app has it (the build's, or the text last applied), the assembly its build compiled it
+/// into, the URI its build gave it (avares://Assembly/Folder/File.axaml, a pack URI in WPF), and whether a binding in it
+/// compiles unless it says otherwise (Avalonia's project setting).</summary>
+public sealed record XamlChange(string File, string Text, string? Before, string Assembly, string Uri)
+{
+    public bool? CompiledBindings { get; init; }
+}
+
+/// <summary>What a XAML file's text came to in the app: the objects that took it (Type#Name), each made again from it, or
+/// why it could not apply (<see cref="Refused"/>: nothing changed), with the places in the file the app's XAML compiler
+/// named. No objects and nothing refused: nothing open in the app was made from the file.</summary>
+public sealed record XamlReloaded(IReadOnlyList<string> Objects, string? Refused, IReadOnlyList<XamlProblem> Problems);
+
+/// <summary>Something the app's XAML compiler said of a XAML file, at its line and column (from one, as an XML reader counts
+/// them; none when it named no place): an error, which keeps the text from applying, or a warning.</summary>
+public sealed record XamlProblem(string Message, int? Line, int? Column, bool Error);
 
 /// <summary>A XAML file's bindings to read with their values: the file as the IDE has it, its elements by where the app's build
 /// recorded each, and the element chosen in the Live Visual Tree, which tells apart the instances of an element made more than
@@ -259,6 +303,12 @@ public sealed record Reply
 
     public XamlValues? Values { get; init; }
 
+    /// <summary>What a XAML file's text came to, with Reload.</summary>
+    public XamlReloaded? Reloaded { get; init; }
+
+    /// <summary>Where the app shows each element of a XAML file it made, with Placed.</summary>
+    public IReadOnlyList<PlacedBox>? Placed { get; init; }
+
     /// <summary>What the app could not tell, with Untold.</summary>
     public Untold? Untold { get; init; }
 }
@@ -274,6 +324,12 @@ public sealed record Hello(int Protocol, int ProcessId, string? Avalonia, string
 {
     /// <summary>From a WPF app's inspector: WPF and its version ("WPF 10.0.1"), where an Avalonia app says its Avalonia.</summary>
     public string? Framework { get; init; }
+
+    /// <summary>Whether the app draws on Avalonia's headless platform, where nobody sees it.</summary>
+    public bool Headless { get; init; }
+
+    /// <summary>Whether the inspector started the app itself, through its BuildAvaloniaApp(), in place of its Main.</summary>
+    public bool MainLeftOut { get; init; }
 }
 
 /// <summary>A binding that failed in the app, as Avalonia logged it (its Binding area, Warning or Error): the control it is
@@ -320,6 +376,10 @@ public sealed record Element(long Id, string Type, string? Name, IReadOnlyList<s
 
     public IReadOnlyDictionary<string, string>? Values { get; init; }
 }
+
+/// <summary>An element shown that was made from a XAML file: where its name starts in the file, as the app's XAML compiler
+/// counted (from one), and its box in its window's units.</summary>
+public sealed record PlacedBox(int Line, int Column, Box Box);
 
 /// <summary>A place in a XAML file, as Avalonia records it under a Debug build: the file's full path, the line and column of
 /// the element's start, both from one.</summary>

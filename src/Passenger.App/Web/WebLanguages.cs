@@ -28,15 +28,20 @@ public enum WebServerKind
     /// <summary>Red Hat's yaml-language-server: every YAML file, a compose file checked and completed by the Compose
     /// specification's schema (<see cref="JsonSchemas.ComposeUri"/>).</summary>
     Yaml,
+
+    /// <summary>Godot's own GDScript server, in its editor, reached over TCP (<see cref="Godot.GodotScripts"/>).</summary>
+    GDScript,
 }
 
 /// <summary>A web language server lost, as the status bar says it, with what starts it again when it was left stopped for
 /// ending too often; null when it was started again at once.</summary>
 public sealed record WebServerLost(string Said, Action? StartAgain);
 
-/// <summary>JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles and YAML for the open folder: each kind's language
-/// server (the npm packages carried under <c>web/</c>, run on the machine's Node.js through ChildProcesses) started as
-/// the first file that needs it opens, every open file of its languages kept in step with it (a
+/// <summary>JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles, YAML and GDScript for the open folder: each kind's
+/// language server (the npm packages carried under <c>web/</c>, run on the machine's Node.js through ChildProcesses;
+/// GDScript's in Godot's editor, one for each Godot project a script is open in, the person's joined, a headless one started
+/// only when asked, <see cref="AskGodot"/>) started as the first file that needs it opens, every open file of its languages
+/// kept in step with it (a
 /// <see cref="WebDocument"/> each), and ended with the folder. Without a Node.js to run them (none found, or one too
 /// old), each file says why in its banner and the status bar, keeping its colours. A server that ends (as it starts too)
 /// or stops answering is started again with its files, a few times at most, then left stopped until a person starts it
@@ -46,8 +51,17 @@ public sealed class WebLanguages : IAsyncDisposable
 {
     private readonly string folder;
     private readonly Func<AppSettings> settings;
-    private readonly Dictionary<WebServerKind, NodeServer> servers = [];
+    private readonly Dictionary<ServerPlace, NodeServer> servers = [];
     private readonly Dictionary<OpenDocument, WebDocument> documents = [];
+
+    /// <summary>What a server answers for: every file of its kind in the folder, but GDScript's, which lives in Godot's editor on
+    /// one project and so answers for that project's scripts alone (<see cref="Project"/>, null for a script in none).</summary>
+    private readonly record struct ServerPlace(WebServerKind Kind, string? Project)
+    {
+        public bool Equals(ServerPlace other) => Kind == other.Kind && PathNames.Comparer.Equals(Project, other.Project);
+
+        public override int GetHashCode() => HashCode.Combine(Kind, Project is null ? 0 : PathNames.Comparer.GetHashCode(Project));
+    }
 
     /// <summary>The folders npm install runs in now, whose files' banners say so.</summary>
     private readonly HashSet<string> installing = new(PathNames.Comparer);
@@ -61,6 +75,17 @@ public sealed class WebLanguages : IAsyncDisposable
     /// <summary>Whether the Dockerfile server asks Docker Hub for an image's tags, which a change starts it again for.</summary>
     private bool asksDockerHub;
     private bool disposed;
+
+    /// <summary>The variable that shortens how long GDScript's server waits, no GDScript open, before it is let go.</summary>
+    [IdentifierHome]
+    public const string GDScriptIdleVariable = "PASSENGER_GDSCRIPT_IDLE_MS";
+
+    /// <summary>How long GDScript's server, a headless Godot editor of about 800 MB, is kept once no GDScript is open: the
+    /// next asking starts it again in a few seconds, Passenger's own reading of the scripts answering meanwhile.</summary>
+    private static TimeSpan GDScriptIdle => EnvironmentValues.Milliseconds(GDScriptIdleVariable, TimeSpan.FromMinutes(3));
+
+    /// <summary>The waits for GDScript's servers to be let go, each project's while one is under way.</summary>
+    private readonly Dictionary<ServerPlace, CancellationTokenSource> gdscriptIdle = [];
 
     /// <summary>The next server's configuring held by a test (<see cref="HoldNextConfigure"/>): what it waits for, and its
     /// process's id told once it waits.</summary>
@@ -101,6 +126,20 @@ public sealed class WebLanguages : IAsyncDisposable
     /// <summary>Where the Dockerfile server asks for image tags in Docker Hub's place: a stand-in; null for the place
     /// <c>PASSENGER_DOCKER_HUB</c> names, else Docker Hub's own (<see cref="DockerHubTags"/>).</summary>
     public Uri? DockerHub { get; init; }
+
+    /// <summary>The stylesheets the folder's pages link, whose classes an HTML file's are checked against.</summary>
+    public PageStylesheets? Stylesheets { get; init; }
+
+    /// <summary>The variables a Godot editor started for GDScript runs with beyond the IDE's own: a test's user folders.</summary>
+    public IReadOnlyDictionary<string, string> GodotEnvironment { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>Whether opening a GDScript may start a headless Godot editor to serve it, as a test of Godot's own server
+    /// asks; else one starts only once something Passenger's own reading has no answer for asks (<see cref="AskGodot"/>),
+    /// the person's own editor joined meanwhile where one is open on the project.</summary>
+    public bool GodotHeadlessAtOpen { get; init; }
+
+    /// <summary>The GDScript servers asked for since they were last let go, whose starts may be headless editors.</summary>
+    private readonly HashSet<ServerPlace> godotAsked = [];
 
     /// <summary>ESLint, for the files it checks.</summary>
     public EslintService Eslint { get; }
@@ -147,6 +186,7 @@ public sealed class WebLanguages : IAsyncDisposable
             LanguageService.Json => WebServerKind.Json,
             LanguageService.Dockerfile => WebServerKind.Dockerfile,
             LanguageService.Yaml => WebServerKind.Yaml,
+            LanguageService.GDScript => WebServerKind.GDScript,
             _ => null,
         };
         return kind is { } server ? (server, language.IdOf(path)) : null;
@@ -160,6 +200,7 @@ public sealed class WebLanguages : IAsyncDisposable
         WebServerKind.Css => "CSS",
         WebServerKind.Dockerfile => "Dockerfile",
         WebServerKind.Yaml => "YAML",
+        WebServerKind.GDScript => "GDScript",
         _ => "JSON",
     };
 
@@ -171,9 +212,17 @@ public sealed class WebLanguages : IAsyncDisposable
         {
             return;
         }
-        WebDocument features = new(document, language.Kind, language.LanguageId);
+        ServerPlace place = new(language.Kind, language.Kind == WebServerKind.GDScript ? Godot.GodotScripts.ProjectOf(document.Path) : null);
+        WebDocument features = new(document, language.Kind, language.LanguageId)
+        {
+            Stylesheets = Stylesheets, GodotProject = place.Project, AskServer = language.Kind == WebServerKind.GDScript ? () => AskGodot(document) : null,
+        };
         documents[document] = features;
-        NodeServer server = ServerFor(language.Kind);
+        if (gdscriptIdle.Remove(place, out CancellationTokenSource? waiting))
+        {
+            waiting.Cancel();
+        }
+        NodeServer server = ServerFor(place);
         if (server.Session is { } running)
         {
             features.Connect(running);
@@ -203,7 +252,60 @@ public sealed class WebLanguages : IAsyncDisposable
             features.Dispose();
             document.Notice = null;
             document.NoticeAction = null;
+            if (features.Kind == WebServerKind.GDScript && !Of(PlaceOf(features)).Any())
+            {
+                LetGoGDScriptLater(PlaceOf(features));
+            }
         }
+    }
+
+    /// <summary>What answers for a file open: its server's place.</summary>
+    private static ServerPlace PlaceOf(WebDocument features) => new(features.Kind, features.GodotProject);
+
+    /// <summary>What a server answers for of the files open.</summary>
+    private IEnumerable<WebDocument> Of(ServerPlace place) => documents.Values.Where(d => PlaceOf(d) == place);
+
+    /// <summary>The files open a server answers for, listed as they are now.</summary>
+    private List<OpenDocument> Open(ServerPlace place) => [.. documents.Where(d => PlaceOf(d.Value) == place).Select(d => d.Key)];
+
+    /// <summary>A file's server, once it has one.</summary>
+    private NodeServer? ServerOf(OpenDocument document) =>
+        documents.TryGetValue(document, out WebDocument? features) ? servers.GetValueOrDefault(PlaceOf(features)) : null;
+
+    /// <summary>A project's GDScript server let go once <see cref="GDScriptIdle"/> passes with no script of it open, its next
+    /// file starting it again; a server of the person's own Godot editor is only let go of, never ended.</summary>
+    private void LetGoGDScriptLater(ServerPlace place)
+    {
+        CancellationTokenSource waiting = new();
+        if (gdscriptIdle.Remove(place, out CancellationTokenSource? earlier))
+        {
+            earlier.Cancel();
+        }
+        gdscriptIdle[place] = waiting;
+        // Unheld: no screenshot or settling test waits on a server kept for a script yet to come.
+        IdeErrors.Observe(BackgroundWork.Unheld(async () =>
+        {
+            try
+            {
+                await Task.Delay(GDScriptIdle, waiting.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            UiThread.Post(() =>
+            {
+                if (disposed || gdscriptIdle.GetValueOrDefault(place) != waiting || Of(place).Any() || !servers.Remove(place, out NodeServer? server))
+                {
+                    return;
+                }
+                gdscriptIdle.Remove(place);
+                IdeErrors.Observe(server.End());
+                godotAsked.Remove(place);
+                IdeErrors.Write($"GDScript's language server let go for {place.Project ?? folder}: no GDScript of it open for {GDScriptIdle.TotalSeconds:0} s");
+                StateChanged?.Invoke(this, EventArgs.Empty);
+            });
+        }));
     }
 
     /// <summary>The Node.js the servers run on, looked for once. Asked from any thread.</summary>
@@ -227,11 +329,11 @@ public sealed class WebLanguages : IAsyncDisposable
         {
             return;
         }
-        if (servers.GetValueOrDefault(features.Kind) is { Problem: { } problem } server)
+        if (ServerOf(document) is { Problem: { } problem } server)
         {
-            WebServerKind kind = features.Kind;
+            ServerPlace place = PlaceOf(features);
             document.Notice = Notice(Language.ForPath(document.Path), problem);
-            document.NoticeAction = server.LeftStopped ? new NoticeAction("Start it again", () => StartAgain(kind)) : null;
+            document.NoticeAction = server.LeftStopped ? new NoticeAction("Start it again", () => StartAgain(place)) : null;
             return;
         }
         List<string> tools = [];
@@ -379,25 +481,33 @@ public sealed class WebLanguages : IAsyncDisposable
 
     public WebDocument? For(OpenDocument document) => documents.GetValueOrDefault(document);
 
+    /// <summary>What the folder's pages link changed: each open HTML file's classes are checked again.</summary>
+    public void StylesheetsChanged()
+    {
+        UiThread.Check();
+        foreach (WebDocument features in documents.Values.Where(d => d.Kind == WebServerKind.Html))
+        {
+            features.StylesheetsChanged();
+        }
+    }
+
     /// <summary>What the status bar says of a file's server while it cannot answer (starting, no Node.js); null once it can.</summary>
-    public string? StateOf(OpenDocument document) =>
-        LanguageOf(document.Path) is { } language && servers.GetValueOrDefault(language.Kind) is { Session: null } server ? server.State : null;
+    public string? StateOf(OpenDocument document) => ServerOf(document) is { Session: null } server ? server.State : null;
 
     /// <summary>What the status bar says of a file's running server worth saying: for a script, the TypeScript it runs,
     /// the project's own or, marked so, the one Passenger carries; null otherwise.</summary>
     public string? DetailOf(OpenDocument document) =>
-        LanguageOf(document.Path) is { Kind: WebServerKind.TypeScript } && servers.GetValueOrDefault(WebServerKind.TypeScript)?.Session?.Server.TypeScript is { } typescript
+        LanguageOf(document.Path) is { Kind: WebServerKind.TypeScript } && ServerOf(document)?.Session?.Server.TypeScript is { } typescript
             ? $"TypeScript {typescript.Version}{(typescript.Source == "bundled" ? " (Passenger's)" : string.Empty)}"
             : null;
 
     /// <summary>Whether a file's server cannot start (no Node.js, one too old, a server missing), so none will answer for it.</summary>
-    public bool CannotStart(OpenDocument document) =>
-        LanguageOf(document.Path) is { } language && servers.GetValueOrDefault(language.Kind) is { Problem: not null };
+    public bool CannotStart(OpenDocument document) => ServerOf(document) is { Problem: not null };
 
     /// <summary>What the status bar says when a command (<paramref name="what"/>) asks a file's server before it can answer.</summary>
     public string Unready(string what, OpenDocument document) =>
         LanguageOf(document.Path) is { } language
-            ? $"{what} needs the {Name(language.Kind)} language server: {servers.GetValueOrDefault(language.Kind) switch { { Problem: { } problem } => problem, { State.Length: > 0 } server => $"it is {server.State}", _ => "it has not started" }}"
+            ? $"{what} needs the {Name(language.Kind)} language server: {ServerOf(document) switch { { Problem: { } problem } => problem, { State.Length: > 0 } server => $"it is {server.State}", _ => "it has not started" }}"
             : $"{what} needs a language server, and none reads {document.Name}";
 
     /// <summary>The HTML server, started if it has not been (Razor's HTML asks it), once it can answer; null without a
@@ -408,7 +518,7 @@ public sealed class WebLanguages : IAsyncDisposable
         {
             return null;
         }
-        NodeServer server = ServerFor(WebServerKind.Html);
+        NodeServer server = ServerFor(new ServerPlace(WebServerKind.Html, null));
         if (server.Session is null && server.Problem is null && server.Starting is null)
         {
             Start(server);
@@ -430,9 +540,9 @@ public sealed class WebLanguages : IAsyncDisposable
         finding = null;
         Eslint.Reset();
         IdeErrors.Observe(Prettier.ResetAsync());
-        foreach ((WebServerKind kind, NodeServer server) in servers.ToList())
+        foreach ((ServerPlace place, NodeServer server) in servers.ToList())
         {
-            Replace(kind, server);
+            Replace(place, server);
         }
     }
 
@@ -446,41 +556,72 @@ public sealed class WebLanguages : IAsyncDisposable
             return;
         }
         asksDockerHub = asks;
-        if (servers.TryGetValue(WebServerKind.Dockerfile, out NodeServer? server) && server.Problem is null)
+        ServerPlace place = new(WebServerKind.Dockerfile, null);
+        if (servers.TryGetValue(place, out NodeServer? server) && server.Problem is null)
         {
-            Replace(WebServerKind.Dockerfile, server);
+            Replace(place, server);
         }
     }
 
-    /// <summary>A kind's server, made as a file first needs it, counting its restarts in <paramref name="restarts"/>
+    /// <summary>A place's server, made as a file first needs it, counting its restarts in <paramref name="restarts"/>
     /// (those of the servers before it in its place).</summary>
-    private NodeServer ServerFor(WebServerKind kind, ServerRestarts? restarts = null)
+    private NodeServer ServerFor(ServerPlace place, ServerRestarts? restarts = null)
     {
-        if (servers.TryGetValue(kind, out NodeServer? server))
+        if (servers.TryGetValue(place, out NodeServer? server))
         {
             return server;
         }
+        WebServerKind kind = place.Kind;
         NodeServer made = null!;
-        made = new NodeServer(Name(kind), folder, NodeAsync, restarts ?? new ServerRestarts())
+        made = new NodeServer(Name(kind), place.Project ?? folder, NodeAsync, restarts ?? new ServerRestarts())
         {
             Package = Path.Combine(Modules, Package(kind), "package.json"),
             Missing = () => Missing(kind),
             Command = node => Starting(kind, node),
+            Elsewhere = kind == WebServerKind.GDScript ? () => GodotStart(place) : null,
             Configure = language => ConfigureAsync(kind, language),
             Listen = started => started.Server.TypeScriptVersion += (_, _) => UiThread.Post(() => StateChanged?.Invoke(this, EventArgs.Empty)),
-            Started = started => Started(kind, started),
-            Unavailable = () => Unavailable(kind),
+            Started = started => Started(place, started),
+            Unavailable = () => Unavailable(place),
+            Unasked = () => Unasked(place),
             Refresh = () =>
             {
-                foreach (WebDocument features in documents.Values.Where(d => d.Kind == kind))
+                foreach (WebDocument features in Of(place))
                 {
                     features.Refresh();
                 }
             },
-            Lost = what => Lost(kind, made, what),
+            Lost = what => Lost(place, made, what),
         };
-        servers[kind] = made;
+        servers[place] = made;
         return made;
+    }
+
+    /// <summary>A project's GDScript server, on the Godot Settings names as its start begins: the person's editor's, or a
+    /// headless editor's once one was asked for.</summary>
+    private Func<CancellationToken, Task<LanguageSession>> GodotStart(ServerPlace place)
+    {
+        (string? setting, IReadOnlyDictionary<string, string> environment) = (settings().GodotExecutable, GodotEnvironment);
+        bool headless = godotAsked.Contains(place) || GodotHeadlessAtOpen;
+        return cancel => Godot.GodotScripts.StartAsync(place.Project, setting, environment, LogFolder, headless, cancel);
+    }
+
+    /// <summary>Godot's server of a script's project asked for, for what Passenger's own reading of it has no answer for:
+    /// started, a headless editor where the person's own serves none, unless one serves, is starting or cannot start.</summary>
+    public void AskGodot(OpenDocument document)
+    {
+        UiThread.Check();
+        if (disposed || !documents.TryGetValue(document, out WebDocument? features) || features.Kind != WebServerKind.GDScript)
+        {
+            return;
+        }
+        ServerPlace place = PlaceOf(features);
+        godotAsked.Add(place);
+        NodeServer server = ServerFor(place);
+        if (server.Session is null && server.Problem is null && server.Starting is null)
+        {
+            Start(server);
+        }
     }
 
     private void Start(NodeServer server)
@@ -489,14 +630,14 @@ public sealed class WebLanguages : IAsyncDisposable
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>A kind's server started: its files connected to it, their banners said again.</summary>
-    private void Started(WebServerKind kind, LanguageSession started)
+    /// <summary>A place's server started: its files connected to it, their banners said again.</summary>
+    private void Started(ServerPlace place, LanguageSession started)
     {
-        foreach (WebDocument features in documents.Values.Where(d => d.Kind == kind))
+        foreach (WebDocument features in Of(place))
         {
             features.Connect(started);
         }
-        foreach (OpenDocument open in documents.Keys.Where(d => documents[d].Kind == kind).ToList())
+        foreach (OpenDocument open in Open(place))
         {
             Announce(open);
         }
@@ -506,18 +647,29 @@ public sealed class WebLanguages : IAsyncDisposable
     /// <summary>Why a server cannot start that this build is to blame for: its package, or the Dockerfile server's preload,
     /// is not beside the app.</summary>
     private static string? Missing(WebServerKind kind) =>
-        !File.Exists(Script(kind)) ? $"its language server is missing from the app's folder ({Script(kind)})"
+        kind == WebServerKind.GDScript ? null
+        : !File.Exists(Script(kind)) ? $"its language server is missing from the app's folder ({Script(kind)})"
         : kind == WebServerKind.Dockerfile && !File.Exists(DockerHubTags.Preload) ? $"Passenger's part of its language server is missing from the app's folder ({DockerHubTags.Preload})"
         : null;
 
     /// <summary>A server that cannot run: its files keep their colours and say why in their banner, the status bar in a
     /// few words.</summary>
-    private void Unavailable(WebServerKind kind)
+    private void Unavailable(ServerPlace place)
     {
-        foreach (OpenDocument open in documents.Where(d => d.Value.Kind == kind).Select(d => d.Key).ToList())
+        foreach (OpenDocument open in Open(place))
         {
             documents[open].Unreached();
             Announce(open);
+        }
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>A place's server found nothing to start yet: its files wait for no checks but Passenger's own reading's.</summary>
+    private void Unasked(ServerPlace place)
+    {
+        foreach (WebDocument features in Of(place))
+        {
+            features.Unreached();
         }
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -639,7 +791,11 @@ public sealed class WebLanguages : IAsyncDisposable
             hold.Holding.SetResult(server.ProcessId);
             await hold.Until;
         }
-        await Configure(kind, server);
+        // Godot's server reads no settings of the client's.
+        if (kind != WebServerKind.GDScript)
+        {
+            await Configure(kind, server);
+        }
     }
 
     /// <summary>The settings a server reads from <c>workspace/didChangeConfiguration</c> rather than asks for, sent once it
@@ -682,47 +838,47 @@ public sealed class WebLanguages : IAsyncDisposable
         }
     }
 
-    /// <summary>A server gone: started again with its files, unless servers of its kind have gone too often to be worth it,
+    /// <summary>A server gone: started again with its files, unless servers in its place have gone too often to be worth it,
     /// when it is left stopped until a person starts it again (<see cref="StartAgain"/>).</summary>
-    private void Lost(WebServerKind kind, NodeServer server, string what)
+    private void Lost(ServerPlace place, NodeServer server, string what)
     {
         if (server.Restarts.Again())
         {
-            Replace(kind, server);
+            Replace(place, server);
             Stopped?.Invoke(this, new WebServerLost(ServerRestarts.StartedAgain(what), null));
             return;
         }
-        Replace(kind, server, stopped: $"its language server stopped {ServerRestarts.Often}");
-        Stopped?.Invoke(this, new WebServerLost(ServerRestarts.LeftStopped(what), () => StartAgain(kind)));
+        Replace(place, server, stopped: $"its language server stopped {ServerRestarts.Often}");
+        Stopped?.Invoke(this, new WebServerLost(ServerRestarts.LeftStopped(what), () => StartAgain(place)));
     }
 
-    /// <summary>Starts a kind's server left stopped again at a person's word, with its files, its restarts counted afresh:
+    /// <summary>Starts a place's server left stopped again at a person's word, with its files, its restarts counted afresh:
     /// it runs again once what ended it is gone.</summary>
-    private void StartAgain(WebServerKind kind)
+    private void StartAgain(ServerPlace place)
     {
         UiThread.Check();
-        if (disposed || servers.GetValueOrDefault(kind) is not { LeftStopped: true } server)
+        if (disposed || servers.GetValueOrDefault(place) is not { LeftStopped: true } server)
         {
             return;
         }
         server.Restarts.Forget();
-        IdeErrors.Write($"The {Name(kind)} language server is started again for {folder}, as asked");
-        Message?.Invoke(this, $"Starting the {Name(kind)} language server again");
-        Replace(kind, server);
+        IdeErrors.Write($"The {Name(place.Kind)} language server is started again for {place.Project ?? folder}, as asked");
+        Message?.Invoke(this, $"Starting the {Name(place.Kind)} language server again");
+        Replace(place, server);
     }
 
     /// <summary>Ends a server (or its start) and lets its files go, then gives them a new one: started, or left stopped for
     /// the reason given, which their banners say.</summary>
-    private void Replace(WebServerKind kind, NodeServer server, string? stopped = null)
+    private void Replace(ServerPlace place, NodeServer server, string? stopped = null)
     {
         IdeErrors.Observe(server.End());
-        List<OpenDocument> open = [.. documents.Where(d => d.Value.Kind == kind).Select(d => d.Key)];
+        List<OpenDocument> open = Open(place);
         foreach (OpenDocument document in open)
         {
             Detach(document);
         }
-        servers.Remove(kind);
-        NodeServer again = ServerFor(kind, server.Restarts);
+        servers.Remove(place);
+        NodeServer again = ServerFor(place, server.Restarts);
         if (stopped is not null)
         {
             again.Stop(stopped);

@@ -9,15 +9,19 @@ using Passenger.Text;
 namespace Passenger.App.Navigation;
 
 /// <summary>What a window lends its navigation: its editors, its session (whose <see cref="NavigationHistory"/>,
-/// index, recent files and language server it goes by), its popups and status bar, opening a file in it, and a file's
-/// text as the editor or the disk has it.</summary>
+/// index, recent files and language server it goes by), its popups and status bar, opening a file in it, a file's text as
+/// the editor or the disk has it, and its Go to Declaration.</summary>
 public sealed record NavigatorParts(
     EditorArea Editors,
     Func<ProjectSession> Session,
     PopupHost Popups,
     StatusBar Status,
     Func<string, string?> OpenFile,
-    Func<string, TextSnapshot?> TextOf);
+    Func<string, TextSnapshot?> TextOf)
+{
+    /// <summary>Go to Declaration from the active editor's caret.</summary>
+    public Action? Declare { get; init; }
+}
 
 /// <summary>Getting about the code: going to a file and position remembered for Back and Forward, Last and Next Edit
 /// Location, Recent Locations with their lines of code, and the Go to popups (File, Symbol, Everything, Line:Column,
@@ -56,9 +60,7 @@ public sealed class Navigator
         {
             if (shownLast is { } left && left != Editors.Active)
             {
-                TextSnapshot text = left.Text.Snapshot;
-                int caret = Math.Min(left.Selections.Primary.Caret, text.Length);
-                HistoryPlace place = new(left.Path, caret, text.GetLineFromOffset(caret));
+                HistoryPlace place = PlaceOf(left, left.Selections.Primary.Caret);
                 if (navigating || Editors.Active is null || !Editors.HasTab(left))
                 {
                     Places.Visited(place);
@@ -89,22 +91,28 @@ public sealed class Navigator
         if (Editors.Active is { } active && active.Path == PathNames.Canonical(path))
         {
             Editors.CodeEditor.GoTo(position);
-            if (from is not null && Here() is { } to && (to.Path != from.Path || to.Line != from.Line))
+            if (from is not null && Here() is { } to && (!to.SameTab(from) || to.Line != from.Line))
             {
                 Places.Left(from);
             }
         }
     }
 
-    /// <summary>The caret's place in the file shown, as the navigation history keeps it.</summary>
-    private HistoryPlace? Here()
+    /// <summary>The caret's place in the file shown, as the navigation history keeps it: a diff's tab's in its file's side.</summary>
+    private HistoryPlace? Here() => Editors.Active is { } active ? PlaceOf(active, Editors.CodeEditor.Selections.Primary.Caret) : null;
+
+    /// <summary>A tab's place: a file's at a caret, a diff's at its file's side's caret, in that side's text.</summary>
+    private static HistoryPlace PlaceOf(OpenDocument tab, int caret)
     {
-        if (Editors.Active is not { } active)
+        if (tab.Diff is { } diff)
         {
-            return null;
+            TextSnapshot side = diff.Shown.File?.Text.Snapshot ?? diff.View?.Right.Document.Snapshot ?? tab.Text.Snapshot;
+            int at = Math.Min(diff.Caret, side.Length);
+            return new HistoryPlace(tab.Path, at, side.GetLineFromOffset(at)) { Diff = diff.Shown };
         }
-        int caret = Editors.CodeEditor.Selections.Primary.Caret;
-        return new HistoryPlace(active.Path, caret, active.Text.Snapshot.GetLineFromOffset(caret));
+        TextSnapshot text = tab.Text.Snapshot;
+        int offset = Math.Min(caret, text.Length);
+        return new HistoryPlace(tab.Path, offset, text.GetLineFromOffset(offset));
     }
 
     private bool Reachable(string path) => Editors.Documents.Any(d => d.Path == path) || File.Exists(path);
@@ -132,10 +140,34 @@ public sealed class Navigator
         {
             return;
         }
+        if (target.Diff is { } diff)
+        {
+            ShowDiff(diff, target.Offset);
+            return;
+        }
         Show(target.Path);
         if (Editors.Active is { } active && active.Path == target.Path)
         {
             Editors.CodeEditor.GoTo(active.Text.Snapshot.GetPosition(Math.Min(target.Offset, active.Text.Snapshot.Length)));
+        }
+    }
+
+    /// <summary>Back or Forward to a diff's tab: shown again, or opened afresh where it has closed, its file's side's caret
+    /// put back where it was.</summary>
+    private void ShowDiff(Vcs.DiffContent diff, int offset)
+    {
+        navigating = true;
+        try
+        {
+            Editors.ShowDiffAgain(diff);
+        }
+        finally
+        {
+            navigating = false;
+        }
+        if (Editors.Active is { Diff: { } tab } && tab.Shown.Key == diff.Key && tab.View is { } view)
+        {
+            view.Right.GoTo(view.Right.Document.Snapshot.GetPosition(Math.Min(offset, view.Right.Document.Snapshot.Length)));
         }
     }
 
@@ -411,14 +443,9 @@ public sealed class Navigator
         int caretLine = Editors.CodeEditor.CaretPosition.Line;
         SymbolPopup popup = new($"File Structure: {active.Name}", "Filter by name, CamelHumps too", async (query, cancel) =>
         {
-            // The server's document now: one started again while the popup is open has a new one.
-            Lsp.LspDocument lsp = Session.OutlineOf(active) ?? throw new Lsp.LanguageServerFailed(Refusals.NoOutline(active.Name));
-            if (outline is null)
-            {
-                IReadOnlyList<Lsp.DocumentSymbol> symbols = await lsp.OutlineAsync(cancel);
-                Lsp.ServerLines lines = Lsp.ServerLines.Of(lsp.Text.Snapshot);
-                outline ??= await BackgroundWork.Run(() => ToolWindows.StructureView.OutlineOf(symbols, active.Path, lines, cancel: cancel), cancel);
-            }
+            // Where the outline comes from now: a server started again while the popup is open has a new document.
+            FileOutline source = Session.OutlineOf(active) ?? throw new Lsp.LanguageServerFailed(Refusals.NoOutline(active.Name));
+            outline ??= await source.ReadAsync(active.Path, null, cancel);
             IReadOnlyList<SymbolRow> rows = outline.Rows;
             string filter = query.Trim();
             return filter.Length == 0 ? rows : await BackgroundWork.Run(() => FilterOutline(rows, filter), cancel);
@@ -431,9 +458,20 @@ public sealed class Navigator
         {
             if (row is not null)
             {
-                NavigateTo(row.Path, row.Position);
+                GoTo(row);
             }
         });
+    }
+
+    /// <summary>Goes to an outline's row: to its place, and on from there to what the code there names where it leads on (a
+    /// scene's connection to its handler).</summary>
+    public void GoTo(SymbolRow row)
+    {
+        NavigateTo(row.Path, row.Position);
+        if (row.Leads)
+        {
+            parts.Declare?.Invoke();
+        }
     }
 
     private static IReadOnlyList<SymbolRow> FilterOutline(IReadOnlyList<SymbolRow> outline, string query)

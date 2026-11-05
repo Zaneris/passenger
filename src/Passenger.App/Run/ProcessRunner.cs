@@ -108,13 +108,15 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     }
 
     /// <summary><see cref="StartDotnet"/> with no wait, its fork off the window's thread as <see cref="StartAsync(ProcessStartInfo,
-    /// IReadOnlyDictionary{string, string}?)"/>'s is.</summary>
-    public Task<string?> StartDotnetAsync(IReadOnlyList<string> arguments, string folder, IReadOnlyDictionary<string, string>? environment = null)
+    /// IReadOnlyDictionary{string, string}?)"/>'s is, its start <paramref name="placed"/> where given (a desktop of its own).</summary>
+    public Task<string?> StartDotnetAsync(IReadOnlyList<string> arguments, string folder, IReadOnlyDictionary<string, string>? environment = null,
+        Func<ProcessStartInfo, ProcessStartInfo>? placed = null)
     {
         ProcessStartInfo start;
         try
         {
             start = ChildProcesses.DotnetCommand(arguments, folder);
+            start = placed?.Invoke(start) ?? start;
         }
         catch (FileNotFoundException missing)
         {
@@ -280,7 +282,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         process = started;
         running = true;
         TaskCompletionSource<int> ending = waited ?? (ended = new(TaskCreationOptions.RunContinuationsAsynchronously));
-        ConsoleInput? input = takesInput ? ProgramInput.Of(started.StandardInput) : null;
+        ConsoleInput? input = takesInput ? ProgramInput.Of(ChildProcesses.Input(started)) : null;
         if (input is not null)
         {
             console.Input = input;
@@ -288,7 +290,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         ConsoleSink sink = console.Sink;
         Landing landing = new();
         started.Exited += (_, _) => landing.Ended();
-        if (started.HasExited)
+        if (!DotnetProcesses.Runs(started))
         {
             landing.Ended();
         }
@@ -452,7 +454,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
                         ChildProcesses.Errors(owned).Dispose();
                         if (takesInput)
                         {
-                            owned.StandardInput.Dispose();
+                            ChildProcesses.Input(owned).Dispose();
                         }
                     }
                     finally

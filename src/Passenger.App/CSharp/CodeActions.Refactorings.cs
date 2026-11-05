@@ -231,8 +231,10 @@ internal sealed partial class CodeActions
             // What uses it from inside what goes with it (a recursive call, a constructor of a type) goes too.
             IReadOnlyList<LspLocation> referenced = await lsp.ReferencesAsync(caret);
             IReadOnlyList<LspLocation> inXaml = await context.Languages.Xaml.CodeUsesAsync(document, lsp, caret);
-            Dictionary<string, string> paths = DocumentUris.ToPaths([.. referenced.Select(r => r.Uri), .. inXaml.Select(r => r.Uri)]);
+            IReadOnlyList<LspLocation> inScenes = await context.Languages.CSharp.GodotUsesAsync(document, lsp, caret);
+            Dictionary<string, string> paths = DocumentUris.ToPaths([.. referenced.Select(r => r.Uri), .. inXaml.Select(r => r.Uri), .. inScenes.Select(r => r.Uri)]);
             List<LspLocation> uses = [.. referenced
+                .Concat(inScenes)
                 .Where(r => paths[r.Uri] != path || !removal.Range.Contains(lines.OffsetOf(r.Range.Start)))
                 .Concat(inXaml)
                 .OrderBy(r => paths[r.Uri], StringComparer.Ordinal).ThenBy(r => r.Range.Start.Line).ThenBy(r => r.Range.Start.Character)];
@@ -263,15 +265,14 @@ internal sealed partial class CodeActions
             (int line, string used) = preview(path, use.Range.Start);
             rows.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
             TextBlock where = new() { Text = $"{shown}:{line + 1}", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 1, 12, 1) };
-            TextBlock code = new()
+            TextBlock code = new TextBlock
             {
                 Text = used,
-                FontFamily = CodeEditor.CodeFont,
                 FontSize = 12,
                 Foreground = InfoCard.Brush(TokenKeys.TextMuted),
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
-            };
+            }.InCodeFont();
             Grid.SetRow(where, row);
             Grid.SetRow(code, row);
             Grid.SetColumn(code, 1);

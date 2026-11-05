@@ -9,6 +9,9 @@ public sealed record EditPlan(IReadOnlyList<TextEdit> Edits, SelectionSet Select
     /// <summary>Text the edits take out and put back elsewhere as it was (the line a moved line steps over), for what keeps
     /// offsets in it (a fold) to go with it rather than collapse where it was taken out.</summary>
     public IReadOnlyList<TextMove> Moved { get; init; } = [];
+
+    /// <summary>The end tags a person may go on to type by hand once this has run, a "&lt;/" having been typed at each caret.</summary>
+    public EndTagTyping? EndTags { get; init; }
 }
 
 /// <summary>Text moved whole: <paramref name="Length"/> characters at <paramref name="From"/> in the text before stand at
@@ -75,6 +78,127 @@ public static class TextEditing
             }
         }
         return Build(replacements, selections, EditKind.Typing);
+    }
+
+    /// <summary>The end tag a character just typed in <paramref name="markup"/> completes, a step of its own after the typing:
+    /// a start tag's '>' writes its end tag after the caret, which stays, unless the tag closes itself, HTML makes the element
+    /// empty or an end tag after it closes the element; "&lt;/" writes the open element's name and '>', over a '>' after it, the
+    /// caret after it, or joins the very end tag it would make, there or past white space, the caret inside it, the next keys
+    /// typing over either (<see cref="EditPlan.EndTags"/>). Null where nothing is completed: a comment, a value, CDATA, a script.</summary>
+    public static EditPlan? CloseTag(TextSnapshot text, SelectionSet selections, string typed, MarkupKind markup)
+    {
+        if (markup == MarkupKind.None || typed is not (">" or "/"))
+        {
+            return null;
+        }
+        if (typed == "/")
+        {
+            return EndTagNames(text, selections, markup);
+        }
+        List<Replacement> replacements = [];
+        for (int i = 0; i < selections.Count; i++)
+        {
+            Selection s = selections.Items[i];
+            if (s.IsEmpty && EndTagFor(text, s.Caret, markup) is { } closing)
+            {
+                replacements.Add(new Replacement(s.Caret, s.Caret, closing, 0, 0, i));
+            }
+        }
+        return replacements.Count == 0 ? null : Build(replacements, selections, EditKind.Other);
+    }
+
+    /// <summary>The end tag each "&lt;/" just typed begins (<see cref="CloseTag"/>). Typing over goes by every caret at once, so
+    /// where one has no name here the others go past a tag after them whole.</summary>
+    private static EditPlan? EndTagNames(TextSnapshot text, SelectionSet selections, MarkupKind markup)
+    {
+        string?[] names = [.. selections.Items.Select(s => s.IsEmpty ? OpenNameAt(text, s.Caret, markup) : null)];
+        bool everyCaret = names.All(n => n is not null);
+        List<Replacement> replacements = [];
+        List<TagTypedOver> tags = [];
+        for (int i = 0; i < names.Length; i++)
+        {
+            if (names[i] is not { } name)
+            {
+                continue;
+            }
+            int caret = selections.Items[i].Caret;
+            string end = $"</{name}>";
+            int written = WrittenEndTag(text, caret, name, markup);
+            TagTypedOver tag = written < 0 ? new TagTypedOver(end, false) : Joining(text, caret, written, end);
+            if (tag.Indent is { } indent && indent != tag.TagIndent)
+            {
+                replacements.Add(new Replacement(caret - 2 - indent.Length, caret - 2, tag.TagIndent, 0, 0, i));
+            }
+            if (tag.Ahead && everyCaret)
+            {
+                replacements.Add(Removal(caret, written + 2, i));
+            }
+            else
+            {
+                int over = tag.Ahead ? written + end.Length - caret : caret < text.Length && text[caret] == '>' ? 1 : 0;
+                replacements.Add(new Replacement(caret, caret + over, name + ">", name.Length + 1, name.Length + 1, i));
+            }
+            tags.Add(tag);
+        }
+        return replacements.Count == 0 ? null : Build(replacements, selections, EditKind.Other) with { EndTags = everyCaret ? new EndTagTyping(tags) : null };
+    }
+
+    /// <summary>Where the end tag of <paramref name="name"/> stands that a "&lt;/" before <paramref name="caret"/> joins, only
+    /// white space between them; -1 with none, or where taking it for the open element's would leave an element of its name
+    /// holding that one with no end tag, that tag then being the holder's and what is typed the one the text lacks.</summary>
+    private static int WrittenEndTag(TextSnapshot text, int caret, string name, MarkupKind markup)
+    {
+        int at = caret;
+        while (at < text.Length && text[at] is ' ' or '\t' or '\r' or '\n')
+        {
+            at++;
+        }
+        string end = $"</{name}>";
+        return at + end.Length <= text.Length && text.GetText(at, end.Length) == end && MarkupIndent.OwnEndTagsAfter(text, caret - 2, name, markup) ? at : -1;
+    }
+
+    /// <summary>The end tag at <paramref name="written"/> a "&lt;/" before <paramref name="caret"/> joins: one on a line of its
+    /// own above the tag takes that line away, the tag staying as it stands; one after text brings the tag up to it.</summary>
+    private static TagTypedOver Joining(TextSnapshot text, int caret, int written, string end)
+    {
+        string between = text.GetText(caret, written - caret);
+        LineSpan line = text.GetLine(text.GetLineFromOffset(caret));
+        bool alone = between.AsSpan().IndexOfAny('\r', '\n') >= 0 && TextNavigation.IndentEnd(text, line) == caret - 2;
+        return new TagTypedOver(end, true, between, alone ? text.GetText(line.Start, caret - 2 - line.Start) : null);
+    }
+
+    /// <summary>The end tag a start tag's '>' just before <paramref name="caret"/> takes (<see cref="CloseTag"/>); null for none.</summary>
+    private static string? EndTagFor(TextSnapshot text, int caret, MarkupKind markup)
+    {
+        int gt = caret - 1;
+        if (gt < 2 || text[gt] != '>' || text[gt - 1] == '/' || MarkupIndent.StartTagAt(text, gt, markup) is not { } tag || NameAt(text, tag + 1, gt) is not { } name)
+        {
+            return null;
+        }
+        return (markup == MarkupKind.Html && MarkupNames.IsVoid(name)) || MarkupIndent.ClosedAfter(text, caret, name, markup) ? null : $"</{name}>";
+    }
+
+    /// <summary>The name an end tag begun just before <paramref name="caret"/> closes (<see cref="CloseTag"/>): the innermost
+    /// element's open there; null where none is, or a name follows already.</summary>
+    private static string? OpenNameAt(TextSnapshot text, int caret, MarkupKind markup)
+    {
+        int lt = caret - 2;
+        if (lt < 0 || text[lt] != '<' || text[lt + 1] != '/' || (caret < text.Length && MarkupNames.IsNameChar(text[caret])))
+        {
+            return null;
+        }
+        return MarkupIndent.OpenAt(text, lt, markup) is { } open ? NameAt(text, open + 1, text.Length) : null;
+    }
+
+    /// <summary>The tag name that starts at <paramref name="at"/>, read no further than <paramref name="limit"/>; null for none.</summary>
+    private static string? NameAt(TextSnapshot text, int at, int limit)
+    {
+        int end = at;
+        while (end < limit && MarkupNames.IsNameChar(text[end]))
+        {
+            end++;
+        }
+        return end > at && MarkupNames.IsNameStart(text[at]) ? text.GetText(at, end - at) : null;
     }
 
     public static EditPlan? Backspace(TextSnapshot text, SelectionSet selections, IndentOptions indent)

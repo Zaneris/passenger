@@ -1,0 +1,64 @@
+using Passenger.App.Workspace;
+using Passenger.Core;
+using Passenger.Lsp;
+using Passenger.Workspace;
+
+namespace Passenger.App.CSharp;
+
+/// <summary>The one target framework chosen per multi-targeted project (<see cref="TargetFrameworkChoices"/>) as the server
+/// answers for its files: a file the server has in that project's frameworks alone is answered for in the one chosen, and
+/// a framework chosen in its switcher is the project's from then on. A file in several projects keeps a choice of its own.</summary>
+public sealed partial class CSharpService
+{
+    /// <summary>The folder's choice of framework for each multi-targeted project; none leaves the server's own.</summary>
+    public TargetFrameworkChoices? Frameworks { get; init; }
+
+    /// <summary>The contexts a file's switcher offers: the server's but those of .NET Framework's targets, which Passenger
+    /// never runs, while another is left.</summary>
+    internal static IReadOnlyList<ProjectContext> Offered(IReadOnlyList<ProjectContext> contexts)
+    {
+        List<ProjectContext> runs = [.. contexts.Where(c => ProjectContext.FrameworkOf(c.Label) is not { } framework || !FrameworkNames.IsNetFramework(framework))];
+        return runs.Count > 0 ? runs : contexts;
+    }
+
+    /// <summary>The project whose frameworks a file's contexts are, all of them one project's; null for a file in several
+    /// projects, or in none of the folder's.</summary>
+    private ProjectModel? FrameworksOf(string path, IReadOnlyList<ProjectContext> contexts)
+    {
+        if (contexts.Count == 0 || contexts.Any(c => ProjectContext.FrameworkOf(c.Label) is null)
+            || contexts.Select(c => ProjectContext.ProjectOf(c.Label)).Distinct(StringComparer.Ordinal).Count() > 1)
+        {
+            return null;
+        }
+        return CompilationSymbols.Named(ProjectsNow?.Invoke() ?? [], path, contexts[0].Label);
+    }
+
+    /// <summary>The context of the framework chosen for a file's project, where its contexts are that project's
+    /// frameworks; null where there is none to follow.</summary>
+    internal ProjectContext? ChosenContext(string path, IReadOnlyList<ProjectContext> contexts) =>
+        Frameworks is { } choices && FrameworksOf(path, contexts) is { } project && choices.Of(project) is { } framework
+            ? contexts.FirstOrDefault(c => string.Equals(ProjectContext.FrameworkOf(c.Label), framework, StringComparison.OrdinalIgnoreCase))
+            : null;
+
+    /// <summary>A context chosen in a file's switcher, made its project's framework where its contexts are that project's;
+    /// false where the file keeps the choice alone.</summary>
+    internal bool ChooseFramework(string path, IReadOnlyList<ProjectContext> contexts, ProjectContext context)
+    {
+        if (Frameworks is not { } choices || FrameworksOf(path, contexts) is not { } project || ProjectContext.FrameworkOf(context.Label) is not { } framework)
+        {
+            return false;
+        }
+        choices.Choose(project, framework);
+        return true;
+    }
+
+    /// <summary>A project's framework was chosen: each open file answered for in its project's choice from now on.</summary>
+    public void FrameworkChosen()
+    {
+        UiThread.Check();
+        foreach (CSharpDocument document in documents.Values)
+        {
+            document.FollowFramework();
+        }
+    }
+}

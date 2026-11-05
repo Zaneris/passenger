@@ -61,10 +61,14 @@ def some(names):
     return ", ".join(names[:20]) + (" …" if len(names) > 20 else "")
 
 
+# dotnet test's listing cuts a display name longer than this to its first so many characters and "···"; a .trx keeps it.
+LISTED_LENGTH = 444
+
+
 def key(name):
-    """A test's display name as both dotnet test's listing and a .trx carry it: a Windows console writes what it cannot
-    encode its own way, so every character past ASCII counts as one '?'."""
-    return "".join(c if c.isascii() else "?" for c in name)
+    """A test's display name as both dotnet test's listing and a .trx carry it: a long one by as much as the listing
+    keeps, and, as a Windows console writes what it cannot encode its own way, every character past ASCII as one '?'."""
+    return "".join(c if c.isascii() else "?" for c in name[:LISTED_LENGTH])
 
 
 def unit_tests():

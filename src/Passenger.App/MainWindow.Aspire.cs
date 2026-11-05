@@ -67,15 +67,29 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>A resource's source gone to from the Aspire window: a folder (a JavaScript or Python app's, an executable's
+    /// working folder) chosen in the Explorer, in its Files view where no project holds it; a file opened.</summary>
+    private void GoToAspireSource(LinkTarget link)
+    {
+        if (link is FileLink { Path: { } folder } && Directory.Exists(folder))
+        {
+            ShowToolWindow(ToolWindowIds.Explorer);
+            Explorer.Locate(folder);
+            return;
+        }
+        OpenLink(link);
+    }
+
     /// <summary>The Aspire window's view over the session's model, as it is first shown: its actions bound once, and its
     /// showing and hiding followed by the session's display.</summary>
     private AspireView MakeAspire()
     {
         AspireView view = aspireView = new AspireView(Bottom.Aspire);
+        view.Metrics.Paused = MetricsPaused;
         view.BindActions(Actions, id => Request(id), RowMenuItem);
         view.RowChosen += (_, _) => lastServiceWindow = ToolWindowIds.Aspire;
         view.Browse = Browse;
-        view.LinkClicked += (_, link) => OpenLink(link);
+        view.LinkClicked += (_, link) => GoToAspireSource(link);
         view.AttachedToVisualTree += (_, _) => aspireDisplayChanged?.Invoke(this, EventArgs.Empty);
         view.DetachedFromVisualTree += (_, _) => aspireDisplayChanged?.Invoke(this, EventArgs.Empty);
         return view;
@@ -85,9 +99,22 @@ public partial class MainWindow
     private bool AspireDisplayed => Dock.IsShown(ToolWindowIds.Aspire) && aspireView is { } view
         && TopLevel.GetTopLevel(view) is not null && view.IsEffectivelyVisible;
 
+    /// <summary>Whether the debugger holds a program the Stats tabs chart paused, whose metrics wait for it to run.</summary>
+    private bool MetricsPaused(int process, Profiler.ProfilePlace? place) =>
+        session is { IsEnded: false } current && current.Debug.Debugging(process, place?.Where) is { State: DebugState.Paused };
+
     private void BindAspire(ProjectSession next)
     {
         Bottom.ResetAspire(AspireCli());
+        // A program the Stats tabs chart is read once the debugger lets it run, and said to be paused while it holds it.
+        next.Debug.StateChanged += (_, _) =>
+        {
+            if (session == next)
+            {
+                aspireView?.Metrics.DebuggerChanged();
+                containersView?.Metrics.DebuggerChanged();
+            }
+        };
         AspireModel model = Bottom.Aspire;
         aspireView?.Bind(model);
         ConditionalWeakTable<AspireInteractions, object> boundConnections = new();
@@ -118,6 +145,7 @@ public partial class MainWindow
         };
         model.LeftUnstarted = (path, resource) => next.Aspire.FindApp(path)?.IsLeftUnstarted(resource) == true;
         model.TelemetryProvider = path => next.Aspire.FindApp(path)?.Telemetry;
+        model.ProgramOf = selected => AspireController.ProgramOf(selected.Resource) ?? next.Aspire.FindService(selected)?.ProcessId;
         model.SelectContainer = id => IdeErrors.Observe(ShowAspireContainerAsync(next, id));
         if (aspireDisplayChanged is not null)
         {

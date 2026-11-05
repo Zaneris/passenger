@@ -25,16 +25,16 @@ public static class Screenshot
 
     public static int Run(LaunchOptions launch, ScreenshotOptions options)
     {
+        PassengerApp.RunsHeadless();
         AppBuilder.Configure<App>()
             .UseSkia()
             .UseHarfBuzz()
-            .WithInterFont()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
             .AfterSetup(builder => Program.ApplyTheme(builder.Instance!, launch))
             .SetupWithoutStarting();
 
         // A capture lets in only its own agent: no socket at all without one.
-        MainWindow window = new() { Width = options.Size.Width, Height = options.Size.Height, Autosaves = false, AgentsAllowed = options.Steps.OfType<ScriptStep.Agent>().Any() };
+        MainWindow window = new() { Width = options.Size.Width, Height = options.Size.Height, Autosaves = false, AgentsAllowed = options.Steps.OfType<ScriptStep.Agent>().Any(), TakesLaunches = false };
         window.SetRenderScaling(options.Scale);
         bool settled;
         try
@@ -108,6 +108,10 @@ public static class Screenshot
             else if (step is ScriptStep.Agent agent)
             {
                 RunAgent(window, agent);
+            }
+            else if (step is ScriptStep.Launch launched)
+            {
+                settled &= Start(window, launched.Start);
             }
             else
             {
@@ -233,6 +237,22 @@ public static class Screenshot
         }
 
         static async Task<int> Ended(Task<Run.TerminalRun> starting) => await (await starting).Ended;
+    }
+
+    /// <summary>Runs or debugs a configuration as the window's own <c>--run</c> does, held as background work until its
+    /// action has run and its start handed over, so the picture waits for its build and start, never its program; refused
+    /// where it could not start, since the picture of a run that never began would be the wrong one. False when work was
+    /// still pending at the limit.</summary>
+    private static bool Start(MainWindow window, ConfigurationStart start)
+    {
+        Task<string?> starting = window.StartConfigurationAsync(start);
+        BackgroundWork.Track(starting);
+        bool settled = Settle();
+        if (starting.IsFaulted)
+        {
+            throw new StepRefused($"{start.Flag}: {starting.Exception!.GetBaseException().Message}");
+        }
+        return starting.IsCompletedSuccessfully && (starting.Result ?? window.NotStarted) is { } refused ? throw new StepRefused(refused) : settled;
     }
 
     /// <summary>A step the window cannot take as asked, which ends the screenshot with exit code 2 and why.</summary>

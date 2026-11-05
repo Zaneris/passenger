@@ -45,8 +45,17 @@ public sealed record SessionSetup(
     /// <summary>Where the Dockerfile server asks for image tags in Docker Hub's place: the window's.</summary>
     public Uri? DockerHub { get; init; }
 
+    /// <summary>The user folders every Godot the session starts keeps in place of the person's: the window's.</summary>
+    public IReadOnlyDictionary<string, string>? GodotEnvironment { get; init; }
+
     /// <summary>Whether the session starts the C# language server: the window's <see cref="MainWindow.StartsLanguageServer"/>.</summary>
     public bool StartsLanguageServer { get; init; } = true;
+
+    /// <summary>Whether opening a GDScript starts Godot's headless editor for it: the window's <see cref="MainWindow.GodotHeadlessAtOpen"/>.</summary>
+    public bool GodotHeadlessAtOpen { get; init; }
+
+    /// <summary>Whether nobody sees the window, whose Godot then runs headless: the window's <see cref="MainWindow.Unseen"/>.</summary>
+    public bool Unseen { get; init; }
 
     /// <summary>Where the container tools come from that reach a program in a container: the window's.</summary>
     public required Func<Containers.ContainerToolsSource> ContainerTools { get; init; }
@@ -95,16 +104,59 @@ public sealed class ProjectSession : IAsyncDisposable
         Folder = folder;
         Configurations = new RunConfigurations(folder, () => Workspace);
         Aspire = new AspireController(this, setup.StateFolder);
+        Aspire.Inspected = app => Reloaded(app);
         AspireFiles = new AspireFiles(this);
         Builder = new ProcessRunner(setup.Views.Build);
         Runner = new ProcessRunner(setup.Views.Run, takesInput: true);
-        Tests = new TestController(setup.Views.TestTree, setup.BuildForTests, () => Projects, () => Workspace, line => setup.Views.Build.Append($"{line}\n")) { Work = setup.Work };
+        Tests = new TestController(setup.Views.TestTree, setup.BuildForTests, () => Projects, () => Workspace, line => setup.Views.Build.Append($"{line}\n"))
+        {
+            Work = setup.Work,
+            // The Godot Run starts the game on, found off the window's thread, with the window's user folders for Godot.
+            GodotVariables = cancel => BackgroundWork.Run(() => GodotTestRuns.Variables(setup.Settings().GodotExecutable,
+                setup.GodotEnvironment ?? new Dictionary<string, string>(), setup.Settings().GodotTestsWindowed && !setup.Unseen), cancel),
+            GodotFolders = () => [.. Workspace?.GodotGames ?? [], .. Projects.Select(p => p.GodotFolder).OfType<string>()],
+        };
+        Tests.Finder.StateFolder = setup.StateFolder;
         Containers = new Containers.FolderContainers(folder, setup.Engine());
         Vcs.Work = setup.Work;
         Vcs.Watching = setup.Watching;
         // A XAML file's localized strings read from the .resx and XLIFF files as the editor has them.
         Xaml.Snapshots = () => setup.Editors.Texts().Open;
         Xaml.Evaluations = path => evaluations.GetValueOrDefault(path);
+        Frameworks.Changed += (_, project) => FollowFramework(project);
+        GodotScenes = new Godot.GodotSceneIndex { Texts = setup.Editors.Texts, Files = () => (Index.Root, Index.Files), FilesWhole = () => Index.IsWhole, GameOf = GodotOf };
+        // Where a GoDotTest game's tests start: read from its scenes and the C# their nodes run.
+        Tests.GoDotStartOf = project => UiThread.InvokeAsync(async () => Godot.GodotScripts.ProjectOf(project) is { } folder
+            ? await GoDotStartAsync(await GodotScenes.ScenesAsync(folder), await GoDotChosenAsync(project),
+                Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)) is { } game ? Passenger.App.CSharp.CompilationSymbols.Of(game) : null)
+            : Testing.GoDotTests.Start.Main);
+        Stylesheets = new Web.PageStylesheets
+        {
+            Texts = setup.Editors.Texts,
+            Files = () => (Index.Root, Index.Files),
+            Projects = () => Projects,
+            Remote = new Web.RemoteStylesheets(() => setup.Settings().DownloadStylesheets),
+        };
+        Stylesheets.Changed += (_, _) =>
+        {
+            CSharp?.StylesheetsChanged();
+            Web?.StylesheetsChanged();
+        };
+        GodotScenes.Changed += (_, _) => CSharp?.GodotScenesChanged();
+        GodotApis = new Godot.GodotEngineApis(() => setup.Settings().GodotExecutable, () => setup.GodotEnvironment);
+        GodotShaderChecker = new Godot.GodotShaderChecker(GodotApis);
+        GodotShaders = new Godot.GodotShaderMarks(GodotScenes, GodotOf, GodotShaderChecker);
+        GodotScriptTypes = new Godot.GodotScriptTypes(GodotScenes, GodotOf, GodotApis,
+            document => Web?.For(document));
+        GodotMarks = new Godot.GodotSceneMarks(GodotScenes, GodotOf, () => CSharp, setup.Editors.Commands)
+        {
+            Godot = () => setup.Settings().GodotExecutable,
+            Shaders = GodotShaderChecker,
+        };
+        GodotScenes.Changed += (_, _) => GodotMarks.Changed();
+        GodotScenes.Changed += (_, _) => GodotShaders.Changed();
+        GodotScenes.Changed += (_, _) => GodotScriptTypes.Changed();
+        GodotScenes.CodeChanged += (_, _) => GodotMarks.CodeWritten();
         Debug = new DebugController(setup.Editors, setup.Views.Debug)
         {
             RunInTerminal = setup.RunForDebugger,
@@ -112,6 +164,10 @@ public sealed class ProjectSession : IAsyncDisposable
             Server = () => CSharp?.Session,
             HotReloadOn = () => setup.Settings().HotReloadWhileDebugging,
             HotReloadOnSave = () => setup.Settings().HotReloadOnSave,
+            XamlOnSave = () => setup.Settings().XamlHotReloadOnSave,
+            // A game's own session, or the GDScript tab beside its C#'s.
+            ReloadsScripts = scripts => games.Any(g => g.ReloadsScripts
+                && (g.Debugged == scripts || (g.Debugged is not null && Debug?.TabOf(scripts)?.Name == DebugController.ScriptsTab(g.Name)))),
         };
         Debug.SelectionChanged += (_, _) =>
         {
@@ -186,7 +242,11 @@ public sealed class ProjectSession : IAsyncDisposable
         session.Index.Changed += (_, change) => session.AspireFiles.CameAndWent(folder, change.Came, change.Gone);
         session.Index.Build(folder);
         session.Watcher = new FolderWatcher(folder, setup.Watching);
-        session.Web = new Web.WebLanguages(folder, setup.Settings, setup.Engine) { DockerHub = setup.DockerHub };
+        session.Web = new Web.WebLanguages(folder, setup.Settings, setup.Engine)
+        {
+            DockerHub = setup.DockerHub, GodotEnvironment = setup.GodotEnvironment ?? new Dictionary<string, string>(), Stylesheets = session.Stylesheets,
+            GodotHeadlessAtOpen = setup.GodotHeadlessAtOpen,
+        };
         // A compose file's check reads what each .NET service's project reads, once the language server has loaded it.
         session.Web.Checks.Code = () => new Containers.ComposeCode(session.Projects, session.CSharp is { IsReady: true } csharp ? csharp.Session : null);
         session.Web.Checks.GapsChanged += (_, _) => session.CSharp?.ComposeGapsChanged();
@@ -219,24 +279,39 @@ public sealed class ProjectSession : IAsyncDisposable
     private volatile IReadOnlyDictionary<string, ProjectEvaluation> evaluations =
         new Dictionary<string, ProjectEvaluation>(PathNames.Comparer);
 
-    /// <summary>The projects' evaluations taken anew, and the XAML of a project whose evaluation moved something, or changed
-    /// what its C# is parsed with, read again.</summary>
+    /// <summary>The projects' evaluations taken anew, an open file in a package folder they name made read-only, and the
+    /// XAML of a project whose evaluation moved something, changed what its C# is parsed with, or whose framework chosen
+    /// changed, read again. A multi-targeted project's is the framework chosen's (<see cref="Frameworks"/>).</summary>
     private void FollowEvaluations()
     {
         Dictionary<string, ProjectEvaluation> now = new(PathNames.Comparer);
+        bool packageFolders = false;
         foreach (ProjectModel project in workspace?.Projects ?? [])
         {
             if (project.Evaluated is { } evaluated)
             {
+                packageFolders |= PackageFolders.Learn(project);
+                string? framework = Frameworks.Of(project);
+                string? built = framework is null
+                    ? evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.TargetPath)?.Value
+                    : evaluated.Dependencies.FirstOrDefault(d => string.Equals(d.Framework, framework, StringComparison.OrdinalIgnoreCase))?.TargetPath;
                 now[project.Path] = new ProjectEvaluation(
                     evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.ProjectAssetsFile)?.Value,
                     evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.NuGetPackageRoot)?.Value,
                     project.Packages.Where(p => p.Version is { Length: > 0 }).DistinctBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
                         .ToDictionary(p => p.Name, p => p.Version!, StringComparer.OrdinalIgnoreCase),
-                    evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.TargetPath)?.Value)
+                    built)
                 {
-                    Parsing = CompilationSymbols.Of(project),
+                    Parsing = CompilationSymbols.Of(project, framework),
+                    TargetFramework = framework,
                 };
+            }
+        }
+        if (packageFolders)
+        {
+            foreach (OpenDocument document in setup.Editors.Documents)
+            {
+                document.FollowPackageFolders();
             }
         }
         IReadOnlyDictionary<string, ProjectEvaluation> was = evaluations;
@@ -246,10 +321,14 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             Xaml.EvaluationsChanged(changed);
         }
+        // A Godot project's C# is read against its scenes once its evaluation says which folder they are in.
+        CSharp?.GodotProjectsChanged();
+        GodotMarks.Changed();
+        GodotShaders.Changed();
 
         static bool Same(ProjectEvaluation a, ProjectEvaluation b) =>
             a.AssetsFile == b.AssetsFile && a.PackageRoot == b.PackageRoot && a.TargetPath == b.TargetPath && ReferenceEquals(a.Parsing, b.Parsing)
-            && a.Versions.Count == b.Versions.Count
+            && a.TargetFramework == b.TargetFramework && a.Versions.Count == b.Versions.Count
             && a.Versions.All(v => b.Versions.TryGetValue(v.Key, out string? version) && version == v.Value);
     }
 
@@ -298,7 +377,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Unloaded.ExceptWith(filteredOut);
         filteredOut.Clear();
         filter = read.Filter;
-        foreach (ProjectModel project in filter is { } kept ? read.Projects.Where(p => !p.IsProgram && !kept.Projects.Contains(p.Path) && !loaded.Contains(p.Path)) : [])
+        foreach (ProjectModel project in filter is { } kept ? read.Projects.Where(p => kept.LeavesOut(p) && !loaded.Contains(p.Path)) : [])
         {
             if (Unloaded.Add(project.Path))
             {
@@ -380,6 +459,21 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>Which regions each file opens folded.</summary>
     public FoldMemory Folds { get; } = new();
 
+    /// <summary>The target framework chosen for each multi-targeted project, which its XAML, its preview and its C# follow.</summary>
+    public TargetFrameworkChoices Frameworks { get; } = new();
+
+    /// <summary>A project's framework was chosen (by its path; null for every project's, as the folder's kept choices are
+    /// taken), and its XAML and C# followed: what shows the choice, and the previews of its XAML, follow it.</summary>
+    public event EventHandler<string?>? FrameworkChosen;
+
+    /// <summary>The XAML read again against the framework chosen and the open C# files answered for in it, then the window told.</summary>
+    private void FollowFramework(string? project)
+    {
+        FollowEvaluations();
+        CSharp?.FrameworkChosen();
+        FrameworkChosen?.Invoke(this, project);
+    }
+
     /// <summary>Find in Files' scope as its popup left it last.</summary>
     public FindScopeState FindScope { get; set; } = new();
 
@@ -387,6 +481,10 @@ public sealed class ProjectSession : IAsyncDisposable
     public (string Name, IReadOnlyList<string> Files, IReadOnlyList<string> Folders)? ChosenScope { get; set; }
 
     public RunConfigurations Configurations { get; }
+
+    /// <summary>The user folders every Godot the session starts keeps in place of the person's: the window's
+    /// (<see cref="Godot.GodotUserFolders"/>); none for a person's.</summary>
+    public IReadOnlyDictionary<string, string>? GodotEnvironment => setup.GodotEnvironment;
 
     public AspireController Aspire { get; }
 
@@ -418,6 +516,10 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The container configuration Run brought up, its log followed by <see cref="Runner"/>, until Stop takes it
     /// down (or the next run comes); its containers are the folder's (<see cref="Containers"/>) until then.</summary>
     public Containers.ContainerRun? ContainerRun { get; set; }
+
+    /// <summary>The dashboards of the project runs that collect their logs and traces, each from its start's bringing it up
+    /// until it is taken down with its program; its containers are the folder's (<see cref="Containers"/>) until then.</summary>
+    public List<Telemetry.RunDashboard> Dashboards { get; } = [];
 
     /// <summary>The starts of runs of services under way (Run's, Debug's or Profile's of a container configuration or an Aspire
     /// AppHost), each from its first moment until it is up or has given up: a start of what one starts ends it first, and the
@@ -484,6 +586,91 @@ public sealed class ProjectSession : IAsyncDisposable
     /// (<see cref="ToolWindows.DebugTab.App"/>), ended with its debugging, so several debugged at once each keep theirs.</summary>
     public LiveApp? LiveApp => Aspire.SelectedService is not null ? Aspire.SelectedInspection : Debug.Chosen?.App;
 
+    /// <summary>What the Live Visual Tree shows: the inspected app (<see cref="LiveApp"/>), else the Godot game chosen
+    /// (<see cref="Game"/>).</summary>
+    public ILiveTreeSource? LiveSource => (ILiveTreeSource?)LiveApp ?? Game;
+
+    /// <summary>The Godot game chosen among those running (<see cref="Games"/>), the one started last unless another was
+    /// chosen, which Passenger is the remote debugger of: its scene tree, errors and monitors; null before one. Once it
+    /// ends it stays chosen, saying so, unless another still runs, which is chosen in its place.</summary>
+    public Godot.GodotGame? Game { get; private set; }
+
+    private readonly List<Godot.GodotGame> games = [];
+
+    /// <summary>The Godot games Run, Debug and Profile started that have not ended, the first started first: each a source the
+    /// Live Visual Tree can be given (<see cref="ChooseGame"/>). Each ends with its launch's program, and all with the folder.</summary>
+    public IReadOnlyList<Godot.GodotGame> Games => games;
+
+    /// <summary>Chooses a running game as the one the Live Visual Tree and agents' tools follow.</summary>
+    public void ChooseGame(Godot.GodotGame game)
+    {
+        UiThread.Check();
+        if (games.Contains(game) && Game != game)
+        {
+            Game = game;
+            LiveAppChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>A plan as a launch starts it, a Godot game's with Passenger listening for it as its remote debugger, the game
+    /// chosen (<see cref="Game"/>) and among <see cref="Games"/> until the launch ends it with its program; any other plan as
+    /// it is, and no game. With <paramref name="scripts"/> (Debug's) its GDScript is debugged from its first line.</summary>
+    public (LaunchPlan Plan, Godot.GodotGame? Game) Listened(LaunchPlan plan, Godot.GodotScriptStart? scripts = null)
+    {
+        UiThread.Check();
+        (LaunchPlan listened, Godot.GodotGame? game) = Godot.GodotGame.Listen(plan, scripts);
+        if (game is not null && plan.GodotInPane && InPane is { } pane)
+        {
+            listened = pane(listened, game);
+        }
+        if (game is not null)
+        {
+            TakeGame(game);
+        }
+        return (listened, game);
+    }
+
+    /// <summary>What a game whose configuration draws it in the window's Game window is started with to draw there, the
+    /// window taking it to hold; the plan as it was, said why, where it cannot.</summary>
+    public Func<LaunchPlan, Godot.GodotGame, LaunchPlan>? InPane { get; set; }
+
+    /// <summary>A game taken among <see cref="Games"/> and chosen: one a launch listens for, or one Godot's editor plays, heard
+    /// through Passenger's addon there (<see cref="Godot.GodotGame.Relay"/>).</summary>
+    public void TakeGame(Godot.GodotGame game)
+    {
+        UiThread.Check();
+        if (Game is { State: LiveAppState.Ended } ended && !games.Contains(ended))
+        {
+            ended.Dispose();
+        }
+        games.Add(game);
+        game.StateChanged += (_, _) => OnGameState(game);
+        Game = game;
+        GameStarted?.Invoke(this, game);
+        LiveAppChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>A game that ended leaves <see cref="Games"/>; where it was chosen and another runs, the newest of those is.</summary>
+    private void OnGameState(Godot.GodotGame game)
+    {
+        if (game.State != LiveAppState.Ended || !games.Remove(game) || IsEnded)
+        {
+            return;
+        }
+        if (Game == game && games.Count > 0)
+        {
+            Game = games[^1];
+            game.Dispose();
+        }
+        LiveAppChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>A Godot game was launched, Passenger listening for it.</summary>
+    public event EventHandler<Godot.GodotGame>? GameStarted;
+
+    /// <summary>The errors the last Godot game launched raised, pinned to their lines.</summary>
+    public Godot.GodotErrorPins ErrorPins { get; } = new();
+
     /// <summary>The chosen Debug tab's app as <see cref="LiveAppChanged"/> last told it.</summary>
     private LiveApp? liveAppTold;
 
@@ -496,8 +683,23 @@ public sealed class ProjectSession : IAsyncDisposable
     public (LaunchPlan Plan, LiveApp? App) Inspected(LaunchPlan plan)
     {
         UiThread.Check();
-        LiveApp? app = LiveTree.LiveApp.For(plan, Overlays);
+        LiveApp? app = Reloaded(LiveTree.LiveApp.For(plan, Overlays));
         return (app?.Plan ?? plan, app);
+    }
+
+    /// <summary>An app Run, Debug or an AppHost launches, given its XAML Hot Reload, which keeps what its build read of the folder's XAML.</summary>
+    private LiveApp? Reloaded(LiveApp? app)
+    {
+        if (app is not null)
+        {
+            LiveTree.XamlHotReload xaml = new(app, setup.Editors.TextOf, Xaml.ProjectAsync);
+            app.Xaml = xaml;
+            if (Index.Root is { } root)
+            {
+                IdeErrors.Observe(xaml.KeepBuiltAsync([.. Index.Files.Where(Passenger.App.Xaml.XamlService.IsXaml).Select(f => Path.Combine(root, f))]));
+            }
+        }
+        return app;
     }
 
     /// <summary>A Debug tab came, went or was chosen: the chosen tab's app may be another, and the apps whose failed bindings
@@ -527,7 +729,7 @@ public sealed class ProjectSession : IAsyncDisposable
     {
         UiThread.Check();
         RunApp?.Dispose();
-        RunApp = hotReload ? null : LiveTree.LiveApp.For(plan, Overlays);
+        RunApp = hotReload ? null : Reloaded(LiveTree.LiveApp.For(plan, Overlays));
         InspectedChanged?.Invoke(this, EventArgs.Empty);
         return RunApp?.Plan ?? plan;
     }
@@ -642,6 +844,12 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>What the folder's .http requests may take from the person's computer to a host, as they answered.</summary>
     public Endpoints.EndpointGrants EndpointGrants { get; } = new();
 
+    /// <summary>The OpenAPI documents the person named for the folder's web projects whose code names none.</summary>
+    public Endpoints.OpenApiNames OpenApiNames { get; } = new();
+
+    /// <summary>The OpenAPI document each of the folder's apps last gave a test or a generate.</summary>
+    public Endpoints.AppDocuments AppDocuments { get; } = new();
+
     /// <summary>The routes the folder's web projects declare in their code, as the language server's extension last read them.</summary>
     public Endpoints.RouteCatalog Routes { get; } = new();
 
@@ -653,6 +861,82 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>The XAML of the folder's projects, read by Passenger's own XAML for each XAML file open.</summary>
     public Xaml.XamlService Xaml { get; } = new();
+
+    /// <summary>The scenes and resources of the folder's Godot projects, read once each is asked about and followed.</summary>
+    public Godot.GodotSceneIndex GodotScenes { get; }
+
+    /// <summary>The run settings file a GoDotTest game's project names (RunSettingsFilePath, as MSBuild evaluates it) and
+    /// the test scene it names (<see cref="Testing.GoDotTests.SceneParameter"/>); nulls for none.</summary>
+    private async Task<(string? Settings, string? Scene)> GoDotChosenAsync(string project)
+    {
+        if (Folder is not { } root || Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)) is not { } model
+            || await Testing.TestAssemblies.RunSettingsOfAsync(model, root, Workspace, CancellationToken.None) is not { } settings)
+        {
+            return (null, null);
+        }
+        return (settings, await BackgroundWork.Run(() => File.Exists(settings) ? Testing.GoDotTests.ChosenScene(File.ReadAllText(settings)) : null));
+    }
+
+    /// <summary>Where a GoDotTest game's tests start (<see cref="Testing.GoDotTests.StartOf"/>), its scripts read off the
+    /// window's thread as the disk holds them, with the game's symbols.</summary>
+    private static Task<Testing.GoDotTests.Start> GoDotStartAsync(Passenger.Workspace.GodotScenes scenes, (string? Settings, string? Scene) chosen,
+        Microsoft.CodeAnalysis.CSharp.CSharpParseOptions? parsing)
+    {
+        return BackgroundWork.Run(() => Testing.GoDotTests.StartOf(scenes, res => scenes.FileOf(res) is { } file ? Read(file) : null, chosen.Scene, parsing) with
+        {
+            Settings = chosen.Settings,
+        });
+
+        string? Read(string file)
+        {
+            try
+            {
+                return File.Exists(file) ? File.ReadAllText(file) : null;
+            }
+            catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+    }
+
+    /// <summary>The engine's API and classes as the Godot Settings name or found gives them.</summary>
+    internal Godot.GodotEngineApis GodotApis { get; }
+
+    /// <summary>The stylesheets the folder's pages link, read as they are asked for and followed through the watcher.</summary>
+    public Web.PageStylesheets Stylesheets { get; }
+
+    /// <summary>The marks of the open Godot scenes and resources, read against their project's scenes and code.</summary>
+    internal Godot.GodotSceneMarks GodotMarks { get; }
+
+    /// <summary>Godot's shader front end, which the session's shaders are checked by.</summary>
+    internal Godot.GodotShaderChecker GodotShaderChecker { get; }
+
+    /// <summary>The person's Godot editors open on the folder's projects, asked for what completion offers; let go of with it.</summary>
+    internal Godot.GodotIdeLink GodotIde { get; } = new();
+
+    /// <summary>The open shaders' marks from Godot's compiler, and what it read of their uniforms.</summary>
+    internal Godot.GodotShaderMarks GodotShaders { get; }
+
+    /// <summary>The door for Passenger's addon in Godot's editors on the folder's Godot project, listening once the window
+    /// asks and ended with the session.</summary>
+    internal Godot.GodotEditorLink GodotEditors { get; } = new();
+
+    /// <summary>The open GDScripts' own trees and types.</summary>
+    internal Godot.GodotScriptTypes GodotScriptTypes { get; }
+
+    /// <summary>The folder of the Godot project a file is of: the one its project builds a game for, else the Godot project of
+    /// GDScript alone it lies in (<see cref="WorkspaceModel.ScriptGames"/>), the innermost; null for a file of none.</summary>
+    public string? GodotOf(string path) => ProjectOf(path)?.GodotFolder
+        ?? Workspace?.ScriptGames(Projects).Where(g => PathNames.IsUnder(path, g)).MaxBy(g => g.Length);
+
+    /// <summary>The folder of the Godot project a C# file's project builds a game for; null for a file of none.</summary>
+    private string? BuiltGodotOf(string path) => ProjectOf(path)?.GodotFolder;
+
+    /// <summary>What Run, Debug and Profile run among: the folder's projects, then what stands for each Godot project of
+    /// GDScript alone it holds (<see cref="ProjectModel.OfScriptGame"/>), which no other part of the IDE takes for a project.</summary>
+    public IReadOnlyList<ProjectModel> RunProjects => Workspace?.ScriptGames(Projects).ToList() is { Count: > 0 } games
+        ? [.. Projects, .. games.Select(ProjectModel.OfScriptGame)] : Projects;
 
     /// <summary>The code help in the folder's project, .props and .targets files, from MSBuild's evaluation in the project host.</summary>
     public MSBuild.MSBuildService MSBuild { get; }
@@ -668,9 +952,15 @@ public sealed class ProjectSession : IAsyncDisposable
     /// its first file opens; null with no folder.</summary>
     public Web.WebLanguages? Web { get; private set; }
 
-    /// <summary>The language server's document of an open file, which File Structure and the Structure window outline: the
-    /// C# server's, else its web language's; null while no server has it.</summary>
-    public Lsp.LspDocument? OutlineOf(OpenDocument document) => CSharp?.For(document)?.Lsp ?? Web?.For(document)?.Lsp;
+    /// <summary>Where an open file's outline comes from, which File Structure, the Structure window and an agent's outline
+    /// read: a Markdown file's headings and a GDScript's members as Passenger reads them, else the C# server's document,
+    /// else its web language's, else a Godot project's scene as Passenger reads it; null while none has it.</summary>
+    public Passenger.App.Navigation.FileOutline? OutlineOf(OpenDocument document) =>
+        document.Language == Languages.Language.Markdown ? new Editors.MarkdownOutline(document.Text)
+        : Godot.GodotScriptTypes.IsScript(document.Path) ? new Godot.GDScriptOutline(document.Text)
+        : (CSharp?.For(document)?.Lsp ?? Web?.For(document)?.Lsp) is { } lsp ? Passenger.App.Navigation.FileOutline.Served(lsp)
+        : Passenger.Workspace.GodotFile.IsText(document.Path) && GodotOf(document.Path) is { } folder ? new Godot.GodotSceneOutline.Source(GodotScenes, folder)
+        : null;
 
     /// <summary>A language server started (or none, after one ended) in place of the one before.</summary>
     public event EventHandler? CSharpChanged;
@@ -793,10 +1083,12 @@ public sealed class ProjectSession : IAsyncDisposable
         Workspace = Models.Apply(before);
         Configurations.Configure(Projects);
         // A project evaluated again is loaded again by the language server too, which watches only some imports.
-        CSharp?.Reload([.. before.Projects.Where(p => changed.Contains(p.Path) && p.Evaluated is { Complete: true }).Select(p => p.Path).Distinct(StringComparer.Ordinal)]);
+        CSharp?.Reload([.. before.Projects.Where(p => changed.Contains(p.Path) && !Unloaded.Contains(p.Path) && p.Evaluated is { Complete: true }).Select(p => p.Path).Distinct(StringComparer.Ordinal)]);
         bool tests = !before.Projects.Where(p => p.IsTestProject).Select(p => p.Path).SequenceEqual(Workspace.Projects.Where(p => p.IsTestProject).Select(p => p.Path))
             || before.Projects.Zip(Workspace.Projects).Any(p => changed.Contains(p.First.Path) && TestFinder.HoldsTests(p.Second)
-                && !ReferenceEquals(CompilationSymbols.Of(p.First), CompilationSymbols.Of(p.Second)));
+                && !ReferenceEquals(CompilationSymbols.Of(p.First), CompilationSymbols.Of(p.Second)))
+            // A Godot project's folder, whose GDScript GUT's tests may be in, is known once its C# project is evaluated.
+            || !before.Projects.Select(p => p.GodotFolder).SequenceEqual(Workspace.Projects.Select(p => p.GodotFolder));
         // A multi-targeted project's outer evaluation lacks its frameworks' own references: told once they are in.
         bool packages = before.Projects.Zip(Workspace.Projects).Any(p => changed.Contains(p.First.Path) && p.Second.Evaluated is not { Complete: false }
             && (p.First.Evaluated is { Complete: false } || !FrameworkPackages(p.First).SequenceEqual(FrameworkPackages(p.Second))));
@@ -834,6 +1126,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Debug.Breakpoints.Restore(kept.Breakpoints.Value);
         Bookmarks.Restore(kept.Bookmarks.Value);
         EndpointGrants.Keep(kept.Endpoints);
+        OpenApiNames.Keep(kept.Endpoints);
         Publishing.Keep(kept.Publish);
         FindScope = kept.Find.Value;
         WorkspaceState workspace = kept.Workspace.Value;
@@ -842,6 +1135,7 @@ public sealed class ProjectSession : IAsyncDisposable
             Unloaded.Add(project);
         }
         State = kept;
+        Frameworks.Keep(kept.Workspace);
         Configurations.Keep(kept.RunConfigurations, Projects);
         Folds.Restore(workspace.Folds);
         foreach (string file in workspace.RecentFiles.Where(File.Exists).Reverse())
@@ -868,6 +1162,10 @@ public sealed class ProjectSession : IAsyncDisposable
         CSharp?.Attach(document);
         Web?.Attach(document);
         Xaml.Attach(document);
+        GodotScenes.Attach(document);
+        GodotMarks.Attach(document);
+        GodotShaders.Attach(document);
+        GodotScriptTypes.Attach(document);
         MSBuild.Attach(document);
         FileChecks.Attach(document);
         Debug.Attach(document);
@@ -876,12 +1174,43 @@ public sealed class ProjectSession : IAsyncDisposable
         Navigation.Attach(document.Path, document.Text);
     }
 
+    /// <summary>The checks of Passenger's beside C#'s that mark a file opened here, each as an agent is told while it is
+    /// under way; none for a file no check reads, whose lack of marks says nothing of it.</summary>
+    public IReadOnlyList<string> ChecksOf(OpenDocument document)
+    {
+        List<string> checks = [];
+        if (Web?.For(document) is { } web)
+        {
+            checks.Add(web.Checker);
+        }
+        if (Xaml.For(document) is not null)
+        {
+            checks.Add(Passenger.App.Xaml.XamlDocument.Checker);
+        }
+        if (MSBuild.For(document) is not null)
+        {
+            checks.Add(Passenger.App.MSBuild.MSBuildDocument.Checker);
+        }
+        foreach (string? check in (string?[])[GodotMarks.CheckOf(document), GodotShaders.CheckOf(document), GodotScriptTypes.CheckOf(document), FileChecks.CheckOf(document)])
+        {
+            if (check is not null)
+            {
+                checks.Add(check);
+            }
+        }
+        return checks;
+    }
+
     /// <summary>A file the editor closed, which they follow no more.</summary>
     public void Detach(OpenDocument document)
     {
         CSharp?.Detach(document);
         Web?.Detach(document);
         Xaml.Detach(document);
+        GodotScenes.Detach(document);
+        GodotMarks.Detach(document);
+        GodotShaders.Detach(document);
+        GodotScriptTypes.Detach(document);
         MSBuild.Detach(document);
         FileChecks.Detach(document);
         Debug.Detach(document);
@@ -927,6 +1256,12 @@ public sealed class ProjectSession : IAsyncDisposable
             MSBuild.Attach(document);
             FileChecks.Detach(document);
             FileChecks.Attach(document);
+            GodotMarks.Detach(document);
+            GodotMarks.Attach(document);
+            GodotShaders.Detach(document);
+            GodotShaders.Attach(document);
+            GodotScriptTypes.Detach(document);
+            GodotScriptTypes.Attach(document);
         }
     }
 
@@ -990,7 +1325,8 @@ public sealed class ProjectSession : IAsyncDisposable
             {
                 try
                 {
-                    if (walk == reads && !IsEnded && walked.GetAwaiter().GetResult() is { } found && !Workspace!.LoadsAs(found))
+                    if (walk == reads && !IsEnded && walked.GetAwaiter().GetResult() is { } found
+                        && (!Workspace!.LoadsAs(found) || !Workspace.GodotGames.SequenceEqual(found.GodotGames, PathNames.Comparer)))
                     {
                         Reload(found);
                     }
@@ -1030,6 +1366,9 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             StartCSharp();
         }
+        // A Godot project of GDScript alone found by the walk is the open scenes' and shaders' project from now on.
+        GodotMarks.Changed();
+        GodotShaders.Changed();
         WorkspaceChanged?.Invoke(this, EventArgs.Empty);
         // Each project whose evaluation no longer stands (its file or an import changed) is evaluated again.
         Evaluate();
@@ -1055,6 +1394,7 @@ public sealed class ProjectSession : IAsyncDisposable
     {
         IdeErrors.Observe(CSharp?.DisposeAsync().AsTask() ?? Task.CompletedTask);
         CSharp = null;
+        Tests.Finder.ServerLoading = false;
         if (!IsEnded && setup.StartsLanguageServer && Workspace is { } opening && (opening.Solution is not null || opening.Projects.Count > 0))
         {
             Settings.AppSettings shown = setup.Settings();
@@ -1064,6 +1404,8 @@ public sealed class ProjectSession : IAsyncDisposable
                 Hints = (shown.ParameterHints, shown.TypeHints),
                 FirstProjects = ActiveProjectsAsync,
                 ProjectsNow = () => Projects,
+                UnloadedNow = () => [.. Workspace?.Projects.Where(p => Unloaded.Contains(p.Path)) ?? []],
+                Frameworks = Frameworks,
                 Feed = DesignTimeBuilds.Feed,
                 // Razor's HTML is the HTML server's to answer.
                 HtmlServer = Web is { } web ? web.HtmlAsync : null,
@@ -1074,9 +1416,17 @@ public sealed class ProjectSession : IAsyncDisposable
                 ComposeGaps = () => Web?.Checks.Gaps ?? [],
                 ConfigurationOf = ConfigurationOf,
                 Texts = setup.Editors.Texts,
+                Unseen = document => !setup.Editors.HasTab(document),
+                GodotOf = BuiltGodotOf,
+                GodotProjects = folder => WorkspaceModel.BuildingGodot(Projects, folder),
+                GodotScenes = GodotScenes,
+                GodotIde = GodotIde,
+                GodotCodeRead = GodotMarks.Changed,
+                Stylesheets = Stylesheets,
             };
             CSharpChanged?.Invoke(this, EventArgs.Empty);
             CSharpService started = CSharp;
+            Tests.Finder.ServerLoading = true;
             bool loaded = false;
             started.StateChanged += (_, _) =>
             {
@@ -1084,6 +1434,17 @@ public sealed class ProjectSession : IAsyncDisposable
                 if (started.IsReady != loaded && (loaded = started.IsReady) && CSharp == started)
                 {
                     Web?.Checks.CodeChanged();
+                    GodotMarks.Changed();
+                }
+            };
+            // A project the server loaded again (a script moved or added) is code the open scenes were read against as it was.
+            started.ProjectsLoaded += (_, _) =>
+            {
+                if (CSharp == started)
+                {
+                    GodotMarks.Changed();
+                    // The test projects' files are read at full pace once the server says the whole solution loaded.
+                    Tests.Finder.ServerLoading = !started.IsReady;
                 }
             };
             CSharp.Start(opening);
@@ -1158,7 +1519,7 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>What ends at once (the store's documents, the watcher, Local History, the bookmarks', places' and breakpoints'
     /// hold on the files left open, programs, builds, the profiled run and its port, a test run), and what is asked to end:
-    /// the test runner and the language server, with the parts given.</summary>
+    /// a git that may ask, its questions refused, the test runner and the language server, with the parts given.</summary>
     private List<(string What, Task Ending)> End(List<(string What, Task Ending)> parts, Task debuggers)
     {
         closing = true;
@@ -1174,6 +1535,7 @@ public sealed class ProjectSession : IAsyncDisposable
         // A build stopped now says so with nothing of this folder's in Problems, which another folder's take next.
         Problems.Clear();
         parts.Add(("the Aspire applications", Aspire.DisposeAsync().AsTask()));
+        parts.Add(("git", Vcs.EndGitAsync()));
         RunProgram.Stop();
         Builder.Stop();
         Packages.Stop();
@@ -1196,6 +1558,11 @@ public sealed class ProjectSession : IAsyncDisposable
         }
         RunApp?.Dispose();
         ProfiledApp?.Dispose();
+        foreach (Godot.GodotGame running in games.ToList())
+        {
+            running.Dispose();
+        }
+        Game?.Dispose();
         Tests.Stop();
         parts.Add(("the test runner", Tests.DisposeAsync().AsTask()));
         parts.Add(("the language server", CSharp?.DisposeAsync().AsTask() ?? Task.CompletedTask));
@@ -1207,6 +1574,12 @@ public sealed class ProjectSession : IAsyncDisposable
         Task abandoned = ContainerRun?.Abandon() ?? Task.CompletedTask;
         parts.Add(("the folder's containers", Containers.EndAsync(Task.WhenAll(debuggers, abandoned))));
         Xaml.Dispose();
+        GodotScenes.Stop();
+        GodotMarks.Stop();
+        GodotShaders.Stop();
+        GodotScriptTypes.Stop();
+        parts.Add(("Godot's editors", GodotEditors.DisposeAsync().AsTask()));
+        parts.Add(("the Godot editor's IDE messaging connection", GodotIde.DisposeAsync().AsTask()));
         MSBuild.Dispose();
         FileChecks.Dispose();
         return parts;

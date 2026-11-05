@@ -67,7 +67,7 @@ public sealed class XamlBreakpointsTests : IClassFixture<RestoredFolders>, IDisp
         Ui.Run(window, AppActions.ViewBreakpoints);
         BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
         Assert.Equal([$"MainWindow.axaml:{top + 1} Width", $"MainWindow.axaml:{save + 1}", $"MainWindow.axaml:{save + 1} Background", $"MainWindow.axaml:{row + 1}", ExceptionBreakpoint.AnyException,
-            BindingErrorBreakpoint.AnyBindingError], breakpoints.Listed.Select(b => b.Location));
+            BindingErrorBreakpoint.AnyBindingError, ScriptErrorBreakpoint.AnyScriptError], breakpoints.Listed.Select(b => b.Location));
         Ui.Click(Row(breakpoints, $"MainWindow.axaml:{row + 1}"));
         Ui.Click(breakpoints.GetVisualDescendants().OfType<TextBox>().First(t => t.PlaceholderText?.StartsWith("Stop on hits", StringComparison.Ordinal) == true));
         window.KeyTextInput("==2");
@@ -249,7 +249,7 @@ public sealed class XamlBreakpointsTests : IClassFixture<RestoredFolders>, IDisp
 
         Ui.Run(window, AppActions.ViewBreakpoints);
         BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
-        Assert.Equal([background.Location, ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError], breakpoints.Listed.Select(b => b.Location));
+        Assert.Equal([background.Location, ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError, ScriptErrorBreakpoint.AnyScriptError], breakpoints.Listed.Select(b => b.Location));
         Assert.Contains(breakpoints.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Avalonia Property Breakpoints");
         Ui.Click(Row(breakpoints, background.Location));
         Ui.Click(breakpoints.GetVisualDescendants().OfType<TextBox>().First(t => t.PlaceholderText?.StartsWith("Stop on hits", StringComparison.Ordinal) == true));

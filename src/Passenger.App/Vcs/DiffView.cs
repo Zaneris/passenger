@@ -14,7 +14,8 @@ namespace Passenger.App.Vcs;
 /// between them, the words that changed inside its lines marked stronger, the two kept level as either scrolls. A band's
 /// arrow puts that change back; F7 and Shift+F7 (F8 and Shift+F8 too off the Mac) go to the next and previous one; F4 asks
 /// for its file at the caret's line (Jump to Source); Settings (its keys <see cref="AppActions.DiffSettings"/>'s) chooses
-/// how differences are highlighted, by words at first. Made by <see cref="DiffPanes"/>.</summary>
+/// how differences are highlighted, by words at first; Find searches the side with the caret (<see cref="ShowFind"/>).
+/// Made by <see cref="DiffPanes"/>.</summary>
 public sealed class DiffView : DockPanel, IOwnKeys
 {
     /// <summary>How long editing pauses before the differences are worked out again.</summary>
@@ -33,6 +34,12 @@ public sealed class DiffView : DockPanel, IOwnKeys
     private string? separators;
     private string? note;
 
+    /// <summary>What each side is, above it.</summary>
+    private readonly (string Left, string Right) named;
+
+    /// <summary>Each side's carets and scroll as the view left its window, until it is put back in one.</summary>
+    private (SelectionSet Left, Vector LeftScroll, SelectionSet Right, Vector RightScroll)? away;
+
     /// <param name="diff">The last commit's text (empty for a file it does not have) compared with the file's.</param>
     /// <param name="mine">The file's text now: the open file's document, or a copy when it is not open.</param>
     /// <param name="editable">Whether the right side is the open file, which can be edited and have changes put back.</param>
@@ -45,14 +52,16 @@ public sealed class DiffView : DockPanel, IOwnKeys
         this.highlighting = highlighting;
         IsEditable = editable;
         Left = new CodeEditor { IsReadOnly = true, ChangeBackgrounds = true };
-        Left.Show(new TextDocument(diff.Head), SelectionSet.Single(0), default);
+        TextDocument head = new(diff.Head);
+        Left.Show(head, SelectionSet.Single(0), default);
         Right = new CodeEditor { IsReadOnly = !editable, ChangeBackgrounds = true };
         Right.Show(mine, SelectionSet.Single(0), default);
         bands = new DiffStrip(Bands, MergeSide.Left, Left, () => IsEditable, ignores: false, (band, _, _) => Revert(Hunks[band.Index])) { Width = 36 };
 
         Grid sides = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto,*"), RowDefinitions = new RowDefinitions("Auto,*") };
-        sides.Children.Add(DiffLines.Title(titles?.Left ?? "HEAD", 0));
-        sides.Children.Add(DiffLines.Title(titles?.Right ?? (editable ? "Your version" : "Your version (read-only)"), 2));
+        named = (titles?.Left ?? "HEAD", titles?.Right ?? (editable ? "Your version" : "Your version (read-only)"));
+        sides.Children.Add(DiffLines.Title(named.Left, 0));
+        sides.Children.Add(DiffLines.Title(named.Right, 2));
         Grid.SetRow(Left, 1);
         Grid.SetRow(bands, 1);
         Grid.SetColumn(bands, 1);
@@ -65,24 +74,45 @@ public sealed class DiffView : DockPanel, IOwnKeys
         count = new TextBlock();
         settings = ToolButtons.Of(AppActions.DiffSettings, IconKeys.Settings, "Settings", _ => ShowSettings());
         settings.ContextMenu = SettingsMenu();
-        Button jump = ToolButtons.Of(IconKeys.Edit, "Jump to Source (F4)", () => SourceRequested?.Invoke(this, EventArgs.Empty));
+        Button jump = ToolButtons.Of(IconKeys.Edit, "Jump to Source (F4)", AskForSource);
         jump.Name = AppActions.DiffJumpToSource;
         Children.Add(DiffLines.Bar(name, Step, count, [jump], settings));
+        Find = new Editors.FindBar { [DockProperty] = Dock.Top };
+        Children.Add(Find);
         Children.Add(sides);
+        // An open Find follows the side the person works in.
+        Left.GotFocus += (_, _) => FollowFind(Left, opened: false);
+        Right.GotFocus += (_, _) => FollowFind(Right, opened: false);
 
         Left.ScrollChanged += (_, _) => Follow(Left, Right, toLeft: false);
         Right.ScrollChanged += (_, _) => Follow(Right, Left, toLeft: true);
         rediff = new Debounce(RediffDelay, CompareAsync);
         mine.Changed += OnMineChanged;
-        // Closed, the diff lets go of the file's text and colours, which may outlive it by far, and drops a late comparison.
+        // Out of its window, the diff lets go of the file's text, which may outlive it by far, and drops a late comparison.
         DetachedFromVisualTree += (_, _) =>
         {
             rediff.Stop();
+            Find.Detach();
             mine.Changed -= OnMineChanged;
             comparing++;
             wording++;
+            away = (Left.Selections, Left.ScrollOffset, Right.Selections, Right.ScrollOffset);
             Left.Detach();
             Right.Detach();
+        };
+        // Put back in one (its tab's group moved by a split), it shows the texts again where it left them.
+        AttachedToVisualTree += (_, _) =>
+        {
+            if (away is not { } left)
+            {
+                return;
+            }
+            away = null;
+            Left.Show(head, left.Left, left.LeftScroll);
+            Right.Show(mine, left.Right, left.RightScroll);
+            mine.Changed += OnMineChanged;
+            Show(shown);
+            IdeErrors.Observe(CompareAsync());
         };
         AddHandler(KeyDownEvent, (_, e) =>
         {
@@ -93,12 +123,32 @@ public sealed class DiffView : DockPanel, IOwnKeys
             }
             else if (IsJump(e))
             {
-                SourceRequested?.Invoke(this, EventArgs.Empty);
+                AskForSource();
                 e.Handled = true;
             }
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         Show(diff);
         IdeErrors.Observe(CompareAsync());
+    }
+
+    /// <summary>Find over the diff: it searches the side with the caret, the other side's matches marked too, F3 and Shift+F3
+    /// stepping through those of the side searched.</summary>
+    public Editors.FindBar Find { get; }
+
+    /// <summary>Opens Find on the side with the keys, the file's unless the last commit's has them; a side that is read-only
+    /// greys its replace row, saying so.</summary>
+    public void ShowFind(bool replace)
+    {
+        FollowFind(Left.IsKeyboardFocusWithin ? Left : Right, opened: true);
+        Find.Open(replace);
+    }
+
+    private void FollowFind(CodeEditor side, bool opened)
+    {
+        if (opened || Find.IsVisible)
+        {
+            Find.Attach(side, side == Left ? Right : Left, null, side == Right && IsEditable ? null : Refusals.ReadOnly(side == Left ? named.Left : named.Right));
+        }
     }
 
     /// <summary>The last commit's side.</summary>
@@ -116,8 +166,11 @@ public sealed class DiffView : DockPanel, IOwnKeys
     /// <summary>The file the right side is a version of, which Jump to Source opens.</summary>
     public string? Source { get; init; }
 
-    /// <summary>Jump to Source asked for, by F4 or the toolbar's button.</summary>
+    /// <summary>Jump to Source asked for, by F4, the toolbar's button or its action.</summary>
     public event EventHandler? SourceRequested;
+
+    /// <summary>Jump to Source: asks whoever shows the diff for its file at the caret.</summary>
+    public void AskForSource() => SourceRequested?.Invoke(this, EventArgs.Empty);
 
     /// <summary>Where Jump to Source lands in the file: the right side's caret, or the left's carried across the
     /// differences above it while the left has the keys.</summary>
@@ -282,13 +335,15 @@ public sealed class DiffView : DockPanel, IOwnKeys
         }
     }
 
+    /// <summary>Highlighting Differences' ways, as the diff's Settings and Settings' Version Control page name them.</summary>
+    public static readonly IReadOnlyList<(DiffHighlighting Value, string Name)> HighlightingWays =
+        [(DiffHighlighting.Lines, "Lines"), (DiffHighlighting.Words, "Words"), (DiffHighlighting.Characters, "Characters"), (DiffHighlighting.None, "None")];
+
     /// <summary>The diff's settings: Highlighting Differences, the way in use ticked.</summary>
     private ContextMenu SettingsMenu()
     {
         List<Control> items = [new MenuItem { Header = "Highlighting Differences", IsEnabled = false }];
-        (DiffHighlighting Way, string Title)[] ways =
-            [(DiffHighlighting.Lines, "Lines"), (DiffHighlighting.Words, "Words"), (DiffHighlighting.Characters, "Characters"), (DiffHighlighting.None, "None")];
-        foreach ((DiffHighlighting way, string title) in ways)
+        foreach ((DiffHighlighting way, string title) in HighlightingWays)
         {
             MenuItem item = new() { Header = title, ToggleType = MenuItemToggleType.Radio, IsChecked = way == highlighting };
             item.Click += (_, _) => Highlighting = way;

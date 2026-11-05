@@ -84,7 +84,7 @@ public sealed class GitFileFormsTests : IDisposable
 
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         Ui.Landed(() => window.Vcs.Changes.Any(c => c.Name == "image.png"), "image.png listed as changed");
-        DiffWindow? diff = Ui.Landed(window.ShowDiffAsync(window.Vcs.Changes.Single(c => c.Name == "image.png").Path), "Show Diff on image.png");
+        DiffWindow? diff = (DiffWindow?)Ui.Landed(window.ShowDiffAsync(window.Vcs.Changes.Single(c => c.Name == "image.png").Path), "Show Diff on image.png");
         Assert.True(diff is null, $"Show Diff on a binary file opened a diff of {diff?.View.Left.Document.Snapshot.Length} and {diff?.View.Right.Document.Snapshot.Length} characters");
         Assert.Equal("Binary files differ: image.png is 10 bytes now and 8 bytes in the last commit", window.Status);
         window.Close();
@@ -109,12 +109,12 @@ public sealed class GitFileFormsTests : IDisposable
 
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         Ui.Landed(() => window.Vcs.Changes.Count == (modes ? 2 : 1), "lines.txt and run.sh listed as changed");
-        DiffWindow lines = Ui.Landed(window.ShowDiffAsync(Changed(window, "lines.txt")), "Show Diff on lines.txt")!;
+        DiffWindow lines = (DiffWindow)Ui.Landed(window.ShowDiffAsync(Changed(window, "lines.txt")), "Show Diff on lines.txt")!;
         Ui.Landed(() => lines.View.Said == "Line separators changed: 3 lines from LF to CRLF", $"Show Diff saying lines.txt's separators changed, where it says \"{lines.View.Said}\"");
         lines.Close();
         if (modes)
         {
-            DiffWindow script = Ui.Landed(window.ShowDiffAsync(Changed(window, "run.sh")), "Show Diff on run.sh")!;
+            DiffWindow script = (DiffWindow)Ui.Landed(window.ShowDiffAsync(Changed(window, "run.sh")), "Show Diff on run.sh")!;
             Ui.Landed(() => script.View.Said == "File mode changed from 100644 to 100755: now executable", $"Show Diff saying run.sh's mode changed, where it says \"{script.View.Said}\"");
             script.Close();
         }
@@ -164,7 +164,7 @@ public sealed class GitFileFormsTests : IDisposable
         Passenger.App.Mcp.PassengerTools agent = new(window);
         foreach ((string name, string said) in new[] { ("Marked.cs", "Byte order mark added"), ("notes.txt", "Encoding changed from UTF-8 to UTF-16 LE") })
         {
-            DiffWindow diff = Ui.Landed(window.ShowDiffAsync(Changed(window, name)), $"Show Diff on {name}")!;
+            DiffWindow diff = (DiffWindow)Ui.Landed(window.ShowDiffAsync(Changed(window, name)), $"Show Diff on {name}")!;
             Ui.Landed(() => diff.View.Said == said, $"Show Diff saying \"{said}\" of {name}, where it says \"{diff.View.Said}\"");
             diff.Close();
             Assert.Equal(said, Ui.Await(agent.VcsStatus(name), $"vcs_status of {name}"));

@@ -120,6 +120,70 @@ public class ResourceFilesTests
     }
 
     [Fact]
+    public void An_entrys_value_comment_and_name_are_written_where_the_entry_has_them_or_made_as_its_lines_are_every_other_character_kept()
+    {
+        const string Text = """
+            <root>
+              <data name="A" xml:space="preserve">
+                <value>a</value>
+                <comment>note</comment>
+              </data>
+              <data name='B'>
+                <value />
+              </data>
+              <data name="C"><value>c</value></data>
+            </root>
+            """;
+        IReadOnlyList<ResourceEntry> entries = Read(Text);
+        Assert.Equal(Text.Replace("<value>a</value>", "<value>x &lt; y</value>", StringComparison.Ordinal), ResourceFiles.WithValue(Text, entries[0], "x < y"));
+        Assert.Equal(Text.Replace("<value />", "<value>b</value>", StringComparison.Ordinal), ResourceFiles.WithValue(Text, entries[1], "b"));
+        Assert.Equal(Text.Replace("<comment>note</comment>", "<comment>said &amp; done</comment>", StringComparison.Ordinal), ResourceFiles.WithComment(Text, entries[0], "said & done"));
+        Assert.Equal(Text.Replace("<value />", "<value />\n    <comment>new</comment>", StringComparison.Ordinal), ResourceFiles.WithComment(Text, entries[1], "new"));
+        Assert.Equal(Text.Replace("\n    <comment>note</comment>", "", StringComparison.Ordinal), ResourceFiles.WithComment(Text, entries[0], ""));
+        Assert.Equal(Text.Replace("name='B'", "name='B &apos;2&apos;'", StringComparison.Ordinal), ResourceFiles.Renamed(Text, entries[1], "B '2'"));
+        Assert.Null(ResourceFiles.Renamed(Text, entries[1], "C"));
+        Assert.Equal("c", Read(ResourceFiles.WithComment(Text, entries[2], "one line")!)[2].Value);
+        Assert.Equal("one line", Read(ResourceFiles.WithComment(Text, entries[2], "one line")!)[2].Comment);
+
+        string changed = ResourceFiles.WithValue(Text, entries[2], "changed")!;
+        Assert.Null(ResourceFiles.WithValue(changed, entries[0] with { Start = entries[0].Start + 1 }, "gone"));
+    }
+
+    [Fact]
+    public void Clearing_a_comment_takes_the_white_space_before_it_and_keeps_an_xml_comment_beside_it()
+    {
+        const string Text = "<root>\n  <data name=\"A\"><value>a</value><!-- translator note --><comment>old</comment></data>\n"
+            + "  <data name=\"B\">\n    <value>b</value>\n    <!-- kept -->\n    <comment>old</comment>\n  </data>\n</root>\n";
+        IReadOnlyList<ResourceEntry> entries = Read(Text);
+        Assert.Equal(Text.Replace("<comment>old</comment></data>", "</data>", StringComparison.Ordinal), ResourceFiles.WithComment(Text, entries[0], ""));
+        Assert.Equal(Text.Replace("\n    <comment>old</comment>\n  </data>", "\n  </data>", StringComparison.Ordinal), ResourceFiles.WithComment(Text, entries[1], ""));
+    }
+
+    [Fact]
+    public void Entries_taken_out_of_a_resx_take_their_lines_with_them_and_one_sharing_its_line_only_itself()
+    {
+        const string Text = "<root>\r\n  <data name=\"A\"><value>a</value></data>\r\n  <data name=\"B\">\r\n    <value>b</value>\r\n  </data>\r\n"
+            + "  <data name=\"C\"><value>c</value></data><data name=\"D\"><value>d</value></data>\r\n</root>";
+        IReadOnlyList<ResourceEntry> entries = Read(Text);
+        Assert.Equal("<root>\r\n  <data name=\"C\"><value>c</value></data><data name=\"D\"><value>d</value></data>\r\n</root>",
+            ResourceFiles.Without(Text, [entries[1], entries[0]]));
+        Assert.Equal("<root>\r\n  <data name=\"A\"><value>a</value></data>\r\n  <data name=\"B\">\r\n    <value>b</value>\r\n  </data>\r\n"
+            + "  <data name=\"C\"><value>c</value></data>\r\n</root>", ResourceFiles.Without(Text, [entries[3]]));
+        Assert.Null(ResourceFiles.Without(Text, [entries[0] with { Name = "Z" }]));
+    }
+
+    [Fact]
+    public void An_XLIFF_units_source_and_note_are_read_beside_its_target()
+    {
+        ResourceEntry bye = ResourceFiles.Parse("Strings.fr.xlf", "fr", ResourceFormat.Xliff,
+            "<xliff><file><body><trans-unit id=\"Bye\"><source>Good&amp;bye</source><target state=\"translated\">Au revoir</target><note>Said last</note></trans-unit></body></file></xliff>")
+            .Entries[0];
+        Assert.Equal(("Good&bye", "Au revoir", "Said last"), (bye.Source, bye.Value, bye.Comment));
+    }
+
+    private static IReadOnlyList<ResourceEntry> Read(string text) => ResourceFiles.Parse("Strings.resx", string.Empty, ResourceFormat.Resx, text).Entries;
+
+    [Fact]
     public void A_key_written_into_a_resx_whose_last_entry_is_an_image_is_written_as_a_string()
     {
         string written = ResourceFiles.WithEntry(Resx, "Bye", "See you")!;

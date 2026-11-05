@@ -27,6 +27,63 @@ public partial class MainWindow
     /// started as it is made, so a solution handed to Passenger opens from it whatever it has open.</summary>
     internal void StartBeside() => started = true;
 
+    /// <summary>Whether a person's launch another Passenger process hands over may come to this window
+    /// (<see cref="PassengerApp.TakeLaunch"/>): a person's window, never an agent's own (<c>--mcp</c>) or a screenshot's.</summary>
+    public bool TakesLaunches { get; init; } = true;
+
+    /// <summary>A launch's files opened in front, the person's own, the caret put in the last and the keys given to its
+    /// editor, as the command line's would be.</summary>
+    internal void TakeLaunch(IReadOnlyList<string> files, Text.TextPosition? caret)
+    {
+        UiThread.Check();
+        foreach (string file in files)
+        {
+            if (caret is { } place && file == files[^1])
+            {
+                NavigateTo(file, place);
+            }
+            else
+            {
+                OpenFile(file);
+            }
+        }
+        if (files.Count > 0 && Editors.Active?.Path is { } shown && PathNames.Same(shown, files[^1]))
+        {
+            FocusEditor();
+        }
+    }
+
+    /// <summary>What waits for the folder opening in this window, with that folder (<see cref="OnceOpen"/>).</summary>
+    private readonly List<(string Folder, Action Then)> waitingToOpen = [];
+
+    /// <summary>Runs something once the folder opening here is open, now where none is opening: a folder's kept tabs and
+    /// carets are put back as it opens, over whatever came before them.</summary>
+    internal void OnceOpen(Action then)
+    {
+        if (session.Folder is null && FolderHeld is { } opening)
+        {
+            waitingToOpen.Add((opening, then));
+        }
+        else
+        {
+            then();
+        }
+    }
+
+    /// <summary>What waited for a folder, now it is open; what waited for one left before it opened goes.</summary>
+    private void RunWaitingToOpen(string folder)
+    {
+        (string Folder, Action Then)[] waiting = [.. waitingToOpen];
+        waitingToOpen.Clear();
+        foreach ((string opening, Action then) in waiting)
+        {
+            if (PathNames.Same(opening, folder))
+            {
+                then();
+            }
+        }
+    }
+
     private void AddProjectWindows()
     {
         actions!.Add(new IdeAction(AppActions.NextProjectWindow, "Next Solution Window", "Window", _ => PassengerApp.Step(this, 1))

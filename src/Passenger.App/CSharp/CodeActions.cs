@@ -5,6 +5,7 @@ using Passenger.App.Xaml;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Lsp;
+using Passenger.Roslyn.Extension;
 using Passenger.Text;
 
 namespace Passenger.App.CSharp;
@@ -34,7 +35,23 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// null when they gave none.</summary>
     public Func<string, string, bool, Task<string?>>? AskValue { get; set; }
 
-    internal IReadOnlyList<EditorFix> OwnFixes(OpenDocument? file, int offset) => file is not null && EditorFixes?.Invoke(file, offset) is { } fixes ? fixes : [];
+    /// <summary>Asks the person to agree to a fix (a title, what is asked, the button that agrees); whether they did.</summary>
+    public Func<string, string, string, Task<bool>>? ConfirmFix { get; set; }
+
+    internal IReadOnlyList<EditorFix> OwnFixes(OpenDocument? file, int offset) =>
+        file is null ? [] : [.. EditorFixes?.Invoke(file, offset) ?? [], .. context.Languages.Fixes(file, offset)];
+
+    /// <summary>Passenger's own fixes at an offset of a file (<see cref="OwnFixes"/>) once each language's reading of it is
+    /// up to its text: what Show Context Actions and an agent's code_actions both list first.</summary>
+    internal async Task<IReadOnlyList<EditorFix>> OwnFixesAsync(OpenDocument? file, int offset)
+    {
+        if (file is null)
+        {
+            return [];
+        }
+        await context.Languages.ReadyAsync(file);
+        return OwnFixes(file, offset);
+    }
 
     /// <summary>One of Passenger's own fixes made in the file shown, as one undoable edit: worked out again on its text as it
     /// stands (<see cref="EditorFix.On"/>), and refused, said in the status bar, when the text no longer has what it fixes;
@@ -65,6 +82,16 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             IdeErrors.Observe(AskAndMakeAsync(now.Title.TrimEnd('…'), asks));
             return;
         }
+        if (now.Confirms is { } confirms)
+        {
+            IdeErrors.Observe(ConfirmAndMakeAsync(now.Title.TrimEnd('…'), confirms));
+            return;
+        }
+        if (now.Edits is { } edits)
+        {
+            WorkspaceEdits.ApplyTo(context.Editors, document, edits);
+            return;
+        }
         Editor.ApplyEdits([new TextEdit(now.Range.Start, now.Range.Length, now.Text)], SelectionSet.Single(now.Range.Start + (now.Caret ?? now.Text.Length)));
     }
 
@@ -90,6 +117,51 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
     }
 
+    /// <summary>What a refactoring came to said, or where it was refused only for uses it can't see, the person asked
+    /// whether to make it anyway (<see cref="RefactorOutcome.Anyway"/>).</summary>
+    private void Told(string title, RefactorOutcome made)
+    {
+        if (made.Anyway is { } anyway && ConfirmFix is not null)
+        {
+            // Not awaited: the question holds no background work, so a settle waits on the IDE, never on the person.
+            IdeErrors.Observe(ConfirmAndMakeAsync(title, anyway));
+            return;
+        }
+        context.Say(made.Problem ?? made.Said);
+    }
+
+    /// <summary>A fix's question asked of the person (<see cref="ConfirmFix"/>) as the files stand, then the fix made as
+    /// background work once they agree, what it came to said; nothing when they do not.</summary>
+    private async Task ConfirmAndMakeAsync(string title, FixConfirmed confirms)
+    {
+        try
+        {
+            string? question;
+            using (BackgroundWork.Scope())
+            {
+                question = await confirms.Question();
+            }
+            if (question is null)
+            {
+                context.Say($"{title} was not applied: the file changed, so it no longer fits");
+                return;
+            }
+            if (ConfirmFix is null || !await ConfirmFix(title, question, confirms.Yes))
+            {
+                return;
+            }
+            using (BackgroundWork.Scope())
+            {
+                RefactorOutcome made = await confirms.Make(null);
+                context.Say(made.Problem ?? made.Said);
+            }
+        }
+        catch (Exception error)
+        {
+            IdeErrors.Report(error);
+        }
+    }
+
     private async Task ShowFixesCore(Func<CodeAction, bool>? only, string title, string id)
     {
         if (context.XamlCurrent is { } xaml)
@@ -99,8 +171,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         string what = only is null ? "Show Context Actions" : title;
         // Passenger's own fixes first, which need no server (a compose file's are its container engine's).
-        IReadOnlyList<EditorFix> own = only is null ? OwnFixes(context.Editors.Active, context.Caret) : [];
         if (context.Editors.Active is not { } document)
+        {
+            return;
+        }
+        IReadOnlyList<EditorFix> own = only is null ? await OwnFixesAsync(document, context.Caret) : [];
+        if (context.Editors.Active != document)
         {
             return;
         }
@@ -378,7 +454,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             try
             {
                 RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, patience => RenameSymbolAsync(document, held, name, box.RenamesFiles, patience));
-                context.Say(made.Problem ?? made.Said);
+                Told("Rename", made);
             }
             catch (LanguageServerFailed failed)
             {
@@ -428,9 +504,19 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// <summary>A name renamed from a place held on it (<see cref="HeldAt"/>), the server asked where the place is then.</summary>
     private async Task<RefactorOutcome> RenameSymbolAsync(OpenDocument document, Anchor at, string name, bool renameFiles, Patience? patience)
     {
+        // A GDScript's member or local is renamed by Passenger's reading of the project's scripts, its server asked for any other name.
+        if (IsGDScript(document) && await GDScriptRenameAsync(document, at.Offset, name, patience: patience) is { } passengers)
+        {
+            return passengers;
+        }
         if (await context.TakenInAsync(document, () => at.Offset) is { } unloaded)
         {
             return RefactorOutcome.Refused($"Rename was not applied: {unloaded}");
+        }
+        // A C# string naming a GDScript's member is renamed as from its declaration, its other uses following there.
+        if (document.Language == Languages.Language.CSharp && await context.Languages.CSharp.ScriptMemberAtAsync(document, at.Offset) is ({ } script, int memberAt, var twice))
+        {
+            return twice is not null ? RefactorOutcome.Refused($"Rename was not applied: {twice}") : await RenameInScriptAsync(script, memberAt, name, patience);
         }
         // A named element's field is made from its XAML, so it is renamed as the element is, there and in the code-behind.
         if (document.Language == Languages.Language.CSharp
@@ -451,10 +537,23 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return RefactorOutcome.Refused($"'{name}' is not a C# identifier, so {old} keeps its name");
         }
+        if (component is null && context.WebOf(document) is null && name == old)
+        {
+            return new RefactorOutcome($"{old} is its name already: nothing was renamed", null, [], []);
+        }
         // The open files as the request went: what is typed meanwhile carries the answer on.
         using Asked asked = WorkspaceEdits.Track(context.Editors);
+        // A Godot script's member by any of Godot's names for it is renamed from the code's own, its other names following.
+        GodotNamesFound? godot = component is null ? await context.Languages.CSharp.GodotNamesAsync(document, context.Now(document), at.Offset, uses: true) : null;
+        (string own, string written, string? misnamed) = godot is null ? (name, name, null) : CSharpAssist.GodotRenamed(godot, name);
+        if (misnamed is not null)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {misnamed}");
+        }
         // Asked of the server running now: one there before may have been started again since.
-        System.Text.Json.JsonElement? renamed = component is null ? await context.Now(document).RenameAsync(at.Offset, name)
+        System.Text.Json.JsonElement? renamed = godot is { Via: not GodotNameVia.Own, Symbol: { Path: { } declaring, At: { } declared } } && context.CSharp?.Session is { } godotServer
+            ? await godotServer.RenameAsync(new UriSpan(DocumentUris.FromPath(declaring), declared, declared), own)
+            : component is null ? await context.Now(document).RenameAsync(at.Offset, name)
             : context.CSharp?.Session is { } session ? await session.RenameAsync(component.Name, name) : null;
         if (renamed is not { } edit)
         {
@@ -463,18 +562,76 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
                 : new RefactorOutcome("This can't be renamed", null, [], []);
         }
         TypeRename.Markup markup = type is null ? new([], null) : await TypeRename.MarkupAsync(context.Xaml?.Invoke(), type, name, renameFiles);
+        NamedSymbol? symbol = component is null && document.Language == Languages.Language.CSharp ? godot?.Symbol ?? await context.Now(document).SymbolAtAsync(at.Offset) : null;
+        // Its uses in XAML, found where it is declared still: a binding's path, x:DataType, x:Static, a handler, a tag.
+        (IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> inXaml, string? unfollowed) = symbol is not null
+            ? await context.Languages.Xaml.CodeRenameAsync(symbol, own, asked) : ([], null);
+        if (unfollowed is not null)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {unfollowed}");
+        }
+        // Its uses in a Godot project's scenes: a connection's method or signal, an exported member's key.
+        (IReadOnlyList<PlacedEdits> inScenes, string? unscened) = symbol is not null ? await context.Languages.CSharp.GodotRenameAsync(symbol, own) : ([], null);
+        if (unscened is not null)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {unscened}");
+        }
+        // What the MVVM Toolkit makes of a field or method, which no rename of its own name reaches: its property or command, its change methods.
+        ToolkitFound toolkit = symbol is not null ? await context.Now(document).ToolkitRenamesAsync(at.Offset, own) : ToolkitFound.None;
+        if (toolkit.Problem is { } unmade)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {unmade}");
+        }
+        // Its uses in the code by Godot's other names for it, which no rename of its own name reaches.
+        if (godot is { Uses.Count: > 0 })
+        {
+            edit = TypeRename.With(edit, CSharpAssist.GodotNameEdits(godot, written));
+        }
+        // A GDScript's member's uses its own language's server never reads: its scenes' connections, the C# strings naming it.
+        IReadOnlyList<PlacedEdits> scripted = Passenger.Workspace.GodotScriptDeclarations.IsScript(document.Path) ? await context.Languages.CSharp.GodotScriptRenameAsync(document, at.Offset, name) : [];
+        if (scripted.Count > 0)
+        {
+            edit = TypeRename.With(edit, scripted);
+        }
         if (await StaleAsync(document, edit, asked, patience) is { } stale)
         {
             return RefactorOutcome.Refused($"Rename was not applied: {stale}");
         }
         Func<string, TextSnapshot?> answered = WorkspaceEdits.Answered(context.Editors, asked);
-        if (markup.ClassFile is { } xaml && type?.FullName is { } fullName && TypeRename.ClassEdit(xaml, answered(xaml), fullName, name) is { } named)
+        if (markup.ClassFile is { } xaml && type?.FullName is { } fullName && TypeRename.ClassEdit(xaml, answered(xaml), fullName, name) is { } named
+            && !inXaml.Any(f => PathNames.Same(f.Path, named.Path) && f.Edits.Any(e => e.Range == named.Edit.Range)))
         {
             edit = TypeRename.With(edit, named.Path, named.Edit);
+        }
+        if (inXaml.Count > 0)
+        {
+            edit = TypeRename.With(edit, inXaml);
+        }
+        if (inScenes.Count > 0)
+        {
+            edit = TypeRename.With(edit, inScenes);
+        }
+        if (toolkit.Uses.Count > 0)
+        {
+            edit = TypeRename.With(edit, [.. toolkit.Uses.GroupBy(u => u.Path, PathNames.Comparer).Select(file => (file.Key, (IReadOnlyList<LspTextEdit>)[.. file.Select(u =>
+                new LspTextEdit(new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character)), u.Name))]))]);
         }
         IReadOnlyList<RefactoredFile> edited = await WorkspaceEdits.FilesAsync(context.Editors, edit, asked);
         List<(string From, string To)> moves = [.. (renameFiles ? type?.Files ?? [] : []).Select(f => (From: f, To: TypeRename.Renamed(f, name))).Concat(markup.Moves)
             .Where(m => m.From != m.To && File.Exists(m.From) && !edited.Any(f => f.Change == "moved" && PathNames.Same(f.Path, m.From))).Distinct()];
+        // A Godot script's file moved: the scenes that load it follow, and its .uid goes beside it.
+        (IReadOnlyList<PlacedEdits> loading, IReadOnlyList<(string From, string To)> beside) = await context.Languages.CSharp.GodotMovedAsync(moves);
+        if (loading.Count > 0)
+        {
+            edit = TypeRename.With(edit, loading);
+            edited = [.. edited, .. loading.Where(l => !edited.Any(f => PathNames.Same(f.Path, l.Path))).Select(l => new RefactoredFile(l.Path, "changed", [.. l.Edits.Select(e => e.Range.Start.Line + 1)]))];
+        }
+        moves.AddRange(beside);
+        // A scene's places were read from the project's index, which a save the folder's watcher has yet to tell of leaves behind.
+        if (await context.Languages.CSharp.GodotOutOfDateAsync([.. inScenes, .. scripted, .. loading], asked, patience) is { } overtaken)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {overtaken}");
+        }
         List<string> dropped = [];
         string command = $"Rename {old} to {name}";
         using CommandHistory.Recording recording = context.Editors.Commands.Record(command);
@@ -499,6 +656,40 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         return new RefactorOutcome(said, null, [.. changed, .. applied.Moved.Select(m => new RefactoredFile(m.From, "moved", [], m.To))], dropped);
     }
+
+    /// <summary>A GDScript's member renamed from where its script declares it, as Rename there renames it: the script lent
+    /// with no tab where none shows it, renamed by Passenger's reading, else once Godot's server reads it, within
+    /// <see cref="ScriptServed"/>.</summary>
+    private async Task<RefactorOutcome> RenameInScriptAsync(string script, int offset, string name, Patience? patience)
+    {
+        (OpenDocument document, IDisposable hold) = context.Editors.Lend(script);
+        using (hold)
+        {
+            if (await GDScriptRenameAsync(document, offset, name, patience: patience) is { } scripted)
+            {
+                return scripted;
+            }
+            DateTime until = DateTime.UtcNow + Waits.Of(ScriptServed);
+            if (context.WebOf(document) is { Lsp: null })
+            {
+                context.Say($"Rename waits for Godot's server to read {document.Name}");
+            }
+            while (context.WebOf(document) is { Lsp: null } && context.Web?.Invoke()?.CannotStart(document) == false && DateTime.UtcNow < until)
+            {
+                // Looked at every 50 ms: a web server's document comes as the server starts, raising nothing.
+                await Task.Delay(50);
+            }
+            if (context.WebOf(document)?.Lsp is null)
+            {
+                return RefactorOutcome.Refused($"Rename was not applied: {context.Web?.Invoke()?.Unready("Renaming its members", document) ?? $"no server reads {document.Name}"}");
+            }
+            return await RenameSymbolAsync(document, offset, name, renameFiles: false, patience);
+        }
+    }
+
+    /// <summary>How long a rename from a C# string waits for Godot's server to read the script declaring the member, its
+    /// editor started for it where none runs.</summary>
+    private static readonly TimeSpan ScriptServed = TimeSpan.FromSeconds(90);
 
     /// <summary>Also rename files to reflect this change, offered in the open rename box once the server says the name
     /// is a type's declared in files named after it.</summary>

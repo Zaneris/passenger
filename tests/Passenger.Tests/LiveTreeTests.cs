@@ -202,6 +202,93 @@ public sealed class LiveTreeTests : IClassFixture<RestoredFolders>, IDisposable
             elements.Select(e => e.Name == name ? e : Find(e.Children, name)).FirstOrDefault(e => e is not null);
     }
 
+    /// <summary>The XAML workspace, off, leaves MainWindow.axaml alone beside the debugged app's tree, its caret choosing
+    /// nothing there; turned on, the file opens beside its preview and the tree, and one element is chosen across them: the
+    /// caret rested in Save's tag chooses Save in the tree, Greeting chosen in the tree puts the caret on its tag (the tree
+    /// keeping Greeting) and is outlined in the preview, Delete clicked in the preview is chosen in the tree, and the caret
+    /// on the window's own tag chooses the window, which Avalonia knows by its x:Class.</summary>
+    [AvaloniaFact]
+    public void In_the_xaml_workspace_the_caret_and_the_live_tree_choose_the_same_element_each_way()
+    {
+        string xaml = Path.Combine(folder, "MainWindow.axaml");
+        MainWindow window = Debugged();
+        LiveTreeView tree = window.LiveTree;
+        Assert.Null(window.OpenFile(xaml));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<Button x:Name=\"Sa");
+        Ui.Settle();
+        Assert.True(tree.Details is null && window.PreviewPaneOf(window.EditorArea.Active!) is null,
+            $"With the XAML workspace off, the caret in Save's tag chose {tree.Details?.Name} in the tree, or the file opened beside a preview");
+
+        window.ApplySettings(window.Settings with { XamlWorkspace = true });
+        Ui.WaitFor(() => window.PreviewPaneOf(window.EditorArea.Active!) is { } pane && window.EditorArea.Groups.Any(g => g.Side == pane),
+            "MainWindow.axaml beside its preview once the XAML workspace is on");
+        Assert.True(window.DockHost.IsShown(ToolWindowIds.LiveTree), "The Live Visual Tree is not beside the XAML workspace's file and preview");
+
+        Ui.PlaceAfter(editor, "<Button x:Name=\"Sav");
+        Ui.WaitFor(() => tree.Details?.Name == "Save" && tree.Tree.SelectedItem is LiveTreeRow { Element.Name: "Save" },
+            () => $"Save chosen in the tree as the caret rested in its tag, where the tree chose {tree.Details?.Name}");
+
+        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Greeting");
+        int greeting = Line("MainWindow.axaml", "x:Name=\"Greeting\"") - 1;
+        Ui.WaitFor(() => editor.CaretPosition.Line == greeting, () => $"the caret on Greeting's tag, line {greeting + 1}, not {editor.CaretPosition.Line + 1}");
+        Assert.StartsWith("TextBlock", File.ReadAllLines(xaml)[greeting][editor.CaretPosition.Column..], StringComparison.Ordinal);
+        Assert.Equal(xaml, window.EditorArea.Active?.Path);
+        Ui.Settle();
+        Assert.True(tree.Details?.Name == "Greeting", $"The caret put on Greeting's tag chose {tree.Details?.Name} in the tree after it");
+
+        // The preview places the file's elements as Avalonia's designer draws them, through Passenger's inspector in it.
+        Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(window.EditorArea.Active!)!;
+        Passenger.App.Xaml.XamlPreviewPane pane = window.PreviewPaneOf(window.EditorArea.Active!)!;
+        Passenger.App.Xaml.PreviewElement? Placed(string tag) =>
+            preview.Elements.FirstOrDefault(e => e.Tag.Start == editor.Document.Snapshot.ToString().IndexOf(tag, StringComparison.Ordinal));
+        Ui.WaitFor(() => Placed("<TextBlock x:Name=\"Greeting\"") is { } placed && pane.Outlined == placed.Box,
+            () => $"Greeting outlined in the preview as it was chosen in the tree ({preview.Status}; {preview.Elements.Count} elements placed)", TimeSpan.FromMinutes(1));
+        Rect delete = Placed("<Button x:Name=\"Delete\"")?.Box ?? throw new InvalidOperationException("The preview placed no Delete");
+        Point at = pane.Frame.TranslatePoint(delete.Center, window) ?? throw new InvalidOperationException("The preview's frame is not on the window");
+        window.MouseDown(at, Avalonia.Input.MouseButton.Left);
+        window.MouseUp(at, Avalonia.Input.MouseButton.Left);
+        Ui.WaitFor(() => tree.Details?.Name == "Delete", () => $"Delete chosen in the tree as it was clicked in the preview, where the tree chose {tree.Details?.Name}");
+        Assert.Equal(delete, pane.Outlined);
+
+        Ui.PlaceAfter(editor, "<Wind");
+        Ui.WaitFor(() => tree.Details?.Type == "MainWindow", () => $"the window chosen in the tree as the caret rested in its own tag, not {tree.Details?.Type}");
+
+        Stop(window);
+        window.Close();
+    }
+
+    /// <summary>An inspector's socket whose path is past what a Unix socket's address holds leaves the app running without
+    /// the inspector: the Live Visual Tree says why it has no tree, the app's own output says the inspector is not in it,
+    /// and the app runs on.</summary>
+    [AvaloniaFact]
+    public void An_inspector_socket_past_what_a_sockets_address_holds_leaves_the_app_running_and_the_tree_saying_why()
+    {
+        string sockets = Directory.CreateDirectory(Path.Combine(TestFolders.Create("sockets-"), new string('s', 120))).FullName;
+        LiveApp.SocketsIn = sockets;
+        try
+        {
+            MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+            Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.LiveApp is { State: LiveAppState.Refused }, () => $"the app's inspector refused for its socket's path, not {window.LiveApp?.State}");
+            Assert.Contains("a Unix socket's address holds", window.LiveApp!.Problem, StringComparison.Ordinal);
+            Ui.WaitFor(() => window.LiveTree.PlaceholderText?.Contains("runs uninspected", StringComparison.Ordinal) == true,
+                () => $"the Live Visual Tree saying why it has no tree, where it says {window.LiveTree.PlaceholderText}");
+            Ui.WaitFor(() => window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("Passenger's inspector is not in this app", StringComparison.Ordinal),
+                () => $"the app's own output saying the inspector is not in it: {window.BottomPanel.Debug.Console.Document.Snapshot}", TimeSpan.FromMinutes(1));
+            Ui.Hold(TimeSpan.FromSeconds(2), "the app a moment to run on past its start");
+            Assert.True(window.Debugger.Session is { State: DebugState.Running }, $"The app did not run on without its inspector: {window.Debugger.Session?.State} ({window.Status})");
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");
+            window.Close();
+        }
+        finally
+        {
+            LiveApp.SocketsIn = null;
+            TestFolders.Delete(Path.GetDirectoryName(sockets)!);
+        }
+    }
+
     /// <summary>The folder opened in a window and its app launched by Debug, its tree shown.</summary>
     private MainWindow Debugged()
     {

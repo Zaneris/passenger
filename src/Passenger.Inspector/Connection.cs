@@ -67,19 +67,44 @@ internal sealed class Connection : IDisposable
         }
     }
 
-    /// <summary>Connects to Passenger's socket, or null when it is not there (Passenger gone, the run not its).</summary>
+    /// <summary>Connects to Passenger's socket, or null, having said why, when it cannot: a path past what a Unix socket's
+    /// address holds, a folder gone, a socket refused (Passenger gone, the run not its). Never throws: the app runs on
+    /// without the inspector.</summary>
     public static Connection? Open(string path)
     {
-        Socket socket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        if (!SocketFolders.Fits(path))
+        {
+            NotIn(SocketFolders.TooLong(path));
+            return null;
+        }
+        Socket? socket = null;
         try
         {
+            socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
             socket.Connect(new UnixDomainSocketEndPoint(path));
             return new Connection(socket);
         }
-        catch (SocketException)
+        catch (Exception error) when (error is SocketException or ArgumentException or IOException or UnauthorizedAccessException
+            or NotSupportedException or InvalidOperationException)
         {
-            socket.Dispose();
+            socket?.Dispose();
+            NotIn($"it could not reach Passenger at {path}: {error.Message}");
             return null;
+        }
+    }
+
+    /// <summary>Why the inspector is not in the app, in the app's own error output (its run's console) and the trace.</summary>
+    private static void NotIn(string why)
+    {
+        string said = $"Passenger's inspector is not in this app, which runs on without it: {why}";
+        InspectorTrace.Step(said);
+        try
+        {
+            Console.Error.WriteLine(said);
+        }
+        catch (IOException)
+        {
+            // An app with no error output to write to has only the trace.
         }
     }
 

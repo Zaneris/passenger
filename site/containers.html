@@ -15,18 +15,18 @@
     <meta property="og:url" content="https://passenger-ide.net/containers">
     <meta property="og:title" content="Passenger: debug .NET in Docker Compose and Aspire, free">
     <meta property="og:description" content="Debug, Hot Reload and profile every .NET service of a Docker Compose file, a Dockerfile or an Aspire AppHost, in a free and open-source IDE.">
-    <meta property="og:image" content="https://passenger-ide.net/images/social-622499b6.png">
+    <meta property="og:image" content="https://passenger-ide.net/images/social-f846e4c2.png">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="Passenger's Requests window beside the words: Debug the whole stack. The free IDE for C# and .NET.">
+    <meta property="og:image:alt" content="A Godot game's GDScript in Passenger, each member's value after its line as the game plays, beside the words: Now for Godot 4 games. The free IDE for C# and .NET.">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:site" content="@Zaneris">
     <meta name="twitter:creator" content="@Zaneris">
     <meta name="twitter:title" content="Passenger: debug .NET in Docker Compose and Aspire, free">
     <meta name="twitter:description" content="Debug, Hot Reload and profile every .NET service of a Docker Compose file, a Dockerfile or an Aspire AppHost, in a free and open-source IDE.">
-    <meta name="twitter:image" content="https://passenger-ide.net/images/social-622499b6.png">
-    <meta name="twitter:image:alt" content="Passenger's Requests window beside the words: Debug the whole stack. The free IDE for C# and .NET.">
+    <meta name="twitter:image" content="https://passenger-ide.net/images/social-f846e4c2.png">
+    <meta name="twitter:image:alt" content="A Godot game's GDScript in Passenger, each member's value after its line as the game plays, beside the words: Now for Godot 4 games. The free IDE for C# and .NET.">
     <meta name="theme-color" content="#0F131C" media="(prefers-color-scheme: dark)">
     <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#2F6BF2">
@@ -60,7 +60,7 @@
                 open source, on Windows, macOS and Linux.</p>
             <div class="actions">
                 <a class="button primary" href="/#download">Download Passenger</a>
-                <a class="button" href="https://github.com/Zaneris/passenger/releases/tag/v0.2.3">What's new in 0.2.3</a>
+                <a class="button" href="https://github.com/Zaneris/passenger/releases/tag/v0.3.0">What's new in 0.3.0</a>
             </div>
         </div>
     </div>
@@ -126,7 +126,7 @@
                     <h3>Logs and traces from a compose app</h3>
                     <p>Turn on Collect logs and traces and Aspire's dashboard runs beside your services: their structured logs
                         and traces show in the Containers window's Telemetry tab, a request's spans put together across
-                        services.</p>
+                        services. A plain project's run takes the same choice, its records beside its console.</p>
                 </div>
                 <div class="card">
                     <h3>Code help in Dockerfiles and compose files</h3>
@@ -149,6 +149,21 @@
             <p class="intro">An AppHost, a project or a single-file <code>apphost.cs</code>, is a run configuration, and
                 Aspire's orchestrator asks Passenger to start each project resource, so every .NET service runs under
                 Passenger.</p>
+            <div class="feature">
+                <div class="text">
+                    <h3>Each resource's metrics, charted</h3>
+                    <p>The Aspire window charts the metrics each resource sends, read only while you look, shows what it
+                        references and waits for, both ways, and draws the AppHost as a graph.</p>
+                </div>
+                <figure class="shot">
+                    <picture>
+                        <source media="(prefers-color-scheme: light)" srcset="/images/aspire-metrics-light.webp" width="2400" height="1500">
+                        <img src="/images/aspire-metrics-dark.webp" width="2400" height="1500" loading="lazy" decoding="async"
+                             alt="The Aspire window's Stats tab in Passenger charting a running resource's metrics">
+                    </picture>
+                </figure>
+            </div>
+
             <div class="grid two">
                 <div class="card">
                     <h3>Run, debug, reload and profile the whole app</h3>
@@ -174,6 +189,29 @@
                     <p>The containers an AppHost makes are listed under it in the Containers window and removed with the run,
                         however it ends. A container you made Persistent stays yours. Add &rsaquo; Aspire Orchestration adds
                         an AppHost to a solution that has none.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="publish">
+            <h2>Ship it, and know what it carries</h2>
+            <p class="intro">Publish takes a service, or a whole AppHost, to where it runs, and the Containers window says
+                what an image carries.</p>
+            <div class="grid">
+                <div class="card">
+                    <h3>Container images</h3>
+                    <p>Publish builds the SDK's container image with several tags and platforms, into your engine or
+                        pushed to a registry your <code>docker</code> is logged in to.</p>
+                </div>
+                <div class="card">
+                    <h3>An AppHost's deploy</h3>
+                    <p>Publish takes an Aspire AppHost through its own publishers into a folder, or its deploy steps as
+                        the AppHost declares them, each saying where its cloud login is missing.</p>
+                </div>
+                <div class="card">
+                    <h3>Known vulnerabilities</h3>
+                    <p>An image's known vulnerabilities in the Containers window and at a Dockerfile's <code>FROM</code>,
+                        through your own Docker Scout, only when you ask.</p>
                 </div>
             </div>
         </section>
@@ -220,6 +258,7 @@
             <a href="/">Home</a>
             <a href="https://github.com/Zaneris/passenger">GitHub</a>
             <a href="https://x.com/Zaneris">X (@Zaneris)</a>
+            <a href="/godot">Godot</a>
             <a href="/agents">Agents</a>
             <a href="/linux">Linux</a>
             <a href="https://github.com/Zaneris/passenger/blob/main/LICENSE">Licence</a>

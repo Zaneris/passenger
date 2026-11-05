@@ -276,7 +276,7 @@ public sealed class ContainerFilesPane : DockPanel
             {
                 ChildProcesses.Kill(process);
                 // A copy that ended inside the archive says why in its errors.
-                return process.HasExited && process.ExitCode != 0 ? Said(await errors) : $"{path} could not be copied out of the container: {failed.Message}";
+                return !DotnetProcesses.Runs(process) && process.ExitCode != 0 ? Said(await errors) : $"{path} could not be copied out of the container: {failed.Message}";
             }
         }
 

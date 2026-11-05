@@ -47,10 +47,17 @@ public sealed class EditorGroup : DockPanel
 {
     private readonly EditorArea area;
     private readonly ObservableCollection<EditorTab> tabs = [];
+
+    /// <summary>The tabs this group has shown, the latest first, each once and only while it is on the strip: what the
+    /// group goes back to as its tab shown closes.</summary>
+    private readonly List<EditorTab> shownOrder = [];
     private readonly Dictionary<OpenDocument, (SelectionSet Selections, Vector Scroll)> views = [];
     private readonly Border tabBar;
     private readonly ItemsControl strip;
     private readonly ScrollViewer stripView;
+
+    /// <summary>At the strip's end, shown while tabs are out of its sight: the list of them.</summary>
+    private readonly Button hiddenTabs;
     private readonly Grid body;
     private HairlineDivider? divider;
     private Control? side;
@@ -61,8 +68,11 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The table over the editor for a CSV or workbook, made as the group first shows one.</summary>
     private TableViewer? tables;
 
-    /// <summary>This group's view of the active asset (its bitmap or face belongs to the document, not this control) or of
-    /// release notes the app carries, rendered, in the editor's place.</summary>
+    /// <summary>The Godot project page over a project.godot's editor, made as the group first shows one.</summary>
+    private Godot.GodotPageViewer? godotPage;
+
+    /// <summary>This group's view of the active asset (its bitmap or face belongs to the document, not this control), of
+    /// release notes the app carries, rendered, or of a diff's tab, in the editor's place.</summary>
     private Control? preview;
 
     public EditorGroup(EditorArea area)
@@ -90,6 +100,13 @@ public sealed class EditorGroup : DockPanel
         stripView = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = strip };
         // A narrower strip may leave the active tab out of sight.
         stripView.SizeChanged += (_, _) => RevealActive();
+        hiddenTabs = ToolButtons.Of(IconKeys.ChevronDown, "Hidden Tabs", () => area.HiddenTabsAsked(this));
+        hiddenTabs.Classes.Add(StyleClasses.TabStripTool);
+        hiddenTabs.Name = "HiddenTabs";
+        hiddenTabs.IsVisible = false;
+        hiddenTabs[DockProperty] = Dock.Right;
+        // Tabs come, go, widen or scroll: the list's button shows while some are out of sight.
+        stripView.ScrollChanged += (_, _) => hiddenTabs.IsVisible = HiddenTabs.Count > 0;
         tabBar = new Border
         {
             Classes = { StyleClasses.TabStrip },
@@ -98,6 +115,7 @@ public sealed class EditorGroup : DockPanel
             {
                 Children =
                 {
+                    hiddenTabs,
                     PreviewToggle,
                     stripView,
                 },
@@ -121,6 +139,15 @@ public sealed class EditorGroup : DockPanel
             {
                 tables.View.Focus();
             }
+            else if (godotPage is { ShowsPage: true })
+            {
+                godotPage.Body.Focus();
+            }
+        };
+        Editor.WentTo += (_, offset) =>
+        {
+            tables?.Reveal(offset);
+            godotPage?.Reveal();
         };
         Editor.SelectionChanged += (_, _) =>
         {
@@ -198,17 +225,28 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The group's own preview of its Markdown file, made as it first shows one.</summary>
     private MarkdownPreview? markdown;
 
+    /// <summary>The group's own picture of its SVG file, made as it first shows one.</summary>
+    private SvgPreview? svg;
+
+    /// <summary>The group's own page of its HTML file, made as it first shows one.</summary>
+    private HtmlPreview? html;
+
+    /// <summary>The page beside the editor while it shows one of an HTML file, else null.</summary>
+    public HtmlPreview? Html => Side as HtmlPreview;
+
     /// <summary>The preview beside the editor while it shows one of a Markdown file, else null.</summary>
     public MarkdownPreview? Markdown => Side as MarkdownPreview;
 
-    /// <summary>A Markdown file shown in the editor has its preview beside it while the area shows previews, and its toggle
-    /// on the strip either way; any other file neither.</summary>
-    internal void FollowMarkdown()
+    /// <summary>The picture beside the editor while it shows one of an SVG file, else null.</summary>
+    public SvgPreview? Svg => Side as SvgPreview;
+
+    /// <summary>A Markdown, SVG or HTML file shown in the editor has its preview beside it while the area shows that kind's
+    /// previews, and its toggle on the strip either way; any other file neither.</summary>
+    internal void FollowSidePreview()
     {
-        OpenDocument? document = active?.Document;
-        bool shows = document is not null && InEditor(document) && document.Language == Languages.Language.Markdown;
+        OpenDocument? document = active?.Document is { } shown && InEditor(shown) ? shown : null;
         FollowPreviewToggle();
-        if (shows && area.ShowsMarkdownPreview)
+        if (document?.Language == Languages.Language.Markdown && area.ShowsMarkdownPreview)
         {
             markdown ??= new MarkdownPreview(Editor, area);
             Side = markdown;
@@ -226,26 +264,86 @@ public sealed class EditorGroup : DockPanel
                 markdown?.Forget();
             }
         }
+        if (document is not null && EditorArea.IsSvg(document) && area.ShowsSvgPreview)
+        {
+            svg ??= new SvgPreview();
+            Side = svg;
+            svg.Show(document);
+        }
+        else
+        {
+            if (Side is SvgPreview)
+            {
+                Side = null;
+            }
+            svg?.Show(null);
+        }
+        if (document?.Language == Languages.Language.Html && area.ShowsHtmlPreview)
+        {
+            html ??= new HtmlPreview(area);
+            Side = html;
+            html.Show(document);
+        }
+        else
+        {
+            if (Side is HtmlPreview)
+            {
+                Side = null;
+            }
+            html?.Show(null);
+        }
     }
 
-    /// <summary>The strip's preview toggle shows for a Markdown file or a XAML file the previewer draws, pressed while
-    /// that kind's preview is on, its tip naming the action it runs.</summary>
+    /// <summary>The action the strip's preview toggle runs for the file shown, null while it shows none.</summary>
+    public string? PreviewAction { get; private set; }
+
+    /// <summary>The strip's preview toggle shows for a Markdown file, an SVG, an HTML file or a XAML file the previewer
+    /// draws, pressed while that kind's preview is on, its tip naming the action it runs.</summary>
     internal void FollowPreviewToggle()
     {
         OpenDocument? document = active is { } shown && InEditor(shown.Document) ? shown.Document : null;
-        bool markdown = document?.Language == Languages.Language.Markdown;
-        bool xaml = !markdown && document is not null && area.HasXamlPreview(document);
-        PreviewToggle.IsVisible = markdown || xaml;
-        PreviewToggle.IsChecked = markdown ? area.ShowsMarkdownPreview : xaml && area.ShowsXamlPreview;
-        if (markdown || xaml)
+        (string Action, string Title, bool On)? toggle = document is null ? null
+            : document.Language == Languages.Language.Markdown ? (AppActions.MarkdownPreview, "Markdown Preview", area.ShowsMarkdownPreview)
+            : EditorArea.IsSvg(document) ? (AppActions.SvgPreview, "SVG Preview", area.ShowsSvgPreview)
+            : document.Language == Languages.Language.Html ? (AppActions.HtmlPreview, "HTML Preview", area.ShowsHtmlPreview)
+            : area.HasXamlPreview(document) ? (AppActions.XamlPreview, "XAML Preview", area.ShowsXamlPreview)
+            : null;
+        PreviewAction = toggle?.Action;
+        PreviewToggle.IsVisible = toggle is not null;
+        PreviewToggle.IsChecked = toggle?.On == true;
+        if (toggle is { } shownToggle)
         {
-            ActionTips.Set(PreviewToggle, markdown ? AppActions.MarkdownPreview : AppActions.XamlPreview, markdown ? "Markdown Preview" : "XAML Preview");
+            ActionTips.Set(PreviewToggle, shownToggle.Action, shownToggle.Title);
         }
     }
 
     public IReadOnlyList<EditorTab> Tabs => tabs;
     public OpenDocument? Active => active?.Document;
     public bool Has(OpenDocument document) => tabs.Any(t => t.Document == document);
+
+    /// <summary>The tabs out of the strip's sight, wholly or in part, in its order.</summary>
+    public IReadOnlyList<EditorTab> HiddenTabs
+    {
+        get
+        {
+            double from = stripView.Offset.X;
+            double to = from + stripView.Viewport.Width;
+            return [.. tabs.Where(tab => strip.ContainerFromItem(tab) is not Control shown || shown.Bounds.X < from - 0.5 || shown.Bounds.Right > to + 0.5)];
+        }
+    }
+
+    /// <summary>The button at the strip's end that lists the tabs out of its sight, shown while there are some.</summary>
+    public Button HiddenTabsButton => hiddenTabs;
+
+    /// <summary>A tab gone to from the list of those hidden, as a click on it goes: this group the one worked in, its file
+    /// shown and scrolled into the strip's sight, with the keys.</summary>
+    public void GoTo(OpenDocument document)
+    {
+        area.SetActiveGroup(this);
+        Show(document);
+        area.Activated(this);
+        FocusShown();
+    }
 
     /// <summary>The strip of tabs, where a dragged tab drops to go into this group at a place.</summary>
     public Control TabStrip => tabBar;
@@ -297,9 +395,13 @@ public sealed class EditorGroup : DockPanel
         }
     }
 
-    /// <summary>What shows in the editor's place for a file that is no text to edit: an asset's preview, or release notes rendered.</summary>
+    /// <summary>What shows in the editor's place for a tab that is no text to edit: a diff, an asset's preview, or release
+    /// notes rendered.</summary>
     private Control PreviewOf(OpenDocument document) =>
-        document.Asset is { } asset ? new AssetPreviewControl(asset) : new ReleaseNotesView(document, area.Browse);
+        document.Diff is { } diff ? diff.Make() : document.Asset is { } asset ? new AssetPreviewControl(asset) : new ReleaseNotesView(document, area.Browse);
+
+    /// <summary>The diff this group shows while it shows a diff's tab, else null.</summary>
+    public Vcs.DiffView? Diff => preview as Vcs.DiffView;
 
     /// <summary>The active tab scrolled into the strip's sight once it is laid out, however many tabs crowd the strip.</summary>
     private void RevealActive() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -311,13 +413,17 @@ public sealed class EditorGroup : DockPanel
     }, Avalonia.Threading.DispatcherPriority.Loaded);
 
     /// <summary>Whether the editor shows the file, rather than a view of its own in the editor's place.</summary>
-    private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes;
+    private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes && document.Diff is null;
 
-    /// <summary>Gives the keys to what shows the file: its preview or rendered notes, which its keys move through, else the
-    /// editor.</summary>
+    /// <summary>Gives the keys to what shows the file: a diff's file's side, its preview or rendered notes, which its keys
+    /// move through, else the editor.</summary>
     public void FocusShown()
     {
-        if (preview is not null)
+        if (preview is Vcs.DiffView diff)
+        {
+            diff.Right.Focus();
+        }
+        else if (preview is not null)
         {
             preview.Focus();
         }
@@ -327,8 +433,9 @@ public sealed class EditorGroup : DockPanel
         }
     }
 
-    /// <summary>Shows a file's text, or its asset preview or rendered release notes, keeping the carets and scroll of the
-    /// text it replaces. A preview detaches the hidden text editor so editing commands cannot change the previous file.</summary>
+    /// <summary>Shows a file's text, its asset preview or rendered release notes, or a diff, keeping the carets and scroll of the
+    /// text it replaces. A preview detaches the hidden text editor so editing commands cannot change the previous file; a view
+    /// in the editor's place that had the keys (a diff's side, a preview) gives them to what shows the file now.</summary>
     public void Show(OpenDocument document)
     {
         Add(document);
@@ -336,6 +443,16 @@ public sealed class EditorGroup : DockPanel
         {
             return;
         }
+        bool keys = preview?.IsKeyboardFocusWithin == true;
+        ShowIn(document);
+        if (keys)
+        {
+            FocusShown();
+        }
+    }
+
+    private void ShowIn(OpenDocument document)
+    {
         Keep();
         if (active is not null)
         {
@@ -344,10 +461,12 @@ public sealed class EditorGroup : DockPanel
         }
         active = tabs.First(t => t.Document == document);
         active.IsActive = true;
+        shownOrder.Remove(active);
+        shownOrder.Insert(0, active);
         RevealActive();
         document.PropertyChanged += OnDocumentChanged;
         ClearPreview();
-        if (document.Asset is not null || document.IsReleaseNotes)
+        if (!InEditor(document))
         {
             Find.Detach();
             Editor.Detach();
@@ -356,11 +475,12 @@ public sealed class EditorGroup : DockPanel
             Editor.IsVisible = false;
             Side = null;
             tables?.Hide();
+            godotPage?.Hide();
             preview = PreviewOf(document);
             body.Children.Add(preview);
             ShowBanner(document);
             tabBar.IsVisible = true;
-            FollowMarkdown();
+            FollowSidePreview();
             return;
         }
         (SelectionSet selections, Vector scroll) = views.TryGetValue(document, out (SelectionSet Selections, Vector Scroll) view) ? view : (document.Selections, document.Scroll);
@@ -380,8 +500,9 @@ public sealed class EditorGroup : DockPanel
         Editor.IsVisible = true;
         tabBar.IsVisible = true;
         ShowTable(document);
+        ShowGodotPage(document);
         AttachFind();
-        FollowMarkdown();
+        FollowSidePreview();
     }
 
     /// <summary>The find bar on the file shown: its text, or its table while one lies over it; a read-only file's replace row
@@ -389,7 +510,7 @@ public sealed class EditorGroup : DockPanel
     private void AttachFind() =>
         Find.Attach(Editor, Table, Active is { IsReadOnly: true } shown ? Refusals.ReadOnly(shown.Name) : null);
 
-    /// <summary>The table of the file shown, while it is a CSV or a workbook, null otherwise.</summary>
+    /// <summary>The table of the file shown, while it is a CSV, a workbook or a resource, null otherwise.</summary>
     public CellGrid? Table => tables is { ShowsTable: true } ? tables.View : null;
 
     /// <summary>The bar and grid of a table file over the editor, or none for any other file.</summary>
@@ -419,15 +540,49 @@ public sealed class EditorGroup : DockPanel
                 }
             };
             tables.View.GotFocus += (_, _) => area.SetActiveGroup(this);
+            tables.Refused += (_, why) => area.Refuse(why);
         }
         tables.Show(file);
     }
+
+    /// <summary>The page of a Godot project over its project.godot's editor (its bar whichever shows), or none for any other file.</summary>
+    private void ShowGodotPage(OpenDocument document)
+    {
+        if (area.GodotPages?.For(document) is not { } file)
+        {
+            godotPage?.Hide();
+            return;
+        }
+        if (godotPage is null)
+        {
+            godotPage = new Godot.GodotPageViewer();
+            Children.Insert(Children.IndexOf(body), godotPage.Bar);
+            body.Children.Add(godotPage.Body);
+            godotPage.Switched += (_, _) =>
+            {
+                if (godotPage.ShowsPage)
+                {
+                    godotPage.Body.Focus();
+                }
+                else
+                {
+                    Editor.Focus();
+                }
+            };
+            godotPage.Body.GotFocus += (_, _) => area.SetActiveGroup(this);
+        }
+        godotPage.Show(file);
+    }
+
+    /// <summary>The Godot project page this group shows, null while it shows a project.godot's text or another file.</summary>
+    public Godot.GodotPageViewer? GodotPage => godotPage is { ShowsPage: true } ? godotPage : null;
 
     /// <summary>The banner over the file: where a read-only file comes from, what its notice says, and what its next save
     /// does to how it is stored.</summary>
     private void ShowBanner(OpenDocument document)
     {
-        string[] said = [.. new[] { document.IsReadOnly ? document.Origin : null, document.Notice, document.EncodingWarning }.OfType<string>()];
+        // A diff's own bar says what it is.
+        string[] said = [.. new[] { document.IsReadOnly && document.Diff is null ? document.Origin : null, document.Notice, document.EncodingWarning }.OfType<string>()];
         banner.Say(said.Length > 0 ? string.Join("  ·  ", said) : null);
         bannerLink.IsVisible = document.Notice is not null && document.NoticeAction is not null;
         bannerLink.Content = document.NoticeAction?.Text;
@@ -442,7 +597,8 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The banner's link, for a click on it.</summary>
     public Control BannerLinkControl => bannerLink;
 
-    /// <summary>Takes a file's tab away; the group shows its neighbour, or nothing when it was the last.</summary>
+    /// <summary>Takes a file's tab away. Where it was the tab shown, the group shows the one it showed before (the latest
+    /// first), its neighbour where it showed no other, or nothing when it was the last.</summary>
     public void Remove(OpenDocument document)
     {
         if (tabs.FirstOrDefault(t => t.Document == document) is not { } tab)
@@ -456,16 +612,23 @@ public sealed class EditorGroup : DockPanel
             tables.Forget(closed);
         }
         tabs.Remove(tab);
+        shownOrder.Remove(tab);
         document.Text.Changed -= OnTabTextChanged;
         markdown?.Forget(document);
         if (tab == active)
         {
+            bool keys = preview?.IsKeyboardFocusWithin == true;
             ClearPreview();
             document.PropertyChanged -= OnDocumentChanged;
             active = null;
             if (tabs.Count > 0)
             {
-                Show(tabs[Math.Min(index, tabs.Count - 1)].Document);
+                Show((shownOrder.Count > 0 ? shownOrder[0] : tabs[Math.Min(index, tabs.Count - 1)]).Document);
+                if (keys)
+                {
+                    // The view in the editor's place that had the keys has gone: what shows the next tab takes them.
+                    FocusShown();
+                }
             }
             else
             {
@@ -477,8 +640,9 @@ public sealed class EditorGroup : DockPanel
                 tabBar.IsVisible = false;
                 banner.IsVisible = false;
                 tables?.Hide();
+                godotPage?.Hide();
                 Side = null;
-                FollowMarkdown();
+                FollowSidePreview();
             }
         }
     }
@@ -563,6 +727,16 @@ public sealed class EditorGroup : DockPanel
                     }
                 }
                 break;
+            case nameof(OpenDocument.Diff):
+                bool keys = preview?.IsKeyboardFocusWithin == true;
+                ClearPreview();
+                preview = PreviewOf(document);
+                body.Children.Add(preview);
+                if (keys)
+                {
+                    FocusShown();
+                }
+                break;
             case nameof(OpenDocument.Highlighter):
                 Editor.Highlighter = document.Highlighter;
                 break;
@@ -573,6 +747,10 @@ public sealed class EditorGroup : DockPanel
             case nameof(OpenDocument.ProjectContext):
                 Editor.ContextLabel = ContextShown(document);
                 break;
+            case nameof(OpenDocument.IsReadOnly):
+                Editor.IsReadOnly = document.IsReadOnly;
+                ShowBanner(document);
+                break;
             case nameof(OpenDocument.Path):
                 ShowTable(document);
                 Editor.IsReadOnly = document.IsReadOnly;
@@ -582,7 +760,7 @@ public sealed class EditorGroup : DockPanel
                 Editor.BlockComment = document.Language.BlockComment;
                 Editor.Markup = document.Language.Markup;
                 Editor.ReindentsPaste = document.Language.ReindentsPaste;
-                FollowMarkdown();
+                FollowSidePreview();
                 break;
             case nameof(OpenDocument.Indentation):
                 Editor.Indent = document.Indentation.Options;

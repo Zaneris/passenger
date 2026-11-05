@@ -111,6 +111,56 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Button[] Crumbs() => [.. window.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains(StyleClasses.Crumb))];
     }
 
+    /// <summary>The status bar's path draws the class and the method the caret is in whole, as it draws the file, though they
+    /// come once the server's outline does, after the file's name alone was laid out; in a window too narrow for long names,
+    /// the longest are shortened to an ellipsis after their first letters, never to one, and none is cut by the path's edge.
+    /// The parts that came later were laid out in the room the file's name had taken, so a method showed as its first letter.</summary>
+    [AvaloniaFact]
+    public void The_status_bars_path_draws_the_class_and_method_whole_and_shortens_long_ones_with_an_ellipsis_in_a_narrow_window()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "Helper.Tw");
+        Ui.WaitFor(() => window.Breadcrumbs.Count == 3, "the member the caret is in");
+        Assert.True(DrawnPath(window) is ["Program.cs", "Program", "Main()"], $"With the caret in Main() the path draws {string.Join(" › ", DrawnPath(window))}");
+        editor.GoTo(new TextPosition(1, 0));
+        Ui.Settle();
+        Assert.True(DrawnPath(window) is ["Program.cs", "Program"], $"With the caret in Program the path draws {string.Join(" › ", DrawnPath(window))}");
+        // Down a line into Main(), the caret's place as wide in the status bar as before, so nothing but the path changes there.
+        Ui.Press(window, "DOWN");
+        Assert.True(DrawnPath(window) is ["Program.cs", "Program", "Main()"], $"With the caret moved down into Main() the path draws {string.Join(" › ", DrawnPath(window))}");
+        window.Close();
+
+        project.Write("Lengths.cs", "class AShapeWhoseNameRunsOnAndOnPastTheBar\n{\n    static void MeasuresEachOfItsSidesInTurnAndAddsThemUp()\n    {\n"
+            + "        int sides = 0;\n    }\n}\n");
+        MainWindow narrow = project.Open("Lengths.cs");
+        narrow.Width = MainWindow.SmallestWidth;
+        Ui.PlaceAfter(narrow.EditorArea.CodeEditor, "int sides");
+        Ui.WaitFor(() => narrow.Breadcrumbs.Count == 3, "the member the caret is in");
+        Ui.Settle();
+        string[] drawn = DrawnPath(narrow);
+        Assert.True(drawn.Length == 3 && drawn.All(part => !part.EndsWith(CutMark, StringComparison.Ordinal))
+            && drawn.Any(part => part.EndsWith('…'))
+            && drawn.Where(part => part.EndsWith('…')).All(part => part.Length > 3)
+            && drawn.Zip(narrow.Breadcrumbs).All(p => p.First == p.Second || p.Second.StartsWith(p.First.TrimEnd('…'), StringComparison.Ordinal)),
+            $"In a narrow window the path was to shorten its long parts with an ellipsis after a few letters, each drawn inside it; it draws {string.Join(" › ", drawn)}");
+        narrow.Close();
+    }
+
+    /// <summary>What marks a part of the path its edge cuts, as <see cref="DrawnPath"/> reads it.</summary>
+    private const string CutMark = " (cut by the path's edge)";
+
+    /// <summary>The status bar's path as it draws it, part by part: each part's words as laid out, those the path's edge cuts
+    /// marked so, those it lays outside its room left out.</summary>
+    private static string[] DrawnPath(MainWindow window)
+    {
+        Control host = window.GetVisualDescendants().OfType<Control>().First(c => c.Name == "BreadcrumbHost");
+        return [.. host.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && t.FindAncestorOfType<Button>() is not null)
+            .Select(t => (Text: Ui.Drawn(t), At: t.TranslatePoint(default, host) ?? default, t.Bounds.Width))
+            .Where(t => t.At.X + t.Width > 0.5 && t.At.X < host.Bounds.Width - 0.5)
+            .Select(t => t.At.X < -0.5 || t.At.X + t.Width > host.Bounds.Width + 0.5 ? t.Text + CutMark : t.Text)];
+    }
+
     /// <summary>A file shown before its folder's language server has it names the member the caret is in once the server
     /// does, though nothing changes after: here a file opened alone, its folder opened after, on a server already loaded
     /// (the one the class's last window left), which is ready before the file is opened in it.</summary>
@@ -513,6 +563,45 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         // The rows under a group of what usages do, to the next group.
         static IEnumerable<FindRow> Visible(FindView find, string group) =>
             find.Rows.SkipWhile(r => r.Depth != 0 || r.Label != group).Skip(1).TakeWhile(r => r.Depth != 0);
+    }
+
+    /// <summary>Show Usages, from its keys, lists the usages Find Usages finds in a popup under the caret, framed as every
+    /// popup is, the declaration first with what each does and the usage in its line; Enter goes to the one chosen, and its
+    /// link hands the usages to the Find window.</summary>
+    [AvaloniaFact]
+    public void Show_usages_lists_them_in_a_popup_under_the_caret_goes_to_the_one_chosen_and_hands_them_to_the_find_window()
+    {
+        MainWindow window = project.Open("Loop.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "int tot");
+        Point caret = editor.TranslatePoint(editor.PointOf(editor.Selections.Primary.Caret), window)!.Value;
+        Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.ShowUsages)[0].Notation());
+        Ui.WaitFor(() => window.Popup is UsagesPopup { Rows.Count: 3 }, () => $"the usages of total in Show Usages' popup ({window.Status})");
+        UsagesPopup usages = (UsagesPopup)window.Popup!;
+        Assert.Equal("Usages of total  3 usages", usages.Title);
+        Assert.Equal([(4, "int total = 0;"), (7, "total += i * 2;"), (9, "return total;")], usages.Rows.Select(u => (u.Line, u.LineText.Trim())));
+        Assert.Equal(Languages.CSharp.UsageKind.Declaration, usages.Rows[0].Kind);
+        Border frame = PopupFrame.FrameOf(usages)!;
+        UiRulesTests.HoldsToPopupRules("Show Usages", frame);
+        Point top = frame.TranslatePoint(default, window)!.Value;
+        Assert.True(top.Y > caret.Y && Math.Abs(top.X - caret.X) < PopupFrame.Wide,
+            $"Show Usages' popup opened at {top}, not under the caret at {caret}");
+        Assert.False(window.Find.Searches.Contains("Usages of total"), "Show Usages listed the usages in the Find window as well as its popup");
+
+        Ui.Press(window, "DOWN");
+        Ui.Press(window, "DOWN");
+        Ui.Press(window, "ENTER");
+        Assert.True(window.Popup is null, "Show Usages' popup stayed open once a usage was chosen");
+        Assert.Equal(new TextPosition(9, 15), editor.CaretPosition);
+
+        Ui.PlaceAfter(editor, "int tot");
+        Ui.Run(window, AppActions.ShowUsages);
+        Ui.WaitFor(() => window.Popup is UsagesPopup { Rows.Count: 3 }, "Show Usages' popup again");
+        Ui.Click(((UsagesPopup)window.Popup!).FindWindow);
+        Ui.WaitFor(() => window.Find.Shown == "Usages of total", "Open in Find Window to list the usages there");
+        Assert.True(window.Popup is null, "Show Usages' popup stayed open once its usages went to the Find window");
+        Assert.Equal(3, window.Find.Rows.Count(r => r.Usage is not null));
+        window.Close();
     }
 
     [Gate]
@@ -2389,48 +2478,53 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         return (items, read, frame);
     }
 
-    /// <summary>Typing on into an open completion list narrows it off the UI thread and shows it in the rows the list
-    /// has: as each letter narrows a statement's list, the controls on screen are the ones that showed it before, their
-    /// words changed in place; and a key into a list of hundreds more items (a file with the usings a project's
-    /// implicit ones bring, against one with none) costs the UI thread about what it does in the shorter one, counted
-    /// rather than timed.</summary>
+    /// <summary>Typing on into an open completion list narrows it off the UI thread in the rows the list has: as each letter
+    /// narrows a class's members, the controls on screen are the ones that showed it before; and a key into a list of four
+    /// times the items costs the UI thread what it does in the shorter one, counted rather than timed. The lists differ in
+    /// length alone: a class's members after its dot, listed whole by the server, its fields named alike, so both hold as
+    /// many rows narrowed and show the same ones.</summary>
     [AvaloniaFact]
     public void Typing_into_a_completion_list_narrows_it_off_the_UI_thread_in_the_rows_it_shows()
     {
         MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
-        window.OpenFile(project.PathOf("Bare.cs"));
+        window.OpenFile(project.PathOf("Pantry.cs"));
         Ui.Settle();
         Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
-        (int fewItems, long fewKey) = Narrowed(window, project.PathOf("Bare.cs"));
-        (int manyItems, long manyKey) = Narrowed(window, project.PathOf("Used.cs"));
+        (int fewItems, long fewKey) = Narrowed(window, project.PathOf("Pantry.cs"));
+        (int manyItems, long manyKey) = Narrowed(window, project.PathOf("Granary.cs"));
         TestContext.Current.TestOutputHelper?.WriteLine(
-            $"A key narrowing a statement's list of {fewItems} items allocated {fewKey / 1024} KB on the UI thread; of {manyItems} items, {manyKey / 1024} KB");
-        Assert.True(manyItems > fewItems + 300, $"With the usings a statement's completion listed {manyItems} items, against {fewItems} without");
-        // The server's thousand is a list it says is incomplete, asked for again at each key and gathered with the templates.
-        Assert.True(manyKey <= fewKey + (32 * 1024),
-            $"A key narrowing a list of {manyItems} items allocated {manyKey / 1024} KB on the UI thread, against {fewKey / 1024} KB for {fewItems} items: it scored them or made their rows there");
+            $"A key narrowing a list of {fewItems} members allocated {fewKey / 1024} KB on the UI thread; of {manyItems} members, {manyKey / 1024} KB");
+        Assert.True(manyItems >= fewItems * 4, $"Granary's members listed {manyItems} items, against Pantry's {fewItems}");
+        // Less than the least object for each item the longer list has more: whatever is made of an item is made off it.
+        Assert.True(manyKey - fewKey < (manyItems - fewItems) * 24L,
+            $"A key narrowing a list of {manyItems} items allocated {manyKey / 1024} KB on the UI thread, against {fewKey / 1024} KB for {fewItems} items, "
+            + $"{(manyKey - fewKey) / (manyItems - fewItems)} bytes for each item more: it scored them or made their rows there");
         window.Close();
     }
 
-    /// <summary>A statement's list in a file, opened by an S and narrowed a letter at a time: how many items it has, and the
-    /// least the UI thread allocates from a key to the narrower list shown; each key's rows shown in the controls the list
-    /// showed before it.</summary>
+    /// <summary>A class's members, listed after its dot typed in its own method, and narrowed a letter at a time: how many
+    /// items the list has, and the least the UI thread allocates from a key to the narrower list shown; each key's rows
+    /// shown in the controls the list showed before it.</summary>
     private static (int Items, long Key) Narrowed(MainWindow window, string path)
     {
+        string type = Path.GetFileNameWithoutExtension(path);
         window.OpenFile(path);
         CodeEditor editor = window.EditorArea.CodeEditor;
         Ui.PlaceAfter(editor, "        int total = 0;");
-        window.KeyTextInput(" ");
         editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput($"total += {type}");
         Ui.Settle();
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.IsCompletionOpen, $"{type}'s members after its dot");
         Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!;
         int caret = editor.Selections.Primary.Caret;
-        int items = Ui.Await(Waiting.Apart(() => lsp.CompletionAsync(caret, null)), "the statement's completion").List?.Items.Count ?? 0;
-        window.KeyTextInput("S");
-        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "S", $"a statement's list in {Path.GetFileName(path)}");
-        string typed = "S";
+        int items = Ui.Await(Waiting.Apart(() => lsp.CompletionAsync(caret, ".")), $"{type}'s members").List?.Items.Count ?? 0;
+        window.KeyTextInput("R");
+        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "R", $"{type}'s members narrowed by R");
+        string typed = "R";
         long key = long.MaxValue;
-        foreach (string letter in new[] { "y", "s", "t" })
+        foreach (string letter in new[] { "a", "t", "i" })
         {
             IReadOnlyList<Avalonia.Controls.Control> shown = window.Assist.CompletionRowControls;
             Assert.True(shown.Count > 0, $"No row of the list is on screen narrowed by '{typed}'");
@@ -2440,7 +2534,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             Ui.Pumped(() => window.Assist.CompletionNarrowedBy == typed, TimeSpan.FromSeconds(30));
             key = Math.Min(key, GC.GetAllocatedBytesForCurrentThread() - before);
             Assert.True(window.Assist.CompletionNarrowedBy == typed, $"The list never showed its rows for '{typed}'");
-            Assert.True(window.Assist.CompletionLabels.FirstOrDefault()?.StartsWith(typed, StringComparison.OrdinalIgnoreCase) == true,
+            Assert.True(window.Assist.CompletionLabels.FirstOrDefault() == "Ration000",
                 $"Narrowed by '{typed}' the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(5))} first");
             Ui.Settle();
             IReadOnlyList<Avalonia.Controls.Control> now = window.Assist.CompletionRowControls;
@@ -2528,9 +2622,17 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Bare.cs"), Statement.Replace("Statement", "Bare", StringComparison.Ordinal));
             File.WriteAllText(PathOf("Used.cs"), "using System;\nusing System.Collections.Generic;\nusing System.IO;\nusing System.Linq;\nusing System.Net.Http;\n"
                 + "using System.Threading;\nusing System.Threading.Tasks;\n" + Statement.Replace("Statement", "Used", StringComparison.Ordinal));
+            // Two classes alike but for how many members they have, every one named alike, fewer than the server's thousand.
+            File.WriteAllText(PathOf("Pantry.cs"), Rations("Pantry", 220));
+            File.WriteAllText(PathOf("Granary.cs"), Rations("Granary", 980));
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
         }
+
+        /// <summary>A class of <paramref name="count"/> fields named Ration000 on, and a method to type its name into.</summary>
+        private static string Rations(string type, int count) =>
+            $"static class {type}\n{{\n" + string.Concat(Enumerable.Range(0, count).Select(i => $"    public static int Ration{i:000};\n"))
+            + "\n    public static int Tally()\n    {\n        int total = 0;\n        return total;\n    }\n}\n";
 
         /// <summary>Whether restore downloaded .NET's reference pack, as it does when no installed SDK has the version the
         /// newest SDK targets for net10.0: the package has no IntelliSense files beside its assemblies, which the SDK's own

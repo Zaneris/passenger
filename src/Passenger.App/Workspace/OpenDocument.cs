@@ -9,6 +9,7 @@ using Passenger.Editor;
 using Passenger.Languages;
 using Passenger.Languages.CSharp;
 using Passenger.Languages.Markup;
+using Passenger.Languages.TextMate;
 using Passenger.Lsp;
 using Passenger.Text;
 using Passenger.Workspace;
@@ -30,6 +31,10 @@ public sealed class OpenDocument : Observable
     /// <summary>The line of each of <see cref="lineAnnotations"/> and of <see cref="liveValues"/>, carried by the text.</summary>
     private AnchoredLine[] annotationLines = [];
     private AnchoredLine[] liveLines = [];
+    private IReadOnlyList<SceneMark> sceneMarks = [];
+
+    /// <summary>The line of each of <see cref="sceneMarks"/>, carried by the text.</summary>
+    private AnchoredLine[] sceneLines = [];
     private IReadOnlyList<TestMark> testMarks = [];
     private IReadOnlyList<ColourMark> colourMarks = [];
     private IReadOnlyList<ChangeMark> changeMarks = [];
@@ -128,6 +133,24 @@ public sealed class OpenDocument : Observable
         return document;
     }
 
+    /// <summary>A diff's tab (<see cref="Vcs.DiffTab"/>): named by the file its right side is of, as plain text with no
+    /// text of its own, which its groups show as the diff in the editor's place.</summary>
+    public static OpenDocument OfDiff(Vcs.DiffTab diff)
+    {
+        OpenDocument tab = new(diff.Shown.Path, new FileText(string.Empty, new UTF8Encoding(false), false), Language.PlainText, null) { Diff = diff };
+        tab.FollowReadOnly();
+        return tab;
+    }
+
+    /// <summary>The diff this tab shows in the editor's place, for a diff's tab (<see cref="OfDiff"/>); null for a file's.</summary>
+    public Vcs.DiffTab? Diff { get; private init; }
+
+    /// <summary>What Save saves with this tab shown: the file, or the open file a diff's tab edits (itself where it edits none).</summary>
+    public OpenDocument Saves => Diff?.Shown.File ?? this;
+
+    /// <summary>The diff its tab shows was asked for again, for its groups to show what it is now.</summary>
+    internal void DiffChanged() => Raise(nameof(Diff));
+
     /// <summary>The file's length and last write time as found just before the editor last read all of it, with the version of
     /// the text it then held: while both hold, the editor holds what the disk does (<see cref="TakeDiskTextAsync"/>).</summary>
     private (DiskStamp Stamp, int Version)? readAt;
@@ -205,6 +228,11 @@ public sealed class OpenDocument : Observable
     /// <summary>Opens text with the encoding and line endings read from disk, and the conventions its path supplies.</summary>
     /// <param name="options">A C# file's preprocessor symbols (<see cref="CSharpParsing"/>), a Debug build's when not given.</param>
     public OpenDocument(string path, FileText file, CSharpParseOptions? options = null)
+        : this(path, file, file.IsBinary ? Language.PlainText : Language.ForPath(path), options)
+    {
+    }
+
+    private OpenDocument(string path, FileText file, Language language, CSharpParseOptions? options)
     {
         Path = path;
         Text = new TextDocument(file.Text);
@@ -214,7 +242,7 @@ public sealed class OpenDocument : Observable
         EncodingName = file.EncodingName;
         crBreaks = file.CrBreaks;
         IsBinary = file.IsBinary;
-        Language = IsBinary ? Language.PlainText : Language.ForPath(path);
+        Language = language;
         detected = Language.Detect(file.Text);
         Conventions = EditorConfig.For(path);
         Indentation = Choose();
@@ -234,6 +262,10 @@ public sealed class OpenDocument : Observable
             if (liveValues.Count > 0 && Set(ref liveValues, Carried(liveValues, liveLines), nameof(LiveValues)))
             {
                 Decorations.SetLineAnnotations(ShownAnnotations);
+            }
+            if (sceneMarks.Count > 0 && Carried(sceneMarks, sceneLines) is var carried && !ReferenceEquals(carried, sceneMarks))
+            {
+                Set(ref sceneMarks, carried, nameof(SceneMarks));
             }
             FollowHeld(change.Edits);
             if (Markers.Count > 0)
@@ -494,6 +526,46 @@ public sealed class OpenDocument : Observable
     /// <summary>Every run icon its gutter draws: a run configuration's and a route's, put together once for each of theirs.</summary>
     public IReadOnlyList<RunMark> GutterRunMarks => gutterRunMarks ??= routeMarks.Count == 0 ? runMarks : [.. runMarks, .. routeMarks];
 
+    /// <summary>The marks of a Godot script's code leading into its scenes (a class's, a handler's), each carried with its
+    /// line as the text is edited until the next reading of the scenes replaces them.</summary>
+    public IReadOnlyList<SceneMark> SceneMarks
+    {
+        get => sceneMarks;
+        set
+        {
+            if (value.Count == 0 && sceneMarks.Count == 0)
+            {
+                return;
+            }
+            foreach (AnchoredLine line in sceneLines)
+            {
+                line.Detach();
+            }
+            sceneLines = new AnchoredLine[value.Count];
+            for (int i = 0; i < sceneLines.Length; i++)
+            {
+                sceneLines[i] = new AnchoredLine(value[i].Line);
+                sceneLines[i].Attach(Text);
+            }
+            Set(ref sceneMarks, value);
+        }
+    }
+
+    /// <summary>Scene marks with the lines their anchors carried them to; the same list when none moved.</summary>
+    private static IReadOnlyList<SceneMark> Carried(IReadOnlyList<SceneMark> marks, AnchoredLine[] lines)
+    {
+        SceneMark[]? moved = null;
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (lines[i].Follow())
+            {
+                moved ??= [.. marks];
+                moved[i] = moved[i] with { Line = lines[i].Line };
+            }
+        }
+        return moved ?? marks;
+    }
+
     /// <summary>The colours its lines write or name (XAML's, C#'s), each a swatch in the gutter.</summary>
     public IReadOnlyList<ColourMark> ColourMarks
     {
@@ -626,7 +698,24 @@ public sealed class OpenDocument : Observable
     }
 
     /// <summary>What its editors show after its lines: the debugger's annotations, then the app's live values.</summary>
-    public IReadOnlyList<LineAnnotation> ShownAnnotations => liveValues.Count == 0 ? lineAnnotations : [.. lineAnnotations, .. liveValues];
+    public IReadOnlyList<LineAnnotation> ShownAnnotations => liveValues.Count == 0 && errorPins.Count == 0 ? lineAnnotations
+        : [.. lineAnnotations, .. liveValues, .. errorPins.Select(p => new LineAnnotation(p.Line, p.Last, p.Warnings ? LineAnnotationLook.Muted : LineAnnotationLook.Error))];
+
+    private IReadOnlyList<Editors.ErrorPin> errorPins = [];
+
+    /// <summary>The errors a run raised pinned to the file's lines (a Godot game's), each badged in the gutter with its count
+    /// and its last words after its line; its lines are the run's model's, which follows the text.</summary>
+    public IReadOnlyList<Editors.ErrorPin> ErrorPins
+    {
+        get => errorPins;
+        set
+        {
+            if (Set(ref errorPins, value))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
+        }
+    }
 
     /// <summary>Whether the editors showing the file wrap its lines at their width: Settings' soft wrap masks decide as it
     /// opens, View, Active Editor, Soft-Wrap after.</summary>
@@ -649,6 +738,7 @@ public sealed class OpenDocument : Observable
     public void Close()
     {
         closed = true;
+        Diff?.LetGo();
         Asset?.Dispose();
         (Highlighter as IDisposable)?.Dispose();
         (finder as FoldScan)?.Dispose();
@@ -657,8 +747,9 @@ public sealed class OpenDocument : Observable
     public string Path { get; private set; }
     public string Name => System.IO.Path.GetFileName(Path);
 
-    /// <summary>What its tab is called: its name, or for release notes the app carries what they are ("What's New in 0.2.0").</summary>
-    public string Title => Updates.ReleaseNotes.VersionOf(Path) is { } version ? Updates.ReleaseNotes.TitleOf(version) : Name;
+    /// <summary>What its tab is called: its name, a diff's title ("Shop.cs: HEAD and your version"), or for release notes the
+    /// app carries what they are ("What's New in 0.2.0").</summary>
+    public string Title => Diff?.Shown.Title ?? (Updates.ReleaseNotes.VersionOf(Path) is { } version ? Updates.ReleaseNotes.TitleOf(version) : Name);
 
     /// <summary>Whether this is release notes the app carries, which its tab shows rendered (What's New), read-only.</summary>
     public bool IsReleaseNotes => Updates.ReleaseNotes.VersionOf(Path) is not null;
@@ -717,6 +808,53 @@ public sealed class OpenDocument : Observable
     }
 
     private IndentOptions? chosenIndent;
+
+    /// <summary>Every line's indentation written in tabs, or in spaces, at the file's indent size, alignment within a line
+    /// and each line that begins inside a string (<see cref="LinesInStrings"/>) left as they are, as one undoable step that
+    /// makes it the indentation chosen for the file, the choice before back on Undo. How many lines changed and how many
+    /// inside strings were left; none changed changes nothing, and what <see cref="WhyNotConverted"/> names is refused.</summary>
+    public (int Changed, int InStrings) ConvertIndentation(bool toTabs)
+    {
+        if (WhyNotConverted(toTabs) is { } why)
+        {
+            throw new IOException(why);
+        }
+        IndentOptions from = Indentation.Options;
+        // Tabs as wide as a level, so the lines stand where they stood.
+        IndentOptions to = new(from.Size, toTabs, toTabs ? from.Size : from.TabWidth);
+        TextSnapshot before = Text.Snapshot;
+        (List<TextEdit> edits, int inStrings) = Passenger.Text.Indentation.Convert(before, from, to, LinesInStrings());
+        if (edits.Count == 0)
+        {
+            return (0, inStrings);
+        }
+        IndentOptions? was = chosenIndent;
+        int length = before.Length + edits.Sum(e => e.Text.Length - e.Length);
+        SelectionSet carets = Selections;
+        Text.Perform(edits, carets, TextEditing.MapThrough(carets, edits).Clamp(length), () => ChosenIndent = was, () => ChosenIndent = to);
+        ChosenIndent = to;
+        return (edits.Count, inStrings);
+    }
+
+    /// <summary>Why converting the indentation could change what the file means, so is refused: it is read-only, its language
+    /// takes no tabs, or the lines that begin inside a string are not known, as C#'s are from its syntax at once and another
+    /// language's once its grammar has read the whole file; a language with neither has none known unless it holds none.</summary>
+    public string? WhyNotConverted(bool toTabs) =>
+        IsReadOnly ? Refusals.ReadOnly(Name)
+        : toTabs && Language.IndentsWithSpacesAlone ? Refusals.SpacesAlone(Name, Language.Name)
+        : parser is TextMateHighlighter grammar && !grammar.HasRead(Text.Snapshot) ? Refusals.ReadingStrings(Name)
+        : parser is null && !Language.HoldsNoStrings(Path) ? Refusals.UnreadStrings(Name)
+        : null;
+
+    /// <summary>The lines that begin inside a string, whose leading whitespace is the string's text: C#'s verbatim and raw
+    /// strings from its syntax, another language's from where its grammar's states say a string runs on, with those its
+    /// language finds apart (<see cref="Language.Literals"/>); none for a file that holds no strings.</summary>
+    private IReadOnlySet<int>? LinesInStrings() => parser switch
+    {
+        CSharpHighlighter csharp => StringLines.Of(csharp.Current.Root, csharp.Current.Text),
+        TextMateHighlighter grammar when grammar.StringLines(Text.Snapshot) is { } read => Language.Literals?.Invoke(Text.Snapshot).Union(read).ToHashSet() ?? read,
+        _ => null,
+    };
 
     /// <summary>The indentation the file has with none chosen.</summary>
     public FileIndent Unchosen => FileIndent.Choose(Conventions, detected, Language.Indent);
@@ -1092,15 +1230,25 @@ public sealed class OpenDocument : Observable
     public bool IsDecompiled => Path.Contains($"{System.IO.Path.DirectorySeparatorChar}MetadataAsSource{System.IO.Path.DirectorySeparatorChar}", StringComparison.Ordinal);
 
     /// <summary>Whether the editor shows it read-only, under a bar that says why: decompiled, the licence, notices or release
-    /// notes the app carries, a workbook, an asset preview, a binary file shown as its bytes, or an MSBuild file of the .NET
-    /// SDK or a package that Go to Declaration went into, a copy of a container's file or of what the engine says of one, or
-    /// a copy of a source generator's code.</summary>
-    public bool IsReadOnly => Asset is not null || IsDecompiled || IsWorkbook || IsBinary || Product.Carries(Path) || IsReleaseNotes
-        || MSBuild.MSBuildFiles.IsInstalled(Path) || Containers.ContainerFilesPane.IsCopy(Path) || Endpoints.RequestLog.IsCommandCopy(Path)
-        || CSharp.GeneratedCode.IsCopy(Path);
+    /// notes the app carries, a workbook, an asset preview, a diff's tab, a binary file shown as its bytes, an MSBuild file of the .NET
+    /// SDK or any file of a package as NuGet restored it, a copy of a container's file or of what the engine says of one, a
+    /// copy of a source generator's code, or a stylesheet a page links on the web as it was downloaded.</summary>
+    public bool IsReadOnly => Asset is not null || Diff is not null || IsDecompiled || IsWorkbook || IsBinary || Product.Carries(Path) || IsReleaseNotes
+        || MSBuild.MSBuildFiles.IsInstalled(Path) || Packages.PackageFolders.Holds(Path) || Containers.ContainerFilesPane.IsCopy(Path)
+        || Endpoints.RequestLog.IsCommandCopy(Path) || CSharp.GeneratedCode.IsCopy(Path) || Web.RemoteStylesheets.IsCopy(Path);
 
     /// <summary>The text refuses every change while the file is read-only, whatever asks it: the one place that holds it so.</summary>
     private void FollowReadOnly() => Text.IsReadOnly = IsReadOnly;
+
+    /// <summary>Read-only as the package folders learned since it opened say, its editors and bar following.</summary>
+    internal void FollowPackageFolders()
+    {
+        if (Text.IsReadOnly != IsReadOnly)
+        {
+            FollowReadOnly();
+            Raise(nameof(IsReadOnly));
+        }
+    }
 
     /// <summary>Whether this is an Excel workbook, shown as its sheets' cells: its tab holds no text, and nothing is ever
     /// written over it.</summary>
@@ -1111,16 +1259,17 @@ public sealed class OpenDocument : Observable
     public bool IsBinary { get; }
 
     /// <summary>Whether its tab holds the file's text: an asset preview's and a workbook's hold an empty stand-in, a
-    /// binary file's its bytes drawn as signs and release notes' their Markdown shown rendered, so nothing searches, reads,
+    /// binary file's its bytes drawn as signs, release notes' their Markdown shown rendered and a diff's none, so nothing searches, reads,
     /// edits or writes it as the file's (<see cref="ShownAs"/> says what the file is instead).</summary>
-    public bool HoldsText => Asset is null && !IsWorkbook && !IsBinary && !IsReleaseNotes;
+    public bool HoldsText => Asset is null && Diff is null && !IsWorkbook && !IsBinary && !IsReleaseNotes;
 
     /// <summary>What a file whose tab holds no text is shown as, for what refuses its text to say; null for text.</summary>
     public string? ShownAs => Asset is { Kind: AssetKind.Image } ? "an image, shown as a read-only preview"
         : Asset is not null ? "a font, shown as a read-only preview"
         : IsWorkbook ? "an Excel workbook, shown as its sheets' cells"
         : IsBinary ? "a binary file, shown as its bytes' text"
-        : IsReleaseNotes ? "Passenger's release notes, shown rendered" : null;
+        : IsReleaseNotes ? "Passenger's release notes, shown rendered"
+        : Diff is not null ? "shown here as a diff" : null;
 
     /// <summary>What the bar over a read-only file says it is and where it came from.</summary>
     public string Origin => Asset is { Kind: AssetKind.Image } ? "An image, shown as its pixels, read-only"
@@ -1128,11 +1277,14 @@ public sealed class OpenDocument : Observable
         : IsWorkbook ? "An Excel workbook, shown as its sheets' cells, read-only"
         : IsBinary ? "A binary file, shown as its bytes' text, read-only"
         : IsReleaseNotes ? "Passenger's release notes, as the app carries them, read-only"
+        : Diff is not null ? "A diff of two versions of the file, side by side"
         : Product.Carries(Path) ? "Passenger's own file, as the app carries it, read-only"
         : MSBuild.MSBuildFiles.IsInstalled(Path) ? "An MSBuild file of the .NET SDK or a package, as installed, read-only"
+        : Packages.PackageFolders.PackageOf(Path) is { } package ? $"A file of the package {package}, as NuGet restored it for every project, read-only"
         : Containers.ContainerFilesPane.IsCopy(Path) ? "A copy of what a container holds, or of what the engine says of it, read-only"
         : Endpoints.RequestLog.IsCommandCopy(Path) ? "SQL a running app issued, or an EF Core query's the debugger read, copied to read, read-only"
         : CSharp.GeneratedCode.IsCopy(Path) ? "Code a source generator made, as the C# language server has it, read-only"
+        : Web.RemoteStylesheets.IsCopy(Path) ? "A stylesheet a page links on the web, as it was downloaded, read-only"
         : Path.Contains("SourceLink", StringComparison.OrdinalIgnoreCase) || Path.Contains("Embedded", StringComparison.OrdinalIgnoreCase)
         ? "Source from the library's Source Link or PDB, read-only"
         : "Decompiled code: the language server made this from the assembly, so it is read-only";
@@ -1148,7 +1300,7 @@ public sealed class OpenDocument : Observable
 
     /// <summary>Whether text has unsaved changes; a read-only asset is never considered modified.</summary>
     public bool IsModified => Asset is null && Text.IsModified;
-    public Avalonia.Media.Geometry Icon => Explorer.FileIcons.ForFile(Path);
+    public Avalonia.Media.Geometry Icon => Diff is not null ? Explorer.FileIcons.ForDiff : Explorer.FileIcons.ForFile(Path);
     public Avalonia.Media.IBrush IconBrush => Explorer.FileIcons.BrushForFile(Path);
 
     /// <summary>The carets: the editor's while the file is shown there, as left otherwise, moved by every change to the text.</summary>

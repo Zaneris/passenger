@@ -22,7 +22,7 @@ internal sealed class HttpAssist(AssistContext context, CodeNavigation navigatio
 
     public override Task<Declared?> DeclaredAsync(OpenDocument document, int offset) => Task.FromResult(RoutesOf(document, offset));
 
-    public override Task<bool> UsagesAsync(int offset) => Task.FromResult(RouteUsages(offset));
+    public override Task<bool> UsagesAsync(int offset, bool inPopup) => Task.FromResult(RouteUsages(offset, inPopup));
 
     /// <summary>Go to Declaration in an .http file: the route the request at the caret calls.</summary>
     private bool HttpGoTo(int offset)
@@ -48,7 +48,7 @@ internal sealed class HttpAssist(AssistContext context, CodeNavigation navigatio
     }
 
     /// <summary>Find Usages on a route's declaration: the .http requests that call it.</summary>
-    private bool RouteUsages(int offset)
+    private bool RouteUsages(int offset, bool inPopup)
     {
         if (context.Editors.Active is not { } shown || RouteCallers?.Invoke(shown.Path, offset) is not { } callers)
         {
@@ -60,7 +60,7 @@ internal sealed class HttpAssist(AssistContext context, CodeNavigation navigatio
         }
         else
         {
-            context.ShowUsages($"Requests to {callers.Title}", callers.Requests);
+            context.ShowUsages($"Requests to {callers.Title}", callers.Requests, inPopup ? offset : null);
         }
         return true;
     }

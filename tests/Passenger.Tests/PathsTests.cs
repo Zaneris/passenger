@@ -62,8 +62,8 @@ public sealed class PathsTests : IDisposable
         window.OpenFile(row.Path!);
         Ui.Settle();
         Assert.Equal(program, window.EditorArea.Active?.Path);
-        Task<DiffWindow?> opening = window.ShowDiffAsync(Assert.Single(window.Vcs.Changes).Path);
-        DiffWindow diff = Ui.Await(opening, "the diff to open")!;
+        Task<IDiffHost?> opening = window.ShowDiffAsync(Assert.Single(window.Vcs.Changes).Path);
+        DiffWindow diff = (DiffWindow)Ui.Await(opening, "the diff to open")!;
         Assert.True(ReferenceEquals(window.EditorArea.Active!.Text, diff.View.Right.Document), "Show Diff opened a copy of the open file rather than the file itself");
         diff.Close();
         Ui.Settle();

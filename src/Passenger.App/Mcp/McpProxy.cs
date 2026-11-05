@@ -41,6 +41,9 @@ public sealed partial class McpProxy
     /// no What's New, which waits for a start of their own.</summary>
     public static bool StartedForAgent { get; private set; }
 
+    /// <summary>Whether <see cref="StartVariable"/> says headless: the test run's, whose launches show no window.</summary>
+    public static bool StartsHeadless => Environment.GetEnvironmentVariable(StartVariable) == "headless";
+
     /// <summary>The file of the session a relay hands the one taking its process's place from the updated app
     /// (<see cref="SessionFile"/>), which that one reads, removes and goes on with.</summary>
     [IdentifierHome]
@@ -332,14 +335,12 @@ public sealed partial class McpProxy
         try
         {
             int installing = int.Parse(File.ReadAllText(order), CultureInfo.InvariantCulture);
-            using Process process = Process.GetProcessById(installing);
-            if (!process.HasExited)
+            if (DotnetProcesses.Runs(installing))
             {
                 return installing;
             }
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or FormatException or OverflowException or ArgumentException
-            or InvalidOperationException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or FormatException or OverflowException)
         {
             // No order, or one whose process has ended.
         }
@@ -676,8 +677,7 @@ public sealed partial class McpProxy
         {
             using FileStream file = new(Path.Combine(State.StateStore.DefaultRoot, State.StateStore.SettingsFile), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             using JsonDocument settings = JsonDocument.Parse(file);
-            return settings.RootElement.ValueKind == JsonValueKind.Object
-                && settings.RootElement.TryGetProperty("traceProtocols", out JsonElement on) && on.ValueKind == JsonValueKind.True;
+            return JsonMembers.Bool(settings.RootElement, "traceProtocols") == true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -876,7 +876,7 @@ public sealed partial class McpProxy
                 call.Waited("its window listens");
                 return stream;
             }
-            if (headless is { HasExited: true } ended)
+            if (headless is { } ended && !DotnetProcesses.Runs(ended))
             {
                 throw new NotJoined($"The Passenger started on {here} ended with exit code {ended.ExitCode} before its window opened.");
             }
@@ -890,7 +890,7 @@ public sealed partial class McpProxy
     private async Task LaunchAsync(CancellationToken cancel)
     {
         string self = Environment.ProcessPath ?? throw new NotJoined("Passenger cannot tell where it is installed, to start it.");
-        if (Environment.GetEnvironmentVariable(StartVariable) == "headless")
+        if (StartsHeadless)
         {
             ProcessStartInfo start = ChildProcesses.Command(self, ["--headless", here], here);
             start.Environment[StartedForVariable] = "agent";
@@ -956,7 +956,7 @@ public sealed partial class McpProxy
     /// <summary>The headless window ends with its input, cleanly, before the watchdog would kill it with its socket left.</summary>
     private void EndHeadless()
     {
-        if (headless is { HasExited: false } child)
+        if (headless is { } child && DotnetProcesses.Runs(child))
         {
             try
             {

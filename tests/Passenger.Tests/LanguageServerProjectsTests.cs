@@ -342,7 +342,8 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
     private void ProgramFoundAsItStarts(MainWindow window, HeldFeed held, string name)
     {
         Ui.PumpUntil(() => held.Asked, "the language server starting to ask for the projects to load", TimeSpan.FromMinutes(1));
-        string written = Write(folder, name, "#!/usr/bin/env dotnet\nSystem.Console.WriteLine(\"tool\");\n");
+        // Not published ahead of time, so its restore wants no runtime or compiler pack the package cache lacks.
+        string written = Write(folder, name, "#!/usr/bin/env dotnet\n#:property PublishAot=false\nSystem.Console.WriteLine(\"tool\");\n");
         Ui.PumpUntil(() => window.Session.Workspace?.Programs.Any(p => PathNames.Same(p.Path, written)) == true,
             $"{name}, written beside the solution, to be found as the language server starts", TimeSpan.FromMinutes(1));
         held.Release();

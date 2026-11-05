@@ -30,6 +30,18 @@ public static class AspNetCoreVariables
     /// <summary>The manifest a Development app finds its static web assets by.</summary>
     public const string StaticWebAssets = "ASPNETCORE_STATICWEBASSETS";
 
+    /// <summary>The assemblies, by name and separated by ';', whose hosting startups a web app runs as it starts.</summary>
+    public const string HostingStartupAssemblies = "ASPNETCORE_HOSTINGSTARTUPASSEMBLIES";
+
+    /// <summary>The WebSocket the SDK's browser refresh before .NET 11 has a page connect to, separated by ','.</summary>
+    public const string AutoReloadEndpoint = "ASPNETCORE_AUTO_RELOAD_WS_ENDPOINT";
+
+    /// <summary>The public key (base64 SubjectPublicKeyInfo) that browser refresh's page encrypts its secret with.</summary>
+    public const string AutoReloadKey = "ASPNETCORE_AUTO_RELOAD_WS_KEY";
+
+    /// <summary>The loopback address the SDK's browser refresh from .NET 11 forwards a page's requests to.</summary>
+    public const string AutoReloadProvider = "ASPNETCORE_AUTO_RELOAD_PROVIDER_ADDRESS";
+
     /// <summary>The environment an app runs in, as ASP.NET Core reads it: <see cref="AspNetCoreEnvironment"/>, else
     /// <see cref="DotnetEnvironment"/>, else <paramref name="otherwise"/>; a blank value names none.</summary>
     public static string EnvironmentOf(Func<string, string?> variable, string otherwise) =>
@@ -67,6 +79,33 @@ public static class OtelVariables
 
     /// <summary>The protocol an app sends its telemetry over: grpc or http/protobuf.</summary>
     public const string ExporterProtocol = "OTEL_EXPORTER_OTLP_PROTOCOL";
+
+    /// <summary>Where an app sends its logs alone, over <see cref="ExporterEndpoint"/>; over HTTP the whole address, path and all.</summary>
+    public const string LogsEndpoint = "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT";
+
+    /// <summary>The headers of its logs alone, in place of <see cref="ExporterHeaders"/>.</summary>
+    public const string LogsHeaders = "OTEL_EXPORTER_OTLP_LOGS_HEADERS";
+
+    /// <summary>The protocol of its logs alone, over <see cref="ExporterProtocol"/>.</summary>
+    public const string LogsProtocol = "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL";
+
+    /// <summary>Where an app sends its traces alone, over <see cref="ExporterEndpoint"/>; over HTTP the whole address, path and all.</summary>
+    public const string TracesEndpoint = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT";
+
+    /// <summary>The headers of its traces alone, in place of <see cref="ExporterHeaders"/>.</summary>
+    public const string TracesHeaders = "OTEL_EXPORTER_OTLP_TRACES_HEADERS";
+
+    /// <summary>The protocol of its traces alone, over <see cref="ExporterProtocol"/>.</summary>
+    public const string TracesProtocol = "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL";
+
+    /// <summary>Where an app sends its metrics alone, over <see cref="ExporterEndpoint"/>; over HTTP the whole address, path and all.</summary>
+    public const string MetricsEndpoint = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT";
+
+    /// <summary>The headers of its metrics alone, in place of <see cref="ExporterHeaders"/>.</summary>
+    public const string MetricsHeaders = "OTEL_EXPORTER_OTLP_METRICS_HEADERS";
+
+    /// <summary>The protocol of its metrics alone, over <see cref="ExporterProtocol"/>.</summary>
+    public const string MetricsProtocol = "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL";
 
     /// <summary>How long, in milliseconds, an app holds its logs before sending them.</summary>
     public const string LogsDelay = "OTEL_BLRP_SCHEDULE_DELAY";
@@ -124,4 +163,11 @@ public static class AspireVariables
 
     /// <summary>Debug or NoDebug: how the IDE runs the AppHost's projects.</summary>
     public const string DebugSessionRunMode = "DEBUG_SESSION_RUN_MODE";
+
+    /// <summary>The Unix socket an AppHost run as Aspire's CLI runs it listens on for the CLI's backchannel, over which it
+    /// answers what its pipeline holds.</summary>
+    public const string BackchannelPath = "ASPIRE_BACKCHANNEL_PATH";
+
+    /// <summary>"false" keeps an AppHost from asking anything of a person.</summary>
+    public const string InteractivityEnabled = "ASPIRE_INTERACTIVITY_ENABLED";
 }

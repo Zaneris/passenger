@@ -130,6 +130,54 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         return spans;
     }
 
+    /// <summary>Whether the grammar has read the whole of <paramref name="text"/> as it stands, so the states lines end in are
+    /// known for every line.</summary>
+    public bool HasRead(TextSnapshot text) => table is { Complete: true } && ReferenceEquals(tableText, text) && since.Count == 0;
+
+    /// <summary>The lines of <paramref name="text"/> that begin inside one of the grammar's strings or a Markdown code block,
+    /// whose leading whitespace is their own; never a YAML plain scalar's next line, which YAML folds. A block scalar's string
+    /// has no end to read and may open on its first line, so its lines are those ending in it under a line ending in the
+    /// scalar; a line ending in an indented code block is the block's. Null until the grammar has read the whole text as it
+    /// stands (<see cref="HasRead"/>).</summary>
+    public IReadOnlySet<int>? StringLines(TextSnapshot text)
+    {
+        if (!HasRead(text) || table is not { } lines)
+        {
+            return null;
+        }
+        HashSet<int> inside = [];
+        for (int line = 1; line < lines.Count; line++)
+        {
+            StateStack? before = lines[line - 1].End;
+            if (InScope(before, IsRunningString) || (InScope(before, IsBlockScalar) && InScope(lines[line].End, IsBlockString)) || InScope(lines[line].End, IsIndentedCode))
+            {
+                inside.Add(line);
+            }
+        }
+        return inside;
+    }
+
+    private static bool InScope(StateStack? state, Func<string, bool> matches)
+    {
+        for (AttributedScopeStack? scope = state?.Scopes; scope is not null; scope = scope.Parent)
+        {
+            if (matches(scope.ScopeName))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsRunningString(string scope) => scope.StartsWith("markup.fenced_code", StringComparison.Ordinal)
+        || (scope.StartsWith("string.", StringComparison.Ordinal) && !IsBlockString(scope) && !scope.StartsWith("string.unquoted.plain", StringComparison.Ordinal));
+
+    private static bool IsIndentedCode(string scope) => scope.StartsWith("markup.raw.block", StringComparison.Ordinal);
+
+    private static bool IsBlockString(string scope) => scope.StartsWith("string.unquoted.block", StringComparison.Ordinal);
+
+    private static bool IsBlockScalar(string scope) => scope.StartsWith("meta.scalar", StringComparison.Ordinal);
+
     public void Dispose()
     {
         disposed = true;
@@ -181,7 +229,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
                     Failed?.Invoke(this, Failure);
                     return;
                 }
-                Show(done.Result, text, passVersion);
+                Show(done.Result.Lines, text, passVersion, done.Result.Read);
                 Tokenize();
             }
             finally
@@ -194,7 +242,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     /// <summary>Reads the lines of <paramref name="text"/> from <paramref name="first"/> on, with the state the line above
     /// ended in, until a line ends in the state its old line did with only unchanged lines after it (the last
     /// <paramref name="tail"/> lines are those of <paramref name="old"/>'s text), and takes the rest from the old table.</summary>
-    private LineTable Pass(LineTable? old, TextSnapshot text, int first, int tail, int passVersion)
+    private (LineTable Lines, (int From, int To)? Read) Pass(LineTable? old, TextSnapshot text, int first, int tail, int passVersion)
     {
         long began = Stopwatch.GetTimestamp();
         Tokenizer rules = grammar.Rules;
@@ -259,13 +307,14 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
                 partial.AddRange(soFar, 0, soFar.Count);
                 Rest(partial, line);
                 LineTable progress = partial.Build(line);
-                OnUi(() => Show(progress, text, passVersion));
+                OnUi(() => Show(progress, text, passVersion, null));
                 shown = Stopwatch.GetTimestamp();
             }
         }
         Interlocked.Increment(ref passes);
         Interlocked.Add(ref workTicks, Stopwatch.GetTimestamp() - began);
-        return built.Build(staleFrom);
+        // The lines read, which alone may have taken other colours, unless the pass stopped short of where they converge.
+        return (built.Build(staleFrom), staleFrom == count && old is not null ? (first, line) : null);
 
         // Whether the line before next, past those that changed, ends as its old line did: the rest then the old table's.
         bool Converged(int next)
@@ -292,8 +341,9 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         }
     }
 
-    /// <summary>Takes a pass's colours, of <paramref name="text"/>, as the newest, and asks for the lines to be drawn again.</summary>
-    private void Show(LineTable lines, TextSnapshot text, int passVersion)
+    /// <summary>Takes a pass's colours, of <paramref name="text"/>, as the newest, and asks for the lines to be drawn again:
+    /// those it read alone (<paramref name="read"/>, lines from and to) where nothing has been typed since.</summary>
+    private void Show(LineTable lines, TextSnapshot text, int passVersion, (int From, int To)? read)
     {
         if (disposed)
         {
@@ -302,8 +352,15 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         table = lines;
         tableText = text;
         since.RemoveAll(batch => batch.Version <= passVersion);
+        ChangedWithin = read is ({ } from, { } to) && since.Count == 0 && ReferenceEquals(text, document.Snapshot)
+            ? TextRange.FromBounds(text.GetLineStart(Math.Min(from, text.LineCount - 1)), to < text.LineCount ? text.GetLineStart(to) : text.Length)
+            : null;
         Changed?.Invoke(this, EventArgs.Empty);
+        ChangedWithin = null;
     }
+
+    /// <summary>While <see cref="Changed"/> is raised, the lines the pass read anew, where they alone may have changed.</summary>
+    public TextRange? ChangedWithin { get; private set; }
 
     /// <summary>One line's colours and the state it ends in, reusing the pass's buffer between lines. A line read past
     /// <paramref name="limit"/> is read once more, its grammar's patterns now parsed; past it again, it keeps the colours

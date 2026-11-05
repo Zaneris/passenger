@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Passenger.Core;
 using Passenger.Packages;
 
 namespace Passenger.App.Migrations;
@@ -43,7 +44,7 @@ public sealed record EfRestore(string? Runtime, string? Design, IReadOnlyList<Ef
         {
             using FileStream stream = new(assets, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             using JsonDocument read = JsonDocument.Parse(stream);
-            if (!read.RootElement.TryGetProperty("targets", out JsonElement targets) || targets.ValueKind != JsonValueKind.Object)
+            if (JsonMembers.Object(read.RootElement, "targets") is not { } targets)
             {
                 return null;
             }
@@ -58,7 +59,7 @@ public sealed record EfRestore(string? Runtime, string? Design, IReadOnlyList<Ef
             foreach (JsonProperty library in chosen.Value.EnumerateObject())
             {
                 string[] named = library.Name.Split('/', 2);
-                if (named.Length == 2 && library.Value.TryGetProperty("type", out JsonElement type) && type.GetString() == "package")
+                if (named.Length == 2 && JsonMembers.Text(library.Value, "type") == "package")
                 {
                     libraries[named[0]] = (named[1], library.Value);
                 }
@@ -68,7 +69,7 @@ public sealed record EfRestore(string? Runtime, string? Design, IReadOnlyList<Ef
             List<EfProvider> providers = [];
             foreach ((string id, (string version, JsonElement library)) in libraries)
             {
-                if (CoreSet.Contains(id) || !library.TryGetProperty("dependencies", out JsonElement dependencies) || dependencies.ValueKind != JsonValueKind.Object)
+                if (CoreSet.Contains(id) || JsonMembers.Object(library, "dependencies") is not { } dependencies)
                 {
                     continue;
                 }

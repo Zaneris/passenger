@@ -25,6 +25,11 @@ internal static class Program
         {
             return asked;
         }
+        // Run by git as its gpg to sign a commit, nothing of the IDE started; synchronously, as Main returns gpg's exit code.
+        if (Synchronously.Run(() => Passenger.Vcs.GpgLoopback.RunAsync(args)) is int signed)
+        {
+            return signed;
+        }
         // First, as Velopack asks; an update never installs as a second Passenger starts, which would end the first.
         if (Installation.Installed)
         {
@@ -39,6 +44,7 @@ internal static class Program
             Web.JsonSchemas.CheckVariable();
             Web.DockerHubTags.CheckVariable();
             _ = Containers.BuildKitChecks.ByDefault;
+            _ = Debugging.BrowserRun.Proxy;
             Mcp.McpProxy.CheckVariable();
             _ = Mcp.McpHost.StartsLanguageServer;
             _ = MainWindow.WatchSaysLater;
@@ -58,6 +64,12 @@ internal static class Program
         Options = options;
         // Before anything starts, so nothing started reads it; a relay keeps its own, which the updated app it becomes reads.
         Stream? input = options.Mcp == McpMode.Attach ? null : StandardInput.Take();
+        // Before the shell's environment or a look for leftovers: Main's thread waits here for a running Passenger's answer.
+        if (LaunchHandOff.HandsOff(options) && Synchronously.Run(() => LaunchHandOff.HandOffAsync(LaunchHandOff.Of(options), CancellationToken.None)))
+        {
+            input?.Dispose();
+            return 0;
+        }
         Core.ShellEnvironment.Load();
         if (options.Mcp != McpMode.Attach && options.Screenshot is null)
         {
@@ -72,6 +84,11 @@ internal static class Program
                 return Mcp.McpHost.RunStdio(options, input!);
         }
         if (options.Headless)
+        {
+            return Mcp.McpHost.RunHeadless(options, input!);
+        }
+        // A test run's launch that no running Passenger took starts this build headless, never a window on the person's screen.
+        if (Mcp.McpProxy.StartsHeadless && options.Screenshot is null)
         {
             return Mcp.McpHost.RunHeadless(options, input!);
         }
@@ -125,6 +142,24 @@ internal static class Program
         }
     }
 
+    /// <summary>Ends Passenger as a malformed flag does, exit code 2 and why on standard error, where the command line's
+    /// <c>--run</c> or <c>--debug</c> could not start in the window it opened (<see cref="MainWindow.StartedRun"/>).</summary>
+    public static async Task EndUnlessStartedAsync(MainWindow window, Action<int> end)
+    {
+        if (await window.StartedRun is { } refused)
+        {
+            SayNotStarted(refused);
+            end(2);
+        }
+    }
+
+    /// <summary>Says in the log and on standard error why what the command line asked to start did not.</summary>
+    public static void SayNotStarted(string why)
+    {
+        IdeErrors.Write($"Launch: {why}");
+        Console.Error.WriteLine($"passenger: {why}");
+    }
+
     /// <summary>The theme, its dark or light and the code's colours the command line names, over those in force.</summary>
     public static void ApplyTheme(Application app, LaunchOptions options)
     {
@@ -151,7 +186,6 @@ internal static class Program
         AppBuilder.Configure<App>()
             .UsePlatformDetect()
 #pragma warning disable AVALONIA_X11_CSD // X11 extends a window into its frame only with this on: the merged title bar (TitleBars).
-            .With(new X11PlatformOptions { EnableDrawnDecorations = true })
+            .With(new X11PlatformOptions { EnableDrawnDecorations = true });
 #pragma warning restore AVALONIA_X11_CSD
-            .WithInterFont();
 }

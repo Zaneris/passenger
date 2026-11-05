@@ -15,11 +15,12 @@ using Passenger.Editor;
 
 namespace Passenger.Tests;
 
-/// <summary>Settings' Keymap offers Rider's VS Code keymap beside its Visual Studio one, each the platform's: the choice
-/// runs its keys in the editor, the IDE and the terminal at once, is kept in settings.json and after a restart, and a
-/// settings.json without one keeps Visual Studio's keys and the person's own over them. Shortcuts set over one keymap
-/// stay with it, Reset Shortcuts gives back the chosen keymap's own, a shortcut another action has is warned of as ever,
-/// no key of either keymap runs two actions, and the keys checked against Rider's keymaps are those they resolve to.</summary>
+/// <summary>Settings' Keymap offers Rider's VS Code keymap and IntelliJ IDEA's beside its Visual Studio one, each the
+/// platform's: the choice runs its keys in the editor, the IDE and the terminal at once, is kept in settings.json and after
+/// a restart, and a settings.json without one keeps Visual Studio's keys and the person's own over them. Shortcuts set
+/// over one keymap stay with it, Reset Shortcuts gives back the chosen keymap's own, a shortcut another action has is
+/// warned of as ever, no key of any keymap runs two actions, and the keys checked against Rider's keymaps are those they
+/// resolve to.</summary>
 public sealed class KeymapChoiceTests : IDisposable
 {
     private const string Source = "class One { int item; int Two() => item + item; }\n";
@@ -29,6 +30,7 @@ public sealed class KeymapChoiceTests : IDisposable
 
     private static readonly string VisualStudio = DefaultKeymaps.NameOf(KeymapPreset.VisualStudio);
     private static readonly string VSCode = DefaultKeymaps.NameOf(KeymapPreset.VSCode);
+    private static readonly string IntelliJ = DefaultKeymaps.NameOf(KeymapPreset.IntelliJ);
 
     private readonly string folder = TestFolders.Create("keymaps-");
     private readonly string settings = TestFolders.Create("keymaps-settings-");
@@ -91,6 +93,76 @@ public sealed class KeymapChoiceTests : IDisposable
             again.EditorArea.CodeEditor.Focus();
             Ui.Press(again, ownKey);
             Assert.True(again.EditorArea.Groups.Count == 2, $"{ownKey}, Split Right's in Visual Studio's keymap, split nothing once it was chosen again");
+        }
+        finally
+        {
+            // The keymap in force is the process's; the next test starts on the platform's own.
+            again.ApplySettings(new AppSettings());
+            again.Close();
+        }
+    }
+
+    /// <summary>IntelliJ IDEA's keymap chosen in Settings runs its keys in the editor and the IDE, the menus and Find Action
+    /// name them (Search Everywhere's double Shift too), a shortcut set over it is kept with it alone in settings.json, and
+    /// after a restart it is still chosen with that shortcut, which Reset Shortcuts takes back to the keymap's own.</summary>
+    [AvaloniaFact]
+    public void IntelliJ_IDEA_chosen_in_Settings_runs_its_keys_keeps_its_own_shortcut_and_is_kept_after_a_restart()
+    {
+        string ownKey = $"{Cmd} alt shift Y";
+        string goToFile = OperatingSystem.IsMacOS() ? "meta shift O" : "control shift N";
+        MainWindow window = Open(keeps: true);
+        try
+        {
+            SettingsDialog dialog = Settings(window);
+            Choose(dialog, IntelliJ);
+            Assert.Equal([Shortcut.Parse(goToFile).Display()], dialog.ShortcutsShown(AppActions.GoToFile));
+            KeyboardShortcutDialog keys = AddKeyboardShortcut(dialog, AppActions.SplitDown);
+            Ui.Press(keys, ownKey);
+            Assert.Empty(keys.Conflicts);
+            Ui.Click(keys.OkButton);
+            Ui.WaitFor(() => dialog.ShortcutsShown(AppActions.SplitDown).Count == 1, "Split Down to show the shortcut given it");
+            Assert.True(dialog.ShowsChanged(AppActions.SplitDown), "Split Down, given a shortcut over IntelliJ IDEA's keymap, is not shown as changed");
+            Ui.Click(Button(dialog, "OK"));
+            Assert.Equal(KeymapPreset.IntelliJ, window.Settings.Keymap);
+            Assert.True(window.Settings.Shortcuts.Count == 0 && window.Settings.VSCodeShortcuts.Count == 0,
+                "A shortcut set over IntelliJ IDEA's keymap was kept over Visual Studio's or VS Code's too");
+
+            IntelliJKeysWork(window, ownKey);
+            NativeMenuItem goToFileItem = Ui.Submenu(window.MenuBar, "Navigate").Items.OfType<NativeMenuItem>().First(i => i.Header == window.Actions[AppActions.GoToFile]!.Title);
+            Keystroke intelliJs = Keystroke.Parse(goToFile);
+            Assert.Equal(new KeyGesture(intelliJs.Key, intelliJs.Modifiers), goToFileItem.Gesture);
+            Ui.Press(window, $"{Cmd} shift A");
+            ActionPopup findAction = Assert.IsType<ActionPopup>(window.Popup);
+            findAction.Query = window.Actions[AppActions.GoToEverything]!.Title;
+            Ui.Settle();
+            string doubleShift = Shortcut.Parse("shift , shift").Display();
+            Assert.True(findAction.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == doubleShift && t.IsEffectivelyVisible),
+                $"Find Action shows Search Everywhere without {doubleShift}, its keys in IntelliJ IDEA's keymap");
+            Ui.Press(window, "ESCAPE");
+
+            string file = Path.Combine(settings, "settings.json");
+            Ui.WaitFor(() => Read(file) is { } kept && (string?)kept["keymap"] == "IntelliJ", "the keymap chosen in settings.json", TimeSpan.FromSeconds(10));
+            Assert.Equal(Shortcut.Parse(ownKey).Notation(), (string?)Read(file)!["intelliJShortcuts"]![AppActions.SplitDown]![0]);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        MainWindow again = Open(keeps: true);
+        try
+        {
+            Assert.Equal(KeymapPreset.IntelliJ, again.Settings.Keymap);
+            IntelliJKeysWork(again, ownKey);
+            SettingsDialog dialog = Settings(again);
+            Assert.Equal(IntelliJ, dialog.KeymapChoice.SelectedItem);
+            Ui.ChooseFromMenu(dialog.KeymapRow(AppActions.SplitDown), "Reset Shortcuts");
+            Assert.Empty(dialog.ShortcutsShown(AppActions.SplitDown));
+            Ui.Click(Button(dialog, "OK"));
+            Assert.Empty(again.Settings.IntelliJShortcuts);
+            again.EditorArea.CodeEditor.Focus();
+            Ui.Press(again, ownKey);
+            Assert.True(again.EditorArea.Groups.Count == 1, $"{ownKey}, taken from Split Down by Reset Shortcuts, still split the editor");
         }
         finally
         {
@@ -259,13 +331,13 @@ public sealed class KeymapChoiceTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void No_key_of_either_keymap_is_shown_on_two_actions_or_begins_a_chord_another_action_has()
+    public void No_key_of_any_keymap_is_shown_on_two_actions_or_begins_a_chord_another_action_has()
     {
         MainWindow window = Open();
         try
         {
             SettingsDialog dialog = Settings(window);
-            foreach (string keymap in new[] { VisualStudio, VSCode })
+            foreach (string keymap in SettingsDialog.KeymapChoices.Select(DefaultKeymaps.NameOf))
             {
                 Choose(dialog, keymap);
                 List<(string Action, string Keys)> shown = [.. window.Actions.All.SelectMany(a => dialog.ShortcutsShown(a.Id).Select(k => (a.Id, k)))];
@@ -530,31 +602,34 @@ public sealed class KeymapChoiceTests : IDisposable
         return [.. ((string[])["Rerun", "Stop", "Apply Hot Reload Changes"]).Select(words => tips.Single(tip => tip == words || tip.StartsWith($"{words} (", StringComparison.Ordinal)))];
     }
 
-    /// <summary>Duplicate, Compare Files, Show Diff, Parameter Info, Toggle Case, Generate, Clone Caret and the moves by a
-    /// character, a line and to the text's ends have, in each keymap, the keys Rider's keymap of that preset on this
-    /// platform resolves them to (<see cref="RiderKeymaps"/>), and the Mac's Cmd+Up and Down besides in Visual Studio's.
-    /// A key Rider gives several of them, told apart by where it is pressed, has one action and the rest take it where
-    /// they are (<see cref="AppActions.KeysIn"/>); Rider's New is New Item, by the keys Generate does not take.</summary>
+    /// <summary>Duplicate, Compare Files, Show Diff, Parameter Info, Toggle Case, Generate, Clone Caret, the moves, Context
+    /// Help (with External Documentation's), Show Usages and Quick Evaluate Expression have in each keymap the keys and
+    /// gestures Rider's of that preset here resolves them to (<see cref="RiderKeymaps"/>), the Mac's Cmd+Up and Down too in
+    /// Visual Studio's and IntelliJ IDEA's. A key Rider gives several by place has one action, the rest taking it there
+    /// (<see cref="AppActions.KeysIn"/>); Rider's New is New Item.</summary>
     [AvaloniaFact]
     public void Each_keymaps_keys_for_Duplicate_Parameter_Info_Toggle_Case_and_Generate_are_those_Riders_keymap_resolves_them_to()
     {
         bool mac = OperatingSystem.IsMacOS();
-        foreach (KeymapPreset preset in (KeymapPreset[])[KeymapPreset.VisualStudio, KeymapPreset.VSCode])
+        foreach (KeymapPreset preset in SettingsDialog.KeymapChoices)
         {
             AppActions.Choose(preset, new Dictionary<string, string[]>());
             Keymap keymap = AppActions.Keymap();
             string rider = RiderKeymaps.Of(preset);
             bool visualStudio = preset == KeymapPreset.VisualStudio;
+            bool vsCode = preset == KeymapPreset.VSCode;
             (string Action, string Riders, string[] Besides)[] checks =
             [
-                (EditorActions.Duplicate, visualStudio ? "EditorDuplicate" : "EditorDuplicateLines", []), (AppActions.CompareFiles, "CompareTwoFiles", []),
+                (EditorActions.Duplicate, vsCode ? "EditorDuplicateLines" : "EditorDuplicate", []), (AppActions.CompareFiles, "CompareTwoFiles", []),
                 (AppActions.ShowDiff, "Diff.ShowDiff", []), (AppActions.ParameterInfo, "ParameterInfo", []), (EditorActions.ToggleCase, "EditorToggleCase", []),
                 (AppActions.Generate, "Generate", []), (EditorActions.Up, "EditorUp", []), (EditorActions.Down, "EditorDown", []),
                 (EditorActions.Left, "EditorLeft", []), (EditorActions.Right, "EditorRight", []),
                 (EditorActions.CloneCaretAbove, visualStudio ? "CloneCaretAboveWithVirtualSpace" : "EditorCloneCaretAbove", []),
                 (EditorActions.CloneCaretBelow, visualStudio ? "CloneCaretBelowWithVirtualSpace" : "EditorCloneCaretBelow", []),
-                (EditorActions.TextStart, "EditorTextStart", mac && visualStudio ? ["meta UP"] : []),
-                (EditorActions.TextEnd, "EditorTextEnd", mac && visualStudio ? ["meta DOWN"] : []),
+                (EditorActions.TextStart, "EditorTextStart", mac && !vsCode ? ["meta UP"] : []),
+                (EditorActions.TextEnd, "EditorTextEnd", mac && !vsCode ? ["meta DOWN"] : []),
+                (AppActions.ContextHelp, "ContextHelp", [.. RiderKeymaps.Resolve(rider, "ExternalJavaDoc").Select(s => s.Notation())]),
+                (AppActions.ShowUsages, "ShowUsages", []), (AppActions.QuickEvaluate, "QuickEvaluateExpression", []),
             ];
             foreach ((string action, string riders, string[] besides) in checks)
             {
@@ -562,6 +637,13 @@ public sealed class KeymapChoiceTests : IDisposable
                 string[] theirs = [.. RiderKeymaps.Resolve(rider, riders).Concat(besides.Select(Shortcut.Parse)).Select(s => s.Notation()).Distinct().Order(StringComparer.Ordinal)];
                 Assert.True(ours.SequenceEqual(theirs),
                     $"In {DefaultKeymaps.NameOf(preset)}'s keymap {action} runs from [{string.Join("; ", ours)}], where Rider's {rider} gives {riders} [{string.Join("; ", theirs)}]");
+            }
+            foreach ((string action, string riders) in new[] { (AppActions.ShowUsages, "ShowUsages"), (AppActions.QuickEvaluate, "QuickEvaluateExpression") })
+            {
+                string[] ours = [.. keymap.MouseShortcutsFor(action).Select(g => g.Notation()).Order(StringComparer.Ordinal)];
+                string[] theirs = [.. RiderKeymaps.ResolveMouse(rider, riders).Select(g => g.Notation()).Order(StringComparer.Ordinal)];
+                Assert.True(ours.SequenceEqual(theirs),
+                    $"In {DefaultKeymaps.NameOf(preset)}'s keymap {action} runs from the gestures [{string.Join("; ", ours)}], where Rider's {rider} gives {riders} [{string.Join("; ", theirs)}]");
             }
             foreach (string shared in (string[])[AppActions.CompareFiles, AppActions.ShowDiff])
             {
@@ -760,6 +842,39 @@ public sealed class KeymapChoiceTests : IDisposable
         Assert.True(window.EditorArea.Active is null, $"VS Code's Close All Editors chord left {window.EditorArea.Active?.Name} open");
         window.OpenFile("One.cs");
         Ui.Settle();
+    }
+
+    /// <summary>Representative keys of IntelliJ IDEA's keymap pressed in the window: the editor's (Delete Line, which Visual
+    /// Studio's Ctrl+Y redoes), the IDE's (Go to File, Go to Class's key for Go to Symbol, Search Everywhere's double Shift)
+    /// and the person's own key, which splits the editor down.</summary>
+    private static void IntelliJKeysWork(MainWindow window, string ownKey)
+    {
+        bool mac = OperatingSystem.IsMacOS();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        editor.Selections = Passenger.Text.SelectionSet.Single(0);
+        Ui.Press(window, mac ? "meta BACK_SPACE" : "control Y");
+        Assert.True(Text(window).Length == 0, $"IntelliJ IDEA's Delete Line key left \"{Text(window)}\", where it deletes the caret's line");
+        Ui.Press(window, $"{Cmd} Z");
+        Assert.Equal(Source, Text(window));
+
+        Ui.Press(window, mac ? "meta shift O" : "control shift N");
+        Assert.True(window.Popup is GoToFilePopup, "IntelliJ IDEA's Go to File key opened no Go to File");
+        Ui.Press(window, "ESCAPE");
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Press(window, mac ? "meta O" : "control N");
+        Assert.True(window.Popup is SymbolPopup { Title: "Go to Symbol" }, "IntelliJ IDEA's Go to Class key opened no Go to Symbol");
+        Ui.Press(window, "ESCAPE");
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Press(window, "shift , shift");
+        Assert.True(window.Popup is SymbolPopup { Title: "Go to Everything" }, "IntelliJ IDEA's double Shift opened no Search Everywhere");
+        Ui.Press(window, "ESCAPE");
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Press(window, ownKey);
+        Assert.True(window.EditorArea.Groups.Count == 2, $"{ownKey}, the person's own key for Split Down over IntelliJ IDEA's keymap, split nothing");
+        window.Perform(AppActions.UnsplitAll);
+        Ui.Settle();
+        window.EditorArea.CodeEditor.Focus();
     }
 
     /// <summary>Settings as its shortcut opens it, on its Keymap page as a click in its list of pages chooses it.</summary>

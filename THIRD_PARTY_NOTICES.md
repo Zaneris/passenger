@@ -25,13 +25,19 @@ out; dbgshim's musl Linux natives are the container tools' (below), which the ap
 | `Grpc.Net.Client`, `Grpc.Net.Common`, `Grpc.Core.Api` | Native Aspire interactions and resource commands | Apache-2.0 | Copyright 2019 The gRPC Authors |
 | `Microsoft.Extensions.Logging.Abstractions` | gRPC client's logging contracts | MIT | © Microsoft Corporation. All rights reserved. |
 | The .NET runtime (`Microsoft.NETCore.App`) | the app and the debugger are self-contained; Roslyn's server runs on the installed .NET | MIT | © Microsoft Corporation. All rights reserved. |
-| `Avalonia`, `Avalonia.Desktop`, `Avalonia.Native`, `Avalonia.Win32`, `Avalonia.X11`, `Avalonia.FreeDesktop`, `Avalonia.FreeDesktop.AtSpi`, `Avalonia.Remote.Protocol`, `Avalonia.Themes.Fluent`, `Avalonia.Skia`, `Avalonia.HarfBuzz`, `Avalonia.Headless` | the UI, and the headless platform the screenshots draw on | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
-| `Avalonia.Fonts.Inter` | the Inter typeface, itself under the SIL Open Font License 1.1, Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter) | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
+| `Avalonia`, `Avalonia.Desktop`, `Avalonia.Native`, `Avalonia.Win32`, `Avalonia.X11`, `Avalonia.FreeDesktop`, `Avalonia.FreeDesktop.AtSpi`, `Avalonia.Remote.Protocol`, `Avalonia.Themes.Fluent`, `Avalonia.Skia`, `Avalonia.HarfBuzz`, `Avalonia.Headless` | the UI, and the headless platform the screenshots draw on, `Avalonia.Headless` carried beside the inspector too (`inspector/`) for an Avalonia app a Passenger nobody sees runs | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
+| `Avalonia.Markup.Xaml.Loader` | XAML Hot Reload's compiler, carried beside the inspector into an Avalonia app Passenger runs or debugs (`inspector/`) | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
+| `Avalonia.Controls.WebView` | an HTML file's preview beside its text, in the system's own web view (WebView2, WKWebView, WebKitGTK) | MIT | Copyright 2019-2026 © AvaloniaUI OÜ |
 | `Avalonia.Angle.Windows.Natives` | ANGLE's OpenGL ES (`av_libglesv2.dll`), Windows only | BSD-3-Clause (the package's LICENSE) | Copyright 2018 The ANGLE Project Authors |
 | `MicroCom.Runtime` | Avalonia's COM interop | MIT | Copyright 2021 © Nikita Tsukanov |
 | `Tmds.DBus.Protocol` | Avalonia's D-Bus client, for Linux desktops | MIT | Tom Deseyn |
 | `SkiaSharp`, `SkiaSharp.NativeAssets.macOS`, `SkiaSharp.NativeAssets.Win32`, `SkiaSharp.NativeAssets.Linux` | drawing, with Skia (BSD-3-Clause) | MIT | © Microsoft Corporation. All rights reserved. |
 | `HarfBuzzSharp`, `HarfBuzzSharp.NativeAssets.macOS`, `HarfBuzzSharp.NativeAssets.Win32`, `HarfBuzzSharp.NativeAssets.Linux` | text shaping, with HarfBuzz (Old MIT) | MIT | © Microsoft Corporation. All rights reserved. |
+| `Svg.Skia`, `Svg.Model`, `Svg.Animation`, `Svg.SceneGraph`, `ShimSkiaSharp` | an SVG file's picture beside its text, drawn with Skia | MIT | Copyright © Wiesław Šoltés 2026 |
+| `Svg.Custom` | Svg.Skia's model of an SVG document, a build of SVG.NET's (https://github.com/svg-net/SVG) | MS-PL | Copyright © Wiesław Šoltés 2026 |
+| `ExCSS` | Svg.Custom's reading of an SVG's CSS | MIT | no copyright line; its author: Tyler Brinks |
+| `NVorbis` | a Godot game's Ogg Vorbis sounds decoded to WAV for the system's player | MIT | Copyright © Andrew Ward 2021 (its LICENSE file: Copyright (c) 2020 Andrew Ward) |
+| `NLayer` | a Godot game's MP3 sounds decoded to WAV for the system's player | MIT | © Mark Heath 2026 |
 | `Microsoft.CodeAnalysis.CSharp`, `Microsoft.CodeAnalysis.Common` | Roslyn: colour before the server answers, and the debugger's expressions | MIT | © Microsoft Corporation. All rights reserved. |
 | `Tint` | TextMate grammar tokenization and colour mapping | MIT | Copyright (c) 2026 Sébastien Ros |
 | `GregsEx` | Tint's managed Oniguruma-compatible regular expressions | MIT | Copyright (c) 2026 Sébastien Ros |
@@ -200,10 +206,12 @@ Packages the build or the tests use that no app carries.
 | `NETStandard.Library` | the build: netstandard2.0's library, which Passenger's own analyzers are compiled against | MIT | Copyright (c) .NET Foundation and Contributors |
 | `xunit.v3`, `xunit.v3.assert`, `xunit.v3.common`, `xunit.v3.core.mtp-v1`, `xunit.v3.extensibility.core`, `xunit.v3.mtp-v1`, `xunit.v3.runner.common`, `xunit.v3.runner.inproc.console`, `xunit.analyzers`, `xunit.runner.visualstudio` | the tests | Apache-2.0 | Copyright (C) .NET Foundation |
 | `Avalonia.Headless.XUnit` | the tests on Avalonia's headless platform | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
+| `Avalonia.Fonts.Inter` | Inter 3.019, which `Avalonia.Headless` names and the tests' Avalonia apps take; the app leaves its files out and carries its own Inter (below) | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
 | `Avalonia.Templates` | Avalonia's dotnet new templates, downloaded for the tests' local feed, from which they install them as New Solution does (`AvaloniaApp.Feed`); Passenger never carries them, and installs them only when asked. The package names no licence; its repository's (AvaloniaUI/Avalonia.Templates) is MIT | MIT | Copyright (c) 2023 .NET Foundation and Contributors All Rights Reserved |
+| `CommunityToolkit.Mvvm` | the MVVM Toolkit at the version Avalonia's MVVM template writes, downloaded for the tests' package cache, which an app of theirs restores with its generators; Passenger never carries it | MIT | (c) .NET Foundation and Contributors. All rights reserved. |
 | `Aspire.ProjectTemplates` | Official Aspire starter templates, downloaded for the tests' private template hive; not shipped | MIT | © Microsoft Corporation. All rights reserved. |
 | `Aspire.Hosting`, `Aspire.Hosting.AppHost`, `Aspire.AppHost.Sdk`, `Aspire.Dashboard.Sdk.linux-x64`, `Aspire.Dashboard.Sdk.linux-arm64`, `Aspire.Dashboard.Sdk.osx-x64`, `Aspire.Dashboard.Sdk.osx-arm64`, `Aspire.Dashboard.Sdk.win-x64`, `Aspire.Dashboard.Sdk.win-arm64`, `Aspire.Hosting.Orchestration.linux-x64`, `Aspire.Hosting.Orchestration.linux-arm64`, `Aspire.Hosting.Orchestration.osx-x64`, `Aspire.Hosting.Orchestration.osx-arm64`, `Aspire.Hosting.Orchestration.win-x64`, `Aspire.Hosting.Orchestration.win-arm64`, `Aspire.Cli.linux-x64`, `Aspire.Cli.linux-arm64`, `Aspire.Cli.osx-x64`, `Aspire.Cli.osx-arm64` | official starters' hosting and build tools, restored for the tests' local feed, and the aspire CLI the tests run in a home of their own, never carried by Passenger | MIT | © Microsoft Corporation. All rights reserved. |
-| `Microsoft.AspNetCore.OpenApi`, `Microsoft.Extensions.AmbientMetadata.Application`, `Microsoft.Extensions.Compliance.Abstractions`, `Microsoft.Extensions.DependencyInjection.AutoActivation`, `Microsoft.Extensions.Diagnostics.ExceptionSummarization`, `Microsoft.Extensions.Http.Diagnostics`, `Microsoft.Extensions.Http.Resilience`, `Microsoft.Extensions.Resilience`, `Microsoft.Extensions.ServiceDiscovery`, `Microsoft.Extensions.ServiceDiscovery.Abstractions`, `Microsoft.Extensions.Telemetry`, `Microsoft.Extensions.Telemetry.Abstractions`, `Microsoft.OpenApi`, `Microsoft.Win32.SystemEvents`, `System.IO.Hashing` | official starters' dependencies, restored for the tests' local feed | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.AspNetCore.OpenApi`, `Microsoft.Extensions.AmbientMetadata.Application`, `Microsoft.Extensions.ApiDescription.Server`, `Microsoft.Extensions.Compliance.Abstractions`, `Microsoft.Extensions.DependencyInjection.AutoActivation`, `Microsoft.Extensions.Diagnostics.ExceptionSummarization`, `Microsoft.Extensions.Http.Diagnostics`, `Microsoft.Extensions.Http.Resilience`, `Microsoft.Extensions.Resilience`, `Microsoft.Extensions.ServiceDiscovery`, `Microsoft.Extensions.ServiceDiscovery.Abstractions`, `Microsoft.Extensions.Telemetry`, `Microsoft.Extensions.Telemetry.Abstractions`, `Microsoft.OpenApi`, `Microsoft.Win32.SystemEvents`, `System.IO.Hashing` | official starters' dependencies, restored for the tests' local feed | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Extensions.Caching.Abstractions`, `Microsoft.Extensions.Configuration.CommandLine`, `Microsoft.Extensions.Configuration.EnvironmentVariables`, `Microsoft.Extensions.Configuration.FileExtensions`, `Microsoft.Extensions.Configuration.Json`, `Microsoft.Extensions.Configuration.UserSecrets`, `Microsoft.Extensions.Diagnostics`, `Microsoft.Extensions.Diagnostics.Abstractions`, `Microsoft.Extensions.Diagnostics.HealthChecks`, `Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions`, `Microsoft.Extensions.FileProviders.Abstractions`, `Microsoft.Extensions.FileProviders.Physical`, `Microsoft.Extensions.Hosting`, `Microsoft.Extensions.Hosting.Abstractions`, `Microsoft.Extensions.Http`, `Microsoft.Extensions.Logging.Debug`, `Microsoft.Extensions.Logging.EventLog`, `Microsoft.Extensions.Logging.EventSource` | an AppHost's dependencies at the tests' target, which the test project's own restore prunes, restored for the tests' local feed (tests/AspireGraphs) | MIT | © Microsoft Corporation. All rights reserved. |
 | `Grpc.AspNetCore`, `Grpc.AspNetCore.Server`, `Grpc.AspNetCore.Server.ClientFactory`, `Grpc.Net.ClientFactory` | Aspire hosting's gRPC server dependencies, restored for the tests' local feed | Apache-2.0 | Copyright 2019 gRPC Authors |
 | `Grpc.Tools` | Aspire hosting's build-time protocol compiler, restored for the tests' local feed and never run; Passenger's own protocol C# is checked in (`just aspire-protocol`) | Apache-2.0 | Copyright 2018 The gRPC Authors |
@@ -220,14 +228,28 @@ Packages the build or the tests use that no app carries.
 | `Mono.TextTemplating` | the EF Core Design package's template engine, restored for the tests' local feed | MIT | no copyright line; its author: Mikayla Hutchinson |
 | `SQLitePCLRaw.bundle_e_sqlite3`, `SQLitePCLRaw.lib.e_sqlite3`, `SQLitePCLRaw.provider.e_sqlite3` | SQLite for EF Core's SQLite provider, restored for the tests' local feed | Apache-2.0 | Copyright 2014-2024 SourceGear, LLC |
 | `SQLitePCLRaw.config.e_sqlite3` | SQLite's configuration for EF Core 11's SQLite provider, restored for the tests' local feed (tests/EfGraphs) | Apache-2.0 | Copyright 2014-2026 SourceGear, LLC |
+| `gdUnit4.api`, `gdUnit4.test.adapter` | GdUnit4's API and its VSTest adapter, which the Godot tests write into a game: downloaded for the tests' package cache (tests/GodotGraphs); Passenger never carries them | MIT | © 2026 Mike Schulze |
+| `Chickensoft.GoDotTest` | GoDotTest, the test runner inside a Godot C# game, which the Godot tests write into a game: downloaded for the tests' package cache (tests/GodotGraphs); Passenger never carries it | MIT | © 2023 Chickensoft |
+| `Chickensoft.Log`, `Chickensoft.Collections` | GoDotTest's dependencies, downloaded for the tests' package cache (tests/GodotGraphs) | MIT | © 2025 Chickensoft |
+| `JetBrains.Annotations` | GoDotTest's dependency, downloaded for the tests' package cache (tests/GodotGraphs) | MIT | Copyright (c) 2016-2025 JetBrains s.r.o. |
+| `Mono.Cecil` | GdUnit4's dependency, downloaded for the tests' package cache (tests/GodotGraphs) | MIT | no copyright line; its author: Jb Evain |
+| `Microsoft.TestPlatform.AdapterUtilities` | GdUnit4's adapter's dependency, and MSTest's and NUnit's adapters', downloaded for the tests' package cache (tests/GodotGraphs, tests/UnitTestGraphs) | MIT | © Microsoft Corporation. All rights reserved. |
+| `xunit`, `xunit.assert`, `xunit.core`, `xunit.extensibility.core`, `xunit.extensibility.execution` | xunit v2, which the unit testing tests write into the test projects they make: downloaded for the tests' package cache (tests/UnitTestGraphs); Passenger never carries it | Apache-2.0 | Copyright (C) .NET Foundation |
+| `xunit.abstractions` | xunit v2's dependency, downloaded for the tests' package cache (tests/UnitTestGraphs) | Apache-2.0 (the license.txt its nuspec's licenseUrl names) | no copyright line; its authors: James Newkirk, Brad Wilson |
+| `xunit.v3.core.mtp-v2`, `xunit.v3.mtp-v2` | xunit v3 on the Testing Platform's second line, which the unit testing tests write into the test projects they make: downloaded for the tests' package cache (tests/UnitTestGraphs); Passenger never carries it | Apache-2.0 | Copyright (C) .NET Foundation |
+| `MSTest.TestFramework`, `MSTest.TestAdapter`, `MSTest.Analyzers`, `Microsoft.Testing.Extensions.VSTestBridge`, `System.Security.AccessControl` | MSTest, which the unit testing tests write into the test projects they make, and what it, NUnit's adapter and xunit v3 on the Testing Platform's second line depend on: downloaded for the tests' package cache (tests/UnitTestGraphs); Passenger never carries them | MIT | © Microsoft Corporation. All rights reserved. |
+| `NUnit` | NUnit, which the unit testing tests write into the test projects they make: downloaded for the tests' package cache (tests/UnitTestGraphs); Passenger never carries it | MIT | Copyright (c) Charlie Poole, Rob Prouse and Contributors. MIT License. |
+| `NUnit3TestAdapter` | NUnit's VSTest adapter, which the unit testing tests write into the test projects they make: downloaded for the tests' package cache (tests/UnitTestGraphs); Passenger never carries it | MIT | Copyright (c) 2011-2021 Charlie Poole, 2014-2025 Terje Sandstrom |
+| `Serilog` | Serilog at the version the Solution view's evaluation tests pin in the project they make, downloaded for the tests' package cache; Passenger never carries it | Apache-2.0 | Copyright © 2013-24 Serilog Contributors |
 | `SQLite` | SQLite's native builds under EF Core 11's SQLite provider, restored for the tests' local feed (tests/EfGraphs) | public domain (the package's LICENSE.txt: "SQLite is Public Domain", https://sqlite.org/copyright.html) | Copyright 2014-2026 SourceGear, LLC (the package's builds) |
 | `Npgsql.EntityFrameworkCore.PostgreSQL`, `Npgsql` | EF Core's PostgreSQL provider and the driver under it: the graph of the web app the Migrations window's compose run test writes, restored for the tests' local feed (tests/EfGraphs); Passenger never carries them | PostgreSQL | Copyright 2025 © The Npgsql Development Team |
 | `Polly.Extensions` | starters' resilience dependency, restored for the tests' local feed | BSD-3-Clause | Copyright (c) 2024, App vNext |
 | `System.Drawing.Common` | Aspire hosting's dependency, restored for the tests' local feed | MIT | © Microsoft Corporation. All rights reserved. |
 | `QRCoder` | Aspire hosting's dependency, restored for the tests' local feed | MIT | Copyright © 2013-2025 Raffael Herrmann. Copyright © 2024-2025 Shane Krueger. All rights reserved. |
 | `YamlDotNet` | Aspire hosting's dependency, restored for the tests' local feed | MIT | Copyright (c) Antoine Aubry and contributors |
-| `Microsoft.AspNetCore.Components.WebAssembly`, `Microsoft.AspNetCore.Components.WebAssembly.DevServer`, `Microsoft.AspNetCore.Components`, `Microsoft.AspNetCore.Components.Analyzers`, `Microsoft.AspNetCore.Components.Forms`, `Microsoft.AspNetCore.Components.Web`, `Microsoft.AspNetCore.Authorization`, `Microsoft.AspNetCore.Metadata`, `Microsoft.Extensions.Validation`, `Microsoft.JSInterop`, `Microsoft.JSInterop.WebAssembly`, `Microsoft.NET.ILLink.Tasks`, `Microsoft.NET.Sdk.WebAssembly.Pack` | Blazor's WebAssembly host and development server, what they depend on, and the browser's trimmer and pack the SDK adds: the graph of the app the SDK's blazorwasm template makes, restored for the tests' local feed (tests/BlazorGraphs); Passenger never carries them | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.AspNetCore.Components.WebAssembly`, `Microsoft.AspNetCore.Components.WebAssembly.DevServer`, `Microsoft.AspNetCore.Components.WebAssembly.Server`, `Microsoft.AspNetCore.Components`, `Microsoft.AspNetCore.Components.Analyzers`, `Microsoft.AspNetCore.Components.Forms`, `Microsoft.AspNetCore.Components.Web`, `Microsoft.AspNetCore.Authorization`, `Microsoft.AspNetCore.Metadata`, `Microsoft.Extensions.Validation`, `Microsoft.JSInterop`, `Microsoft.JSInterop.WebAssembly`, `Microsoft.NET.ILLink.Tasks`, `Microsoft.NET.Sdk.WebAssembly.Pack`, `Microsoft.AspNetCore.App.Internal.Assets` | Blazor's WebAssembly host, development server and server package, what they depend on, and the browser's trimmer and pack and ASP.NET Core's static framework assets the SDK adds: the graphs of the apps the SDK's blazorwasm and blazor templates make, restored for the tests' local feed (tests/BlazorGraphs); Passenger never carries them | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.WindowsDesktop.App.Ref` | WPF's reference assemblies, downloaded for the tests' local feed, from which the WPF app `WpfXamlTests` make restores off Windows (`WpfApp`); Passenger reads a WPF project's own copy, never carries one | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.AspNetCore.App.Runtime.osx-arm64`, `Microsoft.AspNetCore.App.Runtime.osx-x64`, `Microsoft.AspNetCore.App.Runtime.win-x64`, `Microsoft.AspNetCore.App.Runtime.win-arm64`, `Microsoft.AspNetCore.App.Runtime.linux-x64`, `Microsoft.AspNetCore.App.Runtime.linux-arm64` | ASP.NET Core's runtime pack for the machine the tests run on, which a restore for a runtime takes beside .NET's: downloaded for the tests' package cache, so the self-contained app `PublishTests` publish restores from it; Passenger never carries it | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.NET.Test.Sdk`, `Microsoft.TestPlatform.TestHost`, `Microsoft.CodeCoverage` | the tests' host | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Testing.Platform`, `Microsoft.Testing.Platform.MSBuild`, `Microsoft.Testing.Extensions.Telemetry`, `Microsoft.Testing.Extensions.TrxReport.Abstractions`, `Microsoft.ApplicationInsights` | xunit.v3's test platform | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Bcl.AsyncInterfaces`, `Microsoft.Win32.Registry` | the test platform's | MIT | © Microsoft Corporation. All rights reserved. |
@@ -290,7 +312,7 @@ licence its package.json states and the copyright line its licence file (else it
 ## Licence texts
 
 `tools/Passenger.Notices/Licenses/` holds the texts of the licences packages name by SPDX identifier (`MIT.txt`,
-`Apache-2.0.txt`, `ISC.txt`), from the SPDX License List 3.29.0 (https://github.com/spdx/license-list-data), unchanged; its README
+`Apache-2.0.txt`, `ISC.txt`, `BSD-3-Clause.txt`, `MS-PL.txt`), from the SPDX License List 3.29.0 (https://github.com/spdx/license-list-data), unchanged; its README
 says where each came from. The app's notices, `THIRD-PARTY-NOTICES.txt` beside it, are written from them, from the
 packages themselves and from this file: Roslyn's server's table above, and everything below; the container tools' carry
 the debugger's two sections below.
@@ -429,11 +451,80 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Godot's GDScript tokenizer, parser and analyzer
+
+`src/Passenger.Workspace/GDScript/` (`GDScriptToken.cs`, `GDScriptTokenizer.cs`, `GDScriptNodes.cs` and the
+`GDScriptParser` files) is a port to C# of the Godot Engine's GDScript tokenizer and parser,
+`modules/gdscript/gdscript_tokenizer.cpp`, `gdscript_tokenizer.h`, `gdscript_parser.cpp` and `gdscript_parser.h` at
+commit cafc17a192acf67903910a68aeb3c076c0907a4b (4.8 beta 2) of https://github.com/godotengine/godot: their tokens,
+nodes, parse rules and error messages, kept as Godot words them. `GDScriptAnalyzer` (with `GDScriptType`,
+`GDScriptAnalysis` and `GodotEngineApi`) ports the typing of `modules/gdscript/gdscript_analyzer.cpp` and
+`gdscript_analyzer.h` at the same commit (its data types, how a declaration, an override's return and each expression
+are typed), with the return types of `gdscript_utility_functions.cpp`'s functions and the symbols' wording of
+`language_server/gdscript_extend_parser.cpp`; its warnings and errors (`GDScriptAnalyzer.Warnings.cs`, `.Expressions.cs`,
+`.Operations.cs`, `.Statics.cs`, `.Containers.cs`, `.Declarations.cs`, `.Names.cs`, `.Constants.cs`, `.Cycles.cs`,
+`.Evaluated.cs` and `.Inheritance.cs`, `GDScriptWarnings.cs` and `GDScriptAnalysis`'s filtering by a project's settings
+and `@warning_ignore`) port where `gdscript_analyzer.cpp` and `gdscript_parser.cpp` (its export and `@onready`
+annotations among them) push them, the same at 4.7.2-stable but where its words differ, which an API of 4.7's is given,
+with `gdscript_warning.cpp` and `gdscript_warning.h`'s names, default levels and words; `.Evaluated.cs` also ports the argument checks and words of
+`core/variant/variant_utility.cpp`'s floor, ceil, round, abs, sign, snapped and lerp, of
+`modules/gdscript/gdscript_utility_functions.cpp`'s len, char and ord, and `core/math/color.cpp`'s `html_is_valid` and
+`find_named_color`'s reading of a colour's name, at both commits.
+`GDScript/GodotRenames.json` is the table of the Godot 3 names Godot 4 renamed that the analyzer's errors hint at (its
+`renamed_in_godot_4_hint`), written by `just godot-renames` (`tools/godot-renames.py`) from
+`editor/project_upgrade/renames_map_3_to_4.cpp` at the same commit: the maps `check_for_renamed_identifier` reads.
+`GDScriptConversions.cs` is the table of `Variant::can_convert_strict` in `core/variant/variant.cpp` at the same commit
+(the same at 4.7.2-stable, ed1daf0bf001b61586d9930840f2f1394092c079), which a built-in type's constructor's warnings read,
+with `Variant::can_convert`'s for a cast's errors, and the Object rows of `core/variant/variant_op.cpp`'s operator table,
+which the API's dump leaves out, beside the dump's own operators for an operand's errors; `GDScriptAnalyzer.Operations.cs`
+also takes `Variant::is_type_shared`'s types from `variant.cpp` and its evaluators' failure words (division and modulo by
+zero, a negative shift) from `core/variant/variant_op.h`.
+The scripts of the parser's and warnings' unit tests (`tests/Passenger.UnitTests/Godot/GDScriptParserTests.cs`,
+`GDScriptWarningsTests.cs`) are in part Godot's own, `modules/gdscript/tests/scripts/parser/errors`, `parser/warnings`
+and `analyzer/warnings`, at the same commit.
+
+```
+Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md).
+Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## JetBrains Mono
 
 `src/Passenger.Editor/Fonts/` holds JetBrains Mono 2.304 (Regular, Bold, Italic, Bold Italic), the
 editor's font, from https://github.com/JetBrains/JetBrainsMono under the SIL Open Font License 1.1,
 whose full text is beside the fonts (`OFL.txt`). The fonts are unmodified.
+
+## Inter
+
+`src/Passenger.App/Fonts/` holds Inter 4.1's hinted faces, the window's font, from `extras/ttf/` of
+`Inter-4.1.zip` (https://github.com/rsms/inter/releases/tag/v4.1), Copyright (c) 2016 The Inter Project
+Authors, under the SIL Open Font License 1.1, whose full text is beside the fonts (`OFL.txt`, the release's
+`LICENSE.txt`). The fonts are unmodified; their SHA-256:
+
+| File | SHA-256 |
+|---|---|
+| `Inter-Regular.ttf` | `40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82` |
+| `Inter-Medium.ttf` | `97ad806f526e41546d46365bb3a393145f75b7b1568913db74549ad8b8dba872` |
+| `Inter-SemiBold.ttf` | `78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3` |
+| `Inter-Bold.ttf` | `288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f` |
 
 ## Fluent UI System Icons
 
@@ -585,6 +676,13 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 `src/Passenger.Terminal/WideCharacters.cs`, the characters the terminal draws two columns wide, is derived from the
 Unicode Character Database 16.0.0's `EastAsianWidth.txt` and `emoji/emoji-data.txt`
 (https://www.unicode.org/Public/16.0.0/ucd/), written by `tools/unicode-widths.py`.
+`src/Passenger.Workspace/GDScript/UnicodeIdentifiers.cs`, what a GDScript identifier's spoof check reads, is derived from
+Unicode 17.0.0's `security/IdentifierStatus.txt` and `security/confusables.txt` (UTS #39) and its Character Database's
+`Scripts.txt`, `ScriptExtensions.txt`, `PropertyValueAliases.txt`, `UnicodeData.txt` and `PropList.txt`
+(https://www.unicode.org/Public/17.0.0/), written by `tools/unicode-identifiers.py`.
+`src/Passenger.Workspace/GDScript/IdentifierSpoofing.cs` is a port to C# of International Components for Unicode (ICU)
+78.3's spoof check, `icu4c/source/i18n/uspoof.cpp` (`checkImpl`) and `uspoof_impl.cpp` (its script sets, restriction
+level, numerics and hidden overlay) of https://github.com/unicode-org/icu at tag release-78.3, under the same licence.
 
 ```
 UNICODE LICENSE V3
@@ -640,7 +738,7 @@ reordering, Remove ending tag of empty element); (c) Xavalon. All rights reserve
 
 `src/Passenger.App/MSBuild/Schemas/` holds `Microsoft.Build.Core.xsd` and `Microsoft.Build.CommonTypes.xsd`, MSBuild's own
 schemas of its elements, properties, items, metadata and tasks (`src/MSBuild/MSBuild/` of https://github.com/dotnet/msbuild
-at commit 7af2a3b, October 14, 2026), unchanged but for `AnalysisLevel` in `Microsoft.Build.CommonTypes.xsd`, which also
+at commit c749ea6, November 3, 2026), unchanged but for `AnalysisLevel` in `Microsoft.Build.CommonTypes.xsd`, which also
 lists the levels of .NET 7 to 11 (`7.0` to `11.0`, each with `-minimum`, `-recommended` and `-all`) that the SDKs take.
 The app embeds them for the code help in project files, which offers and describes what they declare; the .NET SDK does
 not carry them.
@@ -671,46 +769,103 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Godot's shading language
+
+`src/Passenger.Workspace/GodotShaderTypes.json` is a table of Godot's shading language, written by `just godot-shader-types`
+(`tools/godot-shader-types.py`) from two files of the Godot Engine (https://github.com/godotengine/godot) at commit
+cafc17a192acf67903910a68aeb3c076c0907a4b, which Godot 4.8 beta 2 was built from: `servers/rendering/shader_types.cpp`
+(each shader type's processor functions, the built-ins each offers, the stage functions each may call, its render and
+stencil modes) and `servers/rendering/shader_language.cpp` (the uniform hints of its keyword list, its built-in
+functions with their arguments' names, and every entry of its built-in function table in order, constructors too). The
+app embeds it for completion, the hover card and the compiler's port in shaders, each candidate offered only where the
+Godot found takes it.
+
+`src/Passenger.Workspace/GodotDefaultTheme.json` is a table of Godot's default theme, written by `just godot-theme`
+(`tools/godot-theme.py`) from files of the Godot Engine at the same commit: `scene/theme/default_theme.cpp` (each theme
+type's items by their kind, and its type variations), `scene/scene_string_names.h` and `core/core_string_names.h` (the
+names its constants stand for), the headers of `scene/gui` and `scene/main` (each control's and window's base class),
+and `doc/classes` (the class reference's description of each theme item a class documents). The app embeds it to
+complete, check and describe the theme items a Godot game's C# names.
+
+`src/Passenger.Workspace/GodotShader/` is a port to C# of the Godot Engine's shader language front end, by which
+Passenger checks a shader as Godot reads it: `GodotShaderPreprocessor.cs` ports `servers/rendering/shader_preprocessor.cpp`
+and `shader_preprocessor.h` (its directives, macro expansion, includes and error messages, with 4.7.2-stable's reading of
+line continuations, at commit ed1daf0bf001b61586d9930840f2f1394092c079, beside 4.8 beta 2's); `GodotShaderExpression.cs`
+ports the tokenizer of `servers/rendering/shader_expression.cpp` and the parser of `core/math/expression.cpp` it runs
+on; `GodotPathStrings.cs` ports `simplify_path`, `is_absolute_path`, `get_base_dir` and `path_join` of
+`core/string/ustring.cpp`; the `GodotShaderLanguage` files and `GodotShaderNodes.cs` port
+`servers/rendering/shader_language.cpp` and `shader_language.h` (its tokenizer, node tree, parser, checks of types,
+names, calls and assignments, constant folding, built-in function tables and messages); `GodotShaderWarnings.cs`
+ports `servers/rendering/shader_warnings.cpp` and `shader_warnings.h`; `GodotShaderCheck.cs` follows
+`editor/shader/shader_text_editor.cpp`'s validation of a shader and an include; and
+`src/Passenger.App/Godot/GodotShaderChecker.cs` ports `uniform_to_property_info` of `shader_language.cpp` and `rtos`'s
+writing of a number (`String::num` of `core/string/ustring.cpp`); all at commit
+cafc17a192acf67903910a68aeb3c076c0907a4b (4.8 beta 2), their words kept as Godot words them.
+
+```
+Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md).
+Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## TextMate grammars
 
 `src/Passenger.Languages/TextMate/Grammars/` holds the TextMate grammars that colour the files beside the C#, each a
 file of Visual Studio Code's own extensions (https://github.com/microsoft/vscode, MIT, Copyright (c) 2015 - present
 Microsoft Corporation), unchanged, from the project its header names:
 
-- `xml.tmLanguage.json` (VS Code 1.142.0, `extensions/xml`): from atom/language-xml
+- `xml.tmLanguage.json` (VS Code 1.144.0, `extensions/xml`): from atom/language-xml
   (https://github.com/atom/language-xml), MIT, Copyright (c) 2014 GitHub Inc., which was converted from the TextMate
   bundle textmate/xml.tmbundle, under the TextMate bundle licence below.
-- `JSON.tmLanguage.json` (VS Code 1.142.0, `extensions/json`): from microsoft/vscode-JSON.tmLanguage
+- `JSON.tmLanguage.json` (VS Code 1.144.0, `extensions/json`): from microsoft/vscode-JSON.tmLanguage
   (https://github.com/microsoft/vscode-JSON.tmLanguage), MIT, Copyright (c) 2015 simonzack, zertosh, benvie.
-- `yaml.tmLanguage.json` (VS Code 1.85.0, `extensions/yaml`): the YAML syntax of textmate/yaml.tmbundle
-  (https://github.com/textmate/yaml.tmbundle), MIT, Copyright (c) 2015 FichteFoll, as its `Syntaxes/YAML-license.txt`
-  says. It stays at 1.85.0: VS Code's own since is RedCMD/YAML-Syntax-Highlighter's (a grammar per YAML version),
-  which TextMateSharp did not read rightly when these grammars came in; its 2.0.4 is still its newest.
-- `markdown.tmLanguage.json` (VS Code 1.142.0, `extensions/markdown-basics`): from microsoft/vscode-markdown-tm-grammar
+- `yaml.tmLanguage.json`, with `yaml-1.0.tmLanguage.json`, `yaml-1.1.tmLanguage.json`, `yaml-1.2.tmLanguage.json`,
+  `yaml-1.3.tmLanguage.json` and `yaml-embedded.tmLanguage.json`, which it reads by (VS Code 1.144.0,
+  `extensions/yaml`): from RedCMD/YAML-Syntax-Highlighter (https://github.com/RedCMD/YAML-Syntax-Highlighter) at
+  commit 53d38bbc, its 1.3.2, MIT, Copyright 2024 RedCMD: a grammar for each version of YAML, a file read by the one
+  its `%YAML` directive names and by 1.2's where it names none.
+- `markdown.tmLanguage.json` (VS Code 1.144.0, `extensions/markdown-basics`): from microsoft/vscode-markdown-tm-grammar
   (https://github.com/microsoft/vscode-markdown-tm-grammar), MIT, Copyright (c) Microsoft 2018, derived from
   textmate/markdown.tmbundle, under the TextMate bundle licence below.
-- `html.tmLanguage.json` (VS Code 1.142.0, `extensions/html`): converted from textmate/html.tmbundle
+- `html.tmLanguage.json` (VS Code 1.144.0, `extensions/html`): converted from textmate/html.tmbundle
   (https://github.com/textmate/html.tmbundle), under the TextMate bundle licence below.
-- `css.tmLanguage.json` (VS Code 1.142.0, `extensions/css`): from microsoft/vscode-css
+- `css.tmLanguage.json` (VS Code 1.144.0, `extensions/css`): from microsoft/vscode-css
   (https://github.com/microsoft/vscode-css), MIT, Copyright (c) Microsoft Corporation, derived from atom/language-css
   and the TextMate bundle textmate/css.tmbundle, under the TextMate bundle licence below.
-- `scss.tmLanguage.json` (VS Code 1.142.0, `extensions/scss`): from atom/language-sass
+- `scss.tmLanguage.json` (VS Code 1.144.0, `extensions/scss`): from atom/language-sass
   (https://github.com/atom/language-sass), MIT, Copyright (c) 2014 GitHub Inc., derived from the TextMate bundle
   alexsancho/Sass.tmbundle (https://github.com/alexsancho/Sass.tmbundle), MIT, Copyright (c) 2012 Alex Sancho, as
   atom/language-sass's `LICENSE.md` says.
-- `less.tmLanguage.json` (VS Code 1.142.0, `extensions/less`): from radium-v/Better-Less
+- `less.tmLanguage.json` (VS Code 1.144.0, `extensions/less`): from radium-v/Better-Less
   (https://github.com/radium-v/Better-Less), MIT, Copyright (c) 2017 John Kreitlow.
-- `JavaScript.tmLanguage.json` (VS Code 1.142.0, `extensions/javascript`), and `TypeScript.tmLanguage.json` and
-  `TypeScriptReact.tmLanguage.json` (VS Code 1.142.0, `extensions/typescript-basics`): from
+- `JavaScript.tmLanguage.json` (VS Code 1.144.0, `extensions/javascript`), and `TypeScript.tmLanguage.json` and
+  `TypeScriptReact.tmLanguage.json` (VS Code 1.144.0, `extensions/typescript-basics`): from
   microsoft/TypeScript-TmLanguage (https://github.com/microsoft/TypeScript-TmLanguage), MIT, Copyright (c) Microsoft
   Corporation; VS Code names textmate/javascript.tmbundle, under the TextMate bundle licence below, among the JavaScript
   grammar's sources too.
-- `shell-unix-bash.tmLanguage.json` (VS Code 1.142.0, `extensions/shellscript`): from jeff-hykin/better-shell-syntax
+- `shell-unix-bash.tmLanguage.json` (VS Code 1.144.0, `extensions/shellscript`): from jeff-hykin/better-shell-syntax
   (https://github.com/jeff-hykin/better-shell-syntax), MIT, Copyright (c) 2019 Jeff Hykin.
-- `docker.tmLanguage.json` (VS Code 1.142.0, `extensions/docker`): from moby/moby's
+- `docker.tmLanguage.json` (VS Code 1.144.0, `extensions/docker`): from moby/moby's
   `contrib/syntax/textmate/Docker.tmbundle` (https://github.com/moby/moby), under the Apache License 2.0 below, with
   Docker's NOTICE.
-- `ini.tmLanguage.json` (VS Code 1.142.0, `extensions/ini`): converted from textmate/ini.tmbundle
+- `ini.tmLanguage.json` (VS Code 1.144.0, `extensions/ini`): converted from textmate/ini.tmbundle
   (https://github.com/textmate/ini.tmbundle), under the TextMate bundle licence below; it colours .editorconfig files.
 
 And two that colour Razor's .razor and .cshtml files before the language server answers, files of Razor's tooling in
@@ -726,6 +881,12 @@ And one that colours .http and .rest files: `http.tmLanguage.json`, REST Client'
 `syntaxes/http.tmLanguage.json` of Huachao/vscode-restclient (https://github.com/Huachao/vscode-restclient, MIT,
 Copyright (c) 2016 - present Huachao Mao) at commit 0773d56b, unchanged.
 
+And three that colour Godot's files, from the Godot Engine's own VS Code extension, godotengine/godot-vscode-plugin
+(https://github.com/godotengine/godot-vscode-plugin, MIT, Copyright (c) 2016-2022 The Godot Engine community) at its
+tag 2.7.1 (commit 7317ea20), its `syntaxes/` folder, unchanged: `GDScript.tmLanguage.json` (GDScript's .gd files),
+`GDResource.tmLanguage.json` (scenes, resources and project.godot, which embeds the other two) and
+`GDShader.tmLanguage.json` (Godot's shaders).
+
 Reading them, Passenger leaves out what VS Code's reader passes over (a capture that is not a rule) and lets a rule
 that begins with no end never end, as VS Code does, takes YAML's typed scalars (booleans, numbers, null) out of a block
 or flow mapping's keys, so a key such as a workflow's `on` is read as a key, ends a shell heredoc only at a line that is
@@ -739,7 +900,7 @@ MIT License
 Copyright (c) 2015 - present Microsoft Corporation
 Copyright (c) 2014 GitHub Inc.
 Copyright (c) 2015 simonzack, zertosh, benvie
-Copyright (c) 2015 FichteFoll <fichtefoll2@googlemail.com>
+Copyright 2024 RedCMD
 Copyright (c) Microsoft 2018
 Copyright (c) Microsoft Corporation
 Copyright (c) 2012 Alex Sancho, http://alexsancho.name/
@@ -748,6 +909,7 @@ Copyright (c) 2019 Jeff Hykin
 Copyright (c) .NET Foundation and Contributors
 Copyright (c) 2016 .NET Foundation
 Copyright (c) 2016 - present Huachao Mao
+Copyright (c) 2016-2022 The Godot Engine community
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -874,7 +1036,7 @@ limitations under the License.
 ## SchemaStore's JSON schemas
 
 `src/Passenger.Lsp/WebServers/schemas/` holds JSON schemas of the JSON Schema Store
-(https://github.com/SchemaStore/schemastore, `src/schemas/json/` at commit 5661ee1b), modified as listed below (each
+(https://github.com/SchemaStore/schemastore, `src/schemas/json/` at commit 5decc3eb), modified as listed below (each
 changed file saying so in its top-level `$comment`), carried
 under `web/schemas/`: those the JSON language server checks and completes package.json, tsconfig.json, jsconfig.json,
 appsettings.json, launchSettings.json and global.json by (`package.json`, `tsconfig.json`, `jsconfig.json`,
@@ -915,7 +1077,7 @@ Passenger's changes, each where a schema refused what the tool it describes take
 ## The Compose specification's schema
 
 `src/Passenger.Lsp/WebServers/schemas/compose-spec.json` is the Compose specification's JSON schema
-(https://github.com/compose-spec/compose-spec, `schema/compose-spec.json` at commit 914ec15d), modified as below (the
+(https://github.com/compose-spec/compose-spec, `schema/compose-spec.json` at commit 3a4a6995), modified as below (the
 file saying so in its top-level `$comment`),
 carried under `web/schemas/`: the YAML language server checks and completes compose files (`compose.yaml`,
 `docker-compose.yml` and their variants) by it, under the Apache License 2.0 given under TextMate grammars above, with
@@ -930,3 +1092,11 @@ Passenger's change: a field that takes only certain words (`pull_policy`'s patte
 volume's `type`, a bind's `recursive` and `selinux`, a schedule's `concurrency` and `missed_fires`, a watch's `action`,
 an update's and a rollback's `order`, `gpus`' `all` and a dependency's `condition`) also takes a value holding a
 variable, which Compose replaces before it reads it (`$defs/interpolated`, added).
+
+## Squash the Creeps (3D) with C#
+
+`site/images/godot-game-dark.webp` and `godot-game-light.webp` picture Squash the Creeps (3D) with C#, from the Godot demo
+projects (https://github.com/godotengine/godot-demo-projects, `mono/squash_the_creeps` at commit
+b761b4cd5718a7118f2c95eb55f181d0a5f004f1), running in the Game window: © Godot Engine contributors, MIT licence, its
+score and words in its Montserrat, under the SIL Open Font License 1.1. `tools/site-shots/shots.sh` fetches the game to
+take them; Passenger carries none of it.

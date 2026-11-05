@@ -60,6 +60,28 @@ public static class PassengerApp
     /// system's shutdown), so each keeps its solution to reopen, rather than one window closing alone.</summary>
     public static bool Quitting { get; private set; }
 
+    /// <summary>Whether nobody sees this Passenger's windows: an agent's own (<c>--mcp</c>), a test run's (<c>--headless</c>,
+    /// <see cref="Mcp.McpProxy.StartsHeadless"/>) or a screenshot's, all on the headless platform. What it starts that would
+    /// show a window or make a sound of its own (a Godot game, its editor and its tests, a browser) runs headless or not at all.</summary>
+    public static bool ShowsNoWindow => headless || Mcp.McpProxy.StartsHeadless;
+
+    private static bool headless;
+
+    /// <summary>Whether this Passenger is an agent's own (<c>--mcp</c>), whose Godot games draw where the system can draw them
+    /// with no window (<see cref="GodotExecutables.DrawsWithoutWindow"/>), so the agent sees their frames.</summary>
+    public static bool ForAgent { get; private set; }
+
+    /// <summary>The process serves an agent alone (<c>--mcp</c>), as it starts.</summary>
+    internal static void RunsForAgent() => ForAgent = true;
+
+    /// <summary>The process runs on the headless platform, as <c>--mcp</c>, <c>--headless</c> and a screenshot choose it
+    /// before their window is made, and nothing it starts has a display to reach (<see cref="NoDisplay"/>).</summary>
+    internal static void RunsHeadless()
+    {
+        headless = true;
+        NoDisplay.Take();
+    }
+
     /// <summary>A window came in front, or one closed: Discord follows the front one.</summary>
     public static event EventHandler? FrontChanged;
 
@@ -107,7 +129,8 @@ public static class PassengerApp
     }
 
     /// <summary>A window made as another is: its state folder, its layout and settings kept or not, its agents, its
-    /// Discord, its updates' feed and release notes and whether it starts the language server, beside it at its size;
+    /// Discord, its updates' feed and release notes, whether it starts the language server and whether anyone sees it,
+    /// beside it at its size;
     /// shown with nothing open.</summary>
     public static MainWindow NewWindow(MainWindow like)
     {
@@ -116,9 +139,11 @@ public static class PassengerApp
         {
             StateFolder = like.StateFolder,
             AgentsAllowed = like.AgentsAllowed,
+            TakesLaunches = like.TakesLaunches,
             AgentAnswerLimit = like.AgentAnswerLimit,
             Autosaves = like.Autosaves,
             StartsLanguageServer = like.StartsLanguageServer,
+            Unseen = like.Unseen,
             Releases = like.Releases,
             Notes = like.Notes,
             DiscordIpc = like.DiscordIpc,
@@ -240,6 +265,52 @@ public static class PassengerApp
         {
             from.Open(path);
         }
+    }
+
+    /// <summary>A person's launch another Passenger process handed over (<see cref="LaunchHandOff"/>): its files and caret
+    /// go, once its folder is open, to the innermost window whose folder holds what it names, else its folder or workspace
+    /// opens as File, Open opens one in a window of its own (the one in front when that has nothing open), a launch naming
+    /// nothing going to the window in front; that window comes forward, the person's own act. The answer the launch is told.</summary>
+    internal static string TakeLaunch(HandedLaunch launch)
+    {
+        UiThread.Check();
+        if (Fronts.LastOrDefault(w => w is { IsStarted: true, TakesLaunches: true }) is not { } from)
+        {
+            return HandedLaunch.Answer(null, "Passenger has no window ready to take it");
+        }
+        string? place = launch.Folder ?? (launch.Files.Count > 0 ? Path.GetDirectoryName(launch.Files[0]) : null);
+        MainWindow? holding = place is null ? from : Open
+            .Where(w => w.TakesLaunches && w.FolderHeld is { } held && PathNames.Within(place, held))
+            .MaxBy(w => w.FolderHeld!.Length);
+        MainWindow into;
+        if (holding is not null && (launch.Workspace is null || holding.WorkspaceModel?.OpenedAs is { } opened && PathNames.Same(opened, launch.Workspace)))
+        {
+            into = holding;
+        }
+        else if ((launch.Workspace ?? launch.Folder) is { } project)
+        {
+            into = OpenProject(project, OpenTarget.NewWindow, from);
+        }
+        else
+        {
+            into = from;
+        }
+        IdeErrors.Write($"Launch: handed over for {launch.Workspace ?? launch.Folder ?? "no folder"}"
+            + $"{(launch.Files.Count > 0 ? $", {Plural.Listed(launch.Files)}" : string.Empty)}, taken by the window on {into.FolderHeld ?? "no folder"}");
+        into.OnceOpen(() => into.TakeLaunch(launch.Files, launch.Caret));
+        BringForward(into);
+        if (!into.IsActive)
+        {
+            // Where the system keeps the program in front there (macOS's cooperative activation), the window asks for the person.
+            IDisposable asked = Attention.Ask(into);
+            void Came(object? sender, EventArgs e)
+            {
+                into.Activated -= Came;
+                asked.Dispose();
+            }
+            into.Activated += Came;
+        }
+        return HandedLaunch.Answer(into.FolderHeld, null);
     }
 
     /// <summary>What the system asked to open before the first window started, taken once.</summary>

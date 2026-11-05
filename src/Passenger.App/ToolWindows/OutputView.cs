@@ -1,6 +1,7 @@
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -15,7 +16,8 @@ namespace Passenger.App.ToolWindows;
 /// the run toolbar down its left side (rerun, stop, clear) and Find over its text. Output comes through its <see cref="Sink"/> from any thread;
 /// standard error is drawn in the error colour, a build's error and warning lines in their severities' colours, and what a
 /// person types goes to the program's <see cref="Input"/> a line at a time, in the input colour. It keeps a cycle buffer of
-/// text, the oldest lines dropped past it. Its file locations and web addresses are links (<see cref="Links"/>).</summary>
+/// text, the oldest lines dropped past it. Its file locations, web addresses and the folder a publish landed in are links
+/// (<see cref="Links"/>).</summary>
 public sealed class OutputView : DockPanel
 {
     /// <summary>The cycle buffer a console keeps by default: 1024 KB of text.</summary>
@@ -59,12 +61,15 @@ public sealed class OutputView : DockPanel
         ((PathIcon)hotReload.Content!).Bind(PathIcon.ForegroundProperty, hotReload.GetResourceObservable(TokenKeys.HotReload));
         hotReload.IsVisible = false;
         Button clear = ToolButtons.Of(IconKeys.Clear, "Clear");
+        foldFilter = ToolButtons.Toggle(IconKeys.Problems, "Show only Godot's errors and warnings, each once with how many times it came");
+        foldFilter.IsVisible = false;
+        foldFilter.Click += (_, _) => ShowFiltered(foldFilter.IsChecked == true);
         stop.IsEnabled = false;
         rerun.Click += (_, _) => RerunClicked?.Invoke(this, EventArgs.Empty);
         stop.Click += (_, _) => StopClicked?.Invoke(this, EventArgs.Empty);
         hotReload.Click += (_, _) => HotReloadClicked?.Invoke(this, EventArgs.Empty);
         clear.Click += (_, _) => Clear();
-        Border tools = ToolBars.Side(rerun, stop, hotReload, clear, ToolBars.Gap(), Overlays);
+        Border tools = ToolBars.Side(rerun, stop, hotReload, clear, foldFilter, ToolBars.Gap(), Overlays);
         if (toolbar)
         {
             Children.Add(tools);
@@ -110,6 +115,7 @@ public sealed class OutputView : DockPanel
             Highlighter = colours,
         };
         editor = made;
+        made.Decorations.SetLineAnnotations(foldNotes);
         made.Links = Links.On;
         made.LinkClicked += (_, link) => LinkClicked?.Invoke(this, (LinkTarget)link.Target);
         made.ContextMenuRequested += (_, at) => ShowMenu(at);
@@ -122,11 +128,11 @@ public sealed class OutputView : DockPanel
         return made;
     }
 
-    /// <summary>A link in the output was clicked: a file's place to open, or an address for the browser.</summary>
+    /// <summary>A link in the output was clicked: a file's place or a folder to open, or an address for the browser.</summary>
     public event EventHandler<LinkTarget>? LinkClicked;
 
-    /// <summary>The output's file locations and web addresses, found as it is drawn; its folders are where a relative path
-    /// is looked for.</summary>
+    /// <summary>The output's file locations, web addresses and the folder a publish landed in, found as it is drawn; its
+    /// folders are where a relative path is looked for.</summary>
     public ConsoleLinks Links { get; } = new();
 
     public event EventHandler? RerunClicked;
@@ -289,6 +295,10 @@ public sealed class OutputView : DockPanel
     {
         UiThread.Check();
         Flush();
+        if (fold?.LetGo() is { } unfinished)
+        {
+            Insert(unfinished, [new ConsoleRun(0, unfinished.Length, ConsoleStream.Error)]);
+        }
         Insert(text, [new ConsoleRun(0, text.Length, error ? ConsoleStream.Error : ConsoleStream.System)]);
     }
 
@@ -299,6 +309,7 @@ public sealed class OutputView : DockPanel
         Sink.Drop();
         Document.Clear();
         Links.Forget();
+        ForgetFolds();
     }
 
     /// <summary>Takes in what waits in the sink now, rather than at the next frame: before the IDE says a program
@@ -310,7 +321,14 @@ public sealed class OutputView : DockPanel
         {
             return;
         }
-        Insert(batch.Text, batch.Runs);
+        if (fold is null)
+        {
+            Insert(batch.Text, batch.Runs);
+        }
+        else
+        {
+            InsertFolded(batch.Text, batch.Runs);
+        }
         if (Written is not { } written)
         {
             return;
@@ -328,6 +346,238 @@ public sealed class OutputView : DockPanel
             text.Append(batch.Text, run.Start, run.Length);
         }
         written(this, new ConsoleWritten(text.ToString(), runs));
+    }
+
+    private readonly ToggleButton foldFilter;
+    private Godot.GodotConsoleFold? fold;
+
+    /// <summary>The entries folded, each with the stretch of the console's text it was first shown in, in the order shown.</summary>
+    private readonly List<(Godot.GodotFoldEntry Entry, AnchoredRange At)> folds = [];
+
+    /// <summary>The stretch each folded entry was first shown in, and those of them that came again, whose counts are said.</summary>
+    private readonly Dictionary<Godot.GodotFoldEntry, AnchoredRange> foldAt = [];
+    private readonly HashSet<Godot.GodotFoldEntry> counted = [];
+
+    private IReadOnlyList<LineAnnotation> foldNotes = [];
+
+    /// <summary>The console with only the entries folded, shown while the filter is on.</summary>
+    private CodeEditor? filtered;
+
+    /// <summary>The fold of a Godot game's errors and warnings the console's program writes (<see cref="Godot.GodotConsoleFold"/>):
+    /// each shown once where first seen, its count and the time of its last after its first line, the other lines as
+    /// written, and the filter beside the toolbar's buttons; null for a program whose output is shown as it is.</summary>
+    public Godot.GodotConsoleFold? Fold
+    {
+        get => fold;
+        set
+        {
+            UiThread.Check();
+            fold = value;
+            ForgetFolds();
+            foldFilter.IsVisible = value is not null;
+            if (value is null && foldFilter.IsChecked == true)
+            {
+                foldFilter.IsChecked = false;
+                ShowFiltered(false);
+            }
+        }
+    }
+
+    /// <summary>The filter that shows only the entries folded.</summary>
+    public ToggleButton FoldFilter => foldFilter;
+
+    /// <summary>What the console shows while the filter is on, or null.</summary>
+    public TextDocument? Filtered => filtered?.Document;
+
+    /// <summary>The words after each folded entry's first line that came again: its line and words.</summary>
+    public IReadOnlyList<LineAnnotation> FoldNotes => foldNotes;
+
+    /// <summary>A batch folded: the stretches the fold keeps put in after the start of an entry it held from the last batch,
+    /// each stream's colour carried, the entries it saw first anchored where they were put, and the counts written again.</summary>
+    private void InsertFolded(string text, IReadOnlyList<ConsoleRun> runs)
+    {
+        // The game's own prints come on standard output, which may be read between the lines of an error's entry.
+        Godot.GodotFolded taken = fold!.Take(text, DateTime.Now, at => !runs.Any(r => r.Stream != ConsoleStream.Error && at >= r.Start && at < r.Start + r.Length));
+        StringBuilder kept = new(taken.Held);
+        List<ConsoleRun> keptRuns = taken.Held.Length > 0 ? [new ConsoleRun(0, taken.Held.Length, ConsoleStream.Error)] : [];
+        foreach ((int start, int length) in taken.Kept)
+        {
+            foreach (ConsoleRun run in runs)
+            {
+                int from = Math.Max(run.Start, start);
+                int to = Math.Min(run.Start + run.Length, start + length);
+                if (to > from)
+                {
+                    keptRuns.Add(run with { Start = kept.Length + (from - start), Length = to - from });
+                }
+            }
+            kept.Append(text, start, length);
+        }
+        Insert(kept.ToString(), keptRuns);
+        int began = typedFrom - kept.Length;
+        foreach ((Godot.GodotFoldEntry entry, int at) in taken.Made)
+        {
+            AnchoredRange shown = Document.MarkAt(new TextRange(Math.Max(0, began + at), Math.Min(entry.Text.Length, kept.Length - at)));
+            folds.Add((entry, shown));
+            foldAt[entry] = shown;
+            if (entry.Count > 1)
+            {
+                counted.Add(entry);
+            }
+        }
+        foreach (Godot.GodotFoldEntry entry in taken.Again)
+        {
+            if (foldAt.ContainsKey(entry))
+            {
+                counted.Add(entry);
+            }
+        }
+        if (taken.Made.Count > 0 || taken.Again.Count > 0 || folds.Count > 0)
+        {
+            ShowFolds(rebuild: taken.Made.Count > 0);
+        }
+    }
+
+    /// <summary>The counts after the entries that came again, an entry trimmed away from the console let go (it shows anew
+    /// when it next comes); and the filtered console's text again where an entry came. What it walks is what was trimmed
+    /// and what came again, never every entry shown, which a game that errs anew every frame makes thousands of.</summary>
+    private void ShowFolds(bool rebuild)
+    {
+        // The console drops its oldest text first, so the entries trimmed away lead the list.
+        int gone = 0;
+        while (gone < folds.Count && folds[gone].At.Range.Length == 0)
+        {
+            (Godot.GodotFoldEntry entry, AnchoredRange at) = folds[gone++];
+            at.Remove();
+            foldAt.Remove(entry);
+            counted.Remove(entry);
+            fold?.Forget(entry);
+        }
+        folds.RemoveRange(0, gone);
+        List<LineAnnotation> notes = [];
+        TextSnapshot text = Document.Snapshot;
+        foreach (Godot.GodotFoldEntry entry in counted.Where(e => e.Count > 1))
+        {
+            notes.Add(new LineAnnotation(text.GetLineFromOffset(foldAt[entry].Range.Start), Counted(entry), entry.Warning ? LineAnnotationLook.Muted : LineAnnotationLook.Error));
+        }
+        notes.Sort((a, b) => a.Line.CompareTo(b.Line));
+        foldNotes = notes;
+        editor?.Decorations.SetLineAnnotations(notes);
+        if (filtered is not null)
+        {
+            ShowFiltered(true, rebuild);
+        }
+    }
+
+    /// <summary>What an entry that came again says after its first line: how many times, and when it last came.</summary>
+    public static string Counted(Godot.GodotFoldEntry entry) =>
+        string.Create(System.Globalization.CultureInfo.InvariantCulture, $"×{entry.Count:N0} · last at {entry.Last:HH:mm:ss}");
+
+    private void ForgetFolds()
+    {
+        foreach ((_, AnchoredRange at) in folds)
+        {
+            at.Remove();
+        }
+        folds.Clear();
+        foldAt.Clear();
+        counted.Clear();
+        fold?.Clear();
+        foldNotes = [];
+        editor?.Decorations.SetLineAnnotations([]);
+        if (filtered is not null)
+        {
+            ShowFiltered(true, rebuild: true);
+        }
+    }
+
+    /// <summary>The filter on: the entries alone, in the order first seen, each with its count; off, the whole console.</summary>
+    private void ShowFiltered(bool on, bool rebuild = true)
+    {
+        if (!on)
+        {
+            if (filtered is not null)
+            {
+                body.Children.Remove(filtered);
+                filtered = null;
+            }
+            Editor.IsVisible = true;
+            return;
+        }
+        if (filtered is null)
+        {
+            filtered = new CodeEditor
+            {
+                Document = new TextDocument(),
+                IsReadOnly = true,
+                LineCommentPrefix = null,
+                ShowLineNumbers = false,
+                ShowErrorStripe = false,
+                FontSize = 12.5,
+                Highlighter = new FoldColours(this),
+            };
+            filtered.Links = Links.On;
+            filtered.LinkClicked += (_, link) => LinkClicked?.Invoke(this, (LinkTarget)link.Target);
+            body.Children.Insert(0, filtered);
+            rebuild = true;
+        }
+        Editor.IsVisible = false;
+        IReadOnlyList<Godot.GodotFoldEntry> entries = fold?.Entries ?? [];
+        if (rebuild)
+        {
+            StringBuilder text = new();
+            foreach (Godot.GodotFoldEntry entry in entries)
+            {
+                text.Append(entry.Text);
+                if (!entry.Text.EndsWith('\n'))
+                {
+                    text.Append('\n');
+                }
+            }
+            filtered.Document.IsReadOnly = false;
+            filtered.Document.Rewrite(0, filtered.Document.Snapshot.Length, text.ToString());
+            filtered.Document.IsReadOnly = true;
+        }
+        List<LineAnnotation> notes = [];
+        int line = 0;
+        foreach (Godot.GodotFoldEntry entry in entries)
+        {
+            notes.Add(new LineAnnotation(line, Counted(entry), entry.Warning ? LineAnnotationLook.Muted : LineAnnotationLook.Error));
+            line += entry.Text.TrimEnd('\n').Split('\n').Length;
+        }
+        filtered.Decorations.SetLineAnnotations(notes);
+    }
+
+    /// <summary>The filtered console's colours: each entry in its severity's, its links over them.</summary>
+    private sealed class FoldColours(OutputView view) : IHighlighter
+    {
+        public event EventHandler? Changed
+        {
+            add { }
+            remove { }
+        }
+
+        public IReadOnlyList<SyntaxSpan> GetSpans(TextSnapshot text, int start, int length)
+        {
+            List<SyntaxSpan> found = [];
+            int end = start + length;
+            bool warning = false;
+            for (int line = 0; line < text.LineCount && text.GetLineStart(line) < end; line++)
+            {
+                LineSpan span = text.GetLine(line);
+                string written = text.GetText(span.Start, span.Length);
+                if (Godot.GodotConsoleFold.IsHeader(written))
+                {
+                    warning = written.AsSpan(0, written.IndexOf(": ", StringComparison.Ordinal)).EndsWith("WARNING", StringComparison.Ordinal);
+                }
+                if (span.Start + span.Length >= start && span.Length > 0)
+                {
+                    found.Add(new SyntaxSpan(span.Start, span.Length, warning ? TokenKind.BuildWarning : TokenKind.BuildError));
+                }
+            }
+            IReadOnlyList<SyntaxSpan> linked = view.Links.GetSpans(text, start, length);
+            return linked.Count == 0 ? found : ConsoleColours.Under(found, linked);
+        }
     }
 
     /// <summary>Whether Rerun stays there while what it reruns runs (the Run window's stops the program and runs it again);
@@ -625,7 +875,7 @@ public sealed class OutputView : DockPanel
                 found = Under(found, problems);
             }
             IReadOnlyList<SyntaxSpan> linked = links?.GetSpans(text, start, length) ?? [];
-            return linked.Count == 0 ? found : Under(found, linked);
+            return linked.Count == 0 ? found : ConsoleColours.Under(found, linked);
         }
 
         /// <summary>The lines over a stretch that name a problem, each whole in its severity's colour; null for none.</summary>
@@ -652,7 +902,7 @@ public sealed class OutputView : DockPanel
 
         /// <summary>Colours with others laid over them (a problem's line over a stream's, a link over both): a stretch one
         /// above covers is that one's alone.</summary>
-        private static List<SyntaxSpan> Under(List<SyntaxSpan> below, IReadOnlyList<SyntaxSpan> above)
+        public static List<SyntaxSpan> Under(List<SyntaxSpan> below, IReadOnlyList<SyntaxSpan> above)
         {
             List<SyntaxSpan> merged = [.. above];
             foreach (SyntaxSpan span in below)

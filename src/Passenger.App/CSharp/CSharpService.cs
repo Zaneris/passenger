@@ -119,6 +119,69 @@ public sealed partial class CSharpService : IAsyncDisposable
         session?.Reload(projects);
     }
 
+    /// <summary>Has the server let go of projects the window no longer loads, so nothing it says comes from the text it read
+    /// of them: what references one goes on from its assembly. Done once it has; a server started again loads only what
+    /// the window does.</summary>
+    public async Task UnloadAsync(IReadOnlyList<string> projects)
+    {
+        UiThread.Check();
+        if (session is not { } running)
+        {
+            return;
+        }
+        bool held;
+        try
+        {
+            held = await running.UnloadAsync(projects);
+        }
+        catch (LanguageServerFailed)
+        {
+            return;
+        }
+        if (held && session == running)
+        {
+            ProjectsChanged();
+        }
+    }
+
+    /// <summary>Has the server let go of what the window does not load: a project it took up with a server started ahead of
+    /// what the folder keeps, or one that was loading as it was unloaded, whose load unloading alone would not stop.</summary>
+    private void LetGoOfUnloaded() => IdeErrors.Observe(UnloadAsync([.. UnloadedNow?.Invoke().Select(p => p.Path) ?? []]));
+
+    /// <summary>The projects the server holds changed: the files' projects may be others.</summary>
+    private void ProjectsChanged()
+    {
+        Each(document => document.FindContexts());
+        Generated.Changed();
+        ProjectsLoaded?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Done once the server holds what the last build wrote of the assemblies its projects reference: one a
+    /// project it does not load makes, say, which what it answers from then on knows.</summary>
+    public Task ReferencesHeld { get; private set; } = Task.CompletedTask;
+
+    /// <summary>A build ended, its assemblies on disk: the server reads now those of them its projects reference.</summary>
+    public void Built()
+    {
+        UiThread.Check();
+        if (session is { } running)
+        {
+            IdeErrors.Observe(ReferencesHeld = ReadReferencesAsync(running));
+        }
+    }
+
+    private static async Task ReadReferencesAsync(RoslynSession running)
+    {
+        try
+        {
+            await running.ReadReferencesAsync();
+        }
+        catch (LanguageServerFailed)
+        {
+            // Gone, or without Passenger's extension: it reads them when it hears of them, if it can.
+        }
+    }
+
     /// <summary>What the folder's watcher saw change on disk, which the server hears of as it registered to: the files not
     /// open are read again from it, never an open one, whose text is the editor's.</summary>
     public void FilesChanged(FolderChanges changes)
@@ -177,6 +240,10 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <summary>A server started ahead took longer than <see cref="SlowLoad"/> to start, or the projects to load, C# going on
     /// with it (a warning), or C# was ready after it: what the status bar says of it; raised on the UI thread.</summary>
     public event EventHandler<ServerSaid>? LoadRanLong;
+
+    /// <summary>A request waited past its patience (<see cref="LanguageServer.Patience"/>), the server alive or not: what the
+    /// status bar says of it, a warning with the log, which says where the conversation stood; raised on the UI thread.</summary>
+    public event EventHandler<ServerSaid>? WaitedLong;
 
     /// <summary>The problems the server met loading the projects changed; raised on the UI thread.</summary>
     public event EventHandler? ProjectProblemsChanged;
@@ -401,7 +468,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         ["tab_width"] = indent.TabWidth.ToString(System.Globalization.CultureInfo.InvariantCulture),
     };
 
-    /// <summary>Every error and warning the solution-wide analysis has found, by file, each where it starts as the editor
+    /// <summary>Every error, warning and message the solution-wide analysis has found, by file, each where it starts as the editor
     /// counts the file's lines; null with it off. An open file's are its own pull's, as they stand.</summary>
     public IReadOnlyList<SolutionProblem>? SolutionProblems
     {
@@ -427,7 +494,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         }
     }
 
-    /// <summary>One file's errors and warnings as <see cref="SolutionProblems"/> has them, for a file it said changed.</summary>
+    /// <summary>One file's problems as <see cref="SolutionProblems"/> has them, for a file it said changed.</summary>
     public IReadOnlyList<SolutionProblem> SolutionProblemsOf(string path) =>
         !solutionWide ? [] : OpenAt(path) is { } open ? OpenProblems(open.Key, open.Value) : analysed.GetValueOrDefault(path) ?? [];
 
@@ -444,7 +511,8 @@ public sealed partial class CSharpService : IAsyncDisposable
         return null;
     }
 
-    /// <summary>An open file's errors and warnings: its own pull's, which the workspace's leave out and which follow typing.</summary>
+    /// <summary>An open file's errors, warnings and messages: its own pull's, which the workspace's leave out and which follow
+    /// typing.</summary>
     private static List<SolutionProblem> OpenProblems(OpenDocument open, CSharpDocument features)
     {
         List<SolutionProblem> problems = [];
@@ -452,7 +520,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         ServerLines? lines = null;
         foreach (Diagnostic diagnostic in features.Diagnostics)
         {
-            if (diagnostic.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning && (seen ??= []).Add((diagnostic.Range, diagnostic.Message)))
+            if (Listed(diagnostic) && (seen ??= []).Add((diagnostic.Range, diagnostic.Message)))
             {
                 lines ??= ServerLines.Of(open.Text.Snapshot);
                 problems.Add(new SolutionProblem(open.Path, diagnostic, ServerPlaces.PositionOf(lines, diagnostic.Range.Start)));
@@ -460,6 +528,10 @@ public sealed partial class CSharpService : IAsyncDisposable
         }
         return problems;
     }
+
+    /// <summary>Whether Problems lists a diagnostic: an error, a warning or a message, never a hint the editor alone shows.</summary>
+    private static bool Listed(Diagnostic diagnostic) =>
+        diagnostic.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning or DiagnosticSeverity.Information;
 
     /// <summary>An open file's own diagnostics arrived: the solution's problems include them.</summary>
     internal void FileProblemsChanged(OpenDocument document)
@@ -492,7 +564,7 @@ public sealed partial class CSharpService : IAsyncDisposable
             List<SolutionProblem> problems = [];
             foreach (Diagnostic diagnostic in report.Items ?? [])
             {
-                if (diagnostic.Severity is not (DiagnosticSeverity.Error or DiagnosticSeverity.Warning))
+                if (!Listed(diagnostic))
                 {
                     continue;
                 }
@@ -792,8 +864,9 @@ public sealed partial class CSharpService : IAsyncDisposable
         {
             return null;
         }
-        return ProjectModel.Owning(opened.Projects, path)?.Path
-            ?? opened.Projects.FirstOrDefault(p => p.IsProgram && !p.IsEvaluated && PathNames.Same(p.Folder, Path.GetDirectoryName(path)!))?.Path;
+        IReadOnlyList<ProjectModel> projects = ProjectsNow?.Invoke() ?? opened.Projects;
+        return ProjectModel.Owning(projects, path)?.Path
+            ?? projects.FirstOrDefault(p => p.IsProgram && !p.IsEvaluated && PathNames.Same(p.Folder, Path.GetDirectoryName(path)!))?.Path;
     }
 
     /// <summary>A server has said a project loaded, with problems or none: its files open are opened in it.</summary>
@@ -983,15 +1056,25 @@ public sealed partial class CSharpService : IAsyncDisposable
             });
             EventHandler onDiagnostics = (_, _) => UiThread.Post(() =>
             {
-                Each(document => document.RefreshDiagnostics());
+                foreach ((OpenDocument open, CSharpDocument features) in documents)
+                {
+                    // A file no tab shows (one an agent's calls keep open) is pulled once shown or asked, not at each refresh.
+                    if (Unseen(open))
+                    {
+                        features.Stale = true;
+                    }
+                    else
+                    {
+                        features.RefreshDiagnostics();
+                    }
+                }
                 Generated.Changed();
             });
-            // Projects loaded (the file shown's first, then the rest, or one loaded again): the files' projects may be others.
+            // Projects loaded: the file shown's first, then the rest, or one loaded again.
             EventHandler onProjects = (_, _) => UiThread.Post(() =>
             {
-                Each(document => document.FindContexts());
-                Generated.Changed();
-                ProjectsLoaded?.Invoke(this, EventArgs.Empty);
+                ProjectsChanged();
+                LetGoOfUnloaded();
             });
             EventHandler<ProjectGiven> onGiven = (_, built) => OnProjectGiven(started.Server, built);
             EventHandler<string> onExited = (_, _) =>
@@ -1000,6 +1083,11 @@ public sealed partial class CSharpService : IAsyncDisposable
                 UiThread.Post(() => OnExited(started));
             };
             EventHandler<string> onHung = (_, why) => UiThread.Post(() => OnNotResponding(started, why));
+            EventHandler<LongWait> onWaited = (_, wait) =>
+            {
+                IdeErrors.Write($"C# language server (process {started.Server.ProcessId}): {wait.Asked}: {wait.Conversation}");
+                UiThread.Post(() => OnWaitedLong(started, wait));
+            };
             started.Loaded += onLoaded;
             started.Server.ColoursRefreshRequested += onColours;
             started.Server.DiagnosticsRefreshRequested += onDiagnostics;
@@ -1007,6 +1095,7 @@ public sealed partial class CSharpService : IAsyncDisposable
             started.Server.ProjectGiven += onGiven;
             started.Server.Exited += onExited;
             started.Server.NotResponding += onHung;
+            started.Server.Waited += onWaited;
             started.Server.HtmlServer = HtmlServer;
             Hook(() =>
             {
@@ -1019,8 +1108,11 @@ public sealed partial class CSharpService : IAsyncDisposable
                 started.Server.ProjectGiven -= onGiven;
                 started.Server.Exited -= onExited;
                 started.Server.NotResponding -= onHung;
+                started.Server.Waited -= onWaited;
             });
             session = started;
+            // Next turn, by when the window has what it keeps; one still loading goes as its load ends.
+            UiThread.Post(LetGoOfUnloaded);
             ForgetArrivals();
             watching?.Dispose();
             if (handed is not null)
@@ -1469,6 +1561,16 @@ public sealed partial class CSharpService : IAsyncDisposable
         Replace(lost, workspace, "The C# language server ended");
     }
 
+    /// <summary>A request of the session's server waited past its patience: said in the status bar, its words in the log.</summary>
+    private void OnWaitedLong(RoslynSession slow, LongWait wait)
+    {
+        if (disposed || session != slow)
+        {
+            return;
+        }
+        WaitedLong?.Invoke(this, new ServerSaid($"The C# language server is slow to answer: {wait.Asked}; the log says where it stands", ProblemSeverity.Warning));
+    }
+
     /// <summary>The server stopped answering: it is ended at once, so every request waiting on it fails rather than
     /// waiting for ever, and replaced as one that ended is, the status bar saying so.</summary>
     private void OnNotResponding(RoslynSession hung, string why)
@@ -1584,6 +1686,19 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// against which its reads of keys nothing gives are warned of; none without a session, which warns of none.</summary>
     public Func<string, Workspace.ConfigurationProject?>? ConfigurationOf { get; init; }
 
+    /// <summary>Whether no tab shows an open file, which the server's refresh leaves to be pulled once shown or asked.</summary>
+    public Func<OpenDocument, bool> Unseen { get; init; } = _ => false;
+
+    /// <summary>A file shown: one a refresh passed over while unseen is pulled now.</summary>
+    public void Shown(OpenDocument? document)
+    {
+        UiThread.Check();
+        if (document is not null && documents.TryGetValue(document, out CSharpDocument? features) && features.Stale)
+        {
+            features.RefreshDiagnostics();
+        }
+    }
+
     /// <summary>The open files' texts as the editor has them now, for work off the UI thread (<see cref="Editors.EditorArea.Texts"/>);
     /// the disk's alone without a session.</summary>
     public Func<Editors.OpenTexts>? Texts { get; init; }
@@ -1598,6 +1713,9 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <summary>A .resx or XLIFF file changed: each open file that reads localized strings, or was warned of one a language
     /// lacks, pulls its diagnostics again; no other file.</summary>
     internal void LocalizationChanged() => Each(document => document.LocalizationChanged());
+
+    /// <summary>What the folder's pages link changed: each open Razor file's classes are checked again.</summary>
+    internal void StylesheetsChanged() => Each(document => document.StylesheetsChanged());
 
     /// <summary>The localized strings a C# or Razor file reads, asked of Passenger's extension for the code as the server holds it,
     /// each key's resource with its files found and read off the UI thread (<see cref="ResourceFiles"/>), open ones as the
@@ -1627,6 +1745,103 @@ public sealed partial class CSharpService : IAsyncDisposable
             IReadOnlyList<ResourceSet?> sets = [.. found.Resources.Select(r => Localized.SetOf(r, open))];
             return new Localized(found.Keys, found.Resources, sets) { Unnamed = Localized.UnnamedOf(path, found.Resources, sets, open) };
         }, cancel);
+    }
+
+    /// <summary>The calls of JavaScript a C# or Razor file makes through JS interop, asked of Passenger's extension for the code
+    /// as the server holds it; null without the server.</summary>
+    internal async Task<Roslyn.Extension.JsInteropFound?> JsInteropAsync(string path, CancellationToken cancel)
+    {
+        if (session is not { } roslyn)
+        {
+            return null;
+        }
+        try
+        {
+            return await roslyn.ExtensionAsync<Roslyn.Extension.JsInteropFound>(Roslyn.Extension.Handlers.JsInteropCalls, new Roslyn.Extension.JsInteropRequest(path), cancel);
+        }
+        catch (LanguageServerFailed)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The folder of the Godot project a C# file's project builds a game for (the session's project's
+    /// <see cref="Passenger.Workspace.ProjectModel.GodotFolder"/>); null for any other file, and without a session.</summary>
+    public Func<string, string?>? GodotOf { get; init; }
+
+    /// <summary>The project files of the session's projects that build a Godot project's game, by its folder; none without a session.</summary>
+    public Func<string, IReadOnlyList<string>>? GodotProjects { get; init; }
+
+    /// <summary>The folder's Godot scenes and resources, read once and followed; none without a session.</summary>
+    public Godot.GodotSceneIndex? GodotScenes { get; init; }
+
+    /// <summary>The person's Godot editors open on the folder's projects, which completion asks; none without a session.</summary>
+    internal Godot.GodotIdeLink? GodotIde { get; init; }
+
+    /// <summary>The stylesheets the folder's pages link, whose classes a Razor file's are checked against; none without a session.</summary>
+    public Web.PageStylesheets? Stylesheets { get; init; }
+
+    /// <summary>A Godot project's C# file was read against its scenes, as a pull of it read it: what the open scenes are
+    /// read against may have changed.</summary>
+    public Action? GodotCodeRead { get; init; }
+
+    /// <summary>What Passenger's extension answers of a Godot project's code for a scene's connections, asked through one of
+    /// its C# files (<see cref="Godot.GodotChecks.SceneAsks"/>); null without the server, or when it cannot answer.</summary>
+    internal async Task<Roslyn.Extension.GodotCodeFound?> GodotSceneCodeAsync(Roslyn.Extension.GodotCodeRequest asked, CancellationToken cancel)
+    {
+        if (session is not { } roslyn)
+        {
+            return null;
+        }
+        try
+        {
+            return await roslyn.ExtensionAsync<Roslyn.Extension.GodotCodeFound>(Roslyn.Extension.Handlers.GodotCode, asked, cancel);
+        }
+        catch (LanguageServerFailed)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>A fix of a Godot check worked out by Passenger's extension (<see cref="Roslyn.Extension.GodotFixRequest"/>): the
+    /// files it changes, or why it changes none; a server failing throws <see cref="LanguageServerFailed"/>.</summary>
+    internal Task<Roslyn.Extension.Refactored> GodotFixAsync(Roslyn.Extension.GodotFixRequest asked, CancellationToken cancel) =>
+        session is { } roslyn ? roslyn.ExtensionAsync<Roslyn.Extension.Refactored>(Roslyn.Extension.Handlers.GodotFix, asked, cancel)
+            : Task.FromResult(new Roslyn.Extension.Refactored("The C# language server is not running", []));
+
+    /// <summary>A Godot scene or resource came, went or was written: each open file of a Godot project pulls again.</summary>
+    internal void GodotScenesChanged() => Each(document => document.GodotChanged());
+
+    /// <summary>The projects were evaluated: each open file whose Godot project is not the one its last pull read pulls again.</summary>
+    internal void GodotProjectsChanged() => Each(document => document.GodotProjectChanged());
+
+    /// <summary>What a Godot project's C# file and its scenes say of each other (<see cref="Godot.GodotChecks"/>): the scenes as
+    /// they stand, and Passenger's extension asked of the code for the scenes its scripts run in, asked again where its code
+    /// runs as scripts of classes deriving from it; null for a file of no Godot project, and without the server.</summary>
+    internal async Task<Godot.GodotRead?> GodotAsync(string path, CancellationToken cancel)
+    {
+        if (session is not { } roslyn || GodotOf?.Invoke(path) is not { } folder || GodotScenes is not { } index)
+        {
+            return null;
+        }
+        Passenger.Workspace.GodotScenes scenes = await index.ScenesAsync(folder);
+        string[] own = scenes.ResPathOf(path) is { } res ? [res] : [];
+        try
+        {
+            Roslyn.Extension.GodotCodeRequest asked = await BackgroundWork.Run(() => Godot.GodotChecks.Asks(path, scenes, own), cancel);
+            Roslyn.Extension.GodotCodeFound found = await roslyn.ExtensionAsync<Roslyn.Extension.GodotCodeFound>(Roslyn.Extension.Handlers.GodotCode, asked, cancel);
+            string[] scripts = [.. found.Classes.SelectMany(c => c.Scripts).Distinct(StringComparer.Ordinal)];
+            if (scripts.Except(own, StringComparer.Ordinal).Any())
+            {
+                asked = await BackgroundWork.Run(() => Godot.GodotChecks.Asks(path, scenes, scripts), cancel);
+                found = await roslyn.ExtensionAsync<Roslyn.Extension.GodotCodeFound>(Roslyn.Extension.Handlers.GodotCode, asked, cancel);
+            }
+            return new Godot.GodotRead(folder, scenes, asked, found);
+        }
+        catch (LanguageServerFailed)
+        {
+            return null;
+        }
     }
 
     /// <summary>The connection strings the open compose files' .NET services read that their environments do not set (the

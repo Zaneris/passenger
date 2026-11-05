@@ -70,7 +70,7 @@ internal static class BuildReads
             }
             // A multi-targeted project built for no one framework (its outer evaluation and each framework's) has no one folder.
             if (evaluations is [(Project built, _)] && PathOf(built, "OutDir") is { Length: > 0 } folder
-                && PathOf(built, "IntermediateOutputPath") is { Length: > 0 } intermediate && built.GetPropertyValue("CleanFile") is { Length: > 0 } list)
+                && PathOf(built, MSBuildNames.IntermediateOutputPath) is { Length: > 0 } intermediate && built.GetPropertyValue("CleanFile") is { Length: > 0 } list)
             {
                 output = folder;
                 written = Path.Combine(intermediate, list);
@@ -239,7 +239,7 @@ internal static class BuildReads
             Read(PathOf(project, property));
         }
         // What the build itself writes, some of which items name (the intermediate assembly, its symbols, markers).
-        string[] built = [.. ((string[])["BaseOutputPath", "BaseIntermediateOutputPath", "OutDir", "IntermediateOutputPath"])
+        string[] built = [.. ((string[])["BaseOutputPath", MSBuildNames.BaseIntermediateOutputPath, "OutDir", MSBuildNames.IntermediateOutputPath])
             .Select(folder => PathOf(project, folder)).Where(folder => folder.Length > 0)];
         HashSet<string> sources = new(PathNames.Comparer);
         foreach (ProjectItem item in project.AllEvaluatedItems)

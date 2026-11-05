@@ -16,8 +16,8 @@ namespace Passenger.Editor;
 /// line it changed.</summary>
 public sealed partial class CodeEditor : Control
 {
-    /// <summary>The code font, JetBrains Mono: the editor's and the terminal's, and code's wherever the window shows
-    /// it.</summary>
+    /// <summary>The code font Passenger carries, JetBrains Mono: the editor's, the terminal's and code's wherever the
+    /// window shows it, unless Settings puts another in force (<see cref="CodeFonts"/>).</summary>
     public static readonly FontFamily CodeFont = new("avares://Passenger.Editor/Fonts#JetBrains Mono");
 
     public static readonly StyledProperty<double> FontSizeProperty =
@@ -73,6 +73,9 @@ public sealed partial class CodeEditor : Control
         Cursor = IbeamCursor;
         stripe = new ErrorStripe(this);
         counts = new ProblemCounts(this);
+        overlay = new Painted(DrawOverlay);
+        prepareFrame = _ => PrepareFrame();
+        AddLayers();
         VisualChildren.Add(vertical);
         VisualChildren.Add(horizontal);
         VisualChildren.Add(stripe);
@@ -87,7 +90,7 @@ public sealed partial class CodeEditor : Control
         {
             caretOn = !caretOn;
             Blinks++;
-            InvalidateVisual();
+            RedrawOverlay();
         });
         decorations = new DocumentDecorations(document);
         ownsDecorations = true;
@@ -111,6 +114,7 @@ public sealed partial class CodeEditor : Control
             RunWith(palette.LineNumberCurrent),
             RunWith(palette.LineNumber));
         annotationRuns = (ItalicRunWith(palette.Annotation), ItalicRunWith(palette.Error));
+        CodeFonts.Follow(this, FontFamilyProperty);
     }
 
     /// <summary>Raised when the view scrolls.</summary>
@@ -123,11 +127,20 @@ public sealed partial class CodeEditor : Control
     /// is put at the press first, for the host to run the action there.</summary>
     public event EventHandler<string>? ActionRequested;
 
+    /// <summary>What runs a click whose gesture also starts a drag, let go where it was pressed (Alt-click beside Alt-drag's
+    /// column), given the selection the press fell inside, else the caret at the press: true where the host ran the action,
+    /// false where it cannot run there, the press then the start of a column, as its drag leaves it.</summary>
+    public Func<string, bool>? ClickRuns { get; set; }
+
     /// <summary>The pointer has rested on the text: the offset under it and where it is, for a hover
     /// card. Raised once per rest; moving off clears it (<see cref="HoverEnded"/>).</summary>
     public event EventHandler<HoverEventArgs>? Hovered;
 
     public event EventHandler? HoverEnded;
+
+    /// <summary>The pointer has rested on the gutter beside a line (from zero): where it is, for the card of what the
+    /// gutter shows there. Raised once per rest; moving off clears it (<see cref="HoverEnded"/>).</summary>
+    public event EventHandler<GutterClick>? GutterHovered;
 
     /// <summary>The context menu is asked for: by a right-click on the text, at its point, or from the keyboard (the menu
     /// key, Shift+F10), with no point, at the caret.</summary>
@@ -173,7 +186,7 @@ public sealed partial class CodeEditor : Control
             return;
         }
         inlineChanges.Set(document, [.. changes.OrderBy(c => c.Range.Start)]);
-        InvalidateVisual();
+        RedrawChanged();
     }
 
     /// <summary>The bookmarked lines, marked on the error stripe.</summary>
@@ -235,7 +248,15 @@ public sealed partial class CodeEditor : Control
                 FollowInputMethod();
                 break;
         }
-        InvalidateVisual();
+        // The gutter's columns read change marks and bookmarks, which a row's key leaves to them; a fold moves rows.
+        if (kind is DecorationKind.ChangeMarks or DecorationKind.Bookmarks or DecorationKind.Folds)
+        {
+            Redraw();
+        }
+        else
+        {
+            RedrawChanged();
+        }
     }
 
     /// <summary>A press on the gutter at a line (from zero) that none of its columns took: the host's. With a handler, a
@@ -342,6 +363,10 @@ public sealed partial class CodeEditor : Control
     /// <summary>Which markup this document's language is, whose tags Enter's indentation follows; none for code.</summary>
     public MarkupKind Markup { get; set; }
 
+    /// <summary>Whether typing in <see cref="Markup"/> completes end tags: a start tag's '>' writes its end tag after the
+    /// caret, and "&lt;/" the open element's name (<see cref="TextEditing.CloseTag"/>), each a step of Undo of its own.</summary>
+    public bool ClosesTags { get; set; } = true;
+
     public bool IsReadOnly { get; set; }
 
     /// <summary>Whether the gutter shows line numbers; a console's output goes without.</summary>
@@ -366,14 +391,14 @@ public sealed partial class CodeEditor : Control
         ScrollTo(new Vector(0, bottom));
     }
 
-    /// <summary>What a gesture of the mouse pressed on an editor's text runs, by the keymap of the window it is in: set on a
+    /// <summary>The keymap whose gestures of the mouse pressed on an editor's text run, the window's in force: set on a
     /// window, every editor there follows it, unless it has a <see cref="Keymap"/> of its own.</summary>
-    public static readonly AttachedProperty<Func<MouseShortcut, string?>?> GesturesProperty =
-        AvaloniaProperty.RegisterAttached<CodeEditor, AvaloniaObject, Func<MouseShortcut, string?>?>("Gestures", inherits: true);
+    public static readonly AttachedProperty<Func<Keymap>?> GesturesProperty =
+        AvaloniaProperty.RegisterAttached<CodeEditor, AvaloniaObject, Func<Keymap>?>("Gestures", inherits: true);
 
-    public static Func<MouseShortcut, string?>? GetGestures(AvaloniaObject host) => host.GetValue(GesturesProperty);
+    public static Func<Keymap>? GetGestures(AvaloniaObject host) => host.GetValue(GesturesProperty);
 
-    public static void SetGestures(AvaloniaObject host, Func<MouseShortcut, string?>? gestures) => host.SetValue(GesturesProperty, gestures);
+    public static void SetGestures(AvaloniaObject host, Func<Keymap>? gestures) => host.SetValue(GesturesProperty, gestures);
 
     /// <summary>When set, the editor resolves its own key presses and gestures; an IDE leaves it null and sends actions in
     /// through <see cref="TryExecute"/> from one window-wide keymap, whose gestures it gives (<see cref="GesturesProperty"/>).</summary>
@@ -426,7 +451,7 @@ public sealed partial class CodeEditor : Control
         measuredWidth = 0;
         ForgetLines();
         InvalidateArrange();
-        InvalidateVisual();
+        Redraw();
         FollowInputMethod();
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -447,7 +472,7 @@ public sealed partial class CodeEditor : Control
             }
             toldShowing = null;
             colouring++;
-            InvalidateVisual();
+            Redraw();
         }
     }
 
@@ -482,9 +507,20 @@ public sealed partial class CodeEditor : Control
     {
         int offset = document.Snapshot.GetOffset(position);
         SetSelections(SelectionSet.Single(offset), reveal: false);
+        ScrollToPlace(offset);
+        WentTo?.Invoke(this, offset);
+    }
+
+    /// <summary>Raised as <see cref="GoTo"/> takes the caret to a place, with its offset, for a view laid over the text to
+    /// show that place too.</summary>
+    public event EventHandler<int>? WentTo;
+
+    /// <summary>Scrolls an offset a third of the way down the view, as <see cref="GoTo"/> does; not laid out yet, the
+    /// first arrange does it, leaving the carets as they stand then (a selection made after the GoTo).</summary>
+    private void ScrollToPlace(int offset)
+    {
         if (Bounds.Height <= 0)
         {
-            // Not laid out yet, so there is no view to centre in; the first arrange does it.
             pendingGoTo = offset;
             return;
         }
@@ -516,7 +552,7 @@ public sealed partial class CodeEditor : Control
         // Kept for rows the text may no longer have (its file reloaded shorter while its tab was hidden or closed).
         scroll = new Vector(offset.X, WithinRows(offset.Y));
         UpdateScrollBars();
-        InvalidateVisual();
+        Redraw();
         FollowInputMethod();
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -549,7 +585,7 @@ public sealed partial class CodeEditor : Control
     {
         highlights.Set(document, ranges);
         CurrentHighlight = current;
-        InvalidateVisual();
+        RedrawChanged();
     }
 
     /// <summary>Selects a range and scrolls it into view, as finding it does.</summary>
@@ -596,7 +632,7 @@ public sealed partial class CodeEditor : Control
         awaitedY = null;
         HideFoldPreview();
         UpdateScrollBars();
-        InvalidateVisual();
+        Scrolled();
         FollowInputMethod();
         ScrollChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -627,7 +663,7 @@ public sealed partial class CodeEditor : Control
         if (pendingGoTo is { } offset)
         {
             pendingGoTo = null;
-            Dispatcher.UIThread.Post(() => GoTo(document.Snapshot.GetPosition(Math.Min(offset, document.Snapshot.Length))));
+            Dispatcher.UIThread.Post(() => ScrollToPlace(Math.Min(offset, document.Snapshot.Length)));
         }
         // The gutter's width, and with it the caret's x, follows the text's line count and the font.
         FollowInputMethod();
@@ -658,6 +694,8 @@ public sealed partial class CodeEditor : Control
     {
         base.OnGotFocus(e);
         RestartBlink();
+        // The selections take the focused look.
+        Redraw();
     }
 
     protected override void OnLostFocus(FocusChangedEventArgs e)
@@ -666,7 +704,7 @@ public sealed partial class CodeEditor : Control
         blink.Stop();
         ownKeys?.Reset();
         document.BreakUndoGroup();
-        InvalidateVisual();
+        Redraw();
     }
 
     /// <summary>A command would have made more carets than <see cref="SelectionSet.MaxCount"/> and made that many at most,
@@ -697,7 +735,7 @@ public sealed partial class CodeEditor : Control
             Reveal(selections.Primary.Caret);
         }
         RestartBlink();
-        InvalidateVisual();
+        RedrawChanged();
         FollowInputMethod();
         if (changed)
         {
@@ -775,18 +813,37 @@ public sealed partial class CodeEditor : Control
         }
         widestStale = true;
         InvalidateArrange();
-        InvalidateVisual();
+        RedrawChanged();
     }
 
     private void OnHighlighterChanged(object? sender, EventArgs e)
     {
-        coloursMoved |= highlighter is not { KeptColours: true };
+        if (highlighter is not { KeptColours: true })
+        {
+            coloursMoved = true;
+            TextSnapshot now = document.Snapshot;
+            if (highlighter?.ChangedWithin is { } range && !coloursMovedAll && (coloursMovedIn is null || ReferenceEquals(coloursMovedIn, now)))
+            {
+                coloursMovedWithin = coloursMovedWithin is { } was ? TextRange.FromBounds(Math.Min(was.Start, range.Start), Math.Max(was.End, range.End)) : range;
+                coloursMovedIn = now;
+            }
+            else
+            {
+                coloursMovedAll = true;
+            }
+        }
         Dispatcher.UIThread.Post(Recolour);
     }
 
     /// <summary>Whether the highlighter has been changed since the last <see cref="Recolour"/> without saying it kept every
     /// colour it had given.</summary>
     private bool coloursMoved;
+
+    /// <summary>Where those changes said their colours may differ, in the text they were raised in (<see cref="coloursMovedIn"/>),
+    /// unless one did not say (<see cref="coloursMovedAll"/>).</summary>
+    private TextRange? coloursMovedWithin;
+    private TextSnapshot? coloursMovedIn;
+    private bool coloursMovedAll;
 
     /// <summary>New colours for the same text: the lines are formatted again, each found again if its colours stayed. When
     /// the lines drawn keep every colour they have (a parse that finds what a key carried them to, or that says so), nothing
@@ -795,16 +852,33 @@ public sealed partial class CodeEditor : Control
     {
         if (BracesChanged())
         {
-            InvalidateVisual();
+            RedrawChanged();
         }
         bool moved = coloursMoved;
+        TextRange? within = coloursMovedAll || !ReferenceEquals(coloursMovedIn, document.Snapshot) ? null : coloursMovedWithin;
         coloursMoved = false;
-        if (!moved || views.Keep(document.Snapshot, Colours))
+        coloursMovedWithin = null;
+        coloursMovedIn = null;
+        coloursMovedAll = false;
+        if (!moved)
+        {
+            return;
+        }
+        if (within is { } range)
+        {
+            // Only the rows the change reached are made again, their colours asked anew; the rest stand as drawn.
+            if (views.Drop(document.Snapshot, range))
+            {
+                RedrawChanged();
+            }
+            return;
+        }
+        if (views.Keep(document.Snapshot, Colours))
         {
             return;
         }
         colouring++;
-        InvalidateVisual();
+        RedrawChanged();
     }
 
     private void OnScrollBarChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
@@ -871,6 +945,7 @@ public sealed partial class CodeEditor : Control
         palette = Palette.From(this);
         hintRun = null;
         runProperties.Clear();
+        runLooks.Clear();
         numberRuns = (
             RunWith(palette.LineNumberCurrent),
             RunWith(palette.LineNumber));
@@ -880,7 +955,7 @@ public sealed partial class CodeEditor : Control
         // The stripe and the counts paint with the palette too, so they are drawn again with the next frame.
         stripeDrawn = default;
         InvalidateArrange();
-        InvalidateVisual();
+        Redraw();
     }
 
     private static int Digits(int value) => value < 10 ? 1 : (int)Math.Floor(Math.Log10(value)) + 1;

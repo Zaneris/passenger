@@ -98,7 +98,7 @@ public sealed partial class CodeEditor
             wraps = landed;
             awaitedY = null;
             scroll = new Vector(scroll.X, Math.Clamp(y, 0, MaxScrollY));
-            InvalidateVisual();
+            Redraw();
             FollowRows();
         }
         else

@@ -30,7 +30,7 @@ public sealed class TestingPlatformRunner : ITestRunner
     /// <summary>How long a test host done with its request has to tell its last results and exit before it is ended.</summary>
     private static readonly TimeSpan ExitLimit = TimeSpan.FromSeconds(10);
 
-    /// <summary>The test nodes discovered, by the key of the test each was told as.</summary>
+    /// <summary>The test nodes discovered, by the id of the test each was told as.</summary>
     private readonly TestCatalog<Found> found = new();
 
     public bool IsUsable => true;
@@ -99,7 +99,7 @@ public sealed class TestingPlatformRunner : ITestRunner
     /// launcher is given) with the environment given; their outcomes told a notification at a time as they come. Canceled,
     /// the test host is asked to stop and given a moment, then ended, keeping the outcomes of what had run.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
-        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, CancellationToken cancel = default)
+        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default)
     {
         RunSummary summary = new(TimeSpan.Zero, false, false, null);
         foreach (IGrouping<string, (TestItem Test, Found Node)> assembly in tests
@@ -187,7 +187,7 @@ public sealed class TestingPlatformRunner : ITestRunner
     }
 
     /// <summary>The test nodes found told as the IDE's tests, each with the project and framework of its assembly, and kept
-    /// to be run by the key of the test told. The platform names a source file as the compiler was given it: the tree's are
+    /// to be run by the id of the test told. The platform names a source file as the compiler was given it: the tree's are
     /// canonical.</summary>
     private IReadOnlyList<TestItem> Tell((TestAssembly Assembly, IReadOnlyList<PlatformNode> Nodes)[] asked) =>
         found.Tell(asked.Select(a => a.Assembly), asked.SelectMany(a => a.Nodes.Where(n => n.IsTest).Select(n => (a.Assembly, n))), node => node.Uid,
@@ -336,7 +336,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             }
             else
             {
-                id = await debugger.LaunchAsync(new TestHostStart(Dotnet.Host(), arguments, folder, environment ?? new Dictionary<string, string>()));
+                id = await debugger.LaunchAsync(new TestHostStart(Dotnet.Host(), arguments, folder, environment ?? new Dictionary<string, string>(), assembly.Framework));
             }
             TcpClient client;
             try
@@ -509,22 +509,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             }
         }
 
-        private static bool Alive(Process? process, int id)
-        {
-            if (process is not null)
-            {
-                return !process.HasExited;
-            }
-            try
-            {
-                using Process running = Process.GetProcessById(id);
-                return !running.HasExited;
-            }
-            catch (Exception error) when (error is ArgumentException or InvalidOperationException)
-            {
-                return false;
-            }
-        }
+        private static bool Alive(Process? process, int id) => process is not null ? DotnetProcesses.Runs(process) : DotnetProcesses.Runs(id);
 
         /// <summary>Ends a test host: the runner's own with all it started, the debugger's alone.</summary>
         private static void End(Process? process, int id)

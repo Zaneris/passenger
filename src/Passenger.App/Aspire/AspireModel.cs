@@ -13,7 +13,9 @@ public sealed class AspireModel : IDisposable
 {
     // The tabs' names are those every list of a run's services has, in its order (RunWindows.Tabs).
     internal const string LogTab = RunWindows.LogTab;
+    internal const string StatsTab = RunWindows.StatsTab;
     internal const string DetailsTab = RunWindows.DetailsTab;
+    internal const string GraphTab = RunWindows.GraphTab;
     internal const string TelemetryTab = RunWindows.TelemetryTab;
     internal const string AppHostTab = RunWindows.AppHostLogTab;
 
@@ -99,6 +101,10 @@ public sealed class AspireModel : IDisposable
 
     /// <summary>Returns this app's dashboard endpoint and key on the UI thread. Null means no owned telemetry.</summary>
     public Func<string, TelemetrySource?>? TelemetryProvider { get; set; }
+
+    /// <summary>The process of a resource's program on this machine, whose metrics the Stats tab reads; null for none. Called
+    /// on the UI thread.</summary>
+    public Func<AspireSelection, int?>? ProgramOf { get; set; }
 
     /// <summary>Whether the run of the AppHost at a path left a resource unstarted, as its configuration says Don't start
     /// (<see cref="AspireAppRun.IsLeftUnstarted"/>); null for an AppHost the window did not start. Called on the UI thread.</summary>
@@ -282,6 +288,21 @@ public sealed class AspireModel : IDisposable
         }
         chosen = item;
         Chose();
+    }
+
+    /// <summary>The row of a resource chosen by its name (or the name it shows), as a link to it in another's details asks,
+    /// the list scrolled to it; nothing for a name no row has.</summary>
+    public void ChooseNamed(string name)
+    {
+        UiThread.Check();
+        if (disposed || ItemOf(name) is not { } item || item == chosen)
+        {
+            return;
+        }
+        chosen = item;
+        RowsChanged?.Invoke(this, true);
+        ResourceSelectionChanged?.Invoke(this, Selection);
+        StreamsDue?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Opens or closes a row with rows under it, as its chevron does; a row it hides that was chosen gives its
@@ -636,20 +657,20 @@ public sealed class AspireModel : IDisposable
     internal static IReadOnlyList<Uri> Links(AspireResource resource) =>
     [
         .. AspireJson.Array(resource.Data, "urls")
-            .Where(url => !(url.TryGetProperty("isInactive", out JsonElement inactive) && inactive.ValueKind == JsonValueKind.True))
+            .Where(url => JsonMembers.Bool(url, "isInactive") != true)
             .Select(url => Uri.TryCreate(AspireJson.String(url, "url"), UriKind.Absolute, out Uri? target) && target.Scheme is "http" or "https" ? target : null)
             .OfType<Uri>(),
     ];
 
     public static string PageAction(string name) => name switch
     {
-        LogTab => AppActions.AspireConsole, DetailsTab => AppActions.AspireResources,
+        LogTab => AppActions.AspireConsole, StatsTab => AppActions.AspireStats, DetailsTab => AppActions.AspireResources, GraphTab => AppActions.AspireGraph,
         TelemetryTab => AppActions.AspireTelemetry, AppHostTab => AppActions.AspireAppHostConsole,
         _ => throw new ArgumentException("Unknown Aspire page.", nameof(name)),
     };
 
     /// <summary>The tabs' names, as their tabs and actions say them, in their order.</summary>
-    public static IReadOnlyList<string> Pages { get; } = [.. RunWindows.Tabs.Where(tab => tab is LogTab or DetailsTab or TelemetryTab or AppHostTab)];
+    public static IReadOnlyList<string> Pages { get; } = [.. RunWindows.Tabs.Where(tab => tab is LogTab or StatsTab or DetailsTab or GraphTab or TelemetryTab or AppHostTab)];
 
     internal static bool Expected(Exception error) => error is IOException or InvalidDataException or InvalidOperationException or TimeoutException
         or ArgumentException or NotSupportedException or System.ComponentModel.Win32Exception;

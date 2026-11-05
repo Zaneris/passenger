@@ -77,6 +77,14 @@ public partial class MainWindow
             }
         };
         Bottom.Tests.IsRunning = tests.IsBusy;
+        // An open GDScript file read before its Godot project was known to carry GUT is read again once the projects are listed.
+        tests.Finder.Changed += (_, _) =>
+        {
+            if (session == next)
+            {
+                testGutter.ReadUnplaced();
+            }
+        };
         // The open files' tests are read again by the test attributes their projects derive, once those are known.
         tests.Finder.AttributesChanged += (_, _) =>
         {
@@ -88,7 +96,11 @@ public partial class MainWindow
         HashSet<DebugTab> testHosts = [];
         tests.BeginAspireTest = (project, debug, cancel) => next.Aspire.BeginTestAsync(project, debug, cancel);
         tests.LaunchUnderDebugger = start => LaunchTestHost(next, start, testHosts);
-        tests.AttachDebugger = processId => AttachTestHost(next, processId, testHosts);
+        tests.AttachDebugger = (processId, reload) => AttachTestHost(next, processId, reload, testHosts);
+        // A debugged test host takes Hot Reload, with its update handlers, as Settings has it while debugging.
+        tests.ReloadFor = (assembly, environment) => next.Debug.HotReloadOn()
+            && Debugging.UpdateHandlerHook.ForTestHost(assembly, environment) is ({ } hook, { } variables) ? new Testing.TestHostReload(variables, hook) : null;
+        tests.DebugGame = (start, folder, leading, csharp, heard) => DebugTestGame(next, start, folder, leading, csharp, testHosts, heard);
         tests.EndDebugging = () => Task.WhenAll(testHosts.ToArray().Select(EndTestHost));
         async Task EndTestHost(DebugTab tab)
         {
@@ -101,6 +113,14 @@ public partial class MainWindow
                 testHosts.Remove(tab);
             }
         }
+        // The results a run told, kept in the folder's state for its next opening.
+        tests.ResultsToKeep += (_, runs) =>
+        {
+            if (next.State is { } state)
+            {
+                state.UnitTestResults.Set(state.UnitTestResults.Value.With(runs));
+            }
+        };
         // A test run's end, a label in Local History: passed, failed, or broken off (its test host ended mid-run).
         tests.Ran += (_, ended) =>
         {
@@ -125,11 +145,16 @@ public partial class MainWindow
     {
         Task read = WorkspaceRead;
         session.Tests.Open(Folder, projectsRead: read.IsCompleted);
-        if (!read.IsCompleted)
+        // A walk's landing asks too, before it ends, and one look once it has ended answers both.
+        if (!read.IsCompleted && !ReferenceEquals(read, testsAwaitRead))
         {
+            testsAwaitRead = read;
             IdeErrors.Observe(FindTestsOnceRead(read, session));
         }
     }
+
+    /// <summary>The read of the folder's projects a look for tests waits for.</summary>
+    private Task? testsAwaitRead;
 
     private async Task FindTestsOnceRead(Task read, ProjectSession opening)
     {
@@ -282,7 +307,8 @@ public partial class MainWindow
     }
 
     /// <summary>A test host a runner would start, started under the debugger as a plan of its own (the runner built it, and
-    /// its environment has the test project's launch profile's); its process for the runner to talk to.</summary>
+    /// its environment has the test project's launch profile's), on the framework the runner names, which Hot Reload's update
+    /// handlers' hook asks; its process for the runner to talk to.</summary>
     private async Task<int> LaunchTestHost(ProjectSession running, Testing.TestHostStart start, HashSet<DebugTab> testHosts)
     {
         CheckTestSession(running);
@@ -294,6 +320,7 @@ public partial class MainWindow
             Arguments = start.Arguments,
             WorkingDirectory = start.WorkingDirectory ?? running.Folder ?? Environment.CurrentDirectory,
             Environment = new Dictionary<string, string>(start.Environment),
+            RunsOn = start.Framework,
         };
         ShowToolWindow(ToolWindowIds.Debug);
         Debugging.DebugLaunch launched = await running.Debug.StartAdditionalAsync(plan, cancel, tab => testHosts.Add(tab));
@@ -311,7 +338,7 @@ public partial class MainWindow
     }
 
     /// <summary>A test host a runner started itself, attached to: true once the debugger has hold of it.</summary>
-    private async Task<bool> AttachTestHost(ProjectSession running, int processId, HashSet<DebugTab> testHosts)
+    private async Task<bool> AttachTestHost(ProjectSession running, int processId, Testing.TestHostReload? reload, HashSet<DebugTab> testHosts)
     {
         CheckTestSession(running);
         CancellationToken cancel = running.Tests.RunCancellation;
@@ -319,7 +346,7 @@ public partial class MainWindow
         Debugging.DebugLaunch? attached = null;
         try
         {
-            attached = await running.Debug.AttachAdditionalAsync(processId, "Tests", cancel, tab => testHosts.Add(tab));
+            attached = await running.Debug.AttachAdditionalAsync(processId, "Tests", cancel, tab => testHosts.Add(tab), reload?.Hook);
             CheckTestSession(running);
             cancel.ThrowIfCancellationRequested();
             return attached.ProcessId == processId;
@@ -332,6 +359,109 @@ public partial class MainWindow
             }
             return false;
         }
+    }
+
+    /// <summary>A Godot run of a project's tests (GUT's, GoDotTest's) started under the debugger as Debug starts its game,
+    /// Passenger listening for it as its remote debugger, the breakpoints in its scripts set from its start: a game of
+    /// GDScript alone under the GDScript debugger, which launches it; a C# game (<paramref name="csharp"/>) under .NET's,
+    /// its GDScript debugged beside it. In Debug tabs ended with the test run; done once its session is open, with the run's
+    /// end.</summary>
+    private async Task<Task> DebugTestGame(ProjectSession running, Testing.TestHostStart start, string folder, int leading, bool csharp, HashSet<DebugTab> testHosts,
+        Action<string>? heard)
+    {
+        CheckTestSession(running);
+        string? game = Passenger.Workspace.GodotProject.Read(folder)?.Name;
+        LaunchPlan plan = new()
+        {
+            Name = csharp && game is not null ? $"{game} Tests" : "GUT",
+            Program = start.FileName,
+            Arguments = start.Arguments,
+            Leading = leading,
+            WorkingDirectory = folder,
+            Environment = new Dictionary<string, string>(start.Environment),
+            Godot = folder,
+            GodotUnseen = Unseen,
+            ScriptsAlone = !csharp,
+            GameName = game,
+        };
+        ShowToolWindow(ToolWindowIds.Debug);
+        (LaunchPlan listened, Godot.GodotGame? listening) = running.Listened(plan, running.Debug.ScriptStart(folder));
+        if (listening is null)
+        {
+            throw new InvalidOperationException("The tests' run is not a Godot game the debugger can listen for");
+        }
+        Debugging.DebugSession? debugged;
+        if (csharp)
+        {
+            Debugging.DebugLaunch launched;
+            try
+            {
+                launched = await running.Debug.StartAdditionalAsync(listened, running.Tests.RunCancellation, tab => testHosts.Add(tab));
+            }
+            catch
+            {
+                listening.LetScriptsGo();
+                listening.Dispose();
+                throw;
+            }
+            debugged = launched.Tab.Session;
+            if (heard is not null && debugged is not null)
+            {
+                debugged.Heard += Debugging.DebugSession.Lines(heard);
+            }
+            listening.Debugged = debugged;
+            Run.BuildRunController.EndsWithGame(listening);
+            if (await running.Debug.DebugScriptsAsync(listening, listened.Name) is null
+                && running.Debug.SessionNamed(Debugging.DebugController.ScriptsTab(listened.Name)) is { } scripts && running.Debug.TabOf(scripts) is { } scriptsTab)
+            {
+                testHosts.Add(scriptsTab);
+            }
+            else
+            {
+                listening.LetScriptsGo();
+            }
+        }
+        else
+        {
+            if (await running.Debug.LaunchScriptsAsync(listened, listening) is { } refused)
+            {
+                listening.Dispose();
+                throw new InvalidOperationException(refused);
+            }
+            debugged = running.Debug.SessionNamed(listened.Name);
+            listening.Debugged = debugged;
+            if (debugged is not null && running.Debug.TabOf(debugged) is { } tab)
+            {
+                testHosts.Add(tab);
+            }
+        }
+        Task ended = SessionEnd(debugged);
+        IdeErrors.Observe(DisposedOnceAsync(listening, ended));
+        return ended;
+
+        static async Task DisposedOnceAsync(Godot.GodotGame game, Task ended)
+        {
+            await ended;
+            game.Dispose();
+        }
+    }
+
+    /// <summary>A debug session's end; done at once for none, or one ended.</summary>
+    private static Task SessionEnd(Debugging.DebugSession? session)
+    {
+        if (session is not { State: not Debugging.DebugState.Ended } running)
+        {
+            return Task.CompletedTask;
+        }
+        TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        running.StateChanged += (_, _) =>
+        {
+            if (running.State == Debugging.DebugState.Ended)
+            {
+                ended.TrySetResult();
+            }
+        };
+        return ended.Task;
     }
 
     private void CheckTestSession(ProjectSession running)

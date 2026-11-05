@@ -6,12 +6,26 @@ if (args is ["child"])
 	Console.In.ReadToEnd();
 	return;
 }
+if (args is ["throws"])
+{
+	try
+	{
+		await ThrowsLaterAsync(2);
+	}
+	catch (Exception e)
+	{
+		Console.WriteLine($"caught {e.GetType().Name}");
+	}
+	return;
+}
 int total = await OuterAsync(3);
 Console.WriteLine($"total {total}");
 int ran = await Task.Run(RunAsync);
 Console.WriteLine($"ran {ran}");
 int[] both = await Task.WhenAll(TwiceAsync(1), TwiceAsync(2));
 Console.WriteLine($"both {both[0]} {both[1]}");
+int tripled = await TripleAsync(4);
+Console.WriteLine($"tripled {tripled}");
 await WaitForChildAsync();
 
 static async Task<int> OuterAsync(int n)
@@ -60,6 +74,14 @@ static async Task<int> TwiceAsync(int which)
 	return second;
 }
 
+// A ValueTask's run, which goes on after its await.
+static async ValueTask<int> TripleAsync(int n)
+{
+	await Task.Delay(10);
+	int product = n * 3;
+	return product;
+}
+
 // .NET 11's own Process.WaitForExitAsync is runtime-async: its await waits for the child, which ends once its input is
 // closed. A step into Id first has the debugger decompile Process's module.
 static async Task WaitForChildAsync()
@@ -71,4 +93,15 @@ static async Task WaitForChildAsync()
 	child.StandardInput.Close();
 	await exited;
 	Console.WriteLine($"child ended with {child.ExitCode}");
+}
+
+// An exception thrown after awaits, through runtime-async callers going on, for its stack trace.
+static async Task ThrowsLaterAsync(int depth)
+{
+	await Task.Yield();
+	if (depth > 0)
+	{
+		await ThrowsLaterAsync(depth - 1);
+	}
+	throw new InvalidOperationException($"from runtime async at {depth}");
 }

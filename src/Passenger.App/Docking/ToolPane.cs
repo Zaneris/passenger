@@ -6,9 +6,9 @@ using Avalonia.VisualTree;
 
 namespace Passenger.App.Docking;
 
-/// <summary>One place's window: its header (title, a tree's Expand All and Collapse All, Move to and Hide in a menu, a
-/// hide button) over its content. The header drags the window elsewhere; in a narrow one, what follows the title gives
-/// way, then the title, each ending in an ellipsis, never under the buttons.</summary>
+/// <summary>One place's window: its header (title, its own action's button, a tree's Expand All and Collapse All, Move
+/// to and Hide in a menu, a hide button) over its content. The header drags the window elsewhere; in a narrow one, what
+/// follows the title gives way, then the title, each ending in an ellipsis, never under the buttons.</summary>
 internal sealed class ToolPane : DockPanel
 {
     private readonly DockHost host;
@@ -20,6 +20,10 @@ internal sealed class ToolPane : DockPanel
     private readonly Border header;
     private readonly Button expandAll;
     private readonly Button collapseAll;
+    private readonly StackPanel treeButtons;
+
+    /// <summary>The window's own action's button (<see cref="ToolWindow.HeaderAction"/>), made as the pane shows it.</summary>
+    private Button? own;
 
     public ToolPane(DockHost host)
     {
@@ -46,6 +50,7 @@ internal sealed class ToolPane : DockPanel
                 host.Hide(window.Id);
             }
         };
+        treeButtons = new StackPanel { [DockProperty] = Dock.Right, Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 8, 0), Children = { expandAll, collapseAll } };
         header = new Border
         {
             Classes = { StyleClasses.ToolHeader },
@@ -55,7 +60,7 @@ internal sealed class ToolPane : DockPanel
                 Children =
                 {
                     new StackPanel { [DockProperty] = Dock.Right, Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 6, 0), Children = { options, hide } },
-                    new StackPanel { [DockProperty] = Dock.Right, Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 8, 0), Children = { expandAll, collapseAll } },
+                    treeButtons,
                     new ShrinkingRow { Children = { title, tools } },
                 },
             },
@@ -140,6 +145,16 @@ internal sealed class ToolPane : DockPanel
                 holder.Content = null;
             }
             tools.Content = window.HeaderTools;
+        }
+        if (own is not null)
+        {
+            treeButtons.Children.Remove(own);
+            own = null;
+        }
+        if (window?.HeaderAction is { } asked)
+        {
+            own = ToolButtons.Of(asked.Action, asked.Icon, asked.Title, Ask);
+            treeButtons.Children.Insert(0, own);
         }
         expandAll.IsVisible = window?.ExpandAll is not null;
         collapseAll.IsVisible = window?.CollapseAll is not null;

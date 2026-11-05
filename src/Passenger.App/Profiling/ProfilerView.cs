@@ -80,6 +80,8 @@ public sealed class ProfilerView : DockPanel
     private readonly DockPanel garbage;
     private readonly MemoryView memory;
     private readonly FramesView frames;
+    private readonly GameFramesView game;
+    private readonly Panel framesPage;
     private readonly Button heap;
     private readonly FlameGraph flame;
     private readonly ScrollViewer flameScroll;
@@ -111,7 +113,7 @@ public sealed class ProfilerView : DockPanel
         {
             if (tree.SelectedItem is CallRow row)
             {
-                Open(row.Node.Name, row.Node.Code);
+                OpenRow(row);
             }
         };
         TreeKeys.Attach<CallRow>(tree, Toggle, OpenRow);
@@ -165,6 +167,9 @@ public sealed class ProfilerView : DockPanel
         garbage.Children.Add(collections);
         memory = new MemoryView();
         frames = new FramesView();
+        game = new GameFramesView { IsVisible = false };
+        game.FrameOpened += (_, frame) => IdeErrors.Observe(OpenFrameAsync(frame));
+        framesPage = new Panel { Children = { frames, game } };
         flame = new FlameGraph();
         flameScroll = new ScrollViewer { Content = flame, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         kept = new ListBox
@@ -202,7 +207,9 @@ public sealed class ProfilerView : DockPanel
             Classes = { StyleClasses.EmptyText },
         };
 
-        status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0) };
+        // Cut where it is longer than its line, its whole text on hover.
+        status = new TextBlock { Name = "ProfilerSummary", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+        status.Bind(ToolTip.TipProperty, status.GetObservable(TextBlock.TextProperty));
         stop = new Button { Name = "ProfilerGetSnapshot", Content = "Get Snapshot", Classes = { StyleClasses.Primary }, IsVisible = false };
         stop.Click += (_, _) => StopRequested?.Invoke(this, EventArgs.Empty);
         kill = new Button { Content = "Kill", IsVisible = false };
@@ -214,22 +221,23 @@ public sealed class ProfilerView : DockPanel
         {
             pages[(int)page].Name = $"Profiler{page}";
         }
-        StackPanel left = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center };
+        // The pages and the run's summary wrap to another line where the pane has no room for them on one, as at 640 wide.
+        WrapPanel left = new() { ItemSpacing = 2, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center };
         foreach (ToggleButton page in pages)
         {
             left.Children.Add(page);
         }
         Button open = ToolButtons.Of(IconKeys.FolderOpen, "Open Snapshot", () => OpenSnapshotRequested?.Invoke(this, EventArgs.Empty));
+        open.Name = "ProfilerOpenSnapshot";
         heap = new Button { Name = "ProfilerGetMemorySnapshot", Content = "Get Memory Snapshot", IsVisible = false };
         heap.Click += (_, _) => MemoryRequested?.Invoke(this, EventArgs.Empty);
         ActionButtons.Mark(heap, AppActions.MemorySnapshot);
         StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center, Children = { heap, stop, kill, open } };
         DockPanel bar = new();
-        DockPanel.SetDock(left, Dock.Left);
         DockPanel.SetDock(right, Dock.Right);
-        bar.Children.Add(left);
+        left.Children.Add(status);
         bar.Children.Add(right);
-        bar.Children.Add(status);
+        bar.Children.Add(left);
         Border top = ToolBars.Top(bar);
         Children.Add(top);
         timeline = new Timeline();
@@ -237,7 +245,7 @@ public sealed class ProfilerView : DockPanel
         timelineBand = new Border { [DockProperty] = Dock.Top, BorderThickness = new Thickness(0, 0, 0, 1), Child = timeline, IsVisible = false, Padding = new Thickness(0, 4) };
         timelineBand.Bind(Border.BorderBrushProperty, timelineBand.GetResourceObservable(TokenKeys.Divider));
         Children.Add(timelineBand);
-        Children.Add(new Panel { Children = { tree, spots, flameScroll, frames, allocations, garbage, memory, keptPage, placeholder } });
+        Children.Add(new Panel { Children = { tree, spots, flameScroll, framesPage, allocations, garbage, memory, keptPage, placeholder } });
         ticking = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         ticking.Tick += (_, _) => status.Text = $"Profiling {running}: {elapsed?.Invoke().TotalSeconds:0.0} s";
         ShowPage(ProfilerPage.CallTree);
@@ -249,6 +257,9 @@ public sealed class ProfilerView : DockPanel
 
     /// <summary>The Frames page: an Avalonia app's frames and their layout by control.</summary>
     public FramesView FramesPage => frames;
+
+    /// <summary>The Frames page of a Godot game's run: its frames as Godot measured them, joined with the C# samples.</summary>
+    public GameFramesView GamePage => game;
 
     /// <summary>Get Snapshot pressed: end the run and show what it found.</summary>
     public event EventHandler? StopRequested;
@@ -445,7 +456,8 @@ public sealed class ProfilerView : DockPanel
             return;
         }
         status.Text = $"{snapshotName}: reading {span.From - whole.StartMs:N0} to {span.To - whole.StartMs:N0} ms…";
-        Snapshot within = await BackgroundWork.Run(() => whole.Within(span.From, span.To));
+        // Shown on a later turn of the window's loop even when worked out already, so a choice never fills the views itself.
+        Snapshot within = await BackgroundWork.Run(() => whole.Within(span.From, span.To)).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.ForceYielding);
         if (chosen == choosing)
         {
             Fill(within);
@@ -458,7 +470,9 @@ public sealed class ProfilerView : DockPanel
         ProfilerPage current = (ProfilerPage)Math.Max(0, Array.FindIndex(pages, p => p.IsChecked == true));
         Snapshot = snapshot;
         Snapshot whole = snapshot.Whole;
-        status.Text = ReferenceEquals(whole, snapshot)
+        status.Text = snapshot.FramesAlone
+            ? $"{snapshotName}: {snapshot.Duration.TotalSeconds:0.0} s, {Plural.Of(snapshot.GameFrames.Count, "frame")} as Godot's profiler measured them; no samples, as a game of GDScript alone runs no .NET code"
+            : ReferenceEquals(whole, snapshot)
             ? $"{snapshotName}: {snapshot.Duration.TotalSeconds:0.0} s, {Plural.Of(snapshot.Threads.Count, "thread")}, {snapshot.Samples:N0} samples"
             : $"{snapshotName}: {snapshot.StartMs - whole.StartMs:N0} to {snapshot.EndMs - whole.StartMs:N0} ms of {whole.Duration.TotalMilliseconds:N0}, {snapshot.Samples:N0} samples";
         foreach (ToggleButton page in pages)
@@ -466,9 +480,19 @@ public sealed class ProfilerView : DockPanel
             page.IsEnabled = true;
         }
         rows.Clear();
+        // A Godot game's frames give its GDScript and Godot's own work, counted as samples of the run's period, beside the threads.
+        double period = snapshot.SampleMs > 0 ? snapshot.SampleMs : 1;
+        IReadOnlyList<CallNode> gameRoots = whole.Game is { } profile && snapshot.GameFrames.Count > 0
+            ? profile.CallRoots(snapshot.GameFrames, snapshot.Samples > 0 ? snapshot.Joined(snapshot.GameFrames).FrameMs : [], period)
+            : [];
+        int counted = snapshot.Samples > 0 ? snapshot.Samples : Math.Max(1, gameRoots.Sum(r => r.Total));
         foreach (CallNode thread in snapshot.Threads)
         {
-            rows.Add(new CallRow(thread, 0, rows, "ms", snapshot.Samples, snapshot.SampleMs));
+            rows.Add(new CallRow(thread, 0, rows, "ms", counted, period));
+        }
+        foreach (CallNode root in gameRoots)
+        {
+            rows.Add(new CallRow(root, 0, rows, "ms", counted, period));
         }
         if (rows.Count > 0)
         {
@@ -489,7 +513,15 @@ public sealed class ProfilerView : DockPanel
         flame.SampleMs = snapshot.SampleMs;
         flame.Root = snapshot.All;
         frames.Show(snapshot.UiFrames, whole.StartMs, snapshot.Place is { } elsewhere ? FramesView.InContainer(elsewhere.Where) : null);
-        ShowPageLater(current);
+        // A Godot game's run shows Godot's own frames on the page, an Avalonia app's (or none) every other's.
+        game.IsVisible = whole.Game is not null;
+        frames.IsVisible = whole.Game is null;
+        if (whole.Game is { } played)
+        {
+            game.Show(played, snapshot.GameFrames, snapshot.Joined, whole.StartMs);
+        }
+        // A run of a game's frames alone has no samples for the pages of calls to show.
+        ShowPageLater(snapshot.FramesAlone && current is ProfilerPage.CallTree or ProfilerPage.HotSpots or ProfilerPage.FlameGraph ? ProfilerPage.Frames : current);
         types.ItemsSource = snapshot.Allocations;
         types.SelectedIndex = snapshot.Allocations.Count > 0 ? 0 : -1;
         ShowBackTraces();
@@ -596,8 +628,80 @@ public sealed class ProfilerView : DockPanel
         row.List.Close(row);
     }
 
-    /// <summary>A row's method opened at its source; false for a thread or a type, at the top, which stand for no method.</summary>
-    private bool OpenRow(CallRow row) => row.Depth > 0 && Open(row.Node.Name, row.Node.Code);
+    /// <summary>A row's method opened at its source, a GDScript function's at its script's line; false for a thread or a
+    /// type, at the top, which stand for no method.</summary>
+    private bool OpenRow(CallRow row)
+    {
+        if (row.Node.Script is { } function && Snapshot?.Whole.Game is { } game)
+        {
+            ScriptOpened?.Invoke(this, (function, game.Folder));
+            return true;
+        }
+        return row.Depth > 0 && Open(row.Node.Name, row.Node.Code);
+    }
+
+    /// <summary>The page last asked shown.</summary>
+    public ProfilerPage Page { get; private set; }
+
+    /// <summary>The call tree's row chosen, or null.</summary>
+    public CallRow? ChosenCall => tree.SelectedItem as CallRow;
+
+    /// <summary>A GDScript function's row of the call tree opened: its script, at its line.</summary>
+    public event EventHandler<(ScriptFunction Function, string Folder)>? ScriptOpened;
+
+    /// <summary>A frame of a Godot game opened on what it spent: the window narrowed to the frame, the call tree shown with
+    /// the frame's costliest function chosen, a GDScript function's or a C# method's by its own time.</summary>
+    public async Task OpenFrameAsync(GameFrame frame)
+    {
+        await ChooseAsync((frame.StartMs, frame.EndMs));
+        ShowPage(ProfilerPage.CallTree);
+        if (Costliest(rows.Where(r => r.Depth == 0).Select(r => r.Node)) is not { } costliest)
+        {
+            return;
+        }
+        // Up to its top row: a thread's node has the whole run's above it, which no row shows.
+        HashSet<CallNode> tops = [.. rows.Where(r => r.Depth == 0).Select(r => r.Node)];
+        List<CallNode> path = [];
+        for (CallNode? at = costliest; at is not null; at = tops.Contains(at) ? null : at.Parent)
+        {
+            path.Insert(0, at);
+        }
+        CallRow? row = null;
+        foreach (CallNode node in path)
+        {
+            if (row is not null)
+            {
+                Expand(row);
+            }
+            row = rows.FirstOrDefault(r => r.Node == node);
+            if (row is null)
+            {
+                return;
+            }
+        }
+        tree.SelectedItem = row;
+        tree.ScrollIntoView(row!);
+    }
+
+    /// <summary>The function under some roots that spent the most time in itself: a GDScript function, or a C# method with
+    /// its source; the runtime's and Godot's native frames left aside.</summary>
+    public static CallNode? Costliest(IEnumerable<CallNode> roots)
+    {
+        CallNode? best = null;
+        Stack<CallNode> left = new(roots);
+        while (left.TryPop(out CallNode? node))
+        {
+            if ((node.Script is not null || node.Code is not null) && (best is null || node.Self > best.Self))
+            {
+                best = node;
+            }
+            foreach (CallNode child in node.Children)
+            {
+                left.Push(child);
+            }
+        }
+        return best;
+    }
 
     /// <summary>Goes to a method's source; false for a row no source has (a thread, the runtime's own frames).</summary>
     private bool Open(string method, MethodCode? code)
@@ -620,7 +724,8 @@ public sealed class ProfilerView : DockPanel
     /// <summary>Shows a page; the placeholder's words when it has nothing to show.</summary>
     public void ShowPage(ProfilerPage page)
     {
-        Control[] views = [tree, spots, flameScroll, frames, allocations, garbage, memory, keptPage];
+        Page = page;
+        Control[] views = [tree, spots, flameScroll, framesPage, allocations, garbage, memory, keptPage];
         bool shown = false;
         for (int i = 0; i < views.Length; i++)
         {
@@ -717,7 +822,7 @@ public sealed class ProfilerView : DockPanel
     /// <summary>Words in the code font, at the size of a row's numbers.</summary>
     private static TextBlock Mono(TextBlock block)
     {
-        block.FontFamily = CodeEditor.CodeFont;
+        block.InCodeFont();
         block.FontSize = 12;
         return block;
     }

@@ -375,6 +375,31 @@ public sealed class ContainersTests
     /// <summary>A Compose project the test brought up: listed with its services, ports and health, the port a link the browser
     /// opens; a container's log streaming into its console with links; and the project's log merging its services, each a
     /// toggle, which Find searches by a regular expression.</summary>
+    /// <summary>Prune is offered while nothing has asked the engine how it stands, never refused as not running then, and
+    /// refused once the engine is known not to serve, in its own words (here: no docker command where it was named).</summary>
+    [AvaloniaFact]
+    public void Prune_is_offered_until_the_engine_is_known_not_to_serve_and_then_says_why()
+    {
+        string folder = TestFolders.Create("prune-");
+        TestFolders.Write(folder, "README.md", "# Shop\n");
+        ContainerEngine engine = new(cli: Path.Combine(folder, "no-docker"), search: false);
+        MainWindow window = ContainerRunsTests.Open(folder, engine: engine);
+        try
+        {
+            Assert.Null(engine.Known);
+            Assert.Null(window.Actions.WhyNot(AppActions.ContainerPrune, window.Actions.Context()));
+            EngineState known = Ui.Await(engine.StateAsync(), "the engine's state, its command missing");
+            Assert.False(known.IsReady, $"An engine whose command is missing serves: {known}");
+            string? why = window.Actions.WhyNot(AppActions.ContainerPrune, window.Actions.Context());
+            Assert.True(why is not null && why == known.Problem,
+                $"Prune, the engine known not to serve ({known.Problem}), was refused with \"{why}\" rather than the engine's own words");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void A_compose_project_is_listed_with_its_services_ports_and_health_and_its_logs_stream_with_links_and_merge_its_services()
     {
@@ -558,6 +583,58 @@ public sealed class ContainersTests
             Ui.WaitFor(() => view.Stats.Said == "docker stats ended: Error response from daemon: the engine went away",
                 $"the pane to say why its stream ended, not \"{view.Stats.Said}\"");
             Assert.Empty(view.Stats.Latest);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A .NET service's metrics are read only while they are shown: hiding the Containers window ends a reading, a
+    /// program found after it hid starts none, and shown again the row chosen is read again. The stand-in's program is held
+    /// paused, so the pane says what it follows without a session.</summary>
+    [AvaloniaFact]
+    public void Hiding_the_Containers_window_ends_a_services_metrics_and_a_lookup_under_way_starts_none()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
+        string folder = TestFolders.Create("ctr-metrics-hidden-");
+        (string cli, _) = StandInEngine(folder, up: true);
+        MainWindow window = new() { Width = 1200, Height = 800, Engine = new ContainerEngine(cli: cli) };
+        window.Show();
+        window.OpenFolder(TestFolders.Create("ctr-metrics-hidden-window-"));
+        Ui.Settle();
+        try
+        {
+            ContainersView view = Shown(window);
+            Queue<TaskCompletionSource<(int Process, Passenger.Profiler.ProfilePlace Place)?>> lookups = [];
+            view.DotnetOf = (_, _) =>
+            {
+                TaskCompletionSource<(int Process, Passenger.Profiler.ProfilePlace Place)?> lookup = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                lookups.Enqueue(lookup);
+                return lookup.Task;
+            };
+            view.Metrics.Paused = (_, _) => true;
+            Passenger.Profiler.ProfilePlace place = new(_ => throw new InvalidOperationException("The stand-in's metrics were read"), "a stand-in", path => path);
+            string paused = Refusals.MetricsWhilePaused("web");
+            Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Service && r.Service == "web"), "web's row");
+            view.ShowTab(RunWindows.StatsTab);
+            Ui.WaitFor(() => lookups.Count == 1, "web's program to be looked for");
+            lookups.Dequeue().SetResult((1, place));
+            Ui.WaitFor(() => view.Metrics.Said == paused, () => $"web's metrics to be followed, not \"{view.Metrics.Said}\"");
+            Assert.True(view.Metrics.IsVisible, "web's metrics had no room under its Stats");
+
+            window.DockHost.Hide(ToolWindowIds.Containers);
+            Ui.Settle();
+            Assert.True(view.Metrics.Said.Length == 0 && !view.Metrics.IsVisible, $"With the Containers window hidden, web's metrics were still read: \"{view.Metrics.Said}\"");
+
+            window.ShowToolWindow(ToolWindowIds.Containers);
+            Ui.WaitFor(() => lookups.Count == 1, "web's program to be looked for again as its Stats show once more");
+            TaskCompletionSource<(int Process, Passenger.Profiler.ProfilePlace Place)?> underWay = lookups.Dequeue();
+            window.DockHost.Hide(ToolWindowIds.Containers);
+            Ui.Settle();
+            underWay.SetResult((1, place));
+            Ui.Settle();
+            Assert.True(view.Metrics.Said.Length == 0 && !view.Metrics.IsVisible, $"A lookup that ended with the window hidden began a reading: \"{view.Metrics.Said}\"");
         }
         finally
         {
@@ -1120,18 +1197,7 @@ public sealed class ContainersTests
             window.Close();
         }
 
-        static bool Alive(int id)
-        {
-            try
-            {
-                using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
-                return !process.HasExited;
-            }
-            catch (ArgumentException)
-            {
-                return false;
-            }
-        }
+        static bool Alive(int id) => DotnetProcesses.Runs(id);
     }
 
     /// <summary>A docker of the test's own, up or down as its <c>state</c> file says (held: down, its events kept until the

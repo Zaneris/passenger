@@ -97,6 +97,56 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A line with three matches is one row, each of them bold, the count still counting matches; the keys move
+    /// row by row, the preview marking every match on the row's line, Enter going to its first; Replace All replaces each.</summary>
+    [AvaloniaFact]
+    public void A_line_with_three_matches_is_one_row_with_each_bold_and_replace_all_still_replaces_each()
+    {
+        string gamma = Path.Combine(folder, "Gamma.cs");
+        File.WriteAllText(gamma, "class Gamma\n{\n    int tally = tally + tally;\n    int other = tally;\n}\n");
+        MainWindow window = Open();
+        FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
+        Search(popup, "tally");
+        Ui.Settle();
+        Assert.Equal("4 matches in 1 file", popup.Status);
+        Assert.True(popup.Lines.Select(l => (l.Line, l.Matches.Count)).SequenceEqual([(2, 3), (3, 1)]),
+            $"The two lines with matches were listed as [{string.Join(", ", popup.Lines.Select(l => $"line {l.Line + 1}: {l.Matches.Count}"))}], where a line is a row however many matches it holds");
+        ListBox rows = popup.GetVisualDescendants().OfType<ListBox>().Single(l => l.ItemsSource is IEnumerable<SearchLine>);
+        Assert.Equal(2, rows.ItemCount);
+        TextBlock first = Ui.Row(rows, popup.Lines[0]).GetVisualDescendants().OfType<TextBlock>().Single(t => t.Inlines is { Count: > 0 });
+        string[] bold = [.. first.Inlines!.OfType<Avalonia.Controls.Documents.Run>().Where(r => r.FontWeight == FontWeight.Bold).Select(r => r.Text ?? string.Empty)];
+        Assert.True(first.Inlines!.Text == "int tally = tally + tally;" && bold.SequenceEqual(["tally", "tally", "tally"]),
+            $"The row of three matches reads '{first.Inlines!.Text}' with [{string.Join(", ", bold)}] bold, where each match is");
+        CodeEditor preview = popup.GetVisualDescendants().OfType<CodeEditor>().Single();
+        Assert.True(Marked(preview).SequenceEqual([(2, 8), (2, 16), (2, 24)]), $"The preview marks [{string.Join(", ", Marked(preview))}] for the row of three matches");
+
+        Ui.Press(window, "DOWN");
+        Assert.True(rows.SelectedIndex == 1 && Marked(preview).SequenceEqual([(3, 16)]),
+            $"Down left row {rows.SelectedIndex} chosen and the preview marking [{string.Join(", ", Marked(preview))}], where the next line's one match is");
+
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        popup.Replacement = "total";
+        popup.RequestReplace();
+        Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, "the replacement");
+        Assert.Equal("class Gamma\n{\n    int total = total + total;\n    int other = total;\n}\n", File.ReadAllText(gamma));
+        Assert.Equal("Replaced 4 matches in 1 file", window.Status);
+        Ui.Press(window, "ESCAPE");
+
+        popup = window.ShowFindInFiles(replace: false)!;
+        Search(popup, "total");
+        Ui.Settle();
+        Ui.Press(window, "ENTER");
+        Assert.Equal("Gamma.cs", window.EditorArea.Active?.Name);
+        Selection chosen = window.EditorArea.CodeEditor.Selections.Primary;
+        TextPosition start = window.EditorArea.CodeEditor.Document.Snapshot.GetPosition(chosen.Start);
+        Assert.True(start == new TextPosition(2, 8) && chosen.Length == "total".Length,
+            $"Enter on the row of three matches chose {chosen.Length} characters from {start}, where its first match is");
+        window.Close();
+
+        static IEnumerable<(int Line, int Column)> Marked(CodeEditor preview) =>
+            preview.Highlights.Select(h => preview.Document.Snapshot.GetPosition(h.Start)).Select(p => (p.Line, p.Column));
+    }
+
     [AvaloniaFact]
     public void Replace_all_with_a_character_a_closed_8_bit_file_cannot_hold_writes_it_as_UTF_8_not_a_question_mark()
     {

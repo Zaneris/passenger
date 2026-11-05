@@ -90,11 +90,22 @@ public partial class MainWindow
             ApplyTo(group.Editor, next);
         }
         FollowViewSettings(before, next);
+        if (next.OpenDiffsIn != before.OpenDiffsIn)
+        {
+            MoveDiffs(next.OpenDiffsIn);
+        }
         FollowTitleBar(next);
         FollowMainMenu(next);
         Explorer.NestFiles = next.NestFiles;
+        Explorer.OpensOnClick = next.OpenFilesWithSingleClick;
+        if (next.AlwaysSelectOpenedFile && !before.AlwaysSelectOpenedFile && Editors.Active?.Path is { } shown)
+        {
+            Explorer.Reveal(shown);
+        }
+        FollowXamlWorkspace(before);
         assist.Templates = CSharp.TemplateSet.Of(next);
         assist.XamlFormat = next.XamlFormat;
+        assist.GDScriptFormat = (next.GDScriptFormat, next.GDScriptFormatOnSave);
         if (terminal is { } panel)
         {
             FollowTerminalSettings(panel, next, before);
@@ -105,9 +116,14 @@ public partial class MainWindow
         }
         ApplyAnalysis();
         session.CSharp?.Hints = (next.ParameterHints, next.TypeHints);
+        godotValues?.On = next.GodotLiveValues;
         session.Web?.UseNode(next.NodeInterpreter);
         session.Web?.UseTools();
         session.Web?.UseDockerHub(next.DockerHubTags);
+        if (next.DownloadStylesheets != before.DownloadStylesheets)
+        {
+            session.Stylesheets.DownloadsChanged();
+        }
         session.Web?.Checks.UseBuildKit(next.BuildKitChecks);
         ListenForAgents(next.McpServer);
         FollowAgentFolders(before, next);
@@ -132,6 +148,7 @@ public partial class MainWindow
         editor.ShowParameterHints = with.ParameterHints;
         editor.ShowTypeHints = with.TypeHints;
         editor.RainbowBraces = with.RainbowBraces;
+        editor.ClosesTags = with.CloseTags;
         editor.WrapIndent = with.SoftWrapIndent;
         editor.ZoomsWithWheel = with.WheelZoom;
         editor.InvalidateVisual();

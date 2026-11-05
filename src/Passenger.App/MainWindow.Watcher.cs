@@ -42,8 +42,10 @@ public partial class MainWindow
             return;
         }
         session.LocalHistory?.Noticed(changes.Paths);
+        Godot.GodotScripts.FolderChanged(changes);
         session.DesignTimeBuilds.FolderChanged(changes);
         session.FilesChanged(changes);
+        session.Debug.FilesChanged(changes.Paths);
         (bool programsMade, bool programsWritten) = ProgramsChanged(changes.Paths);
         // Lost changes may have made or moved anything in the folder.
         IReadOnlyCollection<string> cameOrWent = changes.Lost ? [folder] : changes.ComeOrGone;
@@ -68,6 +70,11 @@ public partial class MainWindow
             // Only the run configurations are made of launch profiles, so the solution and the Explorer stay as they are.
             session.Configurations.Configure(Projects);
         }
+        // A Godot project's page shows its export presets and plugins as their files say.
+        if (changes.Lost || changes.Paths.Any(Godot.GodotProjectPages.Follows))
+        {
+            Editors.GodotPages?.Refresh();
+        }
         // A C# file written may have gained or lost the AppHost SDK's line; one come or gone is the index's to find.
         session.AspireFiles.Changed(changes.Paths, every: changes.Lost);
         if (changes.Lost)
@@ -85,6 +92,7 @@ public partial class MainWindow
             {
                 document.ReadConventions();
             }
+            IdeErrors.Observe(OfferGodotTemplatesAsync());
         }
         // A settings file, a launch profile or a compose file written: the reads of keys nothing gave are looked at again.
         if (changes.Lost || changes.LaunchProfiles || changes.Paths.Any(p => ConfigurationFiles.IsSettings(p) || Containers.ComposeFiles.IsCompose(p)))
@@ -101,8 +109,12 @@ public partial class MainWindow
         session.Tests.Finder.FolderChanged(changes);
         session.Xaml.CameOrWent(changes.ComeOrGone, every: changes.Lost);
         session.Xaml.FilesChanged(changes.Paths.Concat(changes.Restored));
+        IdeErrors.Observe(XamlWrittenAsync(changes.Paths));
+        session.GodotScenes.CameOrWent(changes.ComeOrGone, every: changes.Lost);
+        session.GodotScenes.FilesChanged(changes.Paths);
         session.MSBuild.FilesChanged(changes.Paths, changes.Structure);
         session.Web?.FilesChanged(changes.Paths);
+        session.Stylesheets.FilesChanged([.. changes.Paths, .. changes.ComeOrGone, .. changes.Restored], every: changes.Lost || changes.Overflowed);
         EndpointFilesChanged(changes);
         FollowOpenFiles(changes.Paths, every: changes.Lost || changes.Overflowed);
         if (changes.Paths.Count > 0 || changes.Git)

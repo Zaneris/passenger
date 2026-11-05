@@ -7,6 +7,10 @@ namespace Passenger.Workspace;
 /// path from the filter's folder) and the projects of that solution it keeps (theirs from the solution's), each canonical.</summary>
 public sealed record SolutionFilter(string Path, string Solution, IReadOnlySet<string> Projects)
 {
+    /// <summary>Whether the filter leaves a project out: one of the solution's it does not name, never a program beside the
+    /// solution, which is none of the solution's projects.</summary>
+    public bool LeavesOut(ProjectModel project) => !project.IsProgram && !Projects.Contains(project.Path);
+
     /// <summary>Whether a file is a solution filter.</summary>
     public static bool Is(string path) => System.IO.Path.GetExtension(path).Equals(".slnf", StringComparison.OrdinalIgnoreCase);
 
@@ -46,23 +50,18 @@ public sealed record SolutionFilter(string Path, string Solution, IReadOnlySet<s
 
     private static SolutionFilter? Of(string path, JsonDocument read)
     {
-        if (read.RootElement.ValueKind != JsonValueKind.Object || !read.RootElement.TryGetProperty("solution", out JsonElement solution)
-            || solution.ValueKind != JsonValueKind.Object || !solution.TryGetProperty("path", out JsonElement named)
-            || named.GetString() is not { Length: > 0 } relative)
+        if (JsonMembers.Object(read.RootElement, "solution") is not { } solution || JsonMembers.Text(solution, "path") is not { Length: > 0 } relative)
         {
             return null;
         }
         string solutionPath = Named(relative, System.IO.Path.GetDirectoryName(path)!);
         string root = System.IO.Path.GetDirectoryName(solutionPath)!;
         HashSet<string> projects = new(PathNames.Comparer);
-        if (solution.TryGetProperty("projects", out JsonElement listed) && listed.ValueKind == JsonValueKind.Array)
+        foreach (string each in JsonMembers.Texts(solution, "projects"))
         {
-            foreach (JsonElement project in listed.EnumerateArray())
+            if (each.Length > 0)
             {
-                if (project.ValueKind == JsonValueKind.String && project.GetString() is { Length: > 0 } each)
-                {
-                    projects.Add(Named(each, root));
-                }
+                projects.Add(Named(each, root));
             }
         }
         return new SolutionFilter(path, solutionPath, projects);

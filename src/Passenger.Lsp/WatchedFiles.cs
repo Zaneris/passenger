@@ -11,6 +11,7 @@ namespace Passenger.Lsp;
 /// (<see cref="Tell"/>) goes to the server as one notification of the changes some watcher covers, in the order told,
 /// files gone in one of their own to a server with Passenger's loader (<see cref="HasLoader"/>); one told while the server
 /// loads projects that no watcher covers yet is kept for the registration its load sends, which may arrive after it.
+/// Every file heard changed is kept until a command has seen the server hold it as the disk has it (<see cref="Changing"/>).
 /// Every registration and notification is written in the server's log. Thread-safe; <see cref="Changed"/> is raised on
 /// the thread that registered or unregistered, <see cref="Sent"/> on the telling one.</summary>
 public sealed class WatchedFiles
@@ -21,6 +22,20 @@ public sealed class WatchedFiles
     private readonly Lock gate = new();
     private readonly Dictionary<string, IReadOnlyList<FileWatch>> registered = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FileChangeType> kept = new(PathNames.Comparer);
+
+    /// <summary>How long a changed file the server was found holding otherwise than the disk is waited for, from the first
+    /// time it was: a server that never reads it again would otherwise hold every command that waits for it.</summary>
+    private static readonly TimeSpan UnreadLimit = TimeSpan.FromSeconds(10);
+
+    /// <summary>The files heard changed on disk, told the server or about to be, that no command has yet seen it hold as the
+    /// disk has them: each with the number of its latest change heard, and when the server was first found holding it otherwise.</summary>
+    private readonly Dictionary<string, (long Heard, DateTime? Unread)> changing = new(PathNames.Comparer);
+
+    /// <summary>The number of the latest change heard (<see cref="changing"/>).</summary>
+    private long heard;
+
+    /// <summary>Whether changed files were let go past <see cref="KeptLimit"/>, said once until they are fewer.</summary>
+    private bool changesOverflowed;
     private readonly LanguageServer server;
     private IReadOnlyList<FileWatch> watches = [];
 
@@ -74,7 +89,7 @@ public sealed class WatchedFiles
     internal void Register(string id, JsonElement? options)
     {
         List<FileWatch> read = [];
-        if (options is { ValueKind: JsonValueKind.Object } given && given.TryGetProperty("watchers", out JsonElement list) && list.ValueKind == JsonValueKind.Array)
+        if (JsonMembers.Value(options, "watchers") is { ValueKind: JsonValueKind.Array } list)
         {
             foreach (JsonElement watcher in list.EnumerateArray())
             {
@@ -152,6 +167,79 @@ public sealed class WatchedFiles
         }
     }
 
+    /// <summary>Files changed on disk whose change is on its way to the server, kept as <see cref="Changing"/> from now, before
+    /// it is told (<see cref="Tell"/>).</summary>
+    public void Hearing(IEnumerable<string> paths)
+    {
+        lock (gate)
+        {
+            foreach (string path in paths)
+            {
+                Heard(path);
+            }
+        }
+    }
+
+    /// <summary>The files heard changed on disk that no command has seen the server hold as the disk has them since, and the
+    /// number of the latest change among them, to settle them by (<see cref="Settle"/>).</summary>
+    public (IReadOnlyList<string> Paths, long AsOf) Changing()
+    {
+        lock (gate)
+        {
+            return ([.. changing.Keys], heard);
+        }
+    }
+
+    /// <summary>Of the files <see cref="Changing"/> gave as of a number, those not heard changed since let go but those
+    /// <paramref name="behind"/>, which the command waits for; of those, each the server was found holding otherwise than the
+    /// disk (<paramref name="unread"/>) let go once <see cref="UnreadLimit"/> has passed since it first was, said in the log.</summary>
+    public void Settle(IReadOnlyList<string> asked, long asOf, IReadOnlyCollection<string> behind, IReadOnlyCollection<string> unread)
+    {
+        HashSet<string> waited = new(behind, PathNames.Comparer);
+        HashSet<string> notRead = new(unread, PathNames.Comparer);
+        DateTime now = DateTime.UtcNow;
+        lock (gate)
+        {
+            foreach (string path in asked)
+            {
+                if (!changing.TryGetValue(path, out (long Heard, DateTime? Unread) change) || change.Heard > asOf)
+                {
+                    continue;
+                }
+                if (!waited.Contains(path))
+                {
+                    changing.Remove(path);
+                }
+                else if (notRead.Contains(path) && change.Unread is { } first && now - first > UnreadLimit)
+                {
+                    changing.Remove(path);
+                    server.Note($"The server still held {path} otherwise than the disk {UnreadLimit.TotalSeconds:0} s after it was first found so: "
+                        + "commands no longer wait for it to read it");
+                }
+                else if (notRead.Contains(path) && change.Unread is null)
+                {
+                    changing[path] = change with { Unread = now };
+                }
+            }
+            changesOverflowed &= changing.Count >= KeptLimit;
+        }
+    }
+
+    /// <summary>A file heard changed, under the gate.</summary>
+    private void Heard(string path)
+    {
+        if (changing.Count >= KeptLimit && !changing.ContainsKey(path))
+        {
+            if (!changesOverflowed)
+            {
+                changesOverflowed = true;
+                server.Note($"Files changed on disk were let go past {KeptLimit}: commands find those changed since only by the time they were written");
+            }
+            return;
+        }
+        changing[path] = (++heard, null);
+    }
+
     /// <summary>Tells the server of the changes some watcher covers, by their canonical paths, in one notification, keeping
     /// the rest while it loads projects; how many it was told of. Each is matched against every watcher, so the caller
     /// tells a batch from off the UI thread.</summary>
@@ -189,6 +277,10 @@ public sealed class WatchedFiles
         if (changes.Count == 0)
         {
             return;
+        }
+        foreach (FileEvent change in changes)
+        {
+            Heard(change.Path);
         }
         List<FileEvent> gone = HasLoader ? [.. changes.Where(c => c.Change == FileChangeType.Deleted)] : [];
         List<FileEvent> rest = gone.Count == 0 ? changes : [.. changes.Where(c => c.Change != FileChangeType.Deleted)];
@@ -234,6 +326,52 @@ public sealed record FileWatch(string? Folder, string Pattern, WatchKinds Kinds)
     /// <summary>The watcher as a log shows it.</summary>
     public string Shown => $"{Folder}{(Folder is null ? "" : " ")}{Pattern} ({Kinds})";
 
+    /// <summary>What a file's name must end with, or be, for each pattern: read from its last name (<c>*.cs</c>,
+    /// <c>*.{cs,csx}</c>, <c>*Tests.cs</c>, <c>project.assets.json</c>); none where any name may match it.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Text, bool Whole)[]> NamesOfPattern = new(StringComparer.Ordinal);
+
+    /// <summary>Whether a file of this name may match the glob, by its last name alone and in any letter case: false only
+    /// for a name it never matches, told without a string made.</summary>
+    public bool MayMatch(ReadOnlySpan<char> name)
+    {
+        (string Text, bool Whole)[] names = NamesOfPattern.GetOrAdd(Pattern, NamesOf);
+        if (names.Length == 0)
+        {
+            return true;
+        }
+        foreach ((string text, bool whole) in names)
+        {
+            if (whole ? name.Equals(text, StringComparison.OrdinalIgnoreCase) : name.EndsWith(text, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>What a pattern's last name asks a file's name to end with or be; none where it is not of those shapes.</summary>
+    private static (string Text, bool Whole)[] NamesOf(string pattern)
+    {
+        string last = pattern[(pattern.LastIndexOf('/') + 1)..];
+        if (last.Length == 0 || last.IndexOfAny(['?', '[', ']', '!', '}']) >= 0 && !last.StartsWith("*.{", StringComparison.Ordinal))
+        {
+            return [];
+        }
+        if (last.StartsWith("*.{", StringComparison.Ordinal))
+        {
+            string inner = last[3..];
+            return inner.EndsWith('}') && inner[..^1] is var alternatives && alternatives.IndexOfAny(['*', '?', '[', ']', '{', '}', '!', '/']) < 0
+                ? [.. alternatives.Split(',').Select(a => ("." + a, false))]
+                : [];
+        }
+        if (last[0] == '*')
+        {
+            string rest = last[1..];
+            return rest.Length == 0 || rest.IndexOfAny(['*', '{']) >= 0 ? [] : [(rest, false)];
+        }
+        return last.IndexOfAny(['*', '{']) >= 0 ? [] : [(last, true)];
+    }
+
     /// <summary>Whether the pattern reaches into the folders under <see cref="Folder"/>, where it can match a path of more
     /// than one name.</summary>
     public bool Recursive => Pattern.Contains('/', StringComparison.Ordinal) || Pattern.Contains("**", StringComparison.Ordinal);
@@ -250,22 +388,15 @@ public sealed record FileWatch(string? Folder, string Pattern, WatchKinds Kinds)
         return (Kinds & kind) != 0 && Matches(change.Path);
     }
 
-    /// <summary>Whether the watcher's glob matches a path, whatever changed there.</summary>
+    /// <summary>Whether the watcher's glob matches a path, whatever changed there: a path outside its folder, or whose name
+    /// its glob's last name cannot match (<see cref="MayMatch"/>), told without a string made, as a build's churn is.</summary>
     public bool Matches(string path)
     {
-        string named;
-        if (Folder is null)
-        {
-            named = path;
-        }
-        else if (PathNames.IsUnder(path, Folder))
-        {
-            named = PathNames.Below(path, Folder).ToString();
-        }
-        else
+        if (Folder is not null && !PathNames.IsUnder(path, Folder) || !MayMatch(Path.GetFileName(path.AsSpan())))
         {
             return false;
         }
+        string named = Folder is null ? path : PathNames.Below(path, Folder).ToString();
         string relative = "/" + named.Replace('\\', '/').TrimStart('/');
         string glob = "/" + Pattern.TrimStart('/');
         // Where the path's folder takes names in any letter case, so does the glob.
@@ -305,28 +436,22 @@ public sealed record FileWatch(string? Folder, string Pattern, WatchKinds Kinds)
     /// folder's URI; its kinds every change unless it names them. Null for one that cannot be read.</summary>
     internal static FileWatch? Read(JsonElement watcher)
     {
-        if (watcher.ValueKind != JsonValueKind.Object || !watcher.TryGetProperty("globPattern", out JsonElement glob))
+        if (JsonMembers.Value(watcher, "globPattern") is not { } glob)
         {
             return null;
         }
-        WatchKinds kinds = watcher.TryGetProperty("kind", out JsonElement kind) && kind.TryGetInt32(out int given) ? (WatchKinds)given : WatchKinds.All;
+        WatchKinds kinds = JsonMembers.Number(watcher, "kind") is { } given ? (WatchKinds)given : WatchKinds.All;
         if (glob.ValueKind == JsonValueKind.String)
         {
             return new FileWatch(null, glob.GetString()!, kinds);
         }
-        if (glob.ValueKind != JsonValueKind.Object || !glob.TryGetProperty("pattern", out JsonElement pattern) || pattern.ValueKind != JsonValueKind.String
-            || !glob.TryGetProperty("baseUri", out JsonElement place))
+        if (JsonMembers.Text(glob, "pattern") is not { } pattern || JsonMembers.Value(glob, "baseUri") is not { } place)
         {
             return null;
         }
-        string? uri = place.ValueKind switch
-        {
-            JsonValueKind.String => place.GetString(),
-            JsonValueKind.Object when place.TryGetProperty("uri", out JsonElement folder) && folder.ValueKind == JsonValueKind.String => folder.GetString(),
-            _ => null,
-        };
+        string? uri = place.ValueKind == JsonValueKind.String ? place.GetString() : JsonMembers.Text(place, "uri");
         return uri is not null && Uri.TryCreate(uri, UriKind.Absolute, out Uri? parsed) && parsed.IsFile
-            ? new FileWatch(DocumentUris.ToPath(uri), pattern.GetString()!, kinds)
+            ? new FileWatch(DocumentUris.ToPath(uri), pattern, kinds)
             : null;
     }
 }

@@ -1,3 +1,6 @@
+using Avalonia;
+using Avalonia.Controls;
+
 namespace Passenger.App;
 
 /// <summary>What every popup over the window shares (Find Action, Go to File, Find in Files, a Git choice, a
@@ -20,4 +23,20 @@ public static class PopupFrame
 
     /// <summary>Every width a popup may have.</summary>
     public static IReadOnlyList<double> Widths { get; } = [Narrow, Medium, Wide, Widest];
+
+    /// <summary>A popup as it shows, in the frame: itself where it is a frame or holds one as its content, else in a frame
+    /// made round it (the one made when it was shown before).</summary>
+    public static Control Framed(Control popup) =>
+        IsFrame(popup) || popup is ContentControl { Content: Control held } && IsFrame(held) ? popup
+        : popup.Parent is Border made && IsFrame(made) ? made
+        : new Border { Classes = { StyleClasses.Popup }, Padding = new Thickness(12, 10), Child = popup };
+
+    /// <summary>The frame a popup shows in, as <see cref="Framed"/> has it shown: itself, its content, or what holds it.</summary>
+    public static Border? FrameOf(Control popup) =>
+        popup as Border is { } frame && IsFrame(frame) ? frame
+        : popup is ContentControl { Content: Border held } && IsFrame(held) ? held
+        : popup.Parent as Border is { } round && IsFrame(round) ? round
+        : null;
+
+    private static bool IsFrame(Control control) => control is Border && control.Classes.Contains(StyleClasses.Popup);
 }

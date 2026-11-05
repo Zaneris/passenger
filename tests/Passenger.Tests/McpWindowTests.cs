@@ -24,6 +24,39 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     {
     }
 
+    /// <summary>A diff's tab in the person's window is named a diff of its file in the agent's workspace, never as the file's
+    /// own tab: among the open files and as the file shown, at its file's side's caret.</summary>
+    [AvaloniaFact]
+    public void An_agent_sees_a_diff_tab_in_the_persons_window_named_as_a_diff_of_its_file()
+    {
+        string repo = PathNames.Canonical(TestFolders.Create("mcp-diff-tab-"));
+        DeleteAtEnd(repo);
+        File.WriteAllText(Path.Combine(repo, "Shop.cs"), "class Shop\n{\n}\n");
+        TestGit.Init(repo);
+        File.WriteAllText(Path.Combine(repo, "Shop.cs"), "class Shop\n{\n    int count;\n}\n");
+        MainWindow window = AgentsWindow(repo, languageServer: false);
+        window.ApplySettings(window.Settings with { OpenDiffsIn = global::Passenger.App.Settings.DiffPlace.Tab });
+        window.OpenFile(Path.Combine(repo, "Shop.cs"));
+        Ui.Settle();
+        Assert.True(window.Perform(AppActions.ShowDiff), $"Show Diff could not run: {window.Status}");
+        Ui.Landed(() => window.EditorArea.Diffs.Count == 1 && window.EditorArea.Active?.Diff is not null, "Shop.cs's diff in a tab");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            JsonElement workspace = Await(Waiting.Apart(() => Call(client, McpTools.Workspace)), "the agent's workspace");
+            string[] open = [.. workspace.GetProperty("openFiles").EnumerateArray().Select(f => f.GetString()!)];
+            Assert.Contains("diff of Shop.cs (Shop.cs: HEAD and your version)", open);
+            string? shown = workspace.GetProperty("activeFile").GetString();
+            Assert.True(shown?.StartsWith("diff of Shop.cs (Shop.cs: HEAD and your version):", StringComparison.Ordinal) == true,
+                $"The diff's tab was named as {shown} among the files shown, not as a diff of Shop.cs");
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>An agent's package change is the NuGet window's own: the window shows it as its work while dotnet runs and
     /// lists the package installed once it is, and while the window's own change runs the agent's is refused, saying what is
     /// under way.</summary>

@@ -16,7 +16,8 @@ namespace Passenger.Tests;
 /// <summary>The debugger's hover card, as a person uses it at a stop: the pointer rested on an object shows its row, which
 /// opens into its members as the Variables view's rows do (each asked of the debugger only as it opens), a collection into
 /// its items, by the pointer or the keys; its rows' menu adds a watch and takes a value set; and it goes as the pointer
-/// leaves it or the program goes on. The tests share one program as written (<see cref="People"/>). Debugged, so run alone.</summary>
+/// leaves it or the program goes on; Quick Evaluate Expression shows its value there. The tests share one program as
+/// written (<see cref="People"/>). Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People>
 {
@@ -129,6 +130,56 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
         }
     }
 
+    /// <summary>Quick Evaluate Expression shows its value in the hover card's list with the keys, with no Evaluate dialog:
+    /// from its keys, the expression the hover reads at the caret, opening into its members; the selection where there is
+    /// one; and from Alt-click, the expression clicked, while an Alt-drag there still selects a column.</summary>
+    [AvaloniaFact]
+    public void Quick_evaluate_shows_the_caret_or_selections_or_an_alt_clicked_expression_in_the_cards_list_with_the_keys()
+    {
+        MainWindow window = Stopped();
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            string text = editor.Document.Snapshot.ToString();
+            editor.Selections = SelectionSet.Single(text.IndexOf("person.Home.City", StringComparison.Ordinal) + "person.Ho".Length);
+            Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.QuickEvaluate)[0].Notation());
+            Ui.WaitFor(() => window.Assist.HoverValues is { } shown && shown.IsKeyboardFocusWithin, "Quick Evaluate's card, with the keys");
+            VariablesList values = window.Assist.HoverValues!;
+            VariableNode home = Assert.Single(values.Tree.Rows);
+            Assert.Equal("person.Home", home.Name);
+            Assert.False(window.OwnedWindows.Any(w => w.IsVisible), "Quick Evaluate opened a dialog");
+            UiRulesTests.HoldsToPopupRules("Quick Evaluate's card", window.Assist.HoverCard!);
+            Ui.Press(window, "Right");
+            Ui.WaitFor(() => Member(values, home, "City")?.Value == "\"London\"", $"Home's members in the card, where it showed {Shown(values)}");
+            Ui.Press(window, "Escape");
+            Assert.Null(window.Assist.HoverValues);
+
+            int indexed = text.IndexOf("numbers[0]", StringComparison.Ordinal);
+            editor.Selections = SelectionSet.Single(new Selection(indexed, indexed + "numbers[0]".Length));
+            Ui.Run(window, AppActions.QuickEvaluate);
+            Ui.WaitFor(() => window.Assist.HoverValues?.Tree.Rows is [{ Name: "numbers[0]", Value: "10" }], () => $"the selection's value in the card, not {Shown(window.Assist.HoverValues)}");
+            Ui.Press(window, "Escape");
+
+            int name = text.IndexOf("person.Name", StringComparison.Ordinal) + "person.Na".Length;
+            Point at = editor.PointOf(name) + new Point(1, editor.LineHeight / 2);
+            Ui.Click(editor, at, RawInputModifiers.Alt);
+            Ui.WaitFor(() => window.Assist.HoverValues?.Tree.Rows is [{ Name: "person.Name", Value: "\"Ada\"" }], () => $"Alt-click's value in the card, not {Shown(window.Assist.HoverValues)}");
+            Ui.Press(window, "Escape");
+            Point from = editor.TranslatePoint(editor.PointOf(0) + new Point(1, editor.LineHeight / 2), window)!.Value;
+            Point to = editor.TranslatePoint(editor.PointOf(text.IndexOf('\n') + 4) + new Point(1, editor.LineHeight / 2), window)!.Value;
+            Ui.Drag(window, from, to, MouseButton.Left, RawInputModifiers.Alt);
+            Assert.True(editor.Selections.Count == 2 && window.Assist.HoverValues is null,
+                $"Alt-drag over two lines made {editor.Selections.Count} selections with {Shown(window.Assist.HoverValues)} in a card, where it selects their column alone");
+
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the program to end");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A window on the program paused at its breakpoint, on the line that writes what it made, its locals shown; with
     /// no C# language server, since a paused program's card is the debugger's values alone.</summary>
     private MainWindow Stopped()
@@ -158,7 +209,7 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
         values.Tree.Rows.FirstOrDefault(r => r.Parent == row && r.Name == name);
 
     /// <summary>The card's rows as they are, for a failure to say.</summary>
-    internal static string Shown(VariablesList values) => string.Join("; ", values.Tree.Rows.Select(r => $"{r.Name} = {r.Value}{(r.IsExpanded ? " (open)" : "")}"));
+    internal static string Shown(VariablesList? values) => values is null ? "no card" : string.Join("; ", values.Tree.Rows.Select(r => $"{r.Name} = {r.Value}{(r.IsExpanded ? " (open)" : "")}"));
 
     private static VariableNode Chosen(VariablesList values) =>
         values.SelectedItem as VariableNode ?? throw new InvalidOperationException("No row of the card is chosen");

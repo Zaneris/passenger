@@ -7,9 +7,9 @@ using Avalonia.Media;
 
 namespace Passenger.App.Tables;
 
-/// <summary>An editor group's table: a bar over the editor (a CSV's Table and Text, or a workbook's sheets, and how large
-/// the table is) and the <see cref="CellGrid"/> laid over the editor while the table shows. Each file's chosen cells and
-/// scroll are kept for when its tab is shown again.</summary>
+/// <summary>An editor group's table: a bar over the editor (a CSV's or a resource's Table and Text, or a workbook's sheets,
+/// and how large the table is) and the <see cref="CellGrid"/> laid over the editor while the table shows, a resource's
+/// cells written through its file. Each file's chosen cells and scroll are kept for when its tab is shown again.</summary>
 public sealed class TableViewer
 {
     private readonly StackPanel choices = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
@@ -19,6 +19,9 @@ public sealed class TableViewer
     private readonly Dictionary<TableFile, ((int, int) Anchor, (int, int) Caret, Vector Scroll)> kept = [];
     private TableFile? file;
     private bool painting;
+
+    /// <summary>A place in a resource's text gone to, whose key's row the table chooses once it is read; null for none.</summary>
+    private int? goneTo;
 
     public TableViewer()
     {
@@ -45,6 +48,20 @@ public sealed class TableViewer
             }
         };
         Body = new Panel { IsVisible = false, Children = { View, message } };
+        View.SortRequested += (_, wanted) => file?.SortBy(wanted);
+        View.CellWritten += (_, write) => Said(file?.Write(write));
+        View.RowsDeleted += (_, rows) => Said(file?.Delete(rows));
+    }
+
+    /// <summary>Raised with why a cell written or a row taken out did not change the file.</summary>
+    public event EventHandler<string>? Refused;
+
+    private void Said(string? refused)
+    {
+        if (refused is not null)
+        {
+            Refused?.Invoke(this, refused);
+        }
     }
 
     /// <summary>The bar over the editor, shown for a table file whether its table or its text shows.</summary>
@@ -105,6 +122,32 @@ public sealed class TableViewer
         Body.IsVisible = false;
     }
 
+    /// <summary>The text's caret taken to a place in it (Go to Declaration to a resource's key): a resource's table chooses
+    /// the value of the key written there, now or once the table is read.</summary>
+    public void Reveal(int offset)
+    {
+        goneTo = file is { IsResource: true } ? offset : null;
+        Chase();
+    }
+
+    private void Chase()
+    {
+        if (goneTo is not int offset || View.Table is not { Unsorted: ResourceTable read } shown)
+        {
+            return;
+        }
+        goneTo = null;
+        int column = read.IsResx ? ResourceTable.Value : ResourceTable.Target;
+        for (int row = 0; row < shown.RowCount; row++)
+        {
+            if (read.Entry(shown.FileRow(row)) is { } entry && entry.Start <= offset && offset <= entry.End)
+            {
+                View.Choose((row, column), (row, column));
+                return;
+            }
+        }
+    }
+
     /// <summary>A file closed: nothing of it is kept.</summary>
     public void Forget(TableFile closed) => kept.Remove(closed);
 
@@ -122,9 +165,10 @@ public sealed class TableViewer
         if (!ReferenceEquals(View.Table, file.Table))
         {
             View.Table = file.Table;
+            Chase();
         }
         PaintChoices();
-        header.IsVisible = !file.IsWorkbook && file.ShowsTable;
+        header.IsVisible = file.HasHeaderChoice && file.ShowsTable;
         header.IsChecked = file.HeaderRow;
         message.IsVisible = file.Table is null;
         message.Text = file.Problem ?? (file.IsReading ? "Reading…" : string.Empty);

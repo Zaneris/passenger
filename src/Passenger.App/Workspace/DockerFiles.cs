@@ -75,15 +75,12 @@ public static class DockerFiles
             using FileStream stream = File.OpenRead(assets);
             using JsonDocument read = JsonDocument.Parse(stream);
             JsonElement root = read.RootElement;
-            bool own = root.TryGetProperty("project", out JsonElement project) && project.TryGetProperty("frameworks", out JsonElement frameworks)
-                && frameworks.ValueKind == JsonValueKind.Object
-                && frameworks.EnumerateObject().Any(f => f.Value.TryGetProperty("frameworkReferences", out JsonElement named)
-                    && named.ValueKind == JsonValueKind.Object && named.EnumerateObject().Any(n => n.Name.Equals(AspNetCoreApp, StringComparison.OrdinalIgnoreCase)));
+            bool own = JsonMembers.Properties(JsonMembers.Object(root, "project"), "frameworks").Any(f => JsonMembers.Properties(f.Value, "frameworkReferences")
+                .Any(n => n.Name.Equals(AspNetCoreApp, StringComparison.OrdinalIgnoreCase)));
             // What a package or a project it references brings: each library's frameworkReferences in the restore's targets.
-            bool brought = root.TryGetProperty("targets", out JsonElement targets) && targets.ValueKind == JsonValueKind.Object
+            bool brought = JsonMembers.Object(root, "targets") is { } targets
                 && targets.EnumerateObject().Any(t => t.Value.ValueKind == JsonValueKind.Object && t.Value.EnumerateObject().Any(l =>
-                    l.Value.ValueKind == JsonValueKind.Object && l.Value.TryGetProperty("frameworkReferences", out JsonElement references)
-                    && references.ValueKind == JsonValueKind.Array && references.EnumerateArray().Any(r => r.GetString()?.Equals(AspNetCoreApp, StringComparison.OrdinalIgnoreCase) == true)));
+                    JsonMembers.Texts(l.Value, "frameworkReferences").Any(r => r.Equals(AspNetCoreApp, StringComparison.OrdinalIgnoreCase))));
             return own || brought;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)

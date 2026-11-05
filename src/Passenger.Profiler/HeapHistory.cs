@@ -13,7 +13,9 @@ namespace Passenger.Profiler;
 /// every stretch of objects it kept, moved or not. Each earlier snapshot's objects are carried through those, those in
 /// a condemned generation and in no kept stretch dying. A dump is placed among the collections by when createdump held
 /// the program, the one long stretch with no sample; a full collection induced right after it says when every
-/// collection before has been heard. Only the snapshots kept (<see cref="KeptSnapshots"/>) are followed.</summary>
+/// collection before has been heard. A program no other may read is snapshot by its runtime's own heap dump
+/// (<see cref="GcHeapDump"/>), placed after the collection that walked it. Only the snapshots kept
+/// (<see cref="KeptSnapshots"/>) are followed.</summary>
 internal sealed class HeapHistory : IAsyncDisposable
 {
     private const string Runtime = "Microsoft-Windows-DotNETRuntime";
@@ -62,6 +64,11 @@ internal sealed class HeapHistory : IAsyncDisposable
                 DumpTool.Sweep();
                 return DumpTool.Find(processId);
             }, cancel);
+            // Neither Passenger's createdump nor the runtime's own can read such a program: its runtime walks its heap itself.
+            if (DotnetProcesses.WhyUnreadable(processId) is { } unreadable)
+            {
+                return await HeapDumpAsync($"{GcHeapDump.Lacks}: {unreadable}", clock, cancel);
+            }
             if (dumpTool is (_, string why) && !intoOutput)
             {
                 throw new DumpIntoOutputException($"Only the program's runtime can write its memory snapshot, as {why}, and it writes "
@@ -97,7 +104,7 @@ internal sealed class HeapHistory : IAsyncDisposable
                             continue;
                         }
                         string phases = $"dump {dumped.TotalSeconds:0.0} s, reading {graph.Walked.TotalSeconds:0.0} s, retention {graph.Analysed.TotalSeconds:0.0} s";
-                        return Place(graph, heard ? written : null, clock.Elapsed, phases);
+                        return Place(graph, heard ? collections => Before(written, collections) : null, clock.Elapsed, phases);
                     }
                     finally
                     {
@@ -118,6 +125,32 @@ internal sealed class HeapHistory : IAsyncDisposable
         finally
         {
             taking.Release();
+        }
+    }
+
+    /// <summary>The snapshot read from the runtime's own GC heap dump (<see cref="GcHeapDump"/>), saying what it lacks: its
+    /// objects are where the collection that walked them left them, so the collections up to that one come before it.</summary>
+    private async Task<MemorySnapshot> HeapDumpAsync(string lacks, System.Diagnostics.Stopwatch clock, CancellationToken cancel)
+    {
+        await ListenAsync(cancel);
+        lock (gate)
+        {
+            holding = true;
+        }
+        try
+        {
+            (HeapGraph graph, int collection, TimeSpan dumped) = await GcHeapDump.ReadAsync(processId, cancel);
+            bool heard = collection >= 0 && await HeardAsync(collection, TimeSpan.FromSeconds(30));
+            string phases = $"heap dump {dumped.TotalSeconds:0.0} s, retention {graph.Analysed.TotalSeconds:0.0} s";
+            return Place(graph, heard ? collections => collections.FindIndex(r => r.Count > collection) is var after and >= 0 ? after : collections.Count : null,
+                clock.Elapsed, phases, lacks);
+        }
+        finally
+        {
+            lock (gate)
+            {
+                Release();
+            }
         }
     }
 
@@ -192,10 +225,19 @@ internal sealed class HeapHistory : IAsyncDisposable
         return longest;
     }
 
-    /// <summary>Places a dump among the collections held while it was taken: earlier snapshots are carried up to it and
-    /// matched with it, then this one is followed too, through the collections after. With no placing (the induced
-    /// collection never heard), the dump's objects are not followed.</summary>
-    private MemorySnapshot Place(HeapGraph graph, Dumped? dumped, TimeSpan took, string phases)
+    /// <summary>How many of the collections held while a dump was written came before it.</summary>
+    private static int Before(Dumped dump, List<GcRecord> collections)
+    {
+        // A collection can neither run nor end while the program is held: those ending before came before it.
+        (DateTime From, DateTime To) hold = Held(dump, collections);
+        int before = collections.FindIndex(r => r.Ended > hold.From);
+        return before < 0 ? collections.Count : before;
+    }
+
+    /// <summary>Places a snapshot among the collections held while it was taken, as many as came before it
+    /// (<paramref name="before"/>): earlier snapshots are carried up to it and matched with it, then this one is followed
+    /// too, through the collections after. With no placing (the collection never heard), its objects are not followed.</summary>
+    private MemorySnapshot Place(HeapGraph graph, Func<List<GcRecord>, int>? before, TimeSpan took, string phases, string? lacks = null)
     {
         lock (gate)
         {
@@ -206,13 +248,9 @@ internal sealed class HeapHistory : IAsyncDisposable
                 lostEvents = listened.EventsLost;
                 Lose("The profiler lost some of the program's events");
             }
-            if (dumped is { } dump)
+            if (before?.Invoke(held) is int came)
             {
-                // A collection can neither run nor end while the program is held: those ending before came before it.
-                (DateTime From, DateTime To) hold = Held(dump, held);
-                int before = held.FindIndex(r => r.Ended > hold.From);
-                before = before < 0 ? held.Count : before;
-                for (int i = 0; i < before; i++)
+                for (int i = 0; i < came; i++)
                 {
                     Apply(held[i]);
                 }
@@ -223,10 +261,10 @@ internal sealed class HeapHistory : IAsyncDisposable
                     earlier[tracker.Number] = new Identity(tracker.Match(graph), tracker.Lost);
                 }
                 trackers.Add(new Tracker(number, graph));
-                held.RemoveRange(0, before);
+                held.RemoveRange(0, came);
             }
             Release();
-            MemorySnapshot snapshot = new(kept, number, DateTime.Now, graph, took, phases, earlier);
+            MemorySnapshot snapshot = new(kept, number, DateTime.Now, graph, took, phases, earlier) { Lacks = lacks };
             kept.Took(snapshot);
             return snapshot;
         }

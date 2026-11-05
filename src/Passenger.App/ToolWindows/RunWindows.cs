@@ -15,6 +15,9 @@ public static class RunWindows
 
     public const string DetailsTab = "Details";
 
+    /// <summary>An AppHost's resources at once, laid out by their waits and references.</summary>
+    public const string GraphTab = "Graph";
+
     /// <summary>The run's structured logs and traces, the two pages of the Telemetry view under it.</summary>
     public const string TelemetryTab = "Telemetry";
 
@@ -22,7 +25,7 @@ public static class RunWindows
     public const string AppHostLogTab = "AppHost Log";
 
     /// <summary>Every tab either window has, in the order each shows those it has.</summary>
-    public static IReadOnlyList<string> Tabs { get; } = [LogTab, StatsTab, FilesTab, DetailsTab, TelemetryTab, AppHostLogTab];
+    public static IReadOnlyList<string> Tabs { get; } = [LogTab, StatsTab, FilesTab, DetailsTab, GraphTab, TelemetryTab, AppHostLogTab];
 
     /// <summary>The actions on a .NET service of a run with their icons, in their one order.</summary>
     public static IReadOnlyList<(string Action, string Icon)> ServiceActions { get; } =

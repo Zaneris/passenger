@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Profiling;
+using Passenger.Core;
 using Passenger.Profiler;
 
 namespace Passenger.Tests;
@@ -12,8 +13,8 @@ namespace Passenger.Tests;
 /// <summary>Memory snapshots, from the profiler window: two snapshots of a run compared object by object (new, dead and
 /// survived, however the GC moved what lived on), a type's objects opened to the shortest paths that keep them from the
 /// GC roots with each root's kind and what they retain, and a heap of a million objects read, compared and opened; only
-/// the newest three keep their objects, a program that ends as it is snapshot is said to have ended, and a snapshot given
-/// up leaves no dump behind.</summary>
+/// the newest three keep their objects, a program that ends as it is snapshot is said to have ended, a snapshot given up
+/// leaves no dump behind, and a hardened program on macOS is snapshot from its runtime's own heap dump.</summary>
 public sealed class MemorySnapshotsTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("memory-");
@@ -331,11 +332,16 @@ public sealed class MemorySnapshotsTests : IDisposable
                 {
                     for (int i = 0; i < count; i++)
                     {
-                        Nodes.Add(new Node(i));
+                        Nodes.Add(new Node(i) { Before = Nodes.Count > 0 ? Nodes[^1] : null });
                     }
                 }
             }
-            sealed class Node(int number) { public int Number { get; } = number; }
+            sealed class Node(int number)
+            {
+                public int Number { get; } = number;
+
+                public Node? Before { get; init; }
+            }
             """);
         MemoryView memory = window.ProfilerView.MemoryPage;
         MemorySnapshot first = Snapshot(window, 1);
@@ -344,6 +350,8 @@ public sealed class MemorySnapshotsTests : IDisposable
         Ui.PumpUntil(() => Console(window).Contains("added", StringComparison.Ordinal), "the program to add its nodes");
         MemorySnapshot second = Snapshot(window, 2);
         Assert.True(second.Objects > 1_200_000, $"{second.Objects} objects in the second snapshot");
+        // A million nodes each holding a reference are read as their references alone, their field's name read once.
+        Assert.True(first.NamedFrom < 5_000, $"The first snapshot read {first.NamedFrom:N0} of its {first.Objects:N0} objects with their fields' names");
 
         Task compared = memory.CompareWithAsync(first);
         Ui.PumpUntil(() => memory.Comparison is not null, "the comparison", TimeSpan.FromMinutes(2));
@@ -394,6 +402,98 @@ public sealed class MemorySnapshotsTests : IDisposable
         Ui.WaitFor(() => memory.Set is not null, "the items");
         Ui.ClickButton(memory, "Shortest Paths to Roots");
         Assert.Equal("Static reference: Kept.Items", memory.PathRows[^1].Node.Text);
+        Assert.False(window.Profiling!.HasExited, "The program profiled ended with its memory snapshot");
+        window.Profiling.Kill();
+        window.Close();
+    }
+
+    /// <summary>A program signed with macOS's hardened runtime and without get-task-allow, as a notarized app is, lets no
+    /// other program read its memory, so its snapshot is read from its runtime's own GC heap dump: the type it made is
+    /// listed with its count and the bytes they take, the path that keeps them ends at the static that holds their array,
+    /// and the snapshot, in the window and the status alike, says what it lacks. Skips off macOS.</summary>
+    [AvaloniaFact]
+    public void A_hardened_programs_memory_snapshot_is_read_from_its_runtimes_heap_dump_with_its_types_counts_and_sizes()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS keeps a hardened-runtime program's memory from other programs");
+        string project = Path.Combine(folder, "Hoarder");
+        TestFolders.Write(project, "Hoarder.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n"
+            + $"    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <ImplicitUsings>enable</ImplicitUsings>\n    <Nullable>enable</Nullable>\n"
+            + "    <RunCommand>$(MSBuildProjectDirectory)/signed/Hoarder</RunCommand>\n  </PropertyGroup>\n</Project>\n");
+        TestFolders.Write(project, "Program.cs", """
+            Hoard.Fill();
+            Console.WriteLine($"size {Hoard.Size}");
+            Console.WriteLine("ready");
+            Console.ReadLine();
+            static class Hoard
+            {
+                public static readonly Hoarded[] Kept = new Hoarded[1234];
+                public static long Size;
+
+                public static void Fill()
+                {
+                    Hoarded[] kept = Kept;
+                    long before = GC.GetAllocatedBytesForCurrentThread();
+                    for (int i = 0; i < kept.Length; i++)
+                    {
+                        kept[i] = new Hoarded();
+                    }
+                    Size = (GC.GetAllocatedBytesForCurrentThread() - before) / kept.Length;
+                }
+            }
+            sealed class Hoarded
+            {
+                public long Weight = 7;
+            }
+            """);
+        // What a notarized .NET app is given, without get-task-allow, which would let other programs read it.
+        TestFolders.Write(folder, "hardened.plist", """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+                <key>com.apple.security.cs.allow-jit</key>
+                <true/>
+                <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+                <true/>
+                <key>com.apple.security.cs.disable-library-validation</key>
+                <true/>
+            </dict>
+            </plist>
+            """);
+        Restore.Run(project);
+        ChildResult built = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", project, "--no-restore", "-nologo", "-v:q"]),
+            limit: Restore.Limit.Scaled())), "the program's build", Restore.Limit.Scaled() + TestFolders.Spare);
+        Assert.True(built.Succeeded, $"The program does not build:\n{built.Output}{built.Error}");
+        // A copy apart from the build's output, which the window's next build leaves as it is, signed as a notarized app is.
+        string signed = Path.Combine(project, "signed");
+        Directory.CreateDirectory(signed);
+        foreach (string file in Directory.GetFiles(Path.Combine(project, "bin", "Debug", TestProjects.Framework)))
+        {
+            File.Copy(file, Path.Combine(signed, Path.GetFileName(file)), overwrite: true);
+        }
+        ChildResult signing = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("codesign",
+            ["-s", "-", "--options", "runtime", "--entitlements", Path.Combine(folder, "hardened.plist"), "-f", Path.Combine(signed, "Hoarder")]),
+            limit: TimeSpan.FromMinutes(1).Scaled())), "the program's signing", TimeSpan.FromMinutes(1).Scaled() + TestFolders.Spare);
+        Assert.True(signing.Succeeded, $"codesign did not sign the program: {signing.Output}{signing.Error}");
+
+        MainWindow window = Ui.OpenFolder(project, width: 1400, height: 900, languageServer: false);
+        Ui.Launched(window, window.ProfileAsync(), "the build and the start", TimeSpan.FromMinutes(3));
+        Ui.PumpUntil(() => Console(window).Contains("ready", StringComparison.Ordinal), "the program to be ready");
+        Assert.True(DotnetProcesses.WhyUnreadable(window.Profiling!.ProcessId) is not null,
+            $"The program profiled is one other programs may read, so its snapshot proves nothing of the heap dump: {Processes.Describe(window.Profiling.ProcessId)}");
+        long size = long.Parse(System.Text.RegularExpressions.Regex.Match(Console(window), @"size (\d+)").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+
+        MemorySnapshot heap = Snapshot(window, 1);
+        Assert.True(heap.Lacks?.StartsWith("Read from the runtime's own GC heap dump", StringComparison.Ordinal) == true, $"The snapshot does not say it came from the heap dump: {heap.Lacks}");
+        Assert.Contains("read from its runtime's GC heap dump", window.Status, StringComparison.Ordinal);
+        MemoryView memory = window.ProfilerView.MemoryPage;
+        HeapType hoarded = Assert.Single(memory.TypeRows, t => t.Name == "Hoarded");
+        Assert.Equal((1234, 1234 * size), (hoarded.Count, hoarded.Bytes));
+        Focus(memory.TypeList, hoarded);
+        Ui.Press(window, "enter");
+        Ui.WaitFor(() => memory.Set is not null, "the hoarded objects");
+        Ui.ClickButton(memory, "Key Retention Paths");
+        Assert.Equal("Static reference: Kept → Hoarded[] elements → Hoarded", memory.KeyPathRows[0].Text);
         Assert.False(window.Profiling!.HasExited, "The program profiled ended with its memory snapshot");
         window.Profiling.Kill();
         window.Close();
@@ -541,7 +641,7 @@ public sealed class MemorySnapshotsTests : IDisposable
     }
 
     /// <summary>This process's dumps of a program in the temporary folder.</summary>
-    private static string[] Dumps(int program) => Directory.GetFiles(Path.GetTempPath(), $"passenger-heap-{Environment.ProcessId}-{program}-*.dmp");
+    private static string[] Dumps(int program) => Directory.GetFiles(ProfilingSession.DumpFolder, $"passenger-heap-{Environment.ProcessId}-{program}-*.dmp");
 
     /// <summary>A console project, built and started under the profiler from the window, run until it says it is ready
     /// (having been <paramref name="sent"/> a line to say back, for a program that says nothing by itself).</summary>

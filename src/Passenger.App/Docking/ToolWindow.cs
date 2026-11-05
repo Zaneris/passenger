@@ -179,6 +179,10 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     /// <summary>What is chosen in it (its rows), for actions that run on them while it has the keys.</summary>
     public Func<object?>? Chosen { get; init; }
 
+    /// <summary>One of the window's actions its header carries as a button before Expand All, with the button's icon and
+    /// the action's title for its tip (the Explorer's Select Opened File).</summary>
+    public (string Action, string Icon, string Title)? HeaderAction { get; init; }
+
     /// <summary>Opens every row of its tree, for Expand All, its button in the header.</summary>
     public Action? ExpandAll { get; init; }
 

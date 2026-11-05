@@ -239,7 +239,7 @@ public sealed partial class CodeEditor
     /// <summary>The view, the scroll bars and the host told the rows changed under the view.</summary>
     private void FollowRows()
     {
-        InvalidateVisual();
+        Redraw();
         UpdateScrollBars();
         ScrollChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -487,7 +487,7 @@ public sealed partial class CodeEditor
         if (Bounds.Height <= 0 || rowMap is not { } before || !ReferenceEquals(before.Folds.Text, document.Snapshot))
         {
             change();
-            InvalidateVisual();
+            Redraw();
             return;
         }
         TextSnapshot text = document.Snapshot;
@@ -499,7 +499,7 @@ public sealed partial class CodeEditor
         int row = RowOfOffset(text, anchor, beforeWrap: false).Row;
         scroll = new Vector(scroll.X, Math.Clamp((row * metrics.LineHeight) + Math.Min(within, metrics.LineHeight - 1), 0, MaxScrollY));
         UpdateScrollBars();
-        InvalidateVisual();
+        Redraw();
         ScrollChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -511,6 +511,9 @@ public sealed partial class CodeEditor
             // The text wraps at the new width, on screen at once; the line at the top stays at the top.
             KeepTopLine(() => { });
         }
+        // The rows span the new width, and those come into view are drawn with this frame, not the next.
+        rowsStale = true;
+        PrepareFrame();
     }
 
     /// <summary>Ahead of everyone who hears of an edit (<see cref="TextDocument.ChangedFirst"/>): the decorations' hints and
@@ -518,6 +521,7 @@ public sealed partial class CodeEditor
     private void OnChangedFirst(object? sender, DocumentChangedEventArgs change)
     {
         views.Follow(change, advances);
+        FollowSlots(change);
         decorations.Follow(change);
         wrappedHints = decorations.InlayHints;
         FollowWraps(change);

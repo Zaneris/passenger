@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Passenger.App;
 using Passenger.App.Mcp;
 using Passenger.Core;
 
@@ -113,6 +114,19 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         Assert.Equal("Renamed in 2 files: MainWindow.axaml, MainWindow.axaml.cs", fromCode);
         Assert.Contains("Begin.Content = \"Start\";", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml.cs")), StringComparison.Ordinal);
         Assert.Contains("<Button Name=\"Begin\"", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml")), StringComparison.Ordinal);
+        // A bound property renamed by its name takes the window's binding along.
+        string followed = (await Call(client, McpTools.Rename, new() { ["symbol"] = "MainViewModel.Greeting", ["newName"] = "Salutation" })).GetString()!;
+        Assert.True(followed.StartsWith("Renamed in 2 files: ", StringComparison.Ordinal)
+            && followed["Renamed in 2 files: ".Length..].Split(", ").Order(StringComparer.Ordinal).SequenceEqual(new[] { viewModel, "MainWindow.axaml" }.Order(StringComparer.Ordinal)),
+            $"The agent's rename of the bound property did not say it changed the view model and the window binding it: {followed}");
+        Assert.Contains("Text=\"{Binding Salutation}\"", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml")), StringComparison.Ordinal);
+        Assert.Contains("public string Salutation", File.ReadAllText(Path.Combine(gallery, viewModel)), StringComparison.Ordinal);
+        // Renamed from its binding, as from its declaration: the view model's property and the window's binding both.
+        string fromXaml = (await Call(client, McpTools.Rename, new(At(File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml")), "MainWindow.axaml", "{Binding Salut"))
+            { ["newName"] = "Greeting" })).GetString()!;
+        Assert.True(fromXaml.StartsWith("Renamed in 2 files: ", StringComparison.Ordinal), $"The agent's rename from the binding answered: {fromXaml}");
+        Assert.Contains("Text=\"{Binding Greeting}\"", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml")), StringComparison.Ordinal);
+        Assert.Contains("public string Greeting", File.ReadAllText(Path.Combine(gallery, viewModel)), StringComparison.Ordinal);
         await client.DisposeAsync();
 
         // A second session, as after a restart: the same version's file, not decompiled again.
@@ -211,6 +225,10 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         Assert.Equal("Renamed Go to Start in 2 files: MainWindow.xaml, MainWindow.xaml.cs", renamed);
         Assert.Contains("Start.Content = \"Start\";", File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml.cs")), StringComparison.Ordinal);
         Assert.Contains("ElementName=Start", File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml")), StringComparison.Ordinal);
+        // A property bound under the window's d:DataContext renamed by its name takes the binding along.
+        string followed = (await Call(client, McpTools.Rename, new() { ["symbol"] = "MainViewModel.Greeting", ["newName"] = "Salutation" })).GetString()!;
+        Assert.Contains("MainWindow.xaml", followed, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{Binding Salutation}\"", File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml")), StringComparison.Ordinal);
     }
 
     /// <summary>A script, a stylesheet and a package.json, with the project's own ESLint and Prettier (the tests' packages
@@ -487,9 +505,23 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         }
     }
 
-    /// <summary>A file's errors and warnings as diagnostics lists them, each as "line: message".</summary>
+    /// <summary>An agent's outline of a Markdown file: its headings, nested by level, each with its line, read by Passenger
+    /// with no server; a heading inside a fenced block is none.</summary>
+    [Fact]
+    public async Task An_agents_outline_of_a_markdown_file_is_its_headings_nested_by_level()
+    {
+        string notes = Made("mcpmarkdown-", made => File.WriteAllText(Path.Combine(made, "NOTES.md"),
+            "# Notes\n\nWhat they are.\n\n## Building\n\n```sh\n# not a heading\n```\n\n### On **macOS**\n\n## Running\n"));
+        await using McpClient client = await Start(["--mcp", notes], languageServer: false);
+        string outline = (await Call(client, McpTools.Outline, new() { ["path"] = "NOTES.md" })).GetString()!;
+        Assert.Equal("Notes (heading, line 1)\n  Building (heading, line 5)\n    On macOS (heading, line 11)\n  Running (heading, line 13)", outline);
+    }
+
+    /// <summary>A file's errors and warnings as diagnostics lists them, each as "line: message", its code before the
+    /// message where it has one ("1: TS2322: Type…").</summary>
     private static string[] Problems(JsonElement found) =>
-        [.. found.EnumerateArray().Select(d => $"{d.GetProperty("line").GetInt32()}: {d.GetProperty("message").GetString()}")];
+        [.. found.EnumerateArray().Select(d => $"{d.GetProperty("line").GetInt32()}: "
+            + $"{(d.TryGetProperty("code", out JsonElement code) && code.ValueKind == JsonValueKind.String ? $"{code.GetString()}: " : string.Empty)}{d.GetProperty("message").GetString()}")];
 
     /// <summary>A folder of the test's own, written by <paramref name="write"/>, removed with the test.</summary>
     private string Made(string name, Action<string> write)
@@ -542,6 +574,38 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     }
 
     /// <summary>The test's own restored folder (<see cref="Restored"/>), removed with the test.</summary>
+    /// <summary>A multi-targeted project's framework chosen by an agent through Target Framework, as the XAML file's switcher
+    /// chooses it: workspace names the first, then the one chosen; the XAML file's preview says it waits for that framework's
+    /// build, and Build for XAML Preview builds that framework alone, the other's never built.</summary>
+    [Fact]
+    public async Task An_agent_chooses_a_multi_targeted_projects_framework_and_workspace_the_preview_and_its_build_follow()
+    {
+        string pair = await Taken("mcppair-");
+        string second = MultiTargetedXamlTests.Second;
+        await using McpClient client = await Start(["--mcp", pair], languageServer: false);
+        Assert.Equal(TestProjects.Framework, Chosen(await Call(client, McpTools.Workspace)));
+        await Call(client, McpTools.Open, new() { ["path"] = "MainWindow.axaml" });
+        await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.XamlPreview });
+
+        string chose = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.TargetFramework, ["input"] = second }));
+        Assert.StartsWith($"Pair's framework is {second}", chose, StringComparison.Ordinal);
+        Assert.Equal(second, Chosen(await Call(client, McpTools.Workspace)));
+        string waits = $"to preview its XAML for {second}";
+        string tree = string.Empty;
+        await Waiting.UntilAsync(async () => (tree = Text(await Call(client, McpTools.AppTree, new() { ["app"] = "ide" }))).Contains(waits, StringComparison.Ordinal),
+            TimeSpan.FromSeconds(30), Cancel, TimeSpan.FromMilliseconds(200));
+        Assert.True(tree.Contains(waits, StringComparison.Ordinal), $"The preview did not say it waits for {second}'s build once the agent chose it:\n{tree}");
+
+        string built = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.BuildForPreview }));
+        string bin = Path.Combine(pair, "bin", "Debug");
+        Assert.True(File.Exists(Path.Combine(bin, second, "Pair.dll")), $"Build for XAML Preview did not build {second}, the framework chosen: {built}");
+        Assert.False(File.Exists(Path.Combine(bin, TestProjects.Framework, "Pair.dll")), $"Build for XAML Preview built {TestProjects.Framework} too, which the preview never draws: {built}");
+    }
+
+    /// <summary>The framework workspace says is chosen for the folder's one project.</summary>
+    private static string? Chosen(JsonElement workspace) =>
+        Assert.Single(workspace.GetProperty("projects").EnumerateArray()).TryGetProperty("chosenFramework", out JsonElement chosen) ? chosen.GetString() : null;
+
     private async Task<string> Taken(string name)
     {
         string taken = await restored.Take(name);
@@ -549,8 +613,8 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         return taken;
     }
 
-    /// <summary>The class's restored folders, Avalonia's and WPF's galleries, the Aspire AppHost and its service, and the web
-    /// app of routes, each written as its test needs it: all four are restored at once, begun as the class starts, so the
+    /// <summary>The class's restored folders, Avalonia's and WPF's galleries, the Aspire AppHost and its service, the web
+    /// app of routes and Avalonia's app of two frameworks, each written as its test needs it: all are restored at once, begun as the class starts, so the
     /// tests that take none run meanwhile, rather than each test's in its turn. Each test takes its own; those no test took
     /// go with the class.</summary>
     public sealed class Restored : IAsyncLifetime
@@ -567,7 +631,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
 
         private async Task RestoreAsync()
         {
-            (string Name, Func<string, Task> Write)[] kinds = [("mcpaxaml-", Avalonia), ("mcpaspire-", Aspire), ("mcpwxaml-", Wpf), ("mcproutes-", Routes)];
+            (string Name, Func<string, Task> Write)[] kinds = [("mcpaxaml-", Avalonia), ("mcpaspire-", Aspire), ("mcpwxaml-", Wpf), ("mcproutes-", Routes), ("mcppair-", Pair)];
             try
             {
                 foreach ((string kind, Func<string, Task> write) in kinds)
@@ -639,11 +703,50 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
 
         private static Task Wpf(string made) => WpfXamlTests.Gallery.MakeAsync(made);
 
+        /// <summary>Avalonia's app of two frameworks, its window the marker alone (<see cref="MultiTargetedXamlTests.Pair"/>).</summary>
+        private static async Task Pair(string made)
+        {
+            await AvaloniaApp.CreateAsync(made, "Pair");
+            MultiTargetedXamlTests.TargetBoth(Path.Combine(made, "Pair.csproj"), TestProjects.Framework, TestProjects.Framework, MultiTargetedXamlTests.Second);
+            File.WriteAllText(Path.Combine(made, "Marker.cs"), MultiTargetedXamlTests.AvaloniaMarker);
+            File.WriteAllText(Path.Combine(made, "MainWindow.axaml"), MultiTargetedXamlTests.AvaloniaWindow);
+        }
+
         private static Task Routes(string made)
         {
             WebRoutesTests.WriteShop(made, 5557);
             return Task.CompletedTask;
         }
+    }
+
+    [Fact]
+    public async Task An_item_written_escaped_goes_to_the_file_it_names()
+    {
+        string folder = TestFolders.Create("mcp-escaped-item-");
+        TestFolders.Write(folder, "per%cent/notes.txt", "Notes\n");
+        string project = $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n"
+            + "  <ItemGroup>\n    <None Include=\"per%25cent/notes.txt\" />\n  </ItemGroup>\n</Project>\n";
+        TestFolders.Write(folder, "Shop.csproj", project);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+
+        JsonElement found = Assert.Single((await Call(client, McpTools.Definition, At(project, "Shop.csproj", "Include=\"per"))).EnumerateArray());
+
+        Assert.EndsWith("notes.txt", found.GetProperty("path").GetString()!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_item_written_with_an_xml_entity_goes_to_the_file_it_names()
+    {
+        string folder = TestFolders.Create("mcp-entity-item-");
+        TestFolders.Write(folder, "r&d/notes.txt", "Notes\n");
+        string project = $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n"
+            + "  <ItemGroup>\n    <None Include=\"r&amp;d/notes.txt\" />\n  </ItemGroup>\n</Project>\n";
+        TestFolders.Write(folder, "Shop.csproj", project);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+
+        JsonElement found = Assert.Single((await Call(client, McpTools.Definition, At(project, "Shop.csproj", "Include=\"r"))).EnumerateArray());
+
+        Assert.EndsWith("notes.txt", found.GetProperty("path").GetString()!, StringComparison.Ordinal);
     }
 
     /// <summary>A tool's path, line and column (from 1) just after the first <paramref name="after"/> in a file's text.</summary>

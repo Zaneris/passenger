@@ -205,7 +205,7 @@ public sealed class SourceTypes
                             members.Add(new ClrMember(type, variable.Identifier.ValueText, MemberKind.Field, Registered(fieldType, variable, inside), isStatic, visible, !readOnly,
                                 attributes: memberAttributes, place: Place(variable.Identifier)));
                             // The MVVM Toolkit's generator makes a property of a field marked [ObservableProperty]: name from _name.
-                            if (!isStatic && memberAttributes.Any(a => a.ShortName == "ObservableProperty") && Generated(variable.Identifier.ValueText) is { } property)
+                            if (!isStatic && memberAttributes.Any(a => a.ShortName == "ObservableProperty") && ToolkitNames.PropertyOf(variable.Identifier.ValueText) is { } property)
                             {
                                 members.Add(new ClrMember(type, property, MemberKind.Property, fieldType, false, true, true, attributes: memberAttributes, place: Place(variable.Identifier)));
                             }
@@ -215,12 +215,17 @@ public sealed class SourceTypes
                         members.Add(new ClrMember(type, method.Identifier.ValueText, MemberKind.Method, Reference(method.ReturnType, inside), isStatic, visible, false,
                             [.. method.ParameterList.Parameters.Select(p => p.Type is { } t ? Reference(t, inside) : TypeRef.Named("System.Object"))],
                             [.. method.ParameterList.Parameters.Select(p => p.Identifier.ValueText)], memberAttributes, Place(method.Identifier)));
-                        // And a command of a method marked [RelayCommand]: SaveCommand from Save or SaveAsync.
-                        if (memberAttributes.Any(a => a.ShortName == "RelayCommand"))
+                        // And a command of a method marked [RelayCommand]: SaveCommand from Save or a Task's SaveAsync, with SaveCancelCommand where it asks for one.
+                        if (memberAttributes.FirstOrDefault(a => a.ShortName == "RelayCommand") is { } relayed)
                         {
-                            string command = method.Identifier.ValueText.EndsWith("Async", StringComparison.Ordinal) ? method.Identifier.ValueText[..^"Async".Length] : method.Identifier.ValueText;
-                            members.Add(new ClrMember(type, command + "Command", MemberKind.Property, TypeRef.Named("CommunityToolkit.Mvvm.Input.IRelayCommand"), false, true, false,
+                            bool task = IsTask(method.ReturnType);
+                            members.Add(new ClrMember(type, ToolkitNames.CommandOf(method.Identifier.ValueText, task), MemberKind.Property, TypeRef.Named(ToolkitNames.CommandTypeOf(task)), false, true, false,
                                 attributes: memberAttributes, place: Place(method.Identifier)));
+                            if (relayed.Named.Any(n => n is { Key: "IncludeCancelCommand", Value: true }))
+                            {
+                                members.Add(new ClrMember(type, ToolkitNames.CancelCommandOf(method.Identifier.ValueText), MemberKind.Property, TypeRef.Named("System.Windows.Input.ICommand"), false, true, false,
+                                    attributes: memberAttributes, place: Place(method.Identifier)));
+                            }
                         }
                         break;
                     case ConstructorDeclarationSyntax constructor when !isStatic:
@@ -339,6 +344,15 @@ public sealed class SourceTypes
         }
     }
 
+    /// <summary>Whether a type written in source is a Task, of a result or not, however its name is qualified.</summary>
+    private static bool IsTask(TypeSyntax syntax) => syntax switch
+    {
+        QualifiedNameSyntax qualified => IsTask(qualified.Right),
+        AliasQualifiedNameSyntax aliased => IsTask(aliased.Name),
+        SimpleNameSyntax name => name.Identifier.ValueText == "Task",
+        _ => false,
+    };
+
     /// <summary>A type written in source as a reference to resolve in its scope.</summary>
     public static TypeRef Reference(TypeSyntax syntax, SourceScope scope)
     {
@@ -368,14 +382,6 @@ public sealed class SourceTypes
     }
 
     private static string Arity(string name, int arity) => arity == 0 ? name : $"{name}`{arity}";
-
-    /// <summary>The property the MVVM Toolkit generates for an [ObservableProperty] field: its name without a leading
-    /// <c>_</c> or <c>m_</c>, its first letter upper case; null for a name that leaves nothing.</summary>
-    private static string? Generated(string field)
-    {
-        string bare = field.StartsWith("m_", StringComparison.Ordinal) ? field[2..] : field.TrimStart('_');
-        return bare.Length == 0 ? null : char.ToUpperInvariant(bare[0]) + bare[1..];
-    }
 
     /// <summary>A name as metadata has it: without the <c>global::</c> it may be written with, the <c>@</c> that escapes a
     /// keyword among its parts, or the generic arguments of a written one.</summary>

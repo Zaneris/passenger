@@ -116,6 +116,10 @@ ICONS = [
     ("ZoomFit", "Zoom Fit", "20_regular"),
     # The Run and Debug windows' Avalonia debug overlays: layers drawn over the app's window.
     ("Overlays", "Layer", "20_regular"),
+    # A Godot game's loop stepped one frame while it is held.
+    ("NextFrame", "Next", "20_regular"),
+    # A debugged Godot game's audio muted from the Debug window's toolbar.
+    ("MuteAudio", "Speaker Mute", "20_regular"),
     # Apply Hot Reload Changes on the toolbar and the Run and Debug windows: a flame.
     ("HotReload", "Fire", "20_regular"),
     # The Hierarchy window's stripe button: a type over the types it derives from or that derive from it.
@@ -132,6 +136,11 @@ ICONS = [
     ("Database", "Database", "20_regular"),
     # A web project's web root (wwwroot) in the Explorer: the folder whose files are served on the web.
     ("WebRootFolder", "Folder Globe", "20_regular"),
+    # A signed commit's mark in the Git log: a good signature, one unverified, a bad one and one expired.
+    ("SignatureGood", "Shield Checkmark", "16_regular"),
+    ("SignatureUnverified", "Shield Question", "16_regular"),
+    ("SignatureBad", "Shield Dismiss", "16_regular"),
+    ("SignatureExpired", "Shield Error", "16_regular"),
 ]
 
 # Resource key, then two icons (folder and size and style, as above) whose parts make it: the first's shape outside its

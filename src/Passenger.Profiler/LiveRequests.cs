@@ -133,7 +133,7 @@ public sealed class LiveRequests : IAsyncDisposable
     /// <see cref="ProfilingException"/> with their last word.</summary>
     public static async Task<LiveRequests> AttachAsync(int processId, ProfilePlace place, Action<WebEvent> heard, CancellationToken cancel = default)
     {
-        ContainerTrace recording = await ContainerTrace.StartAsync(place, processId, resume: false, requests: true, "follow its requests", "following its requests", cancel);
+        ContainerTrace recording = await ContainerTrace.StartAsync(place, processId, resume: false, ContainerToolsWords.Requests, "follow its requests", "following its requests", cancel);
         Process tools = recording.Tools;
         return Hear(tools.StandardOutput.BaseStream, heard, async () =>
         {
@@ -146,7 +146,7 @@ public sealed class LiveRequests : IAsyncDisposable
             {
             }
             await Task.WhenAny(tools.WaitForExitAsync(CancellationToken.None), Task.Delay(TimeSpan.FromSeconds(5)));
-            if (!tools.HasExited)
+            if (DotnetProcesses.Runs(tools))
             {
                 ChildProcesses.Kill(tools);
             }

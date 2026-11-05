@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
@@ -35,6 +36,10 @@ public sealed partial class CodeEditor
 
     /// <summary>How many characters the editor has asked its highlighter to colour.</summary>
     public long CharactersColoured { get; private set; }
+
+    /// <summary>How many runs the lines the editor formatted were laid out in: each a glyph run the frame records, shapes and
+    /// draws, with the buffers the formatter splits for it.</summary>
+    public long RunsFormatted { get; private set; }
 
     /// <summary>How many characters the editor has read to place a long line's columns: what a key costs to measure.</summary>
     public long CharactersMeasured { get; private set; }
@@ -252,7 +257,9 @@ public sealed partial class CodeEditor
         TextRunProperties plain = only ?? Run(TokenKind.Text);
         ITextSource source = runs.Length == 0 ? new SingleRun(content, plain) : new ColouredRuns(content, runs, plain, Run);
         CharactersFormatted += content.Length;
-        return TextFormatter.Current.FormatLine(source, 0, double.PositiveInfinity, new LineProperties(plain, metrics.CharWidth * Indent.TabWidth))!;
+        TextLine line = TextFormatter.Current.FormatLine(source, 0, double.PositiveInfinity, new LineProperties(plain, metrics.CharWidth * Indent.TabWidth))!;
+        RunsFormatted += line.TextRuns.Count;
+        return line;
     }
 
     private double Measure(string text)
@@ -306,14 +313,46 @@ public sealed partial class CodeEditor
         public override int GetHashCode() => hash;
     }
 
-    /// <summary>A formatted line, and the last frame that drew or measured with it.</summary>
+    /// <summary>A formatted line, the last frame that drew or measured with it, and the x of the last few columns asked of it
+    /// (where squiggles, selections and hints stand), which the line's layout allocates to read again in every frame.</summary>
     private sealed class Formatted(TextLine line)
     {
+        private const int KeptDistances = 8;
+
+        private (int Column, double X)[]? distances;
+        private int kept;
+        private int replaced;
+
         public TextLine Line { get; } = line;
         public long Frame { get; private set; }
         public bool Disposed { get; private set; }
 
         public void Touch(long frame) => Frame = frame;
+
+        /// <summary>A column's x on the line, read from its layout the first time it is asked for.</summary>
+        public double DistanceOf(int column)
+        {
+            (int Column, double X)[]? known = distances;
+            for (int i = 0; i < kept; i++)
+            {
+                if (known![i].Column == column)
+                {
+                    return known[i].X;
+                }
+            }
+            double x = Line.GetDistanceFromCharacterHit(new CharacterHit(column));
+            known ??= distances = new (int, double)[KeptDistances];
+            if (kept < KeptDistances)
+            {
+                known[kept++] = (column, x);
+            }
+            else
+            {
+                known[replaced] = (column, x);
+                replaced = (replaced + 1) % KeptDistances;
+            }
+            return x;
+        }
 
         public void Dispose()
         {
@@ -369,10 +408,10 @@ public sealed partial class CodeEditor
         {
             if (Long is null)
             {
-                return Text!.Line.GetDistanceFromCharacterHit(new CharacterHit(column));
+                return Text!.DistanceOf(column);
             }
             return Text is not null && column >= From && column <= To
-                ? X + Text.Line.GetDistanceFromCharacterHit(new CharacterHit(column - From))
+                ? X + Text.DistanceOf(column - From)
                 : Long.XOf(column);
         }
 
@@ -578,6 +617,38 @@ public sealed partial class CodeEditor
         {
             byLine[view.Span.Start] = view;
             return view;
+        }
+
+        /// <summary>Drops the views of a text's rows that a range of it reaches, so the next frame makes them again with the
+        /// colours they have now (a long one keeping its measure, letting go of its window); whether it dropped any.</summary>
+        public bool Drop(TextSnapshot snapshot, TextRange range)
+        {
+            if (!ReferenceEquals(text, snapshot))
+            {
+                return false;
+            }
+            scratch.Clear();
+            foreach (LineView view in byLine.Values)
+            {
+                if (view.Span.Start <= range.End && view.Span.EndIncludingBreak >= range.Start)
+                {
+                    scratch.Add(view);
+                }
+            }
+            foreach (LineView view in scratch)
+            {
+                if (view.Long is null)
+                {
+                    byLine.Remove(view.Span.Start);
+                }
+                else
+                {
+                    view.Text = null;
+                }
+            }
+            bool dropped = scratch.Count > 0;
+            scratch.Clear();
+            return dropped;
         }
 
         /// <summary>Whether the lines in view of a text would take the colours they have from their highlighter now; if so
@@ -1254,55 +1325,58 @@ public sealed partial class CodeEditor
         }
     }
 
-    /// <summary>Labels drawn in the last frame (line numbers, hints, placeholders, annotations), by what they show. A
-    /// frame keeps the ones it draws again and disposes the rest.</summary>
+    /// <summary>Labels drawn (line numbers, hints, placeholders, annotations), by what they show, each with the frame that
+    /// last drew it: a row drawn later draws again those the rows on screen drew without formatting them, and a frame
+    /// disposes those no row on screen drew (<see cref="Begin"/>).</summary>
     private sealed class LabelCache<TKey>
         where TKey : notnull
     {
-        private Dictionary<TKey, TextLine> previous = [];
-        private Dictionary<TKey, TextLine> current = [];
+        private readonly Dictionary<TKey, (TextLine Line, long Drawn)> kept = [];
+        private long now;
 
         public TextLine Get(TKey key, Func<TextLine> format) => TryGet(key, out TextLine? line) ? line : Add(key, format());
 
         /// <summary>The label kept for what it shows, kept on for this frame.</summary>
         public bool TryGet(TKey key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TextLine? line)
         {
-            if (current.TryGetValue(key, out line))
+            ref (TextLine Line, long Drawn) entry = ref CollectionsMarshal.GetValueRefOrNullRef(kept, key);
+            if (System.Runtime.CompilerServices.Unsafe.IsNullRef(ref entry))
             {
-                return true;
+                line = null;
+                return false;
             }
-            if (previous.Remove(key, out line))
-            {
-                current[key] = line;
-                return true;
-            }
-            return false;
+            entry.Drawn = now;
+            line = entry.Line;
+            return true;
         }
 
         public TextLine Add(TKey key, TextLine line)
         {
-            current[key] = line;
+            kept[key] = (line, now);
             return line;
         }
 
-        public void EndFrame()
+        /// <summary>Starts a frame, disposing the labels last drawn before <paramref name="keepFrom"/>.</summary>
+        public void Begin(long frame, long keepFrom)
         {
-            foreach (TextLine stale in previous.Values)
+            now = frame;
+            foreach ((TKey key, (TextLine line, long drawn)) in kept)
             {
-                stale.Dispose();
+                if (drawn < keepFrom)
+                {
+                    line.Dispose();
+                    kept.Remove(key);
+                }
             }
-            previous.Clear();
-            (previous, current) = (current, previous);
         }
 
         public void Clear()
         {
-            foreach (TextLine line in previous.Values.Concat(current.Values))
+            foreach ((TextLine line, long _) in kept.Values)
             {
                 line.Dispose();
             }
-            previous.Clear();
-            current.Clear();
+            kept.Clear();
         }
     }
 
@@ -1312,10 +1386,17 @@ public sealed partial class CodeEditor
             textSourceIndex >= text.Length ? new TextEndOfParagraph() : new TextCharacters(text.AsMemory(textSourceIndex), props);
     }
 
-    /// <summary>A line's text in its colours. The formatter asks for its runs in order, so the search for the run at a
-    /// place goes on from the last one found rather than from the first.</summary>
+    /// <summary>A line's text in its colours, each stretch of one look (neighbouring runs whose kinds are drawn alike, and
+    /// the plain text between them) one run, and plain blanks between them in the look of the run before (indentation in
+    /// the look after) where that draws a blank as plain text does, so a line is as few glyph runs as it has looks: what
+    /// each frame records, shapes and draws again for every line on screen. Neighbouring runs come from two copies of the
+    /// line in turn, so each is shaped on its own: the formatter shapes runs of one string together and splits the result,
+    /// leaving each buffer it splits to its finalizer, with the pooled arrays it holds. The formatter asks for its runs in
+    /// order, so the search for the run at a place goes on from the last one found rather than from the first.</summary>
     private sealed class ColouredRuns(string text, LineRun[] runs, TextRunProperties plain, Func<TokenKind, TextRunProperties> colour) : ITextSource
     {
+        private char[]? copy;
+        private int made;
         private int next;
         private int asked;
 
@@ -1328,25 +1409,76 @@ public sealed partial class CodeEditor
             if (textSourceIndex < asked)
             {
                 next = 0;
+                made = 0;
             }
             asked = textSourceIndex;
-            for (int i = next; i < runs.Length; i++)
+            int i = Past(next, textSourceIndex);
+            TextRunProperties look = LookAt(i, textSourceIndex);
+            int end = EndAt(i, textSourceIndex);
+            if (ReferenceEquals(look, plain) && end < text.Length && Blank(textSourceIndex, end))
             {
-                LineRun run = runs[i];
-                if (textSourceIndex < run.Start)
+                int after = Past(i, end);
+                if (BlanksAlike(LookAt(after, end)))
                 {
-                    next = i;
-                    return new TextCharacters(text.AsMemory(textSourceIndex, run.Start - textSourceIndex), plain);
-                }
-                if (textSourceIndex < run.Start + run.Length)
-                {
-                    next = i;
-                    return new TextCharacters(text.AsMemory(textSourceIndex, run.Start + run.Length - textSourceIndex), colour(run.Kind));
+                    look = LookAt(after, end);
+                    i = after;
+                    end = EndAt(after, end);
                 }
             }
-            next = runs.Length;
-            return new TextCharacters(text.AsMemory(textSourceIndex), plain);
+            while (end < text.Length)
+            {
+                i = Past(i, end);
+                TextRunProperties following = LookAt(i, end);
+                int stop = EndAt(i, end);
+                if (!ReferenceEquals(following, look) && !(ReferenceEquals(following, plain) && Blank(end, stop) && BlanksAlike(look)))
+                {
+                    break;
+                }
+                end = stop;
+            }
+            next = i;
+            if ((made++ & 1) == 0)
+            {
+                return new TextCharacters(text.AsMemory(textSourceIndex, end - textSourceIndex), look);
+            }
+            copy ??= text.ToCharArray();
+            return new TextCharacters(copy.AsMemory(textSourceIndex, end - textSourceIndex), look);
         }
+
+        /// <summary>Whether the text from one place to another is spaces and tabs alone.</summary>
+        private bool Blank(int from, int to)
+        {
+            for (int at = from; at < to; at++)
+            {
+                if (text[at] is not (' ' or '\t'))
+                {
+                    return false;
+                }
+            }
+            return to > from;
+        }
+
+        /// <summary>Whether a look draws a blank as plain text does: the same face and size, nothing under or behind it.</summary>
+        private bool BlanksAlike(TextRunProperties look) =>
+            ReferenceEquals(look, plain)
+            || (look.Typeface == plain.Typeface && look.FontRenderingEmSize == plain.FontRenderingEmSize && look.BackgroundBrush is null
+                && look.TextDecorations is not { Count: > 0 } && look.BaselineAlignment == plain.BaselineAlignment);
+
+        /// <summary>The first run from <paramref name="from"/> on that ends after a place: the one it is in, or the one after the
+        /// plain text it is in.</summary>
+        private int Past(int from, int at)
+        {
+            while (from < runs.Length && runs[from].Start + runs[from].Length <= at)
+            {
+                from++;
+            }
+            return from;
+        }
+
+        private TextRunProperties LookAt(int run, int at) => run < runs.Length && at >= runs[run].Start ? colour(runs[run].Kind) : plain;
+
+        /// <summary>Where the run or the plain text a place is in ends.</summary>
+        private int EndAt(int run, int at) => run >= runs.Length ? text.Length : at < runs[run].Start ? runs[run].Start : runs[run].Start + runs[run].Length;
     }
 
     /// <summary>One unwrapped line whose tabs are <paramref name="tab"/> pixels wide.</summary>

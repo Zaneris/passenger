@@ -173,9 +173,9 @@ public static partial class RouteRequests
 
     /// <summary>A route's request as the gutter writes it into its project's .http file: a separator naming its handler,
     /// a variable for each route value the file does not set yet, the method and the URL from the project's address with
-    /// each route value as a <c>{{variable}}</c>, an Accept header, and a JSON body shaped from the body's type. A file
-    /// made for it begins with the address variable, at <paramref name="address"/>.</summary>
-    public static string Entry(WebRoute route, string existing, string? address)
+    /// each route value as a <c>{{variable}}</c>, an Accept header, and its JSON body (<paramref name="body"/>, shaped from
+    /// the body's type). A file made for it begins with the address variable, at <paramref name="address"/>.</summary>
+    public static string Entry(WebRoute route, string? body, string existing, string? address)
     {
         StringBuilder written = new();
         string host = HostVariable(route.Project);
@@ -217,7 +217,7 @@ public static partial class RouteRequests
         }
         written.Append(MethodOf(route)).Append(" {{").Append(host).Append("}}").Append(path).Append(query).Append('\n');
         written.Append("Accept: ").Append(route.Kind is RouteKinds.RazorPage or RouteKinds.Blazor ? "text/html" : "application/json").Append('\n');
-        if (route.Body is { } body)
+        if (body is not null)
         {
             written.Append("Content-Type: application/json\n\n").Append(body).Append('\n');
         }

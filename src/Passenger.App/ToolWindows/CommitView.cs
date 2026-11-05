@@ -58,9 +58,10 @@ public sealed class CommitGroup(string name, IReadOnlyList<CommitRow> rows) : Ob
 
 /// <summary>The Commit window: the changed files under Changes and the new ones under Unversioned Files, each with a box
 /// for whether it goes in (changes are in and new files out until chosen), and files in conflict above them under Merge
-/// Conflicts, with its Resolve link and no box; Amend and the message below (a merge's own message while one is under
-/// way); Commit and Commit and Push. Double-click opens a file's diff, or a conflicted file's merge; Rollback puts the
-/// chosen ones back.</summary>
+/// Conflicts, with its Resolve link and no box; Amend, Sign-off (kept for the folder) and whether this commit is signed
+/// and with which key (git's config, turned on or off for one commit; Commit Signing… sets it up), then the message (a
+/// merge's own message while one is under way); Commit and Commit and Push. Double-click opens a file's diff, or a
+/// conflicted file's merge; Rollback puts the chosen ones back.</summary>
 public sealed class CommitView : DockPanel, IOwnKeys
 {
     private VcsController vcs;
@@ -69,6 +70,17 @@ public sealed class CommitView : DockPanel, IOwnKeys
     private readonly ListBox list;
     private readonly TextBox message;
     private readonly CheckBox amend;
+    private readonly CheckBox signOff;
+    private readonly CheckBox sign;
+    private readonly TextBlock signWith;
+    private readonly TextBlock unsigned;
+
+    /// <summary>How git's config has commits signed, as last read; whether the person turned Sign over for this commit.</summary>
+    private SigningSetup signing = SigningSetup.None;
+    private bool signTurned;
+    private Git? signingOf;
+    private bool showingSigning;
+    private int signingReads;
     private readonly Button commit;
     private readonly Button commitAndPush;
     private readonly EmptyState placeholder;
@@ -117,23 +129,27 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 Open(row.Change);
             }
         };
+        // Ahead of the rows, which take Enter before a handler of the list hears it.
+        list.AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (list.SelectedItem is not CommitRow shown)
+            {
+                return;
+            }
+            bool plain = e.KeyModifiers == KeyModifiers.None;
+            if (plain && e.Key == Key.F4 && shown.Change.Kind is not ChangeKind.Deleted)
+            {
+                OpenRequested?.Invoke(this, shown.Change.Path);
+                e.Handled = true;
+            }
+            else if ((plain && e.Key == Key.Enter) || AppActions.Presses(AppActions.ShowDiff, e))
+            {
+                Open(shown.Change);
+                e.Handled = true;
+            }
+        }, RoutingStrategies.Tunnel);
         list.KeyDown += (_, e) =>
         {
-            if (list.SelectedItem is CommitRow shown)
-            {
-                if (e.Key == Key.F4 && shown.Change.Kind is not ChangeKind.Deleted)
-                {
-                    OpenRequested?.Invoke(this, shown.Change.Path);
-                    e.Handled = true;
-                    return;
-                }
-                if (e.Key == Key.Enter || AppActions.Presses(AppActions.ShowDiff, e))
-                {
-                    Open(shown.Change);
-                    e.Handled = true;
-                    return;
-                }
-            }
             if (e.Key == Key.Space && e.KeyModifiers == KeyModifiers.None)
             {
                 // Space flips the chosen rows' boxes.
@@ -160,8 +176,31 @@ public sealed class CommitView : DockPanel, IOwnKeys
         StackPanel links = new() { Orientation = Orientation.Horizontal, Spacing = 12, Children = { continueRebase, abort } };
         underWay = new StackPanel { Margin = new Thickness(10, 6, 10, 0), Spacing = 2, IsVisible = false, Children = { underWayText, links } };
 
-        amend = new CheckBox { Content = "Amend", Margin = new Thickness(10, 4, 0, 0) };
+        amend = new CheckBox { Content = "Amend" };
         amend.IsCheckedChanged += (_, _) => IdeErrors.Observe(AmendChangedAsync());
+        signOff = new CheckBox { Content = "Sign-off" };
+        ToolTip.SetTip(signOff, "Adds a Signed-off-by line with your name and email to the message (git commit --signoff), kept for this folder");
+        signOff.IsCheckedChanged += (_, _) =>
+        {
+            if (!showingSigning)
+            {
+                vcs.SignOff = signOff.IsChecked == true;
+            }
+        };
+        signWith = new TextBlock { Text = "Sign" };
+        sign = new CheckBox { Content = signWith };
+        sign.IsCheckedChanged += (_, _) =>
+        {
+            if (!showingSigning)
+            {
+                signTurned = true;
+            }
+        };
+        Button setUp = new() { Classes = { StyleClasses.Link }, Content = SigningFailure.SetUp, VerticalAlignment = VerticalAlignment.Center };
+        setUp.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.CommitSigning);
+        WrapPanel options = new() { Margin = new Thickness(10, 4, 10, 0), ItemSpacing = 16, Children = { amend, signOff, sign, setUp } };
+        unsigned = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(10, 2, 10, 0) };
+        unsigned.Bind(TextBlock.ForegroundProperty, unsigned.GetResourceObservable(TokenKeys.Error));
         message = new TextBox
         {
             Classes = { StyleClasses.Search },
@@ -198,7 +237,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         {
             [DockProperty] = Dock.Bottom,
             BorderThickness = new Thickness(0, 1, 0, 0),
-            Child = new StackPanel { Children = { underWay, amend, message, buttons } },
+            Child = new StackPanel { Children = { underWay, options, unsigned, message, buttons } },
         };
         bottom.Bind(Border.BorderBrushProperty, bottom.GetResourceObservable(TokenKeys.Divider));
 
@@ -228,7 +267,10 @@ public sealed class CommitView : DockPanel, IOwnKeys
         Children.Add(new Panel { Children = { list, placeholder } });
         vcs.Changed += OnChanged;
         vcs.BusyChanged += OnBusyChanged;
+        vcs.Refreshed += OnSigning;
+        vcs.SigningChanged += OnSigning;
         Fill();
+        ShowSigning();
     }
 
     /// <summary>Lists another folder's changes from now on, its session's working tree in place of the last's.</summary>
@@ -236,13 +278,96 @@ public sealed class CommitView : DockPanel, IOwnKeys
     {
         vcs.Changed -= OnChanged;
         vcs.BusyChanged -= OnBusyChanged;
+        vcs.Refreshed -= OnSigning;
+        vcs.SigningChanged -= OnSigning;
         vcs = next;
         vcs.Changed += OnChanged;
         vcs.BusyChanged += OnBusyChanged;
+        vcs.Refreshed += OnSigning;
+        vcs.SigningChanged += OnSigning;
+        signTurned = false;
+        unsigned.IsVisible = false;
         Fill();
+        ShowSigning();
     }
 
-    private void OnChanged(object? sender, EventArgs e) => Fill();
+    private void OnSigning(object? sender, EventArgs e) => ShowSigning();
+
+    /// <summary>Reads git's config for how commits are signed and says it: Sign with the key, checked as the config has it
+    /// unless the person turned it over for this commit; off with no key to sign with. Sign-off as the folder keeps it.</summary>
+    private void ShowSigning() => IdeErrors.Observe(ShowSigningAsync());
+
+    private async Task ShowSigningAsync()
+    {
+        int read = ++signingReads;
+        signingOf = vcs.Repository;
+        SigningSetup setup = await vcs.SigningAsync();
+        if (read != signingReads)
+        {
+            return;
+        }
+        signing = setup;
+        showingSigning = true;
+        try
+        {
+            signOff.IsChecked = vcs.SignOff;
+            sign.IsEnabled = setup.CanSign && vcs.Repository is not null;
+            signWith.Text = setup.CanSign ? $"Sign with {setup.KeyShown}" : setup.IsSetUp ? "Sign: no key is set to sign with" : "Sign: not set up";
+            if (!signTurned || !sign.IsEnabled)
+            {
+                sign.IsChecked = setup.CanSign && setup.Signs;
+                signTurned = false;
+            }
+        }
+        finally
+        {
+            showingSigning = false;
+        }
+    }
+
+    /// <summary>How this commit is to be signed and signed off, as the window says it: Sign as git's config has it is left
+    /// to the config.</summary>
+    public CommitSigning Signing
+    {
+        get
+        {
+            bool signs = sign.IsChecked == true;
+            return new CommitSigning(signs == (signing.CanSign && signing.Signs) ? null : signs, signOff.IsChecked == true);
+        }
+    }
+
+    /// <summary>Whether this commit is to be signed.</summary>
+    public bool Sign
+    {
+        get => sign.IsChecked == true;
+        set => sign.IsChecked = value;
+    }
+
+    /// <summary>The Sign box's words: the key it signs with.</summary>
+    public string SignWith => signWith.Text ?? string.Empty;
+
+    /// <summary>Whether Sign can be turned on: git has a key to sign with.</summary>
+    public bool CanSign => sign.IsEnabled;
+
+    public bool SignOff
+    {
+        get => signOff.IsChecked == true;
+        set => signOff.IsChecked = value;
+    }
+
+    /// <summary>Why the last commit was not made for its signing, as the window says it under the signing line; null
+    /// while it says none.</summary>
+    public string? Unsigned => unsigned.IsVisible ? unsigned.Text : null;
+
+    private void OnChanged(object? sender, EventArgs e)
+    {
+        Fill();
+        // The folder's working tree found, or another taken: how it signs is read for it.
+        if (vcs.Repository != signingOf)
+        {
+            ShowSigning();
+        }
+    }
 
     /// <summary>Amend checked starts from the last commit's message, unless something is typed before git answers or Amend
     /// is unchecked by then, and unchecked gives back what was typed.</summary>
@@ -351,13 +476,19 @@ public sealed class CommitView : DockPanel, IOwnKeys
         {
             return false;
         }
-        if (!(await vcs.CommitAsync(Chosen, Message, Amend, push)).Commit.Succeeded)
+        CommitResult made = await vcs.CommitAsync(Chosen, Message, Amend, push, signing: Signing);
+        bool notSigned = !made.Commit.Succeeded && made.Commit.Message.StartsWith(SigningFailure.Unsigned, StringComparison.Ordinal);
+        unsigned.Text = notSigned ? made.Commit.Message : null;
+        unsigned.IsVisible = notSigned;
+        if (!made.Commit.Succeeded)
         {
             return false;
         }
         beforeAmend = null;
         amend.IsChecked = false;
         message.Text = string.Empty;
+        signTurned = false;
+        ShowSigning();
         return true;
     }
 

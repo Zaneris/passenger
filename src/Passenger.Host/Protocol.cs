@@ -106,6 +106,13 @@ public static class HostJson
 /// <summary>The SDK the host loaded: its folder (MSBuild's) and version.</summary>
 public sealed record HostReady(string Sdk, string Version);
 
+/// <summary>What the host's first line says, past the SDK's version, when the SDK a folder picks is newer than the runtime
+/// the host runs on, whose MSBuild only a host on a runtime as new loads.</summary>
+public static class HostWords
+{
+    public const string NewerSdk = "is newer than the runtime the project host runs on";
+}
+
 /// <summary>Projects to evaluate, with the global properties they are evaluated with (the solution's).</summary>
 public sealed record EvaluateParams(IReadOnlyList<string> Projects, IReadOnlyDictionary<string, string> Properties);
 
@@ -194,6 +201,10 @@ public static class CarriedProperties
     /// <summary>The package folder the project restores into.</summary>
     public const string NuGetPackageRoot = "NuGetPackageRoot";
 
+    /// <summary>The package folders the project's restore resolved packages from, separated by ';': its root, then its
+    /// fallback folders.</summary>
+    public const string NuGetPackageFolders = "NuGetPackageFolders";
+
     /// <summary>The assembly the project's build makes, wherever its output folder was moved.</summary>
     public const string TargetPath = "TargetPath";
 
@@ -214,12 +225,32 @@ public static class CarriedProperties
     /// package management: the nearest above it, or the one the project names; none where the project turns it off.</summary>
     public const string DirectoryPackagesPropsPath = "DirectoryPackagesPropsPath";
 
+    /// <summary>The folder of the Godot project Godot.NET.Sdk builds the project for, which holds its project.godot (the
+    /// project's own folder unless it names another); set by no other SDK.</summary>
+    public const string GodotProjectDir = "GodotProjectDir";
+
+    /// <summary>The folder Godot's source generators name a project's scripts from, in base 64, which Godot.NET.Sdk's props
+    /// write from <see cref="GodotProjectDir"/> as it stands before the project's own body.</summary>
+    public const string GodotProjectDirBase64 = "GodotProjectDirBase64";
+
+    /// <summary>The path a Razor class library's static web assets are served under (<c>_content/Name</c> unless it names
+    /// its own), which a page that links them names.</summary>
+    public const string StaticWebAssetBasePath = "StaticWebAssetBasePath";
+
+    /// <summary>The id a project packs under, its assembly's name unless it names another, which its CSS isolation bundle's
+    /// file takes (<c>Id.styles.css</c>).</summary>
+    public const string PackageId = "PackageId";
+
+    /// <summary>The version of Aspire's AppHost SDK an AppHost builds with, whose Aspire.Hosting it references unless it
+    /// names its own.</summary>
+    public const string AspireHostingSDKVersion = "AspireHostingSDKVersion";
+
     public static readonly IReadOnlyList<string> Names =
     [
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
-        NuGetPackageRoot, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
-        DirectoryPackagesPropsPath,
+        NuGetPackageRoot, NuGetPackageFolders, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
+        DirectoryPackagesPropsPath, GodotProjectDir, GodotProjectDirBase64, StaticWebAssetBasePath, PackageId, AspireHostingSDKVersion,
     ];
 }
 
@@ -232,6 +263,9 @@ public sealed record FrameworkDependencies(string? Framework, IReadOnlyList<Pack
     /// <summary>Whether the host evaluated it with EnableWindowsTargeting, which a Windows-only framework needs off Windows,
     /// so a build of it needs it too.</summary>
     public bool WindowsTargeting { get; init; }
+
+    /// <summary>The assembly the framework's build makes, wherever its output folder was moved; null without one.</summary>
+    public string? TargetPath { get; init; }
 }
 
 /// <summary>What a target framework of a project compiles its C# with: its DefineConstants, with the symbols the .NET SDK

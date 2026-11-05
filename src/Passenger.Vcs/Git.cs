@@ -171,7 +171,7 @@ public sealed record GitResult(int Code, string Output, string Error, string? Un
 /// <summary>A Git working tree, through the `git` executable: its status, branches, a file as the last commit has it,
 /// and committing, pushing and switching. Every call runs git in the tree's root, its output read as UTF-8, never
 /// through a shell.</summary>
-public sealed class Git
+public sealed partial class Git
 {
     private Git(string root, string gitDir)
     {
@@ -579,8 +579,20 @@ public sealed class Git
     }, "--abort"]);
 
     /// <summary>Continue Rebase: the resolved commit made with the message it had, and the rest replayed.</summary>
-    public Task<GitResult> ContinueRebaseAsync() =>
-        RunAsync(Root, ["rebase", "--continue"], environment: new Dictionary<string, string> { ["GIT_EDITOR"] = "true" });
+    public Task<GitResult> ContinueRebaseAsync(Signer? signer = null) =>
+        RunSignedAsync(["rebase", "--continue"], signer, new Dictionary<string, string> { ["GIT_EDITOR"] = "true" });
+
+    /// <summary>A git that may make commits, each signed as the person's config has it through <paramref name="signer"/>'s
+    /// own gpg, a key's passphrase asked of its asker.</summary>
+    private Task<GitResult> RunSignedAsync(IReadOnlyList<string> arguments, Signer? signer, IReadOnlyDictionary<string, string>? environment = null)
+    {
+        Dictionary<string, string> given = new(environment ?? new Dictionary<string, string>());
+        foreach ((string name, string value) in signer?.Signing.Environment ?? new Dictionary<string, string>())
+        {
+            given[name] = value;
+        }
+        return RunAsync(Root, [.. signer?.Signing.Before ?? [], .. arguments], environment: given, asker: signer?.Asker);
+    }
 
     /// <summary>The branches, remotes and tags the log shows and the commit each names, as a hash of git's bytes for them
     /// read off the caller's thread: with HEAD's commit, what changes when the history does (a commit, a checkout, a
@@ -1318,10 +1330,10 @@ public sealed class Git
     /// <summary>Update Project's second half, once the upstream is fetched: the branch merged with it or rebased onto it as
     /// <paramref name="plan"/> says, its uncommitted changes to tracked files set aside first and put back after
     /// (--autostash); a merge or rebase stopped for conflicts puts them back once it is finished or aborted.</summary>
-    public Task<GitResult> IntegrateAsync(UpdatePlan plan) => plan.Rebase
-        ? RunAsync(Root, ["rebase", "--autostash", .. plan.RebaseMerges ? new[] { "--rebase-merges" } : []],
-            environment: new Dictionary<string, string> { ["GIT_EDITOR"] = "true" })
-        : RunAsync(Root, ["merge", "--no-edit", "--autostash", .. plan.FastForward is { } fastForward ? new[] { fastForward } : [], "@{upstream}"]);
+    public Task<GitResult> IntegrateAsync(UpdatePlan plan, Signer? signer = null) => plan.Rebase
+        ? RunSignedAsync(["rebase", "--autostash", .. plan.RebaseMerges ? new[] { "--rebase-merges" } : []], signer,
+            new Dictionary<string, string> { ["GIT_EDITOR"] = "true" })
+        : RunSignedAsync(["merge", "--no-edit", "--autostash", .. plan.FastForward is { } fastForward ? new[] { fastForward } : [], "@{upstream}"], signer);
 
     /// <summary>How many commits the branch has that its upstream lacks, and the upstream has that it lacks; null where it
     /// tracks none.</summary>
@@ -1350,10 +1362,14 @@ public sealed class Git
     }
 
     /// <summary>Commits these files' changes (new ones added first) and nothing else the index holds, with a message,
-    /// amending the last commit when asked (with no files, its message alone). Finishing a merge (or a cherry-pick or a revert stopped for conflicts), which git commits only whole, the files
+    /// amending the last commit when asked (with no files, its message alone), signed and signed off as
+    /// <paramref name="signing"/> says, a key's passphrase asked of <paramref name="asker"/>. Finishing a merge (or a
+    /// cherry-pick or a revert stopped for conflicts), which git commits only whole, the files
     /// <paramref name="excluded"/> are taken out of it and kept as changes.</summary>
-    public async Task<GitResult> CommitAsync(IReadOnlyList<string> paths, string message, bool amend = false, bool merging = false, IReadOnlyList<string>? excluded = null)
+    public async Task<GitResult> CommitAsync(IReadOnlyList<string> paths, string message, bool amend = false, bool merging = false, IReadOnlyList<string>? excluded = null,
+        CommitSigning? signing = null, GitAsker? asker = null)
     {
+        signing ??= CommitSigning.AsConfigured;
         string[] relative = [.. paths.Select(Relative).Distinct()];
         // No paths is an amend of the message alone: "add -A --" with none would add the whole tree.
         if (relative.Length > 0)
@@ -1377,11 +1393,11 @@ public sealed class Git
         AtomicFile.Write(file, Encoding.UTF8.GetBytes(message), UnixFileMode.UserRead | UnixFileMode.UserWrite);
         try
         {
-            string[] commit = ["commit", "-F", file, .. amend ? new[] { "--amend" } : []];
+            string[] commit = [.. signing.Before, "commit", "-F", file, .. amend ? new[] { "--amend" } : [], .. signing.After];
             // --only with no paths amends the message alone, leaving out what else the index holds (an IDE rename, a git add).
-            return merging ? await RunAsync(Root, commit)
-                : relative.Length > 0 ? await OnFilesAsync([.. commit, "--only"], relative)
-                : await RunAsync(Root, [.. commit, .. amend ? new[] { "--only" } : []]);
+            return merging ? await RunAsync(Root, commit, environment: signing.Environment, asker: asker)
+                : relative.Length > 0 ? await OnFilesAsync([.. commit, "--only"], relative, asker, signing.Environment)
+                : await RunAsync(Root, [.. commit, .. amend ? new[] { "--only" } : []], environment: signing.Environment, asker: asker);
         }
         finally
         {
@@ -1428,13 +1444,13 @@ public sealed class Git
     public Task<GitResult> CheckoutTrackingAsync(string remoteBranch) => RunAsync(Root, ["switch", "--track", "--end-of-options", remoteBranch]);
 
     /// <summary>Another branch merged into the current one, git's own message for the merge commit.</summary>
-    public Task<GitResult> MergeAsync(string branch) => RunAsync(Root, ["merge", "--no-edit", "--end-of-options", branch]);
+    public Task<GitResult> MergeAsync(string branch, Signer? signer = null) => RunSignedAsync(["merge", "--no-edit", "--end-of-options", branch], signer);
 
     /// <summary>The current branch rebased onto another; or, given <paramref name="branch"/>, that branch checked out and
     /// rebased onto <paramref name="onto"/> (Checkout and Rebase onto Current, "git rebase HEAD branch").</summary>
-    public Task<GitResult> RebaseAsync(string onto, string? branch = null) =>
-        RunAsync(Root, ["rebase", "--end-of-options", onto, .. branch is null ? Array.Empty<string>() : [branch]],
-            environment: new Dictionary<string, string> { ["GIT_EDITOR"] = "true" });
+    public Task<GitResult> RebaseAsync(string onto, string? branch = null, Signer? signer = null) =>
+        RunSignedAsync(["rebase", "--end-of-options", onto, .. branch is null ? Array.Empty<string>() : [branch]], signer,
+            new Dictionary<string, string> { ["GIT_EDITOR"] = "true" });
 
     public Task<GitResult> RenameBranchAsync(string from, string to) => RunAsync(Root, ["branch", "-m", "--end-of-options", from, to]);
 
@@ -1543,10 +1559,10 @@ public sealed class Git
     /// <summary>A commit checked out on its own, with no branch (a detached head).</summary>
     public Task<GitResult> CheckoutRevisionAsync(string hash) => RunAsync(Root, ["switch", "--detach", "--end-of-options", hash]);
 
-    public Task<GitResult> CherryPickAsync(string hash) => RunAsync(Root, ["cherry-pick", "--end-of-options", hash]);
+    public Task<GitResult> CherryPickAsync(string hash, Signer? signer = null) => RunSignedAsync(["cherry-pick", "--end-of-options", hash], signer);
 
     /// <summary>A commit undone by a new one, with git's own message.</summary>
-    public Task<GitResult> RevertAsync(string hash) => RunAsync(Root, ["revert", "--no-edit", "--end-of-options", hash]);
+    public Task<GitResult> RevertAsync(string hash, Signer? signer = null) => RunSignedAsync(["revert", "--no-edit", "--end-of-options", hash], signer);
 
     /// <summary>The branch moved to a commit: soft keeps the changes staged, mixed keeps them in the files, hard drops them.</summary>
     public Task<GitResult> ResetAsync(string hash, ResetMode mode) => RunAsync(Root, ["reset", $"--{mode.ToString().ToLowerInvariant()}", "--end-of-options", hash]);
@@ -1670,7 +1686,8 @@ public sealed class Git
 
     /// <summary>Runs git over files named on its input, each a literal pathspec ended by a NUL (composed where git takes
     /// names composed), never on its command line, which holds only so many (32,767 characters on Windows).</summary>
-    private async Task<GitResult> OnFilesAsync(IReadOnlyList<string> arguments, IReadOnlyCollection<string> relative)
+    private async Task<GitResult> OnFilesAsync(IReadOnlyList<string> arguments, IReadOnlyCollection<string> relative, GitAsker? asker = null,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         bool composed = relative.Any(name => !Ascii.IsValid(name)) && await ComposesAsync();
         StringBuilder names = new();
@@ -1678,7 +1695,7 @@ public sealed class Git
         {
             names.Append(Literal(GitForm(name, composed))).Append('\0');
         }
-        return await RunAsync(Root, [.. arguments, "--pathspec-from-file=-", "--pathspec-file-nul"], names.ToString());
+        return await RunAsync(Root, [.. arguments, "--pathspec-from-file=-", "--pathspec-file-nul"], names.ToString(), environment, asker: asker);
     }
 
     private string Full(string relative) => new DiskNames(Root).Full(relative);
@@ -1748,6 +1765,42 @@ public sealed class Git
         return ran with { Output = output ?? string.Empty };
     }
 
+    /// <summary>git's commands that write a work tree's files, each with its words that leave the files as they are (a stash's
+    /// list, an apply's check or one into the index alone).</summary>
+    private static readonly Dictionary<string, string[]> WorkTreeWriters = new(StringComparer.Ordinal)
+    {
+        ["checkout"] = [], ["switch"] = [], ["restore"] = ["--staged"], ["reset"] = [], ["merge"] = [], ["rebase"] = [], ["pull"] = [],
+        ["stash"] = ["list", "show"], ["cherry-pick"] = [], ["revert"] = [], ["am"] = [], ["apply"] = ["--cached", "--check", "--stat", "--numstat", "--summary"],
+        ["rm"] = ["--cached"], ["mv"] = [], ["clean"] = ["-n", "--dry-run"], ["read-tree"] = [], ["checkout-index"] = [],
+    };
+
+    /// <summary>How many of Passenger's git commands writing a work tree run now, and when the last one ended (a
+    /// <see cref="Stopwatch"/> timestamp).</summary>
+    private static int writingWorkTree;
+    private static long wroteWorkTree;
+
+    /// <summary>Whether a git command of Passenger's that writes a work tree's files (a checkout, a pull, a stash, a reset)
+    /// runs now or has ended since a <see cref="Stopwatch"/> timestamp: what changed meanwhile may be its.</summary>
+    public static bool WroteWorkTreeSince(long since) => Volatile.Read(ref writingWorkTree) > 0 || Volatile.Read(ref wroteWorkTree) >= since;
+
+    /// <summary>Whether a git command line writes the work tree's files: its command, the first word past the options before
+    /// it (-c and -C take a value), is one that does, and none of its words leaves them as they are.</summary>
+    private static bool WritesWorkTree(IReadOnlyList<string> arguments)
+    {
+        for (int i = 0; i < arguments.Count; i++)
+        {
+            if (arguments[i] is "-c" or "-C")
+            {
+                i++;
+            }
+            else if (!arguments[i].StartsWith('-'))
+            {
+                return WorkTreeWriters.TryGetValue(arguments[i], out string[]? leaving) && !arguments.Skip(i + 1).Any(leaving.Contains);
+            }
+        }
+        return false;
+    }
+
     /// <summary>Runs git to its end, the one way every call but a clone runs it: <paramref name="input"/> written to it, what
     /// it writes handed to <paramref name="read"/> as it comes (<see cref="ChildProcesses.RunAsync{T}"/>), and what it asks
     /// of the person going to <paramref name="asker"/>; canceled, it is ended with all it started (a fetch's upload-pack, a
@@ -1759,6 +1812,29 @@ public sealed class Git
     {
         // What git answers is what the window shows next (the branch, the bars, the log, a blame): a screenshot waits for it.
         using GitHold held = new();
+        bool writes = WritesWorkTree(arguments);
+        if (writes)
+        {
+            Interlocked.Increment(ref writingWorkTree);
+        }
+        try
+        {
+            return await RunStartedAsync(folder, arguments, read, input, environment, answers, cancel, asker, held);
+        }
+        finally
+        {
+            if (writes)
+            {
+                Volatile.Write(ref wroteWorkTree, Stopwatch.GetTimestamp());
+                Interlocked.Decrement(ref writingWorkTree);
+            }
+        }
+    }
+
+    private static async Task<(GitResult Result, T? Read)> RunStartedAsync<T>(string folder, IReadOnlyList<string> arguments, Func<Stream, Task<T>> read,
+        ReadOnlyMemory<byte> input, IReadOnlyDictionary<string, string>? environment, IReadOnlyCollection<int>? answers, CancellationToken cancel, GitAsker? asker,
+        GitHold held)
+    {
         if (await StartAsync(folder, arguments) is not { } start)
         {
             return (NotInstalled, default);
@@ -1770,7 +1846,7 @@ public sealed class Git
         await using Prompting? prompting = Asking(start, asker, held, cancel);
         try
         {
-            ChildRead<T> ran = await ChildProcesses.RunAsync(start, read, input, answers, cancel);
+            ChildRead<T> ran = await ChildProcesses.RunAsync(start, read, input, answers, cancel, prompting is null ? null : prompting.Runs);
             return (new GitResult(ran.ExitCode, string.Empty, ran.Error, prompting?.Refused), ran.Output);
         }
         catch (System.ComponentModel.Win32Exception unstarted)
@@ -1878,6 +1954,7 @@ public sealed class Git
         start.Environment["GIT_TERMINAL_PROMPT"] = "0";
         // A background status or diff never takes the index's lock, so a stash, commit or checkout then never fails on it.
         start.Environment["GIT_OPTIONAL_LOCKS"] = "0";
+        MsysGpg.FitGit(start);
         return start;
     }
 }

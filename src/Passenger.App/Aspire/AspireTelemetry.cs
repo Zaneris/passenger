@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net.Http;
 using System.Text.Json;
 using Passenger.App.Containers;
+using Passenger.Core;
 
 namespace Passenger.App.Aspire;
 
@@ -114,8 +115,7 @@ public static class AspireTelemetry
                 {
                     throw new InvalidDataException("Aspire telemetry returned a span ending before it starts.");
                 }
-                int status = row.TryGetProperty("status", out JsonElement statusData)
-                    && statusData.TryGetProperty("code", out JsonElement code) && code.TryGetInt32(out int number) ? number : 0;
+                int status = JsonMembers.Number(JsonMembers.Value(row, "status"), "code") ?? 0;
                 (byte[] json, string writtenSpanId, string? parentSpanId, string? name, string source, string writtenService) =
                     records.Span(row, resource, service, traceId, spanId, start, end, status);
                 AspireSpan span = new(json, writtenSpanId, parentSpanId, name, source, writtenService);
@@ -297,13 +297,13 @@ public static class AspireTelemetry
                 {
                     if (document.RootElement.ValueKind == JsonValueKind.Object && !document.RootElement.EnumerateObject().Any()
                         || AspireJson.String(document.RootElement, "title") == "Resource not found"
-                        && document.RootElement.TryGetProperty("status", out JsonElement status) && status.TryGetInt32(out int number) && number == 404)
+                        && JsonMembers.Number(document.RootElement, "status") == 404)
                     {
                         return;
                     }
                     throw new IOException($"Aspire telemetry {kind} request failed (HTTP 404; fields {string.Join(",", document.RootElement.EnumerateObject().Take(8).Select(property => property.Name.Length <= 32 && property.Name.All(char.IsAsciiLetter) ? property.Name : "other"))}).");
                 }
-                if (!document.RootElement.TryGetProperty("data", out JsonElement data))
+                if (JsonMembers.Value(document.RootElement, "data") is not { } data)
                 {
                     throw new InvalidDataException("Aspire telemetry omitted its snapshot data.");
                 }
@@ -388,7 +388,7 @@ public static class AspireTelemetry
     {
         foreach (JsonElement group in AspireJson.Array(envelope, resources, required: true))
         {
-            if (!group.TryGetProperty("resource", out JsonElement resource))
+            if (JsonMembers.Value(group, "resource") is not { } resource)
             {
                 throw new InvalidDataException("Aspire telemetry omitted its OTLP resource.");
             }

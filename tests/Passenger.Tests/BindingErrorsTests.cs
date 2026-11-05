@@ -160,7 +160,7 @@ public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDispos
         Assert.False(store.BindingErrors.Enabled, "XAML Binding Errors was on before anything turned it on");
         Ui.Run(window, AppActions.ViewBreakpoints);
         BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
-        Assert.Equal([ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError], breakpoints.Listed.Select(b => b.Location));
+        Assert.Equal([ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError, ScriptErrorBreakpoint.AnyScriptError], breakpoints.Listed.Select(b => b.Location));
         Assert.Contains(breakpoints.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "XAML Binding Errors");
         Ui.Click(Row(breakpoints, BindingErrorBreakpoint.AnyBindingError).GetVisualDescendants().OfType<CheckBox>().First());
         Ui.Click(Button(breakpoints, "Done"));
@@ -225,8 +225,9 @@ public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDispos
         window.Close();
     }
 
-    /// <summary>A debugged app's misspelt binding shows in the Debug window's console linked to its line, and in Problems;
-    /// XAML Binding Errors' hit count, the third failure, counts on past a property breakpoint set between its hits.</summary>
+    /// <summary>A debugged app's misspelt binding shows in the Debug window's console linked to its line, in Problems, and in
+    /// the caption's details in the Live Visual Tree, none in the greeting's; XAML Binding Errors' hit count, the third
+    /// failure, counts on past a property breakpoint set between its hits.</summary>
     [AvaloniaFact]
     public void A_debugged_apps_misspelt_binding_shows_in_the_debug_console_and_binding_errors_hit_count_counts_on_past_a_property_breakpoint()
     {
@@ -256,6 +257,13 @@ public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDispos
         Assert.True(window.Debugger.Session?.State == DebugState.Running, $"XAML Binding Errors stopped before its third hit: {window.Status}");
 
         LiveTreeView tree = window.LiveTree;
+        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Caption");
+        Ui.WaitFor(() => tree.Details?.Name == "Caption", "the caption's details");
+        Assert.True(tree.FailuresShown is [{ } failed] && failed.Contains("TextBlock#Caption.Text to Nmae", StringComparison.Ordinal),
+            $"The caption's details showed its binding failures as {string.Join("; ", tree.FailuresShown)}");
+        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Greeting");
+        Ui.WaitFor(() => tree.Details?.Name == "Greeting", "the greeting's details");
+        Assert.True(tree.FailuresShown.Count == 0, $"The greeting, whose binding holds, showed the failures {string.Join("; ", tree.FailuresShown)}");
         tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Caption");
         Ui.WaitFor(() => tree.Details?.Name == "Caption", "the caption's details");
         tree.ShowPage(LiveTreePage.Properties);

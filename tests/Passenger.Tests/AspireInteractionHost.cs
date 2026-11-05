@@ -189,6 +189,15 @@ internal sealed class AspireInteractionHost : IAsyncDisposable
         catch (IOException) when (context.RequestAborted.IsCancellationRequested)
         {
         }
+        catch (IOException reset) when (!context.RequestAborted.IsCancellationRequested)
+        {
+            // Kestrel faults the read of a stream the client reset before it signals the abort, which it posts to the pool.
+            if (!await Waiting.UntilAsync(() => context.RequestAborted.IsCancellationRequested, TimeSpan.FromSeconds(2)))
+            {
+                Errors.Enqueue(reset);
+                throw;
+            }
+        }
         catch (Exception error)
         {
             Errors.Enqueue(error);

@@ -12,6 +12,7 @@ using Passenger.App;
 using Passenger.App.Aspire;
 using Passenger.App.Aspire.Protocol;
 using Passenger.App.Run;
+using Passenger.App.Telemetry;
 using Passenger.Core;
 using Passenger.Text;
 
@@ -942,6 +943,44 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             window.Close();
             Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
         }
+    }
+
+    /// <summary>An Avalonia app the AppHost runs as a service takes XAML Hot Reload as Run's app does: a save of its window's
+    /// XAML puts a button added into the window it shows, the apply said with the service's name.</summary>
+    [AvaloniaFact]
+    public void An_Avalonia_app_the_AppHost_runs_as_a_service_takes_its_saved_xaml_into_its_window()
+    {
+        project.Reset();
+        string app = project.WriteBindingsApp();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = project.AskToStartApi("bindings", projectPath: app);
+            using System.Net.WebSockets.ClientWebSocket subscribed = notified;
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the run session: {answer}");
+            Passenger.App.LiveTree.LiveApp? inspection = null;
+            Ui.WaitFor(() => (inspection = window.AspireRuntime.Apps.SelectMany(a => a.Services).Select(s => s.Inspection)
+                .FirstOrDefault(i => i is { State: Passenger.App.LiveTree.LiveAppState.Connected })) is not null,
+                () => $"the service's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
+
+            window.OpenFile(Path.Combine(Path.GetDirectoryName(app)!, "MainWindow.axaml"));
+            Typing.Replace(window, "Text=\"{Binding Nmae}\" />", "Text=\"{Binding Nmae}\" />\n        <Button x:Name=\"Added\" Content=\"Added\" />");
+            string said = string.Empty;
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() => (said = window.Status ?? said).Contains(": XAML changes applied: MainWindow.axaml (MainWindow)", StringComparison.Ordinal),
+                () => $"the apply to the service to be said ({window.Status})");
+            Assert.StartsWith("bindings", said, StringComparison.Ordinal);
+            Ui.WaitFor(() => Named(Ui.Await(inspection!.AgentTreeAsync([]), "the service's tree").Roots, "Added"), "the service's window to show the button added");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+
+        static bool Named(IEnumerable<Passenger.Inspector.Element> elements, string name) => elements.Any(e => e.Name == name || Named(e.Children, name));
     }
 
     /// <summary>"(running)" says only what runs, and Rerun follows the configuration chosen: a plain run that ended is not
@@ -1987,6 +2026,225 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>A resource waiting for another says so in its Details, what it waits for and references each a link to that
+    /// resource, whose own Details name it back as waiting for it and referencing it, a link that leads back; as the
+    /// AppHost's relationships say, and as the other resource's state stands.</summary>
+    /// <summary>The AppHost's graph shows every resource at once, an edge for each wait and reference its relationships give,
+    /// each resource right of those it waits for; a click on a node chooses its row.</summary>
+    [AvaloniaFact]
+    public void The_apphosts_graph_has_an_edge_for_each_wait_and_a_node_chooses_its_row()
+    {
+        project.Reset();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        backend.PushResource(new Resource
+        {
+            Name = "web", DisplayName = "web", Uid = "web", ResourceType = "Project", State = "Waiting",
+            Relationships = { new ResourceRelationship { ResourceName = "api", Type = "WaitFor" }, new ResourceRelationship { ResourceName = "cache", Type = "Reference" } },
+        });
+        backend.PushResource(new Resource
+        {
+            Name = "api", DisplayName = "api", Uid = "api", ResourceType = "Project", State = "Waiting",
+            Relationships = { new ResourceRelationship { ResourceName = "cache", Type = "WaitFor" }, new ResourceRelationship { ResourceName = "db", Type = "WaitFor" } },
+        });
+        backend.PushResource(new Resource { Name = "cache", DisplayName = "cache", Uid = "cache", ResourceType = "Container", State = "Running" });
+        backend.PushResource(new Resource { Name = "db", DisplayName = "db", Uid = "db", ResourceType = "Container", State = "Starting" });
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            FindAction(window, "Show Aspire Graph");
+            AspireGraph graph = window.AspireWindow.Graph;
+            Ui.WaitFor(() => graph.Nodes.Count == 4, () => $"the graph's four resources, not [{string.Join(", ", graph.Nodes.Keys)}]");
+            Assert.Equal([new AspireEdge("web", "api", "WaitFor"), new AspireEdge("web", "cache", "Reference"), new AspireEdge("api", "cache", "WaitFor"), new AspireEdge("api", "db", "WaitFor")],
+                graph.Edges.OrderBy(e => e.From == "web" ? 0 : 1).ThenBy(e => e.To, StringComparer.Ordinal));
+            double Column(string name) => Canvas.GetLeft(graph.Nodes[name]);
+            Assert.True(Column("cache") == Column("db") && Column("db") < Column("api") && Column("api") < Column("web"),
+                $"The graph's columns put cache at {Column("cache")}, db at {Column("db")}, api at {Column("api")} and web at {Column("web")}");
+
+            Ui.Click(graph.Nodes["db"]);
+            Ui.WaitFor(() => window.Aspire.SelectedResource?.Name == "db", "the db node to choose db's row");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_resource_waiting_for_another_says_what_for_in_its_details_with_links_both_ways()
+    {
+        project.Reset();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        backend.PushResource(new Resource
+        {
+            Name = "web", DisplayName = "web", Uid = "web", ResourceType = "Project", State = "Waiting",
+            Relationships = { new ResourceRelationship { ResourceName = "cache", Type = "WaitFor" }, new ResourceRelationship { ResourceName = "cache", Type = "Reference" } },
+        });
+        backend.PushResource(new Resource { Name = "cache", DisplayName = "cache", Uid = "cache", ResourceType = "Container", State = "Starting" });
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            FindAction(window, "Show Aspire Resources");
+            Ui.WaitFor(() => window.Aspire.Rows.Count == 2, "both resources' rows");
+            Ui.Click(Words(Row(window, "web"), "web"));
+            Ui.Click(Tab(window, "Details"));
+            AspireDetailsPane details = window.AspireWindow.Details;
+            Ui.WaitFor(() => details.Resource?.Name == "web", "web's details");
+            Assert.Contains("Waiting for cache (starting)", DetailsWords(details));
+            Assert.Equal([("Waits for", "cache"), ("References", "cache")], RelatedLinks(details));
+
+            Ui.Click(details.GetVisualDescendants().OfType<Button>().First(button => button.Name == "aspireRelated"));
+            Ui.WaitFor(() => details.Resource?.Name == "cache" && window.Aspire.SelectedResource?.Name == "cache", "the link to choose cache and show its details");
+            Assert.Equal([("Waited for by", "web"), ("Referenced by", "web")], RelatedLinks(details));
+
+            Ui.Click(details.GetVisualDescendants().OfType<Button>().First(button => button.Name == "aspireRelated"));
+            Ui.WaitFor(() => details.Resource?.Name == "web", "the link back to web's details");
+            backend.PushResource(new Resource { Name = "cache", DisplayName = "cache", Uid = "cache", ResourceType = "Container", State = "Running" });
+            backend.PushResource(new Resource
+            {
+                Name = "web", DisplayName = "web", Uid = "web", ResourceType = "Project", State = "Running",
+                Relationships = { new ResourceRelationship { ResourceName = "cache", Type = "WaitFor" }, new ResourceRelationship { ResourceName = "cache", Type = "Reference" } },
+            });
+            Ui.WaitFor(() => !DetailsWords(details).Any(words => words.StartsWith("Waiting for", StringComparison.Ordinal)), "web's details to stop saying it waits once it runs");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
+    /// <summary>A JavaScript app the AppHost runs (npm in its own folder) is a row like any other: Open Aspire Resource Source
+    /// chooses its folder in the Explorer, its Details' source is that folder, and its row's Restart, the AppHost's own
+    /// command, restarts it.</summary>
+    [AvaloniaFact]
+    public void A_javascript_app_resource_goes_to_its_folder_and_restarts_from_its_row()
+    {
+        project.Reset();
+        string app = PathNames.Canonical(Directory.CreateDirectory(project.PathOf("frontend")).FullName);
+        File.WriteAllText(Path.Combine(app, "package.json"), "{ \"name\": \"frontend\", \"scripts\": { \"dev\": \"vite\" } }\n");
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        backend.PushResource(new Resource
+        {
+            Name = "frontend", DisplayName = "frontend", Uid = "frontend", ResourceType = "JavaScriptApp", State = "Running",
+            Urls = { new Url { EndpointName = "http", FullUrl = "http://localhost:5173/" } },
+            Properties =
+            {
+                new ResourceProperty { Name = "executable.path", Value = Google.Protobuf.WellKnownTypes.Value.ForString("npm") },
+                new ResourceProperty { Name = "executable.workDir", Value = Google.Protobuf.WellKnownTypes.Value.ForString(app) },
+            },
+            Commands = { new ResourceCommand { Name = "resource-restart", DisplayName = "Restart", State = ResourceCommandState.Enabled } },
+        });
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            FindAction(window, "Show Aspire Resources");
+            Ui.WaitFor(() => window.Aspire.Rows.Count == 1, "the JavaScript app's row");
+            Ui.Click(Words(Row(window, "frontend"), "frontend"));
+            Assert.Equal(app, window.Aspire.SelectedResource?.Source);
+            FindAction(window, "Open Aspire Resource Source");
+            Ui.WaitFor(() => window.ExplorerView.SelectedNodes.Any(node => node.Path is { } path && PathNames.Same(path, app)),
+                () => $"the Explorer to choose the app's folder (it chose {string.Join(", ", window.ExplorerView.SelectedNodes.Select(node => node.Path))})");
+
+            Ui.Choose(RowMenu(window, "frontend"), "Restart");
+            Ui.WaitFor(() => backend.Commands.Any(command => command is { ResourceName: "frontend", CommandName: "resource-restart" }), "the row's Restart to reach the AppHost");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
+    /// <summary>A web service's metrics are read only while its Stats tab is shown: chosen there, the request duration of the
+    /// requests it serves is charted from its runtime, their rate and median beside the line, and the count its own meter
+    /// keeps once that meter is published; once another tab is shown nothing is read and nothing charted.</summary>
+    [AvaloniaFact]
+    public void A_web_services_request_duration_is_charted_on_its_Stats_tab_while_the_tab_is_shown()
+    {
+        project.Reset();
+        string web = project.WriteWebApp();
+        int port = AspireApp.FreePort();
+        string address = $"http://127.0.0.1:{port.ToString(System.Globalization.CultureInfo.InvariantCulture)}/";
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        using CancellationTokenSource stopAsking = new();
+        Task asking = Task.CompletedTask;
+        try
+        {
+            (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = project.AskToStartApi("web",
+                environment: new Dictionary<string, string> { [AspNetCoreVariables.Urls] = address }, projectPath: web);
+            using System.Net.WebSockets.ClientWebSocket subscribed = notified;
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the run session: {answer}");
+            Ui.WaitFor(() => window.AspireRuntime.Apps.Single().Services.Any(service => service.ProcessId is > 0), "the web service started as DCP asked");
+            int program = window.AspireRuntime.Apps.Single().Services.Single().ProcessId!.Value;
+            backend.PushResource(new Resource
+            {
+                Name = "web", DisplayName = "web", Uid = "web", ResourceType = "Project", State = "Running",
+                Urls = { new Url { EndpointName = "http", FullUrl = address } },
+                Properties =
+                {
+                    new ResourceProperty { Name = "project.path", Value = Google.Protobuf.WellKnownTypes.Value.ForString(web) },
+                    new ResourceProperty { Name = "executable.pid", Value = Google.Protobuf.WellKnownTypes.Value.ForNumber(program) },
+                },
+            });
+            FindAction(window, "Show Aspire Stats");
+            Ui.WaitFor(() => window.Aspire.Rows.Any(row => row.Resource.Name == "web"), "the web service's row");
+            Ui.Click(Words(Row(window, "web"), "web"));
+            // Requests sent all along, as a person tries the service while looking.
+            asking = Waiting.Apart(async () =>
+            {
+                using HttpClient http = new() { Timeout = TimeSpan.FromSeconds(5) };
+                while (!stopAsking.IsCancellationRequested)
+                {
+                    try
+                    {
+                        using HttpResponseMessage _ = await http.GetAsync(address, stopAsking.Token);
+                    }
+                    catch (HttpRequestException)
+                    {
+                        // Not yet listening.
+                    }
+                    catch (OperationCanceledException) when (stopAsking.IsCancellationRequested)
+                    {
+                    }
+                    await Waiting.ForAsync(TimeSpan.FromMilliseconds(100), "a request's pause", stopAsking.Token).Ended();
+                }
+            });
+            MetricsPane metrics = window.AspireWindow.Metrics;
+            Ui.WaitFor(() => metrics.Charted.GetValueOrDefault("http.server.request.duration") >= 2,
+                () => $"the request duration charted (the pane says {metrics.Said}, charting {string.Join(", ", metrics.Charted.Select(c => $"{c.Key} {c.Value}"))})",
+                TimeSpan.FromMinutes(1));
+            Assert.Matches(@"^[0-9.]+/s, median ", metrics.ValueOf("http.server.request.duration") ?? string.Empty);
+            Ui.WaitFor(() => metrics.Charted.GetValueOrDefault("standin.served") >= 2,
+                () => $"the app's own meter charted (charting {string.Join(", ", metrics.Charted.Select(c => $"{c.Key} {c.Value}"))})", TimeSpan.FromSeconds(30));
+            Assert.EndsWith("/s", metrics.ValueOf("standin.served"), StringComparison.Ordinal);
+
+            FindAction(window, "Show Aspire Resources");
+            Assert.True(metrics.Charted.Count == 0 && metrics.Said.Length == 0, $"Details shown, the metrics were still read: {metrics.Said}");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            stopAsking.Cancel();
+            Ui.Await(asking.Ended(), "the requests sent to stop");
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
+    /// <summary>Every text the details show.</summary>
+    private static string[] DetailsWords(AspireDetailsPane details) => [.. details.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? string.Empty)];
+
+    /// <summary>The details' links to related resources, each with the words its row says it by.</summary>
+    private static (string Says, string Resource)[] RelatedLinks(AspireDetailsPane details) =>
+        [.. details.GetVisualDescendants().OfType<Button>().Where(button => button.Name == "aspireRelated").Select(button =>
+            (button.GetVisualAncestors().OfType<Grid>().First().Children.OfType<TextBlock>()
+                .FirstOrDefault(name => Grid.GetColumn(name) == 0 && Grid.GetRow(name) == Grid.GetRow(button))?.Text ?? "?", button.Content as string ?? "?"))];
+
     /// <summary>A resource's row's menu, opened by a right click on its name once a click has chosen it.</summary>
     private static ContextMenu RowMenu(MainWindow window, string name)
     {
@@ -2975,7 +3233,9 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
 /// <summary>A stand-in AppHost: a console project the IDE runs as one (it sets IsAspireHost), which writes the resource service
 /// key the IDE gave it where its stand-in resource service reads it (<see cref="AspireInteractionHost.KeyFile"/>) and waits to
-/// be stopped; its launch profile, written for each test, names that stand-in's address.</summary>
+/// be stopped; its launch profile, written for each test, names that stand-in's address. Run to list its steps, it answers
+/// over the backchannel as an AppHost of Aspire 13.6 does, with an Azure Container Apps environment's steps as Aspire's own
+/// source declares them, and runs none.</summary>
 public sealed class StandInAppHost : SharedProject
 {
     public const string Name = "StandIn.AppHost";
@@ -2989,8 +3249,35 @@ public sealed class StandInAppHost : SharedProject
         TestFolders.Write(Folder, $"{Name}/Program.cs", """
             using System;
             using System.IO;
+            using System.Net.Sockets;
+            using System.Text;
+            using System.Text.Json;
             using System.Threading;
 
+            // Listed as the Aspire CLI lists an AppHost's steps, it answers over the backchannel and runs nothing.
+            if (Array.IndexOf(args, "--list-steps") >= 0 && Environment.GetEnvironmentVariable("ASPIRE_BACKCHANNEL_PATH") is { Length: > 0 } backchannel)
+            {
+                ListSteps(backchannel);
+                return;
+            }
+            // Published as the Aspire CLI publishes an AppHost, it writes Docker Compose's file, as its publisher would.
+            if (Array.IndexOf(args, "--operation") is int operation and >= 0 && operation + 1 < args.Length && args[operation + 1] == "publish")
+            {
+                string output = args[Array.IndexOf(args, "--output-path") + 1];
+                Directory.CreateDirectory(output);
+                File.WriteAllText(Path.Combine(output, "docker-compose.yaml"),
+                    "services:\n  api:\n    image: \"standin-api:latest\"\n    environment:\n      ASPNETCORE_URLS: \"http://+:8080\"\n    ports:\n      - \"8080\"\n");
+                // Beside it what a test gives, as a publisher's certificate or archive.
+                if (Environment.GetEnvironmentVariable("PASSENGER_STAND_IN_PUBLISHES") is { Length: > 0 } more)
+                {
+                    foreach (string file in Directory.GetFiles(more))
+                    {
+                        File.Copy(file, Path.Combine(output, Path.GetFileName(file)));
+                    }
+                }
+                Console.WriteLine("Generating Compose output");
+                return;
+            }
             string keyFile = Environment.GetEnvironmentVariable("PASSENGER_STAND_IN_KEY")!;
             File.WriteAllText(keyFile + ".urls", $"{Environment.GetEnvironmentVariable("ASPNETCORE_URLS")}\n{Environment.GetEnvironmentVariable("ASPIRE_ALLOW_UNSECURED_TRANSPORT")}");
             File.WriteAllText(keyFile + ".dashboard", Environment.GetEnvironmentVariable("AppHost__DashboardApiKey"));
@@ -2999,6 +3286,92 @@ public sealed class StandInAppHost : SharedProject
             File.Move(keyFile + ".part", keyFile, overwrite: true);
             Console.WriteLine("The stand-in AppHost is up");
             Thread.Sleep(Timeout.Infinite);
+
+            // The backchannel's JSON-RPC, as StreamJsonRpc frames it, until it is asked to stop.
+            static void ListSteps(string path)
+            {
+                using Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                File.Delete(path);
+                listener.Bind(new UnixDomainSocketEndPoint(path));
+                listener.Listen(1);
+                using Socket client = listener.Accept();
+                using NetworkStream stream = new(client);
+                while (Read(stream) is { } request)
+                {
+                    using JsonDocument message = JsonDocument.Parse(request);
+                    string method = message.RootElement.GetProperty("method").GetString()!;
+                    object? result = method switch
+                    {
+                        "GetCapabilitiesAsync" => new[] { "baseline.v2", "pipeline-steps.v1", "pipeline-steps.v2" },
+                        "GetPipelineStepsAsync" => new { Steps = Steps() },
+                        _ => null,
+                    };
+                    if (message.RootElement.TryGetProperty("id", out JsonElement id))
+                    {
+                        byte[] answer = JsonSerializer.SerializeToUtf8Bytes(new { jsonrpc = "2.0", id, result });
+                        stream.Write(Encoding.ASCII.GetBytes($"Content-Length: {answer.Length}\r\n\r\n"));
+                        stream.Write(answer);
+                    }
+                    if (method == "RequestStopAsync")
+                    {
+                        return;
+                    }
+                }
+            }
+
+            static byte[]? Read(Stream stream)
+            {
+                int length = -1;
+                StringBuilder line = new();
+                while (true)
+                {
+                    int next = stream.ReadByte();
+                    if (next < 0)
+                    {
+                        return null;
+                    }
+                    if (next != '\n')
+                    {
+                        line.Append((char)next);
+                        continue;
+                    }
+                    string header = line.ToString().TrimEnd('\r');
+                    line.Clear();
+                    if (header.Length == 0)
+                    {
+                        break;
+                    }
+                    if (header.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        length = int.Parse(header["Content-Length:".Length..].Trim());
+                    }
+                }
+                byte[] body = new byte[length];
+                stream.ReadExactly(body);
+                return body;
+            }
+
+            // An Azure Container Apps environment's steps, named, described and ordered as Aspire 13.6 declares them.
+            static object[] Steps() =>
+            [
+                Step("deploy-prereq", "Prerequisite step that runs before any deploy operations.", [], [], null),
+                Step("build-prereq", "Prerequisite step that runs before any build operations.", [], [], null),
+                Step("build-api", "Builds the container image for the api project.", ["build-prereq"], ["build-compute"], "api"),
+                Step("validate-azure-login", "Validates Azure CLI authentication before deployment.", ["deploy-prereq"], [], "azure"),
+                Step("create-provisioning-context", "Creates the Azure provisioning context for infrastructure deployment.", ["deploy-prereq", "validate-azure-login"], [], "azure"),
+                Step("provision-azure-bicep-resources", "Aggregation step for all Azure infrastructure provisioning operations.", ["deploy-prereq", "create-provisioning-context"],
+                    ["provision-infra"], "azure"),
+                Step("deploy-api", "Aggregation step for deploying api to Azure Container Apps.", ["provision-azure-bicep-resources", "build-api"], ["deploy-compute"], "api"),
+                Step("print-dashboard-url-env", "Prints the deployment summary and dashboard URL for env.", ["provision-azure-bicep-resources"], ["print-summary"], "env"),
+                Step("deploy", "Aggregation step for all deploy operations. All deploy steps should be required by this step.",
+                    ["deploy-prereq", "validate-azure-login", "create-provisioning-context", "provision-azure-bicep-resources", "build-api", "deploy-api", "print-dashboard-url-env"], [], null),
+                Step("publish-prereq", "Prerequisite step that runs before any publish operations.", [], [], null),
+                Step("publish-env", "Publishes the Azure environment configuration for env.", ["publish-prereq"], [], "env"),
+                Step("publish", "Aggregation step for all publish operations. All publish steps should be required by this step.", ["publish-prereq", "publish-env"], [], null),
+            ];
+
+            static object Step(string name, string? description, string[] dependsOn, string[] tags, string? resource) =>
+                new { Name = name, Description = description, DependsOn = dependsOn, Tags = tags, ResourceName = resource };
 
             """);
         TestFolders.Write(Folder, $"{Name}/Properties/launchSettings.json", Profile(null));
@@ -3136,6 +3509,44 @@ public sealed class StandInAppHost : SharedProject
             limit: TimeSpan.FromMinutes(4).Scaled()), "the Avalonia service's build");
         Assert.True(result.Succeeded, $"The Avalonia service did not build: {result.Output}{result.Error}");
         return app;
+    }
+
+    /// <summary>Writes an ASP.NET Core app into the stand-in's folder, built by its real path, for the AppHost to start as a web
+    /// service: one route, /, which answers "up" and counts itself on a meter of the app's own (StandIn.Web's standin.served);
+    /// given STAND_IN_PID_FILE, it writes its process's id there as it starts. Its project's path; the next test's
+    /// <see cref="SharedProject.Reset"/> takes it away.</summary>
+    internal string WriteWebApp() => Ui.Await(WriteWebAppAsync(), "the web service's build", TimeSpan.FromMinutes(4));
+
+    /// <inheritdoc cref="WriteWebApp"/>
+    internal async Task<string> WriteWebAppAsync()
+    {
+        TestFolders.Write(Folder, "StandIn.Web/StandIn.Web.csproj", TestProjects.Web());
+        TestFolders.Write(Folder, "StandIn.Web/Program.cs", """
+            using System;
+            using System.Diagnostics.Metrics;
+            using System.IO;
+            using Microsoft.AspNetCore.Builder;
+
+            if (Environment.GetEnvironmentVariable("STAND_IN_PID_FILE") is { Length: > 0 } told)
+            {
+                File.WriteAllText(told + ".part", Environment.ProcessId.ToString());
+                File.Move(told + ".part", told, overwrite: true);
+            }
+            Meter meter = new("StandIn.Web");
+            Counter<long> served = meter.CreateCounter<long>("standin.served", "{request}");
+            WebApplication app = WebApplication.CreateBuilder(args).Build();
+            app.MapGet("/", () =>
+            {
+                served.Add(1);
+                return "up";
+            });
+            app.Run();
+
+            """);
+        string web = PathNames.Canonical(PathOf("StandIn.Web/StandIn.Web.csproj"));
+        ChildResult result = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", web, "-nologo", "-v:q"]), limit: TimeSpan.FromMinutes(3).Scaled());
+        Assert.True(result.Succeeded, $"The web service did not build: {result.Output}{result.Error}");
+        return web;
     }
 
     /// <summary><see cref="AskToStartApi"/> off the window's thread, as DCP asks again for a resource its AppHost restarts:

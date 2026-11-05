@@ -59,8 +59,11 @@ public sealed class WebRoutesTests
             WebRoute order = Route(window, "PUT /orders/{id:guid}");
             Assert.Equal("Orders.Update", order.Handler);
             Assert.Equal("Order", order.BodyType);
+            // Listed, a route holds its body's type alone: the body is shaped as a request of it is made.
+            Assert.False(System.Text.Json.JsonSerializer.Serialize(window.Endpoints.Routes).Contains("quantity", StringComparison.Ordinal),
+                "A listed route holds its JSON body: every route of a folder keeps its body whole, whether or not a request is made of it");
             Assert.Equal("{\n  \"customer\": \"\",\n  \"lines\": [\n    {\n      \"product\": \"\",\n      \"quantity\": 0\n    }\n  ],\n  \"status\": 0\n}",
-                order.Body);
+                Body(window, order));
             WebRoute product = Route(window, "GET /api/Products/{id}");
             Assert.Equal(["id (route)", "details (query)"], product.Parameters.Select(p => $"{p.Name} ({p.Source})"));
             Assert.Equal("Product", Route(window, "POST /api/Products").BodyType);
@@ -503,9 +506,9 @@ public sealed class WebRoutesTests
                 () => $"the route taking a list of itself, listed (listed: {string.Join(", ", Titles(window))}; the C# server {(window.CSharpService?.IsReady == true ? "ready" : "not ready")})",
                 TimeSpan.FromMinutes(3));
             WebRoute nodes = Route(window, "POST /nodes");
-            Assert.Equal(("Node", "[\n  []\n]"), (nodes.BodyType, nodes.Body));
+            Assert.Equal(("Node", "[\n  []\n]"), (nodes.BodyType, Body(window, nodes)));
             WebRoute maps = Route(window, "POST /maps");
-            Assert.Equal(("Map", "{\n  \"key\": {}\n}"), (maps.BodyType, maps.Body));
+            Assert.Equal(("Map", "{\n  \"key\": {}\n}"), (maps.BodyType, Body(window, maps)));
         }
         finally
         {
@@ -564,8 +567,8 @@ public sealed class WebRoutesTests
             window.ShowToolWindow(ToolWindowIds.Endpoints);
             Ui.WaitFor(() => Titles(window).Contains("POST /plain") && Titles(window).Contains("POST /named"),
                 () => $"both apps' routes, listed (listed: {string.Join(", ", Titles(window))})", TimeSpan.FromMinutes(3));
-            Assert.Equal("{\n  \"color\": 1,\n  \"shade\": \"Light\",\n  \"trim\": \"First\"\n}", Route(window, "POST /plain").Body);
-            Assert.Equal("{\n  \"color\": \"First\",\n  \"shade\": \"Light\",\n  \"trim\": \"First\"\n}", Route(window, "POST /named").Body);
+            Assert.Equal("{\n  \"color\": 1,\n  \"shade\": \"Light\",\n  \"trim\": \"First\"\n}", Body(window, Route(window, "POST /plain")));
+            Assert.Equal("{\n  \"color\": \"First\",\n  \"shade\": \"Light\",\n  \"trim\": \"First\"\n}", Body(window, Route(window, "POST /named")));
         }
         finally
         {
@@ -577,6 +580,9 @@ public sealed class WebRoutesTests
     private static bool ReadsRoutes(object parameters) => parameters is Passenger.Lsp.RoslynExtension.DispatchWorkspaceMessageParams { MessageName: Handlers.WebRoutes };
 
     private static IReadOnlyList<string> Titles(MainWindow window) => [.. window.Endpoints.Routes.Select(RouteRequests.Title)];
+
+    /// <summary>The JSON body a request of a route sends, as the C# server's extension shapes it when asked.</summary>
+    private static string? Body(MainWindow window, WebRoute route) => Ui.Await(window.RouteBodyAsync(route), $"the body of {RouteRequests.Title(route)}");
 
     private static WebRoute Route(MainWindow window, string title) =>
         window.Endpoints.Routes.FirstOrDefault(r => RouteRequests.Title(r) == title) ?? throw new Xunit.Sdk.XunitException($"{title} is not listed: {string.Join(", ", Titles(window))}");

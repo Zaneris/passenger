@@ -32,12 +32,31 @@ internal abstract class LanguageAssist
     /// <summary>What the card beside the list says of one of the language's own items; null for none.</summary>
     public virtual string? Describe(CompletionItem item) => null;
 
+    /// <summary>The card beside the list of one of the language's own items, added to <paramref name="card"/>: its words
+    /// (<see cref="Describe(CompletionItem)"/>) unless the language says more; false for none.</summary>
+    public virtual bool Describe(CompletionItem item, IHoverCard card)
+    {
+        if (Describe(item) is not { Length: > 0 } words)
+        {
+            return false;
+        }
+        card.AddText(words);
+        return true;
+    }
+
     /// <summary>The colour badge of one of the language's own items; null for none.</summary>
     public virtual IBrush? Swatch(CompletionItem item) => null;
 
     /// <summary>What the hover card says of an offset of a file, added to <paramref name="card"/>, the window's and an
     /// agent's alike; an abandoned one throws <see cref="OperationCanceledException"/>, so the card is not shown.</summary>
     public virtual Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel) => Passed;
+
+    /// <summary>The language's own fixes at an offset of a file, Passenger's that need no server, from its reading of the file
+    /// as it holds it now (<see cref="ReadyAsync"/> brings that up to the text); none by default.</summary>
+    public virtual IReadOnlyList<EditorFix> Fixes(OpenDocument document, int offset) => [];
+
+    /// <summary>Brings the language's reading of a file up to its text as it stands, before its fixes are asked for.</summary>
+    public virtual Task ReadyAsync(OpenDocument document) => Task.CompletedTask;
 
     /// <summary>Go to Declaration from an offset of the file shown.</summary>
     public virtual Task<bool> DefinitionAsync(int offset) => Passed;
@@ -46,8 +65,8 @@ internal abstract class LanguageAssist
     /// shown, for an agent; it answers for the same files, and passes (null) where that passes.</summary>
     public virtual Task<Declared?> DeclaredAsync(OpenDocument document, int offset) => NotDeclared;
 
-    /// <summary>Find Usages from an offset.</summary>
-    public virtual Task<bool> UsagesAsync(int offset) => Passed;
+    /// <summary>Find Usages from an offset, or Show Usages' popup there (<paramref name="inPopup"/>).</summary>
+    public virtual Task<bool> UsagesAsync(int offset, bool inPopup) => Passed;
 
     /// <summary>Rename at the caret: its box, or why not.</summary>
     public virtual bool Rename(int caret) => false;
@@ -58,11 +77,19 @@ internal abstract class LanguageAssist
 }
 
 /// <summary>The languages' own answers, asked in one order by every command: an .http file's routes, an MSBuild file's,
-/// XAML's, a compose file's, a settings file's configuration, a web language's, then C#'s, Razor's and any file
-/// left; the first that answers is the command's.</summary>
-internal sealed class LanguageAssists(HttpAssist http, MSBuildAssist msbuild, XamlAssist xaml, ComposeAssist compose, SettingsAssist settings, WebAssist web, CSharpAssist csharp)
+/// XAML's, a compose file's, a settings file's configuration, a page's stylesheets' classes, a GDScript's own reading
+/// while Godot's server has not started, a web language's, a Godot shader's, a Godot scene's, then C#'s, Razor's and any
+/// file left; the first that answers is the command's.</summary>
+internal sealed class LanguageAssists(HttpAssist http, MSBuildAssist msbuild, XamlAssist xaml, ComposeAssist compose, SettingsAssist settings,
+    CssClassAssist classes, GDScriptAssist gdscript, WebAssist web, GodotShaderAssist shaders, GodotAssist godot, CSharpAssist csharp)
 {
-    private readonly IReadOnlyList<LanguageAssist> ladder = [http, msbuild, xaml, compose, settings, web, csharp];
+    private readonly IReadOnlyList<LanguageAssist> ladder = [http, msbuild, xaml, compose, settings, classes, gdscript, web, shaders, godot, csharp];
+
+    public GodotShaderAssist Shaders => shaders;
+
+    public GodotAssist Godot => godot;
+
+    public GDScriptAssist GDScript => gdscript;
 
     public HttpAssist Http => http;
 
@@ -97,6 +124,19 @@ internal sealed class LanguageAssists(HttpAssist http, MSBuildAssist msbuild, Xa
             {
                 return;
             }
+        }
+    }
+
+    /// <summary>Every language's own fixes at an offset of a file, in the ladder's order: what Show Context Actions and an
+    /// agent's code_actions both list after the window's other fixes.</summary>
+    public IReadOnlyList<EditorFix> Fixes(OpenDocument document, int offset) => [.. ladder.SelectMany(l => l.Fixes(document, offset))];
+
+    /// <summary>Every language's reading of a file brought up to its text, so its fixes stand on what it says now.</summary>
+    public async Task ReadyAsync(OpenDocument document)
+    {
+        foreach (LanguageAssist language in ladder)
+        {
+            await language.ReadyAsync(document);
         }
     }
 
@@ -135,11 +175,11 @@ internal sealed class LanguageAssists(HttpAssist http, MSBuildAssist msbuild, Xa
         return null;
     }
 
-    public async Task UsagesAsync(int offset)
+    public async Task UsagesAsync(int offset, bool inPopup)
     {
         foreach (LanguageAssist language in ladder)
         {
-            if (await language.UsagesAsync(offset))
+            if (await language.UsagesAsync(offset, inPopup))
             {
                 return;
             }
@@ -182,7 +222,27 @@ internal interface IHoverCard
 
     /// <summary>What a language server says of a place.</summary>
     void AddHover(Hover hover);
+
+    /// <summary>A file the code names, previewed: by its words where it cannot be shown.</summary>
+    void AddPreview(FilePreview preview) => AddText(preview.Words);
+
+    /// <summary>A chart and what goes with it (its legend), drawn where the card is drawn and passed over where it is words.</summary>
+    void AddChart(Avalonia.Controls.Control chart)
+    {
+    }
 }
+
+/// <summary>What a file a path in the code names is: a picture, a sound, a scene.</summary>
+internal enum PreviewKind
+{
+    Picture,
+    Sound,
+    Scene,
+}
+
+/// <summary>A file a path in the code names, as its card previews it: the file, the name the code gives it, what it is,
+/// its words (the name, what it is, a scene's top nodes), and a scene's top nodes, its root's first, as its words name each.</summary>
+internal sealed record FilePreview(string File, string Named, PreviewKind Kind, string Words, IReadOnlyList<string> Nodes);
 
 /// <summary>Where Go to Declaration goes, the window's and an agent's alike: its places as a language server names them,
 /// each with the words its choice shows (<see cref="Names"/>, none for one shown by its line of code); else a page that
@@ -197,6 +257,9 @@ internal sealed record Declared(IReadOnlyList<LspLocation> Places, string None)
 
     /// <summary>A page that declares it in place of a file, which <see cref="None"/> names.</summary>
     public Uri? Page { get; init; }
+
+    /// <summary>What to tell the person of places that are not quite what was asked for; null where they are.</summary>
+    public string? Note { get; init; }
 
     /// <summary>Places in the editor's lines, as a language server names them (<see cref="ServerPlaces.ServerPositionOf"/>).</summary>
     public static IReadOnlyList<LspLocation> Served(IEnumerable<(string Path, TextPosition Position)> places, Func<string, TextSnapshot?> texts) =>

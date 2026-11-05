@@ -246,11 +246,7 @@ internal static class Rope
                 output.Add(new RopeLeaf(string.Concat(old[..start], text, old[end..])));
                 return;
             }
-            char[] joined = new char[total];
-            old[..start].CopyTo(joined);
-            text.CopyTo(joined.AsSpan(start));
-            old[end..].CopyTo(joined.AsSpan(start + text.Length));
-            AddLeaves(joined, output);
+            AddLeaves(old[..start], text, old[end..], output);
             return;
         }
 
@@ -356,19 +352,33 @@ internal static class Rope
     }
 
     /// <summary>Cuts text into leaves of even size, never between the halves of a surrogate pair.</summary>
-    private static void AddLeaves(ReadOnlySpan<char> text, List<RopeNode> output)
+    private static void AddLeaves(ReadOnlySpan<char> text, List<RopeNode> output) => AddLeaves(text, [], [], output);
+
+    /// <summary>Cuts three pieces of text, one after another, into leaves of even size as if they were one, never between
+    /// the halves of a surrogate pair: each character is copied once, into its leaf, as a console appends whole batches to
+    /// its last.</summary>
+    private static void AddLeaves(ReadOnlySpan<char> a, ReadOnlySpan<char> b, ReadOnlySpan<char> c, List<RopeNode> output)
     {
-        int count = (text.Length + MaxLeaf - 1) / MaxLeaf;
+        int total = a.Length + b.Length + c.Length;
+        int count = (total + MaxLeaf - 1) / MaxLeaf;
         int index = 0;
         for (int i = 0; i < count; i++)
         {
-            int end = i == count - 1 ? text.Length : index + (text.Length - index) / (count - i);
-            if (end < text.Length && end > index && char.IsHighSurrogate(text[end - 1]))
+            int end = i == count - 1 ? total : index + (total - index) / (count - i);
+            if (end < total && end > index && char.IsHighSurrogate(At(end - 1, a, b, c)))
             {
                 end++;
             }
-            output.Add(new RopeLeaf(new string(text[index..end])));
+            output.Add(new RopeLeaf(string.Concat(Within(a, 0, index, end), Within(b, a.Length, index, end), Within(c, a.Length + b.Length, index, end))));
             index = end;
         }
     }
+
+    /// <summary>The character at a place of three pieces one after another.</summary>
+    private static char At(int at, ReadOnlySpan<char> a, ReadOnlySpan<char> b, ReadOnlySpan<char> c) =>
+        at < a.Length ? a[at] : at < a.Length + b.Length ? b[at - a.Length] : c[at - a.Length - b.Length];
+
+    /// <summary>What of a piece, starting at <paramref name="at"/> among the pieces, lies from one place to another of them.</summary>
+    private static ReadOnlySpan<char> Within(ReadOnlySpan<char> piece, int at, int from, int to) =>
+        piece[Math.Clamp(from - at, 0, piece.Length)..Math.Clamp(to - at, 0, piece.Length)];
 }

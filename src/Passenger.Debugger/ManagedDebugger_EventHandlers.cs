@@ -18,8 +18,14 @@ public partial class ManagedDebugger
     private async Task HandleProcessExited(ExitProcessCorDebugManagedCallbackEventArgs exitProcessCorDebugManagedCallbackEventArgs)
     {
         _logger?.Invoke($"Process exited");
+        // A launched program's end is its process's, told by the launch's wait: a Godot game tears down past its runtime's.
+        if (_launchExit is { IsCompleted: false })
+        {
+            _logger?.Invoke("Its runtime has shut down before its process ended: its end is told as the process ends");
+            return;
+        }
         await ReportExitAsync(await EndedWithAsync().ConfigureAwait(false)).ConfigureAwait(false);
-        OnTerminated?.Invoke();
+        ReportTerminated();
     }
 
     private void HandleThreadCreated(object? sender, CreateThreadCorDebugManagedCallbackEventArgs createThreadCorDebugManagedCallbackEventArgs)
@@ -211,7 +217,8 @@ public partial class ManagedDebugger
             }
             else
             {
-                breakpoint.Message = "The breakpoint will not currently be hit. No symbols have been loaded for this document.";
+                breakpoint.Message = NoModuleYet;
+                breakpoint.Unbindable = false;
                 TryBindBreakpoint(breakpoint);
             }
             OnBreakpointChanged?.Invoke(breakpoint);
@@ -440,6 +447,11 @@ public partial class ManagedDebugger
             await TakeValueReturnedTo(corThread, ilFrame);
             ilFrame = (ICorDebugILFrame)corThread.ActiveFrame;
         }
+        if (_unboxed is not null)
+        {
+            await BoxUnboxed(corThread);
+            ilFrame = (ICorDebugILFrame)corThread.ActiveFrame;
+        }
         ModuleInfo? module = FindModule(ilFrame.Function.Module);
         if (module is not null && module.MetadataReader.IsCurrentSequencePointHidden(ilFrame.Function.Token, ilFrame.IP.pnOffset, ModuleMetadataReader.VersionOf(ilFrame)))
         {
@@ -547,7 +559,18 @@ public partial class ManagedDebugger
             _process!.Continue(false);
             return true;
         }
-        if (thread.Id != evaluating)
+        if (thread.Id != evaluating && EvalStatus.LetThreadsRun)
+        {
+            // Its thread runs on with the evaluation's, so it is passed over, and the evaluation's answer says so.
+            _logger?.Invoke($"Passed over: {callbackEvent.GetType().Name} on thread {thread.Id}, during an evaluation on thread {evaluating} with every thread let go");
+            EvalStatus.PassedOver.Add(callbackEvent switch
+            {
+                BreakpointCorDebugManagedCallbackEventArgs or DataBreakpointCorDebugManagedCallbackEventArgs => "a breakpoint",
+                BreakCorDebugManagedCallbackEventArgs => "a Debugger.Break()",
+                _ => "a stop",
+            });
+        }
+        else if (thread.Id != evaluating)
         {
             _logger?.Invoke($"Put off: {callbackEvent.GetType().Name} on thread {thread.Id}, during an evaluation on thread {evaluating}");
             _deferredEvents.Enqueue(callbackEvent);
@@ -674,7 +697,12 @@ public partial class ManagedDebugger
         if (EvalStatus.IsRunning || _stopShown)
         {
             // Another thread's, queued or come with a pause: decided while its frame is good, its stop put off.
-            if (shouldStop || rules.Count > 0)
+            if ((shouldStop || rules.Count > 0) && EvalStatus.LetThreadsRun)
+            {
+                _logger?.Invoke($"Passed over: a stop at an exception on thread {corThread.Id}, during an evaluation on thread {EvalStatus.ThreadId} with every thread let go");
+                EvalStatus.PassedOver.Add($"an exception ({exceptionType})");
+            }
+            else if (shouldStop || rules.Count > 0)
             {
                 _logger?.Invoke($"Put off: a stop at an exception on thread {corThread.Id}, during an evaluation on thread {EvalStatus.ThreadId} or a stop shown");
                 _deferredEvents.Enqueue(new DeferredExceptionStop(corThread, breakMode, handler, exceptionType, shouldStop, rules, stepPast));

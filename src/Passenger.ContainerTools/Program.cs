@@ -9,9 +9,10 @@ const string Usage = $$"""
     passenger-tools MODE [FLAGS]
       {{Words.Dap}}        Passenger's debug adapter on standard input and output ({{Words.Dap}} --help lists its flags)
       {{Words.Processes}}  this container's .NET programs as a JSON array, those the debugger cannot attach to saying why
-      {{Words.Trace}}      {{Words.Pid}} PID [{{Words.Resume}}] [{{Words.Requests}}]: the profiler's EventPipe session of a program, its .nettrace on standard
-                 output until standard input ends; {{Words.Resume}} lets a program held at its start go once recording; {{Words.Requests}}
-                 records a web app's requests and their database commands instead (the Requests window's)
+      {{Words.Trace}}      {{Words.Pid}} PID [{{Words.Resume}}] [{{Words.Requests}} | {{Words.Metrics}}]: the profiler's EventPipe session of a program, its
+                 .nettrace on standard output until standard input ends; {{Words.Resume}} lets a program held at its start go once
+                 recording; {{Words.Requests}} records a web app's requests and their database commands instead (the Requests window's),
+                 {{Words.Metrics}} the meters .NET ships (the Stats tab's)
       {{Words.Heap}}       {{Words.Pid}} PID: a memory snapshot of a program for each line '{{InContainer.TakeSnapshot}}' on standard input, its heap graph on
                  standard output, until standard input ends
       {{Words.Sources}}    the source file and line of each method given a line (TOKEN, a tab, MODULE) from its module's PDB
@@ -38,13 +39,14 @@ switch (args[0])
         return 0;
     case Words.Trace:
     {
-        if (Target(Words.Trace, rest, [Words.Resume, Words.Requests]) is not (int process, IReadOnlySet<string> switches))
+        if (Target(Words.Trace, rest, [Words.Resume, Words.Requests, Words.Metrics]) is not (int process, IReadOnlySet<string> switches))
         {
             return 2;
         }
         await using Stream input = Console.OpenStandardInput();
         await using Stream output = Console.OpenStandardOutput();
-        return await InContainer.TraceAsync(process, switches.Contains(Words.Resume), input, output, Console.Error, switches.Contains(Words.Requests));
+        return await InContainer.TraceAsync(process, switches.Contains(Words.Resume), input, output, Console.Error, switches.Contains(Words.Requests),
+            switches.Contains(Words.Metrics));
     }
     case Words.Heap:
     {

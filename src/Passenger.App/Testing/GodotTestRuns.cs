@@ -1,0 +1,78 @@
+using Passenger.App.Run;
+using Passenger.Core;
+
+namespace Passenger.App.Testing;
+
+/// <summary>What a Godot project's tests run with: GdUnit4's adapter starts the tests that need the engine on the Godot its
+/// test host's GODOT_BIN names, which is the one Passenger runs the game on unless the person names their own (in the IDE's
+/// environment, a launch profile or the run settings), and Godot keeps its user folders where a test gives them. Every
+/// framework's Godot takes the arguments Settings gives each start of it (<see cref="GodotStart"/>).</summary>
+public static class GodotTestRuns
+{
+    /// <summary>The variable GdUnit4's adapter takes Godot's executable from.</summary>
+    public const string BinaryVariable = "GODOT_BIN";
+
+    /// <summary>What a Godot project's test hosts are given: the variables, the user folders a test gives Godot among them,
+    /// what a headless Godot takes where its tests run headless, and GODOT_BIN naming any Godot 4 found, which runs GUT's
+    /// GDScript; why none would run C# where it would not; and how each Godot a run starts is started.</summary>
+    public sealed record Given(IReadOnlyDictionary<string, string> Variables, string? NoCSharp, GodotStart Start);
+
+    /// <summary>What a Godot project's test hosts are given (<see cref="Given"/>), the tests GUT and GoDotTest run in a game
+    /// shown in its window only where <paramref name="windowed"/> says. A worker's: finding Godot reads the disk and the
+    /// login shell's PATH.</summary>
+    public static Given Variables(string? setting, IReadOnlyDictionary<string, string> userFolders, bool windowed = false)
+    {
+        GodotStart start = new(GodotLaunch.Chosen(setting)?.Arguments ?? [], windowed);
+        Dictionary<string, string> variables = new(GodotExecutables.EnvironmentOf(start.Leading, userFolders), StringComparer.Ordinal);
+        if (Environment.GetEnvironmentVariable(BinaryVariable) is { Length: > 0 })
+        {
+            return new Given(variables, null, start);
+        }
+        GodotFound? found = GodotLaunch.Found(setting);
+        if (found is { WhyNotScripts: null })
+        {
+            variables[BinaryVariable] = found.Executable;
+        }
+        return new Given(variables, found is { WhyNot: null } ? null : $"GdUnit4's tests that need Godot's engine cannot run: {found?.WhyNot ?? GodotLaunch.NotFound}", start);
+    }
+
+    /// <summary>What a run says of the tests it ran beside the chosen ones, each failure with its words: a framework's run of a
+    /// script or suite takes what the code does not declare, which no row shows (a test a script inherits); null for none.</summary>
+    public static string? RanBeside(string framework, IReadOnlyList<TestOutcome> others)
+    {
+        if (others.Count == 0)
+        {
+            return null;
+        }
+        IEnumerable<string> failed = others.Where(o => o.State == TestState.Failed).Select(o => $"\n  {o.Test.FullyQualifiedName} failed{(o.Message is { } why ? $": {why}" : string.Empty)}");
+        return $"{framework} also ran {Plural.Of(others.Count, "test")} no row shows, {others.Count(o => o.State == TestState.Failed)} failed{string.Concat(failed)}";
+    }
+
+    /// <summary>A file a run wrote let go of; one Godot still holds (Windows) is left for the system's temporary folder.</summary>
+    public static void Delete(string path, string what)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception kept) when (kept is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Unit tests: {what} {path} is left: {kept.Message}");
+        }
+    }
+
+    /// <summary>A test project's environment with the Godot variables it does not set itself.</summary>
+    public static IReadOnlyDictionary<string, string> With(IReadOnlyDictionary<string, string> environment, IReadOnlyDictionary<string, string> godot)
+    {
+        if (godot.Keys.All(environment.ContainsKey))
+        {
+            return environment;
+        }
+        Dictionary<string, string> merged = new(environment, StringComparer.Ordinal);
+        foreach ((string name, string value) in godot)
+        {
+            merged.TryAdd(name, value);
+        }
+        return merged;
+    }
+}

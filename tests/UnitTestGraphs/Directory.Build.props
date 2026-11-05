@@ -1,0 +1,17 @@
+<Project>
+  <!-- The packages of the test projects the unit testing tests write (xunit v2, MSTest, NUnit and xunit v3 on the Testing
+       Platform's second line) that no other restore brings, downloaded with the solution's restore so the package cache
+       holds them: a test folder's restore, which names no feed, finds them there (UnitTestsTests, TestingPlatformTests,
+       McpTests), never on nuget.org. Each is downloaded alone, as the closure a restore of the test project resolves, so
+       nothing here is a reference and no project here is one the IDE or dotnet test takes for a test project. Built as an
+       empty library, never run, under none of the repo's rules, which are for Passenger's code. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <IsPackable>false</IsPackable>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath>$(MSBuildThisFileDirectory)../../artifacts</ArtifactsPath>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+  </PropertyGroup>
+</Project>

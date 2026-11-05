@@ -1,3 +1,4 @@
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -284,6 +285,37 @@ public sealed class LocalHistoryTests : IDisposable
         Ui.WaitFor(() => history.Rows.Count == 1, "the checkout's change to the file");
         Assert.Equal("Git checkout", history.Rows[0].Title);
         Ui.Landed(() => history.Diff?.Left.Document.Snapshot.ToString() == Original, "the file as main had it");
+        window.Close();
+    }
+
+    /// <summary>What a file holds once Local History reads a change heard while a Git checkout was the folder's activity, but
+    /// written after the checkout's moment was over (read late, behind other work), is an external change of its own at
+    /// the time it was read, never kept under the checkout's name and earlier time: the checkout's row still shows, and
+    /// reverts to, what the file held before the checkout, and the later write is a row of its own above it.</summary>
+    [AvaloniaFact]
+    public void A_change_written_after_a_checkouts_moment_is_an_external_change_of_its_own_though_heard_during_the_checkout()
+    {
+        string shop = Write("Shop.cs", Original);
+        MainWindow window = Open("Shop.cs");
+        LocalHistory history = window.LocalHistory!;
+        using (history.During("Git checkout"))
+        {
+            File.WriteAllText(shop, Saved1);
+            history.Noticed([shop]);
+            Ui.WaitFor(() => history.Snapshot().Events.Any(e => e.Name == "Git checkout"), "the checkout's change kept under its name");
+        }
+        // Heard a moment after the checkout ended, as its own writes are, but written past its moment.
+        File.WriteAllText(shop, Saved2);
+        File.SetLastWriteTimeUtc(shop, DateTime.UtcNow + TimeSpan.FromMinutes(1));
+        history.Noticed([shop]);
+        Ui.Settle();
+
+        (IReadOnlyList<HistoryEvent> events, IReadOnlyDictionary<string, string?> known) = history.Snapshot();
+        IReadOnlyList<HistoryRow> rows = HistoryRows.OfFile(events, known, shop);
+        Assert.True(rows.Count == 2 && rows[0].Title == LocalHistory.ExternalChange && rows[1].Title == "Git checkout",
+            $"A change written after the checkout's moment was kept as {string.Join(", ", rows.Select(r => r.Title))}, not an external change above the checkout");
+        Assert.Equal(Saved1, Encoding.UTF8.GetString(history.Content(rows[0].Version!)!));
+        Assert.Equal(Original, Encoding.UTF8.GetString(history.Content(rows[1].Version!)!));
         window.Close();
     }
 

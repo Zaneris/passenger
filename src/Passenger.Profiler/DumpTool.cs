@@ -11,8 +11,8 @@ namespace Passenger.Profiler;
 /// program's runtime's createdump; on Windows, where createdump.exe dumps only its parent, it writes the dump as
 /// createdump.exe does (<see cref="DotnetProcesses.WriteHeapDump"/>). Either reads the program as a debugger does, so where
 /// it cannot (Linux's ptrace kept to a program's ancestors, a runtime with no createdump beside it) only the runtime can
-/// write the dump. A dump, as large as the heap, lives in the temporary folder until its snapshot is done with it, and one
-/// a Passenger left there is swept.</summary>
+/// write the dump. A dump, as large as the heap, lives in the user's own folder of dumps under the temporary folder
+/// (<see cref="Folder"/>) until its snapshot is done with it, and one a Passenger left there is swept.</summary>
 internal static class DumpTool
 {
     private const string Prefix = "passenger-heap-";
@@ -39,9 +39,44 @@ internal static class DumpTool
         return File.Exists(tool) ? (tool, null) : (null, $"its runtime has no createdump beside it, in {folder}");
     }
 
-    /// <summary>A new dump's path in the temporary folder, under way until deleted (<see cref="DeleteAfterAsync"/>): named
+    /// <summary>A new dump's path in the folder of dumps, under way until deleted (<see cref="DeleteAfterAsync"/>): named
     /// for this process and the program, so a sweep tells a dump of a Passenger still running from one left.</summary>
-    public static string Named(int processId) => Named(Path.GetTempPath(), processId);
+    public static string Named(int processId) => Named(Folder, processId);
+
+    /// <summary>The folder dumps are written in: the user's own under the temporary folder, made as first asked for.</summary>
+    public static string Folder => folder ??= FolderIn(Path.GetTempPath());
+
+    private static string? folder;
+
+    /// <summary>The user's own folder of dumps under a temporary folder (mode 0700 off Windows), so a sweep reads Passenger's
+    /// dumps alone rather than every file of the temporary folder; the temporary folder itself where that folder cannot be
+    /// the user's (a link, or one another user made first in Linux's shared /tmp).</summary>
+    internal static string FolderIn(string temp)
+    {
+        string hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Environment.UserName)))[..10];
+        string own = Path.Combine(temp, $"passenger-heaps-{hash}");
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                // The user's temporary folder, under their profile, is theirs alone already.
+                Directory.CreateDirectory(own);
+                return own;
+            }
+            const UnixFileMode Owner = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+            Directory.CreateDirectory(own, Owner);
+            if (new DirectoryInfo(own).LinkTarget is not null)
+            {
+                return temp;
+            }
+            File.SetUnixFileMode(own, Owner);
+            return own;
+        }
+        catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
+        {
+            return temp;
+        }
+    }
 
     internal static string Named(string folder, int processId)
     {
@@ -117,10 +152,10 @@ internal static class DumpTool
         UnderWay.TryRemove(dump, out _);
     }
 
-    /// <summary>Deletes the dumps in the temporary folder that no snapshot has under way: those of a Passenger that ended
+    /// <summary>Deletes the dumps in the folder of dumps that no snapshot has under way: those of a Passenger that ended
     /// before deleting its own, or whose delete the system refused. A Passenger's still running stays, and one whose name
     /// says not whose, once an hour old: a snapshot reads its dump within minutes.</summary>
-    public static void Sweep() => Sweep(Path.GetTempPath(), Environment.ProcessId, DotnetProcesses.Runs, DateTime.UtcNow);
+    public static void Sweep() => Sweep(Folder, Environment.ProcessId, DotnetProcesses.Runs, DateTime.UtcNow);
 
     internal static void Sweep(string folder, int self, Func<int, bool> running, DateTime now)
     {

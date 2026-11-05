@@ -65,8 +65,12 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
     /// but those an edit reached, and no part of a line given apart.</summary>
     private bool linesWhole = true;
 
-    /// <summary>The most lines kept, past which they are let go: a few screens.</summary>
-    private const int MostLines = 4096;
+    /// <summary>The most lines kept, past which those away from the lines last asked for are let go: a few screens, so a
+    /// line scrolled past is let go while it is young, never kept long enough to reach the collector's oldest generation.</summary>
+    private const int MostLines = 256;
+
+    /// <summary>The most lines read ahead for the next parse to hand over: the screens asked since the last.</summary>
+    private const int MostRead = 4096;
 
     /// <param name="options">The file's preprocessor symbols (<see cref="CSharpParsing"/>), a Debug build's when not given.</param>
     public CSharpHighlighter(TextDocument document, CSharpParseOptions? options = null)
@@ -124,6 +128,28 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
             return current;
         }
     }
+
+    /// <summary>The syntax as the text stands, as <see cref="Current"/> gives it, once the file's first parse has landed:
+    /// waited for without holding the thread that asks, as an answer landing while a file opens needs it.</summary>
+    public async Task<ParsedText> CurrentAsync()
+    {
+        while (tree is null && running is { IsCompleted: false } first)
+        {
+            await first.Ended();
+        }
+        return Current;
+    }
+
+    /// <summary>How many times this thread has waited for a file's first parse, asking for <see cref="Current"/> before it
+    /// landed: what the window's thread never does while a file opens.</summary>
+    public static int FirstParseWaits => firstParseWaits;
+
+    [ThreadStatic]
+    private static int firstParseWaits;
+
+    /// <summary>Every parse begun from now waits for this task to end before it reads the text, until it is set again: a
+    /// test's way to ask for a file's syntax before its first parse has landed.</summary>
+    public static Task? HeldParses { get; set; }
 
     /// <summary>The newest parse when it is of the text as it stands, else null until one is (<see cref="Parsed"/>).</summary>
     public ParsedText? Newest => tree is not null && sinceTree.Count == 0 ? Current : null;
@@ -218,11 +244,15 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
     /// classified at once and kept line by line.</summary>
     private SyntaxSpan[] ByLine(TextSnapshot snapshot, int first, int last)
     {
-        if (linesVersion != version || lines.Count > MostLines)
+        if (linesVersion != version)
         {
             linesWhole &= lines.Count == 0;
             lines.Clear();
             linesVersion = version;
+        }
+        else if (lines.Count > MostLines)
+        {
+            LetGoAwayFrom(snapshot, first, last);
         }
         int count = 0;
         for (int line = first; line <= last;)
@@ -265,6 +295,23 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
             }
         }
         return spans;
+    }
+
+    /// <summary>Lets go of the lines kept further from those asked for than their own number of lines: the lines asked for
+    /// stay, and as many either side.</summary>
+    private void LetGoAwayFrom(TextSnapshot snapshot, int first, int last)
+    {
+        int margin = last - first + 1;
+        int from = snapshot.GetLineStart(Math.Max(0, first - margin));
+        int to = snapshot.GetLine(Math.Min(snapshot.LineCount - 1, last + margin)).EndIncludingBreak;
+        foreach (int start in lines.Keys)
+        {
+            if (start < from || start >= to)
+            {
+                lines.Remove(start);
+                linesWhole = false;
+            }
+        }
     }
 
     /// <summary>A line's colours as kept for the text as it stands, relative to its start; null when none are kept.</summary>
@@ -340,7 +387,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         {
             int first = Math.Min(firstAsked, lineCount - 1);
             int last = Math.Min(lastAsked, lineCount - 1);
-            if (read.Count > MostLines || (read.ContainsKey(text.GetLineStart(first)) && read.ContainsKey(text.GetLineStart(last))))
+            if (read.Count > MostRead || (read.ContainsKey(text.GetLineStart(first)) && read.ContainsKey(text.GetLineStart(last))))
             {
                 continue;
             }
@@ -355,6 +402,9 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         }
         return read;
     }
+
+    /// <summary>How many lines' colours are kept for the text as it stands: a few screens' around those last asked for.</summary>
+    public int LinesKept => linesVersion == version ? lines.Count : 0;
 
     /// <summary>How many characters the editor's asks have had classified from the tree on the UI thread: what drawing the
     /// lines on screen costs a key.</summary>
@@ -399,10 +449,15 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         int parsedVersion = version;
         parsingVersion = parsedVersion;
         (int First, int Last)[] warm = [.. asked];
+        Task? held = HeldParses;
         // Held from here, the parse's own start holding nothing, until what it parsed lands on the UI thread.
         BackgroundWork.Begin();
-        Task<(SyntaxTree Tree, FoldRegions Folds, Dictionary<int, (int Length, SyntaxSpan[] Spans)> Lines)> parse = BackgroundWork.Unheld(() =>
+        Task<(SyntaxTree Tree, FoldRegions Folds, Dictionary<int, (int Length, SyntaxSpan[] Spans)> Lines)> parse = BackgroundWork.Unheld(async () =>
         {
+            if (held is not null)
+            {
+                await held.Ended();
+            }
             long allocated = GC.GetAllocatedBytesForCurrentThread();
             SyntaxTree parsed = previous is null ? CSharpSyntaxTree.ParseText(parsedText, parsedWith) : previous.WithChangedText(parsedText);
             // The screen's lines classified here build the tree's nodes off the UI thread, which classifies them no more.
@@ -433,6 +488,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
                     }
                     KeptColours = TakeLines(done.Result.Lines);
                     Changed?.Invoke(this, EventArgs.Empty);
+                    ChangedWithin = null;
                     if (parsedVersion == version)
                     {
                         Folds = done.Result.Folds.All;
@@ -465,7 +521,9 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
             Carry(read, spareLines, edits);
             (read, spareLines) = (spareLines, read);
         }
-        bool kept = linesWhole && linesVersion == version && Holds(read, lines);
+        bool whole = linesWhole && linesVersion == version;
+        ChangedWithin = whole ? Differing(read, lines) : null;
+        bool kept = whole && ChangedWithin is null;
         spareLines = lines;
         lines = read;
         linesVersion = version;
@@ -473,18 +531,26 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         return kept;
     }
 
-    /// <summary>Whether lines' colours read anew give every line given before its colours as they were.</summary>
-    private static bool Holds(Dictionary<int, (int Length, SyntaxSpan[] Spans)> read, Dictionary<int, (int Length, SyntaxSpan[] Spans)> given)
+    /// <summary>Where lines' colours read anew differ from those given before: from the first line given that reads
+    /// otherwise to the last; null where every line given reads as it was.</summary>
+    private static TextRange? Differing(Dictionary<int, (int Length, SyntaxSpan[] Spans)> read, Dictionary<int, (int Length, SyntaxSpan[] Spans)> given)
     {
+        int from = int.MaxValue;
+        int to = -1;
         foreach ((int start, (int Length, SyntaxSpan[] Spans) line) in given)
         {
             if (!read.TryGetValue(start, out (int Length, SyntaxSpan[] Spans) now) || now.Length != line.Length || !now.Spans.AsSpan().SequenceEqual(line.Spans))
             {
-                return false;
+                from = Math.Min(from, start);
+                to = Math.Max(to, start + line.Length);
             }
         }
-        return true;
+        return to < 0 ? null : TextRange.FromBounds(from, to);
     }
+
+    /// <summary>While <see cref="Changed"/> is raised, the lines given before whose colours the landing parse read
+    /// otherwise; null where it does not know them all.</summary>
+    public TextRange? ChangedWithin { get; private set; }
 
     /// <summary>Whether the parse that last landed gave every line it had given colours to the colours it had: the lines
     /// drawn with them stand.</summary>
@@ -497,6 +563,7 @@ public sealed class CSharpHighlighter : IHighlighter, IBraceMatcher, IFoldFinder
         SyntaxTree? basis = tree;
         if (basis is null && running is { } first)
         {
+            firstParseWaits += first.IsCompleted ? 0 : 1;
             ((IAsyncResult)first).AsyncWaitHandle.WaitOne();
             basis = first.IsCompletedSuccessfully ? first.Result.Tree : null;
         }

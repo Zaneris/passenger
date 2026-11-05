@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.VisualTree;
 using Passenger.App.Debugging;
+using Passenger.App.Telemetry;
 using Passenger.Dap;
 using Passenger.Editor;
 
@@ -27,6 +28,8 @@ public sealed class DebugView : DockPanel, IOwnKeys
     private readonly Panel debugger;
     private readonly ToggleButton debuggerTab;
     private readonly ToggleButton consoleTab;
+    private readonly ToggleButton telemetryTab;
+    private readonly TelemetryPane telemetry = new() { IsVisible = false };
     private readonly Dictionary<string, Button> tools = [];
     private readonly ToggleButton mute;
     private readonly TextBlock placeholder;
@@ -97,11 +100,17 @@ public sealed class DebugView : DockPanel, IOwnKeys
         variables.EvaluateRequested += (_, request) => model.Evaluate(request.Expression, request.Watch);
         variables.WatchRemoved += (_, watch) => model.Unwatch(watch);
         variables.SetValueRequested += (_, request) => model.SetValue(request.Node, request.Value);
+        variables.RunWithThreadsRequested += (_, node) => model.RunWithThreads(node);
         variables.DataBreakpointRequested += (_, node) => model.ToggleDataBreakpoint(node);
         variables.TextOpened += (_, node) => model.OpenText(node);
         ListMenus.Attach(frames, FramesMenu);
         ListMenus.Attach(threads, ThreadsMenu);
-        DockPanel variablesPane = new() { Children = { evaluate, variables } };
+        // Over the values, once every thread ran in an evaluation: those read before it may have moved.
+        Banner moved = new();
+        moved.Link(ReadAgain, model.ReadAgain);
+        moved.Say(model.Moved);
+        model.MovedChanged += (_, _) => moved.Say(model.Moved);
+        DockPanel variablesPane = new() { Children = { evaluate, moved, variables } };
 
         // The frames a third of the window and the variables the rest, so a narrow window narrows both.
         Grid split = new() { ColumnDefinitions = new ColumnDefinitions("*,1,2*") };
@@ -117,8 +126,10 @@ public sealed class DebugView : DockPanel, IOwnKeys
 
         debuggerTab = new ToggleButton { Content = "Debugger", Classes = { StyleClasses.PanelTab }, IsChecked = true };
         consoleTab = new ToggleButton { Content = "Console", Classes = { StyleClasses.PanelTab } };
+        telemetryTab = new ToggleButton { Content = RunWindows.TelemetryTab, Classes = { StyleClasses.PanelTab }, Name = "debugTelemetryTab", IsVisible = false };
         debuggerTab.Click += (_, _) => model.ShowTab(console: false);
         consoleTab.Click += (_, _) => model.ShowTab(console: true);
+        telemetryTab.Click += (_, _) => model.ShowTelemetry();
         StackPanel top = new()
         {
             Orientation = Orientation.Horizontal,
@@ -128,6 +139,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
             {
                 debuggerTab,
                 consoleTab,
+                telemetryTab,
                 new Border { Width = 12 },
                 Tool(AppActions.StepOver, IconKeys.StepOver, "Step Over"),
                 Tool(AppActions.StepInto, IconKeys.StepInto, "Step Into"),
@@ -137,6 +149,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
                 Tool(AppActions.Evaluate, IconKeys.Evaluate, "Evaluate Expression"),
                 new Border { Width = 12 },
                 model.Overlays,
+                model.GameAudio,
             },
         };
         Border topBar = ToolBars.Top(top);
@@ -163,7 +176,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
 
         Children.Add(leftBar);
         Children.Add(topBar);
-        Children.Add(new Panel { Children = { debugger, consolePane } });
+        Children.Add(new Panel { Children = { debugger, consolePane, telemetry } });
         model.ToolsChanged += (_, _) => ShowTools();
         model.FramesShown += (_, _) => ShowChosen();
         model.TabShown += (_, _) => ShowTab();
@@ -177,6 +190,9 @@ public sealed class DebugView : DockPanel, IOwnKeys
             evaluate.Text = text;
         }
     }
+
+    /// <summary>The link over Variables that reads the frame's values anew once every thread ran in an evaluation.</summary>
+    public const string ReadAgain = "Read Again";
 
     /// <summary>The window header's own tools: the sessions' tabs.</summary>
     public Control HeaderTools { get; }
@@ -259,11 +275,21 @@ public sealed class DebugView : DockPanel, IOwnKeys
             consolePane.Children.Clear();
             consolePane.Children.Add(model.Console);
         }
-        debuggerTab.IsChecked = !model.IsConsoleShown;
-        consoleTab.IsChecked = model.IsConsoleShown;
-        debugger.IsVisible = !model.IsConsoleShown;
-        consolePane.IsVisible = model.IsConsoleShown;
+        // The Telemetry tab is there while the chosen program's run has records; without them its place is the console's.
+        telemetry.Source = model.ChosenDashboard?.Telemetry;
+        telemetryTab.IsVisible = telemetry.Source is not null;
+        bool records = model.IsTelemetryShown && telemetry.Source is not null;
+        bool console = model.IsConsoleShown || model.IsTelemetryShown && !records;
+        debuggerTab.IsChecked = !console && !records;
+        consoleTab.IsChecked = console;
+        telemetryTab.IsChecked = records;
+        debugger.IsVisible = !console && !records;
+        consolePane.IsVisible = console;
+        telemetry.IsVisible = records;
     }
+
+    /// <summary>The chosen program's Telemetry, the Telemetry tab's.</summary>
+    public TelemetryPane Telemetry => telemetry;
 
     private void FocusEvaluate()
     {

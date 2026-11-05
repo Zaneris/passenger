@@ -22,9 +22,56 @@ public partial class ExplorerView : UserControl
     private readonly DragGesture<IReadOnlyList<ExplorerNode>> drag;
     private bool copyHeld;
 
+    /// <summary>A plain left press on a file's row while one click opens files, which opens it once let go there.</summary>
+    private (ExplorerNode Row, Point At)? clicked;
+
+    /// <summary>How long typing in the filter pauses before the rows follow it.</summary>
+    private static readonly TimeSpan FilterPause = TimeSpan.FromMilliseconds(150);
+
+    private readonly TextBox filter = ToolWindows.FilterBox.Of();
+    private readonly Border filterBar;
+    private readonly Debounce filtering;
+
+    /// <summary>Under the rows, how many more files a filter matched than the tree shows.</summary>
+    private readonly TextBlock more = new() { Classes = { StyleClasses.EmptyText }, IsVisible = false };
+
+    /// <summary>Filters asked for, numbering each: only the newest one's answer lands.</summary>
+    private int asked;
+
+    /// <summary>The filter whose answer landed last, by its number.</summary>
+    private int answered;
+
+    /// <summary>The newest answer landed, its files by full path, which the rows are narrowed to again as they are made
+    /// anew; null while the filter is empty.</summary>
+    private ExplorerFilter.Matches? matched;
+
+    /// <summary>Down or Enter pressed in the filter before its answer landed, which then chooses the first file shown.</summary>
+    private bool chooseFirst;
+
     public ExplorerView()
     {
         InitializeComponent();
+        filter.Margin = new Thickness(6, 0, 4, 0);
+        filterBar = ToolWindows.ToolBars.Top(filter);
+        filterBar.IsVisible = false;
+        Body.Children.Add(filterBar);
+        more.Margin = new Thickness(16, 6);
+        Grid.SetRow(more, 2);
+        Body.Children.Add(more);
+        filtering = new Debounce(FilterPause, MatchAsync);
+        filter.TextChanged += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(filter.Text))
+            {
+                filtering.Stop();
+                IdeErrors.Observe(MatchAsync());
+            }
+            else
+            {
+                filtering.Restart();
+            }
+        };
+        filter.KeyDown += OnFilterKey;
         Rows.ItemsSource = Tree.Rows;
         ReusedRows.Use(Rows, Row);
         // Every key the keymap gives an action (Rename, Delete, the clipboard's) is the window's, run on the chosen row.
@@ -77,6 +124,12 @@ public partial class ExplorerView : UserControl
     /// <summary>A file chosen with a double-click or Enter.</summary>
     public event EventHandler<string>? FileOpened;
 
+    /// <summary>A file clicked once while <see cref="OpensOnClick"/>: to be shown, the keys left on its row.</summary>
+    public event EventHandler<string>? FileClicked;
+
+    /// <summary>Open Files with Single Click: a plain click on a file's row opens it, as a double-click does.</summary>
+    public bool OpensOnClick { get; set; }
+
     /// <summary>A row's right-click menu, which the window makes of its actions run on that row; none for a row with
     /// nothing to do.</summary>
     public Func<ExplorerNode, IReadOnlyList<Control>?>? MenuFor { get; set; }
@@ -100,10 +153,13 @@ public partial class ExplorerView : UserControl
         }
     }
 
-    /// <summary>Reads the folder again, keeping the folders that were open open and the chosen row chosen.</summary>
+    /// <summary>Reads the folder again, keeping the folders that were open open and the chosen row chosen, and the filter
+    /// as it was.</summary>
     public void Refresh()
     {
         static string Key(ExplorerNode row) => (row.Kind == NodeKind.SolutionFolder ? row.SolutionPath : row.Path) ?? $"{row.Owner}/{row.Depth}/{row.Kind}/{row.Name}";
+        // The rows open are those open before the filter, which it opens again over them.
+        Tree.Unfilter();
         HashSet<string> open = new(Tree.Rows.Where(r => r.IsExpanded).Select(Key), StringComparer.Ordinal);
         string? chosen = Selected is { } selected ? Key(selected) : null;
         ExplorerNode? again = null;
@@ -126,6 +182,7 @@ public partial class ExplorerView : UserControl
         {
             Rows.SelectedItem = again;
         }
+        Narrow();
         if (revealing is { } waiting)
         {
             Reveal(waiting);
@@ -170,8 +227,10 @@ public partial class ExplorerView : UserControl
         folder = workspace.Folder;
         Take(workspace);
         Show(solutionView: ViewSwitch.IsVisible);
-        Hint.IsVisible = false;
         Rows.IsVisible = true;
+        filterBar.IsVisible = true;
+        ShowHint();
+        Refilter();
     }
 
     /// <summary>Shows nothing, its hint in its place, as it did before a folder opened: the solution was closed.</summary>
@@ -185,11 +244,19 @@ public partial class ExplorerView : UserControl
         ViewSwitch.IsVisible = false;
         Tree.Clear();
         Rows.IsVisible = false;
-        Hint.IsVisible = true;
+        filterBar.IsVisible = false;
+        answered = ++asked;
+        matched = null;
+        more.IsVisible = false;
+        ShowHint();
     }
 
     /// <summary>Reads again only the folders that changed on disk, the rows open and chosen kept.</summary>
-    public void RefreshFolders(IEnumerable<string> folders) => Tree.RefreshFolders(folders);
+    public void RefreshFolders(IEnumerable<string> folders)
+    {
+        Tree.RefreshFolders(folders);
+        Narrow();
+    }
 
     /// <summary>A project unloaded or loaded again: its row made anew, chosen again if it was, and every other row as it
     /// was.</summary>
@@ -201,6 +268,7 @@ public partial class ExplorerView : UserControl
             Refresh();
             return;
         }
+        Narrow();
         if (chosen && Tree.Rows.FirstOrDefault(r => r.Kind == NodeKind.Project && r.Path == project) is { } again)
         {
             Rows.SelectedItem = again;
@@ -222,6 +290,7 @@ public partial class ExplorerView : UserControl
         bool keys = Rows.IsKeyboardFocusWithin;
         Take(workspace);
         Tree.UpdateProjects(updated);
+        Narrow();
         if (revealing is { } waiting)
         {
             Reveal(waiting);
@@ -269,7 +338,11 @@ public partial class ExplorerView : UserControl
         return ViewSwitch;
     }
 
-    private void OnViewSwitchClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Show(!Tree.IsSolutionView);
+    private void OnViewSwitchClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        Show(!Tree.IsSolutionView);
+        Narrow();
+    }
 
     /// <summary>"Show files with the same names as nested": the Solution view nests by name as well as by
     /// DependentUpon; the rows are made again as it changes, those open kept open.</summary>
@@ -293,8 +366,8 @@ public partial class ExplorerView : UserControl
     /// <summary>File Nesting... chosen in the Explorer's options: the window asks how files nest.</summary>
     public event EventHandler? NestingAsked;
 
-    /// <summary>The Explorer's own items atop its header's options: Appearance, with File Nesting... while the Solution
-    /// view shows.</summary>
+    /// <summary>Its view's items among its header's options: Appearance, with File Nesting... while the Solution view
+    /// shows.</summary>
     public IReadOnlyList<Control> Options()
     {
         if (!Tree.IsSolutionView)
@@ -325,6 +398,157 @@ public partial class ExplorerView : UserControl
         Rows.ContainerFromIndex(index)?.Focus();
     }
 
+    /// <summary>The folder's indexed files by their paths from its root, as the window's index has them now, which the
+    /// filter reads off the window's thread: the index leaves out build output and what the walks pass over.</summary>
+    public Func<(string Root, IReadOnlyList<string> Files)?>? IndexedFiles { get; set; }
+
+    /// <summary>The filter's text: the rows narrowed to the files whose names hold it, with their folders.</summary>
+    public string FilterText
+    {
+        get => filter.Text ?? string.Empty;
+        set => filter.Text = value;
+    }
+
+    /// <summary>What the line under the rows says of the files the filter matched beyond those the tree shows; null while
+    /// it shows them all.</summary>
+    public string? MoreMatched => more.IsVisible ? more.Text : null;
+
+    /// <summary>Gives the filter the keys, its text chosen: Find's keys while the Explorer has them.</summary>
+    public void FocusFilter()
+    {
+        filter.Focus();
+        filter.SelectAll();
+    }
+
+    /// <summary>The filter matched again among the folder's files as they now are (walked, or files came and went), while
+    /// it has text.</summary>
+    public void Refilter()
+    {
+        if (!string.IsNullOrWhiteSpace(filter.Text))
+        {
+            IdeErrors.Observe(MatchAsync());
+        }
+    }
+
+    /// <summary>The files the filter's text names found off the window's thread, then the rows narrowed to them, unless a
+    /// newer filter was asked for meanwhile; its text gone, every row again as it was open before, the row chosen meanwhile
+    /// shown where it is.</summary>
+    private async Task MatchAsync()
+    {
+        int ask = ++asked;
+        string text = FilterText.Trim();
+        if (text.Length == 0)
+        {
+            answered = ask;
+            matched = null;
+            chooseFirst = false;
+            Unnarrow();
+            return;
+        }
+        ExplorerFilter.Matches found = new([], 0);
+        if (IndexedFiles?.Invoke() is ({ } root, { } files))
+        {
+            found = await BackgroundWork.Run(() =>
+            {
+                ExplorerFilter.Matches named = ExplorerFilter.Of(files, text);
+                return named with { Files = [.. named.Files.Select(f => PathNames.Canonical(Path.Combine(root, f)))] };
+            });
+        }
+        if (ask != asked)
+        {
+            return;
+        }
+        answered = ask;
+        matched = found;
+        Narrow();
+        if (chooseFirst)
+        {
+            chooseFirst = false;
+            ChooseFirstFile();
+        }
+    }
+
+    /// <summary>The rows narrowed to the files of the answer landed, as the tree now is; nothing while none has.</summary>
+    private void Narrow()
+    {
+        if (matched is not { } found)
+        {
+            return;
+        }
+        Tree.Filter(found.Files);
+        more.Text = $"{found.More:N0} more {Plural.Noun(found.More, "file")} {(found.More == 1 ? "matches" : "match")}: a longer filter narrows them";
+        more.IsVisible = found.More > 0;
+        ShowHint();
+    }
+
+    /// <summary>Every row again, as it was open before the filter, the row chosen meanwhile kept in sight.</summary>
+    private void Unnarrow()
+    {
+        more.IsVisible = false;
+        if (!Tree.IsFiltered)
+        {
+            return;
+        }
+        string? chosen = Selected?.Path;
+        Tree.Unfilter();
+        if (chosen is not null && Selected is null)
+        {
+            Reveal(chosen);
+        }
+        else if (Selected is { } still)
+        {
+            Rows.ScrollIntoView(still);
+        }
+        ShowHint();
+    }
+
+    /// <summary>The first file shown chosen, where no row is.</summary>
+    private void ChooseFirstFile()
+    {
+        if (Selected is null && Tree.Rows.FirstOrDefault(r => r.IsFile) is { } first)
+        {
+            Rows.SelectedItem = first;
+        }
+    }
+
+    /// <summary>The hint over the rows: nothing open, or a filter that leaves no file.</summary>
+    private void ShowHint()
+    {
+        bool none = Rows.IsVisible && Tree.IsFiltered && !Tree.Rows.Any(r => r.IsFile);
+        Hint.Text = none ? "No file matches" : "Nothing open";
+        Hint.IsVisible = none || !Rows.IsVisible;
+    }
+
+    /// <summary>The filter's keys: Down or Enter takes the rows' keys, on the row chosen or the first file shown; Escape
+    /// empties it and gives the rows their keys back.</summary>
+    private void OnFilterKey(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyModifiers != KeyModifiers.None || e.Key is not (Key.Down or Key.Enter or Key.Escape))
+        {
+            return;
+        }
+        if (e.Key == Key.Escape)
+        {
+            filter.Text = string.Empty;
+        }
+        else if (filtering.IsWaiting || answered != asked)
+        {
+            // The answer is yet to land: the first file it shows is chosen once it does.
+            chooseFirst = true;
+            if (filtering.IsWaiting)
+            {
+                filtering.Stop();
+                IdeErrors.Observe(MatchAsync());
+            }
+        }
+        else
+        {
+            ChooseFirstFile();
+        }
+        FocusRows();
+        e.Handled = true;
+    }
+
     /// <summary>Opens the folders down to a file and selects its row. A file the Solution view does not show yet (one just
     /// made, moved or copied into a project, before MSBuild has evaluated the project again) is chosen once it does.</summary>
     public void Reveal(string path)
@@ -343,6 +567,27 @@ public partial class ExplorerView : UserControl
 
     /// <summary>A file or folder to choose once the Solution view shows it.</summary>
     private string? revealing;
+
+    /// <summary>Chooses a file's or folder's row and scrolls to it, as Select Opened File asks: in the Solution view, else in
+    /// the Files view, switched to, where only the folder holds it; false, the view left as it was, where neither shows it.</summary>
+    public bool Locate(string path)
+    {
+        string full = PathNames.Canonical(path);
+        ExplorerNode? node = Tree.Reveal(full);
+        if (node is null && Tree.IsSolutionView && folder is not null && PathNames.IsUnder(full, folder) && (File.Exists(full) || Directory.Exists(full)))
+        {
+            Show(solutionView: false);
+            node = Tree.Reveal(full);
+        }
+        if (node is null)
+        {
+            return false;
+        }
+        revealing = null;
+        Rows.SelectedItem = node;
+        Rows.ScrollIntoView(node);
+        return true;
+    }
 
     private void Activate(ExplorerNode node)
     {
@@ -369,6 +614,7 @@ public partial class ExplorerView : UserControl
     {
         if (sender is Control { DataContext: ExplorerNode { HasChildren: true } node })
         {
+            clicked = null;
             Tree.Toggle(node);
             e.Handled = true;
         }
@@ -400,11 +646,17 @@ public partial class ExplorerView : UserControl
         });
     }
 
-    /// <summary>A left press on a file or folder on disk may begin a drag of it, or of the rows chosen with it. The row is
-    /// the one pressed on, never one the scrollbar lies over, so a drag of the bar's thumb stays the bar's.</summary>
+    /// <summary>A left press on a file or folder on disk may begin a drag of it, or of the rows chosen with it, and a plain
+    /// one on a file a click that opens it (<see cref="OpensOnClick"/>). The row is the one pressed on, never one the
+    /// scrollbar lies over, so a drag of the bar's thumb stays the bar's.</summary>
     private void OnRowsPressed(object? sender, PointerPressedEventArgs e)
     {
-        if ((e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext is ExplorerNode { IsMovable: true } row)
+        ExplorerNode? pressed = (e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext as ExplorerNode;
+        PointerPoint point = e.GetCurrentPoint(Rows);
+        // Shift and Cmd (Ctrl) choose rows, and a second press is a double-click's.
+        clicked = OpensOnClick && pressed is { IsFile: true, Path: not null } && point.Properties.IsLeftButtonPressed
+            && e.KeyModifiers == KeyModifiers.None && e.ClickCount == 1 ? (pressed, point.Position) : null;
+        if (pressed is { IsMovable: true } row)
         {
             // The rows chosen as it was pressed: the list then chooses the row alone.
             IReadOnlyList<ExplorerNode> chosen = SelectedNodes;
@@ -421,6 +673,10 @@ public partial class ExplorerView : UserControl
             return;
         }
         copyHeld = CopyHeld(e.KeyModifiers);
+        if (clicked is { } press && ((Vector)(e.GetPosition(Rows) - press.At)).Length >= DragGesture<IReadOnlyList<ExplorerNode>>.Threshold)
+        {
+            clicked = null;
+        }
         // Once a drag, the pointer is the rows' until the release, wherever it goes.
         if (drag.Continue(e) && e.Pointer.Captured != Rows)
         {
@@ -431,13 +687,22 @@ public partial class ExplorerView : UserControl
     private void OnRowsReleased(object? sender, PointerReleasedEventArgs e)
     {
         copyHeld = CopyHeld(e.KeyModifiers);
-        if (drag.End(e))
+        bool dragged = drag.End(e);
+        if (dragged)
         {
             e.Handled = true;
         }
         if (e.Pointer.Captured == Rows)
         {
             e.Pointer.Capture(null);
+        }
+        if (clicked is { } press)
+        {
+            clicked = null;
+            if (!dragged && e.InitialPressMouseButton == MouseButton.Left && RowAt(e.GetPosition(Rows)) == press.Row && press.Row.Path is { } path)
+            {
+                FileClicked?.Invoke(this, path);
+            }
         }
     }
 

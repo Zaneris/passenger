@@ -7,6 +7,10 @@ app := "src/Passenger.App"
 # Avalonia's build task sends usage data from every build of an Avalonia project unless this is in the environment.
 export AVALONIA_TELEMETRY_OPTOUT := "1"
 
+# No MSBuild server for a recipe's dotnet (the SDK's switch, MSBuild's own): it outlives its build, keeping its nodes.
+export DOTNET_CLI_USE_MSBUILD_SERVER := "0"
+export MSBUILDUSESERVER := "0"
+
 # The checkout as the disk names it, for recipes' shells and dotnet, which take a PWD naming their folder as its path.
 export PWD := justfile_directory()
 
@@ -106,6 +110,21 @@ app-icon:
 themes:
     python3 -I tools/themes.py
 
+# Rewrite src/Passenger.Workspace/GodotShaderTypes.json, Godot's shading language as its sources at one commit say it
+# (tools/godot-shader-types.py).
+godot-shader-types:
+    python3 -I tools/godot-shader-types.py
+
+# Rewrite src/Passenger.Workspace/GodotDefaultTheme.json, Godot's default theme as its sources at one commit say it
+# (tools/godot-theme.py).
+godot-theme:
+    python3 -I tools/godot-theme.py
+
+# Rewrite src/Passenger.Workspace/GDScript/GodotRenames.json, the Godot 3 names Godot 4's GDScript analyzer hints at, as
+# its sources at one commit say them (tools/godot-renames.py).
+godot-renames:
+    python3 -I tools/godot-renames.py
+
 # Rewrite Theme/Icons.axaml from the list in tools/icons.py (fetches any icon not yet cached).
 icons:
     python3 -I tools/icons.py
@@ -127,6 +146,10 @@ notices:
 unicode-widths:
     python3 -I tools/unicode-widths.py
 
+# Rewrite the tables a GDScript identifier's spoof check reads from Unicode's security and character data (tools/unicode-identifiers.py).
+unicode-identifiers:
+    python3 -I tools/unicode-identifiers.py
+
 # Run from a clone of the last build, so rebuilding Passenger never changes the files under it (tools/mcp.sh).
 # Passenger as an MCP server over a folder, its tools on standard input and output: just mcp [FOLDER]
 mcp folder="":
@@ -138,6 +161,12 @@ mcp folder="":
 [unix]
 mcp-call folder tool="" arguments="":
     @python3 -I tools/mcp-call.py --from {{ quote(invocation_directory()) }} {{ quote(folder) }} {{ quote(tool) }} {{ quote(arguments) }}
+
+# Clones the real Godot projects of tools/godot-projects.json outside the repository and sweeps each through a headless
+# Passenger after just build, writing a report (tools/godot-sweep.py): just godot-sweep [--godot GODOT] [NAME...]
+[unix]
+godot-sweep *args:
+    @python3 -I tools/godot-sweep.py {{args}}
 
 # Retake the site's pictures, site/images/<scene>-<dark|light>.webp, after just build (macOS): just site-shots [SCENE...]
 [unix]

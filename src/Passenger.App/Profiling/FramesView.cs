@@ -144,12 +144,23 @@ public sealed class FramesView : DockPanel
     {
         frames = shownFrames;
         origin = start;
-        chart.Frames = shownFrames;
+        chart.Frames = [.. shownFrames.Select(Parts)];
         shown.IsVisible = shownFrames.Count > 0;
         placeholder.IsVisible = shownFrames.Count == 0;
         placeholder.Text = why ?? NoFrames;
         Fill();
     }
+
+    /// <summary>A frame's bar: measuring, arranging and recording what to render on the UI thread, the rest of its UI work,
+    /// then the compositor drawing it.</summary>
+    private static IReadOnlyList<FramePart> Parts(UiFrame frame) =>
+    [
+        new(frame.MeasureMs, TokenKeys.Graph_0),
+        new(frame.ArrangeMs, TokenKeys.Graph_1),
+        new(frame.RecordMs, TokenKeys.Graph_2),
+        new(Math.Max(0, frame.DurationMs - frame.LayoutMs - frame.RecordMs), TokenKeys.TextMuted, 0.35),
+        new(frame.CompositeMs, TokenKeys.Graph_3),
+    ];
 
     /// <summary>Opens or closes a type's row, as a click on its chevron does.</summary>
     public void Toggle(LayoutRow row)
@@ -258,7 +269,7 @@ public sealed class FramesView : DockPanel
     }
 
     private static TextBlock Number() =>
-        new() { FontFamily = CodeEditor.CodeFont, FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        new TextBlock { FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
 
     /// <summary>A number in its cell, muted where it is nothing.</summary>
     private static void Put(TextBlock cell, string text)

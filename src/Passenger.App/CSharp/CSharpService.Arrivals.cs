@@ -47,6 +47,10 @@ public sealed partial class CSharpService
     /// without a session, those of the workspace it was started on, which may not be evaluated yet.</summary>
     public Func<IReadOnlyList<ProjectModel>>? ProjectsNow { get; init; }
 
+    /// <summary>The folder's projects C# does not load now (a solution filter leaves them out, or the person unloaded them),
+    /// whose declarations the server shows only as their assemblies' metadata (<see cref="UnloadedSources"/>).</summary>
+    public Func<IReadOnlyList<ProjectModel>>? UnloadedNow { get; init; }
+
     /// <summary>The C# files of the folder's projects the server may not hold in their projects yet that <paramref
     /// name="counted"/> names by path and project (null: all), with <paramref name="looking"/> those written a moment ago the
     /// watcher may not have heard (an agent's), waited for up to <paramref name="within"/>: none once each is held or left
@@ -61,7 +65,7 @@ public sealed partial class CSharpService
         {
             return [];
         }
-        IReadOnlyList<ProjectModel> projects = opened.Projects;
+        IReadOnlyList<ProjectModel> projects = ProjectsNow?.Invoke() ?? opened.Projects;
         DateTime since = DateTime.UtcNow - Unheard;
         foreach ((string path, string project, DateTime written) in looking ? await BackgroundWork.Run(() => WrittenNow(projects, since), cancel) : [])
         {

@@ -6,8 +6,9 @@ using Passenger.Editor;
 namespace Passenger.App.Workspace;
 
 /// <summary>What a folder's window had open, kept in the folder's place in the store: the editors' splits, tabs (pinned
-/// or not) and carets, the editor windows, the recent files, the projects unloaded and the files' folds, so opening the
-/// folder again brings them back. Only the window a person uses keeps it, as with the layout.</summary>
+/// or not) and carets, the editor windows, the recent files, the projects unloaded, the target frameworks chosen and the
+/// files' folds and whether Godot's script editor was offered, so opening the folder again brings them back. Only the window a
+/// person uses keeps it, as with the layout.</summary>
 public sealed record WorkspaceState : IStateDocument<WorkspaceState>
 {
     public EditorLayout? Editors { get; init; }
@@ -21,8 +22,18 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
     /// <summary>The projects unloaded in the Solution view, by path.</summary>
     public List<string> UnloadedProjects { get; init; } = [];
 
+    /// <summary>The target framework chosen for each multi-targeted project, by its path (<see cref="TargetFrameworkChoices"/>).</summary>
+    public Dictionary<string, string> TargetFrameworks { get; init; } = [];
+
     /// <summary>The folds of the files opened lately, each as it closed, the latest first.</summary>
     public List<KeptFolds> Folds { get; init; } = [];
+
+    /// <summary>Whether the banner's offer of Passenger as Godot's script editor was taken or dismissed, never to come again.</summary>
+    public bool GodotEditorOffered { get; init; }
+
+    /// <summary>The project style whose C# script templates for Godot were last written or offered, which a style changed
+    /// since offers to write again, once.</summary>
+    public string? GodotTemplatesStyle { get; init; }
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 
@@ -43,6 +54,8 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
         })],
         RecentFiles = [.. (RecentFiles ?? []).Where(f => !string.IsNullOrEmpty(f))],
         UnloadedProjects = [.. (UnloadedProjects ?? []).Where(p => !string.IsNullOrEmpty(p))],
+        TargetFrameworks = (TargetFrameworks ?? []).Where(p => p.Key is { Length: > 0 } && p.Value is { Length: > 0 })
+            .ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
     };
 
     private static EditorLayout Clamp(EditorLayout layout) => layout with

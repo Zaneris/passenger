@@ -5,10 +5,10 @@ using Passenger.Core;
 
 namespace Passenger.App;
 
-/// <summary>Links: the Run, Debug, Build and Unit Tests consoles' stack frames, compiler messages and web addresses (a
-/// click opens the file at its line, or the address in the browser) and the terminal's (its file paths on Cmd+click,
-/// Ctrl+click elsewhere); and Open browser after launch, which opens a web project's launch URL once its program
-/// listens.</summary>
+/// <summary>Links: the Run, Debug, Build and Unit Tests consoles' stack frames, compiler messages, web addresses and the
+/// folder a publish landed in (a click opens the file at its line, the folder in the file manager, or the address in the
+/// browser) and the terminal's (its file paths on Cmd+click, Ctrl+click elsewhere); and Open browser after launch, which
+/// opens a web project's launch URL once its program listens.</summary>
 public partial class MainWindow
 {
     private readonly List<Uri> browsed = [];
@@ -91,7 +91,8 @@ public partial class MainWindow
         return folders;
     }
 
-    /// <summary>Opens what a link names: a file at its line and column in the editor, or an address in the browser.</summary>
+    /// <summary>Opens what a link names: a file at its line and column in the editor, a folder in the person's file
+    /// manager, or an address in the browser.</summary>
     public void OpenLink(LinkTarget target)
     {
         UiThread.Check();
@@ -112,6 +113,9 @@ public partial class MainWindow
                     Editors.CodeEditor.Focus();
                 }
                 break;
+            case FolderLink folder:
+                ShowInFileManager(folder.Path);
+                break;
             case WebLink web:
                 Browse(web.Address);
                 break;
@@ -125,6 +129,39 @@ public partial class MainWindow
         UiThread.Check();
         browsed.Add(address);
         IdeErrors.Observe(Launcher.LaunchUriAsync(address));
+    }
+
+    private readonly List<string> played = [];
+    private readonly List<string> handed = [];
+
+    /// <summary>Every sound file the window was asked to play, in order, kept since a window shown nowhere plays none.</summary>
+    public IReadOnlyList<string> Played => played;
+
+    /// <summary>Every file the window handed the system's player, in order, or would have where nobody sees it: a sound as it
+    /// is, or the WAV an Ogg Vorbis or MP3 was decoded to.</summary>
+    public IReadOnlyList<string> SoundsHanded => handed;
+
+    /// <summary>Plays a sound file through the system's player (<see cref="Sounds"/>), decoded off the window's thread where
+    /// the player takes it only so, saying why where it cannot; a window nobody sees (<see cref="Unseen"/>) plays nothing.</summary>
+    public async Task PlaySoundAsync(string file)
+    {
+        UiThread.Check();
+        played.Add(file);
+        (string? playable, string? whyNot) = await BackgroundWork.Run(() => Sounds.Playable(file, Path.Combine(StateFolder, "cache", "sounds")));
+        if (playable is null)
+        {
+            status.Text = whyNot;
+            return;
+        }
+        handed.Add(playable);
+        if (Unseen)
+        {
+            return;
+        }
+        if (await Sounds.PlayAsync(playable) is { } why)
+        {
+            status.Text = why;
+        }
     }
 
     private readonly List<string> shownInFileManager = [];

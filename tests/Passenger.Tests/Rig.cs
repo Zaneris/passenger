@@ -27,17 +27,16 @@ public static class TestApp
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<Passenger.App.App>()
         .UseSkia()
         .UseHarfBuzz()
-        .WithInterFont()
         .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
 }
 
 /// <summary>What the whole run shares, set before anything reads it and never changed: a folder of the run's own in the
 /// system's temporary folder, holding the IDE's state (<c>PASSENGER_SETTINGS</c>: its log, the language servers' logs,
-/// the profiler's snapshots; the agents' sockets go in a folder named for it), every test's folders and the shells' history, and an empty Git
-/// configuration in place of the person's and the system's, which every git the tests and the IDE run inherits. So a run
-/// never writes to the person's own state, log or history, an agent of theirs never attaches to a test's window, and a
-/// person's commit signing or hooks never reach a test's commit. The folder goes when the run ends; one a run that was
-/// killed left goes when the next begins.</summary>
+/// the profiler's snapshots; the agents' sockets go in a folder named for it), every test's folders, the shells' history and
+/// Godot's user folders, and an empty Git configuration in place of the person's and the system's, which every git the tests
+/// and the IDE run inherits. So a run never writes to the person's own state, log, history or Godot (<see cref="PersonsGodot"/>),
+/// an agent of theirs never attaches to a test's window, and a person's commit signing or hooks never reach a test's commit.
+/// The folder goes when the run ends; one a run that was killed left goes when the next begins.</summary>
 public sealed class TestRun : IAsyncDisposable
 {
     internal const string Prefix = "passenger-run-";
@@ -111,6 +110,9 @@ public sealed class TestRun : IAsyncDisposable
             }
         }
         Directory.CreateDirectory(Settings);
+        // Nor the person's Godot user folders: every Godot a window starts keeps its settings, logs and user:// in the run's.
+        PersonsGodot.Begin();
+        Environment.SetEnvironmentVariable(Passenger.App.Godot.GodotUserFolders.HomeVariable, Path.Combine(Root, "godot"));
         string gitConfig = Path.Combine(Root, "gitconfig");
         File.WriteAllText(gitConfig, string.Empty);
         Environment.SetEnvironmentVariable(StateStore.Variable, Settings);
@@ -119,6 +121,19 @@ public sealed class TestRun : IAsyncDisposable
         // Configuration given on git's command line through the environment, which would come before the file's.
         OwnEnvironment.Set("GIT_CONFIG_PARAMETERS", null);
         OwnEnvironment.Set("GIT_CONFIG_COUNT", null);
+        // Nor the person's ssh-agent, which ssh-keygen asks first for the key a commit is signed with.
+        OwnEnvironment.Set("SSH_AUTH_SOCK", null);
+        // Nor the person's GnuPG keyring and agent: gpg keeps a signing test's keys in the run's.
+        string gnupg = Path.Combine(Root, "gnupg");
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(gnupg);
+        }
+        else
+        {
+            Directory.CreateDirectory(gnupg, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        Environment.SetEnvironmentVariable("GNUPGHOME", gnupg);
         // The terminals' shells keep their history in the run's: sh takes HISTFILE, zsh its startup files from ZDOTDIR.
         Environment.SetEnvironmentVariable("HISTFILE", Path.Combine(Root, "history"));
         Environment.SetEnvironmentVariable("ZDOTDIR", Directory.CreateDirectory(Path.Combine(Root, "zsh")).FullName);
@@ -126,6 +141,10 @@ public sealed class TestRun : IAsyncDisposable
         NuGetHome();
         // No test reaches GitHub: a Passenger that checks for updates without a stand-in asks where nothing listens.
         Environment.SetEnvironmentVariable(Passenger.App.Updates.ReleaseFeed.Variable, "http://127.0.0.1:9/repos/Zaneris/passenger/releases/latest");
+        // Nor any host a browser Passenger starts asks of its own accord (its updates, its services): they go where nothing listens.
+        Environment.SetEnvironmentVariable(Passenger.App.Debugging.BrowserRun.ProxyVariable, "127.0.0.1:9");
+        // Nor Microsoft's .NET release metadata: Install .NET SDK without a stand-in asks where nothing listens.
+        Environment.SetEnvironmentVariable(Passenger.Core.DotnetReleases.Variable, "http://127.0.0.1:9/");
         // Nor NuGet's symbol server: a theme's sources asked for without a stand-in of the test's come from where nothing listens.
         Environment.SetEnvironmentVariable(Passenger.App.Xaml.SourceLink.Variable, "http://127.0.0.1:9/");
         // Nor the web for a JSON schema a file names: those Passenger does not carry are asked of where nothing listens.
@@ -178,16 +197,17 @@ public sealed class TestRun : IAsyncDisposable
         AppDomain.CurrentDomain.ProcessExit += (_, _) => End(waiting: false);
     }
 
-    /// <summary>On macOS and Linux, NuGet's home for the run, which NuGet takes from DOTNET_CLI_HOME: its user nuget.config,
-    /// its credential providers and its HTTP cache are the run's, so no test reads the person's feeds or credentials or writes
-    /// their nuget.config. Its nuget.config names nuget.org and the person's package cache, named as NuGet names its default
-    /// (ending in a separator), so a restore downloads nothing new and writes the same NuGetPackageRoot into a project's
-    /// nuget.g.props as the person's builds do, leaving their next build nothing to compile again.</summary>
+    /// <summary>NuGet's settings for the run: a nuget.config in its folder, above every test's, clearing every feed and
+    /// mapping, so a test folder's restore takes only the feeds its own names, never nuget.org nor the person's (Windows'
+    /// user nuget.config is theirs); on macOS and Linux NuGet's home too (DOTNET_CLI_HOME), whose nuget.config names no feed
+    /// and the person's package cache as NuGet names its default (ending in a separator), so a restore writes the
+    /// NuGetPackageRoot their builds do, and whose credential providers and HTTP cache are the run's.</summary>
     private static void NuGetHome()
     {
+        File.WriteAllText(Path.Combine(Root, "nuget.config"), Feedless);
         if (OperatingSystem.IsWindows())
         {
-            // NuGet reads %APPDATA% there, so each test's folder clears its feeds; dotnet new's templates get the run's hive.
+            // dotnet new's templates get the run's hive.
             Passenger.App.Templates.ProjectTemplates.Hive = Directory.CreateDirectory(Path.Combine(Root, "dotnet-new")).FullName;
             return;
         }
@@ -199,7 +219,7 @@ public sealed class TestRun : IAsyncDisposable
             <?xml version="1.0" encoding="utf-8"?>
             <configuration>
               <packageSources>
-                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+                <clear />
               </packageSources>
               <config>
                 <add key="globalPackagesFolder" value="{cache}" />
@@ -214,6 +234,37 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false");
         Environment.SetEnvironmentVariable("DOTNET_NOLOGO", "1");
     }
+
+    /// <summary>The run's folder's nuget.config: no package source, audit source or package source mapping of a file NuGet
+    /// reads after it (the user's and the machine's), so a folder below names its own or has none.</summary>
+    public const string Feedless = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <packageSources>
+            <clear />
+          </packageSources>
+          <auditSources>
+            <clear />
+          </auditSources>
+          <packageSourceMapping>
+            <clear />
+          </packageSourceMapping>
+        </configuration>
+
+        """;
+
+    /// <summary>A test folder's nuget.config naming nuget.org alone, for a test whose restore takes packages no restore of
+    /// the solution's downloads (.NET's packs for a Linux container's platform), which is never one of the gate's.</summary>
+    public const string FromNuGetOrg = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <packageSources>
+            <clear />
+            <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+          </packageSources>
+        </configuration>
+
+        """;
 
     /// <summary>The person's own NuGet variables, which the run replaces with its own (null where they had none set).</summary>
     private static readonly Dictionary<string, string?> PersonsNuGetVariables = [];
@@ -268,7 +319,8 @@ public sealed class TestRun : IAsyncDisposable
         }
     }
 
-    /// <summary>The run's end, once every test is done (xunit disposes the assembly's fixture then).</summary>
+    /// <summary>The run's end, once every test is done (xunit disposes the assembly's fixture then): it fails where the
+    /// person's Godot user folders were written after the last test's end.</summary>
     public async ValueTask DisposeAsync()
     {
         // No child holds a container: what the run's tests made, and what they had the IDE make, goes by its labels.
@@ -276,6 +328,10 @@ public sealed class TestRun : IAsyncDisposable
         End(waiting: true);
         // Once more after the log's own last flush, which it hooked after the run began, and so runs before this.
         AppDomain.CurrentDomain.ProcessExit += (_, _) => End(waiting: false);
+        if (PersonsGodot.Written("after the run's last test") is { } written)
+        {
+            throw new InvalidOperationException(written);
+        }
     }
 
     /// <summary>The run's folders removed, a held one waited for only as the assembly's fixture ends: xunit fails a process
@@ -358,13 +414,14 @@ public static partial class Nice
     private static partial int SetPriority(int which, int who, int priority);
 }
 
-/// <summary>A test leaves nothing behind for the next, however it ends. A window test starts with no background work held:
-/// each test has a dispatcher of its own, and work a test left running (one that failed before its window settled, or
-/// closed it mid-parse) ends on that dispatcher, which never runs again, and held for ever would fail every window test
-/// after it on <see cref="Ui.Settle"/>'s limit. And after a window test, every window it left open is closed (one that
-/// failed before its own close) and what its windows started (a language server, a build, a debugger, a program) is waited
-/// out, those it closed itself too, then the folders the test made as it ran are removed, the windows that used them gone
-/// first.</summary>
+/// <summary>A test leaves nothing behind for the next, however it ends. A window test starts with no background work held,
+/// its dispatcher the one work from other threads goes to: each test has a dispatcher of its own, and work a test left
+/// running (one that failed before its window settled, or closed it mid-parse) ends on that dispatcher, which never runs
+/// again, and held for ever would fail every window test after it on <see cref="Ui.Settle"/>'s limit. And after a window
+/// test, every window it left open is closed (one that failed before its own close) and what its windows started (a
+/// language server, a build, a debugger, a program) is waited out, those it closed itself too, then the folders the test
+/// made as it ran are removed, the windows that used them gone first. Any test fails where the person's Godot user folders
+/// were written as it ran (<see cref="PersonsGodot"/>), or left a game running of a Godot editor it ended (<see cref="TestGodotEditors"/>).</summary>
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
 {
@@ -372,6 +429,8 @@ public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
     {
         if (IsWindowTest(methodUnderTest))
         {
+            // Else a test that opens no window posts its work from other threads to the last window's dispatcher, shut down.
+            Passenger.App.UiThread.Own();
             BackgroundWork.Forget();
             Passenger.Core.InFlight.Forget();
             OpenWindows.Watch();
@@ -391,6 +450,14 @@ public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
         finally
         {
             TestFolders.End(test.UniqueID);
+        }
+        if (PersonsGodot.Written($"as {test.TestDisplayName} ran") is { } written)
+        {
+            throw new InvalidOperationException(written);
+        }
+        if (TestGodotEditors.LeftGames() is [_, ..] left)
+        {
+            throw new InvalidOperationException($"{test.TestDisplayName} left games of a Godot editor it ended running, ended now: {string.Join("; ", left)}");
         }
     }
 
@@ -860,9 +927,9 @@ public static class Ui
     public static void Settle()
     {
         TimeSpan limit = SettleLimit.Scaled();
-        if (!Settled(DateTime.UtcNow + limit))
+        if (!Settled(Deadline.In(limit)))
         {
-            throw new TimeoutException($"The IDE was not quiet within {limit.TotalSeconds} s. Still busy:\n{Busy()}{IdeLogTail()}{ServerLogTail()}");
+            throw new TimeoutException($"The IDE was not quiet within {limit.TotalSeconds} s. Still busy:\n{Busy()}{ServerConversations()}{IdeLogTail()}{ServerLogTail()}");
         }
     }
 
@@ -878,7 +945,7 @@ public static class Ui
         {
             long blinks = editor.Blinks;
             long before = GC.GetAllocatedBytesForCurrentThread();
-            if (!Settled(DateTime.UtcNow + limit, () => editor.Blinks > blinks))
+            if (!Settled(Deadline.In(limit), () => editor.Blinks > blinks))
             {
                 throw new TimeoutException($"The caret did not blink with the IDE at rest within {limit.TotalSeconds} s (it blinks only in a focused editor). Still busy:\n{Busy()}");
             }
@@ -887,7 +954,7 @@ public static class Ui
         return least;
     }
 
-    private static bool Settled(DateTime limit, Func<bool>? also = null) => Waiting.Until(() =>
+    private static bool Settled(Deadline limit, Func<bool>? also = null) => Waiting.Until(() =>
     {
         Dispatcher.UIThread.RunJobs();
         AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
@@ -899,7 +966,7 @@ public static class Ui
         }
         Draw();
         return BackgroundWork.Pending == 0 && Passenger.Core.InFlight.Count == 0 && (also is null || also());
-    }, limit - DateTime.UtcNow, every: TimeSpan.FromMilliseconds(2), scaled: false);
+    }, limit.Left, every: TimeSpan.FromMilliseconds(2), scaled: false);
 
     /// <summary>Runs what the window has queued (its layout among it) and draws until what that laid out is drawn
     /// (<see cref="Drawn"/>): at most three frames, since an animation always has a next one, and three always do.</summary>
@@ -943,6 +1010,14 @@ public static class Ui
             + (unnamed > 0 ? $"\n  {unnamed} hold{(unnamed == 1 ? "" : "s")} of background work with no name" : string.Empty);
     }
 
+    /// <summary>Where each language server's conversation stands while requests wait on it: what it was asked, whether it
+    /// answers Passenger's check, what Passenger owes it, what has not yet reached it, and its last messages (#1233).</summary>
+    private static string ServerConversations()
+    {
+        string conversations = Passenger.Lsp.LanguageServer.Conversations();
+        return conversations.Length == 0 ? string.Empty : $"\nThe language servers' conversations:\n{conversations}";
+    }
+
     /// <summary>The end of the IDE's own log, which names an exception that left background work waiting for good.</summary>
     private static string IdeLogTail()
     {
@@ -976,18 +1051,17 @@ public static class Ui
     public static void WaitFor(Func<bool> condition, Func<string> what, TimeSpan? limit = null)
     {
         TimeSpan within = (limit ?? SettleLimit).Scaled();
-        DateTime until = DateTime.UtcNow + within;
+        Deadline until = Deadline.In(within);
         while (!condition())
         {
-            if (DateTime.UtcNow > until)
+            if (until.Passed)
             {
                 throw new TimeoutException($"Waited {within.TotalSeconds} s for {what()}");
             }
             Frame();
-            DateTime settling = DateTime.UtcNow + SettleLimit.Scaled();
-            if (!Settled(settling > until ? settling : until))
+            if (!Settled(Deadline.Later(Deadline.In(SettleLimit.Scaled()), until)))
             {
-                throw new TimeoutException($"The IDE was not quiet while waiting {within.TotalSeconds} s for {what()}. Still busy:\n{Busy()}{IdeLogTail()}{ServerLogTail()}");
+                throw new TimeoutException($"The IDE was not quiet while waiting {within.TotalSeconds} s for {what()}. Still busy:\n{Busy()}{ServerConversations()}{IdeLogTail()}{ServerLogTail()}");
             }
         }
         // What it waited for may have landed with none of the window's jobs run since (a read that ended at once).
@@ -1151,10 +1225,10 @@ public static class Ui
     /// <see cref="PumpUntil"/> runs it, for a caller that goes on either way.</summary>
     public static bool Pumped(Func<bool> condition, TimeSpan limit, bool scaled = true)
     {
-        DateTime until = DateTime.UtcNow + (scaled ? limit.Scaled() : limit);
+        Deadline until = Deadline.In(scaled ? limit.Scaled() : limit);
         while (!condition())
         {
-            if (DateTime.UtcNow > until)
+            if (until.Passed)
             {
                 return false;
             }
@@ -1232,7 +1306,8 @@ public static class Ui
     /// <summary>A press of one of the mouse's side buttons over a control, as <see cref="Click(Control, Point?, RawInputModifiers, bool)"/>
     /// makes a click: <see cref="MouseButton.XButton1"/> is Back's, as every platform reports it, XButton2 Forward's. More
     /// presses (<paramref name="times"/>), or one right after a left click there (<paramref name="afterClick"/>), go with no
-    /// pause between, as a quick hand makes them, and fail unless the platform counted them as one run of clicks.</summary>
+    /// pause between, as a quick hand makes them, and fail unless the platform counted the side button's presses as one run
+    /// of clicks, the left click a run of its own, since a press of another button starts a new run.</summary>
     public static void SideClick(Control control, MouseButton side, Point? at = null, int times = 1, bool afterClick = false)
     {
         Assert.True(side is MouseButton.XButton1 or MouseButton.XButton2, $"{side} is not a side button");
@@ -1264,15 +1339,18 @@ public static class Ui
             top.RemoveHandler(InputElement.PointerPressedEvent, pressed);
         }
         Clicked(top, point);
-        Assert.True(counts.SequenceEqual(Enumerable.Range(1, times + (afterClick ? 1 : 0))),
-            $"Presses with no pause between were counted as clicks {string.Join(", ", counts)}, not one run of them, so a quick hand's presses were not what ran");
+        int[] run = afterClick ? [1, .. Enumerable.Range(1, times)] : [.. Enumerable.Range(1, times)];
+        Assert.True(counts.SequenceEqual(run),
+            $"Presses with no pause between were counted as clicks {string.Join(", ", counts)}, not {string.Join(", ", run)}, so a quick hand's presses were not what ran");
         Settle();
     }
 
-    /// <summary>Two clicks in quick succession at the same place, as a person opens what a row holds.</summary>
+    /// <summary>Two clicks in quick succession at the same place, as a person opens what a row holds, apart from a click or
+    /// a drag's press there before them, so neither is counted a third.</summary>
     public static void DoubleClick(Control control, Point? at = null)
     {
         (TopLevel top, Point point) = Aim(control, at);
+        Apart(top, point);
         for (int i = 0; i < 2; i++)
         {
             top.MouseDown(point, MouseButton.Left);
@@ -1462,10 +1540,16 @@ public static class Ui
 
     /// <summary>A click on a console line's link to a file, at its first character, as a person clicks it: the pointer
     /// rested there first, failing unless that underlines the link.</summary>
-    public static void ClickLink(Passenger.App.ToolWindows.OutputView console, string line)
+    public static void ClickLink(Passenger.App.ToolWindows.OutputView console, string line) =>
+        ClickLink(console, line, link => link.Target is Passenger.App.ToolWindows.FileLink);
+
+    /// <summary>A click on a console line's link the given one names (a file's place, the folder a publish landed in), at
+    /// its first character, as a person clicks it: the pointer rested there first, failing unless that underlines the
+    /// link.</summary>
+    public static void ClickLink(Passenger.App.ToolWindows.OutputView console, string line, Func<Passenger.App.ToolWindows.FoundLink, bool> which)
     {
         CodeEditor editor = console.Editor;
-        Passenger.App.ToolWindows.FoundLink link = console.Links.In(line).Single(l => l.Target is Passenger.App.ToolWindows.FileLink);
+        Passenger.App.ToolWindows.FoundLink link = console.Links.In(line).Single(which);
         int offset = editor.Document.Snapshot.ToString().IndexOf(line, StringComparison.Ordinal) + link.Start;
         editor.GoTo(editor.Document.Snapshot.GetPosition(offset));
         Settle();
@@ -1473,7 +1557,7 @@ public static class Ui
         TopLevel top = TopLevel.GetTopLevel(editor)!;
         top.MouseMove(editor.TranslatePoint(within, top)!.Value);
         Settle();
-        Assert.True(editor.HoveredLink is { Target: Passenger.App.ToolWindows.FileLink }, $"The pointer rests on the line's place but nothing is underlined:\n{line}");
+        Assert.True(editor.HoveredLink is { } hovered && Equals(hovered.Target, link.Target), $"The pointer rests on the line's place but nothing is underlined:\n{line}");
         Click(editor, within);
     }
 
@@ -1575,7 +1659,8 @@ public static class Ui
     {
         list.ScrollIntoView(row);
         Settle();
-        return list.ContainerFromItem(row) ?? throw new Xunit.Sdk.XunitException($"The list does not show {row}");
+        return list.ContainerFromItem(row) ?? throw new Xunit.Sdk.XunitException($"The list does not show {row}: row {list.Items.IndexOf(row)} of {list.ItemCount}, "
+            + $"the list {list.Bounds.Height} high and {(list.IsEffectivelyVisible ? "shown" : "hidden")}, its view at {list.Scroll?.Offset} over {list.Scroll?.Viewport} of {list.Scroll?.Extent}");
     }
 
     /// <summary>Chooses an item of an open menu, through the submenus named before it ("Add", "Docker Support"), refusing
@@ -1629,10 +1714,41 @@ public static class Ui
         }
     }
 
-    /// <summary>A submenu of the menu bar as the platform opens it: asked to bring its items up to date first.</summary>
-    public static NativeMenu Submenu(NativeMenu parent, string title)
+    /// <summary>The words a text block draws, as it laid them out (an access key's mark taken out, where it took one).</summary>
+    public static string Drawn(TextBlock block) =>
+        string.Concat(block.TextLayout.TextLines.SelectMany(l => l.TextRuns).Select(r => r.Text.ToString()));
+
+    /// <summary>A native menu item's words as the platform's menu shows them, which takes a lone underscore for an access
+    /// key's mark and draws a doubled one as one.</summary>
+    public static string ShownByPlatform(string header)
     {
-        NativeMenu menu = parent.Items.OfType<NativeMenuItem>().First(i => i.Header == title).Menu!;
+        System.Text.StringBuilder shown = new();
+        bool marked = false;
+        for (int i = 0; i < header.Length; i++)
+        {
+            if (header[i] == '_' && i + 1 < header.Length && header[i + 1] == '_')
+            {
+                shown.Append('_');
+                i++;
+            }
+            else if (header[i] != '_' || marked)
+            {
+                shown.Append(header[i]);
+            }
+            else
+            {
+                marked = true;
+            }
+        }
+        return shown.ToString();
+    }
+
+    /// <summary>A submenu of the menu bar as the platform opens it: asked to bring its items up to date first.</summary>
+    public static NativeMenu Submenu(NativeMenu parent, string title) => Opened(parent.Items.OfType<NativeMenuItem>().First(i => i.Header == title).Menu!);
+
+    /// <summary>A native menu as the platform opens it: asked to bring its items up to date first.</summary>
+    public static NativeMenu Opened(NativeMenu menu)
+    {
         Type bridge = menu.GetType().GetInterfaces().First(i => i.GetMethod("RaiseNeedsUpdate") is not null);
         bridge.GetMethod("RaiseNeedsUpdate")!.Invoke(menu, null);
         return menu;
@@ -1818,6 +1934,34 @@ public static class TestProjects
         + string.Concat(properties.Select(p => $"    {p}\n")) + "  </PropertyGroup>\n</Project>\n";
 }
 
+/// <summary>The versions of the test frameworks a test's own test project takes, whose packages the solution's restore puts
+/// in the package cache (VSTest's SDK as the tests' own, the rest through tests/UnitTestGraphs), so its restore, which
+/// names no feed, finds them there.</summary>
+public static class TestPackages
+{
+    /// <summary>Microsoft.NET.Test.Sdk, at the tests' own version.</summary>
+    public static string TestSdk { get; } = AvaloniaApp.Metadata("TestSdkVersion");
+
+    /// <summary>xunit v2.</summary>
+    public static string XunitTwo { get; } = AvaloniaApp.Metadata("XunitTwoVersion");
+
+    /// <summary>xunit.runner.visualstudio at the release that runs xunit v2 on VSTest.</summary>
+    public static string XunitTwoRunner { get; } = AvaloniaApp.Metadata("XunitTwoRunnerVersion");
+
+    /// <summary>MSTest's framework and adapter on VSTest.</summary>
+    public static string MSTestOnVSTest { get; } = AvaloniaApp.Metadata("MSTestOnVSTestVersion");
+
+    public static string NUnit { get; } = AvaloniaApp.Metadata("NUnitVersion");
+
+    public static string NUnitAdapter { get; } = AvaloniaApp.Metadata("NUnitAdapterVersion");
+
+    /// <summary>MSTest's framework and adapter on its own runner.</summary>
+    public static string MSTestRunner { get; } = AvaloniaApp.Metadata("MSTestRunnerVersion");
+
+    /// <summary>xunit v3 on the Testing Platform alone, its second line (the tests' own xunit v3 is on its first).</summary>
+    public static string XunitApp { get; } = AvaloniaApp.Metadata("XunitAppVersion");
+}
+
 public static class ExplorerRows
 {
     /// <summary>The Explorer's list of rows.</summary>
@@ -1866,8 +2010,9 @@ public static class FilesFollowed
 
 /// <summary>The one place a test lets time pass (Thread.Sleep and Task.Delay are banned elsewhere, BannedSymbols.txt): a wait
 /// for a condition, looked at again every few milliseconds until it holds or its limit (scaled by the run's
-/// <see cref="TestRun.TimeScale"/>) is out, and time that a test needs to pass, named. It never runs the window's loop:
-/// <see cref="Ui"/>'s waits do, through it.</summary>
+/// <see cref="TestRun.TimeScale"/>) is out, and time that a test needs to pass, named. A limit is a <see cref="Deadline"/>,
+/// on a clock that stops while the machine sleeps, so a sleep pauses a wait rather than ending it. It never runs the
+/// window's loop: <see cref="Ui"/>'s waits do, through it.</summary>
 public static class Waiting
 {
     private static readonly TimeSpan Often = TimeSpan.FromMilliseconds(10);
@@ -1875,10 +2020,10 @@ public static class Waiting
     /// <summary>Whether the condition held within the limit, on this thread.</summary>
     public static bool Until(Func<bool> condition, TimeSpan limit, TimeSpan? every = null, bool scaled = true)
     {
-        DateTime until = DateTime.UtcNow + (scaled ? limit.Scaled() : limit);
+        Deadline until = Deadline.In(scaled ? limit.Scaled() : limit);
         while (!condition())
         {
-            if (DateTime.UtcNow >= until)
+            if (until.Passed)
             {
                 return false;
             }
@@ -1896,10 +2041,10 @@ public static class Waiting
     /// <summary>Whether a condition that is itself asked for (an agent's call) held within the limit.</summary>
     public static async Task<bool> UntilAsync(Func<Task<bool>> condition, TimeSpan limit, CancellationToken cancel = default, TimeSpan? every = null)
     {
-        DateTime until = DateTime.UtcNow + limit.Scaled();
+        Deadline until = Deadline.In(limit.Scaled());
         while (!await condition())
         {
-            if (DateTime.UtcNow >= until)
+            if (until.Passed)
             {
                 return false;
             }
@@ -2013,17 +2158,22 @@ public sealed class InputWait : IDisposable
 /// what MSBuild leaves of it is the tests' own and ends with them, and no variable of dotnet test's holds its output open.</summary>
 public static class Restore
 {
-    /// <summary>The longest a restore may take: nuget.org slow, a cache cold.</summary>
+    /// <summary>The longest a restore may take, on a slow and busy machine.</summary>
     public static readonly TimeSpan Limit = TimeSpan.FromMinutes(5);
 
     /// <summary>The restore, which fails the test at once naming what it means and quoting what dotnet said: a project
-    /// not restored (offline, nuget.org down) would show up later as C# unavailable, far from the cause.</summary>
-    public static async Task<Passenger.Core.ChildResult> RunAsync(string target)
+    /// not restored (a package the cache lacks, which no feed of the run's gives) would show up later as C# unavailable, far
+    /// from the cause.</summary>
+    public static Task<Passenger.Core.ChildResult> RunAsync(string target) => RunAsync(target, null);
+
+    /// <summary>The restore (<see cref="RunAsync(string)"/>) run from <paramref name="from"/> where given, so that
+    /// folder's global.json chooses the SDK rather than the test run's.</summary>
+    public static async Task<Passenger.Core.ChildResult> RunAsync(string target, string? from)
     {
         Passenger.Core.ChildResult restored;
         try
         {
-            restored = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.DotnetCommand(["restore", target]), limit: Limit.Scaled());
+            restored = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.DotnetCommand(["restore", target], from), limit: Limit.Scaled());
         }
         catch (TimeoutException hung)
         {
@@ -2037,8 +2187,8 @@ public static class Restore
     /// <summary>The restore from the UI thread (a window test's constructor or body), run on the thread pool and waited
     /// for with the window's loop running (<see cref="Ui.AwaitPumped{T}"/>), never for its work to land; elsewhere a
     /// test awaits <see cref="RunAsync"/>.</summary>
-    public static Passenger.Core.ChildResult Run(string target) =>
-        Ui.AwaitPumped(Waiting.Apart(() => RunAsync(target)), $"dotnet restore {target}", Limit + TestFolders.Spare);
+    public static Passenger.Core.ChildResult Run(string target, string? from = null) =>
+        Ui.AwaitPumped(Waiting.Apart(() => RunAsync(target, from)), $"dotnet restore {target}", Limit + TestFolders.Spare);
 }
 
 /// <summary>A test class's folders, each made as its constructor would make it and restored at its own path, a few at a
@@ -2147,7 +2297,10 @@ public static class TestGit
         Passenger.Core.ChildResult result;
         try
         {
-            result = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command("git", arguments, folder), input, limit: Limit.Scaled());
+            System.Diagnostics.ProcessStartInfo start = Passenger.Core.ChildProcesses.Command("git", arguments, folder);
+            // Git for Windows' own gpg, which a signing test's commits are verified with, reads the run's keyring only as /c/….
+            Passenger.Vcs.MsysGpg.FitGit(start);
+            result = await Passenger.Core.ChildProcesses.RunAsync(start, input, limit: Limit.Scaled());
         }
         catch (TimeoutException hung)
         {
@@ -2172,6 +2325,209 @@ public static class TestGit
         await RunAsync(folder, "config", "core.autocrlf", "false");
         await RunAsync(folder, "add", "-A");
         await RunAsync(folder, "commit", "-q", "-m", "First");
+    }
+}
+
+/// <summary>SSH keys a test signs its commits with, each made by ssh-keygen for that test alone in a folder of its own,
+/// never the person's: no agent holds them, and one with no passphrase signs without asking.</summary>
+public static class TestSshKeys
+{
+    private static readonly TimeSpan Limit = TimeSpan.FromMinutes(1);
+
+    /// <summary>Why a test that signs cannot run here, or null: ssh-keygen is not on the PATH.</summary>
+    public static string? WhyNot => Passenger.Core.Programs.OnPath(OperatingSystem.IsWindows() ? "ssh-keygen.exe" : "ssh-keygen") is null
+        ? "ssh-keygen is not on the PATH, so no commit can be signed with an SSH key here"
+        : null;
+
+    /// <summary>A new ed25519 key with no passphrase, at <c>folder/name</c> and its public half beside it (.pub).</summary>
+    public static async Task<string> MakeAsync(string folder, string name)
+    {
+        string key = Path.Combine(folder, name);
+        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(
+            Passenger.Core.ChildProcesses.Command("ssh-keygen", ["-q", "-t", "ed25519", "-N", string.Empty, "-C", name, "-f", key], folder), limit: Limit.Scaled());
+        Assert.True(made.Succeeded, $"ssh-keygen made no key {name} to sign with, exiting {made.ExitCode}: {made.Error}{made.Output}");
+        return key;
+    }
+
+    /// <summary>A new ed25519 key guarded by <paramref name="passphrase"/>, which ssh-keygen is given as git's askpass
+    /// helper gives it (Passenger's own executable answering from a socket the test serves), never on its command line.</summary>
+    public static async Task<string> MakeAsync(string folder, string name, string passphrase)
+    {
+        string key = Path.Combine(folder, name);
+        string socket = Path.Combine(Passenger.Core.SocketFolders.Own(StateStore.DefaultRoot), $"{Environment.ProcessId}-keygen-{name}");
+        File.Delete(socket);
+        using System.Net.Sockets.Socket listener = new(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified);
+        listener.Bind(new System.Net.Sockets.UnixDomainSocketEndPoint(socket));
+        listener.Listen(4);
+        using CancellationTokenSource ended = new();
+        // ssh-keygen asks for the passphrase, then for it again.
+        Task answering = Waiting.Apart(async () =>
+        {
+            while (!ended.IsCancellationRequested)
+            {
+                using System.Net.Sockets.Socket asked = await listener.AcceptAsync(ended.Token);
+                await using System.Net.Sockets.NetworkStream stream = new(asked);
+                byte[] prompt = new byte[4096];
+                while (await stream.ReadAsync(prompt, ended.Token) > 0)
+                {
+                }
+                await stream.WriteAsync(System.Text.Encoding.UTF8.GetBytes("+" + passphrase), ended.Token);
+                asked.Shutdown(System.Net.Sockets.SocketShutdown.Send);
+            }
+        });
+        System.Diagnostics.ProcessStartInfo start = Passenger.Core.ChildProcesses.Command("ssh-keygen", ["-q", "-t", "ed25519", "-C", name, "-f", key], folder);
+        start.Environment["SSH_ASKPASS"] = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
+        start.Environment["SSH_ASKPASS_REQUIRE"] = "force";
+        start.Environment[Passenger.Vcs.GitAskPass.Variable] = socket;
+        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(start, limit: Limit.Scaled());
+        await ended.CancelAsync();
+        try
+        {
+            await answering;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        File.Delete(socket);
+        Assert.True(made.Succeeded && File.Exists(key), $"ssh-keygen made no key {name} guarded by a passphrase, exiting {made.ExitCode}: {made.Error}{made.Output}");
+        return key;
+    }
+
+    /// <summary>A key's public half as an allowed signers file lists it after the signer's name.</summary>
+    public static string Public(string key) => File.ReadAllText(key + ".pub").Trim();
+
+    /// <summary>A repository made in <paramref name="root"/> (<see cref="TestGit.InitAsync"/>) whose own config signs every
+    /// commit with SSH key <paramref name="key"/>, listed for tests@passenger.invalid in an allowed signers file beside it.</summary>
+    public static async Task SigningRepositoryAsync(string root, string key)
+    {
+        File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
+        await TestGit.InitAsync(root);
+        string allowed = Path.Combine(Path.GetDirectoryName(key)!, "allowed_signers");
+        File.WriteAllText(allowed, $"tests@passenger.invalid {Public(key)}\n");
+        await TestGit.RunAsync(root, "config", "gpg.format", "ssh");
+        await TestGit.RunAsync(root, "config", "gpg.ssh.allowedSignersFile", allowed);
+        await TestGit.RunAsync(root, "config", "user.signingkey", key + ".pub");
+        await TestGit.RunAsync(root, "config", "commit.gpgsign", "true");
+    }
+
+    /// <summary>A key's fingerprint as git names a signature's key (%GK).</summary>
+    public static async Task<string> FingerprintAsync(string key)
+    {
+        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(
+            Passenger.Core.ChildProcesses.Command("ssh-keygen", ["-l", "-E", "sha256", "-f", key + ".pub"], Path.GetDirectoryName(key)!), limit: Limit.Scaled());
+        Assert.True(listed.Succeeded, $"ssh-keygen gave no fingerprint of {key}: {listed.Error}");
+        return listed.Output.Split(' ')[1];
+    }
+
+    /// <summary>A repository made in <paramref name="root"/> (<see cref="TestGit.InitAsync"/>) of an unsigned first commit,
+    /// one signed by a key the allowed signers file in <paramref name="keys"/> lists for tests@passenger.invalid, and one
+    /// signed by a key it does not list, each set in the repository's own config; the two keys.</summary>
+    public static async Task<(string Known, string Unknown)> SignedRepositoryAsync(string root, string keys)
+    {
+        File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
+        await TestGit.InitAsync(root);
+        string known = await MakeAsync(keys, "known");
+        string unknown = await MakeAsync(keys, "unknown");
+        string allowed = Path.Combine(keys, "allowed_signers");
+        File.WriteAllText(allowed, $"tests@passenger.invalid {Public(known)}\n");
+        await TestGit.RunAsync(root, "config", "gpg.format", "ssh");
+        await TestGit.RunAsync(root, "config", "gpg.ssh.allowedSignersFile", allowed);
+        await TestGit.RunAsync(root, "config", "user.signingkey", known + ".pub");
+        File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n    int count;\n}\n");
+        await TestGit.RunAsync(root, "commit", "-q", "-S", "-a", "-m", "Signed by a known signer");
+        File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n    long count;\n}\n");
+        await TestGit.RunAsync(root, "-c", $"user.signingkey={unknown}.pub", "commit", "-q", "-S", "-a", "-m", "Signed by an unknown signer");
+        return (known, unknown);
+    }
+}
+
+/// <summary>GPG keys a test signs its commits with, made by gpg in the run's own keyring (GNUPGHOME), never the person's.</summary>
+public static class TestGpgKeys
+{
+    private static readonly TimeSpan Limit = TimeSpan.FromMinutes(1);
+
+    /// <summary>The gpg a commit is signed with, or null where it is not on the PATH.</summary>
+    public static string? Gpg => Passenger.Core.Programs.OnPath(OperatingSystem.IsWindows() ? "gpg.exe" : "gpg");
+
+    /// <summary>Why a test that signs with GPG cannot run here, or null.</summary>
+    public static string? WhyNot => Gpg is null ? "gpg is not on the PATH, so no commit can be signed with a GPG key here" : null;
+
+    /// <summary>A new key for tests@passenger.invalid guarded by <paramref name="passphrase"/>, given gpg on its input,
+    /// never its command line; its id, the agent ended after so the passphrase is asked for again.</summary>
+    public static async Task<string> MakeAsync(string passphrase, string? gpg = null)
+    {
+        gpg ??= Gpg!;
+        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(Of(gpg,
+            ["--batch", "--pinentry-mode", "loopback", "--passphrase-fd", "0", "--quick-gen-key", "Passenger Tests <tests@passenger.invalid>", "ed25519", "sign", "never"]),
+            passphrase + "\n", Limit.Scaled());
+        Assert.True(made.Succeeded, $"gpg made no key to sign with, exiting {made.ExitCode}: {made.Error}");
+        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(Of(gpg, ["--list-secret-keys", "--with-colons", "tests@passenger.invalid"]),
+            limit: Limit.Scaled());
+        string id = listed.Output.Split('\n').Select(l => l.Split(':')).First(f => f[0] == "sec")[4];
+        await EndAgentAsync(gpg);
+        return id;
+    }
+
+    /// <summary>Git for Windows' own gpg, where git's is the only one: on Windows with no gpg on the PATH; else null.</summary>
+    public static string? Bundled => OperatingSystem.IsWindows() && Gpg is null && Passenger.Core.Programs.OnPath("git.exe") is { } git
+        ? Passenger.Vcs.GpgPrograms.Bundled(git, "gpg.exe", File.Exists) : null;
+
+    /// <summary>The run's gpg-agent ended, its passphrases forgotten: by the gpgconf beside <paramref name="gpg"/> where one
+    /// is given (Git for Windows' own), else the PATH's.</summary>
+    public static async Task EndAgentAsync(string? gpg = null)
+    {
+        string beside = gpg is null ? string.Empty : Path.Combine(Path.GetDirectoryName(gpg)!, OperatingSystem.IsWindows() ? "gpgconf.exe" : "gpgconf");
+        if ((File.Exists(beside) ? beside : Passenger.Core.Programs.OnPath(OperatingSystem.IsWindows() ? "gpgconf.exe" : "gpgconf")) is { } gpgconf)
+        {
+            await Passenger.Core.ChildProcesses.RunAsync(Of(gpgconf, ["--kill", "gpg-agent"]), limit: Limit.Scaled());
+        }
+    }
+
+    /// <summary>A GnuPG program's start, its home the run's in the form the program reads it (Git for Windows' own MSYS one
+    /// takes only /c/…).</summary>
+    internal static System.Diagnostics.ProcessStartInfo Of(string program, IReadOnlyList<string> arguments)
+    {
+        System.Diagnostics.ProcessStartInfo start = Passenger.Core.ChildProcesses.Command(program, arguments);
+        Passenger.Vcs.MsysGpg.Fit(start, program);
+        return start;
+    }
+}
+
+/// <summary>X.509 keys a test signs its commits with, made by gpgsm in the run's own keyring (GNUPGHOME), never the person's:
+/// a self-signed certificate trusted there as a root, CRLs left unchecked, as no authority issues it.</summary>
+public static class TestX509Keys
+{
+    private static readonly TimeSpan Limit = TimeSpan.FromMinutes(1);
+
+    /// <summary>The gpgsm a commit is signed with, or null where it is not on the PATH.</summary>
+    public static string? Gpgsm => Passenger.Core.Programs.OnPath(OperatingSystem.IsWindows() ? "gpgsm.exe" : "gpgsm");
+
+    /// <summary>Why a test that signs with X.509 cannot run here, or null.</summary>
+    public static string? WhyNot => Gpgsm is null ? "gpgsm is not on the PATH, so no commit can be signed with an X.509 certificate here" : null;
+
+    /// <summary>A new self-signed certificate for tests@passenger.invalid, its key guarded by <paramref name="passphrase"/>
+    /// given gpgsm on its input, never its command line, imported and trusted in the run's keyring; its fingerprint (0x…),
+    /// the agent ended after so the passphrase is asked for again.</summary>
+    public static async Task<string> MakeAsync(string passphrase, string folder)
+    {
+        string home = Environment.GetEnvironmentVariable("GNUPGHOME")!;
+        await File.AppendAllTextAsync(Path.Combine(home, "gpgsm.conf"), "disable-crl-checks\ndisable-policy-checks\n");
+        string parameters = Path.Combine(folder, "x509.txt");
+        string certificate = Path.Combine(folder, "x509.pem");
+        await File.WriteAllTextAsync(parameters, "Key-Type: RSA\nKey-Length: 2048\nKey-Usage: sign\nSerial: random\nName-DN: CN=Passenger Tests,O=Passenger\n"
+            + "Name-Email: tests@passenger.invalid\n");
+        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(TestGpgKeys.Of(Gpgsm!,
+            ["--batch", "--pinentry-mode", "loopback", "--passphrase-fd", "0", "--armor", "--output", certificate, "--gen-key", parameters]), passphrase + "\n", Limit.Scaled());
+        Assert.True(made.Succeeded, $"gpgsm made no certificate to sign with, exiting {made.ExitCode}: {made.Error}");
+        Passenger.Core.ChildResult imported = await Passenger.Core.ChildProcesses.RunAsync(TestGpgKeys.Of(Gpgsm!, ["--batch", "--import", certificate]),
+            limit: Limit.Scaled());
+        Assert.True(imported.Succeeded, $"gpgsm did not import the test's certificate, exiting {imported.ExitCode}: {imported.Error}");
+        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(TestGpgKeys.Of(Gpgsm!,
+            ["--with-colons", "--list-secret-keys", "tests@passenger.invalid"]), limit: Limit.Scaled());
+        string fingerprint = listed.Output.Split('\n').Select(l => l.Split(':')).First(f => f[0] == "fpr")[9];
+        await File.AppendAllTextAsync(Path.Combine(home, "trustlist.txt"), $"{fingerprint} S relax\n");
+        await TestGpgKeys.EndAgentAsync(Gpgsm);
+        return $"0x{fingerprint}";
     }
 }
 
@@ -2317,6 +2673,90 @@ public static partial class Processes
             }
         }
     }
+
+    /// <summary>The MSBuild worker nodes and servers, and the compiler and Razor servers their builds started, running now
+    /// under a handshake salt that names <paramref name="salt"/> (a Passenger's, passenger-ID: a person's salt before it, a
+    /// language server's after), by id, each with its command line and salt. Each takes its environment from what started it.</summary>
+    public static IReadOnlyDictionary<int, string> SaltedBuilds(string salt)
+    {
+        Dictionary<int, string> found = [];
+        foreach ((int id, string command, string environment) in BuildProcesses())
+        {
+            System.Text.RegularExpressions.Match given = SaltVariable().Match(environment);
+            if (given.Success && Names(given.Groups[1].Value, salt))
+            {
+                found[id] = $"{command.Trim()} (salt {given.Groups[1].Value})";
+            }
+        }
+        return found;
+
+        static bool Names(string given, string salt)
+        {
+            for (int at = given.IndexOf(salt, StringComparison.Ordinal); at >= 0; at = given.IndexOf(salt, at + 1, StringComparison.Ordinal))
+            {
+                if (at + salt.Length == given.Length || given[at + salt.Length] == '-')
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    /// <summary>Each MSBuild node or server, compiler server or Razor server now, with its command line and environment:
+    /// ps shows a process's environment to its user on macOS, /proc on Linux, and on Windows its parameters in its memory.</summary>
+    private static List<(int Id, string Command, string Environment)> BuildProcesses()
+    {
+        List<(int, string, string)> found = [];
+        if (OperatingSystem.IsWindows())
+        {
+            foreach (System.Diagnostics.Process process in ((string[])["dotnet", "MSBuild", "VBCSCompiler"]).SelectMany(System.Diagnostics.Process.GetProcessesByName))
+            {
+                using (process)
+                {
+                    try
+                    {
+                        if (WindowsParameters(process) is ({ } commandLine, { } environment) && IsBuild(commandLine))
+                        {
+                            found.Add((process.Id, commandLine, environment.Replace('\0', ' ')));
+                        }
+                    }
+                    catch (Exception gone) when (gone is InvalidOperationException or System.ComponentModel.Win32Exception)
+                    {
+                        // It ended as it was read.
+                    }
+                }
+            }
+            return found;
+        }
+        foreach ((int id, string line) in ById(Ps(OperatingSystem.IsMacOS() ? ["-A", "-E", "-o", "pid=,command="] : ["-A", "-o", "pid=,command="])))
+        {
+            if (IsBuild(line))
+            {
+                found.Add((id, line, OperatingSystem.IsMacOS() ? line : ProcEnvironment(id)));
+            }
+        }
+        return found;
+
+        static bool IsBuild(string command) => command.Contains("/nodemode:", StringComparison.Ordinal) || command.Contains("VBCSCompiler", StringComparison.Ordinal)
+            || command.Contains("rzc.dll", StringComparison.Ordinal);
+    }
+
+    /// <summary>A process's environment on Linux, its variables apart by spaces; empty once it has gone.</summary>
+    private static string ProcEnvironment(int id)
+    {
+        try
+        {
+            return File.ReadAllText($"/proc/{id}/environ").Replace('\0', ' ');
+        }
+        catch (Exception gone) when (gone is IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\bMSBUILDNODEHANDSHAKESALT=(\S*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex SaltVariable();
 
     /// <summary>Each MSBuild worker node now by id on Windows, with its handshake's salt, read with its command line from
     /// its process's parameters in its memory, as no tool there shows another process's environment. Empty elsewhere.</summary>
@@ -2497,22 +2937,7 @@ public static partial class Processes
         }
     }
 
-    public static bool IsRunning(int id)
-    {
-        if (id <= 0)
-        {
-            return false;
-        }
-        try
-        {
-            using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
-            return !process.HasExited;
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-    }
+    public static bool IsRunning(int id) => id > 0 && DotnetProcesses.Runs(id);
 
     /// <summary>Whether a process has gone within a few seconds, the time a killed one may take to leave the list, or within
     /// the time given.</summary>
@@ -2660,6 +3085,55 @@ public static partial class NativeStacks
     // "    +   881 main  (in ReadsInputConsoleApp) + 184  [0x1024fa124]"
     [System.Text.RegularExpressions.GeneratedRegex(@"^[\s+!:|]*\d+\s+(.+?)\s+\(in ([^)]+)\)")]
     private static partial System.Text.RegularExpressions.Regex FrameLine();
+}
+
+/// <summary>Where a .NET process's managed threads stand, read through ClrMD with the process held still a moment: each
+/// thread's top frames, those with none of its own left out. On CI, where no one can attach a debugger to a program that
+/// stopped answering, this tells a thread blocked (and where) from one idle while a task waits. Empty on macOS, where
+/// only a debugger the system entitles may read another process.</summary>
+public static class ManagedStacks
+{
+    public static string Describe(string what, int processId, int frames = 24)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            return string.Empty;
+        }
+        try
+        {
+            using Microsoft.Diagnostics.Runtime.DataTarget target = Microsoft.Diagnostics.Runtime.DataTarget.AttachToProcess(processId, suspend: true,
+                new Microsoft.Diagnostics.Runtime.DataTargetOptions { FileLocator = NothingFound.Locator });
+            using Microsoft.Diagnostics.Runtime.ClrRuntime runtime = target.ClrVersions[0].CreateRuntime();
+            List<string> threads = [];
+            foreach (Microsoft.Diagnostics.Runtime.ClrThread thread in runtime.Threads.Where(t => t.IsAlive))
+            {
+                string[] stack = [.. thread.EnumerateStackTrace().Select(f => f.Method?.Signature ?? (f.FrameName is { } name ? $"[{name}]" : null))
+                    .OfType<string>().Take(frames)];
+                if (stack.Any(f => !f.StartsWith('[')))
+                {
+                    threads.Add($"  thread {thread.ManagedThreadId} (system {thread.OSThreadId}){(thread.IsFinalizer ? ", the finalizer" : string.Empty)}\n"
+                        + string.Join('\n', stack.Select(f => $"    {f}")));
+                }
+            }
+            return threads.Count == 0 ? $"\n{what}: no thread had a managed frame" : $"\n{what}:\n{string.Join('\n', threads)}";
+        }
+        catch (Exception failed) when (failed is Microsoft.Diagnostics.Runtime.ClrDiagnosticsException or InvalidOperationException or IOException
+            or UnauthorizedAccessException or ArgumentException or IndexOutOfRangeException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            return $"\n{what}: its threads could not be read ({failed.GetType().Name}: {failed.Message})";
+        }
+    }
+
+    /// <summary>Finds no file it was not given: nothing is downloaded from a symbol server.</summary>
+    private sealed class NothingFound : Microsoft.Diagnostics.Runtime.IFileLocator
+    {
+        public static readonly NothingFound Locator = new();
+
+        public string? FindPEImage(string fileName, int buildTimeStamp, int imageSize, bool checkProperties) => null;
+
+        public string? FindPEImage(string fileName, Microsoft.Diagnostics.Runtime.SymbolProperties archivedUnder, System.Collections.Immutable.ImmutableArray<byte> buildIdOrUUID,
+            System.Runtime.InteropServices.OSPlatform originalPlatform, bool checkProperties) => null;
+    }
 }
 
 /// <summary>A port of the system's choosing, kept from every other program until a program of the test's own is about to

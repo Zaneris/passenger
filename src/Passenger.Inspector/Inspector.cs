@@ -10,9 +10,9 @@ using Avalonia.VisualTree;
 namespace Passenger.Inspector;
 
 /// <summary>The inspector's work on the app's UI thread: the windows and their visual trees, an element looked at closely,
-/// Select Element and the outline over the element chosen, a word to Passenger as controls come and go, and for an agent
-/// the windows' pictures and input to them (<see cref="Pictures"/>, <see cref="Driver"/>). Elements are named by ids that
-/// last as long as the element does.</summary>
+/// Select Element and the outline over the element chosen, a word to Passenger as controls come and go, for an agent the
+/// windows' pictures and input to them (<see cref="Pictures"/>, <see cref="Driver"/>), and XAML Hot Reload
+/// (<see cref="XamlReloads"/>). Elements are named by ids that last as long as the element does.</summary>
 internal sealed class Inspector : Inspecting<Visual>
 {
     private readonly List<IDisposable> handlers = [];
@@ -20,6 +20,7 @@ internal sealed class Inspector : Inspecting<Visual>
     private readonly Driver driver;
     private readonly PropertyBreaks breaks = new();
     private readonly ValueWatch values;
+    private readonly XamlReloads reloads;
 
     /// <param name="overlays">The renderer debug overlays the launch asked for (<see cref="Wire.OverlaysVariable"/>), or null.</param>
     public Inspector(Connection connection, string? overlays = null) : base(connection)
@@ -28,7 +29,12 @@ internal sealed class Inspector : Inspecting<Visual>
         picker = new Picker(this, connection);
         driver = new Driver(this);
         values = new ValueWatch(connection);
-        handlers.Add(Control.LoadedEvent.AddClassHandler(typeof(Control), (sender, _) => Changed(sender)));
+        reloads = new XamlReloads(TopLevels);
+        handlers.Add(Control.LoadedEvent.AddClassHandler(typeof(Control), (sender, _) =>
+        {
+            reloads.Loaded(sender);
+            Changed(sender);
+        }));
         handlers.Add(Control.UnloadedEvent.AddClassHandler(typeof(Control), (sender, _) => Changed(sender)));
         handlers.Add(Window.WindowOpenedEvent.AddClassHandler(typeof(Window), (sender, _) =>
         {
@@ -94,6 +100,43 @@ internal sealed class Inspector : Inspecting<Visual>
         return answer;
     }
 
+    protected override XamlValues MadeAt(XamlRead read) => BindingReader.Made(this, read);
+
+    /// <summary>Each shown element Avalonia recorded a place of in this XAML file (<see cref="XamlPlaces.FileOf"/>), with its box
+    /// in its window (transforms aside): in a designer's design view, else in the newest window of the app's that shows any.</summary>
+    protected override List<PlacedBox> PlacedIn(string file)
+    {
+        // A designer's last load is what its frame shows, whatever earlier ones it keeps.
+        IEnumerable<TopLevel> tops = DesignLoads.Last is Visual designed && (designed as TopLevel ?? TopLevel.GetTopLevel(designed)) is { } shown
+            ? [shown] : TopLevels().Reverse();
+        foreach (TopLevel top in tops)
+        {
+            List<(Visual Visual, SourcePlace Place)> recorded = [];
+            foreach (Visual visual in top.GetVisualDescendants().Prepend(top))
+            {
+                if (visual.IsEffectivelyVisible && Details.Place(visual) is { } place)
+                {
+                    recorded.Add((visual, place));
+                }
+            }
+            string? inFile = XamlPlaces.FileOf(recorded.Select(r => r.Place.File), file);
+            List<PlacedBox> placed = [];
+            foreach ((Visual visual, SourcePlace place) in recorded.Where(r => r.Place.File == inFile))
+            {
+                if (visual.TranslatePoint(default, top) is { } at)
+                {
+                    placed.Add(new PlacedBox(place.Line, place.Column, new Box(at.X, at.Y, visual.Bounds.Width, visual.Bounds.Height)));
+                }
+            }
+            if (placed.Count > 0)
+            {
+                return placed;
+            }
+        }
+        InspectorTrace.Step($"no element shown was made from {Path.GetFileName(file)}, among {TopLevels().Count} top levels");
+        return [];
+    }
+
     /// <summary>The overlays asked for set on every window, those opened later too, and the windows as they are now.</summary>
     protected override List<AppWindow> SetOverlays(Request request)
     {
@@ -102,6 +145,8 @@ internal sealed class Inspector : Inspecting<Visual>
     }
 
     protected override void Later(TimeSpan delay, Action action) => DispatcherTimer.RunOnce(action, delay);
+
+    protected override XamlReloaded Reload(XamlChange change) => reloads.Reload(change);
 
     /// <summary>Whether a visual is the inspector's own (Select Element's outline), which the tree leaves out.</summary>
     public bool IsOwn(Visual visual) => picker.IsOwn(visual);

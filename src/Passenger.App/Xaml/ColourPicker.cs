@@ -13,12 +13,10 @@ namespace Passenger.App.Xaml;
 /// <summary>A colour picker over a swatch: a square of saturation and brightness for the hue chosen on the bar under
 /// it, an alpha bar, the colour before and after, and its hex to read or type. Choose (or Enter) gives the colour,
 /// Cancel or Escape leaves it; over a colour that cannot be written, Choose is greyed, saying why, and Enter gives nothing.
-/// Its gradients are the colours being chosen; its chrome is the theme's.</summary>
-internal sealed class ColourPicker : Border
+/// Each colour it moves to is told as it moves (<see cref="Changing"/>). Its gradients are the colours being chosen; its
+/// chrome is the theme's.</summary>
+public sealed class ColourPicker : Border
 {
-    // Styled as the Border it is, so the theme's Border.popup reaches it.
-    protected override Type StyleKeyOverride => typeof(Border);
-
     private readonly ShadeSquare square;
     private readonly HueBar hue;
     private readonly AlphaBar alpha;
@@ -30,24 +28,27 @@ internal sealed class ColourPicker : Border
     private double v;
     private byte a;
     private bool typing;
+    private bool shown;
 
-    public ColourPicker(Argb start, string? unchangeable = null)
+    /// <param name="alpha">Whether the colour's alpha is chosen too: without, it stays opaque and its bar is hidden.</param>
+    public ColourPicker(Argb start, string? unchangeable = null, bool alpha = true)
     {
         chooses = unchangeable is null;
         Classes.Add(StyleClasses.Popup);
+        Width = PopupFrame.Narrow;
         Padding = new Thickness(10);
         (h, s, v) = ToHsv(start);
         a = start.A;
         square = new ShadeSquare(this) { Height = 160 };
         hue = new HueBar(this) { Height = 14 };
-        alpha = new AlphaBar(this) { Height = 14 };
+        this.alpha = new AlphaBar(this) { Height = 14, IsVisible = alpha };
         // The swatches as tall as the field and buttons beside them, rounded as they are.
         Border before = new() { Width = 28, Height = 28, Background = new SolidColorBrush(ToColor(start)) };
         after = new Border { Width = 28, Height = 28 };
         before.Bind(Border.CornerRadiusProperty, before.GetResourceObservable(TokenKeys.ControlRadius, r => r is CornerRadius c ? new CornerRadius(c.TopLeft, 0, 0, c.BottomLeft) : default(CornerRadius)));
         after.Bind(Border.CornerRadiusProperty, after.GetResourceObservable(TokenKeys.ControlRadius, r => r is CornerRadius c ? new CornerRadius(0, c.TopRight, c.BottomRight, 0) : default(CornerRadius)));
         // The field takes what the swatches and buttons leave.
-        hex = new TextBox { Classes = { StyleClasses.Search }, FontFamily = CodeEditor.CodeFont };
+        hex = new TextBox { Classes = { StyleClasses.Search } }.InCodeFont();
         Button choose = new() { Content = "Choose", Classes = { StyleClasses.Primary }, IsDefault = chooses, IsEnabled = chooses };
         ToolTip.SetTip(choose, unchangeable);
         choose.Click += (_, _) => Chosen?.Invoke(this, Colour);
@@ -56,13 +57,12 @@ internal sealed class ColourPicker : Border
         hex.TextChanged += (_, _) => FromHex();
         Child = new StackPanel
         {
-            Width = 330,
             Spacing = 8,
             Children =
             {
                 square,
                 hue,
-                alpha,
+                this.alpha,
                 new DockPanel
                 {
                     Children =
@@ -76,6 +76,7 @@ internal sealed class ColourPicker : Border
         };
         AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
         Show();
+        shown = true;
         Dispatcher.UIThread.Post(() =>
         {
             hex.Focus();
@@ -85,6 +86,12 @@ internal sealed class ColourPicker : Border
 
     /// <summary>The colour chosen, or null when the picker was left.</summary>
     public event EventHandler<Argb?>? Chosen;
+
+    /// <summary>The square of saturation and brightness, which the pointer drags across.</summary>
+    public Control Shades => square;
+
+    /// <summary>The colour the picker moved to, as the pointer drags or the hex is typed.</summary>
+    public event EventHandler<Argb>? Changing;
 
     /// <summary>The colour as the picker has it now.</summary>
     public Argb Colour
@@ -140,6 +147,10 @@ internal sealed class ColourPicker : Border
         square.InvalidateVisual();
         hue.InvalidateVisual();
         alpha.InvalidateVisual();
+        if (shown)
+        {
+            Changing?.Invoke(this, colour);
+        }
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
@@ -307,7 +318,8 @@ internal sealed class ColourPicker : Border
 
     private static void Marker(DrawingContext context, Rect area, double at)
     {
-        double x = Math.Clamp(at * area.Width, 2, area.Width - 2);
+        // A bar hidden (a colour without alpha) is drawn at no width.
+        double x = Math.Clamp(at * area.Width, 2, Math.Max(2, area.Width - 2));
         context.DrawRectangle(null, new Pen(Token(TokenKeys.Picker_RingInner), 2), new Rect(x - 3, -1, 6, area.Height + 2), 2, 2);
         context.DrawRectangle(null, new Pen(Token(TokenKeys.Picker_RingOuter), 1), new Rect(x - 4.5, -2.5, 9, area.Height + 5), 3, 3);
     }

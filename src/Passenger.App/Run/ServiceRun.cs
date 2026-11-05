@@ -43,6 +43,13 @@ public sealed record ServiceProgram(int Id, AdapterPlace? Place, Profiler.Profil
 
     /// <summary>Its inspected app (an Avalonia service's, its inspector started with it), which its Debug tab holds.</summary>
     public LiveTree.LiveApp? App { get; init; }
+
+    /// <summary>Passenger's hook it started with, which runs its update handlers after each update Hot Reload applies, its
+    /// session's from the attach; null where it has none.</summary>
+    public Debugging.UpdateHandlerHook? Handlers { get; init; }
+
+    /// <summary>The SDK's browser refresh it started with, which keeps a web service's pages up, its session's from the attach.</summary>
+    public Debugging.BrowserRefresh? Browser { get; init; }
 }
 
 /// <summary>Why a service's program could not be reached where its run's kind runs it (its container, its tools, its
@@ -60,7 +67,7 @@ public sealed record ChosenService(ServiceRun Run, string Name);
 /// supplies only what is its own: how its services restart (<see cref="RestartAsync"/>), how a hold chosen takes effect
 /// at their next start (<see cref="HoldsChangedAsync"/>) and where a service's program is (<see cref="ProgramAsync"/>). A
 /// UI-thread object of the session's.</summary>
-public abstract class ServiceRun
+public abstract class ServiceRun : Telemetry.ITelemetryRun
 {
     /// <summary>What each .NET service is held at its start for, as last chosen (debugged, or attached to quietly for Hot
     /// Reload): a restart holds it again and attaches again. A service not here runs unheld.</summary>

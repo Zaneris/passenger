@@ -67,7 +67,7 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
             Gone(client);
         }
         Process agents = LastPassenger();
-        WaitFor(() => agents.HasExited, "the agent's Passenger to end");
+        WaitFor(() => !DotnetProcesses.Runs(agents), "the agent's Passenger to end");
         Ui.WaitFor(() => File.ReadAllText(notes) == "second first draft\n", "the person's window to see the agent's change");
 
         // The next day's save, at which the window prunes the oldest of its history.
@@ -301,25 +301,7 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
     {
         Nice.SkipUnlessMSBuildKeepsNodes();
         await TakeFolderAsync();
-        string two = Path.Combine(Folder, "two");
-        Directory.CreateDirectory(Path.Combine(two, "A"));
-        Directory.CreateDirectory(Path.Combine(two, "B"));
-        Write("two/Two.slnx", "<Solution>\n  <Project Path=\"A/A.csproj\" />\n  <Project Path=\"B/B.csproj\" />\n</Solution>\n");
-        foreach (string project in new[] { "two/A/A.csproj", "two/B/B.csproj" })
-        {
-            Write(project, $"""
-                <Project Sdk="Microsoft.NET.Sdk">
-                  <PropertyGroup>
-                    <TargetFramework>{TestProjects.Framework}</TargetFramework>
-                  </PropertyGroup>
-                  <Target Name="Wait" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
-                    <Exec Condition="'$(OS)' != 'Windows_NT'" Command="echo $$ &gt; step.pid; sleep 3" />
-                    <Exec Condition="'$(OS)' == 'Windows_NT'" Command="powershell -NoProfile -Command &quot;Set-Content -Path step.pid -Value $PID; Start-Sleep -Seconds 3&quot;" />
-                  </Target>
-                </Project>
-                """);
-        }
-        await Restore.RunAsync(two);
+        string two = await WriteTwoAsync();
         // No compiler server among what the build starts, which is the machine's to share.
         Process passenger = StartPassenger(["--mcp", two], environment: new() { ["UseSharedCompilation"] = "false" }, languageServer: false);
         List<int> left = [];
@@ -377,6 +359,93 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
                 }
             }
         }
+    }
+
+    /// <summary>Nothing a build of Passenger's starts goes on under its handshake salt once Passenger ends: no MSBuild server
+    /// at all (its builds turn it off), and none of the worker nodes left for its next build, nor a compiler or Razor server
+    /// one of them started, which the build is let start as any build does. Counted by the salt each takes from Passenger
+    /// (<see cref="Processes.SaltedBuilds"/>), so other builds on the machine are not.</summary>
+    [Fact]
+    public async Task Nothing_a_build_of_passengers_starts_runs_on_under_its_salt_once_passenger_ends()
+    {
+        Nice.SkipUnlessMSBuildKeepsNodes();
+        await TakeFolderAsync();
+        string two = await WriteTwoAsync();
+        Process passenger = StartPassenger(["--mcp", two], languageServer: false);
+        string salt = $"passenger-{passenger.Id}";
+        IReadOnlyDictionary<int, string> during = new Dictionary<int, string>();
+        McpClient? client = null;
+        try
+        {
+            client = await Connect(passenger, ["--mcp", two]);
+            for (int build = 1; !during.Values.Any(IsNode); build++)
+            {
+                await Processes.UntilMSBuildKeepsNodesAsync();
+                JsonElement built = await Call(client, McpTools.Build);
+                Assert.True(built.GetProperty("succeeded").GetBoolean(), built.GetProperty("outcome").GetString());
+                during = Processes.SaltedBuilds(salt);
+                Assert.False(during.Values.Any(c => c.Contains("/nodemode:8", StringComparison.Ordinal)),
+                    $"Passenger's build ran in MSBuild's server, which outlives every build and keeps its nodes:\n{string.Join('\n', during.Values)}");
+                if (!during.Values.Any(IsNode) && build == NodeBuilds)
+                {
+                    Assert.Fail($"{NodeBuilds} builds left no node under {salt}, so there is nothing to see end with Passenger.{NoNodeLeft(passenger.Id, [], Processes.Listed())}");
+                }
+            }
+            await client.DisposeAsync();
+            client = null;
+            Assert.True(passenger.WaitForExit(MainWindow.EndLimit + TimeSpan.FromSeconds(5).Scaled()), "Passenger did not end once its agent left");
+            IReadOnlyDictionary<int, string> left = during;
+            await Waiting.UntilAsync(() => (left = Processes.SaltedBuilds(salt)).Count == 0, TimeSpan.FromSeconds(10).Scaled(), TestContext.Current.CancellationToken, TimeSpan.FromMilliseconds(250));
+            Assert.True(left.Count == 0, $"After Passenger ended, {left.Count} of what its builds started went on under its salt {salt}, each holding its memory until "
+                + $"MSBuild's idle timeout or for good:\n{string.Join('\n', left.Select(p => $"{p.Key} {p.Value}"))}");
+        }
+        finally
+        {
+            ChildProcesses.Kill(passenger);
+            foreach (int id in Processes.SaltedBuilds(salt).Keys)
+            {
+                Processes.Kill(id);
+            }
+            if (client is not null)
+            {
+                try
+                {
+                    await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+                }
+                catch (Exception gone) when (gone is IOException or TimeoutException or ObjectDisposedException or OperationCanceledException or InvalidOperationException)
+                {
+                    // The server is gone.
+                }
+            }
+        }
+
+        static bool IsNode(string command) => command.Contains("/nodemode:1", StringComparison.Ordinal);
+    }
+
+    /// <summary>Two projects of one solution, restored, each with a step of a few seconds, so a build of both runs one in a
+    /// node; the step writes its process's id to step.pid.</summary>
+    private async Task<string> WriteTwoAsync()
+    {
+        string two = Path.Combine(Folder, "two");
+        Directory.CreateDirectory(Path.Combine(two, "A"));
+        Directory.CreateDirectory(Path.Combine(two, "B"));
+        Write("two/Two.slnx", "<Solution>\n  <Project Path=\"A/A.csproj\" />\n  <Project Path=\"B/B.csproj\" />\n</Solution>\n");
+        foreach (string project in new[] { "two/A/A.csproj", "two/B/B.csproj" })
+        {
+            Write(project, $"""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>{TestProjects.Framework}</TargetFramework>
+                  </PropertyGroup>
+                  <Target Name="Wait" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+                    <Exec Condition="'$(OS)' != 'Windows_NT'" Command="echo $$ &gt; step.pid; sleep 3" />
+                    <Exec Condition="'$(OS)' == 'Windows_NT'" Command="powershell -NoProfile -Command &quot;Set-Content -Path step.pid -Value $PID; Start-Sleep -Seconds 3&quot;" />
+                  </Target>
+                </Project>
+                """);
+        }
+        await Restore.RunAsync(two);
+        return two;
     }
 
     /// <summary>The builds the test makes for one to leave a node: rarely, on a loaded machine, MSBuild ends a node it meant

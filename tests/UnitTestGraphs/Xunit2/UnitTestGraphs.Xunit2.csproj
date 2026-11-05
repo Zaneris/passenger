@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- xunit v2 and its VSTest adapter, as a test project of them beside VSTest's SDK resolves them at the tests' target and
+       at net11.0: the SDK and what it brings come from the tests' own restore. -->
+  <ItemGroup>
+    <PackageDownload Include="xunit" Version="[$(XunitTwoVersion)]" />
+    <PackageDownload Include="xunit.abstractions" Version="[$(XunitTwoAbstractionsVersion)]" />
+    <PackageDownload Include="xunit.analyzers" Version="[$(XunitTwoAnalyzersVersion)]" />
+    <PackageDownload Include="xunit.assert" Version="[$(XunitTwoVersion)]" />
+    <PackageDownload Include="xunit.core" Version="[$(XunitTwoVersion)]" />
+    <PackageDownload Include="xunit.extensibility.core" Version="[$(XunitTwoVersion)]" />
+    <PackageDownload Include="xunit.extensibility.execution" Version="[$(XunitTwoVersion)]" />
+    <PackageDownload Include="xunit.runner.visualstudio" Version="[$(XunitTwoRunnerVersion)]" />
+  </ItemGroup>
+</Project>

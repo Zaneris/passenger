@@ -149,10 +149,18 @@ public sealed partial class CodeEditor
             return IsEdit(action);
         }
         string eol = document.LineEnding;
+        if (action is EditorActions.NewLine or EditorActions.Indent or EditorActions.Paste)
+        {
+            LeaveEndTag();
+            text = document.Snapshot;
+        }
         switch (action)
         {
             case EditorActions.Backspace:
-                Apply(TextEditing.Backspace(text, selections, Indent));
+                if (!StepsBackOverEndTag())
+                {
+                    Apply(TextEditing.Backspace(document.Snapshot, selections, Indent));
+                }
                 return true;
             case EditorActions.Delete:
                 Apply(TextEditing.Delete(text, selections));

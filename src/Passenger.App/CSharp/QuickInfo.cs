@@ -36,6 +36,7 @@ internal sealed class QuickInfo
         this.popups = popups;
         this.completing = completing;
         popups.Add(hoverCard);
+        hoverCard.Play = context.Play;
         leaving = new Debounce(TimeSpan.FromMilliseconds(300), () =>
         {
             if (!HoverHeld)
@@ -81,16 +82,23 @@ internal sealed class QuickInfo
     /// instead of the symbol's description; in a debugged app's .axaml file, a binding's.</summary>
     public Func<int, CancellationToken, Task<DebuggerHover?>>? DebuggerValue { get; set; }
 
+    /// <summary>What the gutter says beside a line (from zero) of the file shown, a line of words each (a breakpoint's
+    /// state); null where it says nothing.</summary>
+    public Func<int, IReadOnlyList<string>?>? GutterWords { get; set; }
+
     /// <summary>Whether a card of a value is in use: it has the keys, its menu is open, or a value is being typed in it.</summary>
     public bool ValuesInUse => hoverCard.IsVisible && hoverCard.Values is { } values && (hoverCard.IsKeyboardFocusWithin || values.IsInUse);
 
-    /// <summary>Whether a card of a value stays: in use, or the pointer is on it.</summary>
-    private bool HoverHeld => ValuesInUse || (hoverCard.IsVisible && hoverCard.Values is not null && hoverCard.IsPointerOver);
+    /// <summary>Whether a card of a value, or one holding something to use, stays: in use, or the pointer is on it.</summary>
+    private bool HoverHeld => ValuesInUse || (hoverCard.IsVisible && Reachable && hoverCard.IsPointerOver);
 
-    /// <summary>The pointer left the word the card is of: a value's card goes after a pause, any other at once.</summary>
+    /// <summary>Whether the card shown is one the pointer may go to: a value's rows, or something to use (a sound's Play).</summary>
+    private bool Reachable => hoverCard.Values is not null || hoverCard.Usable;
+
+    /// <summary>The pointer left the word the card is of: a card the pointer may go to goes after a pause, any other at once.</summary>
     public void PointerLeft()
     {
-        if (hoverCard.IsVisible && hoverCard.Values is not null)
+        if (hoverCard.IsVisible && Reachable)
         {
             LeaveValues();
         }
@@ -144,30 +152,9 @@ internal sealed class QuickInfo
         Debugging.VariablesList? values = null;
         if (debuggerValue is not null)
         {
-            if (debuggerValue.Gone.IsCancellationRequested)
+            if (!AddValue(debuggerValue, out values))
             {
-                hoverCard.IsVisible = false;
                 return;
-            }
-            if (debuggerValue.Problem is { } problem)
-            {
-                hoverCard.AddText(problem, InfoCard.Brush(TokenKeys.Error));
-            }
-            if (debuggerValue.Values is { } rows)
-            {
-                values = rows;
-                // The menu closed, the card goes unless the pointer or the keys are still on it.
-                rows.MenuClosed += (_, _) =>
-                {
-                    if (hoverCard.Values == rows)
-                    {
-                        LeaveValues();
-                    }
-                };
-            }
-            else if (debuggerValue.Code.Length > 0)
-            {
-                hoverCard.AddCode(debuggerValue.Code);
             }
         }
         else
@@ -189,6 +176,69 @@ internal sealed class QuickInfo
             hoverCard.IsVisible = false;
             return;
         }
+        Place(offset, point, values, debuggerValue);
+    }
+
+    /// <summary>Quick Evaluate Expression's card: a value read for an offset, shown as a hovered one is under its line, its
+    /// row taking the keys at once, as Quick Documentation pressed again gives them.</summary>
+    public void ShowValue(int offset, DebuggerHover value)
+    {
+        hovering?.Cancel();
+        hovering = new CancellationTokenSource();
+        ForgetValues();
+        hoverCard.Clear();
+        if (!AddValue(value, out Debugging.VariablesList? values) || values is null)
+        {
+            return;
+        }
+        Place(offset, Editor.PointOf(Math.Min(offset, Editor.Document.Snapshot.Length)), values, value);
+        // Once laid out, so the row itself has a container to take them.
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (hoverCard.IsVisible && hoverCard.Values == values)
+            {
+                values.FocusRow();
+            }
+        }, Avalonia.Threading.DispatcherPriority.Loaded);
+    }
+
+    /// <summary>A paused program's value added to the card: what went wrong reading it, then its rows or its code; false,
+    /// the card hidden, once the stop it was read at is gone.</summary>
+    private bool AddValue(DebuggerHover value, out Debugging.VariablesList? values)
+    {
+        values = null;
+        if (value.Gone.IsCancellationRequested)
+        {
+            hoverCard.IsVisible = false;
+            return false;
+        }
+        if (value.Problem is { } problem)
+        {
+            hoverCard.AddText(problem, InfoCard.Brush(TokenKeys.Error));
+        }
+        if (value.Values is { } rows)
+        {
+            values = rows;
+            // The menu closed, the card goes unless the pointer or the keys are still on it.
+            rows.MenuClosed += (_, _) =>
+            {
+                if (hoverCard.Values == rows)
+                {
+                    LeaveValues();
+                }
+            };
+        }
+        else if (value.Code.Length > 0)
+        {
+            hoverCard.AddCode(value.Code);
+        }
+        return true;
+    }
+
+    /// <summary>The card shown under the line of an offset, at a point's left: a value's rows as they fit
+    /// (<see cref="PlaceValues"/>), gone with the stop a debugger's value was read at.</summary>
+    private void Place(int offset, Point point, Debugging.VariablesList? values, DebuggerHover? debuggerValue)
+    {
         hoverCard.IsVisible = true;
         TextSnapshot text = Editor.Document.Snapshot;
         int lineStart = text.GetLineStart(text.GetLineFromOffset(Math.Min(offset, text.Length)));
@@ -249,7 +299,7 @@ internal sealed class QuickInfo
     /// the pointer comes back to it or it is in use.</summary>
     private void LeaveValues()
     {
-        if (hoverCard.IsVisible && hoverCard.Values is not null)
+        if (hoverCard.IsVisible && Reachable)
         {
             leaving.Restart();
         }
@@ -305,6 +355,45 @@ internal sealed class QuickInfo
             // A server that no longer has the hint (the file changed since) shows no card for it.
             hoverCard.IsVisible = false;
         }
+    }
+
+    /// <summary>What the card says of a line-end annotation the pointer rests on (a running game's value), added to the card;
+    /// false where it says nothing of it.</summary>
+    public Func<LineAnnotation, IHoverCard, bool>? AnnotationCard { get; set; }
+
+    /// <summary>The card for a line-end annotation the pointer rests on (<see cref="AnnotationCard"/>), hung under its line;
+    /// none where nothing is said of it.</summary>
+    public void ShowAnnotation(LineAnnotation annotation, Point point)
+    {
+        hovering?.Cancel();
+        ForgetValues();
+        hoverCard.Clear();
+        TextSnapshot text = Editor.Document.Snapshot;
+        if (completing() || annotation.Line >= text.LineCount || AnnotationCard?.Invoke(annotation, hoverCard) != true)
+        {
+            hoverCard.IsVisible = false;
+            return;
+        }
+        hoverCard.IsVisible = true;
+        popups.Place(hoverCard, new Point(point.X, Editor.PointOf(text.GetLineStart(annotation.Line)).Y), above: false);
+    }
+
+    /// <summary>The card for what the gutter shows beside a line the pointer rests on (<see cref="GutterWords"/>), hung under
+    /// the line; none where it says nothing.</summary>
+    public void ShowGutter(int line, Point point)
+    {
+        hovering?.Cancel();
+        ForgetValues();
+        hoverCard.Clear();
+        TextSnapshot text = Editor.Document.Snapshot;
+        if (GutterWords?.Invoke(line) is not { Count: > 0 } words || completing() || line >= text.LineCount)
+        {
+            hoverCard.IsVisible = false;
+            return;
+        }
+        hoverCard.AddText(string.Join('\n', words));
+        hoverCard.IsVisible = true;
+        popups.Place(hoverCard, new Point(point.X, Editor.PointOf(text.GetLineStart(line)).Y), above: false);
     }
 
     public void Hide()

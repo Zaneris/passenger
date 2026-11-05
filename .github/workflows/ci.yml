@@ -49,7 +49,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
 
@@ -81,7 +81,7 @@ jobs:
           fetch-depth: 0
 
       # .NET 10 runs vpk and the test's project.
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
           dotnet-version: 10.0.x
@@ -128,8 +128,8 @@ jobs:
       - name: Build the tests
         run: dotnet build tests/Passenger.Tests
 
-      - name: An agent debugs through the installed Passenger
-        run: dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it" --blame-hang-timeout 10m --blame-hang-dump-type none
+      - name: An agent debugs through the installed Passenger, whose helpers run on its own runtime
+        run: dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpDebuggingTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it|FullyQualifiedName~McpDebuggingTests.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on" --blame-hang-timeout 10m --blame-hang-dump-type none
 
       # Update.exe removes the folder a few seconds after it exits; the person's state and Velopack's own logs
       # (%LocalAppData%\velopack) stay.
@@ -181,7 +181,7 @@ jobs:
           fetch-depth: 0
 
       # .NET 10 for the test's project.
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
           dotnet-version: 10.0.x
@@ -222,7 +222,7 @@ jobs:
             "$HOME/.local/share/icons/hicolor/scalable/apps/io.github.zaneris.passenger.svg"; do
             [ -e "$path" ] || { echo "::error::The install has no $path"; exit 1; }
           done
-          [ "$(readlink -f "$HOME/.local/bin/passenger")" = "$opt/passenger" ] || { echo "::error::~/.local/bin/passenger does not lead to the install"; exit 1; }
+          [ "$(readlink -f "$HOME/.local/bin/passenger-ide")" = "$opt/passenger" ] || { echo "::error::~/.local/bin/passenger-ide does not lead to the install"; exit 1; }
           entry=$HOME/.local/share/applications/io.github.zaneris.passenger.desktop
           desktop-file-validate "$entry"
           grep -qx "Exec=\"$opt/passenger\" %f" "$entry" || { echo "::error::The menu entry does not start the install's launcher"; cat "$entry"; exit 1; }
@@ -233,17 +233,17 @@ jobs:
               || { echo "::error::Passenger is not among the programs that open .$type"; exit 1; }
           done
 
-      - name: An agent debugs through the Passenger installed for one person
+      - name: An agent debugs through the Passenger installed for one person, whose helpers run on its own runtime
         run: |
-          export PASSENGER_EXECUTABLE=$HOME/.local/bin/passenger
-          dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it" --blame-hang-timeout 10m --blame-hang-dump-type none
+          export PASSENGER_EXECUTABLE=$HOME/.local/bin/passenger-ide
+          dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpDebuggingTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it|FullyQualifiedName~McpDebuggingTests.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on" --blame-hang-timeout 10m --blame-hang-dump-type none
 
       - name: Uninstall for one person
         if: ${{ !cancelled() }}
         run: |
           "$HOME/.local/opt/passenger/install.sh" --uninstall
           left=
-          for path in "$HOME/.local/opt/passenger" "$HOME/.local/bin/passenger" \
+          for path in "$HOME/.local/opt/passenger" "$HOME/.local/bin/passenger-ide" "$HOME/.local/bin/passenger" \
             "$HOME/.local/share/applications/io.github.zaneris.passenger.desktop" \
             "$HOME/.local/share/icons/hicolor/256x256/apps/io.github.zaneris.passenger.png" \
             "$HOME/.local/share/icons/hicolor/scalable/apps/io.github.zaneris.passenger.svg" \
@@ -254,9 +254,10 @@ jobs:
           [ -f "$HOME/.local/share/Passenger/kept-by-uninstall.txt" ] || { echo "::error::The uninstall took the person's state"; exit 1; }
 
       - name: Install for everyone
+        id: system
         run: |
           sudo "$RUNNER_TEMP/download/passenger/install.sh" --system
-          for path in /opt/passenger/app/Passenger /usr/local/bin/passenger /usr/share/applications/io.github.zaneris.passenger.desktop \
+          for path in /opt/passenger/app/Passenger /usr/local/bin/passenger-ide /usr/share/applications/io.github.zaneris.passenger.desktop \
             /usr/share/icons/hicolor/256x256/apps/io.github.zaneris.passenger.png /usr/share/mime/packages/io.github.zaneris.passenger.xml; do
             [ -e "$path" ] || { echo "::error::The install for everyone has no $path"; exit 1; }
           done
@@ -264,17 +265,17 @@ jobs:
           [ -z "$owned" ] || { echo "::error::The install for everyone has files not root's: $owned"; exit 1; }
           desktop-file-validate /usr/share/applications/io.github.zaneris.passenger.desktop
 
-      - name: An agent debugs through the Passenger installed for everyone
+      - name: An agent debugs through the Passenger installed for everyone, whose helpers run on its own runtime
         run: |
-          export PASSENGER_EXECUTABLE=/usr/local/bin/passenger
-          dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it" --blame-hang-timeout 10m --blame-hang-dump-type none
+          export PASSENGER_EXECUTABLE=/usr/local/bin/passenger-ide
+          dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpDebuggingTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it|FullyQualifiedName~McpDebuggingTests.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on" --blame-hang-timeout 10m --blame-hang-dump-type none
 
       - name: Uninstall for everyone
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.system.outcome != 'skipped' }}
         run: |
           sudo /opt/passenger/install.sh --uninstall --system
           left=
-          for path in /opt/passenger /usr/local/bin/passenger /usr/share/applications/io.github.zaneris.passenger.desktop \
+          for path in /opt/passenger /usr/local/bin/passenger-ide /usr/local/bin/passenger /usr/share/applications/io.github.zaneris.passenger.desktop \
             /usr/share/icons/hicolor/256x256/apps/io.github.zaneris.passenger.png \
             /usr/share/icons/hicolor/scalable/apps/io.github.zaneris.passenger.svg /usr/share/mime/packages/io.github.zaneris.passenger.xml; do
             if [ -e "$path" ] || [ -L "$path" ]; then left="$left $path"; fi
@@ -299,7 +300,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
 

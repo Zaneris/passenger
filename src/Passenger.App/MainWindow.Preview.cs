@@ -4,13 +4,14 @@ using Passenger.App.Workspace;
 using Passenger.App.Xaml;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 using A = Passenger.App.AppActions;
 
 namespace Passenger.App;
 
 /// <summary>The XAML previewer beside the editor: View, XAML Preview shows each editor group's XAML file of an Avalonia
 /// or WPF project with its design view to its right, drawn from the project's last build by its framework's previewer
-/// and following the text as typing pauses. Where the previewer places the file's elements (WPF's), a click on one
+/// and following the text as typing pauses. Where the previewer places the file's elements, a click on one
 /// selects its start tag in the editor and the element at the caret is outlined. A file's preview is kept while the file
 /// is open and the preview on, and ends as either goes; its previewer runs while the preview is shown, or was the last
 /// hidden. On or off is kept in the store's previews.json.</summary>
@@ -44,8 +45,15 @@ public partial class MainWindow
             IsChecked = _ => previewing,
             Menus = [new MenuPlace("View", 4, 0)],
         });
+        actions.Add(new IdeAction(A.BuildForPreview, XamlPreviewPane.BuildForPreviewTitle, "Editor", context => IdeErrors.Observe(BuildForPreviewAsync(context.File!)))
+        {
+            WhyNot = context => context.File is null ? Refusals.NoFile
+                : session.Xaml.For(context.File) is null || ProjectModel.Owning(session.Projects, context.File.Path) is null ? "The previewer is for the XAML of an Avalonia or WPF project"
+                : null,
+            Words = ["preview", "build", "framework"],
+        });
         Editors.HasXamlPreview = document => session.Xaml.For(document) is not null;
-        Editors.PreviewToggleClicked += (_, group) => Request(group.Active?.Language == Languages.Language.Markdown ? A.MarkdownPreview : A.XamlPreview);
+        Editors.PreviewToggleClicked += (_, group) => Request(group.PreviewAction ?? A.XamlPreview);
         Editors.ActiveChanged += (_, _) => FollowPreviews();
         Editors.Closed += (_, document) => EndPreview(document);
         Editors.ForEachEditor(editor => editor.SelectionChanged += (_, _) => OutlineAtCaret(editor));
@@ -159,6 +167,7 @@ public partial class MainWindow
         XamlPreview preview = new(document);
         XamlPreviewPane pane = new(preview);
         pane.ElementChosen += (_, element) => ChooseInEditor(pane, element);
+        pane.ActionRequested += (_, action) => Request(action);
         preview.Changed += (_, _) => OutlineAtCaret(pane, preview);
         Debounce typing = new(PreviewSettle, () =>
         {
@@ -202,6 +211,28 @@ public partial class MainWindow
         group.Editor.Focus();
     }
 
+    /// <summary>Build for XAML Preview: a XAML file's project built for what its preview draws alone, a multi-targeted one's
+    /// framework chosen, so no other framework's build holds the preview up; each preview then draws the build it made.</summary>
+    private async Task BuildForPreviewAsync(OpenDocument document)
+    {
+        if (ProjectModel.Owning(session.Projects, document.Path) is not { } project)
+        {
+            return;
+        }
+        string? framework = session.Frameworks.Of(project);
+        if (work.Begin(A.BuildForPreview, framework is null ? $"Building {project.Name} for its preview…" : $"Building {project.Name} for {framework}, which its preview draws…")
+            is not { } working)
+        {
+            Say(ActionWork.Busy(work.Of(A.BuildForPreview)!));
+            return;
+        }
+        using (working)
+        {
+            BuildOutcome built = await buildRun.BuildForAsync(new BuildStep(project.Path, framework), working);
+            working.Tell(built.Succeeded, built.Message);
+        }
+    }
+
     /// <summary>A build that succeeded is what each preview draws from then on: a shown preview whose build it changed
     /// starts its previewer again, and a hidden one's ends, to start as it is shown; after any other end, a previewer
     /// that ended for the build starts again on the build that stands.</summary>
@@ -210,6 +241,17 @@ public partial class MainWindow
         foreach (ShownPreview shown in previews.Values)
         {
             IdeErrors.Observe(outcome.Status == BuildStatus.Succeeded ? shown.Preview.BuiltAsync(Shows(shown.Pane)) : shown.Preview.BuildFailedAsync(Shows(shown.Pane)));
+        }
+    }
+
+    /// <summary>A project's framework chosen (null: every project's): its previews start again on that framework's build,
+    /// one resting doing so as it is shown.</summary>
+    private void RestartPreviews(string? project)
+    {
+        foreach (XamlPreview preview in previews.Values.Select(p => p.Preview)
+            .Where(p => project is null || Passenger.Core.PathNames.Same(p.Document.Loading.ProjectPath, project)))
+        {
+            IdeErrors.Observe(preview.RestartAsync());
         }
     }
 

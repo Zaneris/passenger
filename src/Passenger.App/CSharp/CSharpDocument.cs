@@ -52,7 +52,15 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         }
         Lsp = session.Open(document.Path, document.Text);
         Colour(Lsp, session.Server);
-        Pull(TimeSpan.Zero);
+        // A file no tab shows (an agent's) is pulled as its tool asks, or once a tab shows it.
+        if (service.Unseen(document))
+        {
+            Stale = true;
+        }
+        else
+        {
+            Pull(TimeSpan.Zero);
+        }
         FindContexts();
         return true;
     }
@@ -86,20 +94,19 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
             {
                 return;
             }
-            Contexts = [.. found.ProjectContexts.Where(c => !c.IsMiscellaneous)];
+            Contexts = CSharpService.Offered([.. found.ProjectContexts.Where(c => !c.IsMiscellaneous)]);
             ProjectContext? kept = lsp.Context is { } chosen ? Contexts.FirstOrDefault(c => c.Label == chosen.Label) : null;
-            if (lsp.Context is not null && kept is null)
+            // Its project's framework chosen, else the one chosen for it alone, else the server's own unless that is one not offered.
+            ProjectContext? now = service.ChosenContext(document.Path, Contexts) ?? kept
+                ?? (found.Default is { } given && !given.IsMiscellaneous && !Contexts.Any(c => c.Label == given.Label) ? Contexts.FirstOrDefault() : null);
+            string? was = lsp.Context?.Label ?? found.Default?.Label;
+            lsp.Context = now;
+            if ((now ?? found.Default)?.Label != was)
             {
-                // The project it was chosen in is gone (a framework no longer targeted): the server's choice from now on.
-                lsp.Context = null;
                 Refresh();
             }
-            else
-            {
-                lsp.Context = kept;
-            }
             document.ProjectContexts = [.. Contexts.Select(c => c.Label)];
-            document.ProjectContext = (kept ?? found.Default)?.Label;
+            document.ProjectContext = (now ?? found.Default)?.Label;
             if (Placed is null && Contexts.Count > 0)
             {
                 Placed = (asked, Stopwatch.GetTimestamp(), document.ProjectContext ?? Contexts[0].Label);
@@ -116,13 +123,29 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     }
 
     /// <summary>Has the server answer for the file in another of its projects (the target framework switcher): its
-    /// colours and diagnostics are asked for again in it.</summary>
+    /// colours and diagnostics are asked for again in it. A framework of its one project is that project's choice, which
+    /// its other files follow.</summary>
     public void Choose(ProjectContext context)
     {
         if (Lsp is not { } lsp)
         {
             return;
         }
+        Answer(lsp, context);
+        service.ChooseFramework(document.Path, Contexts, context);
+    }
+
+    /// <summary>The framework chosen for the file's project followed: the server answers for the file in it from now on.</summary>
+    internal void FollowFramework()
+    {
+        if (Lsp is { } lsp && service.ChosenContext(document.Path, Contexts) is { } chosen && chosen.Label != document.ProjectContext)
+        {
+            Answer(lsp, chosen);
+        }
+    }
+
+    private void Answer(LspDocument lsp, ProjectContext context)
+    {
         lsp.Context = context;
         document.ProjectContext = context.Label;
         Refresh();
@@ -168,7 +191,14 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
 
     /// <summary>The server's word that diagnostics may have changed: asked for again, Aspire's warnings with them, whose
     /// answer replaces those shown.</summary>
-    public void RefreshDiagnostics() => Pull(TimeSpan.Zero);
+    public void RefreshDiagnostics()
+    {
+        Stale = false;
+        Pull(TimeSpan.Zero);
+    }
+
+    /// <summary>Whether a refresh of the server's passed the file over while no tab showed it, so its marks wait for a pull.</summary>
+    public bool Stale { get; set; }
 
     public void Dispose()
     {
@@ -234,7 +264,8 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     {
         if (!service.AsksHints)
         {
-            document.InlayHints = HintList.Empty;
+            // A path's node is what the text before it comes to, shown whatever the hints of the server's kinds are set to.
+            document.InlayHints = HintList.Of(GodotHints(document.Text.Version));
             return true;
         }
         (IReadOnlyList<LspInlayHint> hints, int hinted) = await lsp.InlayHintsAsync(cancel);
@@ -242,11 +273,16 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         {
             return false;
         }
+        ParsedText? syntax = hints.Any(h => h.Kind == Passenger.Lsp.InlayHintKind.Type) && document.Syntax is { } parsing ? await parsing.CurrentAsync() : null;
+        if (cancel.IsCancellationRequested || hinted != document.Text.Version)
+        {
+            return false;
+        }
         // Placed on the thread pool, in the text and syntax they were asked for: a file of thousands of calls has as many.
         TextSnapshot text = document.Text.Snapshot;
-        ParsedText? syntax = hints.Any(h => h.Kind == Passenger.Lsp.InlayHintKind.Type) ? document.Syntax?.Current : null;
         bool razor = lsp.IsRazor;
-        HintList shown = await BackgroundWork.Run(() => Shown(text, syntax, razor, hints), cancel);
+        IReadOnlyList<InlayHint> godot = GodotHints(hinted);
+        HintList shown = await BackgroundWork.Run(() => Shown(text, syntax, razor, hints, godot), cancel);
         if (cancel.IsCancellationRequested || hinted != document.Text.Version)
         {
             return false;
@@ -271,13 +307,16 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         IReadOnlyList<Diagnostic> compose = await ComposeFindingsAsync(cancel);
         IReadOnlyList<Diagnostic> configuration = await ConfigurationFindingsAsync([.. aspire, .. compose], cancel);
         IReadOnlyList<Diagnostic> localization = await LocalizationFindingsAsync(cancel);
+        IReadOnlyList<Diagnostic> godot = await GodotFindingsAsync(cancel);
+        IReadOnlyList<Diagnostic> classes = await StylesheetFindingsAsync(lsp, cancel);
         if (cancel.IsCancellationRequested || version != document.Text.Version || Lsp != lsp)
         {
             return null;
         }
-        IReadOnlyList<Diagnostic> own = [.. found, .. aspire, .. compose, .. configuration, .. localization];
+        IReadOnlyList<Diagnostic> own = [.. found, .. aspire, .. compose, .. configuration, .. localization, .. godot, .. classes];
         IReadOnlyList<Diagnostic> carried = lsp.PullsProjectWide ? diagnostics.Late : [];
         document.Markers = diagnostics.Take([.. own, .. carried], DiagnosticMarks.Marker, carried.Count);
+        ShowGodotMarks();
         service.FileProblemsChanged(document);
         return own;
     }
@@ -306,18 +345,20 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     };
 
     /// <summary>Passenger's own diagnostics of the file for the text as it stands, as its pull marks them: Aspire's, its reads
-    /// of configuration keys nothing gives (<see cref="ConfigurationFindingsAsync"/>) and of localized strings a language lacks
-    /// (<see cref="LocalizationFindingsAsync"/>); an agent's <c>diagnostics</c> lists them.</summary>
+    /// of configuration keys nothing gives (<see cref="ConfigurationFindingsAsync"/>), of localized strings a language lacks
+    /// (<see cref="LocalizationFindingsAsync"/>) and what its Godot scenes say of it (<see cref="GodotFindingsAsync"/>); an
+    /// agent's <c>diagnostics</c> lists them.</summary>
     internal async Task<IReadOnlyList<Diagnostic>> PassengerFindingsAsync(LspDocument lsp, CancellationToken cancel)
     {
         IReadOnlyList<Diagnostic> aspire = await AspireFindingsAsync(lsp, cancel);
-        return [.. aspire, .. await ConfigurationFindingsAsync(aspire, cancel), .. await LocalizationFindingsAsync(cancel)];
+        return [.. aspire, .. await ConfigurationFindingsAsync(aspire, cancel), .. await LocalizationFindingsAsync(cancel), .. await GodotFindingsAsync(cancel)];
     }
 
     /// <summary>The file's diagnostics pulled and shown now, Aspire's with them, as a typing pause's pull shows them: for an
     /// agent's call that reads Passenger's own fixes, which stand on them.</summary>
     internal async Task PullNowAsync(CancellationToken cancel)
     {
+        Stale = false;
         if (Lsp is { } lsp && await ShowPulledAsync(lsp, cancel) is { } own)
         {
             await ShowProjectWideAsync(lsp, own, cancel);
@@ -326,11 +367,13 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
 
     /// <summary>The hints shown of those the server gave for a text: parameter names but those that say nothing, and
     /// types where <see cref="TypeHints"/> puts them (by the text's <paramref name="syntax"/>), each kept with the
-    /// server's own for its hover card. Reads nothing but what it is given, so it runs off the UI thread.</summary>
-    private static HintList Shown(TextSnapshot text, ParsedText? syntax, bool razor, IReadOnlyList<LspInlayHint> hints)
+    /// server's own for its hover card; with the scenes' hints of GetNode paths (<paramref name="godot"/>). Reads nothing
+    /// but what it is given, so it runs off the UI thread.</summary>
+    private static HintList Shown(TextSnapshot text, ParsedText? syntax, bool razor, IReadOnlyList<LspInlayHint> hints, IReadOnlyList<InlayHint> godot)
     {
         ServerLines lines = ServerLines.Of(text);
-        List<InlayHint> shown = new(hints.Count);
+        List<InlayHint> shown = new(hints.Count + godot.Count);
+        shown.AddRange(godot);
         foreach (LspInlayHint hint in hints)
         {
             string label = hint.Label.Trim();

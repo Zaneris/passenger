@@ -1,3 +1,4 @@
+using System.Buffers;
 using Avalonia;
 using Passenger.Core;
 
@@ -50,6 +51,7 @@ public sealed class TestNode : Observable, ITreeRow
     private TestState state;
     private long ticks;
     private bool isExpanded;
+    private bool codeChanged;
 
     /// <summary>How many outcomes the method's run is waiting for.</summary>
     private int expected;
@@ -73,12 +75,13 @@ public sealed class TestNode : Observable, ITreeRow
     public int Depth { get; private set; }
     public Thickness Indent => new(Depth * 16, 0, 0, 0);
 
-    /// <summary>Where the tree has it: its groups' names and its own, by which a load or a regrouping finds it again.</summary>
-    internal string Key { get; set; } = string.Empty;
-
     /// <summary>A class's, method's or data row's test, whatever groups it is under: by it the same row is found again
     /// when the grouping changes, keeping its results and whether it is open.</summary>
-    internal string? Identity { get; set; }
+    internal TestIdentity? Identity { get; set; }
+
+    /// <summary>Where the tree has it, by which a load finds it again: under its parent, its kind, its name and what tells
+    /// it apart where its name does not (a project's file, a class's identity).</summary>
+    internal TestPlace Place => new(Parent, Kind, Name, Kind == TestNodeKind.Project ? Project : null, Identity);
 
     /// <summary>A method's target framework when its project is built for several, which its full name does not say.</summary>
     public string? Framework { get; internal set; }
@@ -149,8 +152,68 @@ public sealed class TestNode : Observable, ITreeRow
         _ => Children.SelectMany(c => c.Methods),
     };
 
-    /// <summary>What the details pane shows: each result's outcome, message, stack, output and the files it carries.</summary>
-    public string Details => DetailsOf(results);
+    /// <summary>When the earlier session's run its results are kept from began, while every one of them is; null once any is
+    /// this session's, or it has none.</summary>
+    public DateTimeOffset? EarlierRun
+    {
+        get
+        {
+            DateTimeOffset? latest = null;
+            foreach (TestOutcome result in results)
+            {
+                if (result.Earlier is not { } ran)
+                {
+                    return null;
+                }
+                latest = latest is { } was && was > ran ? was : ran;
+            }
+            return latest;
+        }
+    }
+
+    /// <summary>A method's code when it last ran, as its file read then (<see cref="DeclaredTest.Code"/>); null where the
+    /// code was not read.</summary>
+    internal ulong? RanCode { get; set; }
+
+    /// <summary>A method showing a run's results, this session's or an earlier one's, whose code has changed since that run,
+    /// or a row of one.</summary>
+    public bool CodeChanged
+    {
+        get => codeChanged || (Kind == TestNodeKind.Row && Parent?.codeChanged == true);
+        internal set
+        {
+            if (Set(ref codeChanged, value))
+            {
+                Raise(nameof(Details));
+                foreach (TestNode row in Children)
+                {
+                    row.Raise(nameof(CodeChanged));
+                    row.Raise(nameof(Details));
+                }
+            }
+        }
+    }
+
+    /// <summary>What the details pane shows: each result's outcome, message, stack, output and the files it carries, after
+    /// what they stand for where it is not the test as it is (<see cref="Standing"/>).</summary>
+    public string Details => Standing is { } words
+        ? $"{words}\n\n{DetailsOf(results)}"
+        : DetailsOf(results);
+
+    /// <summary>What a method's results say over them where they are not of the test as it is: when an earlier session's
+    /// run began, or that its code has changed since this session's run; null for neither.</summary>
+    public string? Standing => EarlierRun is { } ran ? EarlierWords(ran, CodeChanged)
+        : CodeChanged && results.Count > 0 ? ChangedSinceWords
+        : null;
+
+    /// <summary>What this session's results say over them once the test's code has changed since they ran.</summary>
+    public const string ChangedSinceWords = "The test's code has changed since it ran";
+
+    /// <summary>What results kept from an earlier session's run say over them: when that run began, and whether the
+    /// test's code has changed since.</summary>
+    public static string EarlierWords(DateTimeOffset ran, bool changed) =>
+        $"From an earlier run, at {ran.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)}"
+        + (changed ? "; the test's code has changed since" : string.Empty);
 
     /// <summary>Results as the details pane shows them, each output whole, or with <paramref name="outputTail"/> only its last
     /// lines, at most that many, and a note of what was left out.</summary>
@@ -236,7 +299,7 @@ public sealed class TestNode : Observable, ITreeRow
     /// <summary>A method or row about to run: its results go, and it is running until as many outcomes as it runs tests
     /// have come. A method run in part, <paramref name="running"/> naming the tests it runs (some of its data rows), keeps
     /// its results of its other tests.</summary>
-    internal void Begin(int tests, IReadOnlySet<string>? running = null)
+    internal void Begin(int tests, IReadOnlySet<TestItem>? running = null)
     {
         if (running is null)
         {
@@ -244,8 +307,8 @@ public sealed class TestNode : Observable, ITreeRow
         }
         else
         {
-            HashSet<string> its = [.. Items.Select(i => i.Key)];
-            results.RemoveAll(r => r.Test.Key is var key && (running.Contains(key) || !its.Contains(key)));
+            HashSet<TestItem> its = new(Items, TestItem.ById);
+            results.RemoveAll(r => running.Contains(r.Test) || !its.Contains(r.Test));
         }
         Array.Clear(counts);
         long kept = 0;
@@ -256,13 +319,24 @@ public sealed class TestNode : Observable, ITreeRow
         }
         AddTicks(kept - ticks);
         expected = results.Count + tests;
+        CodeChanged = false;
         State = TestState.Running;
         Raise(nameof(Details));
     }
 
     internal void Add(TestOutcome outcome)
     {
-        results.Add(outcome);
+        int told = outcome.Again ? results.FindLastIndex(r => TestItem.ById.Equals(r.Test, outcome.Test) && r.Row == outcome.Row) : -1;
+        if (told >= 0)
+        {
+            counts[(int)results[told].State]--;
+            AddTicks(-results[told].Duration.Ticks);
+            results[told] = outcome;
+        }
+        else
+        {
+            results.Add(outcome);
+        }
         counts[(int)outcome.State]++;
         AddTicks(outcome.Duration.Ticks);
         State = Combine(counts, running: results.Count < expected);
@@ -304,6 +378,8 @@ public sealed class TestNode : Observable, ITreeRow
         results.AddRange(source.results);
         Array.Copy(source.counts, counts, counts.Length);
         expected = source.expected;
+        RanCode = source.RanCode;
+        CodeChanged = source.codeChanged;
         AddTicks(source.ticks - ticks);
         // Not through State, whose change a method's groups take: they are counted once the tree is made.
         if (state != source.state)
@@ -403,15 +479,31 @@ public sealed class TestTree
     private IReadOnlyList<ProjectTests> inputs = [];
     private IReadOnlyList<TestGroupLevel> builtWith = TestGroupings.Default;
 
-    /// <summary>The rows that show each test a runner found, by its key: its data row's, else its method's, under each
+    /// <summary>The rows that show each test a runner found, by its id: its data row's, else its method's, under each
     /// group it is in.</summary>
-    private Dictionary<string, List<TestNode>> byKey = new(StringComparer.Ordinal);
+    private Dictionary<TestItem, List<TestNode>> byKey = new(TestItem.ById);
 
     /// <summary>The methods shown from the code's tests, by the file the code declares them in: those a move of lines moves.</summary>
     private Dictionary<string, List<TestNode>> byFile = new(StringComparer.Ordinal);
 
     /// <summary>The methods and rows the run under way began, by identity, which its end ends wherever they are by then.</summary>
-    private HashSet<string> running = new(StringComparer.Ordinal);
+    private HashSet<TestIdentity> running = [];
+
+    /// <summary>An earlier session's results of each method by its identity (<see cref="Keep"/>), until it runs.</summary>
+    private Dictionary<string, KeptRun> kept = new(StringComparer.Ordinal);
+
+    /// <summary>The identities kept of a multi-targeted project's methods, one for each framework, by the identity the
+    /// method has without one.</summary>
+    private Dictionary<string, List<string>> keptUnframed = new(StringComparer.Ordinal);
+
+    /// <summary>The methods showing an earlier session's results, whose code is looked at again as their files are read.</summary>
+    private readonly HashSet<TestNode> fromEarlier = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>The methods this session has run, whose code is looked at again as their files are read too.</summary>
+    private readonly HashSet<TestNode> ranHere = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>A method's code as its file reads now (<see cref="TestFinder.CodeOf"/>); null where it is not known.</summary>
+    public Func<TestNode, ulong?>? CodeOf { get; set; }
 
     private HashSet<TestState> outcomes = [];
     private string emptyText = string.Empty;
@@ -577,37 +669,147 @@ public sealed class TestTree
     }
 
     /// <summary>The row a test is shown by: its data row's, else its method's (the first, when it is under two groups).</summary>
-    public TestNode? Node(TestItem test) => byKey.TryGetValue(test.Key, out List<TestNode>? nodes) ? nodes[0] : null;
+    public TestNode? Node(TestItem test) => byKey.TryGetValue(test, out List<TestNode>? nodes) ? nodes[0] : null;
+
+    /// <summary>An earlier session's results, by method identity: each method that has none of its own takes its own, as an
+    /// earlier run's, now or once the tree shows it, until it runs again. A method shown without its target framework
+    /// (its project not yet built for several) takes those of every framework it ran for.</summary>
+    public void Keep(IReadOnlyDictionary<string, KeptRun> runs)
+    {
+        kept = new(runs, StringComparer.Ordinal);
+        keptUnframed = new(StringComparer.Ordinal);
+        foreach (string identity in kept.Keys.Where(k => !k.StartsWith('|')))
+        {
+            string unframed = identity[identity.IndexOf('|')..];
+            if (!keptUnframed.TryGetValue(unframed, out List<string>? framed))
+            {
+                keptUnframed[unframed] = framed = [];
+            }
+            framed.Add(identity);
+        }
+        bool reshaped = false;
+        foreach (TestNode method in Methods)
+        {
+            reshaped |= TakeKept(method);
+        }
+        foreach (TestNode root in Roots)
+        {
+            root.Recount();
+        }
+        if (reshaped || outcomes.Count > 0)
+        {
+            ShowRows();
+        }
+        Updated?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Looks at the code of each method showing a run's results again: whether it has changed since.</summary>
+    public void CheckCode()
+    {
+        foreach (TestNode method in fromEarlier.Concat(ranHere))
+        {
+            method.CodeChanged = method.RanCode is { } ran && CodeOf?.Invoke(method) is { } now && now != ran;
+        }
+    }
+
+    /// <summary>A method with no results of its own takes what was kept of it; whether it made rows that show.</summary>
+    private bool TakeKept(TestNode method)
+    {
+        if (method.Results.Count > 0 || method.Identity is not { } identity || running.Contains(identity))
+        {
+            return false;
+        }
+        List<KeptRun> runs = KeptOf(kept, identity, out KeptRun? own) is not null ? [own!]
+            : KeptOf(keptUnframed, identity, out List<string>? framed) is not null ? [.. framed!.Select(kept.GetValueOrDefault).OfType<KeptRun>()]
+            : [];
+        if (runs.Count == 0 || method.ProjectPath is not { } project)
+        {
+            return false;
+        }
+        bool reshaped = false;
+        foreach (KeptRun run in runs)
+        {
+            // Rows in their names' order, as a runner's are shown.
+            foreach (KeptResult result in run.Results.OrderBy(r => r.Row, StringComparer.Ordinal))
+            {
+                TestOutcome outcome = result.Outcome(project, run.Ran);
+                (outcome.Row is { } name ? MadeRow(method, name, ref reshaped) : null)?.Add(outcome);
+                method.Add(outcome);
+            }
+        }
+        method.RanCode = runs.Select(r => r.Code).Distinct().Count() == 1 ? runs[0].Code : null;
+        fromEarlier.Add(method);
+        method.CodeChanged = method.RanCode is { } ran && CodeOf?.Invoke(method) is { } now && now != ran;
+        return reshaped;
+    }
+
+    /// <summary>The key a map by kept identities has a method's under, and what it holds there; null where it has none.
+    /// The identity is looked for as it is written, never made a string: a load or a run of thousands of methods asks for
+    /// each.</summary>
+    private static string? KeptOf<T>(Dictionary<string, T> map, TestIdentity identity, out T? found)
+        where T : class
+    {
+        found = null;
+        if (map.Count == 0)
+        {
+            return null;
+        }
+        int length = identity.KeptLength;
+        char[]? rented = null;
+        Span<char> into = length <= TestIdentity.OnStack ? stackalloc char[TestIdentity.OnStack] : (rented = ArrayPool<char>.Shared.Rent(length));
+        identity.WriteKept(into);
+        string? keptAs = map.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(into[..length], out string? actual, out found) ? actual : null;
+        if (rented is not null)
+        {
+            ArrayPool<char>.Shared.Return(rented);
+        }
+        return keptAs;
+    }
 
     /// <summary>The tests about to run go to running, each method waiting for as many outcomes as it runs tests and
     /// keeping its results of the data rows the run leaves out; the rows a method's last run made wait to be made again.</summary>
     public void Begin(IReadOnlyList<TestItem> tests)
     {
-        Dictionary<TestNode, HashSet<string>> methods = new(ReferenceEqualityComparer.Instance);
+        Dictionary<TestNode, HashSet<TestItem>> methods = new(ReferenceEqualityComparer.Instance);
         List<TestNode> rows = [];
         foreach (TestItem test in tests)
         {
-            string key = test.Key;
-            foreach (TestNode node in byKey.GetValueOrDefault(key) ?? [])
+            foreach (TestNode node in byKey.GetValueOrDefault(test) ?? [])
             {
                 TestNode method = node.Kind == TestNodeKind.Row ? node.Parent! : node;
-                if (!methods.TryGetValue(method, out HashSet<string>? keys))
+                if (!methods.TryGetValue(method, out HashSet<TestItem>? keys))
                 {
-                    methods[method] = keys = new(StringComparer.Ordinal);
+                    methods[method] = keys = new(TestItem.ById);
                 }
-                keys.Add(key);
+                keys.Add(test);
                 rows.AddRange(node.Kind == TestNodeKind.Row ? [node] : node.Children.Where(c => c.Item is null));
             }
         }
-        foreach ((TestNode method, HashSet<string> keys) in methods)
+        foreach ((TestNode method, HashSet<TestItem> keys) in methods)
         {
             method.Begin(keys.Count, keys.Count < method.Items.Count ? keys : null);
+            // What it says from now on is this session's: an earlier one's no longer stands for it.
+            if (method.Identity is { } identity)
+            {
+                if (KeptOf(kept, identity, out KeptRun? _) is { } own)
+                {
+                    kept.Remove(own);
+                }
+                _ = KeptOf(keptUnframed, identity, out List<string>? framed);
+                foreach (string each in framed ?? [])
+                {
+                    kept.Remove(each);
+                }
+            }
+            fromEarlier.Remove(method);
+            ranHere.Add(method);
+            method.RanCode = CodeOf?.Invoke(method);
         }
         foreach (TestNode row in rows)
         {
             row.Begin(1);
         }
-        running = [.. methods.Keys.Concat(rows).Select(n => n.Identity).OfType<string>()];
+        running = [.. methods.Keys.Concat(rows).Where(n => n.Identity is not null).Select(n => n.Identity!.Value)];
         if (outcomes.Count > 0)
         {
             ShowRows();
@@ -623,7 +825,7 @@ public sealed class TestTree
         bool reshaped = false;
         foreach (TestOutcome outcome in outcomes)
         {
-            foreach (TestNode node in byKey.GetValueOrDefault(outcome.Test.Key) ?? [])
+            foreach (TestNode node in byKey.GetValueOrDefault(outcome.Test) ?? [])
             {
                 TestNode method = node.Kind == TestNodeKind.Row ? node.Parent! : node;
                 TestNode? row = node.Kind == TestNodeKind.Row ? node : outcome.Row is { } name ? MadeRow(method, name, ref reshaped) : null;
@@ -659,7 +861,7 @@ public sealed class TestTree
             }
             node.End();
         }
-        running = new(StringComparer.Ordinal);
+        running = [];
         if (Grouping.Contains(TestGroupLevel.Duration))
         {
             Build();
@@ -785,11 +987,11 @@ public sealed class TestTree
     private void Build()
     {
         builtWith = Grouping;
-        Dictionary<string, TestNode> before = new(StringComparer.Ordinal);
-        Dictionary<string, TestNode> earlier = new(StringComparer.Ordinal);
+        Dictionary<TestPlace, TestNode> before = [];
+        Dictionary<TestIdentity, TestNode> earlier = [];
         foreach (TestNode old in Every())
         {
-            before[old.Key] = old;
+            before[old.Place] = old;
             if (old.Identity is { } identity)
             {
                 earlier.TryAdd(identity, old);
@@ -805,35 +1007,26 @@ public sealed class TestTree
         }
         placed.Sort(Compare);
 
-        Dictionary<string, TestNode> made = new(StringComparer.Ordinal);
+        Dictionary<TestPlace, TestNode> made = [];
         HashSet<TestNode> taken = new(ReferenceEqualityComparer.Instance);
         HashSet<TestNode> hadChildren = new(ReferenceEqualityComparer.Instance);
         Dictionary<TestNode, List<TestNode>> runRows = new(ReferenceEqualityComparer.Instance);
-        Dictionary<string, TestNode> first = new(StringComparer.Ordinal);
+        Dictionary<TestIdentity, TestNode> first = [];
         List<(TestNode Copy, TestNode Of)> copies = [];
-        Dictionary<string, List<TestNode>> keyed = new(StringComparer.Ordinal);
+        Dictionary<TestItem, List<TestNode>> keyed = new(TestItem.ById);
         Dictionary<string, List<TestNode>> files = new(StringComparer.Ordinal);
         List<TestNode> roots = [];
         List<TestNode> methods = [];
         foreach ((Entry entry, List<Segment> path, (string Label, string Full) type) in placed)
         {
             TestNode? parent = null;
-            string key = string.Empty;
             foreach (Segment segment in path)
             {
-                key += $"/{(int)segment.Kind}:{segment.Id ?? segment.Name}";
-                parent = Node(parent, segment.Kind, segment.Name, key, null);
-                if (segment.Kind == TestNodeKind.Project)
-                {
-                    parent.Project = entry.Project.Project;
-                }
+                parent = Node(parent, segment.Kind, segment.Name, null, segment.Id);
             }
-            string owner = $"{entry.IdentityFramework}|{entry.Project.Project}::";
-            key += $"/{(int)TestNodeKind.Class}:{owner}{type.Full}";
-            TestNode @class = Node(parent, TestNodeKind.Class, type.Label, key, $"class:{owner}{type.Full}");
-            key += $"/{(int)TestNodeKind.Method}:{entry.Name}";
+            TestNode @class = Node(parent, TestNodeKind.Class, type.Label, new TestIdentity(entry.IdentityFramework, entry.Project.Project, type.Full, OfClass: true));
             bool reused = false;
-            TestNode method = Node(@class, TestNodeKind.Method, entry.Name, key, entry.Identity, _ => reused = true);
+            TestNode method = Node(@class, TestNodeKind.Method, entry.Name, entry.Identity, reusing: _ => reused = true);
             method.Framework = entry.Several ? entry.Framework : null;
             method.FromCode = entry.FromCode;
             if (entry.FromCode?.Path is { } file)
@@ -858,12 +1051,12 @@ public sealed class TestTree
                 TestNode shows = method;
                 if ((test.Row ?? entry.Named.GetValueOrDefault(test)) is { } row)
                 {
-                    shows = Node(method, TestNodeKind.Row, row, $"{key}/{(int)TestNodeKind.Row}:{row}", $"{entry.Identity}::{row}");
+                    shows = Node(method, TestNodeKind.Row, row, entry.Identity with { Row = row });
                     shows.Item = test;
                 }
-                if (!keyed.TryGetValue(test.Key, out List<TestNode>? nodes))
+                if (!keyed.TryGetValue(test, out List<TestNode>? nodes))
                 {
-                    keyed[test.Key] = nodes = [];
+                    keyed[test] = nodes = [];
                 }
                 nodes.Add(shows);
             }
@@ -876,9 +1069,16 @@ public sealed class TestTree
             {
                 method.Children.Add(row);
                 row.Reparent(method);
-                row.Key = $"{method.Key}/{(int)TestNodeKind.Row}:{row.Name}";
                 restored.Add(row);
             }
+        }
+        // A method that has not run in this session shows what an earlier one's run left, until it runs.
+        HashSet<TestNode> shown = new(methods, ReferenceEqualityComparer.Instance);
+        fromEarlier.RemoveWhere(m => !shown.Contains(m));
+        ranHere.RemoveWhere(m => !shown.Contains(m));
+        foreach (TestNode method in methods)
+        {
+            TakeKept(method);
         }
         // A test shown again under another group has its results there too, and the rows its run made.
         foreach ((TestNode copy, TestNode of) in copies)
@@ -892,7 +1092,7 @@ public sealed class TestTree
                 }
                 else
                 {
-                    TestNode copied = new(TestNodeKind.Row, row.Name, copy) { Key = $"{copy.Key}/{(int)TestNodeKind.Row}:{row.Name}", Identity = row.Identity };
+                    TestNode copied = new(TestNodeKind.Row, row.Name, copy) { Identity = row.Identity };
                     copied.CopyFrom(row);
                     copy.Children.Add(copied);
                 }
@@ -915,19 +1115,20 @@ public sealed class TestTree
         byKey = keyed;
         byFile = files;
 
-        // The key's node: this build's, else the one before there, else the same test's elsewhere (emptied), else a new one.
-        TestNode Node(TestNode? parent, TestNodeKind kind, string name, string key, string? identity, Action<TestNode>? reusing = null)
+        // The place's node: this build's, else the one before there, else the same test's elsewhere (emptied), else a new one.
+        TestNode Node(TestNode? parent, TestNodeKind kind, string name, TestIdentity? identity, string? project = null, Action<TestNode>? reusing = null)
         {
-            if (made.TryGetValue(key, out TestNode? node))
+            TestPlace place = new(parent, kind, name, project, identity);
+            if (made.TryGetValue(place, out TestNode? node))
             {
                 return node;
             }
-            node = before.TryGetValue(key, out TestNode? there) && Fits(there) ? there
-                : identity is not null && earlier.TryGetValue(identity, out TestNode? elsewhere) && Fits(elsewhere) ? elsewhere
+            node = before.TryGetValue(place, out TestNode? there) && Fits(there) ? there
+                : identity is { } its && earlier.TryGetValue(its, out TestNode? elsewhere) && Fits(elsewhere) ? elsewhere
                 : null;
             if (node is null)
             {
-                node = new TestNode(kind, name, parent) { Identity = identity };
+                node = new TestNode(kind, name, parent) { Identity = identity, Project = project };
             }
             else
             {
@@ -943,12 +1144,11 @@ public sealed class TestTree
                 }
                 node.Reparent(parent);
             }
-            node.Key = key;
             node.Children.Clear();
             node.Items.Clear();
             node.FromCode = null;
             node.Item = null;
-            made[key] = node;
+            made[place] = node;
             if (parent is null)
             {
                 roots.Add(node);
@@ -969,7 +1169,7 @@ public sealed class TestTree
     private List<Entry> Entries()
     {
         List<Entry> entries = [];
-        Dictionary<string, Entry> byIdentity = new(StringComparer.Ordinal);
+        Dictionary<TestIdentity, Entry> byIdentity = [];
         Dictionary<string, int> frameworks = new(StringComparer.Ordinal);
         for (int order = 0; order < inputs.Count; order++)
         {
@@ -999,7 +1199,7 @@ public sealed class TestTree
                 {
                     TestItem? named = test.Framework is not null && test.Row is null && cases.TryGetValue(test.Method, out TestItem? owner) ? owner : null;
                     string method = named?.Method ?? test.Method;
-                    string identity = $"{(several ? framework : null)}|{project.Project}::{method}";
+                    TestIdentity identity = new(several ? framework : null, project.Project, method);
                     if (!byIdentity.TryGetValue(identity, out Entry? entry))
                     {
                         entry = new Entry(project, order, framework, several, method, identity, entries.Count, frameworks);
@@ -1026,7 +1226,7 @@ public sealed class TestTree
 
     /// <summary>The groups a method is under, outermost first, one list for each place it is in: as many as its categories,
     /// grouped by them. Its framework, when its project has several, is under its project unless it is a level itself.</summary>
-    private List<List<Segment>> Paths(Entry entry, Dictionary<string, TestNode> earlier)
+    private List<List<Segment>> Paths(Entry entry, Dictionary<TestIdentity, TestNode> earlier)
     {
         List<List<Segment>> paths = [[]];
         foreach (TestGroupLevel level in Grouping)
@@ -1106,7 +1306,7 @@ public sealed class TestTree
         for (int at = 0; at < Math.Min(a.Path.Count, b.Path.Count); at++)
         {
             (Segment x, Segment y) = (a.Path[at], b.Path[at]);
-            int order = x.Kind != y.Kind ? x.Kind.CompareTo(y.Kind)
+            int order = x.Kind != y.Kind ? ((int)x.Kind).CompareTo((int)y.Kind)
                 : x.Rank != y.Rank ? x.Rank.CompareTo(y.Rank)
                 : string.CompareOrdinal(x.Name, y.Name);
             if (order != 0)
@@ -1133,7 +1333,7 @@ public sealed class TestTree
                 return child;
             }
         }
-        TestNode row = new(TestNodeKind.Row, name, method) { Key = $"{method.Key}/{(int)TestNodeKind.Row}:{name}", Identity = $"{method.Identity}::{name}" };
+        TestNode row = new(TestNodeKind.Row, name, method) { Identity = method.Identity is { } identity ? identity with { Row = name } : null };
         method.Children.Add(row);
         method.RaiseShape();
         reshaped |= method.IsExpanded;
@@ -1178,7 +1378,7 @@ public sealed class TestTree
 
     /// <summary>A test method of a project, under one of its target frameworks when it has several: what the code
     /// declares and what a runner found of it.</summary>
-    private sealed class Entry(ProjectTests project, int order, string? framework, bool several, string method, string identity, int index, Dictionary<string, int> frameworks)
+    private sealed class Entry(ProjectTests project, int order, string? framework, bool several, string method, TestIdentity identity, int index, Dictionary<string, int> frameworks)
     {
         public ProjectTests Project { get; } = project;
 
@@ -1199,7 +1399,7 @@ public sealed class TestTree
 
         public string Name => Split(Method).Method;
 
-        public string Identity { get; } = identity;
+        public TestIdentity Identity { get; } = identity;
 
         /// <summary>Its place among the methods as found, the last word in their order.</summary>
         public int Index { get; } = index;
@@ -1218,3 +1418,25 @@ public sealed class TestTree
 
     private sealed record Placed(Entry Entry, List<Segment> Path, (string Label, string Full) Class);
 }
+
+/// <summary>A class's, method's or data row's test as the tree knows it, whatever groups it is under: its project, its
+/// target framework where the project is built for several, its full name and its data row's name. It holds the
+/// project's own path and the test's own names, so thousands of rows copy none of them.</summary>
+internal readonly record struct TestIdentity(string? Framework, string Project, string Name, string? Row = null, bool OfClass = false)
+{
+    /// <summary>The longest kept identity written on the stack; a longer one is written into a rented array.</summary>
+    public const int OnStack = 512;
+
+    /// <summary>A method's identity as the folder's state keeps its results by (<see cref="TestResultsState"/>).</summary>
+    public string Kept => $"{Framework}|{Project}::{Name}";
+
+    /// <summary>The length of its <see cref="Kept"/>.</summary>
+    public int KeptLength => (Framework?.Length ?? 0) + 1 + Project.Length + 2 + Name.Length;
+
+    /// <summary>Its <see cref="Kept"/> written into <paramref name="into"/>, which <see cref="KeptLength"/> fits.</summary>
+    public void WriteKept(Span<char> into) => _ = into.TryWrite($"{Framework}|{Project}::{Name}", out _);
+}
+
+/// <summary>Where a row of the tree is, by which a load finds it again: its parent row, its kind, its name and what tells
+/// it apart where its name does not (a project row's file, a class's, method's or data row's test).</summary>
+internal readonly record struct TestPlace(TestNode? Parent, TestNodeKind Kind, string Name, string? Project, TestIdentity? Identity);

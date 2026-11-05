@@ -8,7 +8,7 @@ namespace Passenger.App.Updates;
 /// <summary>How this copy of Passenger installs a newer release: it downloads the release's package for this system in
 /// the background, checks it against the SHA-256 the release gives (and the app's signature on macOS), and installs it
 /// as Passenger ends, starting the new version when the person chose Restart to Update. Only a copy that Passenger's
-/// installer (Windows) or disk image (macOS) put in place has one.</summary>
+/// installer (Windows), disk image (macOS) or archive (Linux) put in place has one.</summary>
 public abstract class Updater
 {
     /// <summary>Where this copy is installed, for the log.</summary>
@@ -16,6 +16,26 @@ public abstract class Updater
 
     /// <summary>The version made ready to install, or null.</summary>
     public string? Ready { get; protected set; }
+
+    /// <summary>Why the last <see cref="Install"/> left the copy as it was, for the next start to say; null when it
+    /// installed, or had nothing to install.</summary>
+    public string? NotInstalled { get; protected set; }
+
+    /// <summary>What installing asks of the person, said before Restart to Update (an administrator's password); null for
+    /// an install that asks nothing, which closing Passenger installs too.</summary>
+    public virtual string? Asks => null;
+
+    /// <summary>Whether this copy leaves a newer release to something else after all (a package manager), found off the
+    /// caller's thread before anything is downloaded: null when it installs the release itself.</summary>
+    public virtual Task<UpdatedElsewhere?> ElsewhereAsync(CancellationToken cancel) => Task.FromResult<UpdatedElsewhere?>(null);
+
+    /// <summary>Removes what an earlier update left beside this copy (the release it replaced), as the copy starts.</summary>
+    public virtual Task TidyAsync() => Task.CompletedTask;
+
+    /// <summary>What this copy does about a newer release, for the start's log, once whether a package manager owns it is
+    /// known: a package's is updated by its package manager, an unpacked copy's by hand, an installed copy's by itself.</summary>
+    public async Task<string> UpdatedByAsync(CancellationToken cancel) =>
+        await ElsewhereAsync(cancel).ConfigureAwait(false) is { } elsewhere ? elsewhere.Why : $"This copy installs updates itself, in {Installed}.";
 
     /// <summary>Downloads the release's package for this system and checks it, off the caller's thread, reporting the
     /// percent done. Never throws but for <paramref name="cancel"/>: a refusal or a failure is an answer.</summary>
@@ -292,7 +312,11 @@ public abstract class Updater
             why = string.Empty;
             return new VelopackUpdater(VelopackLocator.Current);
         }
-        why = "Passenger installs updates itself on macOS and Windows";
+        if (OperatingSystem.IsLinux())
+        {
+            return LinuxUpdater.OfThisInstall(Path.Combine(stateFolder, "updates"), out why);
+        }
+        why = "Passenger installs updates itself on macOS, Windows and Linux";
         return null;
     }
 }
@@ -304,11 +328,20 @@ public sealed record OtherCopy(int ProcessId, string? Folder)
     public bool Relay => Folder is not null;
 }
 
+/// <summary>A copy whose updates come from elsewhere: what the person is told in place of a download, and whether the
+/// notice still links this system's download (a copy that would update itself once installed) or only the release's
+/// page (a package manager's copy, which nothing else may write over).</summary>
+public sealed record UpdatedElsewhere(string Why, bool Download);
+
 /// <summary>What downloading an update came to, with a line for the IDE's log.</summary>
 public abstract record UpdateOutcome(string Said)
 {
     /// <summary>Downloaded and checked, to install as Passenger ends.</summary>
     public sealed record Ready(string Said) : UpdateOutcome(Said);
+
+    /// <summary>Downloaded and checked, but installed only by a command the person runs (<paramref name="Command"/>):
+    /// this user cannot write the install, and no one can be asked for an administrator's password here.</summary>
+    public sealed record ByHand(string Command, string Said) : UpdateOutcome(Said);
 
     /// <summary>The release carries nothing this copy installs (no package for this system), so it is only announced.</summary>
     public sealed record Unavailable(string Said) : UpdateOutcome(Said);

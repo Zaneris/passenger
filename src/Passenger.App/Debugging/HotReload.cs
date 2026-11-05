@@ -10,47 +10,6 @@ using Passenger.Text;
 
 namespace Passenger.App.Debugging;
 
-/// <summary>What an Apply Changes came to.</summary>
-public enum HotReloadResult
-{
-    /// <summary>The program runs the edits now.</summary>
-    Applied,
-
-    /// <summary>The edits change no code the program runs (comments, whitespace on a line).</summary>
-    NothingToApply,
-
-    /// <summary>An edit the runtime cannot take while the program runs (Roslyn's rude edits): restarting applies it.</summary>
-    RestartNeeded,
-
-    /// <summary>The code does not compile: nothing is applied until it does.</summary>
-    Errors,
-
-    /// <summary>Hot Reload could not run or the runtime refused the update; the reason says which.</summary>
-    Failed,
-}
-
-/// <summary>What an Apply Changes came to, in words for the status bar and the Debug console, with the edits that could not
-/// be applied (each at its line, as Problems' Hot Reload tab lists them), the files and modules the update changed, and
-/// how long it took.</summary>
-public sealed record HotReloadOutcome(HotReloadResult Result, string Said)
-{
-    public IReadOnlyList<Problem> Problems { get; init; } = [];
-
-    /// <summary>The files whose edits the program now runs (or, with nothing to apply, whose edits needed nothing).</summary>
-    public IReadOnlyList<string> Files { get; init; } = [];
-
-    /// <summary>The modules updated, by name.</summary>
-    public IReadOnlyList<string> Modules { get; init; } = [];
-
-    /// <summary>How many methods the update replaced or added.</summary>
-    public int Methods { get; init; }
-
-    public TimeSpan Took { get; init; }
-
-    /// <summary>Of several programs' apply (a container run's services), those whose edits need them restarted, by name.</summary>
-    public IReadOnlyList<string> Restart { get; init; } = [];
-}
-
 /// <summary>How a restart for edits Hot Reload could not apply is made, given what the apply came to and whether it is for
 /// the services of a container run with Hot Reload (else the program debugged): true once restarted. The window's asks as
 /// Settings say; an agent's never asks.</summary>

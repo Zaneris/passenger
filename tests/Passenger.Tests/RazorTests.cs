@@ -18,9 +18,10 @@ namespace Passenger.Tests;
 
 /// <summary>Razor through the window, on a Blazor app made by <c>dotnet new blazor</c> with components of its own (one
 /// with its code in a code-behind, Tally.razor.cs, and no <c>@code</c>) and a Razor Page: a component's colours and its
-/// errors, completion of components, their parameters, HTML's elements and the C#, go to declaration from a tag, rename
-/// across markup and code, the code-behind's members completed, checked, found and renamed from the markup and back, a
-/// caller in a component's code block placed in its .razor by Call Hierarchy, and a Razor Page's errors and completion.
+/// errors, completion of components, their parameters, HTML's elements and the C#, its tags closed as they are typed, go
+/// to declaration from a tag, rename across markup and code, the code-behind's members completed, checked, found and
+/// renamed from the markup and back, a caller in a component's code block placed in its .razor by Call Hierarchy, a JS
+/// interop call going to its JavaScript, and a Razor Page's errors and completion.
 /// Each test opens its own window, on the server the last one left running, warm, and on the app as written (<see
 /// cref="SharedProject"/>).</summary>
 public sealed class RazorTests : IClassFixture<BlazorShop>
@@ -138,6 +139,163 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
         window.KeyTextInput("urr");
         Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "currentCount", "the code block's field, completed in C#");
         window.Close();
+    }
+
+    /// <summary>Typed a key at a time, as a person types: a start tag's '>' in a component's markup writes its end tag
+    /// after the caret, which one Undo takes away; "&lt;/" then writes the open element's name; a void element closes
+    /// itself; a generic's '>' in the code block writes nothing; and the setting that closes tags turns it off.</summary>
+    [AvaloniaFact]
+    public void A_start_tags_close_in_a_components_markup_writes_its_end_tag_and_a_generics_in_its_code_block_writes_none()
+    {
+        MainWindow window = app.Open("Components/Greeting.razor");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<p>Hello, @Name!</p>\n");
+        TypeEach(window, "<section>");
+        Ui.WaitFor(() => XamlTests.CaretLine(editor) == "<section>|</section>", () => $"Razor's end tag after the caret; the line reads {XamlTests.CaretLine(editor)}");
+        Ui.Run(window, EditorActions.Undo);
+        Ui.Settle();
+        Assert.Equal("<section>|", XamlTests.CaretLine(editor));
+        TypeEach(window, "</");
+        Ui.WaitFor(() => XamlTests.CaretLine(editor) == "<section></section>|", () => $"the open element's name after its \"</\"; the line reads {XamlTests.CaretLine(editor)}");
+        TypeEach(window, "<br>");
+        Ui.WaitFor(() => XamlTests.CaretLine(editor) == "<section></section><br />|", () => $"the void element closed in itself; the line reads {XamlTests.CaretLine(editor)}");
+
+        Ui.PlaceAfter(editor, "public int Times { get; set; }");
+        editor.ApplyEdits([new TextEdit(editor.Selections.Primary.Caret, 0, "\n\n    private readonly List")], SelectionSet.Single(editor.Selections.Primary.Caret + "\n\n    private readonly List".Length));
+        Ui.Settle();
+        TypeEach(window, "<int>");
+        Assert.Equal("    private readonly List<int>|", XamlTests.CaretLine(editor));
+
+        window.ApplySettings(window.Settings with { CloseTags = false });
+        Ui.PlaceAfter(editor, "<br />");
+        TypeEach(window, "<b>");
+        Assert.Equal("<section></section><br /><b>|", XamlTests.CaretLine(editor));
+        window.Close();
+    }
+
+    /// <summary>Typed without a pause, so no answer of Razor's lands between the keys: the end tag Razor wrote is passed all
+    /// the same, its text left one end tag with the caret after it.</summary>
+    [AvaloniaFact]
+    public void An_end_tag_typed_key_by_key_over_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come()
+    {
+        MainWindow window = app.Open("Components/Greeting.razor");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<p>Hello, @Name!</p>\n");
+        TypeEach(window, "<section>");
+        Ui.WaitFor(() => XamlTests.CaretLine(editor) == "<section>|</section>", () => $"Razor's end tag after the caret; the line reads {XamlTests.CaretLine(editor)}");
+        foreach (char c in "x</section>")
+        {
+            window.KeyTextInput(c.ToString());
+        }
+        Ui.Settle();
+        Assert.Equal("<section>x</section>|", XamlTests.CaretLine(editor));
+        window.Close();
+    }
+
+    /// <summary>Above the end tag Razor wrote, with a line between, typed without a pause: the tag is joined from the text as it
+    /// is there, and read once.</summary>
+    [AvaloniaFact]
+    public void An_end_tag_typed_on_a_line_above_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come()
+    {
+        MainWindow window = app.Open("Components/Greeting.razor");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<p>Hello, @Name!</p>\n");
+        TypeEach(window, "<section>");
+        Ui.WaitFor(() => XamlTests.CaretLine(editor) == "<section>|</section>", () => $"Razor's end tag after the caret; the line reads {XamlTests.CaretLine(editor)}");
+        Ui.Run(window, EditorActions.NewLine);
+        Ui.Run(window, EditorActions.NewLine);
+        Ui.Press(window, "UP");
+        foreach (char c in "</section>")
+        {
+            window.KeyTextInput(c.ToString());
+        }
+        Ui.Settle();
+        Assert.EndsWith("</section>|", XamlTests.CaretLine(editor), StringComparison.Ordinal);
+        Assert.Single(editor.Document.Snapshot.ToString().Split("</section>").Skip(1));
+        window.Close();
+    }
+
+    /// <summary>Text typed a key at a time, as a person types it.</summary>
+    /// <summary>A start tag's end tag Razor gives after the person typed on inside the new element: written after what was
+    /// typed, the caret before it, and one Undo takes the end tag alone away.</summary>
+    [AvaloniaFact]
+    public void A_start_tags_end_tag_that_comes_after_more_was_typed_goes_after_what_was_typed_as_a_step_of_Undo_of_its_own()
+    {
+        MainWindow window = app.Open("Components/Greeting.razor");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<p>Hello, @Name!</p>\n");
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNextAnswer(Passenger.Lsp.LspMethods.OnAutoInsert, _ => true, answered.Task);
+        try
+        {
+            foreach (char c in "<aside>")
+            {
+                window.KeyTextInput(c.ToString());
+            }
+            Ui.AwaitPumped(held, "Razor's end tag for the '>', held unanswered");
+            // Typed while the answer is held: the window is not quiet until it lands.
+            window.KeyTextInput("H");
+            window.KeyTextInput("i");
+            Ui.PumpUntil(() => XamlTests.CaretLine(editor) == "<aside>Hi|", "what was typed while Razor's answer is held");
+        }
+        finally
+        {
+            answered.TrySetResult();
+        }
+        Ui.WaitFor(() => XamlTests.CaretLine(editor) == "<aside>Hi|</aside>", () => $"Razor's late end tag after what was typed; the line reads {XamlTests.CaretLine(editor)}");
+        Ui.Run(window, EditorActions.Undo);
+        Ui.Settle();
+        Assert.Equal("<aside>Hi|", XamlTests.CaretLine(editor));
+        window.Close();
+    }
+
+    /// <summary>The same at two carets: the end tags Razor gives each '>' after the person typed on at both are written after
+    /// what was typed at each, and one Undo takes both away.</summary>
+    [AvaloniaFact]
+    public void Start_tags_end_tags_that_come_after_more_was_typed_at_two_carets_go_after_what_was_typed_at_each_as_one_step_of_Undo()
+    {
+        MainWindow window = app.Open("Components/Greeting.razor");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<p>Hello, @Name!</p>\n");
+        int place = editor.Selections.Primary.Caret;
+        editor.ApplyEdits([new TextEdit(place, 0, "\n\n")], SelectionSet.Create([Selection.At(place), Selection.At(place + 1)], 0));
+        Ui.Settle();
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNextAnswer(Passenger.Lsp.LspMethods.OnAutoInsert, _ => true, answered.Task);
+        try
+        {
+            foreach (char c in "<aside>")
+            {
+                window.KeyTextInput(c.ToString());
+            }
+            Ui.AwaitPumped(held, "Razor's end tag for one of the '>'s, held unanswered");
+            window.KeyTextInput("H");
+            window.KeyTextInput("i");
+            Ui.PumpUntil(() => editor.Document.Snapshot.ToString().Contains("<aside>Hi\n<aside>Hi\n", StringComparison.Ordinal), "what was typed at both carets while Razor's answer is held");
+        }
+        finally
+        {
+            answered.TrySetResult();
+        }
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("<aside>Hi</aside>\n<aside>Hi</aside>\n", StringComparison.Ordinal),
+            () => $"Razor's late end tags after what was typed at each caret; the text reads {editor.Document.Snapshot}");
+        Assert.Equal(2, editor.Selections.Count);
+        Ui.Run(window, EditorActions.Undo);
+        Ui.Settle();
+        Assert.Contains("<aside>Hi\n<aside>Hi\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("</aside>", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    private static void TypeEach(MainWindow window, string text)
+    {
+        foreach (char c in text)
+        {
+            window.KeyTextInput(c.ToString());
+        }
+        Ui.Settle();
     }
 
     [AvaloniaFact]
@@ -271,6 +429,35 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
 
     /// <summary>Call Hierarchy of a method a component's code block calls lists the component's method as its caller, at
     /// the call in the .razor, and going to the caller opens the .razor at that line.</summary>
+    /// <summary>Go to Declaration from a JS interop call's identifier in a component lands on the JavaScript function: one
+    /// its collocated script declares there first, one only the app's scripts declare in them; from a call on a module
+    /// imported by its path, in that module, whichever overload imported it; and from the import's path, on the module's file.</summary>
+    [AvaloniaFact]
+    public void Go_to_declaration_from_a_js_interop_call_goes_to_its_function_in_the_collocated_script_the_apps_scripts_or_its_module()
+    {
+        MainWindow window = app.Open("Components/Pages/Bell.razor");
+        string bell = app.Named("Components/Pages/Bell.razor");
+        string script = app.Named("Components/Pages/Bell.razor.js");
+        Goes(window, bell, "InvokeVoidAsync(\"ri", script, "export function ring(times) {", "the collocated script's ring");
+        Goes(window, bell, "InvokeVoidAsync(\"gr", app.Named("wwwroot/js/site.js"), "function greet(name) {", "site.js's greet, which no collocated script declares");
+        Goes(window, bell, "InvokeVoidAsync(\"hu", script, "export function hush() {", "the imported module's hush");
+        Goes(window, bell, "\"./Components/Pa", script, "// Rings the bell, and hushes it.", "the module the import's path names");
+        Goes(window, bell, "tower.InvokeVoidAsync(\"ri", app.Named("wwwroot/js/tower.js"), "export function ring(times) {", "the ring of the module imported with a cancellation token");
+        window.Close();
+
+        static void Goes(MainWindow window, string from, string after, string to, string line, string what)
+        {
+            window.OpenFile(from);
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, after);
+            Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
+            Ui.WaitFor(() => window.EditorArea.Active?.Path == to, () => $"Go to Declaration to reach {what}; the window shows {window.EditorArea.Active?.Path} and the status bar said: {window.Status}");
+            editor = window.EditorArea.CodeEditor;
+            Assert.Equal(line, editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line));
+        }
+    }
+
     [AvaloniaFact]
     public void Call_hierarchy_of_a_method_a_components_code_block_calls_goes_to_the_call_in_its_razor_file()
     {
@@ -410,7 +597,9 @@ public sealed class RazorDebuggingTests : IDisposable
     }
 }
 
-/// <summary>A Blazor Web App as <c>dotnet new blazor</c> makes it (named Shop, for .NET 10, without HTTPS), in a folder.</summary>
+/// <summary>A Blazor Web App as <c>dotnet new blazor</c> makes it (named Shop, for .NET 10, without HTTPS), in a folder, its
+/// nuget.config naming the folder's own feed alone: it restores from the package cache tests/BlazorGraphs fills, never
+/// nuget.org.</summary>
 internal static class BlazorApp
 {
     /// <summary>A component whose code is all in its code-behind, Tally.razor.cs, its markup without <c>@code</c>.</summary>
@@ -435,12 +624,15 @@ internal static class BlazorApp
             ChildProcesses.DotnetCommand(["new", "blazor", "--output", folder, "--name", "Shop", "--framework", TestProjects.Framework, "--no-https", "--no-restore"]),
             limit: Limit);
         Assert.True(made.Succeeded, $"dotnet new blazor did not make the test's app (exit code {made.ExitCode}):\n{made.Output}{made.Error}");
+        TestFolders.Write(folder, "nuget.config", "<configuration>\n  <packageSources><clear /><add key=\"local\" value=\"feed\" /></packageSources>\n</configuration>\n");
+        Directory.CreateDirectory(Path.Combine(folder, "feed"));
     }
 }
 
 /// <summary>The Blazor app the Razor and web tests open, restored once a class and never built, its warm server shared
 /// (<see cref="SharedProject"/>): for Razor, a component that takes parameters and a page that sets them, a component whose
-/// code is all in its code-behind, and a Razor Page whose markup misnames a member of its model; for the web languages,
+/// code is all in its code-behind, a component calling JavaScript with its collocated script and scoped stylesheet, and a
+/// Razor Page whose markup misnames a member of its model; for the web languages,
 /// the files a web project carries beside its C#: wwwroot/js/site.js, TypeScript under Scripts/ with its tsconfig.json,
 /// wwwroot/css/site.css and an SCSS and a Less stylesheet beside it, a package.json with a dependency installed in
 /// node_modules, a component with a &lt;style&gt; and a &lt;script&gt;, and VS Code's settings and a dev container, each
@@ -473,6 +665,25 @@ public sealed class BlazorShop : SharedProject
     public const string Component = "@page \"/styled\"\n\n<h1 class=\"title\">Styled</h1>\n\n<style>\n    .title {\n        color: #1b6ec2;\n    }\n</style>\n\n"
         + "<script>\n    function shout(text) {\n        return text.toUpperCase();\n    }\n    shout(\"hi\");\n</script>\n";
 
+    /// <summary>A component calling JavaScript through JS interop: a function of the app's scripts, one of its collocated script,
+    /// and one of that script imported as a module.</summary>
+    public const string Bell = "@page \"/bell\"\n@inject IJSRuntime JS\n\n<div class=\"bell ringing\" id=\"chime\">\n    <button @onclick=\"RingAsync\">Ring</button>\n</div>\n\n@code {\n"
+        + "    private IJSObjectReference? module;\n    private IJSObjectReference? tower;\n\n    private async Task RingAsync()\n    {\n        await JS.InvokeVoidAsync(\"greet\", \"Ada\");\n"
+        + "        await JS.InvokeVoidAsync(\"ring\", 3);\n        module = await JS.InvokeAsync<IJSObjectReference>(\"import\", \"./Components/Pages/Bell.razor.js\");\n"
+        + "        await module.InvokeVoidAsync(\"hush\");\n"
+        + "        tower = await JS.InvokeAsync<IJSObjectReference>(\"import\", System.Threading.CancellationToken.None, \"./js/tower.js\");\n"
+        + "        await tower.InvokeVoidAsync(\"ring\", 1);\n    }\n}\n";
+
+    /// <summary>The component's scoped stylesheet: a rule through <c>::deep</c>, and an empty one, which the CSS server warns of.</summary>
+    public const string BellStyle = ".bell ::deep button {\n    color: #1b6ec2;\n}\n\n#chime {\n}\n";
+
+    /// <summary>The component's collocated script.</summary>
+    public const string BellScript = "// Rings the bell, and hushes it.\nexport function ring(times) {\n    console.log(\"ring \".repeat(times));\n}\n\n"
+        + "export function hush() {\n    console.log(\"hush\");\n}\n";
+
+    /// <summary>A module of the app's own, its ring another than the collocated script's.</summary>
+    public const string TowerScript = "// Rings the tower's bell.\nexport function ring(times) {\n    console.log(\"toll \".repeat(times));\n}\n";
+
     /// <summary>VS Code's settings, a comment in them as VS Code writes one, and a comma missing: the error a check finds.</summary>
     public const string VsCodeSettings = "{\n  // Laid out on save, as the team's editors do.\n  \"editor.formatOnSave\": true\n  \"files.trimTrailingWhitespace\": true\n}\n";
 
@@ -491,6 +702,7 @@ public sealed class BlazorShop : SharedProject
         ("Pages/Hello.cshtml.cs", "using Microsoft.AspNetCore.Mvc.RazorPages;\n\nnamespace Shop.Pages;\n\npublic class HelloModel : PageModel\n{\n"
             + "    public string Greeting { get; set; } = \"Hi\";\n\n    public int Count { get; set; }\n\n    public void OnGet()\n    {\n        Count = 3;\n    }\n}\n"),
         ("wwwroot/js/site.js", Script),
+        ("wwwroot/js/tower.js", TowerScript),
         ("Scripts/items.ts", Items),
         ("Scripts/cart.ts", Cart),
         ("tsconfig.json", Config),
@@ -501,6 +713,9 @@ public sealed class BlazorShop : SharedProject
         ("node_modules/left-pad/package.json", "{\n  \"name\": \"left-pad\",\n  \"version\": \"1.3.0\",\n  \"main\": \"index.js\"\n}\n"),
         ("node_modules/left-pad/index.js", "module.exports = (text, length) => text.padStart(length);\n"),
         ("Components/Pages/Styled.razor", Component),
+        ("Components/Pages/Bell.razor", Bell),
+        ("Components/Pages/Bell.razor.js", BellScript),
+        ("Components/Pages/Bell.razor.css", BellStyle),
         (".vscode/settings.json", VsCodeSettings),
         (".devcontainer/devcontainer.json", DevContainer),
     ];

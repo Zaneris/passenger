@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- GoDotTest runs inside a Godot game, which the tests write and restore from the Godot found's own packages: only its
+       package and those it depends on but GodotSharp come from here, downloaded alone, so no GodotSharp of nuget.org's
+       takes the place of the Godot's in the package cache. -->
+  <ItemGroup>
+    <PackageDownload Include="Chickensoft.GoDotTest" Version="[$(GoDotTestVersion)]" />
+    <PackageDownload Include="Chickensoft.Log" Version="[$(ChickensoftLogVersion)]" />
+    <PackageDownload Include="Chickensoft.Collections" Version="[$(ChickensoftCollectionsVersion)]" />
+    <PackageDownload Include="JetBrains.Annotations" Version="[$(JetBrainsAnnotationsVersion)]" />
+  </ItemGroup>
+</Project>

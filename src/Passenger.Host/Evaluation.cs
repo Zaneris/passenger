@@ -241,6 +241,7 @@ internal static class Evaluation
         {
             FrameworkReferences = [.. project.GetItems("FrameworkReference").Select(r => r.EvaluatedInclude).Distinct(StringComparer.OrdinalIgnoreCase)],
             WindowsTargeting = WindowsTargeting.Given(project),
+            TargetPath = NonEmpty(project.GetPropertyValue(CarriedProperties.TargetPath)),
         };
     }
 
@@ -282,7 +283,7 @@ internal static class Evaluation
         {
             Add(project.GetPropertyValue(property));
         }
-        foreach (string folder in project.GetPropertyValue("NuGetPackageFolders").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (string folder in project.GetPropertyValue(CarriedProperties.NuGetPackageFolders).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             Add(folder);
         }

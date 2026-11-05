@@ -29,7 +29,11 @@ public sealed class XamlDocument : IDisposable
     private readonly Debounce analysing;
     private (int Version, XamlProject Project, XamlFile File)? last;
     private readonly AnchoredList<Marker> live = new(m => m.Range, (m, range) => m with { Range = range });
-    private readonly AnchoredList<Marker> built = new(m => m.Range, (m, range) => m with { Range = range });
+    private readonly AnchoredList<BuiltMarker> built = new(b => b.Marker.Range, (b, range) => b with { Marker = b.Marker with { Range = range } });
+
+    /// <summary>The framework chosen for the file's multi-targeted project, whose inner build's problems alone are shown;
+    /// null for a project of one.</summary>
+    private string? framework;
     private readonly AnchoredList<(TextRange Range, ResourceGap Gap)> gaps = new(g => g.Range, (g, range) => (range, g.Gap));
     private bool disposed;
 
@@ -63,6 +67,12 @@ public sealed class XamlDocument : IDisposable
 
     /// <summary>The problems last found in the file, each with its fix when it has one.</summary>
     public IReadOnlyList<XamlDiagnostic> Diagnostics { get; private set; } = [];
+
+    /// <summary>The version of the text <see cref="Diagnostics"/> were found in; -1 before any check.</summary>
+    public int DiagnosedVersion { get; private set; } = -1;
+
+    /// <summary>Raised on the UI thread once a check's problems are the file's (<see cref="Diagnostics"/>).</summary>
+    public event EventHandler? Checked;
 
     /// <summary>The localized keys its last check found a language lacks, where each is read in the text as it stands.</summary>
     internal IReadOnlyList<(TextRange Range, ResourceGap Gap)> Gaps => gaps.Items;
@@ -184,6 +194,7 @@ public sealed class XamlDocument : IDisposable
             return;
         }
         Diagnostics = found;
+        DiagnosedVersion = version;
         ReadsLocalized = localizes;
         gaps.Set(Document.Text, [.. found.Where(d => d.Gap is not null).Select(d => (d.Range, d.Gap!))]);
         live.Set(Document.Text, [.. found.Select(d => new Marker(d.Range, d.Severity == XamlSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, d.Message)
@@ -191,6 +202,7 @@ public sealed class XamlDocument : IDisposable
             StartGravity = AnchorGravity.After,
         })]);
         Show();
+        Checked?.Invoke(this, EventArgs.Empty);
         IReadOnlyList<ColourUse> colours = await BackgroundWork.Run(() => Colours.InXaml(file, file.Variant));
         if (!disposed && Document.Text.Version == version)
         {
@@ -198,12 +210,14 @@ public sealed class XamlDocument : IDisposable
         }
     }
 
-    /// <summary>The XAML compiler's problems in this file from the build that just ended, placed on their lines; each
-    /// goes once its line is edited, or with the next build.</summary>
-    internal void Built(IEnumerable<Problem> problems)
+    /// <summary>The XAML compiler's problems in this file from the build that just ended, placed on their lines, those of
+    /// a multi-targeted project's inner builds shown for the framework chosen (<paramref name="chosen"/>) alone; each goes
+    /// once its line is edited, or with the next build.</summary>
+    internal void Built(IEnumerable<Problem> problems, string? chosen)
     {
+        framework = chosen;
         TextSnapshot text = Document.Text.Snapshot;
-        List<Marker> found = [];
+        List<BuiltMarker> found = [];
         foreach (Problem problem in problems)
         {
             if (problem.Position.Line >= text.LineCount)
@@ -213,11 +227,10 @@ public sealed class XamlDocument : IDisposable
             LineSpan line = text.GetLine(problem.Position.Line);
             int start = line.Start + Math.Min(problem.Position.Column, line.Length);
             TextRange range = WordAt(text, start, line);
-            string code = problem.Code is { Length: > 0 } c ? $"{c}: " : string.Empty;
-            found.Add(new Marker(range, problem.Severity == ProblemSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, code + Plain(problem.Message))
+            found.Add(new BuiltMarker(Marker.Coded(range, problem.Severity == ProblemSeverity.Error ? MarkerKind.Error : MarkerKind.Warning, problem.Code, Plain(problem.Message)) with
             {
                 StartGravity = AnchorGravity.After,
-            });
+            }, problem.Framework));
         }
         built.Set(Document.Text, found);
         Show();
@@ -275,7 +288,7 @@ public sealed class XamlDocument : IDisposable
             }
             shift += edit.Text.Length - edit.Length;
         }
-        return built.Drop(m => edited.Contains(after.GetLineFromOffset(Math.Min(m.Range.Start, after.Length))));
+        return built.Drop(b => edited.Contains(after.GetLineFromOffset(Math.Min(b.Marker.Range.Start, after.Length))));
     }
 
     /// <summary>The markers shown, where the text has carried them: what the check found, and the build's where the check
@@ -285,8 +298,22 @@ public sealed class XamlDocument : IDisposable
         TextSnapshot text = Document.Text.Snapshot;
         IReadOnlyList<Marker> found = live.Items;
         HashSet<int> lines = [.. found.Where(m => m.Range.Start <= text.Length).Select(m => text.GetLineFromOffset(m.Range.Start))];
-        Document.Markers = [.. found, .. built.Items.Where(m => m.Range.Start > text.Length || !lines.Contains(text.GetLineFromOffset(m.Range.Start)))];
+        Document.Markers = [.. found, .. built.Items.Where(b => b.Framework is null || framework is null || string.Equals(b.Framework, framework, StringComparison.OrdinalIgnoreCase))
+            .Select(b => b.Marker).Where(m => m.Range.Start > text.Length || !lines.Contains(text.GetLineFromOffset(m.Range.Start)))];
     }
+
+    /// <summary>Another framework chosen for the file's project: its build's problems of that framework shown in place of the last's.</summary>
+    internal void Choose(string? chosen)
+    {
+        if (!string.Equals(framework, chosen, StringComparison.OrdinalIgnoreCase))
+        {
+            framework = chosen;
+            Show();
+        }
+    }
+
+    /// <summary>A marker of a build's problem, with the framework of the inner build that found it (null for a build of one).</summary>
+    private sealed record BuiltMarker(Marker Marker, string? Framework);
 
     /// <summary>The project was read again (its C# changed, another XAML file did): the file is checked against it.</summary>
     internal void ProjectChanged()

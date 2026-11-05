@@ -44,7 +44,12 @@ public sealed class MemorySnapshot
         Types = [.. types.OrderByDescending(t => t.Bytes).ThenBy(t => t.Name, StringComparer.Ordinal)];
         Bytes = bytes.Sum();
         Objects = graph.Count;
+        NamedFrom = graph.NamedFrom;
     }
+
+    /// <summary>How many objects its dump's walk read with their fields' names: a type's first, and one holding a field none
+    /// before it did; the rest were read as their references alone.</summary>
+    public int NamedFrom { get; }
 
     /// <summary>Which of the run's snapshots this is, from 1.</summary>
     public int Number { get; }
@@ -67,6 +72,10 @@ public sealed class MemorySnapshot
 
     /// <summary>What the time went on: the dump, its reading, the retention analysis.</summary>
     public string Phases { get; }
+
+    /// <summary>What it lacks beside a snapshot read from a dump, and why it was read otherwise (<see cref="GcHeapDump"/>);
+    /// null for one read from a dump.</summary>
+    public string? Lacks { get; init; }
 
     /// <summary>Its heap's objects, or null once let go of.</summary>
     internal HeapGraph? Graph

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
 using Passenger.Debugger.Interop;
@@ -84,7 +85,25 @@ public partial class ManagedDebugger
     /// <summary>When the launched program's output was last read (a <see cref="Stopwatch"/> timestamp).</summary>
     private long _lastOutputAt;
     private int _exitReported;
+    private int _terminatedReported;
     private TaskCompletionSource _exitTold = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Tells the client its debugging has ended, once, after the program's end was told: for a launched program as
+    /// its process ends, whatever became of the runtime's word of it, which mscordbi may lose tearing down.</summary>
+    private void ReportTerminated()
+    {
+        if (Interlocked.Exchange(ref _terminatedReported, 1) == 0)
+        {
+            OnTerminated?.Invoke();
+        }
+    }
+
+    /// <summary>A launched program's process has ended: its end told, then the end of its debugging.</summary>
+    private async Task EndedLaunchAsync(Task<int?> ended)
+    {
+        await ReportExitAsync(await ended.ConfigureAwait(false)).ConfigureAwait(false);
+        ReportTerminated();
+    }
 
     /// <summary>Tells the client the program has ended, once, after the last of its output, and why its exit code is lost
     /// where it is. A second caller (the runtime's word of the end, after the wait's) ends only once it has been told, so
@@ -335,13 +354,7 @@ public partial class ManagedDebugger
     /// thread is free for evaluations again, and the program goes on, from the stop the evaluation began at.</summary>
     private void LetGoAbandonedEvaluation(CorDebugManagedCallbackEventArgs callbackEvent)
     {
-        ICorDebugThread thread = EvaluationThread(callbackEvent)!;
-        EvalStatus.DueAt.Remove(thread.Id);
-        if (EvalStatus.Abandoned.Remove(thread.Id, out ICorDebugEval? eval) && eval.TryGetResult(out ICorDebugValue? value) is Cor.S_OK && value is ICorDebugHandleValue handle)
-        {
-            handle.TryDispose();
-        }
-        _logger?.Invoke($"The evaluation given up on thread {thread.Id} has returned; its end is let go");
+        ICorDebugThread thread = ForgetAbandonedEvaluation(callbackEvent);
         if (_stepAfterEvaluation is (int stepping, StepType type) && stepping == thread.Id)
         {
             // The evaluation's session is over (the runtime ends it before it tells of the end), so this stepper is the stop's.
@@ -349,6 +362,19 @@ public partial class ManagedDebugger
             SetupStepper(thread, type, EnumerateFramesForThread(thread).First());
         }
         Continue(clearVariables: false);
+    }
+
+    /// <summary>Lets go of an evaluation given up whose end has come, its value and its place among those given up; its thread.</summary>
+    private ICorDebugThread ForgetAbandonedEvaluation(CorDebugManagedCallbackEventArgs callbackEvent)
+    {
+        ICorDebugThread thread = EvaluationThread(callbackEvent)!;
+        EvalStatus.DueAt.Remove(thread.Id);
+        if (EvalStatus.Abandoned.Remove(thread.Id, out ICorDebugEval? eval) && eval.TryGetResult(out ICorDebugValue? value) is Cor.S_OK && value is ICorDebugHandleValue handle)
+        {
+            handle.TryDispose();
+        }
+        _logger?.Invoke($"The evaluation given up on thread {thread.Id} has returned; its end is let go");
+        return thread;
     }
 
     /// <summary>An event put off while the symbols of the code its thread stopped in were decompiled off the engine's lock,
@@ -479,7 +505,7 @@ public partial class ManagedDebugger
         try
         {
             _exited.Reset();
-            (_corDebug, _process) = await ClrDebugExtensions.Automatic(processId, LetGoAsync, TakeHold, () => process.HasExited, _ending.Token, _logger);
+            (_corDebug, _process) = await ClrDebugExtensions.Automatic(processId, LetGoAsync, TakeHold, () => !DotnetProcesses.Runs(process), _ending.Token, _logger);
         }
         catch (Exception error)
         {
@@ -805,6 +831,7 @@ public partial class ManagedDebugger
         // Never just a file of the same name (SourcePaths), nor one named less well than a module it is bound in.
         int best = bp.Bindings.Count == 0 ? 0 : bp.Bindings.Max(binding => binding.Module.MetadataReader.DocumentMatch(bp.FilePath));
         string? why = null;
+        bool held = false;
         IEnumerable<ModuleInfo> candidates = loaded is null ? _modules.Values : [loaded];
         foreach ((ModuleInfo module, int score) in candidates
             .Where(m => m.MetadataReader.HasSymbols && !bp.Bindings.Any(binding => ReferenceEquals(binding.Module, m)))
@@ -817,6 +844,7 @@ public partial class ManagedDebugger
             {
                 break;
             }
+            held = true;
             (bool bound, string? refused) = BindIn(bp, module);
             if (bound)
             {
@@ -827,16 +855,25 @@ public partial class ManagedDebugger
 
         if (bp.Bindings.Count > 0)
         {
+            bp.Unbindable = false;
             return true;
         }
         bp.Verified = false;
-        bp.Message = why ?? "The breakpoint will not currently be hit. No symbols have been loaded for this document.";
-        if (why is null)
+        // A module that holds the file's code and bound nothing there will not; any other may yet load.
+        bp.Unbindable = held || bp.Unbindable;
+        bp.Message = why ?? (bp.Unbindable ? NoCode : NoModuleYet);
+        if (!held)
         {
             _logger?.Invoke($"Breakpoint at {bp.FilePath}:{bp.Line} - no symbols found");
         }
         return false;
     }
+
+    /// <summary>Why a line breakpoint is pending: no module loaded holds its file's code yet.</summary>
+    internal const string NoModuleYet = "No module loaded yet holds this file's code: the breakpoint binds as one loads";
+
+    /// <summary>Why a line breakpoint does not bind where its file's code is loaded: its line has none.</summary>
+    internal const string NoCode = "Its line has no code to stop at in the program as built: put the breakpoint on a line with a statement";
 
     /// <summary>Binds a line breakpoint in one module, at the line and column asked for: false with no reason where the
     /// module has no code there, with one where it will not take it. The breakpoint shows the place of its first binding.</summary>
@@ -854,7 +891,7 @@ public partial class ManagedDebugger
             if (module.MetadataReader.IsHidden(resolved.MethodToken)
                 || (_justMyCode && module.IsUserCode && module.MetadataReader.IsNonUserCode(resolved.MethodToken)))
             {
-                return (false, "The breakpoint will not be hit: the method is marked [DebuggerStepThrough], [DebuggerNonUserCode] or [DebuggerHidden], which Just My Code passes over.");
+                return (false, "Its method is marked [DebuggerStepThrough], [DebuggerNonUserCode] or [DebuggerHidden], which Just My Code passes over: turn Just My Code off to stop there");
             }
 
             ICorDebugFunctionBreakpoint corBreakpoint = TryGetEntryBreakpoint(module, resolved.MethodToken, resolved.BindOffset)
@@ -883,7 +920,7 @@ public partial class ManagedDebugger
         {
             // One module's failure to bind the breakpoint is its own, said on it, never the binding of those beside it.
             _logger?.Invoke($"Error binding breakpoint at {bp.FilePath}:{line} in {module.ModuleName}: {ex}");
-            return (false, $"Error binding breakpoint: {ex.Message}");
+            return (false, $"The debugger could not bind it: {ex.Message}");
         }
     }
 
@@ -896,8 +933,11 @@ public partial class ManagedDebugger
             if (bp.Verified)
             {
                 TryBindBreakpoint(bp, loaded);
+                continue;
             }
-            else if (TryBindBreakpoint(bp))
+            // Bound now, or found to have no code where its file's code loaded: the client hears either.
+            (bool unbindable, string? said) = (bp.Unbindable, bp.Message);
+            if (TryBindBreakpoint(bp) || bp.Unbindable != unbindable || bp.Message != said)
             {
                 OnBreakpointChanged?.Invoke(bp);
             }
@@ -1331,6 +1371,13 @@ internal sealed class EvalStatus
 
     /// <summary>Set while an evaluation asked for by name runs (the Evaluate window, a watch), which runs code regardless.</summary>
     internal bool Explicit { get; set; }
+
+    /// <summary>Set while an evaluation the person asked to run with every thread let go runs: the other threads run with
+    /// it, and what they meet meanwhile (a breakpoint, an exception) is passed over, said in <see cref="PassedOver"/>.</summary>
+    internal bool LetThreadsRun { get; set; }
+
+    /// <summary>What other threads met and passed over while an evaluation ran with every thread let go.</summary>
+    internal List<string> PassedOver { get; } = [];
 
     private readonly Lock leavingGate = new();
     private CancellationTokenSource leaving = new();

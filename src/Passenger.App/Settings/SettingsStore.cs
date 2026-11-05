@@ -8,8 +8,8 @@ namespace Passenger.App.Settings;
 /// the file again first, so what another Passenger wrote meanwhile stays, puts over it only the values the change makes
 /// differ, is written through the store, and raises <see cref="Changed"/>; settings.json changed on disk by another
 /// Passenger is read again as it lands, as its watcher overflows, and as a window comes in front, each once it moved since
-/// this process last read or wrote it (<see cref="LookAgain"/>). The theme, the keymap and the logs' switches are the
-/// process's: put in force here, once, before any window hears. UI thread only.</summary>
+/// this process last read or wrote it (<see cref="LookAgain"/>). The theme, the code font, the keymap and the logs' switches
+/// are the process's: put in force here, once, before any window hears. UI thread only.</summary>
 public sealed class SettingsStore : IDisposable
 {
     private readonly StateDocument<AppSettings>? document;
@@ -197,7 +197,8 @@ public sealed class SettingsStore : IDisposable
     }
 
     /// <summary>What belongs to the process, put in force once for every window: the theme, its dark or light and the
-    /// code's colours only when their settings change, so one named on the command line stands until then.</summary>
+    /// code's colours only when their settings change, so one named on the command line stands until then; the code font and
+    /// the window's.</summary>
     private static void InForce(AppSettings? before, AppSettings after)
     {
         if (Avalonia.Application.Current is { } app && (before is null || before.Theme != after.Theme))
@@ -207,6 +208,14 @@ public sealed class SettingsStore : IDisposable
         if (Avalonia.Application.Current is { } current && (before is null || before.Look != after.Look || before.ColourScheme != after.ColourScheme))
         {
             Themes.Apply(current, after.Look, after.ColourScheme);
+        }
+        if (Avalonia.Application.Current is { } shown && (before is null || before.EditorFontFamily != after.EditorFontFamily))
+        {
+            Passenger.Editor.CodeFonts.Use(shown, Passenger.Editor.CodeFonts.Named(after.EditorFontFamily) ?? Passenger.Editor.CodeEditor.CodeFont);
+        }
+        if (Avalonia.Application.Current is { } framed && (before is null || before.WindowFontFamily != after.WindowFontFamily))
+        {
+            WindowFonts.Use(framed, WindowFonts.Named(after.WindowFontFamily) ?? WindowFonts.Carried);
         }
         if (before is null || before.Keymap != after.Keymap || !SameShortcuts(before.OwnShortcuts(), after.OwnShortcuts()))
         {

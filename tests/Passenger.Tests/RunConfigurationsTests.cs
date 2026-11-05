@@ -69,6 +69,30 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         Assert.Equal(new[] { linked }, ConfigurationEdit.Over(source, loaded).LinkedAppHosts);
     }
 
+    /// <summary>In a solution with an AppHost, Run's first choice, none picked yet, is the AppHost's configuration, though
+    /// the solution lists one of its services first: Run brings the app up as the person means, never one service alone.</summary>
+    [AvaloniaFact]
+    public void In_a_solution_with_an_AppHost_Runs_first_choice_is_the_AppHosts_configuration()
+    {
+        Write("Host/Host.csproj", TestProjects.Console("<IsAspireHost>true</IsAspireHost>", $"<AspireHostingSDKVersion>{AspireApp.TemplatesVersion}</AspireHostingSDKVersion>"));
+        Write("Host/Program.cs", "System.Console.WriteLine(\"host\");\n");
+        Write("Host/Properties/launchSettings.json", "{ \"profiles\": { \"http\": { \"commandName\": \"Project\" } } }\n");
+        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Hello/Hello.csproj\" />\n  <Project Path=\"Host/Host.csproj\" />\n</Solution>\n");
+        MainWindow window = Keeping();
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Aspire) && window.Configurations.Any(c => !c.Aspire),
+                () => $"the AppHost's and Hello's configurations: {string.Join(", ", window.Configurations.Select(c => c.Name))}");
+            RunConfiguration? chosen = window.Session.Configurations.Chosen;
+            Assert.True(chosen is { Aspire: true },
+                $"Run's first choice in a solution with an AppHost is {chosen?.Name}, so Run starts that alone, outside its AppHost");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>While a run of a configuration is up, the toolbar, its chooser and Edit Configurations' row say "(running)"
     /// after its name, and stop saying it once the run has ended.</summary>
     [Gate]
@@ -363,6 +387,31 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             Ui.WaitFor(() => again.Runner.Ended.IsCompleted, "the second run to end");
             string second = again.BottomPanel.Run.Document.Snapshot.ToString();
             Assert.True(second.Contains("Hello [--name|Grace] in ", StringComparison.Ordinal), $"The program did not get the profile's new variable with the arguments kept:\n{second}");
+        }
+        finally
+        {
+            again.Close();
+        }
+    }
+
+    /// <summary>A generated configuration no one has changed, its logs and traces turned on as an agent's run turns them on
+    /// (<see cref="RunConfigurations.Collect"/>), collects them from then on, kept with the folder over its launch profile.</summary>
+    [AvaloniaFact]
+    public void A_generated_configurations_logs_and_traces_turned_on_for_an_agent_are_kept_with_the_folder()
+    {
+        Restored();
+        Write("Hello/Properties/launchSettings.json", Greet("Hi"));
+        MainWindow window = Keeping();
+        Assert.False(Assert.Single(window.Configurations).Telemetry, "A generated configuration collects logs and traces unasked");
+        Assert.True(window.Session.Configurations.Collect("Hello: Greet", true));
+        Assert.True(Assert.Single(window.Configurations).Telemetry, "Logs and traces turned on for an agent's run left its configuration collecting nothing");
+        window.Close();
+
+        MainWindow again = Keeping();
+        try
+        {
+            RunConfiguration kept = Assert.Single(again.Configurations);
+            Assert.True(kept.Generated && kept.Telemetry, $"Logs and traces turned on for {kept.Name} were not kept with the folder");
         }
         finally
         {

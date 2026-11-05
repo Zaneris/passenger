@@ -51,7 +51,7 @@ public sealed class LongListsTests : IDisposable
                 Ui.WaitFor(() => searching.IsCompleted && popup.Searching.IsCompleted && popup.Status != "Searching…", $"the search for {word}");
                 Assert.Equal(matches, popup.Matches.Count);
                 Ui.Settle();
-                return (popup.GetVisualDescendants().OfType<ListBox>().Single(l => l.ItemsSource is IEnumerable<SearchMatch>), () => { });
+                return (popup.GetVisualDescendants().OfType<ListBox>().Single(l => l.ItemsSource is IEnumerable<SearchLine>), () => { });
             });
         }
         finally
@@ -270,8 +270,8 @@ public sealed class LongListsTests : IDisposable
         string root = Folder();
         TestFolders.Write(root, "Sums.Tests.csproj",
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n"
-            + "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n"
-            + "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
+            + $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n"
+            + $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n</Project>\n");
         TestFolders.Write(root, "SumTests.cs", Sums(100));
         MainWindow window = Ui.OpenFolder(root, languageServer: false);
         try

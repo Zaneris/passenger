@@ -12,8 +12,19 @@ using Passenger.Workspace;
 namespace Passenger.App.Run;
 
 /// <summary>A publish profile of a project: its name, its .pubxml and, for one that publishes elsewhere than to a folder
-/// (Web Deploy, FTP, Azure: its WebPublishMethod), that method, which Passenger does not publish by yet.</summary>
-public sealed record PublishProfileFile(string Name, string Path, string? Remote);
+/// (Web Deploy, FTP, Azure: its WebPublishMethod), that method, which Passenger does not publish by yet; one whose method is
+/// Container publishes the project's image (<see cref="Container"/>).</summary>
+public sealed record PublishProfileFile(string Name, string Path, string? Remote, bool Container = false);
+
+/// <summary>What a publish makes: the app in a folder, its container image (the SDK's PublishContainer, into the engine on
+/// this machine or pushed to a registry), or an AppHost's files through Aspire's own publishers (Docker Compose's and the
+/// rest its code adds).</summary>
+public enum PublishKind
+{
+    Folder,
+    Container,
+    AppHost,
+}
 
 /// <summary>A publish to run: the project, the profile it publishes with (none for MSBuild's defaults), the configuration and
 /// the framework given on the command line (the SDK takes neither from a profile: the CLI's PublishRelease chooses Release,
@@ -21,19 +32,56 @@ public sealed record PublishProfileFile(string Name, string Path, string? Remote
 /// in, as MSBuild resolved it.</summary>
 public sealed record PublishRequest(string Project, string? Profile, string? Configuration = null, string? Framework = null)
 {
-    /// <summary>The folder the publish puts the app in, resolved before it starts; null until then.</summary>
+    /// <summary>The SDK's own container profile, which every project that publishes has with no file of its own.</summary>
+    public const string SdkContainerProfile = "DefaultContainer";
+
+    /// <summary>The folder the publish puts the app in, resolved before it starts (an AppHost's, the one its files land in);
+    /// null until then.</summary>
     public string? Folder { get; init; }
+
+    /// <summary>What it makes, the profile's (or the AppHost's) once resolved.</summary>
+    public PublishKind Kind { get; init; }
+
+    /// <summary>Whether its profile is the SDK's own container profile with no file in the project, which the command then
+    /// leaves out: its container target is all that profile gives, and the SDK warns of a profile it cannot find.</summary>
+    public bool BuiltInProfile { get; init; }
+
+    /// <summary>A container publish's image as the SDK names it ("web:latest"), once resolved.</summary>
+    public string? Image { get; init; }
+
+    /// <summary>The registry a container publish pushes its image to; null for the engine on this machine.</summary>
+    public string? Registry { get; init; }
+
+    /// <summary>Where an AppHost's publishers write, which Passenger then lands in <see cref="Folder"/>.</summary>
+    public string? Staging { get; init; }
+
+    /// <summary>The step of an AppHost's pipeline it runs, with those it runs after: publish, or a deploy step it declares.</summary>
+    public string Step { get; init; } = Aspire.AppHostPipeline.Publish;
+
+    /// <summary>What an AppHost's step needs of this machine, its logins looked for again as it starts.</summary>
+    public Aspire.DeployNeeds Needs { get; init; }
+
+    /// <summary>Whether it runs an AppHost's deploy step rather than its publish.</summary>
+    public bool Deploys => Kind == PublishKind.AppHost && Step != Aspire.AppHostPipeline.Publish;
+
+    /// <summary>What the publish's dotnet is given beside Passenger's own environment: the engine's CLI first on PATH.</summary>
+    public IReadOnlyDictionary<string, string>? Environment { get; init; }
 
     public string Name => System.IO.Path.GetFileNameWithoutExtension(Project);
 
-    /// <summary>How the publish is named in the status bar and the Build window: "Hello (FolderProfile)".</summary>
-    public string Shown => Profile is null ? Name : $"{Name} ({Profile})";
+    /// <summary>How the publish is named in the status bar and the Build window: "Hello (FolderProfile)", an AppHost's deploy
+    /// step "Hello.AppHost (deploy)".</summary>
+    public string Shown => Profile is not null ? $"{Name} ({Profile})" : Deploys ? $"{Name} ({Step})" : Name;
 
     /// <summary>The dotnet publish command line: the same as a person types to publish with the profile, ending as a build's
     /// does (<see cref="BuildOutput.Tail"/>), Windows targeting given where the project host gave it.</summary>
-    public IReadOnlyList<string> Arguments(bool windowsTargeting) => ["publish", Project, .. Command(), .. BuildOutput.Tail(windowsTargeting)];
+    public IReadOnlyList<string> Arguments(bool windowsTargeting) => Kind == PublishKind.AppHost
+        ? ["run", "--project", Project, "--no-launch-profile", .. windowsTargeting ? (string[])[$"-p:{MSBuildNames.EnableWindowsTargeting}=true"] : [], "--",
+            .. Aspire.AppHostPipeline.RunArguments(Step, Staging ?? Folder ?? string.Empty)]
+        : ["publish", Project, .. Command(), .. BuildOutput.Tail(windowsTargeting)];
 
-    /// <summary>What follows dotnet publish and the project: its configuration, framework and profile.</summary>
+    /// <summary>What follows dotnet publish and the project: its configuration, framework and profile, and a container
+    /// profile's target, which the SDK runs from its profile only in a web project.</summary>
     public IReadOnlyList<string> Command()
     {
         List<string> arguments = ["-c", Configuration ?? "Release"];
@@ -41,9 +89,13 @@ public sealed record PublishRequest(string Project, string? Profile, string? Con
         {
             arguments.AddRange(["-f", Framework]);
         }
-        if (Profile is not null)
+        if (Profile is not null && !BuiltInProfile)
         {
             arguments.Add($"-p:{MSBuildNames.PublishProfile}={Profile}");
+        }
+        if (Kind == PublishKind.Container)
+        {
+            arguments.Add($"-t:{MSBuildNames.PublishContainer}");
         }
         return arguments;
     }
@@ -62,6 +114,8 @@ public static partial class PublishProfiles
         MSBuildNames.RuntimeIdentifier, MSBuildNames.RuntimeIdentifiers, MSBuildNames.SelfContained, MSBuildNames.PublishSingleFile,
         MSBuildNames.PublishReadyToRun, MSBuildNames.PublishTrimmed, MSBuildNames.PublishAot, MSBuildNames.PublishDir, MSBuildNames.PublishUrl,
         MSBuildNames.WebPublishMethod, CarriedProperties.PublishProfileRootFolder, MSBuildNames.NETCoreSdkRuntimeIdentifier,
+        CarriedProperties.ContainerRepository, MSBuildNames.ContainerImageTag, MSBuildNames.ContainerRegistry, MSBuildNames.AssemblyName,
+        MSBuildNames.ContainerImageTags, MSBuildNames.ContainerRuntimeIdentifier, MSBuildNames.ContainerRuntimeIdentifiers,
     ];
 
     /// <summary>What a profile's file names a folder publish by: Visual Studio's WebPublishMethod or PublishProtocol, or none.</summary>
@@ -71,13 +125,14 @@ public static partial class PublishProfiles
     public static IReadOnlyList<string> CommonRuntimes { get; } =
         [RuntimeInformation.RuntimeIdentifier, "win-x64", "win-arm64", "osx-arm64", "osx-x64", "linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64"];
 
-    /// <summary>The name a new profile is offered: FolderProfile, as the SDK's folder profiles are commonly named, with a
-    /// number after it while one of that name is there.</summary>
-    public static string NewName(IReadOnlyCollection<PublishProfileFile> existing)
+    /// <summary>The name a new profile is offered: FolderProfile (ContainerProfile for an image), as the SDK's profiles are
+    /// commonly named, with a number after it while one of that name is there.</summary>
+    public static string NewName(IReadOnlyCollection<PublishProfileFile> existing, bool container = false)
     {
+        string stem = container ? "ContainerProfile" : "FolderProfile";
         for (int number = 0; ; number++)
         {
-            string name = number == 0 ? "FolderProfile" : $"FolderProfile{number}";
+            string name = number == 0 ? stem : $"{stem}{number}";
             if (!existing.Any(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
             {
                 return name;
@@ -147,16 +202,19 @@ public static partial class PublishProfiles
         foreach (string path in Directory.EnumerateFiles(folder, "*.pubxml").Order(StringComparer.OrdinalIgnoreCase))
         {
             string? remote = null;
+            bool container = false;
             try
             {
                 IReadOnlyDictionary<string, string> raw = PubXml.Read(File.ReadAllText(path));
                 remote = Methods.Select(raw.GetValueOrDefault).FirstOrDefault(m => m is { Length: > 0 } && !string.Equals(m, "FileSystem", StringComparison.OrdinalIgnoreCase));
+                container = string.Equals(remote, ContainerMethod, StringComparison.OrdinalIgnoreCase);
+                remote = container ? null : remote;
             }
             catch (Exception error) when (error is XmlException or IOException or UnauthorizedAccessException)
             {
                 remote = "a file that does not read";
             }
-            found.Add(new PublishProfileFile(System.IO.Path.GetFileNameWithoutExtension(path), PathNames.Canonical(path), remote));
+            found.Add(new PublishProfileFile(System.IO.Path.GetFileNameWithoutExtension(path), PathNames.Canonical(path), remote, container));
         }
         return found;
     }
@@ -203,8 +261,9 @@ public static partial class PublishProfiles
     }
 
     /// <summary>A publish worked out as MSBuild sees it: the configuration and framework the profile names (Release when it
-    /// names none, as dotnet publish takes; a multi-targeted project's first framework when it names none) and the folder it
-    /// lands in; or why it cannot be (no such profile, a project or profile that does not read).</summary>
+    /// names none, as dotnet publish takes; a multi-targeted project's first framework when it names none), the folder it
+    /// lands in, and a container profile's image and registry (the SDK's DefaultContainer one with no file of its own); or
+    /// why it cannot be (no such profile, a project or profile that does not read).</summary>
     public static async Task<(PublishRequest? Resolved, string? Problem)> ResolveAsync(string open, WorkspaceModel? workspace, ProjectModel project,
         PublishRequest request, CancellationToken cancel)
     {
@@ -224,14 +283,27 @@ public static partial class PublishProfiles
                 return (null, $"{request.Name} could not be read: {problem}");
             }
             string? configuration = request.Configuration;
+            PublishKind kind = PublishKind.Folder;
+            bool builtIn = false;
             if (request.Profile is { } profile)
             {
                 string file = Path(project.Path, read.Values, profile);
-                if (!File.Exists(file))
+                IReadOnlyDictionary<string, string> raw;
+                if (File.Exists(file))
+                {
+                    raw = PubXml.Read(await File.ReadAllTextAsync(file, cancel));
+                }
+                else if (string.Equals(profile, PublishRequest.SdkContainerProfile, StringComparison.OrdinalIgnoreCase))
+                {
+                    raw = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [MSBuildNames.WebPublishMethod] = ContainerMethod };
+                    builtIn = true;
+                }
+                else
                 {
                     return (null, $"{request.Name} has no publish profile {profile}: {file} is not there");
                 }
-                IReadOnlyDictionary<string, string> raw = PubXml.Read(await File.ReadAllTextAsync(file, cancel));
+                kind = string.Equals(raw.GetValueOrDefault(MSBuildNames.WebPublishMethod) ?? raw.GetValueOrDefault(MSBuildNames.PublishProtocol), ContainerMethod,
+                    StringComparison.OrdinalIgnoreCase) ? PublishKind.Container : PublishKind.Folder;
                 configuration ??= raw.ContainsKey(MSBuildNames.Configuration) ? read.Values.GetValueOrDefault(MSBuildNames.Configuration)
                     : raw.GetValueOrDefault(MSBuildNames.LastUsedBuildConfiguration) is { Length: > 0 } last ? last : null;
             }
@@ -240,12 +312,33 @@ public static partial class PublishProfiles
             {
                 read = await EvaluateAsync(open, project.Path, Globals(workspace, project, request.Profile, configuration, framework), cancel);
             }
-            return (request with { Configuration = configuration, Framework = framework, Folder = FolderOf(project.Path, read.Values) }, null);
+            return (request with
+            {
+                Configuration = configuration,
+                Framework = framework,
+                Folder = FolderOf(project.Path, read.Values),
+                Kind = kind,
+                BuiltInProfile = builtIn,
+                Image = kind == PublishKind.Container ? ImageOf(read.Values, request.Name) : null,
+                Registry = kind == PublishKind.Container && read.Values.GetValueOrDefault(MSBuildNames.ContainerRegistry) is { Length: > 0 } registry ? registry.Trim() : null,
+            }, null);
         }
         catch (Exception error) when (error is XmlException or IOException or UnauthorizedAccessException)
         {
             return (null, $"{request.Name}'s publish profile {request.Profile} does not read: {error.Message}");
         }
+    }
+
+    /// <summary>A container publish's image as the SDK names it: its repository (the assembly's name, lower case, where the
+    /// project and profile name none) with its tag (latest where they name none), or with each of its several, by commas.</summary>
+    public static string ImageOf(IReadOnlyDictionary<string, string> evaluated, string project)
+    {
+        string repository = evaluated.GetValueOrDefault(CarriedProperties.ContainerRepository) is { Length: > 0 } named ? named.Trim()
+            : (evaluated.GetValueOrDefault(MSBuildNames.AssemblyName) is { Length: > 0 } assembly ? assembly : project).ToLowerInvariant().Replace(' ', '-');
+        string[] tags = evaluated.GetValueOrDefault(MSBuildNames.ContainerImageTags) is { Length: > 0 } several
+            ? several.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            : [evaluated.GetValueOrDefault(MSBuildNames.ContainerImageTag) is { Length: > 0 } given ? given.Trim() : "latest"];
+        return string.Join(", ", tags.Select(tag => $"{repository}:{tag}"));
     }
 
     /// <summary>Where a profile of a project is, by its name.</summary>
@@ -371,11 +464,14 @@ public static class PubXml
         document.Root?.Elements().Where(e => e.Name.LocalName == "PropertyGroup" && e.Attribute("Condition") is null) ?? [];
 }
 
-/// <summary>A folder's publishing as it keeps it: the profile each project last published with, by the project's path, and
-/// the project published last, which Publish Again publishes when the one in context has none.</summary>
+/// <summary>A folder's publishing as it keeps it: the profile each project last published with, by the project's path, the
+/// folder each AppHost last published to, and the project published last, which Publish Again publishes when the one in
+/// context has none.</summary>
 public sealed record PublishState : IStateDocument<PublishState>
 {
     public Dictionary<string, string> Profiles { get; init; } = [];
+
+    public Dictionary<string, string> Outputs { get; init; } = [];
 
     public string? Last { get; init; }
 
@@ -384,6 +480,7 @@ public sealed record PublishState : IStateDocument<PublishState>
     public PublishState Clamped() => this with
     {
         Profiles = (Profiles ?? []).Where(p => p.Key is { Length: > 0 } && p.Value is { Length: > 0 }).ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
+        Outputs = (Outputs ?? []).Where(p => p.Key is { Length: > 0 } && p.Value is { Length: > 0 }).ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
     };
 }
 
@@ -392,6 +489,7 @@ public sealed record PublishState : IStateDocument<PublishState>
 public sealed class PublishMemory
 {
     private readonly Dictionary<string, string> profiles = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> outputs = new(StringComparer.Ordinal);
     private StateDocument<PublishState>? kept;
 
     /// <summary>The project published last, or null.</summary>
@@ -405,11 +503,31 @@ public sealed class PublishMemory
         {
             profiles[project] = profile;
         }
+        foreach ((string project, string folder) in state.Value.Outputs)
+        {
+            outputs[project] = folder;
+        }
         Last = state.Value.Last ?? Last;
     }
 
     /// <summary>The profile a project last published with, or null.</summary>
     public string? ProfileOf(string project) => profiles.GetValueOrDefault(project);
+
+    /// <summary>The folder an AppHost last published to, or null.</summary>
+    public string? OutputOf(string project) => outputs.GetValueOrDefault(project);
+
+    /// <summary>An AppHost published to a folder: where Publish Again and its dialog publish it from now on.</summary>
+    public void PublishedTo(string project, string folder)
+    {
+        UiThread.Check();
+        outputs[project] = folder;
+        Last = project;
+        if (kept is not null)
+        {
+            PublishState now = kept.Value;
+            kept.Set(now with { Outputs = new Dictionary<string, string>(now.Outputs, StringComparer.Ordinal) { [project] = folder }, Last = project });
+        }
+    }
 
     /// <summary>A project published with a profile: what Publish Again publishes from now on.</summary>
     public void Published(string project, string profile)

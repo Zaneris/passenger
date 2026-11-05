@@ -87,6 +87,8 @@ public sealed class BreakpointProperties : UserControl
         {
             PropertyBreakpoint => "A C# condition: newValue != oldValue",
             BindingErrorBreakpoint => $"A C# condition: {BindingStop.Name}.Path == \"Name\"",
+            ScriptErrorBreakpoint => "A GDScript condition: counter > 2",
+            LineBreakpoint line when Godot.GodotScriptAdapter.Takes(line.Path) => "A GDScript condition: counter > 2",
             _ => "A C# condition: count > 2",
         };
         log.PlaceholderText = breakpoint is BindingErrorBreakpoint ? $"Logged on each hit: {{{BindingStop.Name}.Description,nq}}" : "Logged on each hit: count is {count}";
@@ -507,8 +509,8 @@ public sealed class BreakpointsWindow : UserControl
         }
     }
 
-    /// <summary>Every breakpoint but the folder's own two, "Any exception" and XAML Binding Errors, turned off instead.</summary>
-    private static bool Removable(Breakpoint breakpoint) => breakpoint is not (ExceptionBreakpoint { IsAny: true } or BindingErrorBreakpoint);
+    /// <summary>Every breakpoint but the folder's own three, "Any exception", XAML Binding Errors and GDScript Errors, turned off instead.</summary>
+    private static bool Removable(Breakpoint breakpoint) => breakpoint is not (ExceptionBreakpoint { IsAny: true } or BindingErrorBreakpoint or ScriptErrorBreakpoint);
 
     private void GoTo()
     {
@@ -522,13 +524,17 @@ public sealed class BreakpointsWindow : UserControl
     private void Fill(Breakpoint? chosen)
     {
         list.Items.Clear();
-        List<LineBreakpoint> lines = [.. store.All.OrderBy(b => Path.GetFileName(b.Path), StringComparer.OrdinalIgnoreCase).ThenBy(b => b.Line)];
-        if (lines.Count > 0)
+        List<LineBreakpoint> all = [.. store.All.OrderBy(b => Path.GetFileName(b.Path), StringComparer.OrdinalIgnoreCase).ThenBy(b => b.Line)];
+        foreach ((string group, List<LineBreakpoint> lines) in new[] { (".NET Line Breakpoints", all.Where(b => !Godot.GodotScriptAdapter.Takes(b.Path)).ToList()),
+            ("GDScript Line Breakpoints", all.Where(b => Godot.GodotScriptAdapter.Takes(b.Path)).ToList()) })
         {
-            list.Items.Add(Group(".NET Line Breakpoints"));
-            foreach (LineBreakpoint breakpoint in lines)
+            if (lines.Count > 0)
             {
-                list.Items.Add(Item(breakpoint));
+                list.Items.Add(Group(group));
+                foreach (LineBreakpoint breakpoint in lines)
+                {
+                    list.Items.Add(Item(breakpoint));
+                }
             }
         }
         if (store.Data.Count > 0)
@@ -554,6 +560,8 @@ public sealed class BreakpointsWindow : UserControl
         }
         list.Items.Add(Group("XAML Binding Errors"));
         list.Items.Add(Item(store.BindingErrors));
+        list.Items.Add(Group("GDScript Errors"));
+        list.Items.Add(Item(store.ScriptErrors));
         list.SelectedItem = list.Items.OfType<ListBoxItem>().FirstOrDefault(i => chosen is not null && i.Tag == chosen) ?? list.Items.OfType<ListBoxItem>().FirstOrDefault(i => i.Tag is Breakpoint);
         ShowChosen();
     }

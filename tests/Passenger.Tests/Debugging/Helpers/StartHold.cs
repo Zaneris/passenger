@@ -9,6 +9,9 @@ namespace Passenger.Tests.Debugging.Helpers;
 /// before its debugger starts, until the test lets it go: a runtime slow to start, for as long as the test likes.</summary>
 public sealed class StartHold : IDisposable
 {
+    /// <summary>The runtime's own diagnostic pipes' buffers, each way.</summary>
+    private const int PipeBuffer = 16 * 1024;
+
     private readonly string address;
     private readonly NamedPipeServerStream? pipe;
     private readonly Socket? listener;
@@ -20,7 +23,8 @@ public sealed class StartHold : IDisposable
         if (OperatingSystem.IsWindows())
         {
             address = name;
-            pipe = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+            // Buffered as the runtime's own ports are: it gives its advertisement 100 ms to be taken, then hangs up.
+            pipe = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, PipeBuffer, PipeBuffer);
         }
         else
         {

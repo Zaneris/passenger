@@ -28,7 +28,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// <summary>The file's checks held while its server starts: until it is connected, or cannot start.</summary>
     private OpenDocument.CheckHold? waiting;
 
-    /// <summary>The file's checks held, for the Dockerfile, YAML and TypeScript servers, which push a file's diagnostics
+    /// <summary>The file's checks held, for the Dockerfile, YAML, TypeScript and GDScript servers, which push a file's diagnostics
     /// after each change of it, from the change until a push answering it lands or TypeScript finds the text clean
     /// (<see cref="QuietAsync"/>): what an agent's diagnostics and a screenshot wait for. Given up once its limit passes
     /// (<see cref="PushLimit"/>), the file is said to lack the server's answer until one lands.</summary>
@@ -42,7 +42,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     private TimeSpan PushLimit => Kind == WebServerKind.TypeScript ? Waits.Of(TimeSpan.FromSeconds(15)) : TimeSpan.FromSeconds(5);
 
     /// <summary>Who checks the file, as an agent is told while its check is under way.</summary>
-    private string Checker => $"the {WebLanguages.Name(Kind)} language server";
+    public string Checker => $"the {WebLanguages.Name(Kind)} language server";
 
     /// <summary>The command of TypeScript's server that hands a request to its tsserver as it stands.</summary>
     private const string TsServerRequest = "typescript.tsserverRequest";
@@ -50,6 +50,14 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// <summary>The file's markers from the container engine's checks (BuildKit's of a Dockerfile, Compose's of a compose
     /// file), which the editor shows with its own server's and ESLint's.</summary>
     private readonly AnchoredList<Marker> engine = new(m => m.Range, (m, range) => m with { Range = range });
+
+    /// <summary>A GDScript's marks from Passenger's own reading of it (<see cref="Godot.GodotScriptTypes"/>), shown until its
+    /// server has spoken of the file: Godot's own analyzer reads every rule and the whole engine, so once it has, its
+    /// marks stand alone and each mark is said once.</summary>
+    private readonly AnchoredList<Marker> passengers = new(m => m.Range, (m, range) => m with { Range = range });
+
+    /// <summary>Whether the server has pushed its diagnostics for the file since it connected.</summary>
+    private bool spoken;
 
     internal WebDocument(OpenDocument document, WebServerKind kind, string languageId)
     {
@@ -74,6 +82,12 @@ public sealed class WebDocument : IServerDocument, IDisposable
 
     public WebServerKind Kind { get; }
 
+    /// <summary>The stylesheets the folder's pages link, whose classes an HTML file's are checked against.</summary>
+    public PageStylesheets? Stylesheets { get; init; }
+
+    /// <summary>What the pages link changed: an HTML file's classes are checked again.</summary>
+    public void StylesheetsChanged() => Pull(TimeSpan.Zero);
+
     /// <summary>The language the server is told the file is in (<c>typescriptreact</c>, <c>scss</c>, <c>jsonc</c>).</summary>
     public string LanguageId { get; }
 
@@ -85,6 +99,16 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// <summary>Whether the server answers a request (its capability, as <c>renameProvider</c>): the JSON server has no
     /// definitions or renames, which Passenger then gives itself.</summary>
     public bool Provides(string capability) => session?.Server.Provides(capability) == true;
+
+    /// <summary>Whether its server has started and answers for it.</summary>
+    public bool Serving => session is not null;
+
+    /// <summary>What asks for its server where none serves it, for what Passenger's own reading has no answer for; none
+    /// but for a GDScript, whose server starts only so.</summary>
+    public Action? AskServer { get; init; }
+
+    /// <summary>The Godot project a GDScript is in, whose editor is its server; null for another language's file or a script in none.</summary>
+    internal string? GodotProject { get; init; }
 
     public IReadOnlyList<Diagnostic> Diagnostics => diagnostics.Placed;
 
@@ -102,12 +126,29 @@ public sealed class WebDocument : IServerDocument, IDisposable
         document.Markers = Shown();
     }
 
+    /// <summary>The marks of Passenger's own reading as the text has carried them.</summary>
+    public IReadOnlyList<Marker> Passengers => passengers.Items;
+
+    /// <summary>A GDScript's marks from Passenger's own reading, shown while its server has not spoken of the file.</summary>
+    public void ShowPassengers(IReadOnlyList<Marker> markers)
+    {
+        if (markers.Count == 0 && passengers.Count == 0)
+        {
+            return;
+        }
+        passengers.Set(document.Text, markers);
+        if (!spoken)
+        {
+            document.Markers = Shown();
+        }
+    }
+
     /// <summary>Every source's markers where the text has carried them, in the order of their starts, but an engine's on a
     /// line the server already marks as gravely: the engine's checks and the server's often find the same problem, so the
     /// line is marked once. Each source's are in order already, so a key merges them rather than sorting them.</summary>
     private IReadOnlyList<Marker> Shown()
     {
-        IReadOnlyList<Marker> own = diagnostics.Markers;
+        IReadOnlyList<Marker> own = spoken || passengers.Count == 0 ? diagnostics.Markers : Merged(diagnostics.Markers, passengers.Items);
         IReadOnlyList<Marker> lint = Lint?.Markers ?? [];
         if (engine.Count == 0)
         {
@@ -155,7 +196,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// <summary>Holds the file's checks until its server's push for the text as it stands (<see cref="awaitingPush"/>).</summary>
     private void AwaitPush()
     {
-        if (Lsp is null || Kind is not (WebServerKind.Dockerfile or WebServerKind.Yaml or WebServerKind.TypeScript))
+        if (Lsp is null || Kind is not (WebServerKind.Dockerfile or WebServerKind.Yaml or WebServerKind.TypeScript or WebServerKind.GDScript))
         {
             return;
         }
@@ -216,6 +257,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     {
         diagnostics.Stop();
         engine.Clear();
+        passengers.Clear();
         PushLanded();
         Unreached();
         document.Text.Changed -= OnChanged;
@@ -339,8 +381,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
             }
             LspCommand request = new(asked, TsServerRequest, [JsonSerializer.SerializeToElement(asked), JsonSerializer.SerializeToElement(new { file = lsp.Uri })]);
             JsonElement answer = await running.Server.ExecuteCommandAsync(request, cancel);
-            if (!(answer.ValueKind == JsonValueKind.Object && answer.TryGetProperty("body", out JsonElement found)
-                && found.ValueKind == JsonValueKind.Array && found.GetArrayLength() == 0))
+            if (JsonMembers.Value(answer, "body") is not { ValueKind: JsonValueKind.Array } found || found.GetArrayLength() != 0)
             {
                 return;
             }
@@ -358,7 +399,13 @@ public sealed class WebDocument : IServerDocument, IDisposable
     {
         if (session?.Server.Provides("diagnosticProvider") == true && await diagnostics.PulledAsync(lsp, cancel) is { } pulled)
         {
-            Show(pulled);
+            int version = document.Text.Version;
+            IReadOnlyList<Diagnostic> classes = await StylesheetFindingsAsync(cancel);
+            if (cancel.IsCancellationRequested || version != document.Text.Version)
+            {
+                return;
+            }
+            Show([.. pulled, .. classes]);
         }
         if (session?.Server.Provides("colorProvider") == true)
         {
@@ -372,16 +419,23 @@ public sealed class WebDocument : IServerDocument, IDisposable
 
     private void Show(IReadOnlyList<Diagnostic> reported)
     {
+        spoken = true;
         // The server's own codes stay with the diagnostics, which its quick fixes are asked for by.
         diagnostics.Take(reported, (d, range) => DiagnosticMarks.Marker(Named(d), range));
         document.Markers = Shown();
     }
 
     /// <summary>A diagnostic with its code before its message: TypeScript's as TS2322 (from its own server, or the HTML
-    /// server's script), none for the rest, whose codes are lint rules' names or the JSON server's numbers.</summary>
+    /// server's script), a GDScript warning's as Godot names it (UNUSED_PARAMETER, which its message begins with or its code
+    /// says), none for the rest, whose codes are lint rules' names or the JSON server's numbers.</summary>
     private static Diagnostic Named(Diagnostic diagnostic)
     {
         string? code = diagnostic is { CodeIsNumber: true, Code: { } number } && diagnostic.Source is "typescript" or "ts" or "js" ? $"TS{number}" : null;
+        string message = diagnostic.Message;
+        if (Godot.GodotServerWords.Warning(message, diagnostic is { Source: "gdscript", CodeIsNumber: false } ? diagnostic.Code : null) is ({ } warning, { } said))
+        {
+            (code, message) = (warning, said);
+        }
         return new Diagnostic
         {
             Range = diagnostic.Range,
@@ -389,10 +443,23 @@ public sealed class WebDocument : IServerDocument, IDisposable
             Code = code,
             CodeDescription = diagnostic.CodeDescription,
             Source = diagnostic.Source,
-            Message = diagnostic.Message,
+            Message = message,
             Tags = diagnostic.Tags,
             Data = diagnostic.Data,
         };
+    }
+
+    /// <summary>The classes an HTML file writes that no stylesheet it links defines, for the text as it stands; none for
+    /// another file, or while one linked could not be read.</summary>
+    private async Task<IReadOnlyList<Diagnostic>> StylesheetFindingsAsync(CancellationToken cancel)
+    {
+        if (Kind != WebServerKind.Html || Stylesheets is not { } stylesheets)
+        {
+            return [];
+        }
+        TextSnapshot text = document.Text.Snapshot;
+        PageClasses classes = await stylesheets.ClassesAsync(document.Path, cancel);
+        return await BackgroundWork.Run(() => PageStylesheets.Unknown(text, razor: false, classes), cancel);
     }
 
     /// <summary>A swatch in the gutter for each line that writes a colour, the first on the line.</summary>

@@ -53,10 +53,32 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     /// <summary>Reads a folder, with the solution or project it was opened by, which stays its workspace while it is there,
     /// and walks it for its programs (a folder without either for its projects too), which is a worker's job, never the
     /// window's thread's.</summary>
-    public static WorkspaceModel Read(string folder, string? named = null) =>
-        ReadSolution(folder, named, out UnreadSolution? unread) is { } read
-            ? read.WithPrograms(Walk(folder, [.. read.Projects.Where(p => !p.IsProgram).Select(p => p.Folder)]))
-            : new WorkspaceModel(folder, null, [.. Walk(folder, null).Select(ProjectModel.Unevaluated)]) { Unread = unread };
+    public static WorkspaceModel Read(string folder, string? named = null)
+    {
+        List<string> games = [];
+        return ReadSolution(folder, named, out UnreadSolution? unread) is { } read
+            ? read.WithPrograms(Walk(folder, [.. read.Projects.Where(p => !p.IsProgram).Select(p => p.Folder)], games)) with { GodotGames = games }
+            : new WorkspaceModel(folder, null, [.. Walk(folder, null, games).Select(ProjectModel.Unevaluated)]) { Unread = unread, GodotGames = games };
+    }
+
+    /// <summary>The folders of the Godot projects its walk found with no C# project of their own: a project.godot in a
+    /// folder holding no project file, none inside another (Godot's editor passes over a folder with a project.godot of its
+    /// own). Each runs its game on Godot as it is, its GDScript needing no build; one a project elsewhere builds C# for
+    /// (its GodotProjectDir) is that project's (<see cref="ScriptGames"/>).</summary>
+    public IReadOnlyList<string> GodotGames { get; init; } = [];
+
+    /// <summary>The Godot projects of GDScript alone among those found (<see cref="GodotGames"/>): those no project of these
+    /// builds C# for.</summary>
+    public IEnumerable<string> ScriptGames(IEnumerable<ProjectModel> projects)
+    {
+        List<string> built = [.. projects.Select(p => p.GodotFolder).OfType<string>()];
+        return GodotGames.Where(g => !built.Any(b => PathNames.Same(b, g)));
+    }
+
+    /// <summary>The project files of those of some projects that build a Godot project's game, as each's evaluation says it
+    /// (<see cref="ProjectModel.GodotFolder"/>), wherever they lie beside its folder.</summary>
+    public static IReadOnlyList<string> BuildingGodot(IEnumerable<ProjectModel> projects, string folder) =>
+        [.. projects.Where(p => p.GodotFolder is { } game && PathNames.Same(game, folder)).Select(p => p.Path)];
 
     /// <summary>A folder read through the solution or project it was opened by, else its own solution: a listing of the
     /// folder's top and the files the solution names, quick enough for the window's thread. Null for a folder without one
@@ -96,12 +118,16 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     /// <summary>A folder without a solution read again through the projects found before: those still there, as quick as
     /// a solution's read. Only the walk finds those added since.</summary>
     public WorkspaceModel Reread() =>
-        new(Folder, null, [.. Projects.Where(p => File.Exists(p.Path)).Select(p => ProjectModel.Unevaluated(p.Path))]);
+        new(Folder, null, [.. Projects.Where(p => File.Exists(p.Path)).Select(p => ProjectModel.Unevaluated(p.Path))]) { GodotGames = GamesStill(this) };
+
+    /// <summary>The Godot projects of GDScript alone a read before found, those still there, until the walk for them lands.</summary>
+    private static IReadOnlyList<string> GamesStill(WorkspaceModel before) =>
+        [.. before.GodotGames.Where(g => File.Exists(Path.Combine(g, GodotProject.FileName)))];
 
     /// <summary>A solution's or project's read with the programs found beside it before, those still there, until the walk
     /// for them lands: what the language server loaded stays loaded meanwhile.</summary>
     public WorkspaceModel KeepingPrograms(WorkspaceModel before) =>
-        WithPrograms(before.Programs.Where(p => File.Exists(p.Path)).Select(p => p.Path));
+        WithPrograms(before.Programs.Where(p => File.Exists(p.Path)).Select(p => p.Path)) with { GodotGames = GamesStill(before) };
 
     /// <summary>The same workspace with these programs in place of those it had, after its solution's or folder's projects.</summary>
     public WorkspaceModel WithPrograms(IEnumerable<string> programs) =>
@@ -140,7 +166,7 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     /// of them). A program is looked for only outside every project's folder. Given the folders of a solution's or project's
     /// own (<paramref name="solved"/>), the walk enters none of them and takes programs alone, a project file it finds
     /// keeping its folder's files its own.</summary>
-    private static List<string> Walk(string folder, IReadOnlyList<string>? solved)
+    private static List<string> Walk(string folder, IReadOnlyList<string>? solved, List<string> games)
     {
         List<string> found = [];
         List<string> projectFolders = [.. solved ?? []];
@@ -154,6 +180,11 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
         foreach ((string at, IReadOnlyList<string> files) in FolderWalk.Folders(folder, built: true, enters: f => !passed.Contains(f)).Take(FolderLimit))
         {
             List<string> projects = [.. files.Where(IsProject)];
+            if (projects.Count == 0 && files.Any(f => Path.GetFileName(f) == GodotProject.FileName) && !games.Any(g => PathNames.IsUnder(at, g))
+                && !projectFolders.Any(p => PathNames.IsUnder(at, p)))
+            {
+                games.Add(at);
+            }
             if (projects.Count > 0)
             {
                 projectFolders.Add(at);

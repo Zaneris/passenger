@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Threading.Channels;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
@@ -130,5 +131,58 @@ public partial class ManagedDebugger
         {
             // The session ended first, letting the program go.
         }
+    }
+
+    /// <summary>Lets every thread run until the evaluation left running on a thread returns, for a person's evaluation with
+    /// every thread let go on that thread, within the time an evaluation is given, what the others meet meanwhile passed
+    /// over (<see cref="EvalStatus.LetThreadsRun"/>). Its end holds the program where it began, the stop shown, and is
+    /// not let go on; one that has not returned by then leaves the program held again. Whether it returned.</summary>
+    private async Task<bool> LetAbandonedReturnAsync(ICorDebugThread thread)
+    {
+        if (_process is not { } process)
+        {
+            return false;
+        }
+        _logger?.Invoke($"The evaluation left running on thread {thread.Id} is let return, every thread let go");
+        using CancellationTokenSource time = new(Extensions.EvaluationTimeout);
+        ChannelReader<CorDebugManagedCallbackEventArgs> reader = _runtimeEventChannel.Reader;
+        EvalStatus.ThreadId = thread.Id;
+        bool returned = false;
+        try
+        {
+            process.Continue(false);
+            while (!returned && await reader.WaitToReadAsync(time.Token))
+            {
+                if (!reader.TryRead(out CorDebugManagedCallbackEventArgs? callbackEvent))
+                {
+                    continue;
+                }
+                if (EvaluationThread(callbackEvent)?.Id == thread.Id && EvalStatus.Abandoned.ContainsKey(thread.Id))
+                {
+                    ForgetAbandonedEvaluation(callbackEvent);
+                    returned = true;
+                    continue;
+                }
+                await OnAnyEvent(this, callbackEvent).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger?.Invoke($"The evaluation left running on thread {thread.Id} had not returned {Extensions.EvaluationTimeout.TotalSeconds:0.#} s after every thread was let go");
+        }
+        finally
+        {
+            EvalStatus.ThreadId = null;
+            if (!returned)
+            {
+                // Held again, as the stop shows it: an event still queued holds it too, until its handler lets it go on.
+                int held = process.TryStop(0);
+                if (held is not Cor.S_OK)
+                {
+                    _logger?.Invoke($"The program could not be held again with the evaluation left running on thread {thread.Id}: 0x{held:X8}");
+                }
+            }
+        }
+        return returned;
     }
 }

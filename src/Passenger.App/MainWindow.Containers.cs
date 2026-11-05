@@ -49,8 +49,22 @@ public partial class MainWindow
         });
         actions.Add(new IdeAction(AppActions.ContainerPrune, "Prune…", "Containers", context => IdeErrors.Observe(PruneAsync(Chosen())))
         {
-            WhyNot = _ => Engine.Known is { IsReady: true } ? null : "The container engine is not running",
+            // An engine not asked yet is asked as Prune runs: only one known not to serve refuses, saying why.
+            WhyNot = _ => Engine.Known is { IsReady: false } known ? known.Problem ?? "The container engine is not running" : null,
             Works = AppActions.ContainerPrune,
+        });
+        // A Dockerfile's base images are asked of Docker Scout only as the person asks, which then follows its saves.
+        actions.Add(new IdeAction(AppActions.ScoutBaseImages, "Check Base Images with Docker Scout", "Containers", context =>
+        {
+            if (Editors.Active is { } file && session.Web?.Checks.Scout(file) == true)
+            {
+                status.Text = $"Docker Scout is checking the base images of {Path.GetFileName(file.Path)}, sending their package lists to Docker's Scout service";
+            }
+        })
+        {
+            WhyNot = _ => Editors.Active is not { } file ? Refusals.NoFile
+                : Languages.Language.ForPath(file.Path) != Languages.Language.Dockerfile ? "The file shown is not a Dockerfile" : null,
+            Words = ["docker scout", "CVE", "Vulnerabilities", "Base Image"],
         });
         actions.Add(new IdeAction(AppActions.ContainerInspect, "Inspect", "Containers", context => IdeErrors.Observe(InspectAsync(Chosen()!)))
         {
@@ -102,6 +116,7 @@ public partial class MainWindow
     {
         ContainersView view = new(new ContainersParts(() => Engine, work, Say, Browse, () => StateFolder, id => actions![id]!.Title, RowMenuItem));
         containersView = view;
+        view.Metrics.Paused = MetricsPaused;
         view.RowChosen += (_, _) => lastServiceWindow = ToolWindowIds.Containers;
         view.AppHostOf = container => session is { IsEnded: false } current
             && current.Aspire.Apps.FirstOrDefault(app => app.KnownContainerIds.Any(id => ContainerRow.SameId(id, container.Id))) is { } run
@@ -110,8 +125,10 @@ public partial class MainWindow
         view.OtherEngines = () => session is { IsEnded: false } current ? current.Aspire.ContainerEngines : [];
         view.ActionRequested += (_, action) => Request(action);
         view.LinkClicked += (_, link) => OpenLink(link);
-        view.TelemetryOf = project => session.ContainerRun is { } run && run.Plan.ProjectName == project ? run.Telemetry : null;
+        view.TelemetryOf = project => session.ContainerRun is { } run && run.Plan.ProjectName == project ? run.Telemetry
+            : session.Dashboards.FirstOrDefault(dashboard => dashboard.ProjectName == project)?.Telemetry;
         view.UnstartedOf = project => buildRun.Containers is { } run && run.Plan.ProjectName == project ? run.Unstarted : [];
+        view.DotnetOf = DotnetInContainerAsync;
         view.StateRead += (_, state) => ShowEngine(state);
         view.Files.Opened += (_, copy) => OpenCopy(copy);
         view.Files.Problem += (_, problem) => status.Text = problem;
@@ -120,6 +137,25 @@ public partial class MainWindow
         // Added after the window marks its tool windows' buttons (ShowActionWork): its own marked as it is built.
         ActionButtons.ShowMarked(view, actions!);
         return view;
+    }
+
+    /// <summary>A .NET service of the folder's container run, by its Compose project and service: its program in its
+    /// container and where Passenger's tools reach it, as the Requests window finds it; null for any other, or one not up.</summary>
+    private async Task<(int Process, Profiler.ProfilePlace Place)?> DotnetInContainerAsync(string project, string service)
+    {
+        if (session.ContainerRun is not { } run || run.Plan.ProjectName != project
+            || session.Running.FirstOrDefault(p => p.Kind == RunningKind.Service && p.Services == run && p.Service?.Name == service)?.Service is not { } running)
+        {
+            return null;
+        }
+        try
+        {
+            return await run.ProgramAsync(running, Task.CompletedTask, CancellationToken.None) is { WhyNot: null, Recorded: { } place } found ? (found.Id, place) : null;
+        }
+        catch (Exception error) when (error is ServiceUnreachedException || run.Refused(error))
+        {
+            return null;
+        }
     }
 
     /// <summary>The window's folder opened: when it holds a Compose file or a Dockerfile, the engine is asked once, off the
@@ -235,6 +271,11 @@ public partial class MainWindow
     /// <summary>Prune, asked first: what the chosen heading (or the chosen object's kind) gathers that nothing uses.</summary>
     private async Task PruneAsync(ContainerRow? chosen)
     {
+        if (await Engine.StateAsync() is { IsReady: false } state)
+        {
+            status.Say(state.Problem ?? "The container engine is not running", ProblemSeverity.Warning, EnginePlace(state));
+            return;
+        }
         string kind = chosen?.Object?.Kind ?? (chosen?.Kind == ContainerRowKind.Group ? chosen.Label : "container");
         (string what, IReadOnlyList<string> words) = ContainerCommands.Prune(kind);
         ConfirmDialog asked = new("Prune", $"Remove {what}? This cannot be undone.", "Prune");

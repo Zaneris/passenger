@@ -5,6 +5,9 @@
          reads. A key Fluent gives clear in both variants, and a control Passenger never shows, stay Fluent's;
          FluentKeysTests fails on any other key missing here. -->
 
+    <!-- The font of every window and popup Fluent frames: the window's typeface in force (WindowFonts). -->
+    <x:String x:Key="ContentControlThemeFontFamily">Passenger.WindowFont</x:String>
+
     <!-- The corners of Fluent's controls Passenger leaves as they are (check boxes, number boxes, menus): the look's. -->
     <x:String x:Key="ControlCornerRadius">Passenger.ControlRadius</x:String>
     <x:String x:Key="OverlayCornerRadius">Passenger.PopupRadius</x:String>

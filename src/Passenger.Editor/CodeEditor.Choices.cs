@@ -32,7 +32,7 @@ public sealed partial class CodeEditor
         }
         choosing = new ChoiceSession([.. ranges], taken);
         Reveal(ranges[0].Start);
-        InvalidateVisual();
+        RedrawChanged();
     }
 
     /// <summary>Leaves the choice without taking one.</summary>
@@ -69,7 +69,7 @@ public sealed partial class CodeEditor
     {
         session.Current = (session.Current + step + session.Ranges.Count) % session.Ranges.Count;
         Reveal(session.Ranges[session.Current].Start);
-        InvalidateVisual();
+        RedrawChanged();
     }
 
     /// <summary>A left click while choosing: one on a range takes it, one elsewhere leaves the choice. True when taken.</summary>
@@ -91,7 +91,7 @@ public sealed partial class CodeEditor
             return;
         }
         choosing = null;
-        InvalidateVisual();
+        RedrawChanged();
         session.Taken(taken);
     }
 

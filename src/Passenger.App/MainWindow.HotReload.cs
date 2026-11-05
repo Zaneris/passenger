@@ -1,15 +1,18 @@
 using System.Diagnostics;
 using Passenger.App.Debugging;
+using Passenger.App.Editors;
 using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
+using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.App;
 
 /// <summary>Hot Reload while debugging in the window: what an Apply Changes came to in the status bar and Problems' Hot
 /// Reload tab, and the restart an edit the runtime cannot take needs: at once (Settings' Always restart, on by
-/// default), or asked: Yes, No, Always or Never.</summary>
+/// default), or asked: Yes, No, Always or Never. XAML edits reach an Avalonia or WPF app through its inspector, Run's on
+/// a save or Apply Changes, a debugged one's with its C#.</summary>
 public partial class MainWindow
 {
     /// <summary>The debugging session the person said Never to restarting for, which is not asked again.</summary>
@@ -31,8 +34,13 @@ public partial class MainWindow
     {
         Add(AppActions.ApplyHotReloadChanges, "Apply Hot Reload Changes", "Run", context =>
         {
-            // A container run's services take the edits through the debugger attached to each, whatever else is debugged.
-            if (session.Debug.HotReload is not null || session.Debug.Running.Count > 0)
+            // A game whose GDScript Godot reloads as each file is saved takes its edits as they are saved.
+            if (UnsavedGameScripts() is { Count: > 0 } unsaved)
+            {
+                IdeErrors.Observe(WorkingAsync(AppActions.ApplyHotReloadChanges, "Saving the game's scripts…", async () => status.Text = await SaveGameScriptsAsync(unsaved)));
+            }
+            // A container run's services take the edits through their debuggers, Run's app without dotnet watch its XAML.
+            else if (session.Debug.HotReload is not null || session.Debug.Running.Count > 0 || session.Debug.IsDebugging || RunXamlEdited)
             {
                 IdeErrors.Observe(ApplyHotReloadAsync(session.Debug.SettingsRestart));
             }
@@ -41,14 +49,147 @@ public partial class MainWindow
                 // Done once dotnet watch has said what it made of the save; the status bar follows its later words.
                 IdeErrors.Observe(WorkingAsync(AppActions.ApplyHotReloadChanges, "Applying Hot Reload changes…", () => SaveForWatchAsync(TimeSpan.Zero)));
             }
-        }, _ => session.Debug.Running.Count > 0 ? null
+        }, _ => session.Debug.Running.Count > 0 || UnsavedGameScripts().Count > 0 ? null
             : session.Debug.HotReload is not null || session.Debug.IsDebugging ? session.Debug.WhyNotApply()
             : buildRun.WatchesHotReload ? null
+            : RunXamlEdited ? null
+            : buildRun.IsRunning && session.RunPlan is { GodotEditor: true } editor ? GodotEditorRunsWithout(editor.Name)
+            : ScriptsReloadAsSaved() is { } saved ? saved
             : buildRun.IsRunning ? $"This program runs without Hot Reload: Run it with Hot Reload on ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)}), or Debug it"
             : $"Nothing runs: Debug the program, or Run it with Hot Reload on ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)})", ("Run", 0, 9));
         // What dotnet watch says from now is of the save, not of the one followed.
         Editors.Opened += (_, document) => document.Saved += (_, _) => UnfollowWatch();
+        // A GDScript file saved reaches the Godot game that runs it with Hot Reload.
+        Editors.Opened += (_, document) => document.Saved += (_, _) => IdeErrors.Observe(buildRun.ReloadScriptAsync(document.Path));
+        // A XAML file's edits are followed for each app run or debugged, and reach Run's on its save as Settings say.
+        Editors.Opened += (_, document) =>
+        {
+            if (!Xaml.XamlService.IsXaml(document.Path))
+            {
+                return;
+            }
+            document.Text.Changed += (_, change) =>
+            {
+                if (change.Edits.Count > 0)
+                {
+                    foreach (InspectedApp inspected in session.Inspecting)
+                    {
+                        inspected.App.Xaml?.Edited(document.Path, change.Before);
+                    }
+                }
+            };
+            document.Saved += (_, _) => XamlSaved();
+        };
     }
+
+    /// <summary>XAML files written on disk while not open (another editor's save, a checkout, a change of files Passenger
+    /// made): each inspected app takes the text written as an edit from the text it holds, applied as a save of it applies
+    /// it, to Run's app, an AppHost's services and the apps debugged; an open file's text is the editor's, which follows the
+    /// disk itself.</summary>
+    private async Task XamlWrittenAsync(IEnumerable<string> paths)
+    {
+        ProjectSession current = session;
+        List<string> closed = [.. paths.Where(p => Xaml.XamlService.IsXaml(p) && Editors.Find(p) is null).Distinct(PathNames.Comparer)];
+        if (closed.Count == 0 || !current.Inspecting.Any(a => a.App.Xaml is not null))
+        {
+            return;
+        }
+        List<(string Path, string? Text)> written = await BackgroundWork.Run(() => closed.Select(p => (p, EditorArea.Read(p)?.ToString())).ToList());
+        if (session != current || current.IsEnded)
+        {
+            return;
+        }
+        bool edited = false;
+        foreach (InspectedApp inspected in current.Inspecting)
+        {
+            foreach ((string path, string? text) in written)
+            {
+                edited |= inspected.App.Xaml?.Written(path, text) == true;
+            }
+        }
+        if (edited)
+        {
+            XamlSaved();
+            current.Debug.XamlWritten();
+        }
+    }
+
+    /// <summary>Whether the app Run runs without dotnet watch has XAML edits it has not taken.</summary>
+    private bool RunXamlEdited => !buildRun.WatchesHotReload && session.RunApp is { Xaml.Changed: true, State: not Passenger.App.LiveTree.LiveAppState.Ended };
+
+    /// <summary>The apps a XAML file's save applies its edits to, beside the debugger's: Run's, and each service an AppHost
+    /// runs undebugged, those with edits they have not taken; one run with Hot Reload through the debugger takes them there, after its C#.</summary>
+    private IReadOnlyList<InspectedApp> XamlSaveTakers => [.. session.Inspecting.Where(a => a.Kind is RunningKind.Run or RunningKind.Service
+        && a.App is { Xaml.Changed: true, State: not Passenger.App.LiveTree.LiveAppState.Ended } && !session.Debug.Running.Any(r => r.App == a.App))];
+
+    /// <summary>An apply a XAML file's save asked of Run's app, run once the saves of one Save All are done.</summary>
+    private bool xamlOnSave;
+
+    private void XamlSaved()
+    {
+        if (xamlOnSave || !settings.XamlHotReloadOnSave || XamlSaveTakers.Count == 0)
+        {
+            return;
+        }
+        xamlOnSave = true;
+        ProjectSession saved = session;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            xamlOnSave = false;
+            if (session == saved && !saved.IsEnded)
+            {
+                IdeErrors.Observe(ApplyRunXamlAsync());
+            }
+        });
+    }
+
+    /// <summary>The XAML edits applied to the app Run runs and to an AppHost's services run undebugged (<see cref="XamlSaveTakers"/>),
+    /// each said where Hot Reload says what it applied: the status bar, Run's in the Run window, and Problems' Hot Reload
+    /// tab. Run's outcome; null when it had none to take.</summary>
+    private async Task<HotReloadOutcome?> ApplyRunXamlAsync()
+    {
+        HotReloadOutcome? run = null;
+        foreach (InspectedApp taker in XamlSaveTakers)
+        {
+            HotReloadOutcome? outcome = await ApplyXamlAsync(taker);
+            run = taker.Kind == RunningKind.Run ? outcome : run;
+        }
+        return run;
+    }
+
+    /// <summary>One app's XAML edits applied, said as <see cref="ApplyRunXamlAsync"/> says it.</summary>
+    private async Task<HotReloadOutcome?> ApplyXamlAsync(InspectedApp taker)
+    {
+        if (taker.App.Xaml is not { } xaml)
+        {
+            return null;
+        }
+        ProjectSession current = session;
+        HotReloadOutcome? outcome = await xaml.ApplyAsync(paused: false);
+        if (outcome is null || session != current || current.IsEnded)
+        {
+            return outcome;
+        }
+        if (taker.Kind == RunningKind.Run)
+        {
+            Bottom.Run.Append($"Hot Reload: {outcome.Said}\n", outcome.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply));
+        }
+        else
+        {
+            outcome = outcome with { Said = $"{taker.Name}: {outcome.Said}" };
+        }
+        Bottom.Problems.ShowHotReload(outcome.Said, outcome.Problems);
+        liveTree!.ShowHotReload(outcome.Problems);
+        if (outcome.Problems.Any(p => p.Severity == Run.ProblemSeverity.Error))
+        {
+            Dock.Show(ToolWindowIds.Problems);
+        }
+        Say(outcome.Said, outcome.Problems.Count > 0 ? HotReloadPlace : null);
+        return outcome;
+    }
+
+    /// <summary>Why Godot's editor Run started takes no Hot Reload (<see cref="GodotLaunch.EditorReloads"/>).</summary>
+    public static string GodotEditorRunsWithout(string name) => $"{name} runs without Hot Reload: {GodotLaunch.EditorReloads}";
 
     /// <summary>The words dotnet watch says an apply came to with, on a line of its own that begins "dotnet watch" (as Run
     /// starts it, its emojis suppressed), what each means, and what it came to.</summary>
@@ -182,6 +323,10 @@ public partial class MainWindow
         using (working)
         {
             ProjectSession current = session;
+            if (!current.Debug.IsDebugging && current.Debug.Running.Count == 0 && await ApplyRunXamlAsync() is { } run)
+            {
+                return new HotReloadApplied(run, false);
+            }
             return await current.Debug.ApplyAllAsync((outcome, running) => session == current && !current.IsEnded
                 ? restart(outcome, running) : Task.FromResult(false));
         }
@@ -189,6 +334,40 @@ public partial class MainWindow
 
     /// <summary>Why Apply Hot Reload Changes cannot run, as the action says it, or null.</summary>
     internal string? WhyNoHotReload() => actions!.WhyNot(AppActions.ApplyHotReloadChanges, actions.Context());
+
+    /// <summary>What Apply Hot Reload Changes says where Godot reloads a game's GDScript as each file is saved, there being
+    /// nothing else to apply: the chosen debugged game's GDScript session (<see cref="DebugController.ReloadedAsSaved"/>), or a
+    /// game of GDScript alone Run runs with Hot Reload. Null for anything else.</summary>
+    internal string? ScriptsReloadAsSaved() => session.Debug.Running.Count > 0 ? null
+        : session.Debug.HotReload is not null || session.Debug.IsDebugging ? session.Debug.ReloadedAsSaved
+        : buildRun.IsRunning && session.RunPlan is { ScriptsAlone: true, GodotEditor: false } scripts && session.Games.Any(g => g.Name == scripts.Name && g.ReloadsScripts)
+            ? DebugController.ScriptsReloadAsSaved(scripts.Name) : null;
+
+    /// <summary>The open scripts with unsaved edits of the game whose GDScript Godot reloads as each file is saved
+    /// (<see cref="ScriptsReloadAsSaved"/>), which only a save brings into it; none for any other run.</summary>
+    internal IReadOnlyList<OpenDocument> UnsavedGameScripts()
+    {
+        if (ScriptsReloadAsSaved() is null)
+        {
+            return [];
+        }
+        List<string> folders = [.. session.Games.Where(g => g.ReloadsScripts).Select(g => g.Folder)];
+        return [.. Editors.Documents.Where(d => d.IsModified && d.Path.EndsWith(".gd", StringComparison.OrdinalIgnoreCase) && folders.Any(f => PathNames.IsUnder(d.Path, f)))];
+    }
+
+    /// <summary>Saves a game's unsaved scripts, their writes landed, as Save All saves: Godot reloads each in the game as it
+    /// is saved. What came of it, in words.</summary>
+    internal async Task<string> SaveGameScriptsAsync(IReadOnlyList<OpenDocument> scripts)
+    {
+        UiThread.Check();
+        string game = session.Games.FirstOrDefault(g => g.ReloadsScripts)?.Name ?? "the game";
+        List<string> refused = [.. scripts.Where(script => !Editors.Save(script)).Select(script => script.Name)];
+        string? unlanded = await EditorArea.LandedAsync(null, CancellationToken.None);
+        List<string> saved = [.. scripts.Select(script => script.Name).Except(refused)];
+        return refused.Count > 0 || unlanded is not null
+            ? $"Not every script of {game} was saved, so not every edit reaches it: {unlanded ?? $"{Plural.Listed(refused)} could not be saved"}"
+            : $"Saved {Plural.Listed(saved)}: Godot reloads {(saved.Count == 1 ? "it" : "them")} in {game}";
+    }
 
     /// <summary>The restart for edits Hot Reload could not apply, as an agent asks it: never the question, which is the
     /// person's; <paramref name="running"/> for the services of a container run with Hot Reload, else the program debugged.</summary>
@@ -238,6 +417,7 @@ public partial class MainWindow
             if (session == next && next.Debug == debugger)
             {
                 Bottom.Problems.ShowHotReload(outcome.Said, outcome.Problems);
+                liveTree!.ShowHotReload(outcome.Problems);
                 if (outcome.Problems.Any(p => p.Severity == Run.ProblemSeverity.Error))
                 {
                     Dock.Show(ToolWindowIds.Problems);
@@ -263,8 +443,17 @@ public partial class MainWindow
         {
             return false;
         }
-        // Each run of services restarts its own, a container run's and an Aspire AppHost's the same way.
         bool restarted = names.Count > 0;
+        // A Godot game Run runs with Hot Reload is built and started again, as dotnet watch restarts its program.
+        foreach (string game in names.Where(buildRun.RunsGameWithHotReload).ToList())
+        {
+            restarted &= await buildRun.RestartGameForEditAsync(game);
+            if (session != current || current.IsEnded)
+            {
+                return false;
+            }
+        }
+        // Each run of services restarts its own, a container run's and an Aspire AppHost's the same way.
         foreach (ServiceRun run in session.ServiceRuns.ToList())
         {
             string[] its = [.. names.Where(name => run.Services.Any(service => run.SessionName(service) == name))];

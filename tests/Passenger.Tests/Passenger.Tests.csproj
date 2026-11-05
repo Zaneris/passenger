@@ -38,11 +38,13 @@
        as a local feed (AvaloniaApp.Feed), so installing them never reaches nuget.org at test time. -->
   <ItemGroup>
     <PackageDownload Include="Avalonia.Templates" Version="[$(AvaloniaTemplatesVersion)]" />
+    <PackageDownload Include="CommunityToolkit.Mvvm" Version="[$(CommunityToolkitMvvmVersion)]" />
     <PackageDownload Include="Aspire.ProjectTemplates" Version="[$(AspireTemplatesVersion)]" />
     <PackageDownload Include="Aspire.AppHost.Sdk" Version="[$(AspireTemplatesVersion)]" />
     <AssemblyMetadata Include="NuGetPackageRoot" Value="$(NuGetPackageRoot)" />
     <AssemblyMetadata Include="AvaloniaTemplatesVersion" Value="$(AvaloniaTemplatesVersion)" />
     <AssemblyMetadata Include="AvaloniaOlderVersion" Value="$(AvaloniaOlderVersion)" />
+    <AssemblyMetadata Include="CommunityToolkitMvvmVersion" Value="$(CommunityToolkitMvvmVersion)" />
     <AssemblyMetadata Include="AspireTemplatesVersion" Value="$(AspireTemplatesVersion)" />
   </ItemGroup>
 
@@ -93,13 +95,50 @@
     <AssemblyMetadata Include="NpgsqlEfVersion" Value="$(NpgsqlEfVersion)" />
   </ItemGroup>
 
+  <!-- .NET's runtime pack for this machine at the SDK's own version, which a Godot game's C# export publishes with (its
+       export is self-contained), and which this project's RuntimeIdentifiers have the SDK download already: GodotExportTests
+       copies it into a feed of the run's own, so the export reaches no nuget.org. -->
+  <ItemGroup>
+    <AssemblyMetadata Include="RuntimePack" Value="Microsoft.NETCore.App.Runtime.$(NETCoreSdkRuntimeIdentifier)" />
+    <AssemblyMetadata Include="RuntimePackVersion" Value="$(BundledNETCoreAppPackageVersion)" />
+  </ItemGroup>
+
+  <!-- The package graphs of the GdUnit4 and GoDotTest tests the Godot tests write (tests/GodotGraphs), in the package
+       cache before they run, and their versions for the game's project file (GdUnit4Tests, GoDotTestTests). -->
+  <ItemGroup>
+    <ProjectReference Include="../GodotGraphs/GdUnit4/GodotGraphs.GdUnit4.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../GodotGraphs/GoDotTest/GodotGraphs.GoDotTest.csproj" ReferenceOutputAssembly="false" />
+    <AssemblyMetadata Include="GdUnit4ApiVersion" Value="$(GdUnit4ApiVersion)" />
+    <AssemblyMetadata Include="GdUnit4AdapterVersion" Value="$(GdUnit4AdapterVersion)" />
+    <AssemblyMetadata Include="GoDotTestVersion" Value="$(GoDotTestVersion)" />
+  </ItemGroup>
+
   <!-- VSTest's SDK and xunit's adapter at the versions this project restores, for the VSTest project TestFramesTests make
        (HeadlessTestsFolder): the run's feed holds neither, so its restore finds them only in the package cache. -->
   <ItemGroup>
     <AssemblyMetadata Include="TestSdkVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'Microsoft.NET.Test.Sdk')->'%(Version)')" />
     <AssemblyMetadata Include="XunitRunnerVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'xunit.runner.visualstudio')->'%(Version)')" />
+    <!-- And what both of its projects resolve through xunit.v3 that this project's graph takes at another version. -->
+    <PackageDownload Include="Microsoft.Bcl.AsyncInterfaces" Version="[$(XunitAsyncInterfacesVersion)]" />
     <!-- OpenTelemetry's, which the AspireGraphs' ServiceDefaults restore puts in the package cache, for ContainerTelemetryTests' app. -->
     <AssemblyMetadata Include="OpenTelemetryVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'OpenTelemetry.Extensions.Hosting')->'%(Version)')" />
+    <AssemblyMetadata Include="AspNetCoreOpenApiVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'Microsoft.AspNetCore.OpenApi')->'%(Version)')" />
+    <AssemblyMetadata Include="ApiDescriptionServerVersion" Value="@(PackageVersion->WithMetadataValue('Identity', 'Microsoft.Extensions.ApiDescription.Server')->'%(Version)')" />
+  </ItemGroup>
+
+  <!-- The test frameworks the unit testing tests' projects take beside VSTest's SDK above, whose packages the solution's
+       restore downloads (tests/UnitTestGraphs) for the package cache (TestPackages), and Serilog, which the evaluation
+       tests' project pins (ProjectEvaluationTests): none reaches a feed. -->
+  <ItemGroup>
+    <PackageDownload Include="Serilog" Version="[$(ProjectEvaluationSerilogVersion)]" />
+    <AssemblyMetadata Include="ProjectEvaluationSerilogVersion" Value="$(ProjectEvaluationSerilogVersion)" />
+    <AssemblyMetadata Include="XunitTwoVersion" Value="$(XunitTwoVersion)" />
+    <AssemblyMetadata Include="XunitTwoRunnerVersion" Value="$(XunitTwoRunnerVersion)" />
+    <AssemblyMetadata Include="MSTestOnVSTestVersion" Value="$(MSTestOnVSTestVersion)" />
+    <AssemblyMetadata Include="NUnitVersion" Value="$(NUnitVersion)" />
+    <AssemblyMetadata Include="NUnitAdapterVersion" Value="$(NUnitAdapterVersion)" />
+    <AssemblyMetadata Include="MSTestRunnerVersion" Value="$(MSTestRunnerVersion)" />
+    <AssemblyMetadata Include="XunitAppVersion" Value="$(XunitAppVersion)" />
   </ItemGroup>
 
   <!-- WPF's reference pack, likewise, for the WPF app WpfXamlTests make (WpfApp.Feed), with the target they make it for
@@ -110,9 +149,15 @@
     <AssemblyMetadata Include="TargetFramework" Value="$(TargetFramework)" />
   </ItemGroup>
   <!-- This machine's .NET runtime pack at the SDK's own version, for the self-contained app PublishTests publish for this
-       system at the tests' own target: its restore finds the pack in the package cache, never reaching nuget.org. -->
+       system at the tests' own target, ASP.NET Core's, which a restore for a runtime takes beside it whether or not the app
+       references ASP.NET Core, and the trimmer's tasks, which a single file's publish takes: its restore finds them in the
+       package cache, never reaching nuget.org. -->
   <ItemGroup>
     <PackageDownload Include="Microsoft.NETCore.App.Runtime.$(NETCoreSdkRuntimeIdentifier)" Version="[$(BundledNETCoreAppPackageVersion)]" />
+    <PackageDownload Include="Microsoft.AspNetCore.App.Runtime.$(NETCoreSdkRuntimeIdentifier)"
+                     Version="[@(KnownFrameworkReference->WithMetadataValue('Identity', 'Microsoft.AspNetCore.App')->WithMetadataValue('TargetFramework', '$(BundledNETCoreAppTargetFramework)')->'%(LatestRuntimeFrameworkVersion)')]" />
+    <PackageDownload Include="Microsoft.NET.ILLink.Tasks"
+                     Version="[@(KnownILLinkPack->WithMetadataValue('TargetFramework', '$(BundledNETCoreAppTargetFramework)')->'%(ILLinkPackVersion)')]" />
   </ItemGroup>
   <Target Name="SdkWindowsDesktopRefVersion" BeforeTargets="GetAssemblyAttributes">
     <ItemGroup>

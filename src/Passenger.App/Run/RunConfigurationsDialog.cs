@@ -26,6 +26,20 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private readonly StackPanel linkedAppHosts = new() { Spacing = 4 };
     private readonly Control linkedRow;
     private readonly Control aspireRow;
+    private readonly Control godotRow;
+    private readonly Control telemetryRow;
+    private readonly Control sceneRow;
+
+    /// <summary>The rows of a Godot game's copies: how many, and each one's own arguments.</summary>
+    private readonly Control[] copyRows = new Control[2];
+    private readonly Control[] browserRows;
+
+    /// <summary>The rows of what a build makes (its framework, launch profile and build before launch), which a Godot project
+    /// of GDScript alone has none of.</summary>
+    private readonly Control[] builtRows = new Control[3];
+
+    /// <summary>The rows of how Passenger starts the program, which a game Godot's editor plays takes none of.</summary>
+    private readonly Control[] launchRows = new Control[5];
     private readonly CancellationTokenSource aspireLifetime = new();
     private int aspireReading;
     private bool aspireClosed;
@@ -97,11 +111,21 @@ public sealed class RunConfigurationsDialog : IdeWindow
             TextBlock name = new();
             return name.Showing<object>(item => name.Text = item is ProjectModel p ? p.Name : item.ToString());
         });
-        ProgramBox = Field("The project's own program");
+        GodotBox = new ComboBox { Classes = { StyleClasses.Form }, ItemsSource = godotStartItems, Name = "GodotBox" };
+        SceneBox = new ComboBox { Classes = { StyleClasses.Form }, ItemsSource = SceneStarts, Name = "SceneBox" };
+        CopiesBox = new NumericUpDown { Minimum = 1, Maximum = GameCopies.Most, Increment = 1, FormatString = "0", Width = 140, Name = "CopiesBox" };
+        ToolTip.SetTip(CopiesBox, "How many copies of the game a launch starts side by side (a server and its clients), each a run of its own with its own console: "
+            + "debugged in a Debug tab of its own, or run in a tab of the Terminal window; Stop ends them together");
+        CopyArgumentsBox = new TextBox
+        {
+            AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, MinHeight = 56, Name = "CopyArgumentsBox",
+            PlaceholderText = "A line each, from the first copy: its own arguments after the configuration's (-- server, then -- client)",
+        };
+        ProgramBox = Field(OwnProgram);
         // Named, as the boxes a screenshot's --click-name reaches.
-        ArgumentsBox = Field("The project's RunArguments, if it has any");
+        ArgumentsBox = Field(OwnArguments);
         ArgumentsBox.Name = "ArgumentsBox";
-        WorkingDirectoryBox = Field("The project's RunWorkingDirectory, else its output folder");
+        WorkingDirectoryBox = Field(OwnWorkingDirectory);
         BuildBox = new CheckBox { Content = "Build the project first" };
         // Its words a TextBlock of their own, which a change from the source marks as a row's label is marked.
         TextBlock consoleWords = new() { Text = "Use external console" };
@@ -123,6 +147,14 @@ public sealed class RunConfigurationsDialog : IdeWindow
         }, reshow: true);
         FrameworkBox.SelectionChanged += (_, _) => Edit(c => c with { Framework = FrameworkBox.SelectedIndex <= 0 ? string.Empty : FrameworkBox.SelectedItem as string ?? string.Empty });
         ProfileBox.SelectionChanged += (_, _) => Edit(FromProfile, reshow: true);
+        GodotBox.SelectionChanged += (_, _) => Edit(c => c with { GodotEditor = GodotBox.SelectedIndex == 1, GodotInEditor = GodotBox.SelectedIndex == 2, GodotInPane = GodotBox.SelectedIndex == 3 },
+            reshow: true);
+        SceneBox.SelectionChanged += (_, _) => Edit(c => c with
+        {
+            GodotScene = SceneBox.SelectedIndex == 1 ? RunConfiguration.CurrentScene : c.GodotScene == RunConfiguration.CurrentScene ? null : c.GodotScene,
+        });
+        CopiesBox.ValueChanged += (_, e) => Edit(c => c with { GodotCopies = e.NewValue is { } copies ? (int)copies : 1 }, reshow: true);
+        CopyArgumentsBox.TextChanged += (_, _) => Edit(c => c with { CopyArguments = CopiesOf(CopyArgumentsBox.Text) });
         ProgramBox.TextChanged += (_, _) => Edit(c => c with { Program = ProgramBox.Text?.Trim() ?? string.Empty });
         ArgumentsBox.TextChanged += (_, _) => Edit(c => c with { Arguments = ArgumentsBox.Text ?? string.Empty });
         WorkingDirectoryBox.TextChanged += (_, _) => Edit(c => c with { WorkingDirectory = WorkingDirectoryBox.Text?.Trim() ?? string.Empty });
@@ -148,10 +180,9 @@ public sealed class RunConfigurationsDialog : IdeWindow
         ToolTip.SetTip(ModeBox, "Fast runs each .NET service in its image's runtime stage with Passenger's build mounted in, so a code change needs no image rebuild; the other builds every image as Compose says");
         TextBlock keepWords = new() { Text = "Keep backing services running after Stop" };
         KeepBackingBox = new CheckBox { Content = keepWords };
-        TextBlock telemetryWords = new() { Text = "Collect logs and traces with Aspire's dashboard" };
+        TextBlock telemetryWords = new() { Text = TelemetryWords };
         TelemetryBox = new CheckBox { Content = telemetryWords, Name = "TelemetryBox" };
-        ToolTip.SetTip(TelemetryBox, $"Runs Aspire's dashboard ({Containers.ContainerTelemetry.Image}, pulled the first time) beside the services and tells each "
-            + ".NET service to send it its OpenTelemetry, unless its own files name where; the Containers window's Telemetry tab and an agent's telemetry read it");
+
         DockerfileBox = Field("The project's own, beside it");
         ContextBox = Field("The project's DockerfileContext, else the solution's folder");
         BuildArgumentsBox = Field("NAME=value");
@@ -196,16 +227,25 @@ public sealed class RunConfigurationsDialog : IdeWindow
             ServiceActions = AspireTable.Actions(every: true),
         });
         aspireRow = Row("Aspire resources", AspireTable, top: true, fields: ["serviceActions", "serviceProjects"]);
+        godotRow = Row("Starts", GodotBox, fields: ["godotEditor", "godotInEditor", "godotInPane"]);
+        sceneRow = Row("Scene", SceneBox, fields: ["godotScene"]);
+        copyRows[0] = Row("Copies", CopiesBox, fields: ["godotCopies"]);
+        copyRows[1] = Row("Each copy's arguments", CopyArgumentsBox, top: true, fields: ["copyArguments"]);
+        browserRows = [Row("Open browser", BrowserBox, fields: ["launchBrowser"]), Row("URL", BrowserUrlBox, fields: ["browserUrl"])];
         pages =
         [
             (projectRow, [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
             (linkedRow, [RunKind.Project]),
             (aspireRow, [RunKind.Project]),
-            (Row("Target framework", FrameworkBox, fields: ["framework"]), [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
-            (Row("Launch profile", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { ProfileBox, SaveAsProfileButton } }), [RunKind.Project]),
-            (Row("Exe path", ProgramBox, fields: ["program"]), [RunKind.Project]),
-            (Row("Program arguments", ArgumentsBox, fields: ["arguments"]), [RunKind.Project]),
-            (Row("Working directory", WorkingDirectoryBox, fields: ["workingDirectory"]), [RunKind.Project]),
+            (godotRow, [RunKind.Project]),
+            (sceneRow, [RunKind.Project]),
+            (copyRows[0], [RunKind.Project]),
+            (copyRows[1], [RunKind.Project]),
+            (builtRows[0] = Row("Target framework", FrameworkBox, fields: ["framework"]), [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
+            (builtRows[1] = Row("Launch profile", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { ProfileBox, SaveAsProfileButton } }), [RunKind.Project]),
+            (launchRows[0] = Row("Exe path", ProgramBox, fields: ["program"]), [RunKind.Project]),
+            (launchRows[1] = Row("Program arguments", ArgumentsBox, fields: ["arguments"]), [RunKind.Project]),
+            (launchRows[2] = Row("Working directory", WorkingDirectoryBox, fields: ["workingDirectory"]), [RunKind.Project]),
             (Row("Compose files", ComposeFilesBox, fields: ["composeFiles"]), [RunKind.Compose]),
             (Row("Env files", EnvFilesBox, fields: ["envFiles"]), [RunKind.Compose]),
             (Row("Profiles", ProfilesBox, fields: ["profiles"]), [RunKind.Compose]),
@@ -216,14 +256,14 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (Row("Run arguments", RunArgumentsBox, fields: ["runArguments"]), [RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row("Mode", ModeBox, fields: ["mode"]), [RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row(string.Empty, KeepBackingBox, marked: keepWords, fields: ["keepBackingServices"]), [RunKind.Compose]),
-            (Row(string.Empty, TelemetryBox, marked: telemetryWords, fields: ["telemetry"]), [RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
-            (Row("Environment variables", new StackPanel { Spacing = 6, Children = { VariablesHeader(), variables, AddVariableButton } }, top: true, fields: ["environment"]),
+            (telemetryRow = Row(string.Empty, TelemetryBox, marked: telemetryWords, fields: ["telemetry"]), [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
+            (launchRows[3] = Row("Environment variables", new StackPanel { Spacing = 6, Children = { VariablesHeader(), variables, AddVariableButton } }, top: true, fields: ["environment"]),
                 [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
-            (Row(string.Empty, ConsoleBox, marked: consoleWords, fields: ["console"]), [RunKind.Project]),
-            (Row("Open browser", BrowserBox, fields: ["launchBrowser"]), [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
-            (Row("URL", BrowserUrlBox, fields: ["browserUrl"]), [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
+            (launchRows[4] = Row(string.Empty, ConsoleBox, marked: consoleWords, fields: ["console"]), [RunKind.Project]),
+            (browserRows[0], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
+            (browserRows[1], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row("Launched service", LaunchServiceBox, fields: ["launchService"]), [RunKind.Compose]),
-            (Row("Before launch", BuildBox, fields: ["buildBeforeLaunch"]), [RunKind.Project]),
+            (builtRows[2] = Row("Before launch", BuildBox, fields: ["buildBeforeLaunch"]), [RunKind.Project]),
         ];
 
         WriteButton = new Button { Content = "Write to Launch Profile", Name = "WriteButton" };
@@ -372,6 +412,47 @@ public sealed class RunConfigurationsDialog : IdeWindow
 
     public ComboBox FrameworkBox { get; }
 
+    /// <summary>What a Godot project's configuration starts: its game, or Godot's editor on it.</summary>
+    public ComboBox GodotBox { get; }
+
+    /// <summary>The choices of <see cref="GodotBox"/>, the game's first.</summary>
+    public static readonly string[] GodotStarts = ["The game", "Godot's editor on the project", "The game, in Godot's editor", "The game, in Passenger's Game window"];
+
+    private readonly ComboBoxItem[] godotStartItems = [.. GodotStarts.Select(start => new ComboBoxItem { Content = start })];
+
+    /// <summary>The scene a Godot project's game starts in: its main scene, or the one open in the editor as it starts.</summary>
+    public ComboBox SceneBox { get; }
+
+    /// <summary>How many copies of a Godot project's game a launch starts.</summary>
+    public NumericUpDown CopiesBox { get; }
+
+    /// <summary>Each copy's own arguments, a line each.</summary>
+    public TextBox CopyArgumentsBox { get; }
+
+    /// <summary>Each copy's arguments from the box's lines, the lines past the last with words left out.</summary>
+    private static List<string> CopiesOf(string? text)
+    {
+        List<string> lines = [.. (text ?? string.Empty).Split('\n').Select(l => l.TrimEnd('\r').Trim())];
+        while (lines.Count > 0 && lines[^1].Length == 0)
+        {
+            lines.RemoveAt(lines.Count - 1);
+        }
+        return lines;
+    }
+
+    /// <summary>The choices of <see cref="SceneBox"/>, the main scene's first.</summary>
+    public static readonly string[] SceneStarts = ["Its main scene", "The scene open in the editor"];
+
+    /// <summary>What the program, arguments and working folder boxes say left empty, for a project and for a Godot project's.</summary>
+    private const string OwnProgram = "The project's own program";
+    private const string OwnArguments = "The project's RunArguments, if it has any";
+    private const string OwnWorkingDirectory = "The project's RunWorkingDirectory, else its output folder";
+    private const string GodotArguments = "Godot's own after --path: a scene to start in (res://level.tscn), --debug-collisions";
+    private const string GodotWorkingDirectory = "The Godot project's folder";
+
+    /// <summary>Settings' command line for Godot, which a Godot project's configurations run on when they name no program.</summary>
+    public string? GodotSetting { get; init; }
+
     public ComboBox ProfileBox { get; }
 
     public TextBox ProgramBox { get; }
@@ -483,6 +564,17 @@ public sealed class RunConfigurationsDialog : IdeWindow
 
     /// <summary>Collect logs and traces: Aspire's dashboard beside a container run's services.</summary>
     public CheckBox TelemetryBox { get; }
+
+    /// <summary>The words of <see cref="TelemetryBox"/>, by which what turns it on names it.</summary>
+    public const string TelemetryWords = "Collect logs and traces with Aspire's dashboard";
+
+    /// <summary>What Collect logs and traces does, for a container run's services or a project run's program.</summary>
+    public static string TelemetryTip(bool containers) => containers
+        ? $"Runs Aspire's dashboard ({Containers.ContainerTelemetry.Image}, pulled the first time) beside the services and tells each "
+            + ".NET service to send it its OpenTelemetry, unless its own files name where; the Containers window's Telemetry tab and an agent's telemetry read it"
+        : $"For this project's run (Run, Debug, Hot Reload and Profile alike): runs Aspire's dashboard ({Containers.ContainerTelemetry.Image}, pulled the first time) "
+            + "in a container while the program runs, and tells the program to send it its OpenTelemetry, unless its launch profile or environment names where; "
+            + "the Containers window's Telemetry tab and an agent's telemetry read it. An Aspire AppHost's run has a dashboard of its own";
 
     public TextBox DockerfileBox { get; }
 
@@ -933,6 +1025,14 @@ public sealed class RunConfigurationsDialog : IdeWindow
             IReadOnlyList<LaunchProfile> profiles = project is null ? [] : LaunchProfile.Read(project);
             ProfileBox.ItemsSource = (string[])["None", .. profiles.Select(p => p.Name)];
             ProfileBox.SelectedIndex = Math.Max(0, profiles.ToList().FindIndex(p => p.Name == shown.LaunchProfile) + 1);
+            bool godot = !shown.IsContainer && project?.GodotFolder is not null;
+            GodotBox.SelectedIndex = shown.GodotEditor ? 1 : shown.GodotInEditor ? 2 : shown.GodotInPane ? 3 : 0;
+            SceneBox.SelectedIndex = shown.GodotScene == RunConfiguration.CurrentScene ? 1 : 0;
+            CopiesBox.Value = shown.GodotCopies;
+            CopyArgumentsBox.Text = string.Join(Environment.NewLine, shown.CopyArguments);
+            ProgramBox.PlaceholderText = godot ? GodotProgram(project?.IsScriptGame == true) : OwnProgram;
+            ArgumentsBox.PlaceholderText = godot ? GodotArguments : OwnArguments;
+            WorkingDirectoryBox.PlaceholderText = godot ? GodotWorkingDirectory : OwnWorkingDirectory;
             ProgramBox.Text = shown.Program;
             ArgumentsBox.Text = shown.Arguments;
             WorkingDirectoryBox.Text = shown.WorkingDirectory;
@@ -940,7 +1040,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             ConsoleBox.IsChecked = shown.Console == ConsoleKind.Terminal;
             BrowserBox.IsChecked = shown.LaunchBrowser;
             BrowserUrlBox.Text = shown.BrowserUrl;
-            KindText.Text = KindName(shown.Kind);
+            KindText.Text = project?.IsScriptGame == true ? "Godot Project (GDScript)" : godot ? "Godot Project" : KindName(shown.Kind);
             ComposeFilesBox.Text = string.Join("; ", shown.ComposeFiles.Select(Shown));
             EnvFilesBox.Text = string.Join("; ", shown.EnvFiles.Select(Shown));
             ProfilesBox.Text = string.Join(", ", shown.Profiles);
@@ -958,6 +1058,26 @@ public sealed class RunConfigurationsDialog : IdeWindow
             }
             linkedRow.IsVisible = !shown.IsContainer && shown.Aspire;
             aspireRow.IsVisible = !shown.IsContainer && shown.Aspire;
+            // An AppHost's run has a dashboard of its own, and a Godot game sends no OpenTelemetry.
+            telemetryRow.IsVisible &= shown.IsContainer || !shown.Aspire && !godot;
+            ToolTip.SetTip(TelemetryBox, TelemetryTip(shown.IsContainer));
+            godotRow.IsVisible = godot;
+            sceneRow.IsVisible = godot && !shown.GodotEditor;
+            foreach (Control row in launchRows)
+            {
+                row.IsVisible &= !(godot && shown.GodotInEditor);
+            }
+            // Godot's editor plays as many instances as its own Run Multiple Instances says.
+            copyRows[0].IsVisible = godot && !shown.GodotEditor && !shown.GodotInEditor;
+            copyRows[1].IsVisible = godot && !shown.GodotEditor && !shown.GodotInEditor && shown.GodotCopies > 1;
+            foreach (Control browser in godot ? browserRows : [])
+            {
+                browser.IsVisible = false;
+            }
+            foreach (Control built in project?.IsScriptGame == true ? builtRows : [])
+            {
+                built.IsVisible = false;
+            }
             variables.Children.Clear();
             foreach ((string name, string value) in shown.Environment)
             {
@@ -966,11 +1086,17 @@ public sealed class RunConfigurationsDialog : IdeWindow
             note.Text = NoteOn(shown, project, shown.WhyNotHere(projects));
             note.IsVisible = note.Text.Length > 0;
             // What makes a generated one the one it is, its link to its source, changes only in a copy.
+            string link = $"Its link to its {SourceName(shown)}, which a copy can change";
             foreach (Control identity in (Control[])[NameBox, ProjectBox, ProfileBox])
             {
                 identity.IsEnabled = !shown.Generated;
-                ToolTip.SetTip(identity, shown.Generated ? $"Its link to its {SourceName(shown)}, which a copy can change" : null);
+                ToolTip.SetTip(identity, shown.Generated ? link : null);
             }
+            // Whether it opens Godot's editor is that link too; how a generated one's game starts is the person's.
+            GodotBox.IsEnabled = !(shown.Generated && shown.GodotEditor);
+            ToolTip.SetTip(GodotBox, GodotBox.IsEnabled ? null : link);
+            godotStartItems[1].IsEnabled = !shown.Generated;
+            ToolTip.SetTip(godotStartItems[1], shown.Generated ? link : null);
         }
         finally
         {
@@ -989,10 +1115,16 @@ public sealed class RunConfigurationsDialog : IdeWindow
         string origin = !shown.Generated ? string.Empty
             : shown.Origin is { } container ? container
             : shown.LaunchProfile.Length > 0 ? $"Generated from the launch profile {shown.LaunchProfile} in {name}'s {LaunchProfile.SettingsShown(shown.Project)}"
+            : project?.GodotFolder is not null ? (shown.GodotEditor ? $"Generated for Godot's editor on the Godot project {name}" : $"Generated for the Godot project {name}'s game")
+                + (project.IsScriptGame ? ", of GDScript alone, which Godot runs as it is, nothing built first" : string.Empty)
             : $"Generated for the executable project {name}";
         if (shown.Generated)
         {
             origin += $": a field changed here is kept with the folder over its {SourceName(shown)}, the rest follow it.";
+        }
+        if (shown.GodotEditor && project?.GodotFolder is not null)
+        {
+            origin = $"{origin} Hot Reload: {GodotLaunch.EditorReloads}.".Trim();
         }
         return whyNot is { } why ? $"{origin} It cannot run here: {why}.".Trim() : origin;
     }
@@ -1168,6 +1300,15 @@ public sealed class RunConfigurationsDialog : IdeWindow
         }
         return row;
     }
+
+    /// <summary>What the program box says left empty for a Godot project's: the Godot it runs on, or why there is none; for one
+    /// of GDScript alone (<paramref name="scripts"/>) any Godot 4 will do.</summary>
+    private string GodotProgram(bool scripts) => GodotLaunch.Found(GodotSetting) switch
+    {
+        null => $"Godot, which is not found: {GodotLaunch.NotFound}",
+        { } found when (scripts ? found.WhyNotScripts : found.WhyNot) is { } why => $"{found.Executable}, which cannot run it: {why}",
+        { } found => $"Godot{(found.Version is { } version ? $" {version}" : string.Empty)}{(found.Sharp is null ? string.Empty : ", a .NET build")}: {found.Executable}",
+    };
 
     private static TextBox Field(string? placeholder = null) => new() { Classes = { StyleClasses.Search }, PlaceholderText = placeholder };
 

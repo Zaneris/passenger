@@ -365,7 +365,7 @@ public sealed class V3Feed(FeedClient client) : IPackageFeed
         }
         using (leaf)
         {
-            if (!leaf.RootElement.TryGetProperty("catalogEntry", out JsonElement entry))
+            if (JsonMembers.Value(leaf.RootElement, "catalogEntry") is not { } entry)
             {
                 return null;
             }
@@ -381,16 +381,14 @@ public sealed class V3Feed(FeedClient client) : IPackageFeed
         static PackageDependencies Groups(JsonElement entry)
         {
             List<DependencyGroup> groups = [];
-            foreach (JsonElement group in entry.TryGetProperty("dependencyGroups", out JsonElement all) && all.ValueKind == JsonValueKind.Array ? all.EnumerateArray() : [])
+            foreach (JsonElement group in JsonMembers.Items(entry, "dependencyGroups").Where(g => g.ValueKind == JsonValueKind.Object))
             {
-                string? framework = group.TryGetProperty("targetFramework", out JsonElement named) ? named.GetString() : null;
                 List<(string, string)> packages = [];
-                foreach (JsonElement dependency in group.TryGetProperty("dependencies", out JsonElement listed) && listed.ValueKind == JsonValueKind.Array ? listed.EnumerateArray() : [])
+                foreach (JsonElement dependency in JsonMembers.Items(group, "dependencies").Where(d => d.ValueKind == JsonValueKind.Object))
                 {
-                    packages.Add((dependency.TryGetProperty("id", out JsonElement depId) ? depId.GetString() ?? string.Empty : string.Empty,
-                        dependency.TryGetProperty("range", out JsonElement range) ? range.GetString() ?? string.Empty : string.Empty));
+                    packages.Add((JsonMembers.Text(dependency, "id") ?? string.Empty, JsonMembers.Text(dependency, "range") ?? string.Empty));
                 }
-                groups.Add(new DependencyGroup(framework, packages));
+                groups.Add(new DependencyGroup(JsonMembers.Text(group, "targetFramework"), packages));
             }
             return new PackageDependencies(groups);
         }
@@ -638,75 +636,5 @@ public static class PackageFeeds
         FeedClient client = new(source.Name, new Uri(source.Source), http, source.Credentials, source.AllowInsecure, source.SkipCertificateCheck);
         bool v3 = source.ProtocolVersion == 3 || new Uri(source.Source).AbsolutePath.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
         return v3 ? new V3Feed(client) : new V2Feed(client);
-    }
-}
-
-/// <summary>NuGet's order of versions, SemVer 2's precedence: by their numbers (1.0 is 1.0.0.0), a prerelease before
-/// its release, and prerelease labels dot by dot, numbers by value and below words, words as NuGet compares them,
-/// ignoring case. Build metadata after a + takes no part.</summary>
-public sealed class VersionOrder : IComparer<string>
-{
-    public static readonly VersionOrder Instance = new();
-
-    public static bool IsPrerelease(string version) => Release(version).Contains('-', StringComparison.Ordinal);
-
-    public int Compare(string? x, string? y)
-    {
-        (long[] a, string[]? aLabel) = Parse(x ?? string.Empty);
-        (long[] b, string[]? bLabel) = Parse(y ?? string.Empty);
-        for (int i = 0; i < a.Length; i++)
-        {
-            if (a[i] != b[i])
-            {
-                return a[i].CompareTo(b[i]);
-            }
-        }
-        if (aLabel is null || bLabel is null)
-        {
-            // A release is above its prereleases.
-            return (aLabel is null).CompareTo(bLabel is null);
-        }
-        for (int i = 0; i < Math.Min(aLabel.Length, bLabel.Length); i++)
-        {
-            int order = CompareIdentifiers(aLabel[i], bLabel[i]);
-            if (order != 0)
-            {
-                return order;
-            }
-        }
-        return aLabel.Length.CompareTo(bLabel.Length);
-    }
-
-    private static int CompareIdentifiers(string a, string b)
-    {
-        bool aNumber = a.Length > 0 && a.All(char.IsAsciiDigit);
-        bool bNumber = b.Length > 0 && b.All(char.IsAsciiDigit);
-        if (aNumber && bNumber)
-        {
-            // Digits of any length, compared by value: the longer number without leading zeros is the larger.
-            string aDigits = a.TrimStart('0');
-            string bDigits = b.TrimStart('0');
-            return aDigits.Length != bDigits.Length ? aDigits.Length.CompareTo(bDigits.Length) : string.CompareOrdinal(aDigits, bDigits);
-        }
-        if (aNumber != bNumber)
-        {
-            return aNumber ? -1 : 1;
-        }
-        return StringComparer.OrdinalIgnoreCase.Compare(a, b);
-    }
-
-    private static string Release(string version) => version.Split('+', 2)[0];
-
-    /// <summary>A version's four numbers, those it leaves out 0, and its prerelease label's identifiers, null for a release.</summary>
-    private static (long[] Numbers, string[]? Label) Parse(string version)
-    {
-        string[] parts = Release(version.Trim()).Split('-', 2);
-        long[] numbers = new long[4];
-        string[] given = parts[0].Split('.');
-        for (int i = 0; i < Math.Min(given.Length, numbers.Length); i++)
-        {
-            numbers[i] = long.TryParse(given[i], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long number) ? number : 0;
-        }
-        return (numbers, parts.Length > 1 ? parts[1].Split('.') : null);
     }
 }

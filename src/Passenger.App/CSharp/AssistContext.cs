@@ -29,16 +29,34 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>The window's MSBuild code help, for a project file shown.</summary>
     public Func<MSBuildService?>? MSBuild { get; set; }
 
+    /// <summary>The stylesheets the window's pages link, for a Razor or HTML file shown.</summary>
+    public Func<PageStylesheets?>? Stylesheets { get; set; }
+
+    /// <summary>The scenes of the window's Godot projects, C# or GDScript alone, for a scene shown.</summary>
+    public Func<Godot.GodotSceneIndex?>? GodotScenes { get; set; }
+
+    /// <summary>The open shaders' marks from Godot's compiler, which its compiler and what it read of their uniforms come from.</summary>
+    public Func<Godot.GodotShaderMarks?>? GodotShaders { get; set; }
+
+    /// <summary>The open GDScripts' own trees and types.</summary>
+    public Func<Godot.GodotScriptTypes?>? GodotScriptTypes { get; set; }
+
+    /// <summary>The scenes of the Godot project a file is of and that project's folder; null for a file of none.</summary>
+    public (Godot.GodotSceneIndex Index, string Folder)? GodotOf(string path) =>
+        GodotScenes?.Invoke() is { } index && index.GameOf(path) is { } folder ? (index, folder) : null;
+
     /// <summary>The languages' own answers, in the one order each command asks them.</summary>
     public LanguageAssists Languages { get; set; } = null!;
 
     public event EventHandler<(string Path, TextPosition Position)>? Navigated;
 
-    public event EventHandler<(string Title, IReadOnlyList<LspLocation> Usages, string? Note)>? UsagesFound;
+    public event EventHandler<UsagesFound>? UsagesFound;
 
     public event EventHandler<string>? Message;
 
     public event EventHandler<Uri>? Browsed;
+
+    public event EventHandler<string>? Played;
 
     public CodeEditor Editor => editors.CodeEditor;
 
@@ -156,7 +174,7 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
                 Say(stage);
             }
         });
-        return Patience.RunAsync(Editors.Commands, attempt, refused, stage => waits(stage is null ? null : $"{stage}…"), CancellationToken.None);
+        return Patience.RunAsync(Editors.Commands, () => CSharp?.Session, attempt, refused, stage => waits(stage is null ? null : $"{stage}…"), CancellationToken.None);
     }
 
     private static string? NotTakenIn(IReadOnlyList<(string Path, string Project)> left) =>
@@ -174,9 +192,10 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>A place to go: a file and a line and column (from zero).</summary>
     public void Navigate((string Path, TextPosition Position) place) => Navigated?.Invoke(this, place);
 
-    /// <summary>Find Usages' answer, for the Find window: what was searched for, where it is used, and what the answer
-    /// went without, when it did.</summary>
-    public void ShowUsages(string title, IReadOnlyList<LspLocation> usages, string? note = null) => UsagesFound?.Invoke(this, (title, usages, note));
+    /// <summary>Find Usages' answer, for the Find window, or Show Usages' for its popup at an offset: what was searched for,
+    /// where it is used, and what the answer went without, when it did.</summary>
+    public void ShowUsages(string title, IReadOnlyList<LspLocation> usages, int? popupAt, string? note = null) =>
+        UsagesFound?.Invoke(this, new UsagesFound(title, usages, note, popupAt));
 
     /// <summary>How the window runs a change of files beyond the open ones (<see cref="ChangeFilesAsync"/>).</summary>
     public Func<IReadOnlyCollection<string>, CommandHistory.Recording, Action, Task>? FilesChanging { get; set; }
@@ -199,6 +218,9 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
 
     /// <summary>A page to open in the browser: an ESLint rule's, an image's registry page.</summary>
     public void Browse(Uri page) => Browsed?.Invoke(this, page);
+
+    /// <summary>A sound file to play: one a path in the code names, its card's Play pressed.</summary>
+    public void Play(string file) => Played?.Invoke(this, file);
 
     /// <summary>A file's text as the editor has it, else the disk's (<see cref="EditorArea.TextOf"/>); empty when it cannot be read.</summary>
     public string ReadOpenOrDisk(string path) => editors.TextOf(path)?.ToString() ?? string.Empty;

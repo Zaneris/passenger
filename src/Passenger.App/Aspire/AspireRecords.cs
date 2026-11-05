@@ -61,7 +61,7 @@ internal sealed class AspireRecords
         {
             json.WriteStringValue(MaskedValue);
         }
-        else if (row.TryGetProperty("body", out JsonElement body))
+        else if (JsonMembers.Value(row, "body") is { } body)
         {
             WriteSaid(Text(body, out ReadOnlySpan<char> message), message);
         }
@@ -148,7 +148,7 @@ internal sealed class AspireRecords
         foreach (JsonElement item in Items(row, "attributes").EnumerateArray())
         {
             string key = Key(item).GetString()!;
-            if (!item.TryGetProperty("value", out JsonElement value))
+            if (JsonMembers.Value(item, "value") is not { } value)
             {
                 throw new InvalidDataException("Aspire telemetry omitted an attribute value.");
             }
@@ -169,7 +169,7 @@ internal sealed class AspireRecords
     /// <summary>An OTLP time, nanoseconds since 1970 written as a string of digits.</summary>
     public ulong Nanoseconds(JsonElement row, string field)
     {
-        if (row.TryGetProperty(field, out JsonElement value) && value.ValueKind == JsonValueKind.String
+        if (JsonMembers.Value(row, field) is { ValueKind: JsonValueKind.String } value
             && ulong.TryParse(Chars(value), NumberStyles.None, CultureInfo.InvariantCulture, out ulong parsed))
         {
             return parsed;
@@ -278,7 +278,7 @@ internal sealed class AspireRecords
                     Value(ContainerSecrets.Masked, twice: false);
                     return;
                 }
-                Said said = Text(item.GetProperty("value"), out ReadOnlySpan<char> text);
+                Said said = Text(Checked(item, "value"), out ReadOnlySpan<char> text);
                 if (said != Said.Nothing)
                 {
                     WriteSaid(said, text);
@@ -294,7 +294,7 @@ internal sealed class AspireRecords
         JsonElement? last = null;
         foreach (JsonElement item in Items(row, "attributes").EnumerateArray())
         {
-            if (item.GetProperty("key").ValueEquals(key))
+            if (Checked(item, "key").ValueEquals(key))
             {
                 last = item;
             }
@@ -309,7 +309,7 @@ internal sealed class AspireRecords
         foreach (JsonElement item in Items(row, "attributes").EnumerateArray())
         {
             JsonElement key = Key(item);
-            if (!item.TryGetProperty("value", out JsonElement value))
+            if (JsonMembers.Value(item, "value") is not { } value)
             {
                 throw new InvalidDataException("Aspire telemetry omitted an attribute value.");
             }
@@ -332,7 +332,7 @@ internal sealed class AspireRecords
         int at = 0;
         foreach (JsonElement item in items.EnumerateArray())
         {
-            JsonElement key = item.GetProperty("key");
+            JsonElement key = Checked(item, "key");
             if (FirstNamed(items, item, key, at++, byKey) is not { } last)
             {
                 continue;
@@ -351,7 +351,7 @@ internal sealed class AspireRecords
             }
             else
             {
-                WriteSaid(Text(last.GetProperty("value"), out ReadOnlySpan<char> text), text);
+                WriteSaid(Text(Checked(last, "value"), out ReadOnlySpan<char> text), text);
             }
         }
         json.WriteEndObject();
@@ -370,7 +370,7 @@ internal sealed class AspireRecords
         int other = 0;
         foreach (JsonElement next in items.EnumerateArray())
         {
-            if (other != at && SameText(next.GetProperty("key"), key))
+            if (other != at && SameText(Checked(next, "key"), key))
             {
                 if (other < at)
                 {
@@ -390,7 +390,7 @@ internal sealed class AspireRecords
         int at = 0;
         foreach (JsonElement item in items.EnumerateArray())
         {
-            string key = item.GetProperty("key").GetString()!;
+            string key = Checked(item, "key").GetString()!;
             byKey[key] = byKey.TryGetValue(key, out (int First, JsonElement Last) was) ? (was.First, item) : (at, item);
             at++;
         }
@@ -400,8 +400,8 @@ internal sealed class AspireRecords
     /// <summary>An attribute's value as the dictionary of them holds it.</summary>
     private string? DictionaryValue(JsonElement item)
     {
-        string key = item.GetProperty("key").GetString()!;
-        return ContainerSecrets.Secret(key) ? ContainerSecrets.Masked : Text(item.GetProperty("value"), out ReadOnlySpan<char> text) switch
+        string key = Checked(item, "key").GetString()!;
+        return ContainerSecrets.Secret(key) ? ContainerSecrets.Masked : Text(Checked(item, "value"), out ReadOnlySpan<char> text) switch
         {
             Said.Nothing => null,
             Said.Text => ContainerSecrets.InValue(new string(text)),
@@ -418,7 +418,7 @@ internal sealed class AspireRecords
         {
             json.WriteStringValue(MaskedValue);
         }
-        else if (!row.TryGetProperty(field, out JsonElement value))
+        else if (JsonMembers.Value(row, field) is not { } value)
         {
             json.WriteNullValue();
         }
@@ -451,7 +451,7 @@ internal sealed class AspireRecords
         switch (value.ValueKind)
         {
             case JsonValueKind.Object:
-                bool secretAttribute = value.TryGetProperty("key", out JsonElement key) && key.ValueKind == JsonValueKind.String && ContainerSecrets.Secret(Chars(key));
+                bool secretAttribute = JsonMembers.Value(value, "key") is { ValueKind: JsonValueKind.String } key && ContainerSecrets.Secret(Chars(key));
                 json.WriteStartObject();
                 foreach (JsonProperty property in value.EnumerateObject())
                 {
@@ -604,7 +604,7 @@ internal sealed class AspireRecords
         foreach (JsonElement item in items.EnumerateArray())
         {
             JsonElement key = Key(item);
-            if (!item.TryGetProperty("value", out JsonElement child))
+            if (JsonMembers.Value(item, "value") is not { } child)
             {
                 throw new InvalidDataException("Aspire telemetry omitted an AnyValue attribute value.");
             }
@@ -622,7 +622,7 @@ internal sealed class AspireRecords
         int at = 0;
         foreach (JsonElement item in items.EnumerateArray())
         {
-            JsonElement key = item.GetProperty("key");
+            JsonElement key = Checked(item, "key");
             if (FirstNamed(items, item, key, at++, byKey) is not { } last)
             {
                 continue;
@@ -636,7 +636,7 @@ internal sealed class AspireRecords
             }
             else
             {
-                Any(last.GetProperty("value"), depth + 1, into);
+                Any(Checked(last, "value"), depth + 1, into);
             }
         }
         into.WriteEndObject();
@@ -678,17 +678,21 @@ internal sealed class AspireRecords
     /// null.</summary>
     private static JsonElement Items(JsonElement value, string name)
     {
-        if (!AspireJson.Object(value).TryGetProperty(name, out JsonElement items) || items.ValueKind == JsonValueKind.Null)
+        if (JsonMembers.Value(AspireJson.Object(value), name) is not { ValueKind: not JsonValueKind.Null } items)
         {
             return NoItems;
         }
         return items.ValueKind == JsonValueKind.Array ? items : throw new InvalidDataException($"Aspire JSON field '{name}' must be an array.");
     }
 
+    /// <summary>A member of an entry its list's check has read (its key, its value), which it cannot be without.</summary>
+    private static JsonElement Checked(JsonElement item, string name) =>
+        JsonMembers.Value(item, name) ?? throw new InvalidDataException($"Aspire JSON is missing '{name}'.");
+
     /// <summary>An entry's key as <see cref="AspireJson.RequiredString"/> reads it, a string of something.</summary>
     private static JsonElement Key(JsonElement item)
     {
-        if (!AspireJson.Object(item).TryGetProperty("key", out JsonElement key) || key.ValueKind == JsonValueKind.Null)
+        if (JsonMembers.Value(AspireJson.Object(item), "key") is not { ValueKind: not JsonValueKind.Null } key)
         {
             throw new InvalidDataException("Aspire JSON is missing 'key'.");
         }
@@ -703,7 +707,7 @@ internal sealed class AspireRecords
     private bool StringField(JsonElement row, string name, out ReadOnlySpan<char> text)
     {
         text = default;
-        if (!AspireJson.Object(row).TryGetProperty(name, out JsonElement field) || field.ValueKind == JsonValueKind.Null)
+        if (JsonMembers.Value(AspireJson.Object(row), name) is not { ValueKind: not JsonValueKind.Null } field)
         {
             return false;
         }

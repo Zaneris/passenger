@@ -40,6 +40,15 @@ public static class FrameworkNames
         return $"net{version}";
     }
 
+    /// <summary>Whether a target framework is .NET Framework's (net48, net472, <c>.NETFramework,Version=v4.8</c>), which
+    /// Passenger never runs: it runs CoreCLR's alone.</summary>
+    public static bool IsNetFramework(string framework) =>
+        framework.StartsWith(NetFramework, StringComparison.OrdinalIgnoreCase)
+        || (framework.Length > 3 && framework.StartsWith("net", StringComparison.OrdinalIgnoreCase) && framework[3..].All(char.IsAsciiDigit));
+
+    /// <summary>.NET Framework's identifier in a target framework's long name (<c>.NETFramework,Version=v4.8</c>).</summary>
+    private const string NetFramework = ".NETFramework";
+
     /// <summary>A framework's name as MSBuild compares it, in any letter case.</summary>
     private static bool Is(string framework, string name) => framework.Equals(name, StringComparison.OrdinalIgnoreCase);
 }

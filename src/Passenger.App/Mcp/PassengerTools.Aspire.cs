@@ -104,7 +104,7 @@ public sealed partial class PassengerTools
         try
         {
             await window.FollowAspireAsync(Session, app, resources => Task.FromResult(resources.Count > 0 && resources
-                .Where(shown => !(shown.Data.TryGetProperty("isHidden", out JsonElement hidden) && hidden.ValueKind == JsonValueKind.True))
+                .Where(shown => !shown.IsHidden)
                 .All(resource => StandingOf(app, resource) is { } standing && (standing.IsUp || standing.HasEnded) || app.IsLeftUnstarted(resource)) ? resources : null),
                 limit, $"{app.Name} is not up yet", cancel);
         }
@@ -145,7 +145,7 @@ public sealed partial class PassengerTools
         string output = service is null ? string.Empty : Tail(service.Console.Document.Snapshot, 200);
         bool unstarted = resource is not null && app.IsLeftUnstarted(resource);
         RunResult answer = ResourceAnswer(name, app.Name, "Resources", resource is null ? null : StandingOf(app, resource),
-            [.. resources.Where(shown => !(shown.Data.TryGetProperty("isHidden", out JsonElement hidden) && hidden.ValueKind == JsonValueKind.True))
+            [.. resources.Where(shown => !shown.IsHidden)
                 .Select(shown => StandingOf(app, shown))], app.Notes, output, waitSeconds,
             unstarted ? $"{AspireAppRun.NotStarted}. {AspireAppRun.NotStartedWhy}" : null);
         if (resource?.State == "FailedToStart" && !unstarted)

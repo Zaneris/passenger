@@ -54,8 +54,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(wrong.IsError == true && Text(wrong).Contains("there are passed, failed, skipped and notRun", StringComparison.Ordinal), $"tests_list in no state answered: {Text(wrong)}");
     }
 
-    /// <summary>A project whose global.json asks for a .NET SDK that is not installed: workspace says so, and run
-    /// refuses in the same words rather than finding no executable project.</summary>
+    /// <summary>A project whose global.json asks for a .NET SDK that is not installed: workspace says so and how the person
+    /// mends it, and run refuses in the same words rather than finding no executable project.</summary>
     [Fact]
     public async Task An_agent_where_global_json_asks_for_an_SDK_not_installed_hears_so_from_workspace_and_run()
     {
@@ -67,7 +67,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
         const string Missing = "The .NET SDK 1.0.100 that global.json asks for is not installed: install it, or have global.json name one that is";
         JsonElement workspace = await Call(client, McpTools.Workspace);
-        Assert.True(workspace.TryGetProperty("sdkMissing", out JsonElement missing) && missing.GetString() == Missing,
+        Assert.True(workspace.TryGetProperty("sdkMissing", out JsonElement missing)
+            && missing.GetString() == $"{Missing}. This Passenger, an agent's own, installs nothing: the person installs it with Install .NET SDK in the banner over their Passenger's window",
             $"workspace, where global.json asks for an SDK not installed, answered: {workspace}");
         CallToolResult run = await Result(client, McpTools.Run);
         Assert.True(run.IsError == true && Text(run).Contains(Missing, StringComparison.Ordinal), $"run without the SDK answered: {Text(run)}");
@@ -122,8 +123,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         {
             File.WriteAllText(Path.Combine(tests, "Sums.Tests.csproj"),
                 $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
-                "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n" +
-                "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
+                $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+                $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n</Project>\n");
             File.WriteAllText(Path.Combine(tests, "SumTests.cs"),
                 "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class SumTests\n{\n    [Fact]\n    public void Two_and_two_make_four() => Assert.Equal(4, 2 + 2);\n\n" +
                 "    [Fact]\n    public void Two_and_two_make_five() => Assert.Equal(5, 2 + 2);\n}\n");
@@ -154,8 +155,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         {
             File.WriteAllText(Path.Combine(tests, "Sums.Tests.csproj"),
                 $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
-                "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n" +
-                "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
+                $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+                $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n</Project>\n");
             File.WriteAllText(Path.Combine(tests, "SumTests.cs"), Two + "}\n");
             await Restore.RunAsync(tests);
         }, tests);
@@ -180,8 +181,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         {
             File.WriteAllText(Path.Combine(tests, "Flood.Tests.csproj"),
                 $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
-                "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n" +
-                "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
+                $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+                $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n</Project>\n");
             File.WriteAllText(Path.Combine(tests, "FloodTests.cs"), """
                 using Xunit;
                 using Xunit.Abstractions;
@@ -226,8 +227,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         {
             File.WriteAllText(Path.Combine(tests, "Rows.Tests.csproj"),
                 $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
-                "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n" +
-                "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
+                $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+                $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n</Project>\n");
             File.WriteAllText(Path.Combine(tests, "RowTests.cs"), """
                 using System.Collections.Generic;
                 using System.Linq;
@@ -268,8 +269,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         {
             File.WriteAllText(Path.Combine(tests, "Input.Tests.csproj"),
                 $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
-                "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n" +
-                "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
+                $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+                $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n</Project>\n");
             // A read that waits is ended by the test's own limit, so a run that reads the agent's pipe fails rather than hangs.
             File.WriteAllText(Path.Combine(tests, "InputTests.cs"), """
                 using System;
@@ -804,9 +805,97 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("gamma", (await Call(client, McpTools.TerminalRun, new() { ["command"] = "echo gamma" })).GetString()!, StringComparison.Ordinal);
     }
 
+    /// <summary>settings names the fonts an agent may give the editor briefly, the carried one, and the window's, the carried
+    /// Inter and the system's own, each saying how many installed families it left out and that settings_set takes any by
+    /// its name; settings_set takes one and refuses a family that is not installed, as Settings does, nothing changed.</summary>
+    [Fact]
+    public async Task Settings_lists_the_fonts_an_agent_may_choose_and_settings_set_refuses_one_not_installed()
+    {
+        string folder = TestFolders.Create("mcp-fonts-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement listed = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "editorFontFamily");
+        string[] fonts = [.. listed.GetProperty("choices").EnumerateArray().Select(c => c.GetString()!)];
+        Assert.True(fonts.Length == 1 && fonts[0] == CodeFonts.Carried, $"settings listed the editor's fonts as: {listed.GetRawText()}");
+        Assert.True(!listed.TryGetProperty("note", out JsonElement codeNote) || codeNote.ValueKind == JsonValueKind.Null
+            || codeNote.GetString()!.Contains("installed famil", StringComparison.Ordinal) && codeNote.GetString()!.Contains("settings_set takes any by its name", StringComparison.Ordinal),
+            $"settings said of the installed code fonts it left out: {listed.GetRawText()}");
+
+        CallToolResult refused = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["editorFontFamily"] = "Passenger Missing Font" } });
+        Assert.True(refused.IsError == true && Text(refused).Contains("Font family Passenger Missing Font (Settings | Editor) is not a font installed on this computer", StringComparison.Ordinal),
+            $"settings_set of a font family not installed answered: {Text(refused)}");
+        string font = fonts[0];
+        JsonElement changed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["editorFontFamily"] = font } })).EnumerateArray());
+        Assert.Equal(font, changed.GetProperty("after").GetString());
+
+        JsonElement window = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "windowFontFamily");
+        string[] faces = [.. window.GetProperty("choices").EnumerateArray().Select(c => c.GetString()!)];
+        Assert.True(faces is [WindowFontNames.Carried, WindowFontNames.SystemUi], $"settings listed the window's fonts as: {window.GetRawText()}");
+        Assert.True(!window.TryGetProperty("note", out JsonElement windowNote) || windowNote.ValueKind == JsonValueKind.Null
+            || windowNote.GetString()!.Contains("installed famil", StringComparison.Ordinal),
+            $"settings said of the installed families it left out: {window.GetRawText()}");
+        CallToolResult missing = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["windowFontFamily"] = "Passenger Missing Font" } });
+        Assert.True(missing.IsError == true && Text(missing).Contains("Font family Passenger Missing Font (Settings | Appearance) is not a font installed on this computer", StringComparison.Ordinal),
+            $"settings_set of a window font not installed answered: {Text(missing)}");
+        JsonElement system = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["windowFontFamily"] = WindowFontNames.SystemUi } })).EnumerateArray());
+        Assert.Equal(WindowFontNames.SystemUi, system.GetProperty("after").GetString());
+    }
+
+    /// <summary>vcs_log gives each signed commit's signature as the Git log's details say it: a good one by its signer
+    /// and key, one by a signer no allowed signers file lists with its key, and none for a commit unsigned.</summary>
+    [Fact]
+    public async Task An_agents_vcs_log_says_each_commits_signature_good_by_its_signer_unverified_or_none()
+    {
+        Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
+        string repository = PathNames.Canonical(TestFolders.Create("mcp-signed-"));
+        string keys = PathNames.Canonical(TestFolders.Create("mcp-signed-keys-"));
+        DeleteAtEnd(repository);
+        DeleteAtEnd(keys);
+        (string known, string unknown) = await TestSshKeys.SignedRepositoryAsync(repository, keys);
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        JsonElement log = await Call(client, McpTools.VcsLog, new() { ["count"] = 5 });
+        string[] said = [.. log.EnumerateArray().Select(c => $"{c.GetProperty("subject").GetString()}: "
+            + (c.TryGetProperty("signature", out JsonElement signature) ? signature.GetString() : "none"))];
+        string[] expected =
+        [
+            $"Signed by an unknown signer: Unverified SSH signature, key {await TestSshKeys.FingerprintAsync(unknown)}: no allowed signers file lists its signer",
+            $"Signed by a known signer: Good SSH signature by tests@passenger.invalid, key {await TestSshKeys.FingerprintAsync(known)}",
+            "First: none",
+        ];
+        Assert.True(said.SequenceEqual(expected), $"vcs_log said of the commits' signatures\n{string.Join('\n', said)}\nwhere they are\n{string.Join('\n', expected)}");
+    }
+
+    /// <summary>vcs_commit signs as the Commit window does, with the key git's config names; where the key needs a
+    /// passphrase and nobody is at the agent's own IDE to give it, the commit is not made and the answer says why.</summary>
+    [Fact]
+    public async Task An_agents_vcs_commit_is_signed_with_the_key_gits_config_names_and_one_needing_a_passphrase_says_why_not()
+    {
+        Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
+        string repository = PathNames.Canonical(TestFolders.Create("mcp-signing-"));
+        string keys = PathNames.Canonical(TestFolders.Create("mcp-signing-keys-"));
+        DeleteAtEnd(repository);
+        DeleteAtEnd(keys);
+        string own = await TestSshKeys.MakeAsync(keys, "own");
+        await TestSshKeys.SigningRepositoryAsync(repository, own);
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        File.WriteAllText(Path.Combine(repository, "Shop.cs"), "class Shop\n{\n    int count;\n}\n");
+        Assert.EndsWith(" Signed by an agent", (await Call(client, McpTools.VcsCommit, new() { ["message"] = "Signed by an agent" })).GetString(), StringComparison.Ordinal);
+        Assert.Equal("Signed by an agent G", (await TestGit.RunAsync(repository, "log", "-1", "--format=%s %G?")).Trim());
+
+        string guarded = await TestSshKeys.MakeAsync(keys, "guarded", "nobody-types-this");
+        await TestGit.RunAsync(repository, "config", "user.signingkey", guarded + ".pub");
+        File.WriteAllText(Path.Combine(repository, "Shop.cs"), "class Shop\n{\n    long count;\n}\n");
+        CallToolResult refused = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Needs a passphrase" });
+        Assert.True(refused.IsError == true && Text(refused).Contains("The commit was not signed: git asked for the passphrase of key guarded, and nobody is at this IDE to give it", StringComparison.Ordinal),
+            $"vcs_commit with a key needing a passphrase nobody can give answered: {Text(refused)}");
+        Assert.Equal("Signed by an agent", (await TestGit.RunAsync(repository, "log", "-1", "--format=%s")).Trim());
+    }
+
     /// <summary>A rebase stopped on a conflict that the agent resolves is still said by vcs_status, and vcs_commit refuses to
-    /// commit beside it, naming Continue Rebase and Abort Rebase: no commit of the agent's takes the place of the rebase's
-    /// on its detached head, and the rebase is still in progress.</summary>
+    /// commit beside it, naming Continue Rebase and Abort Rebase by the ids ide_action runs: no commit of the agent's takes
+    /// the place of the rebase's on its detached head, and the rebase goes on once the agent runs Continue Rebase.</summary>
     [Fact]
     public async Task A_rebase_whose_conflict_is_resolved_is_still_said_and_an_agents_commit_never_goes_beside_it()
     {
@@ -841,8 +930,14 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         CallToolResult commit = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Agent's commit" });
         Assert.True(commit.IsError == true, $"vcs_commit made a commit of its own in the middle of a rebase: {Text(commit)}");
         Assert.Contains("Continue Rebase", Text(commit), StringComparison.Ordinal);
+        Assert.True(Text(commit).Contains($"(ide_action {AppActions.ContinueRebase} and {AppActions.AbortRebase})", StringComparison.Ordinal),
+            $"vcs_commit refused in the middle of a rebase named no action an agent can run to go on: {Text(commit)}");
         Assert.Equal(head, (await TestGit.RunAsync(repository, "rev-parse", "HEAD")).Trim());
         Assert.True(Directory.Exists(Path.Combine(repository, ".git", "rebase-merge")), "The rebase is no longer in progress after vcs_commit was refused");
+
+        await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ContinueRebase });
+        Assert.False(Directory.Exists(Path.Combine(repository, ".git", "rebase-merge")), "Continue Rebase, run by its id, left the rebase in progress");
+        Assert.Equal("Later\nTwo in capitals\nTwo in Roman", (await TestGit.RunAsync(repository, "log", "-3", "--format=%s")).Trim());
     }
 
     /// <summary>An interactive rebase stopped at an edit step is said by vcs_status as stopped to edit that commit, and there
@@ -1025,6 +1120,278 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         {
             Assert.Equal("old mode 100644\nnew mode 100755", (await Call(client, McpTools.VcsStatus, new() { ["path"] = "run.sh" })).GetString());
         }
+    }
+
+    /// <summary>An agent's stash with a message but no action, which lists (the default) and so puts nothing away, is
+    /// refused saying to give push; an action vcs_stash does not have is refused as one, though no stash is there to act
+    /// on; and the change stays where it was.</summary>
+    [Fact]
+    public async Task An_agents_stash_with_a_message_and_no_action_or_an_unknown_action_is_refused_saying_what_to_give()
+    {
+        string repository = TestFolders.Create("mcp-stash-");
+        DeleteAtEnd(repository);
+        string notes = Path.Combine(repository, "Notes.txt");
+        File.WriteAllText(notes, "one\ntwo\n");
+        await TestGit.InitAsync(repository);
+        File.WriteAllText(notes, "one\n2\n");
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        CallToolResult unasked = await Result(client, McpTools.VcsStash, new() { ["message"] = "work in progress" });
+        Assert.True(unasked.IsError == true && Text(unasked).Contains("give action push", StringComparison.Ordinal),
+            $"A stash with a message and no action, which puts nothing away, answered: {Text(unasked)}");
+        CallToolResult unknown = await Result(client, McpTools.VcsStash, new() { ["action"] = "save" });
+        Assert.True(unknown.IsError == true && Text(unknown).Contains("No stash action 'save'", StringComparison.Ordinal),
+            $"A stash action vcs_stash does not have answered: {Text(unknown)}");
+        Assert.Equal("one\n2\n", File.ReadAllText(notes));
+        Assert.Empty((await Call(client, McpTools.VcsStash)).EnumerateArray());
+    }
+
+    /// <summary>An agent's edit of a Latin-1 file with a character Latin-1 cannot hold is saved as UTF-8, as the person's
+    /// is, and the agent is told so, as the status bar tells the person, rather than only that it was saved.</summary>
+    [Fact]
+    public async Task An_agents_edit_its_files_encoding_cannot_hold_is_saved_as_utf8_and_the_answer_says_so()
+    {
+        string folder = TestFolders.Create("mcp-latin1-");
+        DeleteAtEnd(folder);
+        string menu = Path.Combine(folder, "Menu.txt");
+        File.WriteAllBytes(menu, System.Text.Encoding.Latin1.GetBytes("caf\u00e9 cr\u00e8me\n"));
+
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        string edited = Text(await Call(client, McpTools.Edit, new() { ["path"] = "Menu.txt", ["oldText"] = "crème", ["newText"] = "crème \u2603" }));
+        Assert.True(edited.Contains("saved (Menu.txt was saved as UTF-8:", StringComparison.Ordinal),
+            $"An agent's edit its file's Latin-1 cannot hold was answered without saying the file is UTF-8 now: {edited}");
+        Assert.Equal("caf\u00e9 cr\u00e8me \u2603\n", System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(menu)));
+    }
+
+    /// <summary>An agent's history of lines past a file's end is refused naming how many lines the file has, never as lines
+    /// not committed yet; the file's last line still has its history.</summary>
+    [Fact]
+    public async Task An_agents_history_of_lines_past_a_files_end_says_how_many_lines_it_has()
+    {
+        string repository = TestFolders.Create("mcp-lines-");
+        DeleteAtEnd(repository);
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\ntwo\nthree");
+        await TestGit.InitAsync(repository);
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        CallToolResult past = await Result(client, McpTools.VcsLog, new() { ["path"] = "Notes.txt", ["startLine"] = 20, ["endLine"] = 30 });
+        Assert.True(past.IsError == true && Text(past).Contains("Notes.txt has 3 lines", StringComparison.Ordinal),
+            $"The history of lines past Notes.txt's end answered: {Text(past)}");
+        JsonElement last = Assert.Single((await Call(client, McpTools.VcsLog, new() { ["path"] = "Notes.txt", ["startLine"] = 3, ["endLine"] = 3 })).EnumerateArray());
+        Assert.Equal("First", last.GetProperty("subject").GetString());
+    }
+
+    /// <summary>An agent's output of a console nothing has written to yet, Run's or the Debug window's, says so and what
+    /// starts one, never an empty answer an agent reads as a program that printed nothing; its stop says nothing was
+    /// running, never "Stopped".</summary>
+    [Fact]
+    public async Task An_agents_output_of_a_console_nothing_ran_in_says_so_and_what_starts_one_and_its_stop_that_nothing_ran()
+    {
+        string folder = TestFolders.Create("mcp-quiet-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        Assert.StartsWith("Run has started nothing yet", (await Call(client, McpTools.Output, new() { ["of"] = "run" })).GetString(), StringComparison.Ordinal);
+        Assert.StartsWith("Nothing has been debugged yet", (await Call(client, McpTools.Output, new() { ["of"] = "debug" })).GetString(), StringComparison.Ordinal);
+        string stopped = (await Call(client, McpTools.Stop)).GetString()!;
+        Assert.True(stopped.StartsWith("Nothing is running, so nothing was stopped", StringComparison.Ordinal), $"stop with nothing running answered: {stopped}");
+    }
+
+    /// <summary>An agent's local_history of a path where no file or folder is, nor any change of one in the history, says
+    /// so, never an empty history an agent reads as a file no one changed; a file deleted after a change still lists it.</summary>
+    [Fact]
+    public async Task An_agents_local_history_of_a_path_never_there_says_so_and_a_deleted_files_still_lists_its_changes()
+    {
+        string folder = TestFolders.Create("mcp-nohistory-");
+        DeleteAtEnd(folder);
+        string notes = Path.Combine(folder, "Notes.txt");
+        File.WriteAllText(notes, "one\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult never = await Result(client, McpTools.LocalHistory, new() { ["path"] = "Nope.txt" });
+        Assert.True(never.IsError == true && Text(never).Contains("No file or folder is at Nope.txt, and Local History holds no change of one there", StringComparison.Ordinal),
+            $"local_history of a path never there answered: {Text(never)}");
+        await Call(client, McpTools.Edit, new() { ["path"] = "Notes.txt", ["oldText"] = "one", ["newText"] = "two" });
+        File.Delete(notes);
+        JsonElement kept = await Call(client, McpTools.LocalHistory, new() { ["path"] = "Notes.txt" });
+        Assert.True(kept.GetProperty("rows").GetArrayLength() > 0, $"local_history of a file deleted after its change lists none: {kept}");
+    }
+
+    /// <summary>An agent's breakpoint on a C# line no code runs on, while nothing is debugged, says the line it moves to, or
+    /// that no code runs on or after it, never a bare "set" an agent takes for a stop there; one on a statement says nothing
+    /// more.</summary>
+    [Fact]
+    public async Task An_agents_breakpoint_on_a_line_no_code_runs_on_says_where_it_moves()
+    {
+        string folder = TestFolders.Create("mcp-noline-");
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "Program.cs"), "using System;\n\nint count = 1;\n\nConsole.WriteLine(count);\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        async Task<string?> Said(int line)
+        {
+            JsonElement set = (await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = line })).EnumerateArray()
+                .Single(b => b.GetProperty("line").GetInt32() == line);
+            return set.TryGetProperty("message", out JsonElement message) ? message.GetString() : null;
+        }
+        Assert.Equal("Breakpoint: no code runs on this line, so it moves to line 3, the next that may, as the program is debugged", await Said(2));
+        Assert.Null(await Said(5));
+        Assert.Equal("Breakpoint: no code runs on this line or after it, so it will not stop the program", await Said(6));
+    }
+
+    /// <summary>An agent's diagnostics of a file no check of Passenger's reads says so and names those it answers, never an
+    /// empty list an agent reads as a file found clean; a file a check reads (an .editorconfig) still answers its marks.</summary>
+    [Fact]
+    public async Task An_agents_diagnostics_of_a_file_no_check_reads_says_so_and_a_checked_files_answers_its_marks()
+    {
+        string folder = TestFolders.Create("mcp-unchecked-");
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "Notes.md"), "# Notes\n\nPlain words.\n");
+        File.WriteAllText(Path.Combine(folder, ".editorconfig"), "root = true\n\n[*.cs]\nindent_size = 4\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult unread = await Result(client, McpTools.Diagnostics, new() { ["path"] = "Notes.md" });
+        Assert.True(unread.IsError == true && Text(unread).Contains("No check of Passenger's reads Markdown files such as Notes.md: diagnostics answers C#", StringComparison.Ordinal),
+            $"diagnostics of a file no check reads answered: {Text(unread)}");
+        Assert.Empty((await Call(client, McpTools.Diagnostics, new() { ["path"] = ".editorconfig" })).EnumerateArray());
+    }
+
+    /// <summary>An agent's build of a folder with no solution or project says so, never MSBuild's MSB1003 as a failed build's
+    /// error to be fixed.</summary>
+    [Fact]
+    public async Task An_agents_build_of_a_folder_with_nothing_to_build_says_so_rather_than_failing_in_msbuilds_words()
+    {
+        string folder = TestFolders.Create("mcp-nothing-");
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "README.md"), "# Notes\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("outcome").GetString() == Refusals.NothingToBuild && built.GetProperty("errors").GetInt32() == 0,
+            $"A build of a folder with no solution or project answered: {built}");
+    }
+
+    /// <summary>An agent's ide_actions with a query lists only the actions whose id, name or group holds it, where the whole
+    /// list runs to hundreds of lines and tens of kilobytes.</summary>
+    [Fact]
+    public async Task An_agents_ide_actions_with_a_query_lists_only_the_actions_it_names()
+    {
+        string folder = TestFolders.Create("mcp-actions-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        string[] all = [.. (await Call(client, McpTools.IdeActions)).EnumerateArray().Select(a => a.GetString()!)];
+        string[] rebasing = [.. (await Call(client, McpTools.IdeActions, new() { ["query"] = "rebase" })).EnumerateArray().Select(a => a.GetString()!)];
+        Assert.True(rebasing.Length < all.Length && rebasing.Any(a => a.StartsWith($"{AppActions.ContinueRebase}:", StringComparison.Ordinal))
+            && rebasing.All(a => a.Contains("rebase", StringComparison.OrdinalIgnoreCase)),
+            $"ide_actions with the query rebase listed {rebasing.Length} of {all.Length}: {string.Join("; ", rebasing.Take(5))}");
+    }
+
+    /// <summary>An agent's ide_action of an action Passenger has not is refused naming ide_actions, which lists those it has.</summary>
+    [Fact]
+    public async Task An_agents_ide_action_of_an_action_there_is_not_names_ide_actions()
+    {
+        string folder = TestFolders.Create("mcp-noaction-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult refused = await Result(client, McpTools.IdeAction, new() { ["action"] = "app.no.such" });
+        Assert.True(refused.IsError == true && Text(refused).Contains("No action is called app.no.such: ide_actions lists them", StringComparison.Ordinal),
+            $"ide_action of an action there is not answered: {Text(refused)}");
+    }
+
+    /// <summary>An agent's checkout of a branch the repository has not is refused naming create, which makes it, and the
+    /// branches there are, never git's "fatal: invalid reference"; the head stays where it was. A log of no commits is
+    /// refused, never answered with one.</summary>
+    [Fact]
+    public async Task An_agents_checkout_of_a_branch_there_is_not_names_create_and_the_branches_there_are_and_a_log_of_none_is_refused()
+    {
+        string repository = TestFolders.Create("mcp-nobranch-");
+        DeleteAtEnd(repository);
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\n");
+        await TestGit.InitAsync(repository);
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        CallToolResult refused = await Result(client, McpTools.VcsCheckout, new() { ["branch"] = "nowhere" });
+        Assert.True(refused.IsError == true && Text(refused).Contains("No branch nowhere is here: create true makes it from the head; the local branches are main", StringComparison.Ordinal),
+            $"A checkout of a branch there is not answered: {Text(refused)}");
+        Assert.Equal("main", (await TestGit.RunAsync(repository, "branch", "--show-current")).Trim());
+        CallToolResult none = await Result(client, McpTools.VcsLog, new() { ["count"] = 0 });
+        Assert.True(none.IsError == true && Text(none).Contains("count is 0: vcs_log lists 1 or more", StringComparison.Ordinal),
+            $"vcs_log of no commits answered: {Text(none)}");
+    }
+
+    /// <summary>An agent's vcs_stash in a folder that is in no Git repository says so, as the other vcs tools do, never an
+    /// empty list of stashes an agent reads as a repository with none.</summary>
+    [Fact]
+    public async Task An_agents_stash_outside_a_git_repository_says_the_folder_is_in_none()
+    {
+        string folder = TestFolders.Create("mcp-norepo-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult listed = await Result(client, McpTools.VcsStash);
+        Assert.True(listed.IsError == true && Text(listed).Contains("not in a Git repository", StringComparison.Ordinal),
+            $"vcs_stash outside a repository answered: {Text(listed)}");
+    }
+
+    /// <summary>An agent's editor_text, edit and diagnostics of a file not there say no file is at that path, by the folder's
+    /// own path, and how a new file is made, never .NET's "Could not find file" with the whole path twice; of a folder, that
+    /// it is one.</summary>
+    [Fact]
+    public async Task An_agents_tools_on_a_file_not_there_say_no_file_is_at_its_path_and_how_a_new_one_is_made()
+    {
+        string folder = TestFolders.Create("mcp-nofile-");
+        DeleteAtEnd(folder);
+        Directory.CreateDirectory(Path.Combine(folder, "docs"));
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        foreach ((string tool, Dictionary<string, object?> arguments) in new (string, Dictionary<string, object?>)[]
+        {
+            (McpTools.EditorText, new() { ["path"] = "Missing.cs" }),
+            (McpTools.Edit, new() { ["path"] = "Missing.cs", ["oldText"] = "a", ["newText"] = "b" }),
+            (McpTools.Diagnostics, new() { ["path"] = "Missing.cs" }),
+        })
+        {
+            CallToolResult refused = await Result(client, tool, arguments);
+            Assert.True(refused.IsError == true && Text(refused).Contains("No file is at Missing.cs: a new file is written on disk, then edited", StringComparison.Ordinal),
+                $"{tool} of a file not there answered: {Text(refused)}");
+        }
+        CallToolResult folderAsked = await Result(client, McpTools.EditorText, new() { ["path"] = "docs" });
+        Assert.True(folderAsked.IsError == true && Text(folderAsked).Contains("docs is a folder, not a file", StringComparison.Ordinal),
+            $"editor_text of a folder answered: {Text(folderAsked)}");
+    }
+
+    /// <summary>An agent's find_symbol of a kind Go to Symbol has not, or with a limit below one, is refused naming the kinds
+    /// or the limit, never an empty list an agent reads as no symbol of that name.</summary>
+    [Fact]
+    public async Task An_agents_find_symbol_of_a_kind_there_is_not_or_no_limit_is_refused_saying_so()
+    {
+        string folder = TestFolders.Create("mcp-kinds-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult kind = await Result(client, McpTools.FindSymbol, new() { ["query"] = "Order", ["kind"] = "klass" });
+        Assert.True(kind.IsError == true && Text(kind).Contains("No kind 'klass'; Go to Symbol's kinds are", StringComparison.Ordinal) && Text(kind).Contains("class", StringComparison.Ordinal),
+            $"find_symbol of the kind klass answered: {Text(kind)}");
+        CallToolResult none = await Result(client, McpTools.FindSymbol, new() { ["query"] = "Order", ["limit"] = 0 });
+        Assert.True(none.IsError == true && Text(none).Contains("limit is 0: find_symbol lists 1 or more", StringComparison.Ordinal),
+            $"find_symbol with limit 0 answered: {Text(none)}");
+    }
+
+    /// <summary>An agent's hot_reload with nothing running names run with hotReload and debug_start, which start a program it
+    /// applies to, beside the window's words naming its Settings page.</summary>
+    [Fact]
+    public async Task An_agents_hot_reload_with_nothing_running_names_the_tools_that_start_a_program_it_applies_to()
+    {
+        string folder = TestFolders.Create("mcp-noreload-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult refused = await Result(client, McpTools.HotReload);
+        Assert.True(refused.IsError == true && Text(refused).Contains($"({McpTools.Run} with hotReload true, or {McpTools.DebugStart}, starts one it applies to)", StringComparison.Ordinal),
+            $"hot_reload with nothing running answered: {Text(refused)}");
+    }
+
+    /// <summary>An agent's telemetry with nothing running says so and how a run collects logs and traces, never to name an
+    /// AppHost the folder has none of.</summary>
+    [Fact]
+    public async Task An_agents_telemetry_with_nothing_running_says_how_a_run_collects_rather_than_asking_for_an_apphost()
+    {
+        string folder = TestFolders.Create("mcp-notelemetry-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        CallToolResult refused = await Result(client, McpTools.Telemetry);
+        Assert.True(refused.IsError == true && Text(refused).Contains($"Nothing runs whose logs and traces a dashboard collects: {McpTools.Run} with telemetry true", StringComparison.Ordinal),
+            $"telemetry with nothing running answered: {Text(refused)}");
     }
 
     /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
@@ -1603,6 +1970,6 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         ["SHELL"] = File.Exists("/bin/zsh") ? "/bin/zsh" : "/bin/sh",
         ["TERM"] = null,
         ["ZDOTDIR"] = null,
-        ["DOTNET_ROOT"] = null,
+        [RuntimeVariables.Root] = null,
     };
 }

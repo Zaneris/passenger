@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Packages;
 using Passenger.Workspace;
 

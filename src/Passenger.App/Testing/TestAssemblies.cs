@@ -97,6 +97,22 @@ public static class TestAssemblies
         }
     }
 
+    /// <summary>The run settings file a project names (RunSettingsFilePath), asked of the warm project host with the global
+    /// properties a build of it is given; null for none, or where MSBuild cannot say.</summary>
+    public static async Task<string?> RunSettingsOfAsync(ProjectModel project, string folder, WorkspaceModel? workspace, CancellationToken cancel)
+    {
+        try
+        {
+            ProjectHost host = await ProjectHosts.ForAsync(folder, cancel);
+            PropertiesAnswer answer = await host.PropertiesAsync(project.Path, ProjectModels.Properties(workspace, project), [MSBuildNames.RunSettingsFilePath], cancel);
+            return answer.Problem is null ? SettingsOf(project, answer) : null;
+        }
+        catch (ProjectHostFailed)
+        {
+            return null;
+        }
+    }
+
     /// <summary>The run settings file an evaluation names, a relative one from its project's folder; null for none.</summary>
     private static string? SettingsOf(ProjectModel project, PropertiesAnswer answer) =>
         answer.Values.GetValueOrDefault(MSBuildNames.RunSettingsFilePath) is { Length: > 0 } named

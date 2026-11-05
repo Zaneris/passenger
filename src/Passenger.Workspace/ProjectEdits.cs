@@ -24,7 +24,7 @@ public static class ProjectEdits
         {
             return $"{Path.GetFileNameWithoutExtension(project)} already references {Path.GetFileNameWithoutExtension(referenced)}";
         }
-        string include = Path.GetRelativePath(Path.GetDirectoryName(project)!, referenced).Replace('/', '\\');
+        string include = ItemPaths.Named(Path.GetRelativePath(Path.GetDirectoryName(project)!, referenced).Replace('/', '\\'));
         string element = $"<ProjectReference Include=\"{XmlEntities.Encode(include, '"')}\" />";
         if (References(xml, project).LastOrDefault(r => r.Element.Parent is { } group && IsItemGroup(group) && !Conditioned(group)).Element is { } last)
         {
@@ -34,6 +34,25 @@ public static class ProjectEdits
         InGroupOfItsOwn(xml, element);
         return null;
     });
+
+    /// <summary>What lies under a folder (from the project's own, with forward slashes) left out of the project's C#
+    /// (<c>&lt;Compile Remove="…/**" /&gt;</c>), in an item group of its own before &lt;/Project&gt;, where nothing every
+    /// build sees removes it already. Null once done, else why not.</summary>
+    public static string? RemoveCompiled(string project, string folder) => Change(project, xml =>
+    {
+        if (!Removes(xml, folder))
+        {
+            InGroupOfItsOwn(xml, $"<Compile Remove=\"{XmlEntities.Encode(ItemPaths.Under(folder), '"')}\" />");
+        }
+        return null;
+    });
+
+    /// <summary>Whether the project leaves what lies under a folder out of its C# in every build, no condition on the removal
+    /// or its item group (<see cref="RemoveCompiled"/>); true for a file that reads as no project, which nothing is to be added to.</summary>
+    public static bool RemovesCompiled(string project, string folder) => Read(new ProjectText(project).Text) is not { Root.Name.LocalName: "Project" } xml || Removes(xml, folder);
+
+    private static bool Removes(XmlText xml, string folder) => xml.Root.Elements().Where(g => IsItemGroup(g) && !Conditioned(g)).SelectMany(g => g.Elements())
+        .Any(e => e.Name.LocalName == "Compile" && !Conditioned(e) && e.Attribute("Remove")?.Value == ItemPaths.Under(folder));
 
     /// <summary>A package reference added as dotnet add package writes one, its version given (none under central package
     /// management, whose Directory.Packages.props holds it): after the project's last package reference that every build
@@ -260,12 +279,12 @@ public static class ProjectEdits
             switch (item.Name.LocalName)
             {
                 case "Import" when item.Attribute("Sdk") is null:
-                    Follow(xml.ValueOf(item, "Project"));
+                    Follow(xml.ValueOf(item, "Project"), once: true);
                     if (xml.ValueOf(item, "Condition") is { } condition)
                     {
                         foreach (Group exists in ExistsIn.Matches(xml.Written(condition)).Select(m => m.Groups["path"]))
                         {
-                            Follow((condition.Start + exists.Index, exists.Length), xml.Text[condition.Start - 1]);
+                            Follow((condition.Start + exists.Index, exists.Length), xml.Text[condition.Start - 1], once: true, quoted: true);
                         }
                     }
                     continue;
@@ -281,9 +300,8 @@ public static class ProjectEdits
                 {
                     continue;
                 }
-                string items = XmlEntities.DecodeText(xml.Written(span));
-                own ??= kind is "Include" or "Update" && OneFile(items) ? items : null;
-                Follow(span);
+                own ??= kind is "Include" or "Update" && ItemPaths.Read(XmlEntities.DecodeText(xml.Written(span)).Trim()) is { Glob: false, Path.Length: > 0 } one ? one.Path : null;
+                Follow(span, once: kind == "Exclude");
             }
             if (own is null)
             {
@@ -300,11 +318,11 @@ public static class ProjectEdits
                 {
                     continue;
                 }
-                string value = XmlEntities.DecodeText(xml.Written(span));
+                string value = ItemPaths.Unescaped(XmlEntities.DecodeText(xml.Written(span)));
                 string target = Moved(Full(was, value.Trim()));
                 if (value.Trim().Length > 0 && !PathNames.Same(Full(at, value.Trim()), target))
                 {
-                    edits.Add((span.Start, span.Length, XmlEntities.Encode(Written(Path.GetRelativePath(at, target), value), quote ?? xml.Text[span.Start - 1])));
+                    edits.Add((span.Start, span.Length, XmlEntities.Encode(ItemPaths.Named(Written(Path.GetRelativePath(at, target), value)), quote ?? xml.Text[span.Start - 1])));
                 }
             }
         }
@@ -317,7 +335,7 @@ public static class ProjectEdits
         return true;
 
         // A path named from the project's folder names where that is now; a glob, by its folder. Read and written as XML.
-        void Follow((int Start, int Length)? at, char? quote = null)
+        void Follow((int Start, int Length)? at, char? quote = null, bool once = false, bool quoted = false)
         {
             if (at is not { } span)
             {
@@ -326,22 +344,17 @@ public static class ProjectEdits
             string raw = xml.Written(span);
             string written = raw.Trim();
             int start = span.Start + raw.Length - raw.TrimStart().Length;
-            string items = XmlEntities.DecodeText(written);
-            int wild = items.IndexOfAny(['*', '?']);
-            string path = (wild < 0 ? items : items[..Math.Max(0, items.LastIndexOfAny(['\\', '/'], wild))]).TrimEnd('\\', '/');
-            if (path.Length == 0 || items.IndexOfAny([';', '$', '@', '%']) >= 0)
+            if (ItemPaths.Read(XmlEntities.DecodeText(written), once) is not { Path.Length: > 0 } item)
             {
                 return;
             }
-            string now = Moved(Full(before, path));
-            if (!PathNames.Same(Full(folder, path), now))
+            string now = Moved(Full(before, item.Path));
+            if (!PathNames.Same(Full(folder, item.Path), now))
             {
-                string moved = Written(Path.GetRelativePath(folder, now), path) + items[path.Length..];
-                edits.Add((start, written.Length, XmlEntities.Encode(moved, quote ?? xml.Text[span.Start - 1])));
+                string moved = item.At(Written(Path.GetRelativePath(folder, now), item.Path));
+                edits.Add((start, written.Length, XmlEntities.Encode(quoted ? ItemPaths.InCondition(moved) : moved, quote ?? xml.Text[span.Start - 1])));
             }
         }
-
-        static bool OneFile(string items) => items.Trim().Length > 0 && items.IndexOfAny(['*', '?', ';', '$', '@', '%']) < 0;
 
         static string Full(string folder, string relative) => Path.GetFullPath(Path.Combine(folder, relative.Replace('\\', '/')));
     }
@@ -393,7 +406,7 @@ public static class ProjectEdits
     {
         string folder = Path.GetDirectoryName(project)!;
         return [.. xml.Root.Descendants().Where(e => e.Name.LocalName == "ProjectReference" && e.Attribute("Include") is not null)
-            .Select(e => (e, PathNames.Canonical(Path.Combine(folder, e.Attribute("Include")!.Value.Replace('\\', '/')))))];
+            .Select(e => (e, PathNames.Canonical(Path.Combine(folder, ItemPaths.Unescaped(e.Attribute("Include")!.Value).Replace('\\', '/')))))];
     }
 
     private static List<XElement> PackageReferences(XmlText xml) => [.. xml.Root.Descendants().Where(e => e.Name.LocalName == "PackageReference")];

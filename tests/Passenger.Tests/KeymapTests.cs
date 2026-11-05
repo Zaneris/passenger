@@ -74,6 +74,37 @@ public sealed class KeymapTests : IDisposable
         }
     }
 
+    /// <summary>A modifier tapped twice in the Keyboard Shortcut dialog is recorded as its double tap, shown as one, and runs
+    /// its action from the editor once kept.</summary>
+    [AvaloniaFact]
+    public void A_double_Shift_recorded_in_the_Keyboard_Shortcut_dialog_runs_its_action_from_the_editor()
+    {
+        MainWindow window = Open();
+        try
+        {
+            SettingsDialog dialog = Settings(window, "split right");
+            KeyboardShortcutDialog keys = AddKeyboardShortcut(dialog, AppActions.SplitRight);
+            Ui.Press(keys, "shift , shift");
+            string doubleShift = Shortcut.Parse("shift , shift").Display();
+            Assert.True(keys.Keys.First.Text == doubleShift && keys.OkButton.IsEnabled,
+                $"Shift tapped twice in the dialog left \"{keys.Keys.First.Text}\" in its field and OK {(keys.OkButton.IsEnabled ? "enabled" : "disabled")}, where it records {doubleShift}");
+            Ui.Click(keys.OkButton);
+            Ui.WaitFor(() => !keys.IsVisible, "the Keyboard Shortcut dialog to close");
+            Assert.Equal([doubleShift], dialog.ShortcutsShown(AppActions.SplitRight));
+            Ui.Click(Button(dialog, "OK"));
+
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Press(window, "shift , shift");
+            Assert.True(window.EditorArea.Groups.Count == 2, $"{doubleShift}, recorded for Split Right, split nothing");
+        }
+        finally
+        {
+            // The keymap in force is the process's; the next test starts on the platform's own.
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_chord_another_action_has_is_listed_and_warned_of_and_Remove_takes_it_from_that_action()
@@ -338,7 +369,8 @@ public sealed class KeymapTests : IDisposable
             Ui.Settle();
             string[] comment = mac ? ["⌘/", "⌘⌨/", "⌥⌘/", "⌥⌘⌨/", "⌘K, ⌘/"] : ["Ctrl+/", "Ctrl+NumPad /", "Ctrl+Alt+/", "Ctrl+Alt+NumPad /", "Ctrl+K, Ctrl+/"];
             Assert.Equal(comment, dialog.ShortcutsShown(EditorActions.ToggleLineComment));
-            string[] back = mac ? ["⌘-", "⌘⌨-"] : ["Ctrl+-", "Ctrl+NumPad -"];
+            // The side button's gesture after the keys, as the page shows an action's mouse shortcuts.
+            string[] back = mac ? ["⌘-", "⌘⌨-", "Back Button"] : ["Ctrl+-", "Ctrl+NumPad -", "Back Button"];
             Assert.Equal(back, dialog.ShortcutsShown(AppActions.Back));
             dialog.Close();
 

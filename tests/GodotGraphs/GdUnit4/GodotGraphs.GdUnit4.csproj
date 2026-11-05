@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- GdUnit4's API and adapter, which the tests write into a Godot game restored from the Godot found's own packages: only
+       they and what they depend on but GodotSharp come from here, downloaded alone, so no GodotSharp of nuget.org's takes
+       the place of the Godot's in the package cache. The adapter needs VSTest's SDK beside it, which the tests' own
+       reference puts in the package cache at the repo's version; nothing here is a reference, so this project is none the
+       IDE or dotnet test takes for a test project. -->
+  <ItemGroup>
+    <PackageDownload Include="gdUnit4.api" Version="[$(GdUnit4ApiVersion)]" />
+    <PackageDownload Include="gdUnit4.test.adapter" Version="[$(GdUnit4AdapterVersion)]" />
+    <PackageDownload Include="Microsoft.CodeAnalysis.CSharp" Version="[$(GdUnit4RoslynVersion)]" />
+    <PackageDownload Include="Microsoft.CodeAnalysis.Common" Version="[$(GdUnit4RoslynVersion)]" />
+    <PackageDownload Include="Microsoft.CodeAnalysis.Analyzers" Version="[$(GdUnit4RoslynAnalyzersVersion)]" />
+    <PackageDownload Include="Microsoft.TestPlatform.AdapterUtilities" Version="[$(GdUnit4TestPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.TestPlatform.ObjectModel" Version="[$(GdUnit4TestPlatformVersion)]" />
+    <PackageDownload Include="Mono.Cecil" Version="[$(MonoCecilVersion)]" />
+  </ItemGroup>
+</Project>

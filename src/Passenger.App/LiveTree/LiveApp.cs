@@ -43,12 +43,13 @@ public enum LiveAppKind
 /// socket of the launch's own; from before Main it tells of failed bindings, and once the UI is up says hello and answers on
 /// the UI thread (paused under the debugger, once it runs again). One launch's alone, never in the app as built. A UI-thread
 /// object: its events come on the UI thread.</summary>
-public sealed class LiveApp : IDisposable
+public sealed class LiveApp : ILiveTreeSource, IDisposable
 {
     /// <summary>The sockets this process has made, which number each one's name apart.</summary>
     private static int made;
 
-    private readonly Socket listener;
+    /// <summary>Where the app's inspector connects; null where Passenger could not listen, the app running uninspected.</summary>
+    private readonly Socket? listener;
     private readonly CancellationTokenSource closing = new();
     private readonly PendingRequests<Request, Reply> asked = new();
     private readonly SemaphoreSlim writing = new(1, 1);
@@ -58,7 +59,8 @@ public sealed class LiveApp : IDisposable
     private readonly List<Reply> heard = [];
     private NetworkStream? stream;
 
-    private LiveApp(string name, string socket, Socket listener, LaunchPlan? plan, IReadOnlyList<string> overlays, LiveAppKind kind = LiveAppKind.Avalonia)
+    private LiveApp(string name, string socket, Socket? listener, LaunchPlan? plan, IReadOnlyList<string> overlays, LiveAppKind kind = LiveAppKind.Avalonia,
+        string? uninspected = null)
     {
         this.listener = listener;
         SocketPath = socket;
@@ -67,11 +69,18 @@ public sealed class LiveApp : IDisposable
         Kind = kind;
         if (plan is not null)
         {
+            string inspector = kind == LiveAppKind.Wpf ? WpfInspectorPath : InspectorPath;
+            // An Avalonia app nobody is to see may be started by its inspector, after every other hook, in place of its Main.
+            bool unseen = plan.Unseen && kind == LiveAppKind.Avalonia;
             Dictionary<string, string> environment = new(plan.Environment)
             {
                 [Wire.SocketVariable] = socket,
-                [RuntimeVariables.StartupHooks] = StartupHooks.First(plan.Environment, kind == LiveAppKind.Wpf ? WpfInspectorPath : InspectorPath),
+                [RuntimeVariables.StartupHooks] = unseen ? StartupHooks.Last(plan.Environment, inspector) : StartupHooks.First(plan.Environment, inspector),
             };
+            if (unseen)
+            {
+                environment[Wire.UnseenVariable] = plan.OnOwnDesktop ? Wire.UnseenRuns : Wire.UnseenEnds;
+            }
             if (kind == LiveAppKind.Wpf)
             {
                 environment[RuntimeVariables.XamlDiagnosticsSourceInfo] = "1";
@@ -86,9 +95,20 @@ public sealed class LiveApp : IDisposable
             }
             Plan = plan with { Environment = environment };
         }
+        if (listener is null)
+        {
+            // The app still carries the inspector, which finds no Passenger to serve and lets the app run on, saying why.
+            State = LiveAppState.Refused;
+            Problem = uninspected;
+            return;
+        }
         // Not held: it waits as long as the app runs, which nothing drawn waits for.
         IdeErrors.Observe(BackgroundWork.Unheld(ServeAsync));
     }
+
+    /// <summary>Where the inspectors' sockets are made: the state's socket folder (<see cref="SocketFolders.Own"/>) while null,
+    /// else this folder, a test's own.</summary>
+    public static string? SocketsIn { get; set; }
 
     /// <summary>The inspector beside the app, as its build carries it.</summary>
     public static string InspectorPath => Path.Combine(AppContext.BaseDirectory, "inspector", "Passenger.Inspector.dll");
@@ -99,7 +119,14 @@ public sealed class LiveApp : IDisposable
     /// <summary>The framework the app is built on, which its inspector serves.</summary>
     public LiveAppKind Kind { get; }
 
-    /// <summary>The framework and its version as the window says it, once the app has said hello: "Avalonia 12.1.4",
+    /// <summary>Whether the app draws on Avalonia's headless platform, where nobody sees it, as it said in its hello.</summary>
+    public bool Headless { get; private set; }
+
+    /// <summary>Whether its inspector started the app through its BuildAvaloniaApp() in place of its Main, as it said in its
+    /// hello: an app nobody is to see whose Main would draw where people do.</summary>
+    public bool MainLeftOut { get; private set; }
+
+    /// <summary>The framework and its version as the window says it, once the app has said hello: "Avalonia 12.1.5",
     /// "WPF 10.0.1"; the framework alone before.</summary>
     public string Framework => Kind == LiveAppKind.Wpf
         ? FrameworkSaid ?? "WPF"
@@ -134,7 +161,11 @@ public sealed class LiveApp : IDisposable
         {
             throw new LiveAppException("This Passenger was started by another Passenger, whose inspector it carries: that one's app tools (app run or debug) look at its windows");
         }
-        (string socket, Socket listener) = Listen("Passenger") ?? throw new LiveAppException("Passenger could not listen for its own inspector");
+        (string socket, Socket? listener, string? problem) = Listen("Passenger");
+        if (listener is null)
+        {
+            throw new LiveAppException(problem ?? "Passenger could not listen for its own inspector");
+        }
         LiveApp app = new("Passenger", socket, listener, plan: null, []);
         try
         {
@@ -143,7 +174,7 @@ public sealed class LiveApp : IDisposable
             // Only the person answers Passenger's questions for agents and changes its Settings: no agent's input reaches them.
             agent.GetMethod("Guard", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [(Func<object, string?>)MainWindow.KeptFromAgents]);
             agent.GetMethod("Start", BindingFlags.Public | BindingFlags.Static)!
-                .Invoke(null, [socket, Thread.CurrentThread, typeof(Avalonia.AvaloniaObject).Assembly.GetName().Version!.ToString(), null]);
+                .Invoke(null, [socket, Thread.CurrentThread, typeof(Avalonia.AvaloniaObject).Assembly.GetName().Version!.ToString(), null, false, false]);
         }
         catch (Exception error) when (error is IOException or BadImageFormatException or TypeLoadException or MissingMethodException or TargetInvocationException)
         {
@@ -202,10 +233,11 @@ public sealed class LiveApp : IDisposable
     /// <summary>The live app for a plan whose program is built with Avalonia (Avalonia.Base beside its assembly), showing
     /// these renderer debug overlays from its first window, or, with <paramref name="wpf"/>, on Windows with WPF (its
     /// assembly a WindowsDesktop app's that references WPF's); null for any other program, or when this build of Passenger
-    /// carries no inspector for it.</summary>
+    /// carries no inspector for it. One whose socket could not be made is refused, saying why, its plan still carrying the
+    /// inspector, which lets the app run on without it.</summary>
     public static LiveApp? For(LaunchPlan plan, IReadOnlyList<string>? overlays = null, bool wpf = true)
     {
-        if (plan.Built is not { } built)
+        if ((UnseenApps.Inspected(plan) ?? plan.Built) is not { } built)
         {
             return null;
         }
@@ -222,7 +254,27 @@ public sealed class LiveApp : IDisposable
         {
             return null;
         }
-        return Listen(plan.Name) is (string socket, Socket listener) ? new LiveApp(plan.Name, socket, listener, plan, overlays ?? [], kind) : null;
+        (string socket, Socket? listener, string? problem) = Listen(plan.Name);
+        return new LiveApp(plan.Name, socket, listener, plan, overlays ?? [], kind, problem);
+    }
+
+    /// <summary>The inspector a XAML file's Avalonia previewer loads to say where it draws each element, and what the
+    /// previewer's environment adds for it (the inspector first among its startup hooks, the socket, the file previewed);
+    /// null when this build carries no inspector, or no socket could be made.</summary>
+    public static (LiveApp Live, Dictionary<string, string> Environment)? ForPreview(string file, IReadOnlyDictionary<string, string> environment)
+    {
+        string name = $"Preview of {Path.GetFileName(file)}";
+        if (!File.Exists(InspectorPath) || Listen(name) is not (string socket, Socket listener, _))
+        {
+            return null;
+        }
+        Dictionary<string, string> added = new(StringComparer.Ordinal)
+        {
+            [Wire.SocketVariable] = socket,
+            [RuntimeVariables.StartupHooks] = StartupHooks.First(environment, InspectorPath),
+            [Wire.PreviewVariable] = file,
+        };
+        return (new LiveApp(name, socket, listener, null, []), added);
     }
 
     /// <summary>Whether an assembly is a WPF app's: it runs on the WindowsDesktop framework (its runtimeconfig.json names it)
@@ -256,28 +308,33 @@ public sealed class LiveApp : IDisposable
         return windows;
     }
 
-    /// <summary>A socket of its own in Passenger's socket folder for one app's inspector to connect to, or null when it cannot
-    /// be made, which the IDE's errors say, the app then launched as it is.</summary>
-    private static (string Socket, Socket Listener)? Listen(string name)
+    /// <summary>A socket of its own in Passenger's socket folder for one app's inspector to connect to; where it cannot be
+    /// made (its path too long for a socket's address, the folder not the user's), no listener and why the app runs
+    /// uninspected.</summary>
+    private static (string Socket, Socket? Listener, string? Problem) Listen(string name)
     {
         string socket = $"{Environment.ProcessId}-{Interlocked.Increment(ref made)}.inspector";
         Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         try
         {
-            socket = Path.Combine(SocketFolders.Own(StateStore.DefaultRoot), socket);
+            socket = Path.Combine(SocketsIn ?? SocketFolders.Own(StateStore.DefaultRoot), socket);
+            if (!SocketFolders.Fits(socket))
+            {
+                listener.Dispose();
+                return (socket, null, $"{name} runs uninspected: the Live Visual Tree's socket for its inspector is too long, as {SocketFolders.TooLong(socket)}");
+            }
             // Only a dead Passenger that had this process's number leaves one by this name.
             File.Delete(socket);
             listener.Bind(new UnixDomainSocketEndPoint(socket));
             listener.Listen(1);
         }
-        // ArgumentException: a path past what a Unix socket's address holds (104 bytes on macOS).
         catch (Exception error) when (error is SocketException or IOException or UnauthorizedAccessException or ArgumentException)
         {
             listener.Dispose();
             IdeErrors.Write($"The Live Visual Tree could not listen for {name} at {socket}, so it runs uninspected: {error.Message}");
-            return null;
+            return (socket, null, $"{name} runs uninspected: the Live Visual Tree could not listen for its inspector at {socket}: {error.Message}");
         }
-        return (socket, listener);
+        return (socket, listener, null);
     }
 
     /// <summary>The app's windows and their visual trees.</summary>
@@ -321,13 +378,33 @@ public sealed class LiveApp : IDisposable
     public async Task<XamlValues> ValuesAsync(XamlRead read) =>
         (await AskAsync(new Request(0, Wire.Values) { Xaml = read })).Values ?? throw new LiveAppException($"{Name} read no bindings");
 
+    /// <summary>The elements the app made at places of a XAML file, by the ids the tree knows them by, no bindings read; of
+    /// several made at one, the one nearest the element chosen.</summary>
+    public async Task<XamlValues> MadeAsync(XamlRead read) =>
+        (await AskAsync(new Request(0, Wire.Made) { Xaml = read })).Values ?? throw new LiveAppException($"{Name} did not say what it made there");
+
+    /// <summary>Where the app shows each element it made from a XAML file of this name, in the newest window showing any.</summary>
+    public async Task<IReadOnlyList<PlacedBox>> PlacedAsync(string file) =>
+        (await AskAsync(new Request(0, Wire.Placed) { Xaml = new XamlRead(file, [], null) })).Placed ?? [];
+
+    /// <summary>A XAML file's text applied to what the app made from it (XAML Hot Reload), answered with what it came to.</summary>
+    public async Task<XamlReloaded> ReloadAsync(XamlChange change) =>
+        (await AskAsync(new Request(0, Wire.Reload) { Change = change }, limit: ReloadLimit)).Reloaded ?? throw new LiveAppException($"{Name} did not say what the XAML came to");
+
+    /// <summary>How long the app may take to apply a XAML file: its first compiles Avalonia's XAML compiler itself, slower
+    /// again under the debugger.</summary>
+    public static TimeSpan ReloadLimit => Waits.Of(TimeSpan.FromSeconds(30));
+
+    /// <summary>Its XAML Hot Reload, given by the session that launched it; null for Passenger's own windows.</summary>
+    public XamlHotReload? Xaml { get; set; }
+
     /// <summary>Input to the app, as a person gives it, answered once it has been handled and laid out.</summary>
     public async Task<InputDone> InputAsync(InputAction input, CancellationToken giveUp = default) =>
         (await AskAsync(new Request(0, Wire.Input) { Input = input }, giveUp)).Done ?? throw new LiveAppException($"{Name} did not say what the input did");
 
-    /// <summary>A request's answer; <paramref name="giveUp"/> stops the wait for it (the app paused under the debugger
-    /// before it could answer), its answer then forgotten.</summary>
-    private async Task<Reply> AskAsync(Request request, CancellationToken giveUp = default)
+    /// <summary>A request's answer within <see cref="AnswerLimit"/> or <paramref name="limit"/>; <paramref name="giveUp"/> stops
+    /// the wait for it (the app paused under the debugger before it could answer), its answer then forgotten.</summary>
+    private async Task<Reply> AskAsync(Request request, CancellationToken giveUp = default, TimeSpan? limit = null)
     {
         if (State != LiveAppState.Connected || stream is not { } open)
         {
@@ -357,7 +434,7 @@ public sealed class LiveApp : IDisposable
         Reply reply;
         try
         {
-            reply = await answer.WaitAsync(AnswerLimit, giveUp);
+            reply = await answer.WaitAsync(limit ?? AnswerLimit, giveUp);
         }
         catch (OperationCanceledException) when (giveUp.IsCancellationRequested)
         {
@@ -368,7 +445,7 @@ public sealed class LiveApp : IDisposable
         {
             // Forgotten, so its answer, if it ever comes, finds no one waiting.
             asked.Forget(id, answer);
-            throw new LiveAppException(NotAnswered(Name));
+            throw new LiveAppException(limit is { } longer ? $"{Name} did not answer within {longer.TotalSeconds:0} s" : NotAnswered(Name));
         }
         return reply.Error is { } why ? throw new LiveAppException(why) : reply;
     }
@@ -385,7 +462,7 @@ public sealed class LiveApp : IDisposable
         Socket client;
         try
         {
-            client = await listener.AcceptAsync(closing.Token);
+            client = await listener!.AcceptAsync(closing.Token);
         }
         catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException)
         {
@@ -394,7 +471,7 @@ public sealed class LiveApp : IDisposable
         finally
         {
             // The one app it was made for has come (or will not): nothing else may connect.
-            listener.Dispose();
+            listener!.Dispose();
             Forget(SocketPath);
         }
         NetworkStream network = new(client, ownsSocket: true);
@@ -455,6 +532,11 @@ public sealed class LiveApp : IDisposable
     {
         if (State == LiveAppState.Ended)
         {
+            // Why an app was refused, heard as it ended, says why it ended: one nobody was to see, ended before its Main.
+            if (reply is { Event: Wire.Hello, Hello.Problem: { } why })
+            {
+                Problem ??= why;
+            }
             return;
         }
         switch (reply.Event)
@@ -463,6 +545,8 @@ public sealed class LiveApp : IDisposable
                 Avalonia = hello.Avalonia;
                 FrameworkSaid = hello.Framework;
                 ProcessId = hello.ProcessId;
+                Headless = hello.Headless;
+                MainLeftOut = hello.MainLeftOut;
                 if (hello.Protocol != Wire.Version)
                 {
                     Problem = $"{Name}'s inspector speaks version {hello.Protocol} of Passenger's protocol, not {Wire.Version}";
@@ -526,7 +610,7 @@ public sealed class LiveApp : IDisposable
             return;
         }
         closing.Cancel();
-        listener.Dispose();
+        listener?.Dispose();
         stream?.Dispose();
         Forget(SocketPath);
         FailAll();

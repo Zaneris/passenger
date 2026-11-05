@@ -3,12 +3,13 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
+using Passenger.Editor;
 
 namespace Passenger.App.ToolWindows;
 
 /// <summary>Which of Problems' tabs: the current file's, the solution's (with solution-wide analysis on), the projects'
-/// load problems (Toolset, Environment), the last build's, or the bindings that failed in the Avalonia apps run and
-/// debugged last.</summary>
+/// load problems (Toolset, Environment), the last build's, the bindings that failed in the Avalonia apps run and debugged
+/// last, and the rest below.</summary>
 public enum ProblemsTab
 {
     File,
@@ -23,6 +24,12 @@ public enum ProblemsTab
     /// <summary>The container engine's problems (no CLI, not running, Windows containers, no Compose v2), then what it
     /// finds in the open Dockerfiles and compose files, by file.</summary>
     Containers,
+
+    /// <summary>The errors and warnings the Godot game launched last raised as it ran, by file.</summary>
+    Godot,
+
+    /// <summary>The breakpoints the programs debugged will not stop at, each at its line with why and how to put it right.</summary>
+    Breakpoints,
 }
 
 /// <summary>A row of Problems: a group (a project or a file, with its count) or a problem, at its depth. A problem of the
@@ -67,9 +74,10 @@ public sealed class ProblemRow(int depth, string label, string? detail, Problem?
 /// <summary>What the Problems window lists, kept whether or not its view is built: the current file's problems as they
 /// are typed, the whole solution's with solution-wide analysis on (by project, then file), the warnings and errors the
 /// projects loaded with (Toolset, Environment, by project), the last build's apart from them, the bindings that failed in
-/// a running Avalonia app (by XAML file, each once with its control, property, path and count), Hot Reload's edits and
-/// the container engine's problems, each a tab with its count, the shown tab's rows and the one chosen. Builds, servers,
-/// bindings and containers write here; <see cref="ProblemsView"/> shows it once the window is first shown.</summary>
+/// a running Avalonia app (by XAML file, each once with its control, property, path and count), Hot Reload's edits, the
+/// container engine's problems and the breakpoints the programs debugged will not stop at, each a tab with its count, the
+/// shown tab's rows and the one chosen. Builds, servers, bindings, containers and the debugger write here;
+/// <see cref="ProblemsView"/> shows it once the window is first shown.</summary>
 public sealed class ProblemsModel
 {
     private readonly ProblemRows rows = [];
@@ -82,6 +90,9 @@ public sealed class ProblemsModel
     private IReadOnlyList<Problem>? solutionOrdered;
     private int solutionCount;
     private int solutionErrors;
+
+    /// <summary>How many of the solution's problems the filter shows.</summary>
+    private int solutionShown;
     private IReadOnlyList<Problem> toolset = [];
     private IReadOnlyList<BindingProblem> bindings = [];
     private IReadOnlyList<(string Said, string Why)> bindingsUntold = [];
@@ -89,6 +100,18 @@ public sealed class ProblemsModel
     private string hotReloadSaid = string.Empty;
     private IReadOnlyList<Problem> containers = [];
     private IReadOnlyList<Problem> containerFiles = [];
+    private IReadOnlyList<Problem>? godot;
+
+    /// <summary>What the Godot game launched last has raised, those not yet shown among them (<see cref="RaiseGodot"/>).</summary>
+    private readonly List<Problem> godotRaised = [];
+    private Debounce? godotShowing;
+
+    /// <summary>How long a game's errors wait to be shown together: one that errs every frame would otherwise copy and order
+    /// every error before it on each.</summary>
+    private static readonly TimeSpan GodotTogether = TimeSpan.FromMilliseconds(200);
+
+    /// <summary>The breakpoints the programs debugged will not stop at.</summary>
+    private IReadOnlyList<Problem> breakpoints = [];
     private string? fileName;
     private ProblemRow? chosen;
 
@@ -165,6 +188,72 @@ public sealed class ProblemsModel
     /// <summary>The problem row chosen, if one is.</summary>
     public Problem? Selected => chosen?.Problem;
 
+    /// <summary>What every tab shows of its problems: the severities left on and the text they hold; its rows, the counts
+    /// on the tabs and the empty list's words follow it.</summary>
+    public ProblemFilter Filter
+    {
+        get;
+        set
+        {
+            if (value == field)
+            {
+                return;
+            }
+            field = value;
+            solutionShown = CountShown(solution?.Values.SelectMany(p => p) ?? [], solutionCount);
+            Refresh();
+        }
+    } = ProblemFilter.Default;
+
+    /// <summary>How many of these problems the filter shows, of <paramref name="all"/> of them.</summary>
+    private int CountShown(IEnumerable<Problem> problems, int all) => Filter.IsNone ? all : problems.Count(Filter.Passes);
+
+    /// <summary>The problems the filter shows, in their order.</summary>
+    private Problem[] Passing(Problem[] problems) => Filter.IsNone ? problems : Array.FindAll(problems, Filter.Passes);
+
+    /// <summary>A tab's problems, every one, as their lists keep them.</summary>
+    private IEnumerable<Problem> ProblemsOf(ProblemsTab tab) => tab switch
+    {
+        ProblemsTab.File => file,
+        ProblemsTab.Solution => solution?.Values.SelectMany(p => p) ?? [],
+        ProblemsTab.Toolset => toolset,
+        ProblemsTab.Bindings => bindings.Select(b => b.Problem),
+        ProblemsTab.HotReload => hotReload ?? [],
+        ProblemsTab.Containers => containers.Concat(containerFiles),
+        ProblemsTab.Godot => godot ?? [],
+        ProblemsTab.Breakpoints => breakpoints,
+        _ => Problems,
+    };
+
+    /// <summary>How many of the shown tab's problems of each severity hold the filter's text, as its severities' toggles
+    /// count them.</summary>
+    internal (int Errors, int Warnings, int Messages) SeverityCounts()
+    {
+        int errors = 0;
+        int warnings = 0;
+        int messages = 0;
+        foreach (Problem problem in ProblemsOf(Shown))
+        {
+            if (!Filter.Holds(problem))
+            {
+                continue;
+            }
+            switch (problem.Severity)
+            {
+                case ProblemSeverity.Error:
+                    errors++;
+                    break;
+                case ProblemSeverity.Warning:
+                    warnings++;
+                    break;
+                default:
+                    messages++;
+                    break;
+            }
+        }
+        return (errors, warnings, messages);
+    }
+
     /// <summary>What the last Hot Reload came to (its words, and its edits by file at their lines), in the Hot Reload tab,
     /// shown when it has problems.</summary>
     public void ShowHotReload(string said, IReadOnlyList<Problem> problems)
@@ -188,6 +277,8 @@ public sealed class ProblemsModel
         ProblemsTab.Bindings => "Bindings",
         ProblemsTab.HotReload => "Hot Reload",
         ProblemsTab.Containers => "Containers",
+        ProblemsTab.Godot => "Godot",
+        ProblemsTab.Breakpoints => "Breakpoints",
         _ => "Build",
     };
 
@@ -202,18 +293,24 @@ public sealed class ProblemsModel
             ProblemsTab.Bindings => (TitleOf(tab), bindings.Count),
             ProblemsTab.HotReload => (TitleOf(tab), hotReload?.Count ?? 0),
             ProblemsTab.Containers => (TitleOf(tab), containers.Count + containerFiles.Count),
+            ProblemsTab.Godot => (TitleOf(tab), godot?.Count ?? 0),
+            ProblemsTab.Breakpoints => (TitleOf(tab), breakpoints.Count),
             _ => (TitleOf(tab), Problems.Count),
         };
+        // A filter counts what it shows.
+        count = tab == ProblemsTab.Solution ? solutionShown : CountShown(ProblemsOf(tab), count);
         return count == 0 ? title : $"{title}  {count}";
     }
 
     /// <summary>Whether a tab's button shows: the Solution tab with solution-wide analysis on, Hot Reload's after one, the
-    /// Containers tab while it has problems or is shown.</summary>
+    /// Containers tab while it has problems or is shown, Godot's once a Godot game was launched.</summary>
     internal bool HasTab(ProblemsTab tab) => tab switch
     {
         ProblemsTab.Solution => solution is not null,
         ProblemsTab.HotReload => hotReload is not null,
         ProblemsTab.Containers => containers.Count + containerFiles.Count > 0 || Shown == ProblemsTab.Containers,
+        ProblemsTab.Godot => godot is not null,
+        ProblemsTab.Breakpoints => breakpoints.Count > 0 || Shown == ProblemsTab.Breakpoints,
         _ => true,
     };
 
@@ -236,10 +333,14 @@ public sealed class ProblemsModel
     internal void Open(Uri link) => LinkClicked?.Invoke(this, link);
 
     /// <summary>A tab shown, the first of its problems <paramref name="which"/> picks chosen and scrolled to, as the status
-    /// bar's link to it goes there.</summary>
+    /// bar's link to it goes there; a filter that hides it is taken away.</summary>
     public void Reveal(ProblemsTab tab, Func<Problem, bool>? which = null)
     {
         Shown = tab;
+        if (which is not null && !rows.Any(r => r.Problem is { } shown && which(shown)) && ProblemsOf(tab).Any(p => which(p)))
+        {
+            Filter = ProblemFilter.Default with { Messages = Filter.Messages || ProblemsOf(tab).Any(p => which(p) && p.Severity == ProblemSeverity.Message) };
+        }
         if (which is not null && rows.FirstOrDefault(r => r.Problem is { } problem && which(problem)) is { } row)
         {
             chosen = row;
@@ -287,9 +388,14 @@ public sealed class ProblemsModel
             file = ordered;
             if (Shown == ProblemsTab.File)
             {
-                for (int i = 0; i < ordered.Length; i++)
+                // A problem moved holds the same words, so the filter shows the same ones, row for row.
+                int row = 0;
+                foreach (Problem problem in ordered)
                 {
-                    rows[i].MoveTo(ordered[i]);
+                    if (Filter.Passes(problem))
+                    {
+                        rows[row++].MoveTo(problem);
+                    }
                 }
             }
             return;
@@ -328,6 +434,7 @@ public sealed class ProblemsModel
         solutionOrdered = null;
         solutionCount = problems?.Count ?? 0;
         solutionErrors = problems?.Count(p => p.Severity == ProblemSeverity.Error) ?? 0;
+        solutionShown = CountShown(problems ?? [], solutionCount);
         if (solution is null && Shown == ProblemsTab.Solution)
         {
             Shown = ProblemsTab.File;
@@ -362,12 +469,17 @@ public sealed class ProblemsModel
         solutionOrdered = null;
         solutionCount += fresh.Length - old.Length;
         solutionErrors += fresh.Count(p => p.Severity == ProblemSeverity.Error) - old.Count(p => p.Severity == ProblemSeverity.Error);
+        // The rows are those the filter shows.
+        bool moved = old.Length > 0 && Moved(old, fresh);
+        old = Passing(old);
+        fresh = Passing(fresh);
+        solutionShown += fresh.Length - old.Length;
         if (Shown != ProblemsTab.Solution)
         {
             TabsChanged?.Invoke(this, EventArgs.Empty);
             return;
         }
-        if (old.Length > 0 && Moved(old, fresh) && FileRowOf(path) is int at and >= 0)
+        if (moved && old.Length > 0 && FileRowOf(path) is int at and >= 0)
         {
             for (int i = 0; i < fresh.Length; i++)
             {
@@ -500,6 +612,63 @@ public sealed class ProblemsModel
         Refresh();
     }
 
+    /// <summary>The errors and warnings the Godot game launched last raised, in Godot, its tab there from its launch on: its
+    /// rows made again only where that tab shows, the tabs' counts wherever.</summary>
+    public void ShowGodot(IReadOnlyList<Problem> problems)
+    {
+        godot = problems;
+        if (Shown == ProblemsTab.Godot)
+        {
+            Refresh();
+        }
+        else
+        {
+            TabsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>The Godot game launched last begins: its tab shows, empty, and what it raises comes through <see cref="RaiseGodot"/>.</summary>
+    public void BeginGodot()
+    {
+        godotShowing?.Stop();
+        godotRaised.Clear();
+        ShowGodot([]);
+    }
+
+    /// <summary>An error or warning the Godot game launched last raised, after those before it: shown with those that come
+    /// within a moment of it (<see cref="GodotTogether"/>), all at once.</summary>
+    public void RaiseGodot(Problem problem)
+    {
+        godotRaised.Add(problem);
+        godotShowing ??= new Debounce(GodotTogether, () =>
+        {
+            ShowGodot([.. godotRaised]);
+            return Task.CompletedTask;
+        });
+        if (!godotShowing.IsWaiting)
+        {
+            godotShowing.Restart();
+        }
+    }
+
+    /// <summary>The breakpoints the programs debugged will not stop at (<see cref="Debugging.BreakpointStates.Problem"/>), each at
+    /// its line, by file: the tab shows while there are any.</summary>
+    public void ShowBreakpoints(IReadOnlyList<Problem> problems)
+    {
+        if (problems.SequenceEqual(breakpoints))
+        {
+            return;
+        }
+        breakpoints = Ordered(problems);
+        Refresh();
+    }
+
+    /// <summary>The breakpoints the programs debugged will not stop at, as the Breakpoints tab lists them.</summary>
+    public IReadOnlyList<Problem> BreakpointProblems => breakpoints;
+
+    /// <summary>The errors and warnings the Godot game launched last raised, in the order it raised them.</summary>
+    public IReadOnlyList<Problem> GodotProblems => godot ?? [];
+
     /// <summary>The container engine's problems, then those it finds in the open files.</summary>
     public IReadOnlyList<Problem> ContainerProblems => [.. containers, .. containerFiles];
 
@@ -555,7 +724,7 @@ public sealed class ProblemsModel
     /// <summary>Problems by severity, file, line and column, then the order they came.</summary>
     private static readonly Comparison<(Problem Problem, int Came)> ByPlace = static (a, b) =>
     {
-        int order = a.Problem.Severity.CompareTo(b.Problem.Severity);
+        int order = ((int)a.Problem.Severity).CompareTo((int)b.Problem.Severity);
         order = order != 0 ? order : string.CompareOrdinal(a.Problem.Path, b.Problem.Path);
         order = order != 0 ? order : a.Problem.Position.Line.CompareTo(b.Problem.Position.Line);
         order = order != 0 ? order : a.Problem.Position.Column.CompareTo(b.Problem.Position.Column);
@@ -605,18 +774,18 @@ public sealed class ProblemsModel
         switch (Shown)
         {
             case ProblemsTab.File:
-                foreach (Problem problem in file)
+                foreach (Problem problem in file.Where(Filter.Passes))
                 {
                     made.Add(new ProblemRow(0, problem.Message, problem.Where, problem));
                 }
                 EmptyText = fileName is null ? Refusals.NoFile : "No problems in this file";
                 break;
             case ProblemsTab.Solution:
-                Grouped(made, SolutionProblems ?? []);
+                Grouped(made, (SolutionProblems ?? []).Where(Filter.Passes));
                 EmptyText = "No problems in the solution";
                 break;
             case ProblemsTab.Toolset:
-                foreach (IGrouping<string, Problem> project in toolset.GroupBy(p => p.Project ?? string.Empty).OrderBy(g => g.Key, StringComparer.Ordinal))
+                foreach (IGrouping<string, Problem> project in toolset.Where(Filter.Passes).GroupBy(p => p.Project ?? string.Empty).OrderBy(g => g.Key, StringComparer.Ordinal))
                 {
                     made.Add(new ProblemRow(0, project.Key, Count(project.Count()), null));
                     foreach (Problem problem in project)
@@ -627,7 +796,7 @@ public sealed class ProblemsModel
                 EmptyText = "The projects loaded without problems";
                 break;
             case ProblemsTab.Bindings:
-                foreach (IGrouping<string, BindingProblem> file in bindings.GroupBy(b => b.Problem.Path ?? string.Empty)
+                foreach (IGrouping<string, BindingProblem> file in bindings.Where(b => Filter.Passes(b.Problem)).GroupBy(b => b.Problem.Path ?? string.Empty)
                     .OrderBy(g => g.Key.Length == 0).ThenBy(g => g.Key, StringComparer.Ordinal))
                 {
                     made.Add(new ProblemRow(0, file.Key.Length > 0 ? System.IO.Path.GetFileName(file.Key) : "Not from XAML", Count(file.Count()), null));
@@ -644,15 +813,15 @@ public sealed class ProblemsModel
                 break;
             case ProblemsTab.HotReload:
                 made.Add(new ProblemRow(0, hotReloadSaid, null, null));
-                Grouped(made, hotReload ?? []);
+                Grouped(made, (hotReload ?? []).Where(Filter.Passes));
                 EmptyText = "Hot Reload applied every change";
                 break;
             case ProblemsTab.Containers:
-                foreach (Problem problem in containers)
+                foreach (Problem problem in containers.Where(Filter.Passes))
                 {
                     made.Add(new ProblemRow(0, problem.Message, null, problem));
                 }
-                foreach (IGrouping<string, Problem> path in containerFiles.GroupBy(p => p.Path ?? string.Empty).OrderBy(g => g.Key, StringComparer.Ordinal))
+                foreach (IGrouping<string, Problem> path in containerFiles.Where(Filter.Passes).GroupBy(p => p.Path ?? string.Empty).OrderBy(g => g.Key, StringComparer.Ordinal))
                 {
                     made.Add(new ProblemRow(0, System.IO.Path.GetFileName(path.Key), Count(path.Count()), null));
                     foreach (Problem problem in path)
@@ -662,10 +831,22 @@ public sealed class ProblemsModel
                 }
                 EmptyText = "The container engine has no problems";
                 break;
+            case ProblemsTab.Godot:
+                Grouped(made, (godot ?? []).Where(Filter.Passes));
+                EmptyText = "The Godot game has raised no error or warning";
+                break;
+            case ProblemsTab.Breakpoints:
+                Grouped(made, breakpoints.Where(Filter.Passes));
+                EmptyText = "Every breakpoint binds, or may yet as its code loads";
+                break;
             default:
-                Grouped(made, Problems);
+                Grouped(made, Problems.Where(Filter.Passes));
                 EmptyText = "No problems from the last build";
                 break;
+        }
+        if (!Filter.IsNone && ProblemsOf(Shown).Any())
+        {
+            EmptyText = "No problems match the filter";
         }
         rowsOf = Shown;
         if (again)

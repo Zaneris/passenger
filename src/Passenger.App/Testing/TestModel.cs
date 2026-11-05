@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace Passenger.App.Testing;
 
 /// <summary>A test as the IDE knows it, whoever found it: the code (a method with a test attribute) or a runner's
@@ -14,6 +16,10 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
     public string? Row { get; init; }
 
     public string? Path { get; init; }
+
+    /// <summary>The file declaring a test its <see cref="Path"/> inherits, whose lines a failure's are; null for a test declared
+    /// where it is.</summary>
+    public string? DeclaredIn { get; init; }
 
     /// <summary>The line its name is on, from one; zero when unknown.</summary>
     public int Line { get; init; }
@@ -34,22 +40,9 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
 
     public string Id => Row is null ? MethodId : $"{MethodId}::{Row}";
 
-    /// <summary>Where the tree keeps it: its id under the target framework it ran for.</summary>
-    internal string Key => $"{Framework}|{Id}";
-
-    /// <summary>The length of its <see cref="Key"/>.</summary>
-    internal int KeyLength => (Framework?.Length ?? 0) + 1 + Project.Length + 2 + Unargued(FullyQualifiedName, []) + (Row is null ? 0 : 2 + Row.Length);
-
-    /// <summary>Its <see cref="Key"/> written into <paramref name="into"/>, which <see cref="KeyLength"/> fits.</summary>
-    internal void WriteKey(Span<char> into)
-    {
-        _ = into.TryWrite($"{Framework}|{Project}::", out int at);
-        at += Unargued(FullyQualifiedName, into[at..]);
-        if (Row is not null)
-        {
-            _ = into[at..].TryWrite($"::{Row}", out _);
-        }
-    }
+    /// <summary>Tests alike where the tree keeps them: by their id under the target framework they ran for. A map of
+    /// thousands of tests is keyed by the tests themselves through it, holding no key of its own for each.</summary>
+    internal static IEqualityComparer<TestItem> ById { get; } = new IdComparer();
 
     /// <summary>"A.B.Class.Method(1, 2)" as "A.B.Class.Method", and a fixture's instance's "A.B.Fixture(1).Method" or
     /// "A.B.Fixture&lt;Int32&gt;.Method" as "A.B.Fixture.Method".</summary>
@@ -96,6 +89,52 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
             }
         }
         return method > 0 && fullyQualifiedName.AsSpan(type + 1, method - type - 1).IndexOfAny('(', '<') >= 0 ? fullyQualifiedName[(type + 1)..] : null;
+    }
+
+    /// <summary>The longest method name compared on the stack; a longer one is written into a rented array.</summary>
+    private const int OnStack = 256;
+
+    /// <summary>Whether two runners' names are of one <see cref="Method"/>, never made a string.</summary>
+    private static bool SameMethod(string x, string y)
+    {
+        if (x.AsSpan().IndexOfAny('(', '<') < 0 && y.AsSpan().IndexOfAny('(', '<') < 0)
+        {
+            return string.Equals(x, y, StringComparison.Ordinal);
+        }
+        int length = Unargued(x, []);
+        if (Unargued(y, []) != length)
+        {
+            return false;
+        }
+        char[]? rented = null;
+        Span<char> both = length <= OnStack ? stackalloc char[2 * OnStack] : (rented = ArrayPool<char>.Shared.Rent(2 * length));
+        _ = Unargued(x, both[..length]);
+        _ = Unargued(y, both.Slice(length, length));
+        bool same = both[..length].SequenceEqual(both.Slice(length, length));
+        if (rented is not null)
+        {
+            ArrayPool<char>.Shared.Return(rented);
+        }
+        return same;
+    }
+
+    /// <summary>The hash of a runner's name's <see cref="Method"/>, never made a string.</summary>
+    private static int MethodHash(string name)
+    {
+        if (name.AsSpan().IndexOfAny('(', '<') < 0)
+        {
+            return string.GetHashCode(name.AsSpan());
+        }
+        int length = Unargued(name, []);
+        char[]? rented = null;
+        Span<char> into = length <= OnStack ? stackalloc char[OnStack] : (rented = ArrayPool<char>.Shared.Rent(length));
+        _ = Unargued(name, into[..length]);
+        int hash = string.GetHashCode(into[..length]);
+        if (rented is not null)
+        {
+            ArrayPool<char>.Shared.Return(rented);
+        }
+        return hash;
     }
 
     /// <summary>The length of a runner's name less its argument lists ("(1, \"a)\")", "&lt;Int32&gt;"), wherever they are,
@@ -154,6 +193,16 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
         }
         return false;
     }
+
+    private sealed class IdComparer : IEqualityComparer<TestItem>
+    {
+        public bool Equals(TestItem? x, TestItem? y) => ReferenceEquals(x, y) || (x is not null && y is not null
+            && string.Equals(x.Framework, y.Framework, StringComparison.Ordinal) && string.Equals(x.Row, y.Row, StringComparison.Ordinal)
+            && string.Equals(x.Project, y.Project, StringComparison.Ordinal) && SameMethod(x.FullyQualifiedName, y.FullyQualifiedName));
+
+        // The project is left out: tests of one name in two projects are few, and a path is long.
+        public int GetHashCode(TestItem test) => HashCode.Combine(test.Framework, test.Row, MethodHash(test.FullyQualifiedName));
+    }
 }
 
 /// <summary>A test project's tests as its code declares them, and the methods each of its files declares, by which a
@@ -180,6 +229,14 @@ public sealed record TestOutcome(TestItem Test, TestState State, TimeSpan Durati
     /// AddTestAttachment), and the frames of a failing headless test's windows (<see cref="TestFrames"/>).</summary>
     public IReadOnlyList<TestAttachment> Attachments { get; init; } = [];
 
+    /// <summary>When the run it is kept from began, a run of an earlier session (<see cref="TestResultsState"/>); null for
+    /// a result of this one's.</summary>
+    public DateTimeOffset? Earlier { get; init; }
+
+    /// <summary>Whether it takes the place of the outcome told before in the run for its test and row: a runner that tells
+    /// each test's end as it comes tells its details once the run has ended.</summary>
+    public bool Again { get; init; }
+
     /// <summary>The row this result is of, the test's own or one its run made; null for the method itself.</summary>
     public string? Row => Test.Row ?? (DisplayName is { } shown ? TestItem.RowOf(Test.FullyQualifiedName, shown) : null);
 }
@@ -201,8 +258,14 @@ public sealed record TestAttachment(string Name, string Path)
     }
 }
 
-/// <summary>A test host a runner would start, to be started under the debugger instead.</summary>
-public sealed record TestHostStart(string FileName, IReadOnlyList<string> Arguments, string? WorkingDirectory, IReadOnlyDictionary<string, string> Environment);
+/// <summary>A test host a runner would start, to be started under the debugger instead, with the framework it runs on
+/// ("net10.0") where the runner knows it.</summary>
+public sealed record TestHostStart(string FileName, IReadOnlyList<string> Arguments, string? WorkingDirectory, IReadOnlyDictionary<string, string> Environment,
+    string? Framework = null);
+
+/// <summary>What a debugged test host is started with for Hot Reload: the variables its runtime and Passenger's update
+/// handlers hook take, and the hook, which the attach to it takes.</summary>
+public sealed record TestHostReload(IReadOnlyDictionary<string, string> Variables, Debugging.UpdateHandlerHook Hook);
 
 /// <summary>Debugging for a runner: it hands over the test host it would start, or names the one it started.</summary>
 public interface ITestDebugLauncher
@@ -210,8 +273,19 @@ public interface ITestDebugLauncher
     /// <summary>Starts the test host under the debugger, its process id once it runs.</summary>
     Task<int> LaunchAsync(TestHostStart start);
 
-    /// <summary>Attaches the debugger to a test host the runner started; true once the debugger has hold of it.</summary>
-    Task<bool> AttachAsync(int processId);
+    /// <summary>What the test host a test assembly runs in is started with for Hot Reload, while the debugger has it on;
+    /// null while it is off, or where the assembly's .NET takes no hook.</summary>
+    TestHostReload? Reload(string assembly, IReadOnlyDictionary<string, string> environment);
+
+    /// <summary>Attaches the debugger to a test host the runner started (with Hot Reload and its hook, where it was
+    /// started for them); true once the debugger has hold of it.</summary>
+    Task<bool> AttachAsync(int processId, TestHostReload? reload = null);
+
+    /// <summary>Starts a Godot run of a project's tests (GUT's, GoDotTest's) under the debugger as Debug starts its game: its
+    /// GDScript under the GDScript debugger, and its C# under .NET's where the game has C# (<paramref name="csharp"/>), the
+    /// debugger's own arguments after the first <paramref name="leading"/>; done once it has started, with the run's end. Each
+    /// line the game writes is handed to <paramref name="heard"/> as the debug session hears it, on the session's thread.</summary>
+    Task<Task> DebugGameAsync(TestHostStart start, string folder, int leading, bool csharp, Action<string>? heard = null);
 }
 
 /// <summary>What finds and runs a folder's tests: VSTest's vstest.console (<see cref="VsTestRunner"/>), Microsoft.Testing.Platform's
@@ -227,9 +301,10 @@ public interface ITestRunner : IDisposable
     Task<IReadOnlyList<TestItem>> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default);
 
     /// <summary>Runs tests it discovered, their outcomes told a batch at a time as they come; under the debugger when a
-    /// launcher is given, and with these variables in the test hosts' environment.</summary>
+    /// launcher is given, with these variables in the test hosts' environment, and a Godot it starts started as
+    /// <paramref name="godot"/> says.</summary>
     Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
-        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, CancellationToken cancel = default);
+        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default);
 }
 
 /// <summary>How a run ended: how long its tests took, and whether it was stopped or broke off.</summary>

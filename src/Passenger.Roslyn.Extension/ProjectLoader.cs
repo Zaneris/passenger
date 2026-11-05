@@ -62,6 +62,19 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
         await ProjectInitializationHandler.SendProjectInitializationCompleteNotificationAsync(client).ConfigureAwait(false);
     }
 
+    /// <summary>Takes projects out of the solution: what references one reads its assembly from now on, as a project never
+    /// loaded is read. Whether it held any of them.</summary>
+    public async Task<bool> Unload(UnloadProjectsParams request)
+    {
+        bool held = false;
+        foreach (string project in request.Projects)
+        {
+            given.TryRemove(project, out _);
+            held |= await TryUnloadProjectAsync(project).ConfigureAwait(false);
+        }
+        return held;
+    }
+
     /// <summary>Loads again the projects that hold any of the files as documents, which lets go of those gone from disk, and
     /// says how many once they have.</summary>
     public async Task<int> LetGoAsync(IReadOnlyList<string> paths)
@@ -206,6 +219,29 @@ internal sealed class LoadProjectsHandlerFactory : ILspServiceFactory
 
     public ILspService CreateILspService(LspServices lspServices, WellKnownLspServerKinds serverKind) =>
         new LoadProjectsHandler(lspServices.GetRequiredService<PassengerProjectLoader>(), lspServices.GetRequiredService<WorkDoneProgressManager>());
+}
+
+/// <summary><see cref="ProjectMethods.Unload"/>: projects let go of, through <see cref="PassengerProjectLoader"/>.</summary>
+[Method(ProjectMethods.Unload)]
+internal sealed class UnloadProjectsHandler(PassengerProjectLoader loader) : ILspServiceRequestHandler<UnloadProjectsParams, bool>
+{
+    public bool MutatesSolutionState => false;
+
+    public bool RequiresLSPSolution => false;
+
+    public Task<bool> HandleRequestAsync(UnloadProjectsParams request, RequestContext context, CancellationToken cancellationToken) => loader.Unload(request);
+}
+
+[ExportCSharpVisualBasicLspServiceFactory(typeof(UnloadProjectsHandler), WellKnownLspServerKinds.Any)]
+[Shared]
+internal sealed class UnloadProjectsHandlerFactory : ILspServiceFactory
+{
+    [ImportingConstructor]
+    public UnloadProjectsHandlerFactory()
+    {
+    }
+
+    public ILspService CreateILspService(LspServices lspServices, WellKnownLspServerKinds serverKind) => new UnloadProjectsHandler(lspServices.GetRequiredService<PassengerProjectLoader>());
 }
 
 /// <summary><see cref="ProjectMethods.Deleted"/>: files gone from disk taken as workspace/didChangeWatchedFiles once the

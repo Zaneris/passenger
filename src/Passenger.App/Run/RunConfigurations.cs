@@ -73,7 +73,8 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
     {
         this.projects = projects;
         All = [.. RunConfiguration.Generate(projects, workspace?.Invoke(), SingleFileAppHosts).Select(Edited), .. own];
-        Chosen = All.FirstOrDefault(c => string.Equals(c.Name, keep, StringComparison.OrdinalIgnoreCase)) ?? All.FirstOrDefault();
+        // With none picked, an AppHost's before its services', which it runs as the person means.
+        Chosen = All.FirstOrDefault(c => string.Equals(c.Name, keep, StringComparison.OrdinalIgnoreCase)) ?? All.FirstOrDefault(c => c.Aspire) ?? All.FirstOrDefault();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -114,6 +115,26 @@ public sealed class RunConfigurations(string? folder, Func<WorkspaceModel?>? wor
         preferred = chosen ?? preferred ?? Chosen?.Name;
         Configure(projects, preferred);
         Write();
+    }
+
+    /// <summary>Turns a configuration's Collect logs and traces on or off, kept as Edit Configurations keeps its box (a
+    /// generated one's as its change, the folder's own in place), the choice of configuration left as it was; false where
+    /// none has the name.</summary>
+    public bool Collect(string name, bool on)
+    {
+        UiThread.Check();
+        if (All.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)) is not { } found)
+        {
+            return false;
+        }
+        if (found.Telemetry != on)
+        {
+            // A generated one changed for the first time has no source yet: what it is now is what its project makes.
+            RunConfiguration changed = found with { Telemetry = on, Source = found.Generated ? found.Source ?? found : null };
+            Set(found.Generated ? own : [.. own.Select(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase) ? changed : c)],
+                found.Generated ? [changed] : [], null, projects);
+        }
+        return true;
     }
 
     /// <summary>The person's changes to a generated configuration as kept now (a copy), or null for none.</summary>

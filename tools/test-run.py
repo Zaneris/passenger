@@ -10,12 +10,14 @@
    artifacts/test-results/local/ (each process's .trx and console log); the failures are listed at the end.
 """
 import argparse
+import ctypes
 import glob
 import importlib.util
 import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -40,6 +42,10 @@ TIME_SCALE = "PASSENGER_TEST_TIME_SCALE"
 SIDE_BY_SIDE_SCALE = "1.5"
 # A hung test is stopped and named after this, rather than holding the run.
 HANG = "10m"
+# MSBuild's handshake salt, which every build the run starts carries as its start (RUN_SALT), each test process's IDE adding
+# its own after it: what is left under it once the run ends is the run's (end_builds).
+SALT = "MSBUILDNODEHANDSHAKESALT"
+RUN_SALT = f"testrun{os.getpid()}-"
 # Classes that share something of the machine beyond the run's own folder, run in one process together in the first phase:
 # the container engine (its virtual machine's processors, image builds, Compose), by what a class's source calls.
 TOGETHER = {
@@ -240,6 +246,121 @@ def failures(folder):
             for file in trx.trx_files([folder]) for name, outcome, message in trx.failed(file)]
 
 
+def build_processes():
+    """The MSBuild nodes and servers, and the compiler and Razor servers they started, still running under the run's
+    salt, by id: each takes its environment from what started it, which ps shows its user on macOS, /proc on Linux, and
+    the process's own parameters on Windows."""
+    found = {}
+    for pid, command, environment in listed_processes():
+        if any(kind in command for kind in ("/nodemode:", "VBCSCompiler", "rzc.dll")) and RUN_SALT in salt_of(environment):
+            found[pid] = command
+    return found
+
+
+def salt_of(environment):
+    match = re.search(SALT + r"=(\S*)", environment)
+    return match[1] if match else ""
+
+
+def listed_processes():
+    """Each process as (id, command line, environment), its environment as space-separated variables."""
+    if sys.platform == "win32":
+        return windows_processes()
+    if sys.platform == "darwin":
+        listed = subprocess.run(["ps", "-A", "-E", "-o", "pid=,command="], capture_output=True, text=True,
+                                errors="replace").stdout
+        return [(int(line.split(None, 1)[0]), line, line) for line in listed.splitlines() if line.strip()[:1].isdigit()]
+    found = []
+    for entry in os.listdir("/proc"):
+        if entry.isdigit():
+            try:
+                with open(f"/proc/{entry}/cmdline", "rb") as read:
+                    command = read.read().replace(b"\0", b" ").decode(errors="replace")
+                with open(f"/proc/{entry}/environ", "rb") as read:
+                    environment = read.read().replace(b"\0", b" ").decode(errors="replace")
+            except OSError:
+                continue
+            found.append((int(entry), command, environment))
+    return found
+
+
+class ProcessEntry(ctypes.Structure):
+    """Windows' PROCESSENTRY32W."""
+    _fields_ = [("size", ctypes.c_uint32), ("usage", ctypes.c_uint32), ("pid", ctypes.c_uint32),
+                ("heap", ctypes.c_void_p), ("module", ctypes.c_uint32), ("threads", ctypes.c_uint32),
+                ("parent", ctypes.c_uint32), ("priority", ctypes.c_long), ("flags", ctypes.c_uint32),
+                ("name", ctypes.c_wchar * 260)]
+
+
+def windows_processes():
+    """Windows' dotnet, MSBuild and VBCSCompiler processes with their command lines and environments, read from each
+    one's RTL_USER_PROCESS_PARAMETERS (CommandLine at 0x70, Environment at 0x80, EnvironmentSize at 0x3F0)."""
+    kernel, ntdll = ctypes.WinDLL("kernel32"), ctypes.WinDLL("ntdll")
+    kernel.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
+    kernel.OpenProcess.restype = ctypes.c_void_p
+    kernel.ReadProcessMemory.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t,
+                                         ctypes.POINTER(ctypes.c_size_t)]
+    ntdll.NtQueryInformationProcess.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong,
+                                                ctypes.c_void_p]
+
+    def read(handle, address, length):
+        buffer, got = ctypes.create_string_buffer(length), ctypes.c_size_t()
+        done = length and kernel.ReadProcessMemory(handle, address, buffer, length, ctypes.byref(got))
+        return buffer.raw if done and got.value == length else None
+
+    def number(handle, address):
+        raw = read(handle, address, 8)
+        return int.from_bytes(raw, "little") if raw else 0
+
+    def parameters_of(pid):
+        # PROCESS_QUERY_INFORMATION and PROCESS_VM_READ; the PEB's ProcessParameters at 0x20.
+        handle = kernel.OpenProcess(0x0410, False, pid)
+        if not handle:
+            return None
+        try:
+            basic = (ctypes.c_uint64 * 6)()
+            if ntdll.NtQueryInformationProcess(handle, 0, basic, ctypes.sizeof(basic), None) != 0:
+                return None
+            parameters = number(handle, basic[1] + 0x20)
+            line = read(handle, parameters + 0x70, 16) if parameters else None
+            if not line:
+                return None
+            command = read(handle, int.from_bytes(line[8:16], "little"), int.from_bytes(line[0:2], "little"))
+            size = min(number(handle, parameters + 0x3F0), 1 << 20)
+            block = read(handle, number(handle, parameters + 0x80), size)
+            return (command.decode("utf-16-le", "replace"), block.decode("utf-16-le", "replace").replace("\0", " ")
+                    ) if command and block else None
+        finally:
+            kernel.CloseHandle(ctypes.c_void_p(handle))
+
+    found = []
+    snapshot = ctypes.c_void_p(kernel.CreateToolhelp32Snapshot(2, 0))
+    entry = ProcessEntry(size=ctypes.sizeof(ProcessEntry))
+    more = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
+    while more:
+        if entry.name.lower() in ("dotnet.exe", "msbuild.exe", "vbcscompiler.exe") and (read := parameters_of(entry.pid)):
+            found.append((entry.pid, read[0], read[1]))
+        more = kernel.Process32NextW(snapshot, ctypes.byref(entry))
+    kernel.CloseHandle(snapshot)
+    return found
+
+
+def end_builds():
+    """Ends what the run's builds left under its salt: its MSBuild nodes and servers at once, and a compiler or Razor
+    server one started through dotnet's own shutdown, which lets another build's compilation finish first."""
+    left = build_processes()
+    if any("/nodemode:" not in command for command in left.values()):
+        subprocess.run(["dotnet", "build-server", "shutdown", "--vbcscompiler", "--razor"], cwd=ROOT, capture_output=True)
+    for pid, command in left.items():
+        if "/nodemode:" in command:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+    if left:
+        print(f"test-run: ended {plural(len(left), 'build process')} the run left", flush=True)
+
+
 def plural(count, word):
     return f"{count} {word}" if count == 1 else f"{count} {word}es" if word.endswith("s") else f"{count} {word}s"
 
@@ -260,6 +381,13 @@ def one_process(lane, chosen):
     return next((code for code in codes if code != 0), 0)
 
 
+def keep_awake():
+    """On macOS, the machine held awake for the run's length, as caffeinate -is holds it, ending with this process however
+    it ends: a sleep pauses a test's waits, but what it runs (a server, a game, a debugged program) may not outlast one."""
+    if sys.platform == "darwin" and shutil.which("caffeinate"):
+        subprocess.Popen(["caffeinate", "-is", "-w", str(os.getpid())], stdin=subprocess.DEVNULL)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("filter", nargs="?", default="", help="dotnet test's --filter, as `just test Editing` gives it")
@@ -273,8 +401,14 @@ def main():
     lanes.add_argument("--gate", dest="lane", action="store_const", const="gate", help="--lane gate")
     lanes.add_argument("--report", dest="lane", action="store_const", const="report", help="--lane report")
     arguments = parser.parse_args()
+    if not arguments.plan:
+        keep_awake()
     # As CI runs: the SDK's telemetry holds each dotnet the tests start up to 2 s at its exit to send.
     os.environ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "true"
+    # As just's recipes run, with no MSBuild server; every build under the run's salt, ended with it (end_builds).
+    os.environ["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0"
+    os.environ["MSBUILDUSESERVER"] = "0"
+    os.environ[SALT] = os.environ.get(SALT, "") + RUN_SALT
     given = arguments.filter.strip()
     lane = arguments.lane
     chosen = shards.both(given, shards.lane_filter(lane))
@@ -425,4 +559,8 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        code = main()
+    finally:
+        end_builds()
+    sys.exit(code)

@@ -22,8 +22,18 @@ public sealed record SymbolRow(string Name, string? Detail, string? Where, Symbo
     /// changed since the row's <see cref="Position"/> was read from it.</summary>
     public Passenger.Lsp.LspPosition? ServerPosition { get; init; }
 
-    /// <summary>A file, not a symbol: shown with its file icon (Go to Everything's files).</summary>
+    /// <summary>Whether going to it goes on from its place to what the code there names, as Go to Declaration does: a Godot
+    /// scene's connection to its handler.</summary>
+    public bool Leads { get; init; }
+
+    /// <summary>A file, not a symbol: shown with its file icon (Go to Everything's files, a scene's script).</summary>
     public const SymbolKind FileKind = default;
+
+    /// <summary>A node of a Godot scene.</summary>
+    public const SymbolKind NodeKind = SymbolKind.Object;
+
+    /// <summary>A heading of a Markdown file.</summary>
+    public const SymbolKind HeadingKind = SymbolKind.String;
 }
 
 /// <summary>A query over symbols, answered as it is typed (a moment after the last key, the previous answer given
@@ -113,7 +123,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
             MaxWidth = 260,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock name = new() { [DockPanel.DockProperty] = Dock.Left, VerticalAlignment = VerticalAlignment.Center };
         // A member's type follows its name close, as "Sum(int): decimal"; a container stands apart.
         TextBlock detail = new()
         {
@@ -121,8 +131,10 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 300,
+            HorizontalAlignment = HorizontalAlignment.Left,
         };
-        StackPanel named = new() { Orientation = Orientation.Horizontal, Spacing = 8, Children = { name, detail } };
+        // The detail is cut short where the row is narrower than its words, never drawn under where it is.
+        DockPanel named = new() { ClipToBounds = true, Children = { name, detail } };
         DockPanel row = new() { Height = ListRow.Height, Children = { where, icon, badge, named } };
         return row.Showing<SymbolRow>(symbol =>
         {
@@ -146,7 +158,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
             name.Text = symbol.Name;
             detail.Text = symbol.Detail ?? string.Empty;
             detail.Foreground = InfoCard.Brush(TokenKeys.TextMuted);
-            detail.Margin = new Thickness(symbol.Detail?.StartsWith(':') == true ? -8 : 0, 0, 0, 0);
+            detail.Margin = new Thickness(symbol.Detail?.StartsWith(':') == true ? 0 : 8, 0, 0, 0);
             row.Margin = new Thickness(symbol.Depth * 16, 0, 0, 0);
         });
     }
@@ -197,6 +209,8 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
         SymbolKind.Event => ("e", TokenKeys.Syntax_Event),
         SymbolKind.Operator => ("o", TokenKeys.TextMuted),
         SymbolKind.TypeParameter => ("T", TokenKeys.Syntax_TypeParameter),
+        SymbolRow.NodeKind => ("n", TokenKeys.Syntax_Class),
+        SymbolRow.HeadingKind => ("H", TokenKeys.Syntax_Heading),
         _ => ("·", TokenKeys.TextMuted),
     };
 }

@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Passenger.Core;
 
 namespace Passenger.App.Aspire;
 
@@ -40,7 +41,7 @@ public sealed class AspireResource(JsonElement data)
 
     /// <summary>Whether the AppHost hides the resource: false when it says nothing of it, as the CLI's snapshot of one it
     /// shows need not.</summary>
-    public bool IsHidden => Data.TryGetProperty("isHidden", out JsonElement hidden) && hidden.ValueKind == JsonValueKind.True;
+    public bool IsHidden => JsonMembers.Bool(Data, "isHidden") == true;
 
     public IReadOnlyList<AspireResourceCommand> Commands => AspireJson.Properties(Data, "commands")
         .Select(p => new AspireResourceCommand(p.Name, p.Value)).ToArray();
@@ -148,7 +149,7 @@ internal static class AspireJson
 
     public static string? String(JsonElement value, string name)
     {
-        if (!Object(value).TryGetProperty(name, out JsonElement field) || field.ValueKind == JsonValueKind.Null)
+        if (JsonMembers.Value(Object(value), name) is not { ValueKind: not JsonValueKind.Null } field)
         {
             return null;
         }
@@ -158,7 +159,7 @@ internal static class AspireJson
 
     public static bool Boolean(JsonElement value, string name)
     {
-        if (!Object(value).TryGetProperty(name, out JsonElement field))
+        if (JsonMembers.Value(Object(value), name) is not { } field)
         {
             throw new InvalidDataException($"Aspire JSON is missing '{name}'.");
         }
@@ -166,21 +167,22 @@ internal static class AspireJson
             : throw new InvalidDataException($"Aspire JSON field '{name}' must be a boolean.");
     }
 
-    public static double Number(JsonElement value, string name) => Object(value).TryGetProperty(name, out JsonElement field)
+    public static double Number(JsonElement value, string name) => JsonMembers.Value(Object(value), name) is { } field
         && field.ValueKind == JsonValueKind.Number && field.TryGetDouble(out double number) && double.IsFinite(number)
         ? number : throw new InvalidDataException($"Aspire JSON field '{name}' must be a finite number.");
 
-    public static string Duration(JsonElement value) => !Object(value).TryGetProperty("durationMs", out JsonElement duration)
+    public static string Duration(JsonElement value) => JsonMembers.Value(Object(value), "durationMs") is not { } duration
         || duration.ValueKind == JsonValueKind.Null ? "Duration unavailable" : $"{Number(value, "durationMs"):0.###} ms";
 
     public static IReadOnlyList<JsonElement> Array(JsonElement value, string? name = null, bool required = false)
     {
         if (name is not null)
         {
-            if (!Object(value).TryGetProperty(name, out value) || value.ValueKind == JsonValueKind.Null)
+            if (JsonMembers.Value(Object(value), name) is not { ValueKind: not JsonValueKind.Null } field)
             {
                 return required ? throw new InvalidDataException($"Aspire JSON is missing '{name}'.") : [];
             }
+            value = field;
         }
         if (value.ValueKind != JsonValueKind.Array)
         {
@@ -191,7 +193,7 @@ internal static class AspireJson
 
     public static IEnumerable<JsonProperty> Properties(JsonElement value, string name)
     {
-        if (!Object(value).TryGetProperty(name, out JsonElement field) || field.ValueKind == JsonValueKind.Null)
+        if (JsonMembers.Value(Object(value), name) is not { ValueKind: not JsonValueKind.Null } field)
         {
             return [];
         }

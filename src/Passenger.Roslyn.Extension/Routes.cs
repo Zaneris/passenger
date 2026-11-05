@@ -19,6 +19,13 @@ public sealed class WebRoutes : IExtensionWorkspaceMessageHandler<RoutesRequest,
         RouteReading.ReadAsync(context.Solution, message.Projects, cancellationToken);
 }
 
+/// <summary>One route's JSON body, shaped as a request of it is made (<see cref="RouteReading.BodyAsync"/>).</summary>
+public sealed class RouteBody : IExtensionWorkspaceMessageHandler<RouteBodyAsked, RouteBodyShaped>
+{
+    public Task<RouteBodyShaped> ExecuteAsync(RouteBodyAsked message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+        RouteReading.BodyAsync(context.Solution, message, cancellationToken);
+}
+
 /// <summary>Reads an ASP.NET Core project's routes from its code as the server holds it, with no build and no running app:
 /// minimal APIs (their groups' prefixes followed through locals, chained calls and the callers of the method that maps
 /// them, as far as a straight-line reading proves, never guessed), attribute-routed controllers and conventional routes,
@@ -65,6 +72,28 @@ internal static partial class RouteReading
         return new RoutesFound(routes, read);
     }
 
+    /// <summary>The JSON body of one route, shaped from its body's type as its project's routes are read again; none where
+    /// the route takes none or is no longer where it was.</summary>
+    public static async Task<RouteBodyShaped> BodyAsync(Solution solution, RouteBodyAsked asked, CancellationToken cancel)
+    {
+        foreach (Project project in solution.Projects)
+        {
+            cancel.ThrowIfCancellationRequested();
+            if (project.Language != LanguageNames.CSharp || !SamePath(project.FilePath, asked.Project) || !IsWeb(project)
+                || await project.GetCompilationAsync(cancel).ConfigureAwait(false) is not { } compilation)
+            {
+                continue;
+            }
+            ProjectRoutes reading = new(project, compilation, [], cancel, asked);
+            await reading.ReadAsync().ConfigureAwait(false);
+            if (reading.Body is { } body)
+            {
+                return new RouteBodyShaped(body);
+            }
+        }
+        return new RouteBodyShaped(null);
+    }
+
     /// <summary>Whether a project references ASP.NET Core (its shared framework, or Blazor's or gRPC's packages).</summary>
     private static bool IsWeb(Project project) => project.MetadataReferences.Any(reference => reference.Display is { } display
         && Path.GetFileName(display) is { } name
@@ -109,14 +138,26 @@ internal static partial class RouteReading
     [GeneratedRegex(@"(?<!\{)\{(?!\{)(?<inner>[^{}]+)\}")]
     private static partial Regex TemplateParameter();
 
-    /// <summary>One project's routes.</summary>
-    private sealed partial class ProjectRoutes(Project project, Compilation compilation, List<WebRoute> routes, CancellationToken cancel)
+    /// <summary>One project's routes, and the JSON body of the one <paramref name="bodyOf"/> asks for.</summary>
+    private sealed partial class ProjectRoutes(Project project, Compilation compilation, List<WebRoute> routes, CancellationToken cancel, RouteBodyAsked? bodyOf = null)
     {
         private readonly string projectPath = project.FilePath!;
         private readonly string folder = Path.GetDirectoryName(project.FilePath!)!;
         private readonly Dictionary<string, string> hashes = new(StringComparer.Ordinal);
         private readonly List<(string Pattern, string? Area)> conventional = [];
         private bool? enumsByName;
+
+        /// <summary>The body of the route asked for, once read.</summary>
+        public string? Body { get; private set; }
+
+        /// <summary>A route's body shaped, where it is the route asked for.</summary>
+        private void Shape(ITypeSymbol? body, string path, Place at, string template)
+        {
+            if (body is not null && bodyOf is { } asked && asked.At == at && asked.Template == template && SamePath(asked.Path, path))
+            {
+                Body = JsonSample.Of(body, EnumsByName);
+            }
+        }
 
         public async Task ReadAsync()
         {
@@ -257,7 +298,8 @@ internal static partial class RouteReading
             (List<RouteParameter> parameters, ITypeSymbol? body) = Bind(whole, handled?.Parameters ?? [], apiController: true, bodied, minimal: true);
             routes.Add(new WebRoute(projectPath, RouteKinds.Minimal, methods, whole, null, parameters, handlerName, path, at,
                 PlaceAt(text, patternArgument!.Span.End), Hash(path, text), handlerPath, handlerAt,
-                body?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), body is null ? null : JsonSample.Of(body, EnumsByName)));
+                body?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)));
+            Shape(body, path, at, whole);
         }
 
         /// <summary>The route group a map call's receiver is, as its prefix; null when it cannot be proven.</summary>
@@ -668,9 +710,11 @@ internal static partial class RouteReading
                 bool bodied = verbs.Count == 0 || !verbs.Any(m => m is "GET" or "HEAD" or "DELETE" or "OPTIONS");
                 (List<RouteParameter> parameters, ITypeSymbol? body) = Bind(filled, action.Parameters, api, bodied, minimal: false);
                 (string? handlerPath, Place? handlerAt) = DeclarationOf(action);
+                Place at = PlaceAt(text, span.Start);
                 routes.Add(new WebRoute(projectPath, RouteKinds.Controller, verbs, filled, null, parameters, $"{type.Name}.{action.Name}", path,
-                    PlaceAt(text, span.Start), PlaceAt(text, span.End), Hash(path, text), handlerPath, handlerAt,
-                    body?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), body is null ? null : JsonSample.Of(body, EnumsByName)));
+                    at, PlaceAt(text, span.End), Hash(path, text), handlerPath, handlerAt,
+                    body?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)));
+                Shape(body, path, at, filled);
             }
         }
 

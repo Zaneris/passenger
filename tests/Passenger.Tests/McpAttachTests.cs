@@ -108,7 +108,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         // Gone already, the signal finds no process, which is as good.
         await ChildProcesses.RunAsync(ChildProcesses.Command("/bin/kill", ["-TERM", proxy.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)]),
             limit: TimeSpan.FromSeconds(30), answers: [1], cancel: Cancel);
-        await Until(() => proxy.HasExited, "the agent's server to end");
+        await Until(() => !DotnetProcesses.Runs(proxy), "the agent's server to end");
         Assert.Equal(0, proxy.ExitCode);
         await Until(() => !Processes.IsRunning(started), "the Passenger the agent started to end with it");
         Assert.Empty(Directory.Exists(sockets) ? Directory.GetFiles(sockets, "*.sock") : []);
@@ -225,6 +225,35 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent that gives up on the call the window's let-in question holds takes the question away: nothing waits
     /// on it, and a later "Allow" would let in an agent that asked nothing. The window's limit is long, so only the giving up
     /// can close it within the wait.</summary>
+    /// <summary>The files an agent's calls read stay open after them, with no tab, until the agent goes; a file the person
+    /// has open in a tab, which the agent read too, stays as it was once the agent goes.</summary>
+    [AvaloniaFact]
+    public void The_files_an_agent_read_stay_open_without_a_tab_until_it_goes_and_the_persons_own_stay_open_after()
+    {
+        string folder = Plain("mcp-kept-");
+        File.WriteAllText(Path.Combine(folder, "Mine.txt"), "mine\n");
+        MainWindow window = AgentsWindow(folder, languageServer: false);
+        Assert.Null(window.OpenFile(Path.Combine(folder, "Mine.txt")));
+        Ui.Settle();
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Await(Waiting.Apart(() => Call(client, McpTools.EditorText, new() { ["path"] = "Notes.txt" })), "the agent reading Notes.txt");
+            Await(Waiting.Apart(() => Call(client, McpTools.EditorText, new() { ["path"] = "Mine.txt" })), "the agent reading Mine.txt");
+            Passenger.App.Workspace.OpenDocument? notes = window.EditorArea.Documents.FirstOrDefault(d => Path.GetFileName(d.Path) == "Notes.txt");
+            Assert.True(notes is not null && !window.EditorArea.HasTab(notes),
+                $"Notes.txt, which the agent read, was not kept open without a tab after its call: the window has open {string.Join(", ", window.EditorArea.Documents.Select(d => Path.GetFileName(d.Path)))} ({PassengerApp.Windows.Count} windows)");
+        }
+        finally
+        {
+            Gone(client);
+        }
+        WaitFor(() => window.EditorArea.Documents.All(d => Path.GetFileName(d.Path) != "Notes.txt"), "Notes.txt, kept for the agent, to close as the agent went");
+        Passenger.App.Workspace.OpenDocument mine = Assert.Single(window.EditorArea.Documents, d => Path.GetFileName(d.Path) == "Mine.txt");
+        Assert.True(window.EditorArea.HasTab(mine), "The person's own Mine.txt lost its tab as the agent that read it went");
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void An_agent_giving_up_on_its_call_takes_the_windows_question_away()
@@ -1003,9 +1032,10 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             suspended = server.ProcessId;
             Processes.Suspend(suspended, "The test's language server");
 
+            // A file the server has not been asked of, so the call waits on it (Helper.cs's last pull would answer it).
             Task<CallToolResult> diagnostic = Waiting.Apart(() => revokeConnection
-                ? Result(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" })
-                : CallGivingUp(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" }, giveUp.Token));
+                ? Result(client, McpTools.Diagnostics, new() { ["path"] = "Program.cs" })
+                : CallGivingUp(client, McpTools.Diagnostics, new() { ["path"] = "Program.cs" }, giveUp.Token));
             Ui.PumpUntil(() => InFlight.Now().Any(piece => piece.What.Contains(Passenger.Lsp.LspMethods.DocumentDiagnostic, StringComparison.Ordinal)),
                 "the attached agent's diagnostic to wait on the suspended server", TimeSpan.FromSeconds(10));
             if (revokeConnection)

@@ -33,12 +33,28 @@ public sealed partial class PassengerTools
     /// <summary>A project, .props or .targets file, read through its project's evaluation.</summary>
     private sealed record MSBuildServed(OpenDocument Document, MSBuild.MSBuildDocument MSBuild) : Served(Document, "MSBuild");
 
+    /// <summary>A Godot project's text scene or resource, which Passenger reads itself.</summary>
+    private sealed record GodotServed(OpenDocument Document) : Served(Document, "Godot scene");
+
+    /// <summary>A Godot shader or shader include, read against Godot's shading language and checked by Godot's compiler.</summary>
+    private sealed record ShaderServed(OpenDocument Document) : Served(Document, "Godot shader");
+
+    /// <summary>A GDScript no Godot server serves, which Passenger's own reading answers for (<see cref="WebDocument.AskServer"/>).</summary>
+    private sealed record ScriptServed(OpenDocument Document, WebDocument Web) : Served(Document, "GDScript");
+
     /// <summary>What a tool says of a language that has no such command: plainly, naming the language and what it has instead.</summary>
     private static InvalidOperationException Lacks(Served served, string command, string instead) =>
         new($"{served.Language} files have no {command} in Passenger, so {Path.GetFileName(served.Document.Path)} has none: {instead}");
 
     private const string MSBuildHas = "definition goes to where a property, item, target, import or SDK is defined, symbol_info says a property's "
         + "value and where it was set, outline gives its elements, and diagnostics its evaluation's problems";
+
+    private const string ShaderHas = "definition goes to a uniform, varying, function, struct or constant, an include's too, and from an #include to "
+        + "its file; symbol_info says what a built-in, mode, hint or declaration is; usages lists a uniform's uses, the scenes and C# naming it; "
+        + "outline gives its declarations; diagnostics Godot's compiler's errors";
+
+    private const string GodotHas = "definition goes from a res:// path or ExtResource to its file, from a node path to its node, and from a "
+        + "connection's method or signal to its code; rename renames a node's name in its scenes and the code's GetNode paths; outline gives its nodes";
 
     /// <summary>The file opened as the editor would, with the service that answers for it once that can: a XAML file's
     /// project read, the C# server's workspace loaded. A file no service reads is refused at once, saying which do.</summary>
@@ -64,6 +80,11 @@ public sealed partial class PassengerTools
         {
             return new MSBuildServed(document, msbuild);
         }
+        // A GDScript is Passenger's own reading's where no Godot server serves it: one is asked for only by what that can't answer.
+        if (Session.Web?.For(document) is { Kind: WebServerKind.GDScript, Lsp: null } script)
+        {
+            return new ScriptServed(document, script);
+        }
         if (Session.Web is { } languages && languages.For(document) is { } web)
         {
             // Looked at every 50 ms: a web server's document comes as the server starts, raising nothing.
@@ -72,13 +93,21 @@ public sealed partial class PassengerTools
                 ? new ServerServed(document, LanguageOf(document), server, web)
                 : throw new InvalidOperationException(languages.Unready("Its code help", document));
         }
+        if (Passenger.Workspace.GodotFile.IsText(document.Path) && Session.GodotOf(document.Path) is not null)
+        {
+            return new GodotServed(document);
+        }
+        if (Godot.GodotShaderMarks.IsShader(document.Path))
+        {
+            return new ShaderServed(document);
+        }
         if (document.Language.Service == Languages.LanguageService.CSharp)
         {
             (_, LspDocument lsp) = await Code(path, cancel, takenIn);
             return new ServerServed(document, document.Language.Name, lsp);
         }
         throw new InvalidOperationException($"Passenger has no code help for {LanguageOf(document)} files such as {name}: the code tools answer C#, Razor, "
-            + "XAML, JavaScript, TypeScript, HTML, CSS, SCSS, Less, JSON, YAML, Dockerfiles and MSBuild files");
+            + "XAML, JavaScript, TypeScript, HTML, CSS, SCSS, Less, JSON, YAML, Dockerfiles, MSBuild files and Godot's scenes and shaders");
     }
 
     /// <summary>An MSBuild file's elements, indented, each with its line: a property or metadata with its value as written,
@@ -131,13 +160,13 @@ public sealed partial class PassengerTools
             ? served.Name : document.Language.Name;
 
     /// <summary>An AppHost's or a service's C# file's diagnostics pulled and marked now, a file reading what an open compose
-    /// file's service lacks or one that may read configuration or localized strings too, so the fixes Passenger offers on
-    /// Aspire's, Compose's, a configuration key's and a translation's warnings stand on the text as the agent wrote it, not
-    /// on a pull still to come.</summary>
+    /// file's service lacks, one that may read configuration or localized strings, or one of a Godot project too, so the
+    /// fixes Passenger offers on Aspire's, Compose's, a configuration key's, a translation's and Godot's marks stand on the
+    /// text as the agent wrote it, not on a pull still to come.</summary>
     private async Task AspireMarked(Served served, CancellationToken cancel)
     {
         if (served is ServerServed { Web: null } && Session.CSharp?.For(served.Document) is { } csharp
-            && (csharp.AspireRole != Aspire.AspireRole.None || csharp.ReadsForCompose || csharp.MayReadConfiguration || csharp.MayLocalize))
+            && (csharp.AspireRole != Aspire.AspireRole.None || csharp.ReadsForCompose || csharp.MayReadConfiguration || csharp.MayLocalize || csharp.OfGodot))
         {
             await csharp.PullNowAsync(cancel);
         }
@@ -237,13 +266,27 @@ public sealed partial class PassengerTools
     /// through it, as a C# symbol's usages are, and before it has loaded none are.</summary>
     private Task CodeBehindRead(CancellationToken cancel) => When(() => Session.CSharp is not { } csharp || csharp.IsReady, ServerLimit, cancel, ServerState());
 
-    /// <summary>Rename in XAML: an element's name, in its file and where its code-behind uses its field, saved.</summary>
-    private async Task<string> XamlRename(XamlServed xaml, int offset, string newName, CancellationToken cancel)
+    /// <summary>Rename in XAML: an element's name, in its file and where its code-behind uses its field; a type or member of
+    /// the folder's C# a name leads to, from its declaration (<see cref="XamlAssist.DeclaredRenameAsync"/>); saved.</summary>
+    private async Task<string> XamlRename(XamlServed xaml, int offset, string newName, bool renameFiles, Patience patience, CancellationToken cancel)
     {
         await CodeBehindRead(cancel);
-        if (await BackgroundWork.Run(() => XamlNavigation.At(xaml.File, offset)) is not { Named: { } named })
+        // Read against the C# as it stands: the agent's own rename a moment before may have written it.
+        await Session.Xaml.CurrentAsync();
+        XamlFile file = await xaml.Xaml.FileAsync() ?? xaml.File;
+        XamlSymbol? symbol = await BackgroundWork.Run(() => XamlNavigation.At(file, offset));
+        if (symbol is { Named: null } && XamlAssist.DeclarationOf(symbol) is not null)
         {
-            throw new InvalidOperationException("Rename in XAML renames an element's name (its x:Name or Name): put the place on one, its value or a use of it");
+            if (symbol.Name == newName)
+            {
+                return $"{newName} is its name already";
+            }
+            return await SymbolRenamed(await window.Assist.Languages.Xaml.DeclaredRenameAsync(symbol, newName, renameFiles, patience)
+                ?? throw new InvalidOperationException(XamlAssist.XamlRenamesWhat), cancel);
+        }
+        if (symbol is not { Named: { } named })
+        {
+            throw new InvalidOperationException($"{XamlAssist.XamlRenamesWhat}: put the place on one, or a use of it");
         }
         if (named.Value == newName)
         {
@@ -289,6 +332,16 @@ public sealed partial class PassengerTools
         }
     }
 
+    /// <summary>What a scene with no fix at a place says: its fixes are its marks', a line at a time.</summary>
+    private const string SceneFixesHere = "No fix here: a Godot scene's fixes are those of its marks (a connection's missing method, a property its script lacks), and none is on this line";
+
+    /// <summary>The fixes of a scene's marks at a place, once its own checks of its text as it stands are done.</summary>
+    private async Task<IReadOnlyList<EditorFix>> SceneFixes(Served served, int line, int column, CancellationToken cancel)
+    {
+        await Checked(served.Document, cancel);
+        return window.Assist.OwnFixes(served.Document, Offset(served.Document, line, column));
+    }
+
     /// <summary>One of Passenger's own fixes made as choosing it makes it: worked out again on the file's text as it stands,
     /// one undoable edit, the file saved; refused when the text no longer has what it fixes. One made in another file (an
     /// AppHost's WithReference) is that file's command, told the call's <paramref name="patience"/>.</summary>
@@ -308,6 +361,18 @@ public sealed partial class PassengerTools
             await SaveLandedAsync(CancellationToken.None);
             return set.Said;
         }
+        if (now.Confirms is { } confirms)
+        {
+            // The agent's call is its agreeing; what it wrote is said back.
+            string question = await confirms.Question() ?? throw new InvalidOperationException($"'{fix.Title}' was not applied: the file changed, so it no longer fits");
+            RefactorOutcome agreed = await confirms.Make(patience);
+            if (agreed.Problem is { } declined)
+            {
+                throw new InvalidOperationException(declined);
+            }
+            await SaveLandedAsync(CancellationToken.None);
+            return $"{agreed.Said}: {question.Replace("\n\n", " ", StringComparison.Ordinal)}";
+        }
         if (now.Elsewhere is { } elsewhere)
         {
             RefactorOutcome made = await elsewhere(now.Range, patience);
@@ -318,7 +383,7 @@ public sealed partial class PassengerTools
             await SaveLandedAsync(CancellationToken.None);
             return $"Applied '{fix.Title}' to {string.Join(", ", made.Files.Select(f => Relative(f.Path)).Distinct())}";
         }
-        WorkspaceEdits.ApplyTo(Editors, document, [new TextEdit(now.Range.Start, now.Range.Length, now.Text)]);
+        WorkspaceEdits.ApplyTo(Editors, document, now.Edits ?? [new TextEdit(now.Range.Start, now.Range.Length, now.Text)]);
         await SaveLandedAsync(CancellationToken.None);
         return $"Applied '{fix.Title}' to {Relative(document.Path)}";
     }

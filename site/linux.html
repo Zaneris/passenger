@@ -15,18 +15,18 @@
     <meta property="og:url" content="https://passenger-ide.net/linux">
     <meta property="og:title" content="Passenger on Linux: install the free C# and .NET IDE">
     <meta property="og:description" content="How to install Passenger, an IDE for C# and .NET, on Linux: what it needs, then download, install, update and uninstall.">
-    <meta property="og:image" content="https://passenger-ide.net/images/social-622499b6.png">
+    <meta property="og:image" content="https://passenger-ide.net/images/social-f846e4c2.png">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="Passenger's Requests window beside the words: Debug the whole stack. The free IDE for C# and .NET.">
+    <meta property="og:image:alt" content="A Godot game's GDScript in Passenger, each member's value after its line as the game plays, beside the words: Now for Godot 4 games. The free IDE for C# and .NET.">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:site" content="@Zaneris">
     <meta name="twitter:creator" content="@Zaneris">
     <meta name="twitter:title" content="Passenger on Linux: install the free C# and .NET IDE">
     <meta name="twitter:description" content="How to install Passenger, an IDE for C# and .NET, on Linux: what it needs, then download, install, update and uninstall.">
-    <meta name="twitter:image" content="https://passenger-ide.net/images/social-622499b6.png">
-    <meta name="twitter:image:alt" content="Passenger's Requests window beside the words: Debug the whole stack. The free IDE for C# and .NET.">
+    <meta name="twitter:image" content="https://passenger-ide.net/images/social-f846e4c2.png">
+    <meta name="twitter:image:alt" content="A Godot game's GDScript in Passenger, each member's value after its line as the game plays, beside the words: Now for Godot 4 games. The free IDE for C# and .NET.">
     <meta name="theme-color" content="#0F131C" media="(prefers-color-scheme: dark)">
     <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#2F6BF2">
@@ -58,20 +58,26 @@
     <h2>1. What it needs</h2>
     <p>A 64-bit Intel or Arm machine with a desktop, and:</p>
     <ul>
-        <li><strong>A .NET SDK, version 10 or later</strong>, from <a href="https://learn.microsoft.com/dotnet/core/install/linux">Microsoft's
+        <li><strong>A .NET SDK for the projects you open, .NET 8 or later</strong>, from <a href="https://learn.microsoft.com/dotnet/core/install/linux">Microsoft's
             Linux packages or install script</a>, with <code>dotnet</code> on your PATH (or <code>DOTNET_ROOT</code> naming its
-            folder). Passenger builds and runs your projects with it, and Roslyn's language server runs on it.</li>
-        <li><strong>Git</strong>, and the X11 and fontconfig libraries most desktops already have. On a Wayland desktop,
-            Passenger runs through XWayland.</li>
-        <li><strong>Node.js</strong>, only for JavaScript, TypeScript, HTML, CSS and JSON (22.22.2 or later for
-            TypeScript). Your distribution's package may be older; <a href="https://nodejs.org/en/download">nodejs.org</a>
+            folder). Passenger builds and runs your projects with it, and without one says what is missing and installs one
+            in a step once you agree. Its own language server, project host and debugger run on the .NET it carries.</li>
+        <li><strong>Git</strong>, the X11 and fontconfig libraries, and a font, which most desktops already have.
+            Passenger carries its own faces, Inter for the window and JetBrains Mono for code, but takes the system's
+            default font from fontconfig as it starts, and draws the characters its faces lack (other scripts, many
+            symbols, emoji) in the fonts installed. On a Wayland desktop, Passenger runs through XWayland.</li>
+        <li><strong>Node.js</strong>, only for JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles and YAML (22.22.2 or
+            later for TypeScript). Your distribution's package may be older; <a href="https://nodejs.org/en/download">nodejs.org</a>
             has current ones, and Settings &rsaquo; Node.js can name the one to use.</li>
     </ul>
 <pre><span class="comment"># Ubuntu, Debian</span>
-sudo apt install git libx11-6 libice6 libsm6 libfontconfig1
+sudo apt install git libx11-6 libice6 libsm6 libfontconfig1 fonts-dejavu-core
 
 <span class="comment"># Fedora</span>
-sudo dnf install git libX11 libICE libSM fontconfig</pre>
+sudo dnf install git libX11 libICE libSM fontconfig dejavu-sans-fonts
+
+<span class="comment"># Arch</span>
+sudo pacman -S git libx11 libice libsm fontconfig ttf-dejavu</pre>
 
     <h2>2. Download and unpack</h2>
 <pre>arch=$(uname -m | sed 's/x86_64/x64/; s/aarch64/arm64/')
@@ -84,24 +90,40 @@ tar -xzf Passenger-linux-$arch.tar.gz</pre>
     <h2>3. Install</h2>
 <pre>./passenger/install.sh</pre>
     <p>For you alone, with no root needed. It copies Passenger to <code>~/.local/opt/passenger</code>, links
-        <code>~/.local/bin/passenger</code>, and adds Passenger to your applications menu with its icon, as one of the
+        <code>~/.local/bin/passenger-ide</code>, and adds Passenger to your applications menu with its icon, as one of the
         programs that open <code>.sln</code>, <code>.slnx</code> and <code>.csproj</code> files. If
         <code>~/.local/bin</code> is not on your PATH yet, add it:</p>
 <pre>echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile</pre>
     <p>For everyone on the machine, run it with <code>sudo ./passenger/install.sh --system</code>, which uses
         <code>/opt/passenger</code>, <code>/usr/local/bin</code> and <code>/usr/share/applications</code> instead.</p>
     <p>Then open a folder or a solution from the menu, or from a shell:</p>
-<pre>passenger ~/src/MySolution</pre>
+<pre>passenger-ide ~/src/MySolution</pre>
+    <p>The command is <code>passenger-ide</code>, so it never meets Phusion Passenger's <code>passenger</code>. An install
+        from before it was named so has its <code>passenger</code> link moved to the new name; any other
+        <code>passenger</code> is left as it is.</p>
 
     <p>The toolbar is the window's title bar, as on Windows and macOS, with the window's buttons at its right. To have
         your window manager's own title bar instead, turn off Settings &rsaquo; Appearance &rsaquo; Merge main menu with
         window title. Under WSL and tiling window managers, the window manager's stays.</p>
 
     <h2>Updating</h2>
-    <p>Passenger says when a newer release is out (Help &rsaquo; Check for Updates asks at once), and its notice links the
-        archive for your machine. It does not install updates itself on Linux: unpack the newer archive and run its
-        <code>install.sh</code> as before (with <code>sudo</code> and <code>--system</code> if that is how you installed
-        it). It replaces the old files and keeps your settings.</p>
+    <p>Installed with <code>install.sh</code>, Passenger updates itself. It downloads a newer release in the background
+        (Help &rsaquo; Check for Updates asks at once), checks it against the release's SHA-256 sums, and puts it in place
+        as it closes, or at once with Restart to Update, keeping your settings. Installed for everyone, it asks for an
+        administrator's password where your desktop can ask, or gives you the command to run. The release it replaced is
+        kept until the new one starts.</p>
+    <p>Run from where its archive was unpacked, Passenger only says a newer release is out, and links the archive for
+        your machine: unpack it in its place, or install it. A copy your package manager installed is updated by it.</p>
+
+    <h2>Packaging Passenger</h2>
+    <p>A package of Passenger (an AUR, <code>.deb</code> or <code>.rpm</code> package) installs the archive's
+        <code>passenger</code> folder where it chooses, with its desktop entry, icons and file types, rather than running
+        <code>install.sh</code>. It also writes one file beside the app, <code>app/package-manager</code>: a line naming
+        the package manager, such as <code>pacman</code>, <code>apt</code> or <code>dnf</code>. Passenger then leaves its
+        updates to that manager and says so, rather than asking the system's package database whose the copy is, and
+        never writes over the package's files. Name the command <code>passenger-ide</code>, as <code>install.sh</code>
+        does.</p>
+<pre>echo pacman > "$pkgdir/opt/passenger-ide/app/package-manager"</pre>
 
     <h2>Uninstalling</h2>
 <pre>~/.local/opt/passenger/install.sh --uninstall
@@ -111,10 +133,12 @@ sudo /opt/passenger/install.sh --uninstall --system</pre>
 
     <h2>If something goes wrong</h2>
     <ul>
-        <li><strong>The window does not open:</strong> run <code>passenger</code> from a shell to see why, and check the
+        <li><strong>The window does not open:</strong> run <code>passenger-ide</code> from a shell to see why, and check the
             libraries in step 1; <code>install.sh</code> names any of them it finds missing.</li>
-        <li><strong>C# has colour but no completion or errors:</strong> Passenger could not start Roslyn's language server.
-            Check that <code>dotnet --list-sdks</code> shows a version 10 or later SDK.</li>
+        <li><strong>No font is installed:</strong> <code>install.sh</code> says so, with the command that installs one on
+            Ubuntu, Debian, Fedora, Arch, openSUSE and Alpine.</li>
+        <li><strong>C# has colour but no completion or errors:</strong> the banner over the window says why, most often that
+            no .NET SDK installed builds the project; Install .NET SDK&hellip; installs one.</li>
         <li><strong>A TypeScript or other web file has colour but no help:</strong> the banner over it says why, most often
             that no Node.js was found or that it is too old for the language server.</li>
         <li><strong>Started from the applications menu, Passenger finds no <code>dotnet</code> or <code>git</code>:</strong>
@@ -138,6 +162,7 @@ sudo /opt/passenger/install.sh --uninstall --system</pre>
             <a href="/">Home</a>
             <a href="https://github.com/Zaneris/passenger">GitHub</a>
             <a href="https://x.com/Zaneris">X (@Zaneris)</a>
+            <a href="/godot">Godot</a>
             <a href="/containers">Containers and Aspire</a>
             <a href="/agents">Agents</a>
             <a href="https://github.com/Zaneris/passenger/blob/main/LICENSE">Licence</a>

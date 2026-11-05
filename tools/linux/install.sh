@@ -1,14 +1,19 @@
 #!/bin/sh
 # Installs Passenger from the passenger/ folder this script is in (an unpacked Passenger-linux-<arch>.tar.gz), or
 # removes it again:
-#   ./install.sh                         for you alone: ~/.local/opt/passenger, ~/.local/bin/passenger, and Passenger in
-#                                        your applications menu with its icon and file types (~/.local/share)
-#   sudo ./install.sh --system           for everyone: /opt/passenger, /usr/local/bin/passenger, /usr/share/applications
+#   ./install.sh                         for you alone: ~/.local/opt/passenger, ~/.local/bin/passenger-ide, and Passenger
+#                                        in your applications menu with its icon and file types (~/.local/share)
+#   sudo ./install.sh --system           for everyone: /opt/passenger, /usr/local/bin/passenger-ide, /usr/share/applications
 #   ./install.sh --uninstall [--system]  removes what that install added, and leaves the settings (~/.local/share/Passenger)
-# Installing a newer release's folder the same way replaces the old files and keeps the settings.
+#   ./install.sh --from FOLDER [--system] installs the unpacked passenger/ folder FOLDER rather than this script's own
+#   ./install.sh --from FOLDER --keep-replaced  also keeps the release it replaces beside FOLDER until the next start
+# Installing a newer release's folder the same way replaces the old files and keeps the settings; the installed script
+# run again refreshes the menu entry, icons and command.
 set -eu
 
 app=io.github.zaneris.passenger
+# The command on the PATH, named after the site (passenger-ide.net): Phusion Passenger's is passenger.
+command_name=passenger-ide
 
 fail() {
     echo "install.sh: $*" >&2
@@ -16,24 +21,40 @@ fail() {
 }
 
 usage() {
-    sed -n '2,8s/^# \{0,1\}//p' "$0"
+    sed -n '2,13s/^# \{0,1\}//p' "$0"
 }
 
 system=
 uninstall=
-for arg in "$@"; do
-    case $arg in
+from=
+keep_replaced=
+while [ $# -gt 0 ]; do
+    case $1 in
         --system) system=1 ;;
         --uninstall) uninstall=1 ;;
+        --from)
+            [ $# -gt 1 ] || fail "--from names the unpacked passenger/ folder to install: --from FOLDER"
+            from=$2
+            shift
+            ;;
+        --keep-replaced) keep_replaced=1 ;;
         -h | --help)
             usage
             exit 0
             ;;
-        *) fail "'$arg' is neither --system, --uninstall nor --help" ;;
+        *) fail "'$1' is neither --system, --uninstall, --from FOLDER, --keep-replaced nor --help" ;;
     esac
+    shift
 done
 
-here=$(dirname "$(readlink -f "$0")")
+if [ -n "$keep_replaced" ] && [ -z "$from" ]; then
+    fail "--keep-replaced keeps the release replaced beside the folder --from names: --from FOLDER --keep-replaced"
+fi
+if [ -n "$from" ]; then
+    here=$(readlink -f "$from") || fail "$from is no folder to install from"
+else
+    here=$(dirname "$(readlink -f "$0")")
+fi
 if [ -n "$system" ]; then
     [ "$(id -u)" = 0 ] || fail "--system installs for everyone, under /opt and /usr: run it with sudo"
     dest=/opt/passenger
@@ -48,7 +69,9 @@ else
     bin=$HOME/.local/bin
     data=${XDG_DATA_HOME:-$HOME/.local/share}
 fi
-link=$bin/passenger
+link=$bin/$command_name
+# The command's name before it was passenger-ide: its link moves to the new name only where it leads to a Passenger.
+former=$bin/passenger
 entry=$data/applications/$app.desktop
 icon_png=$data/icons/hicolor/256x256/apps/$app.png
 icon_svg=$data/icons/hicolor/scalable/apps/$app.svg
@@ -57,6 +80,44 @@ types=$data/mime/packages/$app.xml
 # A folder Passenger was installed to, or unpacked as: never anything else of the same name, which is left alone.
 is_passenger() {
     [ -x "$1/app/Passenger" ] && [ -f "$1/install.sh" ] && [ -f "$1/$app.desktop" ]
+}
+
+# Whether a link leads to this install's launcher, or to the launcher of another Passenger folder.
+leads_to_passenger() {
+    [ -L "$1" ] || return 1
+    to=$(readlink "$1")
+    led=$(readlink -f "$1" || true)
+    [ "$to" = "$dest/passenger" ] || { [ "${led##*/}" = passenger ] && is_passenger "${led%/*}"; }
+}
+
+# Whether fontconfig, or else the font folders, know a font: Passenger takes the system's default font from fontconfig as
+# it starts, and draws in installed fonts what its own faces (Inter, JetBrains Mono) lack.
+has_font() {
+    if command -v fc-list > /dev/null 2>&1; then
+        [ -n "$(fc-list : family 2> /dev/null | head -n 1)" ]
+        return
+    fi
+    for fonts in /usr/share/fonts /usr/local/share/fonts "${XDG_DATA_HOME:-${HOME:-/root}/.local/share}/fonts" "${HOME:-/root}/.fonts"; do
+        if [ -d "$fonts" ] && [ -n "$(find "$fonts" -type f \( -name '*.ttf' -o -name '*.otf' -o -name '*.ttc' \) 2> /dev/null | head -n 1)" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# The command that installs a common font on this distribution, read from /etc/os-release's ID and ID_LIKE (not run as a
+# script); nothing for a distribution it does not know.
+font_command() {
+    [ -r /etc/os-release ] || return 0
+    for id in $(sed -n 's/^ID=//p; s/^ID_LIKE=//p' /etc/os-release | tr -d '"'); do
+        case $id in
+            debian | ubuntu) echo "sudo apt install fonts-dejavu-core" && return 0 ;;
+            fedora | rhel | centos) echo "sudo dnf install dejavu-sans-fonts" && return 0 ;;
+            arch) echo "sudo pacman -S ttf-dejavu" && return 0 ;;
+            opensuse* | suse | sles) echo "sudo zypper install dejavu-fonts" && return 0 ;;
+            alpine) echo "sudo apk add font-dejavu" && return 0 ;;
+        esac
+    done
 }
 
 # The desktop's caches of entries, file types and icons, where the system has the tools: a cache it has no tool for
@@ -90,10 +151,12 @@ if [ -n "$uninstall" ]; then
     if [ -e "$dest" ] && ! is_passenger "$dest"; then
         fail "$dest is not a Passenger install, so it is left as it is"
     fi
-    # The link only when it leads to this install, the menu entry and the rest by their names, which are Passenger's.
-    if [ -L "$link" ] && [ "$(readlink "$link")" = "$dest/passenger" ]; then
-        rm -f "$link"
-    fi
+    # The links only when they lead to this install, the menu entry and the rest by their names, which are Passenger's.
+    for named in "$link" "$former"; do
+        if [ -L "$named" ] && [ "$(readlink "$named")" = "$dest/passenger" ]; then
+            rm -f "$named"
+        fi
+    done
     rm -f "$entry" "$icon_png" "$icon_svg" "$types"
     refresh
     # The folder last: this script may be the installed copy, which the shell goes on reading once it is gone.
@@ -113,10 +176,8 @@ case $dest in
 esac
 # The command's link goes only where nothing is or a link leads to a Passenger: another program of its name stays.
 if [ -L "$link" ]; then
-    to=$(readlink "$link")
-    led=$(readlink -f "$link" || true)
-    if [ "$to" != "$dest/passenger" ] && ! { [ "${led##*/}" = passenger ] && is_passenger "${led%/*}"; }; then
-        fail "$link is there, a link to $to, which is not Passenger: move it away first"
+    if ! leads_to_passenger "$link"; then
+        fail "$link is there, a link to $(readlink "$link"), which is not Passenger: move it away first"
     fi
 elif [ -d "$link" ]; then
     fail "$link is there, a folder: move it away first"
@@ -127,7 +188,7 @@ elif [ -e "$link" ]; then
 fi
 
 # The new files beside the old, then swapped in, so a Passenger still running keeps the files it has open.
-if [ "$here" != "$dest" ]; then
+if [ "$here" != "$(readlink -f "$dest" 2> /dev/null || echo "$dest")" ]; then
     if [ -e "$dest" ] && ! is_passenger "$dest"; then
         fail "$dest is there and is not a Passenger install: move it away first"
     fi
@@ -147,11 +208,21 @@ if [ "$here" != "$dest" ]; then
     fi
     mv "$new" "$dest"
     swapped=1
-    rm -rf "$old"
+    # Kept for the release's next start to remove, which runs as the folder's owner, not as root: else removed now.
+    kept=$(dirname "$here")/replaced
+    if [ -n "$keep_replaced" ] && [ -e "$old" ] && rm -rf "$kept" && mv "$old" "$kept"; then
+        chown -R "$(stat -c %u:%g "$(dirname "$here")" 2> /dev/null)" "$kept" 2> /dev/null || true
+    else
+        rm -rf "$old"
+    fi
 fi
 
 mkdir -p "$bin" "$(dirname "$entry")" "$(dirname "$icon_png")" "$(dirname "$icon_svg")" "$(dirname "$types")"
 ln -sfn "$dest/passenger" "$link"
+# An earlier install's link of the former name moves to the new one; Phusion Passenger's passenger, or anyone's, stays.
+if leads_to_passenger "$former"; then
+    rm -f "$former"
+fi
 # The template's Exec and TryExec name the launcher on the PATH; the installed entry names this install's.
 while IFS= read -r line; do
     case $line in
@@ -170,8 +241,8 @@ refresh
 
 echo "Passenger is installed in $dest, and is in the applications menu."
 case ":${PATH:-}:" in
-    *":$bin:"*) echo "Start it from a shell with: passenger [folder or solution]" ;;
-    *) echo "$bin is not on your PATH yet: add it, then start Passenger from a shell with: passenger [folder or solution]" ;;
+    *":$bin:"*) echo "Start it from a shell with: $command_name [folder or solution]" ;;
+    *) echo "$bin is not on your PATH yet: add it, then start Passenger from a shell with: $command_name [folder or solution]" ;;
 esac
 
 # What Passenger needs and this system lacks, said now, not as a window that never opens (ldconfig may be in /sbin).
@@ -188,6 +259,14 @@ if [ -x "$ldconfig" ]; then
 fi
 if [ -n "$missing" ]; then
     echo "Passenger's window needs$missing, which this system lacks: see https://passenger-ide.net/linux" >&2
+fi
+if ! has_font; then
+    hint=$(font_command)
+    if [ -n "$hint" ]; then
+        echo "No font is installed, and Passenger takes its default font from the system's as it starts: install one, as with: $hint" >&2
+    else
+        echo "No font is installed, and Passenger takes its default font from the system's as it starts: install one, such as your distribution's DejaVu Sans." >&2
+    fi
 fi
 if ! command -v dotnet > /dev/null 2>&1 && [ -z "${DOTNET_ROOT:-}" ]; then
     echo "No .NET SDK on the PATH: Passenger needs version 10 or later to build your projects and run its language server." >&2

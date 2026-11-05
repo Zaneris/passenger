@@ -6,7 +6,7 @@ using Avalonia.Media;
 namespace Passenger.App.Navigation;
 
 /// <summary>Find Action: every action by name, the recently run ones first, narrowed as words are typed, each with its
-/// group and shortcut and greyed where it cannot run; Enter or a double-click runs the chosen one, Escape gives
+/// group, shortcut and mouse shortcut and greyed where it cannot run; Enter or a double-click runs the chosen one, Escape gives
 /// up.</summary>
 public sealed class ActionPopup : SearchPopup<IdeAction>
 {
@@ -33,7 +33,7 @@ public sealed class ActionPopup : SearchPopup<IdeAction>
         Show(found, "No actions match");
     }
 
-    /// <summary>An action's row: its title, greyed where it cannot run, its group, and its shortcut at the right.</summary>
+    /// <summary>An action's row: its title, greyed where it cannot run, its group, and its shortcuts at the right.</summary>
     protected override Control Row()
     {
         TextBlock title = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -55,7 +55,7 @@ public sealed class ActionPopup : SearchPopup<IdeAction>
             // Listed, so it can be found, but greyed: it cannot run here.
             title.Classes.Set(StyleClasses.Muted, !action.CanRun(context));
             group.Text = action.Group;
-            keys.Text = actions.Shortcut(action.Id) ?? string.Empty;
+            keys.Text = actions.ShortcutsShown(action.Id) ?? string.Empty;
         });
     }
 }

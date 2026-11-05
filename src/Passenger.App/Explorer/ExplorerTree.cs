@@ -372,13 +372,17 @@ public sealed class ExplorerTree
     /// <summary>Opens every node down to <paramref name="path"/> and returns its row, so a file can be shown where it
     /// lives: in its folder, or in the solution, in the project it belongs to (<see cref="ProjectModel.Owning"/>), the
     /// nearest of those whose folders hold it rather than the first listed.</summary>
-    public ExplorerNode? Reveal(string path)
+    public ExplorerNode? Reveal(string path) => Find(PathNames.Canonical(path), Expand);
+
+    /// <summary>A file's node where the view shows it, as <see cref="Reveal"/> finds it, by its canonical path
+    /// (<see cref="PathNames.Canonical"/>), each node above it handed to <paramref name="through"/> before its children
+    /// are read; null where the view does not show it.</summary>
+    private ExplorerNode? Find(string full, Action<ExplorerNode> through)
     {
         if (Root is null)
         {
             return null;
         }
-        string full = PathNames.Canonical(path);
         string? owner = solution is null ? null : ProjectModel.Owning([.. solution.Projects, .. programs], full)?.Path;
         // A file a project takes from elsewhere shows where its Link puts it, in the project that holds it.
         string? linked = null;
@@ -396,10 +400,10 @@ public sealed class ExplorerTree
         ExplorerNode node = Root;
         while (node.Path != full)
         {
-            Expand(node);
+            through(node);
             if (linked is not null && node.Kind == NodeKind.Project && node.Path == owner)
             {
-                return RevealLinked(node, linked, full);
+                return FindLinked(node, linked, full, through);
             }
             ExplorerNode? next = node.Children?
                 .Where(c => c.Kind is not (NodeKind.Dependencies or NodeKind.Framework or NodeKind.Package or NodeKind.ProjectReference))
@@ -419,26 +423,99 @@ public sealed class ExplorerTree
         return node;
     }
 
-    /// <summary>Opens a project's folders down to a file it takes from elsewhere, by where it shows, and returns its row.</summary>
-    private ExplorerNode? RevealLinked(ExplorerNode project, string logical, string full)
+    /// <summary>The node of a file a project takes from elsewhere, down its folders by where it shows, each handed to
+    /// <paramref name="through"/> on the way.</summary>
+    private static ExplorerNode? FindLinked(ExplorerNode project, string logical, string full, Action<ExplorerNode> through)
     {
         ExplorerNode node = project;
         string[] folders = logical.Split('/');
         foreach (string folder in folders[..^1])
         {
-            Expand(node);
+            through(node);
             if (node.Children?.FirstOrDefault(c => c.Kind == NodeKind.Folder && c.Name == folder) is not { } next)
             {
                 return null;
             }
             node = next;
         }
-        Expand(node);
+        through(node);
         return node.Children?.FirstOrDefault(c => c.Path == full);
+    }
+
+    /// <summary>The rows the Explorer's filter lets through: the files it matched and every node above one; null while
+    /// none is set, every row shown as its holder's opening shows it.</summary>
+    private HashSet<ExplorerNode>? passing;
+
+    /// <summary>The nodes open as the filter was first set, open again (and only they) once it is cleared.</summary>
+    private HashSet<ExplorerNode>? openBefore;
+
+    /// <summary>Whether the filter narrows the rows.</summary>
+    public bool IsFiltered => passing is not null;
+
+    /// <summary>Narrows the rows to these files where the view shows them and the nodes above them, those opened: the
+    /// Explorer's filter, given the canonical paths of the files whose names match it (<see cref="PathNames.Canonical"/>,
+    /// resolved where the disk's answers cost the window nothing). Rows opened or closed while it is set show only what it
+    /// lets through.</summary>
+    public void Filter(IEnumerable<string> canonical)
+    {
+        if (Root is null)
+        {
+            return;
+        }
+        openBefore ??= [.. Loaded(Root, n => n.IsExpanded)];
+        HashSet<ExplorerNode> through = new(ReferenceEqualityComparer.Instance);
+        passing = new(ReferenceEqualityComparer.Instance) { Root };
+        foreach (string file in canonical)
+        {
+            List<ExplorerNode> above = [];
+            if (Find(file, above.Add) is { IsFile: true } found)
+            {
+                passing.Add(found);
+                passing.UnionWith(above);
+                through.UnionWith(above);
+            }
+        }
+        foreach (ExplorerNode node in through.Where(n => n.HasChildren))
+        {
+            node.IsExpanded = true;
+        }
+        ShowAll();
+    }
+
+    /// <summary>Every row again, open as it was before the filter was set.</summary>
+    public void Unfilter()
+    {
+        if (Root is null || passing is null)
+        {
+            passing = null;
+            openBefore = null;
+            return;
+        }
+        HashSet<ExplorerNode> open = openBefore ?? new(ReferenceEqualityComparer.Instance);
+        passing = null;
+        openBefore = null;
+        foreach (ExplorerNode node in Loaded(Root, _ => true))
+        {
+            node.IsExpanded = open.Contains(node);
+        }
+        ShowAll();
+    }
+
+    /// <summary>The root and the rows its opening shows, as the filter lets them through.</summary>
+    private void ShowAll()
+    {
+        List<ExplorerNode> wanted = [Root!, .. Root!.IsExpanded ? Visible(Root) : Enumerable.Empty<ExplorerNode>()];
+        foreach (ExplorerNode row in wanted)
+        {
+            Mark(row);
+        }
+        Rows.Show(wanted);
     }
 
     private void Show(ExplorerNode root)
     {
+        passing = null;
+        openBefore = null;
         Rows.Clear();
         Root = root;
         Rows.Add(root);
@@ -448,6 +525,8 @@ public sealed class ExplorerTree
     /// <summary>Nothing shown, as before a folder opens and once its solution is closed.</summary>
     public void Clear()
     {
+        passing = null;
+        openBefore = null;
         Rows.Clear();
         Root = null;
         solution = null;
@@ -761,8 +840,10 @@ public sealed class ExplorerTree
     private static ILookup<string, string> NestedUnder(IEnumerable<string> files, IReadOnlyDictionary<string, string> parents) =>
         files.Where(parents.ContainsKey).ToLookup(file => parents[file], PathNames.Comparer);
 
-    /// <summary>A node's descendants as rows, in order, through every node already open.</summary>
-    private static IEnumerable<ExplorerNode> Visible(ExplorerNode node) => TreeRows<ExplorerNode>.Shown(node.Children ?? [], child => child.Children);
+    /// <summary>A node's descendants as rows, in order, through every node already open, those the filter lets through.</summary>
+    private IEnumerable<ExplorerNode> Visible(ExplorerNode node) => TreeRows<ExplorerNode>.Shown(Passing(node.Children), child => Passing(child.Children));
+
+    private IEnumerable<ExplorerNode> Passing(List<ExplorerNode>? rows) => passing is null ? rows ?? [] : (rows ?? []).Where(passing.Contains);
 }
 
 /// <summary>One row of the Explorer: a folder or file, or a part of the solution.</summary>

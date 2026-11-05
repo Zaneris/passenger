@@ -23,7 +23,10 @@ public sealed partial record MissingSdk(string? Asked, string? GlobalJson, bool 
     }
 
     /// <summary>No dotnet at all, in the words of the search for it.</summary>
-    public static MissingSdk NoDotnet(string said) => new(null, null, NoneInstalled: true, said);
+    public static MissingSdk NoDotnet(string said) => new(null, null, NoneInstalled: true, said) { NoHost = true };
+
+    /// <summary>No dotnet was found at all, runtime or SDK.</summary>
+    public bool NoHost { get; init; }
 
     /// <summary>Where the SDK is downloaded: the page of the channel of the version asked for, else the page of them all.</summary>
     public Uri Download => Asked is { } asked && Channel().Match(asked) is { Success: true } channel

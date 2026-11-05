@@ -158,7 +158,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
 
         NativeMenu recent = Ui.Submenu(Ui.Submenu(window.MenuBar, "File"), MainMenu.RecentSolutions);
         NativeMenuItem[] items = [.. recent.Items.OfType<NativeMenuItem>()];
-        Assert.Equal([$"{Name(alpha)} – {RecentRow.Home(PathNames.Canonical(alpha))}"], items.Select(i => i.Header));
+        Assert.Equal([MainWindow.NativeWords($"{Name(alpha)} – {RecentRow.Home(PathNames.Canonical(alpha))}")], items.Select(i => i.Header));
         items[0].Command!.Execute(null);
         Ui.Settle();
         InThisWindow(window);
@@ -192,7 +192,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         Ui.Settle();
         InThisWindow(window);
         NativeMenuItem[] items = [.. Ui.Submenu(Ui.Submenu(window.MenuBar, "File"), MainMenu.RecentSolutions).Items.OfType<NativeMenuItem>()];
-        Assert.Equal([$"B – {RecentRow.Home(b)}", $"A – {RecentRow.Home(a)}"], items.Select(i => i.Header));
+        Assert.Equal([MainWindow.NativeWords($"B – {RecentRow.Home(b)}"), MainWindow.NativeWords($"A – {RecentRow.Home(a)}")], items.Select(i => i.Header));
         items[0].Command!.Execute(null);
         Ui.Settle();
         InThisWindow(window);
@@ -315,7 +315,9 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         asked.KeyTextInput(StandInGitRemote.User);
         Ui.Press(asked, "TAB");
         asked.KeyTextInput(StandInGitRemote.Password);
-        Ui.Press(asked, "ENTER");
+        Ui.Press(asked, "ENTER", settle: false);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(BackgroundWork.Pending > 0, "Once signed in, the clone's work was let go while git still cloned, so a wait for the IDE to settle could end before the clone");
         Ui.Settle();
         Assert.True(dialog.Problem is null, $"The clone failed once signed in: {dialog.Problem}");
         Assert.True(File.Exists(Path.Combine(clones, "repo", "Readme.md")), "The clone made once signed in does not hold the repository's file");

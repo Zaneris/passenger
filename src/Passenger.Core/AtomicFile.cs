@@ -12,6 +12,12 @@ public static class AtomicFile
     /// never finished.</summary>
     public const string Temporary = ".tmp";
 
+    /// <summary>The file a write to a path goes to: where the path is a symbolic link (a settings or startup file kept in a
+    /// dotfiles folder), the file at the end of its links, so the link stays one and that file takes the bytes, where a write
+    /// to the link itself would put a file of its own in its place; the path itself where it is no link or not there.</summary>
+    public static string Target(string path) =>
+        new FileInfo(path).LinkTarget is not null ? File.ResolveLinkTarget(path, returnFinalTarget: true)?.FullName ?? path : path;
+
     /// <summary>Writes a file whole, the folder it goes in already there. <paramref name="mode"/> is its mode on macOS and
     /// Linux from its making (none: the system's default for a new file); Windows has none.</summary>
     public static void Write(string path, ReadOnlySpan<byte> bytes, UnixFileMode? mode = null) =>

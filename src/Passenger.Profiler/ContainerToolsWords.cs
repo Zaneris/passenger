@@ -31,4 +31,7 @@ public static class ContainerToolsWords
 
     /// <summary><see cref="Trace"/>'s: a web app's requests recorded (<see cref="LiveRequests"/>).</summary>
     public const string Requests = "--requests";
+
+    /// <summary><see cref="Trace"/>'s: the program's metrics heard (<see cref="LiveMetrics"/>), the meters .NET ships.</summary>
+    public const string Metrics = "--metrics";
 }

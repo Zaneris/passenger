@@ -10,6 +10,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Tables;
 using Passenger.Editor;
+using Passenger.Xaml.Localization;
 
 namespace Passenger.Tests;
 
@@ -48,6 +49,210 @@ public sealed class TablesTests : IDisposable
         Ui.Click(Named(window, "ShowTable"));
         Ui.WaitFor(() => Grid(window).Table?.Header(0) == "ZName", "the Table to show the header the Text was given");
         Assert.True(Grid(window).IsFocused, "The Table should take the focus back, so the keys move among its cells");
+        window.Close();
+    }
+
+    /// <summary>A .resx opens as a table of its keys, values and comments, written in place as ResourceFiles writes them:
+    /// a value written over, a key made in the row standing for a new one and given its value, a name another key has
+    /// refused saying why, a key taken out from the menu, each one edit Undo takes back, the XML a click away.</summary>
+    [AvaloniaFact]
+    public void A_resx_opens_as_a_table_of_its_keys_whose_cells_written_and_keys_added_change_its_text_as_ResourceFiles_writes_it()
+    {
+        string path = Path.Combine(folder, "Strings.resx");
+        const string Text = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <root>
+              <resheader name="resmimetype">
+                <value>text/microsoft-resx</value>
+              </resheader>
+              <data name="Greeting" xml:space="preserve">
+                <value>Hello</value>
+                <comment>On the first page</comment>
+              </data>
+              <data name="Title" xml:space="preserve">
+                <value>Shop</value>
+              </data>
+            </root>
+
+            """;
+        File.WriteAllText(path, Text);
+        MainWindow window = Open(path);
+        CellGrid grid = Grid(window);
+        Table table = grid.Table!;
+        Assert.Equal(["Name", "Value", "Comment"], Enumerable.Range(0, table.ColumnCount).Select(table.Header));
+        Assert.Equal([("Greeting", "Hello", "On the first page", "1"), ("Title", "Shop", "", "2"), ("", "", "", "+")],
+            Enumerable.Range(0, table.RowCount).Select(row => (table.Cell(row, 0), table.Cell(row, 1), table.Cell(row, 2), table.RowLabel(row))));
+        Point Cell(int row, int column) => grid.SortArrow(column).Center + new Vector(-20, ListRow.Height * (row + 1));
+        string expected = Text;
+        ResourceEntry EntryOf(string text, string key) => ResourceFiles.Parse(path, string.Empty, ResourceFormat.Resx, text).Entry(key)!;
+        string Shown() => window.EditorArea.Active!.Text.Snapshot.ToString();
+
+        Ui.Click(grid, Cell(0, 1));
+        Ui.Press(window, "ENTER");
+        TextBox box = grid.Writing ?? throw new Xunit.Sdk.XunitException("Enter on a value opened no box to write it in");
+        Assert.Equal("Hello", box.Text);
+        Assert.True(box.IsFocused, "The cell's box did not take the keys");
+        box.SelectAll();
+        window.KeyTextInput("Hello & welcome");
+        Ui.Press(window, "ENTER");
+        expected = ResourceFiles.WithValue(expected, EntryOf(expected, "Greeting"), "Hello & welcome")!;
+        Assert.Equal(expected, Shown());
+        Ui.WaitFor(() => grid.Table?.Cell(0, 1) == "Hello & welcome", "the table read again with the value written");
+        Assert.Equal((1, 1), grid.Caret);
+
+        Ui.Click(grid, Cell(2, 0));
+        window.KeyTextInput("Farewell");
+        Assert.Equal("Farewell", grid.Writing?.Text);
+        Ui.Press(window, "ENTER");
+        expected = ResourceFiles.WithEntry(expected, "Farewell", string.Empty)!;
+        Assert.Equal(expected, Shown());
+        Ui.WaitFor(() => grid.Table?.RowCount == 4 && grid.Table.Cell(2, 0) == "Farewell", "the key made in the new row, and a new row below it");
+        Assert.Equal((2, 1), grid.Caret);
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("Goodbye");
+        Ui.Press(window, "ENTER");
+        expected = ResourceFiles.WithValue(expected, EntryOf(expected, "Farewell"), "Goodbye")!;
+        Assert.Equal(expected, Shown());
+        Ui.WaitFor(() => grid.Table?.Cell(2, 1) == "Goodbye", "the new key's value in the table");
+
+        Ui.Click(grid, Cell(1, 0));
+        Ui.Press(window, "F2");
+        grid.Writing!.SelectAll();
+        window.KeyTextInput("Greeting");
+        Ui.Press(window, "ENTER");
+        Assert.Equal("'Greeting' is a key of Strings.resx already", window.Status);
+        Assert.Equal(expected, Shown());
+
+        Ui.Press(window, Ui.Shortcut(EditorActions.Undo));
+        Assert.Equal(ResourceFiles.WithEntry(ResourceFiles.WithValue(Text, EntryOf(Text, "Greeting"), "Hello & welcome")!, "Farewell", string.Empty), Shown());
+        Ui.WaitFor(() => grid.Table?.Cell(2, 1) == string.Empty, "Undo's value in the table");
+        Ui.Press(window, Ui.Shortcut(EditorActions.Redo));
+        Assert.Equal(expected, Shown());
+
+        Ui.RightClick(grid, Cell(1, 1));
+        Ui.Choose(grid.Menu, "Delete Key");
+        expected = ResourceFiles.Without(expected, [EntryOf(expected, "Title")])!;
+        Assert.Equal(expected, Shown());
+        Ui.WaitFor(() => grid.Table?.RowCount == 3 && grid.Table.Cell(1, 0) == "Farewell", "the table without the key taken out");
+
+        Ui.Click(Named(window, "ShowText"));
+        Assert.Null(window.EditorArea.ActiveGroup.Table);
+        Assert.Contains("<value>Goodbye</value>", window.EditorArea.CodeEditor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Ui.Click(Named(window, "ShowTable"));
+        window.Perform(AppActions.SaveAll);
+        Ui.Settle();
+        window.Close();
+        Assert.Equal(expected, File.ReadAllText(path));
+    }
+
+    /// <summary>A resource's XLIFF file opens as a table of its units, of which a target written is translated as
+    /// ResourceFiles writes it, its state following; the source, written by the build from the .resx, is not written.</summary>
+    [AvaloniaFact]
+    public void An_XLIFF_files_units_open_as_a_table_whose_target_written_is_translated_as_ResourceFiles_writes_it()
+    {
+        Directory.CreateDirectory(Path.Combine(folder, "xlf"));
+        string path = Path.Combine(folder, "xlf", "Strings.fr.xlf");
+        const string Text = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <xliff xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2">
+              <file datatype="xml" source-language="en" target-language="fr" original="../Strings.resx">
+                <body>
+                  <trans-unit id="Greeting">
+                    <source>Hello</source>
+                    <target state="new">Hello</target>
+                    <note>On the first page</note>
+                  </trans-unit>
+                </body>
+              </file>
+            </xliff>
+
+            """;
+        File.WriteAllText(path, Text);
+        MainWindow window = Open(path);
+        CellGrid grid = Grid(window);
+        Table table = grid.Table!;
+        Assert.Equal(["ID", "Source", "Target", "State", "Note"], Enumerable.Range(0, table.ColumnCount).Select(table.Header));
+        Assert.Equal(["Greeting", "Hello", "Hello", "new", "On the first page"], Enumerable.Range(0, table.ColumnCount).Select(column => table.Cell(0, column)));
+        Assert.Equal(1, table.RowCount);
+
+        Ui.Click(grid, grid.SortArrow(1).Center + new Vector(-20, ListRow.Height));
+        Ui.Press(window, "ENTER");
+        Assert.Null(grid.Writing);
+        Ui.Press(window, "RIGHT");
+        Ui.Press(window, "ENTER");
+        TextBox box = grid.Writing ?? throw new Xunit.Sdk.XunitException("Enter on a unit's target opened no box to write it in");
+        box.SelectAll();
+        window.KeyTextInput("Bonjour");
+        Ui.Press(window, "ENTER");
+        Assert.Equal(ResourceFiles.WithTarget(Text, "Greeting", "Bonjour", "Hello", "On the first page"), window.EditorArea.Active!.Text.Snapshot.ToString());
+        Ui.WaitFor(() => grid.Table?.Cell(0, 3) == "translated", "the unit's state in the table once its target was written");
+        window.Close();
+    }
+
+    /// <summary>A CSV sorted by a column's title, as a person clicks its arrow: a column of numbers by their values, then
+    /// the other way, then in the file's order again, each row numbered as in the file; a column of dates by when they are;
+    /// and the file's text never changed.</summary>
+    [AvaloniaFact]
+    public void A_tables_rows_sort_by_a_columns_title_numbers_and_dates_by_value_both_ways_and_back_leaving_the_file_as_it_was()
+    {
+        string path = Path.Combine(folder, "orders.csv");
+        string text = "Name,Total,When\nAda,980,2024-03-01\nAlan,\"1,234.50\",2023-12-31\nGrace,75,2024-01-15\nEdsger,,2024-02-29\n";
+        File.WriteAllText(path, text);
+        MainWindow window = Open(path);
+        CellGrid grid = Grid(window);
+        string[] Names() => [.. Enumerable.Range(0, grid.Table!.RowCount).Select(row => grid.Table.Cell(row, 0))];
+        int[] Numbers() => [.. Enumerable.Range(0, grid.Table!.RowCount).Select(row => grid.Table.RowNumber(row))];
+        void SortBy(int column, (int, bool)? sorted)
+        {
+            Ui.Click(grid, grid.SortArrow(column).Center);
+            Ui.WaitFor(() => grid.Table?.Sort == sorted, $"the table sorted {sorted?.ToString() ?? "in the file's order"}");
+        }
+
+        SortBy(1, (1, false));
+        Assert.Equal(["Grace", "Ada", "Alan", "Edsger"], Names());
+        Assert.Equal([3, 1, 2, 4], Numbers());
+        SortBy(1, (1, true));
+        Assert.Equal(["Alan", "Ada", "Grace", "Edsger"], Names());
+        SortBy(1, null);
+        Assert.Equal(["Ada", "Alan", "Grace", "Edsger"], Names());
+        Assert.Equal([1, 2, 3, 4], Numbers());
+        SortBy(2, (2, false));
+        Assert.Equal(["Alan", "Grace", "Edsger", "Ada"], Names());
+
+        Assert.False(window.EditorArea.Active!.IsModified, "Sorting the table changed the file's text");
+        window.Perform(AppActions.SaveAll);
+        Ui.Settle();
+        window.Close();
+        Assert.Equal(text, File.ReadAllText(path));
+    }
+
+    /// <summary>The keys sort too: the menu key on a table offers the chosen cell's column's sorts, the one in force checked,
+    /// as the header's menu does, and the rows sort as chosen and go back to the file's order.</summary>
+    [AvaloniaFact]
+    public void The_menu_key_sorts_by_the_chosen_cells_column_both_ways_and_back()
+    {
+        string path = Path.Combine(folder, "scores.csv");
+        File.WriteAllText(path, "Name,Score\nAda,7\nAlan,12\nGrace,3\n");
+        MainWindow window = Open(path);
+        CellGrid grid = Grid(window);
+        Ui.Click(grid, grid.SortArrow(1).Center + new Vector(-20, ListRow.Height * 2));
+        Assert.Equal(1, grid.Caret.Column);
+        string[] Names() => [.. Enumerable.Range(0, grid.Table!.RowCount).Select(row => grid.Table.Cell(row, 0))];
+        string[] Offered()
+        {
+            Ui.Run(window, AppActions.ShowContextMenu);
+            ContextMenu menu = grid.Menu ?? throw new Xunit.Sdk.XunitException("The menu key on the table opened no menu");
+            return [.. menu.Items.OfType<MenuItem>().Take(3).Select(i => $"{i.Header}{(i.IsChecked ? " (checked)" : "")}")];
+        }
+
+        Assert.Equal(["Sort Ascending", "Sort Descending", "File Order (checked)"], Offered());
+        Ui.Choose(grid.Menu!, "Sort Descending");
+        Ui.WaitFor(() => grid.Table?.Sort == (1, true), "the table sorted by Score, the most first");
+        Assert.Equal(["Alan", "Ada", "Grace"], Names());
+        Assert.Equal(["Sort Ascending", "Sort Descending (checked)", "File Order"], Offered());
+        Ui.Choose(grid.Menu!, "File Order");
+        Ui.WaitFor(() => grid.Table?.Sort is null, "the table in the file's order again");
+        Assert.Equal(["Ada", "Alan", "Grace"], Names());
         window.Close();
     }
 

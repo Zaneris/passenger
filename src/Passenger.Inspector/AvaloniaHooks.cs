@@ -48,10 +48,19 @@ internal static class AvaloniaHooks
 }
 
 /// <summary>Where a hook runs: its own context, which takes Avalonia's assemblies from the program whatever their 12.x
-/// version, since the default context would refuse one older than the 12.x the hook was compiled against. Nothing of it
+/// version, since the default context would refuse one older than the 12.x the hook was compiled against, and those of
+/// Avalonia's the hook carries from beside it where the program has none of its own (<see cref="Carried"/>). Nothing of it
 /// touches Avalonia, so a hook asks it before Avalonia is loaded.</summary>
 internal sealed class AppAvaloniaContext(string what, string hook) : AssemblyLoadContext($"{what} ({Path.GetFileName(hook)})")
 {
+    /// <summary>What a program seldom carries of Avalonia's and the inspector brings: the runtime XAML compiler (XAML Hot
+    /// Reload's) and the headless platform (an app nobody is to see).</summary>
+    private static readonly string[] Carried = ["Avalonia.Markup.Xaml.Loader", "Avalonia.Headless"];
+
+    /// <summary>Whether the program's own code uses Avalonia's headless platform, so its Main may draw there itself. A build
+    /// that only carries the platform, for its tests or through a package, leaves no reference in the program.</summary>
+    public static bool ProgramUsesHeadless() => Assembly.GetEntryAssembly()?.GetReferencedAssemblies().Any(a => a.Name == "Avalonia.Headless") == true;
+
     /// <summary>The Avalonia the program will load, from the assemblies the runtime was given for it (null when it has
     /// none), and whether the hooks serve it: its major version theirs.</summary>
     public static (Version? Version, bool Served) ProgramAvalonia()
@@ -61,7 +70,10 @@ internal sealed class AppAvaloniaContext(string what, string hook) : AssemblyLoa
     }
 
     protected override Assembly? Load(AssemblyName name) =>
-        name.Name is { } simple && (simple.StartsWith("Avalonia", StringComparison.Ordinal) || simple.StartsWith("MicroCom", StringComparison.Ordinal))
+        name.Name is { } own && Carried.Contains(own) && StartupHooks.TrustedAssembly(own + ".dll") is null
+            && Path.Combine(Path.GetDirectoryName(hook)!, own + ".dll") is { } carried && File.Exists(carried)
+            ? LoadFromAssemblyPath(carried)
+            : name.Name is { } simple && (simple.StartsWith("Avalonia", StringComparison.Ordinal) || simple.StartsWith("MicroCom", StringComparison.Ordinal))
             ? Default.LoadFromAssemblyName(new AssemblyName(simple))
             : null;
 }

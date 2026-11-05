@@ -12,6 +12,15 @@ namespace Passenger.App.Run;
 /// would not do (a single-file AppHost's, kept in the state).</summary>
 public sealed record BuildStep(string Project, string? Framework, string? Output = null);
 
+/// <summary>A web app's build as its browser refresh needs it (<see cref="Debugging.BrowserRefresh"/>): the folder of the SDK
+/// it builds with, its intermediate output folder, the global properties its build is given, and the projects it references
+/// (a Razor class library, a Blazor Web App's client), whose scoped CSS its pages take in, each with the framework its build
+/// of them is for where they have several.</summary>
+public sealed record WebBuild(string Sdk, string Intermediate, IReadOnlyDictionary<string, string> Properties)
+{
+    public IReadOnlyList<(string Project, string? Framework)> Referenced { get; init; } = [];
+}
+
 /// <summary>Why a configuration cannot be launched, in words for the person.</summary>
 public class LaunchException(string message) : Exception(message);
 
@@ -50,42 +59,154 @@ public sealed partial record LaunchPlan
 
     public string? Framework { get; init; }
 
+    /// <summary>The framework the program runs on ("net10.0"): the one chosen, else the project's own; null where unknown.</summary>
+    public string? RunsOn { get; init; }
+
     /// <summary>The build before launch, or null when the configuration launches what was built last.</summary>
     public BuildStep? Build { get; init; }
 
     /// <summary>The file the build makes and the launch needs (the project's assembly), checked once the build is done.</summary>
     public string? Built { get; init; }
 
+    /// <summary>The file its project builds, whichever program it names: what a <c>dotnet run</c> it names starts.</summary>
+    public string? Target { get; init; }
+
+    /// <summary>What desktop app its project says it is (<see cref="DesktopPrograms.OfProject"/>), for a program no build has
+    /// made yet; null for any other project. A project named in its place says for it.</summary>
+    public string? DesktopProject { get; init; }
+
+    /// <summary>The project a named <c>dotnet run</c> runs in place of the plan's (<see cref="DesktopPrograms.NamedProject"/>); null for none.</summary>
+    public string? NamedProject { get; init; }
+
     public ConsoleKind Console { get; init; }
 
     /// <summary>Where the browser opens once the program listens, or null when the configuration opens none.</summary>
     public string? BrowserUrl { get; init; }
 
-    /// <summary>The projects of what it launches whose code runs in the browser (<see cref="ProjectModel.RunsInBrowser"/>):
-    /// its own project first when it does, then those it references.</summary>
+    /// <summary>A web app's build, which its browser refresh needs; null for any other program.</summary>
+    public WebBuild? Web { get; init; }
+
+    /// <summary>What its start says of itself in the program's console as it begins: where its logs and traces go, a variable
+    /// of its own kept, why none are collected.</summary>
+    public IReadOnlyList<string> Notes { get; init; } = [];
+
+    /// <summary>The dashboard its program's logs and traces go to (its configuration's Collect logs and traces), which its
+    /// start ends with the program; null where none was brought up.</summary>
+    public Telemetry.RunDashboard? Dashboard { get; init; }
+
+    /// <summary>The projects of what it launches whose code runs in the browser (<see cref="ProjectModel.RunsInBrowser"/>), by
+    /// their project files: its own project first when it does, then those it references.</summary>
     public IReadOnlyList<string> InBrowser { get; init; } = [];
 
-    /// <summary>What a debugger of this plan cannot debug, in words for the person: code that runs in the browser, which no
-    /// breakpoint stops; null when it debugs all of it.</summary>
-    public string? NotDebugged => InBrowser.Count == 0 || Project is null ? null
-        : $"{Plural.Listed(InBrowser)}'s components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet, so their breakpoints are not hit: "
-            + (InBrowser[0] == System.IO.Path.GetFileNameWithoutExtension(Project) ? "only the development server that serves them runs under the debugger"
-                : $"{System.IO.Path.GetFileNameWithoutExtension(Project)}'s are");
+    /// <summary>Where the app's page is, whether or not the browser opens there after launch: what a debugging of its
+    /// WebAssembly half opens.</summary>
+    public Uri? Page { get; init; }
 
-    /// <summary>The program as its messages name it: the project's assembly, else the executable, without its extension.</summary>
-    public string ProgramName => System.IO.Path.GetFileNameWithoutExtension(Built ?? Program);
+    /// <summary>What debugging its code in the browser takes on this machine, once Debug has found it
+    /// (<see cref="Debugging.BrowserDebugging"/>); null where none debugs it.</summary>
+    public Debugging.BrowserDebugging? Browser { get; init; }
+
+    /// <summary>Why no browser debugs its code there, where Debug looked and found none (no Chromium, no proxy restored).</summary>
+    public string? BrowserWhyNot { get; init; }
+
+    /// <summary>What a debugger of this plan cannot debug, in words for the person: code that runs in the browser where no
+    /// browser debugs it, which no breakpoint stops, and why; null when it debugs all of it.</summary>
+    public string? NotDebugged => InBrowser.Count == 0 || Project is null || Browser is not null ? null
+        : $"{Plural.Listed([.. InBrowser.Select(NameOf)])}'s components run in the browser on .NET's WebAssembly runtime, and their breakpoints are not hit: "
+            + (PathNames.Same(InBrowser[0], Project) ? "only the development server that serves them runs under the debugger" : $"{NameOf(Project)}'s are")
+            + $". {BrowserWhyNot ?? "Passenger debugs them in a Chromium browser when Debug starts the app itself"}";
+
+    /// <summary>Why a breakpoint in a WebAssembly app's own code never stops it where no browser debugs it, its development
+    /// server being what runs under the debugger.</summary>
+    public static string NeverHitInBrowser(string project) =>
+        $"{NameOf(project)}'s components run in the browser on .NET's WebAssembly runtime, and no browser debugs them this time: only the development server "
+        + "that serves them runs under the debugger, so this breakpoint is never hit";
+
+    /// <summary>When a breakpoint in a Blazor Web App's client stops where no browser debugs it: only where its server runs
+    /// the client's components itself.</summary>
+    public static string HitOnlyOnServer(string client, string server) =>
+        $"{NameOf(client)}'s components run in the browser on .NET's WebAssembly runtime, and no browser debugs them this time: this breakpoint stops only "
+        + $"where {NameOf(server)} runs them itself, prerendering them or rendering them on the server";
+
+    private static string NameOf(string project) => System.IO.Path.GetFileNameWithoutExtension(project);
+
+    /// <summary>The folder of the Godot project whose game or editor the plan runs on Godot (<see cref="GodotLaunch"/>);
+    /// null for any other plan.</summary>
+    public string? Godot { get; init; }
+
+    /// <summary>The version of the Godot a Godot game's plan runs on, where known.</summary>
+    public string? GodotVersion { get; init; }
+
+    /// <summary>The scene a Godot game's plan starts it in as its configuration names one (a res:// path, the scene open
+    /// resolved as the plan was made); null where it starts in the project's main scene, or its arguments name one.</summary>
+    public string? GodotScene { get; init; }
+
+    /// <summary>Whether nobody sees the window that starts the plan's Godot (<see cref="MainWindow.Unseen"/>), which then runs
+    /// it headless whatever its arguments say.</summary>
+    public bool GodotUnseen { get; init; }
+
+    /// <summary>Whether the program runs on Windows on a desktop of its own, which nobody switches to (an agent's own Godot
+    /// game, drawn there for its frames): its start through ChildProcesses, and the debugger's, says so
+    /// (<see cref="Passenger.Core.ChildProcesses.OnDesktopOfItsOwn"/>).</summary>
+    public bool OwnDesktop { get; init; }
+
+    /// <summary>Whether nobody sees the window that launches it (<see cref="MainWindow.Unseen"/>), so no window its program
+    /// makes may reach the person's screen (<see cref="UnseenApps"/>).</summary>
+    public bool Unseen { get; init; }
+
+    /// <summary>Whether its program starts on Windows on a desktop of its own: a Godot game's where its launch says so
+    /// (<see cref="OwnDesktop"/>), else a desktop app nobody is to see (<see cref="UnseenApps.TakesOwnDesktop"/>).</summary>
+    public bool OnOwnDesktop => OwnDesktop || UnseenApps.TakesOwnDesktop(this);
+
+    /// <summary>The start of the plan's program through ChildProcesses, on a desktop of its own where the plan says so
+    /// (<see cref="OnOwnDesktop"/>).</summary>
+    public System.Diagnostics.ProcessStartInfo Start() => Placed(Passenger.Core.ChildProcesses.Command(Program, Arguments, WorkingDirectory));
+
+    /// <summary>A start of the plan's program (its own, or what runs it, as dotnet watch) on a desktop of its own where the
+    /// plan says so (<see cref="OnOwnDesktop"/>), else as it was.</summary>
+    public System.Diagnostics.ProcessStartInfo Placed(System.Diagnostics.ProcessStartInfo start) =>
+        OnOwnDesktop ? Passenger.Core.ChildProcesses.OnDesktopOfItsOwn(start, OwnDesktopWhy) : start;
+
+    /// <summary>Why the program runs on a desktop of its own, for the log of its start.</summary>
+    public string OwnDesktopWhy => OwnDesktop ? $"{Name} is an agent's game, drawn where no one sees it for its frames"
+        : $"{Name} is a desktop app a Passenger nobody sees runs, whose windows reach no one's screen";
+
+    /// <summary>Whether its Godot game is to draw in the window's Game window (<see cref="RunConfiguration.GodotInPane"/>).</summary>
+    public bool GodotInPane { get; init; }
+
+    /// <summary>The size its Godot game's window opens at, by its project (<see cref="Passenger.Workspace.GodotProject.WindowSize"/>).</summary>
+    public (int Width, int Height) GodotSize { get; init; }
+
+    /// <summary>Whether its Godot game scales what it draws to its window (<see cref="Passenger.Workspace.GodotProject.Stretches"/>).</summary>
+    public bool GodotStretches { get; init; }
+
+    /// <summary>Whether it runs a Godot game of GDScript alone (<see cref="Passenger.Workspace.ProjectModel.IsScriptGame"/>): no
+    /// C# of its own to build, debug or sample, its GDScript debugged by its GDScript session alone.</summary>
+    public bool ScriptsAlone { get; init; }
+
+    /// <summary>The game's name where the plan runs a Godot game of GDScript alone, which names it as an assembly would.</summary>
+    public string? GameName { get; init; }
+
+    /// <summary>Whether the plan runs Godot's editor on its project (<c>--editor</c> among the arguments that start it).</summary>
+    public bool GodotEditor => Godot is not null && Arguments.Take(Leading).Contains("--editor");
+
+    /// <summary>The program as its messages name it: a game of GDScript alone by its name, else the project's assembly, else the
+    /// executable, without its extension.</summary>
+    public string ProgramName => GameName ?? System.IO.Path.GetFileNameWithoutExtension(Built ?? Program);
 
     /// <summary>Null when the plan can launch now, its build done: else that the build made no program (unless what starts
-    /// it builds it), or that the working folder is gone ("Could not run Hello: its working folder ... does not exist"),
-    /// unless what starts it builds it there (<see cref="WorksWhereBuilt"/>).</summary>
+    /// it builds it), that the working folder is gone ("Could not run Hello: its working folder ... does not exist"),
+    /// unless what starts it builds it there (<see cref="WorksWhereBuilt"/>), or that its windows would reach the person's
+    /// screen from a Passenger nobody sees (<see cref="UnseenApps.WhyNot"/>).</summary>
     public string? WhyNot(string verb, bool built = true)
     {
         if (built && Built is { } file && !File.Exists(file))
         {
             return $"Could not {verb} {ProgramName}: {System.IO.Path.GetFileName(file)} has not been built";
         }
-        return Directory.Exists(WorkingDirectory) || (!built && WorksWhereBuilt) ? null
-            : $"Could not {verb} {ProgramName}: its working folder {WorkingDirectory} does not exist";
+        return !Directory.Exists(WorkingDirectory) && (built || !WorksWhereBuilt)
+            ? $"Could not {verb} {ProgramName}: its working folder {WorkingDirectory} does not exist"
+            : UnseenApps.WhyNot(this, verb, watched: !built);
     }
 
     /// <summary>Whether the program runs in the folder its build puts it in, which a project never built lacks until its
@@ -93,13 +214,14 @@ public sealed partial record LaunchPlan
     public bool WorksWhereBuilt => Built is { } file && System.IO.Path.GetDirectoryName(file) is { } output && PathNames.Same(output, WorkingDirectory);
 
     /// <summary>Works out what a configuration launches among the open folder's projects (of <paramref name="workspace"/>,
-    /// whose solution's properties MSBuild is given), asking MSBuild, with no build, where the project builds, where and with
-    /// what arguments dotnet run runs it, and any property its values name. A Passenger it launches keeps its state in the
-    /// launching one's sandbox/ (<see cref="SandboxedState"/>). Throws a <see cref="LaunchException"/> saying why it cannot:
-    /// a kind of profile Passenger does not run, a project gone or unloaded, MSBuild's refusal.</summary>
+    /// whose solution's properties MSBuild is given), asking MSBuild, with no build, where the project builds, where and how
+    /// dotnet run runs it, and any property its values name; a Passenger it launches keeps its state in its sandbox/, a Godot
+    /// project runs on the Godot <paramref name="godot"/> names or found, its editor on the scene at hand, in the user folders
+    /// <paramref name="godotFolders"/> gives, headless where <paramref name="unseen"/> (the process's by default). Throws a <see cref="LaunchException"/> saying why not.</summary>
     public static async Task<LaunchPlan> ResolveAsync(RunConfiguration configuration, IReadOnlyList<ProjectModel> projects, WorkspaceModel? workspace, string stateFolder,
-        CancellationToken cancel = default)
+        CancellationToken cancel = default, string? godot = null, string? atHand = null, IReadOnlyDictionary<string, string>? godotFolders = null, bool? unseen = null)
     {
+        bool headless = unseen ?? PassengerApp.ShowsNoWindow;
         if (configuration.Unsupported is { } why)
         {
             throw new LaunchException($"{configuration.Name} cannot run here: {why}");
@@ -108,6 +230,30 @@ public sealed partial record LaunchPlan
         {
             // Run, Debug and Profile bring containers up themselves (BuildRunController.Containers.cs): no plan of this machine's runs them.
             throw new LaunchException(InContainers(configuration.Name));
+        }
+        if (configuration.RunsScriptGame)
+        {
+            // Godot runs a game of GDScript alone as it is: no MSBuild to ask, nothing to build.
+            ProjectModel scripts = ProjectModel.OfScriptGame(System.IO.Path.GetDirectoryName(configuration.Project)!);
+            Dictionary<string, string> variables = Unnamed(configuration.Environment.ToDictionary(v => v.Key, v => System.Environment.ExpandEnvironmentVariables(v.Value)), headless);
+            if (configuration.Program.Length == 0 || configuration.NamesGodot)
+            {
+                return await GodotLaunch.PlanAsync(configuration, scripts, scripts.Folder, null, null, System.Environment.ExpandEnvironmentVariables,
+                    Passenger.App.Godot.GodotUserFolders.Into(variables, godotFolders), godot, null, headless, cancel, atHand);
+            }
+            return new LaunchPlan
+            {
+                Name = configuration.Name,
+                Program = Executable(System.Environment.ExpandEnvironmentVariables(configuration.Program), scripts.Folder),
+                Arguments = CommandLine.Split(System.Environment.ExpandEnvironmentVariables(configuration.Arguments)),
+                WorkingDirectory = configuration.WorkingDirectory is { Length: > 0 } given
+                    ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(scripts.Folder, System.Environment.ExpandEnvironmentVariables(given))))
+                    : scripts.Folder,
+                Environment = variables,
+                Project = scripts.Path,
+                Console = configuration.Console,
+                Unseen = headless,
+            };
         }
         ProjectModel project = projects.FirstOrDefault(p => PathNames.Same(p.Path, configuration.Project))
             ?? throw new LaunchException($"{configuration.Name} cannot run: its project {System.IO.Path.GetFileName(configuration.Project)} is not loaded in the open folder");
@@ -118,6 +264,14 @@ public sealed partial record LaunchPlan
             throw new LaunchException($"{configuration.Name} cannot run here: {windows}");
         }
         HashSet<string> names = new(StringComparer.OrdinalIgnoreCase) { CarriedProperties.TargetPath, MSBuildNames.ProjectDir, MSBuildNames.RunWorkingDirectory, MSBuildNames.RunArguments, MSBuildNames.RunCommand };
+        if (project.GodotFolder is not null)
+        {
+            names.Add(MSBuildNames.GodotSdkVersion);
+        }
+        if (project.IsWeb)
+        {
+            names.UnionWith([MSBuildNames.ExtensionsPath, MSBuildNames.IntermediateOutputPath]);
+        }
         foreach (string text in (string[])[configuration.Program, configuration.Arguments, configuration.WorkingDirectory, .. configuration.Environment.Values])
         {
             foreach (Match macro in Macro().Matches(text))
@@ -128,10 +282,25 @@ public sealed partial record LaunchPlan
         IReadOnlyDictionary<string, string> properties = await EvaluateAsync(project, framework, names, workspace, cancel);
         string Expand(string text) => System.Environment.ExpandEnvironmentVariables(
             Macro().Replace(text, macro => properties.GetValueOrDefault(macro.Groups[1].Value, string.Empty)));
+        // The configuration's own, its launch profile named as dotnet run names it.
+        Dictionary<string, string> Variables()
+        {
+            Dictionary<string, string> set = configuration.Environment.ToDictionary(v => v.Key, v => Expand(v.Value));
+            if (configuration.LaunchProfile.Length > 0 && !set.Keys.Any(k => string.Equals(k, LaunchProfile.NameVariable, StringComparison.OrdinalIgnoreCase)))
+            {
+                set[LaunchProfile.NameVariable] = configuration.LaunchProfile;
+            }
+            return Unnamed(set, headless);
+        }
 
         string target = PathNames.Canonical(properties.GetValueOrDefault(CarriedProperties.TargetPath) is { Length: > 0 } path
             ? path
             : throw new LaunchException($"MSBuild could not say what {project.Name} builds"));
+        if ((configuration.Program.Length == 0 || configuration.NamesGodot) && project.GodotFolder is { } game)
+        {
+            return await GodotLaunch.PlanAsync(configuration, project, game, target, framework, Expand, Passenger.App.Godot.GodotUserFolders.Into(Variables(), godotFolders), godot,
+                properties.GetValueOrDefault(MSBuildNames.GodotSdkVersion), headless, cancel, atHand);
+        }
         List<string> arguments = [.. CommandLine.Split(Expand(configuration.Arguments))];
         IReadOnlyList<string> ofProject = [];
         string program;
@@ -168,14 +337,11 @@ public sealed partial record LaunchPlan
         string working = folder is not null
             ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(project.Folder, folder)))
             : System.IO.Path.GetDirectoryName(target)!;
-        Dictionary<string, string> environment = configuration.Environment.ToDictionary(v => v.Key, v => Expand(v.Value));
+        Dictionary<string, string> environment = Variables();
+        string? other = DesktopPrograms.NamedProject(program, arguments, working) is { } runs && !PathNames.Same(runs, project.Path) && !PathNames.Same(runs, project.Folder) ? runs : null;
         if (SandboxedState(built ?? program, environment, stateFolder) is { } sandbox)
         {
             environment[StateStore.Variable] = sandbox;
-        }
-        if (configuration.LaunchProfile.Length > 0 && !environment.Keys.Any(k => string.Equals(k, LaunchProfile.NameVariable, StringComparison.OrdinalIgnoreCase)))
-        {
-            environment[LaunchProfile.NameVariable] = configuration.LaunchProfile;
         }
         return new LaunchPlan
         {
@@ -187,12 +353,51 @@ public sealed partial record LaunchPlan
             WorkingDirectory = working,
             Environment = environment,
             Project = project.Path,
-            InBrowser = [.. project.WithReferenced(projects).Where(p => p.RunsInBrowser).Select(p => System.IO.Path.GetFileNameWithoutExtension(p.Path))],
+            InBrowser = [.. project.WithReferenced(projects).Where(p => p.RunsInBrowser).Select(p => p.Path)],
             Framework = framework,
+            RunsOn = framework ?? project.TargetFrameworks.FirstOrDefault(),
             Build = configuration.BuildBeforeLaunch ? new BuildStep(project.Path, framework) : null,
             Built = built,
+            Target = target,
+            DesktopProject = other is null ? DesktopPrograms.OfProject(project, projects) : DesktopPrograms.OfNamed(other, projects),
+            NamedProject = other,
             Console = configuration.Console,
             BrowserUrl = configuration.LaunchBrowser && configuration.BrowserUrl.Length > 0 ? Expand(configuration.BrowserUrl) : null,
+            Page = configuration.BrowserUrl.Length > 0 ? BrowserLaunch.Address(Expand(configuration.BrowserUrl)) is { } page ? BrowserLaunch.Shown(page) : null : null,
+            Web = WebOf(project, framework, properties, workspace, projects),
+            Unseen = headless,
+        };
+    }
+
+    /// <summary>A configuration's variables, on Linux with no display in them where nobody is to see what they start.</summary>
+    private static Dictionary<string, string> Unnamed(Dictionary<string, string> variables, bool unseen)
+    {
+        if (unseen && OperatingSystem.IsLinux())
+        {
+            NoDisplay.Over(variables);
+        }
+        return variables;
+    }
+
+    /// <summary>A web project's build as its evaluation says it; null for another, or one whose evaluation says too little.</summary>
+    private static WebBuild? WebOf(ProjectModel project, string? framework, IReadOnlyDictionary<string, string> properties, WorkspaceModel? workspace,
+        IReadOnlyList<ProjectModel> projects)
+    {
+        if (!project.IsWeb || properties.GetValueOrDefault(MSBuildNames.ExtensionsPath) is not { Length: > 0 } sdk
+            || properties.GetValueOrDefault(MSBuildNames.IntermediateOutputPath) is not { Length: > 0 } intermediate)
+        {
+            return null;
+        }
+        Dictionary<string, string> globals = ProjectModels.Properties(workspace, project);
+        if (framework is not null)
+        {
+            globals[MSBuildNames.TargetFramework] = framework;
+        }
+        // MSBuild writes its default folders with backslashes, which only Windows takes for separators.
+        string folder = System.IO.Path.DirectorySeparatorChar == '\\' ? intermediate : intermediate.Replace('\\', System.IO.Path.DirectorySeparatorChar);
+        return new WebBuild(System.IO.Path.TrimEndingDirectorySeparator(sdk), PathNames.Canonical(System.IO.Path.Combine(project.Folder, folder)), globals)
+        {
+            Referenced = LaunchedFrameworks.Referenced(project, framework ?? project.TargetFrameworks.FirstOrDefault(), projects),
         };
     }
 
@@ -217,7 +422,7 @@ public sealed partial record LaunchPlan
     {
         IReadOnlyList<string> given = CommandLine.Split(properties.GetValueOrDefault(MSBuildNames.RunArguments));
         string command = properties.GetValueOrDefault(MSBuildNames.RunCommand) ?? string.Empty;
-        if (IsDotnet(command))
+        if (DesktopPrograms.IsDotnet(command))
         {
             return given is ["exec", { } assembly, ..] && PathNames.Same(PathNames.Canonical(assembly), target) ? [.. given.Skip(2)] : [];
         }
@@ -231,7 +436,7 @@ public sealed partial record LaunchPlan
     {
         string command = properties.GetValueOrDefault(MSBuildNames.RunCommand) ?? string.Empty;
         IReadOnlyList<string> given = CommandLine.Split(properties.GetValueOrDefault(MSBuildNames.RunArguments));
-        if (IsDotnet(command))
+        if (DesktopPrograms.IsDotnet(command))
         {
             IReadOnlyList<string> run = given is ["exec", ..] ? [.. given.Skip(1)] : given;
             return run is [{ } assembly, ..] && assembly.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) && !PathNames.Same(PathNames.Canonical(assembly), target)
@@ -239,9 +444,6 @@ public sealed partial record LaunchPlan
         }
         return command.Length > 0 && !IsAppHost(command, target) ? (command, given) : null;
     }
-
-    private static bool IsDotnet(string command) =>
-        string.Equals(System.IO.Path.GetFileNameWithoutExtension(command), "dotnet", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Whether a RunCommand is the apphost the SDK makes beside the assembly, which runs it.</summary>
     private static bool IsAppHost(string command, string target) =>
@@ -315,8 +517,12 @@ public sealed partial record LaunchPlan
         try
         {
             using JsonDocument read = JsonDocument.Parse(output);
-            return read.RootElement.GetProperty("Properties").EnumerateObject()
-                .Where(p => p.Value.GetString() is { Length: > 0 })
+            if (JsonMembers.Object(read.RootElement, "Properties") is not { } properties)
+            {
+                return null;
+            }
+            return properties.EnumerateObject()
+                .Where(p => p.Value.ValueKind == JsonValueKind.String && p.Value.GetString()!.Length > 0)
                 .ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.OrdinalIgnoreCase);
         }
         catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException)

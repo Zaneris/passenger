@@ -333,7 +333,7 @@ public partial class MainWindow
                     listed.Items.Add(new NativeMenuItem("Nothing yet") { IsEnabled = false });
                 }
             };
-            return new NativeMenuItem(entry.Title!) { Menu = listed };
+            return new NativeMenuItem(NativeWords(entry.Title!)) { Menu = listed };
         }
         if (entry.Items is { } items)
         {
@@ -356,15 +356,15 @@ public partial class MainWindow
                 {
                     IdeAction listed = actions[(string)item.CommandParameter!]!;
                     item.IsEnabled = listed.CanRun(now);
-                    item.Header = listed.TitleWhere(now);
+                    item.Header = NativeWords(listed.TitleWhere(now));
                     item.IsChecked = listed.IsChecked?.Invoke(now) == true;
                 }
                 FillInline(menu, inline);
             };
-            return new NativeMenuItem(entry.Title!) { Menu = menu };
+            return new NativeMenuItem(NativeWords(entry.Title!)) { Menu = menu };
         }
         IdeAction action = actions![entry.Action!]!;
-        NativeMenuItem actionItem = new(action.TitleWhere(context))
+        NativeMenuItem actionItem = new(NativeWords(action.TitleWhere(context)))
         {
             Command = new MenuCommand(() => RunFromMenu(action.Id)),
             CommandParameter = action.Id,
@@ -408,12 +408,16 @@ public partial class MainWindow
         _ => throw new InvalidOperationException($"No window lists a submenu called {submenu}"),
     };
 
-    private static NativeMenuItem NativeListed(ListedItem item) => new(item.Title)
+    private static NativeMenuItem NativeListed(ListedItem item) => new(NativeWords(item.Title))
     {
         Command = new MenuCommand(item.Run),
         ToggleType = item.Checked is null ? MenuItemToggleType.None : MenuItemToggleType.Radio,
         IsChecked = item.Checked == true,
     };
+
+    /// <summary>Words as a native menu's item shows them: the platform's menu (macOS's bar, a Linux desktop's global menu)
+    /// takes a lone underscore for an access key's mark, so each of a name's is doubled to be shown.</summary>
+    public static string NativeWords(string words) => words.Replace("_", "__", StringComparison.Ordinal);
 
     /// <summary>The lists that stand in a native menu's own place, filled again as it opens: what each held taken out, and
     /// what it holds now put in after a separator, those after it moving along.</summary>

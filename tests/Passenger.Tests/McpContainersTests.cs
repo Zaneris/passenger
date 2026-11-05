@@ -44,6 +44,41 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(unknown.IsError == true && Text(unknown).Contains("containers lists them", StringComparison.Ordinal), $"A stop of no such container answered: {Text(unknown)}");
     }
 
+    /// <summary>An agent publishes a project's container image through build's publish with the SDK's own container profile,
+    /// no file of its own: the image, on a base a stand-in registry serves and labelled for the run, is in the engine, and the
+    /// answer names it.</summary>
+    [Fact]
+    public async Task An_agent_publishes_a_projects_container_image_through_build_with_the_sdks_container_profile()
+    {
+        await Docker.SkipWithoutEngineAsync();
+        await using StandInRegistry registry = new();
+        string folder = Plain("mcp-image-");
+        // From nuget.org alone: a publish for the container's Linux platform takes .NET's packs for it.
+        TestFolders.Write(folder, "nuget.config", TestRun.FromNuGetOrg);
+        string image = $"ptest{Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)}agentimage";
+        (string key, string value) = (Docker.RunLabel.Split('=', 2)[0], Docker.RunLabel.Split('=', 2)[1]);
+        TestFolders.Write(folder, "Shipped/Shipped.csproj", TestProjects.Console($"<ContainerBaseImage>{registry.BaseImage}</ContainerBaseImage>",
+            $"<ContainerRepository>{image}</ContainerRepository>").With($"  <ItemGroup>\n    <ContainerLabel Include=\"{key}\" Value=\"{value}\" />\n  </ItemGroup>\n"));
+        TestFolders.Write(folder, "Shipped/Program.cs", "System.Console.WriteLine(\"shipped\");\n");
+        try
+        {
+            await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+            JsonElement built = await Call(client, McpTools.Build, new() { ["publish"] = "Shipped", ["profile"] = "DefaultContainer" });
+            Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The agent's publish of the image did not succeed: {built}");
+            Assert.Equal($"{image}:latest", built.GetProperty("image").GetString());
+            string? labelled = await Docker.SaidAsync("image", "inspect", "--format", $"{{{{index .Config.Labels \"{key}\"}}}}", $"{image}:latest");
+            Assert.True(labelled == value, $"The engine holds no {image}:latest labelled for the run ({labelled}); its images of the run: "
+                + await Docker.SaidAsync("images", "--filter", $"label={Docker.RunLabel}", "--format", "{{.Repository}}:{{.Tag}}") + $"; the agent was told {built}");
+        }
+        finally
+        {
+            if (await Docker.SaidAsync("images", "-q", "--filter", $"label={Docker.RunLabel}") is { Length: > 0 } ids)
+            {
+                await Docker.SaidAsync(["rmi", "-f", .. ids.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct()]);
+            }
+        }
+    }
+
     [Fact]
     public async Task An_agents_run_brings_a_compose_configuration_up_with_its_services_state_and_stop_takes_it_down()
     {

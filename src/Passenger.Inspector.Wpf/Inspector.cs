@@ -11,9 +11,9 @@ namespace Passenger.Inspector.Wpf;
 
 /// <summary>The inspector's work on a WPF app's UI thread: the windows and their visual trees, an element looked at
 /// closely, Select Element and the outline over the element chosen, a word to Passenger as elements come and go, and
-/// for an agent the windows' pictures and input to them (<see cref="Pictures"/>, <see cref="Driver"/>). Elements are
-/// named by ids that last as long as the element does. A top level is a window or a popup's root, each the root visual
-/// of a presentation source of the app's.</summary>
+/// for an agent the windows' pictures and input to them (<see cref="Pictures"/>, <see cref="Driver"/>), and XAML Hot
+/// Reload (<see cref="XamlReloads"/>). Elements are named by ids that last as long as the element does. A top level is a
+/// window or a popup's root, each the root visual of a presentation source of the app's.</summary>
 internal sealed class Inspector : Inspecting<DependencyObject>
 {
     /// <summary>The inspector the class handlers below speak for; WPF's class handlers last as long as the app does.</summary>
@@ -22,16 +22,22 @@ internal sealed class Inspector : Inspecting<DependencyObject>
     private readonly Picker picker;
     private readonly Driver driver;
     private readonly PropertyBreaks breaks = new();
+    private readonly XamlReloads reloads;
 
     public Inspector(Connection connection) : base(connection)
     {
         picker = new Picker(this, connection);
         driver = new Driver(this);
+        reloads = new XamlReloads(TopLevels);
         bool first = current is null;
         current = this;
         if (first)
         {
-            EventManager.RegisterClassHandler(typeof(FrameworkElement), FrameworkElement.LoadedEvent, new RoutedEventHandler((sender, _) => current?.Changed(sender)), handledEventsToo: true);
+            EventManager.RegisterClassHandler(typeof(FrameworkElement), FrameworkElement.LoadedEvent, new RoutedEventHandler((sender, _) =>
+            {
+                current?.reloads.Loaded(sender);
+                current?.Changed(sender);
+            }), handledEventsToo: true);
             EventManager.RegisterClassHandler(typeof(FrameworkElement), FrameworkElement.UnloadedEvent, new RoutedEventHandler((sender, _) => current?.Changed(sender)), handledEventsToo: true);
         }
     }
@@ -73,7 +79,47 @@ internal sealed class Inspector : Inspecting<DependencyObject>
     protected override XamlValues ValuesOf(Request request) =>
         throw new Refusal("Binding values after a XAML file's lines are read from an Avalonia app's .axaml; a WPF app's are not");
 
+    /// <summary>The element WPF made at each place asked of, among the windows' visual trees, by where its BAML recorded it
+    /// (the element's name, or its '&lt;' one before it), a root by its x:Class: of several, the one chosen or inside it, else
+    /// the first.</summary>
+    protected override XamlValues MadeAt(XamlRead read)
+    {
+        HashSet<string> classes = [.. read.Elements.Select(e => e.Class).OfType<string>()];
+        List<(DependencyObject Made, SourcePlace? Place)> all = [];
+        Queue<DependencyObject> next = new(TopLevels());
+        HashSet<DependencyObject> seen = [];
+        while (next.TryDequeue(out DependencyObject? at))
+        {
+            if (!seen.Add(at))
+            {
+                continue;
+            }
+            all.Add((at, Sources.Place(at)));
+            int count = at is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetChildrenCount(at) : 0;
+            for (int i = 0; i < count; i++)
+            {
+                next.Enqueue(VisualTreeHelper.GetChild(at, i));
+            }
+        }
+        string? inFile = XamlPlaces.FileOf(all.Select(a => a.Place?.File).OfType<string>(), read.File);
+        DependencyObject? chosen = Find(read.Chosen);
+        List<ElementValues> elements = [];
+        foreach (XamlSpot spot in read.Elements)
+        {
+            List<DependencyObject> instances = [.. all.Where(a => a.Place is { } p && p.File == inFile && p.Line == spot.Line && (p.Column == spot.Column || p.Column == spot.Column - 1)
+                || (spot.Class is { } root && classes.Contains(root) && a.Made.GetType().FullName == root)).Select(a => a.Made)];
+            if (instances.Count > 0)
+            {
+                DependencyObject instance = instances.FirstOrDefault(i => chosen is not null && (i == chosen || (chosen is Visual c && i is Visual v && c.IsDescendantOf(v)))) ?? instances[0];
+                elements.Add(new ElementValues(spot.Line, spot.Column, Shown.Called(instance), IdOf(instance), instances.Count, []));
+            }
+        }
+        return new XamlValues(elements, null);
+    }
+
     protected override List<AppWindow> SetOverlays(Request request) => throw new Refusal("Renderer debug overlays are Avalonia's: a WPF app has none");
+
+    protected override XamlReloaded Reload(XamlChange change) => reloads.Reload(change);
 
     protected override void Later(TimeSpan delay, Action action)
     {

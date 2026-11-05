@@ -16,8 +16,9 @@ namespace Passenger.App.Xaml;
 
 /// <summary>An Avalonia file's design view, drawn by the project's Avalonia.Designer.HostApp (in its Avalonia package,
 /// MIT) run through ChildProcesses on the project's last build: its frames come over Avalonia.Remote.Protocol to a port
-/// of Passenger's on loopback, and the file's text as it stands goes to it as it is typed. A UI-thread object: the
-/// protocol's messages cross to it through <see cref="UiThread"/>.</summary>
+/// of Passenger's on loopback, and the file's text as it stands goes to it as it is typed. Passenger's inspector, loaded into
+/// it, says where each frame shows each element of the file (<see cref="PlaceAsync"/>). A UI-thread object: the protocol's
+/// messages cross to it through <see cref="UiThread"/>.</summary>
 internal sealed class AvaloniaPreviewHost : IPreviewHost
 {
     private readonly XamlPreview preview;
@@ -37,6 +38,13 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     /// <summary>The texts sent and not yet answered, in order, as the host answers them: what an answer's line is read in.</summary>
     private readonly Queue<TextSnapshot> unanswered = new();
 
+    /// <summary>Passenger's inspector in the host, which says where its frame shows each element; null where it cannot be
+    /// loaded.</summary>
+    private LiveTree.LiveApp? inspector;
+
+    /// <summary>The text last loaded whose elements' boxes are yet to be asked for, once its frame is drawn.</summary>
+    private TextSnapshot? unplaced;
+
     private AvaloniaPreviewHost(XamlPreview preview, PreviewedBuild build)
     {
         this.preview = preview;
@@ -52,12 +60,13 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     {
         if (XamlPreview.Output(inputs) is not { } built)
         {
-            preview.Say($"Build {Path.GetFileNameWithoutExtension(inputs.ProjectPath)} to preview its XAML: the previewer draws its last build");
+            preview.SayUnbuilt(inputs);
             return null;
         }
-        if (HostApp(inputs) is not { } designer)
+        string? runs = await BackgroundWork.Run(() => XamlPreview.FrameworkOfBuild(built)) ?? inputs.TargetFramework;
+        if (HostApp(inputs, runs) is not { } designer)
         {
-            string why = NoHostApp(inputs);
+            string why = NoHostApp(inputs, runs);
             IdeLog.Write(IdeLog.Ide, $"Preview of {Path.GetFileName(preview.Document.Document.Path)}: {why}");
             preview.Say(why);
             return null;
@@ -89,6 +98,22 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
             "--session-id", Guid.NewGuid().ToString("N"), output], folder);
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
+        if (LiveTree.LiveApp.ForPreview(preview.Document.Document.Path, EnvironmentOf(start)) is var (live, added))
+        {
+            inspector = live;
+            foreach ((string variable, string value) in added)
+            {
+                start.Environment[variable] = value;
+            }
+            // Its loads record where they make each element only from the inspector's start: the text is loaded again.
+            live.StateChanged += (_, _) =>
+            {
+                if (live == inspector && live.State == LiveTree.LiveAppState.Connected)
+                {
+                    Update();
+                }
+            };
+        }
         Process started;
         using (BackgroundWork.Scope())
         {
@@ -172,6 +197,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
                     double scale = 96 * preview.Scaling;
                     IdeErrors.Observe(from.Send(new ClientRenderInfoMessage { DpiX = scale, DpiY = scale }));
                 }
+                unplaced = preview.Error is null ? answered : null;
                 preview.Status = preview.Error is null ? "Live" : "The XAML did not load";
                 if (preview.Error is null && empty)
                 {
@@ -188,13 +214,55 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
                     starting = null;
                     IdeErrors.Write($"Preview of {Path.GetFileName(preview.Document.Document.Path)}: first frame {frame.Width}x{frame.Height} after {clock.ElapsedMilliseconds} ms");
                 }
-                IdeErrors.Observe(from.Send(new FrameReceivedMessage { SequenceId = frame.SequenceId }));
+                // Unanswered while a load is on its way: its new window counts frames from one and would take this answer as its own.
+                if (unanswered.Count == 0)
+                {
+                    IdeErrors.Observe(from.Send(new FrameReceivedMessage { SequenceId = frame.SequenceId }));
+                }
+                if (unplaced is { } drawn && unanswered.Count == 0 && inspector is { State: LiveTree.LiveAppState.Connected } live)
+                {
+                    unplaced = null;
+                    IdeErrors.Observe(PlaceAsync(live, drawn));
+                }
                 preview.Status = "Live";
                 preview.Tell();
                 preview.Let();
                 break;
         }
     }
+
+    /// <summary>The elements of the text drawn placed on the frame, as the inspector in the host says it shows them, while that
+    /// text is still the file's; the root element, which the designer makes the frame of, on the whole frame where it has no
+    /// box of its own. One the inspector cannot answer leaves the elements as they were.</summary>
+    private async Task PlaceAsync(LiveTree.LiveApp live, TextSnapshot drawn)
+    {
+        using IDisposable held = BackgroundWork.Scope();
+        IReadOnlyList<Passenger.Inspector.PlacedBox> boxes;
+        try
+        {
+            boxes = await live.PlacedAsync(preview.Document.Document.Path);
+        }
+        catch (LiveTree.LiveAppException)
+        {
+            return;
+        }
+        if (disposed || live != inspector || drawn != preview.Document.Document.Text.Snapshot)
+        {
+            return;
+        }
+        List<PreviewElement> placed = XamlPreview.Placed(drawn, [.. boxes.Select(b => (b.Line, b.Column, new Rect(b.Box.X, b.Box.Y, b.Box.Width, b.Box.Height)))]);
+        Passenger.Xaml.Syntax.XmlTree tree = Passenger.Xaml.Syntax.XmlTree.Parse(drawn.ToString());
+        if (tree.Root is { } root && !placed.Any(p => p.Whole.Start == root.Start))
+        {
+            placed.Insert(0, new PreviewElement(TextRange.FromBounds(root.Start, root.StartTagEnd), TextRange.FromBounds(root.Start, root.End), new Rect(preview.FrameSize)));
+        }
+        preview.Elements = placed;
+        preview.Tell();
+    }
+
+    /// <summary>The environment a start gives its process, which the inspector's startup hook goes before.</summary>
+    private static Dictionary<string, string> EnvironmentOf(ProcessStartInfo start) =>
+        start.Environment.Where(v => v.Value is not null).ToDictionary(v => v.Key, v => v.Value!, StringComparer.Ordinal);
 
     /// <summary>A frame's pixels in a bitmap the pane shows, row by row as its stride lays them out.</summary>
     private void Draw(FrameMessage frame)
@@ -244,7 +312,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
             }
         }
         started.Exited += (_, _) => Exited();
-        if (started.HasExited)
+        if (!DotnetProcesses.Runs(started))
         {
             Exited();
         }
@@ -273,14 +341,14 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     }
 
     /// <summary>Avalonia's previewer host in the project's Avalonia package: the newest of its tools/ frameworks that is not
-    /// newer than the project's.</summary>
-    private static string? HostApp(ProjectInputs inputs)
+    /// newer than the one the build runs on (<paramref name="runs"/>).</summary>
+    private static string? HostApp(ProjectInputs inputs, string? runs)
     {
         if (!inputs.PackageFolders.TryGetValue("Avalonia", out string? package) || !Directory.Exists(Path.Combine(package, "tools")))
         {
             return null;
         }
-        Version target = XamlPreview.Framework(inputs.TargetFramework) ?? new Version(99, 0);
+        Version target = XamlPreview.Framework(runs) ?? new Version(99, 0);
         return Directory.EnumerateDirectories(Path.Combine(package, "tools"))
             .Select(d => (Folder: d, Version: ToolsFramework(Path.GetFileName(d))))
             .Where(d => d.Version is not null && d.Version <= target)
@@ -289,8 +357,8 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
             .FirstOrDefault(File.Exists);
     }
 
-    /// <summary>Why the project has no previewer host, naming where it was looked for.</summary>
-    private static string NoHostApp(ProjectInputs inputs)
+    /// <summary>Why the project has no previewer host for the framework its build runs on, naming where it was looked for.</summary>
+    private static string NoHostApp(ProjectInputs inputs, string? runs)
     {
         string project = Path.GetFileNameWithoutExtension(inputs.ProjectPath);
         if (!inputs.PackageFolders.TryGetValue("Avalonia", out string? package))
@@ -301,7 +369,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         }
         string tools = Path.Combine(package, "tools");
         string[] frameworks = Directory.Exists(tools) ? [.. Directory.EnumerateDirectories(tools).Select(Path.GetFileName).OfType<string>().Order(StringComparer.Ordinal)] : [];
-        return $"No previewer for {inputs.TargetFramework ?? project} in {PathNames.Shown(tools, null)} (it has {(frameworks.Length == 0 ? "none" : string.Join(", ", frameworks))}): designer/Avalonia.Designer.HostApp.dll is looked for in each";
+        return $"No previewer for {runs ?? project} in {PathNames.Shown(tools, null)} (it has {(frameworks.Length == 0 ? "none" : string.Join(", ", frameworks))}): designer/Avalonia.Designer.HostApp.dll is looked for in each";
     }
 
     /// <summary>A tools/ folder's framework: net5.0 and later as themselves, and netstandard or netcoreapp (Avalonia 11's
@@ -351,6 +419,8 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     public void Dispose()
     {
         disposed = true;
+        inspector?.Dispose();
+        inspector = null;
         connection?.Dispose();
         connection = null;
         listening?.Dispose();

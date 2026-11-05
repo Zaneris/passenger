@@ -6,8 +6,11 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Editors;
+using Passenger.App.Navigation;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
 using SkiaSharp;
@@ -16,8 +19,8 @@ namespace Passenger.Tests;
 
 /// <summary>A Markdown file's live preview beside its editor: each kind of block a README has, GitHub's tables and task
 /// lists, fenced code coloured as the editor colours it, the images of files inside the open folder and none from outside
-/// it; following the typing and the editor's scroll; its links opening the browser, another file or a heading; and the
-/// choice to show it kept for the next window.</summary>
+/// it; following the typing and the editor's scroll; its links opening the browser, another file or a heading; the
+/// choice to show it kept for the next window; and the file's headings as its outline in Structure and File Structure.</summary>
 public sealed class MarkdownPreviewTests
 {
     /// <summary>A shop folder with a README of every kind of block, an image inside it and one beside it, outside.</summary>
@@ -197,6 +200,55 @@ public sealed class MarkdownPreviewTests
 
     /// <summary>A page in a folder of its own links to the guide and draws a picture from the open folder's root, a slash
     /// first, as GitHub resolves them: on macOS and Linux too, where such a target also reads as a file's address.</summary>
+    [AvaloniaFact]
+    public void A_READMEs_headings_nest_by_level_in_Structure_and_File_Structure_follow_its_typing_and_go_to_their_lines()
+    {
+        (string folder, string readme) = Shop();
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+        Assert.Null(window.OpenFile(readme));
+        Ui.Settle();
+        Ui.Run(window, AppActions.ShowStructure);
+        StructureView structure = window.StructureView;
+        Ui.WaitFor(() => structure.Rows.Any(r => r.Name == "Section 40"), () => $"the README's headings in Structure: {Listed(structure.Rows)} ({structure.Said})");
+        (string, int)[] nested = [("Shop", 0), ("Getting started", 1), ("Tasks", 2), ("Prices", 3), ("A quote", 4), ("Code", 5), ("Section 1", 1)];
+        Assert.Equal(nested, structure.Rows.Take(7).Select(r => (r.Name, r.Depth)));
+        Assert.Equal(46, structure.Rows.Count);
+
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        // Escape gives the keys back to the editor from the Structure window, which took them.
+        Ui.Press(window, "ESCAPE");
+        Assert.True(editor.IsKeyboardFocusWithin, "Escape in the Structure window left the keys away from the README's editor");
+        Ui.PlaceAfter(editor, "- [ ] Ship the shop\n\n");
+        window.KeyTextInput("### Shipping");
+        Ui.Press(window, "ENTER");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => structure.Rows.Any(r => r.Name == "Shipping"), () => $"Structure to follow the heading typed: {Listed(structure.Rows)}");
+        Assert.Equal([("Tasks", 2), ("Shipping", 2), ("Prices", 3)], structure.Rows.Skip(2).Take(3).Select(r => (r.Name, r.Depth)));
+
+        ListBox list = structure.GetVisualDescendants().OfType<ListBox>().First();
+        Ui.Click(Ui.Row(list, structure.Rows.First(r => r.Name == "A quote")));
+        Ui.WaitFor(() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line) == "##### A quote",
+            () => $"the heading's row to go to its line, not to '{editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)}'");
+
+        Ui.Run(window, AppActions.FileStructure);
+        SymbolPopup popup = window.Popup as SymbolPopup
+            ?? throw new Xunit.Sdk.XunitException($"File Structure on the README opened {window.Popup?.GetType().Name ?? "nothing"}; the status bar said: {window.Status}");
+        Ui.WaitFor(() => popup.IsSettled && popup.Rows.Any(r => r.Name == "Section 12"), () => $"the README's headings in File Structure: {Listed(popup.Rows)}");
+        window.KeyTextInput("Section 12");
+        Ui.WaitFor(() => popup.IsSettled && popup.Rows.Any() && popup.Rows[^1].Name == "Section 12", () => $"File Structure filtered to Section 12, not [{Listed(popup.Rows)}]");
+        if (popup.Selected?.Name == "Shop")
+        {
+            // The heading it is under comes first, for where the match is.
+            Ui.Press(window, "DOWN");
+        }
+        Assert.Equal("Section 12", popup.Selected?.Name);
+        Ui.Press(window, "ENTER");
+        Assert.Equal("## Section 12", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line));
+        window.Close();
+
+        static string Listed(IEnumerable<SymbolRow> rows) => string.Join(", ", rows.Select(r => $"{new string(' ', r.Depth)}{r.Name}"));
+    }
+
     [AvaloniaFact]
     public void A_link_and_an_image_written_from_the_folders_root_open_and_draw_the_root_folders_files_on_every_system()
     {

@@ -238,6 +238,11 @@ public partial class MainWindow
             }
             files.Add((path, open?.Text.Snapshot));
         }
+        // Over what another program holds (Godot's editor's unsaved scene) only as the person lets it, asked before any file changes.
+        if (files.Count > 0 && await Editors.ClearAsync([.. files.Select(f => f.Path)]) is { } held)
+        {
+            return new FilesReplaced([], [.. refused, .. files.Select(f => (f.Path, held))]);
+        }
         List<FileSearch.Replacing> planned = await BackgroundWork.Run(() => files.Select(f => FileSearch.Plan(f.Path, f.Open, pattern, replacement)).ToList());
         List<(string Path, string? Note)> written = [];
         string name = FilesReplaced.Title(query, replacement);

@@ -62,8 +62,9 @@ public static class ProgramProjects
     }
 
     /// <summary>The C# files the project compiles that a directive named by its path (no wildcard nor property in it), and
-    /// the programs it references (<c>#:ref</c>), by their C# files.</summary>
-    private static (List<string> Included, List<string> Referenced) Named(string? content)
+    /// the programs it references (<c>#:ref</c>), by their C# files. An Include is MSBuild's to read, so its <c>%25</c> is a
+    /// <c>%</c> of the file compiled; the reference's metadata is the file the SDK found, read as written.</summary>
+    internal static (List<string> Included, List<string> Referenced) Named(string? content)
     {
         if (content is null)
         {
@@ -75,7 +76,9 @@ public static class ProgramProjects
             List<string> included = [.. project.Descendants("Compile")
                 .Select(c => (string?)c.Attribute("Include"))
                 .OfType<string>()
-                .Where(i => i.IndexOfAny(['*', '?', '$', ';']) < 0 && Path.IsPathFullyQualified(i) && ProgramFiles.IsProgram(i))];
+                .Where(i => i.IndexOfAny(['*', '?', '$', ';']) < 0)
+                .Select(ItemPaths.Unescaped)
+                .Where(i => Path.IsPathFullyQualified(i) && ProgramFiles.IsProgram(i))];
             List<string> referenced = [.. project.Descendants("ProjectReference")
                 .Select(r => (string?)r.Attribute(ProgramFiles.RefMetadata))
                 .OfType<string>()

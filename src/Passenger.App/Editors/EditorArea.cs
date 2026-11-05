@@ -27,6 +27,8 @@ public sealed partial class EditorArea : UserControl
     private readonly TextBlock emptyHint;
     private readonly List<Action<CodeEditor>> editorHooks = [];
     private readonly Dictionary<OpenDocument, int> held = [];
+    // Open files the person let a write go over what another program holds of them, each until its next save.
+    private readonly HashSet<string> writtenOver = new(PathNames.Comparer);
 
     /// <summary>The main window's editors, then each editor window's in the order they opened.</summary>
     private readonly List<EditorFrame> frames = [];
@@ -61,6 +63,10 @@ public sealed partial class EditorArea : UserControl
     public event EventHandler<OpenDocument>? Opened;
 
     public event EventHandler<OpenDocument>? Closed;
+
+    /// <summary>A file's last tab closed while something else holds it open (<see cref="Hold"/>, a save still landing).</summary>
+    public event EventHandler<OpenDocument>? TabsGone;
+
     public event EventHandler? CaretMoved;
 
     /// <summary>A file that could not be written, and why: it stays open with its edits.</summary>
@@ -69,6 +75,12 @@ public sealed partial class EditorArea : UserControl
     /// <summary>An image or font whose first decode, off the UI thread, failed, and why: its tabs have closed, as a file
     /// <see cref="Open"/> could not read never opens.</summary>
     public event EventHandler<string>? OpenFailed;
+
+    /// <summary>Raised with why a change asked of a view in a group's place (a table's cell written) was not made.</summary>
+    public event EventHandler<string>? Refused;
+
+    /// <summary>Says why a change asked of a group's view was not made.</summary>
+    internal void Refuse(string why) => Refused?.Invoke(this, why);
 
     /// <summary>A file not written because something else changed it on disk since it was last loaded or saved: which
     /// to keep is the person's question (File Cache Conflict), never settled by writing over the disk's.</summary>
@@ -84,6 +96,9 @@ public sealed partial class EditorArea : UserControl
     public event EventHandler<Uri>? BrowseRequested;
 
     internal void Browse(Uri address) => BrowseRequested?.Invoke(this, address);
+
+    /// <summary>The window's Godot project pages, each over its project.godot's editor; null in a window with none.</summary>
+    public Godot.GodotProjectPages? GodotPages { get; set; }
 
     /// <summary>A link to a file clicked in a Markdown file's preview, for the window to open it in the editor.</summary>
     public event EventHandler<string>? FileLinkClicked;
@@ -108,16 +123,56 @@ public sealed partial class EditorArea : UserControl
             showsMarkdownPreview = value;
             foreach (EditorGroup group in AllGroups)
             {
-                group.FollowMarkdown();
+                group.FollowSidePreview();
             }
         }
     }
+
+    private bool showsSvgPreview = true;
+
+    /// <summary>Whether an SVG file shows its picture beside its editor, in every group showing one.</summary>
+    public bool ShowsSvgPreview
+    {
+        get => showsSvgPreview;
+        set
+        {
+            showsSvgPreview = value;
+            foreach (EditorGroup group in AllGroups)
+            {
+                group.FollowSidePreview();
+            }
+        }
+    }
+
+    private bool showsHtmlPreview;
+
+    /// <summary>Whether an HTML file shows its page beside its editor, in every group showing one.</summary>
+    public bool ShowsHtmlPreview
+    {
+        get => showsHtmlPreview;
+        set
+        {
+            showsHtmlPreview = value;
+            foreach (EditorGroup group in AllGroups)
+            {
+                group.FollowSidePreview();
+            }
+        }
+    }
+
+    /// <summary>Whether a file is an SVG, which shows its picture beside its text.</summary>
+    public static bool IsSvg(OpenDocument document) => document.Path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A group's preview toggle pressed, for the window to run the preview's action: nothing outside the group
     /// holds the toggle, so a closed split goes with it.</summary>
     public event EventHandler<EditorGroup>? PreviewToggleClicked;
 
     internal void PreviewToggled(EditorGroup group) => PreviewToggleClicked?.Invoke(this, group);
+
+    /// <summary>A group's list of the tabs its strip hides asked for, for the window to show it under the strip's button.</summary>
+    public event EventHandler<EditorGroup>? HiddenTabsRequested;
+
+    internal void HiddenTabsAsked(EditorGroup group) => HiddenTabsRequested?.Invoke(this, group);
 
     /// <summary>Whether the window's previewer draws an open XAML file.</summary>
     public Func<OpenDocument, bool> HasXamlPreview { get; set; } = _ => false;
@@ -153,12 +208,15 @@ public sealed partial class EditorArea : UserControl
     /// <summary>Every file open, in any group, once each.</summary>
     public IReadOnlyList<OpenDocument> Documents => documents;
 
+    /// <summary>Every diff's tab open (<see cref="OpenDocument.Diff"/>), in any group, once each: none of them a file's.</summary>
+    public IReadOnlyList<OpenDocument> Diffs => [.. AllGroups.SelectMany(g => g.Tabs).Select(t => t.Document).Where(d => d.Diff is not null).Distinct()];
+
     /// <summary>Every group of tabs: the main window's, then each editor window's.</summary>
     public IReadOnlyList<EditorGroup> Groups => [.. AllGroups];
 
     public EditorGroup ActiveGroup => activeGroup;
 
-    public FindBar FindBar => activeGroup.Find;
+    public FindBar FindBar => activeGroup.Diff?.Find ?? activeGroup.Find;
 
     /// <summary>The layer over the active group's window of editors that completion and the code actions' popups sit on.</summary>
     public Canvas AssistLayer => ActiveFrame.Assist;
@@ -213,12 +271,16 @@ public sealed partial class EditorArea : UserControl
     /// <summary>Opens text, a read-only asset, or a binary file with no view of its own as its bytes' text, read-only
     /// (<see cref="FileText.Bytes"/>), in the active group (or shows its tab if open), returning why not when the file
     /// cannot be read; an asset whose decode fails once its tab shows it loading says so through <see cref="OpenFailed"/>.</summary>
-    public string? Open(string path)
+    public string? Open(string path) => Open(path, focus: true);
+
+    /// <summary>Opens a file as <see cref="Open(string)"/> does, its editor given the keys only with <paramref name="focus"/>:
+    /// without, shown for what another program said (Godot's editor's selection), the keys staying where they are.</summary>
+    public string? Open(string path, bool focus)
     {
         string full = PathNames.Canonical(path);
         if (Find(full) is { } open)
         {
-            Activate(open);
+            Activate(open, focus);
             return null;
         }
         OpenDocument document;
@@ -234,14 +296,17 @@ public sealed partial class EditorArea : UserControl
         Opened?.Invoke(this, document);
         documents.Add(document);
         activeGroup.Add(document);
-        Activate(document);
+        Activate(document, focus);
         return null;
     }
 
     /// <summary>Shows a file in the window in front: in the active group if it has its tab, else in the group there
     /// that does, else in a new tab of the active group. For an attached agent (<see cref="AgentAsks.Beside"/>), its tab
     /// comes behind the file the person has shown there, which keeps the keys.</summary>
-    public void Activate(OpenDocument document)
+    public void Activate(OpenDocument document) => Activate(document, focus: true);
+
+    /// <summary>Shows a file as <see cref="Activate(OpenDocument)"/> does, its editor taking the keys only with <paramref name="focus"/>.</summary>
+    public void Activate(OpenDocument document, bool focus)
     {
         EditorGroup group = activeGroup.Has(document) ? activeGroup : ActiveFrame.Groups.FirstOrDefault(g => g.Has(document)) ?? activeGroup;
         if (AgentAsks.Beside && group.Active is not null)
@@ -252,7 +317,7 @@ public sealed partial class EditorArea : UserControl
         group.Show(document);
         SetActiveGroup(group);
         Refresh();
-        if (!AgentAsks.Beside)
+        if (focus && !AgentAsks.Beside)
         {
             group.FocusShown();
         }
@@ -325,10 +390,40 @@ public sealed partial class EditorArea : UserControl
     /// the change is made.</summary>
     public Func<History.LocalHistory.Activity?>? Recording { get; set; }
 
+    /// <summary>What another program holds of a file that a write of it would go over (the person's Godot editor's unsaved
+    /// edits), in words, or null.</summary>
+    public Func<string, string?> HeldElsewhere { get; set; } = _ => null;
+
+    /// <summary>The window's answer to a write of files held elsewhere (<see cref="HeldElsewhere"/>): null where the person
+    /// lets it go over them, else why not, an agent's always refused (<see cref="Refusals.HeldInGodot"/>).</summary>
+    public Func<IReadOnlyList<string>, Task<string?>> WritingOver { get; set; } = _ => Task.FromResult<string?>(null);
+
+    /// <summary>The one gate every write of files takes first (a command's files, open or not, Undo's and Redo's, the IDE's
+    /// own writes, a save asked for), where an autosave, a build's save and a close pass a held file by unwritten: null to
+    /// write them, else why not. An open file the person lets a write go over is saved over it once.</summary>
+    public async Task<string?> ClearAsync(IReadOnlyCollection<string> paths)
+    {
+        List<string> holding = [.. paths.Distinct(PathNames.Comparer).Where(p => HeldElsewhere(p) is not null)];
+        if (holding.Count == 0)
+        {
+            return null;
+        }
+        if (await WritingOver(holding) is { } why)
+        {
+            return why;
+        }
+        writtenOver.UnionWith(holding.Select(Find).OfType<OpenDocument>().Select(d => d.Path));
+        return null;
+    }
+
     private bool Close(OpenDocument document, bool forGood)
     {
-        if (document.IsModified && TrySave(document) is not null)
+        if (document.IsModified && TrySave(document) is { } unsaved)
         {
+            if (HeldElsewhere(document.Path) is not null)
+            {
+                SaveFailed?.Invoke(this, $"{document.Name} stays open, unsaved: {unsaved}");
+            }
             return false;
         }
         foreach (EditorGroup group in AllGroups.Where(g => g.Has(document)).ToList())
@@ -345,12 +440,19 @@ public sealed partial class EditorArea : UserControl
         }
         else if (!held.ContainsKey(document))
         {
-            documents.Remove(document);
-            Closed?.Invoke(this, document);
+            // A diff's tab is no file opened, whose close anything would hear.
+            if (documents.Remove(document))
+            {
+                Closed?.Invoke(this, document);
+            }
             document.Close();
         }
         Collapse();
         ActiveChanged?.Invoke(this, EventArgs.Empty);
+        if (!forGood && documents.Contains(document) && !HasTab(document))
+        {
+            TabsGone?.Invoke(this, document);
+        }
         return true;
     }
 
@@ -433,7 +535,7 @@ public sealed partial class EditorArea : UserControl
         {
             return false;
         }
-        closedTabs.Add(closing);
+        closedTabs.Add(document.Diff is { } diff ? closing with { Diff = diff.Shown } : closing);
         if (closedTabs.Count > ClosedTabsKept)
         {
             closedTabs.RemoveAt(0);
@@ -441,17 +543,29 @@ public sealed partial class EditorArea : UserControl
         return true;
     }
 
-    /// <summary>Close Other Tabs: every tab of the group but this one and the pinned ones.</summary>
-    public void CloseOthers(EditorGroup group, OpenDocument keep) => CloseTabs(group, (tab, _) => tab.Document != keep);
+    /// <summary>Close Other Tabs: every tab of the group but this one, which it shows, and the pinned ones.</summary>
+    public void CloseOthers(EditorGroup group, OpenDocument keep) => CloseKeeping(group, keep, (tab, _) => tab.Document != keep);
 
     /// <summary>Close All Tabs: every tab of the group but the pinned ones.</summary>
     public void CloseAllTabs(EditorGroup group) => CloseTabs(group, (_, _) => true);
 
-    /// <summary>Close Tabs to the Left or to the Right of a tab, the pinned ones left open.</summary>
+    /// <summary>Close Tabs to the Left or to the Right of a tab, which it shows, the pinned ones left open.</summary>
     public void CloseToSide(EditorGroup group, OpenDocument of, bool left)
     {
         int at = group.Tabs.Select(t => t.Document).ToList().IndexOf(of);
-        CloseTabs(group, (_, index) => left ? index < at : index > at);
+        CloseKeeping(group, of, (_, index) => left ? index < at : index > at);
+    }
+
+    /// <summary>A close of the tabs beside one, chosen on it: it is shown first, so the group ends on the tab kept and none
+    /// of those closing is shown on the way.</summary>
+    private void CloseKeeping(EditorGroup group, OpenDocument keep, Func<EditorTab, int, bool> which)
+    {
+        if (group.Has(keep) && group.Active != keep)
+        {
+            group.Show(keep);
+            Activated(group);
+        }
+        CloseTabs(group, which);
     }
 
     /// <summary>Close All but Pinned: the group's unpinned tabs, or every group's in every window.</summary>
@@ -490,13 +604,34 @@ public sealed partial class EditorArea : UserControl
     /// goes), its place there, its caret and scroll, and whether it was pinned.</summary>
     private readonly List<ClosedTab> closedTabs = [];
 
-    private sealed record ClosedTab(string Path, WeakReference<EditorGroup> Group, int Index, TextPosition Caret, Vector Scroll, bool Pinned);
+    private sealed record ClosedTab(string Path, WeakReference<EditorGroup> Group, int Index, TextPosition Caret, Vector Scroll, bool Pinned)
+    {
+        /// <summary>For a diff's tab, the diff, opened afresh rather than its file.</summary>
+        public Vcs.DiffContent? Diff { get; init; }
+    }
+
+    /// <summary>Opens a diff again where it has closed (the window's, which knows how a diff is asked for): afresh, at the
+    /// versions as they are now; false when it cannot be (the file its side edited has closed).</summary>
+    public Func<Vcs.DiffContent, bool>? ReopenDiff { get; set; }
+
+    /// <summary>A diff's tab shown again: its own tab where it is open, else the diff opened afresh; false where neither can
+    /// be.</summary>
+    public bool ShowDiffAgain(Vcs.DiffContent diff)
+    {
+        if (Diffs.FirstOrDefault(d => d.Diff!.Shown.Key == diff.Key) is { } open)
+        {
+            Activate(open);
+            return true;
+        }
+        return ReopenDiff?.Invoke(diff) == true;
+    }
 
     /// <summary>Whether Reopen Closed Tab has a tab to bring back.</summary>
     public bool CanReopen => closedTabs.Count > 0;
 
     /// <summary>Reopen Closed Tab: the tab closed last opens again where it stood, in its group if that is still there
-    /// (else the active one), pinned if it was, its caret and scroll as they were. Null once one is open, else why not:
+    /// (else the active one), pinned if it was, its caret and scroll as they were; a diff's opened afresh, at the versions as
+    /// they are now (<see cref="ReopenDiff"/>). Null once one is open, else why not:
     /// none was closed, or none of those closed can be read any more.</summary>
     public string? ReopenClosedTab()
     {
@@ -504,6 +639,14 @@ public sealed partial class EditorArea : UserControl
         {
             ClosedTab closed = closedTabs[^1];
             closedTabs.RemoveAt(closedTabs.Count - 1);
+            if (closed.Diff is { } diff)
+            {
+                if (ShowDiffAgain(diff))
+                {
+                    return null;
+                }
+                continue;
+            }
             if (Load(closed.Path) is not { } document)
             {
                 continue;
@@ -597,19 +740,25 @@ public sealed partial class EditorArea : UserControl
 
     internal void RequestMaximize() => MaximizeRequested?.Invoke(this, EventArgs.Empty);
 
-    /// <summary>A tab of a group was shown by a click on it.</summary>
+    /// <summary>A tab of a group was shown as the person chose it: a click on it, the hidden tabs' list, a close chosen
+    /// on it.</summary>
     internal void Activated(EditorGroup group)
     {
         Refresh();
         ActiveChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Opens the find bar over the active text file, with the replace row if asked; never over an asset preview.</summary>
+    /// <summary>Opens the find bar over the active text file, with the replace row if asked, or a diff's own over its sides;
+    /// never over an asset preview.</summary>
     public void ShowFind(bool replace)
     {
-        if (Active is { Asset: null })
+        if (Active is { Asset: null, Diff: null })
         {
             activeGroup.Find.Open(replace);
+        }
+        else if (activeGroup.Diff is { } diff)
+        {
+            diff.ShowFind(replace);
         }
     }
 
@@ -806,6 +955,11 @@ public sealed partial class EditorArea : UserControl
         {
             return null;
         }
+        // Over what another program holds only as the person asked, or let it (ClearAsync).
+        if (!writtenOver.Remove(document.Path) && !asked && HeldElsewhere(document.Path) is { } elsewhere)
+        {
+            return elsewhere;
+        }
         if (!overDisk && document.ChangedOnDisk())
         {
             SaveConflicted?.Invoke(this, document);
@@ -846,14 +1000,16 @@ public sealed partial class EditorArea : UserControl
             };
         }
         EditorGroup group = ((EditorFrame.Leaf)node).Group;
+        // A diff's tab is not kept: what it compared may be gone by the next time, and the folder opens on its files.
+        List<EditorTab> kept = [.. group.Tabs.Where(t => t.Document.Diff is null)];
         return new EditorLayout
         {
-            Tabs = [.. group.Tabs.Select(t =>
+            Tabs = [.. kept.Select(t =>
             {
                 TextPosition caret = t.Document.Text.Snapshot.GetPosition(Math.Min(group.SelectionsOf(t.Document).Primary.Caret, t.Document.Text.Snapshot.Length));
                 return new KeptTab(t.Document.Path, caret.Line, caret.Column) { Pinned = t.IsPinned };
             })],
-            Shown = group.Active is { } shown ? group.Tabs.Select(t => t.Document).ToList().IndexOf(shown) : 0,
+            Shown = Math.Max(0, kept.FindIndex(t => t.Document == group.Active)),
             Current = group == current,
         };
     }
@@ -987,10 +1143,15 @@ public sealed partial class EditorArea : UserControl
         }
     }
 
-    /// <summary>Closes every file, those held too, each saved first; false when one could not be, and stays open. The
-    /// editor windows go with their last tabs, and the tabs Reopen Closed Tab had, which were the folder's.</summary>
+    /// <summary>Closes every file, those held too, each saved first, and every diff's tab; false when a file could not be
+    /// saved, and stays open. The editor windows go with their last tabs, and the tabs Reopen Closed Tab had, which were
+    /// the folder's.</summary>
     public bool CloseAll()
     {
+        foreach (OpenDocument diff in Diffs)
+        {
+            Close(diff, forGood: true);
+        }
         foreach (OpenDocument document in documents.ToList())
         {
             if (!Close(document, forGood: true))

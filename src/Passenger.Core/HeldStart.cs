@@ -34,6 +34,38 @@ public static class HeldStart
             ? $"Its runtime was started with {off}=0, which turns its debugger off: nothing can attach to it"
             : null;
 
+    /// <summary>Why no debugger can reach a program held at its start (<see cref="DebuggerOff"/>), its environment read through
+    /// its diagnostic port, which answers while the runtime is held; null where it can, or where its port cannot be asked.</summary>
+    public static async Task<string?> DebuggerOffAsync(int processId)
+    {
+        Process process;
+        try
+        {
+            process = Process.GetProcessById(processId);
+        }
+        catch (Exception gone) when (gone is ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+        using (process)
+        {
+            Dictionary<string, string>? environment = null;
+            try
+            {
+                await AtPortAsync(process, client =>
+                {
+                    environment = client.GetProcessEnvironment();
+                    return Task.CompletedTask;
+                }, sinceItStarted: true).ConfigureAwait(false);
+            }
+            catch (Exception unread) when (unread is DiagnosticsClientException or IOException or TimeoutException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                return null;
+            }
+            return environment is null ? null : DebuggerOff(environment.GetValueOrDefault);
+        }
+    }
+
     /// <summary>Whether a runtime started with this environment waits at its start: asked to, with its diagnostic port on.</summary>
     public static bool Holds(Func<string, string?> variable) => variable(RuntimeVariables.DefaultDiagnosticPortSuspend) == "1"
         && variable("DOTNET_EnableDiagnostics") != "0" && variable("DOTNET_EnableDiagnostics_IPC") != "0";
@@ -154,18 +186,8 @@ public static class HeldStart
         }
     }
 
-    /// <summary>Whether the process has ended, false when the system will not say (the deadline then ends the wait).</summary>
-    private static bool Ended(Process process)
-    {
-        try
-        {
-            return process.HasExited;
-        }
-        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
-        {
-            return false;
-        }
-    }
+    /// <summary>Whether the process has ended; one the system will not say of runs on (the deadline then ends the wait).</summary>
+    private static bool Ended(Process process) => !DotnetProcesses.Runs(process);
 }
 
 /// <summary>How <see cref="HeldStart.AtPortAsync"/>'s wait ended.</summary>

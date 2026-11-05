@@ -87,7 +87,7 @@ public sealed partial class AboutTests : IDisposable
         }
 
         SortedSet<string> carried = new(StringComparer.OrdinalIgnoreCase);
-        carried.UnionWith(AppPackages(Path.Combine(beside, "Passenger.Tests.deps.json")));
+        carried.UnionWith(AppPackages(Path.Combine(beside, "Passenger.deps.json")));
         foreach (string deps in Directory.EnumerateFiles(Path.Combine(beside, "debugger"), "*.deps.json")
             .Concat(Directory.EnumerateFiles(Path.Combine(beside, "roslyn"), "*.deps.json", SearchOption.AllDirectories)))
         {
@@ -164,7 +164,7 @@ public sealed partial class AboutTests : IDisposable
             })];
     }
 
-    /// <summary>The packages the app's project brings into the tests' .deps.json: those its dependencies reach.</summary>
+    /// <summary>The packages the app's own .deps.json carries: those its dependencies reach.</summary>
     private static IEnumerable<string> AppPackages(string deps)
     {
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(deps));
@@ -175,7 +175,8 @@ public sealed partial class AboutTests : IDisposable
         Stack<string> next = new([entries.Keys.Single(k => k.StartsWith("Passenger/", StringComparison.Ordinal))]);
         while (next.TryPop(out string? entry))
         {
-            if (reached.Add(entry) && entries[entry].TryGetProperty("dependencies", out JsonElement dependencies))
+            // A dependency the app names but takes nothing of (its assets excluded) has no entry: the app carries none of it.
+            if (entries.TryGetValue(entry, out JsonElement found) && reached.Add(entry) && found.TryGetProperty("dependencies", out JsonElement dependencies))
             {
                 foreach (JsonProperty dependency in dependencies.EnumerateObject())
                 {

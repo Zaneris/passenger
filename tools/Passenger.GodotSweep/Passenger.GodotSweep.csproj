@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Passenger's GDScript parser over every .gd of a folder for tools/godot-sweep.py: each file's errors, an edit's
+       parse checked against a whole one, and the parser's speed and memory on the largest script. A tool of the
+       release's checks, never part of the app. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Passenger.GodotSweep</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Passenger.Workspace/Passenger.Workspace.csproj" />
+  </ItemGroup>
+</Project>

@@ -65,6 +65,35 @@ public sealed record RunConfiguration
     /// <summary>Additional AppHosts started and stopped with this Aspire configuration.</summary>
     public IReadOnlyList<string> LinkedAppHosts { get; init; } = [];
 
+    /// <summary>For a Godot project's (one Godot.NET.Sdk builds, with its project.godot), whether it starts Godot's editor
+    /// on the project rather than its game; either runs on the Godot found (<see cref="GodotLaunch"/>) unless it names a
+    /// program of its own.</summary>
+    public bool GodotEditor { get; init; }
+
+    /// <summary>For a Godot project's game, whether Godot's editor open on the project plays it, as its own Play does, rather
+    /// than Passenger starting it: through Passenger's addon there where it is installed, else through the editor's IDE
+    /// messaging (<see cref="MainWindow"/>'s Run in Godot Editor).</summary>
+    public bool GodotInEditor { get; init; }
+
+    /// <summary>For a Godot project's game, whether it draws in Passenger's Game window rather than a window of its own, its
+    /// window held over the window's place as Godot's editor holds a game it embeds (<see cref="Godot.GameWindows"/>); a
+    /// system or game that cannot runs it in its own, saying why.</summary>
+    public bool GodotInPane { get; init; }
+
+    /// <summary>For a Godot project's game, the scene it starts in: its project.godot's main scene (null), the scene open in the
+    /// editor as it starts (<see cref="CurrentScene"/>: a scene, or one a script open runs in), or a scene's res:// path.</summary>
+    public string? GodotScene { get; init; }
+
+    /// <summary>What <see cref="GodotScene"/> is for the scene open in the editor.</summary>
+    public const string CurrentScene = "current";
+
+    /// <summary>For a Godot project's game, how many copies of it a launch starts side by side (a server and its clients),
+    /// each a run of its own (<see cref="GameCopies"/>); one for one game.</summary>
+    public int GodotCopies { get; init; } = 1;
+
+    /// <summary>Each copy's own arguments after the configuration's, by its place from the first: a copy past them has none.</summary>
+    public List<string> CopyArguments { get; init; } = [];
+
     /// <summary>The target framework run, for a project with several; empty for the first.</summary>
     public string Framework { get; init; } = string.Empty;
 
@@ -127,8 +156,9 @@ public sealed record RunConfiguration
     /// still go with the folder and the IDE.</summary>
     public bool KeepBackingServices { get; init; }
 
-    /// <summary>Whether a container run collects its .NET services' logs and traces: Aspire's dashboard run beside them,
-    /// which they are told to send OpenTelemetry to. Off unless chosen, since its image is pulled the first time.</summary>
+    /// <summary>Whether a container run collects its .NET services' logs and traces, or a project run its program's (an AppHost's
+    /// has a dashboard of its own): Aspire's dashboard run beside them, which they are told to send OpenTelemetry to. Off unless
+    /// chosen, since its image is pulled the first time.</summary>
     public bool Telemetry { get; init; }
 
     /// <summary>The service whose published port fills the browser's <c>{ServicePort}</c>: Visual Studio's
@@ -172,6 +202,25 @@ public sealed record RunConfiguration
     [JsonIgnore]
     public string? Unsupported { get; init; }
 
+    /// <summary>Whether it runs a Godot project's game or editor on Godot among these projects (<see cref="GodotLaunch"/>):
+    /// one of a project Godot.NET.Sdk builds that names no program of its own, or names Godot as a launch profile does
+    /// (<see cref="NamesGodot"/>).</summary>
+    public bool RunsGodot(IEnumerable<ProjectModel> projects) =>
+        !IsContainer && (Program.Length == 0 || NamesGodot) && (RunsScriptGame || projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project))?.GodotFolder is not null);
+
+    /// <summary>Whether the program it names is Godot (%GODOT%, a path to a Godot executable: <see cref="GodotExecutables.NamesGodot"/>),
+    /// which for a Godot project's runs its game as one naming no program does, on the Godot Settings names or the one found.</summary>
+    [JsonIgnore]
+    public bool NamesGodot => Program.Length > 0 && GodotExecutables.NamesGodot(Program, OperatingSystem.IsWindows());
+
+    /// <summary>Whether it runs its project's own program among these projects: it names none, or Godot for a Godot project's game.</summary>
+    public bool NamesNoOtherProgram(IEnumerable<ProjectModel> projects) => Program.Length == 0 || RunsGodot(projects);
+
+    /// <summary>Whether it runs a Godot project of GDScript alone, its project.godot its project (<see cref="ProjectModel.IsScriptGame"/>):
+    /// no C# project is built or debugged for it.</summary>
+    [JsonIgnore]
+    public bool RunsScriptGame => !IsContainer && Path.GetFileName(Project) == GodotProject.FileName;
+
     /// <summary>Why it cannot launch here among these projects: its launch profile's kind, or, when it runs its project's
     /// own program, a project that runs only on Windows (WPF, Windows Forms) elsewhere; null when it can.</summary>
     public string? WhyNotHere(IEnumerable<ProjectModel> projects) => Unsupported
@@ -180,18 +229,24 @@ public sealed record RunConfiguration
         ?? (!IsContainer && Program.Length == 0 && projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project)) is { } project ? project.RunsOnlyOnWindows(Framework) : null);
 
     /// <summary>The configurations the folder's executable projects make: one per launch profile, named "Project: profile",
-    /// and the project itself when none of its profiles runs it here; then single-file AppHosts and the container ones the
-    /// workspace's compose files, Dockerfiles, SDK container projects and Docker Compose projects (.dcproj) make
-    /// (<see cref="Containers.ContainerConfigurations"/>).</summary>
+    /// and the project itself when none of its profiles runs it here (a Godot project's game), with a Godot project's editor
+    /// beside it ("Project: Godot Editor"), the workspace's Godot projects of GDScript alone among them (<see cref="WorkspaceModel.ScriptGames"/>);
+    /// then single-file AppHosts and the container ones the workspace's compose files, Dockerfiles, SDK container projects
+    /// and Docker Compose projects (.dcproj) make (<see cref="Containers.ContainerConfigurations"/>).</summary>
     public static IReadOnlyList<RunConfiguration> Generate(IEnumerable<ProjectModel> projects, WorkspaceModel? workspace = null,
         IEnumerable<string>? singleFileAppHosts = null)
     {
         List<RunConfiguration> generated = [];
         List<ProjectModel> all = [.. projects];
-        foreach (ProjectModel project in all.Where(p => p.Exists && p.IsRunnable))
+        foreach (ProjectModel project in all.Where(p => p.Exists).Concat(workspace?.ScriptGames(all).Select(ProjectModel.OfScriptGame) ?? []))
         {
+            bool godot = project.Godot() is not null;
+            if (!project.IsRunnable && !godot)
+            {
+                continue;
+            }
             string name = NameOf(project);
-            IReadOnlyList<LaunchProfile> profiles = Run.LaunchProfile.Read(project);
+            IReadOnlyList<LaunchProfile> profiles = project.IsScriptGame ? [] : Run.LaunchProfile.Read(project);
             if (!profiles.Any(p => p.Unsupported is null && !p.RunsInContainer))
             {
                 generated.Add(new RunConfiguration
@@ -205,6 +260,10 @@ public sealed record RunConfiguration
                 });
             }
             generated.AddRange(profiles.Select(p => From(project, p) with { Name = NameOf(project, p.Name), Generated = true }));
+            if (godot)
+            {
+                generated.Add(new RunConfiguration { Name = NameOf(project, GodotEditorName), Project = project.Path, GodotEditor = true, Generated = true });
+            }
         }
         foreach (string path in singleFileAppHosts ?? [])
         {
@@ -237,6 +296,9 @@ public sealed record RunConfiguration
         return generated;
     }
 
+    /// <summary>What a Godot project's configuration that starts Godot's editor on it is called after the project's name.</summary>
+    public const string GodotEditorName = "Godot Editor";
+
     /// <summary>The name of the configuration generated for a project itself, which those of its launch profiles begin with
     /// ("Hello", "Aspire: Host").</summary>
     public static string NameOf(ProjectModel project) => project.IsAspireHost ? $"Aspire: {project.Name}" : project.Name;
@@ -258,6 +320,9 @@ public sealed record RunConfiguration
             LaunchProfile = profile.Name,
             Program = profile.RunsProject ? string.Empty : profile.ExecutablePath ?? string.Empty,
             Arguments = profile.CommandLineArgs ?? string.Empty,
+            // A Godot project's profile running Godot on it with --editor opens its editor, as the editor's configuration does.
+            GodotEditor = project.GodotFolder is not null && !profile.RunsProject && profile.ExecutablePath is { } program
+                && GodotExecutables.NamesGodot(program, OperatingSystem.IsWindows()) && GodotExecutables.OpensEditor(CommandLine.Split(profile.CommandLineArgs)),
             Environment = profile.Environment(),
             WorkingDirectory = string.IsNullOrWhiteSpace(profile.WorkingDirectory) ? DotnetRunFolder : profile.WorkingDirectory,
             LaunchBrowser = profile.LaunchBrowser,
@@ -292,6 +357,8 @@ public sealed record RunConfiguration
         LaunchProfile = LaunchProfile ?? string.Empty,
         Program = Program ?? string.Empty,
         Arguments = Arguments ?? string.Empty,
+        GodotCopies = Math.Clamp(GodotCopies, 1, GameCopies.Most),
+        CopyArguments = [.. (CopyArguments ?? []).Select(a => a ?? string.Empty).Take(GameCopies.Most)],
         Environment = (Environment ?? []).Where(v => !string.IsNullOrEmpty(v.Key)).ToDictionary(v => v.Key, v => v.Value ?? string.Empty),
         WorkingDirectory = WorkingDirectory ?? string.Empty,
         BrowserUrl = BrowserUrl ?? string.Empty,

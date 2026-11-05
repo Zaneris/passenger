@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Passenger.App.Editors;
+using Passenger.App.Settings;
 using Passenger.App.Vcs;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -77,6 +78,21 @@ public partial class MainWindow
 
     private void AddVcs()
     {
+        // A diff's tab brought back (Reopen Closed Tab, Back) is asked for afresh, else shown again while its file is open.
+        Editors.ReopenDiff = shown =>
+        {
+            if (shown.Again is { } again)
+            {
+                IdeErrors.Observe(again());
+                return true;
+            }
+            if (shown.File is not null && !Editors.Documents.Contains(shown.File))
+            {
+                return false;
+            }
+            ShowDiff(shown);
+            return true;
+        };
         // Each built as it is first shown or asked for, over the session's Git then.
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Commit, "Commit", IconKeys.Commit, MakeCommit, Docking.ToolAnchor.LeftTop)
         {
@@ -145,6 +161,13 @@ public partial class MainWindow
         commitView?.Bind(vcs);
         gitView?.Bind(vcs);
         vcs.SaveFirst = Editors.SaveAllLandedAsync;
+        vcs.SignOffChanged += (_, _) =>
+        {
+            if (session == next)
+            {
+                session.State?.Commit.Set(new CommitState { SignOff = vcs.SignOff });
+            }
+        };
         vcs.ChooseRemote = ChooseRemoteAsync;
         vcs.AskGit = AskGitAsync;
         vcs.Message += (_, message) =>
@@ -316,7 +339,8 @@ public partial class MainWindow
         {
             IdeErrors.Write($"Git: {call.Agent}'s {call.Tool} needed {question.Asks}, with nobody at the window to give it");
             return GitAnswer.No($"git asked for {question.Asks}, and nobody is at {(AgentsOwn ? "this IDE" : "the window")} to give it: "
-                + "a credential helper (git config credential.helper), or an ssh agent holding the key, lets git reach the remote without asking");
+                + (question.Signs ? "an agent holding the key (ssh-add, gpg-agent) lets git sign without asking"
+                    : "a credential helper (git config credential.helper), or an ssh agent holding the key, lets git reach the remote without asking"));
         }
         GitQuestionDialog dialog = new(question, call?.Agent);
         GitQuestion = dialog;
@@ -404,11 +428,11 @@ public partial class MainWindow
         popups.Show(popup, _ => { });
     }
 
-    /// <summary>Show Diff: the last commit's text beside the file's, in a window over this one. The right side is the
-    /// open file's own text when it is open, so an edit or a change put back there is the file's, in the file's colours as
-    /// they change; a change of the file's encoding, byte order mark or mode is said over them. A binary file has no
-    /// lines to compare: the status bar says how it differs.</summary>
-    public async Task<DiffWindow?> ShowDiffAsync(string path)
+    /// <summary>Show Diff: the last commit's text beside the file's, where Settings opens diffs (<see cref="ShowDiff"/>).
+    /// The right side is the open file's own text when it is open, so an edit or a change put back there is the file's, in
+    /// the file's colours as they change; a change of the file's encoding, byte order mark or mode is said over them. A
+    /// binary file has no lines to compare: the status bar says how it differs.</summary>
+    public async Task<IDiffHost?> ShowDiffAsync(string path)
     {
         if (session.Vcs.Repository is null)
         {
@@ -432,15 +456,14 @@ public partial class MainWindow
             diff = await BackgroundWork.Run(() => FileDiff.Compare(head, text));
         }
         string[] besides = [.. new[] { await encoding, mode?.Said }.OfType<string>()];
-        DiffWindow window = OpenLocalDiff(path, open, mine, diff, "HEAD");
-        window.View.Note = besides.Length == 0 ? null : string.Join("; ", besides);
-        return window;
+        return OpenLocalDiff(path, open, mine, diff, "HEAD", note: besides.Length == 0 ? null : string.Join("; ", besides), again: () => ShowDiffAsync(path));
     }
 
     /// <summary>A version's text (the last commit's, a branch's, a revision's), or another file's (Compare With, named by
-    /// <paramref name="other"/>), beside the file's in a window over this one, the right side the open file's own text when
-    /// it is still open.</summary>
-    private DiffWindow OpenLocalDiff(string path, OpenDocument? open, TextDocument mine, FileDiff diff, string version, string? other = null)
+    /// <paramref name="other"/>), beside the file's where Settings opens diffs, the right side the open file's own text when
+    /// it is still open, <paramref name="note"/> said after the differences, <paramref name="again"/> how it is asked for afresh.</summary>
+    private IDiffHost OpenLocalDiff(string path, OpenDocument? open, TextDocument mine, FileDiff diff, string version, string? other = null, string? note = null,
+        Func<Task<IDiffHost?>>? again = null)
     {
         // Closed while the differences were read, the file's text is one nothing would save: it is shown, not edited.
         if (open is not null && !Editors.Documents.Contains(open))
@@ -449,10 +472,58 @@ public partial class MainWindow
         }
         string mineTitle = other is null ? "Your version" : InFolder(path);
         string title = other is null ? $"{Path.GetFileName(path)}: {version} and your version" : $"{Path.GetFileName(other)} vs {Path.GetFileName(path)}";
-        DiffView view = Diffs.ForFile(other is null ? Path.GetFileName(path) : title, diff, mine, open,
-            (version, open is not null ? mineTitle : $"{mineTitle} (read-only)"), other ?? path, path);
-        DiffWindow window = new(title, view);
-        if (open is { } file)
+        (string Left, string Right) titles = (version, open is not null ? mineTitle : $"{mineTitle} (read-only)");
+        return ShowDiff(new DiffContent(title, $"{version}\n{other ?? path}\n{path}", path, open, () =>
+        {
+            DiffView view = Diffs.ForFile(other is null ? Path.GetFileName(path) : title, diff, mine, open, titles, other ?? path, path);
+            view.Note = note;
+            return view;
+        })
+        { Again = again });
+    }
+
+    /// <summary>How the window's diffs and merges are made: Highlighting Differences as Settings has it, kept when a diff
+    /// changes it.</summary>
+    private DiffPanes Diffs => diffs ??= new(() => settings.DiffHighlighting, way => ApplySettings(settings with { DiffHighlighting = way }));
+
+    /// <summary>What a commit did to a file: its first parent's text beside its own, both read-only.</summary>
+    public async Task<IDiffHost?> ShowCommitDiffAsync(CommitInfo commit, FileChange file)
+    {
+        if (session.Vcs.Repository is null)
+        {
+            return null;
+        }
+        string? parent = commit.Parents.Count > 0 ? commit.Parents[0] : null;
+        string before = parent is null || file.Kind is ChangeKind.Added ? string.Empty : (await session.Vcs.VersionAsync(parent, file.From ?? file.Path, file.Path))?.Text ?? string.Empty;
+        string after = file.Kind is ChangeKind.Deleted ? string.Empty : (await session.Vcs.VersionAsync(commit.Hash, file.Path, file.Path))?.Text ?? string.Empty;
+        string leftTitle = parent is null ? "Before the first commit" : parent[..Math.Min(8, parent.Length)];
+        TextDocument mine = new(after);
+        TextSnapshot text = mine.Snapshot;
+        FileDiff diff = await BackgroundWork.Run(() => FileDiff.Compare(before, text));
+        return ShowDiff(new DiffContent($"{file.Name}: {commit.Short} {commit.Subject}", $"{commit.Hash}\n{file.From ?? file.Path}\n{file.Path}", file.Path, null,
+            () => Diffs.ForFile(file.Name, diff, mine, null, (leftTitle, commit.Short), file.From ?? file.Path, file.Path)));
+    }
+
+    /// <summary>Shows a diff where Settings opens them (Open diffs in): in a window of its own over this one, or in a tab of
+    /// the active group, the tab open for the same versions taking it afresh (<see cref="DiffTab.Take"/>).</summary>
+    private IDiffHost ShowDiff(DiffContent shown)
+    {
+        if (settings.OpenDiffsIn == DiffPlace.Tab)
+        {
+            if (Editors.Diffs.Select(d => d.Diff!).FirstOrDefault(d => d.Shown.Key == shown.Key) is { } open)
+            {
+                open.Take(shown);
+                Editors.Activate(open.Document);
+                return open;
+            }
+            DiffTab tab = new(Editors, shown, WireDiff);
+            Editors.Activate(tab.Document);
+            return tab;
+        }
+        DiffView view = shown.Make();
+        DiffWindow window = new(shown, view);
+        WireDiff(view, window);
+        if (shown.File is { } file)
         {
             // The file stays open while the diff edits it, so what is typed there is saved; closed for good, the diff goes too.
             IDisposable hold = Editors.Hold(file);
@@ -470,43 +541,27 @@ public partial class MainWindow
                 hold.Dispose();
             };
         }
-        ShowDiff(window);
-        return window;
-    }
-
-    /// <summary>How the window's diffs and merges are made: Highlighting Differences as Settings has it, kept when a diff
-    /// changes it.</summary>
-    private DiffPanes Diffs => diffs ??= new(() => settings.DiffHighlighting, way => ApplySettings(settings with { DiffHighlighting = way }));
-
-    /// <summary>What a commit did to a file: its first parent's text beside its own, both read-only.</summary>
-    public async Task<DiffWindow?> ShowCommitDiffAsync(CommitInfo commit, FileChange file)
-    {
-        if (session.Vcs.Repository is null)
-        {
-            return null;
-        }
-        string? parent = commit.Parents.Count > 0 ? commit.Parents[0] : null;
-        string before = parent is null || file.Kind is ChangeKind.Added ? string.Empty : (await session.Vcs.VersionAsync(parent, file.From ?? file.Path, file.Path))?.Text ?? string.Empty;
-        string after = file.Kind is ChangeKind.Deleted ? string.Empty : (await session.Vcs.VersionAsync(commit.Hash, file.Path, file.Path))?.Text ?? string.Empty;
-        string leftTitle = parent is null ? "Before the first commit" : parent[..Math.Min(8, parent.Length)];
-        TextDocument mine = new(after);
-        TextSnapshot text = mine.Snapshot;
-        FileDiff diff = await BackgroundWork.Run(() => FileDiff.Compare(before, text));
-        DiffView view = Diffs.ForFile(file.Name, diff, mine, null, (leftTitle, commit.Short), file.From ?? file.Path, file.Path);
-        DiffWindow window = new($"{file.Name}: {commit.Short} {commit.Subject}", view);
-        ShowDiff(window);
-        return window;
-    }
-
-    /// <summary>Shows a diff's window over this one, its Jump to Source opening the file here (<see cref="JumpToSource"/>).</summary>
-    private void ShowDiff(DiffWindow window)
-    {
-        window.View.SourceRequested += (_, _) => JumpToSource(window.View);
         ShowOwn(window);
+        return window;
     }
 
-    /// <summary>A diff's Jump to Source: its file at the line its caret is on, the diff's window closed so the file shows.</summary>
-    private void JumpToSource(DiffView diff)
+    /// <summary>A diff's view as its host shows it: its Jump to Source opens the file here (<see cref="JumpToSource"/>).</summary>
+    private void WireDiff(DiffView view, IDiffHost host) => view.SourceRequested += (_, _) => JumpToSource(view, host);
+
+    /// <summary>The diffs open go where Settings now opens them: each window's into a tab, or each tab's into a window,
+    /// the file each edits held open throughout.</summary>
+    private void MoveDiffs(DiffPlace to)
+    {
+        List<IDiffHost> moving = to == DiffPlace.Tab ? [.. OwnedWindows.OfType<DiffWindow>()] : [.. Editors.Diffs.Select(d => d.Diff!)];
+        foreach (IDiffHost host in moving)
+        {
+            ShowDiff(host.Shown);
+            host.Close();
+        }
+    }
+
+    /// <summary>A diff's Jump to Source: its file at the line its caret is on, a diff's window closed so the file shows.</summary>
+    private void JumpToSource(DiffView diff, IDiffHost host)
     {
         if (WhyNotJump(diff) is { } why)
         {
@@ -514,7 +569,7 @@ public partial class MainWindow
             return;
         }
         TextPosition at = diff.SourcePlace;
-        (TopLevel.GetTopLevel(diff) as Window)?.Close();
+        host.GiveWay();
         NavigateTo(diff.Source!, at);
         Activate();
     }
@@ -665,7 +720,7 @@ public partial class MainWindow
         {
             WhyNot = context => DiffWithKeys(context) is null ? NoDiff : null,
         });
-        actions.Add(new IdeAction(AppActions.DiffJumpToSource, "Jump to Source", "Git", context => JumpToSource(DiffWithKeys(context)!))
+        actions.Add(new IdeAction(AppActions.DiffJumpToSource, "Jump to Source", "Git", context => DiffWithKeys(context)!.AskForSource())
         {
             WhyNot = context => DiffWithKeys(context) is { } diff ? WhyNotJump(diff) : NoDiff,
         });
@@ -675,9 +730,18 @@ public partial class MainWindow
             WhyNot = context => NeedsFolder(context) ?? session.Vcs.WhyNotCreate,
             Menus = [new MenuPlace("Git", 4, 1)],
         });
+        actions.Add(new IdeAction(AppActions.CommitSigning, SigningFailure.SetUp, "Git", _ => IdeErrors.Observe(ShowCommitSigningAsync()))
+        {
+            WhyNot = NeedsRepository,
+            Menus = [new MenuPlace("Git", 4, 2)],
+        });
         // The Commit and Git windows' Refresh: the working tree's changes, and the log shown, read again.
         actions.Add(new IdeAction(AppActions.CommitRefresh, "Refresh Changes", "Git", _ => IdeErrors.Observe(session.Vcs.RefreshAsync())) { WhyNot = NeedsRepository });
-        actions.Add(new IdeAction(AppActions.GitLogRefresh, "Refresh Git Log", "Git", _ => IdeErrors.Observe(GitWindow.RefreshAsync())) { WhyNot = NeedsRepository });
+        actions.Add(new IdeAction(AppActions.GitLogRefresh, "Refresh Git Log", "Git", _ =>
+        {
+            session.Vcs.Signatures.Forget();
+            IdeErrors.Observe(GitWindow.RefreshAsync());
+        }) { WhyNot = NeedsRepository });
 
         string? NeedsRepository(ActionContext context) => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : null);
 
@@ -690,6 +754,31 @@ public partial class MainWindow
     }
 
     private const string NoDiff = "No diff has the keys";
+
+    /// <summary>The Commit Signing dialog while it is open; null once it closes.</summary>
+    public CommitSigningDialog? CommitSigning { get; private set; }
+
+    /// <summary>Commit Signing…: how commits are signed, set up in the dialog as git's config has it now, then written to git's
+    /// config as chosen.</summary>
+    private async Task ShowCommitSigningAsync()
+    {
+        VcsController vcs = session.Vcs;
+        SigningSetup setup = await vcs.SigningAsync();
+        CommitSigningDialog dialog = new(setup, vcs.Repository, VcsController.GlobalAllowedSigners);
+        CommitSigning = dialog;
+        try
+        {
+            await dialog.ShowDialog(this);
+        }
+        finally
+        {
+            CommitSigning = null;
+        }
+        if (dialog.Choice is { } choice && vcs == session.Vcs)
+        {
+            await vcs.SetUpSigningAsync(choice);
+        }
+    }
 
     private static DiffView? DiffWithKeys(ActionContext context) => (context.Focused as Visual)?.FindAncestorOfType<DiffView>(includeSelf: true);
 

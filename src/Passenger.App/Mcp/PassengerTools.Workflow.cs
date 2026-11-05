@@ -124,7 +124,8 @@ public sealed partial class PassengerTools
 
     [McpServerTool(Name = McpTools.VcsCommit, Title = "Commit", Destructive = true), Description(
         "Commits the paths given, else every changed file but the unversioned (saved first), with message; amend changes the " +
-        "last commit (with paths [], its message alone), push pushes after. Returns the commit and how the push went; a push the remote refuses is an error with " +
+        "last commit (with paths [], its message alone), push pushes after; signed as git's config says and signed off as the Commit window's Sign-off is, " +
+        "as the window commits. Returns the commit and how the push went; a push the remote refuses is an error with " +
         "git's reason, the commit made all the same.")]
     public Task<string> VcsCommit(string message, IReadOnlyList<string>? paths = null, bool amend = false, bool push = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
@@ -135,10 +136,13 @@ public sealed partial class PassengerTools
             ? [.. vcs.Changes.Where(c => c.Kind is not ChangeKind.Unversioned && c.Uncommittable is null)]
             : [.. paths.Select(Resolve).Select(p => vcs.Changes.FirstOrDefault(c => c.Path == p) ?? throw new ArgumentException($"{Relative(p)} has no changes to commit"))];
         AgentCall.Say($"Committing {Plural.Of(chosen.Count, "file")}{(push ? " and pushing" : string.Empty)}");
-        CommitResult result = await vcs.CommitAsync(chosen, message, amend, push, ask: false);
+        CommitResult result = await vcs.CommitAsync(chosen, message, amend, push, ask: false, signing: new CommitSigning(SignOff: vcs.SignOff));
         if (!result.Commit.Succeeded)
         {
-            throw new InvalidOperationException(result.Commit.Message);
+            // A rebase stopped for conflicts goes on by its own action, which an agent runs by its id.
+            throw new InvalidOperationException(vcs.Merge is { Operation: MergeOperation.Rebase, Stop: null }
+                ? $"{result.Commit.Message} (ide_action {AppActions.ContinueRebase} and {AppActions.AbortRebase})"
+                : result.Commit.Message);
         }
         string made = result.Made is { } head ? $"{head.Short} {head.Subject}" : result.Commit.Message;
         return result.Push switch
@@ -150,7 +154,8 @@ public sealed partial class PassengerTools
     });
 
     [McpServerTool(Name = McpTools.VcsLog, Title = "The history", ReadOnly = true), Description(
-        "The newest commits of every branch, with their branches and tags. With a path, Show History's: the commits from HEAD " +
+        "The newest commits (count of them, at most 500) of every branch, with their branches and tags and a signed one's signature (good, unverified, bad or " +
+        "expired, by whom and with which key). With a path, Show History's: the commits from HEAD " +
         "that changed that file (followed through renames) or folder, each with what it did there; with startLine and endLine " +
         "too, those that changed those lines.")]
     public Task<IReadOnlyList<VcsCommit>> VcsLog(int count = 20, string? path = null, int? startLine = null, int? endLine = null,
@@ -158,21 +163,38 @@ public sealed partial class PassengerTools
     {
         await Session.Vcs.Opened;
         Git repository = Session.Vcs.Repository ?? throw new InvalidOperationException(Session.Vcs.NoRepository);
-        int most = Math.Clamp(count, 1, 500);
+        if (count < 1)
+        {
+            throw new ArgumentException($"count is {count}: vcs_log lists 1 or more", nameof(count));
+        }
+        int most = Math.Min(count, 500);
         (int, int)? lines = (startLine, endLine) switch
         {
             (null, null) => null,
             (int first, int last) when path is not null && first >= 1 && last >= first => (first - 1, last - 1),
             _ => throw new ArgumentException("startLine and endLine come together, with a path, from 1 and the last at or after the first"),
         };
+        IReadOnlyDictionary<string, CommitSignature?> signatures;
         if (path is null)
         {
-            return (IReadOnlyList<VcsCommit>)[.. (await repository.LogAsync(most)).Select(c => Commit(c, null))];
+            IReadOnlyList<CommitInfo> commits = await repository.LogAsync(most);
+            signatures = await Session.Vcs.Signatures.ReadAsync(repository, [.. commits.Select(c => c.Hash)]);
+            return (IReadOnlyList<VcsCommit>)[.. commits.Select(c => Commit(c, null))];
+        }
+        string full = Resolve(path);
+        // Lines past the file's end are no lines at all, never ones not committed yet.
+        if (lines is (_, int lastAsked) && !Directory.Exists(full)
+            && (Editors.Find(full) is { HoldsText: true } open ? open.Text.Snapshot : Passenger.App.Editors.EditorArea.Read(full)) is { } text
+            && lastAsked >= text.LineCount)
+        {
+            throw new ArgumentException($"{Relative(full)} has {Plural.Of(text.LineCount, "line")}, as editor_text numbers them: endLine {lastAsked + 1} is past its end", nameof(endLine));
         }
         // Read now, so a rename made a moment ago is followed to where the last commit has the file.
         await Session.Vcs.RefreshAsync();
-        HistoryScope scope = await window.HistoryScopeAsync(Resolve(path), lines);
-        return [.. (await repository.HistoryAsync(scope, most)).Select(h => Commit(h.Commit, h.Changes))];
+        HistoryScope scope = await window.HistoryScopeAsync(full, lines);
+        IReadOnlyList<HistoryCommit> history = await repository.HistoryAsync(scope, most);
+        signatures = await Session.Vcs.Signatures.ReadAsync(repository, [.. history.Select(h => h.Commit.Hash)]);
+        return [.. history.Select(h => Commit(h.Commit, h.Changes))];
 
         VcsCommit Commit(CommitInfo commit, IReadOnlyList<FileChange>? changes) => new(
             commit.Short,
@@ -180,7 +202,10 @@ public sealed partial class PassengerTools
             commit.Author,
             commit.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture),
             commit.Refs,
-            changes?.Select(c => new VcsChange(Relative(c.Path), c.Kind.ToString().ToLowerInvariant(), c.From is { } from ? Relative(from) : null)).ToList());
+            changes?.Select(c => new VcsChange(Relative(c.Path), c.Kind.ToString().ToLowerInvariant(), c.From is { } from ? Relative(from) : null)).ToList())
+        {
+            Signature = signatures.GetValueOrDefault(commit.Hash)?.Said,
+        };
     });
 
     [McpServerTool(Name = McpTools.VcsCheckout, Title = "Check out a branch", Destructive = true), Description(
@@ -189,6 +214,13 @@ public sealed partial class PassengerTools
     {
         VcsController vcs = Session.Vcs;
         await vcs.Opened;
+        // A branch named that git has not, nor a remote's of that name it would track, is said in words an agent goes on from.
+        if (!create && vcs.Repository is { } repository && await repository.RefNamesAsync() is { Count: > 0 } refs
+            && !refs.Any(r => r.Name == branch || r.Kind == RefKind.Remote && r.Name.EndsWith($"/{branch}", StringComparison.Ordinal)))
+        {
+            string[] locals = [.. refs.Where(r => r.Kind == RefKind.Local).Select(r => r.Name)];
+            throw new InvalidOperationException($"No branch {branch} is here: create true makes it from the head; the local branches are {AgentAnswers.Named(locals, "branch", "vcs_log lists every branch's commits")}");
+        }
         AgentCall.Say($"Checking out {branch}");
         VcsOutcome switched = create ? await vcs.NewBranchAsync(branch) : await vcs.CheckoutAsync(branch);
         if (switched.Problem is { } failed)
@@ -205,8 +237,20 @@ public sealed partial class PassengerTools
     public Task<IReadOnlyList<StashSummary>> VcsStash(string action = "list", string message = "", int index = 0, string? commit = null,
         CancellationToken cancel = default) => OnUi<IReadOnlyList<StashSummary>>(cancel, async () =>
     {
+        if (action is not ("list" or "push" or "pop" or "apply" or "drop"))
+        {
+            throw new ArgumentException($"No stash action '{action}'; there are list, push, pop, apply and drop", nameof(action));
+        }
+        if (action == "list" && message.Length > 0)
+        {
+            throw new ArgumentException("A message names the stash push puts away: give action push, as list (the default) stashes nothing", nameof(message));
+        }
         VcsController vcs = Session.Vcs;
         await vcs.Opened;
+        if (vcs.Repository is null)
+        {
+            throw new InvalidOperationException(vcs.NoRepository);
+        }
         if (action != "list")
         {
             IReadOnlyList<StashInfo> before = await vcs.StashesAsync();
@@ -392,6 +436,7 @@ public sealed partial class PassengerTools
             Frames = snapshot.Place is { } elsewhere && snapshot.HotSpots.Any(h => h.Module.StartsWith("Avalonia", StringComparison.Ordinal))
                 ? new UiFramesInfo(0, 0, 0, 0, 0, []) { Why = Profiling.FramesView.InContainer(elsewhere.Where) }
                 : UiFramesOf(snapshot.UiFrames, Math.Clamp(top, 1, 200), inspected),
+            Godot = GameFramesOf(snapshot, Math.Clamp(top, 1, 200)),
         };
 
         ProfileFrame Frame(string method, int total, int self) =>
@@ -458,6 +503,45 @@ public sealed partial class PassengerTools
             _ => throw new InvalidOperationException($"{reachable.Count} .NET programs run in {container} ({string.Join(", ", reachable.Select(p => p.Program))}): "
                 + "attach the debugger to the one to profile (debug_attach), then profile with attach alone"),
         };
+    }
+
+    /// <summary>A Godot game's frames as the profile tool says them, as the Frames page does: their times, GDScript's functions
+    /// by their own time, and the C# the engine called sampled in the same frames; null for any other program.</summary>
+    private static GameFramesInfo? GameFramesOf(Passenger.Profiler.Snapshot snapshot, int top)
+    {
+        if (snapshot.Game is not { } game)
+        {
+            return null;
+        }
+        IReadOnlyList<Passenger.Profiler.GameFrame> frames = snapshot.GameFrames;
+        if (frames.Count == 0)
+        {
+            return new GameFramesInfo(0, 0, 0, 0, 0, 0, [], []) { Why = game.Why ?? "Godot sent no frames while the game was profiled" };
+        }
+        Passenger.Profiler.GameJoin joined = snapshot.Joined(frames);
+        double[] times = [.. frames.Select(f => f.FrameMs).Order()];
+        return new GameFramesInfo(frames.Count, Math.Round(Passenger.Profiler.UiFrames.Percentile(times, 0.5), 2), Math.Round(times[^1], 2),
+            Math.Round(frames.Sum(f => Math.Max(0, f.FrameMs - f.ProcessMs)), 1), Math.Round(frames.Sum(f => f.ScriptMs), 1), Math.Round(joined.FrameMs.Sum(), 1),
+            [.. game.Spots(frames).Take(top).Select(s => new ScriptFunctionInfo(s.Function.Name, s.Function.IsEngineCall ? null : $"{s.Function.File}:{s.Function.Line}",
+                s.Calls, Math.Round(s.SelfMs, 2), Math.Round(s.TotalMs, 2)))],
+            [.. joined.CSharp.Take(top).Select(m => new ProfileFrame(m.Name, (int)Math.Round(m.Total * joined.SampleMs), (int)Math.Round(m.Self * joined.SampleMs)))])
+        {
+            Drawn = game.Draws ? null : "The game ran headless, so Godot drew nothing: no render stages",
+            Slowest = SlowestOf(snapshot, game, frames.MaxBy(f => f.FrameMs)!),
+        };
+    }
+
+    /// <summary>A game's slowest frame as the Frames page's link opens it: its number and time, and the function that spent
+    /// the most time in itself in it, GDScript's or C#'s, as the call tree of the frame alone chooses it.</summary>
+    private static SlowFrameInfo SlowestOf(Passenger.Profiler.Snapshot snapshot, Passenger.Profiler.GameProfile game, Passenger.Profiler.GameFrame frame)
+    {
+        Passenger.Profiler.Snapshot within = snapshot.Within(frame.StartMs, frame.EndMs);
+        double period = within.SampleMs > 0 ? within.SampleMs : 1;
+        IReadOnlyList<Passenger.Profiler.CallNode> roots = [.. within.Threads,
+            .. game.CallRoots(within.GameFrames, within.Samples > 0 ? within.Joined(within.GameFrames).FrameMs : [], period)];
+        Passenger.Profiler.CallNode? costliest = Profiling.ProfilerView.Costliest(roots);
+        return new SlowFrameInfo(frame.Number, Math.Round(frame.FrameMs, 2), costliest?.Name, costliest is null ? null : costliest.Script is not null ? "GDScript" : "C#",
+            costliest is null ? 0 : Math.Round(costliest.Self * period, 2), costliest?.Script is { } function ? $"{function.File}:{function.Line}" : null);
     }
 
     /// <summary>An Avalonia app's frames as the profile tool says them, the heaviest controls first; for an app the
@@ -644,7 +728,12 @@ public sealed record VcsChange(string Path, string Kind, string? From, string? U
 }
 
 /// <summary>A commit as vcs_log lists it; with a path, what it did there.</summary>
-public sealed record VcsCommit(string Hash, string Subject, string Author, string Date, IReadOnlyList<string> Refs, IReadOnlyList<VcsChange>? Changes = null);
+public sealed record VcsCommit(string Hash, string Subject, string Author, string Date, IReadOnlyList<string> Refs, IReadOnlyList<VcsChange>? Changes = null)
+{
+    /// <summary>Its signature in a sentence that begins with what it is worth (Good, Unverified, Bad, Expired); null where
+    /// it is unsigned.</summary>
+    public string? Signature { get; init; }
+}
 
 /// <summary>A frame of a profile: a method, the milliseconds with it on the stack, and those in it alone; for a hot spot in
 /// the folder's own code, where the method is (path:line).</summary>
@@ -652,12 +741,42 @@ public sealed record ProfileFrame(string Method, int TotalMs, int SelfMs, string
 
 public sealed record ProfileInfo(double DurationMs, int Samples, int Threads, IReadOnlyList<ProfileFrame> HotSpots, IReadOnlyList<ProfileFrame> HotPath, string Trace, IReadOnlyList<HeapTypeInfo>? Heap = null)
 {
-    /// <summary>Why there is no heap when a memory snapshot was asked for, or what taking it put into the program's output.</summary>
+    /// <summary>Why there is no heap when a memory snapshot was asked for, what taking it put into the program's output, or
+    /// what a snapshot read from the runtime's own heap dump lacks.</summary>
     public string? HeapNote { get; init; }
 
     /// <summary>An Avalonia app's frames, as the Frames page shows them; null for any other program.</summary>
     public UiFramesInfo? Frames { get; init; }
+
+    /// <summary>A Godot game's frames as Godot's own profiler measured them, joined with the samples; null for any other program.</summary>
+    public GameFramesInfo? Godot { get; init; }
 }
+
+/// <summary>A Godot game's frames in a profile: how many, their time at the median and the longest, the time in physics,
+/// GDScript's own and the C# the engine called (sampled) in all, the script functions by their own time (a call into Godot's
+/// API has no source), and the C# methods by their time in all, sampled in the same frames.</summary>
+public sealed record GameFramesInfo(int Count, double MedianMs, double LongestMs, double PhysicsMs, double GDScriptMs, double CSharpMs,
+    IReadOnlyList<ScriptFunctionInfo> GDScript, IReadOnlyList<ProfileFrame> CSharp)
+{
+    /// <summary>How the two languages are joined: by frame, not by call.</summary>
+    public string Joined => Profiling.GameFramesView.Joining;
+
+    /// <summary>Why there are none, when there are none.</summary>
+    public string? Why { get; init; }
+
+    /// <summary>Why it has no render stages, when it drew nothing.</summary>
+    public string? Drawn { get; init; }
+
+    /// <summary>The slowest frame, on what it spent.</summary>
+    public SlowFrameInfo? Slowest { get; init; }
+}
+
+/// <summary>A game's slowest frame: its number and time, and the function, GDScript's or C#'s (its language), that spent the
+/// most time in itself in it, with that time and a GDScript function's res:// place; none where the frame held none.</summary>
+public sealed record SlowFrameInfo(int Frame, double Ms, string? Costliest, string? Language, double CostliestMs, string? Source);
+
+/// <summary>A script function in a game's frames: its name, its res:// place, its calls, and its own time and time in all.</summary>
+public sealed record ScriptFunctionInfo(string Name, string? Source, int Calls, double SelfMs, double TotalMs);
 
 /// <summary>An Avalonia app's frames in a profile: how many, their UI thread's time at the median and at the longest, the time
 /// measuring and arranging and recording what to render in all, and the controls heaviest in layout by their own time.</summary>

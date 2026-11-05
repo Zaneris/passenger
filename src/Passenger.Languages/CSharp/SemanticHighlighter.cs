@@ -132,9 +132,14 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
     private void OnSyntaxChanged(object? sender, EventArgs e)
     {
         KeptColours = syntax.KeptColours;
+        ChangedWithin = syntax.ChangedWithin;
         Changed?.Invoke(this, EventArgs.Empty);
         KeptColours = false;
+        ChangedWithin = null;
     }
+
+    /// <summary>The parser's word of where its colours changed, while it is raised: the server's tokens are as they were.</summary>
+    public TextRange? ChangedWithin { get; private set; }
 
     /// <summary>The parser's word that it kept every colour it had given, while it is raised: the server's tokens are as
     /// they were.</summary>
@@ -209,7 +214,12 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
         {
             if (delay > TimeSpan.Zero)
             {
-                await Task.Delay(delay, cancel);
+                // Asked again, the wait ends quietly: an exception thrown at every key costs its thread more than the wait.
+                await Task.Delay(delay, cancel).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
+                if (cancel.IsCancellationRequested)
+                {
+                    return;
+                }
             }
             TextSnapshot snapshot = document.Text.Snapshot;
             int version = document.Text.Version;
@@ -226,7 +236,11 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
                     // The rest of the file once typing stops: nothing on screen waits for it, so no screenshot does.
                     BackgroundWork.End();
                     held = false;
-                    await Task.Delay(Idle, cancel);
+                    await Task.Delay(Idle, cancel).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
+                    if (cancel.IsCancellationRequested)
+                    {
+                        return;
+                    }
                     BackgroundWork.Begin();
                     held = true;
                 }

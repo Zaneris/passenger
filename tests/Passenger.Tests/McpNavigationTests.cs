@@ -1,7 +1,12 @@
 using System.Text.Json;
+using Avalonia.Headless.XUnit;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Passenger.App;
 using Passenger.App.Mcp;
+using Passenger.App.State;
+using Passenger.App.Workspace;
+using Passenger.Core;
 
 namespace Passenger.Tests;
 
@@ -29,6 +34,169 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
 
     private const string Tally = "static class Tally\n{\n    public static int Of(string text) => Words.Count(text) + Words.Count(text, 1);\n\n"
         + "    public static int CountAll(string[] texts) => texts.Sum(Words.Count);\n}\n";
+
+    /// <summary>A restored app and the library a solution filter leaves out of it, neither built.</summary>
+    private async Task<string> AppWithoutItsLibraryAsync()
+    {
+        string folder = AppAndLibrary();
+        await Restore.RunAsync(Path.Combine(folder, "Shop.slnx"));
+        return folder;
+    }
+
+    /// <summary>An app and the library a solution filter leaves out of it, not yet restored.</summary>
+    private string AppAndLibrary()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-unloaded-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "Lib/Lib.csproj", TestProjects.Library());
+        TestFolders.Write(folder, "Lib/Greeter.cs", "namespace Lib;\n\npublic sealed class Greeter(string who)\n{\n    public string Who { get; } = who;\n\n"
+            + "    public string Greet(string greeting) => $\"{greeting}, {Who}\";\n}\n");
+        TestFolders.Write(folder, "App/App.csproj", TestProjects.Console().With("  <ItemGroup>\n    <ProjectReference Include=\"../Lib/Lib.csproj\" />\n  </ItemGroup>\n"));
+        TestFolders.Write(folder, "App/Program.cs", "Lib.Greeter greeter = new(\"Ada\");\nSystem.Console.WriteLine(greeter.Greet(\"Hello\") + greeter.Who);\n");
+        TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
+        TestFolders.Write(folder, "App.slnf", "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [ \"App\\\\App.csproj\" ]\n  }\n}\n");
+        return folder;
+    }
+
+    /// <summary>The solution a filter leaves a library out of, as a fresh clone opens it: the assembly of the library is
+    /// not there as C# loads the app, so nothing of it is known, and the first build, however quick, takes it in with no
+    /// restart, what the agent asks next finding the library's types; each build after that brings what it added.</summary>
+    [Fact]
+    public async Task A_first_build_of_a_project_a_solution_filter_leaves_out_takes_its_assembly_in_and_each_build_after_it_what_it_added()
+    {
+        string folder = await AppWithoutItsLibraryAsync();
+        await using McpClient client = await Start(["--mcp", Path.Combine(folder, "App.slnf")]);
+
+        Assert.Contains("CS0246", await ErrorsAsync());
+        await BuiltAsync();
+        Assert.Empty(await ErrorsAsync());
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 7), await DeclaredAsync());
+
+        TestFolders.Write(folder, "Lib/Greeter.cs", File.ReadAllText(Path.Combine(folder, "Lib/Greeter.cs")).Replace("    public string Who", "    public string Twice() => Who + Who;\n\n    public string Who", StringComparison.Ordinal));
+        await Call(client, McpTools.Edit, new() { ["path"] = "App/Program.cs", ["oldText"] = "greeter.Who);", ["newText"] = "greeter.Twice());" });
+        Assert.Contains("CS1061", await ErrorsAsync());
+        await BuiltAsync();
+        Assert.Empty(await ErrorsAsync());
+
+        async Task<string[]> ErrorsAsync() => [.. (await Call(client, McpTools.Diagnostics, new() { ["path"] = "App/Program.cs" })).EnumerateArray()
+            .Where(d => d.GetProperty("severity").GetString() == "error").Select(d => d.GetProperty("code").GetString()!)];
+
+        async Task BuiltAsync()
+        {
+            JsonElement built = await Call(client, McpTools.Build);
+            Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The filter's app did not build with the project it leaves out: {built}");
+        }
+
+        async Task<(string Path, int Line)> DeclaredAsync()
+        {
+            JsonElement place = Assert.Single((await Call(client, McpTools.Definition, new() { ["path"] = "App/Program.cs", ["line"] = 2, ["column"] = 34 })).EnumerateArray());
+            return (place.GetProperty("path").GetString()!, place.GetProperty("line").GetInt32());
+        }
+    }
+
+    /// <summary>Unload Project takes the project out of the language server: nothing is answered from the text the server
+    /// read of it, so Go to Declaration from what references it finds the line where it is now, its symbols are found no
+    /// more, and a file come under it is neither waited for nor brings it back; Reload Project has it loaded again.</summary>
+    [Fact]
+    public async Task Unload_Project_takes_a_project_out_of_the_language_server_until_Reload_Project_loads_it_again()
+    {
+        string folder = await AppWithoutItsLibraryAsync();
+        await using McpClient client = await Start(["--mcp", Path.Combine(folder, "Shop.slnx")]);
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The solution did not build: {built}");
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 7), await DeclaredAsync());
+        Assert.NotEmpty(await FoundAsync("Greeter"));
+
+        await ChosenAsync(AppActions.UnloadProject);
+        Assert.Empty(await FoundAsync("Greeter"));
+        TestFolders.Write(folder, "Lib/Greeter.cs", "// A line above.\n" + File.ReadAllText(Path.Combine(folder, "Lib/Greeter.cs")));
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 8), await DeclaredAsync());
+
+        TestFolders.Write(folder, "Lib/Fresh.cs", "namespace Lib;\n\npublic sealed class Fresh;\n");
+        CallToolResult none = await Result(client, McpTools.SymbolInfo, new() { ["symbol"] = "Fresh" });
+        Assert.True(none.IsError == true && Text(none).Contains("No symbol of the solution's own code is named Fresh", StringComparison.Ordinal),
+            $"A file come under an unloaded project was waited for, or loaded the project again: {Text(none)}");
+
+        await ChosenAsync(AppActions.ReloadProject);
+        await Until(async () => (await FoundAsync("Fresh")).Length > 0, "Reload Project to load the project with the file come under it");
+
+        async Task<(string Path, int Line)> DeclaredAsync()
+        {
+            JsonElement place = Assert.Single((await Call(client, McpTools.Definition, new() { ["path"] = "App/Program.cs", ["line"] = 2, ["column"] = 34 })).EnumerateArray());
+            return (place.GetProperty("path").GetString()!, place.GetProperty("line").GetInt32());
+        }
+
+        async Task<JsonElement[]> FoundAsync(string name) => [.. (await Call(client, McpTools.FindSymbol, new() { ["query"] = name })).EnumerateArray()];
+
+        // The Explorer's row chosen, which is what the action acts on.
+        async Task ChosenAsync(string action)
+        {
+            await Call(client, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "ListBox#Rows/\"Lib\"" });
+            await Call(client, McpTools.IdeAction, new() { ["action"] = action });
+        }
+    }
+
+    /// <summary>A window keeping the folder's state takes up the language server started ahead, which loaded every project
+    /// before anything read what the folder keeps: the project the person left unloaded is taken out of it, so the server
+    /// holds what the window says is loaded. An agent's own Passenger keeps no state, so this window is built by hand.</summary>
+    [AvaloniaFact]
+    public void A_project_kept_unloaded_leaves_the_language_server_a_window_takes_up_from_its_head_start()
+    {
+        string folder = AppAndLibrary();
+        Restore.Run(Path.Combine(folder, "Shop.slnx"));
+        string lib = Path.Combine(folder, "Lib", "Lib.csproj");
+        string state = PathNames.Canonical(TestFolders.Create("mcp-kept-"));
+        DeleteAtEnd(state);
+        TestFolders.Write(ProjectState.FolderOf(state, folder), "workspace.json", JsonSerializer.Serialize(new { version = 1, unloadedProjects = new[] { lib } }));
+        LaunchOptions launch = LaunchOptions.Parse([Path.Combine(folder, "Shop.slnx")]);
+        MainWindow window = new() { Width = 1200, Height = 800, AgentsAllowed = false, AgentsOwn = true, StateFolder = state, HeadStart = HeadStart.Begin(launch, languageServer: true) };
+        try
+        {
+            window.Show();
+            window.KeepLayout();
+            window.Start(launch);
+            Ui.WaitFor(() => window.CSharpService?.Session is { IsLoaded: true }, "the language server started ahead to load the projects", TimeSpan.FromMinutes(2));
+            Assert.Equal(["App"], window.Session.Projects.Select(p => p.Name));
+            Ui.WaitFor(() => Found("Greeter") == 0, () => $"Lib, kept unloaded, to leave the language server (it knows {Found("Greeter")} Greeter)", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        int Found(string name) => Ui.Await(window.CSharpService!.Session!.SymbolsNamedAsync(name, 5), $"the language server's symbols named {name}", TimeSpan.FromMinutes(1)).Symbols.Count;
+    }
+
+    /// <summary>A symbol of a project a solution filter leaves out, which C# reads only as its built assembly, is declared in
+    /// that project's own file, never in the server's stub of the assembly: a method, a property and a primary constructor,
+    /// and a method whose source takes another parameter than the assembly built before it; the framework's still a stub.</summary>
+    [Fact]
+    public async Task Go_to_declaration_into_a_project_a_solution_filter_leaves_out_opens_its_source_at_the_declaration()
+    {
+        string folder = await AppWithoutItsLibraryAsync();
+        await using McpClient client = await Start(["--mcp", Path.Combine(folder, "App.slnf")]);
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The filter's app did not build with the project it leaves out: {built}");
+
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 7), await DeclaredAsync(client, 2, 34));
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 5), await DeclaredAsync(client, 2, 59));
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 3), await DeclaredAsync(client, 1, 23));
+        // Its source changed since its assembly was built: the method of that name, however many parameters it takes now.
+        TestFolders.Write(folder, "Lib/Greeter.cs", File.ReadAllText(Path.Combine(folder, "Lib/Greeter.cs")).Replace("Greet(string greeting)", "Greet(string greeting, int times = 1)", StringComparison.Ordinal));
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 7), await DeclaredAsync(client, 2, 34));
+        // Beside an overload taking as many parameters of another type, the one the assembly's signature names, alone.
+        TestFolders.Write(folder, "Lib/Greeter.cs", File.ReadAllText(Path.Combine(folder, "Lib/Greeter.cs")).Replace("    public string Greet(string greeting, int times = 1)",
+            "    public string Greet(int times) => times.ToString();\n\n    public string Greet(string greeting)", StringComparison.Ordinal));
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 9), await DeclaredAsync(client, 2, 34));
+        (string console, _) = await DeclaredAsync(client, 2, 16);
+        Assert.Contains("MetadataAsSource", console, StringComparison.Ordinal);
+
+        async Task<(string Path, int Line)> DeclaredAsync(McpClient asking, int line, int column)
+        {
+            JsonElement place = Assert.Single((await Call(asking, McpTools.Definition, new() { ["path"] = "App/Program.cs", ["line"] = line, ["column"] = column })).EnumerateArray());
+            return (place.GetProperty("path").GetString()!, place.GetProperty("line").GetInt32());
+        }
+    }
 
     [Fact]
     public async Task An_agent_finds_the_solutions_own_symbols_reads_usages_in_order_and_hears_when_no_symbol_is_where_it_asked()
@@ -111,6 +279,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         await TakeFolderAsync();
         Write("Words.cs", Words);
         Write("Aaa.cs", Tally);
+        Write("Figures.cs", Figures);
         await using McpClient client = await Start(["--mcp", Folder]);
 
         // Go to Symbol's matches take in CountAll; an exact find, the two overloads alone, each by its id.
@@ -135,10 +304,22 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal(("Words.cs", 8), (declared.GetProperty("path").GetString(), declared.GetProperty("line").GetInt32()));
         Assert.Equal(["Words.Count(string)", "Words.Count(string, int)"],
             (await Call(client, McpTools.Hierarchy, new() { ["symbol"] = "Words.Word" })).EnumerateArray().Select(c => c.GetProperty("name").GetString()));
+        CallToolResult ofType = await Result(client, McpTools.Hierarchy, new() { ["symbol"] = "Words" });
+        Assert.True(ofType.IsError == true && Text(ofType).Contains("Words is a type, which has no callers or callees: direction supertypes", StringComparison.Ordinal),
+            $"hierarchy of a type, its direction left as callers, answered: {Text(ofType)}");
+        Assert.Equal(["Figures.cs:3:28"], Placed(await Call(client, McpTools.Hierarchy, new() { ["symbol"] = "Square.Area", ["direction"] = "supertypes" })));
+        Assert.Equal(["Figures.cs:8:28"], Placed(await Call(client, McpTools.Hierarchy, new() { ["symbol"] = "Shape.Area", ["direction"] = "subtypes" })));
 
         Assert.Equal("Renamed in 1 file: Aaa.cs", (await Call(client, McpTools.Rename, new() { ["symbol"] = "Tally.CountAll", ["newName"] = "All" })).GetString());
         Assert.Contains("public static int All(string[] texts)", File.ReadAllText(Path.Combine(Folder, "Aaa.cs")), StringComparison.Ordinal);
     }
+
+    private const string Figures = "abstract class Shape\n{\n    public abstract double Area();\n}\n\n"
+        + "sealed class Square(double side) : Shape\n{\n    public override double Area() => side * side;\n}\n";
+
+    /// <summary>Each hierarchy entry's place as "path:line:column".</summary>
+    private static IEnumerable<string> Placed(JsonElement entries) =>
+        entries.EnumerateArray().Select(e => $"{e.GetProperty("path").GetString()}:{e.GetProperty("line").GetInt32()}:{e.GetProperty("column").GetInt32()}");
 
     private const string Shelf = "sealed class Shelf\n{\n    private readonly string[] books = [\"a\", \"b\"];\n\n"
         + "    /// <summary>The book_at a place on the shelf, from a List&lt;string&gt; of them.</summary>\n    public string this[int at] => books[at];\n\n"
@@ -180,11 +361,12 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("Suppress CS0219 → in Source", listed, StringComparison.Ordinal);
     }
 
-    /// <summary>A call holds its files open only while it runs and a moment after: once reads of many files pause, the IDE
-    /// has open, and the language server was last told open, only the file the agent opened in the editor and the one its
-    /// edit could not save (a read-only file), so a long session holds no more than it is working on.</summary>
+    /// <summary>A call holds its files open while it runs, then keeps the last few the agent asked about: after reads of
+    /// many files the IDE lists open only the file the agent opened in the editor and the one its edit could not save (a
+    /// read-only file), and the language server holds those and at most <see cref="PassengerTools.FilesKept"/> more, the
+    /// most recently asked, so a long session holds no more than it is working on.</summary>
     [Fact]
-    public async Task An_agents_calls_on_many_files_leave_open_only_the_file_it_opened_and_the_one_its_edit_left_unsaved()
+    public async Task An_agents_calls_on_many_files_leave_open_only_the_file_it_opened_the_one_its_edit_left_unsaved_and_the_last_few_asked()
     {
         await TakeFolderAsync();
         string[] parts = [.. Enumerable.Range(1, 12).Select(i => $"Part{i:00}.cs")];
@@ -212,18 +394,53 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         string edited = Text(await Call(client, McpTools.Edit, new() { ["path"] = "Locked.cs", ["oldText"] = "=> value;", ["newText"] = "=> value + 1;" }));
         Assert.Contains("not saved: Locked.cs is read-only", edited, StringComparison.Ordinal);
 
-        // The last call's files are let go once calls pause.
-        string[] open = [];
-        Assert.True(await Waiting.UntilAsync(async () =>
-            {
-                open = [.. (await Call(client, McpTools.Workspace)).GetProperty("openFiles").EnumerateArray().Select(f => f.GetString()!)];
-                return open.SequenceEqual(["Program.cs", "Locked.cs (unsaved)"]);
-            }, TimeSpan.FromSeconds(10).Scaled(), Cancel),
-            $"The IDE has open {string.Join(", ", open)}, where the agent left open only Program.cs and the unsaved Locked.cs");
-        string[] kept = ["Locked.cs", "Program.cs"];
+        string[] open = [.. (await Call(client, McpTools.Workspace)).GetProperty("openFiles").EnumerateArray().Select(f => f.GetString()!)];
+        Assert.True(open.SequenceEqual(["Program.cs", "Locked.cs (unsaved)"]),
+            $"The IDE lists open {string.Join(", ", open)}, where the agent left open only Program.cs and the unsaved Locked.cs");
         string trace = Path.Combine(OwnState, "logs", "lsp.log");
-        Assert.True(await Waiting.UntilAsync(() => ServerOpen(trace).SequenceEqual(kept), TimeSpan.FromSeconds(10).Scaled(), Cancel),
-            $"The language server was last told open {string.Join(", ", ServerOpen(trace))}, where the agent left open only {string.Join(", ", kept)}");
+        string[] server = [];
+        Assert.True(await Waiting.UntilAsync(() =>
+            {
+                server = ServerOpen(trace);
+                return server.Contains("Program.cs") && server.Contains("Locked.cs") && server.Contains("Helper.cs") && server.Length <= 2 + PassengerTools.FilesKept
+                    && !server.Contains(parts[0]);
+            }, TimeSpan.FromSeconds(10).Scaled(), Cancel),
+            $"The language server was last told open {string.Join(", ", server)}, where the agent left open Program.cs, Locked.cs and at most {PassengerTools.FilesKept} of the files it asked about last, Helper.cs among them");
+    }
+
+    /// <summary>A file an agent asks diagnostics of stays open in the language server after the call, so a second ask of it,
+    /// unchanged, answers what the first did from the server's last pull, sending none (the protocol trace).</summary>
+    [Fact]
+    public async Task A_second_diagnostics_of_an_unchanged_file_answers_from_the_servers_last_pull_sending_none()
+    {
+        await TakeFolderAsync();
+        await using McpClient client = await Start(["--mcp", Folder]);
+        await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["traceProtocols"] = true } });
+        string first = Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" }));
+        Assert.Contains("unused", first, StringComparison.Ordinal);
+        string trace = Path.Combine(OwnState, "logs", "lsp.log");
+        // The window's own pulls of the file just opened, and one a refresh of the server's as it read the file brings, come first.
+        await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" });
+        int pulls = -1;
+        for (int round = 0; round < 20 && Pulls(trace, "Helper.cs") != pulls; round++)
+        {
+            pulls = Pulls(trace, "Helper.cs");
+            Waiting.For(TimeSpan.FromSeconds(1), "the trace of the first calls' pulls to settle");
+        }
+        string second = Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" }));
+        Assert.Equal(first, second);
+        Assert.True(Pulls(trace, "Helper.cs") == pulls,
+            $"The second ask of Helper.cs, unchanged, sent the language server {Pulls(trace, "Helper.cs") - pulls} pulls of its diagnostics, where its last pull answered");
+        Assert.Contains("Helper.cs", ServerOpen(trace));
+    }
+
+    /// <summary>How many pulls of a file's diagnostics lsp.log's trace says the language server was sent.</summary>
+    private static int Pulls(string trace, string file)
+    {
+        using FileStream read = new(trace, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using StreamReader reader = new(read);
+        return reader.ReadToEnd().Split('\n').Count(l => l.Contains("] --> ", StringComparison.Ordinal)
+            && l.Contains($"\"method\":\"{Passenger.Lsp.LspMethods.DocumentDiagnostic}\"", StringComparison.Ordinal) && l.Contains("/" + file + "\"", StringComparison.Ordinal));
     }
 
     /// <summary>The names of the files the language server was told open and not since closed, by lsp.log's trace of what it

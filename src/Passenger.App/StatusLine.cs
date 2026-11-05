@@ -3,13 +3,24 @@ using Avalonia.Controls;
 
 namespace Passenger.App;
 
-/// <summary>The status bar's line left of its widgets: the file's path, then what the bar says. What it says takes the
-/// room it needs first, so a message (a refusal, a stage of work) is read whole while the path gives way, cut at its end a
-/// gap before the message; with nothing said, the path has the line.</summary>
+/// <summary>The status bar's line left of its widgets: the file's path, then what the bar says. The path keeps its room up
+/// to <see cref="PathShare"/> of the line, short of <see cref="MessageLeast"/> for the message, and a message too long for
+/// the rest is cut with an ellipsis, its whole text on hover (<see cref="StatusBar"/>); a path longer than its share gives
+/// way to a message, shortened to end a gap before it (<see cref="PathCrumbs"/>), and with nothing said the path has the
+/// line. The path is measured whole, never against the room it is given, so a part come to it since is measured as drawn
+/// and the line laid out anew.</summary>
 public sealed class StatusLine : Panel
 {
     /// <summary>The room between a cut path and the message after it, as between the bar's widgets.</summary>
     private const double Gap = 18;
+
+    /// <summary>The share of the line the path keeps, whatever the message's length, where that leaves the message its
+    /// <see cref="MessageLeast"/>.</summary>
+    public const double PathShare = 0.5;
+
+    /// <summary>The room a message keeps beside any path: a sentence of the bar's (a refusal, a build's outcome), so the
+    /// narrow line of a small window gives it the room its path's share would take.</summary>
+    private const double MessageLeast = 300;
 
     /// <summary>The path's width as the line lays it, and whether that cuts it.</summary>
     private (double Width, bool Cut) laid;
@@ -22,9 +33,25 @@ public sealed class StatusLine : Panel
         }
         message.Measure(availableSize);
         path.Measure(availableSize.WithWidth(double.PositiveInfinity));
-        double room = Math.Max(0, availableSize.Width - message.DesiredSize.Width);
-        laid = path.DesiredSize.Width <= room ? (path.DesiredSize.Width, false) : (Math.Max(0, room - Gap), true);
-        path.Measure(availableSize.WithWidth(laid.Width));
+        double width = availableSize.Width;
+        double whole = path.DesiredSize.Width;
+        double said = message.DesiredSize.Width;
+        double room = Math.Max(0, width - said);
+        double share = Math.Min(whole, Math.Max(0, Math.Min(width * PathShare, width - MessageLeast - Gap)));
+        if (whole <= room)
+        {
+            laid = (whole, false);
+        }
+        else if (said <= width - share - Gap)
+        {
+            laid = (room - Gap, true);
+        }
+        else
+        {
+            laid = (share, share < whole);
+            // The message measured again in what the path leaves it, so its words end in an ellipsis there.
+            message.Measure(availableSize.WithWidth(Math.Max(0, width - share - (laid.Cut ? Gap : 0))));
+        }
         return new Size(Math.Min(availableSize.Width, laid.Width + (laid.Cut ? Gap : 0) + message.DesiredSize.Width),
             Math.Max(path.DesiredSize.Height, message.DesiredSize.Height));
     }

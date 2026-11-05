@@ -21,6 +21,11 @@
         <x:Double x:Key="MenuFlyoutSubItemPopupHorizontalOffset">-16</x:Double>
     </Styles.Resources>
 
+    <!-- Words are shown as written, a name's underscores too: Passenger gives no access keys, so no control takes an
+         underscore for one's mark (Fluent's buttons, check boxes, menus' items and tabs would). -->
+    <Style Selector="ContentPresenter">
+        <Setter Property="RecognizesAccessKey" Value="False" />
+    </Style>
     <!-- A button: its content centred (Fluent leaves it at the left of a button wider than it), the shared height, side
          padding and radius, and a plain button's ground and edge (white with a field's edge in light). One that reads as
          text (crumb, link, statusItem) says otherwise in its own style, as the small square ones (tool, tabClose) say their
@@ -67,7 +72,7 @@
         <Setter Property="Padding" Value="10,3,10,4" />
     </Style>
     <!-- A long name ends in an ellipsis rather than cut at the menu's edge (a branch's). -->
-    <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter AccessText">
+    <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter TextBlock">
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
     <!-- The value in force (MenuChoice) is checked with a tick, a radio item's too, in place of Fluent's dot. -->
@@ -121,6 +126,12 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
+    <!-- A list whose rows each show in a face of their own (the font lists): every row one height, whatever its face's lines. -->
+    <Style Selector="ComboBox.faces ComboBoxItem">
+        <Setter Property="Height" Value="{x:Static app:ListRow.Height}" />
+        <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+
     <!-- A dialog's buttons at its foot (DialogFooter), each as wide as the others at the least. -->
     <Style Selector="StackPanel.footer">
         <Setter Property="Orientation" Value="Horizontal" />
@@ -172,6 +183,12 @@
     </Style>
     <Style Selector="Border.box">
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
+    </Style>
+    <!-- A value's colour beside its row, framed so a colour like the row's background still shows. -->
+    <Style Selector="Border.swatch">
+        <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
     </Style>
     <!-- The project widget's initials on a badge: the icon's amber dot in Passenger's theme. -->
     <Style Selector="Border.projectBadge">
@@ -917,8 +934,8 @@
     </Style>
 
     <!-- A popup over the window (Go to File, Search Everywhere, the code assist popups): the popup's ground, shadow and
-         edge, crowned in Passenger's theme with the title bar's blue-to-teal line. -->
-    <Style Selector="Border.popup">
+         edge, crowned in Passenger's theme with the title bar's blue-to-teal line; a popup of its own Border type too. -->
+    <Style Selector=":is(Border).popup">
         <Setter Property="Background" Value="{DynamicResource Passenger.Popup}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Popup.Edge}" />
         <Setter Property="BorderThickness" Value="{DynamicResource Passenger.PopupEdge}" />
@@ -1020,8 +1037,10 @@
         <Setter Property="Foreground" Value="{DynamicResource Passenger.TextDisabled}" />
     </Style>
 
-    <!-- The status bar's path: a part is a quiet button, underlined under the pointer. -->
+    <!-- The status bar's path: a part is a quiet button, underlined under the pointer, its words ending in an ellipsis
+         where the path shortens it (PathCrumbs). -->
     <Style Selector="Button.crumb">
+        <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="2,0" />

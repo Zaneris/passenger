@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Passenger.Core;
 
 namespace Passenger.Lsp;
 
@@ -39,7 +40,7 @@ public static class ClientCommands
             return [.. scopes.Select(scope => new ActionChoice(Words(scope), action, scope))];
         }
         if (action.Command is not { Command: NestedCodeAction, Arguments: [JsonElement data, ..] }
-            || !data.TryGetProperty("NestedCodeActions", out JsonElement nested) || nested.ValueKind != JsonValueKind.Array)
+            || JsonMembers.Value(data, "NestedCodeActions") is not { ValueKind: JsonValueKind.Array } nested)
         {
             return [];
         }
@@ -64,32 +65,24 @@ public static class ClientCommands
     public static FixAllCodeActionParams FixAll(CodeAction action, string scope)
     {
         JsonElement data = FixAllData(action) ?? throw new ArgumentException($"'{action.Title}' is not a fix-all", nameof(action));
-        string title = data.TryGetProperty("UniqueIdentifier", out JsonElement id) && id.GetString() is { } named ? named : action.Title;
+        string title = JsonMembers.Text(data, "UniqueIdentifier") ?? action.Title;
         return new FixAllCodeActionParams(title, data, scope);
     }
 
     /// <summary>The scopes a fix-all may cover (Document, Project, Solution, ContainingMember...), none for another action.</summary>
-    private static IReadOnlyList<string> Scopes(CodeAction action) =>
-        FixAllData(action) is { } data && data.TryGetProperty("FixAllFlavors", out JsonElement flavors) && flavors.ValueKind == JsonValueKind.Array
-            ? [.. flavors.EnumerateArray().Select(f => f.GetString()).OfType<string>()]
-            : [];
+    private static IReadOnlyList<string> Scopes(CodeAction action) => JsonMembers.Texts(FixAllData(action), "FixAllFlavors");
 
     /// <summary>A fix-all's data: its command's argument at the top, its own data when nested, where Roslyn puts it.</summary>
     private static JsonElement? FixAllData(CodeAction action)
     {
         JsonElement? data = action.Command is { Command: FixAllCodeAction, Arguments: [JsonElement argument, ..] } ? argument : action.Data;
-        return data is { ValueKind: JsonValueKind.Object } found && found.TryGetProperty("FixAllFlavors", out _) ? found : null;
+        return JsonMembers.Value(data, "FixAllFlavors") is not null ? data : null;
     }
 
     /// <summary>A nested action's words: the steps under the one it was chosen from ("Configure IDE0005 severity → Warning").</summary>
     private static string Path(CodeAction inner)
     {
-        if (inner.Data is { ValueKind: JsonValueKind.Object } data && data.TryGetProperty("CodeActionPath", out JsonElement path)
-            && path.ValueKind == JsonValueKind.Array && path.GetArrayLength() > 1)
-        {
-            return string.Join(Step, path.EnumerateArray().Skip(1).Select(step => step.GetString()));
-        }
-        return inner.Title;
+        return JsonMembers.Texts(inner.Data, "CodeActionPath") is { Count: > 1 } path ? string.Join(Step, path.Skip(1)) : inner.Title;
     }
 
     /// <summary>A scope in words: "ContainingMember" as "Containing member".</summary>

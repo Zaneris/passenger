@@ -53,9 +53,7 @@ public sealed partial record NodeRuntime(string? Path, Version? Version, string?
         try
         {
             using JsonDocument read = JsonDocument.Parse(File.ReadAllText(package));
-            if (read.RootElement.TryGetProperty("engines", out JsonElement engines) && engines.ValueKind == JsonValueKind.Object
-                && engines.TryGetProperty("node", out JsonElement range) && range.ValueKind == JsonValueKind.String
-                && range.GetString() is { } needs && !NpmRange.Meets(version, needs))
+            if (JsonMembers.Text(JsonMembers.Object(read.RootElement, "engines"), "node") is { } needs && !NpmRange.Meets(version, needs))
             {
                 string wanted = Least().Match(needs) is { Success: true } least && least.Value.Trim() == needs.Trim() && Version.TryParse(Padded(least.Groups[1].Value), out Version? minimum)
                     ? $"{minimum} or later" : needs.Trim();

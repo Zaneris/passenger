@@ -36,6 +36,14 @@ public sealed class TerminalRun : IRunningProgram
     /// <summary>The program's process, once it has started; 0 before, and for one that never did.</summary>
     public int ProcessId { get; private set; }
 
+    /// <summary>The process a debugger takes hold of: the program's own, or where the terminal runs it through a console
+    /// wrapper (Godot's on Windows, <see cref="GodotConsole"/>), the one the wrapper started; 0 before either is known.</summary>
+    public int Debuggee
+    {
+        get => field == 0 ? ProcessId : field;
+        set;
+    }
+
     /// <summary>Its exit code once it has ended and its last output is on its tab's screen; -1 for one that never started.</summary>
     public Task<int> Ended => ended.Task;
 

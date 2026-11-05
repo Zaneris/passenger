@@ -139,6 +139,10 @@ public static class EndpointClient
             return (null, $"No value for {string.Join(", ", unresolved.Select(u => "{{" + u + "}}"))}: set it in the file (@{unresolved.First()} = …) or in {HttpVariables.PublicFile}");
         }
         List<EndpointRead> reads = [.. filling.Environment.Select(name => new EndpointRead(IsFile: false, name, filling.Unset.Contains(name)))];
+        if (resolvedHeaders.FirstOrDefault(h => h.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)).Value is { } contentType)
+        {
+            resolvedBody = MultipartBody.Framed(resolvedBody, contentType);
+        }
         // A body "< ./file.json" alone is that file's text; one outside the folder (a link's too) is the person's to allow.
         string? bodyFile = null;
         if (resolvedBody.Trim() is ['<', ' ', .. string included] && !included.Contains('\n'))
@@ -150,16 +154,16 @@ public static class EndpointClient
             }
             resolvedBody = string.Empty;
         }
-        if (!resolvedUrl.Contains("://", StringComparison.Ordinal))
-        {
-            resolvedUrl = "http://" + resolvedUrl;
-        }
+        resolvedUrl = WithScheme(resolvedUrl);
         if (!Uri.TryCreate(resolvedUrl, UriKind.Absolute, out Uri? uri) || uri.Scheme is not ("http" or "https"))
         {
             return (null, $"\"{resolvedUrl}\" is no http or https URL");
         }
         return (new EndpointCall(method.Trim().ToUpperInvariant(), uri.AbsoluteUri, resolvedHeaders, resolvedBody) { BodyFile = bodyFile, Reads = reads }, null);
     }
+
+    /// <summary>A resolved URL as it goes: http's where it names no scheme.</summary>
+    internal static string WithScheme(string url) => url.Contains("://", StringComparison.Ordinal) ? url : "http://" + url;
 
     /// <summary>Sends the call, its body's file read first, within the timeout and the stop. A redirect is followed (when
     /// the options say so) with the request's headers only to the same origin (scheme, host and port): to another, it goes
@@ -310,7 +314,7 @@ public static class EndpointClient
     }
 
     /// <summary>Where a redirect answer sends the request next, or null for an answer that is none.</summary>
-    private static Uri? Redirect(HttpResponseMessage response, Uri from) =>
+    internal static Uri? Redirect(HttpResponseMessage response, Uri from) =>
         (int)response.StatusCode is 300 or 301 or 302 or 303 or 307 or 308 && response.Headers.Location is { } location
             && (location.IsAbsoluteUri ? location : new Uri(from, location)) is { Scheme: "http" or "https" } next
             ? next

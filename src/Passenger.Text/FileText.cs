@@ -169,7 +169,7 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
                 return null;
             }
         }
-        string target = Path.GetFullPath(Target(path));
+        string target = Path.GetFullPath(AtomicFile.Target(path));
         lock (Landing)
         {
             return Landing.TryGetValue(target, out (Task<Exception?> Last, int Count, byte[] Bytes) landing) ? landing.Bytes : null;
@@ -188,7 +188,7 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
                 return null;
             }
         }
-        string target = Path.GetFullPath(Target(path));
+        string target = Path.GetFullPath(AtomicFile.Target(path));
         lock (Landing)
         {
             return Landing.TryGetValue(target, out (Task<Exception?> Last, int Count, byte[] Bytes) landing) ? landing.Last : null;
@@ -294,7 +294,7 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     }
 
     /// <summary>Writes a file's bytes as they were, as a save writes: Local History's revert of a file not open, or of one
-    /// deleted since.</summary>
+    /// deleted since, and a file landed whole.</summary>
     public static void Restore(string path, byte[] bytes)
     {
         Writing?.Invoke(path);
@@ -308,7 +308,7 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     {
         try
         {
-            return new FileInfo(Target(path)) is { Exists: true, IsReadOnly: true };
+            return new FileInfo(AtomicFile.Target(path)) is { Exists: true, IsReadOnly: true };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -320,18 +320,15 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     /// given write permission.</summary>
     public static void MakeWritable(string path)
     {
-        string target = Target(path);
+        string target = AtomicFile.Target(path);
         File.SetAttributes(target, File.GetAttributes(target) & ~FileAttributes.ReadOnly);
     }
-
-    private static string Target(string path) =>
-        new FileInfo(path).LinkTarget is not null ? File.ResolveLinkTarget(path, returnFinalTarget: true)?.FullName ?? path : path;
 
     /// <param name="encoding">What the text was written in; null for bytes put back as a file had them.</param>
     private static void Write(string path, byte[] bytes, Encoding? encoding, bool makeFolder)
     {
         bool there = File.Exists(path) || new FileInfo(path).LinkTarget is not null;
-        string target = there ? File.ResolveLinkTarget(path, returnFinalTarget: true)?.FullName ?? path : path;
+        string target = AtomicFile.Target(path);
         if (!there)
         {
             string folder = Path.GetDirectoryName(target)!;

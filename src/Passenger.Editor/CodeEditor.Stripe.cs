@@ -41,7 +41,7 @@ public sealed partial class CodeEditor
                 switcher.IsVisible = value && contextLabel is not null;
             }
             InvalidateArrange();
-            InvalidateVisual();
+            Redraw();
         }
     }
 
@@ -69,6 +69,10 @@ public sealed partial class CodeEditor
     /// the search's matches, the uses highlighted, the folds, the bookmarks or the changed lines, never for a frame or a
     /// pointer move.</summary>
     public int StripeMarksBuilt { get; private set; }
+
+    /// <summary>How many rectangles the stripe's marks were drawn as the last time it was drawn, its caret's line aside: what
+    /// the compositor draws again in every frame that scrolls.</summary>
+    public int StripeRectangles { get; private set; }
 
     /// <summary>The counts' errors and warnings, as their widget shows them, counted when the markers are set.</summary>
     public (int Errors, int Warnings) ProblemCount => decorations.Problems;
@@ -511,16 +515,39 @@ public sealed partial class CodeEditor
 
         public bool HitTest(Point point) => At(point) is not null;
 
+        /// <summary>The marks in order, those next to each other drawn alike and touching as one rectangle, so thousands of
+        /// problems are as many rectangles as the track has room for: what the compositor draws again in every frame.</summary>
         public override void Render(DrawingContext context)
         {
             Palette palette = editor.palette;
             (StripeBuild built, Rect track) = Placed();
+            IBrush? brush = null;
+            Rect run = default;
+            int drawn = 0;
             for (int i = 0; i < built.Count; i++)
             {
-                Draw(context, palette, built.Marks[i], spans[i], track);
+                IBrush next = BrushOf(palette, built.Marks[i]);
+                Rect mark = Drawn(built.Marks[i], spans[i], track);
+                if (ReferenceEquals(next, brush) && mark.X == run.X && mark.Width == run.Width && mark.Top <= run.Bottom && mark.Bottom >= run.Top)
+                {
+                    run = run.Union(mark);
+                    continue;
+                }
+                if (brush is not null)
+                {
+                    context.FillRectangle(brush, run);
+                    drawn++;
+                }
+                (brush, run) = (next, mark);
             }
+            if (brush is not null)
+            {
+                context.FillRectangle(brush, run);
+                drawn++;
+            }
+            editor.StripeRectangles = drawn;
             StripeMark caret = editor.CaretMark();
-            Draw(context, palette, caret, Span(caret, track, built.RowCount), track);
+            context.FillRectangle(BrushOf(palette, caret), Drawn(caret, Span(caret, track, built.RowCount), track));
         }
 
         /// <summary>The marks and where each is on the track, in this control's coordinates: both what is drawn and what a
@@ -544,9 +571,8 @@ public sealed partial class CodeEditor
             return (built, track);
         }
 
-        private static void Draw(DrawingContext context, Palette palette, StripeMark mark, (double Top, double Height) span, Rect track)
-        {
-            IBrush brush = mark.Kind switch
+        private static IBrush BrushOf(Palette palette, StripeMark mark) =>
+            mark.Kind switch
             {
                 StripeMarkKind.Error => palette.Error,
                 StripeMarkKind.Warning => palette.Warning,
@@ -558,8 +584,6 @@ public sealed partial class CodeEditor
                 StripeMarkKind.Change => mark.Change switch { ChangeMarkKind.Added => palette.ChangeAdded, ChangeMarkKind.Deleted => palette.ChangeDeleted, ChangeMarkKind.Conflict => palette.ChangeConflict, _ => palette.ChangeModified },
                 _ => palette.LineNumberCurrent,
             };
-            context.FillRectangle(brush, Drawn(mark, span, track));
-        }
 
         /// <summary>What a mark fills across the track at its span: a problem, a match or a use most of its breadth, a
         /// bookmark a dot at its right, a change a strip down its left edge.</summary>

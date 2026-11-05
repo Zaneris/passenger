@@ -23,6 +23,9 @@ public sealed partial class SuspendedLaunch : IDisposable
     private readonly Process? process;
     private bool resumed;
 
+    /// <summary>What lets a program started on a desktop of its own run (<see cref="OwnDesktop"/>), which .NET's start did not make.</summary>
+    private Action? resumeOwn;
+
     /// <summary>On macOS, a kqueue told of the program's exit with its status, which the system keeps for it whoever reaps
     /// it: the runtime's platform layer in the debugger's own libraries (dbgshim's, and the DAC's that mscordbi waits on
     /// the program through) reaps it with waitpid as it sees it end, so a waitpid of ours that comes after (a busy machine
@@ -82,12 +85,13 @@ public sealed partial class SuspendedLaunch : IDisposable
     }
 
     /// <summary>Starts a program suspended, in a folder, with an environment (the adapter's, with these
-    /// variables over it) and its standard streams on pipes.</summary>
-    public static SuspendedLaunch Start(string program, IReadOnlyList<string> arguments, string? folder, IReadOnlyDictionary<string, string> variables)
+    /// variables over it) and its standard streams on pipes; <paramref name="unseen"/>, on Windows on a desktop of its own
+    /// that nobody sees (<see cref="OwnDesktop"/>).</summary>
+    public static SuspendedLaunch Start(string program, IReadOnlyList<string> arguments, string? folder, IReadOnlyDictionary<string, string> variables, bool unseen = false)
     {
         if (OperatingSystem.IsWindows())
         {
-            return StartOnWindows(program, arguments, folder, variables);
+            return StartOnWindows(program, arguments, folder, variables, unseen);
         }
         Dictionary<string, string> environment = [];
         foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
@@ -169,7 +173,7 @@ public sealed partial class SuspendedLaunch : IDisposable
     /// as the adapter does: a .NET program reads its redirected input and writes its output in its console's code page,
     /// which a console made for it alone takes from the system (437 in English).</summary>
     [SupportedOSPlatform("windows")]
-    private static SuspendedLaunch StartOnWindows(string program, IReadOnlyList<string> arguments, string? folder, IReadOnlyDictionary<string, string> variables)
+    private static SuspendedLaunch StartOnWindows(string program, IReadOnlyList<string> arguments, string? folder, IReadOnlyDictionary<string, string> variables, bool unseen)
     {
         bool shared = SetConsoleOutputCP(Utf8CodePage) && SetConsoleCP(Utf8CodePage);
         ProcessStartInfo start = new(program, arguments)
@@ -185,6 +189,15 @@ public sealed partial class SuspendedLaunch : IDisposable
         foreach ((string key, string value) in variables)
         {
             start.Environment[key] = value;
+        }
+        if (unseen)
+        {
+            OwnDesktopStart own = OwnDesktop.Start(start, suspended: true);
+            return new SuspendedLaunch(own.Process.Id, 0, own.Process, own.Input.BaseStream, own.Output!.BaseStream, own.Error!.BaseStream)
+            {
+                InitialThreadId = OnlyThread(own.Process),
+                resumeOwn = own.Resume,
+            };
         }
         Process held = Process.Start(start) ?? throw new InvalidOperationException($"{program} did not start");
         return new SuspendedLaunch(held.Id, 0, held, held.StandardInput.BaseStream, held.StandardOutput.BaseStream, held.StandardError.BaseStream)
@@ -215,7 +228,14 @@ public sealed partial class SuspendedLaunch : IDisposable
         {
             if (!resumed && OperatingSystem.IsWindows())
             {
-                process.SafeHandle.Resume();
+                if (resumeOwn is { } own)
+                {
+                    own();
+                }
+                else
+                {
+                    process.SafeHandle.Resume();
+                }
                 resumed = true;
             }
             return;

@@ -11,8 +11,17 @@ using Passenger.Roslyn.Extension;
 namespace Passenger.App.Endpoints;
 
 /// <summary>What the Endpoints window works with: the window's actions' work (a test is one), the open folder's answers
-/// to what its requests may take from the person's computer, and the status bar.</summary>
-public sealed record EndpointsParts(ActionWork Work, Func<EndpointGrants> Grants, Action<string> Say);
+/// to what its requests may take from the person's computer, the status bar, its rows' menus' items of the window's
+/// actions (greyed with why), and the OpenAPI documents its answers are held to.</summary>
+public sealed record EndpointsParts(ActionWork Work, Func<EndpointGrants> Grants, Action<string> Say, Func<string, MenuItem> Item)
+{
+    /// <summary>The OpenAPI document of the app a request went to, where the folder runs it and it describes itself; null for
+    /// any other.</summary>
+    public Func<Uri, CancellationToken, Task<OpenApiDocument?>>? DocumentOf { get; init; }
+
+    /// <summary>The OpenAPI document the app at an address last gave the folder, no app asked; null for none.</summary>
+    public Func<Uri, OpenApiDocument?>? KnownDocument { get; init; }
+}
 
 /// <summary>A request as it is to be sent: as written, or as changed in the Interactive Test dialog.</summary>
 public sealed record EndpointDraft(string Method, string Url, IReadOnlyList<KeyValuePair<string, string>> Headers, string Body);
@@ -98,7 +107,11 @@ public sealed class EndpointsView : DockPanel
         [
             .. RouteRequests.Sendable(route) ? (IEnumerable<MenuItem>)[ListMenus.Item("Send Request", "Enter", () => RouteSendRequested?.Invoke(this, route))] : [],
             ListMenus.Item("Go to Route", "F4", () => RouteGoToRequested?.Invoke(this, route)),
-        ] : list.SelectedItem is not EndpointRequest chosen ? [] :
+            new Separator(),
+            parts.Item(AppActions.GenerateOpenApiRequests),
+            parts.Item(AppActions.NameOpenApiDocument),
+        ] : list.SelectedItem is ProjectRow ? [parts.Item(AppActions.GenerateOpenApiRequests), parts.Item(AppActions.NameOpenApiDocument)]
+        : list.SelectedItem is not EndpointRequest chosen ? [] :
         [
             ListMenus.Item("Test", "Enter", () => IdeErrors.Observe(TestAsync(chosen))),
             ListMenus.Item("Interactive Test…", null, () => InteractiveRequested?.Invoke(this, chosen)),
@@ -357,7 +370,11 @@ public sealed class EndpointsView : DockPanel
             testing.Say($"Sending {call.Method} {call.Url}…");
             shown.Sending($"Sending {call.Method} {call.Url}…");
             EndpointResponse response = await BackgroundWork.Run(() => EndpointClient.SendAsync(call, options, mine.Token), mine.Token);
-            shown.Show(response, [.. criteria.Select(c => c.Check(response))]);
+            // Held to the schema its app's document gives it, where the folder runs that app on this machine and it describes itself.
+            OpenApiDocument? document = parts.DocumentOf is { } of && Uri.TryCreate(call.Url, UriKind.Absolute, out Uri? sent) && sent.IsLoopback
+                ? await of(sent, mine.Token) : null;
+            IReadOnlyList<SchemaBreak> breaks = document is null ? [] : OpenApiSources.Check(document, call.Method, call.Url, response);
+            shown.Show(response, [.. criteria.Select(c => c.Check(response))], breaks);
             return EndpointSent.Answered;
         }
         catch (OperationCanceledException)
@@ -373,6 +390,30 @@ public sealed class EndpointsView : DockPanel
             }
         }
     }
+
+    /// <summary>A body for a request written with none, from the document the app it goes to last gave the folder, its address
+    /// read in the environment chosen, off the window's thread; null where none is known. Nothing is sent.</summary>
+    internal async Task<string?> SchemaBodyAsync(EndpointRequest request)
+    {
+        UiThread.Check();
+        if (parts.KnownDocument is not { } known || OpenApiRequests.RoutePath(request.Url) is not { } path)
+        {
+            return null;
+        }
+        HttpFile file = FileOf(request);
+        string? environment = Environment;
+        string? folder = root;
+        string url = await BackgroundWork.Run(() => HttpVariables.Resolve(request.Url, HttpVariables.For(file, environment, folder), new HttpVariables.Filling()).Trim());
+        return Uri.TryCreate(EndpointClient.WithScheme(url), UriKind.Absolute, out Uri? app) ? OpenApiRequests.BodyFor(known(app), request.Method, path) : null;
+    }
+
+    /// <summary>The web project of the row chosen: its heading's, or a route's.</summary>
+    public string? ChosenProject => list.SelectedItem switch
+    {
+        ProjectRow project => project.Path,
+        WebRoute route => route.Project,
+        _ => null,
+    };
 
     /// <summary>The test under way, or null.</summary>
     public Working? Busy => parts.Work.Of(AppActions.TestEndpoint);
@@ -543,7 +584,7 @@ public sealed class EndpointsView : DockPanel
     /// <summary>A method's tag, in its method's colour.</summary>
     internal static Border MethodTag(string method)
     {
-        TextBlock text = new() { Text = method, FontFamily = CodeEditor.CodeFont, FontSize = 11, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock text = new TextBlock { Text = method, FontSize = 11, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(MethodColour(method)));
         return new Border { Classes = { StyleClasses.Tag }, MinWidth = 52, Padding = new Thickness(4, 1), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
     }

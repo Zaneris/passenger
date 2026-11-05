@@ -234,6 +234,11 @@ public sealed class CommandHistory
     /// asked again; and whether it began, false when refused before it changed anything.</summary>
     public async Task<(string? Why, bool Began)> PutAsync(Command command, bool redo, Func<Func<string?>, string?> moving)
     {
+        // Its open files too, whose saves would go over what another program holds.
+        if (await editors.ClearAsync([.. command.Texts.Select(t => t.Path), .. Writes(command, redo)]) is { } held)
+        {
+            return (held, false);
+        }
         Dictionary<string, Look> looks;
         while (true)
         {
@@ -667,11 +672,7 @@ public sealed class CommandHistory
     /// <summary>A file's length and last write time (through a link, its target's), or null when it is not there.</summary>
     private static (long Length, DateTime Written)? Stamp(string path)
     {
-        FileInfo info = new(path);
-        if (info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is FileInfo target)
-        {
-            info = target;
-        }
+        FileInfo info = new(AtomicFile.Target(path));
         return info.Exists ? (info.Length, info.LastWriteTimeUtc) : null;
     }
 
@@ -915,6 +916,8 @@ public sealed class CommandHistory
         private readonly List<Deletion> deletions = [];
         private readonly List<Part> parts = [];
         private List<TextChange>? openTaken;
+        // The files the gate let it write (EditorArea.ClearAsync), never asked of again.
+        private readonly HashSet<string> cleared = new(PathNames.Comparer);
         // Whether it has said it writes a file since the open files were last taken.
         private bool writes = true;
         private bool ended;
@@ -1105,12 +1108,36 @@ public sealed class CommandHistory
             return refused is { } first ? [first, .. unlanded] : unlanded;
         }
 
+        /// <summary>The gate over files the command is about to change, open or not (<see cref="EditorArea.ClearAsync"/>), for a
+        /// command that changes them itself, asked before it changes any: null to go on, else why not. Those it lets through are
+        /// not asked of again as the command writes.</summary>
+        public async Task<string?> ClearAsync(IReadOnlyCollection<string> paths)
+        {
+            if (await editors.ClearAsync(paths) is { } held)
+            {
+                return held;
+            }
+            // As the open documents among them are named, which the writes' own gate looks for.
+            cleared.UnionWith(paths.Select(PathNames.Canonical));
+            return null;
+        }
+
         /// <summary>Makes the changes queued so far (<see cref="Change"/>) off the window's thread, in order, the open files'
         /// changes taken first (<see cref="TakeOpen"/>): the first file the disk refused, with why, the changes after it left
         /// unmade; else null.</summary>
         public async Task<(string Path, Exception Refused)?> WriteAsync()
         {
             TakeOpen();
+            // The gate takes the open files it changed too, whose saves would go over what another program holds.
+            List<string> clearing = [.. queued.Select(q => Now(q.Began)), .. (ownWrites ? [.. wrote.Values] : Steps()).Select(t => t.Document!.Path)];
+            clearing.RemoveAll(cleared.Contains);
+            if (clearing.Count > 0 && await editors.ClearAsync(clearing) is { } held)
+            {
+                queued.Clear();
+                Unname();
+                return (clearing.FirstOrDefault(p => editors.HeldElsewhere(p) is not null) ?? clearing[0], new IOException(held));
+            }
+            cleared.UnionWith(clearing);
             if (queued.Count == 0)
             {
                 Unname();

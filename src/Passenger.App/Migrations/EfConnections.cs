@@ -62,11 +62,7 @@ public static class EfConnections
                     continue;
                 }
                 using JsonDocument read = JsonDocument.Parse(settings.Text, LenientJson.Document);
-                if (read.RootElement.ValueKind == JsonValueKind.Object && read.RootElement.TryGetProperty("ConnectionStrings", out JsonElement strings)
-                    && strings.ValueKind == JsonValueKind.Object)
-                {
-                    names.AddRange(strings.EnumerateObject().Select(s => s.Name).Where(n => !names.Contains(n, StringComparer.OrdinalIgnoreCase)));
-                }
+                names.AddRange(JsonMembers.Properties(read.RootElement, "ConnectionStrings").Select(s => s.Name).Where(n => !names.Contains(n, StringComparer.OrdinalIgnoreCase)));
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
             {

@@ -1,4 +1,4 @@
-using System.Buffers;
+using System.Numerics;
 
 namespace Passenger.Text;
 
@@ -9,8 +9,17 @@ namespace Passenger.Text;
 /// key; a file's letters, read once (<see cref="PathLetters"/>), pass over one missing a query's with one AND.</summary>
 public static class FuzzyMatch
 {
-    /// <summary>The longest query or path whose slashes are made one on the stack; a longer one takes a pooled buffer.</summary>
+    /// <summary>The longest query or path whose slashes are made one on the stack; a longer one takes this thread's room.</summary>
     private const int OnStack = 256;
+
+    /// <summary>This thread's room for a query too long for the stack, kept while the thread lives so that scoring allocates
+    /// nothing however short of memory the machine is.</summary>
+    [ThreadStatic]
+    private static char[]? queryRoom;
+
+    /// <summary>This thread's room for a path too long for the stack, kept as <see cref="queryRoom"/> is.</summary>
+    [ThreadStatic]
+    private static char[]? pathRoom;
 
     public static int? Score(string query, string relativePath)
     {
@@ -100,36 +109,36 @@ public static class FuzzyMatch
     /// <summary>A query with a slash scored along the whole path, each '\' in either read as '/'.</summary>
     private static int? Slashed(string query, string relativePath)
     {
-        char[]? rentedQuery = null;
-        char[]? rentedPath = null;
-        try
+        // Each of the query's letters takes one of the path's, so a pasted page of text matches nothing and keeps no room.
+        if (query.Length > relativePath.Length)
         {
-            Span<char> asked = query.Length <= OnStack ? stackalloc char[query.Length] : (rentedQuery = ArrayPool<char>.Shared.Rent(query.Length)).AsSpan(0, query.Length);
-            query.AsSpan().Replace(asked, '\\', '/');
-            scoped ReadOnlySpan<char> path = relativePath;
-            if (relativePath.Contains('\\'))
-            {
-                Span<char> normalized = relativePath.Length <= OnStack ? stackalloc char[relativePath.Length] : (rentedPath = ArrayPool<char>.Shared.Rent(relativePath.Length)).AsSpan(0, relativePath.Length);
-                relativePath.AsSpan().Replace(normalized, '\\', '/');
-                path = normalized;
-            }
-            if (path.Contains(asked, StringComparison.OrdinalIgnoreCase))
-            {
-                return 600 - path.Length;
-            }
-            return InOrder(asked, path) is { } spread ? 300 - spread - path.Length / 4 : null;
+            return null;
         }
-        finally
+        Span<char> asked = query.Length <= OnStack ? stackalloc char[query.Length] : Room(ref queryRoom, query.Length);
+        query.AsSpan().Replace(asked, '\\', '/');
+        scoped ReadOnlySpan<char> path = relativePath;
+        if (relativePath.Contains('\\'))
         {
-            if (rentedQuery is not null)
-            {
-                ArrayPool<char>.Shared.Return(rentedQuery);
-            }
-            if (rentedPath is not null)
-            {
-                ArrayPool<char>.Shared.Return(rentedPath);
-            }
+            Span<char> normalized = relativePath.Length <= OnStack ? stackalloc char[relativePath.Length] : Room(ref pathRoom, relativePath.Length);
+            relativePath.AsSpan().Replace(normalized, '\\', '/');
+            path = normalized;
         }
+        if (path.Contains(asked, StringComparison.OrdinalIgnoreCase))
+        {
+            return 600 - path.Length;
+        }
+        return InOrder(asked, path) is { } spread ? 300 - spread - path.Length / 4 : null;
+    }
+
+    /// <summary>The first <paramref name="length"/> characters of a thread's room, grown in powers of two so that a folder's
+    /// paths, however they lengthen, cost it few arrays.</summary>
+    private static Span<char> Room(ref char[]? room, int length)
+    {
+        if (room is null || room.Length < length)
+        {
+            room = new char[BitOperations.RoundUpToPowerOf2((uint)length)];
+        }
+        return room.AsSpan(0, length);
     }
 
     /// <summary>How well a typed word names a completion item's label, which is no path ('/', '\' and '.' are its own

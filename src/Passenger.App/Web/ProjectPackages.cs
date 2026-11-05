@@ -64,7 +64,7 @@ public static class ProjectPackages
         try
         {
             using JsonDocument read = JsonDocument.Parse(File.ReadAllText(Path.Combine(package, "package.json")));
-            return read.RootElement.TryGetProperty("version", out JsonElement version) && version.ValueKind == JsonValueKind.String ? version.GetString() : null;
+            return JsonMembers.Text(read.RootElement, "version");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -77,8 +77,7 @@ public static class ProjectPackages
         try
         {
             using JsonDocument read = JsonDocument.Parse(File.ReadAllText(manifest), LenientJson.Document);
-            return read.RootElement.ValueKind == JsonValueKind.Object && Lists.Any(list =>
-                read.RootElement.TryGetProperty(list, out JsonElement listed) && listed.ValueKind == JsonValueKind.Object && listed.TryGetProperty(name, out _));
+            return Lists.Any(list => JsonMembers.Value(JsonMembers.Object(read.RootElement, list), name) is not null);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {

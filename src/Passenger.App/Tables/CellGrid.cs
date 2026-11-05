@@ -16,9 +16,12 @@ namespace Passenger.App.Tables;
 /// side, both held in place while the cells scroll, numbers against their cell's right edge. Only the cells on screen are
 /// drawn, each one's text laid out once and kept while it stays there, so a sheet of a million rows scrolls as one of ten.
 /// A click chooses a cell, a drag or Shift a range, the header a column and the side a row; a header's edge is dragged to
-/// size its column, or double-clicked to fit it. Copy writes the chosen cells as tab-separated lines, from the keys or the
-/// cells' menu, which a right-click opens on the cell under it (the chosen ones, when it falls among them).</summary>
-public sealed class CellGrid : Control
+/// size its column, or double-clicked to fit it, and the arrow at a title's end (shown on the column sorted by, and on the
+/// title the pointer is over) sorts by its column, as the header's menu does. Copy writes the chosen cells as
+/// tab-separated lines, from the keys or the cells' menu, which a right-click opens on the cell under it (the chosen ones,
+/// when it falls among them). A table whose cells may be written (<see cref="Table.IsEditable"/>) is written in place: a
+/// cell opens for writing on Enter, F2, a double-click or a character typed, and Enter, Tab or a click away writes it.</summary>
+public sealed class CellGrid : Control, IOwnKeys
 {
     private const double RowHeight = ListRow.Height;
     private const double Pad = 8;
@@ -31,14 +34,16 @@ public sealed class CellGrid : Control
     /// <summary>How near a header's edge the pointer sizes its column.</summary>
     private const double EdgeReach = 4;
 
+    /// <summary>The sort's arrow at a title's end, and the room the title leaves it inside the column's padding.</summary>
+    private const double ArrowSize = 12;
+    private const double ArrowRoom = ArrowSize + 4;
+
     /// <summary>How many cells are read to fit the columns: enough to see what a column holds, never a whole large file.</summary>
     private const int SampledCells = 200_000;
 
     /// <summary>How many laid-out texts are kept: some screens' worth, after which they are laid out afresh.</summary>
     private const int KeptTexts = 8192;
 
-    private static readonly Typeface Plain = new(CodeEditor.CodeFont);
-    private static readonly Typeface Bold = new(CodeEditor.CodeFont, FontStyle.Normal, FontWeight.SemiBold);
     private static readonly Cursor SizeColumn = new(StandardCursorType.SizeWestEast);
 
     private readonly ScrollBar vertical = new() { Orientation = Orientation.Vertical, AllowAutoHide = true };
@@ -52,6 +57,8 @@ public sealed class CellGrid : Control
 
     private double gutter;
     private double charWidth;
+    private Typeface plain = new(CodeEditor.CodeFont);
+    private Typeface bold = new(CodeEditor.CodeFont, FontStyle.Normal, FontWeight.SemiBold);
     private Vector scroll;
     private bool updatingBars;
     private Palette? palette;
@@ -63,9 +70,21 @@ public sealed class CellGrid : Control
 
     private bool choosing;
 
+    /// <summary>The column whose title the pointer is over, which shows its sort's arrow; -1 for none.</summary>
+    private int pointed = -1;
+
     /// <summary>The cells Find matched, by <see cref="Spot"/>, and the one it stands on.</summary>
     private HashSet<long> matched = [];
     private long currentMatch = -1;
+
+    /// <summary>The cell being written, its box over it and the table it was in as the writing began; null while none is.</summary>
+    private TextBox? box;
+    private Border? boxFrame;
+    private (int Row, int Column) written;
+    private Table? writtenIn;
+
+    /// <summary>The most rows a cell's box grows over as its text takes more lines.</summary>
+    private const int BoxRows = 8;
 
     public CellGrid()
     {
@@ -84,13 +103,130 @@ public sealed class CellGrid : Control
             ShowMenu(e.TryGetPosition(this, out Point at) ? at : null);
             e.Handled = true;
         };
-        charWidth = CodeEditor.MeasureFont(Plain, FontSize).CharWidth;
+        charWidth = CodeEditor.MeasureFont(plain, FontSize).CharWidth;
     }
 
     /// <summary>The cells' menu while it is open.</summary>
     public ContextMenu? Menu { get; private set; }
 
-    /// <summary>The cells' menu, Copy and Select All with their keys: at the pointer, or from the keys under the caret's cell.</summary>
+    /// <summary>A sort asked for, by a column's arrow or the header's menu, for the file to sort its rows so: a column and
+    /// which way, or null for the file's order.</summary>
+    public event EventHandler<(int Column, bool Descending)?>? SortRequested;
+
+    /// <summary>A cell written, for the file to take: the table shown as its writing began, the cell's row in the file's
+    /// order, its column and its new text.</summary>
+    public event EventHandler<CellWrite>? CellWritten;
+
+    /// <summary>Rows asked to be taken out of the file (the cells' menu), by their places in the file's order.</summary>
+    public event EventHandler<CellWrite>? RowsDeleted;
+
+    /// <summary>The box a cell is being written in, null while none is.</summary>
+    public TextBox? Writing => box;
+
+    /// <summary>The cell under the caret opened for writing, holding its text or the character typed in place of it;
+    /// false where the cell may not be written.</summary>
+    public bool BeginWriting(string? typed = null)
+    {
+        if (table is null || box is not null || table.RowCount == 0 || !table.IsEditable(caret.Row, caret.Column))
+        {
+            return false;
+        }
+        anchor = caret;
+        Reveal(caret);
+        written = caret;
+        writtenIn = table;
+        string text = typed ?? table.Cell(caret.Row, caret.Column);
+        TextBox writing = new()
+        {
+            Classes = { StyleClasses.Cell },
+            Text = text,
+            AcceptsReturn = true,
+            FontFamily = plain.FontFamily,
+            FontSize = FontSize,
+            MinHeight = RowHeight - 1,
+            Padding = new Thickness(Pad - 1, 2),
+            Name = "CellBox",
+        };
+        writing.AddHandler(KeyDownEvent, OnWritingKey, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        writing.LostFocus += (_, _) => EndWriting(keep: true, focus: false);
+        Border frame = new() { Child = writing };
+        frame.Bind(Border.BackgroundProperty, frame.GetResourceObservable(TokenKeys.Editor_Background));
+        box = writing;
+        boxFrame = frame;
+        VisualChildren.Add(frame);
+        LogicalChildren.Add(frame);
+        InvalidateMeasure();
+        InvalidateVisual();
+        writing.Focus();
+        writing.CaretIndex = text.Length;
+        return true;
+    }
+
+    /// <summary>Enter writes the cell and goes down (across, from a new row's first cell), Tab across, Shift+Enter breaks
+    /// its line, and Escape leaves it as it was.</summary>
+    private void OnWritingKey(object? sender, KeyEventArgs e)
+    {
+        bool shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        (int Row, int Column) at = written;
+        switch (e.Key)
+        {
+            case Key.Enter when !shift && e.KeyModifiers == KeyModifiers.None:
+                bool added = writtenIn?.IsNewRow(at.Row) == true;
+                EndWriting(keep: true, focus: true);
+                Move(added ? (at.Row, at.Column + 1) : (at.Row + 1, at.Column));
+                e.Handled = true;
+                break;
+            case Key.Tab:
+                EndWriting(keep: true, focus: true);
+                Move((at.Row, at.Column + (shift ? -1 : 1)));
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                EndWriting(keep: false, focus: true);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void Move((int Row, int Column) to)
+    {
+        caret = anchor = Clamp(to);
+        Reveal(caret);
+        InvalidateVisual();
+    }
+
+    /// <summary>The cell's writing ended: its text handed on where it changed, unless left; the keys back to the cells when
+    /// the writing ended by them.</summary>
+    private void EndWriting(bool keep, bool focus)
+    {
+        if (box is not { } writing)
+        {
+            return;
+        }
+        box = null;
+        string text = writing.Text ?? string.Empty;
+        if (focus)
+        {
+            Focus();
+        }
+        VisualChildren.Remove(boxFrame!);
+        LogicalChildren.Remove(boxFrame!);
+        boxFrame = null;
+        InvalidateVisual();
+        if (keep && writtenIn is { } at && written.Row < at.RowCount && text != at.Cell(written.Row, written.Column))
+        {
+            CellWritten?.Invoke(this, new CellWrite(at, [at.FileRow(written.Row)], written.Column, text));
+        }
+    }
+
+    /// <summary>While a cell is written its box takes Enter, Tab and Escape; else Enter and F2 open a cell for writing.</summary>
+    public bool TakesKey(KeyEventArgs e) => box is not null
+        ? e.Key is Key.Enter or Key.Tab or Key.Escape
+        : e.Key is Key.Enter or Key.F2 && e.KeyModifiers == KeyModifiers.None && table is { RowCount: > 0 } shown && shown.IsEditable(caret.Row, caret.Column);
+
+    /// <summary>The cells' menu, Copy and Select All with their keys, at the pointer, or from the keys (the menu key,
+    /// Shift+F10) under the caret's cell; first the sorts of the column it opened on (the pointer's, or the caret's from the
+    /// keys), the one in force checked.</summary>
     private void ShowMenu(Point? at)
     {
         if (table is null)
@@ -107,6 +243,25 @@ public sealed class CellGrid : Control
                 ListMenus.Keyed("Select All", EditorActions.SelectAll, () => Execute(EditorActions.SelectAll), cells),
             },
         };
+        if (cells && (at is not { } place || place.X >= gutter))
+        {
+            int column = at is { } pointer ? ColumnAt(pointer.X - gutter + scroll.X) : caret.Column;
+            (string Title, (int Column, bool Descending)? Sort)[] sorts = [("Sort Ascending", (column, false)), ("Sort Descending", (column, true)), ("File Order", null)];
+            for (int i = 0; i < sorts.Length; i++)
+            {
+                (int Column, bool Descending)? sort = sorts[i].Sort;
+                menu.Items.Insert(i, MenuChoice.Of(sorts[i].Title, sort == table.Sort, () => SortRequested?.Invoke(this, sort)));
+            }
+            menu.Items.Insert(sorts.Length, new Separator());
+        }
+        (int top, _, int bottom, _) = Chosen;
+        int[] rows = cells ? [.. Enumerable.Range(top, bottom - top + 1).Where(row => !table.IsNewRow(row)).Select(table.FileRow)] : [];
+        if (rows.Length > 0 && table.DeleteTitle(rows.Length) is { } deleting)
+        {
+            Table from = table;
+            menu.Items.Add(new Separator());
+            menu.Items.Add(ListMenus.Item(deleting, null, () => RowsDeleted?.Invoke(this, new CellWrite(from, rows, 0, string.Empty))));
+        }
         if (at is null)
         {
             Rect body = Body;
@@ -124,9 +279,14 @@ public sealed class CellGrid : Control
         get => table;
         set
         {
+            // The same rows in another order keep the columns as they were sized.
+            bool resorted = value is not null && table is not null && ReferenceEquals(value.Unsorted, table.Unsorted);
             table = value;
             texts.Clear();
-            Fit();
+            if (!resorted)
+            {
+                Fit();
+            }
             caret = Clamp(caret);
             anchor = Clamp(anchor);
             scroll = ClampScroll(scroll);
@@ -177,6 +337,8 @@ public sealed class CellGrid : Control
         {
             return;
         }
+        // A cell's box stays over its cell: scrolled away, it is written.
+        EndWriting(keep: true, focus: box?.IsKeyboardFocusWithin == true);
         scroll = clamped;
         UpdateScrollBars();
         InvalidateVisual();
@@ -225,6 +387,13 @@ public sealed class CellGrid : Control
                 return true;
             case EditorActions.SelectAll when table is not null:
                 Choose((0, 0), (table.RowCount - 1, table.ColumnCount - 1));
+                return true;
+            case EditorActions.Delete or EditorActions.Backspace:
+                // A cell, never the text under the table, is what the keys clear.
+                if (table is { RowCount: > 0 } shown && shown.IsEditable(caret.Row, caret.Column) && !shown.IsNewRow(caret.Row) && shown.Cell(caret.Row, caret.Column).Length > 0)
+                {
+                    CellWritten?.Invoke(this, new CellWrite(shown, [shown.FileRow(caret.Row)], caret.Column, string.Empty));
+                }
                 return true;
         }
         return false;
@@ -275,7 +444,7 @@ public sealed class CellGrid : Control
             widths[column] = FittedWidth(column);
         }
         Place();
-        int last = table is { RowCount: > 0 } ? table.RowNumber(table.RowCount - 1) : 1;
+        int last = table is { RowCount: > 0 } ? table.Unsorted.RowNumber(table.RowCount - 1) : 1;
         gutter = Math.Max(3, last.ToString(CultureInfo.InvariantCulture).Length) * charWidth + 2 * Pad;
     }
 
@@ -285,13 +454,15 @@ public sealed class CellGrid : Control
         {
             return 0;
         }
-        int longest = Shown(table.Header(column)).Length;
+        // The title leaves its sort's arrow room.
+        double title = Math.Min(Shown(table.Header(column)).Length, MostCharacters) * charWidth + ArrowRoom;
+        int longest = 0;
         int rows = Math.Min(table.RowCount, Math.Max(50, SampledCells / Math.Max(1, table.ColumnCount)));
         for (int row = 0; row < rows && longest < MostCharacters; row++)
         {
             longest = Math.Max(longest, Shown(table.Cell(row, column)).Length);
         }
-        return Math.Clamp(longest, FewestCharacters, MostCharacters) * charWidth + 2 * Pad;
+        return Math.Max(Math.Clamp(longest, FewestCharacters, MostCharacters) * charWidth, title) + 2 * Pad;
     }
 
     private void Place()
@@ -389,6 +560,11 @@ public sealed class CellGrid : Control
         }
         (int row, int column) = CellAt(at);
         bool extend = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        if (at.Y < RowHeight && at.X >= gutter && OnArrow(at, column))
+        {
+            SortRequested?.Invoke(this, TableSort.Next(table.Sort, column));
+            return;
+        }
         if (at.Y < RowHeight && at.X >= gutter)
         {
             anchor = extend ? (0, anchor.Column) : (0, column);
@@ -411,10 +587,25 @@ public sealed class CellGrid : Control
             {
                 anchor = caret;
             }
+            if (e.ClickCount == 2 && !extend && BeginWriting())
+            {
+                return;
+            }
             choosing = true;
             e.Pointer.Capture(this);
         }
         InvalidateVisual();
+    }
+
+    /// <summary>Where a column's sort arrow is drawn on the header, as it is scrolled now.</summary>
+    public Rect SortArrow(int column) =>
+        new(gutter + lefts[column + 1] - scroll.X - Pad - ArrowSize, Math.Round((RowHeight - ArrowSize) / 2), ArrowSize, ArrowSize);
+
+    /// <summary>Whether a point on the header falls on a column's sort arrow, at its title's end.</summary>
+    private bool OnArrow(Point at, int column)
+    {
+        double right = gutter + lefts[column + 1] - scroll.X;
+        return at.X < right - EdgeReach && at.X >= right - Pad - ArrowRoom;
     }
 
     /// <summary>A right-click's cell chosen, unless it falls among the cells chosen already, which its menu then acts on.</summary>
@@ -451,6 +642,23 @@ public sealed class CellGrid : Control
             return;
         }
         Cursor = EdgeAt(at) >= 0 ? SizeColumn : null;
+        Point(table is { ColumnCount: > 0 } && at.Y < RowHeight && at.X >= gutter ? ColumnAt(at.X - gutter + scroll.X) : -1);
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        Point(-1);
+    }
+
+    /// <summary>The title the pointer is over, whose arrow then shows.</summary>
+    private void Point(int column)
+    {
+        if (column != pointed)
+        {
+            pointed = column;
+            InvalidateVisual();
+        }
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -472,8 +680,13 @@ public sealed class CellGrid : Control
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (table is null || table.RowCount == 0 || table.ColumnCount == 0)
+        if (table is null || table.RowCount == 0 || table.ColumnCount == 0 || box is not null)
         {
+            return;
+        }
+        if (e.Key is Key.Enter or Key.F2 && e.KeyModifiers == KeyModifiers.None && BeginWriting())
+        {
+            e.Handled = true;
             return;
         }
         KeyModifiers command = Keystroke.Command;
@@ -516,6 +729,16 @@ public sealed class CellGrid : Control
         e.Handled = true;
     }
 
+    /// <summary>A character typed on a cell that may be written opens it for writing, the character in place of its text.</summary>
+    protected override void OnTextInput(TextInputEventArgs e)
+    {
+        base.OnTextInput(e);
+        if (box is null && !e.Handled && e.Text is { Length: > 0 } typed && !char.IsControl(typed[0]) && BeginWriting(typed))
+        {
+            e.Handled = true;
+        }
+    }
+
     protected override void OnGotFocus(FocusChangedEventArgs e)
     {
         base.OnGotFocus(e);
@@ -543,6 +766,10 @@ public sealed class CellGrid : Control
     {
         vertical.Measure(availableSize);
         horizontal.Measure(availableSize);
+        if (boxFrame is not null && written.Column < widths.Length)
+        {
+            boxFrame.Measure(new Size(Math.Max(charWidth * 8, widths[written.Column] - 1), RowHeight * BoxRows));
+        }
         return new Size(
             double.IsInfinity(availableSize.Width) ? gutter + ContentWidth : availableSize.Width,
             double.IsInfinity(availableSize.Height) ? RowHeight + ContentHeight : availableSize.Height);
@@ -562,6 +789,12 @@ public sealed class CellGrid : Control
         horizontal.Arrange(new Rect(gutter, finalSize.Height - barHeight, Math.Max(0, finalSize.Width - gutter - (tall ? barWidth : 0)), barHeight));
         scroll = ClampScroll(scroll);
         UpdateScrollBars();
+        if (boxFrame is not null && written.Column < widths.Length)
+        {
+            double width = Math.Max(charWidth * 8, widths[written.Column] - 1);
+            boxFrame.Arrange(new Rect(gutter + lefts[written.Column] - scroll.X, RowHeight + (written.Row * RowHeight) - scroll.Y, width,
+                Math.Clamp(boxFrame.DesiredSize.Height, RowHeight - 1, RowHeight * BoxRows)));
+        }
         return finalSize;
     }
 
@@ -595,7 +828,24 @@ public sealed class CellGrid : Control
     {
         palette = null;
         texts.Clear();
+        FollowFont();
         InvalidateVisual();
+    }
+
+    /// <summary>The code font in force taken for the cells, each column fitted again to its width when it changed.</summary>
+    private void FollowFont()
+    {
+        FontFamily font = this.TryFindResource(CodeFonts.Key, out object? found) && found is FontFamily family ? family : CodeEditor.CodeFont;
+        if (font.Equals(plain.FontFamily))
+        {
+            return;
+        }
+        plain = new Typeface(font);
+        bold = new Typeface(font, FontStyle.Normal, FontWeight.SemiBold);
+        charWidth = CodeEditor.MeasureFont(plain, FontSize).CharWidth;
+        Fit();
+        scroll = ClampScroll(scroll);
+        InvalidateArrange();
     }
 
     public override void Render(DrawingContext context)
@@ -666,9 +916,16 @@ public sealed class CellGrid : Control
                 {
                     context.FillRectangle(colours.HeaderChosen, place);
                 }
-                if (Text(-1, column, place.Width, Bold, colours.HeaderText) is { } name)
+                if (Text(-1, column, place.Width - ArrowRoom, bold, colours.HeaderText) is { } name)
                 {
                     DrawText(context, name, place, number: false);
+                }
+                (int Column, bool Descending)? sort = table.Sort;
+                if (hasCells && (sort?.Column == column || pointed == column))
+                {
+                    bool sorted = sort?.Column == column;
+                    DrawArrow(context, sorted && sort!.Value.Descending ? colours.Down : colours.Up, sorted ? colours.HeaderText : colours.RowNumber,
+                        new Point(place.Right - Pad - ArrowSize, Math.Round((RowHeight - ArrowSize) / 2)));
                 }
                 context.FillRectangle(colours.Grid, new Rect(place.Right - 1, 0, 1, RowHeight));
             }
@@ -685,7 +942,7 @@ public sealed class CellGrid : Control
                 {
                     context.FillRectangle(colours.HeaderChosen, place);
                 }
-                DrawText(context, Text(row, Gutter, gutter, Plain, colours.RowNumber)!, place, number: true);
+                DrawText(context, Text(row, Gutter, gutter, plain, colours.RowNumber)!, place, number: true);
             }
         }
         context.FillRectangle(colours.Edge, new Rect(0, RowHeight - 1, bounds.Width, 1));
@@ -694,14 +951,31 @@ public sealed class CellGrid : Control
 
     private void DrawCell(DrawingContext context, int row, int column, Rect place, Palette colours)
     {
+        if (box is not null && written == (row, column))
+        {
+            return;
+        }
         if (matched.Count > 0 && matched.Contains(Spot((row, column))))
         {
             context.FillRectangle(Spot((row, column)) == currentMatch ? colours.SearchCurrent : colours.SearchMatch, place);
         }
         bool number = table!.IsNumber(row, column);
-        if (Text(row, column, place.Width, Plain, number ? colours.Number : colours.Text) is { } text)
+        if (Text(row, column, place.Width, plain, number ? colours.Number : colours.Text) is { } text)
         {
             DrawText(context, text, place, number);
+        }
+    }
+
+    /// <summary>A sort's arrow (an icon of 16 units) drawn <see cref="ArrowSize"/> wide from a point.</summary>
+    private static void DrawArrow(DrawingContext context, Geometry? arrow, IBrush brush, Point at)
+    {
+        if (arrow is null)
+        {
+            return;
+        }
+        using (context.PushTransform(Matrix.CreateScale(ArrowSize / 16, ArrowSize / 16) * Matrix.CreateTranslation(at.X, at.Y)))
+        {
+            context.DrawGeometry(brush, null, arrow);
         }
     }
 
@@ -727,7 +1001,7 @@ public sealed class CellGrid : Control
         {
             texts.Clear();
         }
-        string shown = column == Gutter ? table!.RowNumber(row).ToString(CultureInfo.InvariantCulture)
+        string shown = column == Gutter ? table!.RowLabel(row)
             : Shown(row < 0 ? table!.Header(column) : table!.Cell(row, column));
         if (shown.Length == 0)
         {
@@ -745,7 +1019,8 @@ public sealed class CellGrid : Control
 
     /// <summary>The theme's brushes the table draws with, read once per look.</summary>
     private sealed record Palette(IBrush Background, IBrush Text, IBrush Number, IBrush Header, IBrush HeaderText, IBrush HeaderChosen,
-        IBrush RowNumber, IBrush Grid, IBrush Edge, IBrush Selection, IBrush SelectionInactive, IBrush SearchMatch, IBrush SearchCurrent, IPen CaretPen)
+        IBrush RowNumber, IBrush Grid, IBrush Edge, IBrush Selection, IBrush SelectionInactive, IBrush SearchMatch, IBrush SearchCurrent, IPen CaretPen,
+        Geometry? Up, Geometry? Down)
     {
         public static Palette From(Control control)
         {
@@ -765,7 +1040,13 @@ public sealed class CellGrid : Control
                 Brush(TokenKeys.Editor_SelectionInactive),
                 Brush(TokenKeys.Editor_SearchMatch),
                 Brush(TokenKeys.Editor_SearchCurrent),
-                new Pen(Brush(TokenKeys.Accent), 1));
+                new Pen(Brush(TokenKeys.Accent), 1),
+                control.TryFindResource(IconKeys.ArrowUp, out object? up) ? up as Geometry : null,
+                control.TryFindResource(IconKeys.ArrowDown, out object? down) ? down as Geometry : null);
         }
     }
 }
+
+/// <summary>Cells written, or rows taken out, in a table as it was shown: the rows by their places in the file's order, the
+/// column and the text written (empty for rows taken out).</summary>
+public sealed record CellWrite(Table Table, IReadOnlyList<int> Rows, int Column, string Text);

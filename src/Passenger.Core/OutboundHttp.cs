@@ -11,11 +11,12 @@ public static class OutboundHttp
     /// <summary>A client, to keep for the process, whose requests give up after <paramref name="timeout"/> (infinite where
     /// the caller holds its own) and whose answers read whole may be <paramref name="most"/> bytes at most; with
     /// <paramref name="anyCertificate"/>, one that takes a server's certificate unchecked, as a package feed's configuration
-    /// may ask.</summary>
-    public static HttpClient Client(TimeSpan timeout, long most, bool anyCertificate = false)
+    /// may ask; without <paramref name="followsRedirects"/>, one handing a redirect to its caller to judge.</summary>
+    public static HttpClient Client(TimeSpan timeout, long most, bool anyCertificate = false, bool followsRedirects = true)
     {
         SocketsHttpHandler handler = new()
         {
+            AllowAutoRedirect = followsRedirects,
             UseCookies = false,
             ActivityHeadersPropagator = null,
             // A host whose address changes is reached at its new one by a client kept for the process.

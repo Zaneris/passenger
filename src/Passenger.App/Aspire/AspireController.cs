@@ -64,6 +64,9 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     public OutputView? LastAppConsole { get; private set; }
     public AspireResourceRun? SelectedService { get; private set; }
     public LiveApp? SelectedInspection => SelectedService?.Inspection;
+
+    /// <summary>A service launched with the inspector in it, given its XAML Hot Reload by the folder's session.</summary>
+    public Action<LiveApp>? Inspected { get; set; }
     public bool IsRunning => apps.Any(app => !app.Stopping && (app.Runner.IsRunning || app.IsTest));
     public event EventHandler? Changed;
 
@@ -143,19 +146,11 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     /// where the folder's session runs none.</summary>
     public AspireAppRun OwnedApp(string appHost) => FindApp(appHost) ?? throw new InvalidOperationException(Refusals.AppHostNotOwned);
 
-    public AspireResourceRun? FindService(AspireSelection selection)
+    /// <summary>The process its AppHost says a resource's program runs as (executable.pid), the last it gives; null for none.</summary>
+    public static int? ProgramOf(AspireResource resource)
     {
-        if (FindApp(selection.AppHostPath) is not { } app || selection.Resource.Source is not { } source || !Path.IsPathFullyQualified(source))
-        {
-            return null;
-        }
-        if (selection.Resource.State is not ("Running" or "Starting"))
-        {
-            return null;
-        }
-        AspireResourceRun[] matching = app.Services.Where(service => PathNames.Same(service.Project, source)).ToArray();
         int? processId = null;
-        foreach (System.Text.Json.JsonProperty property in AspireJson.Properties(selection.Resource.Data, "properties"))
+        foreach (System.Text.Json.JsonProperty property in AspireJson.Properties(resource.Data, "properties"))
         {
             if (property.Name != "executable.pid")
             {
@@ -171,6 +166,21 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 processId = value;
             }
         }
+        return processId;
+    }
+
+    public AspireResourceRun? FindService(AspireSelection selection)
+    {
+        if (FindApp(selection.AppHostPath) is not { } app || selection.Resource.Source is not { } source || !Path.IsPathFullyQualified(source))
+        {
+            return null;
+        }
+        if (selection.Resource.State is not ("Running" or "Starting"))
+        {
+            return null;
+        }
+        AspireResourceRun[] matching = app.Services.Where(service => PathNames.Same(service.Project, source)).ToArray();
+        int? processId = ProgramOf(selection.Resource);
         AspireResourceRun[] named = matching.Where(service => processId is int pid
             ? service.ProcessId == pid && (service.ResourceName is null || service.ResourceName == selection.Resource.Name
                 || AspireResource.IsNameWithSuffix(selection.Resource.Name, service.ResourceName) || service.ResourceName == selection.Resource.DisplayName)
@@ -900,6 +910,10 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         {
             throw new LaunchException("The Aspire application ended or reached its service limit during launch");
         }
+        if (UnseenApps.WhyNot(plan, "run") is { } seen)
+        {
+            throw new LaunchException(seen);
+        }
         AspireResourceRun resource = new(request.SessionId, request.DcpInstanceId, path, plan) { BuiltStamp = stamp };
         resource.ResourceName = request.Environment.FirstOrDefault(variable => variable.Name == OtelVariables.ServiceName)?.Value;
         string serviceName = ((IRunService)resource).Name;
@@ -916,10 +930,11 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             // Held as the run decides from its first start (FirstHold); the one Profile records, for the profiler.
             RunStart? chosen = app.Starting(resource, () => FirstHold(app, resource, request));
             RunStart? held = profiling ? RunStart.Profile : chosen;
-            resource.Inspection = held != RunStart.HotReload ? LiveApp.For(plan, workspace.Overlays) : null;
+            resource.Inspection = LiveApp.For(plan, workspace.Overlays);
             if (resource.Inspection is { } inspection)
             {
                 inspection.BindingFailed += (_, _) => BindingsFailed();
+                Inspected?.Invoke(inspection);
             }
             LaunchPlan inspected = resource.Inspection?.Plan ?? plan;
             // Held until what attaches lets it go, never where nothing can; the profiler's gets no changeable code to measure.
@@ -931,6 +946,22 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                     holding[name] = value;
                 }
                 inspected = inspected with { Environment = holding };
+                // Debugged with Hot Reload, it runs its update handlers as each update lands, through Passenger's hook.
+                bool reloaded = held == RunStart.HotReload || held == RunStart.Debug && workspace.Debug.HotReloadOn();
+                if (reloaded && UpdateHandlerHook.For(inspected) is ({ } hook, { } hooked))
+                {
+                    (resource.Handlers, inspected) = (hook, hooked);
+                }
+                // A web service's pages kept up with its static files and its updates, through the SDK's own browser refresh.
+                if (reloaded)
+                {
+                    (BrowserRefresh? browser, LaunchPlan refreshed, string? unkept) = await BrowserRefresh.ForAsync(inspected);
+                    (resource.Browser, inspected) = (browser, refreshed);
+                    if (unkept is not null)
+                    {
+                        resource.Console.Append($"{unkept}\n");
+                    }
+                }
             }
             if (request.Arguments is { Length: > 0 })
             {
@@ -940,7 +971,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             ProcessRunner runner = resource.Runner = new ProcessRunner(resource.Console, takesInput: true);
             runner.OutputReceived += (_, output) => app.Execution?.NotifyServiceLog(request.DcpInstanceId, request.SessionId, output.Text, output.IsError);
             runner.Exited += (_, code) => Finished(app, resource, code);
-            string? refused = await runner.StartAsync(inspected.Program, inspected.Arguments, inspected.WorkingDirectory, inspected.Environment);
+            string? refused = await runner.StartAsync(inspected.Start(), inspected.Environment);
             if (refused is not null)
             {
                 throw new LaunchException(refused);
@@ -1069,6 +1100,8 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         // Its own session and recording, as Stop's order ends them: the program has gone by itself.
         BackgroundWork.Track(app.EndSessionsAsync(workspace.Debug, [resource]));
         resource.Inspection?.Dispose();
+        resource.Handlers?.Dispose();
+        resource.Browser?.Dispose();
         resource.Runner?.Dispose();
         app.Resources.Remove(resource.Id);
         if (SelectedService == resource)
@@ -1102,6 +1135,8 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 runner.Dispose();
             }
             resource.Inspection?.Dispose();
+            resource.Handlers?.Dispose();
+            resource.Browser?.Dispose();
             app.Resources.Remove(id);
             if (SelectedService == resource)
             {
@@ -1532,6 +1567,8 @@ public sealed class AspireAppRun : ServiceRun
             {
                 HotReload = running.Held is not null,
                 App = running.Inspection,
+                Handlers = running.Handlers,
+                Browser = running.Browser,
                 WhyNot = DiagnosticsOff(running.Plan.Environment),
             })
             : throw new ServiceUnreachedException($"{service.Name} of {Name} has no program running");
@@ -1759,6 +1796,12 @@ public sealed class AspireResourceRun(string id, string instanceId, string proje
 
     /// <summary>What it started held for (the debugger, quietly for Hot Reload), or null when it started unheld.</summary>
     internal RunStart? Held { get; set; }
+
+    /// <summary>Passenger's hook it started with, held for Hot Reload, which its session takes; ended with it.</summary>
+    internal UpdateHandlerHook? Handlers { get; set; }
+
+    /// <summary>The SDK's browser refresh it started with, a web service's held for Hot Reload, which its session takes; ended with it.</summary>
+    internal BrowserRefresh? Browser { get; set; }
 
     /// <summary>Its start's number in its AppHost's run, the newest of a name its service's program.</summary>
     internal long Sequence { get; set; }

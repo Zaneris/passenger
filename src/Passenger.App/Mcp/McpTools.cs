@@ -37,6 +37,7 @@ public static class McpTools
     public const string FindInFiles = "find_in_files";
     public const string FindSymbol = "find_symbol";
     public const string Format = "format";
+    public const string GodotEditor = "godot_editor";
     public const string Hierarchy = "hierarchy";
     public const string HotReload = "hot_reload";
     public const string IdeAction = "ide_action";

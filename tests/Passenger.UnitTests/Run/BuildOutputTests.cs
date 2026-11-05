@@ -4,7 +4,8 @@ using Passenger.Text;
 namespace Passenger.UnitTests.Run;
 
 /// <summary>Where a build's line puts its problem: a file only where its origin is one (a place, a folder or an extension),
-/// a tool's origin ("CSC", "EXEC", "MSBUILD") naming no file but the project the line ends with.</summary>
+/// a tool's origin ("CSC", "EXEC", "MSBUILD") naming no file but the project the line ends with, and a multi-targeted
+/// project's inner build's framework where the line names one.</summary>
 public class BuildOutputTests
 {
     [Theory]
@@ -32,5 +33,16 @@ public class BuildOutputTests
         Assert.NotNull(problem);
         Assert.EndsWith(path, problem.Path);
         Assert.Equal(new TextPosition(lineNumber, column), problem.Position);
+    }
+
+    [Fact]
+    public void A_problem_of_a_multi_targeted_projects_inner_build_is_its_projects_and_names_that_framework()
+    {
+        Problem? problem = BuildOutput.Parse("/src/App/MainWindow.axaml(9,5): error AVLN2000: Unable to resolve property Note [/src/App/App.csproj::TargetFramework=net10.0]");
+        Assert.NotNull(problem);
+        Assert.Equal(("App", "net10.0"), (problem.Project, problem.Framework));
+        Assert.Equal("Unable to resolve property Note", problem.Message);
+        Assert.True(BuildOutput.Parse("/src/App/Program.cs(3,9): error CS1002: ; expected [/src/App/App.csproj]") is { Framework: null },
+            "A build of one framework's problem was said to be of an inner build's framework");
     }
 }

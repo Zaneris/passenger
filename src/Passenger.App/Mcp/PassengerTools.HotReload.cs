@@ -6,14 +6,15 @@ using Passenger.App.ToolWindows;
 namespace Passenger.App.Mcp;
 
 /// <summary>Hot Reload for an agent, as the window's Apply Hot Reload Changes does it: the edits in the editors applied to the
-/// program debugged (Edit and Continue), or saved for the dotnet watch that Run runs with Hot Reload, answered with what the
-/// apply came to, never with what the status bar says.</summary>
+/// program debugged (Edit and Continue), or saved for the dotnet watch that Run runs with Hot Reload, and XAML edits to an
+/// app's inspector, answered with what the apply came to, never with what the status bar says.</summary>
 public sealed partial class PassengerTools
 {
     [McpServerTool(Name = McpTools.HotReload, Title = "Apply Hot Reload changes", Destructive = true), Description(
         "Applies the editors' edits (saved or not) since the launch or the last apply to the running program, as Apply Hot " +
         "Reload Changes does: a debug_start launch, paused or running (Edit and Continue), or a run with Hot Reload (saved for " +
-        "dotnet watch). Returns the result (applied, nothingToApply, restartNeeded, errors, failed), what it said and updated, " +
+        "dotnet watch); an Avalonia or WPF app's XAML edits too, run or debugged, after the C#. Returns the result " +
+        "(applied, nothingToApply, restartNeeded, errors, failed), what it said and updated, " +
         "each edit it could not apply (file, line, ENC id), and whether the program restarted, with its new session. " +
         "debug_continue and debug_step apply edits made while paused too.")]
     public Task<HotReloadInfo> HotReload(
@@ -32,9 +33,18 @@ public sealed partial class PassengerTools
                 : new HotReloadInfo(Result(said.Result), said.Said, [], [], 0, [], said.Result == HotReloadResult.RestartNeeded,
                     said.Result == HotReloadResult.RestartNeeded);
         }
+        if (window.UnsavedGameScripts() is { Count: > 0 } unsaved)
+        {
+            AgentCall.Say("Saving the game's scripts, which Godot reloads in it as each is saved");
+            string saved = await window.SaveGameScriptsAsync(unsaved);
+            return new HotReloadInfo(unsaved.All(d => !d.IsModified) ? "applied" : "failed", saved, [.. unsaved.Select(d => Relative(d.Path))], [], 0, [], false, false);
+        }
         if (window.WhyNoHotReload() is { } why)
         {
-            throw new InvalidOperationException($"Hot Reload cannot apply changes: {why}");
+            // The window's words name its Settings page; an agent starts a program Hot Reload applies to by run or debug_start.
+            string started = debugger.IsDebugging ? string.Empty : $" ({McpTools.Run} with hotReload true, or {McpTools.DebugStart}, starts one it applies to)";
+            return why == window.ScriptsReloadAsSaved() ? new HotReloadInfo("nothingToApply", why, [], [], 0, [], false, false)
+                : throw new InvalidOperationException($"Hot Reload cannot apply changes: {why}{started}");
         }
         // The window's Apply Hot Reload Changes, its restarts made as the agent asks (else as Settings say) and never asked.
         DebugSession? before = debugger.Session;

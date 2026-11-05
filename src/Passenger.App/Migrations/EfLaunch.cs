@@ -67,7 +67,7 @@ internal sealed class EfLaunch
         }
         using (restored)
         {
-            string[] folders = restored.RootElement.TryGetProperty("packageFolders", out JsonElement packageFolders) && packageFolders.ValueKind == JsonValueKind.Object
+            string[] folders = JsonMembers.Object(restored.RootElement, "packageFolders") is { } packageFolders
                 ? [.. packageFolders.EnumerateObject().Select(p => p.Name)] : [];
             if (Runtime(restored, folders, startup, "Microsoft.EntityFrameworkCore.Design") is not { } design)
             {
@@ -154,8 +154,8 @@ internal sealed class EfLaunch
     /// ResolvePackageAssets finds it: the one whose path holds the name, or (<paramref name="whole"/>) whose file is it.</summary>
     private static string? Runtime(JsonDocument restored, string[] folders, IReadOnlyDictionary<string, string> startup, string package, bool whole = false)
     {
-        if (!restored.RootElement.TryGetProperty("targets", out JsonElement targets) || targets.ValueKind != JsonValueKind.Object
-            || !restored.RootElement.TryGetProperty("libraries", out JsonElement libraries) || libraries.ValueKind != JsonValueKind.Object)
+        if (JsonMembers.Object(restored.RootElement, "targets") is not { } targets
+            || JsonMembers.Object(restored.RootElement, "libraries") is not { } libraries)
         {
             return null;
         }
@@ -171,9 +171,8 @@ internal sealed class EfLaunch
         }
         foreach (JsonProperty library in target.Value.EnumerateObject())
         {
-            if (!library.Name.StartsWith(package + "/", StringComparison.OrdinalIgnoreCase) || !library.Value.TryGetProperty("runtime", out JsonElement assets)
-                || assets.ValueKind != JsonValueKind.Object || !libraries.TryGetProperty(library.Name, out JsonElement described)
-                || !described.TryGetProperty("path", out JsonElement path) || path.GetString() is not { Length: > 0 } relative)
+            if (!library.Name.StartsWith(package + "/", StringComparison.OrdinalIgnoreCase) || JsonMembers.Object(library.Value, "runtime") is not { } assets
+                || JsonMembers.Text(JsonMembers.Value(libraries, library.Name), "path") is not { Length: > 0 } relative)
             {
                 continue;
             }

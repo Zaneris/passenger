@@ -21,6 +21,9 @@ public partial class MainWindow
     /// <summary>The program Run last started, when it runs in the terminal; null when the last ran in the Run window.</summary>
     public TerminalRun? RunInTerminal => session.InTerminal;
 
+    /// <summary>The copies of a Godot game Run runs, each in its tab of the Terminal window.</summary>
+    public IReadOnlyList<TerminalRun> RunCopies => buildRun.CopyRuns;
+
     /// <summary>The end of the program Run last started, in the Run window or the terminal, with its exit code.</summary>
     public Task<int> RunEnd => buildRun.RunEnd;
 
@@ -44,10 +47,11 @@ public partial class MainWindow
     public RunConfigurationsDialog ShowRunConfigurations()
     {
         RunConfigurations configurations = session.Configurations;
-        RunConfigurationsDialog dialog = new([.. configurations.All.Where(c => c.Generated)], configurations.Own, [.. Projects.Where(p => p.Exists && p.IsRunnable)],
+        RunConfigurationsDialog dialog = new([.. configurations.All.Where(c => c.Generated)], configurations.Own, [.. session.RunProjects.Where(p => p.Exists && (p.IsRunnable || p.GodotFolder is not null))],
             configurations.Chosen?.Name, (mine, generated, chosen) => configurations.Set(mine, generated, chosen, Projects), buildRun.IsRunningConfiguration)
         {
             Folder = Folder,
+            GodotSetting = settings.GodotExecutable,
             ReadServices = ReadServices(Projects, Engine),
             WriteToProfile = WriteToLaunchProfileAsync,
             Actions = Actions,
@@ -289,6 +293,86 @@ public partial class MainWindow
 
     /// <summary>Debugs the chosen configuration as Debug does: null once its session is open, else what stopped it.</summary>
     public Task<string?> DebugAsync(string? arguments = null) => buildRun.DebugAsync(arguments);
+
+    /// <summary>What the command line's <c>--run</c> or <c>--debug</c> came to (<see cref="StartConfigurationAsync"/>) in
+    /// the window that opened its folder: null once its action ran, or with neither given; else why not, which ends
+    /// Passenger at its start as a malformed flag does.</summary>
+    public Task<string?> StartedRun { get; private set; } = Task.FromResult<string?>(null);
+
+    /// <summary>Why the start the command line's <c>--run</c> or <c>--debug</c> handed over came to nothing (its build failed,
+    /// its program did not start), which the log and standard error say beside what a person's Run says; the window stays
+    /// open on it. Null where it runs, or with neither given.</summary>
+    public string? NotStarted { get; private set; }
+
+    private static async Task<string?> StartOnceBegunAsync(Task<MainWindow> begun, ConfigurationStart start) =>
+        await (await begun).StartConfigurationAsync(start);
+
+    /// <summary>Runs or debugs a configuration through Run's or Debug's action, as the person's key runs it, once the
+    /// folder's run configurations are made from its projects as MSBuild evaluated them: the one named chosen first, as the
+    /// toolbar's menu chooses it. Null once the action ran and handed its start over, its build, console and Game pane the
+    /// person's Run's, one that came to nothing said as theirs is and in <see cref="NotStarted"/>; else why not: no folder
+    /// open, a name none of the folder's configurations has (those it has listed), or why the action is greyed.</summary>
+    public async Task<string?> StartConfigurationAsync(ConfigurationStart start)
+    {
+        UiThread.Check();
+        ProjectSession reading = session;
+        if (reading.Folder is not { } folder)
+        {
+            return start.NoFolder;
+        }
+        string shown = PathNames.Shown(folder, folder);
+        // As an agent's open waits: the walk for its projects, its single-file AppHosts, then the evaluations those started.
+        await reading.WorkspaceRead;
+        await reading.AspireFilesRead;
+        await Task.Yield();
+        await reading.Models.Idle;
+        if (reading.IsEnded)
+        {
+            return $"{start.Flag}: {shown} closed before its run configurations were read";
+        }
+        RunConfigurations configurations = reading.Configurations;
+        if (start.WhyNot(shown, [.. configurations.All.Select(c => c.Name)]) is { } unknown)
+        {
+            return unknown;
+        }
+        if (start.Name is { } name)
+        {
+            configurations.Select(name);
+        }
+        Hearing heard = ActionWork.Hear();
+        string? why;
+        try
+        {
+            why = actions!.Run(start.Debug ? AppActions.Debug : AppActions.RunProgram);
+        }
+        finally
+        {
+            heard.Ran();
+        }
+        if (why is not null)
+        {
+            return start.Cannot(configurations.Chosen?.Name ?? shown, why);
+        }
+        await heard.DoneAsync(CancellationToken.None);
+        if (heard.Outcome is { Failed: true, Said: { } failed })
+        {
+            NotStarted = start.Cannot(configurations.Chosen?.Name ?? shown, failed, reading.Problems.Find(p => p.Severity == ProblemSeverity.Error) is { } first ? $"{first.Where}: {first.Message}" : null);
+            Program.SayNotStarted(NotStarted);
+        }
+        return null;
+    }
+
+    /// <summary>Debug Another Copy (<see cref="BuildRunController.DebugAnotherCopyAsync"/>): what stopped it, if anything, goes to
+    /// the status bar; null once the copy's session is open.</summary>
+    public async Task<string?> DebugAnotherCopyAsync()
+    {
+        string? problem = await buildRun.DebugAnotherCopyAsync();
+        if (problem is not null)
+        {
+            status.Text = problem;
+        }
+        return problem;
+    }
 
     /// <summary>Starts in a tab of the Terminal window, named for the configuration being debugged, the program the debugger
     /// asks for (its runInTerminal request): held at its start by the variables the debugger gives it until the debugger

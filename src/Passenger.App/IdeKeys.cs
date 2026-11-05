@@ -32,12 +32,18 @@ public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups
     /// <summary>The window a key is being handled in, while it is: what an action it runs acts on there.</summary>
     public TopLevel? Pressing { get; private set; }
 
-    /// <summary>Takes a window in as the IDE's own, before it shows: its keys, its chords (forgotten on a click, a move of the
-    /// focus or the window left), its activity, its popups, and the gestures of its editors and of the side buttons.</summary>
+    /// <summary>Takes a window in as the IDE's own, before it shows: its keys, its chords and double taps (forgotten on a
+    /// click, a move of the focus or the window left; a double tap on any other key too, wherever it goes), its activity,
+    /// its popups, and the gestures of its editors and of the side buttons.</summary>
     public void Attach(TopLevel window)
     {
         window.AddHandler(InputElement.KeyDownEvent, (_, e) => OnKeyDown(window, e), RoutingStrategies.Tunnel);
-        window.AddHandler(InputElement.KeyDownEvent, (_, _) => activity(), RoutingStrategies.Tunnel, handledEventsToo: true);
+        window.AddHandler(InputElement.KeyDownEvent, (_, e) =>
+        {
+            keys.Heard(e);
+            activity();
+        }, RoutingStrategies.Tunnel, handledEventsToo: true);
+        window.AddHandler(InputElement.KeyUpEvent, (_, e) => keys.Release(e), RoutingStrategies.Tunnel, handledEventsToo: true);
         window.AddHandler(InputElement.PointerPressedEvent, (_, _) =>
         {
             keys.Reset();
@@ -45,7 +51,7 @@ public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups
             activity();
         }, RoutingStrategies.Tunnel, handledEventsToo: true);
         window.AddHandler(InputElement.PointerPressedEvent, (_, e) => OnSideButton(window, e), RoutingStrategies.Tunnel);
-        CodeEditor.SetGestures(window, gesture => keys.Keymap.ActionFor(gesture));
+        CodeEditor.SetGestures(window, () => keys.Keymap);
         window.AddHandler(InputElement.GotFocusEvent, (_, _) => keys.Reset(), RoutingStrategies.Bubble, handledEventsToo: true);
         if (window is WindowBase shown)
         {

@@ -49,11 +49,14 @@ public sealed class VsTestRunner : ITestRunner
     /// <summary>The session of vstest.console the runner asks, another taken once a stopped run left one stuck.</summary>
     private VsTestConsoleWrapper console;
 
-    /// <summary>The test cases discovered, by the key of the test each was told as.</summary>
+    /// <summary>The test cases discovered, by the id of the test each was told as.</summary>
     private readonly TestCatalog<TestCase> cases = new();
 
     /// <summary>The run settings file each assembly looked at runs with, by its path; null for none.</summary>
     private readonly Dictionary<string, string?> settingsOf = new(StringComparer.Ordinal);
+
+    /// <summary>The assemblies looked at that are a Godot game's, whose GdUnit4 tests run on Godot, by their paths.</summary>
+    private readonly HashSet<string> games = new(StringComparer.Ordinal);
 
     private VsTestRunner(string consolePath, string host, VsTestConsoleWrapper console)
     {
@@ -125,8 +128,16 @@ public sealed class VsTestRunner : ITestRunner
             foreach (TestAssembly assembly in group)
             {
                 settingsOf[assembly.Path] = group.Key;
+                if (assembly.Project.GodotFolder is not null)
+                {
+                    games.Add(assembly.Path);
+                }
+                else
+                {
+                    games.Remove(assembly.Path);
+                }
             }
-            string settings = await BackgroundWork.Run(() => Settings(null, log, group.Key), cancel);
+            string settings = await BackgroundWork.Run(() => Settings(null, log, group.Key, [], false), cancel);
             found.AddRange(await DiscoverWith([.. group.Select(a => a.Path)], settings, log, cancel));
         }
         return await BackgroundWork.Run(() => Tell(assemblies, found));
@@ -171,7 +182,7 @@ public sealed class VsTestRunner : ITestRunner
     /// project's run settings run with them, the environment given set in the test hosts VSTest starts as the settings'
     /// EnvironmentVariables are.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
-        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, CancellationToken cancel = default)
+        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default)
     {
         // xUnit gives a test the same id in each target framework's assembly: its assembly tells them apart.
         Dictionary<(Guid, string), TestItem> running = [];
@@ -184,12 +195,33 @@ public sealed class VsTestRunner : ITestRunner
             }
         }
         RunSummary? summary = null;
-        foreach (IGrouping<string?, TestCase> group in chosen.GroupBy(c => settingsOf.GetValueOrDefault(cases.Canonical(c.Source)), StringComparer.Ordinal))
+        // A Godot game's tests run apart, its GdUnit4's Godot given Settings' arguments, and headless where nobody sees Passenger.
+        foreach (IGrouping<(string? File, bool Game), TestCase> group in chosen.GroupBy(c => (settingsOf.GetValueOrDefault(cases.Canonical(c.Source)), games.Contains(cases.Canonical(c.Source)))))
         {
-            string settings = await BackgroundWork.Run(() => Settings(environment, log, group.Key), cancel);
-            RunSummary part = await RunWith([.. group], settings, running, outcomes, log, debugger, environment, cancel);
-            summary = summary is null ? part : summary.And(part);
-            if (part.Canceled)
+            bool headless = group.Key.Game && PassengerApp.ShowsNoWindow;
+            IReadOnlyList<string> arguments = group.Key.Game ? godot?.Arguments ?? [] : [];
+            // Debugged with Hot Reload, each test assembly's host is started for it and its own hook, one at a time.
+            List<(List<TestCase> Cases, TestHostReload? Reload)> parts = debugger is not null && !group.Key.Game
+                ? [.. group.GroupBy(c => c.Source, StringComparer.Ordinal)
+                    .Select(each => (Cases: each.ToList(), Reload: debugger.Reload(each.Key, environment ?? new Dictionary<string, string>())))]
+                : [(group.ToList(), null)];
+            bool stopped = false;
+            foreach ((List<TestCase> cases, TestHostReload? reload) in parts)
+            {
+                Dictionary<string, string>? given = reload is null ? environment?.ToDictionary() : new(environment ?? new Dictionary<string, string>());
+                foreach ((string name, string value) in reload?.Variables ?? new Dictionary<string, string>())
+                {
+                    given![name] = value;
+                }
+                string settings = await BackgroundWork.Run(() => Settings(given, log, group.Key.File, arguments, headless), cancel);
+                RunSummary part = await RunWith(cases, settings, running, outcomes, log, debugger, environment, cancel, reload);
+                summary = summary is null ? part : summary.And(part);
+                if (stopped = part.Canceled)
+                {
+                    break;
+                }
+            }
+            if (stopped)
             {
                 break;
             }
@@ -199,7 +231,25 @@ public sealed class VsTestRunner : ITestRunner
 
     /// <summary>Runs test cases with these settings (<see cref="RunAsync"/>).</summary>
     private async Task<RunSummary> RunWith(List<TestCase> chosen, string settings, Dictionary<(Guid, string), TestItem> running, Action<IReadOnlyList<TestOutcome>> outcomes,
-        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, CancellationToken cancel)
+        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, CancellationToken cancel, TestHostReload? reload = null)
+    {
+        DebugLauncher? launcher = debugger is null ? null : new DebugLauncher(debugger, environment, reload);
+        try
+        {
+            return await RunWith(chosen, settings, running, outcomes, log, launcher, cancel);
+        }
+        finally
+        {
+            // A hook no attach took (its host never started, or started no debugger) is let go here.
+            if (launcher is { Attached: false } && reload is not null)
+            {
+                reload.Hook.Dispose();
+            }
+        }
+    }
+
+    private async Task<RunSummary> RunWith(List<TestCase> chosen, string settings, Dictionary<(Guid, string), TestItem> running, Action<IReadOnlyList<TestOutcome>> outcomes,
+        Action<string>? log, DebugLauncher? debugger, CancellationToken cancel)
     {
         Run handler = new(running, outcomes, log);
         VsTestConsoleWrapper session = console;
@@ -213,7 +263,7 @@ public sealed class VsTestRunner : ITestRunner
             }
             else
             {
-                session.RunTestsWithCustomTestHost(chosen, settings, new TestPlatformOptions(), handler, new DebugLauncher(debugger, environment));
+                session.RunTestsWithCustomTestHost(chosen, settings, new TestPlatformOptions(), handler, debugger);
             }
         });
         // Not held, off the canceller's thread: the stop is said by the run's own end.
@@ -293,10 +343,12 @@ public sealed class VsTestRunner : ITestRunner
 
     /// <summary>A run's settings: the project's run settings file's, if it names one, with VSTest's design mode, as an IDE
     /// runs it, and the environment, each variable an element as VSTest reads them, over the file's of the same name; a name
-    /// XML cannot hold is left out and said, as is a file that cannot be read. A worker's: it reads the file.</summary>
-    private static string Settings(IReadOnlyDictionary<string, string>? environment, Action<string>? log, string? file)
+    /// XML cannot hold is left out and said, as is a file that cannot be read; GdUnit4's Godot given <paramref name="godot"/>
+    /// ahead of the settings' own parameters, and run headless where <paramref name="headless"/> says. A worker's: it reads
+    /// the file.</summary>
+    private static string Settings(IReadOnlyDictionary<string, string>? environment, Action<string>? log, string? file, IReadOnlyList<string> godot, bool headless)
     {
-        if (environment is not { Count: > 0 } && file is null)
+        if (environment is not { Count: > 0 } && file is null && !headless && godot.Count == 0)
         {
             return RunSettings;
         }
@@ -319,6 +371,11 @@ public sealed class VsTestRunner : ITestRunner
             XElement variables = Child(configuration, "EnvironmentVariables");
             foreach ((string name, string value) in environment)
             {
+                // The run settings' own Godot stands for GdUnit4's adapter: the IDE's fills in where they name none.
+                if (name == GodotTestRuns.BinaryVariable && variables.Element(name) is not null)
+                {
+                    continue;
+                }
                 try
                 {
                     variables.SetElementValue(XmlConvert.VerifyName(name), value);
@@ -328,6 +385,10 @@ public sealed class VsTestRunner : ITestRunner
                     log?.Invoke($"The environment variable {name} cannot be given to the tests: VSTest names each in XML, which cannot hold that name");
                 }
             }
+        }
+        if (headless || godot.Count > 0)
+        {
+            GdUnit4Settings.Given(root, godot, headless);
         }
         return root.ToString(SaveOptions.DisableFormatting);
 
@@ -369,7 +430,7 @@ public sealed class VsTestRunner : ITestRunner
     }
 
     /// <summary>VSTest's test cases told as the IDE's tests, each with the project and framework of the assembly it is
-    /// in, and kept to be run by the key of the test told. VSTest names an assembly and a source file as it was given or
+    /// in, and kept to be run by the id of the test told. VSTest names an assembly and a source file as it was given or
     /// as the PDB says: the tree's are canonical.</summary>
     private IReadOnlyList<TestItem> Tell(IReadOnlyList<TestAssembly> assemblies, IReadOnlyList<TestCase> found)
     {
@@ -486,6 +547,9 @@ public sealed class VsTestRunner : ITestRunner
 
         private string? lastError;
 
+        /// <summary>What GdUnit4's adapter said, read for why its tests that need Godot's engine never ran.</summary>
+        private readonly GdUnit4Log gdUnit = new();
+
         public TaskCompletionSource<RunSummary> Done { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         /// <summary>The run let go of: how it ended if it has, else what it told before, in the time given.</summary>
@@ -508,7 +572,7 @@ public sealed class VsTestRunner : ITestRunner
                 }
             }
             List<TestOutcome> batch = [.. (testRunChangedArgs?.NewTestResults ?? [])
-                .Select(r => running.TryGetValue((r.TestCase.Id, r.TestCase.Source), out TestItem? test) ? Outcome(test, r) : null)
+                .Select(r => running.TryGetValue((r.TestCase.Id, r.TestCase.Source), out TestItem? test) ? Told(Outcome(test, r), r) : null)
                 .OfType<TestOutcome>()];
             if (batch.Count == 0)
             {
@@ -552,14 +616,36 @@ public sealed class VsTestRunner : ITestRunner
 
         public void HandleLogMessage(TestMessageLevel level, string? message)
         {
-            if (level == TestMessageLevel.Error && message is not null)
+            string? cause = null;
+            if (message is not null)
             {
                 lock (all)
                 {
-                    lastError = message;
+                    lastError = level == TestMessageLevel.Error ? message : lastError;
+                    cause = gdUnit.Heard(message);
                 }
             }
             Said(level, message, log);
+            if (cause is not null)
+            {
+                log?.Invoke(cause);
+            }
+        }
+
+        /// <summary>A test's outcome with why it never ran where GdUnit4 said its runner's build failed: a failure with no
+        /// time or frames of its own in that test assembly.</summary>
+        private TestOutcome Told(TestOutcome outcome, VsResult result)
+        {
+            if (result.Outcome != VsOutcome.Failed || result.Duration != TimeSpan.Zero || !string.IsNullOrEmpty(result.ErrorStackTrace))
+            {
+                return outcome;
+            }
+            string? why;
+            lock (all)
+            {
+                why = gdUnit.Why(Path.GetFileNameWithoutExtension(result.TestCase.Source));
+            }
+            return why is null ? outcome : outcome with { Message = outcome.Message is { Length: > 0 } message ? $"{message}\n{why}" : why };
         }
 
         public void HandleRawMessage(string rawMessage) => Raw(rawMessage);
@@ -580,9 +666,15 @@ public sealed class VsTestRunner : ITestRunner
     }
 
     /// <summary>VSTest's way to debug: it hands over the test host it would start, and the IDE starts it under its
-    /// debugger instead, or attaches to the one it started. VSTest waits on its own thread for each answer.</summary>
-    private sealed class DebugLauncher(ITestDebugLauncher debugger, IReadOnlyDictionary<string, string>? environment) : ITestHostLauncher3
+    /// debugger instead, or attaches to the one it started, with Hot Reload and its hook where the host was started for
+    /// them (<paramref name="reload"/>, taken by the first attach). VSTest waits on its own thread for each answer.</summary>
+    private sealed class DebugLauncher(ITestDebugLauncher debugger, IReadOnlyDictionary<string, string>? environment, TestHostReload? reload) : ITestHostLauncher3
     {
+        private int attached;
+
+        /// <summary>Whether an attach took the reload's hook.</summary>
+        public bool Attached => Volatile.Read(ref attached) == 1;
+
         public bool IsDebug => true;
 
         public int LaunchTestHost(TestProcessStartInfo defaultTestHostStartInfo) => LaunchTestHost(defaultTestHostStartInfo, CancellationToken.None);
@@ -609,7 +701,8 @@ public sealed class VsTestRunner : ITestRunner
         public bool AttachDebuggerToProcess(int pid) => AttachDebuggerToProcess(pid, CancellationToken.None);
 
         // VSTest starts a .NET test host itself and waits on this, on its own thread, before it runs a test in it.
-        public bool AttachDebuggerToProcess(int pid, CancellationToken cancellationToken) => Synchronously.Run(() => debugger.AttachAsync(pid));
+        public bool AttachDebuggerToProcess(int pid, CancellationToken cancellationToken) =>
+            Synchronously.Run(() => debugger.AttachAsync(pid, Interlocked.Exchange(ref attached, 1) == 0 ? reload : null));
 
         public bool AttachDebuggerToProcess(AttachDebuggerInfo attachDebuggerInfo, CancellationToken cancellationToken) =>
             AttachDebuggerToProcess(attachDebuggerInfo.ProcessId, cancellationToken);

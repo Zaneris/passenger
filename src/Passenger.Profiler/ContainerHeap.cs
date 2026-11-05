@@ -114,7 +114,7 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
     /// <summary>The tools' heap mode in the container, started once.</summary>
     private Process Started()
     {
-        if (tools is { HasExited: false } running)
+        if (tools is { } running && DotnetProcesses.Runs(running))
         {
             return running;
         }

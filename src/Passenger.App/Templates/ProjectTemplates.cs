@@ -55,6 +55,9 @@ public sealed record ProjectTemplate(string Name, IReadOnlyList<string> ShortNam
     /// <summary>Passenger's own item template it is, which the IDE makes itself; null for dotnet new's.</summary>
     public OwnTemplate? Own { get; init; }
 
+    /// <summary>Whether it is Passenger's own Godot 4 game, whose files the IDE writes itself (<see cref="OwnTemplates.GodotGame"/>).</summary>
+    public bool GodotGame { get; init; }
+
     /// <summary>Whether it makes what it makes by the name given: false for one whose name has no default (.gitignore).</summary>
     public bool TakesName { get; init; } = true;
 
@@ -331,7 +334,9 @@ public static partial class ProjectTemplates
     private static async Task<TemplateCatalog> ParseAsync(string cache, string sdk)
     {
         using JsonDocument document = await ReadSharedAsync(cache);
-        List<JsonElement> all = [.. document.RootElement.GetProperty("TemplateInfo").EnumerateArray()];
+        List<JsonElement> all = JsonMembers.Value(document.RootElement, "TemplateInfo") is { ValueKind: JsonValueKind.Array } listed
+            ? [.. listed.EnumerateArray()]
+            : throw new InvalidOperationException($"dotnet new's template cache {cache} lists no templates");
         using HostFiles ide = new();
         List<ProjectTemplate> templates = Groups(all.Where(t => Tag(t, "type") is "project" or "solution" && Usable(t)), ide);
         List<ProjectTemplate> items = Groups(all.Where(t => Tag(t, "type") == "item" && Usable(t)), ide);

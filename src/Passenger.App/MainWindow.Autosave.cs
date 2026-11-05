@@ -123,12 +123,19 @@ public partial class MainWindow
     }
 
     /// <summary>File, Save (the file shown as it is pressed) or Save All: each changed file first gets what Settings
-    /// ask of a save (Run eslint --fix on save, then Prettier's Run on save), which an explicit save runs and autosave
-    /// never does, each one undoable edit. The files are saved whatever came of those.</summary>
+    /// ask of a save (Run eslint --fix on save, then Prettier's Run on save, or a GDScript's Reformat on save), which an
+    /// explicit save runs and autosave never does, each one undoable edit. The files are saved whatever came of those.</summary>
     private async Task SaveExplicitly(bool all)
     {
-        OpenDocument? pressed = all ? null : Editors.Active;
+        OpenDocument? pressed = all ? null : Editors.Active?.Saves;
         List<OpenDocument> saving = all ? [.. Editors.Documents.Where(d => d.IsModified)] : pressed is { IsModified: true } ? [pressed] : [];
+        string? held = await Editors.ClearAsync([.. saving.Select(d => d.Path)]);
+        if (held is not null)
+        {
+            // The rest are saved as asked, those held left as they are.
+            status.Text = held;
+            saving.RemoveAll(d => Editors.HeldElsewhere(d.Path) is not null);
+        }
         BackgroundWork.Begin();
         try
         {
@@ -144,13 +151,16 @@ public partial class MainWindow
                     IdeErrors.Report(error);
                 }
             }
-            if (all)
+            if (all && held is null)
             {
                 Editors.SaveAll(asked: true);
             }
-            else if (pressed is { IsModified: true })
+            else
             {
-                Editors.SaveAsked(pressed);
+                foreach (OpenDocument document in saving.Where(d => d.IsModified))
+                {
+                    Editors.SaveAsked(document);
+                }
             }
         }
         finally

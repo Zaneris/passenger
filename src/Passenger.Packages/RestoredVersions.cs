@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Passenger.Core;
 
 namespace Passenger.Packages;
 
@@ -21,6 +22,14 @@ public sealed class RestoredVersions
         return packages?.GetValueOrDefault(id);
     }
 
+    /// <summary>Whether any framework's restore resolved a package, however the project came by it.</summary>
+    public bool Holds(string id) => byFramework.Values.Any(packages => packages.ContainsKey(id));
+
+    /// <summary>The packages a framework's restore resolved, with their versions (a project of one framework names none).</summary>
+    public IReadOnlyDictionary<string, string> All(string? framework) =>
+        (framework is not null ? byFramework.GetValueOrDefault(framework) : byFramework.Count == 1 ? byFramework.Values.First() : null)
+        ?? new Dictionary<string, string>();
+
     /// <summary>An assets file's targets read (a runtime's own targets passed over); none where it does not read as one.</summary>
     public static RestoredVersions Read(Stream assets)
     {
@@ -28,20 +37,15 @@ public sealed class RestoredVersions
         {
             using JsonDocument read = JsonDocument.Parse(assets);
             JsonElement root = read.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("targets", out JsonElement targets) || targets.ValueKind != JsonValueKind.Object)
+            if (JsonMembers.Object(root, "targets") is not { } targets)
             {
                 return None;
             }
             // A target is named as the framework's key under project.frameworks, whose targetAlias is the project's own name for it.
             Dictionary<string, string> aliases = new(StringComparer.OrdinalIgnoreCase);
-            if (root.TryGetProperty("project", out JsonElement project) && project.ValueKind == JsonValueKind.Object
-                && project.TryGetProperty("frameworks", out JsonElement frameworks) && frameworks.ValueKind == JsonValueKind.Object)
+            foreach (JsonProperty framework in JsonMembers.Properties(JsonMembers.Object(root, "project"), "frameworks"))
             {
-                foreach (JsonProperty framework in frameworks.EnumerateObject())
-                {
-                    aliases[framework.Name] = framework.Value.ValueKind == JsonValueKind.Object && framework.Value.TryGetProperty("targetAlias", out JsonElement alias)
-                        && alias.GetString() is { Length: > 0 } named ? named : framework.Name;
-                }
+                aliases[framework.Name] = JsonMembers.Text(framework.Value, "targetAlias") is { Length: > 0 } named ? named : framework.Name;
             }
             Dictionary<string, Dictionary<string, string>> found = new(StringComparer.OrdinalIgnoreCase);
             foreach (JsonProperty target in targets.EnumerateObject().Where(t => !t.Name.Contains('/', StringComparison.Ordinal) && t.Value.ValueKind == JsonValueKind.Object))
@@ -49,8 +53,8 @@ public sealed class RestoredVersions
                 Dictionary<string, string> packages = new(StringComparer.OrdinalIgnoreCase);
                 foreach (JsonProperty library in target.Value.EnumerateObject())
                 {
-                    if (library.Name.Split('/', 2) is [{ Length: > 0 } id, { Length: > 0 } version] && library.Value.ValueKind == JsonValueKind.Object
-                        && library.Value.TryGetProperty("type", out JsonElement type) && type.ValueEquals("package"))
+                    if (library.Name.Split('/', 2) is [{ Length: > 0 } id, { Length: > 0 } version]
+                        && JsonMembers.Value(library.Value, "type") is { ValueKind: JsonValueKind.String } type && type.ValueEquals("package"))
                     {
                         packages[id] = version;
                     }

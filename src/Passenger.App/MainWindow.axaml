@@ -117,12 +117,18 @@
             </app:ToolbarRow>
         </Border>
 
-        <!-- Tool windows round the editor: stripes of their buttons down both edges. -->
-        <docking:DockHost Name="Dock" Grid.Row="1">
-            <docking:DockHost.Center>
-                <editors:EditorArea Name="Editors" />
-            </docking:DockHost.Center>
-        </docking:DockHost>
+        <DockPanel Grid.Row="1">
+            <!-- What .NET the machine or the folder lacks, with its fix (MainWindow.Dotnet.cs). -->
+            <app:Banner Name="DotnetBanner" />
+            <!-- A Godot project's offer of Passenger as Godot's script editor, made once (MainWindow.GodotEditor.cs). -->
+            <app:Banner Name="GodotBanner" />
+            <!-- Tool windows round the editor: stripes of their buttons down both edges. -->
+            <docking:DockHost Name="Dock">
+                <docking:DockHost.Center>
+                    <editors:EditorArea Name="Editors" />
+                </docking:DockHost.Center>
+            </docking:DockHost>
+        </DockPanel>
 
         <!-- The status bar: where the caret is and how the file is stored. -->
         <Border Classes="statusBar" Grid.Row="2">
@@ -175,10 +181,11 @@
                     </Button>
                     <TextBlock Name="LanguageText" Classes="status" />
                 </StackPanel>
-                <app:StatusLine>
-                    <!-- Cut where the widgets begin, so a deep file's path never runs on under them, and where what the
-                         bar says begins, which takes its room first. -->
-                    <StackPanel Name="BreadcrumbHost" Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True" />
+                <!-- A gap before the widgets, as between them, so neither a deep file's path nor what the bar says runs on
+                     against them. -->
+                <app:StatusLine Margin="0,0,18,0">
+                    <!-- Cut where its line ends, and where what the bar says begins. -->
+                    <Panel Name="BreadcrumbHost" VerticalAlignment="Center" ClipToBounds="True" />
                     <!-- What the status bar says, with whether it is an error or a warning (a project's load) while it says it;
                          a link to where it has more to see while it has a place (StatusBar.Say), its whole text on hover. -->
                     <Button Name="StatusMessage" Classes="statusMessage">

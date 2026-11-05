@@ -206,13 +206,13 @@ public sealed class PrettierService : IAsyncDisposable
         {
             using JsonDocument read = JsonDocument.Parse(line);
             JsonElement answer = read.RootElement;
-            if (answer.ValueKind != JsonValueKind.Object || !answer.TryGetProperty("id", out JsonElement asked) || !asked.TryGetInt32(out int answered) || answered != id)
+            if (JsonMembers.Number(answer, "id") != id)
             {
                 return null;
             }
-            string? Text(string name) => answer.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-            bool Flag(string name) => answer.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.True;
-            int cursor = answer.TryGetProperty("cursor", out JsonElement at) && at.TryGetInt32(out int offset) ? offset : 0;
+            string? Text(string name) => JsonMembers.Text(answer, name);
+            bool Flag(string name) => JsonMembers.Bool(answer, name) == true;
+            int cursor = JsonMembers.Number(answer, "cursor") ?? 0;
             return new PrettierAnswer(Text("formatted"), cursor, Flag("ignored"), Flag("unsupported"), Text("error"), Text("version"));
         }
         catch (JsonException)
@@ -266,20 +266,7 @@ public sealed class PrettierService : IAsyncDisposable
         /// <summary>Whether its first format's time has been logged.</summary>
         public bool Timed { get; set; }
 
-        public bool HasExited
-        {
-            get
-            {
-                try
-                {
-                    return process.HasExited;
-                }
-                catch (InvalidOperationException)
-                {
-                    return true;
-                }
-            }
-        }
+        public bool HasExited => !DotnetProcesses.Runs(process);
 
         /// <summary>A runner started, its fork off the window's thread, where a format pressed there would wait it
         /// out.</summary>

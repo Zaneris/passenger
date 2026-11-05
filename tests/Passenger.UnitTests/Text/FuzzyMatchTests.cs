@@ -1,3 +1,4 @@
+using System.Buffers;
 using Passenger.Text;
 
 namespace Passenger.UnitTests.Text;
@@ -118,6 +119,41 @@ public class FuzzyMatchTests
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.True(allocated == 0, $"A thousand rounds of scoring allocated {allocated:N0} bytes: Go To File would make garbage on every key for every file");
         Assert.True(matched > 0);
+    }
+
+    /// <summary>A collection under memory pressure can leave the shared pool holding nothing, so the next to rent an array makes one.</summary>
+    [Fact]
+    public void Scoring_a_query_and_path_too_long_for_the_stack_allocates_nothing_once_the_shared_pool_holds_nothing()
+    {
+        string longPath = string.Join('\\', Enumerable.Repeat("folder", 60)) + "\\CodeEditor.cs";
+        string longQuery = string.Join('/', Enumerable.Repeat("folder", 40));
+        Assert.Equal(600 - longPath.Length, FuzzyMatch.Score(longQuery, longPath));
+        bool made = false;
+        while (!made)
+        {
+            long renting = GC.GetAllocatedBytesForCurrentThread();
+            ArrayPool<char>.Shared.Rent(longPath.Length);
+            made = GC.GetAllocatedBytesForCurrentThread() != renting;
+        }
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        int? score = FuzzyMatch.Score(longQuery, longPath);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(allocated == 0, $"Scoring allocated {allocated:N0} bytes with the pool empty: Go To File would make garbage on a key whenever the machine is short of memory");
+        Assert.Equal(600 - longPath.Length, score);
+    }
+
+    [Fact]
+    public void A_query_and_path_too_long_for_the_stack_match_along_the_path_as_short_ones_do_and_a_query_longer_than_the_path_matches_nothing()
+    {
+        string path = string.Join('\\', Enumerable.Repeat("folder", 60)) + "\\CodeEditor.cs";
+        string query = string.Join('/', Enumerable.Repeat("FOLDER", 59)) + "/code";
+        Assert.Equal(600 - path.Length, FuzzyMatch.Score(query, path));
+        Assert.Equal(600 - path.Length, FuzzyMatch.Score(query[..300], path));
+        int passedOver = "folder\\od".Length;
+        Assert.Equal(300 - passedOver - path.Length / 4, FuzzyMatch.Score(query.Replace("/code", "/ce", StringComparison.Ordinal), path));
+        Assert.Null(FuzzyMatch.Score(query + "/nothing", path));
+        Assert.Null(FuzzyMatch.Score(path + "/", path));
+        Assert.Null(FuzzyMatch.Score("a/b/", "a/b"));
     }
 
     private static IEnumerable<string> Ranked(string query, IEnumerable<string> paths) =>

@@ -6,8 +6,7 @@ using Passenger.Lsp;
 using Passenger.Text;
 using Held = System.Func<System.Collections.Generic.IReadOnlyList<string>,
     System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Passenger.Roslyn.Extension.TextHeld>>>;
-using Written = System.Func<System.DateTime,
-    System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Passenger.Roslyn.Extension.DocumentWritten>>>;
+using Written = System.Func<System.DateTime, System.Threading.Tasks.Task<Passenger.Lsp.WrittenLately>>;
 
 namespace Passenger.App.CSharp;
 
@@ -90,7 +89,7 @@ public static class WorkspaceEdits
             return null;
         }
         // Each file read off the window's thread, as an edit's reach is files of any size.
-        List<(string Path, string Hash, bool? OnDisk)> read = await BackgroundWork.Run(() => texts.Where(t => t.Hash is not null).Select(t => (t.Path, t.Hash!, OnDisk(t.Path, t.Hash!))).ToList());
+        List<(string Path, string Hash, bool? OnDisk)> read = await BackgroundWork.Run(() => texts.Where(t => t.Hash is not null).Select(t => (t.Path, t.Hash!, HeldTexts.OnDisk(t.Path, t.Hash!))).ToList());
         // One the call trusts is also the text it was seen as: a write within the disk's clock tick keeps its time.
         List<string> unread = [.. read.Where(t => t.OnDisk == false || patience?.AsSeen(t.Path, t.Hash) == false).Select(t => t.Path)];
         if (unread.Count > 0)
@@ -104,10 +103,36 @@ public static class WorkspaceEdits
         return null;
     }
 
+    /// <summary>Lets go of the files heard changed that the server holds as the disk has them, or holds no document of, asked
+    /// before a command asks it so that what it works out is from them (<see cref="WatchedFiles.Settle"/>); those it holds
+    /// otherwise are judged once it has answered (<see cref="StaleAsync(EditorArea, Held?, JsonElement, DateTime?, Patience?, IReadOnlyCollection{string}?, Written?)"/>).</summary>
+    internal static async Task SettleAsync(RoslynSession session, CancellationToken cancel)
+    {
+        WatchedFiles watched = session.Server.WatchedFiles;
+        (IReadOnlyList<string> changing, long asOf) = watched.Changing();
+        if (changing.Count == 0)
+        {
+            return;
+        }
+        IReadOnlyList<Roslyn.Extension.TextHeld> texts;
+        try
+        {
+            texts = await session.HeldTextsAsync(changing, cancel);
+        }
+        catch (LanguageServerFailed)
+        {
+            // A server without Passenger's extension: the files' times are all there is to go by.
+            return;
+        }
+        // Each file read off the window's thread, as a change may reach files of any size.
+        List<string> unread = await BackgroundWork.Run(() => texts.Where(t => t.Hash is { } hash && HeldTexts.OnDisk(t.Path, hash) != true).Select(t => t.Path).ToList());
+        watched.Settle(changing, asOf, unread, unread);
+    }
+
     /// <summary>The files of the server's solution it reads from disk (all but the open C# and Razor files, whose text it is
-    /// given), but those an edit <paramref name="made"/>, written on disk or deleted at or after a time that the server may
-    /// hold as they were: each written one the command has not seen it hold as the disk has it, and each gone that it still
-    /// holds. None from a server that cannot say.</summary>
+    /// given), but those an edit <paramref name="made"/>, that the server may hold as they were: each written on disk at or
+    /// after a time, and each heard changed however long ago, that the command has not seen it hold as the disk has it, and
+    /// each gone that it still holds; the rest heard changed are settled. None from a server that cannot say.</summary>
     private static async Task<List<Roslyn.Extension.DocumentWritten>> WrittenElsewhereAsync(EditorArea editors, Written? written, DateTime after, Patience patience,
         IReadOnlyCollection<string>? made)
     {
@@ -115,7 +140,7 @@ public static class WorkspaceEdits
         {
             return [];
         }
-        IReadOnlyList<Roslyn.Extension.DocumentWritten> found;
+        WrittenLately found;
         try
         {
             found = await written(after);
@@ -125,8 +150,37 @@ public static class WorkspaceEdits
             // A server without Passenger's extension: the edit's own files are all there is to go by.
             return [];
         }
-        return [.. found.Where(d => editors.Find(d.Path) is not { Language.Service: Languages.LanguageService.CSharp } && made?.Contains(d.Path) != true
-            && (d.Gone || !patience.Trusts(d.Path)))];
+        bool Reads(string path) => editors.Find(path) is not { Language.Service: Languages.LanguageService.CSharp } && made?.Contains(path) != true;
+        List<Roslyn.Extension.TextHeld> heard = [.. found.Changed.Where(t => Reads(t.Path))];
+        // Each file read off the window's thread, as a change may reach files of any size.
+        List<(string Path, bool? OnDisk)> changed = await BackgroundWork.Run(() => heard.Select(t => (t.Path, HeldTexts.OnDisk(t.Path, t.Hash!))).ToList());
+        // One held as the disk has it may have been read only once the server was asked, so it is waited for unless seen so before.
+        List<string> unread = [.. changed.Where(c => c.OnDisk != true).Select(c => c.Path)];
+        List<string> behind = [.. unread, .. changed.Where(c => c.OnDisk == true && !patience.Trusts(c.Path)).Select(c => c.Path)];
+        found.Settle(behind, unread);
+        HashSet<string> listed = new(PathNames.Comparer);
+        return [.. found.Written.Concat(behind.Select(p => new Roslyn.Extension.DocumentWritten(p, Gone: !File.Exists(p))))
+            .Where(d => listed.Add(d.Path) && Reads(d.Path) && (d.Gone || !patience.Trusts(d.Path)))];
+    }
+
+    /// <summary>The first file whose edits were placed in a text Passenger read (<see cref="PlacedEdits.Read"/>) that is no
+    /// longer that text: an open file's as the request found it (<paramref name="asked"/>), what is typed since being carried
+    /// through; another's as the disk has it now, read off the window's thread. Null when each is as read.</summary>
+    public static async Task<string?> OutOfDateAsync(EditorArea editors, IReadOnlyList<PlacedEdits> files, Asked? asked)
+    {
+        List<PlacedEdits> closed = [];
+        foreach (PlacedEdits file in files.Where(f => f.Read is not null))
+        {
+            if (editors.Find(file.Path) is not { HoldsText: true } open)
+            {
+                closed.Add(file);
+            }
+            else if ((asked?.Trackers.GetValueOrDefault(open)?.Snapshot ?? open.Text.Snapshot).ToString() != file.Read)
+            {
+                return file.Path;
+            }
+        }
+        return closed.Count == 0 ? null : await BackgroundWork.Run(() => closed.FirstOrDefault(f => EditorArea.ReadText(f.Path) != f.Read)?.Path);
     }
 
     /// <summary>Why an edit is not made in a file not open written once its server was asked.</summary>
@@ -156,23 +210,6 @@ public static class WorkspaceEdits
             }
         }
         return null;
-    }
-
-    /// <summary>Whether a file's text on disk is the one of this fingerprint, read as Passenger reads it or as the server
-    /// may: as UTF-8 whatever the bytes (Roslyn's fallback off Windows). Null when it cannot be read, which applying says.</summary>
-    internal static bool? OnDisk(string path, string hash)
-    {
-        byte[] bytes;
-        try
-        {
-            bytes = FileText.Read(path);
-        }
-        catch (Exception gone) when (gone is IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-        return FileText.FromBytes(bytes, null, () => EditorConfig.For(path).Charset) is not { } disk || Roslyn.Extension.TextHash.Of(disk.Text) == hash
-            || Roslyn.Extension.TextHash.Of(new System.Text.UTF8Encoding(false).GetString(bytes).TrimStart('﻿')) == hash;
     }
 
     /// <summary>Writes a command's files not open and waits within its recording for those still landing
@@ -536,14 +573,17 @@ public static class WorkspaceEdits
     {
         public static Resource Read(JsonElement operation)
         {
-            string kind = operation.GetProperty("kind").GetString() ?? string.Empty;
-            string path = DocumentUris.ToPath(operation.GetProperty(kind == "rename" ? "oldUri" : "uri").GetString()!);
-            string? to = kind == "rename" ? DocumentUris.ToPath(operation.GetProperty("newUri").GetString()!) : null;
-            return new Resource(kind, path, to, operation.TryGetProperty("options", out JsonElement options) ? options : default);
+            string kind = JsonMembers.Text(operation, "kind") ?? string.Empty;
+            string path = DocumentUris.ToPath(Named(operation, kind == "rename" ? "oldUri" : "uri"));
+            string? to = kind == "rename" ? DocumentUris.ToPath(Named(operation, "newUri")) : null;
+            return new Resource(kind, path, to, JsonMembers.Value(operation, "options") ?? default);
         }
 
-        public bool Option(string name) =>
-            Options.ValueKind == JsonValueKind.Object && Options.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.True;
+        public bool Option(string name) => JsonMembers.Bool(Options, name) == true;
+
+        /// <summary>A file an operation cannot go without: missing or of another kind, the edit does not read.</summary>
+        private static string Named(JsonElement operation, string name) =>
+            JsonMembers.Text(operation, name) ?? throw new JsonException($"A language server's file operation's {name} is missing or no string");
     }
 }
 
@@ -558,6 +598,10 @@ public sealed record RefactorOutcome(string Said, string? Problem, IReadOnlyList
     /// new function), in the text as it left it; null where it asked none.</summary>
     public LspLocation? RenameAt { get; init; }
 
+    /// <summary>For a refusal only for uses it can't see: what a person is asked, naming them, and the change made anyway,
+    /// leaving them; null for any other.</summary>
+    public FixConfirmed? Anyway { get; init; }
+
     public static RefactorOutcome Refused(string problem) => new(problem, problem, [], []);
 }
 
@@ -568,6 +612,11 @@ public sealed record UnchangedUse(string Path, int Line, int Column, string Why)
 /// <summary>A file a refactoring changed: created, changed, moved (to <paramref name="To"/>) or deleted, with the lines its
 /// edits start on, from one, as the editor counts the text as it was.</summary>
 public sealed record RefactoredFile(string Path, string Change, IReadOnlyList<int> Lines, string? To = null);
+
+/// <summary>A file's edits in the server's places, with the text they were found in where Passenger read the file itself (a
+/// Godot scene as its project's index holds it), which they fit only while the file is that text
+/// (<see cref="WorkspaceEdits.OutOfDateAsync"/>); null for places a language server gave, which its own checks judge.</summary>
+public sealed record PlacedEdits(string Path, IReadOnlyList<LspTextEdit> Edits, string? Read = null);
 
 /// <summary>A workspace edit that could not be made, and why: a file it renames onto is there already, one it renames
 /// or deletes is not, an open file it moves could not be saved first, or the disk refused. An MCP tool says it as its
@@ -599,8 +648,9 @@ public sealed class Asked(Dictionary<OpenDocument, ChangeTracker> trackers) : ID
 /// file seen so is trusted until it is written again; one written once the server was asked is refused at once.</summary>
 public sealed class Patience
 {
-    /// <summary>How long a command waits for the server, in all, before it refuses.</summary>
-    public static readonly TimeSpan Limit = TimeSpan.FromSeconds(10);
+    /// <summary>How long a command waits for the server, in all, before it refuses: longer on a slower machine
+    /// (<see cref="Waits"/>), as the server it waits on is slower there too.</summary>
+    public static TimeSpan Limit => Waits.Of(TimeSpan.FromSeconds(10));
 
     private readonly DateTime until = DateTime.UtcNow + Limit;
     private readonly Dictionary<string, (FileStamp Stamp, string Hash)> seen = new(StringComparer.Ordinal);
@@ -614,15 +664,18 @@ public sealed class Patience
     /// <summary>The attempt's answer, the attempt made again each time it threw for files the server had yet to read, once
     /// it has read them, <paramref name="waiting"/> told what it waits for meanwhile and null once it waits no more. Each
     /// attempt waits first for the writes of files not open asked for before it (<paramref name="writes"/>' Undo, another
-    /// change), so its server is asked of the files as they leave them.</summary>
-    public static Task<T> RunAsync<T>(CommandHistory writes, Func<Patience, Task<T>> attempt, Action<string?> waiting, CancellationToken cancel) =>
-        RunAsync(writes, attempt, _ => false, waiting, cancel);
+    /// change), so its server is asked of the files as they leave them, and lets go of the files heard changed that the C#
+    /// <paramref name="server"/> running then holds as the disk has them (<see cref="WorkspaceEdits.SettleAsync"/>).</summary>
+    public static Task<T> RunAsync<T>(CommandHistory writes, Func<RoslynSession?> server, Func<Patience, Task<T>> attempt, Action<string?> waiting,
+        CancellationToken cancel) =>
+        RunAsync(writes, server, attempt, _ => false, waiting, cancel);
 
-    /// <summary>As <see cref="RunAsync{T}(CommandHistory, Func{Patience, Task{T}}, Action{string?}, CancellationToken)"/>, the
-    /// attempt also made again when its answer is one it <paramref name="refused"/> for such files. An attempt changes nothing
-    /// before its edit is found fit, so another is as the first; its refusal once the time is spent says what it waited for.</summary>
-    public static async Task<T> RunAsync<T>(CommandHistory writes, Func<Patience, Task<T>> attempt, Func<T, bool> refused, Action<string?> waiting,
-        CancellationToken cancel)
+    /// <summary>As <see cref="RunAsync{T}(CommandHistory, Func{RoslynSession?}, Func{Patience, Task{T}}, Action{string?}, CancellationToken)"/>,
+    /// the attempt also made again when its answer is one it <paramref name="refused"/> for such files. An attempt changes
+    /// nothing before its edit is found fit, so another is as the first; its refusal once the time is spent says what it
+    /// waited for.</summary>
+    public static async Task<T> RunAsync<T>(CommandHistory writes, Func<RoslynSession?> server, Func<Patience, Task<T>> attempt, Func<T, bool> refused,
+        Action<string?> waiting, CancellationToken cancel)
     {
         Patience patience = new(waiting);
         try
@@ -635,6 +688,10 @@ public sealed class Patience
                     waiting($"Waiting for {other} to write its files");
                     await writes.WrittenAsync().WaitAsync(cancel);
                     waiting(null);
+                }
+                if (server() is { } session)
+                {
+                    await WorkspaceEdits.SettleAsync(session, cancel);
                 }
                 patience.behind.Clear();
                 try
@@ -735,7 +792,7 @@ public sealed class Patience
         foreach (Roslyn.Extension.TextHeld text in texts)
         {
             FileStamp stamp = FileStamp.Of(text.Path);
-            if (text.Hash is { } hash && WorkspaceEdits.OnDisk(text.Path, hash) == true && FileStamp.Of(text.Path) == stamp)
+            if (text.Hash is { } hash && HeldTexts.OnDisk(text.Path, hash) == true && FileStamp.Of(text.Path) == stamp)
             {
                 unwritten.Add((text.Path, stamp, hash));
             }

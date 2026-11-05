@@ -212,7 +212,7 @@ public partial class MainWindow
     /// <summary>A version of a file beside the file as it is now: <paramref name="revision"/>'s text of it at
     /// <paramref name="then"/> (where it was in that version), else at <paramref name="origin"/> (where the last commit has a
     /// file renamed since), the right side the open file's own text when it is open.</summary>
-    public async Task<DiffWindow?> CompareWithAsync(string path, string revision, string version, string then, string? origin = null)
+    public async Task<IDiffHost?> CompareWithAsync(string path, string revision, string version, string then, string? origin = null)
     {
         if (session.Vcs.Repository is null)
         {
@@ -234,6 +234,6 @@ public partial class MainWindow
         TextDocument mine = open?.Text ?? new TextDocument(EditorArea.ReadText(path) ?? string.Empty);
         TextSnapshot text = mine.Snapshot;
         FileDiff diff = await BackgroundWork.Run(() => FileDiff.Compare(theirs, text));
-        return OpenLocalDiff(path, open, mine, diff, version);
+        return OpenLocalDiff(path, open, mine, diff, version, again: () => CompareWithAsync(path, revision, version, then, origin));
     }
 }

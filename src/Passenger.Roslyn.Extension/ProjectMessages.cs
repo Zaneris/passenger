@@ -13,6 +13,10 @@ public static class ProjectMethods
     /// load is complete (workspace/projectInitializationComplete).</summary>
     public const string Load = "passenger/loadProjects";
 
+    /// <summary>A request: <see cref="UnloadProjectsParams"/>, the projects to let go of, answered once it has: true if it
+    /// held any of them.</summary>
+    public const string Unload = "passenger/unloadProjects";
+
     /// <summary>A request the server makes of Passenger: <see cref="ProjectInfoParams"/> to <see cref="ProjectInfoResult"/>.</summary>
     public const string Info = "passenger/projectInfo";
 
@@ -29,6 +33,9 @@ public static class ProjectMethods
 public sealed record LoadProjectsParams(
     [property: JsonPropertyName("projects")] IReadOnlyList<ProjectToOpen> Projects,
     [property: JsonPropertyName("solution")] string? Solution);
+
+/// <summary>The projects the server is to hold no longer; one it does not hold is nothing to do.</summary>
+public sealed record UnloadProjectsParams([property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);
 
 /// <summary>A project and, when Passenger has them, its design-time builds (a JSON array of Roslyn's ProjectFileInfo) and
 /// what they logged.</summary>

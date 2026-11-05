@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- NUnit and its VSTest adapter, as a test project of them beside VSTest's SDK resolves them, the SDK's own graph the
+       tests' restore brings. -->
+  <ItemGroup>
+    <PackageDownload Include="NUnit" Version="[$(NUnitVersion)]" />
+    <PackageDownload Include="NUnit3TestAdapter" Version="[$(NUnitAdapterVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Platform" Version="[$(NUnitPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Platform.MSBuild" Version="[$(NUnitPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.Telemetry" Version="[$(NUnitPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.TrxReport.Abstractions" Version="[$(NUnitPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.Testing.Extensions.VSTestBridge" Version="[$(NUnitPlatformVersion)]" />
+    <PackageDownload Include="Microsoft.TestPlatform.AdapterUtilities" Version="[$(TestAdapterUtilitiesVersion)]" />
+  </ItemGroup>
+</Project>

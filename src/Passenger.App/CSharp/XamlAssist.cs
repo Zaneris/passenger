@@ -24,6 +24,7 @@ internal sealed partial class XamlAssist : LanguageAssist
     private readonly AssistContext context;
     private readonly PopupPlacement popups;
     private readonly CodeCompletion completion;
+    private readonly CodeActions actions;
     /// <summary>The XAML items of the last list made, by its rows' items, which a commit and a badge look up.</summary>
     private readonly Dictionary<CompletionItem, XamlItem> xamlOffered = [];
 
@@ -31,11 +32,12 @@ internal sealed partial class XamlAssist : LanguageAssist
     /// found nothing stays), so a list made from the project as it was is asked again once the project is read anew.</summary>
     private (XamlDocument Xaml, int Version, int Caret)? xamlAsked;
 
-    public XamlAssist(AssistContext context, PopupPlacement popups, CodeCompletion completion)
+    public XamlAssist(AssistContext context, PopupPlacement popups, CodeCompletion completion, CodeActions actions)
     {
         this.context = context;
         this.popups = popups;
         this.completion = completion;
+        this.actions = actions;
         completion.Closed += (_, _) => xamlAsked = null;
     }
 
@@ -140,13 +142,13 @@ internal sealed partial class XamlAssist : LanguageAssist
             ? $"{found.Symbol.Name}'s declaration cannot be reached: {string.Join("; ", unreached)}" : Refusals.NoDeclaration);
     }
 
-    public override async Task<bool> UsagesAsync(int offset)
+    public override async Task<bool> UsagesAsync(int offset, bool inPopup)
     {
         if (context.XamlCurrent is not { } xaml)
         {
             return false;
         }
-        await XamlUsages(xaml, offset);
+        await XamlUsages(xaml, offset, inPopup);
         return true;
     }
 
@@ -486,7 +488,7 @@ internal sealed partial class XamlAssist : LanguageAssist
     /// <summary>Find Usages in XAML: an element's name where the file names it and where its code-behind uses the field
     /// Avalonia or WPF makes for it; a resource key where any of the project's XAML uses it; a type or member of the
     /// folder's C# where its C# and XAML use it.</summary>
-    private async Task XamlUsages(XamlDocument xaml, int offset)
+    private async Task XamlUsages(XamlDocument xaml, int offset, bool inPopup)
     {
         if (await XamlSymbolAt(xaml, offset, "No usages found") is not { } found)
         {
@@ -503,7 +505,7 @@ internal sealed partial class XamlAssist : LanguageAssist
             context.Say("No usages found");
             return;
         }
-        context.ShowUsages($"Usages of {symbol.Name}", usages);
+        context.ShowUsages($"Usages of {symbol.Name}", usages, inPopup ? offset : null);
     }
 
     /// <summary>What Find Usages finds in XAML, said where it finds nothing else.</summary>
@@ -598,6 +600,34 @@ internal sealed partial class XamlAssist : LanguageAssist
         })];
     }
 
+    /// <summary>The edits the XAML of the projects that can use a C# symbol the server named takes as it is renamed to
+    /// <paramref name="name"/> (<see cref="XamlService.RenamesAsync"/>), each open file's in its text as the rename's request
+    /// found it (<paramref name="asked"/>), by path; or why the rename cannot follow its uses. None for a symbol XAML never
+    /// names, or with no XAML Passenger reads.</summary>
+    internal async Task<(IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> Files, string? Problem)> CodeRenameAsync(Roslyn.Extension.NamedSymbol? named,
+        string name, Asked asked)
+    {
+        if (named is not { Id: { } id, Path: { } declared, At: { } at } || context.Xaml?.Invoke() is not { } xaml || context.CSharp is not { } csharp
+            || CodeSymbol.Of(id, new SourcePlace(PathNames.Canonical(declared), at.Line, at.Character)) is not { } symbol
+            || csharp.ProjectsUsing(declared) is not { Count: > 0 } projects)
+        {
+            return ([], null);
+        }
+        Dictionary<string, TextSnapshot> held = new(PathNames.Comparer);
+        foreach ((OpenDocument document, ChangeTracker tracker) in asked.Trackers)
+        {
+            held[document.Path] = tracker.Snapshot;
+        }
+        Func<string, TextSnapshot?> open = xaml.OpenSnapshots();
+        (IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextEdit> Edits)> files, string? problem) =
+            await xaml.RenamesAsync(projects, symbol, name, path => held.TryGetValue(path, out TextSnapshot? text) ? text : open(path));
+        return ([.. files.Select(f =>
+        {
+            ServerLines lines = ServerLines.Of(f.Text);
+            return (f.Path, (IReadOnlyList<LspTextEdit>)[.. f.Edits.Select(e => new LspTextEdit(lines.RangeOf(new TextRange(e.Start, e.Length)), e.Text))]);
+        })], problem);
+    }
+
     /// <summary>The code-behind's uses of the field Avalonia's generator or WPF's MarkupCompile makes for a named element:
     /// the server's references from a mention of the name in a file of the <c>x:Class</c> whose definition is that
     /// generated field, its generated declaration and uses left out; with the version of the open file's text both
@@ -663,28 +693,111 @@ internal sealed partial class XamlAssist : LanguageAssist
             && path.Replace('\\', '/').Contains("/obj/", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Rename in XAML: an element's name, where the file names it and where its code-behind uses its field, as one
-    /// command undone whole.</summary>
+    /// <summary>What Rename in XAML renames, said where the caret is on none of it.</summary>
+    internal const string XamlRenamesWhat = "Rename in XAML renames an element's name, or a type or member of the folder's C#";
+
+    /// <summary>Rename in XAML: an element's name, where the file names it and where its code-behind uses its field; a type
+    /// or member of the folder's C# a name leads to, from its declaration (<see cref="DeclaredRenameAsync"/>). One command
+    /// undone whole.</summary>
     private async Task XamlRename(XamlDocument xaml)
     {
         int caret = Editor.Selections.Primary.Caret;
-        if (await XamlSymbolAt(xaml, caret, "Rename in XAML renames an element's name") is not { Symbol.Named: { } named } found)
+        // Read against the C# as it stands: a rename a moment before may have written it.
+        if (context.Xaml?.Invoke() is { } service)
+        {
+            await service.CurrentAsync();
+        }
+        if (await XamlSymbolAt(xaml, caret, XamlRenamesWhat) is not { } found)
         {
             return;
         }
-        string old = named.Value;
-        RenameBox box = new(old);
-        popups.ShowModal(box, named.ValueStart, async name =>
+        if (found.Symbol.Named is { } named)
         {
-            if (name is null || name == old)
+            string old = named.Value;
+            popups.ShowModal(new RenameBox(old), named.ValueStart, async name =>
+            {
+                if (name is null || name == old)
+                {
+                    return;
+                }
+                if (await XamlRenameAsync(xaml.Document.Path, old, name) is { } renamed)
+                {
+                    context.Say(renamed.Problem ?? renamed.Said);
+                }
+            });
+            return;
+        }
+        if (DeclarationOf(found.Symbol) is null)
+        {
+            context.Say(XamlRenamesWhat);
+            return;
+        }
+        string written = found.Symbol.Name;
+        popups.ShowModal(new RenameBox(written), found.Symbol.Range.Start, async name =>
+        {
+            if (name is null || name == written)
             {
                 return;
             }
-            if (await XamlRenameAsync(xaml.Document.Path, old, name) is { } renamed)
+            try
             {
-                context.Say(renamed.Problem ?? renamed.Said);
+                RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, async patience =>
+                    await DeclaredRenameAsync(found.Symbol, name, actions.RenameSettings.RenameFiles, patience) ?? RefactorOutcome.Refused(XamlRenamesWhat));
+                context.Say(made.Problem ?? made.Said);
+            }
+            catch (LanguageServerFailed failed)
+            {
+                context.Failed("Rename", failed);
             }
         });
+    }
+
+    /// <summary>Where the folder's C# declares the type or member a XAML name leads to; null for a name of none of it.</summary>
+    internal static SourcePlace? DeclarationOf(XamlSymbol symbol) =>
+        symbol.Targets.FirstOrDefault(t => t.Kind is XamlTargetKind.Type or XamlTargetKind.Member && t.Place is { } place
+            && Languages.Language.ForPath(place.Path).Service == Languages.LanguageService.CSharp && !GeneratedCode.IsCopy(place.Path))?.Place;
+
+    /// <summary>A type or member of the folder's C# a XAML name leads to, renamed from its declaration as C#'s Rename renames
+    /// it (<see cref="CodeActions.RenameSymbolAsync"/>), its C#, every XAML use and what the MVVM Toolkit makes of it following
+    /// as one command of Undo; a property or command the toolkit makes renamed through its field or method, named so it makes
+    /// <paramref name="name"/>; a type's files renamed with it when <paramref name="renameFiles"/>. Its file is read for the
+    /// rename where it is not open. Null for a name of none of the C#.</summary>
+    internal async Task<RefactorOutcome?> DeclaredRenameAsync(XamlSymbol symbol, string name, bool renameFiles, Patience? patience)
+    {
+        if (DeclarationOf(symbol) is not { } declared)
+        {
+            return null;
+        }
+        OpenDocument code;
+        IDisposable hold;
+        try
+        {
+            (code, hold) = context.Editors.Lend(declared.Path);
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {Path.GetFileName(declared.Path)} could not be read: {unread.Message}");
+        }
+        try
+        {
+            if (context.CSharp?.For(code)?.Lsp is not { } lsp)
+            {
+                return RefactorOutcome.Refused($"Rename was not applied: the C# language server has yet to read {Path.GetFileName(declared.Path)}");
+            }
+            int offset = lsp.OffsetOf(new LspPosition(declared.Line, declared.Column));
+            TextSnapshot text = code.Text.Snapshot;
+            string own = text.GetText(TextNavigation.WordAt(text, offset));
+            if (CodeSymbol.NameFor(own, symbol.Name, name) is not { } renamed)
+            {
+                return RefactorOutcome.Refused($"Rename was not applied: the MVVM Toolkit makes {symbol.Name} of {own}, and no name of {own}'s makes '{name}'");
+            }
+            return renamed == own ? new RefactorOutcome($"{name} is its name already", null, [], [])
+                : await actions.RenameSymbolAsync(code, offset, renamed, renameFiles, patience);
+        }
+        finally
+        {
+            hold.Dispose();
+        }
     }
 
     /// <summary>An element's name renamed where its XAML file (<paramref name="path"/>, open or not) names it and where its

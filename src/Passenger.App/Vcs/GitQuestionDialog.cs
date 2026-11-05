@@ -7,9 +7,9 @@ using Passenger.Vcs;
 
 namespace Passenger.App.Vcs;
 
-/// <summary>What git asks while it reaches a remote, put to the person: a login (its user and password together, the
-/// password given as git asks for it next), a password or a key's passphrase typed unseen, whether to trust a host, or
-/// git's own question. Asked for an agent's call, it says so, and that the answer goes to git alone. OK closes it with
+/// <summary>What git asks while it reaches a remote or signs a commit, put to the person: a login (its user and password
+/// together, the password given as git asks for it next), a password or a key's passphrase typed unseen, whether to trust
+/// a host, or git's own question. Asked for an agent's call, it says so, and that the answer goes to git alone. OK closes it with
 /// <see cref="Answer"/>; Cancel, Escape or a close, with none.</summary>
 public sealed class GitQuestionDialog : IdeWindow
 {
@@ -59,7 +59,9 @@ public sealed class GitQuestionDialog : IdeWindow
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             Text = (agent is null ? string.Empty : $"Asked for {agent}'s call through Passenger's MCP server: the answer goes to git, never to the agent. ")
-                + (yesNo ? "ssh keeps a host it is told to trust in its known_hosts." : "It is given to git for this operation alone: Passenger keeps none of it, and git keeps it only where a credential helper is set (git config credential.helper)."),
+                + (yesNo ? "ssh keeps a host it is told to trust in its known_hosts."
+                    : question.Signs ? $"It is given to {question.SignsWith} to sign this commit alone: Passenger keeps none of it."
+                    : "It is given to git for this operation alone: Passenger keeps none of it, and git keeps it only where a credential helper is set (git config credential.helper)."),
         };
         paragraphs.Add(kept);
         DialogFooter.Question(this, Titled(question), paragraphs, DialogFooter.Of(ok, cancel));
@@ -120,6 +122,7 @@ public sealed class GitQuestionDialog : IdeWindow
     {
         GitQuestionKind.User => $"Git needs a login to reach {question.About}.",
         GitQuestionKind.Password => question.User is { } user ? $"Git needs the password of {user} to reach {question.About}." : $"Git needs a password to reach {question.About}.",
+        GitQuestionKind.Passphrase when question.Signs => $"Signing the commit needs the passphrase of the key {question.About}.",
         GitQuestionKind.Passphrase => $"ssh needs the passphrase of the key {question.About} to reach the remote.",
         _ => question.Prompt.Trim(),
     };

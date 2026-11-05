@@ -15,6 +15,16 @@ public sealed class AgentAnswersTests : IDisposable
 
     public void Dispose() => Directory.Delete(root, recursive: true);
 
+    /// <summary>What a list left out is said with its noun's own plural where it has one: 179 more installed families, never
+    /// familys, and one more family alone.</summary>
+    [Fact]
+    public void What_a_list_left_out_takes_its_nouns_own_plural()
+    {
+        Assert.Equal("179 more installed families left out: by name", AgentAnswers.More(179, "installed family", "by name", "installed families"));
+        Assert.Equal("1 more installed family left out: by name", AgentAnswers.More(1, "installed family", "by name", "installed families"));
+        Assert.Equal("1,200 more files left out: read on", AgentAnswers.More(1200, "file", "read on"));
+    }
+
     [Fact]
     public void A_short_value_is_shown_whole_and_says_no_cut()
     {

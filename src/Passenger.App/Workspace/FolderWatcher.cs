@@ -122,9 +122,14 @@ public sealed class FolderWatcher : WatchedTree
     }
 
     /// <summary>Whether a folder of build output is where a restore writes its assets, or above it to see that made: a
-    /// project's obj itself, and UseArtifactsOutput's artifacts, artifacts/obj and artifacts/obj/Project.</summary>
+    /// project's obj itself, UseArtifactsOutput's artifacts, artifacts/obj and artifacts/obj/Project, and a Godot project's
+    /// .godot/mono/temp/obj (<see cref="HoldsGodotRestores"/>).</summary>
     private bool HoldsRestores(ReadOnlySpan<char> parts)
     {
+        if (HoldsGodotRestores(parts))
+        {
+            return true;
+        }
         bool two = Last(parts, out ReadOnlySpan<char> above, out ReadOnlySpan<char> last);
         bool three = Last(above, out ReadOnlySpan<char> aboveSecond, out ReadOnlySpan<char> second);
         Last(aboveSecond, out ReadOnlySpan<char> aboveThird, out ReadOnlySpan<char> third);
@@ -133,6 +138,42 @@ public sealed class FolderWatcher : WatchedTree
             : last.SequenceEqual("artifacts") || last.SequenceEqual("obj") ? 1
             : 0;
         return output > 0 && !IgnoredFolders.AnyIn(folder, output switch { 3 => aboveThird, 2 => aboveSecond, _ => above });
+    }
+
+    /// <summary>Whether a folder is Godot.NET.Sdk's obj under a project's .godot (.godot/mono/temp/obj), or one above it down
+    /// from .godot, the folders before .godot none passed over.</summary>
+    private bool HoldsGodotRestores(ReadOnlySpan<char> parts)
+    {
+        ReadOnlySpan<char> below = parts;
+        ReadOnlySpan<char> before = [];
+        while (true)
+        {
+            ReadOnlySpan<char> name = First(below, out ReadOnlySpan<char> rest);
+            if (name.SequenceEqual(IgnoredFolders.GodotCache))
+            {
+                break;
+            }
+            if (rest.IsEmpty)
+            {
+                return false;
+            }
+            before = parts[..(parts.Length - rest.Length - 1)];
+            below = rest;
+        }
+        foreach (string expected in (string[])[IgnoredFolders.GodotCache, "mono", "temp", "obj"])
+        {
+            ReadOnlySpan<char> name = First(below, out ReadOnlySpan<char> rest);
+            if (!name.SequenceEqual(expected))
+            {
+                return false;
+            }
+            if (rest.IsEmpty)
+            {
+                return before.IsEmpty || !IgnoredFolders.AnyIn(folder, before);
+            }
+            below = rest;
+        }
+        return false;
     }
 
     /// <summary>Whether a path, by its names from the open folder, is a restore's assets, which the rest of build output's

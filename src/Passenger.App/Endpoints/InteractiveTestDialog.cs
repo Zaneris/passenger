@@ -99,7 +99,7 @@ public sealed class InteractiveTestDialog : IdeWindow
         };
         Add(fields, options, 4);
         // A request with a body and no query opens on its body, as that is what there is to change.
-        ShowPage(request.Body.Length > 0 && SplitQuery(request.Url).Pairs.Count == 0 ? 2 : 0);
+        ShowPage((Body.Text ?? string.Empty).Length > 0 && SplitQuery(request.Url).Pairs.Count == 0 ? 2 : 0);
         Count();
 
         Response = new ResponseView("Send to see the response");
@@ -119,6 +119,10 @@ public sealed class InteractiveTestDialog : IdeWindow
         Closed += (_, _) => endpoints.Stop();
         Content = DialogFooter.Page(panes, DialogFooter.Bar(DialogFooter.Of(Send, close), problem));
         Paint(problem, TokenKeys.Error);
+        if (request.Body.Length == 0)
+        {
+            IdeErrors.Observe(CompleteBodyAsync());
+        }
     }
 
     public ComboBox Method { get; }
@@ -126,12 +130,28 @@ public sealed class InteractiveTestDialog : IdeWindow
     public KeyValueGrid Params { get; }
     public KeyValueGrid Headers { get; }
     public TextBox Body { get; }
+
     public TextBox Criteria { get; }
     public NumericUpDown Timeout { get; }
     public CheckBox FollowRedirects { get; }
     public CheckBox AcceptAnyCertificate { get; }
     public Button Send { get; }
     public ResponseView Response { get; }
+
+    /// <summary>A body left empty, completed from the request schema of the document the app the request goes to gave a test
+    /// or a generate, unless the person has begun to change it, or where it goes, by then.</summary>
+    private async Task CompleteBodyAsync()
+    {
+        string? completed = await endpoints.SchemaBodyAsync(request);
+        if (completed is not null && string.IsNullOrEmpty(Body.Text) && Url.Text == request.Url && Method.SelectedItem as string == request.Method)
+        {
+            Body.Text = completed;
+            if (PageShown == 0 && SplitQuery(request.Url).Pairs.Count == 0)
+            {
+                ShowPage(2);
+            }
+        }
+    }
 
     /// <summary>Why the request as it stands cannot go, empty when it can.</summary>
     public string Problem => problem.Text ?? string.Empty;
@@ -271,7 +291,7 @@ public sealed class InteractiveTestDialog : IdeWindow
 
     private static TextBox Mono(string text, bool multiline)
     {
-        TextBox box = new() { Text = text, FontFamily = CodeEditor.CodeFont, FontSize = 12, AcceptsReturn = multiline, TextWrapping = TextWrapping.NoWrap };
+        TextBox box = new TextBox { Text = text, FontSize = 12, AcceptsReturn = multiline, TextWrapping = TextWrapping.NoWrap }.InCodeFont();
         if (multiline)
         {
             box.VerticalContentAlignment = VerticalAlignment.Top;

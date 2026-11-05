@@ -98,7 +98,7 @@ public sealed class McpSessionsTests : McpRig
         {
             Gone(client);
             window.Close();
-            if (program is { HasExited: false })
+            if (program is { } running && DotnetProcesses.Runs(running))
             {
                 Processes.Kill(program.Id);
             }

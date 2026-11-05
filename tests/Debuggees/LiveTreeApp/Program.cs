@@ -19,13 +19,13 @@ public static class Program
     {
         Thread pointer = new(Pointer) { IsBackground = true, Name = "Pointer" };
         pointer.Start();
-        return AppBuilder.Configure<App>()
-            .UseSkia()
-            .UseHarfBuzz()
-            .WithInterFont()
+        return BuildAvaloniaApp()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
             .StartWithClassicDesktopLifetime(args);
     }
+
+    /// <summary>The app as Avalonia's previewer builds it, which gives it a platform of its own.</summary>
+    public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>().UseSkia().UseHarfBuzz().WithInterFont();
 
     private static void Pointer()
     {

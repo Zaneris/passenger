@@ -280,6 +280,68 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>The popups' host frames a popup and keeps it inside the window whatever it is handed: a bare frame, a frame
+    /// of its own Border type, a popup of its own template with no width set, the colour picker, or a panel with no frame,
+    /// opened by the window's foot and right edge or centred under its top.</summary>
+    [AvaloniaFact]
+    public void A_popup_is_framed_and_kept_inside_the_window_however_it_is_built()
+    {
+        MainWindow window = Open(900, 600);
+        try
+        {
+            Ui.Settle();
+            UnderEachLook(window, () =>
+            {
+                List<string> wrong = [];
+                Check("A bare Border.popup", () => new Border { Classes = { StyleClasses.Popup }, Padding = new Thickness(10), Child = Words() });
+                Check("A popup of its own Border type", () => new OwnFrame { Classes = { StyleClasses.Popup }, Padding = new Thickness(10), Child = Words() });
+                Check("A UserControl with no width", () => new UserControl { Content = new Border { Classes = { StyleClasses.Popup }, Padding = new Thickness(10), Child = Words() } });
+                Check("The colour picker", () => new Passenger.App.Xaml.ColourPicker(new Passenger.Xaml.Features.Argb(255, 200, 40, 40)));
+                Check("A panel with no frame", () => new StackPanel { Children = { Words() } });
+                Assert.True(wrong.Count == 0, string.Join("\n", wrong));
+
+                void Check(string what, Func<Control> make)
+                {
+                    Color ground = Brush(window, TokenKeys.Popup);
+                    foreach (bool atEdge in (bool[])[true, false])
+                    {
+                        string where = atEdge ? "opened by the window's foot and right edge" : "centred under the window's top";
+                        Control popup = make();
+                        window.Popups.Show(popup, atEdge ? window.Popups.PointIn(window, new Point(window.Bounds.Width - 10, window.Bounds.Height - 10)) : null);
+                        Ui.Settle();
+                        Border? frame = PopupFrame.FrameOf(popup);
+                        Rect placed = frame is null ? default : Placed(window, frame);
+                        Rect inside = new Rect(window.Bounds.Size).Deflate(4);
+                        if (frame is null || frame.Background is not ISolidColorBrush { Color: Color drawn } || drawn != ground)
+                        {
+                            wrong.Add($"{what} {where} shows on {(frame?.Background as ISolidColorBrush)?.Color.ToString() ?? "no ground"}, where every popup stands in the popups' frame on {ground}");
+                        }
+                        else if (frame.GetVisualDescendants().OfType<Border>().Any(b => b.Classes.Contains(StyleClasses.Popup)))
+                        {
+                            wrong.Add($"{what} {where} shows a frame inside its frame, drawing two edges and two shadows");
+                        }
+                        else if (placed.Width < 200 || placed.Height < 20 || !inside.Contains(placed))
+                        {
+                            wrong.Add($"{what} {where} is drawn at {placed} in a window of {window.Bounds.Size}, cut or outside it, where a popup is kept whole inside the window");
+                        }
+                        Assert.True(window.Popup == popup, $"{what} {where} is not the popup the window says is open ({window.Popup?.GetType().Name ?? "none"})");
+                        window.Popups.Close();
+                        Ui.Settle();
+                    }
+                }
+            });
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static TextBlock Words() => new() { Text = "A popup's words, long enough to need room of their own by the edge" };
+    }
+
+    /// <summary>A popup's frame of a type of its own, as the colour picker and the code assist popups are.</summary>
+    private sealed class OwnFrame : Border;
+
     [Gate]
     [AvaloniaFact]
     public void Every_scrollbar_is_Rider_s_thin_and_arrowless_and_a_sideways_one_shows_only_for_what_is_wider()
@@ -717,8 +779,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     /// <summary>Every button that runs one of the window's actions, the toolbar's and every tool window's, names in its tip
     /// the keys the keymap in force gives that action (<see cref="ActionTips"/>), and every tool window's Hide names Hide Tool
-    /// Window's keys or none: under Visual Studio's keymap and VS Code's, each chosen in turn, so no tip names a key that
-    /// does not run what it says.</summary>
+    /// Window's keys or none: under every keymap Settings offers, each chosen in turn, so no tip names a key that does not
+    /// run what it says.</summary>
     [AvaloniaFact]
     public void Every_action_buttons_tip_names_the_keys_the_keymap_in_force_gives_its_action()
     {
@@ -726,7 +788,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         try
         {
             window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
-            foreach (Passenger.Editor.KeymapPreset preset in (Passenger.Editor.KeymapPreset[])[Passenger.Editor.KeymapPreset.VisualStudio, Passenger.Editor.KeymapPreset.VSCode])
+            foreach (Passenger.Editor.KeymapPreset preset in SettingsDialog.KeymapChoices)
             {
                 window.ApplySettings(window.Settings with { Keymap = preset });
                 Ui.Settle();
@@ -1054,7 +1116,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         try
         {
             window.Perform(AppActions.ShowNuGet);
-            Ui.Landed(() => window.NuGet.PackageSources.Feeds.Count > 0, "the package sources read");
+            // Read as files: the run's own nuget.config above the folder clears the machine's feed from those in effect.
+            Ui.Landed(() => window.NuGet.PackageSources.Files.Count > 0, "the package sources read");
             Ui.Click(((Panel)window.NuGet.Tabs).Children.OfType<ToggleButton>().Single(t => (string?)t.Content == "Sources"), settle: false);
             Ui.WaitFor(() => window.NuGet.ShowsSources && window.NuGet.Sources.Files.Any(f => f.Place == Passenger.Packages.ConfigPlace.Machine),
                 () => $"the Sources tab with the machine's nuget.config, where it lists [{string.Join(", ", window.NuGet.Sources.Files.Select(f => $"{f.Path} ({f.Place})"))}]");
@@ -1954,6 +2017,21 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>No font family is written by name outside the theme files (WindowFonts), but the code font Passenger carries
+    /// (CodeEditor.CodeFont, CodeFonts' fallback): the window's words take the typeface Settings puts in force and code the
+    /// code font, so a family named anywhere else draws in a font no setting reaches.</summary>
+    [Fact]
+    public void No_font_family_is_named_outside_the_theme_files_but_the_carried_code_font()
+    {
+        Regex named = new(@"\bnew\s+(?:FontFamily|Typeface)\s*\(\s*""|\b(?:FontFamily|Typeface)\s+\w+\s*=\s*new\s*\(\s*""|\bFontFamily\s*=\s*""|\bFontFamily\.Parse\s*\(\s*""|\bFontFamily=""(?!\{)");
+        string[] found = [.. UiFiles().SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => !l.Text.TrimStart().StartsWith("//", StringComparison.Ordinal) && named.IsMatch(l.Text)
+                && !(l.Path.EndsWith("/CodeEditor.cs", StringComparison.Ordinal) && l.Text.Contains("CodeFont = new(", StringComparison.Ordinal)))
+            .Select(l => $"{l.Path}:{l.Line}: {l.Text.Trim()}")];
+        Assert.True(found.Length == 0, $"{found.Length} font families are named outside Theme/, drawing in a font no setting reaches: take the window's "
+            + $"(TextElement.GetFontFamily, the font a control inherits) or the code font in force (CodeFonts):\n{string.Join("\n", found)}");
+    }
+
     /// <summary>Muted words are made one way, by the muted class (MutedText, or the class on a TextBlock of its own), so a
     /// change to how muted words look is made once: a TextBlock's foreground bound by hand to the muted colour fails here.</summary>
     [Gate]
@@ -2060,6 +2138,122 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + $"make each with ColumnTitles.Of:\n{string.Join("\n", found)}");
     }
 
+    /// <summary>Words are shown as written, a name's underscores too, since Passenger gives no access keys: every kind of
+    /// control that holds words (a button's, a check box's, a menu item's, a tab's, a label's, a group's header), made with
+    /// a file's names under the window's theme, draws them whole, and no code makes access-key text of its own; a kind that
+    /// takes an underscore for an access key's mark fails here, naming what it drew.</summary>
+    [AvaloniaFact]
+    public void Every_control_draws_a_names_underscores_never_taking_one_for_an_access_keys_mark()
+    {
+        const string name = "test_spinner.gd __init__.py";
+        StackPanel panel = new();
+        Window window = new() { Width = 900, Height = 900, Content = new ScrollViewer { Content = panel } };
+        List<(string Kind, Control Made)> made = [];
+        foreach (Type kind in typeof(Control).Assembly.GetExportedTypes().Where(Holds).OrderBy(t => t.Name, StringComparer.Ordinal))
+        {
+            Control control = (Control)Activator.CreateInstance(kind)!;
+            switch (control)
+            {
+                case HeaderedContentControl headed:
+                    (headed.Header, headed.Content) = (name, name);
+                    break;
+                case ContentControl content:
+                    content.Content = name;
+                    break;
+                case HeaderedItemsControl headed:
+                    headed.Header = name;
+                    break;
+                case HeaderedSelectingItemsControl headed:
+                    headed.Header = name;
+                    break;
+            }
+            panel.Children.Add(control switch
+            {
+                MenuItem item => new Menu { Items = { item } },
+                TabItem tab => new TabControl { Items = { tab } },
+                _ => control,
+            });
+            made.Add((kind.Name, control));
+        }
+        window.Show();
+        try
+        {
+            Ui.Settle();
+            List<string> taken = [];
+            List<string> shown = [];
+            foreach ((string kind, Control control) in made)
+            {
+                TextBlock[] words = [.. control.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Text == name)];
+                if (words.Length > 0)
+                {
+                    shown.Add(kind);
+                }
+                taken.AddRange(words.Where(t => t is AccessText || Ui.Drawn(t) != name).Select(t => $"{kind} draws '{Ui.Drawn(t)}'"));
+            }
+            Assert.True(taken.Count == 0, $"{taken.Count} kinds of control take a name's underscore for an access key's mark, so the name loses it: "
+                + $"Shell.axaml's ContentPresenter style shows words as written:\n{string.Join("\n", taken)}");
+            string[] unseen = [.. ((string[])["Button", "CheckBox", "Label", "MenuItem", "RadioButton", "SplitButton", "TabItem", "ToggleButton"]).Except(shown)];
+            Assert.True(unseen.Length == 0, $"{string.Join(", ", unseen)} showed none of the words given them: the rule no longer reads them");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        Regex own = new(@"\bnew\s+AccessText\b|<AccessText\b|\bRecognizesAccessKey\b");
+        string[] found = [.. UiFiles(theme: true).SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => own.IsMatch(l.Text) && !(l.Path.EndsWith("Theme/Shell.axaml", StringComparison.Ordinal) && l.Text.Contains("Property=\"RecognizesAccessKey\" Value=\"False\"", StringComparison.Ordinal)))
+            .Select(l => $"{l.Path}:{l.Line}")];
+        Assert.True(found.Length == 0, $"{found.Length} places make access-key text, which takes a name's underscore for an access key's mark: show words in a TextBlock:\n{string.Join("\n", found)}");
+
+        // A public kind of control that holds words of its own, made alone (a window and a list's rows aside).
+        static bool Holds(Type kind) => !kind.IsAbstract && kind.GetConstructor(Type.EmptyTypes) is not null
+            && (typeof(ContentControl).IsAssignableFrom(kind) || typeof(HeaderedItemsControl).IsAssignableFrom(kind) || typeof(HeaderedSelectingItemsControl).IsAssignableFrom(kind))
+            && !typeof(TopLevel).IsAssignableFrom(kind) && !typeof(ListBoxItem).IsAssignableFrom(kind) && !typeof(TreeViewItem).IsAssignableFrom(kind);
+    }
+
+    /// <summary>A native menu's item takes its words through MainWindow.NativeWords, which doubles their underscores, since
+    /// the platform's menu (macOS's bar, a Linux desktop's global menu) takes a lone one for an access key's mark: a
+    /// NativeMenuItem made or given words otherwise (a literal with no underscore aside) fails here, naming its line.</summary>
+    [Fact]
+    public void Every_native_menu_items_words_come_through_NativeWords()
+    {
+        Regex made = new(@"\bnew\s+NativeMenuItem\s*\(|\bNativeMenuItem\s+\w+\s*=\s*new\s*\(|\bNativeMenuItem\s+\w+\(.*\)\s*=>\s*new\s*\(");
+        Regex given = new(@"\b(\w+)\.Header\s*=\s*");
+        List<string> found = [];
+        int items = 0;
+        foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal) && f.Text.Contains("NativeMenuItem", StringComparison.Ordinal)))
+        {
+            foreach (Match match in made.Matches(text))
+            {
+                items++;
+                if (!Words(text, match.Index + match.Length))
+                {
+                    found.Add($"{path}:{LineOf(text, match.Index)}");
+                }
+            }
+            foreach (Match match in given.Matches(text).Where(m => Native(text, m.Groups[1].Value, m.Index)))
+            {
+                items++;
+                if (!Words(text, match.Index + match.Length))
+                {
+                    found.Add($"{path}:{LineOf(text, match.Index)}");
+                }
+            }
+        }
+        Assert.True(items > 8, $"Only {items} native menu items were found: the search no longer reads them");
+        Assert.True(found.Count == 0, $"{found.Count} native menu items are given words a name's underscore could lose itself in, the platform's menu taking it "
+            + $"for an access key's mark: give each through MainWindow.NativeWords:\n{string.Join("\n", found)}");
+
+        // Whether a variable is a NativeMenuItem where its words are given: its nearest declaration before says so.
+        static bool Native(string text, string variable, int at) =>
+            Regex.Matches(text[..at], $@"\b([\w.]+)\s+{Regex.Escape(variable)}\s*(?:=|\bin\b)").LastOrDefault() is { } declared && declared.Groups[1].Value == "NativeMenuItem";
+
+        // Words given through NativeWords, or a literal with no underscore.
+        static bool Words(string text, int at) => text.AsSpan(at).StartsWith("NativeWords(", StringComparison.Ordinal)
+            || Regex.Match(text[at..], @"^""([^""\\]*)""") is { Success: true } literal && !literal.Groups[1].Value.Contains('_', StringComparison.Ordinal);
+    }
+
     /// <summary>An object initializer's own settings, from after its brace to its end, less the initializers inside it.</summary>
     private static string Initializer(string text, int from)
     {
@@ -2089,6 +2283,12 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         (_, "Color.FromArgb" or "new SolidColorBrush(Color.") when path.EndsWith("CSharp/CodeAssist.cs", StringComparison.Ordinal) => true,
         // A colour written in the CSS or HTML being edited, as its server reads it.
         (_, "Color.FromArgb") when path.EndsWith("Web/WebDocument.cs", StringComparison.Ordinal) => true,
+        // A Godot Color's swatch beside its row in the debugger's values: the colour the program holds.
+        (_, "Color.FromArgb") when path.EndsWith("Godot/GodotValues.cs", StringComparison.Ordinal) => true,
+        // A colour a running Godot game's node holds, shown as its swatch in the Live Visual Tree's properties.
+        (_, "Color.FromArgb" or "new SolidColorBrush(Color.") when path.EndsWith("Godot/GodotValueCells.cs", StringComparison.Ordinal) => true,
+        // The ground of a web page setting none of its own: a browser's white, in every look.
+        (_, "Brushes.White") when path.EndsWith("Editors/HtmlPreview.cs", StringComparison.Ordinal) => true,
         // A colour the program in the terminal names: xterm's 24-bit colours, its 256-colour cube and grey ramp.
         (_, "Color.FromRgb" or "new SolidColorBrush(Color.") when path.EndsWith("TerminalView.cs", StringComparison.Ordinal) => true,
         _ => false,

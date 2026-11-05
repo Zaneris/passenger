@@ -1,13 +1,23 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Text;
 
 namespace Passenger.App.CSharp;
 
+/// <summary>A language's own Parameter Info, asked before its server's.</summary>
+internal interface IOwnSignatures
+{
+    /// <summary>The card of the call an offset of a file is in, added to <paramref name="card"/>: true where it is shown,
+    /// false where there is no call to show, null where the language passes it to its server.</summary>
+    Task<bool?> SignAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel);
+}
+
 /// <summary>Parameter Info: the card over the caret of the signature of the call it is in, its parameter there's
-/// documentation (else the signature's), shown after an opening bracket or a comma and gone after the closing one.</summary>
+/// documentation (else the signature's), shown after an opening bracket or a comma and gone after the closing one; a
+/// language's own (<see cref="Own"/>) first where it has one.</summary>
 internal sealed class ParameterInfo
 {
     private readonly AssistContext context;
@@ -23,6 +33,9 @@ internal sealed class ParameterInfo
     }
 
     public bool IsVisible => card.IsVisible;
+
+    /// <summary>The language that answers before the server, for the files it takes.</summary>
+    public IOwnSignatures? Own { get; set; }
 
     /// <summary>What the card says, while it shows.</summary>
     public string? Text => card.IsVisible ? card.Text : null;
@@ -61,12 +74,43 @@ internal sealed class ParameterInfo
 
     private async Task ShowCore()
     {
+        int caret = context.Caret;
+        TextDocument document = context.Editor.Document;
+        if (Own is { } own && context.Editors.Active is { } shown)
+        {
+            signing?.Cancel();
+            CancellationTokenSource asked = new();
+            signing = asked;
+            Gathered parts = new();
+            bool? signed;
+            try
+            {
+                signed = await own.SignAsync(parts, shown, caret, asked.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            if (asked.IsCancellationRequested || context.Editor.Document != document)
+            {
+                return;
+            }
+            if (signed is { } answered)
+            {
+                card.IsVisible = answered && parts.Count > 0;
+                if (card.IsVisible)
+                {
+                    card.Clear();
+                    parts.Into(card);
+                    popups.Place(card, caret, above: true);
+                }
+                return;
+            }
+        }
         if (context.Current?.Lsp is not { } lsp)
         {
             return;
         }
-        int caret = context.Caret;
-        TextDocument document = context.Editor.Document;
         signing?.Cancel();
         CancellationTokenSource cancel = new();
         signing = cancel;
@@ -107,6 +151,35 @@ internal sealed class ParameterInfo
         catch (LanguageServerFailed)
         {
             // No signature shown; the next bracket or comma asks again.
+        }
+    }
+
+    /// <summary>A card's parts as a language gives them, kept until the answer is known to be the one to show.</summary>
+    private sealed class Gathered : IHoverCard
+    {
+        private readonly List<(bool Code, string Text)> parts = [];
+
+        public int Count => parts.Count;
+
+        public void AddCode(string code) => parts.Add((true, code));
+
+        public void AddText(string text) => parts.Add((false, text));
+
+        public void AddHover(Hover hover) => parts.Add((false, Shapes.Text(hover.Contents)));
+
+        public void Into(InfoCard card)
+        {
+            foreach ((bool code, string text) in parts)
+            {
+                if (code)
+                {
+                    card.AddCode(text);
+                }
+                else
+                {
+                    card.AddText(text);
+                }
+            }
         }
     }
 

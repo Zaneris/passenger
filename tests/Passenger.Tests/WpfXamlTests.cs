@@ -196,7 +196,7 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         Marker path = MarkerOn(editor, document, "Greting");
         Assert.Equal(MarkerKind.Warning, path.Kind);
         Assert.Equal("Cannot resolve property 'Greting' in data context of type MainViewModel", path.Message);
-        Ui.WaitFor(() => window.BottomPanel.Problems.FileProblems.Count == 4, "Problems listing the file's four problems");
+        Ui.WaitFor(() => window.BottomPanel.Problems.FileProblems.Count(p => p.Severity != Passenger.App.Run.ProblemSeverity.Message) == 4, "Problems listing the file's four problems");
         window.Close();
     }
 
@@ -280,6 +280,83 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         Ui.Settle();
         Assert.Equal("MainWindow.xaml.cs", window.EditorArea.Active?.Name);
         Assert.Contains("private void |OnGo(", CaretLine(window.EditorArea.CodeEditor), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>A view model's property bound under the window's design-time data context, its command and the window's
+    /// handler, each renamed from its C# in the window, take along the WPF XAML that uses them, which is not open; one Undo
+    /// puts the property's rename back in both files.</summary>
+    [AvaloniaFact]
+    public void Renaming_a_property_bound_under_a_design_time_data_context_a_command_and_a_handler_in_csharp_renames_the_wpf_xaml_using_them()
+    {
+        string model = Gallery.MainViewModel.Replace("using System.Collections.ObjectModel;\n", "using System.Collections.ObjectModel;\nusing System.Windows.Input;\n", StringComparison.Ordinal)
+            .Replace("    public bool IsBusy { get; set; }\n", "    public bool IsBusy { get; set; }\n\n    public ICommand? Save { get; set; }\n", StringComparison.Ordinal);
+        string bound = Gallery.Window.Replace("<TextBlock Text=\"{Binding Content, ElementName=Go}\" />",
+            "<TextBlock Text=\"{Binding Content, ElementName=Go}\" />\n        <Button Content=\"Save\" Command=\"{Binding Save}\" />", StringComparison.Ordinal);
+        app.Rewrite("ViewModels/MainViewModel.cs", model);
+        app.Rewrite("MainWindow.xaml", bound);
+        string view = app.PathOf("MainWindow.xaml");
+        MainWindow window = app.Open(app.PathOf("ViewModels/MainViewModel.cs"));
+        List<string> asked = [];
+        window.Confirm = (_, text, _) =>
+        {
+            asked.Add(text);
+            return Task.FromResult(true);
+        };
+
+        XamlTests.RenameInCode(window, "string Gree", "Salutation");
+        string salutation = bound.Replace("Text=\"{Binding Greeting}\"", "Text=\"{Binding Salutation}\"", StringComparison.Ordinal);
+        Assert.True(File.ReadAllText(view) == salutation, $"The window's binding under its d:DataContext did not follow the property's rename ({window.Status}):\n{File.ReadAllText(view)}");
+        Assert.Contains("public string Salutation { get; set; }", window.EditorArea.Active?.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, EditorActions.Undo);
+        Ui.Settle();
+        Assert.True(asked.Count == 1 && asked[0].StartsWith("Undo Rename Greeting to Salutation? It changes ", StringComparison.Ordinal), $"The person's Undo asked: {string.Join(" | ", asked)}");
+        Assert.True(File.ReadAllText(view) == bound, $"One Undo did not put the window's binding back:\n{File.ReadAllText(view)}");
+        Assert.Equal(model, window.EditorArea.Active?.Text.Snapshot.ToString());
+
+        XamlTests.RenameInCode(window, "ICommand? Sa", "Store");
+        window.OpenFile(app.PathOf("MainWindow.xaml.cs"));
+        Ui.Settle();
+        XamlTests.RenameInCode(window, "void OnG", "OnStart");
+        string all = bound.Replace("Command=\"{Binding Save}\"", "Command=\"{Binding Store}\"", StringComparison.Ordinal).Replace("Click=\"OnGo\"", "Click=\"OnStart\"", StringComparison.Ordinal);
+        Assert.True(File.ReadAllText(view) == all, $"The window's XAML did not follow the command's and the handler's renames ({window.Status}):\n{File.ReadAllText(view)}");
+        Assert.Contains("private void OnStart(object sender, RoutedEventArgs e)", window.EditorArea.Active?.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>WPF reads an enum's member in any letter case, so a rename of one in C#, with no XAML of the project read yet,
+    /// reaches a window that spells it otherwise: the project is read for it, and the use takes the new name.</summary>
+    [AvaloniaFact]
+    public void Renaming_an_enum_member_in_csharp_reaches_wpf_xaml_spelling_it_in_another_case_in_a_project_not_read_yet()
+    {
+        string bound = Gallery.Window.Replace("<TextBlock Text=\"{Binding Content, ElementName=Go}\" />",
+            "<TextBlock Text=\"{Binding Content, ElementName=Go}\" />\n        <vm:Lamp State=\"ready\" />", StringComparison.Ordinal);
+        app.Rewrite("MainWindow.xaml", bound);
+        app.Write([("ViewModels/Lamp.cs", """
+            using System.Windows.Controls;
+
+            namespace Gallery.ViewModels;
+
+            public enum Phase
+            {
+                Ready,
+                Done,
+            }
+
+            public class Lamp : Control
+            {
+                public Phase State { get; set; }
+            }
+
+            """)]);
+        string view = app.PathOf("MainWindow.xaml");
+        MainWindow window = app.Open(app.PathOf("ViewModels/Lamp.cs"));
+
+        XamlTests.RenameInCode(window, "    Rea", "Waiting");
+
+        string renamed = bound.Replace("State=\"ready\"", "State=\"Waiting\"", StringComparison.Ordinal);
+        Ui.WaitFor(() => File.ReadAllText(view) == renamed, () => $"the window's use of the enum's member to follow its rename ({window.Status}):\n{File.ReadAllText(view)}");
         window.Close();
     }
 

@@ -21,7 +21,7 @@ public static class TemplatePacks
 
     public static IReadOnlyList<TemplatePack> All { get; } =
     [
-        new("Avalonia.Templates", "Install Avalonia templates for creating cross-platform desktop, mobile and browser apps", "12.1.4", "AvaloniaUI",
+        new("Avalonia.Templates", "Install Avalonia templates for creating cross-platform desktop, mobile and browser apps", "12.1.5", "AvaloniaUI",
         [
             new("Avalonia .NET App", "avalonia.app", false, ["C#", "F#"], "A cross-platform Avalonia UI Application targeting Desktop", Desktop, "AvaloniaApplication"),
             new("Avalonia .NET MVVM App", "avalonia.mvvm", false, ["C#", "F#"], "A cross-platform Avalonia UI Application using the MVVM pattern targeting Desktop",
@@ -30,7 +30,7 @@ public static class TemplatePacks
                 "A cross-platform Avalonia UI Application using the MVVM pattern targeting Desktop, Mobile and Browser with WebAssembly",
                 ["Desktop", "Xaml", "Avalonia", "Browser", "Mobile", "Android", "iOS"], "AvaloniaApplication"),
         ]),
-        new("Aspire.ProjectTemplates", "Install Aspire templates for creating cloud-native apps", "13.6.1", "Microsoft",
+        new("Aspire.ProjectTemplates", "Install Aspire templates for creating cloud-native apps", "13.6.4", "Microsoft",
         [
             new("Aspire Starter App (ASP.NET Core/Blazor)", "aspire-starter", true, ["C#"],
                 "A project template for creating an Aspire app with a Blazor web frontend and web API backend service, with optional Redis caching.",

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BenchTitle" xml:space="preserve">
+    <value>Bench {0}</value>
+    <comment>A bench's heading; {0} is its name</comment>
+  </data>
+  <data name="DaysUntilWatering" xml:space="preserve">
+    <value>Water again in {0} days</value>
+    <comment>The days until a plant's pot is dry</comment>
+  </data>
+  <data name="Moisture" xml:space="preserve">
+    <value>Moisture</value>
+    <comment>Each pot's water, as a share</comment>
+  </data>
+  <data name="NoPlants" xml:space="preserve">
+    <value>No plants on this bench yet</value>
+  </data>
+  <data name="PlantAdded" xml:space="preserve">
+    <value>{0} is on bench {1}</value>
+    <comment>{0} the plant, {1} its bench</comment>
+  </data>
+  <data name="TankEmpty" xml:space="preserve">
+    <value>The rain tank is empty: water from the mains</value>
+    <comment>Shown in red over the forecast</comment>
+  </data>
+  <data name="TankLasts" xml:space="preserve">
+    <value>The tank lasts {0} more days</value>
+  </data>
+  <data name="Water" xml:space="preserve">
+    <value>Water</value>
+    <comment>The button that waters every dry plant</comment>
+  </data>
+  <data name="WaterAll" xml:space="preserve">
+    <value>Water every plant</value>
+    <comment>Dry or not: the menu's item</comment>
+  </data>
+</root>

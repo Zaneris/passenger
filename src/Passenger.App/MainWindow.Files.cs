@@ -416,6 +416,10 @@ public partial class MainWindow
         {
             return failed;
         }
+        if (await FollowGodotAsync([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], recording) is { } ungodot)
+        {
+            status.Text = ungodot;
+        }
         Explorer.Reveal(PathNames.Canonical(target));
         if (await recording.LandedAsync(waiting => status.Text = waiting) is [(string unfollowed, Exception refused), ..])
         {
@@ -590,6 +594,11 @@ public partial class MainWindow
     /// disk's words for a write it refused.</summary>
     private async Task<string?> ChangeFileAsync(IReadOnlyCollection<string> paths, Func<string?> write, CommandHistory.Recording? into)
     {
+        // Through the command's recording, so its writes of the open ones among them are not asked about again.
+        if (await (into is null ? Editors.ClearAsync(paths) : into.ClearAsync(paths)) is { } held)
+        {
+            return held;
+        }
         if (SaveBeforeWriting(paths) is { } unsaved)
         {
             return unsaved;
@@ -718,6 +727,8 @@ public partial class MainWindow
         }
         // Now, rather than once the watcher hears of it.
         session.Xaml.FilesChanged([.. texts.Concat(moved).Where(p => p.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)).Distinct(PathNames.Comparer)]);
+        session.GodotScenes.FilesChanged(texts);
+        IdeErrors.Observe(XamlWrittenAsync(texts));
     }
 
     /// <summary>Files or folders the IDE itself made, moved or deleted, followed at once rather than when the folder watcher
@@ -733,6 +744,7 @@ public partial class MainWindow
         session.MSBuild.FilesCameOrWent();
         session.CSharp?.FilesCameOrWent(named);
         session.Xaml.CameOrWent(named);
+        session.GodotScenes.CameOrWent(named);
         if (Folder is { } folder)
         {
             session.Index.Apply(folder, named);

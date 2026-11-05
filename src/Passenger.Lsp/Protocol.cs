@@ -1,25 +1,13 @@
+// The Language Server Protocol 3.17, as much of it as Passenger speaks, in its own field names
+// (serialized camelCase). Where the protocol allows several shapes for one field, the field is a
+// JsonElement and Shapes.cs reads it.
+
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Lsp;
-
-// The Language Server Protocol 3.17, as much of it as Passenger speaks, in its own field names
-// (serialized camelCase). Where the protocol allows several shapes for one field, the field is a
-// JsonElement and Shapes.cs reads it.
-
-public sealed record LspPosition(int Line, int Character);
-
-public sealed record LspRange(LspPosition Start, LspPosition End)
-{
-    /// <summary>Whether a place is in the range, either end included.</summary>
-    public bool Holds(LspPosition at) =>
-        (Start.Line < at.Line || (Start.Line == at.Line && Start.Character <= at.Character))
-        && (at.Line < End.Line || (at.Line == End.Line && at.Character <= End.Character));
-}
-
-public sealed record LspLocation(string Uri, LspRange Range);
 
 /// <summary>A call or type hierarchy's item: a symbol, where it is and its name's place there; Data is the server's,
 /// sent back as it came when its callers, callees, supertypes or subtypes are asked for.</summary>
@@ -67,9 +55,10 @@ public sealed record LspTextEdit(LspRange Range, string NewText);
 public sealed record WorkspaceFolder(string Uri, string Name);
 
 /// <summary>What the client tells a server as it starts; <see cref="InitializationOptions"/> are the server's own (the JSON
-/// server's schema protocols, the TypeScript server's preferences), none for Roslyn.</summary>
+/// server's schema protocols, the TypeScript server's preferences), none for Roslyn; <see cref="RootPath"/> only where the
+/// server reads it (Godot's).</summary>
 public sealed record InitializeParams(int ProcessId, string RootUri, IReadOnlyList<WorkspaceFolder> WorkspaceFolders, JsonElement Capabilities, string Locale = "en",
-    object? InitializationOptions = null);
+    object? InitializationOptions = null, string? RootPath = null);
 
 /// <summary>One project a document is compiled in, as Visual Studio's protocol extension names it: a target framework
 /// of a multi-targeted project each, or Roslyn's Miscellaneous Files for a file in no project it has loaded. A request
@@ -229,6 +218,18 @@ public sealed record FormattingOptions(int TabSize, bool InsertSpaces, bool Trim
 
 public sealed record DocumentFormattingParams(TextDocumentIdentifier TextDocument, FormattingOptions Options);
 
+/// <summary>A character typed at a place, the caret past it, which the server may answer by writing more there.</summary>
+public sealed record AutoInsertParams(
+    [property: JsonPropertyName("_vs_textDocument")] TextDocumentIdentifier TextDocument,
+    [property: JsonPropertyName("_vs_position")] LspPosition Position,
+    [property: JsonPropertyName("_vs_ch")] string Character,
+    [property: JsonPropertyName("_vs_options")] FormattingOptions Options);
+
+/// <summary>What the server writes after a character typed: its edit, in plain text or as a snippet.</summary>
+public sealed record AutoInserted(
+    [property: JsonPropertyName("_vs_textEdit")] LspTextEdit? TextEdit,
+    [property: JsonPropertyName("_vs_textEditFormat")] InsertTextFormat TextEditFormat = InsertTextFormat.PlainText);
+
 public sealed record DocumentRangeFormattingParams(TextDocumentIdentifier TextDocument, LspRange Range, FormattingOptions Options);
 
 // Symbols
@@ -291,6 +292,9 @@ public static class SymbolKinds
     ];
 
     public static string Name(SymbolKind kind) => kind >= SymbolKind.File && (int)kind <= Names.Length ? Names[(int)kind - 1] : "symbol";
+
+    /// <summary>Every kind's name, in the protocol's order.</summary>
+    public static IReadOnlyList<string> All => Names;
 }
 
 // Semantic tokens

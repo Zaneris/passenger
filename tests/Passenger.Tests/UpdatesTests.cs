@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Formats.Tar;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -18,6 +19,7 @@ using Passenger.App;
 using Passenger.App.Settings;
 using Passenger.App.Updates;
 using Passenger.Core;
+using Passenger.Terminal;
 using Velopack.Locators;
 
 namespace Passenger.Tests;
@@ -27,8 +29,9 @@ namespace Passenger.Tests;
 /// copy says once per version that it is out, never of an older one, a pre-release, a draft or a failure. Check for
 /// Updates asks whenever a person wants; the setting off, nothing is asked or downloaded. A stand-in on a loopback port
 /// answers for GitHub and its downloads, which no test reaches; each installed copy is in a test folder, and each
-/// version's disk image is made once for the class (<see cref="DiskImages"/>). Agents' relays running from an installed
-/// copy are the build's own, started as an agent starts one (<see cref="McpRig"/>).</summary>
+/// version's disk image is made once for the class (<see cref="DiskImages"/>), each Linux release's archive by the test
+/// (<see cref="LinuxInstall"/>). Agents' relays running from an installed copy are the build's own, started as an agent
+/// starts one (<see cref="McpRig"/>).</summary>
 public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages>
 {
     /// <summary>The downloads the release workflow publishes with every release, by fixed names.</summary>
@@ -671,8 +674,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         CallToolResult answered = Await(meanwhile, "the call made while Passenger restarted");
         Assert.True(answered.IsError != true && Text(answered).Contains(joining, StringComparison.Ordinal),
             $"The agent's call made while Passenger restarted was answered '{Text(answered)}', not by the window on {joining}");
-        Assert.True(!joinedRelay.HasExited && !idleRelay.HasExited,
-            $"An agent's relay ended with the update rather than following it: joined {(joinedRelay.HasExited ? "ended" : "runs")}, idle {(idleRelay.HasExited ? "ended" : "runs")}");
+        Assert.True(DotnetProcesses.Runs(joinedRelay) && DotnetProcesses.Runs(idleRelay),
+            $"An agent's relay ended with the update rather than following it: joined {(!DotnetProcesses.Runs(joinedRelay) ? "ended" : "runs")}, idle {(!DotnetProcesses.Runs(idleRelay) ? "ended" : "runs")}");
         // The updated app's executable started in each relay's own process, as each one's agent made its next call.
         Unasked(restarted, joined, McpTools.Workspace);
         Unasked(restartedIdle, waiting, McpTools.Workspace);
@@ -712,10 +715,198 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Assert.True(copy.InstalledVersion == later, $"Passenger closed with v{later} ready and an agent's relay running left {copy.Bundle} at {copy.InstalledVersion}");
         MainWindow opened = AgentsWindow(idle, languageServer: false);
         Unasked(opened, left, McpTools.Workspace);
-        Assert.True(!relayLeft.HasExited && Ui.Shared(copy.Relayed).Split('\n').Contains($"relayed {later} {relayLeft.Id}"),
+        Assert.True(DotnetProcesses.Runs(relayLeft) && Ui.Shared(copy.Relayed).Split('\n').Contains($"relayed {later} {relayLeft.Id}"),
             $"Closing Passenger to install the update did not have the agent's relay {relayLeft.Id} go on from Passenger {later}: '{Ui.Shared(copy.Relayed)}'");
         Gone(left);
         opened.Close();
+    }
+
+    /// <summary>Why the Linux install's tests skip elsewhere.</summary>
+    private const string LinuxAlone = "A Linux install updates itself only on Linux, where its archive's app runs";
+
+    [AvaloniaFact]
+    [SupportedOSPlatform("linux")]
+    public void A_Linux_install_of_ones_own_is_put_in_place_as_Passenger_restarts_its_agents_relay_following_and_its_menu_entry_refreshed()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), LinuxAlone);
+        using IDisposable theme = TestsTheme();
+        LinuxInstall copy = new(TestFolders.Create("installed-"));
+        Assert.True(File.ReadAllText(copy.Entry).Contains($"X-Passenger-Release={Product.Version}", StringComparison.Ordinal),
+            $"install.sh did not make the menu entry of the release it installed: {File.ReadAllText(copy.Entry)}");
+        copy.Relaying();
+        string newer = Bumped(1, 0);
+        github.Answer = Release($"v{newer}", files: copy.Update(newer));
+        string joining = PathNames.Canonical(Plain("relay-joined-"));
+        MainWindow agents = AgentsWindow(joining, languageServer: false);
+        Process relay = StartPassenger(["--mcp-attach", joining], executable: copy.Executable);
+        McpClient joined = Await(Waiting.Apart(() => Connect(relay, ["--mcp-attach", joining])), "the agent's session starting");
+        Unasked(agents, joined, McpTools.Workspace);
+
+        MainWindow window = Started(copy.Updater());
+        window.WatchForUpdates();
+        Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}",
+            () => $"the status bar to offer Restart to Update to v{newer}: its notice says '{Notice(window)}', its message '{window.Status}'");
+        Assert.True(copy.Holds(newer), $"Restart to Update is offered, but v{newer} is not unpacked beside {copy.Install}, where it installs from");
+        Assert.True(copy.InstalledVersion == Product.Version, $"The update was put in place at once, as {copy.InstalledVersion}, before Passenger restarted");
+
+        Ui.Click(window.FindControl<Button>("UpdateButton")!, settle: false);
+        Ui.Settle();
+        Assert.False(window.IsVisible, "Restart to Update did not close the window with only an agent's relay running from the install");
+        Assert.False(agents.IsVisible, "Restart to Update left the agents' window open");
+        Ended(window);
+        // The new version's window, as its start opens it again.
+        MainWindow restarted = AgentsWindow(joining, languageServer: false);
+        window.InstallUpdate();
+        string said = string.Join('\n', Ui.IdeLog().Split('\n').Where(l => l.Contains("Updates:", StringComparison.Ordinal)).TakeLast(4));
+        Assert.True(copy.InstalledVersion == newer, $"Restart to Update left {copy.Install} at {copy.InstalledVersion}, not {newer}: {said}");
+        Assert.True(Ui.Shared(copy.Started) == $"started {newer}\n", $"Restart to Update did not start the new version once: what started says '{Ui.Shared(copy.Started)}'");
+        string entry = File.ReadAllText(copy.Entry);
+        Assert.True(entry.Contains($"X-Passenger-Release={newer}", StringComparison.Ordinal) && entry.Contains($"Exec=\"{copy.Install}/passenger\" %f", StringComparison.Ordinal),
+            $"The menu entry was not refreshed from v{newer}'s install.sh, naming the install's launcher: {entry}");
+        Assert.True(File.ReadAllText(copy.Icon) == $"png {newer}", $"The menu's icon is still '{File.ReadAllText(copy.Icon)}', not v{newer}'s");
+        Assert.True(new FileInfo(copy.Command).LinkTarget == Path.Combine(copy.Install, "passenger"),
+            $"The command {copy.Command} leads to {new FileInfo(copy.Command).LinkTarget}, not the install's launcher");
+        string replaced = Path.Combine(UpdateFolders.Beside(copy.Install, newer), "passenger");
+        Assert.True(LinuxInstall.ReleaseOf(replaced) == Product.Version,
+            $"The release replaced is not kept beside the install until the new one has started: {replaced} holds {LinuxInstall.ReleaseOf(replaced) ?? "nothing"}");
+
+        // The agent's next call is answered by the updated app's relay, in the same process.
+        Unasked(restarted, joined, McpTools.Workspace);
+        Assert.True(DotnetProcesses.Runs(relay) && Ui.Shared(copy.Relayed).Split('\n').Contains($"relayed {newer} {relay.Id}"),
+            $"The agent's relay {relay.Id} did not start again from Passenger {newer} in its own process: '{Ui.Shared(copy.Relayed)}'");
+        Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: the agent's relay on {joining} (process {relay.Id}) let go of the app to install Passenger {newer}", StringComparison.Ordinal));
+        Assert.True(!Errors().Any(line => line.StartsWith("passenger:", StringComparison.Ordinal)), $"The relay said it ended: {string.Join(" | ", Errors())}");
+        Gone(joined);
+        restarted.Close();
+
+        // The new release started, with nothing newer out: the release it replaced goes.
+        github.Answer = Release($"v{Product.Version}");
+        window = Started(copy.Updater());
+        window.WatchForUpdates();
+        Ui.WaitFor(() => !Directory.Exists(UpdateFolders.Beside(copy.Install, newer)), "the release replaced to be removed once the new one had started");
+        Assert.True(copy.InstalledVersion == newer, $"The install is {copy.InstalledVersion} once the new release started, not {newer}");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    [SupportedOSPlatform("linux")]
+    public void A_Linux_install_that_could_not_be_replaced_is_left_as_it_was_and_the_next_start_says_why()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), LinuxAlone);
+        using IDisposable theme = TestsTheme();
+        LinuxInstall copy = new(TestFolders.Create("installed-"));
+        string newer = Bumped(1, 0);
+        github.Answer = Release($"v{newer}", files: copy.Update(newer));
+        MainWindow window = Started(copy.Updater());
+        window.WatchForUpdates();
+        Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", $"the status bar to offer Restart to Update to v{newer}");
+
+        // The folder the install is in turned read-only meanwhile: the two folders cannot trade places.
+        string opt = Path.GetDirectoryName(copy.Install)!;
+        UnixFileMode was = File.GetUnixFileMode(opt);
+        File.SetUnixFileMode(opt, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            Assert.SkipWhen(Libc.Access(opt, Libc.MayWrite) == 0, "The test runs as root, who writes a read-only folder all the same");
+            window.Close();
+            Ended(window);
+            window.InstallUpdate();
+        }
+        finally
+        {
+            File.SetUnixFileMode(opt, was);
+        }
+        Assert.True(copy.InstalledVersion == Product.Version, $"{copy.Install} is {copy.InstalledVersion} after an update that could not take its place");
+        Assert.True(File.Exists(Path.Combine(copy.Install, "app", "Passenger")), $"{copy.Install} is not whole after an update that could not take its place");
+        Assert.True(copy.Holds(newer), $"v{newer} is no longer unpacked beside the install after it could not take its place");
+        Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: Passenger {newer} was not installed in {copy.Install}: Permission denied", StringComparison.Ordinal));
+
+        window = Started(copy.Updater());
+        window.WatchForUpdates();
+        Assert.Equal($"Passenger {newer} did not install: Permission denied", window.Status);
+        Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", "the update that did not install to be offered again");
+        Assert.True(github.RequestsFor(copy.Package(newer)).Length == 1, $"{copy.Package(newer)} was downloaded again");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    [SupportedOSPlatform("linux")]
+    public void A_Linux_install_for_everyone_this_user_cannot_write_says_the_command_that_installs_it_and_a_click_copies_it()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), LinuxAlone);
+        using IDisposable theme = TestsTheme();
+        LinuxInstall copy = new(TestFolders.Create("installed-"), forEveryone: true);
+        string opt = Path.GetDirectoryName(copy.Install)!;
+        UnixFileMode was = File.GetUnixFileMode(opt);
+        File.SetUnixFileMode(opt, UnixFileMode.UserRead | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
+            | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        try
+        {
+            Assert.SkipWhen(Libc.Access(opt, Libc.MayWrite) == 0, "The test runs as root, who can write any install");
+            string newer = Bumped(1, 0);
+            github.Answer = Release($"v{newer}", files: copy.Update(newer));
+            MainWindow window = Started(copy.Updater());
+            window.WatchForUpdates();
+            Ui.WaitFor(() => Notice(window) == $"Passenger {newer} ready to install",
+                () => $"the status bar to say v{newer} is ready to install by hand: its notice says '{Notice(window)}', its message '{window.Status}'");
+
+            string unpacked = Path.Combine(copy.Staging, newer, "passenger");
+            string command = $"sudo {ShellWords.Quoted(Path.Combine(copy.Install, "install.sh"), ShellKind.Posix)} --system --from {ShellWords.Quoted(unpacked, ShellKind.Posix)} --keep-replaced";
+            Assert.True(window.UpdateByHand == command, $"The command that installs v{newer} is '{window.UpdateByHand}', not '{command}'");
+            Assert.True(copy.Holds(newer), $"v{newer} is not unpacked at {unpacked}, which the command installs from");
+            string tip = ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty;
+            Assert.True(tip.Contains($"this user cannot write {copy.Install}", StringComparison.Ordinal) && tip.Contains(command, StringComparison.Ordinal),
+                $"The notice does not say why Passenger cannot install v{newer} and the command that does: '{tip}'");
+            Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context()));
+
+            Ui.Click(window.FindControl<Button>("UpdateButton")!);
+            Ui.WaitFor(() => window.Status == $"Copied the command that installs Passenger {newer}: paste it into a terminal", "the notice's click to copy the command");
+            Assert.True(Ui.Clipboard(window) == command, $"The notice's click put '{Ui.Clipboard(window)}' on the clipboard, not the command");
+            Assert.True(window.Browsed.Count == 0, $"The notice's click opened {string.Join(", ", window.Browsed)}, where it copies the command");
+
+            window.Close();
+            Ended(window);
+            window.InstallUpdate();
+            Assert.True(copy.InstalledVersion == Product.Version, $"An install this user cannot write was changed, to {copy.InstalledVersion}");
+        }
+        finally
+        {
+            File.SetUnixFileMode(opt, was);
+        }
+    }
+
+    [AvaloniaFact]
+    [SupportedOSPlatform("linux")]
+    public void A_Linux_copy_a_package_manager_installed_says_its_package_manager_updates_it_and_downloads_nothing()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), LinuxAlone);
+        using IDisposable theme = TestsTheme();
+        LinuxInstall copy = new(TestFolders.Create("installed-"));
+        // As a package says it is one, beside the app it installs.
+        File.WriteAllText(Path.Combine(copy.Install, "app", LinuxUpdater.PackageMarker), "pacman\n");
+        string newer = Bumped(1, 0);
+        IReadOnlyDictionary<string, byte[]> update = copy.Update(newer);
+        github.Answer = Release($"v{newer}", files: update);
+        MainWindow window = Started(copy.Updater());
+        window.WatchForUpdates();
+        Ui.Settle();
+
+        Assert.True(Notice(window) == $"Passenger {newer} available", $"A package manager's copy shows '{Notice(window)}', not that v{newer} is out");
+        string tip = ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty;
+        Assert.True(tip.Contains("This copy of Passenger is a package pacman installed: the system's package manager updates it.", StringComparison.Ordinal),
+            $"The notice does not say the package manager updates this copy: '{tip}'");
+        string page = $"https://github.com/Zaneris/passenger/releases/tag/v{newer}";
+        Assert.True(window.UpdateShown?.Link.AbsoluteUri == page, $"A package manager's copy links {window.UpdateShown?.Link}, not only the release's page, {page}");
+        string[] downloaded = [.. update.Keys.Where(name => github.RequestsFor(name).Length > 0)];
+        Assert.True(downloaded.Length == 0, $"A package manager's copy downloaded {string.Join(", ", downloaded)}");
+        Assert.False(copy.Holds(newer), $"A package manager's copy made v{newer} ready to install");
+        Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context()));
+        Ui.Click(window.FindControl<Button>("UpdateButton")!, settle: false);
+        Assert.True(window.Browsed.LastOrDefault()?.AbsoluteUri == page, $"The notice's click opened [{string.Join(", ", window.Browsed)}], not the release's page");
+        window.Close();
+        Ended(window);
+        window.InstallUpdate();
+        Assert.True(copy.InstalledVersion == Product.Version, $"A package manager's copy was changed, to {copy.InstalledVersion}");
     }
 
     /// <summary>Unmounts the test's volume. The system's own readers of new files (Spotlight, the code-signing checks)
@@ -843,9 +1034,10 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
     /// <summary>A system tool run on the thread pool and waited for on the UI thread, where the tests and their fixtures'
     /// copies ask for it, with the window's loop running, never for its work to land; its own limit fails it first.</summary>
-    private static ChildResult Ran(string tool, IReadOnlyList<string> arguments, TimeSpan limit) =>
-        Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tool, arguments), limit: limit)), $"{tool} {string.Join(' ', arguments)}",
-            limit + TestFolders.Spare);
+    private static ChildResult Ran(string tool, IReadOnlyList<string> arguments, TimeSpan limit) => Ran(ChildProcesses.Command(tool, arguments), limit);
+
+    private static ChildResult Ran(ProcessStartInfo start, TimeSpan limit) =>
+        Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(start, limit: limit)), ChildProcesses.Display(start), limit + TestFolders.Spare);
 
     /// <summary>Waits for what a closed window started to end, as the IDE's process waits for it before installing an
     /// update, the loop running meanwhile; it ends within <see cref="MainWindow.EndLimit"/> of the close.</summary>
@@ -858,7 +1050,12 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     {
         public static InstalledCopy Make(DiskImages images, string folder)
         {
-            Assert.SkipUnless(OperatingSystem.IsMacOS() || OperatingSystem.IsWindows(), "Passenger installs updates itself on macOS and Windows alone");
+            Assert.SkipUnless(OperatingSystem.IsMacOS() || OperatingSystem.IsWindows() || OperatingSystem.IsLinux(),
+                "Passenger installs updates itself on macOS, Windows and Linux alone");
+            if (OperatingSystem.IsLinux())
+            {
+                return new LinuxInstall(folder);
+            }
             return OperatingSystem.IsMacOS() ? new AppBundle(images, folder) : new VelopackInstall(folder);
         }
 
@@ -1127,6 +1324,186 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             }
             return bytes.ToArray();
         }
+    }
+
+    /// <summary>Passenger as the Linux archive's install.sh installs it for one person, over a home of the test's own
+    /// (~/.local/opt/passenger, its command and its menu entry), or for everyone as a copy in an opt/ of the test's, from a
+    /// passenger/ folder of tools/linux's own files whose app writes down that it started (and, as an agent's relay, its
+    /// version and process id, becoming the build's Passenger in that process); each release's archive is made from such
+    /// a folder of its version. Restart to Update runs the install's launcher and waits for it.</summary>
+    [SupportedOSPlatform("linux")]
+    private sealed class LinuxInstall : InstalledCopy
+    {
+        private const string App = "io.github.zaneris.passenger";
+
+        private readonly string folder;
+        private readonly bool forEveryone;
+        private readonly Dictionary<string, byte[]> archives = new(StringComparer.Ordinal);
+
+        public LinuxInstall(string folder, bool forEveryone = false)
+        {
+            this.folder = PathNames.Canonical(folder);
+            this.forEveryone = forEveryone;
+            Home = Directory.CreateDirectory(Path.Combine(this.folder, "home")).FullName;
+            Staging = Path.Combine(this.folder, "state", "updates");
+            string first = Unpacked(Path.Combine(this.folder, "first"), Product.Version);
+            if (forEveryone)
+            {
+                Install = Path.Combine(Directory.CreateDirectory(Path.Combine(this.folder, "opt")).FullName, "passenger");
+                Tool("/bin/cp", "-R", first, Install);
+                return;
+            }
+            Install = Path.Combine(Home, ".local", "opt", "passenger");
+            ProcessStartInfo install = ChildProcesses.Command("/bin/sh", [Path.Combine(first, "install.sh")], Home);
+            foreach ((string name, string? value) in Variables())
+            {
+                install.Environment[name] = value;
+            }
+            install.Environment.Remove("SUDO_USER");
+            ChildResult installed = Ran(install, TimeSpan.FromMinutes(1));
+            Assert.True(installed.Succeeded, $"install.sh did not install the test's Passenger: {installed.Error}{installed.Output}");
+        }
+
+        public string Home { get; }
+
+        public string Install { get; }
+
+        public string Staging { get; }
+
+        public string Executable => Path.Combine(Install, "app", "Passenger");
+
+        /// <summary>The command install.sh links on the PATH.</summary>
+        public string Command => Path.Combine(Home, ".local", "bin", "passenger-ide");
+
+        public string Entry => Path.Combine(Home, ".local", "share", "applications", App + ".desktop");
+
+        public string Icon => Path.Combine(Home, ".local", "share", "icons", "hicolor", "256x256", "apps", App + ".png");
+
+        /// <summary>Where each start of the app writes its version, in the test's folder.</summary>
+        public string Started => Path.Combine(folder, "started.txt");
+
+        /// <summary>Where each start of the app as an agent's relay writes its version and process id, there too.</summary>
+        public string Relayed => Path.Combine(folder, "relayed.txt");
+
+        public override string? InstalledVersion => ReleaseOf(Install);
+
+        public override Updater Updater() =>
+            new LinuxUpdater(Install, Staging, forEveryone ? LinuxUpdater.InstallKind.System : LinuxUpdater.InstallKind.PerUser, mayAsk: false,
+                running: InstalledVersion, environment: Variables(), start: StartAsync);
+
+        public override string Package(string version) => ThisSystemsDownload();
+
+        public override IReadOnlyDictionary<string, byte[]> Update(string version)
+        {
+            if (!archives.TryGetValue(version, out byte[]? archive))
+            {
+                string release = Unpacked(Path.Combine(folder, "releases", version), version);
+                using MemoryStream bytes = new();
+                using (GZipStream gzip = new(bytes, CompressionLevel.Fastest, leaveOpen: true))
+                {
+                    TarFile.CreateFromDirectory(release, gzip, includeBaseDirectory: true);
+                }
+                archive = archives[version] = bytes.ToArray();
+            }
+            string sums = $"{Convert.ToHexStringLower(SHA256.HashData(archive))}  {Package(version)}\n"
+                + $"{Convert.ToHexStringLower(SHA256.HashData((byte[])[1, 2, 3]))}  Passenger-windows-x64.exe\n";
+            return new Dictionary<string, byte[]> { [Package(version)] = archive, ["SHA256SUMS"] = Encoding.UTF8.GetBytes(sums) };
+        }
+
+        /// <summary>A release of this version unpacked where the updater makes it ready: beside the install, or for an
+        /// install for everyone in the state's folder; not while the updater removes it.</summary>
+        public override bool Holds(string version)
+        {
+            string unpacked = forEveryone ? Path.Combine(Staging, version) : UpdateFolders.Beside(Install, version);
+            try
+            {
+                return ReleaseOf(Path.Combine(unpacked, "passenger")) == version;
+            }
+            catch (Exception gone) when (gone is DirectoryNotFoundException or FileNotFoundException)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>What is in the folder updates download to, and every release unpacked beside the install.</summary>
+        public override IReadOnlyList<string> Downloaded()
+        {
+            List<string> found = [];
+            if (Directory.Exists(Staging))
+            {
+                found.AddRange(Directory.EnumerateFileSystemEntries(Staging).Select(p => Path.GetFileName(p)));
+            }
+            found.AddRange(Directory.EnumerateDirectories(Path.GetDirectoryName(Install)!, UpdateFolders.Prefix + "*").Select(p => Path.GetFileName(p)));
+            return found;
+        }
+
+        /// <summary>The installed app made the build's own Passenger: its executable copied, the rest of the build linked
+        /// beside it. An agent's relay runs from it.</summary>
+        public void Relaying()
+        {
+            string app = Path.Combine(Install, "app");
+            File.Delete(Executable);
+            File.Delete(Path.Combine(app, "Passenger.deps.json"));
+            File.Copy(Path.Combine(AppContext.BaseDirectory, "Passenger"), Executable);
+            File.SetUnixFileMode(Executable, Runnable);
+            foreach (string entry in Directory.EnumerateFileSystemEntries(AppContext.BaseDirectory))
+            {
+                string beside = Path.Combine(app, Path.GetFileName(entry));
+                if (!Path.Exists(beside))
+                {
+                    File.CreateSymbolicLink(beside, entry);
+                }
+            }
+        }
+
+        /// <summary>The release a passenger/ folder holds, as its app says, or null for none.</summary>
+        public static string? ReleaseOf(string passenger) =>
+            File.Exists(Path.Combine(passenger, "app", "release.txt")) ? File.ReadAllText(Path.Combine(passenger, "app", "release.txt")) : null;
+
+        /// <summary>The variables install.sh runs with, the test's home its own.</summary>
+        private Dictionary<string, string?> Variables() =>
+            new() { ["HOME"] = Home, ["XDG_DATA_HOME"] = Path.Combine(Home, ".local", "share") };
+
+        /// <summary>A passenger/ folder of a release as its archive unpacks, in <paramref name="at"/>: tools/linux's launcher,
+        /// install.sh and file types, a menu entry naming the release, an icon of it, and an app that writes down its
+        /// starts, with the release and a deps.json giving its version; the folder's path.</summary>
+        private string Unpacked(string at, string version)
+        {
+            string linux = Path.Combine(XamlTests.Repository, "tools", "linux");
+            string passenger = Directory.CreateDirectory(Path.Combine(at, "passenger")).FullName;
+            string app = Directory.CreateDirectory(Path.Combine(passenger, "app")).FullName;
+            File.WriteAllText(Path.Combine(app, "Passenger"), $"""
+                #!/bin/sh
+                if [ "$1" = --mcp-attach ]; then
+                  echo "relayed {version} $$" >> "{Relayed}"
+                  exec "{Path.Combine(AppContext.BaseDirectory, "Passenger")}" "$@"
+                fi
+                echo started {version} >> "{Started}"
+
+                """);
+            File.SetUnixFileMode(Path.Combine(app, "Passenger"), Runnable);
+            File.WriteAllText(Path.Combine(app, "release.txt"), version);
+            File.WriteAllText(Path.Combine(app, "Passenger.deps.json"), new JsonObject
+            {
+                ["libraries"] = new JsonObject { [$"Passenger/{version}"] = new JsonObject { ["type"] = "project", ["serviceable"] = false } },
+            }.ToJsonString());
+            foreach (string script in (string[])["install.sh", "passenger"])
+            {
+                File.Copy(Path.Combine(linux, script), Path.Combine(passenger, script));
+                File.SetUnixFileMode(Path.Combine(passenger, script), Runnable);
+            }
+            File.WriteAllText(Path.Combine(passenger, App + ".desktop"), File.ReadAllText(Path.Combine(linux, App + ".desktop")) + $"X-Passenger-Release={version}\n");
+            File.Copy(Path.Combine(linux, App + ".xml"), Path.Combine(passenger, App + ".xml"));
+            File.WriteAllText(Path.Combine(passenger, App + ".png"), $"png {version}");
+            File.WriteAllText(Path.Combine(passenger, App + ".svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"/>");
+            return passenger;
+        }
+
+        private static async Task StartAsync(string install) =>
+            await ChildProcesses.RunAsync(ChildProcesses.Command(Path.Combine(install, "passenger"), []), limit: TimeSpan.FromSeconds(30));
+
+        private const UnixFileMode Runnable = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead
+            | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
     }
 
     /// <summary>GitHub on a loopback port of its own: releases/latest, answered as the test says or taken and never answered

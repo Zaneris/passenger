@@ -94,14 +94,19 @@ public partial class ManagedDebugger
             }
         }
 
-        IMetaDataImport metadataImport = objectValue.Class.Module.GetMetaDataInterface<IMetaDataImport>();
-        IEnumerable<mdFieldDef> fields = metadataImport.EnumFields(objectValue.Class.Token);
+        // Read again: showing a member above may have evaluated in the program, which voids the object read before it.
+        if (closureValue.UnwrapDebugValueToObjectOrNull() is not { } closure)
+        {
+            return;
+        }
+        IMetaDataImport metadataImport = closure.Class.Module.GetMetaDataInterface<IMetaDataImport>();
+        IEnumerable<mdFieldDef> fields = metadataImport.EnumFields(closure.Class.Token);
         foreach (mdFieldDef field in fields)
         {
             (string szField, mdTypeDef pClass, CorFieldAttr pdwAttr, nint ppvSigBlob, int pcbSigBlob, CorElementType pdwCPlusTypeFlag, nint ppValue, int pcchValue) fieldProps = metadataImport.GetFieldProps(field);
             if (GeneratedNameParser.GetKind(fieldProps.szField) is GeneratedNameKind.DisplayClassLocalOrField)
             {
-                ICorDebugValue parentClosureValue = objectValue.GetFieldValue(objectValue.Class, field);
+                ICorDebugValue parentClosureValue = closure.GetFieldValue(closure.Class, field);
                 await AddClosureChainMembers(parentClosureValue, threadId, stackDepth, result);
                 break; // only one parent link per closure class
             }
@@ -198,7 +203,7 @@ public partial class ManagedDebugger
     /// and a pointer (<paramref name="name"/> its row's) to the value it points at. It keeps the type the value's variable is
     /// declared as, where known (<paramref name="declared"/>), and the C# reaching the value (<paramref name="expression"/>),
     /// for its rows' expressions.</summary>
-    private int GetVariablesReference(ICorDebugValue corDebugValue, string friendlyTypeName, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance, string? name = null,
+    private int GetVariablesReference(ICorDebugValue corDebugValue, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance, string? name = null,
         DeclaredType? declared = null, string? expression = null)
     {
         if (corDebugValue is ICorDebugReferenceValue { Type: CorElementType.PTR } pointer)
@@ -248,8 +253,10 @@ public partial class ManagedDebugger
             {
                 return 0;
             }
+            // Its own type's, never the one its row shows (a dictionary's row shows its value's).
+            string friendlyTypeName = GetCorDebugTypeFriendlyName(objectValue.ExactType);
             // Decimal is a struct but should be treated as a primitive
-            if (friendlyTypeName is "decimal" or "decimal?")
+            if (friendlyTypeName is "decimal")
             {
                 return 0;
             }
@@ -357,17 +364,17 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>A type's members and then its base types', each reached from <paramref name="owner"/> (the value's
-    /// expression; none where null), a list's view's elements by index from <paramref name="listed"/>; true where a Static
-    /// members row is needed. A member the value's variable (declared as <paramref name="declared"/>, else as the value's own
-    /// type) reaches only through a cast says the type declaring it: one of a type below the declared one but a property an
-    /// interface declared reaches by its name, or one that a type between the declared one and its own hides by its name.</summary>
+    /// <summary>A type's members and its base types', <paramref name="levels"/> of them at most, each reached from
+    /// <paramref name="owner"/> (the value's expression; none where null), a list's view's elements by index from
+    /// <paramref name="listed"/>; true where a Static members row is needed. A member the value's variable (declared as
+    /// <paramref name="declared"/>, else as its own type) reaches only through a cast says its declaring type: one of a type
+    /// below the declared one but a property a declared interface reaches by name, or one a type between them hides.</summary>
     private Task<bool> AddMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, bool includeNonPublicMembers = true,
-        DeclaredType? declared = null, string? owner = null, string? listed = null)
+        DeclaredType? declared = null, string? owner = null, string? listed = null, int levels = int.MaxValue)
     {
         int below = Below(corDebugType, declared);
         return AddMembers(corDebugValue, corDebugType, threadId, stackDepth, result, includeNonPublicMembers, below, new HashSet<string>(StringComparer.Ordinal),
-            below > 0 ? ThroughInterface(corDebugType, declared) : null, owner, listed);
+            below > 0 ? ThroughInterface(corDebugType, declared) : null, owner, listed, levels);
     }
 
     /// <summary>A type's members and then its base types', each saying its type where it lies <paramref name="below"/> the
@@ -375,7 +382,7 @@ public partial class ManagedDebugger
     /// but for the first property, at or above the type implementing it, of each name a declared interface reaches
     /// (<paramref name="reach"/>).</summary>
     private async Task<bool> AddMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, bool includeNonPublicMembers,
-        int below, HashSet<string> hidden, InterfaceReach? reach, string? owner, string? listed)
+        int below, HashSet<string> hidden, InterfaceReach? reach, string? owner, string? listed, int levels)
     {
         int first = result.Count;
         bool hasStaticMembers = false;
@@ -412,7 +419,7 @@ public partial class ManagedDebugger
         Express(result, first, row => RowExpressions.Member(owner, row.Member!, row.Interface ?? row.DeclaringType));
 
         ICorDebugType? baseType = corDebugType.Base;
-        if (baseType is null)
+        if (baseType is null || levels <= 1)
         {
             return hasStaticMembers;
         }
@@ -429,7 +436,8 @@ public partial class ManagedDebugger
         {
             taken.UnionWith(result.Skip(first).Select(member => member.Name));
         }
-        return hasStaticMembers | await AddMembers(corDebugValue, baseType, threadId, stackDepth, result, true, below - 1, taken, reach is null ? null : reach with { Below = reach.Below - 1 }, owner, listed);
+        return hasStaticMembers | await AddMembers(corDebugValue, baseType, threadId, stackDepth, result, true, below - 1, taken, reach is null ? null : reach with { Below = reach.Below - 1 }, owner, listed,
+            levels - 1);
     }
 
     /// <summary>Gives each member row from <paramref name="from"/> on the expression <paramref name="of"/> makes for it, which
@@ -458,7 +466,7 @@ public partial class ManagedDebugger
     {
         foreach (VariableInfo row in rows)
         {
-            if (row.PresentationHint?.Attributes is AttributesValue.FailedEvaluation)
+            if (row.PresentationHint?.Attributes is AttributesValue.FailedEvaluation or AttributesValue.FailedNeedingThreads)
             {
                 continue;
             }
@@ -669,6 +677,20 @@ public partial class ManagedDebugger
                     return;
                 }
                 bool debuggerBrowsableRootHidden = browsable is DebuggerBrowsableState.RootHidden;
+                if (!isStatic && propertyName is "StackTrace" && GetCorDebugTypeFriendlyName(declaringType) == "System.Exception"
+                    && corDebugValue.UnwrapDebugValueToObjectOrNull() is { } thrown && TryStoredStackTrace(thrown, _process!.GetThread(threadId.Value), out string? trace))
+                {
+                    // Read from what the exception stores, never formatted in the program.
+                    result.Add(new VariableInfo
+                    {
+                        Name = propertyName,
+                        Member = propertyName,
+                        Value = trace is null ? "null" : SymbolDisplay.FormatLiteral(trace, quote: true),
+                        Type = "string",
+                        VariablesReference = 0,
+                    });
+                    return;
+                }
 
                 ICorDebugFunction getMethod = corDebugClass.Module.GetFunctionFromToken(getMethodDef);
                 ICorDebugEval eval = variablesReferenceIlFrame.Chain.Thread.CreateEval();
@@ -864,17 +886,22 @@ public partial class ManagedDebugger
             EvaluateName = expression,
             Value = shown,
             Type = type,
-            PresentationHint = failed ? FailedRead : null,
-            VariablesReference = GetVariablesReference(opens?.Invoke() ?? value, type, threadId, stackDepth, proxy, namesPointee ? name : null, declared, expression),
+            PresentationHint = failed ? FailedHint(shown) : null,
+            VariablesReference = GetVariablesReference(opens?.Invoke() ?? value, threadId, stackDepth, proxy, namesPointee ? name : null, declared, expression),
         };
     }
 
     /// <summary>A row saying why its value could not be read, which opens to nothing.</summary>
     private static VariableInfo FailedRow(string name, string why, string? type = null) =>
-        new() { Name = name, Value = why, Type = type, PresentationHint = FailedRead, VariablesReference = 0 };
+        new() { Name = name, Value = why, Type = type, PresentationHint = FailedHint(why), VariablesReference = 0 };
 
-    /// <summary>The hint of a row whose value is why it could not be read.</summary>
+    /// <summary>The hint of a row whose value is why it could not be read, marked where that says it probably needs another
+    /// thread to run, to be run again with every thread let go.</summary>
+    private static VariablePresentationHint FailedHint(string why) => why.Contains(Extensions.NeedsThreads, StringComparison.Ordinal) ? FailedNeedingThreads : FailedRead;
+
     private static readonly VariablePresentationHint FailedRead = new() { Attributes = AttributesValue.FailedEvaluation };
+
+    private static readonly VariablePresentationHint FailedNeedingThreads = new() { Attributes = AttributesValue.FailedNeedingThreads };
 
     /// <summary>A row the debugger adds to group values under it (<see cref="DapRows"/>' own, a range of an array's
     /// elements), which no expression reaches and which opens to <paramref name="opens"/>.</summary>

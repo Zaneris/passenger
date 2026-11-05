@@ -146,17 +146,17 @@ public sealed class DebugMarks
                 break;
             case LineMarkKind.BreakpointBound:
                 context.DrawEllipse(fill, null, centre, radius, radius);
-                GutterShape key = new(nameof(LineMarkKind.BreakpointBound), x, y, radius);
+                GutterShape key = new(nameof(LineMarkKind.BreakpointBound), radius);
                 if (!frame.TryShape(key, out StreamGeometry? tick))
                 {
                     tick = frame.AddShape(key);
                     using StreamGeometryContext path = tick.Open();
-                    path.BeginFigure(new Point(x - radius * 0.45, y + radius * 0.02), false);
-                    path.LineTo(new Point(x - radius * 0.1, y + radius * 0.38));
-                    path.LineTo(new Point(x + radius * 0.48, y - radius * 0.35));
+                    path.BeginFigure(new Point(-radius * 0.45, radius * 0.02), false);
+                    path.LineTo(new Point(-radius * 0.1, radius * 0.38));
+                    path.LineTo(new Point(radius * 0.48, -radius * 0.35));
                     path.EndFigure(false);
                 }
-                context.DrawGeometry(null, frame.Pen(TokenKeys.Editor_Background, 1.6, PenLineCap.Round, PenLineJoin.Round), tick);
+                frame.DrawShape(tick, null, frame.Pen(TokenKeys.Editor_Background, 1.6, PenLineCap.Round, PenLineJoin.Round), x, y);
                 break;
             case LineMarkKind.BreakpointInvalid:
                 context.DrawEllipse(null, frame.Pen(fillKey, 1.5), centre, radius - 0.75, radius - 0.75);
@@ -174,18 +174,18 @@ public sealed class DebugMarks
         double y = top + (frame.LineHeight - height) / 2;
         double x = left + 5;
         const double Width = 13;
-        GutterShape key = new(nameof(DrawExecutionArrow), x, y, height);
+        GutterShape key = new(nameof(DrawExecutionArrow), height);
         if (!frame.TryShape(key, out StreamGeometry? arrow))
         {
             arrow = frame.AddShape(key);
             using StreamGeometryContext path = arrow.Open();
-            path.BeginFigure(new Point(x, y), true);
-            path.LineTo(new Point(x + Width - height / 2, y));
-            path.LineTo(new Point(x + Width, y + height / 2));
-            path.LineTo(new Point(x + Width - height / 2, y + height));
-            path.LineTo(new Point(x, y + height));
+            path.BeginFigure(new Point(0, 0), true);
+            path.LineTo(new Point(Width - height / 2, 0));
+            path.LineTo(new Point(Width, height / 2));
+            path.LineTo(new Point(Width - height / 2, height));
+            path.LineTo(new Point(0, height));
             path.EndFigure(true);
         }
-        frame.Context.DrawGeometry(frame.Brush(TokenKeys.Editor_ExecutionPoint), null, arrow);
+        frame.DrawShape(arrow, frame.Brush(TokenKeys.Editor_ExecutionPoint), null, x, y);
     }
 }

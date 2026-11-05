@@ -22,11 +22,12 @@ public partial class MainWindow
     {
         actions!.Add(new IdeAction(AppActions.NewSolution, "New Solution…", "IDE", _ => ShowNewSolution())
         {
+            WhyNot = _ => WithoutAnySdk(),
             Menus = [new MenuPlace("File", 0, -1)],
         });
         actions.Add(new IdeAction(AppActions.NewProject, "New Project…", "IDE", _ => ShowNewProject(ChosenSolutionFolder()))
         {
-            WhyNot = _ => Solution is null ? Refusals.NoSolution : null,
+            WhyNot = _ => Solution is null ? Refusals.NoSolution : WithoutAnySdk(),
         });
     }
 
@@ -45,12 +46,17 @@ public partial class MainWindow
     /// <summary>New Solution: the dialog over this window, and the solution opened, built, once it is made.</summary>
     public NewProjectDialog ShowNewSolution()
     {
-        NewProjectDialog dialog = new(BesideLast(), null, ContainersWhyNot());
+        NewProjectDialog dialog = new(BesideLast(), null, ContainersWhyNot(), settings.GodotExecutable);
         dialog.Closed += (_, _) =>
         {
             if (dialog.Created is { Solution: { } solution } made)
             {
                 IdeErrors.Observe(OpenNewSolutionAsync(solution, made));
+            }
+            else if (dialog.Created is { Game: true } game)
+            {
+                // A Godot game of GDScript is its folder, which opens as the workspace.
+                Open(game.Folder, opened => opened.OfferGodotEditor(null));
             }
         };
         IdeErrors.Observe(dialog.ShowDialog(this));
@@ -68,7 +74,7 @@ public partial class MainWindow
         }
         ProjectTarget target = new(solution.Path, into, [.. solution.Projects.Select(p => Path.GetFileNameWithoutExtension(p.Path))],
             Projects.FirstOrDefault(p => p.Exists && p.IsAspireHost)?.Name);
-        NewProjectDialog dialog = new(ProjectFolderFor(solution, into), target, ContainersWhyNot());
+        NewProjectDialog dialog = new(ProjectFolderFor(solution, into), target, ContainersWhyNot(), settings.GodotExecutable);
         dialog.Closed += (_, _) =>
         {
             if (dialog.Created is { } made && Solution?.Path == solution.Path)
@@ -113,6 +119,10 @@ public partial class MainWindow
             // What the template and the set-up made in the project's folder goes and comes back with the folder.
             recording.Leave(made.Folder);
             recording.Also(await MadeFolderAsync(made.Folder));
+            if (problem is null && made.Game)
+            {
+                OfferGodotEditor($"{Path.GetFileNameWithoutExtension(made.Projects[0])} is a Godot game");
+            }
             return problem;
         }
     }
@@ -235,7 +245,7 @@ public partial class MainWindow
                 IdeErrors.Observe(setUp);
                 return;
             }
-            opened.BuildSolution();
+            opened.BuildSolution(made.Game ? built => opened.OfferGodotEditor(built.Message) : null);
         });
     }
 
@@ -259,6 +269,16 @@ public partial class MainWindow
         BuildOutcome built = await building.Task;
         status.Say($"{said}; {built.Message}", problem is null ? null : ProblemSeverity.Warning, buildRun.Place(built));
         return problem;
+    }
+
+    /// <summary>A new Godot game opened: what was said of it, then Passenger offered as Godot's script editor, a click on the
+    /// words making it so (<see cref="AppActions.GodotScriptEditor"/>).</summary>
+    private void OfferGodotEditor(string? said)
+    {
+        string title = actions?[AppActions.GodotScriptEditor]?.TitleWhere(actions.Context()) ?? AppActions.GodotScriptEditor;
+        string does = title.TrimEnd('…');
+        status.Say($"{(said is null ? string.Empty : $"{said}; ")}{title} opens its scripts here from Godot's editor", null,
+            new StatusPlace(char.ToLowerInvariant(does[0]) + does[1..], () => Request(AppActions.GodotScriptEditor)));
     }
 
     /// <summary>Where a new project goes by default: the folder on disk a solution folder is named after (src for /src/),

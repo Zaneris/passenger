@@ -383,6 +383,30 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
+    /// <summary>A YAML key is a key quoted or not, and one that reads as a typed scalar (off, 200) is a key under a
+    /// <c>%YAML 1.1</c> directive as under 1.2: its value's numbers, anchors and aliases stay plain, and a tag is one
+    /// keyword.</summary>
+    [AvaloniaFact]
+    public void A_yaml_files_quoted_keys_and_its_typed_keys_under_YAML_1_1_are_keys_and_its_numbers_anchors_and_tags_keep_their_colours()
+    {
+        MainWindow window = Window();
+        try
+        {
+            CodeEditor editor = Open(window, "versions.yml", "%YAML 1.1\n---\noff: no\n\"quoted key\": 'value'\n200: !!str 12\nbase: &shared 3.5\nother: *shared\n");
+            (string Stretch, TokenKind Kind)[] wanted =
+            [
+                ("off", TokenKind.YamlKey), ("\"quoted key\"", TokenKind.YamlKey), ("'value'", TokenKind.String), ("200", TokenKind.YamlKey),
+                ("!!str", TokenKind.Keyword), ("12", TokenKind.Text), ("&shared", TokenKind.Text), ("3.5", TokenKind.Text), ("*shared", TokenKind.Text),
+            ];
+            string[] wrong = [.. wanted.Where(w => KindOf(editor, w.Stretch) != w.Kind).Select(w => $"{w.Stretch} is {KindOf(editor, w.Stretch, settle: false)?.ToString() ?? "mixed"}, not {w.Kind}")];
+            Assert.True(wrong.Length == 0, $"A YAML file's keys, values and tags are not coloured as what they are: {string.Join("; ", wrong)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A quoted heredoc ends only at a line that is its delimiter alone, as bash ends one: a line of the body that
     /// starts with the delimiter and goes on (<c>END suffix</c>) is the heredoc's string, as are the lines after it up to
     /// the bare <c>END</c>, and with <c>&lt;&lt;-</c> up to the delimiter after tabs alone.</summary>
@@ -774,6 +798,46 @@ public sealed class FileColoursTests : FileColoursFolder
         editor.Selections = SelectionSet.Single(Requests.IndexOf("Accept", StringComparison.Ordinal));
         Ui.Run(window, EditorActions.ToggleLineComment);
         Assert.Contains("\n# Accept: application/json\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>Godot's files in their kinds' colours: a GDScript file's keywords, function, class, string, number and
+    /// comment, a scene's sections, strings and paths, and a shader's comment and number; a script names itself GDScript, indents
+    /// with a tab where its lines say nothing, and comments a line with '#'.</summary>
+    [AvaloniaFact]
+    public void A_GDScript_file_a_scene_and_a_shader_show_their_tokens_as_their_kinds()
+    {
+        MainWindow window = Window();
+        const string Script = "extends Node2D\n\n## How fast it spins.\n@export var speed: float = 2.5\n\nfunc _process(delta: float) -> void:\n"
+            + "\tvar label := \"turns\"\n\tif speed > 1:\n\t\tprint(label, 42)\n";
+        CodeEditor editor = Open(window, "main.gd", Script);
+        editor.Focus();
+        Assert.Equal("GDScript", window.LanguageShown);
+        Assert.Equal(TokenKind.Keyword, KindOf(editor, "extends"));
+        Assert.Equal(TokenKind.Class, KindOf(editor, "Node2D"));
+        Assert.Equal(TokenKind.Comment, KindOf(editor, "## How fast it spins."));
+        Assert.Equal(TokenKind.Keyword, KindOf(editor, "func"));
+        Assert.Equal(TokenKind.Method, KindOf(editor, "_process"));
+        Assert.Equal(TokenKind.String, KindOf(editor, "\"turns\""));
+        Assert.Equal(TokenKind.Keyword, KindOf(editor, "if"));
+        Assert.Equal(TokenKind.Number, KindOf(editor, "42"));
+        Assert.True(window.EditorArea.Active!.Indentation.Options.UseTabs, "A GDScript file indents with spaces where Godot's editor writes tabs");
+        editor.Selections = SelectionSet.Single(Script.IndexOf("@export", StringComparison.Ordinal));
+        Ui.Run(window, EditorActions.ToggleLineComment);
+        Assert.Contains("\n# @export var speed", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+
+        editor = Open(window, "main.tscn", "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://main.gd\" id=\"1\"]\n\n"
+            + "[node name=\"Main\" type=\"Node2D\"]\nscript = ExtResource(\"1\")\n");
+        Assert.Equal(TokenKind.Keyword, KindOf(editor, "gd_scene"));
+        Assert.Equal(TokenKind.String, KindOf(editor, "\"1\""));
+        Assert.Equal(TokenKind.Class, KindOf(editor, "\"Node2D\""));
+        // A resource's path is set apart from the strings around it, as a call is.
+        Assert.Equal(TokenKind.Method, KindOf(editor, "\"res://main.gd\""));
+        Assert.Equal(TokenKind.Keyword, KindOf(editor, "ExtResource"));
+
+        editor = Open(window, "glow.gdshader", "shader_type canvas_item;\n// The glow.\nuniform float strength = 0.5;\n");
+        Assert.Equal(TokenKind.Comment, KindOf(editor, "// The glow."));
+        Assert.Equal(TokenKind.Number, KindOf(editor, "0.5"));
         window.Close();
     }
 

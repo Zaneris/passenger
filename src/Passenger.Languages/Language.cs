@@ -8,7 +8,7 @@ using Passenger.Text;
 namespace Passenger.Languages;
 
 /// <summary>What answers for a language's files beyond the editor: the C# language server (C# and Razor), Passenger's
-/// XAML, an MSBuild evaluation, one of the web languages' servers, or nothing.</summary>
+/// XAML, an MSBuild evaluation, one of the web languages' servers, Godot's for GDScript, or nothing.</summary>
 public enum LanguageService
 {
     None,
@@ -21,6 +21,7 @@ public enum LanguageService
     Json,
     Dockerfile,
     Yaml,
+    GDScript,
 }
 
 /// <summary>A file name a language claims, matched without regard to case: a name, or one <c>*</c> standing for any run
@@ -79,12 +80,25 @@ public sealed class Language
     private static readonly (string Scope, string Carried)[] EmbeddedAs =
         [("source.json.comments", "source.json"), ("source.json.lines", "source.json"), ("text.html.derivative", "text.html.basic")];
 
-    /// <summary>Each grammar's file by the scope it names, every language's, for the grammars that embed others, and by
-    /// the scopes of <see cref="EmbeddedAs"/>.</summary>
+    /// <summary>Grammars carried only for another's includes, each by the scope it names: YAML's, a grammar for each version
+    /// of YAML and one for YAML embedded in another document, which YAML's own grammar reads by.</summary>
+    private static readonly (string Scope, string File)[] Included =
+    [
+        ("source.yaml.1.0", "yaml-1.0.tmLanguage.json"), ("source.yaml.1.1", "yaml-1.1.tmLanguage.json"),
+        ("source.yaml.1.2", "yaml-1.2.tmLanguage.json"), ("source.yaml.1.3", "yaml-1.3.tmLanguage.json"),
+        ("source.yaml.embedded", "yaml-embedded.tmLanguage.json"),
+    ];
+
+    /// <summary>Each grammar's file by the scope it names, every language's and every one of <see cref="Included"/>, for
+    /// the grammars that embed others, and by the scopes of <see cref="EmbeddedAs"/>.</summary>
     private static readonly Lazy<Dictionary<string, string>> GrammarFiles = new(() =>
     {
         Dictionary<string, string> files = All.Select(l => l.Grammar).OfType<GrammarFile>()
             .DistinctBy(g => g.Scope).ToDictionary(g => g.Scope, g => g.File, StringComparer.Ordinal);
+        foreach ((string scope, string file) in Included)
+        {
+            files[scope] = file;
+        }
         foreach ((string scope, string carried) in EmbeddedAs)
         {
             files[scope] = files[carried];
@@ -96,25 +110,28 @@ public sealed class Language
 
     private Language([IdentifierOf(typeof(LanguageIds))] string id, string name, IReadOnlyList<FilePattern> patterns, string? line = null,
         (string Start, string End)? block = null, int indent = 4, GrammarFile? grammar = null, Func<TextDocument, IFoldFinder>? folds = null,
-        LanguageService service = LanguageService.None, MarkupKind markup = MarkupKind.None, bool reindentsPaste = true, bool parsed = false)
+        LanguageService service = LanguageService.None, MarkupKind markup = MarkupKind.None, bool reindentsPaste = true, bool parsed = false, bool tabs = false,
+        bool spacesAlone = false, Func<TextSnapshot, IReadOnlySet<int>>? literals = null)
     {
         Id = id;
         Name = name;
         this.patterns = patterns;
         LineComment = line;
         BlockComment = block;
-        Indent = new IndentOptions(indent);
+        Indent = new IndentOptions(indent, tabs, indent);
         Grammar = grammar;
         Folds = folds;
         Service = service;
         Markup = markup;
         ReindentsPaste = reindentsPaste;
         Parsed = parsed;
+        IndentsWithSpacesAlone = spacesAlone;
+        Literals = literals;
         All.Add(this);
     }
 
-    /// <summary>What a file matching no language is, claiming none itself.</summary>
-    public static readonly Language PlainText = new("plaintext", "Text", [], reindentsPaste: false);
+    /// <summary>What a file matching no language is, claiming only the names of prose (<see cref="HoldsNoStrings"/>).</summary>
+    public static readonly Language PlainText = new("plaintext", "Text", ["*.txt", "*.text", "*.log"], reindentsPaste: false);
 
     /// <summary>What an image's or a font's preview is, as the status bar and the tools name it: no text, so no comments.</summary>
     public static readonly Language Image = new("image", "Image", []);
@@ -125,7 +142,7 @@ public sealed class Language
 
     public static readonly Language Dockerfile = new("dockerfile", "Dockerfile",
         ["Dockerfile", "Dockerfile.*", "Containerfile", "Containerfile.*", "*.dockerfile"], line: "#",
-        grammar: new("source.dockerfile", "docker.tmLanguage.json"), service: LanguageService.Dockerfile);
+        grammar: new("source.dockerfile", "docker.tmLanguage.json"), service: LanguageService.Dockerfile, literals: LiteralLines.Heredocs);
 
     public static readonly Language Dotenv = new("dotenv", "Dotenv", [".env", ".env.*", "*.env"], line: "#");
 
@@ -138,7 +155,7 @@ public sealed class Language
         grammar: new("source.cs", "csharp.tmLanguage.json"), service: LanguageService.CSharp, parsed: true);
 
     public static readonly Language Razor = new(LanguageIds.Razor, "Razor", ["*" + RazorFiles.Component, "*" + RazorFiles.Page], block: ("@*", "*@"),
-        grammar: new("text.aspnetcorerazor", "aspnetcorerazor.tmLanguage.json", Tags.Html), service: LanguageService.CSharp);
+        grammar: new("text.aspnetcorerazor", "aspnetcorerazor.tmLanguage.json", Tags.Html), service: LanguageService.CSharp, literals: LiteralLines.Preformatted);
 
     /// <summary>XAML, MSBuild's files and the rest of XML are one markup to the editor, each named and answered as its own.</summary>
     public static readonly Language Xaml = XmlKind("xaml", "XAML", ["*.axaml", "*.paml", "*.xaml"], LanguageService.Xaml);
@@ -162,13 +179,13 @@ public sealed class Language
         line: "//", block: ("/*", "*/"), indent: 2, grammar: new("source.json", "JSON.tmLanguage.json"), folds: FoldScan.Json, service: LanguageService.Json);
 
     public static readonly Language Yaml = new("yaml", "YAML", ["*.yml", "*.yaml"], line: "#", indent: 2,
-        grammar: new("source.yaml", "yaml.tmLanguage.json"), service: LanguageService.Yaml);
+        grammar: new("source.yaml", "yaml.tmLanguage.json"), service: LanguageService.Yaml, spacesAlone: true);
 
     public static readonly Language Markdown = new("markdown", "Markdown", ["*.md", "*.markdown"], block: ("<!--", "-->"), indent: 2,
         grammar: new("text.html.markdown", "markdown.tmLanguage.json"), reindentsPaste: false);
 
     public static readonly Language Html = new("html", "HTML", ["*.html", "*.htm"], block: ("<!--", "-->"),
-        grammar: new("text.html.basic", "html.tmLanguage.json", Tags.Html), service: LanguageService.Html, markup: MarkupKind.Html);
+        grammar: new("text.html.basic", "html.tmLanguage.json", Tags.Html), service: LanguageService.Html, markup: MarkupKind.Html, literals: LiteralLines.Preformatted);
 
     public static readonly Language Css = new("css", "CSS", ["*.css"], block: ("/*", "*/"),
         grammar: new("source.css", "css.tmLanguage.json"), service: LanguageService.Css);
@@ -198,6 +215,20 @@ public sealed class Language
     /// XML body and a curl line by the grammars here (a GraphQL body's not being carried, it stays plain).</summary>
     public static readonly Language Http = new("http", "HTTP", ["*.http", "*.rest"], line: "#",
         grammar: new("source.http", "http.tmLanguage.json"));
+
+    /// <summary>GDScript, Godot's own language, indented with tabs as Godot's editor writes it, answered by the server in
+    /// Godot's editor.</summary>
+    public static readonly Language GDScript = new("gdscript", "GDScript", ["*.gd"], line: "#", tabs: true,
+        grammar: new("source.gdscript", "GDScript.tmLanguage.json"), service: LanguageService.GDScript);
+
+    /// <summary>Godot's text resources: a scene (told to a server as <c>gdscene</c>), a resource, a project's settings and
+    /// an import's, whose embedded scripts and shaders are coloured as their own files are.</summary>
+    public static readonly Language GodotResource = new("gdresource", "Godot Resource",
+        [new FilePattern("*.tscn", "gdscene"), "*.tres", "project.godot", "*.import", "*.gdextension"], line: ";",
+        grammar: new("source.gdresource", "GDResource.tmLanguage.json"), literals: LiteralLines.GodotStrings);
+
+    public static readonly Language GodotShader = new("gdshader", "Godot Shader", ["*.gdshader", "*.gdshaderinc"], line: "//", block: ("/*", "*/"),
+        grammar: new("source.gdshader", "GDShader.tmLanguage.json"));
 
     /// <summary>Languages with no grammar here, commented as C's are or as scripts are.</summary>
     public static readonly Language Code = new("code", "Code", ["*.rs", "*.go", "*.java", "*.kt", "*.swift", "*.c", "*.h", "*.cpp"],
@@ -231,6 +262,13 @@ public sealed class Language
     /// code blocks, plain text).</summary>
     public bool ReindentsPaste { get; }
 
+    /// <summary>Whether a tab can't indent the language's files: a reader takes the file for broken with one there.</summary>
+    public bool IndentsWithSpacesAlone { get; }
+
+    /// <summary>What finds the lines of a file of the language whose whitespace its reader keeps though its grammar's strings
+    /// don't show them; null for a language with none.</summary>
+    public Func<TextSnapshot, IReadOnlySet<int>>? Literals { get; }
+
     internal GrammarFile? Grammar { get; }
 
     /// <summary>What scans a file of the language for its folds, where its colours' parse does not find them.</summary>
@@ -252,6 +290,10 @@ public sealed class Language
         return PlainText;
     }
 
+    /// <summary>Whether a file can have no line that begins inside a string with nothing here to read it by: ignore patterns,
+    /// and prose by its name, where a file matching no language may be any program's.</summary>
+    public bool HoldsNoStrings(string path) => this == Ignore || (this == PlainText && PatternOf(path) is not null);
+
     /// <summary>The language id a server is told a file of this language is in: its pattern's, else the language's own.</summary>
     public string IdOf(string path) => PatternOf(path)?.Id ?? Id;
 
@@ -265,7 +307,7 @@ public sealed class Language
 
     private static Language XmlKind(string id, string name, IReadOnlyList<FilePattern> patterns, LanguageService service) =>
         new(id, name, patterns, block: ("<!--", "-->"), indent: 2, grammar: new("text.xml", "xml.tmLanguage.json", Tags.Xml), folds: FoldScan.Xml,
-            service: service, markup: MarkupKind.Xml);
+            service: service, markup: MarkupKind.Xml, literals: LiteralLines.XmlText);
 
     private FilePattern? PatternOf(string path)
     {

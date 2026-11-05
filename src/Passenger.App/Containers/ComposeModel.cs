@@ -46,13 +46,13 @@ public sealed record ComposeModel(string Name, IReadOnlyList<ComposeService> Ser
     public static ComposeModel Read(JsonElement root)
     {
         List<ComposeService> services = [];
-        if (root.TryGetProperty("services", out JsonElement all) && all.ValueKind == JsonValueKind.Object)
+        if (JsonMembers.Object(root, "services") is { } all)
         {
             foreach (JsonProperty service in all.EnumerateObject())
             {
                 JsonElement value = service.Value;
                 (string? context, string? dockerfile, string? target, Dictionary<string, string> args) = (null, null, null, []);
-                if (value.TryGetProperty("build", out JsonElement build) && build.ValueKind == JsonValueKind.Object)
+                if (JsonMembers.Object(value, "build") is { } build)
                 {
                     context = JsonMembers.Scalar(build, "context");
                     dockerfile = JsonMembers.Scalar(build, "dockerfile");
@@ -60,22 +60,22 @@ public sealed record ComposeModel(string Name, IReadOnlyList<ComposeService> Ser
                     args = Map(build, "args");
                 }
                 List<ComposePort> ports = [];
-                if (value.TryGetProperty("ports", out JsonElement listed) && listed.ValueKind == JsonValueKind.Array)
+                if (JsonMembers.Value(value, "ports") is { ValueKind: JsonValueKind.Array } listed)
                 {
                     foreach (JsonElement port in listed.EnumerateArray())
                     {
-                        if (port.TryGetProperty("target", out JsonElement inside) && inside.TryGetInt32(out int number))
+                        if (JsonMembers.Number(port, "target") is { } number)
                         {
                             ports.Add(new ComposePort(number, JsonMembers.Scalar(port, "published"), JsonMembers.Scalar(port, "protocol") ?? "tcp",
                                 JsonMembers.Scalar(port, "host_ip"), JsonMembers.Scalar(port, "mode"), JsonMembers.Scalar(port, "name"), JsonMembers.Scalar(port, "app_protocol")));
                         }
                     }
                 }
-                bool watches = value.TryGetProperty("develop", out JsonElement develop) && develop.ValueKind == JsonValueKind.Object
-                    && develop.TryGetProperty("watch", out JsonElement watch) && watch.ValueKind == JsonValueKind.Array && watch.GetArrayLength() > 0;
-                List<string> depends = value.TryGetProperty("depends_on", out JsonElement on) && on.ValueKind == JsonValueKind.Object
+                bool watches = JsonMembers.Object(value, "develop") is { } develop
+                    && JsonMembers.Value(develop, "watch") is { ValueKind: JsonValueKind.Array } watch && watch.GetArrayLength() > 0;
+                List<string> depends = JsonMembers.Object(value, "depends_on") is { } on
                     ? [.. on.EnumerateObject().Select(d => d.Name)] : [];
-                List<string> joined = value.TryGetProperty("networks", out JsonElement nets) && nets.ValueKind == JsonValueKind.Object
+                List<string> joined = JsonMembers.Object(value, "networks") is { } nets
                     ? [.. nets.EnumerateObject().Select(n => n.Name)] : [];
                 services.Add(new ComposeService(service.Name, context, dockerfile, target, args, JsonMembers.Scalar(value, "image"), ports, Map(value, "environment"), watches, depends)
                 {
@@ -84,12 +84,11 @@ public sealed record ComposeModel(string Name, IReadOnlyList<ComposeService> Ser
             }
         }
         Dictionary<string, bool> networks = [];
-        if (root.TryGetProperty("networks", out JsonElement declared) && declared.ValueKind == JsonValueKind.Object)
+        if (JsonMembers.Object(root, "networks") is { } declared)
         {
             foreach (JsonProperty network in declared.EnumerateObject())
             {
-                networks[network.Name] = network.Value.ValueKind == JsonValueKind.Object && network.Value.TryGetProperty("external", out JsonElement external)
-                    && external.ValueKind == JsonValueKind.True;
+                networks[network.Name] = JsonMembers.Bool(network.Value, "external") == true;
             }
         }
         return new ComposeModel(JsonMembers.Scalar(root, "name") ?? string.Empty, services, networks);
@@ -97,7 +96,7 @@ public sealed record ComposeModel(string Name, IReadOnlyList<ComposeService> Ser
         static Dictionary<string, string> Map(JsonElement element, string name)
         {
             Dictionary<string, string> map = new(StringComparer.Ordinal);
-            if (element.TryGetProperty(name, out JsonElement found) && found.ValueKind == JsonValueKind.Object)
+            if (JsonMembers.Object(element, name) is { } found)
             {
                 foreach (JsonProperty entry in found.EnumerateObject())
                 {

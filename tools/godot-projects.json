@@ -1,0 +1,104 @@
+{
+  "$comment": "The open-source Godot 4 projects tools/godot-sweep.py clones at these commits and sweeps through Passenger before each release, smallest first. projects names the folders holding a project.godot to open; every .gd of the clone is parsed.",
+  "sets": [
+    {
+      "name": "Starter-Kit-3D-Platformer",
+      "repository": "https://github.com/KenneyNL/Starter-Kit-3D-Platformer",
+      "commit": "3fa8a04b1c01ab23db43123d4ce814a34c3fc7f0",
+      "licence": "MIT",
+      "languages": ["GDScript"],
+      "plugins": [],
+      "projects": ["."]
+    },
+    {
+      "name": "Starter-Kit-FPS",
+      "repository": "https://github.com/KenneyNL/Starter-Kit-FPS",
+      "commit": "185fd2326d74a5cf858cffc616f87cf9696f9cc0",
+      "licence": "MIT",
+      "languages": ["GDScript"],
+      "plugins": [],
+      "projects": ["."]
+    },
+    {
+      "name": "GodotGame",
+      "repository": "https://github.com/chickensoft-games/GodotGame",
+      "commit": "93392ee8919568812e80127aef8ebf37163f2818",
+      "licence": "MIT",
+      "languages": ["C#"],
+      "plugins": ["GoDotTest"],
+      "projects": ["."]
+    },
+    {
+      "name": "Gut",
+      "repository": "https://github.com/bitwes/Gut",
+      "commit": "cf45f668709d988346e766afee916d4169a9283b",
+      "licence": "MIT",
+      "languages": ["GDScript"],
+      "plugins": ["GUT"],
+      "projects": ["."]
+    },
+    {
+      "name": "godot_dialogue_manager",
+      "repository": "https://github.com/nathanhoad/godot_dialogue_manager",
+      "commit": "94fe560072ed9972fcb7b331d7f727f8b72c3da1",
+      "licence": "MIT",
+      "languages": ["GDScript", "C#"],
+      "plugins": ["Dialogue Manager"],
+      "projects": ["."]
+    },
+    {
+      "name": "gdUnit4Net",
+      "repository": "https://github.com/godot-gdunit-labs/gdUnit4Net",
+      "commit": "262ff22efa029e1f6ba30eb6bb26644977cf5448",
+      "licence": "MIT",
+      "languages": ["C#"],
+      "plugins": ["GdUnit4Net"],
+      "projects": ["Example"]
+    },
+    {
+      "name": "godot-open-rpg",
+      "repository": "https://github.com/gdquest-demos/godot-open-rpg",
+      "commit": "d59f2f71bc046ac53239a4e590861269e7100a36",
+      "licence": "MIT",
+      "languages": ["GDScript"],
+      "plugins": ["Dialogic"],
+      "projects": ["."]
+    },
+    {
+      "name": "GameDemo",
+      "repository": "https://github.com/chickensoft-games/GameDemo",
+      "commit": "b63f27971084cff274ccf349b579b27c41b9cea2",
+      "licence": "MIT",
+      "languages": ["C#"],
+      "plugins": ["GoDotTest"],
+      "projects": ["."]
+    },
+    {
+      "name": "Pixelorama",
+      "repository": "https://github.com/Orama-Interactive/Pixelorama",
+      "commit": "eb128cd2f335f81448b54e999ef97b6b1e0b1e39",
+      "licence": "MIT",
+      "languages": ["GDScript"],
+      "plugins": ["Keychain"],
+      "projects": ["."]
+    },
+    {
+      "name": "gdUnit4",
+      "repository": "https://github.com/godot-gdunit-labs/gdUnit4",
+      "commit": "4f9fec7d551af3396ad883d3e838c6ecfd8caf58",
+      "licence": "MIT",
+      "languages": ["GDScript", "C#"],
+      "plugins": ["GdUnit4"],
+      "projects": ["."]
+    },
+    {
+      "name": "godot-demo-projects",
+      "repository": "https://github.com/godotengine/godot-demo-projects",
+      "commit": "b761b4cd5718a7118f2c95eb55f181d0a5f004f1",
+      "licence": "MIT",
+      "languages": ["GDScript", "C#"],
+      "plugins": [],
+      "projects": ["mono/squash_the_creeps", "mono/dodge_the_creeps", "mono/multiplayer_pong", "2d/platformer", "2d/role_playing_game", "3d/platformer"]
+    }
+  ]
+}

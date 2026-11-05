@@ -45,17 +45,17 @@ public sealed class ChangeColumn(CodeEditor editor) : IGutterColumn
             double top = frame.TopOf(change.Line);
             if (change.Kind == ChangeMarkKind.Deleted)
             {
-                GutterShape key = new(nameof(ChangeMarkKind.Deleted), x, top, 4);
+                GutterShape key = new(nameof(ChangeMarkKind.Deleted), 4);
                 if (!frame.TryShape(key, out StreamGeometry? wedge))
                 {
                     wedge = frame.AddShape(key);
                     using StreamGeometryContext path = wedge.Open();
-                    path.BeginFigure(new Point(x - 1, top - 4), true);
-                    path.LineTo(new Point(x + 4, top));
-                    path.LineTo(new Point(x - 1, top + 4));
+                    path.BeginFigure(new Point(-1, -4), true);
+                    path.LineTo(new Point(4, 0));
+                    path.LineTo(new Point(-1, 4));
                     path.EndFigure(true);
                 }
-                frame.Context.DrawGeometry(frame.Brush(TokenKeys.Vcs_Deleted), null, wedge);
+                frame.DrawShape(wedge, frame.Brush(TokenKeys.Vcs_Deleted), null, x, top);
                 continue;
             }
             IBrush brush = frame.Brush(change.Kind switch

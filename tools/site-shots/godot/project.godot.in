@@ -1,0 +1,17 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="Greenhouse"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("@FEATURES@", "C#")
+
+[display]
+
+window/size/viewport_width=960
+window/size/viewport_height=540
+
+[dotnet]
+
+project/assembly_name="Greenhouse"

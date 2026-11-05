@@ -18,7 +18,6 @@ public sealed partial class CodeEditor
     private const double FoldWidth = 12;
 
     private FoldLines? foldLines;
-    private readonly Dictionary<int, Rect> placeholders = [];
     private bool overGutter;
 
     /// <summary>The regions that fold, in offset order, each saying whether it is folded: the decorations', which every
@@ -134,7 +133,7 @@ public sealed partial class CodeEditor
         UpdateScrollBars();
         // A caret left showing moves nothing, so the view may stand below the rows folding left (Collapse All).
         ScrollWithinRows();
-        InvalidateVisual();
+        Redraw();
         FollowInputMethod();
         FoldsToggled?.Invoke(this, FoldRegions);
     }
@@ -247,9 +246,9 @@ public sealed partial class CodeEditor
         return best;
     }
 
-    /// <summary>The chevrons in the folding column: a folded region's always, an open one's while the pointer is
-    /// over the gutter.</summary>
-    private void DrawFoldMarkers(DrawingContext context, int first, int last, double gutter)
+    /// <summary>The chevron of a line's fold in the folding column, on the gutter's row of the line's first row: a folded
+    /// region's always, an open one's while the pointer is over the gutter.</summary>
+    private void DrawFoldMarkers(DrawingContext context, int line, double gutter)
     {
         double x = gutter - FoldWidth + 2;
         FoldLines map = Folding;
@@ -258,46 +257,41 @@ public sealed partial class CodeEditor
             return;
         }
         TextSnapshot text = document.Snapshot;
-        HashSet<int> drawn = chevronLines;
-        drawn.Clear();
         IPen pen = palette.PenOf(palette.LineNumber, 1.2);
-        for (int i = FirstStartingOn(text, first); i < FoldRegions.Count && FoldLines.StartLineOf(text, FoldRegions[i]) <= last; i++)
+        for (int i = FirstStartingOn(text, line); i < FoldRegions.Count && FoldLines.StartLineOf(text, FoldRegions[i]) <= line; i++)
         {
             FoldRegion region = FoldRegions[i];
-            int line = FoldLines.StartLineOf(text, region);
-            if (FoldLines.EndLineOf(text, region) <= line || !(region.Folded || overGutter) || IsHidden(line) || !drawn.Add(line))
+            if (FoldLines.EndLineOf(text, region) <= line || !(region.Folded || overGutter) || IsHidden(line))
             {
                 continue;
             }
             bool folded = map.Placeholders.ContainsKey(line);
-            double middle = TopOf(line) - scroll.Y + metrics.LineHeight / 2;
-            ShapeKey key = new(folded ? ShapeKind.Folded : ShapeKind.Open, x, middle, 0, 0);
+            double middle = TopOf(line) - gutterTop + metrics.LineHeight / 2;
+            ShapeKey key = new(folded ? ShapeKind.Folded : ShapeKind.Open, 0, 0, 0, 0);
             if (!shapes.TryGet(key, out StreamGeometry? chevron))
             {
                 chevron = shapes.Add(key, new StreamGeometry());
                 using StreamGeometryContext path = chevron.Open();
                 if (folded)
                 {
-                    path.BeginFigure(new Point(x + 2, middle - 4), false);
-                    path.LineTo(new Point(x + 6, middle));
-                    path.LineTo(new Point(x + 2, middle + 4));
+                    path.BeginFigure(new Point(2, -4), false);
+                    path.LineTo(new Point(6, 0));
+                    path.LineTo(new Point(2, 4));
                 }
                 else
                 {
-                    path.BeginFigure(new Point(x, middle - 2), false);
-                    path.LineTo(new Point(x + 4, middle + 2));
-                    path.LineTo(new Point(x + 8, middle - 2));
+                    path.BeginFigure(new Point(0, -2), false);
+                    path.LineTo(new Point(4, 2));
+                    path.LineTo(new Point(8, -2));
                 }
             }
-            context.DrawGeometry(null, pen, chevron);
+            DrawShape(context, pen, chevron, x, middle);
+            return;
         }
     }
 
-    /// <summary>The lines a frame drew a chevron on, found again for each.</summary>
-    private readonly HashSet<int> chevronLines = [];
-
-    /// <summary>A folded region's placeholder after its first line's code, on a chip a click unfolds.</summary>
-    private double DrawPlaceholder(DrawingContext context, int line, FoldRegion region, double x, double y)
+    /// <summary>A folded region's placeholder after its first line's code, on a chip a click unfolds: the chip.</summary>
+    private Rect DrawPlaceholder(DrawingContext context, FoldRegion region, double x, double y)
     {
         x += metrics.CharWidth;
         if (!labels.TryGet((region.Placeholder, -8), out TextLine? label))
@@ -307,18 +301,18 @@ public sealed partial class CodeEditor
         Rect chip = new(x, y + 2, label.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight - 4);
         context.FillRectangle(palette.InlayHintBack, chip, 3);
         label.Draw(context, new Point(x + metrics.CharWidth / 2, y + (metrics.LineHeight - label.Height) / 2));
-        placeholders[line] = chip;
-        return chip.Right;
+        return chip;
     }
 
     /// <summary>The placeholder drawn under a point, if any: its line and its chip.</summary>
     private (int Line, Rect Chip)? PlaceholderAt(Point at)
     {
-        foreach ((int line, Rect box) in placeholders)
+        Point inRows = at + new Vector(0, scroll.Y);
+        foreach (RowSlot slot in slots)
         {
-            if (box.Contains(at))
+            if (slot.Span is not null && slot.Placeholder is { } drawn && drawn.Chip.Contains(inRows))
             {
-                return (line, box);
+                return (drawn.Line, drawn.Chip.Translate(new Vector(0, -scroll.Y)));
             }
         }
         return null;
@@ -386,7 +380,7 @@ public sealed partial class CodeEditor
         double x = Math.Max(GutterWidth, Math.Min(chip.Left, right - width));
         double y = below >= height || below >= above ? chip.Bottom + 2 : chip.Top - 2 - height;
         preview = new FoldPreview(line, chip, new Rect(x, y, width, height), lines, string.Join('\n', said));
-        InvalidateVisual();
+        RedrawOverlay();
     }
 
     /// <summary>Takes the preview card away: the pointer left its placeholder, or the folds, the text or the scroll changed.</summary>
@@ -401,7 +395,7 @@ public sealed partial class CodeEditor
         {
             line.Dispose();
         }
-        InvalidateVisual();
+        RedrawOverlay();
     }
 
     /// <summary>The preview card, over everything else the editor draws.</summary>

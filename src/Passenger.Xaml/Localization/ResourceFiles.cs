@@ -17,8 +17,10 @@ public enum ResourceFormat
 
 /// <summary>One key's entry in a language's file: its name and where it is written (a <c>&lt;data name&gt;</c>'s value, a
 /// <c>&lt;trans-unit id&gt;</c>'s), the value (a .resx's <c>&lt;value&gt;</c>, an XLIFF unit's <c>&lt;target&gt;</c>, null with
-/// none), an XLIFF target's state, the whole entry's stretch, and a .resx's comment.</summary>
-public sealed record ResourceEntry(string Name, string? Value, string? State, int NameStart, int NameEnd, int Start, int End, string? Comment = null)
+/// none), an XLIFF target's state, the whole entry's stretch, a .resx's comment or an XLIFF unit's note, and an XLIFF
+/// unit's source.</summary>
+public sealed record ResourceEntry(string Name, string? Value, string? State, int NameStart, int NameEnd, int Start, int End, string? Comment = null,
+    string? Source = null)
 {
     /// <summary>Whether it gives its key in its language: a .resx entry always, an XLIFF unit once its target is there and no
     /// longer <c>new</c>.</summary>
@@ -297,8 +299,10 @@ public static class ResourceFiles
             else if (format == ResourceFormat.Xliff && element.Name == "trans-unit" && element.Attribute("id") is { HasValue: true } id)
             {
                 XmlElement? target = element.Children.FirstOrDefault(c => c.Name == "target");
+                XmlElement? source = element.Children.FirstOrDefault(c => c.Name == "source");
+                XmlElement? note = element.Children.FirstOrDefault(c => c.Name == "note");
                 entries.Add(new ResourceEntry(id.Value, target is null ? null : ContentOf(text, target), target?.Attribute("state")?.Value, id.ValueStart, id.ValueEnd,
-                    element.Start, element.End));
+                    element.Start, element.End, note is null ? null : ContentOf(text, note), source is null ? null : ContentOf(text, source)));
             }
         }
         return new ResourceFile(path, culture, format, entries);
@@ -409,6 +413,108 @@ public static class ResourceFiles
         return text.AsSpan(bodyLine, bodyEnd - bodyLine).IsWhiteSpace()
             ? text[..bodyLine] + made + newline + text[bodyLine..]
             : text[..bodyEnd] + newline + made + newline + text[bodyEnd..];
+    }
+
+    /// <summary>A .resx's text with an entry (as <see cref="Parse"/> read it from that text) given a value: its
+    /// <c>&lt;value&gt;</c>'s content written, one made after its start tag where it has none; every other character kept.
+    /// Null where the text holds no such entry.</summary>
+    public static string? WithValue(string text, ResourceEntry entry, string value)
+    {
+        if (DataOf(text, entry) is not { } data)
+        {
+            return null;
+        }
+        string written = XmlEntities.Encode(value);
+        return data.Children.FirstOrDefault(c => c.Name == "value") is { } held
+            ? held.IsSelfClosing ? text[..held.Start] + $"<value>{written}</value>" + text[held.End..] : text[..held.Content.Start] + written + text[held.Content.End..]
+            : Inside(text, data, $"<value>{written}</value>");
+    }
+
+    /// <summary>A .resx's text with an entry's comment written: its <c>&lt;comment&gt;</c>'s content, one made after its value on
+    /// a line of its own where it has none, or the comment taken away with the white space before it for an empty one; every
+    /// other character kept. Null where the text holds no such entry.</summary>
+    public static string? WithComment(string text, ResourceEntry entry, string comment)
+    {
+        if (DataOf(text, entry) is not { } data)
+        {
+            return null;
+        }
+        XmlElement? held = data.Children.FirstOrDefault(c => c.Name == "comment");
+        if (comment.Length == 0)
+        {
+            if (held is null)
+            {
+                return text;
+            }
+            int before = held.Start;
+            while (before > data.StartTagEnd && char.IsWhiteSpace(text[before - 1]))
+            {
+                before--;
+            }
+            return text[..before] + text[held.End..];
+        }
+        string written = XmlEntities.Encode(comment);
+        return held is null ? Inside(text, data, $"<comment>{written}</comment>")
+            : held.IsSelfClosing ? text[..held.Start] + $"<comment>{written}</comment>" + text[held.End..]
+            : text[..held.Content.Start] + written + text[held.Content.End..];
+    }
+
+    /// <summary>A .resx's text with an entry's key named anew, written in the quote its name has; every other character kept.
+    /// Null where the text holds no such entry, or another entry has that name.</summary>
+    public static string? Renamed(string text, ResourceEntry entry, string name)
+    {
+        if (DataOf(text, entry) is not { } data || data.Attribute("name") is not { HasValue: true } named
+            || data.Parent!.Children.Any(c => c != data && c.Name == "data" && c.Attribute("name")?.Value == name))
+        {
+            return null;
+        }
+        return text[..named.ValueStart] + XmlEntities.Encode(name, named.Quote == '\'' ? '\'' : '"') + text[named.ValueEnd..];
+    }
+
+    /// <summary>A .resx's text without some of its entries, each taken away with its line where it has the line to itself;
+    /// every other character kept. Null where the text holds one of them no longer.</summary>
+    public static string? Without(string text, IReadOnlyList<ResourceEntry> entries)
+    {
+        List<(int Start, int End)> cuts = [];
+        foreach (ResourceEntry entry in entries)
+        {
+            if (DataOf(text, entry) is not { } data)
+            {
+                return null;
+            }
+            int lineStart = text.LastIndexOf('\n', Math.Max(0, data.Start - 1)) + 1;
+            int lineEnd = text.IndexOf('\n', data.End) is var newline and >= 0 ? newline + 1 : text.Length;
+            bool alone = text.AsSpan(lineStart, data.Start - lineStart).IsWhiteSpace() && text.AsSpan(data.End, lineEnd - data.End).IsWhiteSpace();
+            cuts.Add(alone ? (lineStart, lineEnd) : (data.Start, data.End));
+        }
+        StringBuilder made = new(text);
+        foreach ((int start, int end) in cuts.Distinct().OrderByDescending(c => c.Start))
+        {
+            made.Remove(start, end - start);
+        }
+        return made.ToString();
+    }
+
+    /// <summary>The <c>&lt;data&gt;</c> of a string entry <see cref="Parse"/> read from this text, by where it starts and its name.</summary>
+    private static XmlElement? DataOf(string text, ResourceEntry entry) =>
+        XmlTree.Parse(text).Root is { Name: "root" } root
+            ? root.Children.FirstOrDefault(c => c.Start == entry.Start && c.Name == "data" && c.Attribute("name")?.Value == entry.Name)
+            : null;
+
+    /// <summary>An element's text with a child written last inside it, on a line of its own indented as its last child's line
+    /// is (or one step past its own), a self-closing element opened to hold it.</summary>
+    private static string Inside(string text, XmlElement element, string child)
+    {
+        string newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        string own = IndentOf(text, element.Start, "  ");
+        string inner = element.Children.LastOrDefault() is { } last ? IndentOf(text, last.Start, own + "  ") : own + "  ";
+        if (element.IsSelfClosing)
+        {
+            int close = element.End - 2;
+            return text[..close].TrimEnd() + ">" + newline + inner + child + newline + own + "</" + element.Name + ">" + text[element.End..];
+        }
+        int at = element.Children.LastOrDefault()?.End ?? element.StartTagEnd;
+        return text[..at] + newline + inner + child + text[at..];
     }
 
     /// <summary>The white space an element's line starts with up to it, else the indentation given.</summary>

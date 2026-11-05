@@ -104,11 +104,12 @@ public partial class ManagedDebugger
         _pendingLaunchInfo = null;
 
         _exitReported = 0;
+        _terminatedReported = 0;
         _exitTold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         SuspendedLaunch launch;
         try
         {
-            launch = SuspendedLaunch.Start(Resolve(launchInfo.Program), launchInfo.Arguments, launchInfo.Cwd ?? Environment.CurrentDirectory, launchInfo.Env);
+            launch = SuspendedLaunch.Start(Resolve(launchInfo.Program), launchInfo.Arguments, launchInfo.Cwd ?? Environment.CurrentDirectory, launchInfo.Env, launchInfo.Unseen);
         }
         catch (Exception error)
         {
@@ -122,7 +123,7 @@ public partial class ManagedDebugger
         Task<int?> launchExit = Core.BackgroundWork.Unheld(launch.WaitForExit);
         _launchExit = launchExit;
         // Told as the program goes, not when the runtime's word of it is handled, which mscordbi may lose tearing down.
-        Core.UnawaitedWork.Observe(launchExit.ContinueWith(ended => ReportExitAsync(ended.Result), TaskScheduler.Default).Unwrap());
+        Core.UnawaitedWork.Observe(EndedLaunchAsync(launchExit));
         int processId = launch.ProcessId;
 
         _logger?.Invoke($"Process created suspended with PID: {processId}");
@@ -912,7 +913,11 @@ public partial class ManagedDebugger
                 }
                 else if (unwrappedDebugValue is ICorDebugObjectValue objectValue)
                 {
-                    if (IsEnumerable(objectValue.ExactType))
+                    if (OpenedBy(objectValue.ExactType) is ({ } presentation, int own))
+                    {
+                        await AddPresentedRows(variablesReference, objectValue, presentation, own, result);
+                    }
+                    else if (IsEnumerable(objectValue.ExactType))
                     {
                         if (EfQueryModule(objectValue.ExactType) is not null)
                         {
@@ -975,9 +980,38 @@ public partial class ManagedDebugger
     }
 
     /// <summary>An expression's value in a frame. One asked for by name (the Evaluate window, a watch) runs the code it needs
-    /// even once implicit evaluation is off; one the IDE asks of itself (a hover) does not.</summary>
-    public Task<VariableInfo> Evaluate(string expression, int? frameId, bool implicitly = false) =>
-        Evaluate(expression, frameId, expression.Trim(), implicitly);
+    /// even once implicit evaluation is off; one the IDE asks of itself (a hover) does not. One the person asks to run with
+    /// every thread let go (<paramref name="letThreadsRun"/>) does, first letting one left running on its thread return, and
+    /// says what the other threads passed over meanwhile.</summary>
+    public async Task<VariableInfo> Evaluate(string expression, int? frameId, bool implicitly = false, bool letThreadsRun = false)
+    {
+        EvalStatus.LetThreadsRun = letThreadsRun;
+        EvalStatus.PassedOver.Clear();
+        try
+        {
+            // Before anything is read, as letting the program run leaves no value read before it good.
+            if (letThreadsRun && frameId is int id && _frameReferenceManager.GetFrameInfoById(id) is var (threadId, _) && EvalStatus.Abandoned.ContainsKey(threadId.Value)
+                && _threads.GetValueOrDefault(threadId.Value)?.Thread is { } thread && !await LetAbandonedReturnAsync(thread))
+            {
+                return FailedRow(expression.Trim(), $"The evaluation left running on this thread has not returned {Extensions.EvaluationTimeout.TotalSeconds:0.#} s after every thread was let go, so no other can run on it until it does");
+            }
+            VariableInfo value = await Evaluate(expression, frameId, expression.Trim(), implicitly);
+            if (EvalStatus.PassedOver.Count > 0)
+            {
+                value.PassedOver = $"While it ran with every thread let go, other threads passed over {string.Join(", ", EvalStatus.PassedOver.Distinct())}, which did not stop";
+            }
+            if (letThreadsRun)
+            {
+                value.ImplicitOff = EvalStatus.ImplicitOff;
+            }
+            return value;
+        }
+        finally
+        {
+            EvalStatus.LetThreadsRun = false;
+            EvalStatus.PassedOver.Clear();
+        }
+    }
 
     /// <summary>Set Value: what an expression names takes a value, by their assignment's one evaluation, whose own value is
     /// the answer, so the target runs once. A real number with no suffix, as a float's or a decimal's is shown, takes the one
@@ -1143,6 +1177,10 @@ public partial class ManagedDebugger
     /// and one it attached to is let go to run on, as a detach lets it go.</summary>
     public Task AbandonAsync() => DisconnectAsync(terminateDebuggee: _launched);
 
+    /// <summary>The exception a thread is stopped with. Its type, the message it was made with, its HResult, its inner
+    /// exceptions and their stack traces are read from what they store, running no code, so a stop always names it; its
+    /// getters then add what they say (an overridden Message, Source, a StackTrace the debugger could not read) in their
+    /// time. Once one cannot be run, or implicit evaluation is off, none after it is, and the description says why.</summary>
     public async Task<ExceptionInfo> ExceptionInfo(ThreadId threadId)
     {
         _logger?.Invoke($"ExceptionInfo for thread {threadId.Value}");
@@ -1153,96 +1191,96 @@ public partial class ManagedDebugger
             _logger?.Invoke("No current exception");
             throw new InvalidOperationException("No current exception on thread");
         }
-        // No code runs to read it once an evaluation has timed out, until the program runs on.
-        if (EvalStatus.ImplicitOff is { } off)
-        {
-            return UnevaluatedExceptionInfo(StopFrame(thread), threadId, currentException, off);
-        }
-
-        FrameStackDepth frameStackDepth = new FrameStackDepth(0);
+        List<ThrownException> chain = StoredChain(currentException, thread);
         try
         {
-            (string? friendlyTypeName, _, _, _) = await GetValueForCorDebugValueAsync(currentException, threadId, frameStackDepth, false);
-
-            string source = await GetExceptionPropertyValue(currentException, "Source");
-            string message = await GetExceptionPropertyValue(currentException, "Message");
-            ExceptionInfo.ExceptionDetails details = await Details(currentException, friendlyTypeName, DapRows.Exception, depth: 0);
-            string innermost = Innermost(details);
-
-            ExceptionInfo exceptionInfo = new ExceptionInfo
+            // No code runs to read it once an evaluation has timed out, until the program runs on.
+            string? why = EvalStatus.ImplicitOff;
+            // Every Message first, as what the person reads; the stack trace, the costliest to make, last.
+            foreach (ThrownException each in chain)
             {
-                ExceptionId = $"CLR/{friendlyTypeName}",
+                why ??= await Add(each, "Message", said => each.Message = said);
+            }
+            foreach (ThrownException each in chain.Where(e => e.Source is null))
+            {
+                why ??= await Add(each, "Source", said => each.Source = said);
+            }
+            foreach (ThrownException each in chain.Where(e => !e.TraceRead))
+            {
+                why ??= await Add(each, "StackTrace", said => each.StackTrace = said);
+            }
+            ThrownException top = chain[0];
+            return new ExceptionInfo
+            {
+                ExceptionId = $"CLR/{top.TypeName}",
                 // With an inner exception, a line naming the innermost.
-                Description = $"Exception thrown: '{friendlyTypeName}' in {source}.dll: '{message}'"
-                    + (details.InnerException.Count > 0 ? $"\n Inner exceptions found, see {DapRows.Exception} in variables window for more details.\n Innermost exception: {innermost}" : ""),
+                Description = $"Exception thrown: '{top.TypeName}'{(top.Source is { Length: > 0 } source ? $" in {source}.dll" : "")}: '{top.Message}'"
+                    + (chain.Count > 1 ? $"\n Inner exceptions found, see {DapRows.Exception} in variables window for more details.\n Innermost exception: {chain[^1].TypeName}" : "")
+                    + (why is null ? "" : $"\n {why}"),
                 BreakMode = _exceptionBreakModes.GetValueOrDefault(threadId, ExceptionBreakMode.Unknown),
                 Code = 0,
-                Details = details,
+                Details = Details(0, DapRows.Exception),
             };
-            return exceptionInfo;
         }
-        catch (EvalRefusedException error) when (error.HResult is Cor.CORDBG_E_ILLEGAL_AT_GC_UNSAFE_POINT or Cor.CORDBG_E_FUNC_EVAL_BAD_START_POINT)
+        finally
         {
-            // A thread whose exception came while another thread's evaluation ran is held where no code can run on it.
-            return UnevaluatedExceptionInfo(StopFrame(thread), threadId, currentException,
-                "It was thrown while the debugger ran code on another thread, so its thread is held where no code can run, and its properties cannot be read.");
+            foreach (ThrownException each in chain)
+            {
+                each.Held.TryDispose();
+            }
         }
 
-        // An exception's details, its inner exceptions' within, as deep as they go, within reason.
-        async Task<ExceptionInfo.ExceptionDetails> Details(ICorDebugValue exception, string typeName, string evaluateName, int depth)
+        // A getter's words in place of what the fields gave, or why it could not be run.
+        async Task<string?> Add(ThrownException exception, string property, Action<string> said)
         {
-            string detailMessage = await GetExceptionPropertyValue(exception, "Message");
-            List<ExceptionInfo.ExceptionDetails> inner = [];
-            ICorDebugValue? innerValue = depth < 10 ? await exception.GetPropertyValue(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, StopFrame(thread), "InnerException") : null;
+            ICorDebugValue? value;
             try
             {
-                if (innerValue is not null && innerValue.UnwrapDebugValue() is not ICorDebugReferenceValue { IsNull: true })
+                value = await exception.Held.GetPropertyValue(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, StopFrame(thread), property);
+            }
+            catch (EvalRefusedException refused) when (refused.HResult is Cor.CORDBG_E_ILLEGAL_AT_GC_UNSAFE_POINT or Cor.CORDBG_E_FUNC_EVAL_BAD_START_POINT)
+            {
+                // A thread whose exception came while another thread's evaluation ran is held where no code can run on it.
+                return "It was thrown while the debugger ran code on another thread, so its thread is held where no code can run, and its properties cannot be read.";
+            }
+            catch (Exception error) when (error is EvalException || Failures.OfRuntime(error))
+            {
+                return $"Its {property} was not evaluated, nor what comes after it: {error.Message}";
+            }
+            try
+            {
+                // A getter that threw gives its exception, and one that gave null leaves the field's.
+                if (value?.UnwrapDebugValue() is ICorDebugStringValue text)
                 {
-                    (string? innerType, _, _, _) = await GetValueForCorDebugValueAsync(innerValue, threadId, frameStackDepth, false);
-                    inner.Add(await Details(innerValue, innerType ?? "System.Exception", $"{evaluateName}.InnerException", depth + 1));
+                    said(text.String);
                 }
+                return null;
             }
             finally
             {
-                if (innerValue is ICorDebugHandleValue innerHandle)
-                {
-                    innerHandle.TryDispose();
-                }
-            }
-            int lastDot = typeName.LastIndexOf('.');
-            return new ExceptionInfo.ExceptionDetails
-            {
-                Message = detailMessage,
-                TypeName = lastDot is not -1 ? typeName[(lastDot + 1)..] : typeName,
-                FullTypeName = typeName,
-                EvaluateName = evaluateName,
-                StackTrace = await GetExceptionPropertyValue(exception, "StackTrace"),
-                InnerException = inner,
-                FormattedDescription = $"**{typeName}:** '{detailMessage}'",
-                HResult = int.Parse(await GetExceptionPropertyValue(exception, "HResult")),
-                Source = await GetExceptionPropertyValue(exception, "Source"),
-            };
-        }
-
-        static string Innermost(ExceptionInfo.ExceptionDetails details) =>
-            details.InnerException.Count > 0 ? Innermost(details.InnerException[0]) : details.FullTypeName;
-
-        async Task<string> GetExceptionPropertyValue(ICorDebugValue exception, string propertyName)
-        {
-            ICorDebugValue propertyValue = await exception.GetPropertyValue(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, StopFrame(thread), propertyName)
-                ?? throw new InvalidOperationException($"Exception property '{propertyName}' returned no value");
-            try
-            {
-                (_, string? value, _, _) = await GetValueForCorDebugValueAsync(propertyValue, threadId, frameStackDepth, false);
-                return value;
-            }
-            finally
-            {
-                if (propertyValue is ICorDebugHandleValue handle)
+                if (value is ICorDebugHandleValue handle)
                 {
                     handle.TryDispose();
                 }
             }
+        }
+
+        ExceptionInfo.ExceptionDetails Details(int at, string evaluateName)
+        {
+            ThrownException exception = chain[at];
+            int lastDot = exception.TypeName.LastIndexOf('.');
+            return new ExceptionInfo.ExceptionDetails
+            {
+                Message = exception.Message,
+                TypeName = lastDot is not -1 ? exception.TypeName[(lastDot + 1)..] : exception.TypeName,
+                FullTypeName = exception.TypeName,
+                EvaluateName = evaluateName,
+                StackTrace = exception.StackTrace ?? "",
+                InnerException = at + 1 < chain.Count ? [Details(at + 1, $"{evaluateName}.InnerException")] : [],
+                FormattedDescription = $"**{exception.TypeName}:** '{exception.Message}'",
+                HResult = exception.HResult,
+                Source = exception.Source ?? "",
+            };
         }
     }
 
@@ -1252,33 +1290,97 @@ public partial class ManagedDebugger
         EnumerateFramesForThread(thread).FirstOrDefault() as ICorDebugILFrame
             ?? throw new InvalidOperationException("The thread is stopped outside managed code, so its exception cannot be read");
 
-    /// <summary>An exception as its own fields give it, read without running code on its thread: its type and the message
-    /// it was made with, and why there is no more.</summary>
-    private ExceptionInfo UnevaluatedExceptionInfo(ICorDebugILFrame frame, ThreadId threadId, ICorDebugValue exception, string why)
+    /// <summary>One exception of a stop, from what its fields hold to what its getters add, held by a strong handle, which
+    /// outlives the evaluations that run before it is read again.</summary>
+    private sealed class ThrownException(ICorDebugHandleValue held, string typeName)
     {
-        string typeName = GetCorDebugTypeFriendlyName(exception.ExactType);
-        ICorDebugValue? field = exception.UnwrapDebugValueToObjectOrNull()?.GetClassFieldValue(frame, "_message");
-        string message = field?.UnwrapDebugValue() is ICorDebugStringValue text ? text.String : "";
-        int lastDot = typeName.LastIndexOf('.');
-        return new ExceptionInfo
+        public ICorDebugHandleValue Held { get; } = held;
+
+        public string TypeName { get; } = typeName;
+
+        public string Message { get; set; } = "";
+
+        public int HResult { get; init; }
+
+        /// <summary>Null until it is known: the field is set once the getter has run, or the program has set it.</summary>
+        public string? Source { get; set; }
+
+        /// <summary>What its StackTrace gives: read from what the exception stores where <see cref="TraceRead"/>, else from
+        /// its getter once that has run (null for one never thrown).</summary>
+        public string? StackTrace { get; set; }
+
+        public bool TraceRead { get; init; }
+
+        /// <summary>Its type as its ToString names it, reflection's way ("Ns.Outer+Failed`1[System.Int32]").</summary>
+        public string ClassName { get; init; } = typeName;
+
+        /// <summary>The message it was made with; null for none, where Exception's Message says it was thrown.</summary>
+        public string? MadeMessage { get; init; }
+
+        /// <summary>Whether its type writes its own Message, or its own ToString, below System.Exception's.</summary>
+        public bool OwnMessage { get; init; }
+
+        public bool OwnText { get; init; }
+    }
+
+    /// <summary>An exception and its inner exceptions, as deep as they go within reason, as their fields hold them: their
+    /// types, the messages, HResults and sources they were made with, and their stack traces where the debugger can read
+    /// them (<see cref="TryStoredStackTrace"/>), placed in the code of <paramref name="thread"/>'s frames. No code runs.</summary>
+    private List<ThrownException> StoredChain(ICorDebugValue exception, ICorDebugThread thread)
+    {
+        List<ThrownException> chain = [];
+        bool read = false;
+        try
         {
-            ExceptionId = $"CLR/{typeName}",
-            Description = $"Exception thrown: '{typeName}': '{message}'\n {why}",
-            BreakMode = _exceptionBreakModes.GetValueOrDefault(threadId, ExceptionBreakMode.Unknown),
-            Code = 0,
-            Details = new ExceptionInfo.ExceptionDetails
+            for (ICorDebugObjectValue? at = exception.UnwrapDebugValueToObjectOrNull(); at is not null && chain.Count <= 10;
+                at = (ExceptionField(at, "_innerException") as ICorDebugReferenceValue)?.UnwrapDebugValueToObjectOrNull())
             {
-                Message = message,
-                TypeName = lastDot is not -1 ? typeName[(lastDot + 1)..] : typeName,
-                FullTypeName = typeName,
-                EvaluateName = DapRows.Exception,
-                StackTrace = "",
-                InnerException = [],
-                FormattedDescription = $"**{typeName}:** '{message}'",
-                HResult = 0,
-                Source = "",
-            },
-        };
+                bool traceRead = TryStoredStackTrace(at, thread, out string? trace);
+                string? made = Text(at, "_message");
+                chain.Add(new ThrownException(((ICorDebugHeapValue2)at).CreateHandle(CorDebugHandleType.HANDLE_STRONG), GetCorDebugTypeFriendlyName(at.ExactType))
+                {
+                    Message = made ?? "",
+                    MadeMessage = made,
+                    HResult = ExceptionField(at, "_HResult") is ICorDebugGenericValue number ? BitConverter.ToInt32(number.GetValueAsBytes()) : 0,
+                    Source = Text(at, "_source"),
+                    StackTrace = trace,
+                    TraceRead = traceRead,
+                    ClassName = TypeToString(at.ExactType),
+                    OwnMessage = Declares(at.ExactType, "get_Message"),
+                    OwnText = Declares(at.ExactType, "ToString"),
+                });
+            }
+            read = chain.Count > 0;
+        }
+        finally
+        {
+            if (!read)
+            {
+                foreach (ThrownException each in chain)
+                {
+                    each.Held.TryDispose();
+                }
+            }
+        }
+        return read ? chain : throw new InvalidOperationException("The thread's exception is not an object the debugger can read");
+
+        static string? Text(ICorDebugObjectValue exception, string field) => ExceptionField(exception, field)?.UnwrapDebugValue() is ICorDebugStringValue text ? text.String : null;
+    }
+
+    /// <summary>A field System.Exception declares, of an exception of any type, never a field of the same name a derived
+    /// type declares; null where the runtime's Exception has none of that name.</summary>
+    private static ICorDebugValue? ExceptionField(ICorDebugObjectValue exception, string name)
+    {
+        for (ICorDebugType? type = exception.ExactType; type is not null; type = type.Base)
+        {
+            if (GetCorDebugTypeFriendlyName(type) == "System.Exception")
+            {
+                ICorDebugClass declaring = type.Class;
+                mdFieldDef field = declaring.Module.GetMetaDataInterface<IMetaDataImport>().EnumFieldsWithName(declaring.Token, name).FirstOrDefault();
+                return field.IsNil ? null : exception.GetFieldValue(declaring, field);
+            }
+        }
+        return null;
     }
 
     /// <summary>Text for the launched program's standard input, or the end of its input when
