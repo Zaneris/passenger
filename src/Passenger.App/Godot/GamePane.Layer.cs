@@ -96,7 +96,8 @@ public sealed partial class GamePane
 
     /// <summary>What the embedded display is told, as Godot's editor tells it: its state at the window's scale as that comes
     /// or changes, then the size of the game's place in pixels at that scale as it changes, which the display divides by the
-    /// scale it holds. The state's dots per inch are AppKit's 72 a point.</summary>
+    /// scale it holds. The state's dots per inch are AppKit's 72 a point. A game's allow_hidpi changes none of it: the display
+    /// reads none before Godot 4.7, and from then it says only how finely the game draws in that place.</summary>
     private void SendSize()
     {
         if (!Layered || game is not { EmbeddedContext: { } shared } told || layer is null)

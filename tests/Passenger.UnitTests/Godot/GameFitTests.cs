@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using Passenger.App.Godot;
 using Passenger.Core;
 
@@ -125,6 +126,43 @@ public class GameFitTests
             (double backX, double backY) = GameFit.Inside(x, y, place, 2);
             Assert.Equal((120d, 90d), (backX * perUnit, backY * perUnit));
         }
+    }
+
+    /// <summary>What Godot's embedded display makes of a size at the scale it was told, as its _window_set_size works them
+    /// out: the points its layer takes and the pixels it draws in. Before 4.7 it reads no allow_hidpi; from then one left off
+    /// draws a pixel a point, in a layer as large (the display and the pointer's points came in one change).</summary>
+    private static ((double Width, double Height) Layer, (int Width, int Height) Drawn) Displayed((int Width, int Height) size, float scale, string version, bool allowHidpi)
+    {
+        double render = GodotExecutables.TakesPointerInPoints(version) && !allowHidpi ? 1 : scale;
+        return ((size.Width / (double)scale, size.Height / (double)scale), ((int)(size.Width / scale * render), (int)(size.Height / scale * render)));
+    }
+
+    [Theory]
+    [InlineData("4.5", true)]
+    [InlineData("4.5", false)]
+    [InlineData("4.6.3", true)]
+    [InlineData("4.6.3", false)]
+    [InlineData("4.7.2", true)]
+    [InlineData("4.7.2", false)]
+    public void A_game_takes_its_whole_place_in_the_pane_whatever_its_allow_hidpi_says(string version, bool allowHidpi)
+    {
+        const int Scale = 2;
+        (int Width, int Height) pane = (700 * Scale, 238 * Scale);
+        GamePlace place = GameFit.Within(pane, (720, 540));
+        float told = BinaryPrimitives.ReadSingleLittleEndian(GodotInputCodec.DisplayState(Scale, 72 * Scale, Scale, 1));
+
+        ((double Width, double Height) layer, _) = Displayed((place.Width, place.Height), told, version, allowHidpi);
+
+        Assert.Equal(((double)place.Width / Scale, (double)place.Height / Scale), layer);
+        Assert.True(layer.Width <= 700 && layer.Height <= 238, $"Godot {version}'s layer of {layer} points overruns a pane of 700 by 238, so the game shows cropped");
+    }
+
+    [Fact]
+    public void Only_a_godot_that_reads_allow_hidpi_draws_more_coarsely_for_it()
+    {
+        Assert.Equal((1400, 476), Displayed((1400, 476), 2, "4.6.3", allowHidpi: false).Drawn);
+        Assert.Equal((700, 238), Displayed((1400, 476), 2, "4.7.2", allowHidpi: false).Drawn);
+        Assert.Equal((1400, 476), Displayed((1400, 476), 2, "4.7.2", allowHidpi: true).Drawn);
     }
 
     [Fact]
