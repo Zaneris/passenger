@@ -48,6 +48,7 @@ public static partial class GDScriptRefactorings
         "_init", "_ready", "_process", "_physics_process", "_enter_tree", "_exit_tree", "_input", "_unhandled_input", "_unhandled_key_input",
         "_shortcut_input", "_gui_input", "_draw", "_notification", "_get", "_set", "_get_property_list", "_to_string", "_static_init",
         "_integrate_forces", "_get_configuration_warnings", "_can_drop_data", "_drop_data", "_get_drag_data", "_has_point", "_validate_property",
+        "_property_can_revert", "_property_get_revert", "_iter_init", "_iter_next", "_iter_get",
     };
 
     /// <summary>The member of a script's own class a name at an offset declares or refers to; null for none.</summary>
@@ -277,18 +278,36 @@ public static partial class GDScriptRefactorings
         return TextRange.FromBounds(start, text.Length);
     }
 
+    /// <summary>Why Godot itself calls a function by its name, which no use shows; null where it doesn't.</summary>
+    private static string? GodotCalls(GDScriptRead own, GDScriptTarget target) =>
+        target.Node is GDScriptFunction && Virtuals.Contains(target.Named) ? $"'{target.Named}' is Godot's own, which Godot calls by its name"
+        : target is { Node: GDScriptFunction, Within: null } && EngineDeclaring(own, target.Named) is ({ } engineClass, bool isVirtual)
+            ? $"'{target.Named}' overrides {engineClass}'s own{(isVirtual ? ", which Godot calls by its name" : string.Empty)}"
+        : null;
+
     /// <summary>Safe Delete: a member taken out of its script, its lines and doc comments with it, where nothing names it: no
-    /// script, no string, no place <paramref name="elsewhere"/> (a scene's connection, C#), none unsure; else refused,
-    /// naming every use.</summary>
+    /// script, no string, no place <paramref name="elsewhere"/> (a scene's connection, C#), none unsure, no function of another
+    /// script it overrides or that overrides it; else refused, naming every use. Refused too for a function Godot calls by
+    /// its name, and a variable whose value calls, which would no longer run.</summary>
     public static GDScriptRefactored SafeDelete(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target, IReadOnlyList<GDScriptPlace> elsewhere)
     {
+        GDScriptRead own = scripts.First(s => s.Script == target.Script);
+        if (GodotCalls(own, target) is { } called)
+        {
+            return GDScriptRefactored.No(called);
+        }
+        if (target.Node is GDScriptVariable { Initializer: { } value } && own.Analysis.Effects.Of(value) == GDScriptEffect.Acts)
+        {
+            return GDScriptRefactored.No($"'{target.Named}''s value calls, which would no longer run: {Written(own.Text, target.Offset, value)}",
+                [new GDScriptPlace(target.Script, target.Offset + value.Start, target.Offset + value.End, "runs as its class is made")]);
+        }
         GDScriptUses uses = UsesOf(scripts, target);
-        List<GDScriptPlace> blocking = [.. uses.Places, .. uses.Unsure, .. elsewhere];
+        List<GDScriptPlace> blocking = [.. uses.Places, .. uses.Unsure, .. elsewhere, .. FamilyOf(scripts, target).Where(m => m.Script != target.Script)
+            .Select(m => new GDScriptPlace(m.Script, m.Start, m.Start + m.Named.Length, "declares it too, which it overrides or that overrides it"))];
         if (blocking.Count > 0)
         {
             return GDScriptRefactored.No($"'{target.Named}' is still used ({Places(blocking)})", blocking);
         }
-        GDScriptRead own = scripts.First(s => s.Script == target.Script);
         TextRange lines = MemberLines(own.Text, target);
         return GDScriptRefactored.Of(target.Script, [new TextEdit(lines.Start, lines.Length, string.Empty)]);
     }

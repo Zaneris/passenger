@@ -35,13 +35,9 @@ public static partial class GDScriptRefactorings
             return GDScriptRefactored.No($"'{name}' is its name already");
         }
         GDScriptRead own = scripts.First(s => s.Script == target.Script);
-        if (target.Node is GDScriptFunction && Virtuals.Contains(target.Named))
+        if (GodotCalls(own, target) is { } called)
         {
-            return GDScriptRefactored.No($"'{target.Named}' is Godot's own, which Godot calls by its name");
-        }
-        if (target is { Node: GDScriptFunction, Within: null } && EngineDeclaring(own, target.Named) is ({ } engineClass, bool isVirtual))
-        {
-            return GDScriptRefactored.No($"'{target.Named}' overrides {engineClass}'s own{(isVirtual ? ", which Godot calls by its name" : string.Empty)}");
+            return GDScriptRefactored.No(called);
         }
         if (target is { Node: GDScriptFunction, Within: { } inner } && ClassesOf(own)
             .FirstOrDefault(c => c != inner && (BuiltOn(own, c, inner) || BuiltOn(own, inner, c)) && Scope(c, own).Contains(target.Named)) is { } beside)

@@ -420,6 +420,32 @@ public class GDScriptRefactoringsTests
         Assert.Equal(["a connection calls it", "calls it", "names it in a string"], refused.Places.Select(p => p.What).Order(StringComparer.Ordinal));
     }
 
+    [Fact]
+    public void Safe_delete_is_refused_for_a_function_only_godot_calls_and_a_value_that_would_no_longer_run()
+    {
+        string text = "extends Node2D\n\nvar unused = record()\nvar plain = [1, 2]\nstatic var counted = record()\nvar shape = Vector2(1, 2)\n\n\nfunc record():\n\treturn 1\n\n\n"
+            + "func _ready():\n\tpass\n\n\nfunc _draw_shape():\n\tpass\n\n\nfunc _iter_init(arg):\n\treturn true\n\n\nfunc _helper():\n\tpass\n";
+        IReadOnlyList<GDScriptRead> scripts = ReadWith(Engine, ("res://main.gd", text));
+        GDScriptRefactored Deleted(string name) => GDScriptRefactorings.SafeDelete(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf(name, StringComparison.Ordinal))!, []);
+        Assert.Contains("'_ready' is Godot's own, which Godot calls by its name", Deleted("_ready").Refused);
+        Assert.Contains("'_draw_shape' overrides Node2D's own", Deleted("_draw_shape").Refused);
+        Assert.Contains("'_iter_init' is Godot's own", Deleted("_iter_init").Refused);
+        Assert.Contains("'unused''s value calls, which would no longer run: record()", Deleted("unused").Refused);
+        Assert.Contains("'counted''s value calls", Deleted("counted").Refused);
+        Assert.Null(Deleted("plain").Refused);
+        Assert.Null(Deleted("shape").Refused);
+        Assert.Null(Deleted("_helper").Refused);
+        // Without the engine's API its own names still hold.
+        IReadOnlyList<GDScriptRead> alone = Read(("res://main.gd", text));
+        Assert.Contains("is Godot's own", GDScriptRefactorings.SafeDelete(alone, GDScriptRefactorings.MemberAt(alone, alone[0], text.IndexOf("_ready", StringComparison.Ordinal))!, []).Refused);
+
+        const string Base = "class_name Base\nextends Node\n\n\nfunc hook():\n\tpass\n\n\nfunc run():\n\thook()\n";
+        const string Child = "extends Base\n\n\nfunc hook():\n\tprint(\"mine\")\n";
+        IReadOnlyList<GDScriptRead> family = Read(("res://base.gd", Base), ("res://child.gd", Child));
+        GDScriptRefactored overriding = GDScriptRefactorings.SafeDelete(family, GDScriptRefactorings.MemberAt(family, family[1], Child.IndexOf("hook", StringComparison.Ordinal))!, []);
+        Assert.Contains("res://base.gd: declares it too", overriding.Refused);
+    }
+
     private const string Hitter = "extends Node\n\n\nfunc hit(target, amount = 1):\n\tprint(target, amount)\n\n\nfunc run():\n\thit(\"a\")\n\thit(\"b\", 3)\n\tcall(\"hit\", \"c\", 4)\n";
 
     [Fact]
