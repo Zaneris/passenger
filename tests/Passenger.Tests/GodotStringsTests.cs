@@ -253,6 +253,48 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
         }
     }
 
+    /// <summary>The first rename writes hud.gd, closed, and the folder's watcher never tells of it here: the second finds it as
+    /// the first left it, rather than refusing a file its index read before.</summary>
+    [AvaloniaFact]
+    public void A_rename_right_after_another_finds_each_file_as_that_one_left_it()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            window.FolderWatcher!.Dispose();
+            Renamed(window, "IsActionPressed(\"ju", "jump", "leap");
+            Renamed(window, "IsActionPressed(\"le", "leap", "hop");
+            Assert.Contains("is_action_pressed(\"hop\")", File.ReadAllText(HudPath), StringComparison.Ordinal);
+            Assert.Contains("\nhop={", File.ReadAllText(ProjectPath), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A file another program wrote a moment before, the folder's watcher yet to tell of it (here, never to), is one
+    /// the rename waits to read, keeping what was written, never a refusal to try again.</summary>
+    [AvaloniaFact]
+    public void A_rename_a_moment_after_another_program_wrote_a_file_waits_for_it_and_keeps_what_it_wrote()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "IsActionPressed(\"ju");
+            Ui.Run(window, AppActions.FindUsages);
+            Ui.WaitFor(() => window.Find.Rows.Any(r => r.Usage is { } found && Path.GetFileName(found.Path) == "hud.gd"), () => $"the project to be read ({window.Status})");
+            window.FolderWatcher!.Dispose();
+            File.WriteAllText(HudPath, "# Written by another program.\n" + Hud);
+            Renamed(window, "IsActionPressed(\"ju", "jump", "leap");
+            Assert.Equal("# Written by another program.\n" + Hud.Replace("\"jump\"", "\"leap\"", StringComparison.Ordinal), File.ReadAllText(HudPath));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Rename at a place in Main.cs, from the name to another, once the status says it was made.</summary>
     private void Renamed(MainWindow window, string after, string old, string name)
     {

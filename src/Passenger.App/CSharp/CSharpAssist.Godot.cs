@@ -460,7 +460,7 @@ internal sealed partial class CSharpAssist
     private async Task<bool> ShowNodeRename(OpenDocument document, int caret)
     {
         int version = document.Text.Version;
-        if (await GodotNodeAtAsync(document, caret) is not ({ } read, { } old, { Count: > 0 } nodes) || context.Editors.Active != document || document.Text.Version != version)
+        if (await GodotNodeAtAsync(document, caret) is not (_, { } old, { Count: > 0 }) || context.Editors.Active != document || document.Text.Version != version)
         {
             return false;
         }
@@ -471,7 +471,9 @@ internal sealed partial class CSharpAssist
             {
                 return;
             }
-            RefactorOutcome made = await RenameNodesAsync(read, nodes, old, name);
+            // Read again for each attempt, as a file written a moment before is one the index has yet to hear of.
+            RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, async patience => await GodotNodeAtAsync(document, caret) is ({ } again, { } same, { Count: > 0 } now) && same == old
+                ? await RenameNodesAsync(again, now, old, name, patience) : RefactorOutcome.Refused($"{old} was not renamed: {document.Name} changed as it was read"));
             context.Say(made.Problem ?? made.Said);
         });
         return true;
@@ -480,9 +482,9 @@ internal sealed partial class CSharpAssist
     /// <summary>Nodes renamed, as one command of global undo: in each scene, where it is declared and every path through it
     /// (<see cref="GodotScenes.Renames"/>), and in the code of every script of the scenes that hold it, each GetNode path whose
     /// name leads to it, C#'s and GDScript's (<see cref="GodotScenes.ScriptRenames"/>, the scripts they extend too); refused for
-    /// a name Godot would not take or one beside it has, a file changed since it was read, or a string that can't say the name.
-    /// The window's and an agent's alike.</summary>
-    internal async Task<RefactorOutcome> RenameNodesAsync(GodotRead read, IReadOnlyList<GodotTreeNode> nodes, string old, string name)
+    /// a name Godot would not take or one beside it has, a string that can't say the name, or a file other than as it was
+    /// read, which <paramref name="patience"/> asks again for. The window's and an agent's alike.</summary>
+    internal async Task<RefactorOutcome> RenameNodesAsync(GodotRead read, IReadOnlyList<GodotTreeNode> nodes, string old, string name, Patience? patience = null)
     {
         GodotScenes scenes = read.Scenes;
         foreach (GodotTreeNode node in nodes)
@@ -521,7 +523,7 @@ internal sealed partial class CSharpAssist
                 int at = lines.OffsetOf(new LspPosition(call.At.Line, call.At.Character));
                 if (at + call.Path.Length > text.Length || text.GetText(at, call.Path.Length) != call.Path)
                 {
-                    return RefactorOutcome.Refused($"{old} was not renamed: {Path.GetFileName(code)} changed as it was read");
+                    return RefactorOutcome.Refused(Overtaken(code, old, patience));
                 }
                 foreach ((string scene, GodotTreeNode runner) in of.Found.Classes[call.Class].Scripts.SelectMany(scenes.RunsOf))
                 {
@@ -569,6 +571,10 @@ internal sealed partial class CSharpAssist
         if (changes.Count == 0)
         {
             return RefactorOutcome.Refused($"{old} was not renamed: no scene writes it");
+        }
+        if (await GodotBehindAsync(made, old, patience) is { } behind)
+        {
+            return RefactorOutcome.Refused(behind);
         }
         if (await actions.ApplyFileChangesAsync($"Rename {old} to {name}", changes) is { } refused)
         {

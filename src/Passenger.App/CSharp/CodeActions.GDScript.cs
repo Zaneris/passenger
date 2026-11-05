@@ -254,15 +254,18 @@ internal sealed partial class CodeActions
 
     /// <summary>A GDScript refactoring's edits made as one command named <paramref name="command"/>: every script it touches
     /// parsing clean after it, the files <paramref name="beside"/> the scripts (the scenes' connections, C# strings) with
-    /// them; what it came to, or why not, said as <paramref name="title"/>'s.</summary>
+    /// them; what it came to, or why not, said as <paramref name="title"/>'s, <paramref name="patience"/> asking again for a
+    /// file other than as it was read.</summary>
     private async Task<RefactorOutcome> ApplyGDScriptAsync(string title, string command, GDScriptRefactored made, IReadOnlyList<GDScriptRead> scripts, string? folder,
-        OpenDocument document, List<PlacedEdits> beside, string? done = null)
+        OpenDocument document, List<PlacedEdits> beside, string? done = null, Patience? patience = null)
     {
         if ((made.Refused ?? GDScriptRefactorings.WhyNotChanged(scripts)) is { } refused)
         {
             return RefactorOutcome.Refused($"{title} was not applied: {refused}");
         }
-        if (await context.Languages.CSharp.GodotOutOfDateAsync(beside, null, null) is { } unread)
+        string PathOf(GDScriptRead script) => folder is not null && GodotScenes.FileOf(folder, script.Script) is { } file ? file : document.Path;
+        List<PlacedEdits> placed = [.. beside, .. made.Scripts.Select(e => scripts.First(s => s.Script == e.Script)).Select(s => new PlacedEdits(PathOf(s), [], s.Text))];
+        if (await context.Languages.CSharp.GodotOutOfDateAsync(placed, null, patience) is { } unread)
         {
             return RefactorOutcome.Refused($"{title} was not applied: {unread}");
         }
@@ -277,7 +280,7 @@ internal sealed partial class CodeActions
             {
                 return RefactorOutcome.Refused($"{title} was not applied: it would leave {Path.GetFileName(read.Script)} not parsing ({error.Message})");
             }
-            string path = folder is not null && GodotScenes.FileOf(folder, read.Script) is { } file ? file : document.Path;
+            string path = PathOf(read);
             string found = read.Text;
             changes.Add(new XamlFileChange(path, text => text == found ? edits.Edits : []));
             TextSnapshot before = TextSnapshot.From(found);
@@ -307,7 +310,7 @@ internal sealed partial class CodeActions
     /// reading of every script of the project, the scenes and C# strings naming a member following it, as one command;
     /// refused for uses it can't see unless <paramref name="anyway"/>, offering to make it anyway
     /// (<see cref="RefactorOutcome.Anyway"/>); null where the name there is no member or local of a script's.</summary>
-    internal async Task<RefactorOutcome?> GDScriptRenameAsync(OpenDocument document, int offset, string name, bool anyway = false)
+    internal async Task<RefactorOutcome?> GDScriptRenameAsync(OpenDocument document, int offset, string name, bool anyway = false, Patience? patience = null)
     {
         if (!IsGDScript(document) || await GDScriptsAsync(document) is not ({ } scripts, { } own, var folder))
         {
@@ -356,7 +359,7 @@ internal sealed partial class CodeActions
         {
             return null;
         }
-        RefactorOutcome renamed = await ApplyGDScriptAsync(title, $"Rename {old} to {name}", made, scripts, folder, document, beside, "Renamed");
+        RefactorOutcome renamed = await ApplyGDScriptAsync(title, $"Rename {old} to {name}", made, scripts, folder, document, beside, "Renamed", patience);
         return renamed.Problem is null && made.Places.Count > 0
             ? renamed with { Said = $"{renamed.Said}, leaving {Plural.Of(made.Places.Count, "place")} it can't see as {(made.Places.Count == 1 ? "it is" : "they are")} ({string.Join("; ", Shown(scripts, made.Places))})" }
             : renamed;

@@ -727,6 +727,7 @@ public partial class MainWindow
         }
         // Now, rather than once the watcher hears of it.
         session.Xaml.FilesChanged([.. texts.Concat(moved).Where(p => p.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)).Distinct(PathNames.Comparer)]);
+        session.GodotScenes.FilesChanged(texts);
         IdeErrors.Observe(XamlWrittenAsync(texts));
     }
 

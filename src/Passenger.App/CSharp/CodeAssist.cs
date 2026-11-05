@@ -559,7 +559,8 @@ public sealed class CodeAssist
         actions.GDScriptUsesAsync(document, offset);
 
     /// <summary>Rename of a GDScript's member or local by Passenger's reading (<see cref="CodeActions.GDScriptRenameAsync"/>).</summary>
-    internal Task<RefactorOutcome?> GDScriptRenameAsync(OpenDocument document, int offset, string name, bool anyway = false) => actions.GDScriptRenameAsync(document, offset, name, anyway);
+    internal Task<RefactorOutcome?> GDScriptRenameAsync(OpenDocument document, int offset, string name, bool anyway = false, Patience? patience = null) =>
+        actions.GDScriptRenameAsync(document, offset, name, anyway, patience);
 
     /// <summary>Why Rename cannot run at the editor's caret; null when it can.</summary>
     public string? WhyNotRename(ActionContext context) =>

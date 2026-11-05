@@ -250,7 +250,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
     private async Task ShowRenameAsync(OpenDocument document, int caret)
     {
         int version = document.Text.Version;
-        if (await NodeAtAsync(document, caret) is not ({ } read, { } node))
+        if (await NodeAtAsync(document, caret) is not (_, { } node))
         {
             context.Say("Rename in a Godot scene renames a node's name");
             return;
@@ -267,7 +267,9 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
             {
                 return;
             }
-            RefactorOutcome made = await csharp.RenameNodesAsync(read, [node], old, name);
+            // Read again for each attempt, as a file written a moment before is one the index has yet to hear of.
+            RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, async patience => await NodeAtAsync(document, caret) is ({ } again, { Name: var now } same) && now == old
+                ? await csharp.RenameNodesAsync(again, [same], old, name, patience) : RefactorOutcome.Refused($"{old} was not renamed: {document.Name} changed as it was read"));
             context.Say(made.Problem ?? made.Said);
         });
     }

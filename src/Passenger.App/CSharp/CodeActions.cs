@@ -505,7 +505,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     private async Task<RefactorOutcome> RenameSymbolAsync(OpenDocument document, Anchor at, string name, bool renameFiles, Patience? patience)
     {
         // A GDScript's member or local is renamed by Passenger's reading of the project's scripts, its server asked for any other name.
-        if (IsGDScript(document) && await GDScriptRenameAsync(document, at.Offset, name) is { } passengers)
+        if (IsGDScript(document) && await GDScriptRenameAsync(document, at.Offset, name, patience: patience) is { } passengers)
         {
             return passengers;
         }
@@ -665,7 +665,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         (OpenDocument document, IDisposable hold) = context.Editors.Lend(script);
         using (hold)
         {
-            if (await GDScriptRenameAsync(document, offset, name) is { } scripted)
+            if (await GDScriptRenameAsync(document, offset, name, patience: patience) is { } scripted)
             {
                 return scripted;
             }

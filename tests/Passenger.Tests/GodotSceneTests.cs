@@ -830,6 +830,34 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
+    /// <summary>A scene saved a moment before a node's rename, the folder's watcher yet to tell of it (here, never to), is one
+    /// the rename waits to read: its name changes where the save left it, what the save wrote kept, never a refusal.</summary>
+    [AvaloniaFact]
+    public void Renaming_a_node_changes_a_scene_saved_a_moment_before_as_the_save_left_it()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
+            window.FolderWatcher!.Dispose();
+            File.WriteAllText(ScenePath, Scene.Replace("Speed = 2.5", "Other = 1\nSpeed = 2.5", StringComparison.Ordinal));
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "GetNode<Label>(\"Hud/Sc");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "Score", () => $"Rename's box on the node Score ({window.Assist.Renaming}; {window.Status})");
+            window.KeyTextInput("Points");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => File.ReadAllText(ScenePath).Contains("[node name=\"Points\"", StringComparison.Ordinal),
+                () => $"the scene to name the node as the save left it ({window.Status}): {File.ReadAllText(ScenePath)}", TimeSpan.FromMinutes(1));
+            Assert.Contains("Other = 1", File.ReadAllText(ScenePath), StringComparison.Ordinal);
+            Assert.Contains("GetNode<Label>(\"Hud/Points\")", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Find Usages of a signal's delegate lists its uses by what Godot's source generator makes of it and the scene's
     /// connection; its rename renames those wherever the code uses them (its event, its SignalName, its EmitSignal call) and
     /// the strings Godot's calls take naming it, in its own script and another, and the scene's connection to it: the game

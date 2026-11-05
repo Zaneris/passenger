@@ -409,7 +409,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>A Godot node renamed for an agent (<see cref="CSharpAssist.RenameNodesAsync"/>), its files saved; refused where no
     /// node's name is at the place.</summary>
-    private async Task<string> GodotRename((Godot.GodotRead Read, Passenger.Workspace.GodotTreeNode Node)? at, string newName, string none, CancellationToken cancel,
+    private async Task<string> GodotRename((Godot.GodotRead Read, Passenger.Workspace.GodotTreeNode Node)? at, string newName, string none, Patience patience, CancellationToken cancel,
         IReadOnlyList<Passenger.Workspace.GodotTreeNode>? nodes = null, string? old = null)
     {
         if (at is not ({ } read, { } node))
@@ -421,7 +421,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             return $"{newName} is its name already";
         }
-        RefactorOutcome made = await window.Assist.Languages.CSharp.RenameNodesAsync(read, nodes ?? [node], name, newName);
+        RefactorOutcome made = await window.Assist.Languages.CSharp.RenameNodesAsync(read, nodes ?? [node], name, newName, patience);
         if (made.Problem is { } refused)
         {
             throw new InvalidOperationException(refused);
@@ -509,7 +509,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (Godot.GodotScriptTypes.IsScript(at.Path))
         {
             OpenDocument script = await DocumentAsync(at.Path, cancel);
-            if (await window.Assist.GDScriptRenameAsync(script, Offset(script, at.Line, at.Column), newName, force) is { } scriptRenamed)
+            if (await window.Assist.GDScriptRenameAsync(script, Offset(script, at.Line, at.Column), newName, force, patience) is { } scriptRenamed)
             {
                 if (scriptRenamed.Problem is { } refused)
                 {
@@ -544,7 +544,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 return $"{newName} is its name already";
             }
-            RefactorOutcome kindRenamed = await window.Assist.Languages.CSharp.RenameKindAsync(kind, newName);
+            RefactorOutcome kindRenamed = await window.Assist.Languages.CSharp.RenameKindAsync(kind, newName, patience);
             if (kindRenamed.Problem is { } refused)
             {
                 throw new InvalidOperationException(refused);
@@ -556,12 +556,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (served is ServerServed { Web: null } code && code.Document.Language == Languages.Language.CSharp
             && await window.Assist.Languages.CSharp.GodotNodeAtAsync(code.Document, offset) is ({ } read, { } name, { Count: > 0 } nodes))
         {
-            return await GodotRename((read, nodes[0]), newName, string.Empty, cancel, nodes, name);
+            return await GodotRename((read, nodes[0]), newName, string.Empty, patience, cancel, nodes, name);
         }
         switch (served)
         {
             case GodotServed scene:
-                return await GodotRename(await window.Assist.Languages.Godot.NodeAtAsync(scene.Document, offset), newName, $"No node's name is at {Relative(scene.Document.Path)}:{at.Line}:{at.Column}", cancel);
+                return await GodotRename(await window.Assist.Languages.Godot.NodeAtAsync(scene.Document, offset), newName, $"No node's name is at {Relative(scene.Document.Path)}:{at.Line}:{at.Column}", patience, cancel);
             case XamlServed xaml:
                 return await XamlRename(xaml, offset, newName, renameFiles, patience, cancel);
             case ServerServed json when !json.Provides("renameProvider"):

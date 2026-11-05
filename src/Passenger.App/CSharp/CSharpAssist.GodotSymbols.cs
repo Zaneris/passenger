@@ -570,6 +570,19 @@ internal sealed partial class CSharpAssist
         return patience?.Behind([path], null, said, said) ?? said;
     }
 
+    /// <summary>Why a rename of a Godot name must not change files as it read them (<paramref name="read"/>, each file's text
+    /// by its path), the index told at once (<see cref="GodotOutOfDateAsync"/>); null when each is as read.</summary>
+    private async Task<string?> GodotBehindAsync(Dictionary<string, string> read, string old, Patience? patience) =>
+        await GodotOutOfDateAsync([.. read.Select(r => new PlacedEdits(r.Key, [], r.Value))], null, patience) is { } unread ? $"{old} was not renamed: {unread}" : null;
+
+    /// <summary>Why a rename stopped at a file whose text is not what it was told of, a language server's places in it or the
+    /// index's: the file waited for by <paramref name="patience"/> before the next attempt.</summary>
+    private static string Overtaken(string file, string old, Patience? patience)
+    {
+        string said = $"{old} was not renamed: {Path.GetFileName(file)} changed as it was read";
+        return patience?.Behind([file], null, said, said) ?? said;
+    }
+
     /// <summary>The edits the Godot projects' files take once files and folders of theirs have moved (the Explorer's move or
     /// rename, already made): every res:// path naming a moved file, or a file inside a moved folder, written anew in each
     /// scene, resource, GDScript, shader's <c>#include</c> and project.godot and in each C# string; by file at its path now, in the

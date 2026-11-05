@@ -253,7 +253,9 @@ internal sealed partial class CSharpAssist
             {
                 return;
             }
-            RefactorOutcome made = await RenameKindAsync(named, name);
+            // Read again for each attempt, as a file written a moment before is one the index has yet to hear of.
+            RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, async patience => await GodotKindAtAsync(document, caret) is { } now && now.Name == named.Name
+                ? await RenameKindAsync(now, name, patience) : RefactorOutcome.Refused($"{named.Name} was not renamed: {document.Name} changed as it was read"));
             context.Say(made.Problem ?? made.Said);
         });
         return true;
@@ -328,9 +330,9 @@ internal sealed partial class CSharpAssist
     /// <summary>A name of a kind renamed, as one command of global undo: every place Godot's files write it
     /// (<see cref="KindNamed.Places"/>), and every string of the code's naming it that reaches those places (an animation
     /// player's, a material's: those told to another are left), its files changed as they were read; a place that only may name
-    /// it left as it is, said (<see cref="GodotPlace.Unsure"/>); refused as <see cref="KindRenameProblem"/> says. The window's and
-    /// an agent's alike.</summary>
-    internal async Task<RefactorOutcome> RenameKindAsync(KindNamed named, string name)
+    /// it left as it is, said (<see cref="GodotPlace.Unsure"/>); refused as <see cref="KindRenameProblem"/> says, or for a file
+    /// other than as it was read, which <paramref name="patience"/> asks again for. The window's and an agent's alike.</summary>
+    internal async Task<RefactorOutcome> RenameKindAsync(KindNamed named, string name, Patience? patience = null)
     {
         if (KindRenameProblem(named, name) is { } problem)
         {
@@ -350,7 +352,7 @@ internal sealed partial class CSharpAssist
             }
             if (place.End > text.Length || text[place.Start..place.End] != old[own..])
             {
-                return RefactorOutcome.Refused($"{old} was not renamed: {Path.GetFileName(file)} changed as it was read");
+                return RefactorOutcome.Refused(Overtaken(file, old, patience));
             }
             made[file] = text;
             Add(file, new TextEdit(place.Start, place.End - place.Start, place.Written(name[own..])!));
@@ -375,7 +377,7 @@ internal sealed partial class CSharpAssist
                 int at = ServerLines.Of(text).OffsetOf(new LspPosition(use.At.Line, use.At.Character));
                 if (at + old.Length > text.Length || text.GetText(at, old.Length) != old)
                 {
-                    return RefactorOutcome.Refused($"{old} was not renamed: {Path.GetFileName(use.File)} changed as it was read");
+                    return RefactorOutcome.Refused(Overtaken(use.File, old, patience));
                 }
                 made[use.File] = text.ToString();
                 Add(use.File, new TextEdit(at, old.Length, name));
@@ -390,6 +392,10 @@ internal sealed partial class CSharpAssist
         if (changes.Count == 0)
         {
             return RefactorOutcome.Refused($"{old} was not renamed: no file writes it");
+        }
+        if (await GodotBehindAsync(made, old, patience) is { } behind)
+        {
+            return RefactorOutcome.Refused(behind);
         }
         if (await actions.ApplyFileChangesAsync($"Rename {old} to {name}", changes) is { } refused)
         {
