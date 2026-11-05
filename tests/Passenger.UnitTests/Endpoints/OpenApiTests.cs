@@ -306,6 +306,21 @@ public sealed class OpenApiTests
         Assert.Equal("""{"name":"string"}""", Sampled("ChosenAlone"));
     }
 
+    /// <summary>An allOf extends what is written beside it: a schema's own members join its parts', what it writes again over
+    /// theirs, after them as a form's fields are, a member the schema marks read-only left out as any is.</summary>
+    [Fact]
+    public void A_body_made_from_an_all_of_holds_the_members_written_beside_it()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse("""
+            { "openapi": "3.1.1", "paths": {}, "components": { "schemas": {
+              "Base": { "type": "object", "properties": { "name": { "type": "string" }, "qty": { "type": "integer" } } },
+              "Extended": { "type": "object", "allOf": [ { "$ref": "#/components/schemas/Base" } ],
+                "properties": { "note": { "type": "string" }, "qty": { "type": "boolean" }, "id": { "type": "integer", "readOnly": true } } } } } }
+            """)!;
+        using JsonDocument held = JsonDocument.Parse("""{ "$ref": "#/components/schemas/Extended" }""");
+        Assert.Equal("""{"name":"string","qty":false,"note":"string"}""", OpenApiSchemas.Sample(given, held.RootElement)!.ToJsonString());
+    }
+
     /// <summary>A form's and a multipart body's fields are made from a schema too, so what a server sets is no field of either.</summary>
     [Fact]
     public void A_form_or_multipart_request_written_for_an_operation_has_no_field_its_schema_marks_read_only()

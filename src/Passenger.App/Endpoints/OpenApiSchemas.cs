@@ -419,6 +419,10 @@ public static class OpenApiSchemas
                         }
                     }
                 }
+                foreach (JsonProperty beside in JsonMembers.Properties(schema, "properties"))
+                {
+                    merged[beside.Name] = Make(document, beside.Value, depth + 1, referred);
+                }
                 return merged;
             }
             if ((JsonMembers.Items(schema, "oneOf") is [var one, ..] ? one : JsonMembers.Items(schema, "anyOf") is [var any, ..] ? any : (JsonElement?)null) is { } choice)
