@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using Microsoft.CodeAnalysis.CSharp;
@@ -25,9 +26,9 @@ public sealed class TestFinder
     /// once it has changed. Filled by the workers that read them.</summary>
     private readonly FileMemo<FileTests> onDisk = new();
 
-    /// <summary>The preprocessor symbols each test project's closed files were last read with, by its path: read with
-    /// others, they are read again.</summary>
-    private readonly Dictionary<string, CSharpParseOptions> readWith = new(StringComparer.Ordinal);
+    /// <summary>The preprocessor symbols each test project's closed files are read with, by its path: changed, they are read
+    /// again. Its workers read it as they read each file (<see cref="ReadFile"/>).</summary>
+    private readonly ConcurrentDictionary<string, CSharpParseOptions> readWith = new(StringComparer.Ordinal);
 
     /// <summary>Open files' reads, which stand for the file while it is open.</summary>
     private readonly Dictionary<string, FileTests> open = new(StringComparer.Ordinal);
@@ -40,9 +41,9 @@ public sealed class TestFinder
     /// (<see cref="CodeTests.Tests"/>, whose items a move of lines replaces in place) and where each file's begin in it.</summary>
     private readonly Dictionary<string, ToldTests> told = new(StringComparer.Ordinal);
 
-    /// <summary>The test attributes each test project's files derive from a framework's, by its path, which its files were
-    /// last read with.</summary>
-    private readonly Dictionary<string, IReadOnlySet<string>> own = new(StringComparer.Ordinal);
+    /// <summary>The test attributes each test project's files derive from a framework's, by its path, which its files are
+    /// read with. Its workers read it as they read each file (<see cref="ReadFile"/>).</summary>
+    private readonly ConcurrentDictionary<string, IReadOnlySet<string>> own = new(StringComparer.Ordinal);
 
     private static readonly IReadOnlySet<string> NoAttributes = new HashSet<string>(StringComparer.Ordinal);
 
@@ -104,6 +105,10 @@ public sealed class TestFinder
     /// <summary>An open file's tests moved to other lines, nothing else of them changed: its tests as told before, each by
     /// the same test on its line now, which the project's told tests now hold in their place. No <see cref="Changed"/>.</summary>
     public event EventHandler<(string Path, IReadOnlyDictionary<TestItem, TestItem> Moved)>? Moved;
+
+    /// <summary>Held by a test: what a listing awaits once it has taken what it reads by and before it reads anything, for a
+    /// test of what goes on while one is under way.</summary>
+    public Func<Task>? BeforeReading { get; set; }
 
     /// <summary>A test project's files were found to derive other test attributes, or a GUT project's config changed which
     /// scripts hold its tests: open files are read again.</summary>
@@ -169,21 +174,22 @@ public sealed class TestFinder
         foreach (ProjectModel project in Projects.Where(p => !p.IsScriptGame))
         {
             CSharpParseOptions symbols = CompilationSymbols.Of(project);
-            if (readWith.TryGetValue(project.Path, out CSharpParseOptions? before) && !ReferenceEquals(before, symbols))
+            bool others = readWith.TryGetValue(project.Path, out CSharpParseOptions? before) && !ReferenceEquals(before, symbols);
+            readWith[project.Path] = symbols;
+            if (others)
             {
                 foreach (string file in listed.GetValueOrDefault(project.Path) ?? [])
                 {
                     onDisk.Forget(file);
                 }
             }
-            readWith[project.Path] = symbols;
         }
         HashSet<string> current = [.. Projects.Select(p => p.Path)];
         foreach (string gone in told.Keys.Where(p => !current.Contains(p)).ToList())
         {
             told.Remove(gone);
             listed.Remove(gone);
-            own.Remove(gone);
+            own.TryRemove(gone, out _);
             toldFrom.Remove(gone);
         }
         Read(Projects, timed: true);
@@ -293,12 +299,11 @@ public sealed class TestFinder
 
         async Task ReadAsync()
         {
-            (string Path, CSharpParseOptions Symbols, IReadOnlySet<string> Own, string? Gut)[] reads =
-                [.. changed.Select(path => (path, CompilationSymbols.Of(every, path), AttributesOf(path), GutFolder(path)))];
+            (string Path, Reading With)[] reads = [.. changed.Select(path => (path, new Reading(Owner(path)?.Path, CompilationSymbols.Of(every, path), AttributesOf(path), GutFolder(path))))];
             TestsCache? kept = cache;
             await BackgroundWork.Run(() =>
             {
-                Parallel.ForEach(reads, read => ReadFile(read.Path, read.Symbols, read.Own, read.Gut, kept));
+                Parallel.ForEach(reads, read => ReadFile(read.Path, read.With, kept));
                 kept?.Save();
             });
             Tell([.. projects.Where(Projects.Contains)]);
@@ -374,6 +379,7 @@ public sealed class TestFinder
         {
             try
             {
+                await (BeforeReading?.Invoke() ?? Task.CompletedTask);
                 (Dictionary<string, IReadOnlyList<string>> files, Dictionary<string, IReadOnlySet<string>> readWith) =
                     await BackgroundWork.Run(() => List(projects, others, owns, kept, whole));
                 List<ProjectModel> latest = [.. projects.Where(p => asked.GetValueOrDefault(p.Path) == mine[p.Path] && Projects.Contains(p))];
@@ -413,7 +419,7 @@ public sealed class TestFinder
     {
         Dictionary<string, IReadOnlyList<string>> found = new(StringComparer.Ordinal);
         Dictionary<string, IReadOnlySet<string>> readWith = new(StringComparer.Ordinal);
-        List<(string Path, CSharpParseOptions Symbols, IReadOnlySet<string> Own, string? Gut)> all = [];
+        List<(string Path, Reading With)> all = [];
         foreach (ProjectModel project in projects)
         {
             bool gut = project.IsScriptGame;
@@ -422,12 +428,12 @@ public sealed class TestFinder
             IReadOnlySet<string> attributes = ReferenceEquals(owns[project.Path], NoAttributes) && !gut ? kept?.AttributesOf(project.Path) ?? NoAttributes : owns[project.Path];
             readWith[project.Path] = attributes;
             CSharpParseOptions symbols = gut ? CSharpParseOptions.Default : CompilationSymbols.Of(project);
-            all.AddRange(files.Select(file => (file, symbols, attributes, gut ? project.Folder : null)));
+            all.AddRange(files.Select(file => (file, new Reading(project.Path, symbols, attributes, gut ? project.Folder : null))));
         }
         for (int at = 0; at < all.Count; at += ReadsCounted)
         {
             ParallelOptions readers = new() { MaxDegreeOfParallelism = serverLoading ? ReadersWhileLoading : -1 };
-            Parallel.ForEach(all.GetRange(at, Math.Min(ReadsCounted, all.Count - at)), readers, read => ReadFile(read.Path, read.Symbols, read.Own, read.Gut, kept));
+            Parallel.ForEach(all.GetRange(at, Math.Min(ReadsCounted, all.Count - at)), readers, read => ReadFile(read.Path, read.With, kept));
         }
         if (kept is not null)
         {
@@ -435,17 +441,29 @@ public sealed class TestFinder
             {
                 kept.KeepAttributes(project.Path, readWith[project.Path]);
             }
-            kept.Save(whole ? new HashSet<string>(all.Where(r => r.Gut is null).Select(r => r.Path), PathNames.Comparer) : null,
+            kept.Save(whole ? new HashSet<string>(all.Where(r => r.With.Gut is null).Select(r => r.Path), PathNames.Comparer) : null,
                 whole ? new HashSet<string>(projects.Select(p => p.Path), PathNames.Comparer) : null);
         }
         return (found, readWith);
     }
 
-    /// <summary>Reads a closed file's tests with its project's symbols and derived test attributes, or a GDScript file's as
-    /// GUT's of the Godot project in <paramref name="gut"/> with the test classes its scripts derive, unless it has not
-    /// changed since they were read; one being written is read once the watcher says so again. A worker's.</summary>
-    private void ReadFile(string path, CSharpParseOptions symbols, IReadOnlySet<string> attributes, string? gut, TestsCache? kept) =>
-        onDisk.Get(path, file => gut is not null ? GutScripts.Read(File.ReadAllText(file), gut, file, attributes, GutScripts.ConfigOf(gut)).Tests : Parse(file, symbols, attributes, kept));
+    /// <summary>What a closed file is read with: its project's symbols and test attributes as they stood when it was asked
+    /// for, which stand where the project has none yet, and the Godot project whose GUT a GDScript file is read for.</summary>
+    private readonly record struct Reading(string? Project, CSharpParseOptions Symbols, IReadOnlySet<string> Attributes, string? Gut);
+
+    /// <summary>Reads a closed file's tests with its project's symbols and derived test attributes as they stand as it is read,
+    /// or a GDScript file's as GUT's with the test classes its scripts derive, unless it has not changed since they were read;
+    /// one being written is read once the watcher says so again. They are taken here, after the read has its place: what a
+    /// change forgets went before it, and a listing begun earlier that reads after it reads by it. A worker's.</summary>
+    private void ReadFile(string path, Reading reading, TestsCache? kept) => onDisk.Get(path, file =>
+    {
+        IReadOnlySet<string> attributes = reading.Project is { } project && own.TryGetValue(project, out IReadOnlySet<string>? derived) ? derived : reading.Attributes;
+        if (reading.Gut is { } gut)
+        {
+            return GutScripts.Read(File.ReadAllText(file), gut, file, attributes, GutScripts.ConfigOf(gut)).Tests;
+        }
+        return Parse(file, reading.Project is { } its && readWith.TryGetValue(its, out CSharpParseOptions? symbols) ? symbols : reading.Symbols, attributes, kept);
+    });
 
     /// <summary>A closed C# file's tests: those the cache kept where the file and what it is read with are as they were,
     /// else parsed from the bytes its stamp was taken of, and kept. A worker's.</summary>

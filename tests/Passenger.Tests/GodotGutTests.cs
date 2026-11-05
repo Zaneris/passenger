@@ -483,6 +483,53 @@ public sealed class GodotGutTests : IDisposable
         }
     }
 
+    /// <summary>A listing under way as a script becomes a test class, whose reads land after that was found, leaves the tests
+    /// extending it shown: it read with what its project derived as it began, and those reads stood for the files for good,
+    /// so the window said it had no tests until a file changed. Needs no Godot: nothing runs.</summary>
+    [AvaloniaFact]
+    public void A_listing_under_way_as_a_script_becomes_a_test_class_leaves_the_tests_extending_it_shown()
+    {
+        string tester = Path.Combine(folder, "test", "tools", "spin_tester.gd");
+        TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
+        WriteGut(folder);
+        TestFolders.Write(folder, "test/tools/spin_tester.gd", "class_name SpinTester\nextends Node\n\n\nfunc spun():\n\treturn 2\n");
+        TestFolders.Write(folder, "test/test_named.gd", "extends SpinTester\n\n\nfunc test_by_name():\n\tassert_eq(spun(), 2)\n");
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        window.Show();
+        try
+        {
+            window.OpenFolder(folder);
+            Ui.WaitFor(() => !window.Tests.IsLooking && window.Tests.Finder.Projects.Count == 1, () => $"the folder's Godot project read ({window.Tests.Tree.EmptyText})");
+            Assert.Null(window.OpenFile(tester));
+            Ui.Settle();
+            Assert.Null(Method(window, "test_by_name"));
+
+            // The first listing waits before it reads; the one the change starts lets it read, then waits for it to end.
+            TestFinder finder = window.Tests.Finder;
+            TaskCompletionSource letGo = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task? behind = null;
+            async Task AfterTheFirst()
+            {
+                finder.BeforeReading = null;
+                letGo.SetResult();
+                await behind!;
+            }
+            finder.BeforeReading = () =>
+            {
+                finder.BeforeReading = AfterTheFirst;
+                return letGo.Task;
+            };
+            behind = finder.CatchUpAsync();
+            Typing.Replace(window, "extends Node", "extends GutTest");
+            Ui.WaitFor(() => behind is { IsCompleted: true } && letGo.Task.IsCompleted && !window.Tests.IsLooking && Method(window, "test_by_name") is not null,
+                () => $"the test extending the script that became a test class shown ({string.Join(", ", window.Tests.Tree.Methods.Select(m => m.FullName))}; {window.Tests.Tree.EmptyText})");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Where the project's .gutconfig.json names GUT's folders, the tests are those of the scripts under them with
     /// GUT's prefix, as GUT runs them: not a template outside them nor a helper without the prefix, though a test class
     /// outside them still makes those extending it tests; and once the config names another folder, its tests come in.
