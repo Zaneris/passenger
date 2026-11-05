@@ -10,8 +10,8 @@ namespace Passenger.Tests;
 
 /// <summary>The properties pane's value editors over a stand-in for what holds the value, a game's answer held back as
 /// long as a test needs: an item form's changes go one at a time, each made on what the one before left, whichever way the
-/// person moved on; a dictionary's Add gives a key of its type; and a row handed another property's range keeps to that
-/// range. No game runs: what reaches a game is held by GodotValueFormsTests.</summary>
+/// person moved on, a field not yet left among them as Remove is pressed; a dictionary's Add gives a key of its type; and a
+/// row handed another property's range keeps to that range. No game runs: what reaches a game is held by GodotValueFormsTests.</summary>
 public sealed class GodotValueCellsTests
 {
     /// <summary>What a form sends, each held until the test lets it land as the game's answer.</summary>
@@ -89,6 +89,44 @@ public sealed class GodotValueCellsTests
 
     private static Button Remove(GodotItemsEditor form, string tip) =>
         form.GetVisualDescendants().OfType<Button>().First(b => Equals(ToolTip.GetTip(b), tip));
+
+    /// <summary>Typed into a field that keeps the keys, Enter not pressed.</summary>
+    private static void Hold(TextBox field, string text)
+    {
+        Ui.WaitFor(() => field.IsEffectivelyVisible && field.Focus() && field.IsFocused, () => $"the field showing {field.Text} to take the keys");
+        field.SelectAll();
+        ((Window)TopLevel.GetTopLevel(field)!).KeyTextInput(text);
+    }
+
+    [AvaloniaFact]
+    public void What_is_typed_in_a_field_not_yet_left_goes_ahead_of_another_rows_Remove_and_is_not_lost()
+    {
+        Sends sends = new();
+        GodotItemsEditor form = Form(IntArray(1, 2, 3), Ints, sends, new Tuner());
+        Hold(form.Fields[0], "9");
+
+        Ui.Click(Remove(form, "Remove item 2"));
+        Ui.WaitFor(() => sends.Waiting == 1, () => $"the item typed to go first ({sends.Sent.Count} sent)");
+        Assert.Equal([9L, 2L, 3L], Assert.IsType<GodotArray>(sends.Sent[0]));
+        sends.Land();
+        Ui.WaitFor(() => sends.Waiting == 1, () => $"Remove's turn, once the item typed landed ({sends.Sent.Count} sent)");
+        Assert.Equal([9L, 2L], Assert.IsType<GodotArray>(sends.Sent[^1]));
+        sends.Land();
+        Ui.WaitFor(() => form.Fields.Count == 2, "the rows to show what the game holds");
+        Assert.Equal("9", form.Fields[0].Text);
+    }
+
+    [AvaloniaFact]
+    public void What_is_typed_in_the_row_Remove_takes_goes_with_it()
+    {
+        Sends sends = new();
+        GodotItemsEditor form = Form(IntArray(1, 2, 3), Ints, sends, new Tuner());
+        Hold(form.Fields[1], "9");
+
+        Ui.Click(Remove(form, "Remove item 1"));
+        Ui.WaitFor(() => sends.Waiting == 1, () => $"Remove's send ({sends.Sent.Count} sent)");
+        Assert.Equal([1L, 3L], Assert.IsType<GodotArray>(Assert.Single(sends.Sent)));
+    }
 
     [AvaloniaFact]
     public void An_item_added_while_an_edit_is_on_its_way_is_added_to_the_edit()

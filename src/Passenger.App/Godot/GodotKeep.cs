@@ -27,10 +27,13 @@ public sealed record GodotKept(string File, string Was, IReadOnlyList<TextEdit> 
 public sealed class GodotKeeping(Func<string, (string File, string Text)?> read)
 {
     private readonly Dictionary<string, (string Was, string Now)> files = new(PathNames.Comparer);
-    private readonly List<GodotKept> planned = [];
+    private List<GodotKept> planned = [];
 
     /// <summary>Each file changed: its text as read, and as the values planned leave it.</summary>
     public IEnumerable<(string File, string Was, string Now)> Files => files.Select(f => (f.Key, f.Value.Was, f.Value.Now));
+
+    /// <summary>The values planned, in order, each at its line in the text they all leave.</summary>
+    public IReadOnlyList<GodotKept> Planned => planned;
 
     /// <summary>A value planned by <paramref name="plan"/> on the files as those planned so far leave them, read through what
     /// it is given; WhyNot says why it cannot be kept.</summary>
@@ -41,11 +44,12 @@ public sealed class GodotKeeping(Func<string, (string File, string Text)?> read)
         {
             return (null, whyNot);
         }
-        if (kept.Before != kept.After && planned.Any(p => p.Line == kept.Line && p.After == kept.Before && PathNames.Same(p.File, kept.File)))
+        List<GodotKept> moved = [.. planned.Select(p => PathNames.Same(p.File, kept.File) ? p with { Line = LineAfter(p.Line, kept) } : p)];
+        if (kept.Before != kept.After && moved.Any(p => p.Line == kept.Line && p.After == kept.Before && PathNames.Same(p.File, kept.File)))
         {
             return (null, $"another value is kept on that line of {System.IO.Path.GetFileName(kept.File)}");
         }
-        planned.Add(kept);
+        planned = [.. moved, kept];
         string was = files.TryGetValue(kept.File, out (string Was, string Now) earlier) ? earlier.Was : kept.Was;
         files[kept.File] = (was, GodotKeep.Applied(kept.Was, kept.Edits));
         return (kept, null);
@@ -53,6 +57,15 @@ public sealed class GodotKeeping(Func<string, (string File, string Text)?> read)
 
     private (string File, string Text)? Read(string res) =>
         read(res) is ({ } file, { } text) ? (file, files.TryGetValue(file, out (string Was, string Now) kept) ? kept.Now : text) : null;
+
+    /// <summary>Where a line of the text a value was planned on stands once that value's edits are made.</summary>
+    private static int LineAfter(int line, GodotKept kept)
+    {
+        int start = TextSnapshot.From(kept.Was).GetLineStart(line);
+        return line + kept.Edits.Where(e => e.Start <= start).Sum(e => Breaks(e.Text) - Breaks(kept.Was.Substring(e.Start, e.Length)));
+
+        static int Breaks(string text) => TextSnapshot.From(text).LineCount - 1;
+    }
 }
 
 /// <summary>Where a value changed in a running game is kept (<see cref="Plan"/>): the scene that sets it, outermost first

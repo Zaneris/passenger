@@ -26,7 +26,7 @@ public sealed record GodotBeneath(string Name, string Text, GodotSection Section
 /// change of files, one command of Undo: its line replaced, removed where the value is back to what it is unset, or added
 /// where Godot's save puts it; a value typed as text is checked as Godot's variant text first. A value moving is only shown.</summary>
 public sealed class GodotSceneValues(string path, string node, string name, string? type, Func<string, string?> textOf,
-    Func<string, IReadOnlyList<XamlFileChange>, Task<string?>> change, Func<string, IReadOnlyList<GodotSceneProperty>> read) : IGodotValues
+    Func<string, IReadOnlyList<XamlFileChange>, Task<string?>> change, Func<string, IReadOnlyList<GodotSceneProperty>> read, Func<Task<GodotVariantBounds>>? bounds = null) : IGodotValues
 {
     /// <summary>The value types a scene's text holds that no value editor here writes.</summary>
     private static readonly HashSet<GodotType> Unwritten = [GodotType.Nil, GodotType.Object, GodotType.Array, GodotType.Dictionary, GodotType.Callable,
@@ -84,7 +84,8 @@ public sealed class GodotSceneValues(string path, string node, string name, stri
             throw new LiveAppException($"{name} has no {property}");
         }
         string trimmed = written.Trim();
-        if (WhyNotText(property, trimmed, GodotFile.Parse(textOf(path) ?? string.Empty)) is { } why)
+        GodotVariantBounds? project = bounds is null ? null : await bounds();
+        if (WhyNotText(property, trimmed, GodotFile.Parse(textOf(path) ?? string.Empty), project) is { } why)
         {
             throw new LiveAppException(why);
         }
@@ -92,15 +93,15 @@ public sealed class GodotSceneValues(string path, string node, string name, stri
         await WriteAsync(shown, unset ? null : trimmed, null, unset);
     }
 
-    /// <summary>Why text is no value of Godot's variant text for a property of a scene, as Godot's reader reads it; null
-    /// where it is.</summary>
-    public static string? WhyNotText(string property, string written, GodotFile scene)
+    /// <summary>Why text is no value of Godot's variant text for a property of a scene, as Godot's reader reads it, within what
+    /// the project's Godot holds it to; null where it is.</summary>
+    public static string? WhyNotText(string property, string written, GodotFile scene, GodotVariantBounds? bounds = null)
     {
         if (written.Length == 0 || written.Contains('\n'))
         {
             return $"{property} takes one value on its line";
         }
-        return GodotVariantText.WhyNot(written, scene) is { } why ? $"Godot would not load it: {why}" : null;
+        return GodotVariantText.WhyNot(written, scene, bounds) is { } why ? $"Godot would not load it: {why}" : null;
     }
 
     /// <summary>Writes a property's value as text into the node's section, or set back to what it is unset

@@ -3,13 +3,24 @@ using System.Globalization;
 
 namespace Passenger.Workspace;
 
+/// <summary>What a project's Godot holds a value's text to beyond its words, each left to Godot where null: its version,
+/// whether a <c>res://</c> file is there, and whether its class database makes an object of a class.</summary>
+public sealed record GodotVariantBounds(Version? Engine, Func<string, bool>? IsFile, Func<string, bool>? IsClass);
+
 /// <summary>Whether text is one value a scene's line can hold, read token by token as Godot's own variant parser reads it:
 /// numbers, strings, names, a colour's hex, arrays, dictionaries, and each constructor with what it takes, the old names
 /// Godot still reads among them. Nothing may follow the value, as a scene's reader takes what does for the next property's
-/// name, swallowing lines after it. A class's or a file's being there is left to Godot.</summary>
+/// name, swallowing lines after it. A value a project's Godot would not take though it reads (a class it lacks, a file not
+/// there, words newer than it) is refused where <see cref="GodotVariantBounds"/> say so.</summary>
 public static class GodotVariantText
 {
     private const int Deepest = 512;
+
+    /// <summary>The first Godots whose reader takes an empty Signal or Callable; a packed array of Vector4s or bytes as base64;
+    /// and a typed Dictionary.</summary>
+    private static readonly Version Callables = new(4, 1);
+    private static readonly Version Vector4Arrays = new(4, 3);
+    private static readonly Version TypedDictionaries = new(4, 4);
 
     /// <summary>The constructors of a fixed count of numbers, by the names Godot reads.</summary>
     private static readonly Dictionary<string, int> Counted = new(StringComparer.Ordinal)
@@ -28,8 +39,8 @@ public static class GodotVariantText
     };
 
     /// <summary>Why text is no one value of a scene's, null where Godot reads it: what it names by id must be in
-    /// <paramref name="scene"/>, or its load fails.</summary>
-    public static string? WhyNot(string text, GodotFile scene)
+    /// <paramref name="scene"/>, or its load fails, and it must keep to the project's <paramref name="bounds"/>.</summary>
+    public static string? WhyNot(string text, GodotFile scene, GodotVariantBounds? bounds = null)
     {
         Reader reader = new(text);
         if (reader.Value(reader.Next(), 0) is { } why)
@@ -42,6 +53,9 @@ public static class GodotVariantText
         }
         return reader.Externals.FirstOrDefault(id => scene.External(id) is null) is { } external ? $"the scene names no external resource {external}"
             : reader.Inner.FirstOrDefault(id => !scene.Sections.Any(s => s.Tag == "sub_resource" && s.Text("id") == id)) is { } inner ? $"the scene names no sub-resource {inner}"
+            : bounds?.Engine is { } engine && reader.Newer.Find(n => engine < n.Since) is { Words: not null } newer ? $"{newer.Words} needs Godot {newer.Since} or newer, and this one is {engine.ToString(2)}"
+            : bounds?.IsFile is { } isFile && reader.Files.Find(f => !isFile(f)) is { } lacked ? $"the project has no {lacked}"
+            : bounds?.IsClass is { } isClass && reader.Classes.Find(c => !isClass(c)) is { } unmade ? $"Godot makes no object of class {unmade}"
             : null;
     }
 
@@ -66,6 +80,15 @@ public static class GodotVariantText
 
         /// <summary>The ids of the sub-resources named.</summary>
         public List<string> Inner { get; } = [];
+
+        /// <summary>The <c>res://</c> files named with no uid to find them by instead.</summary>
+        public List<string> Files { get; } = [];
+
+        /// <summary>The classes of the objects written.</summary>
+        public List<string> Classes { get; } = [];
+
+        /// <summary>What was written that an older Godot's reader refuses, and the first Godot that takes it.</summary>
+        public List<(string Words, Version Since)> Newer { get; } = [];
 
         public Token Next()
         {
@@ -313,6 +336,10 @@ public static class GodotVariantText
             }
             if (Numbers.Contains(id))
             {
+                if (id.Contains("Vector4", StringComparison.Ordinal))
+                {
+                    Newer.Add((id, Vector4Arrays));
+                }
                 return NumbersIn().WhyNot;
             }
             return id switch
@@ -321,13 +348,19 @@ public static class GodotVariantText
                 "PackedStringArray" or "PoolStringArray" or "StringArray" => Strings(),
                 "NodePath" => Next() != Token.RoundOpen || Next() != Token.Text || Next() != Token.RoundClose ? "NodePath takes a string" : null,
                 "RID" => Rid(),
-                "Signal" or "Callable" => Next() != Token.RoundOpen || Next() != Token.RoundClose ? $"{id} takes nothing" : null,
+                "Signal" or "Callable" => Empty(id),
                 "Object" => OfClass(depth),
                 "Resource" or "SubResource" or "ExtResource" => Next() != Token.RoundOpen ? $"'(' is expected after {id}" : Reference(id),
                 "Array" => TypedArray(depth),
                 "Dictionary" => TypedDictionary(depth),
                 _ => $"{id} is no value",
             };
+        }
+
+        private string? Empty(string id)
+        {
+            Newer.Add((id, Callables));
+            return Next() != Token.RoundOpen || Next() != Token.RoundClose ? $"{id} takes nothing" : null;
         }
 
         private static bool IsNumberWord(string word) => word is "inf" or "-inf" or "inf_neg" or "nan";
@@ -377,6 +410,7 @@ public static class GodotVariantText
             Token token = Next();
             if (token == Token.Text)
             {
+                Newer.Add(("Bytes as base64", Vector4Arrays));
                 return !Base64.IsValid(said) ? "the bytes are no base64" : Next() != Token.RoundClose ? "')' is expected after the bytes" : null;
             }
             while (token != Token.RoundClose)
@@ -450,7 +484,12 @@ public static class GodotVariantText
         /// <summary>An object by its class and its properties' strings and values.</summary>
         private string? OfClass(int depth)
         {
-            if (Next() != Token.RoundOpen || Next() != Token.Word || Next() != Token.Comma)
+            if (Next() != Token.RoundOpen || Next() != Token.Word)
+            {
+                return "Object takes its class and a comma first";
+            }
+            Classes.Add(said);
+            if (Next() != Token.Comma)
             {
                 return "Object takes its class and a comma first";
             }
@@ -495,6 +534,8 @@ public static class GodotVariantText
                 {
                     return "Resource takes a path in quotes";
                 }
+                string first = said;
+                string? second = null;
                 token = Next();
                 if (token == Token.Comma)
                 {
@@ -502,7 +543,16 @@ public static class GodotVariantText
                     {
                         return "Resource takes a path in quotes";
                     }
+                    second = said;
                     token = Next();
+                }
+                if (second is not null && IsUid(first) == IsUid(second))
+                {
+                    return "Resource takes one path and one uid";
+                }
+                if (second is null && first.StartsWith("res://", StringComparison.Ordinal))
+                {
+                    Files.Add(first);
                 }
                 return token == Token.RoundClose ? null : "')' is expected after a resource's path";
             }
@@ -513,6 +563,8 @@ public static class GodotVariantText
             (kind == "ExtResource" ? Externals : Inner).Add(said);
             return Next() == Token.RoundClose ? null : "')' is expected after a resource's id";
         }
+
+        private static bool IsUid(string path) => path.StartsWith("uid://", StringComparison.Ordinal);
 
         /// <summary>A typed container's element type, up to the token that ends it: a type's name, however Godot takes it (one
         /// it doesn't know leaves the container untyped), or a script's resource.</summary>
@@ -558,6 +610,7 @@ public static class GodotVariantText
             {
                 return "Dictionary takes its types in brackets";
             }
+            Newer.Add(("A typed Dictionary", TypedDictionaries));
             return ElementType(Token.Comma) ?? ElementType(Token.SquareClose) ?? (Next() != Token.RoundOpen || Next() != Token.CurlyOpen ? "Dictionary[…] takes a dictionary in parentheses"
                 : Entries(depth + 1) ?? (Next() != Token.RoundClose ? "')' is expected after the dictionary" : null));
         }

@@ -58,6 +58,9 @@ public sealed class GodotItemsEditor : Border
     /// <summary>The last change asked for, the next one's turn coming once it ends.</summary>
     private Task lastChange = Task.CompletedTask;
 
+    /// <summary>How each field hands on what is typed in it, by the row it is in.</summary>
+    private readonly List<(object Row, Action Take)> typed = [];
+
     public GodotItemsEditor(GodotGame game, long element, GodotProperty property, GodotHint hint, IGodotTuner tuner)
         : this(property.Name, property.Type, property.Value, hint, tuner, async value =>
         {
@@ -133,6 +136,7 @@ public sealed class GodotItemsEditor : Border
         showing = true;
         rows.Children.Clear();
         fields.Clear();
+        typed.Clear();
         showing = false;
         int count = Entries ? Pairs.Count : Listed.Count;
         rowsNow.RemoveRange(Math.Min(count, rowsNow.Count), Math.Max(0, rowsNow.Count - count));
@@ -178,9 +182,9 @@ public sealed class GodotItemsEditor : Border
         object asked = rowsNow[index];
         TextBlock at = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, Text = index.ToString(System.Globalization.CultureInfo.InvariantCulture), VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         Control field = Opens(Listed[index], $"{name}[{index}]", asked, Replaced) is { } opens ? opens
-            : Field(Listed[index], text => InTurn(asked, now => SetItemAsync(now, text)));
+            : Field(Listed[index], asked, text => InTurn(asked, now => SetItemAsync(now, text)));
         Grid.SetColumn(field, 1);
-        Button remove = ToolButtons.Of(IconKeys.Close, $"Remove item {index}", () => InTurn(asked, RemoveAsync));
+        Button remove = ToolButtons.Of(IconKeys.Close, $"Remove item {index}", () => Remove(asked));
         Grid.SetColumn(remove, 2);
         row.Children.Add(at);
         row.Children.Add(field);
@@ -193,12 +197,12 @@ public sealed class GodotItemsEditor : Border
         Grid row = new() { ColumnDefinitions = new ColumnDefinitions("2*,3*,Auto") };
         KeyValuePair<object?, object?> entry = Pairs[index];
         object asked = rowsNow[index];
-        TextBox key = Field(entry.Key, text => InTurn(asked, now => SetEntryAsync(now, text, key: true)));
+        TextBox key = Field(entry.Key, asked, text => InTurn(asked, now => SetEntryAsync(now, text, key: true)));
         Control value = Opens(entry.Value, $"{name}[{GodotVariant.Shown(entry.Key, quoted: true)}]", asked, ReplacedValue) is { } opens ? opens
-            : Field(entry.Value, text => InTurn(asked, now => SetEntryAsync(now, text, key: false)));
+            : Field(entry.Value, asked, text => InTurn(asked, now => SetEntryAsync(now, text, key: false)));
         value.Margin = new Thickness(4, 0, 0, 0);
         Grid.SetColumn(value, 1);
-        Button remove = ToolButtons.Of(IconKeys.Close, $"Remove {GodotVariant.Shown(entry.Key, quoted: true)}", () => InTurn(asked, RemoveAsync));
+        Button remove = ToolButtons.Of(IconKeys.Close, $"Remove {GodotVariant.Shown(entry.Key, quoted: true)}", () => Remove(asked));
         Grid.SetColumn(remove, 2);
         row.Children.Add(key);
         row.Children.Add(value);
@@ -283,9 +287,23 @@ public sealed class GodotItemsEditor : Border
             && GodotVariant.Items(whole) is { } listed && index < listed.Count ? listed[index] : fallback;
     }
 
-    /// <summary>A field showing a value as it is typed back, which hands what was typed on at Enter or as it is left, where
-    /// that differs from what it showed; Escape puts back what it showed.</summary>
-    private TextBox Field(object? value, Action<string> taken)
+    /// <summary>A row's Remove pressed: a button that takes no focus leaves what is typed in another row's field unhanded, which
+    /// the rows made again would lose, so it is handed on first; what is typed in the row going goes with it.</summary>
+    private void Remove(object row)
+    {
+        foreach ((object each, Action take) in typed.ToList())
+        {
+            if (each != row)
+            {
+                take();
+            }
+        }
+        InTurn(row, RemoveAsync);
+    }
+
+    /// <summary>A field showing a value as it is typed back in a row, which hands what was typed on at Enter or as it is left,
+    /// where that differs from what it showed; Escape puts back what it showed.</summary>
+    private TextBox Field(object? value, object row, Action<string> taken)
     {
         string was = GodotVariant.Shown(value, quoted: value is string or GodotName or GodotNodePath);
         TextBox field = new TextBox { FontSize = 12, Text = was, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
@@ -304,6 +322,7 @@ public sealed class GodotItemsEditor : Border
         };
         field.LostFocus += (_, _) => Take();
         fields.Add(field);
+        typed.Add((row, Take));
         return field;
 
         void Take()

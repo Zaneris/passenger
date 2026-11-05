@@ -65,6 +65,38 @@ public class GodotContainersTests
         Assert.Equal(held, GodotVariant.Literal(GodotVariant.Shown(new GodotNodePath([held], [], false), quoted: true)));
     }
 
+    [Theory]
+    [InlineData("\"\\u00e9\"", "é")]
+    [InlineData("\"é\"", "é")]
+    [InlineData("\"\\U01F600\"", "😀")]
+    [InlineData("\"\\ud83d\\ude00\"", "😀")]
+    [InlineData("\"\\a\\b\\f\\n\\r\\t\\v\"", "\a\b\f\n\r\t\v")]
+    [InlineData("\"\\'\\\"\\\\\"", "'\"\\")]
+    [InlineData("&\"\\u0041\"", "A")]
+    public void A_literal_says_what_GDScript_reads_of_every_escape(string typed, string said)
+    {
+        Assert.Equal(said, GodotVariant.Literal(typed));
+    }
+
+    [Theory]
+    [InlineData("\"\\q\"")]
+    [InlineData("\"\\ud83d\"")]
+    [InlineData("\"\\ude00\\ud83d\"")]
+    [InlineData("\"\\u00e\"")]
+    [InlineData("\"\\U00D83D\"")]
+    [InlineData("\"\\U110000\"")]
+    public void An_escape_GDScript_refuses_makes_no_literal(string typed)
+    {
+        Assert.Null(GodotVariant.Literal(typed));
+    }
+
+    [Fact]
+    public void A_scenes_string_reads_its_escapes_as_Godots_variant_text_does()
+    {
+        Assert.Equal("q\ba", GodotVariant.OfScene(GodotType.String, "\"\\q\\b\\a\"").Value);
+        Assert.Equal("é", GodotVariant.OfScene(GodotType.String, "\"\\u00e9\"").Value);
+    }
+
     [Fact]
     public void Editing_the_words_of_a_path_a_container_shows_leaves_its_backslash_a_backslash()
     {

@@ -63,6 +63,59 @@ public class GodotVariantTextTests
     }
 
     [Fact]
+    public void A_file_not_in_the_project_is_refused_where_Godot_loads_by_its_path_alone()
+    {
+        GodotVariantBounds project = new(null, path => path == "res://here.tres", null);
+        Assert.Null(GodotVariantText.WhyNot("Resource(\"res://here.tres\")", Bare, project));
+        Assert.Equal("the project has no res://missing.tres", GodotVariantText.WhyNot("Resource(\"res://missing.tres\")", Bare, project));
+        Assert.Equal("the project has no res://missing.tres", GodotVariantText.WhyNot("[Resource(\"res://missing.tres\")]", Bare, project));
+        Assert.Null(GodotVariantText.WhyNot("Resource(\"uid://abc\", \"res://missing.tres\")", Bare, project));
+        Assert.Null(GodotVariantText.WhyNot("Resource(\"res://missing.tres\")", Bare));
+    }
+
+    [Fact]
+    public void A_resource_names_one_path_and_one_uid_at_most()
+    {
+        Assert.Equal("Resource takes one path and one uid", GodotVariantText.WhyNot("Resource(\"res://a.tres\", \"res://b.tres\")", Bare));
+        Assert.Equal("Resource takes one path and one uid", GodotVariantText.WhyNot("Resource(\"uid://a\", \"uid://b\")", Bare));
+    }
+
+    [Fact]
+    public void A_class_the_engine_makes_no_object_of_is_refused()
+    {
+        GodotVariantBounds project = new(null, null, named => named == "Node");
+        Assert.Null(GodotVariantText.WhyNot("Object(Node,)", Bare, project));
+        Assert.Equal("Godot makes no object of class Unknown", GodotVariantText.WhyNot("Object(Unknown,)", Bare, project));
+        Assert.Equal("Godot makes no object of class Unknown", GodotVariantText.WhyNot("{\"a\": Object(Unknown,)}", Bare, project));
+        Assert.Null(GodotVariantText.WhyNot("Object(Unknown,)", Bare));
+    }
+
+    [Theory]
+    [InlineData("4.0", "Signal()", "Signal needs Godot 4.1 or newer, and this one is 4.0")]
+    [InlineData("4.0", "Callable()", "Callable needs Godot 4.1 or newer, and this one is 4.0")]
+    [InlineData("4.2.2", "PackedVector4Array(1, 2, 3, 4)", "PackedVector4Array needs Godot 4.3 or newer, and this one is 4.2")]
+    [InlineData("4.2", "PoolVector4Array(1, 2, 3, 4)", "PoolVector4Array needs Godot 4.3 or newer, and this one is 4.2")]
+    [InlineData("4.2", "Vector4Array(1, 2, 3, 4)", "Vector4Array needs Godot 4.3 or newer, and this one is 4.2")]
+    [InlineData("4.2", "PackedByteArray(\"AQI=\")", "Bytes as base64 needs Godot 4.3 or newer, and this one is 4.2")]
+    [InlineData("4.3", "Dictionary[String, int]({\"a\": 1})", "A typed Dictionary needs Godot 4.4 or newer, and this one is 4.3")]
+    public void What_an_older_Godots_reader_refuses_is_refused_for_it(string engine, string text, string why)
+    {
+        Assert.Equal(why, GodotVariantText.WhyNot(text, Bare, new GodotVariantBounds(Version.Parse(engine), null, null)));
+    }
+
+    [Theory]
+    [InlineData("4.1", "Signal()")]
+    [InlineData("4.3", "PackedVector4Array(1, 2, 3, 4)")]
+    [InlineData("4.3.0", "PackedByteArray(\"AQI=\")")]
+    [InlineData("4.4", "Dictionary[String, int]({\"a\": 1})")]
+    [InlineData("4.0", "PackedByteArray(1, 2)")]
+    [InlineData("4.7", "Vector2(1, 2)")]
+    public void What_a_Godots_reader_takes_is_read_for_it(string engine, string text)
+    {
+        Assert.Null(GodotVariantText.WhyNot(text, Bare, new GodotVariantBounds(Version.Parse(engine), null, null)));
+    }
+
+    [Fact]
     public void A_word_Godot_has_no_value_for_says_so()
     {
         Assert.Equal("not_a_value is no value", GodotVariantText.WhyNot("not_a_value", Bare));

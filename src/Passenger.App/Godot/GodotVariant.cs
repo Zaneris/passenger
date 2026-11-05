@@ -941,7 +941,7 @@ public static class GodotVariant
         if (type is GodotType.String or GodotType.StringName or GodotType.NodePath)
         {
             string inner = type == GodotType.NodePath && trimmed.StartsWith("NodePath(", StringComparison.Ordinal) && trimmed.EndsWith(')') ? trimmed["NodePath(".Length..^1] : trimmed;
-            return Literal(inner) is { } literal ? Parse(type, literal) : (null, "a quoted string");
+            return Quoted(inner, variantText: true) is { } literal ? Parse(type, literal) : (null, "a quoted string");
         }
         if (Count(type) > 0)
         {
@@ -1012,8 +1012,13 @@ public static class GodotVariant
     }
 
     /// <summary>What a GDScript string literal says (one in quotes, a name's after &amp;, a node path's after ^, its escapes
-    /// read), or null for text that is no one literal.</summary>
-    public static string? Literal(string text)
+    /// read as GDScript reads them), or null for text that is no one literal, an escape GDScript has none of making it none.</summary>
+    public static string? Literal(string text) => Quoted(text, variantText: false);
+
+    /// <summary>What a quoted string says, its escapes as GDScript reads them or, with <paramref name="variantText"/>, as a
+    /// scene's text does, where an escape it has none of is the character escaped; null for text that is no one string, or
+    /// half of a surrogate pair.</summary>
+    private static string? Quoted(string text, bool variantText)
     {
         string trimmed = text.Trim();
         int open = trimmed.StartsWith("&\"", StringComparison.Ordinal) || trimmed.StartsWith("^\"", StringComparison.Ordinal) ? 1 : 0;
@@ -1022,7 +1027,8 @@ public static class GodotVariant
             return null;
         }
         StringBuilder said = new();
-        for (int i = open + 1; i < trimmed.Length - 1; i++)
+        int close = trimmed.Length - 1;
+        for (int i = open + 1; i < close; i++)
         {
             char c = trimmed[i];
             if (c == '"')
@@ -1034,19 +1040,63 @@ public static class GodotVariant
                 said.Append(c);
                 continue;
             }
-            if (++i >= trimmed.Length - 1)
+            if (++i >= close)
             {
                 return null;
             }
-            said.Append(trimmed[i] switch
+            char escaped = trimmed[i];
+            if (escaped is 'u' or 'U')
             {
+                int digits = escaped == 'U' ? 6 : 4;
+                if (i + digits >= close || !int.TryParse(trimmed.AsSpan(i + 1, digits), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out int code) || code > 0x10FFFF)
+                {
+                    return null;
+                }
+                if (digits == 6 && code is >= 0xD800 and <= 0xDFFF)
+                {
+                    return null;
+                }
+                said.Append(digits == 4 ? ((char)code).ToString() : char.ConvertFromUtf32(code));
+                i += digits;
+                continue;
+            }
+            char? read = escaped switch
+            {
+                'b' => '\b',
+                'f' => '\f',
                 'n' => '\n',
-                't' => '\t',
                 'r' => '\r',
-                char other => other,
-            });
+                't' => '\t',
+                '"' or '\\' => escaped,
+                'a' when !variantText => '\a',
+                'v' when !variantText => '\v',
+                '\'' when !variantText => '\'',
+                _ when variantText => escaped,
+                _ => null,
+            };
+            if (read is not { } known)
+            {
+                return null;
+            }
+            said.Append(known);
         }
-        return said.ToString();
+        return WellFormed(said) ? said.ToString() : null;
+
+        static bool WellFormed(StringBuilder made)
+        {
+            for (int i = 0; i < made.Length; i++)
+            {
+                if (char.IsHighSurrogate(made[i]) && i + 1 < made.Length && char.IsLowSurrogate(made[i + 1]))
+                {
+                    i++;
+                }
+                else if (char.IsSurrogate(made[i]))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 
     /// <summary>A real number as Godot writes it: whole ones without a fraction, the rest in their shortest round-trip form.</summary>

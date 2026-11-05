@@ -71,9 +71,17 @@ public partial class MainWindow
         string path = node.PathInScene;
         string? scriptName = script is null ? null : Path.GetFileName(script);
         IReadOnlyList<GodotBeneath> beneath = Beneath(scenes, res, tree);
+        GodotEngineApis apis = session.GodotApis;
         sceneProperties.Show(new GodotSceneValues(scene, path, node.Name, type, file => Editors.TextOf(file)?.ToString(), (name, changes) => Assist.ApplyFileChangesAsync(name, changes),
-            now => GodotKeep.NodeIn(GodotFile.Parse(now), path) is { } section ? GodotSceneValues.Of(scene, now, section, type, classes, exports, scriptName, beneath) : []));
+            now => GodotKeep.NodeIn(GodotFile.Parse(now), path) is { } section ? GodotSceneValues.Of(scene, now, section, type, classes, exports, scriptName, beneath) : [],
+            async () => BoundsOf(folder, await apis.ApiAsync())));
     }
+
+    /// <summary>What a Godot project holds a value's text to: its files on the disk, and the Godot found's version and classes
+    /// (none known with no Godot; a GDExtension's classes are its own, so with one in the project a class is left to Godot).</summary>
+    private static GodotVariantBounds BoundsOf(string folder, GodotEngineApi? api) => new(api?.Version,
+        file => File.Exists(Path.Combine(folder, file["res://".Length..].Split("::")[0])),
+        api is null || File.Exists(Path.Combine(folder, ".godot", "extension_list.cfg")) ? null : named => api.Classes.TryGetValue(named, out GodotApiClass? made) && made.Instantiable);
 
     /// <summary>The node a row of a scene's outline stands for: a node's own, or the node a row under it is of (its script,
     /// the scene it instances, a connection it sends), so the caret on such a line still shows that node's properties.</summary>

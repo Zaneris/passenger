@@ -127,7 +127,6 @@ public sealed partial class LiveTreeController : IGodotTuner
     {
         UiThread.Check();
         GodotKeeping keeping = new(res => Read(tuning, res));
-        List<GodotKept> plans = [];
         List<(GodotTuned Tuned, GodotKept Kept)> made = [];
         List<string> refused = [];
         foreach (GodotTuned tuned in values)
@@ -137,7 +136,6 @@ public sealed partial class LiveTreeController : IGodotTuner
                 : GodotKeep.Plan(tuned.Place, tuned.Name, tuned.Value, tuned.Property, read, parts.Editors.ParseOptions));
             if (kept is not null)
             {
-                plans.Add(kept);
                 made.Add((tuned, kept));
             }
             else
@@ -145,12 +143,12 @@ public sealed partial class LiveTreeController : IGodotTuner
                 refused.Add($"{tuned.NodeName}.{tuned.Name} is not kept: {whyNot}");
             }
         }
-        if (plans.Count == 0 && refused.Count == 1)
+        if (made.Count == 0 && refused.Count == 1)
         {
             parts.Say(refused[0]);
             return;
         }
-        GodotKeepPreview preview = new(title, plans, refused);
+        GodotKeepPreview preview = new(title, keeping.Planned, refused);
         TaskCompletionSource<bool> answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         preview.Done += (_, keep) =>
         {

@@ -287,6 +287,32 @@ public class GodotTuningTests
     }
 
     [Fact]
+    public void Each_value_kept_together_is_shown_at_its_line_in_the_text_they_all_leave()
+    {
+        GodotKeeping keeping = new(Files(("res://main.tscn", Scene)));
+        Assert.NotNull(keeping.Add(read => GodotKeep.Plan(Sprite, "position", new GodotMath(GodotType.Vector2, [8, 9]), Property("position", GodotType.Vector2), read, _ => CSharpParsing.Default)).Kept);
+        Assert.NotNull(keeping.Add(read => GodotKeep.Plan(Sprite, "visible", false, Property("visible", GodotType.Bool), read, _ => CSharpParsing.Default)).Kept);
+        Assert.NotNull(KeepTexture(keeping, "texture", "res://a.png").Kept);
+        Assert.NotNull(KeepTexture(keeping, "normal", "res://b.png").Kept);
+
+        string[] lines = Assert.Single(keeping.Files).Now.Split('\n');
+        Assert.Equal(4, keeping.Planned.Count);
+        foreach (GodotKept kept in keeping.Planned)
+        {
+            Assert.True(lines[kept.Line] == kept.After, $"The preview says {kept.After} is at line {kept.Line + 1}, which will read {lines[kept.Line]}");
+        }
+    }
+
+    [Fact]
+    public void A_value_whose_own_resource_moves_its_line_takes_no_line_another_value_wrote()
+    {
+        GodotKeeping keeping = new(Files(("res://main.tscn", Scene)));
+        Assert.NotNull(KeepTexture(keeping, "texture", "res://a.png").Kept);
+        Assert.Equal("another value is kept on that line of main.tscn", KeepTexture(keeping, "texture", "res://b.png").WhyNot);
+        Assert.Contains("texture = ExtResource", Assert.Single(keeping.Planned).After, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void One_new_resource_kept_for_two_values_is_written_and_counted_once()
     {
         GodotKeeping keeping = new(Files(("res://main.tscn", Scene)));
