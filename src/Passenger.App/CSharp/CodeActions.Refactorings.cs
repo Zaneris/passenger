@@ -231,8 +231,10 @@ internal sealed partial class CodeActions
             // What uses it from inside what goes with it (a recursive call, a constructor of a type) goes too.
             IReadOnlyList<LspLocation> referenced = await lsp.ReferencesAsync(caret);
             IReadOnlyList<LspLocation> inXaml = await context.Languages.Xaml.CodeUsesAsync(document, lsp, caret);
-            Dictionary<string, string> paths = DocumentUris.ToPaths([.. referenced.Select(r => r.Uri), .. inXaml.Select(r => r.Uri)]);
+            IReadOnlyList<LspLocation> inScenes = await context.Languages.CSharp.GodotUsesAsync(document, lsp, caret);
+            Dictionary<string, string> paths = DocumentUris.ToPaths([.. referenced.Select(r => r.Uri), .. inXaml.Select(r => r.Uri), .. inScenes.Select(r => r.Uri)]);
             List<LspLocation> uses = [.. referenced
+                .Concat(inScenes)
                 .Where(r => paths[r.Uri] != path || !removal.Range.Contains(lines.OffsetOf(r.Range.Start)))
                 .Concat(inXaml)
                 .OrderBy(r => paths[r.Uri], StringComparer.Ordinal).ThenBy(r => r.Range.Start.Line).ThenBy(r => r.Range.Start.Character)];

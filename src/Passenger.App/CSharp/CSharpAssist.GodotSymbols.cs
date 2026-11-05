@@ -106,17 +106,13 @@ internal sealed partial class CSharpAssist
                 {
                     if (section.Section.Property(named.Name) is { } property)
                     {
-                        Add(written, property.KeyStart, property.KeyStart + named.Name.Length);
+                        Add(written, property.NameStart, property.NameStart + named.Name.Length);
                     }
                 }
             }
-            foreach ((string res, GodotFile file) in scenes.Files)
+            foreach ((string res, GodotEntry property) in scenes.ResourceKeys(scripts.Contains, named.Name))
             {
-                if (file.Resource is { } resource && scripts.Contains(file.External(resource.Property("script")?.Value is { Call: "ExtResource", Text: { } id } ? id : null)?.Path)
-                    && resource.Property(named.Name) is { } property)
-                {
-                    Add(res, property.KeyStart, property.KeyStart + named.Name.Length);
-                }
+                Add(res, property.NameStart, property.NameStart + named.Name.Length);
             }
         }
         else
@@ -196,8 +192,8 @@ internal sealed partial class CSharpAssist
             })]))]
             : [];
 
-    /// <summary>Where the scenes set an exported variable of a GDScript (<paramref name="script"/>, a res:// path) on a node
-    /// whose class takes in the script, by scene and line, for Safe Delete to refuse.</summary>
+    /// <summary>Where the project's files set an exported variable of a GDScript (<paramref name="script"/>, a res:// path) on a
+    /// node or resource whose class takes in the script, by file and line, for Safe Delete to refuse.</summary>
     internal async Task<IReadOnlyList<Passenger.Workspace.GDScript.GDScriptPlace>> GodotSetsAsync(string path, string script, string property)
     {
         if (context.GodotOf(path) is not ({ } index, { } folder))
@@ -221,6 +217,10 @@ internal sealed partial class CSharpAssist
                         sets.Add(new($"{Path.GetFileName(scenes.FileOf(written) ?? written)}:{at.Section.Line + 1}", 0, 0, $"a scene sets it on {node.Name}"));
                     }
                 }
+            }
+            foreach ((string res, GodotEntry key) in scenes.ResourceKeys(s => TakesIn(scenes, s, script), property))
+            {
+                sets.Add(new($"{Path.GetFileName(scenes.FileOf(res) ?? res)}:{scenes.Files[res].LineOf(key.KeyStart) + 1}", 0, 0, "a resource sets it"));
             }
             return (IReadOnlyList<Passenger.Workspace.GDScript.GDScriptPlace>)[.. sets.Distinct()];
         });
@@ -362,8 +362,11 @@ internal sealed partial class CSharpAssist
         }
     }
 
-    /// <summary>Each key of the scenes setting a GDScript's variable (<paramref name="script"/>, a res:// path) on a node
-    /// whose class takes in the script, its section's own or a scene's instancing it, each once.</summary>
+    /// <summary>Whether a script of a resource is a GDScript whose class takes in another.</summary>
+    private static bool TakesIn(GodotScenes scenes, string running, string script) => GodotScriptDeclarations.IsScript(running) && scenes.ChainOf(running).Runs(script);
+
+    /// <summary>Each key of the project's files setting a GDScript's variable (<paramref name="script"/>, a res:// path) on a
+    /// node whose class takes in the script, its section's own or a scene's instancing it, or on a resource whose does, each once.</summary>
     private static IEnumerable<LspLocation> SceneSets(GodotScenes scenes, string script, string variable)
     {
         HashSet<(string, int)> seen = [];
@@ -380,14 +383,30 @@ internal sealed partial class CSharpAssist
                 {
                     foreach (GodotEntry key in at.Section.Properties.Where(p => p.Key == variable))
                     {
-                        if (seen.Add((written, key.KeyStart)) && scenes.FileOf(written) is { } path && scenes.Files.TryGetValue(written, out GodotFile? file))
+                        if (Placed(written, key) is { } place)
                         {
-                            ServerLines read = lines.TryGetValue(written, out ServerLines? kept) ? kept : lines[written] = ServerLines.Of(TextSnapshot.From(file.Text));
-                            yield return new LspLocation(DocumentUris.FromPath(path), read.RangeOf(new TextRange(key.KeyStart, variable.Length)));
+                            yield return place;
                         }
                     }
                 }
             }
+        }
+        foreach ((string res, GodotEntry key) in scenes.ResourceKeys(s => TakesIn(scenes, s, script), variable))
+        {
+            if (Placed(res, key) is { } place)
+            {
+                yield return place;
+            }
+        }
+
+        LspLocation? Placed(string written, GodotEntry key)
+        {
+            if (!seen.Add((written, key.KeyStart)) || scenes.FileOf(written) is not { } path || !scenes.Files.TryGetValue(written, out GodotFile? file))
+            {
+                return null;
+            }
+            ServerLines read = lines.TryGetValue(written, out ServerLines? kept) ? kept : lines[written] = ServerLines.Of(TextSnapshot.From(file.Text));
+            return new LspLocation(DocumentUris.FromPath(path), read.RangeOf(new TextRange(key.NameStart, variable.Length)));
         }
     }
 

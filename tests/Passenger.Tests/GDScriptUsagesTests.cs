@@ -143,6 +143,35 @@ public sealed class GDScriptUsagesTests
         }
     }
 
+    /// <summary>A variable set on the resources its script runs in, a resource file's own section and a scene's sub-resource,
+    /// is named by those keys: Rename takes them with it, or each would load its default, and Safe Delete refuses, naming them.</summary>
+    [AvaloniaFact]
+    public void A_variable_set_on_a_scripted_resource_is_renamed_there_and_refused_a_safe_delete()
+    {
+        const string stats = "[gd_resource type=\"Resource\" format=3]\n\n[ext_resource type=\"Script\" path=\"res://player.gd\" id=\"1\"]\n\n[resource]\nscript = ExtResource(\"1\")\nspeed = 42\n";
+        TestFolders.Write(folder, "player.gd", Player.Replace("signal hurt(amount)", "signal hurt(amount)\n@export var speed = 1", StringComparison.Ordinal));
+        TestFolders.Write(folder, "stats.tres", stats);
+        TestFolders.Write(folder, "main.tscn", Scene.Replace("[node name=\"Main\"", "[sub_resource type=\"Resource\" id=\"held\"]\nscript = ExtResource(\"1\")\nspeed = 7\n\n[node name=\"Main\"", StringComparison.Ordinal));
+        (MainWindow window, TaskCompletionSource release) = Open();
+        try
+        {
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "var spe");
+            Ui.Run(window, AppActions.SafeDelete, settle: false);
+            bool refused = Ui.Pumped(() => window.Status?.Contains("a resource sets it", StringComparison.Ordinal) == true, TimeSpan.FromSeconds(60));
+            Assert.True(refused, $"Safe Delete named no resource's key: {window.Status}");
+
+            Renamed(window, "rate");
+            bool renamed = Ui.Pumped(() => File.ReadAllText(Path.Combine(folder, "stats.tres")).Contains("rate = 42", StringComparison.Ordinal), TimeSpan.FromSeconds(60));
+            Assert.True(renamed, $"The resource's key did not follow its variable: {window.Status}");
+            Assert.Contains("rate = 7", File.ReadAllText(Path.Combine(folder, "main.tscn")), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+            release.SetResult();
+        }
+    }
+
     /// <summary>A rename asked right after a script changed on disk, before the folder's watcher can have told of it, renames
     /// in the script as the disk now has it, where it was refused as changed since it was read.</summary>
     [AvaloniaFact]

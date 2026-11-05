@@ -382,6 +382,24 @@ public sealed class GodotScenes
     public IReadOnlyList<(string Scene, GodotTreeNode Node)> AttachedOf(string script) =>
         [.. RunsOf(script).Where(r => r.Node.Written.Any(w => w.Scene == r.Scene && Files[r.Scene].External(w.Node.Script)?.Path == script))];
 
+    /// <summary>Each key setting a property on a resource a script runs in, which no node's section writes: a resource file's
+    /// own <c>[resource]</c>, and any file's <c>[sub_resource]</c>, whose <c>script</c> is one <paramref name="runs"/> takes
+    /// in; by res:// path, in the files' order.</summary>
+    public IEnumerable<(string Res, GodotEntry Key)> ResourceKeys(Func<string, bool> runs, string property)
+    {
+        foreach ((string res, GodotFile file) in Files.OrderBy(f => f.Key, StringComparer.Ordinal))
+        {
+            foreach (GodotSection section in file.Sections.Where(s => s.Tag is "resource" or "sub_resource"))
+            {
+                if (file.External(section.Property("script")?.Value is { Call: "ExtResource", Text: { } id } ? id : null)?.Path is { } script && runs(script)
+                    && section.Property(property) is { } key)
+                {
+                    yield return (res, key);
+                }
+            }
+        }
+    }
+
     /// <summary>Where a node path leads from a node: its names in turn, "." and ".." among them, a first <c>%Name</c> among the
     /// unique nodes it finds, what follows a ':' (a property's) left aside. Unknown for an absolute path, one above the
     /// tree's root, or one into a placeholder's nodes or those of a scene no text says (<see cref="GodotTreeNode.NodesUnread"/>).</summary>

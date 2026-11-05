@@ -18,7 +18,14 @@ public sealed record GodotValue(int Start, int End, string? Call, string? Text, 
 
 /// <summary>A key and its value: an attribute of a tag (<c>name="Score"</c>) or a property after it (<c>text = "0"</c>),
 /// with where its key starts.</summary>
-public sealed record GodotEntry(string Key, int KeyStart, GodotValue Value);
+public sealed record GodotEntry(string Key, int KeyStart, GodotValue Value)
+{
+    /// <summary>Whether its key is written as a string, as Godot writes one holding a character past ASCII.</summary>
+    public bool Quoted { get; init; }
+
+    /// <summary>Where its key's characters start, past a string's quote.</summary>
+    public int NameStart => Quoted ? KeyStart + 1 : KeyStart;
+}
 
 /// <summary>One tag of a Godot text file and the properties written after it until the next: its name
 /// (<c>node</c>, <c>ext_resource</c>, <c>connection</c>), where it lies and on which line (from zero).</summary>
@@ -297,7 +304,7 @@ public sealed class GodotFile
         }
         int valueStart = SkipSpaces(text, at + 1);
         int end = ValueEnd(text, valueStart, inTag);
-        entry = new GodotEntry(key, keyStart, ValueAt(text, valueStart, end));
+        entry = new GodotEntry(key, keyStart, ValueAt(text, valueStart, end)) { Quoted = text[keyStart] == '"' };
         return end;
     }
 

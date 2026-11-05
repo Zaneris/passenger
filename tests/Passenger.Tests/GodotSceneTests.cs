@@ -656,6 +656,33 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
+    /// <summary>An export set on a sub-resource running the script is its key too: the rename takes it with the node's, or the
+    /// resource would load its default.</summary>
+    [AvaloniaFact]
+    public void Renaming_an_export_renames_its_key_on_a_sub_resource_running_the_script()
+    {
+        File.WriteAllText(ScenePath, Scene.Replace("[sub_resource type=\"Theme\" id=\"Theme_1\"]",
+            "[sub_resource type=\"Theme\" id=\"Theme_1\"]\n\n[sub_resource type=\"Resource\" id=\"Held_1\"]\nscript = ExtResource(\"1_main\")\nSpeed = 9.0", StringComparison.Ordinal));
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "public float Spe");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "Speed", () => $"Rename's box on the export ({window.Assist.Renaming}; {window.Status})");
+            window.KeyTextInput("Power");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => File.ReadAllText(ScenePath).Contains("Power = 2.5", StringComparison.Ordinal),
+                () => $"the scene's keys to follow the export ({window.Status}): {File.ReadAllText(ScenePath)}", TimeSpan.FromMinutes(1));
+            Assert.Contains("Power = 9.0", File.ReadAllText(ScenePath), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A scene saved a moment before a rename, the folder's watcher yet to tell of it (here, never to), holds its keys
     /// where the save put them: the rename changes the key it names, never whatever now lies where the key was read.</summary>
     [AvaloniaFact]

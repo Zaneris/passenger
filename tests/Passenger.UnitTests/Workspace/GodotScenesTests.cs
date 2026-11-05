@@ -232,6 +232,26 @@ public class GodotScenesTests
         Assert.Null(scenes.RenameProblem(score, "Points"));
     }
 
+    /// <summary>A script's property is set on the resources it runs in as well as on nodes: a resource file's own section and
+    /// a sub-resource, of a resource or a scene, each its key's characters told past a quote; another script's are left.</summary>
+    [Fact]
+    public void A_scripted_resources_keys_are_found_in_a_resource_files_own_section_and_every_sub_resource()
+    {
+        const string stats = "[gd_resource type=\"Resource\" script_class=\"Stats\" format=3]\n\n[ext_resource type=\"Script\" path=\"res://stats.gd\" id=\"1_s\"]\n\n"
+            + "[sub_resource type=\"Resource\" id=\"inner\"]\nscript = ExtResource(\"1_s\")\n\"speed\" = 7\n\n[resource]\nscript = ExtResource(\"1_s\")\nspeed = 42\n";
+        const string main = "[gd_scene format=3]\n\n[ext_resource type=\"Script\" path=\"res://stats.gd\" id=\"1_s\"]\n[ext_resource type=\"Script\" path=\"res://other.gd\" id=\"2_o\"]\n\n"
+            + "[sub_resource type=\"Resource\" id=\"kept\"]\nscript = ExtResource(\"1_s\")\nspeed = 3\n\n[sub_resource type=\"Resource\" id=\"other\"]\nscript = ExtResource(\"2_o\")\nspeed = 9\n\n"
+            + "[node name=\"Main\" type=\"Node\"]\n";
+        Dictionary<string, GodotFile> files = new(StringComparer.Ordinal)
+        {
+            ["res://stats.tres"] = GodotFile.Parse(stats),
+            ["res://main.tscn"] = GodotFile.Parse(main),
+        };
+        List<(string Res, GodotEntry Key)> keys = [.. new GodotScenes("/game", files).ResourceKeys(s => s == "res://stats.gd", "speed")];
+        Assert.Equal(["res://main.tscn", "res://stats.tres", "res://stats.tres"], keys.Select(k => k.Res));
+        Assert.Equal(["speed = 3", "speed\" = 7", "speed = 42"], keys.Select(k => (k.Res == "res://main.tscn" ? main : stats)[k.Key.NameStart..].Split('\n')[0]));
+    }
+
     private static string Apply(string text, IReadOnlyList<TextEdit> edits)
     {
         foreach (TextEdit edit in edits.OrderByDescending(e => e.Start))
