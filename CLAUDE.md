@@ -236,9 +236,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 `src/Passenger.App`, by area:
 - **Shell.** Every open through `PassengerApp.OpenProject`; a `.slnf`'s left-out projects are never saved as the
   person's; a handler acts only while its session is bound (`ProjectSession.Bind`). A Passenger nobody sees
-  (`ShowsNoWindow`) runs Godot and browsers headless, a desktop app where nobody sees it (`UnseenApps`), and plays no
-  sound. Anything new on the toolbar goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press for the
-  caption's.
+  (`ShowsNoWindow`) runs Godot and browsers headless, a desktop app where nobody sees it (`UnseenApps`; what a start
+  runs read by `DesktopPrograms`, never `Built` alone), and plays no sound. Anything new on the toolbar goes inside
+  `ToolbarStart` or `ToolbarEnd`, or Windows takes a press for the caption's.
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; every editor through `ForEachEditor`; the one
   close `CloseTab`). A diff is an `OpenDocument.OfDiff` of no file, never in `Documents`, every one through
   `MainWindow.ShowDiff`. An SVG preview is a drawing (`ZoomedPicture`), never a bitmap; an HTML preview is never made in
