@@ -326,9 +326,9 @@ public static class OpenApiSchemas
     private static string Escaped(string name) => name.Replace("~", "~0", StringComparison.Ordinal).Replace("/", "~1", StringComparison.Ordinal);
 
     /// <summary>A value made from a schema, as a request's body starts: its example or default where it gives one, else its
-    /// first enum value, else of its first type (an object's every member, an array of one item, a string by its format,
-    /// 0, false), what a request does not send left out at every depth (<see cref="LeftOut"/>); null where the schema says
-    /// nothing of what it is.</summary>
+    /// first enum value, else what its parts make, else of its first type (an object's every member, an array of one item,
+    /// a string by its format, 0, false), what a request does not send left out at every depth (<see cref="LeftOut"/>); null
+    /// where the schema says nothing of what it is.</summary>
     public static JsonNode? Sample(OpenApiDocument document, JsonElement schema)
     {
         JsonNode? made = Make(document, schema, 0, []);
@@ -376,6 +376,37 @@ public static class OpenApiSchemas
     public static string SampleText(OpenApiDocument document, JsonElement schema) =>
         Sample(document, schema)?.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) ?? "{}";
 
+    /// <summary>What the parts held over a schema's value make: an object of their members and then its own <c>properties</c>,
+    /// a member written again taking the last, where any of those is an object; else the last value one made, as a part
+    /// narrows those before it; null where none made one.</summary>
+    private static JsonNode? MakeOfParts(OpenApiDocument document, JsonElement schema, IEnumerable<JsonElement> parts, int depth, HashSet<string> referred)
+    {
+        JsonObject? merged = null;
+        JsonNode? value = null;
+        foreach (JsonNode? part in parts.Select(p => Make(document, p, depth + 1, referred)))
+        {
+            if (part is JsonObject members)
+            {
+                merged ??= [];
+                foreach ((string name, JsonNode? member) in members.ToList())
+                {
+                    members.Remove(name);
+                    merged[name] = member;
+                }
+            }
+            else
+            {
+                value = part ?? value;
+            }
+        }
+        foreach (JsonProperty beside in JsonMembers.Properties(schema, "properties"))
+        {
+            merged ??= [];
+            merged[beside.Name] = Make(document, beside.Value, depth + 1, referred);
+        }
+        return merged ?? value;
+    }
+
     private static JsonNode? Make(OpenApiDocument document, JsonElement written, int depth, HashSet<string> referred)
     {
         string? reference = JsonMembers.Text(written, "$ref");
@@ -405,25 +436,9 @@ public static class OpenApiSchemas
             {
                 return JsonNode.Parse(listed.GetRawText());
             }
-            if (JsonMembers.Items(schema, "allOf") is { Count: > 0 } parts)
+            if (JsonMembers.Items(schema, "allOf") is { Count: > 0 } parts && MakeOfParts(document, schema, parts, depth, referred) is { } joined)
             {
-                JsonObject merged = [];
-                foreach (JsonNode? part in parts.Select(p => Make(document, p, depth + 1, referred)))
-                {
-                    if (part is JsonObject members)
-                    {
-                        foreach ((string name, JsonNode? member) in members.ToList())
-                        {
-                            members.Remove(name);
-                            merged[name] = member;
-                        }
-                    }
-                }
-                foreach (JsonProperty beside in JsonMembers.Properties(schema, "properties"))
-                {
-                    merged[beside.Name] = Make(document, beside.Value, depth + 1, referred);
-                }
-                return merged;
+                return joined;
             }
             if ((JsonMembers.Items(schema, "oneOf") is [var one, ..] ? one : JsonMembers.Items(schema, "anyOf") is [var any, ..] ? any : (JsonElement?)null) is { } choice)
             {

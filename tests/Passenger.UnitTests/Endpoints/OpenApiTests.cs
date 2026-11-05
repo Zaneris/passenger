@@ -321,6 +321,36 @@ public sealed class OpenApiTests
         Assert.Equal("""{"name":"string","qty":false,"note":"string"}""", OpenApiSchemas.Sample(given, held.RootElement)!.ToJsonString());
     }
 
+    /// <summary>An allOf need hold no object: 3.0 writes a nullable reference as a part beside <c>nullable</c>, and a part may
+    /// narrow the one before it, so a value is what its parts make, or of its own type where they say nothing of what it is.</summary>
+    [Fact]
+    public void A_body_made_from_an_all_of_of_no_object_is_the_value_its_parts_make()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse("""
+            { "openapi": "3.0.1",
+              "paths": { "/orders/{status}": { "get": { "operationId": "ByStatus",
+                "parameters": [ { "name": "status", "in": "path", "required": true, "schema": { "allOf": [ { "$ref": "#/components/schemas/Status" } ], "nullable": true } } ],
+                "responses": { "204": { "description": "None" } } } } },
+              "components": { "schemas": {
+                "Status": { "type": "string", "enum": [ "new", "paid" ] },
+                "Order": { "type": "object", "properties": {
+                  "status": { "allOf": [ { "$ref": "#/components/schemas/Status" } ], "nullable": true },
+                  "described": { "allOf": [ { "$ref": "#/components/schemas/Status" }, { "description": "Where the order stands." } ] },
+                  "narrowed": { "allOf": [ { "type": "string" }, { "enum": [ "open" ] } ] },
+                  "qty": { "allOf": [ { "type": "integer" } ] },
+                  "tags": { "allOf": [ { "type": "array", "items": { "type": "string" } } ] },
+                  "typed": { "type": "string", "allOf": [ { "minLength": 1 } ] },
+                  "listed": { "type": "array", "items": { "type": "integer" }, "allOf": [ { "minItems": 1 } ] },
+                  "unsaid": { "allOf": [ { "description": "Anything at all." } ] },
+                  "empty": { "allOf": [ { "type": "object" } ] },
+                  "parent": { "allOf": [ { "$ref": "#/components/schemas/Order" } ], "nullable": true } } } } } }
+            """)!;
+        using JsonDocument held = JsonDocument.Parse("""{ "$ref": "#/components/schemas/Order" }""");
+        Assert.Equal("""{"status":"new","described":"new","narrowed":"open","qty":0,"tags":["string"],"typed":"string","listed":[0],"unsaid":null,"empty":{},"parent":null}""",
+            OpenApiSchemas.Sample(given, held.RootElement)!.ToJsonString());
+        Assert.Contains("@status = new\n", OpenApiRequests.Entries(given, given.Operations, string.Empty, "host", null), StringComparison.Ordinal);
+    }
+
     /// <summary>A form's and a multipart body's fields are made from a schema too, so what a server sets is no field of either.</summary>
     [Fact]
     public void A_form_or_multipart_request_written_for_an_operation_has_no_field_its_schema_marks_read_only()
