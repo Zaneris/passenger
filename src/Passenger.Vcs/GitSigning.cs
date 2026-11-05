@@ -160,23 +160,79 @@ public sealed record Signer(CommitSigning Signing, GitAsker? Asker);
 public static class AllowedSigners
 {
     /// <summary>The file with the key listed for <paramref name="signer"/> to sign commits (namespaces="git"), after what
-    /// it has; null where a line lists that key already.</summary>
+    /// it has; null where a line already has git take that key's signatures for theirs.</summary>
     public static string? With(string file, string signer, string publicKey)
     {
         string[] key = publicKey.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (key.Length < 2 || !(key[0].StartsWith("ssh-", StringComparison.Ordinal) || key[0].StartsWith("ecdsa-", StringComparison.Ordinal) || key[0].StartsWith("sk-", StringComparison.Ordinal)))
+        if (key.Length < 2 || !IsKeyType(key[0]) || file.Split('\n', StringSplitOptions.TrimEntries).Any(line => Trusts(line, signer, key[1])))
         {
             return null;
         }
-        foreach (string line in file.Split('\n', StringSplitOptions.TrimEntries))
-        {
-            if (!line.StartsWith('#') && line.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(key[1], StringComparer.Ordinal))
-            {
-                return null;
-            }
-        }
         string before = file.Length == 0 || file.EndsWith('\n') ? file : file + "\n";
         return $"{before}{signer} namespaces=\"git\" {key[0]} {key[1]}\n";
+    }
+
+    private static bool IsKeyType(string word) =>
+        word.StartsWith("ssh-", StringComparison.Ordinal) || word.StartsWith("ecdsa-", StringComparison.Ordinal) || word.StartsWith("sk-", StringComparison.Ordinal);
+
+    /// <summary>Whether ssh-keygen takes a line to allow the key to sign commits as <paramref name="signer"/>: the key its
+    /// own, not a certificate authority's, the signer among its principals ("*", no email known, is any) and git among its
+    /// namespaces. A line's own time limits are left to it.</summary>
+    private static bool Trusts(string line, string signer, string key)
+    {
+        List<string> words = Pieces(line, c => c is ' ' or '\t');
+        int type = words.Count > 1 && IsKeyType(words[1]) ? 1 : 2;
+        if (line.StartsWith('#') || words.Count <= type + 1 || words[type + 1] != key)
+        {
+            return false;
+        }
+        List<string> options = type == 2 ? Pieces(words[1], c => c == ',') : [];
+        string? namespaces = options.FirstOrDefault(o => o.StartsWith("namespaces=", StringComparison.OrdinalIgnoreCase))?["namespaces=".Length..];
+        return !options.Contains("cert-authority", StringComparer.OrdinalIgnoreCase) && (signer == "*" || Listed(signer, words[0])) && (namespaces is null || Listed("git", namespaces));
+    }
+
+    /// <summary>A line's or an option list's pieces, parted where <paramref name="parts"/> says outside double quotes.</summary>
+    private static List<string> Pieces(string text, Func<char, bool> parts)
+    {
+        List<string> pieces = [];
+        int start = 0;
+        bool quoted = false;
+        for (int i = 0; i <= text.Length; i++)
+        {
+            if (i == text.Length || (!quoted && parts(text[i])))
+            {
+                if (i > start)
+                {
+                    pieces.Add(text[start..i]);
+                }
+                start = i + 1;
+            }
+            else if (text[i] == '"')
+            {
+                quoted = !quoted;
+            }
+        }
+        return pieces;
+    }
+
+    /// <summary>Whether a name is among ssh's patterns, read as ssh-keygen reads them: comma-separated, with '*' and '?',
+    /// one led by '!' refusing the name whatever else lists it.</summary>
+    private static bool Listed(string name, string patterns)
+    {
+        bool listed = false;
+        foreach (string pattern in patterns.Trim('"').Split(','))
+        {
+            bool refused = pattern.StartsWith('!');
+            if (System.IO.Enumeration.FileSystemName.MatchesSimpleExpression(refused ? pattern.AsSpan(1) : pattern, name, ignoreCase: false))
+            {
+                if (refused)
+                {
+                    return false;
+                }
+                listed = true;
+            }
+        }
+        return listed;
     }
 
     /// <summary>The host of a remote's URL where it is reached over SSH: ssh://[user@]host[:port]/path, or scp's

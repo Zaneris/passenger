@@ -60,6 +60,44 @@ public class SigningTests
         Assert.Null(SigningFailure.Of("error: pathspec 'x' did not match any file(s) known to git\n", gpg));
     }
 
+    /// <summary>Each line as ssh-keygen -Y verify -n git -I me@example.org takes it, checked against the real one.</summary>
+    [Theory]
+    [InlineData("me@example.org ssh-ed25519 KEY")]
+    [InlineData("me@example.org ssh-ed25519 KEY me@laptop")]
+    [InlineData("\"me@example.org\" ssh-ed25519 KEY")]
+    [InlineData("x@y,me@example.org ssh-ed25519 KEY")]
+    [InlineData("*@example.org ssh-ed25519 KEY")]
+    [InlineData("me@example.org namespaces=\"git\" ssh-ed25519 KEY")]
+    [InlineData("me@example.org namespaces=\"file,git\" ssh-ed25519 KEY")]
+    [InlineData("me@example.org namespaces=\"g*\" ssh-ed25519 KEY")]
+    [InlineData("  me@example.org\tnamespaces=\"git\"\tssh-ed25519 KEY")]
+    public void A_line_allowing_the_key_to_sign_commits_for_the_person_is_enough(string line)
+    {
+        Assert.Null(AllowedSigners.With(line.Replace("KEY", "AAAAC3Nza", StringComparison.Ordinal) + "\n", "me@example.org", "ssh-ed25519 AAAAC3Nza me@laptop"));
+    }
+
+    [Theory]
+    [InlineData("me@example.org namespaces=\"other\" ssh-ed25519 KEY")]
+    [InlineData("me@example.org NAMESPACES=\"other\" ssh-ed25519 KEY")]
+    [InlineData("me@example.org namespaces=\"!git,*\" ssh-ed25519 KEY")]
+    [InlineData("other@example.org ssh-ed25519 KEY")]
+    [InlineData("!me@example.org,*@example.org ssh-ed25519 KEY")]
+    [InlineData("me@example.org cert-authority ssh-ed25519 KEY")]
+    [InlineData("# me@example.org ssh-ed25519 KEY")]
+    public void A_line_that_leaves_the_key_unable_to_sign_commits_for_the_person_is_kept_and_a_line_of_theirs_added(string line)
+    {
+        string file = line.Replace("KEY", "AAAAC3Nza", StringComparison.Ordinal) + "\n";
+        Assert.Equal(file + "me@example.org namespaces=\"git\" ssh-ed25519 AAAAC3Nza\n", AllowedSigners.With(file, "me@example.org", "ssh-ed25519 AAAAC3Nza me@laptop"));
+    }
+
+    [Fact]
+    public void With_no_email_known_any_principal_allowed_for_commits_will_do()
+    {
+        Assert.Null(AllowedSigners.With("me@example.org ssh-ed25519 AAAAC3Nza\n", "*", "ssh-ed25519 AAAAC3Nza"));
+        Assert.Equal("me@example.org namespaces=\"file\" ssh-ed25519 AAAAC3Nza\n* namespaces=\"git\" ssh-ed25519 AAAAC3Nza\n",
+            AllowedSigners.With("me@example.org namespaces=\"file\" ssh-ed25519 AAAAC3Nza\n", "*", "ssh-ed25519 AAAAC3Nza"));
+    }
+
     [Fact]
     public void The_persons_key_is_listed_once_for_their_email_after_what_the_file_has()
     {
