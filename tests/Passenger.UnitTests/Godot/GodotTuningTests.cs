@@ -1,6 +1,7 @@
 using Passenger.App.Godot;
 using Passenger.Languages.CSharp;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Godot;
 
@@ -256,5 +257,72 @@ public class GodotTuningTests
         Assert.Contains($"[ext_resource type=\"Texture2D\" path=\"res://icon.png\" id=\"{id}\"]", written, StringComparison.Ordinal);
         Assert.Equal($"texture = ExtResource(\"{id}\")", kept.After);
         Assert.Contains($"position = Vector2(4, 5)\ntexture = ExtResource(\"{id}\")\n", written, StringComparison.Ordinal);
+    }
+
+    private static readonly GodotNodePlace Sprite = new([("Main", "res://main.tscn"), ("Sprite", string.Empty)], null);
+
+    private static (GodotKept? Kept, string? WhyNot) KeepTexture(GodotKeeping keeping, string property, string path) =>
+        keeping.Add(read => GodotKeep.Plan(Sprite, property, path, Property(property, GodotType.Object, GodotHints.ResourceType, "Texture2D"), read, _ => CSharpParsing.Default));
+
+    [Fact]
+    public void Two_new_resources_kept_together_each_count_in_load_steps_with_an_id_and_a_line_of_their_own()
+    {
+        string scene = Scene.Replace("load_steps=2", "load_steps=9", StringComparison.Ordinal);
+        GodotKeeping keeping = new(Files(("res://main.tscn", scene)));
+        (GodotKept? first, string? why) = KeepTexture(keeping, "texture", "res://a.png");
+        Assert.True(first is not null, why);
+        Assert.True(KeepTexture(keeping, "normal", "res://b.png").Kept is not null, "The second texture was refused");
+
+        (string file, string was, string now) = Assert.Single(keeping.Files);
+        Assert.Equal(("/game/main.tscn", scene), (file, was));
+        Assert.Contains("[gd_scene load_steps=11 format=3]", now, StringComparison.Ordinal);
+        GodotFile written = GodotFile.Parse(now);
+        Assert.Equal(["res://Main.cs", "res://a.png", "res://b.png"], written.Externals.Select(e => e.Path));
+        Assert.Equal(3, written.Externals.Select(e => e.Id).Distinct().Count());
+        GodotSection sprite = GodotKeep.NodeIn(written, "Sprite")!;
+        Assert.Equal(("position", "texture", "normal"), (sprite.Properties[0].Key, sprite.Properties[1].Key, sprite.Properties[2].Key));
+        Assert.Equal("res://a.png", written.External(sprite.Property("texture")!.Value.Text)?.Path);
+        Assert.Equal("res://b.png", written.External(sprite.Property("normal")!.Value.Text)?.Path);
+        Assert.Equal(now, GodotKeep.Applied(was, [TextEdit.Between(was, now)]));
+    }
+
+    [Fact]
+    public void One_new_resource_kept_for_two_values_is_written_and_counted_once()
+    {
+        GodotKeeping keeping = new(Files(("res://main.tscn", Scene)));
+        KeepTexture(keeping, "texture", "res://a.png");
+        KeepTexture(keeping, "normal", "res://a.png");
+        string now = Assert.Single(keeping.Files).Now;
+        Assert.Contains("[gd_scene load_steps=3 format=3]", now, StringComparison.Ordinal);
+        Assert.Single(GodotFile.Parse(now).Externals, e => e.Path == "res://a.png");
+    }
+
+    [Fact]
+    public void Values_kept_together_in_a_scene_and_in_code_leave_each_file_with_its_own()
+    {
+        GodotKeeping keeping = new(Files(("res://main.tscn", Scene), ("res://Main.cs", Code)));
+        foreach ((string name, GodotType type, object? value) in new (string, GodotType, object?)[] { ("speed", GodotType.Float, 4.5), ("Speed", GodotType.Float, 3.0), ("lives", GodotType.Int, 7L) })
+        {
+            Assert.True(keeping.Add(read => GodotKeep.Plan(Main, name, value, Property(name, type), read, _ => CSharpParsing.Default)).Kept is not null, $"{name} was refused");
+        }
+        Dictionary<string, string> files = keeping.Files.ToDictionary(f => f.File, f => f.Now);
+        Assert.Contains("speed = 4.5", files["/game/main.tscn"], StringComparison.Ordinal);
+        Assert.Contains("public float Speed { get; set; } = 3f;", files["/game/Main.cs"], StringComparison.Ordinal);
+        Assert.Contains("private int lives = 7;", files["/game/Main.cs"], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_default_two_nodes_share_keeps_the_first_value_and_says_why_not_the_second()
+    {
+        GodotNodePlace other = new([("Main", "res://main.tscn"), ("Sprite", string.Empty)], "res://Main.cs");
+        GodotKeeping keeping = new(Files(("res://main.tscn", Scene), ("res://Main.cs", Code)));
+        Assert.True(keeping.Add(read => GodotKeep.Plan(Main, "Speed", 3.0, Property("Speed", GodotType.Float), read, _ => CSharpParsing.Default)).Kept is not null, "The first value was refused");
+        (GodotKept? second, string? why) = keeping.Add(read => GodotKeep.Plan(other, "Speed", 8.0, Property("Speed", GodotType.Float), read, _ => CSharpParsing.Default));
+        Assert.Null(second);
+        Assert.Equal("another value is kept on that line of Main.cs", why);
+        Assert.Contains("= 3f;", Assert.Single(keeping.Files).Now, StringComparison.Ordinal);
+
+        // A value the line already says joins it.
+        Assert.True(keeping.Add(read => GodotKeep.Plan(other, "Speed", 3.0, Property("Speed", GodotType.Float), read, _ => CSharpParsing.Default)).Kept is not null, "A value the line already says was refused");
     }
 }

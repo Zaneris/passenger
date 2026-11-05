@@ -120,20 +120,21 @@ public sealed partial class LiveTreeController : IGodotTuner
         view?.ShowAside(null);
     }
 
-    /// <summary>Values kept where each comes from: what each write will be is shown first, beside what asked, with why any
-    /// cannot be kept; Keep writes them as one command of Undo, and once written each is the value its changes are marked
-    /// against. The status bar says what came of it.</summary>
+    /// <summary>Values kept where each comes from, planned together (<see cref="GodotKeeping"/>): what each write will be is
+    /// shown first, beside what asked, with why any cannot be kept; Keep writes them as one command of Undo, and once written
+    /// each is the value its changes are marked against. The status bar says what came of it.</summary>
     private async Task KeepAsync(string title, GodotTuning tuning, IReadOnlyList<GodotTuned> values, Control from)
     {
         UiThread.Check();
+        GodotKeeping keeping = new(res => Read(tuning, res));
         List<GodotKept> plans = [];
         List<(GodotTuned Tuned, GodotKept Kept)> made = [];
         List<string> refused = [];
         foreach (GodotTuned tuned in values)
         {
-            (GodotKept? kept, string? whyNot) = tuned.Resource is { } resource
-                ? GodotKeep.InResource(resource, tuned.Name, tuned.Value, tuned.Property, res => Read(tuning, res))
-                : GodotKeep.Plan(tuned.Place, tuned.Name, tuned.Value, tuned.Property, res => Read(tuning, res), parts.Editors.ParseOptions);
+            (GodotKept? kept, string? whyNot) = keeping.Add(read => tuned.Resource is { } resource
+                ? GodotKeep.InResource(resource, tuned.Name, tuned.Value, tuned.Property, read)
+                : GodotKeep.Plan(tuned.Place, tuned.Name, tuned.Value, tuned.Property, read, parts.Editors.ParseOptions));
             if (kept is not null)
             {
                 plans.Add(kept);
@@ -171,12 +172,7 @@ public sealed partial class LiveTreeController : IGodotTuner
         {
             return;
         }
-        List<XamlFileChange> changes = [.. plans.GroupBy(p => p.File, PathNames.Comparer).Select(file =>
-        {
-            string was = file.First().Was;
-            IReadOnlyList<TextEdit> edits = [.. file.SelectMany(p => p.Edits).OrderBy(e => e.Start)];
-            return new XamlFileChange(file.Key, now => now == was ? edits : []);
-        })];
+        List<XamlFileChange> changes = [.. keeping.Files.Select(file => new XamlFileChange(file.File, now => now == file.Was ? [TextEdit.Between(file.Was, file.Now)] : []))];
         if (await parts.Change(title, changes) is { } why)
         {
             parts.Say($"{title}: {why}");

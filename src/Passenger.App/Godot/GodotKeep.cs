@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.Core;
 using Passenger.Text;
 using Passenger.Workspace;
 
@@ -19,6 +20,40 @@ public sealed record GodotNodePlace(IReadOnlyList<(string Name, string Scene)> C
 /// <summary>A value kept, as it will be written: the file, its text as read, the edits that write it, and the line (from
 /// zero) shown before the write, as it reads now (null where the line is new) and as it will.</summary>
 public sealed record GodotKept(string File, string Was, IReadOnlyList<TextEdit> Edits, int Line, string? Before, string After, bool InCode);
+
+/// <summary>Values kept in one go: each planned on the text those before it leave, so two adding to one header count on each
+/// other and two lines of one node follow each other, and the text each file ends with. A line one value writes takes no
+/// second value: a scene or a default two nodes share keeps one of them.</summary>
+public sealed class GodotKeeping(Func<string, (string File, string Text)?> read)
+{
+    private readonly Dictionary<string, (string Was, string Now)> files = new(PathNames.Comparer);
+    private readonly List<GodotKept> planned = [];
+
+    /// <summary>Each file changed: its text as read, and as the values planned leave it.</summary>
+    public IEnumerable<(string File, string Was, string Now)> Files => files.Select(f => (f.Key, f.Value.Was, f.Value.Now));
+
+    /// <summary>A value planned by <paramref name="plan"/> on the files as those planned so far leave them, read through what
+    /// it is given; WhyNot says why it cannot be kept.</summary>
+    public (GodotKept? Kept, string? WhyNot) Add(Func<Func<string, (string File, string Text)?>, (GodotKept? Kept, string? WhyNot)> plan)
+    {
+        (GodotKept? kept, string? whyNot) = plan(Read);
+        if (kept is null)
+        {
+            return (null, whyNot);
+        }
+        if (kept.Before != kept.After && planned.Any(p => p.Line == kept.Line && p.After == kept.Before && PathNames.Same(p.File, kept.File)))
+        {
+            return (null, $"another value is kept on that line of {System.IO.Path.GetFileName(kept.File)}");
+        }
+        planned.Add(kept);
+        string was = files.TryGetValue(kept.File, out (string Was, string Now) earlier) ? earlier.Was : kept.Was;
+        files[kept.File] = (was, GodotKeep.Applied(kept.Was, kept.Edits));
+        return (kept, null);
+    }
+
+    private (string File, string Text)? Read(string res) =>
+        read(res) is ({ } file, { } text) ? (file, files.TryGetValue(file, out (string Was, string Now) kept) ? kept.Now : text) : null;
+}
 
 /// <summary>Where a value changed in a running game is kept (<see cref="Plan"/>): the scene that sets it, outermost first
 /// (an instance's own setting is the one in force); else, for a value only the code gives, the C# script's
@@ -240,7 +275,7 @@ public static class GodotKeep
         return text.GetText(span.Start, span.Length).TrimEnd('\r');
     }
 
-    private static string Applied(string text, IReadOnlyList<TextEdit> edits)
+    internal static string Applied(string text, IReadOnlyList<TextEdit> edits)
     {
         System.Text.StringBuilder made = new(text);
         foreach (TextEdit edit in edits.OrderByDescending(e => e.Start))
