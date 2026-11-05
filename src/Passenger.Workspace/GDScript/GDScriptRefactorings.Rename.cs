@@ -195,8 +195,10 @@ public static partial class GDScriptRefactorings
 
     /// <summary>The engine class a script is built on that declares a method of a name, which a function of it overrides,
     /// and whether Godot calls it (a virtual); null for none.</summary>
-    private static (string Class, bool Virtual)? EngineDeclaring(GDScriptRead script, string name) =>
-        script.Analysis.Engine is { } engine && script.Analysis.Lineage.FirstOrDefault(t => t.Kind == GDScriptTypeKind.Native) is { } native
+    private static (string Class, bool Virtual)? EngineDeclaring(GDScriptRead script, string name) => EngineDeclaring(script.Analysis, name);
+
+    private static (string Class, bool Virtual)? EngineDeclaring(GDScriptAnalysis analysis, string name) =>
+        analysis.Engine is { } engine && analysis.Lineage.FirstOrDefault(t => t.Kind == GDScriptTypeKind.Native) is { } native
             && engine.Chain(native.Name).FirstOrDefault(c => c.Methods.ContainsKey(name)) is { } declaring ? (declaring.Name, declaring.Methods[name].IsVirtual) : null;
 
     /// <summary>Whether a script's class extends another script, by its path or its class_name, through the scripts between.</summary>

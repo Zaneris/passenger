@@ -2,7 +2,12 @@ namespace Passenger.Workspace.GDScript;
 
 /// <summary>Where a name is declared: the script's res:// path and the offset its declaring name starts at; null path for
 /// one of the engine's (its class and member then name it).</summary>
-public sealed record GDScriptDeclaration(string? Script, int Start, string Name, GDScriptType Type, string? EngineClass = null);
+public sealed record GDScriptDeclaration(string? Script, int Start, string Name, GDScriptType Type, string? EngineClass = null)
+{
+    /// <summary>The script's member declared, whichever script that is, what kind it is telling how it reads; null for a local
+    /// or an engine's.</summary>
+    public GDScriptNode? Member { get; init; }
+}
 
 /// <summary>A member a type has, as completion lists it: its name, what it is ("var", "const", "func", "signal", "enum",
 /// "class") and its type (a function's what it returns), and where it is declared.</summary>
@@ -552,7 +557,7 @@ public sealed partial class GDScriptAnalyzer
 
     private GDScriptMemberInfo? ScriptMember(GDScriptNode node, int offset, string name, GDScriptType owner)
     {
-        GDScriptDeclaration At(GDScriptIdentifier identifier, GDScriptType type) => new(owner.Script, offset + identifier.Start, name, type);
+        GDScriptDeclaration At(GDScriptIdentifier identifier, GDScriptType type) => new(owner.Script, offset + identifier.Start, name, type) { Member = node };
         switch (node)
         {
             case GDScriptVariable { Identifier: { } identifier } variable when identifier.Name == name:

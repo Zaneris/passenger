@@ -407,6 +407,9 @@ public sealed class GDScriptIf : GDScriptNode
     /// <summary>Its <c>else</c> block; an <c>elif</c> is a block holding the next <c>if</c>.</summary>
     public GDScriptSuite? False { get; internal set; }
 
+    /// <summary>Whether it was written <c>elif</c>: no block of its own holds its condition, which a statement can't go before.</summary>
+    public bool IsElif { get; internal set; }
+
     public override IEnumerable<GDScriptNode> Children => Of(Condition, True, False);
 }
 

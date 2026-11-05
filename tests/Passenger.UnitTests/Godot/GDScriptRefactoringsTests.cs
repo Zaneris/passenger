@@ -318,6 +318,41 @@ public class GDScriptRefactoringsTests
         Assert.Contains("func go(a, size := 10):", After(GDScriptRefactorings.IntroduceParameter(One(step), Over(step, "10"), "size"), "res://main.gd", step));
     }
 
+    [Theory]
+    [InlineData("_ready()")]
+    [InlineData("_process(delta)")]
+    [InlineData("_draw_shape()")]
+    [InlineData("_static_init()")]
+    public void Introduce_parameter_is_refused_on_a_function_godot_calls_as_it_declares_it(string function)
+    {
+        string text = $"extends Node2D\n\n\nfunc {function}:\n\tprint(10)\n";
+        GDScriptAnalysis analysis = ReadWith(Engine, ("res://main.gd", text))[0].Analysis;
+        Assert.Contains("is Godot's own, which Godot calls as it declares it", GDScriptRefactorings.IntroduceParameter(analysis, Over(text, "10"), "step").Refused);
+    }
+
+    [Fact]
+    public void Introduce_parameter_gives_a_constructor_a_parameter_its_caller_may_pass()
+    {
+        string text = "extends Node\n\n\nfunc _init():\n\tprint(10)\n";
+        GDScriptAnalysis analysis = ReadWith(Engine, ("res://main.gd", text))[0].Analysis;
+        Assert.Contains("func _init(step := 10):", After(GDScriptRefactorings.IntroduceParameter(analysis, Over(text, "10"), "step"), "res://main.gd", text));
+    }
+
+    [Fact]
+    public void Introduce_parameter_is_refused_where_another_script_overrides_the_function_and_goes_on_where_it_only_overrides_one()
+    {
+        const string Parent = "class_name Parent\nextends Node\n\n\nfunc go(a):\n\tprint(10)\n\n\nfunc alone(a):\n\tprint(20)\n";
+        const string Child = "class_name Child\nextends Parent\n\n\nfunc go(a):\n\tprint(30)\n";
+        const string Grandchild = "extends Child\n\n\nfunc alone(a):\n\tprint(40)\n";
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://parent.gd", Parent), ("res://child.gd", Child), ("res://grandchild.gd", Grandchild));
+
+        GDScriptRefactored refused = GDScriptRefactorings.IntroduceParameter(scripts[0].Analysis, Over(Parent, "10"), "step", scripts);
+        Assert.Contains("child.gd overrides 'go'", refused.Refused);
+        Assert.Equal("res://child.gd", Assert.Single(refused.Places).Script);
+        Assert.Contains("grandchild.gd overrides 'alone'", GDScriptRefactorings.IntroduceParameter(scripts[0].Analysis, Over(Parent, "20"), "step", scripts).Refused);
+        Assert.Contains("func go(a, step := 30):", After(GDScriptRefactorings.IntroduceParameter(scripts[1].Analysis, Over(Child, "30"), "step", scripts), "res://child.gd", Child));
+    }
+
     [Fact]
     public void Extract_variable_declares_the_expression_before_its_statement_and_reads_it_there()
     {
@@ -405,6 +440,72 @@ public class GDScriptRefactoringsTests
         Assert.Contains("'list[0]' runs first", Refused("consume(list[0], first())", "first()"));
         Assert.Null(Refused("consume(counted, first())", "counted"));
         Assert.Contains("'first()' runs first", Refused("consume(held, first())", "held"));
+    }
+
+    [Theory]
+    [InlineData("\tif a > 1:\n\t\tpass\n\telif b.size() > 2:\n\t\tpass\n", "b.size()", "an elif's condition")]
+    [InlineData("\tif a > 1:\n\t\tpass\n\telif b.ok():\n\t\tpass\n", "b.ok()", "an elif's condition")]
+    [InlineData("\tmatch a:\n\t\t1 when b.size() > 2:\n\t\t\tpass\n", "b.size()", "a when guard")]
+    [InlineData("\tmatch a:\n\t\t1 when b.ok():\n\t\t\tpass\n", "b.ok()", "a when guard")]
+    [InlineData("\tmatch a:\n\t\t1 when b > 2:\n\t\t\tpass\n", "b > 2", "a when guard")]
+    [InlineData("\tif a: print(b.size())\n", "b.size()", "shares its line")]
+    [InlineData("\tif a:\n\t\tpass\n\telse: print(b.size())\n", "b.size()", "shares its line")]
+    [InlineData("\twhile a: print(b.size())\n", "b.size()", "shares its line")]
+    [InlineData("\tfor i in a: print(b.size())\n", "b.size()", "shares its line")]
+    [InlineData("\tmatch a:\n\t\t1: print(b.size())\n", "b.size()", "shares its line")]
+    [InlineData("\tprint(a); print(b.size())\n", "b.size()", "shares its line")]
+    public void Extract_variable_is_refused_where_a_declaration_on_the_line_above_is_no_statement_or_runs_otherwise(string body, string selected, string why)
+    {
+        string text = "func f(a, b):\n" + body;
+        Assert.Contains(why, GDScriptRefactorings.ExtractVariable(One(text), Over(text, selected), "n").Refused);
+    }
+
+    [Fact]
+    public void Extract_variable_stays_in_an_else_block_holding_an_if_and_refuses_a_function_written_on_its_own_line()
+    {
+        string text = "func f(a, b):\n\tif a:\n\t\tpass\n\telse:\n\t\tif b.size() > 2:\n\t\t\tpass\n";
+        Assert.Equal("func f(a, b):\n\tif a:\n\t\tpass\n\telse:\n\t\tvar n = b.size()\n\t\tif n > 2:\n\t\t\tpass\n",
+            After(GDScriptRefactorings.ExtractVariable(One(text), Over(text, "b.size()"), "n"), "res://main.gd", text));
+        string alone = "func f(a, b): print(b.size())\n";
+        Assert.Contains("shares its line", GDScriptRefactorings.ExtractVariable(One(alone), Over(alone, "b.size()"), "n").Refused);
+    }
+
+    [Fact]
+    public void A_static_variable_read_off_another_class_can_change_where_its_constants_cannot()
+    {
+        const string Helper = "class_name Helper\nextends RefCounted\n\nstatic var count := 0\nconst LIMIT := 5\n\n\nstatic func bump():\n\tcount += 1\n\treturn 1\n";
+        const string Prelude = "func consume(a, b):\n\tprint(a, b)\n\n\n";
+        GDScriptAnalysis Main(string text) => Read(("res://main.gd", text), ("res://helper.gd", Helper))[0].Analysis;
+
+        string read = Prelude + "func f():\n\tconsume(Helper.count, Helper.bump())\n";
+        Assert.Contains("'Helper.count' runs first", GDScriptRefactorings.ExtractVariable(Main(read), Over(read, "Helper.bump()"), "x").Refused);
+        string constant = Prelude + "func f():\n\tconsume(Helper.LIMIT, Helper.bump())\n";
+        Assert.Null(GDScriptRefactorings.ExtractVariable(Main(constant), Over(constant, "Helper.bump()"), "x").Refused);
+
+        string kept = "func f():\n\tvar before = Helper.count\n\tHelper.bump()\n\tprint(before)\n";
+        Assert.NotNull(GDScriptRefactorings.InlineVariable(Main(kept), kept.IndexOf("before", StringComparison.Ordinal)).Refused);
+        string given = "func f():\n\tprint(Helper.count)\n";
+        Assert.Contains("'Helper.count'", GDScriptRefactorings.IntroduceParameter(Main(given), Over(given, "Helper.count"), "x").Refused);
+    }
+
+    [Fact]
+    public void A_variable_of_the_script_a_class_is_built_on_reads_by_its_own_kind()
+    {
+        const string Base = "class_name Base\nextends Node\n\nvar plain := 5\nvar guarded := 5:\n\tget:\n\t\treturn guarded\nstatic var counted := 5\nconst LIMIT := 5\n";
+        const string Prelude = "extends Base\n\n\nfunc first():\n\treturn 1\n\n\nfunc consume(a, b):\n\tprint(a, b)\n\n\n";
+        string? Refused(string statement, string selected, string parent = Base)
+        {
+            string text = Prelude + $"func f():\n\t{statement}\n";
+            IReadOnlyList<GDScriptRead> scripts = ReadWith(Engine, ("res://main.gd", text), ("res://base.gd", parent));
+            return GDScriptRefactorings.ExtractVariable(scripts[0].Analysis, Over(text, selected, text.Split(selected).Length - 2), "x").Refused;
+        }
+        // Godot reads the plain one as the call runs, whichever script declares it, and a getter's or a static's where it stands.
+        Assert.Null(Refused("consume(plain, first())", "first()"));
+        Assert.Contains("'first()' runs first", Refused("consume(plain, first())", "plain"));
+        Assert.Contains("'guarded' runs first", Refused("consume(guarded, first())", "first()"));
+        Assert.Null(Refused("consume(guarded, first())", "guarded"));
+        Assert.Contains("'counted' runs first", Refused("consume(counted, first())", "first()"));
+        Assert.Null(Refused("consume(LIMIT, first())", "first()"));
     }
 
     [Fact]

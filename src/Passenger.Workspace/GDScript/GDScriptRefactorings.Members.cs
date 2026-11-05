@@ -592,7 +592,7 @@ public static partial class GDScriptRefactorings
         bool renamed = name != target.Named;
         if (reshaped && Virtuals.Contains(target.Named) || renamed && Virtuals.Contains(target.Named))
         {
-            return GDScriptRefactored.No($"'{target.Named}' is Godot's own, which Godot calls as it declares it");
+            return GDScriptRefactored.No(GodotsOwn(target.Named));
         }
         if (renamed && own.Tree.Members.Any(m => NameOf(m.Node) == name))
         {

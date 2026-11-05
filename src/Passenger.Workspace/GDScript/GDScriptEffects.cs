@@ -11,8 +11,8 @@ internal enum GDScriptEffect
 
 /// <summary>What a script's expressions do when they run and the order Godot's compiler runs them in, for a refactoring that
 /// moves code: a call's arguments before what it is called on; an assignment's value after the object it assigns into but
-/// before the last index; a plain variable of the script's class only as what takes it runs, so after everything else that
-/// takes part with it. What can't be known to be harmless acts. Pure.</summary>
+/// before the last index; a plain variable of the script's class or a script it is built on only as what takes it runs, so
+/// after everything else that takes part with it. What can't be known to be harmless acts. Pure.</summary>
 internal sealed class GDScriptEffects
 {
     /// <summary>The functions that only work out what they give from what they are given: Godot's math utilities, the
@@ -32,14 +32,11 @@ internal sealed class GDScriptEffects
 
     private readonly HashSet<int> locals = [];
 
-    private readonly Dictionary<int, GDScriptNode> members = [];
-
     public GDScriptEffects(GDScriptAnalysis analysis)
     {
         this.analysis = analysis;
         foreach (GDScriptMember member in analysis.Tree?.Members ?? [])
         {
-            Declare(member.Node, member.Offset);
             foreach (GDScriptNode node in GDScriptRefactorings.Below(member.Node).OfType<GDScriptFunction>().SelectMany(GDScriptRefactorings.Below))
             {
                 GDScriptIdentifier? name = node switch
@@ -54,31 +51,6 @@ internal sealed class GDScriptEffects
                     locals.Add(member.Offset + name.Start);
                 }
             }
-        }
-    }
-
-    private void Declare(GDScriptNode node, int offset)
-    {
-        switch (node)
-        {
-            case GDScriptAssignable { Identifier: { } name }:
-                members[offset + name.Start] = node;
-                break;
-            case GDScriptFunction { Identifier: { } name }:
-                members[offset + name.Start] = node;
-                break;
-            case GDScriptEnum enumerated:
-                foreach ((GDScriptIdentifier name, _) in enumerated.Values)
-                {
-                    members[offset + name.Start] = enumerated;
-                }
-                break;
-            case GDScriptClass inner:
-                foreach (GDScriptNode member in inner.Members)
-                {
-                    Declare(member, offset);
-                }
-                break;
         }
     }
 
@@ -111,7 +83,7 @@ internal sealed class GDScriptEffects
         }
         if (analysis.DeclarationOf(name) is { } declared)
         {
-            if (declared.Script == analysis.Path && members.GetValueOrDefault(declared.Start) is GDScriptConstant or GDScriptEnum or GDScriptFunction)
+            if (declared.Member is GDScriptConstant or GDScriptEnum or GDScriptFunction)
             {
                 return GDScriptEffect.None;
             }
@@ -130,7 +102,8 @@ internal sealed class GDScriptEffects
             return GDScriptEffect.Reads;
         }
         GDScriptType type = analysis.TypeOf(on);
-        return type.Meta || HoldsItsValue(type) ? GDScriptEffect.None : GDScriptEffect.Reads;
+        bool variable = subscript is { IsAttribute: true, Attribute: { } member } && analysis.DeclarationOf(member)?.Member is GDScriptVariable;
+        return type.Meta && !variable || HoldsItsValue(type) ? GDScriptEffect.None : GDScriptEffect.Reads;
     }
 
     /// <summary>Whether a value of a type is its own, no other name reaching it: a built-in type that is no reference.</summary>
@@ -181,8 +154,8 @@ internal sealed class GDScriptEffects
         || n is GDScriptCall { Callee: GDScriptIdentifier { Name: var type } } && GDScriptConversions.IsShared(type)
         || n is GDScriptCall { Callee: GDScriptSubscript { IsAttribute: true, Attribute.Name: "new" } });
 
-    /// <summary>Whether Godot reads an expression only as what takes it runs: an object's variable of the script's class with no
-    /// getter, by its name or through self.</summary>
+    /// <summary>Whether Godot reads an expression only as what takes it runs: an object's variable of the script's class or one
+    /// it is built on with no getter, by its name or through self.</summary>
     public bool Late(GDScriptExpression expression) => expression switch
     {
         GDScriptIdentifier name => IsPlain(name),
@@ -190,8 +163,7 @@ internal sealed class GDScriptEffects
         _ => false,
     };
 
-    private bool IsPlain(GDScriptIdentifier name) => analysis.DeclarationOf(name) is { } declared && declared.Script == analysis.Path
-        && members.GetValueOrDefault(declared.Start) is GDScriptVariable { IsStatic: false, Getter: null, GetterName: null };
+    private bool IsPlain(GDScriptIdentifier name) => analysis.DeclarationOf(name)?.Member is GDScriptVariable { IsStatic: false, Getter: null, GetterName: null };
 
     /// <summary>Whether an expression may be read as <see cref="Late"/> says, a variable declared in a script not read being
     /// such a one; an engine's property is read where it stands.</summary>
@@ -206,8 +178,8 @@ internal sealed class GDScriptEffects
     {
         null => true,
         { Script: null } => false,
-        { } declared when declared.Script == analysis.Path => IsPlain(name),
-        _ => true,
+        { Member: null } declared when declared.Script != analysis.Path => true,
+        _ => IsPlain(name),
     };
 
     /// <summary>The first part of a statement that runs before an expression in it and can't change places with what

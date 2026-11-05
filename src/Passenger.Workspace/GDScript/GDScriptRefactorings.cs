@@ -57,12 +57,12 @@ public static partial class GDScriptRefactorings
         "extends", "true", "false", "null", "PI", "TAU", "INF", "NAN", "namespace", "trait",
     };
 
-    /// <summary>Why a name cannot be one GDScript declares; null where it can.</summary>
     /// <summary>Why no change across these scripts can be made: one is read only in part, so a use after where reading stopped
     /// would go unseen; null where each is read whole.</summary>
     public static string? WhyNotChanged(IEnumerable<GDScriptRead> scripts) =>
         scripts.FirstOrDefault(s => s.Tree.Stopped is not null) is { } unread ? $"{Path.GetFileName(unread.Script)} is nested too deeply for Passenger to read whole, so a use of what this changes could go unseen" : null;
 
+    /// <summary>Why a name cannot be one GDScript declares; null where it can.</summary>
     public static string? WhyNotName(string name) =>
         name.Length == 0 || !(char.IsLetter(name[0]) || name[0] == '_') || !name.All(c => char.IsLetterOrDigit(c) || c == '_') ? $"'{name}' is not a GDScript name"
         : Keywords.Contains(name) ? $"'{name}' is a GDScript keyword"
@@ -262,6 +262,14 @@ public static partial class GDScriptRefactorings
     /// condition's right side, a conditional's branch, a loop's condition, a lambda.</summary>
     private static string? Conditional(GDScriptNode node, GDScriptNode statement, Dictionary<GDScriptNode, GDScriptNode?> parents)
     {
+        if (statement is GDScriptIf { IsElif: true })
+        {
+            return "an elif's condition runs only as the conditions before it say";
+        }
+        if (parents.GetValueOrDefault(statement) is GDScriptSuite suite && parents.GetValueOrDefault(suite) is GDScriptMatchBranch { Guard: var guard } && guard == suite)
+        {
+            return "a when guard runs only where its pattern matches";
+        }
         GDScriptNode at = node;
         while (at != statement && parents.GetValueOrDefault(at) is { } parent)
         {
@@ -331,7 +339,15 @@ public static partial class GDScriptRefactorings
             return GDScriptRefactored.No("select a whole expression");
         }
         Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(body);
-        if (StatementOf(expression, parents) is not ({ } statement, _) || statement == expression && expression is not GDScriptCall)
+        if (StatementOf(expression, parents) is not ({ } statement, _))
+        {
+            return GDScriptRefactored.No("select an expression inside a statement");
+        }
+        if (Conditional(expression, statement, parents) is { } runs)
+        {
+            return GDScriptRefactored.No($"the expression can't move before its statement: {runs}");
+        }
+        if (statement == expression && expression is not GDScriptCall)
         {
             return GDScriptRefactored.No("select an expression inside a statement");
         }
@@ -339,9 +355,10 @@ public static partial class GDScriptRefactorings
         {
             return GDScriptRefactored.No("what is assigned to can't become a variable");
         }
-        if (Conditional(expression, statement, parents) is { } runs)
+        int lineStart = LineStart(text, located.Offset + statement.Start);
+        if (!text.AsSpan(lineStart, located.Offset + statement.Start - lineStart).IsWhiteSpace())
         {
-            return GDScriptRefactored.No($"the expression can't move before its statement: {runs}");
+            return GDScriptRefactored.No("the expression can't move before its statement: it shares its line with what comes before it, and a declaration goes on a line above");
         }
         GDScriptEffects effects = analysis.Effects;
         if (effects.RunsFirst(expression, statement, effects.Of(expression), effects.MayBeLate(expression)) is { } first)
@@ -354,7 +371,6 @@ public static partial class GDScriptRefactorings
         {
             return GDScriptRefactored.No(taken);
         }
-        int lineStart = LineStart(text, located.Offset + statement.Start);
         string written = text[(located.Offset + expression.Start)..(located.Offset + expression.End)];
         GDScriptType type = analysis.TypeOf(expression);
         string declared = $"{IndentOf(text, lineStart)}var {name} {(type.IsVariant || type.IsVoid ? "=" : ":=")} {written}\n";
@@ -510,8 +526,9 @@ public static partial class GDScriptRefactorings
     /// <summary>Introduce Parameter: the expression selected made a parameter of its function with it as its default, after
     /// the others, so every call passes what it did. A default runs as the function is called, wherever the expression
     /// stood, so one that reads a local, a variable or what a call gives is refused, as is one that makes an array or
-    /// object where the expression made a new one each time round.</summary>
-    public static GDScriptRefactored IntroduceParameter(GDScriptAnalysis analysis, TextRange selection, string name)
+    /// object where the expression made a new one each time round. Refused too on a function whose parameters aren't the
+    /// script's to change: Godot's own, and one that a script among <paramref name="scripts"/> overrides.</summary>
+    public static GDScriptRefactored IntroduceParameter(GDScriptAnalysis analysis, TextRange selection, string name, IReadOnlyList<GDScriptRead>? scripts = null)
     {
         if (analysis.Tree is not { } tree)
         {
@@ -533,6 +550,14 @@ public static partial class GDScriptRefactorings
         if (function.Rest is not null)
         {
             return GDScriptRefactored.No("the function takes the rest of its arguments, after which no parameter goes");
+        }
+        if (function.Identifier is { } named && GodotDeclares(analysis, named.Name))
+        {
+            return GDScriptRefactored.No(GodotsOwn(named.Name));
+        }
+        if (scripts is not null && OverridesOf(scripts, analysis.Path, tree, located) is [{ } first, ..] overrides)
+        {
+            return GDScriptRefactored.No($"{Path.GetFileName(first.Script)} overrides '{first.What}', and Godot refuses an override of other parameters", overrides);
         }
         GDScriptEffects effects = analysis.Effects;
         foreach (GDScriptNode node in Below(expression))
@@ -576,6 +601,24 @@ public static partial class GDScriptRefactorings
             new TextEdit(insertAt, 0, inserted),
             new TextEdit(located.Offset + expression.Start, expression.End - expression.Start, name),
         ]);
+    }
+
+    /// <summary>Whether Godot itself calls a function of a name, with only the arguments it declares: a constructor's are its
+    /// caller's to pass.</summary>
+    private static bool GodotDeclares(GDScriptAnalysis analysis, string name) => name != "_init" && (Virtuals.Contains(name) || EngineDeclaring(analysis, name) is (_, true));
+
+    private static string GodotsOwn(string name) => $"'{name}' is Godot's own, which Godot calls as it declares it";
+
+    /// <summary>Where other scripts override a function of a script's own class, each place's <see cref="GDScriptPlace.What"/>
+    /// its name; none for an inner class's.</summary>
+    private static IReadOnlyList<GDScriptPlace> OverridesOf(IReadOnlyList<GDScriptRead> scripts, string script, GDScriptTree tree, Located located)
+    {
+        if (located.Function.Identifier is not { } name || !tree.Members.Any(m => m.Node == located.Function) || scripts.All(s => s.Script != script))
+        {
+            return [];
+        }
+        return [.. FamilyOf(scripts, new GDScriptTarget(script, located.Function, located.Offset, name)).Where(f => f.Script != script && Extends(scripts, scripts.First(s => s.Script == f.Script), script))
+            .Select(f => new GDScriptPlace(f.Script, f.Start, f.Start + f.Named.Length, f.Named))];
     }
 
     /// <summary>Extract Function: the whole statements selected moved into a new function after theirs, called where they

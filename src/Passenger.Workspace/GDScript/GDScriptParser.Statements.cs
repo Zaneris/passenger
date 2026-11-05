@@ -334,6 +334,7 @@ internal sealed partial class GDScriptParser
     private GDScriptIf ParseIf(string keyword = "if")
     {
         GDScriptIf node = Alloc<GDScriptIf>();
+        node.IsElif = keyword == "elif";
         node.Condition = ParseExpression(false);
         if (node.Condition is null)
         {

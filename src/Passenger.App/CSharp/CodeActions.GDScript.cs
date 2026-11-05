@@ -188,7 +188,7 @@ internal sealed partial class CodeActions
                 made = GDScriptRefactorings.ExtractFunction(own.Analysis, Lines(own.Text, selection), name!);
                 break;
             case GDScriptRefactoring.IntroduceParameter:
-                made = GDScriptRefactorings.IntroduceParameter(own.Analysis, selection, name!);
+                made = GDScriptRefactorings.IntroduceParameter(own.Analysis, selection, name!, scripts);
                 break;
             case GDScriptRefactoring.Inline:
                 made = GDScriptRefactorings.InlineVariable(own.Analysis, caret);
