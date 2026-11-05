@@ -737,12 +737,16 @@ public sealed class TestController : IAsyncDisposable
             }
         }
         runner ??= await startRunner(workspace, cancel);
+        // The build may have taken in files the folder's watcher has yet to tell of: their tests are read as built.
+        await Finder.CatchUpAsync();
+        cancel.ThrowIfCancellationRequested();
         // Only what was built again since it was last looked through is looked through again.
         Dictionary<string, DateTime> written = built.ToDictionary(a => a.Path, a => File.GetLastWriteTimeUtc(a.Path), StringComparer.Ordinal);
         List<TestAssembly> stale = [.. built.Where(a => !discovered.TryGetValue(a.Path, out (DateTime Written, IReadOnlyList<TestItem> Tests) known) || known.Written != written[a.Path])];
         if (stale.Count > 0)
         {
-            IReadOnlyList<TestItem> found = await runner.DiscoverAsync(stale, UiThread.Marshal(log), cancel);
+            IReadOnlyList<TestItem> found = await runner.DiscoverAsync(
+                [.. stale.Select(a => a with { Declared = new DeclaredLines(code.GetValueOrDefault(a.Project.Path) ?? CodeTests.None) })], UiThread.Marshal(log), cancel);
             Dictionary<(string, string?), List<TestItem>> byAssembly = [];
             foreach (TestItem test in found)
             {
@@ -757,9 +761,6 @@ public sealed class TestController : IAsyncDisposable
                 discovered[assembly.Path] = (written[assembly.Path], byAssembly.GetValueOrDefault((assembly.Project.Path, assembly.Framework)) ?? []);
             }
         }
-        cancel.ThrowIfCancellationRequested();
-        // The build may have taken in files the folder's watcher has yet to tell of: their tests are read as built.
-        await Finder.CatchUpAsync();
         cancel.ThrowIfCancellationRequested();
         Dictionary<string, IReadOnlyList<TestSource>> next = new(StringComparer.Ordinal);
         foreach (IGrouping<string, TestAssembly> project in built.GroupBy(a => a.Project.Path))

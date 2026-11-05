@@ -191,15 +191,24 @@ public sealed class TestingPlatformRunner : ITestRunner
     /// canonical.</summary>
     private IReadOnlyList<TestItem> Tell((TestAssembly Assembly, IReadOnlyList<PlatformNode> Nodes)[] asked) =>
         found.Tell(asked.Select(a => a.Assembly), asked.SelectMany(a => a.Nodes.Where(n => n.IsTest).Select(n => (a.Assembly, n))), node => node.Uid,
-            (assembly, node) => new TestItem(assembly.Project.Path, node.FullyQualifiedName, node.DisplayName)
-            {
-                Framework = assembly.Framework,
-                Row = TestItem.RowOf(node.FullyQualifiedName, node.DisplayName),
-                Path = node.File is { Length: > 0 } file ? found.Canonical(file) : null,
-                Line = node.Line,
-                Traits = node.Traits,
-            },
-            (assembly, node) => new Found(assembly, node.Uid, node.DisplayName));
+            Told, (assembly, node) => new Found(assembly, node.Uid, node.DisplayName));
+
+    /// <summary>A test node as the IDE's test, by the method its location says, a case NUnit's runner names otherwise (its uid
+    /// being its full name) a row of that method, however it is named.</summary>
+    private TestItem Told(TestAssembly assembly, PlatformNode node)
+    {
+        string method = TestItem.MethodOf(node.FullyQualifiedName);
+        (string Name, string Row)? named = TestItem.NamedCase(node.Uid, node.DisplayName, method[(method.LastIndexOf('.') + 1)..]);
+        string name = named?.Name ?? node.FullyQualifiedName;
+        return new TestItem(assembly.Project.Path, name, node.DisplayName)
+        {
+            Framework = assembly.Framework,
+            Row = named?.Row ?? TestItem.RowOf(name, node.DisplayName),
+            Path = node.File is { Length: > 0 } file ? found.Canonical(file) : null,
+            Line = node.Line,
+            Traits = node.Traits,
+        };
+    }
 
     /// <summary>A node's result as the IDE's outcome; null for an update that is not one (discovered, in progress, an attempt
     /// a retry replaces, or one the stop canceled, which stays not run).</summary>

@@ -439,20 +439,42 @@ public sealed class VsTestRunner : ITestRunner
             .Select(test => (Assembly: bySource.GetValueOrDefault(cases.Canonical(test.Source)), Test: test))
             .Where(pair => pair.Assembly is not null)
             .Select(pair => (pair.Assembly!, pair.Test));
-        return cases.Tell(assemblies, inAssemblies, test => test.Id.ToString(), (assembly, test) => Told(assembly, test, ManagedName(test) ?? test.FullyQualifiedName),
-            (_, test) => test);
+        return cases.Tell(assemblies, inAssemblies, test => test.Id.ToString(), Told, (_, test) => test);
     }
 
-    /// <summary>A test case as the IDE's test, by the full name given, which a data row's arguments may follow.</summary>
-    private TestItem Told(TestAssembly assembly, TestCase test, string name) =>
-        new(assembly.Project.Path, name, test.DisplayName)
+    /// <summary>A test case as the IDE's test: by its method as its adapter names it apart from its display, else by its full
+    /// name, which a data row's arguments may follow, a case named in place of its method being a row of that method.</summary>
+    private TestItem Told(TestAssembly assembly, TestCase test)
+    {
+        string? path = string.IsNullOrEmpty(test.CodeFilePath) ? null : cases.Canonical(test.CodeFilePath);
+        string? managed = ManagedName(test);
+        (string Name, string Row)? named = managed is null && CaseMethod(assembly, test, path) is { } method
+            ? TestItem.NamedCase(test.FullyQualifiedName, test.DisplayName, method) : null;
+        string name = named?.Name ?? managed ?? test.FullyQualifiedName;
+        return new(assembly.Project.Path, name, test.DisplayName)
         {
             Framework = assembly.Framework,
-            Row = TestItem.RowOf(name, test.DisplayName),
-            Path = string.IsNullOrEmpty(test.CodeFilePath) ? null : cases.Canonical(test.CodeFilePath),
+            Row = named?.Row ?? TestItem.RowOf(name, test.DisplayName),
+            Path = path,
             Line = test.LineNumber,
             Traits = [.. test.Traits.Select(t => new KeyValuePair<string, string>(t.Name, t.Value))],
         };
+    }
+
+    /// <summary>The name of the method a test case runs, where its full name may say another: as its adapter tells it, else
+    /// as the code declares it at the case's line; null where neither says. Its adapter's class beside it is left: that is
+    /// the method's declaring type, where the case's may be another's that inherits it, or an instance of it.</summary>
+    private static string? CaseMethod(TestAssembly assembly, TestCase test, string? path)
+    {
+        foreach (TestProperty property in test.Properties)
+        {
+            if (property.Id == NUnitMethod)
+            {
+                return test.GetPropertyValue(property) as string;
+            }
+        }
+        return path is null ? null : assembly.Declared?.MethodAt(path, test.LineNumber, test.FullyQualifiedName);
+    }
 
     /// <summary>A test case's method as its adapter names it apart from its display (MSTest's and xUnit's adapters do), its
     /// type's full name and the method's without its parameters: a case its framework names otherwise is its method's
@@ -484,6 +506,9 @@ public sealed class VsTestRunner : ITestRunner
     private const string ManagedType = "TestCase.ManagedType";
 
     private const string ManagedMethod = "TestCase.ManagedMethod";
+
+    /// <summary>The test case property NUnit's adapter names a case's method by.</summary>
+    private const string NUnitMethod = "NUnit.MethodName";
 
     private static TestOutcome Outcome(TestItem test, VsResult result) => new(test, StateOf(result.Outcome), result.Duration)
     {

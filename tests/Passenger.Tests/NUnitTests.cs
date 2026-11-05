@@ -24,6 +24,16 @@ public sealed class NUnitTests : NUnitFolders
         {
             public static readonly object[] Pairs = [new object[] { "ab", 2 }, new object[] { "abc", 3 }];
 
+            public static readonly TestCaseData[] Titled =
+            [
+                new TestCaseData(1, 1).SetName("OneIsOne"),
+                new TestCaseData(1, 2).SetName("OneIsTwo"),
+                new TestCaseData(2, 2).SetName("Two.Is.Two"),
+                new TestCaseData(3, 3).SetName("{m}_{0}"),
+            ];
+
+            private const string Spelled = "Spelled";
+
             [Test]
             public void Plain() { }
 
@@ -45,14 +55,38 @@ public sealed class NUnitTests : NUnitFolders
             [TestCase(1, 1, 2, TestName = "OnePlusOne")]
             [TestCase(2, 2, 5, TestName = "TwoPlusTwoIsFive")]
             public void Sums(int a, int b, int sum) => Assert.That(a + b, Is.EqualTo(sum));
+
+            [TestCaseSource(nameof(Titled))]
+            public void Compared(int a, int b)
+            {
+                Assert.That(a, Is.EqualTo(b));
+            }
+
+            [TestCase(1, TestName = Spelled)]
+            public void Lone(int a) => Assert.That(a, Is.EqualTo(1));
         }
+
+        public class Inherited
+        {
+            public static readonly TestCaseData[] Titled = [new TestCaseData(1).SetName("Passed_on")];
+
+            [TestCaseSource(nameof(Titled))]
+            public void Held(int value) => Assert.That(value, Is.EqualTo(1));
+        }
+
+        public class Inheriting : Inherited;
 
         [TestFixture(1)]
         [TestFixture(-1)]
         public class Parameterised(int value)
         {
+            public static readonly TestCaseData[] Titled = [new TestCaseData(2).SetName("Times_two")];
+
             [Test]
             public void Positive() => Assert.That(value, Is.GreaterThan(0));
+
+            [TestCaseSource(nameof(Titled))]
+            public void Doubled(int by) => Assert.That(value * by, Is.GreaterThan(0));
         }
 
         [TestFixture(typeof(int))]
@@ -77,9 +111,10 @@ public sealed class NUnitTests : NUnitFolders
     /// <summary>What every test of <see cref="Cases"/> comes to, as <see cref="Ended"/> says it.</summary>
     private static readonly string[] Rows =
     [
-        "Each(1,2): Passed", "Each(2,3): Passed", "Later: Skipped", "Plain: Passed", "Sourced(\"ab\",2): Passed", "Sourced(\"abc\",3): Passed",
-        "OnePlusOne: Passed", "TwoPlusTwoIsFive: Failed", "Words(\"a.b(c\"): Passed", "Words(\"d\"): Passed",
-        "Parameterised(-1).Positive: Failed", "Parameterised(1).Positive: Passed", "Typed<Int32>.Named: Passed", "Typed<String>.Named: Passed",
+        "Compared_3: Passed", "OneIsOne: Passed", "OneIsTwo: Failed", "Two.Is.Two: Passed", "Each(1,2): Passed", "Each(2,3): Passed", "Later: Skipped", "Spelled: Passed", "Plain: Passed",
+        "Sourced(\"ab\",2): Passed", "Sourced(\"abc\",3): Passed", "OnePlusOne: Passed", "TwoPlusTwoIsFive: Failed", "Words(\"a.b(c\"): Passed", "Words(\"d\"): Passed",
+        "Passed_on: Passed", "Passed_on: Passed", "Parameterised(-1).Times_two: Failed", "Parameterised(1).Times_two: Passed", "Parameterised(-1).Positive: Failed",
+        "Parameterised(1).Positive: Passed", "Typed<Int32>.Named: Passed", "Typed<String>.Named: Passed",
         "Worded(\"a.b\").Long(1): Passed", "Worded(\"a.b\").Long(2): Passed", "Worded(\"x(y\").Long(1): Passed", "Worded(\"x(y\").Long(2): Passed",
     ];
 
@@ -95,11 +130,44 @@ public sealed class NUnitTests : NUnitFolders
 
         Assert.True(window.Perform(AppActions.RunAllTests));
         Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Named") is not null, "the run of every test", TimeSpan.FromSeconds(180));
-        Assert.Equal("Tests passed: 15, failed: 2, skipped: 1 of 18", Tally(window));
+        Assert.Equal("Tests passed: 22, failed: 4, skipped: 1 of 27", Tally(window));
         Assert.Equal(Rows, Ended(window));
-        Assert.Equal(["18", "15", "2", "1"], new[] { "All Tests", "Passed Tests", "Failed Tests", "Ignored Tests" }.Select(f => Count(window, f)));
+        Assert.Equal(["27", "22", "4", "1"], new[] { "All Tests", "Passed Tests", "Failed Tests", "Ignored Tests" }.Select(f => Count(window, f)));
         Assert.Contains("TwoPlusTwoIsFive: Failed", Method(window, "Sums")!.Details, StringComparison.Ordinal);
+        Assert.Contains("OneIsTwo: Failed", Method(window, "Compared")!.Details, StringComparison.Ordinal);
         Assert.Contains("Parameterised(-1).Positive: Failed", Method(window, "Positive")!.Details, StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>A case named by its data shows under its method and runs alone from its row, the class that inherits a named
+    /// case holding one of its own, whichever way NUnit is installed.</summary>
+    [AvaloniaTheory]
+    [InlineData(NUnitInstall.OnVSTest)]
+    [InlineData(NUnitInstall.OnItsRunner)]
+    [InlineData(NUnitInstall.FourOnVSTest)]
+    public void A_case_named_by_its_data_is_a_row_of_its_method_that_runs_alone(NUnitInstall install)
+    {
+        MainWindow window = Ui.OpenFolder(Restored(install, "Cases.cs", Cases), languageServer: false);
+        ListBox tree = Tree(window);
+        Ui.WaitFor(() => Method(window, "Compared") is not null, "the tests read from their code");
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Named") is not null, "the run of every test", TimeSpan.FromSeconds(180));
+
+        TestNode compared = Method(window, "Compared")!;
+        Assert.Equal(["Compared_3", "OneIsOne", "OneIsTwo", "Two.Is.Two"], compared.Children.Select(r => r.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(["Cases.Tests.Inherited.Held", "Cases.Tests.Inheriting.Held"],
+            window.Tests.Tree.Methods.Where(m => m.Name == "Held").Select(m => m.FullName).Order(StringComparer.Ordinal));
+        if (!compared.IsExpanded)
+        {
+            window.Tests.Tree.Toggle(compared);
+        }
+        TestNode failing = compared.Children.Single(r => r.Name == "OneIsTwo");
+        TestOutcome before = failing.Results[0];
+        tree.SelectedItem = failing;
+        Ui.ChooseFromMenu(tree, "Run");
+        Ui.WaitFor(() => !window.Tests.IsBusy && !ReferenceEquals(failing.Results.FirstOrDefault(), before), "the run of the row chosen", TimeSpan.FromSeconds(120));
+        Assert.Equal("Tests passed: 0, failed: 1 of 1", Tally(window));
+        Assert.Equal(TestState.Failed, failing.State);
         window.Close();
     }
 

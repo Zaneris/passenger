@@ -11,6 +11,9 @@ public sealed record TestAssembly(ProjectModel Project, string Framework, string
     /// <summary>The run settings file its project names (RunSettingsFilePath, as `dotnet test` takes it), as a full path;
     /// null for none.</summary>
     public string? RunSettings { get; init; }
+
+    /// <summary>Where its project's code declares its tests as a runner looks through it; null where none was read.</summary>
+    public DeclaredLines? Declared { get; init; }
 }
 
 /// <summary>Where the test projects build their assemblies, one per target framework, asked of the warm project host with

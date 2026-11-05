@@ -1,4 +1,5 @@
 using System.Buffers;
+using Passenger.Core;
 
 namespace Passenger.App.Testing;
 
@@ -84,21 +85,29 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
         return dot > 0 && displayName.StartsWith(method[..(dot + 1)], StringComparison.Ordinal) ? displayName[(dot + 1)..] : displayName;
     }
 
+    /// <summary>A test its framework names in place of its method (NUnit's SetName and TestName) as a row of that method: the
+    /// method's full name in the class the runner names ("A.B.Sums" of "A.B.Two.Plus" shown "Two.Plus", of method Sums;
+    /// "A.B.F(1).Sums" of "A.B.F(1).Two" shown "Two"), and the row; null for a test named by its method, or by a name that
+    /// is no class's and the display name's. A name given may hold dots: only the display name says where it begins, but
+    /// where it is the full name itself.</summary>
+    public static (string Name, string Row)? NamedCase(string runnerName, string displayName, string method)
+    {
+        int end = runnerName == displayName ? LastDots(runnerName).Method
+            : runnerName.EndsWith(displayName, StringComparison.Ordinal) ? runnerName.Length - displayName.Length - 1 : -1;
+        if (end <= 0 || runnerName[end] != '.')
+        {
+            return null;
+        }
+        string name = string.Concat(runnerName.AsSpan(0, end + 1), method);
+        return SameMethod(name, runnerName) ? null : (name, RowOf(name, displayName) ?? Shown(MethodOf(name), displayName));
+    }
+
     /// <summary>A test of a fixture's instance, its class named with the arguments or type arguments it was made with, as
     /// its class from its full name and its method from its display name, which alone holds a case's arguments on the
     /// Testing Platform ("Fixture(1).Method(2)" of "A.B.Fixture(1).Method" shown "Method(2)"); null for any other.</summary>
     private static string? Instance(string fullyQualifiedName, string displayName)
     {
-        int type = -1;
-        int method = -1;
-        (int Depth, char Quote) inside = default;
-        for (int at = 0; at < fullyQualifiedName.Length; at++)
-        {
-            if (Outside(fullyQualifiedName, ref at, ref inside) && fullyQualifiedName[at] == '.')
-            {
-                (type, method) = (method, at);
-            }
-        }
+        (int type, int method) = LastDots(fullyQualifiedName);
         if (method <= 0 || fullyQualifiedName.AsSpan(type + 1, method - type - 1).IndexOfAny('(', '<') < 0)
         {
             return null;
@@ -106,6 +115,23 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
         return displayName.AsSpan().StartsWith(fullyQualifiedName.AsSpan(0, method + 1), StringComparison.Ordinal)
             ? displayName[(type + 1)..]
             : string.Concat(fullyQualifiedName.AsSpan(type + 1, method - type), displayName);
+    }
+
+    /// <summary>The last two dots of a name outside its argument lists, those before a type's and a method's names; -1 for one
+    /// it lacks.</summary>
+    private static (int Type, int Method) LastDots(ReadOnlySpan<char> name)
+    {
+        int type = -1;
+        int method = -1;
+        (int Depth, char Quote) inside = default;
+        for (int at = 0; at < name.Length; at++)
+        {
+            if (Outside(name, ref at, ref inside) && name[at] == '.')
+            {
+                (type, method) = (method, at);
+            }
+        }
+        return (type, method);
     }
 
     /// <summary>The longest method name compared on the stack; a longer one is written into a rented array.</summary>
@@ -227,6 +253,38 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
 public sealed record CodeTests(IReadOnlyList<TestItem> Tests, IReadOnlyDictionary<string, IReadOnlySet<string>> MethodsByFile)
 {
     public static readonly CodeTests None = new([], new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal));
+}
+
+/// <summary>The lines a project's code declares its tests on, taken for a worker as a runner looks through what was built
+/// of it, while they are the build's: the test a line of a file is in, for a runner that names it otherwise and says nothing
+/// more of it than the line. Lines are those of <see cref="TestItem.Line"/>.</summary>
+public sealed class DeclaredLines
+{
+    private readonly IReadOnlyDictionary<string, IReadOnlySet<string>> methods;
+    private readonly Lazy<Dictionary<string, TestItem[]>> files;
+
+    /// <summary>The code as told now: a move of lines replaces its tests in place, so they are copied here.</summary>
+    public DeclaredLines(CodeTests code)
+    {
+        TestItem[] tests = [.. code.Tests];
+        methods = code.MethodsByFile;
+        files = new(() => tests.Where(t => t.Path is not null).GroupBy(t => t.Path!, StringComparer.Ordinal)
+            .ToDictionary(file => file.Key, file => file.OrderBy(t => t.Line).ToArray(), StringComparer.Ordinal));
+    }
+
+    /// <summary>The name of the test method a runner's line of a file is in, the last declared at or above it, for a test
+    /// whose name is of no method the file declares; null for one whose name is, or a line above every test of the file.</summary>
+    public string? MethodAt(string path, int line, string fullyQualifiedName)
+    {
+        string method = TestItem.MethodOf(fullyQualifiedName);
+        if (!methods.TryGetValue(path, out IReadOnlySet<string>? declared) || declared.Contains(method[(method.LastIndexOf('.') + 1)..])
+            || !files.Value.TryGetValue(path, out TestItem[]? tests))
+        {
+            return null;
+        }
+        int after = Sorted.FirstAfter<TestItem, int>(tests, static t => t.Line, line);
+        return after == 0 ? null : tests[after - 1].DisplayName;
+    }
 }
 
 /// <summary>How a test, or one of its data rows, ran, as its runner reports it.</summary>
