@@ -54,7 +54,7 @@ public static class GDScriptScopes
             GDScriptFunction function when function.Parameters.Concat(GDScriptNode.Of(function.Rest).Cast<GDScriptParameter>()).FirstOrDefault(p => p.Identifier?.Name == name) is { } parameter =>
                 new Scoped(parameter, function),
             GDScriptSuite suite when suite.Statements.Where(s => s.Start <= at).OfType<GDScriptAssignable>().LastOrDefault(s => s.Identifier?.Name == name) is { } local => new Scoped(local, null),
-            GDScriptFor loop when loop.Variable?.Name == name && loop.Loop is { } body && body.Start <= at => new Scoped(loop, null),
+            GDScriptFor { Variable: { } variable } loop when variable.Name == name && (at <= variable.End || loop.Loop is { } body && body.Start <= at) => new Scoped(loop, null),
             GDScriptMatchBranch branch when branch.Patterns.Any(p => Binds(p, name)) => new Scoped(branch, null),
             GDScriptClass inner when inner.Members.FirstOrDefault(m => Declares(m, name)) is { } member => new Scoped(member, null),
             _ => null,

@@ -472,6 +472,26 @@ public class GodotDefinitionsTests
         Assert.Equal(["custom.is_action_pressed(\"jump\")", "unknown.is_action(\"jump\")", "unknown.chain.is_action(\"jump\")"], Said(true));
     }
 
+    /// <summary>A word reads a singleton autoload only where nothing nearer has its name: a member of its class, the class it
+    /// extends, or a parameter or local in scope. A node's bare path holds no word, and an autoload no '*' makes a singleton
+    /// is read by no word at all.</summary>
+    [Fact]
+    public void A_word_names_an_autoload_only_where_nothing_nearer_declares_its_name()
+    {
+        const string project = "config_version=5\n\n[autoload]\n\nGlobals=\"*res://globals.gd\"\nPlain=\"res://plain.gd\"\n";
+        const string uses = "extends Node\n\n\nfunc go():\n\tGlobals.score += 1\n\tPlain.score += 1\n\t$Globals.show()\n\t$Hud/Globals.show()\n\tself.Globals = 1\n\n\nfunc shadowed(Globals):\n\tGlobals.show()\n\n\n"
+            + "func local():\n\tvar Globals = 1\n\tprint(Globals)\n\n\nfunc after():\n\tprint(Globals)\n\tfor Globals in []:\n\t\tprint(Globals)\n";
+        const string member = "extends Node\n\n\nfunc Globals():\n\treturn 1\n\n\nfunc go():\n\tGlobals()\n\tself.Globals()\n";
+        const string built = "extends \"res://member.gd\"\n\n\nfunc again():\n\tGlobals()\n";
+        Dictionary<string, string> texts = new(StringComparer.Ordinal) { ["res://project.godot"] = project, ["res://uses.gd"] = uses, ["res://member.gd"] = member, ["res://built.gd"] = built };
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: texts);
+        GodotDefined globals = scenes.Defined.Autoloads.Single(a => a.Name == "Globals");
+        string[] lines = uses.Split('\n');
+        Assert.Equal(["Globals.score += 1", "print(Globals)"], globals.Places.Where(p => !p.Defines).Select(p => lines[uses[..p.Start].Count(c => c == '\n')].Trim()));
+        Assert.All(globals.Places.Where(p => !p.Defines), p => Assert.Equal("res://uses.gd", p.Res));
+        Assert.Single(scenes.Defined.Autoloads.Single(a => a.Name == "Plain").Places);
+    }
+
     /// <summary>A name is written for each string it goes in: a quote like the string's own escaped, one a raw string can't say
     /// told as none, and project.godot's key as it is.</summary>
     [Fact]

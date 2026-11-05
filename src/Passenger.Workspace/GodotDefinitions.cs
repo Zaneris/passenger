@@ -573,7 +573,8 @@ public sealed class GodotDefinitions
     }
 
     /// <summary>The autoloads' places with those each is named at elsewhere: the name in a node path through /root, in a
-    /// GDScript's string or a scene's NodePath, and a GDScript's word naming its node, not after a '.'.</summary>
+    /// GDScript's string or a scene's NodePath, and a GDScript's word reading a singleton, which a '.' before it, a name the
+    /// script declares in scope there or a member of its class (<see cref="Shadows"/>) makes another's.</summary>
     private IReadOnlyList<GodotDefined> Autoloaded(IReadOnlyList<GodotDefined> names)
     {
         Dictionary<string, List<GodotPlace>> more = new(StringComparer.Ordinal);
@@ -583,7 +584,7 @@ public sealed class GodotDefinitions
             foreach (GodotScriptToken token in tokens)
             {
                 string? name = token.Word ? token.AfterDot ? null : token.Text : RootName(token.Text);
-                if (name is not null && named.Contains(name))
+                if (name is not null && named.Contains(name) && !(token.Word && (!IsSingleton(name) || Shadows(res, name, token.Start))))
                 {
                     int start = token.Word ? token.Start : token.Start + RootPath.Length;
                     Add(more, name, ScriptPlace(res, token, start, start + name.Length));
@@ -617,6 +618,11 @@ public sealed class GodotDefinitions
             return name.Length > 0 ? name : null;
         }
     }
+
+    /// <summary>Whether a word of a GDScript names what the script's own class has rather than what the project defines: a
+    /// declaration in scope where it is written, a member the class has through a script it extends.</summary>
+    private bool Shadows(string res, string name, int offset) =>
+        GDScriptScopes.DeclaredAt(TreeOf(res), name, offset) is not null || scenes.ChainOf(res) is var chain && Enum.GetValues<GodotScriptKind>().Any(kind => chain.Find(kind, name) is not null);
 
     /// <summary>A place in a word or string of a GDScript, a use of a name, as its words name it ("player.gd:12").</summary>
     private GodotPlace ScriptPlace(string res, GodotScriptToken token, int start, int end) =>

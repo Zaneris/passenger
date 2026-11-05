@@ -68,6 +68,18 @@ public static class GodotScriptStrings
                 before = '"';
                 continue;
             }
+            if (c == '$' && at + 1 < text.Length && text[at + 1] is not ('"' or '\''))
+            {
+                // A node's path written bare holds names of nodes, no word of the code's.
+                at++;
+                while (at < text.Length && (IsWordChar(text[at]) || text[at] is '/' or '%'))
+                {
+                    at++;
+                }
+                wordLast = false;
+                before = 'a';
+                continue;
+            }
             if (char.IsLetter(c) || c == '_')
             {
                 int start = at;
