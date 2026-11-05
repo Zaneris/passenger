@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.Text;
+using Passenger.Workspace.GDScript;
 
 namespace Passenger.App.Godot;
 
@@ -15,8 +16,8 @@ public readonly record struct GodotScriptMember(string Name, int Line);
 public sealed record GodotScriptMembers(string Script, string Class, int ClassLine, IReadOnlyList<GodotScriptMember> Members);
 
 /// <summary>The members of a Godot script's class a file declares, whose values a running game's nodes hold: a C# script's
-/// instance fields and auto-properties (a property with a getter of its own is never run to read it), a GDScript's
-/// <c>var</c>s outside its inner classes.</summary>
+/// instance fields and auto-properties, a GDScript's <c>var</c>s outside its inner classes. A member with a getter of its
+/// own is left out in either language: reading it would run the person's code, so that watching a game changed it.</summary>
 public static partial class GodotMembers
 {
     /// <summary>The members of the C# script class a file (at <paramref name="path"/>, a <c>res://</c> one) declares: the class
@@ -60,28 +61,31 @@ public static partial class GodotMembers
 
     private static int Line(TextSnapshot text, SyntaxToken token) => text.GetLineFromOffset(Math.Min(token.SpanStart, text.Length));
 
-    /// <summary>The members of a GDScript file (its <c>res://</c> path): each <c>var</c> at the start of a line, annotated or
-    /// not, but a static one; its class named where <c>class_name</c> names it, else by its file, on that line or its
-    /// <c>extends</c> line, else the first.</summary>
+    /// <summary>The members of a GDScript file (its <c>res://</c> path), as Godot's parser reads them: each <c>var</c> of its
+    /// class, annotated or not, but a static one and one with a getter of its own, whichever way that is written; its class
+    /// named where <c>class_name</c> names it, else by its file, on that line or its <c>extends</c> line, else the first.</summary>
     public static GodotScriptMembers OfGdScript(TextSnapshot text, string path)
     {
         List<GodotScriptMember> members = [];
+        foreach (GDScriptMember member in GDScriptTree.Parse(text.ToString()).Members)
+        {
+            if (member.Node is GDScriptVariable { IsStatic: false, Getter: null, GetterName: null, Identifier: { } variable })
+            {
+                members.Add(new GodotScriptMember(variable.Name, text.GetLineFromOffset(member.Offset + variable.Start)));
+            }
+        }
         string? named = null;
         int classLine = -1;
         for (int line = 0; line < text.LineCount; line++)
         {
             LineSpan span = text.GetLine(line);
-            // Only a line that starts at its first column with a member's word or an annotation is read.
-            if (span.Length < 4 || text[span.Start] is not ('v' or '@' or 'c' or 'e'))
+            // Only a line that starts at its first column with a class's word is read.
+            if (span.Length < 4 || text[span.Start] is not ('c' or 'e'))
             {
                 continue;
             }
             string words = text.GetText(span.Start, span.Length);
-            if (Var().Match(words) is { Success: true } var)
-            {
-                members.Add(new GodotScriptMember(var.Groups[1].Value, line));
-            }
-            else if (named is null && ClassName().Match(words) is { Success: true } name)
+            if (named is null && ClassName().Match(words) is { Success: true } name)
             {
                 named = name.Groups[1].Value;
                 classLine = line;
@@ -94,9 +98,6 @@ public static partial class GodotMembers
         string file = path[(path.LastIndexOf('/') + 1)..];
         return new GodotScriptMembers(path, named ?? Path.GetFileNameWithoutExtension(file), Math.Max(0, classLine), members);
     }
-
-    [GeneratedRegex(@"^(?:@[A-Za-z_]\w*(?:\([^)]*\))?\s+)*var\s+([A-Za-z_]\w*)")]
-    private static partial Regex Var();
 
     [GeneratedRegex(@"^class_name\s+([A-Za-z_]\w*)")]
     private static partial Regex ClassName();

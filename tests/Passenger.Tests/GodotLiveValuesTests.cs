@@ -15,8 +15,9 @@ namespace Passenger.Tests;
 /// <summary>A running Godot game's values in the code, with no breakpoint: the members of the script shown carry their
 /// values at their lines' ends, read again as the game runs (a frame count climbing, a vector's parts, a node path's node),
 /// the hint hovered shows its last minute as a line, Settings turns them off and on, and Stop takes them away; a script two
-/// nodes run says so until one is chosen in the Live Visual Tree, whose values it then shows; a GDScript's vars show alike. Godot runs headless, its user
-/// folders the run's; without a Godot 4 .NET build each test skips saying why. Its game runs and is stopped, so run alone.</summary>
+/// nodes run says so until one is chosen in the Live Visual Tree, whose values it then shows; a GDScript's vars show alike,
+/// none of the game's code run to read them. Godot runs headless, its user folders the run's; without a Godot 4 .NET build
+/// each test skips saying why. Its game runs and is stopped, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotLiveValuesTests : IClassFixture<GodotLiveValuesTests.Game>
 {
@@ -76,6 +77,32 @@ public sealed class GodotLiveValuesTests : IClassFixture<GodotLiveValuesTests.Ga
 
         func _process(_delta: float) -> void:
             sparks += 1
+
+        """;
+
+    /// <summary>A spark counting each time its code runs to be read: a member's getter, an item's <c>_to_string</c>.</summary>
+    private const string Watched = """
+        extends Node
+
+        class Noted:
+            var spark
+
+            func _to_string() -> String:
+                spark.reads += 1
+                return "noted"
+
+        var reads := 0
+        var counted: int:
+            get:
+                reads += 1
+                return reads
+        var notes := [Noted.new()]
+        var notes_by_name := {"first": Noted.new()}
+
+
+        func _ready() -> void:
+            notes[0].spark = self
+            notes_by_name["first"].spark = self
 
         """;
 
@@ -211,6 +238,31 @@ public sealed class GodotLiveValuesTests : IClassFixture<GodotLiveValuesTests.Ga
 
     /// <summary>The file of Passenger's helper in the game, which an error it raises names.</summary>
     private const string GodotAgentFile = "passenger_agent.gd";
+
+    /// <summary>Watching a game never runs its code: a member with a getter of its own shows no value, the rest of its script's
+    /// do, and an object in a container is said by what it is, so what they count stays at nothing however long it is watched.</summary>
+    [AvaloniaFact]
+    public void Watching_a_gdscripts_values_runs_no_getter_of_its_and_no_to_string_so_the_game_stays_as_it_was()
+    {
+        game.Rewrite("spark.gd", Watched);
+        MainWindow window = Started("spark.gd");
+        try
+        {
+            OpenDocument script = window.EditorArea.Active!;
+            int reads = LineOf("spark.gd", "var reads");
+            Ui.WaitFor(() => Hint(script, reads) is not null, () => $"the read count's hint ({Unread(window, script)})", TimeSpan.FromMinutes(1));
+            Ui.Hold(TimeSpan.FromSeconds(2.5), "two of the game's beats, each reading the script's members");
+            Ui.WaitFor(() => Hint(script, LineOf("spark.gd", "var notes :=")) is not null, () => $"the notes' hint ({Unread(window, script)})");
+            Assert.True(Hint(script, reads) == "reads: 0", $"Reading the script's values ran its code: {Hints(script)}");
+            Assert.True(Hint(script, LineOf("spark.gd", "var counted")) is null, $"A member with a getter of its own was read: {Hints(script)}");
+            Assert.Equal("notes: [<RefCounted>]", Hint(script, LineOf("spark.gd", "var notes :=")));
+            Assert.Equal("notes_by_name: { \"first\": <RefCounted> }", Hint(script, LineOf("spark.gd", "var notes_by_name")));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
 
     private static string Run(MainWindow window)
     {

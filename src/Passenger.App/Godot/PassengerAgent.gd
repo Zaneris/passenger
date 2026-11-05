@@ -504,10 +504,35 @@ func _described(value: Variant) -> String:
             return value.resource_path
         return "<%s>" % value.get_class()
     if typeof(value) == TYPE_DICTIONARY:
-        return str(value).left(200) if value.size() <= 4 else "{%d entries}" % value.size()
+        return _item(value, 3).left(200) if value.size() <= 4 else "{%d entries}" % value.size()
     if value.size() <= 6:
-        return str(value).left(200)
-    return "%s, …] (%d items)" % [str(value.slice(0, 6)).trim_suffix("]").left(200), value.size()]
+        return _item(value, 3).left(200)
+    return "%s, …] (%d items)" % [_item(value.slice(0, 6), 3).trim_suffix("]").left(200), value.size()]
+
+
+## A value in a container's words, as str says it but for an object, said as _described says it: str would run its script's
+## _to_string, and reading a member never runs the game's code. Containers deeper than depth are left unsaid.
+func _item(value: Variant, depth: int) -> String:
+    var kind := typeof(value)
+    if kind == TYPE_OBJECT:
+        return _described(value)
+    if kind != TYPE_ARRAY and kind != TYPE_DICTIONARY:
+        var alone := str([value])
+        return alone.substr(1, alone.length() - 2)
+    if depth == 0:
+        return "…"
+    var said := PackedStringArray()
+    if kind == TYPE_ARRAY:
+        for item in value.slice(0, 6):
+            said.append(_item(item, depth - 1))
+        if value.size() > 6:
+            said.append("…")
+        return "[%s]" % ", ".join(said)
+    for key_of in value.keys().slice(0, 4):
+        said.append("%s: %s" % [_item(key_of, depth - 1), _item(value[key_of], depth - 1)])
+    if value.size() > 4:
+        said.append("…")
+    return "{ %s }" % ", ".join(said)
 
 
 ## A member's value as sent: [] for one the node does not hold, [value], [words, 1] for an object or a container, or

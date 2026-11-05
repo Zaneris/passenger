@@ -102,6 +102,60 @@ public class GodotLiveValuesTests
     }
 
     [Fact]
+    public void A_gdscript_member_with_a_getter_of_its_own_is_never_read_however_it_is_written()
+    {
+        const string Script = """
+            extends Node
+
+            var plain := 1
+            var set_only := 2:
+                set(value):
+                    set_only = value
+            var named_setter: int: set = _keep
+            var inline_body: int:
+                get:
+                    return plain
+            var with_value := 3:
+                get:
+                    return plain
+                set(value):
+                    plain = value
+            var setter_first := 4:
+                set(value):
+                    plain = value
+                get:
+                    return plain
+            var named: int: get = _counted
+            var both := 5: set = _keep, get = _counted
+            @export var exported := 6:
+                get: return plain
+            var spread := [
+                1,
+            ]:
+                get:
+                    return []
+            var last := 7
+
+            func _counted() -> int:
+                return plain
+
+            func _keep(value: int) -> void:
+                plain = value
+
+            """;
+        GodotScriptMembers members = GodotMembers.OfGdScript(TextSnapshot.From(Script), "res://getters.gd");
+        Assert.Equal(["plain", "set_only", "named_setter", "last"], members.Members.Select(m => m.Name));
+        Assert.Equal(Line(Script, "var last"), members.Members[^1].Line);
+    }
+
+    [Fact]
+    public void A_script_that_does_not_parse_still_has_the_members_around_what_is_wrong()
+    {
+        const string Script = "extends Node\n\nvar first := 1\n\nfunc _ready(:\n\tpass\n\nvar after := 2\nvar := 3\nvar last := 4\n";
+        Assert.Equal(["first", "after", "last"], GodotMembers.OfGdScript(TextSnapshot.From(Script), "res://broken.gd").Members.Select(m => m.Name));
+    }
+
+    [Fact]
     public void The_helpers_answer_reads_as_each_scripts_count_node_and_values_a_member_not_held_left_out()
     {
         GodotScriptAsk main = new("res://Main.cs", 0, ["frames", "drift", "Target", "tag", "list"]);
