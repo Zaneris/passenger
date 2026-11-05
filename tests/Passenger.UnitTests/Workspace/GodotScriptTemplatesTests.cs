@@ -10,6 +10,19 @@ public class GodotScriptTemplatesTests
     private static GodotScriptStyle Style(Dictionary<string, string> settings, string? space = "Spin.Game", bool fileScoped = true) =>
         GodotScriptTemplates.StyleOf(name => settings.GetValueOrDefault(name), space, fileScoped);
 
+    /// <summary>A C# project reads its glob from its own folder, so templates under a GodotProjectDir of another folder are
+    /// named from there, or the build compiles their placeholders as its code.</summary>
+    [Fact]
+    public void The_templates_a_build_leaves_out_are_named_from_the_csharp_projects_folder_wherever_the_godot_project_is()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "repo");
+
+        Assert.Equal("script_templates/**", GodotScriptTemplates.Excluded(root, root));
+        Assert.Equal("game/script_templates/**", GodotScriptTemplates.Excluded(root, Path.Combine(root, "game")));
+        Assert.Equal("games/one/script_templates/**", GodotScriptTemplates.Excluded(root, Path.Combine(root, "games", "one")));
+        Assert.Equal("../game/script_templates/**", GodotScriptTemplates.Excluded(Path.Combine(root, "code"), Path.Combine(root, "game")));
+    }
+
     [Fact]
     public void A_project_of_file_scoped_namespaces_and_four_spaces_gets_a_partial_class_godot_keeps_the_spaces_of()
     {

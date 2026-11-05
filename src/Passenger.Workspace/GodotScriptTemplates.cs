@@ -26,8 +26,10 @@ public static class GodotScriptTemplates
     /// <summary>Where a base class's template goes in a Godot project's folder.</summary>
     public static string PathOf(string project, string baseClass) => Path.Combine(project, Folder, baseClass, FileName);
 
-    /// <summary>The glob of the templates' folder, which the game's build leaves out: they are no code of its own.</summary>
-    public const string Excluded = Folder + "/**";
+    /// <summary>The glob of a Godot project's templates, which the game's build leaves out, as they are no code of its own:
+    /// as its C# project reads it, from that project's folder (<paramref name="project"/>) to the Godot project's.</summary>
+    public static string Excluded(string project, string godot) =>
+        Path.GetRelativePath(project, godot) is var relative && relative == "." ? $"{Folder}/**" : $"{relative.Replace(Path.DirectorySeparatorChar, '/')}/{Folder}/**";
 
     /// <summary>Whether a template's text is one Passenger wrote, which it keeps up to date.</summary>
     public static bool IsPassengers(string text) => text.Contains($"// meta-name: {Name}", StringComparison.Ordinal);

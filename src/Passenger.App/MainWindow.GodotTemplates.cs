@@ -93,7 +93,7 @@ public partial class MainWindow
                 _ = File.Exists(path) && FileText.Load(path) is { } now ? FileText.SaveOver(path, now, text) : FileText.SaveNew(path, text);
             }
             // The templates are C# of no class Godot's names fill in, which the game's build would take for its own.
-            return ProjectEdits.RemoveCompiled(project.Path, GodotScriptTemplates.Excluded);
+            return ProjectEdits.RemoveCompiled(project.Path, GodotScriptTemplates.Excluded(project.Folder, folder));
         });
         if (refused is not null)
         {
@@ -141,15 +141,16 @@ public partial class MainWindow
         leavingTemplatesOut = true;
         try
         {
+            string glob = GodotScriptTemplates.Excluded(project.Folder, folder);
             bool taken = await BackgroundWork.Run(() => GodotScriptTemplates.Bases.Any(b => GodotScriptTemplates.PathOf(folder, b) is var path && File.Exists(path)
-                && FileText.Load(path)?.Text is { } text && GodotScriptTemplates.IsPassengers(text)) && !RemovesTemplates(project.Path));
+                && FileText.Load(path)?.Text is { } text && GodotScriptTemplates.IsPassengers(text)) && !RemovesTemplates(project.Path, glob));
             if (!taken)
             {
                 return;
             }
             string name = Path.GetFileName(project.Path);
             string? refused = await ChangeFileAsync("Leave C# Script Templates Out of the Build", [project.Path],
-                () => ProjectEdits.RemoveCompiled(project.Path, GodotScriptTemplates.Excluded));
+                () => ProjectEdits.RemoveCompiled(project.Path, glob));
             status.Say(refused is null
                 ? $"{name} was written again without leaving Passenger's C# script templates for Godot out of its build, so they are left out again"
                 : $"{name} builds Passenger's C# script templates for Godot as its own code, and they could not be left out again: {refused}", refused is null ? null : ProblemSeverity.Warning);
@@ -160,11 +161,11 @@ public partial class MainWindow
         }
 
         // A project that cannot be read is no project to add to.
-        static bool RemovesTemplates(string project)
+        static bool RemovesTemplates(string project, string glob)
         {
             try
             {
-                return ProjectEdits.RemovesCompiled(project, GodotScriptTemplates.Excluded);
+                return ProjectEdits.RemovesCompiled(project, glob);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
