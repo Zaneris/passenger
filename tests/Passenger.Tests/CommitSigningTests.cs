@@ -411,6 +411,7 @@ public sealed class CommitSigningEverywhereTests : IDisposable
         Environment.SetEnvironmentVariable("GIT_CONFIG_GLOBAL", config);
         Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", Path.Combine(folder, "config"));
         File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
+        File.WriteAllText(Path.Combine(other, "Other.cs"), "class Other\n{\n}\n");
         TestGit.Init(root);
         TestGit.Init(other);
         string local = Path.Combine(folder, "shop_signers");
