@@ -956,6 +956,72 @@ public sealed class GodotAddonTests : IDisposable
         }
     }
 
+    /// <summary>What the addon's remove empties, its own script run in the Godot found over a tree a script of the test's makes:
+    /// a path through a unique name that finds the node or one below it, and paths an array or dictionary holds at any depth, a
+    /// dictionary's keys too; a path to any other node is left. A move leaves a unique name, which finds its node wherever it goes.</summary>
+    [AvaloniaFact]
+    public void A_remove_empties_unique_paths_and_those_an_array_or_a_dictionary_holds()
+    {
+        Assert.SkipWhen(godot is not { WhyNot: null }, "No Godot 4 was found to run the addon's script in");
+        const string probe = """
+            extends SceneTree
+
+            class Holder extends Node:
+            	@export var direct: NodePath
+            	@export var below: NodePath
+            	@export var listed: Array = []
+            	@export var mapped: Dictionary = {}
+            	@export var kept: NodePath
+
+
+            func _made(name: String, parent: Node, root: Node) -> Node:
+            	var made := Node.new()
+            	made.name = name
+            	parent.add_child(made)
+            	made.owner = root
+            	return made
+
+
+            func _init():
+            	var scenes = load("res://scenes.gd")
+            	var root := Node.new()
+            	get_root().add_child(root)
+            	var holder := Holder.new()
+            	holder.name = "Holder"
+            	root.add_child(holder)
+            	holder.owner = root
+            	var hud := _made("Hud", root, root)
+            	var score := _made("Score", hud, root)
+            	score.unique_name_in_owner = true
+            	_made("Label", score, root)
+            	_made("Other", hud, root)
+            	holder.direct = NodePath("%Score")
+            	holder.below = NodePath("%Score/Label:text")
+            	holder.listed = [NodePath("../Hud/Score"), NodePath("../Hud/Other")]
+            	holder.mapped = {"a": NodePath("%Score"), "b": [NodePath("../Hud/Score/Label")], "c": NodePath("../Hud/Other"), NodePath("../Hud/Score"): 1}
+            	holder.kept = NodePath("../Hud/Other")
+            	for each in scenes._repathed(root, "Hud/Score", ""):
+            		print("REMOVE %s %s" % [each[1], each[3]])
+            	for each in scenes._repathed(root, "Hud/Score", "Moved"):
+            		print("MOVE %s %s" % [each[1], each[3]])
+            	quit()
+
+            """;
+        TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Probe\"\n");
+        TestFolders.Write(folder, "scenes.gd", GodotAddonFiles.Carried.Single(f => f.Name == "scenes.gd").Text);
+        TestFolders.Write(folder, "probe.gd", probe);
+        ProcessStartInfo start = ChildProcesses.Command(godot!.Executable, [GodotExecutables.Headless, "--path", folder, "--script", "res://probe.gd"], folder);
+        foreach ((string name, string value) in GodotUserFolders.Under(folder + "-home"))
+        {
+            start.Environment[name] = value;
+        }
+        ChildResult result = Ui.Await(ChildProcesses.RunAsync(start, limit: TimeSpan.FromSeconds(60) * TestRun.TimeScale), "the addon's script over the test's tree");
+        List<string> lines = [.. result.Output.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith("REMOVE", StringComparison.Ordinal) || l.StartsWith("MOVE", StringComparison.Ordinal))];
+        Assert.Equal(["REMOVE direct", "REMOVE below", "REMOVE listed [^\"\", ^\"../Hud/Other\"]", "REMOVE mapped { \"a\": ^\"\", \"b\": [^\"\"], \"c\": ^\"../Hud/Other\", ^\"\": 1 }",
+            "MOVE listed [^\"../Moved\", ^\"../Hud/Other\"]", "MOVE mapped { \"a\": ^\"%Score\", \"b\": [^\"../Moved/Label\"], \"c\": ^\"../Hud/Other\", ^\"../Moved\": 1 }"],
+            lines);
+    }
+
     /// <summary>An agent's godot_editor moves a node another's NodePath leads to, the path written again in the same step of
     /// Godot's undo, one undo putting both back; and its read of an instance lists only what the scene instancing it
     /// changes, not what the scene it instances sets.</summary>

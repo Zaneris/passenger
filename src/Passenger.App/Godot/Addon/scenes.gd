@@ -203,19 +203,26 @@ static func _repathed(root: Node, before: String, after: String) -> Array:
 			if property["usage"] & PROPERTY_USAGE_STORAGE == 0:
 				continue
 			var value = holder.get(property["name"])
-			var now = _repath(value, from, _moved(from, before, after), before, after)
+			var now = _repath(value, root, holder, from, _moved(from, before, after), before, after)
 			if typeof(now) != TYPE_NIL:
 				changed.append([holder, property["name"], value, now])
 	return changed
 
 
-## A value, a NodePath or an array of them, as the move makes it; null where it changes nothing.
-static func _repath(value: Variant, from: String, from_after: String, before: String, after: String) -> Variant:
+## A value, a NodePath or an array or dictionary holding them, as the move makes it; null where it changes nothing. A unique
+## name goes on finding its node wherever a move takes it, so only a remove reaches a path through one.
+static func _repath(value: Variant, root: Node, holder: Node, from: String, from_after: String, before: String, after: String) -> Variant:
 	if value is NodePath:
 		var path: NodePath = value
-		if path.is_empty() or path.is_absolute() or str(path).begins_with("%"):
+		if path.is_empty() or path.is_absolute():
 			return null
-		var target = _joined(from, path)
+		var unique := _unique(path)
+		if unique and after != "":
+			return null
+		var found: Node = holder.get_node_or_null(path) if unique else null
+		if unique and found == null:
+			return null
+		var target = _path(root, found) if unique else _joined(from, path)
 		if target == null:
 			return null
 		var subnames := path.get_concatenated_subnames()
@@ -226,12 +233,35 @@ static func _repath(value: Variant, from: String, from_after: String, before: St
 		var copy = value.duplicate()
 		var any := false
 		for index in copy.size():
-			var now = _repath(copy[index], from, from_after, before, after)
+			var now = _repath(copy[index], root, holder, from, from_after, before, after)
 			if typeof(now) != TYPE_NIL:
 				copy[index] = now
 				any = true
 		return copy if any else null
+	if value is Dictionary:
+		var copy = value.duplicate()
+		var any := false
+		for key in value.keys():
+			var now = _repath(value[key], root, holder, from, from_after, before, after)
+			if typeof(now) != TYPE_NIL:
+				copy[key] = now
+				any = true
+			var named = _repath(key, root, holder, from, from_after, before, after)
+			if typeof(named) != TYPE_NIL:
+				var kept = copy[key]
+				copy.erase(key)
+				copy[named] = kept
+				any = true
+		return copy if any else null
 	return null
+
+
+## Whether a NodePath leads through a unique name.
+static func _unique(path: NodePath) -> bool:
+	for index in path.get_name_count():
+		if str(path.get_name(index)).begins_with("%"):
+			return true
+	return false
 
 
 ## A scene path (. the root) as a move of a node from one path to another leaves it; "" for one a remove takes.
