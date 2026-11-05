@@ -457,7 +457,8 @@ public static partial class GDScriptRefactorings
     /// <summary>Change Signature of a function: its name and parameters as given, each call and string naming it updated,
     /// a renamed parameter's reads renamed. Refused where a removed parameter is read, another script declares its name, it
     /// is Godot's own, or, its parameters changing, it is a value (but one <paramref name="followed"/> names: a signal's
-    /// connection changing with it), named at run time, read unseen or called from <paramref name="elsewhere"/>.</summary>
+    /// connection changing with it), named at run time, read unseen, called from <paramref name="elsewhere"/>, or a call's
+    /// arguments would not run as they did (<see cref="Disarranged"/>).</summary>
     public static GDScriptRefactored ChangeSignature(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target, string name, IReadOnlyList<GDScriptParameterChange> parameters,
         IReadOnlyList<GDScriptPlace> elsewhere, IReadOnlySet<GDScriptNode>? followed = null)
     {
@@ -503,6 +504,21 @@ public static partial class GDScriptRefactorings
                 .Select(u => GDScriptUses.Place(u.Script, u.Offset, u.Name, "takes it as a value, whose callers can't be followed")));
             blocking.AddRange(uses.Strings.Where(s => s.Call.FunctionName is not ("call" or "call_deferred" or "rpc" or "rpc_id" or "has_method") && followed?.Contains(s.Literal) != true)
                 .Select(s => GDScriptUses.Place(s.Script, s.Offset, s.Call, "names it for a later call")));
+            foreach (GDScriptUses.Use use in uses.Names)
+            {
+                if (use.Call is { } call && Disarranged(use.Script, use.Offset, call, 0, parameters) is { } why)
+                {
+                    blocking.Add(GDScriptUses.Place(use.Script, use.Offset, call, why));
+                }
+            }
+            foreach (GDScriptUses.Named named in uses.Strings)
+            {
+                if (named.Call.FunctionName is "call" or "call_deferred" or "rpc" or "rpc_id"
+                    && Disarranged(named.Script, named.Offset, named.Call, named.Call.FunctionName == "rpc_id" ? 2 : 1, parameters) is { } why)
+                {
+                    blocking.Add(GDScriptUses.Place(named.Script, named.Offset, named.Call, why));
+                }
+            }
         }
         if (blocking.Count > 0)
         {
@@ -595,6 +611,45 @@ public static partial class GDScriptRefactorings
         }
         return new GDScriptRefactored([.. edits.Select(e => new GDScriptEdits(e.Key, [.. e.Value.OrderBy(x => x.Start)]))], null, []);
     }
+
+    /// <summary>Why a call's arguments after its first <paramref name="kept"/> can't be put as a signature's change says:
+    /// two would run the other way round, or one that calls would go with its parameter. Godot reads a plain variable as the
+    /// call runs, so wherever it stands; null where they can.</summary>
+    private static string? Disarranged(GDScriptRead script, int offset, GDScriptCall call, int kept, IReadOnlyList<GDScriptParameterChange> parameters)
+    {
+        GDScriptEffects effects = script.Analysis.Effects;
+        return Disarranged([.. call.Arguments.Skip(kept).Select(a => (Written(script.Text, offset, a), effects.Late(a) ? GDScriptEffect.None : effects.Of(a)))], parameters);
+    }
+
+    private static string? Disarranged(IReadOnlyList<(string Text, GDScriptEffect Effect)> given, IReadOnlyList<GDScriptParameterChange> parameters)
+    {
+        int PlaceOf(int from) => parameters.ToList().FindIndex(p => p.From == from);
+        for (int i = 0; i < given.Count; i++)
+        {
+            if (PlaceOf(i) < 0 && given[i].Effect == GDScriptEffect.Acts)
+            {
+                return $"passes '{given[i].Text}', which would no longer run";
+            }
+            for (int j = i + 1; j < given.Count; j++)
+            {
+                if (PlaceOf(j) >= 0 && PlaceOf(j) < PlaceOf(i) && !GDScriptEffects.Commute(given[i].Effect, given[j].Effect))
+                {
+                    return $"passes '{given[i].Text}' and '{given[j].Text}', which would run the other way round";
+                }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Why a C# call's arguments, by their text, can't be put as a signature's change says, as for a script's call:
+    /// C# runs them as written.</summary>
+    public static string? WhyNotRearranged(IReadOnlyList<string> given, IReadOnlyList<GDScriptParameterChange> parameters) =>
+        Disarranged([.. given.Select(a => (a, OfCSharp(a.Trim())))], parameters);
+
+    private static GDScriptEffect OfCSharp(string argument) =>
+        argument.Length == 0 || argument[0] is '"' or '\'' or '$' or '@' && !argument.Contains('{') || char.IsDigit(argument[0]) || argument is "true" or "false" or "null" ? GDScriptEffect.None
+        : argument.Contains('(') || argument.Contains("++", StringComparison.Ordinal) || argument.Contains("--", StringComparison.Ordinal) || argument.StartsWith("await ", StringComparison.Ordinal)
+            ? GDScriptEffect.Acts : GDScriptEffect.Reads;
 
     /// <summary>A string literal as written with another text inside its quotes.</summary>
     private static string Requoted(string written, string name)

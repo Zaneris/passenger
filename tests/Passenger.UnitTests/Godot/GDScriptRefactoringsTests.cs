@@ -436,6 +436,40 @@ public class GDScriptRefactoringsTests
     }
 
     [Fact]
+    public void Change_signature_is_refused_where_a_calls_arguments_would_not_run_as_they_did()
+    {
+        const string Subtract = "var hp = 5\n\n\nfunc first():\n\thp = 1\n\treturn 1\n\n\nfunc second():\n\treturn 2\n\n\nfunc subtract(a, b):\n\treturn a - b\n\n\n";
+        GDScriptParameterChange a = new(0, "a", string.Empty, string.Empty, string.Empty);
+        GDScriptParameterChange b = new(1, "b", string.Empty, string.Empty, string.Empty);
+        string Changed(string call, params GDScriptParameterChange[] parameters)
+        {
+            string text = $"{Subtract}func go(n):\n\t{call}\n";
+            IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
+            GDScriptRefactored made = GDScriptRefactorings.ChangeSignature(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("func subtract", StringComparison.Ordinal) + 5)!, "subtract", parameters, []);
+            return made.Refused ?? After(made, "res://main.gd", text);
+        }
+        Assert.Contains("passes 'first()' and 'second()', which would run the other way round", Changed("subtract(first(), second())", b, a));
+        Assert.Contains("passes 'first()' and 'second()', which would run the other way round", Changed("call(\"subtract\", first(), second())", b, a));
+        Assert.Contains("passes 'n.x' and 'first()', which would run the other way round", Changed("subtract(n.x, first())", b, a));
+        Assert.Contains("\tsubtract(2, first())\n", Changed("subtract(first(), 2)", b, a));
+        Assert.Contains("\tsubtract(n, first())\n", Changed("subtract(first(), n)", b, a));
+        // Godot reads a plain variable as the call runs, before or after the call beside it.
+        Assert.Contains("\tsubtract(first(), hp)\n", Changed("subtract(hp, first())", b, a));
+        string dropped = "func f(a, b):\n\tprint(a)\n\n\nfunc make():\n\treturn 1\n\n\nfunc go(n):\n\tf(n, make())\n";
+        IReadOnlyList<GDScriptRead> dropping = Read(("res://main.gd", dropped));
+        Assert.Contains("passes 'make()', which would no longer run", GDScriptRefactorings.ChangeSignature(dropping, GDScriptRefactorings.MemberAt(dropping, dropping[0], 5)!, "f", [a], []).Refused);
+        string emits = "signal hit(a, b)\n\n\nfunc first():\n\treturn 1\n\n\nfunc second():\n\treturn 2\n\n\nfunc go():\n\thit.emit(first(), second())\n";
+        IReadOnlyList<GDScriptRead> emitting = Read(("res://main.gd", emits));
+        Assert.Contains("which would run the other way round", GDScriptRefactorings.ChangeSignalSignature(emitting, GDScriptRefactorings.MemberAt(emitting, emitting[0], 8)!, "hit", [b, a], [], []).Refused);
+        // A C# call's arguments, read by their text.
+        Assert.Contains("passes 'First()' and 'Second()'", GDScriptRefactorings.WhyNotRearranged(["First()", "Second()"], [b, a]));
+        Assert.Contains("passes 'hp' and 'Second()'", GDScriptRefactorings.WhyNotRearranged(["hp", "Second()"], [b, a]));
+        Assert.Null(GDScriptRefactorings.WhyNotRearranged(["1", "Second()"], [b, a]));
+        Assert.Null(GDScriptRefactorings.WhyNotRearranged(["\"a(b)\"", "Second()"], [b, a]));
+        Assert.Null(GDScriptRefactorings.WhyNotRearranged(["First()", "Second()"], [a, b]));
+    }
+
+    [Fact]
     public void Change_signature_is_refused_where_a_removed_parameter_is_read_or_a_use_is_unseen()
     {
         IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", Hitter));

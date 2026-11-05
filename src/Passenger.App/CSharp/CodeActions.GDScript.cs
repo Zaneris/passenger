@@ -231,8 +231,18 @@ internal sealed partial class CodeActions
                 if (made.Refused is null && folder is not null)
                 {
                     // C#'s calls and emits by the name, their arguments in the new order; then its name where it is renamed.
-                    beside.AddRange(await context.Languages.CSharp.GodotScriptCallEditsAsync(document, asked, given => GDScriptRefactorings.Rearranged(given, was, asking)));
-                    if (name is not null && name != target.Named)
+                    string? unarranged = null;
+                    beside.AddRange(await context.Languages.CSharp.GodotScriptCallEditsAsync(document, asked, given =>
+                    {
+                        unarranged ??= GDScriptRefactorings.WhyNotRearranged(given, asking);
+                        return GDScriptRefactorings.Rearranged(given, was, asking);
+                    }));
+                    if (unarranged is not null)
+                    {
+                        beside.Clear();
+                        made = GDScriptRefactored.No($"Change Signature can't follow every use (a C# call {unarranged})");
+                    }
+                    else if (name is not null && name != target.Named)
                     {
                         beside.AddRange(await context.Languages.CSharp.GodotScriptRenameAsync(document, asked, name));
                     }

@@ -71,7 +71,11 @@ public static partial class GDScriptRefactorings
             switch (method)
             {
                 case "emit" when reshaped:
-                    if (Emitted(use.Script, use.Offset, call, 0, was, parameters) is { } emitted)
+                    if (Disarranged(use.Script, use.Offset, call, 0, parameters) is { } why)
+                    {
+                        blocking.Add(GDScriptUses.Place(use.Script, use.Offset, call, why));
+                    }
+                    else if (Emitted(use.Script, use.Offset, call, 0, was, parameters) is { } emitted)
                     {
                         Edit(use.Script.Script, emitted);
                     }
@@ -97,7 +101,11 @@ public static partial class GDScriptRefactorings
             string? literal = renamed ? Requoted(named.Script.Text[(named.Offset + named.Literal.Start)..(named.Offset + named.Literal.End)], name) : null;
             if (reshaped && named.Call.FunctionName == "emit_signal")
             {
-                if (Emitted(named.Script, named.Offset, named.Call, 1, was, parameters, (named.Literal, literal)) is { } emitted)
+                if (Disarranged(named.Script, named.Offset, named.Call, 1, parameters) is { } why)
+                {
+                    blocking.Add(GDScriptUses.Place(named.Script, named.Offset, named.Call, why));
+                }
+                else if (Emitted(named.Script, named.Offset, named.Call, 1, was, parameters, (named.Literal, literal)) is { } emitted)
                 {
                     Edit(named.Script.Script, emitted);
                 }
