@@ -69,11 +69,13 @@
     <Compile Include="../../src/Passenger.App/Debugging/WebAssemblyValues.cs" Link="App/WebAssemblyValues.cs" />
   </ItemGroup>
 
-  <!-- What a web app's build says it serves while it is developed, read as JSON alone, and which of its files its pages have
-       not been told of, read from a temporary folder, compiled in since their project is the app's. -->
+  <!-- What a web app's build says it serves while it is developed, read as JSON alone, which of its files its pages have
+       not been told of, read from a temporary folder, and which restored browser debug proxy goes with a launch, read from
+       an assets file there, compiled in since their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Debugging/DevelopmentAssets.cs" Link="App/DevelopmentAssets.cs" />
     <Compile Include="../../src/Passenger.App/Debugging/ToldFiles.cs" Link="App/ToldFiles.cs" />
+    <Compile Include="../../src/Passenger.App/Debugging/BrowserProxy.cs" Link="App/BrowserProxy.cs" />
   </ItemGroup>
 
   <!-- How XAML Hot Reload compares two texts of a XAML file's root, compiled in since its project is the inspector, which

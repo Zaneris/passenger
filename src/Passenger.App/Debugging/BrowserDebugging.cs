@@ -1,6 +1,5 @@
 using Passenger.App.Settings;
 using Passenger.Core;
-using Passenger.Packages;
 using Passenger.Workspace;
 
 namespace Passenger.App.Debugging;
@@ -16,8 +15,6 @@ public sealed record BrowserDebugging(ChromiumFound Browser, string Proxy, Uri P
 
     /// <summary>The packages that host the proxy for an app, each under its tools.</summary>
     private static readonly string[] Hosting = ["Microsoft.AspNetCore.Components.WebAssembly.Server", "Microsoft.AspNetCore.Components.WebAssembly.DevServer"];
-
-    private const string ProxyName = "BrowserDebugHost.dll";
 
     /// <summary>The proxy's own limits, said where its session begins.</summary>
     public const string Limits = "In the browser, .NET's debug proxy evaluates a narrower C# than Passenger's engine and sets no values; Hot Reload of "
@@ -42,11 +39,11 @@ public sealed record BrowserDebugging(ChromiumFound Browser, string Proxy, Uri P
         }
         ProjectModel? client = projects.FirstOrDefault(p => PathNames.Same(p.Path, plan.InBrowser[0]));
         ProjectModel? server = projects.FirstOrDefault(p => PathNames.Same(p.Path, own));
-        string? proxy = (client is null ? null : ProxyOf(client, [WebAssemblyPack], "WasmAppHost"))
-            ?? (server is null ? null : ProxyOf(server, Hosting, Path.Combine("tools", "BlazorDebugProxy")));
+        string? proxy = (client is null ? null : BrowserProxy.Of(client, plan.RunsOn, [WebAssemblyPack], "WasmAppHost"))
+            ?? (server is null ? null : BrowserProxy.Of(server, plan.RunsOn, Hosting, Path.Combine("tools", "BlazorDebugProxy")));
         if (proxy is null)
         {
-            return (null, $"{Path.GetFileNameWithoutExtension(plan.InBrowser[0])}'s restore brought no .NET browser debug proxy ({ProxyName}, in {WebAssemblyPack}): restore it, then debug again");
+            return (null, $"{Path.GetFileNameWithoutExtension(plan.InBrowser[0])}'s restore brought no .NET browser debug proxy ({BrowserProxy.FileName}, in {WebAssemblyPack}): restore it, then debug again");
         }
         return (new BrowserDebugging(browser, proxy, page, plan.InBrowser), null);
     }
@@ -69,35 +66,5 @@ public sealed record BrowserDebugging(ChromiumFound Browser, string Proxy, Uri P
         }
         IReadOnlyList<string> words = Run.CommandLine.Split(line);
         return words is [{ Length: > 0 } program, ..] ? (program, [.. words.Skip(1)]) : null;
-    }
-
-    /// <summary>The proxy in the first of <paramref name="packages"/> a project's restore resolved, under the folder given;
-    /// null where none is there.</summary>
-    private static string? ProxyOf(ProjectModel project, IReadOnlyList<string> packages, string folder)
-    {
-        if (project.Property(Host.CarriedProperties.NuGetPackageRoot) is not { Length: > 0 } root
-            || (project.Property(Host.CarriedProperties.ProjectAssetsFile) ?? Passenger.Xaml.Projects.ProjectInputs.FindAssets(project.Path)) is not { } assets)
-        {
-            return null;
-        }
-        RestoredVersions restored;
-        try
-        {
-            using FileStream stream = new(assets, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            restored = RestoredVersions.Read(stream);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-        foreach (string package in packages)
-        {
-            string? version = restored.Of(project.TargetFrameworks.Count == 1 ? null : project.TargetFrameworks.FirstOrDefault(), package);
-            if (version is not null && Path.Combine(root, package.ToLowerInvariant(), version.ToLowerInvariant(), folder, ProxyName) is var path && File.Exists(path))
-            {
-                return path;
-            }
-        }
-        return null;
     }
 }
