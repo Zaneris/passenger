@@ -498,7 +498,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
         Avalonia.Controls.ListBox usageList = find.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single();
         (double usagesWidth, double previewWidth) = (usageList.Bounds.Width, find.Preview.Bounds.Width);
-        Avalonia.Controls.GridSplitter divider = find.GetVisualDescendants().OfType<Avalonia.Controls.GridSplitter>().Single();
+        Avalonia.Controls.Control divider = find.GetVisualDescendants().OfType<Passenger.App.ToolWindows.PaneSplit>().Single().Divider;
         Point grip = divider.TranslatePoint(new Point(divider.Bounds.Width / 2, divider.Bounds.Height / 2), window)!.Value;
         window.MouseDown(grip, Avalonia.Input.MouseButton.Left);
         for (int step = 1; step <= 10; step++)

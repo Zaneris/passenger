@@ -137,7 +137,7 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
             Assert.Null(Ui.Await(window.ShowTypeHierarchyAsync(), "the type hierarchy in the generator's code"));
             Task subtypes = window.Hierarchy.ChooseAsync(first: false);
             Ui.WaitFor(() => subtypes.IsCompleted, "the subtypes of the generator's ShapeContext");
-            Assert.True(window.Hierarchy.Rows is [_, { Depth: 1 } derived] && derived.Node.Item.Name == "DeepContext" && PathNames.Same(derived.Node.Path, app.PathOf("Patterns.cs")),
+            Assert.True(window.Hierarchy.Rows is [_, { Depth: 1 } derived] && derived.Node.Item.Name == "DeepContext" && PathNames.Same(derived.Node.Path, PathNames.Canonical(app.PathOf("Patterns.cs"))),
                 $"Type Hierarchy in the generator's code does not list DeepContext alone: {Listed(window)}");
         }
         finally
@@ -181,7 +181,7 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
 
     /// <summary>The Hierarchy window shows Letters called from Check alone, at its line of the code written by hand.</summary>
     private void CalledFromCheck(MainWindow window) =>
-        Assert.True(window.Hierarchy.Rows is [_, { Depth: 1 } caller] && caller.Node.Item.Name.Contains("Check", StringComparison.Ordinal) && PathNames.Same(caller.Node.Path, app.PathOf("Patterns.cs")),
+        Assert.True(window.Hierarchy.Rows is [_, { Depth: 1 } caller] && caller.Node.Item.Name.Contains("Check", StringComparison.Ordinal) && PathNames.Same(caller.Node.Path, PathNames.Canonical(app.PathOf("Patterns.cs"))),
             $"Call Hierarchy in the generator's code does not list Check alone: {Listed(window)}");
 
     private static string Listed(MainWindow window) =>

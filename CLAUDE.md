@@ -257,11 +257,13 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - **C#.** `CSharpService`, `CodeAssist`; each language's answers a `LanguageAssist` in `LanguageAssists`' one order. A
   server's edit to a file written moments before waits for the server to read it (`WorkspaceEdits`); one written as it
   worked is refused. A generated document is never opened in the server (it would freeze its text into the compilation):
-  its file (`RoslynSession.WrittenAsync`) or a read-only copy (`GeneratedCode`). C# in XAML has one finder
-  (`XamlService.UsesAsync`). A multi-targeted project's framework is one choice (`TargetFrameworkChoices`), never a
-  framework's output taken by its newest write. A C# file no tab shows is pulled when shown or asked, never at a
-  refresh. Edits added to a server's edit join that file's entry (`TypeRename.With`): `documentChanges` apply in order.
-  A server's own command runs through `ServerCommands`, its `workspace/applyEdit` one command of Undo.
+  its file (`RoslynSession.WrittenAsync`) or a read-only copy (`GeneratedCode`), asked about through
+  `RoslynSession.Unopened`. The server finds a partial member's callers only at its declaring half and callees only at
+  its body half (`PartialHalf`). C# in XAML has one finder (`XamlService.UsesAsync`). A multi-targeted project's
+  framework is one choice (`TargetFrameworkChoices`), never a framework's output taken by its newest write. A C# file no
+  tab shows is pulled when shown or asked, never at a refresh. Edits added to a server's edit join that file's entry
+  (`TypeRename.With`): `documentChanges` apply in order. A server's own command runs through `ServerCommands`, its
+  `workspace/applyEdit` one command of Undo.
 - **Godot code.** `GodotScenes`, `GodotSceneIndex` (never a walk of every file on the window's thread; an autoload by
   uid, never project.godot's text), the extension's `GodotChecks` and `GodotKinds` (the projects' strings only through
   `GodotKinds.WritesAsync`). GDScript is Godot's parser and analyzer, ported (`GDScriptTree`, `GDScriptAnalyzer`); a
@@ -652,8 +654,8 @@ to the window's tests.
   `ToolButtons.Of`/`Toggle` (never focusable); `ColumnTitles.Of`/`Row`; `ToolBars.OverEditor`; `Banner`; `CheckRows`;
   `MutedText`; `ListKeys.Move`; `Plural.Of`/`Listed`; `Border.kindBadge`/`tag`/`box` (never a literal radius);
   `RunRows`; `DetailsTables`; `MergedLog` (`OutputView.Find`); `ZoomedPicture`; `ToolWindow.ExpandAll`/`CollapseAll`;
-  `ToolWindows.FilterBox`; `ToolColumn`; `ControlThemes.axaml`; `FocusRing`; `AppIcon`; `ReusedRows` (`Use`, `Showing`);
-  `RowIcon` and `RowGlyphs`, drawn as `PathIcon` draws for a fraction of its cost, never `PathIcon` (UiRulesTests). A
-  row hears its item only while shown (`Observable.FollowWhileShown`).
+  `ToolWindows.FilterBox`; `ToolFlow`; `PaneSplit`; `ToolColumn`; `ControlThemes.axaml`; `FocusRing`; `AppIcon`;
+  `ReusedRows` (`Use`, `Showing`); `RowIcon` and `RowGlyphs`, drawn as `PathIcon` draws for a fraction of its cost,
+  never `PathIcon` (UiRulesTests). A row hears its item only while shown (`Observable.FollowWhileShown`).
 - `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen; every window is an `IdeWindow`, which
   fits its owner's screen as it shows.
