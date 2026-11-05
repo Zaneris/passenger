@@ -188,12 +188,12 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - `Passenger.Core` (no UI), where each of these is the one way: a PATH search `Programs.OnPath`; .NET's folder
   `Dotnet.Root`, never `Dotnet.Host()`'s folder; a request of a host `OutboundHttp`; a Unix socket `SocketFolders`; a C
   call made in more than one place `Libc`; whether a process runs `DotnetProcesses.Runs`, a `Process` held too, never
-  `HasExited` (PSG0007); a PASSENGER_*_MS `EnvironmentValues.Milliseconds`; a Windows command line `WindowsCommandLine`;
-  the version `Product`; a log below the App `PassengerLog`, never `IdeLog`; an MSBuild name Passenger writes
-  `MSBuildNames`; another program's or a person's JSON `JsonMembers` (`Value` for a member of any kind), never a bare
-  `TryGetProperty`/`GetProperty` (PSG0008); a search by halving `Sorted`, never a loop of your own; a primitive
-  `PrimitiveTypes`; an SDK into an installation `DotnetMerge`; a path in a project file `ItemPaths`; what a Mac program
-  links `MachOFile`.
+  `HasExited` (PSG0007): ended, one Passenger started has an `ExitCode` to read, one found by id none; a PASSENGER_*_MS
+  `EnvironmentValues.Milliseconds`; a Windows command line `WindowsCommandLine`; the version `Product`; a log below the
+  App `PassengerLog`, never `IdeLog`; an MSBuild name Passenger writes `MSBuildNames`; another program's or a person's
+  JSON `JsonMembers` (`Value` for a member of any kind), never a bare `TryGetProperty`/`GetProperty` (PSG0008); a search
+  by halving `Sorted`, never a loop of your own; a primitive `PrimitiveTypes`; an SDK into an installation
+  `DotnetMerge`; a path in a project file `ItemPaths`; what a Mac program links `MachOFile`.
 - `Passenger.Text`: the rope, `TextDocument`, editing commands as pure functions to an `EditPlan`, `FileText`; an XML
   value through `XmlEntities`, never `SecurityElement.Escape` or a hand Replace; a place in the text held by an anchor
   (`AnchorAt`), never your own `TextEditing.Map*`; an end tag typed over by hand `EndTagTyping`, never a caret jump.
@@ -621,10 +621,11 @@ naming the `WindowsDesktopRefVersion` to pin.
 
 **Debuggees** (`tests/Debuggees`): tests find their lines by code (`Debuggees.Line`), so changing a line's code means
 changing the tests that name it (a breakpoint binds the statement that starts first on its line, inside a lambda only
-where the line starts in one: give the lambda's column). `SelfDebuggingTests` finds its breakpoint by the code
-`Say(why, RefusalPlace(action));` in MainWindow.Actions.cs. `StartHold` holds a launched program at its start;
+where the line starts in one: give the lambda's column). `SelfDebuggingTests` finds its breakpoint by the code `Say(why,
+RefusalPlace(action));` in MainWindow.Actions.cs. `StartHold` holds a launched program at its start;
 `PASSENGER_ENGINE_LOG=FILE` keeps the engine's log. A thread a debuggee starts just before a stop can hold that stop's
-evaluations: stop once it has run a round (#599).
+evaluations: stop once it has run a round (#599). An evaluation past its time logs `WhereThreadsStand`, and a test of
+one passes `mayStand`.
 
 **MCP tests** are agents on the SDK's own client over `McpRig` (`McpTests` and per-area classes on `--mcp`,
 `McpWindowTests` and `McpAttachTests` through `--mcp-attach`); each checks a tool's answer, leaving the window's steps
