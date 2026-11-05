@@ -172,8 +172,8 @@ public static class GodotText
         return suffix == "f" ? written + "f" : written.Contains('.', StringComparison.Ordinal) || written.Contains('E', StringComparison.OrdinalIgnoreCase) ? written : written + ".0";
     }
 
-    /// <summary>A string as a C# literal, its escapes written.</summary>
-    private static string Escaped(string text)
+    /// <summary>A string as a C# or GDScript literal, its escapes written.</summary>
+    public static string Escaped(string text)
     {
         StringBuilder written = new("\"");
         foreach (char c in text)

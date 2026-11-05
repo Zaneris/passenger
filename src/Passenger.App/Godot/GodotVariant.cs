@@ -757,18 +757,19 @@ public static class GodotVariant
     }
 
     /// <summary>A value as Godot's inspector writes it: a number in its shortest form, a vector's numbers in parentheses, a
-    /// node path as a path, a string as itself (in quotes inside a container, <paramref name="quoted"/>).</summary>
+    /// node path as a path, a string as itself (inside a container, <paramref name="quoted"/>, as the literal
+    /// <see cref="Literal"/> reads back).</summary>
     public static string Shown(object? value, bool quoted = false) => value switch
     {
         null => "null",
         bool flag => flag ? "true" : "false",
         long whole => whole.ToString(CultureInfo.InvariantCulture),
         double real => Number(real),
-        string text => quoted ? $"\"{text}\"" : text,
-        GodotName name => quoted ? $"&\"{name.Name}\"" : name.Name,
-        GodotNodePath path => quoted ? $"^\"{path}\"" : path.ToString(),
+        string text => quoted ? GodotText.Escaped(text) : text,
+        GodotName name => quoted ? "&" + GodotText.Escaped(name.Name) : name.Name,
+        GodotNodePath path => quoted ? "^" + GodotText.Escaped(path.ToString()) : path.ToString(),
         List<object?> items => $"[{string.Join(", ", items.Select(i => Shown(i, quoted: true)))}]",
-        string[] strings => $"[{string.Join(", ", strings.Select(s => $"\"{s}\""))}]",
+        string[] strings => $"[{string.Join(", ", strings.Select(GodotText.Escaped))}]",
         byte[] packed => $"[{packed.Length} bytes]",
         System.Array packed => $"[{string.Join(", ", packed.Cast<object?>().Select(i => i is float f ? Number(f) : Shown(i, quoted: true)))}]",
         GodotMath { Type: GodotType.Transform2D or GodotType.Basis or GodotType.Transform3D or GodotType.Aabb or GodotType.Plane or GodotType.Projection } math => Parts(math),

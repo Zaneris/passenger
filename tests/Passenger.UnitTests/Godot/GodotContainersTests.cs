@@ -54,6 +54,27 @@ public class GodotContainersTests
     }
 
     [Theory]
+    [InlineData("C:\\new")]
+    [InlineData("say \"hi\"")]
+    [InlineData("two\nlines\tand\ra tab")]
+    public void A_string_in_a_container_reads_back_as_it_was_from_the_words_shown(string held)
+    {
+        Assert.Equal(held, GodotVariant.Literal(GodotVariant.Shown(held, quoted: true)));
+        Assert.Equal(held, GodotVariant.Guessed(GodotVariant.Shown(held, quoted: true)));
+        Assert.Equal(new GodotName(held), GodotVariant.Guessed(GodotVariant.Shown(new GodotName(held), quoted: true)));
+        Assert.Equal(held, GodotVariant.Literal(GodotVariant.Shown(new GodotNodePath([held], [], false), quoted: true)));
+    }
+
+    [Fact]
+    public void Editing_the_words_of_a_path_a_container_shows_leaves_its_backslash_a_backslash()
+    {
+        string shown = GodotVariant.Shown("C:\\new", quoted: true);
+        Assert.Equal("C:\\newer", GodotVariant.Literal(shown.Replace("new", "newer", StringComparison.Ordinal)));
+        Assert.Equal("[\"C:\\\\new\", \"a\\\"b\"]", GodotVariant.Shown(new[] { "C:\\new", "a\"b" }));
+        Assert.Equal("{ \"C:\\\\new\": \"a\\\"b\" }", GodotVariant.Shown(new GodotDictionary([new("C:\\new", "a\"b")])));
+    }
+
+    [Theory]
     [InlineData("int", GodotType.Int)]
     [InlineData("Vector2i", GodotType.Vector2I)]
     [InlineData("String", GodotType.String)]
