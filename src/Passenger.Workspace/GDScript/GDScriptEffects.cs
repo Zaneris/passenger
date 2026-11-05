@@ -181,7 +181,7 @@ internal sealed class GDScriptEffects
         || n is GDScriptCall { Callee: GDScriptIdentifier { Name: var type } } && GDScriptConversions.IsShared(type)
         || n is GDScriptCall { Callee: GDScriptSubscript { IsAttribute: true, Attribute.Name: "new" } });
 
-    /// <summary>Whether Godot reads an expression only as what takes it runs: a variable of the script's class with no
+    /// <summary>Whether Godot reads an expression only as what takes it runs: an object's variable of the script's class with no
     /// getter, by its name or through self.</summary>
     public bool Late(GDScriptExpression expression) => expression switch
     {
@@ -191,11 +191,24 @@ internal sealed class GDScriptEffects
     };
 
     private bool IsPlain(GDScriptIdentifier name) => analysis.DeclarationOf(name) is { } declared && declared.Script == analysis.Path
-        && members.GetValueOrDefault(declared.Start) is GDScriptVariable { Getter: null, GetterName: null };
+        && members.GetValueOrDefault(declared.Start) is GDScriptVariable { IsStatic: false, Getter: null, GetterName: null };
 
-    /// <summary>Whether an expression may be read as <see cref="Late"/> says: a name that is no local, or one through self.</summary>
-    public bool MayBeLate(GDScriptExpression expression) =>
-        expression is GDScriptIdentifier or GDScriptSubscript { IsAttribute: true, Base: GDScriptSelf } && Own(expression) != GDScriptEffect.None || Late(expression);
+    /// <summary>Whether an expression may be read as <see cref="Late"/> says, a variable declared in a script not read being
+    /// such a one; an engine's property is read where it stands.</summary>
+    public bool MayBeLate(GDScriptExpression expression) => expression switch
+    {
+        GDScriptIdentifier name => Own(name) != GDScriptEffect.None && MayBePlain(name),
+        GDScriptSubscript { IsAttribute: true, Base: GDScriptSelf, Attribute: { } name } => MayBePlain(name),
+        _ => false,
+    };
+
+    private bool MayBePlain(GDScriptIdentifier name) => analysis.DeclarationOf(name) switch
+    {
+        null => true,
+        { Script: null } => false,
+        { } declared when declared.Script == analysis.Path => IsPlain(name),
+        _ => true,
+    };
 
     /// <summary>The first part of a statement that runs before an expression in it and can't change places with what
     /// <paramref name="moved"/> says is done there, read late where <paramref name="late"/>; null for none.</summary>

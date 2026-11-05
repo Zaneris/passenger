@@ -12,13 +12,18 @@ public class GDScriptRefactoringsTests
     private const string Api = """
         {
           "global_enums": [], "global_constants": [], "utility_functions": [], "singletons": [],
-          "builtin_classes": [{ "name": "String", "methods": [] }, { "name": "StringName", "methods": [] }, { "name": "Callable", "methods": [] },
-            { "name": "Array", "indexing_return_type": "Variant", "methods": [] }, { "name": "Dictionary", "indexing_return_type": "Variant", "methods": [] }],
+          "builtin_classes": [{ "name": "String", "methods": [] }, { "name": "StringName", "methods": [] },
+            { "name": "Callable", "methods": [{ "name": "call", "is_const": true, "is_vararg": true, "return_type": "Variant" }] },
+            { "name": "Vector2", "methods": [{ "name": "length", "is_const": true, "return_type": "float" }, { "name": "from_angle", "is_static": true, "return_type": "Vector2" }] },
+            { "name": "Array", "indexing_return_type": "Variant", "methods": [{ "name": "size", "is_const": true, "return_type": "int" }, { "name": "pop_back", "return_type": "Variant" },
+              { "name": "map", "is_const": true, "return_type": "Array", "arguments": [{ "name": "method", "type": "Callable" }] }] },
+            { "name": "Dictionary", "indexing_return_type": "Variant", "methods": [] }],
           "classes": [
             { "name": "Object", "methods": [{ "name": "call", "is_vararg": true, "return_value": { "type": "Variant" }, "arguments": [{ "name": "method", "type": "StringName" }] },
               { "name": "call_deferred", "is_vararg": true, "return_value": { "type": "Variant" }, "arguments": [{ "name": "method", "type": "StringName" }] }] },
             { "name": "RefCounted", "inherits": "Object" },
-            { "name": "Node", "inherits": "Object", "methods": [{ "name": "_ready", "is_virtual": true }, { "name": "_get_configuration_warnings", "is_virtual": true }] },
+            { "name": "Node", "inherits": "Object", "methods": [{ "name": "_ready", "is_virtual": true }, { "name": "_get_configuration_warnings", "is_virtual": true },
+              { "name": "get_parent", "is_const": true, "return_value": { "type": "Node" } }, { "name": "add_child", "arguments": [{ "name": "node", "type": "Node" }] }] },
             { "name": "Node2D", "inherits": "Node", "methods": [{ "name": "_draw_shape", "is_virtual": true }] },
             { "name": "Sprite2D", "inherits": "Node2D" },
             { "name": "Timer", "inherits": "Node" }
@@ -369,6 +374,37 @@ public class GDScriptRefactoringsTests
         Made("consume(first(), abs(n))", "abs(n)", "\tvar x = abs(n)\n\tconsume(first(), x)\n");
         Made("hp = first()", "first()", "\tvar x = first()\n\thp = x\n");
         Made("print(second() if n else 1)", "n", "\tvar x = n\n\tprint(second() if x else 1)\n");
+    }
+
+    [Fact]
+    public void What_the_engines_api_says_of_a_call_decides_what_it_may_run_ahead_of()
+    {
+        const string Prelude = "extends Node\n\nstatic var counted = 5\nvar held := 5\n\n\nfunc first():\n\treturn 1\n\n\nfunc consume(a, b):\n\tprint(a, b)\n\n\n";
+        string? Refused(string statement, string selected)
+        {
+            string text = Prelude + $"func f(v: Vector2, list: Array, callback: Callable):\n\t{statement}\n";
+            IReadOnlyList<GDScriptRead> scripts = ReadWith(Engine, ("res://main.gd", text));
+            return GDScriptRefactorings.ExtractVariable(scripts[0].Analysis, Over(text, selected, text.Split(selected).Length - 2), "x").Refused;
+        }
+        // Of a value of its own a const method tells nothing, and made of nothing else neither does a static one or a new engine object.
+        Assert.Null(Refused("consume(first(), v.length())", "v.length()"));
+        Assert.Null(Refused("consume(first(), Vector2.from_angle(1.0))", "Vector2.from_angle(1.0)"));
+        Assert.Null(Refused("consume(first(), Timer.new())", "Timer.new()"));
+        // A const method of what others share reads it, and one that runs what it is given acts.
+        Assert.Contains("'first()' runs first", Refused("consume(first(), list.size())", "list.size()"));
+        Assert.Contains("'first()' runs first", Refused("consume(first(), get_parent())", "get_parent()"));
+        Assert.Contains("'list.size()' runs first", Refused("consume(list.size(), first())", "first()"));
+        Assert.Null(Refused("consume(list.size(), get_parent())", "get_parent()"));
+        Assert.Contains("'first()' runs first", Refused("consume(first(), list.pop_back())", "list.pop_back()"));
+        Assert.Contains("'first()' runs first", Refused("consume(first(), list.map(callback))", "list.map(callback)"));
+        Assert.Contains("'first()' runs first", Refused("consume(first(), callback.call())", "callback.call()"));
+        Assert.Contains("'first()' runs first", Refused("consume(first(), add_child(self))", "add_child(self)"));
+        // Godot reads an object's variable as the call runs, a static variable or an index where it stands.
+        Assert.Null(Refused("consume(held, first())", "first()"));
+        Assert.Contains("'counted' runs first", Refused("consume(counted, first())", "first()"));
+        Assert.Contains("'list[0]' runs first", Refused("consume(list[0], first())", "first()"));
+        Assert.Null(Refused("consume(counted, first())", "counted"));
+        Assert.Contains("'first()' runs first", Refused("consume(held, first())", "held"));
     }
 
     [Fact]

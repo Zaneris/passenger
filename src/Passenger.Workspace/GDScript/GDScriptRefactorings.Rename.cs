@@ -44,12 +44,11 @@ public static partial class GDScriptRefactorings
         return false;
     }
 
-    /// <summary>Rename of a member of a script's class: its declaration, each name resolved to it and each string a call
-    /// names it by, in every script, a function's overrides with it (<see cref="FamilyOf"/>). Refused where the name is no
-    /// GDScript name or a class it renames in, or one built on them or they on it, has a member of it, a use would read a
-    /// local of the name instead, the member is Godot's own (<c>_ready</c>, an engine class's), or a place may use it where
-    /// Passenger can't see whose member it reads (<see cref="GDScriptUses.Unsure"/>), unless <paramref name="anyway"/>, which
-    /// leaves them, naming them.</summary>
+    /// <summary>Rename of a member of a script's class: its declaration, each name resolved to it and each string naming
+    /// it, in every script, a function's overrides with it (<see cref="FamilyOf"/>). Refused where the name is no GDScript
+    /// name, a class it renames in or one related has a member of it, a use would read a local of it instead, the member is
+    /// Godot's own (<c>_ready</c>, an engine class's), or a place may use it where Passenger can't see whose member it reads
+    /// (<see cref="GDScriptUses.Unsure"/>), unless <paramref name="anyway"/>, which leaves them, naming them.</summary>
     public static GDScriptRefactored Rename(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target, string name, bool anyway = false)
     {
         if (WhyNotName(name) is { } bad)
