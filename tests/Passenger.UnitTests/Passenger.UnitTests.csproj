@@ -91,6 +91,11 @@
     <Compile Include="../../src/Passenger.App/Mcp/GodotEditedScenes.cs" Link="App/GodotEditedScenes.cs" />
   </ItemGroup>
 
+  <!-- Files a command writes byte for byte, and what its Undo puts back, compiled in since their project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Editors/LandedFiles.cs" Link="App/LandedFiles.cs" />
+  </ItemGroup>
+
   <!-- What tells a program to send a dashboard its logs and traces over what it sets itself, compiled in since its project is
        the app's. -->
   <ItemGroup>

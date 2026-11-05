@@ -10,9 +10,9 @@ namespace Passenger.Tests;
 /// <summary>Publish beside a folder's: a project's container image made by the SDK into the test's engine through a container
 /// profile, on a base image a stand-in registry serves (each image labelled for the run and removed after); a push to a
 /// registry docker holds no login for refused, saying how to log in; an AppHost's Docker Compose files, written by its
-/// publishers, landed in the folder chosen as one step of Undo, which <c>docker compose config</c> reads; and an AppHost's
-/// deploy steps offered as it declares them, one whose Azure login is missing refused naming it. Alone: the refusals point
-/// the process's DOCKER_CONFIG and AZURE_CONFIG_DIR at folders of the test's while they ask.</summary>
+/// publishers, landed in the folder chosen as one step of Undo, which <c>docker compose config</c> reads, its binary output
+/// byte for byte; and an AppHost's deploy steps offered as it declares them, one whose Azure login is missing refused naming
+/// it. Alone: the refusals point the process's DOCKER_CONFIG and AZURE_CONFIG_DIR at folders of the test's while they ask.</summary>
 [Collection(Alone.Name)]
 public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisposable
 {
@@ -178,6 +178,74 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
         finally
         {
             window.Close();
+        }
+    }
+
+    /// <summary>What an AppHost's publishers write lands in the open folder byte for byte, a binary file over a binary one, and
+    /// text no save writes back as it found it, and one step of Undo puts back each byte, Redo each byte landed. A file
+    /// changed since refuses it, naming the file.</summary>
+    [AvaloniaFact]
+    public void An_AppHosts_binary_output_lands_in_the_open_folder_byte_for_byte_and_Undo_and_Redo_keep_every_byte()
+    {
+        byte[] binary = [0x7F, 0x45, 0x4C, 0x46, 0xFF, 0x00, 0x80, 0x0A];
+        byte[] had = [0x00, 0xFF, 0xC0, 0x80, 0x0D];
+        byte[] text = [0xEF, 0xBB, 0xBF, .. System.Text.Encoding.UTF8.GetBytes("one\r\ntwo\rthree\n")];
+        string given = Path.Combine(folder, "given");
+        Directory.CreateDirectory(given);
+        File.WriteAllBytes(Path.Combine(given, "server.pfx"), binary);
+        File.WriteAllBytes(Path.Combine(given, "notes.txt"), text);
+        appHost.Reset();
+        string host = PathNames.Canonical(appHost.ProjectFile);
+        string deploy = Path.Combine(Path.GetDirectoryName(host)!, "deploy-bytes");
+        Directory.CreateDirectory(deploy);
+        string certificate = Path.Combine(deploy, "server.pfx");
+        string notes = Path.Combine(deploy, "notes.txt");
+        string compose = Path.Combine(deploy, "docker-compose.yaml");
+        File.WriteAllBytes(certificate, had);
+        const string Publishes = "PASSENGER_STAND_IN_PUBLISHES";
+        string? was = Environment.GetEnvironmentVariable(Publishes);
+        OwnEnvironment.Set(Publishes, given);
+        MainWindow window = appHost.Open(appHost.Program, languageServer: false);
+        try
+        {
+            AppHostPublishDialog dialog = window.ShowAppHostPublish(host) ?? throw new InvalidOperationException($"Publish did not open: {window.Status}");
+            dialog.OutputFolder = "deploy-bytes";
+            Ui.Settle();
+            BuildOutcome ended = Publish(window, () => Task.FromResult(dialog.Publish()));
+            Assert.True(ended.Succeeded, $"The AppHost was not published: {ended.Message}\n{string.Join('\n', ended.Output)}");
+            Assert.True(binary.AsSpan().SequenceEqual(File.ReadAllBytes(certificate)), $"The publisher's binary file landed as {Convert.ToHexString(File.ReadAllBytes(certificate))}");
+            Assert.True(text.AsSpan().SequenceEqual(File.ReadAllBytes(notes)), $"The publisher's text landed as {Convert.ToHexString(File.ReadAllBytes(notes))}");
+            Assert.Equal($"Publish {StandInAppHost.Name}", window.EditorArea.Commands.ToUndo(null)?.Name);
+
+            MigrationsTests.UndoFromExplorer(window, host);
+            Ui.WaitFor(() => !File.Exists(compose), () => $"Undo to take away what the publish made: {window.Status}");
+            Assert.False(File.Exists(notes), $"Undo left a file the publish made: {window.Status}");
+            Assert.True(File.Exists(certificate) && had.AsSpan().SequenceEqual(File.ReadAllBytes(certificate)),
+                $"Undo did not put back the binary file the publish wrote over: {window.Status}");
+
+            FromExplorer(Passenger.Editor.EditorActions.Redo);
+            Ui.WaitFor(() => File.Exists(compose), () => $"Redo to land the files again: {window.Status}");
+            Assert.True(binary.AsSpan().SequenceEqual(File.ReadAllBytes(certificate)), $"Redo landed {Convert.ToHexString(File.ReadAllBytes(certificate))}");
+            Assert.True(text.AsSpan().SequenceEqual(File.ReadAllBytes(notes)), $"Redo landed {Convert.ToHexString(File.ReadAllBytes(notes))}");
+
+            File.WriteAllBytes(certificate, had);
+            FromExplorer(Passenger.Editor.EditorActions.Undo);
+            Ui.WaitFor(() => window.Status == $"Cannot undo Publish {StandInAppHost.Name}: server.pfx has been changed since", () => $"Undo to refuse, not {window.Status}");
+            Assert.True(File.Exists(compose), "Undo refused, it took away a file all the same");
+        }
+        finally
+        {
+            OwnEnvironment.Set(Publishes, was);
+            window.Close();
+            Directory.Delete(deploy, recursive: true);
+        }
+
+        void FromExplorer(string action)
+        {
+            window.ExplorerView.Reveal(host);
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Name.StartsWith(StandInAppHost.Name, StringComparison.Ordinal)));
+            Ui.Run(window, action);
         }
     }
 

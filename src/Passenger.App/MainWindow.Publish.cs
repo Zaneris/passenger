@@ -216,9 +216,10 @@ public partial class MainWindow
         return await Passenger.App.Aspire.AppHostSteps.OfferAsync(host, engine, cancel);
     }
 
-    /// <summary>Lands the files a folder holds in another (an AppHost's publishers' output, in the order of their paths):
-    /// those in the open folder written as the window writes its own, one command of global undo named by the title, a file
-    /// there already written over; any other folder's with <see cref="AtomicFile.Write"/>. The files written, or why not.</summary>
+    /// <summary>Lands the files a folder holds in another (an AppHost's publishers' output, in the order of their paths), each
+    /// byte for byte, whatever it holds: those in the open folder as one command of global undo named by the title
+    /// (<see cref="LandInFolderAsync"/>), a file there already written over; any other folder's with
+    /// <see cref="AtomicFile.Write"/>. The files written, or why not.</summary>
     private async Task<(IReadOnlyList<string> Written, string? Problem)> LandFilesAsync(string from, string to, string title)
     {
         List<(string From, string To)> files;
@@ -236,38 +237,102 @@ public partial class MainWindow
         {
             return ([], null);
         }
+        if (Folder is { } open && (PathNames.IsUnder(to, open) || PathNames.Same(to, open)))
+        {
+            return await LandInFolderAsync(files, to, title) is { } refused ? ([], refused) : (written, null);
+        }
         try
         {
-            if (Folder is not { } open || !PathNames.IsUnder(to, open) && !PathNames.Same(to, open))
-            {
-                foreach ((string source, string target) in files)
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                    AtomicFile.Write(target, await File.ReadAllBytesAsync(source));
-                }
-                return (written, null);
-            }
-            List<(string Target, string Text)> texts = [];
             foreach ((string source, string target) in files)
             {
-                texts.Add((target, await File.ReadAllTextAsync(source)));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                AtomicFile.Write(target, await File.ReadAllBytesAsync(source));
             }
-            string? refused = await ChangeFileAsync(title, written, () =>
-            {
-                foreach ((string target, string text) in texts)
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                    FileText? had = File.Exists(target) ? FileText.Load(target) : null;
-                    _ = had is null ? FileText.SaveNew(target, text) : FileText.SaveOver(target, had, text);
-                }
-                return null;
-            });
-            return refused is null ? (written, null) : ([], refused);
+            return (written, null);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return ([], error.Message);
         }
+    }
+
+    /// <summary>Files landed in the open folder as one command of global undo, written off the window's thread in their turn,
+    /// those open with unsaved edits saved first: an open file's text takes what landed as a step of its own, and every other
+    /// is kept whole (<see cref="LandedFiles"/>), so Undo and Redo put back each byte. Null once landed, else why not, all of
+    /// it taken back.</summary>
+    private async Task<string?> LandInFolderAsync(IReadOnlyList<(string From, string To)> files, string to, string title)
+    {
+        IReadOnlyList<string> paths = [.. files.Select(file => file.To)];
+        using CommandHistory.Recording made = Editors.Commands.RecordWrites(title);
+        if (await made.ClearAsync(paths) is { } held)
+        {
+            return held;
+        }
+        if (SaveBeforeWriting(paths) is { } unsaved)
+        {
+            return unsaved;
+        }
+        HashSet<string> shown = new(paths.Where(path => Editors.Find(path) is { HoldsText: true }), PathNames.Comparer);
+        foreach (string path in shown)
+        {
+            made.Watch(path);
+        }
+        string state = StateFolder;
+        string aside = MadeFolders.Aside(state, to);
+        LandedFiles landed = new(aside);
+        Dictionary<string, bool> stood = Standing(paths);
+        string? refused = await Editors.Commands.InTurnAsync(title, paths, wrote =>
+        {
+            MadeFolders.Sweep(state);
+            return landed.Land(files, shown, wrote);
+        });
+        FollowWritten(paths);
+        refused ??= (await UnlandedAsync(paths))?.Message;
+        Followed(stood, [], paths);
+        if (landed.Paths.Count > 0)
+        {
+            made.Also(LandedPart(landed, aside, title));
+        }
+        if (refused is null)
+        {
+            return null;
+        }
+        string said = await made.TakenBackAsync(refused);
+        MadeFolders.Forget(aside);
+        return said;
+    }
+
+    /// <summary>What Undo and Redo put of files landed whole, while each is as the command left it and none open holds edits.</summary>
+    private CommandHistory.Part LandedPart(LandedFiles landed, string aside, string title) =>
+        new(Plural.Listed([.. landed.Paths.Select(Path.GetFileName).OfType<string>()]),
+            _ => landed.Paths.Select(Editors.Find).FirstOrDefault(open => open is { IsModified: true }) is { } edited ? $"{edited.Name} has edits not saved" : null,
+            redo => PutLandedAsync(landed, title, redo))
+        {
+            Read = redo => BackgroundWork.Run(() => landed.Unlike(redo)),
+            Dropped = () => MadeFolders.Forget(aside),
+            First = true,
+        };
+
+    /// <summary>Files landed whole put as they were before their command (or after it, given true), off the window's thread
+    /// in their turn, then followed: what came or went, a tab taking what it now holds, or closing with a file gone. Null
+    /// once put, else why not, none of them changed.</summary>
+    private async Task<string?> PutLandedAsync(LandedFiles landed, string title, bool redo)
+    {
+        IReadOnlyList<string> paths = landed.Paths;
+        if (await Editors.ClearAsync(paths) is { } held)
+        {
+            return held;
+        }
+        Dictionary<string, bool> stood = Standing(paths);
+        string? refused = await Editors.Commands.InTurnAsync($"{(redo ? "Redo" : "Undo")} {title}", paths, wrote => landed.Put(redo, wrote));
+        refused ??= (await UnlandedAsync(paths))?.Message;
+        FollowWritten(paths);
+        foreach (Passenger.App.Workspace.OpenDocument gone in paths.Where(path => !File.Exists(path)).Select(Editors.Find).OfType<Passenger.App.Workspace.OpenDocument>().ToList())
+        {
+            Editors.CloseDeleted(gone);
+        }
+        Followed(stood, [], paths);
+        return refused;
     }
 
     /// <summary>Writes a profile as the Publish dialog asks, as one step of global undo: a new one made, one there changed in

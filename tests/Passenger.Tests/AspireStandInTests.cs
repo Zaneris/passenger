@@ -3267,6 +3267,14 @@ public sealed class StandInAppHost : SharedProject
                 Directory.CreateDirectory(output);
                 File.WriteAllText(Path.Combine(output, "docker-compose.yaml"),
                     "services:\n  api:\n    image: \"standin-api:latest\"\n    environment:\n      ASPNETCORE_URLS: \"http://+:8080\"\n    ports:\n      - \"8080\"\n");
+                // Beside it what a test gives, as a publisher's certificate or archive.
+                if (Environment.GetEnvironmentVariable("PASSENGER_STAND_IN_PUBLISHES") is { Length: > 0 } more)
+                {
+                    foreach (string file in Directory.GetFiles(more))
+                    {
+                        File.Copy(file, Path.Combine(output, Path.GetFileName(file)));
+                    }
+                }
                 Console.WriteLine("Generating Compose output");
                 return;
             }
