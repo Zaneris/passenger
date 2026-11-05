@@ -130,6 +130,46 @@ public class PageStylesTests
     }
 
     [Fact]
+    public void A_rule_nested_in_a_rule_names_its_classes_wherever_its_selector_says_them()
+    {
+        const string Nested = """
+            .card {
+                color: red;
+                & .title { color: blue; }
+                &.active, .lead > & { margin: 0 }
+                .plain { .deeper { top: 0 } }
+                @media (min-width: 768px) { .wide { width: 50% } }
+                padding: 0;
+            }
+            .after { }
+            """;
+        CssSheet sheet = CssRules.Read(Nested);
+        Assert.Equal(["card", "title", "active", "lead", "plain", "deeper", "wide", "after"], sheet.Rules.Select(r => r.Name));
+        Assert.Equal("& .title {\n    color: blue;\n}", sheet.Describe(sheet.Classes["title"].Single()));
+        Assert.Equal(".card {\n    color: red;\n    padding: 0;\n}", sheet.Describe(sheet.Classes["card"].Single()));
+    }
+
+    [Fact]
+    public void A_block_that_holds_no_rules_names_no_class_though_a_rule_holds_it()
+    {
+        CssSheet sheet = CssRules.Read("""
+            .a { --mixin: { .value: 1 }; background: url(img.icon{1}.png); .b { top: 0 } }
+            @keyframes spin { from.step { top: 0 } }
+            .c { @keyframes inner { to.step { top: 0 } } @font-face { src: url(a.woff) } }
+            @font-face { src: url(a.b{c}.woff); }
+            .d { background: url( "e.f{g}.png" ) }
+            """);
+        Assert.Equal(["a", "b", "c", "d"], sheet.Rules.Select(r => r.Name));
+    }
+
+    [Fact]
+    public void A_class_of_a_rule_nested_past_deep_is_deep_and_the_rules_after_it_are_not()
+    {
+        CssSheet sheet = CssRules.Read(".panel ::deep { .child { color: red; } @media print { .printed { top: 0 } } }\n.plain { .nested { top: 0 } }\n");
+        Assert.Equal([("panel", false), ("child", true), ("printed", true), ("plain", false), ("nested", false)], sheet.Rules.Select(r => (r.Name, r.Deep)));
+    }
+
+    [Fact]
     public void A_pages_links_are_read_as_the_app_serves_them_under_its_base_href()
     {
         const string Page = "<base href=\"/app/\" />\n<link rel=\"stylesheet\" href=\"css/site.css\" />\n<link rel=\"stylesheet\" href=\"/app/css/based.css\" />\n"

@@ -3,12 +3,13 @@ using System.Text;
 namespace Passenger.Workspace;
 
 /// <summary>A class a stylesheet's rule names in its selector: the class, where its name is written, the rule's selector
-/// and declarations as places in the text, and whether it is named after CSS isolation's <c>::deep</c>, which a scoped
-/// stylesheet's rule reaches the components its component renders with.</summary>
+/// and declarations as places in the text, and whether it is named after CSS isolation's <c>::deep</c> (in its selector or
+/// that of a rule it is nested in), which a scoped stylesheet's rule reaches the components its component renders with.</summary>
 public readonly record struct CssClassRule(string Name, int At, int RuleStart, int BodyStart, int BodyEnd, bool Deep = false);
 
 /// <summary>What a stylesheet gives the markup that links it: every class its rules' selectors name, a rule nested in an
-/// at-rule (<c>@media</c>, <c>@supports</c>, <c>@layer</c>) included, and the stylesheets its <c>@import</c>s name.</summary>
+/// at-rule (<c>@media</c>, <c>@supports</c>, <c>@layer</c>) or in another rule included, and the stylesheets its
+/// <c>@import</c>s name.</summary>
 public sealed record CssSheet(string Text, IReadOnlyList<CssClassRule> Rules, IReadOnlyList<string> Imports)
 {
     public static CssSheet Empty { get; } = new(string.Empty, [], []);
@@ -62,10 +63,10 @@ public sealed record CssSheet(string Text, IReadOnlyList<CssClassRule> Rules, IR
     }
 }
 
-/// <summary>Reads a stylesheet's rules without a CSS engine: comments and strings passed over, a selector read from the end
-/// of the rule or at-rule before it to its '{', its classes the names after each '.' outside an attribute selector's
-/// brackets, escapes read as CSS reads them (<c>.md\:flex</c> is <c>md:flex</c>); a keyframe's steps and a declaration
-/// block's own nesting are passed over. Pure, and as quick as one pass over the text.</summary>
+/// <summary>Reads a stylesheet's rules without a CSS engine: comments, strings and an unquoted <c>url(…)</c> passed over, a
+/// selector read from the end of the rule, at-rule or declaration before it to its '{', its classes the names after each
+/// '.' outside an attribute selector's brackets, escapes read as CSS reads them (<c>.md\:flex</c> is <c>md:flex</c>); a
+/// keyframe's steps and a custom property's block are passed over. Pure, and as quick as one pass over the text.</summary>
 public static class CssRules
 {
     /// <summary>At-rules whose block holds rules, as <c>@media</c>'s does; any other's block is passed over.</summary>
@@ -78,8 +79,8 @@ public static class CssRules
         int i = 0;
         int depth = 0;
         int start = 0;
-        // How deep the blocks that hold rules go: deeper than that, a block is a rule's declarations or an at-rule's own.
-        int ruling = 0;
+        // The blocks open that hold rules, a rule's own too, and whether what each holds is past a ::deep: deeper, a block is no rule's.
+        Stack<bool> ruling = new();
         while (i < css.Length)
         {
             char c = css[i];
@@ -105,24 +106,28 @@ public static class CssRules
                 i += 2;
                 continue;
             }
+            if (c == '(' && UnquotedUrl(css, i))
+            {
+                int end = css.IndexOf(')', i);
+                i = end < 0 ? css.Length : end + 1;
+                continue;
+            }
             if (c == '{')
             {
-                if (depth == ruling)
+                if (depth == ruling.Count)
                 {
-                    ReadOnlySpan<char> head = css.AsSpan(start, i - start);
-                    int at = head.TrimStart().Length;
-                    int lead = head.Length - at;
-                    if (at > 0 && head[lead] == '@')
+                    ReadOnlySpan<char> head = css.AsSpan(start, i - start).TrimStart();
+                    bool within = ruling.TryPeek(out bool past) && past;
+                    if (head.Length > 0 && head[0] == '@')
                     {
-                        if (Grouping.Contains(AtName(head[(lead + 1)..])))
+                        if (Grouping.Contains(AtName(head[1..])))
                         {
-                            ruling++;
+                            ruling.Push(within);
                         }
                     }
-                    else
+                    else if (!CustomProperty(head))
                     {
-                        int bodyEnd = BlockEnd(css, i + 1);
-                        Selector(css, start, i, i + 1, bodyEnd, rules);
+                        ruling.Push(Selector(css, start, i, i + 1, BlockEnd(css, i + 1), within, rules));
                     }
                 }
                 depth++;
@@ -136,17 +141,17 @@ public static class CssRules
                 {
                     depth--;
                 }
-                if (depth < ruling)
+                if (depth < ruling.Count)
                 {
-                    ruling = depth;
+                    ruling.Pop();
                 }
                 i++;
                 start = i;
                 continue;
             }
-            if (c == ';' && depth == ruling)
+            if (c == ';' && depth == ruling.Count)
             {
-                if (Import(css.AsSpan(start, i - start)) is { } imported)
+                if (depth == 0 && Import(css.AsSpan(start, i - start)) is { } imported)
                 {
                     imports.Add(imported);
                 }
@@ -158,6 +163,20 @@ public static class CssRules
         }
         return new CssSheet(css, rules, imports);
     }
+
+    /// <summary>Whether the '(' at a place opens a <c>url(…)</c> without quotes, whose text is an address, not CSS.</summary>
+    private static bool UnquotedUrl(string css, int at)
+    {
+        if (at < 3 || !css.AsSpan(at - 3, 3).Equals("url", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        ReadOnlySpan<char> value = css.AsSpan(at + 1).TrimStart();
+        return value.Length == 0 || value[0] is not ('"' or '\'');
+    }
+
+    /// <summary>Whether what comes before a '{' is a custom property's name, whose value a block may be: no selector.</summary>
+    private static bool CustomProperty(ReadOnlySpan<char> head) => head.StartsWith("--") && head.Contains(':');
 
     /// <summary>The declarations of a rule's block, each trimmed, a nested block left out.</summary>
     public static IEnumerable<string> Declarations(ReadOnlySpan<char> body)
@@ -211,8 +230,9 @@ public static class CssRules
         }
     }
 
-    /// <summary>The classes a selector from <paramref name="start"/> to its '{' names, each once per rule.</summary>
-    private static void Selector(string css, int start, int brace, int bodyStart, int bodyEnd, List<CssClassRule> rules)
+    /// <summary>The classes a selector from <paramref name="start"/> to its '{' names, each once per rule, those of a rule
+    /// nested past a ::deep (<paramref name="within"/>) all deep; whether what its block holds is past one.</summary>
+    private static bool Selector(string css, int start, int brace, int bodyStart, int bodyEnd, bool within, List<CssClassRule> rules)
     {
         int ruleStart = start;
         while (ruleStart < brace && char.IsWhiteSpace(css[ruleStart]))
@@ -222,17 +242,19 @@ public static class CssRules
         HashSet<string>? named = null;
         int bracket = 0;
         // Past a ::deep in this selector of the list: each ',' begins another.
-        bool deep = false;
+        bool deep = within;
+        bool holdsDeep = within;
         for (int i = ruleStart; i < brace; i++)
         {
             char c = css[i];
             if (c == ',' && bracket == 0)
             {
-                deep = false;
+                deep = within;
             }
             else if (c == ':' && bracket == 0 && css.AsSpan(i, brace - i).StartsWith("::deep", StringComparison.OrdinalIgnoreCase))
             {
                 deep = true;
+                holdsDeep = true;
                 i += 5;
             }
             else if (c is '"' or '\'')
@@ -265,6 +287,7 @@ public static class CssRules
                 i = end - 1;
             }
         }
+        return holdsDeep;
     }
 
     /// <summary>A CSS identifier from <paramref name="at"/>, its escapes read, and where it ends; empty for none (a number's
