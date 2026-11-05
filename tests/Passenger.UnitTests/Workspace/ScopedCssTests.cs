@@ -3,8 +3,9 @@ using Passenger.Workspace;
 namespace Passenger.UnitTests.Workspace;
 
 /// <summary>A component's scoped stylesheet and its markup: the names its selectors may take are the HTML elements, classes and
-/// ids the markup writes (never a component's tag, which takes no scope, nor a Razor expression), and they are offered only
-/// where a selector is written, never inside a rule's declarations, a comment or a string.</summary>
+/// ids the markup's start tags write (never a component's tag, which takes no scope, nor a Razor expression, a comment or
+/// code), and they are offered only where a selector is written, a nested rule's too, never inside a rule's declarations, a
+/// comment or a string.</summary>
 public class ScopedCssTests
 {
     private const string Markup = """
@@ -36,6 +37,28 @@ public class ScopedCssTests
     }
 
     [Fact]
+    public void Only_a_start_tags_own_class_and_id_are_names_and_not_what_a_comment_code_or_another_attribute_writes()
+    {
+        const string Page = """
+            <!-- <div class="commented" id="gone"></div> -->
+            @* <div class="unrendered" id="unseen"></div> *@
+            <div class="real" id="here" data-id="dataid" data-class="dataclass" aria-id='ariaid'></div>
+            <script>const html = '<p class="scripted" id="written"></p>';</script>
+            @{ string id = "local"; char mark = 'x'; }
+            @code {
+                private string id = "field";
+                private char class_ = 'y';
+                private string html = "<section class=\"quoted\"></section>";
+                private List<string> Rows = [];
+            }
+            """;
+        (IReadOnlyList<string> elements, IReadOnlyList<string> classes, IReadOnlyList<string> ids) = ScopedCss.Names(Page);
+        Assert.Equal(["div", "script"], elements);
+        Assert.Equal(["real"], classes);
+        Assert.Equal(["here"], ids);
+    }
+
+    [Fact]
     public void A_scoped_stylesheet_styles_the_component_or_page_it_is_named_for()
     {
         Assert.Equal(Path.Combine("Pages", "Bell.razor"), ScopedCss.MarkupOf(Path.Combine("Pages", "Bell.razor.css")));
@@ -62,5 +85,47 @@ public class ScopedCssTests
         Assert.Equal((Css.Length - 2, (char?)null), ScopedCss.SelectorAt(Css, Css.Length));
         const string Inner = "@media (max-width: 600px) {\n    .bell {\n        co";
         Assert.Null(ScopedCss.SelectorAt(Inner, Inner.Length));
+    }
+
+    [Theory]
+    [InlineData(".bell {\n    color: red;\n    .|", '.')]
+    [InlineData(".bell {\n    .ri|", '.')]
+    [InlineData(".bell {\n    #ch|", '#')]
+    [InlineData(".bell {\n    & .ri|", '.')]
+    [InlineData(".bell {\n    &.ri|", '.')]
+    [InlineData(".bell {\n    &:hover .ri|", '.')]
+    [InlineData(".bell {\n    > .ri|", '.')]
+    [InlineData(".bell {\n    div .ri|", '.')]
+    [InlineData(".bell {\n    a, .ri|", '.')]
+    [InlineData(".bell {\n    /* the ring */ .ri|", '.')]
+    [InlineData(".bell {\n    .ringing {\n        .ri|", '.')]
+    [InlineData(".bell {\n    & bu|", null)]
+    [InlineData(".bell {\n    > bu|", null)]
+    [InlineData("@media (max-width: 600px) {\n    .bell {\n        .ri|", '.')]
+    public void A_rule_nested_in_a_rule_is_offered_names_where_its_selector_is_written(string written, char? mark)
+    {
+        string css = written.Replace("|", string.Empty, StringComparison.Ordinal);
+        int caret = written.IndexOf('|', StringComparison.Ordinal);
+        int start = caret;
+        while (start > 0 && char.IsLetter(css[start - 1]))
+        {
+            start--;
+        }
+        Assert.Equal((start, mark), ScopedCss.SelectorAt(css, caret));
+    }
+
+    [Theory]
+    [InlineData(".bell {\n    co")]
+    [InlineData(".bell {\n    color: re")]
+    [InlineData(".bell {\n    color: #ff")]
+    [InlineData(".bell {\n    margin: .5")]
+    [InlineData(".bell {\n    margin: 0 .5em .2")]
+    [InlineData(".bell {\n    color: red;\n    co")]
+    [InlineData(".bell {\n    .ringing {\n        co")]
+    [InlineData(".bell {\n    :ho")]
+    [InlineData(".bell {\n    /* .ri")]
+    public void A_declaration_in_a_rule_is_offered_no_names_whatever_its_value_looks_like(string css)
+    {
+        Assert.Null(ScopedCss.SelectorAt(css, css.Length));
     }
 }

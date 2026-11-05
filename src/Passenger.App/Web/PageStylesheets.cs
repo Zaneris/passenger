@@ -22,7 +22,7 @@ public sealed record PageClasses(IReadOnlyDictionary<string, IReadOnlyList<Defin
 }
 
 /// <summary>The stylesheets a markup file's pages link, found as the app serves them: a Razor file's are those every page of
-/// its project links (and of the projects that reference it), an HTML file's its own; each page's <c>&lt;style&gt;</c>
+/// its project links (and of the projects that reference it, through others too), an HTML file's its own; each page's <c>&lt;style&gt;</c>
 /// blocks; a component's own scoped stylesheet always, another's <c>::deep</c> rules where that one renders it. An address
 /// (after the page's <c>&lt;base href&gt;</c>, with that base's path if the app serves nothing there) is the app's own
 /// <c>wwwroot</c>, a package's static web assets (under its own base path, <c>_content/Name/…</c> unless its build gives
@@ -189,7 +189,7 @@ public sealed class PageStylesheets
                     unread.Add(fetched.Why ?? $"{address} could not be read");
                     return;
                 }
-                // A copy never changes once kept: its rules are read once.
+                // A copy is fetched once for a folder: its rules are read once.
                 CssSheet sheet = sheets.GetOrAdd(copy, _ => CssRules.Read(text));
                 Take(copy, Path.GetFileName(address.AbsolutePath) is { Length: > 0 } name ? name : address.Host, sheet, _ => true);
                 foreach (string imported in sheet.Imports)
@@ -201,7 +201,7 @@ public sealed class PageStylesheets
             if (BundleOf(href, serving, projects) is { } bundling)
             {
                 count++;
-                IReadOnlyList<string> bundled = Bundled(bundling, root, files);
+                IReadOnlyList<string> bundled = Bundled(bundling, projects, root, files);
                 foreach (string scoped in bundled.Where(s => seen.Add(s)))
                 {
                     string component = Path.GetFileNameWithoutExtension(scoped[..^4]);
@@ -263,7 +263,7 @@ public sealed class PageStylesheets
     private static string Key(string href, string from) => Uri.TryCreate(href, UriKind.Absolute, out Uri? absolute) && !absolute.IsFile ? absolute.AbsoluteUri : $"{from}|{href}";
 
     /// <summary>The pages a markup file's classes are styled by, with the project that serves each: an HTML file itself, a
-    /// Razor file's every page of its project and of the projects that reference it.</summary>
+    /// Razor file's every page of its project and of the projects that reference it, directly or through others.</summary>
     private IEnumerable<(string Page, ProjectModel? Serving)> Pages(string path, bool razor, ProjectModel? project, IReadOnlyList<ProjectModel> projects,
         string? root, IReadOnlyList<string> files)
     {
@@ -276,7 +276,8 @@ public sealed class PageStylesheets
         {
             yield break;
         }
-        IEnumerable<ProjectModel> serving = [project, .. projects.Where(p => p.ProjectReferences.Contains(project.Path, PathNames.Comparer))];
+        HashSet<string> dependents = ProjectModel.Dependents(projects, project.Path);
+        IEnumerable<ProjectModel> serving = [project, .. projects.Where(p => dependents.Contains(p.Path))];
         foreach (ProjectModel each in serving)
         {
             foreach (string page in PagesOf(each, OwnFiles(each.Folder, root, files)))
@@ -466,15 +467,14 @@ public sealed class PageStylesheets
     }
 
     /// <summary>The scoped stylesheets a project's CSS isolation bundle takes in: every component's and page's of the project
-    /// and of the projects it references.</summary>
-    private IReadOnlyList<string> Bundled(ProjectModel bundling, string? root, IReadOnlyList<string> files)
+    /// and of the projects it references, through others too, one evaluated or not.</summary>
+    private IReadOnlyList<string> Bundled(ProjectModel bundling, IReadOnlyList<ProjectModel> projects, string? root, IReadOnlyList<string> files)
     {
         if (root is null)
         {
             return [];
         }
-        IEnumerable<string> folders = [bundling.Folder, .. bundling.ProjectReferences.Select(r => System.IO.Path.GetDirectoryName(r)!)];
-        return [.. folders.SelectMany(folder => OwnFiles(folder, root, files)).Where(f => f.EndsWith(".css", StringComparison.OrdinalIgnoreCase) && RazorFiles.Is(f[..^4]))];
+        return [.. bundling.FoldersWithReferenced(projects).SelectMany(folder => OwnFiles(folder, root, files)).Where(f => f.EndsWith(".css", StringComparison.OrdinalIgnoreCase) && RazorFiles.Is(f[..^4]))];
     }
 
     /// <summary>An address's path from the app's root as the file system names it: without its query or fragment, its escapes read.</summary>
@@ -509,7 +509,7 @@ public sealed class PageStylesheets
         if (parts is ["_content", { Length: > 0 } name, .. { Length: > 0 } rest])
         {
             string below = System.IO.Path.Combine(rest);
-            if (projects.FirstOrDefault(p => serving.ProjectReferences.Contains(p.Path, PathNames.Comparer) && p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } referenced)
+            if (serving.WithReferenced(projects).Skip(1).FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } referenced)
             {
                 return System.IO.Path.Combine(referenced.Folder, "wwwroot", below);
             }
@@ -519,13 +519,13 @@ public sealed class PageStylesheets
         return File.Exists(own) ? own : PackageAssetUnder(serving, parts) ?? own;
     }
 
-    /// <summary>The file an address names in the <c>wwwroot</c> of a project the app references, under the base path that
-    /// project serves its static web assets at (its <c>StaticWebAssetBasePath</c>, as its evaluation gives it); null where
-    /// no referenced project's base path begins it.</summary>
+    /// <summary>The file an address names in the <c>wwwroot</c> of a project the app references, through others too, under the
+    /// base path that project serves its static web assets at (its <c>StaticWebAssetBasePath</c>, as its evaluation gives it);
+    /// null where no referenced project's base path begins it.</summary>
     private static string? ReferencedAsset(ProjectModel serving, string[] parts, IReadOnlyList<ProjectModel> projects)
     {
         string address = string.Join('/', parts);
-        foreach (ProjectModel referenced in projects.Where(p => serving.ProjectReferences.Contains(p.Path, PathNames.Comparer)))
+        foreach (ProjectModel referenced in serving.WithReferenced(projects).Skip(1))
         {
             string served = referenced.Property(Host.CarriedProperties.StaticWebAssetBasePath) is { Length: > 0 } own ? own.Replace('\\', '/').Trim('/') : $"_content/{referenced.Name}";
             if (served.Length > 0 && address.StartsWith(served + "/", StringComparison.OrdinalIgnoreCase))

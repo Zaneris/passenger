@@ -328,6 +328,11 @@ public sealed record ProjectModel(
         return found;
     }
 
+    /// <summary>Its folder, then those of the projects it references, through those among <paramref name="projects"/>, each
+    /// once, a reference that is none of them too.</summary>
+    public IReadOnlyList<string> FoldersWithReferenced(IReadOnlyList<ProjectModel> projects) =>
+        [.. WithReferenced(projects).SelectMany(p => p.ProjectReferences.Select(r => System.IO.Path.GetDirectoryName(r)!).Prepend(p.Folder)).Distinct(PathNames.Comparer)];
+
     /// <summary>Whether Aspire's evaluated SDK identifies this project as an AppHost.</summary>
     public bool IsAspireHost => Evaluated?.IsAspireHost == true;
 

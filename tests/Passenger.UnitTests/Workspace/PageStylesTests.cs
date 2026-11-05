@@ -258,6 +258,40 @@ public class PageStylesTests
     }
 
     [Fact]
+    public void A_css_bundles_folders_are_those_of_every_project_reached_through_another_each_once_one_not_evaluated_too()
+    {
+        ProjectModel Project(string name, params string[] references) => new(Path.Combine(Path.GetTempPath(), name, $"{name}.csproj"), name, null, ["net10.0"], [], references, true);
+        ProjectModel cog = Project("Cog");
+        ProjectModel gear = Project("Gear", cog.Path, Path.Combine(Path.GetTempPath(), "Unread", "Unread.csproj"));
+        ProjectModel app = Project("App", gear.Path, cog.Path);
+        Assert.Equal([app.Folder, gear.Folder, cog.Folder, Path.Combine(Path.GetTempPath(), "Unread")], app.FoldersWithReferenced([app, gear, cog]));
+    }
+
+    [Theory]
+    [InlineData("@Url.Content(\"~/css/site.css\")", "/css/site.css")]
+    [InlineData("@(Url.Content(\"~/css/site.css\"))", "/css/site.css")]
+    [InlineData("@Url.Content(\"css/site.css\")", "css/site.css")]
+    [InlineData("@Assets[\"~/css/site.css\"]", "/css/site.css")]
+    [InlineData("@(Assets[\"css/site.css\"])", "css/site.css")]
+    public void An_expression_naming_its_address_by_one_string_is_that_address(string written, string address)
+    {
+        LinkedSheet link = Assert.Single(PageLinks.Stylesheets($"<link rel=\"stylesheet\" href=\"{written}\" />", razor: true));
+        Assert.False(link.IsExpression, $"{written} names its address, yet the page's classes wait on what the app runs");
+        Assert.Equal(address, link.Href);
+    }
+
+    [Theory]
+    [InlineData("@Url.Content(\"~/css/\" + Theme + \".css\")")]
+    [InlineData("@Url.Content(Theme)")]
+    [InlineData("@Url.Content(\"\")")]
+    [InlineData("@Assets[\"css/\" + Theme]")]
+    [InlineData("@Url.Content(\"~/css/site.css\")?v=@Version")]
+    public void An_expression_that_makes_an_address_of_more_than_one_string_stays_an_expression(string written)
+    {
+        Assert.True(Assert.Single(PageLinks.Stylesheets($"<link rel=\"stylesheet\" href=\"{written}\" />", razor: true)).IsExpression, $"{written} was read as an address");
+    }
+
+    [Fact]
     public void A_link_an_expression_makes_says_so_and_an_html_pages_at_sign_is_part_of_its_address()
     {
         LinkedSheet made = Assert.Single(PageLinks.Stylesheets("<link rel=\"stylesheet\" href=\"@Theme.Sheet\" />", razor: true));

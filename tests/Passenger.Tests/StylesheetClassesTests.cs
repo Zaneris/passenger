@@ -16,7 +16,8 @@ namespace Passenger.Tests;
 /// <summary>The classes a Blazor component's pages link, completed where a class is written, through the window: a
 /// stylesheet on a CDN (a local stand-in, never a real one) only once Settings allow its download and never fetched
 /// before, its link's integrity checked; a package's static web asset under <c>_content/Kit/</c>, or under its own base
-/// path, read from the package folder its restore resolved, and a referenced library's under the base path it sets; the component's own scoped stylesheet, a parent's ::deep
+/// path, read from the package folder its restore resolved, and a referenced library's under the base path it sets, or one
+/// the app reaches through that library; the component's own scoped stylesheet, a parent's ::deep
 /// classes in its child; the host page's style block and a link under its base href; an HTML file's; a class's rules on
 /// the hover card and Go to Declaration to its rule, read-only; a class no stylesheet defines marked, quietly, once every
 /// stylesheet linked was read; and what a page's stylesheets could not give said, never called complete. On a Blazor app
@@ -188,6 +189,54 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
     }
 
     [AvaloniaFact]
+    public void What_the_app_reaches_through_a_library_it_references_is_served_as_its_own_and_styled_by_its_pages()
+    {
+        MainWindow window = app.Open("Components/Pages/Styled.razor");
+        Ui.WaitFor(() => window.Projects.Any(p => p.Name == "Cog") && window.Projects.Any(p => p.Name == "Gear"), "the library the app reaches through another, evaluated");
+        string styled = PathNames.Canonical(app.PathOf("Components/Pages/Styled.razor"));
+        PageClasses page = Ui.Landed(window.Session.Stylesheets.ClassesAsync(styled, CancellationToken.None), "the classes the app's pages link");
+        Assert.Contains("cog-turn", page.Classes.Keys);
+        Assert.DoesNotContain(page.Unread, why => why.Contains("cog", StringComparison.OrdinalIgnoreCase));
+
+        string wheel = PathNames.Canonical(app.PathOf("Cog/Wheel.razor"));
+        PageClasses component = Ui.Landed(window.Session.Stylesheets.ClassesAsync(wheel, CancellationToken.None), "the classes the pages showing the library's component link");
+        Assert.Contains("based-note", component.Classes.Keys);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_stylesheet_linked_with_no_integrity_is_asked_again_as_the_folder_opens_and_its_copy_stands_while_the_cdn_cant_say()
+    {
+        NoCopies();
+        app.Latest = StyledShop.LatestBefore;
+        MainWindow window = OpenAllowingDownloads();
+        Assert.Contains("from-before", Classes(window, "latest-open.html").Classes.Keys);
+        int asked = app.LatestFetched;
+        app.Latest = StyledShop.LatestAfter;
+        Assert.Contains("from-before", Classes(window, "latest-open.html").Classes.Keys);
+        Assert.Equal(asked, app.LatestFetched);
+        window.Close();
+
+        MainWindow again = OpenAllowingDownloads();
+        PageClasses moved = Classes(again, "latest-open.html");
+        Assert.Contains("from-after", moved.Classes.Keys);
+        Assert.DoesNotContain("from-before", moved.Classes.Keys);
+        Assert.Equal(asked + 1, app.LatestFetched);
+        again.Close();
+
+        app.Latest = null;
+        MainWindow unanswered = OpenAllowingDownloads();
+        PageClasses kept = Classes(unanswered, "latest-open.html");
+        Assert.True(kept.Complete, $"A CDN that doesn't answer took away the copy a link with no integrity had: {string.Join("; ", kept.Unread)}");
+        Assert.Contains("from-after", kept.Classes.Keys);
+        Assert.Equal(asked + 2, app.LatestFetched);
+        Classes(unanswered, "latest-open.html");
+        Assert.Equal(asked + 2, app.LatestFetched);
+        unanswered.Close();
+        app.Latest = StyledShop.LatestBefore;
+    }
+
+    [AvaloniaFact]
     public void A_stylesheet_is_downloaded_again_once_its_link_gives_another_integrity_and_what_is_not_that_integrity_is_kept_nowhere()
     {
         NoCopies();
@@ -356,7 +405,7 @@ public sealed class StyledShop : SharedProject
     private readonly StandInHttp cdn;
     private int fetched;
     private int latestFetched;
-    private volatile string latest = LatestBefore;
+    private volatile string? latest = LatestBefore;
 
     public StyledShop()
         : base("styled-")
@@ -372,7 +421,7 @@ public sealed class StyledShop : SharedProject
             if (exchange.Path.EndsWith("/latest.css", StringComparison.Ordinal))
             {
                 Interlocked.Increment(ref latestFetched);
-                await exchange.ReplyAsync(200, "text/css", latest);
+                await (latest is { } served ? exchange.ReplyAsync(200, "text/css", served) : exchange.ReplyAsync(503, "text/plain", "down"));
                 return;
             }
             await exchange.ReplyAsync(404, "text/plain", "not here");
@@ -385,8 +434,8 @@ public sealed class StyledShop : SharedProject
     /// <summary>How many times the stand-in CDN was asked for latest.css.</summary>
     public int LatestFetched => Volatile.Read(ref latestFetched);
 
-    /// <summary>What the stand-in CDN serves as latest.css now.</summary>
-    public string Latest
+    /// <summary>What the stand-in CDN serves as latest.css now; null where it answers with an error.</summary>
+    public string? Latest
     {
         set => latest = value;
     }
@@ -404,6 +453,7 @@ public sealed class StyledShop : SharedProject
                 + "    <link rel=\"stylesheet\" href=\"/app/css/based.css\" />\n"
                 + "    <link rel=\"stylesheet\" href=\"lamp/lamp.css\" />\n"
                 + "    <link rel=\"stylesheet\" href=\"gear/gear.css\" />\n"
+                + "    <link rel=\"stylesheet\" href=\"_content/Cog/cog.css\" />\n"
                 + "    <style>\n        .inline-note { color: teal; }\n    </style>", StringComparison.Ordinal);
             Assert.Contains("_content/Kit/kit.css", page, StringComparison.Ordinal);
             // Served under a path base: its relative links after it, its links under it from the app's root.
@@ -445,12 +495,20 @@ public sealed class StyledShop : SharedProject
             // A Razor class library the app references, serving its static web assets under a base path of its own.
             Directory.CreateDirectory(PathOf("Gear/wwwroot"));
             File.WriteAllText(PathOf("Gear/Gear.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk.Razor\">\n  <PropertyGroup>\n"
-                + $"    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <StaticWebAssetBasePath>gear</StaticWebAssetBasePath>\n  </PropertyGroup>\n</Project>\n");
+                + $"    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <StaticWebAssetBasePath>gear</StaticWebAssetBasePath>\n  </PropertyGroup>\n"
+                + "  <ItemGroup>\n    <ProjectReference Include=\"../Cog/Cog.csproj\" />\n  </ItemGroup>\n</Project>\n");
             File.WriteAllText(PathOf("Gear/wwwroot/gear.css"), ".gear-spin {\n    rotate: 90deg;\n}\n");
+            // A library the app reaches only through that one, its static web assets served all the same.
+            Directory.CreateDirectory(PathOf("Cog/wwwroot"));
+            File.WriteAllText(PathOf("Cog/Cog.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk.Razor\">\n  <PropertyGroup>\n"
+                + $"    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n"
+                + "  <ItemGroup>\n    <FrameworkReference Include=\"Microsoft.AspNetCore.App\" />\n  </ItemGroup>\n</Project>\n");
+            File.WriteAllText(PathOf("Cog/wwwroot/cog.css"), ".cog-turn {\n    rotate: 45deg;\n}\n");
+            File.WriteAllText(PathOf("Cog/Wheel.razor"), "<span class=\"\">Wheel</span>\n");
             WritePages();
             string project = await File.ReadAllTextAsync(PathOf("Shop.csproj"));
             File.WriteAllText(PathOf("Shop.csproj"), project.Replace("</Project>", "  <ItemGroup>\n    <PackageReference Include=\"Kit\" Version=\"1.0.0\" />\n    <PackageReference Include=\"Lamp\" Version=\"1.0.0\" />\n"
-                + "    <ProjectReference Include=\"Gear/Gear.csproj\" />\n  </ItemGroup>\n\n  <PropertyGroup>\n    <DefaultItemExcludes>$(DefaultItemExcludes);Gear/**</DefaultItemExcludes>\n  </PropertyGroup>\n\n</Project>", StringComparison.Ordinal));
+                + "    <ProjectReference Include=\"Gear/Gear.csproj\" />\n  </ItemGroup>\n\n  <PropertyGroup>\n    <DefaultItemExcludes>$(DefaultItemExcludes);Gear/**;Cog/**</DefaultItemExcludes>\n  </PropertyGroup>\n\n</Project>", StringComparison.Ordinal));
             Directory.CreateDirectory(PathOf("bin"));
         }, Folder);
         await PrepareAsync();
@@ -470,6 +528,7 @@ public sealed class StyledShop : SharedProject
         Write("latest-before.html", LinkOf(LatestBefore));
         Write("latest-after.html", LinkOf(LatestAfter));
         Write("latest-ahead.html", LinkOf(".from-ahead{color:blue}"));
+        Write("latest-open.html", $"<link rel=\"stylesheet\" href=\"{cdn.Root}/latest.css\" />\n");
         Write("assets/css/asset.css", ".asset-note {\n    color: navy;\n}\n");
         Write("css/asset.css", ".asset-elsewhere {\n    color: navy;\n}\n");
         Write("under-assets.html", "<base href=\"/assets/\" />\n<link rel=\"stylesheet\" href=\"css/asset.css\" />\n");

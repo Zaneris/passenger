@@ -10,7 +10,9 @@ namespace Passenger.App.Web;
 /// <summary>The stylesheets a page links on the web (a CDN's Bootstrap): each downloaded only while Settings allow it, never
 /// before, once for its address and its link's integrity, over HTTP or HTTPS, and kept in the state's cache under both,
 /// where the editor shows it read-only: a page that moves to another integrity is given what the address serves now. A
-/// copy is kept and used only where its bytes are what the integrity says. Called on any thread.</summary>
+/// copy is kept and used only where its bytes are what the integrity says. One whose link gives no integrity says nothing of
+/// what the address serves now, so it is asked again each time the folder is opened, the copy standing while it can't be.
+/// Called on any thread.</summary>
 public sealed class RemoteStylesheets(Func<bool> download)
 {
     /// <summary>A stylesheet is some hundreds of kilobytes, a framework's whole some megabytes.</summary>
@@ -79,7 +81,8 @@ public sealed class RemoteStylesheets(Func<bool> download)
         {
             return new Fetched(null, null, $"{address}'s copy could not be read: {error.Message}");
         }
-        if (bytes is null || !PageLinks.Matches(integrity, bytes))
+        bool unsaid = bytes is not null && integrity is null;
+        if (bytes is null || !PageLinks.Matches(integrity, bytes) || unsaid && download())
         {
             if (!download())
             {
@@ -96,7 +99,10 @@ public sealed class RemoteStylesheets(Func<bool> download)
             {
                 // Asked again next time: a network that comes back finds it.
                 downloading.TryRemove(new KeyValuePair<string, Task<byte[]?>>(path, once));
-                return new Fetched(null, null, $"{address} could not be downloaded: {error.Message}");
+                if (!unsaid || cancel.IsCancellationRequested)
+                {
+                    return new Fetched(null, null, $"{address} could not be downloaded: {error.Message}");
+                }
             }
             if (bytes is null)
             {

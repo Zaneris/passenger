@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 namespace Passenger.Workspace;
 
 /// <summary>A stylesheet a page links, by a <c>&lt;link&gt;</c> or a <c>&lt;style&gt;</c> block's <c>@import</c>: the address
-/// a browser asks for (a Razor <c>@Assets["…"]</c> read as the path it names, a view's <c>~/</c> as the app's root); the
+/// a browser asks for (a Razor <c>@Assets["…"]</c> or <c>@Url.Content("…")</c> read as the path it names, a view's <c>~/</c> as the app's root); the
 /// hashes its <c>integrity</c> gives, if any; and under a page's <c>&lt;base href&gt;</c> that address without the base's
 /// path, where an app mounted at that path (<c>UsePathBase</c>) serves it: a page can't say which it is.</summary>
 public sealed record LinkedSheet(string Href, string? Integrity, string? Mounted = null)
@@ -19,6 +19,9 @@ public static class PageLinks
 {
     /// <summary>The app's root as a URL no host answers, for an address to be resolved from it as a browser would.</summary>
     private static readonly Uri AppRoot = new("https://app.invalid/");
+
+    /// <summary>What a Razor expression naming an address by one string is written between.</summary>
+    private static readonly (string Open, string Close)[] Named = [("@Assets[\"", "\"]"), ("@(Assets[\"", "\"])"), ("@Url.Content(\"", "\")"), ("@(Url.Content(\"", "\"))")];
 
     /// <summary>Each stylesheet a page links: its address from the page's <c>&lt;base href&gt;</c> (a CDN's too), else from
     /// the page's own address where that is known (<paramref name="page"/>, from the app's root), else as written.</summary>
@@ -151,20 +154,22 @@ public static class PageLinks
     private static string? Address(string value, bool razor)
     {
         string href = value.Trim();
-        foreach (string asset in (string[])["@Assets[\"", "@(Assets[\""])
+        foreach ((string open, string close) in Named)
         {
-            if (href.StartsWith(asset, StringComparison.Ordinal))
+            if (href.StartsWith(open, StringComparison.Ordinal))
             {
-                int close = href.IndexOf('"', asset.Length);
-                return close > asset.Length ? href[asset.Length..close] : null;
+                string named = href.EndsWith(close, StringComparison.Ordinal) && href.Length > open.Length + close.Length ? href[open.Length..^close.Length] : string.Empty;
+                return named.Length > 0 && !named.Contains('"', StringComparison.Ordinal) ? FromRoot(named) : null;
             }
         }
         if (razor && href.Contains('@', StringComparison.Ordinal) && !href.Contains("://", StringComparison.Ordinal))
         {
             return null;
         }
-        return href.StartsWith("~/", StringComparison.Ordinal) ? href[1..] : href.Length > 0 ? href : null;
+        return href.Length > 0 ? FromRoot(href) : null;
     }
+
+    private static string FromRoot(string href) => href.StartsWith("~/", StringComparison.Ordinal) ? href[1..] : href;
 
     /// <summary>Whether bytes match a link's integrity: true with none given or none of an algorithm a browser checks.</summary>
     public static bool Matches(string? integrity, ReadOnlySpan<byte> content)
