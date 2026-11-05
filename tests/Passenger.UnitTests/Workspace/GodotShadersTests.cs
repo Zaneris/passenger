@@ -197,6 +197,16 @@ public class GodotShadersTests
         Assert.Equal("res://shaders/a.gdshaderinc", GodotShaderUnit.Resolved("res://level.tscn::Shader_x", "shaders/./a.gdshaderinc"));
     }
 
+    /// <summary>A bracket closing straight after <c>render_mode</c> ends the statement before any mode.</summary>
+    [Theory]
+    [InlineData("]")]
+    [InlineData(")")]
+    [InlineData("}")]
+    public void A_render_mode_a_stray_bracket_cuts_off_at_once_is_read_with_no_modes(string bracket)
+    {
+        Assert.Empty(GodotShaderCode.Read($"shader_type spatial;\nrender_mode {bracket}\nvoid fragment() {{}}\n").RenderModes);
+    }
+
     [Theory]
     [InlineData("void fragment(){float answer = 1.0; ALPHA = answer;}")]
     [InlineData("void fragment() {float answer = 1.0; ALPHA = answer;}")]

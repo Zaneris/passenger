@@ -258,7 +258,7 @@ public sealed class GodotShaderCode
                     spans.Add((token.End, end < tokens.Count ? tokens[end].Start : text.Length, token.Text == "render_mode" ? GodotShaderSpot.RenderModes : GodotShaderSpot.StencilModes));
                     if (token.Text == "render_mode")
                     {
-                        modes.AddRange(tokens[(i + 1)..Math.Min(end, tokens.Count)].Where(t => t.Kind == TokenKind.Word).Select(t => t.Text));
+                        modes.AddRange(tokens[(i + 1)..Math.Max(i + 1, Math.Min(end, tokens.Count))].Where(t => t.Kind == TokenKind.Word).Select(t => t.Text));
                     }
                     break;
                 case "global" or "instance" or "uniform":
