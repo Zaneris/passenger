@@ -30,7 +30,7 @@ public static class VirtualDisplays
     private static CancellationTokenSource? idle;
 
     /// <summary>The display of the server, started now where none runs; null where Xvfb is not installed or would not start,
-    /// which the log says.</summary>
+    /// which the log says. Given up as it starts, it leaves no server running.</summary>
     public static async Task<string?> OpenAsync(CancellationToken cancel)
     {
         await Turn.WaitAsync(cancel);
@@ -58,6 +58,13 @@ public static class VirtualDisplays
             catch (TimeoutException)
             {
                 number = null;
+            }
+            catch
+            {
+                // Given up as it starts: nothing holds it yet, so no idle wait would end it.
+                ChildProcesses.Kill(started);
+                started.Dispose();
+                throw;
             }
             if (!int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out int which))
             {
