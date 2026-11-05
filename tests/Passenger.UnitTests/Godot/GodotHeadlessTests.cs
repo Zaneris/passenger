@@ -18,6 +18,33 @@ public class GodotHeadlessTests
         Assert.False(GodotExecutables.RunsHeadless(["--path", "/game", "res://main.tscn"]), "A plain start was taken for a headless one, so it would get no --headless");
     }
 
+    /// <summary>The name is SDL's own, so it is written out here: spelt any other way, SDL would read nothing and go on running
+    /// the main thread's run loop as Godot ends.</summary>
+    private const string SdlHidGamepads = "SDL_JOYSTICK_HIDAPI";
+
+    [Fact]
+    public void Every_headless_godot_is_started_without_SDLs_HID_gamepads_and_a_godot_someone_plays_keeps_them()
+    {
+        Assert.Equal("0", ChildProcesses.Command("/godot", ["--headless", "--path", "/game", "--import"]).Environment[SdlHidGamepads]);
+        Assert.Equal("0", ChildProcesses.Command("/godot", ["--display-driver", "headless", "--path", "/game"]).Environment[SdlHidGamepads]);
+        Assert.False(ChildProcesses.Command("/godot", ["--path", "/game"]).Environment.ContainsKey(SdlHidGamepads),
+            "A game with a window lost SDL's HID gamepads, which the person playing it may be holding");
+        Assert.False(ChildProcesses.Command("/godot", ["--path", "/game", "--", "--headless"]).Environment.ContainsKey(SdlHidGamepads),
+            "A game's own --headless, which Godot never reads, took SDL's HID gamepads from a game with a window");
+    }
+
+    [Fact]
+    public void An_environment_passed_on_for_a_headless_godot_turns_SDLs_HID_gamepads_off_unless_it_says_otherwise()
+    {
+        Dictionary<string, string> home = new() { ["HOME"] = "/runs/home" };
+        IReadOnlyDictionary<string, string> headless = GodotExecutables.EnvironmentOf(["--headless", "--path", "/game"], home);
+        Assert.Equal("0", headless[SdlHidGamepads]);
+        Assert.Equal("/runs/home", headless["HOME"]);
+        Assert.False(GodotExecutables.EnvironmentOf(["--path", "/game"], home).ContainsKey(SdlHidGamepads),
+            "A debugged game with a window lost SDL's HID gamepads, which the person playing it may be holding");
+        Assert.Equal("1", GodotExecutables.EnvironmentOf(["--headless"], new Dictionary<string, string> { [SdlHidGamepads] = "1" })[SdlHidGamepads]);
+    }
+
     [Fact]
     public void GdUnit4s_godot_is_made_headless_after_the_parameters_given_and_once_where_they_say_so_already()
     {

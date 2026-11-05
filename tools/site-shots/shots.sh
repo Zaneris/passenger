@@ -295,7 +295,7 @@ EOF3
         git -C "$creeps" commit -q -m "Squash the Creeps (3D) with C#, godot-demo-projects at ${creeps_commit:0:9}"
     dotnet build "$creeps/Squash the Creeps (3D).csproj" -nologo -v:q -clp:ErrorsOnly
     HOME="$PASSENGER_GODOT_HOME" XDG_CONFIG_HOME="$PASSENGER_GODOT_HOME/.config" \
-        XDG_DATA_HOME="$PASSENGER_GODOT_HOME/.local/share" XDG_CACHE_HOME="$PASSENGER_GODOT_HOME/.cache" \
+        XDG_DATA_HOME="$PASSENGER_GODOT_HOME/.local/share" XDG_CACHE_HOME="$PASSENGER_GODOT_HOME/.cache" SDL_JOYSTICK_HIDAPI=0 \
         "$GODOT" --headless --path "$creeps" --import > "$work/creeps-import.log" 2>&1
 }
 

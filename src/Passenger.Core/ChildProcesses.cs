@@ -46,7 +46,8 @@ public static class ChildProcesses
     public static Func<ProcessStartInfo, string> Shown { get; set; } = Display;
 
     /// <summary>A program and its arguments, to run in a folder (the IDE's own when none is given), its PWD that folder as
-    /// the disk names it (<see cref="NameFolder"/>).</summary>
+    /// the disk names it (<see cref="NameFolder"/>). A headless Godot goes without its HID gamepads
+    /// (<see cref="GodotExecutables.HidGamepads"/>), here so that none is started with them.</summary>
     public static ProcessStartInfo Command(string program, IEnumerable<string> arguments, string? folder = null)
     {
         ProcessStartInfo start = new(program, arguments);
@@ -59,6 +60,10 @@ public static class ChildProcesses
             start.Environment.Remove(variable);
         }
         NameFolder(start, folder);
+        if (GodotExecutables.RunsHeadless(start.ArgumentList))
+        {
+            start.Environment.TryAdd(GodotExecutables.HidGamepads, GodotExecutables.HidGamepadsOff);
+        }
         return start;
     }
 

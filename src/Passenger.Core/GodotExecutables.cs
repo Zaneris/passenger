@@ -106,6 +106,20 @@ public static partial class GodotExecutables
         return engine.Contains(Headless) || engine.Zip(engine.Skip(1)).Any(pair => pair is ("--display-driver", "headless"));
     }
 
+    /// <summary>The variable by which SDL, Godot's gamepad library, turns its HID driver on or off. A headless Godot, which nobody
+    /// plays, has it off: on macOS the driver's search for gamepads runs the main thread's run loop, and as Godot ends that
+    /// hands whatever waits on the loop to servers Godot has already deleted. Its other gamepad drivers stay.</summary>
+    public const string HidGamepads = "SDL_JOYSTICK_HIDAPI";
+
+    /// <summary>What <see cref="HidGamepads"/> says of a driver turned off.</summary>
+    public const string HidGamepadsOff = "0";
+
+    /// <summary>The environment of a Godot given these arguments, for a start that passes it on itself: as it stands, with
+    /// <see cref="HidGamepads"/> off where they run it headless and it does not say.</summary>
+    public static IReadOnlyDictionary<string, string> EnvironmentOf(IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string> environment) =>
+        !RunsHeadless(arguments) || environment.ContainsKey(HidGamepads) ? environment
+        : new Dictionary<string, string>(environment, StringComparer.Ordinal) { [HidGamepads] = HidGamepadsOff };
+
     /// <summary>Whether Godot given these arguments opens its editor on the project rather than its game.</summary>
     public static bool OpensEditor(IReadOnlyList<string> arguments) => EngineArguments(arguments).Any(IsEditorFlag);
 

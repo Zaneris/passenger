@@ -165,7 +165,7 @@ public static class GodotLaunch
             Arguments = arguments,
             Leading = leading,
             WorkingDirectory = working,
-            Environment = environment,
+            Environment = GodotExecutables.EnvironmentOf(arguments, environment),
             Project = project.Path,
             Framework = framework,
             Build = configuration.BuildBeforeLaunch && target is not null ? new BuildStep(project.Path, framework) : null,

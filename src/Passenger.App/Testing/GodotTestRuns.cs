@@ -12,9 +12,9 @@ public static class GodotTestRuns
     /// <summary>The variable GdUnit4's adapter takes Godot's executable from.</summary>
     public const string BinaryVariable = "GODOT_BIN";
 
-    /// <summary>What a Godot project's test hosts are given: the variables, the user folders a test gives Godot among them
-    /// and GODOT_BIN naming any Godot 4 found, which runs GUT's GDScript; why none would run C# where it would not; and how
-    /// each Godot a run starts is started.</summary>
+    /// <summary>What a Godot project's test hosts are given: the variables, the user folders a test gives Godot among them,
+    /// what a headless Godot takes where its tests run headless, and GODOT_BIN naming any Godot 4 found, which runs GUT's
+    /// GDScript; why none would run C# where it would not; and how each Godot a run starts is started.</summary>
     public sealed record Given(IReadOnlyDictionary<string, string> Variables, string? NoCSharp, GodotStart Start);
 
     /// <summary>What a Godot project's test hosts are given (<see cref="Given"/>), the tests GUT and GoDotTest run in a game
@@ -22,8 +22,8 @@ public static class GodotTestRuns
     /// login shell's PATH.</summary>
     public static Given Variables(string? setting, IReadOnlyDictionary<string, string> userFolders, bool windowed = false)
     {
-        Dictionary<string, string> variables = new(userFolders, StringComparer.Ordinal);
         GodotStart start = new(GodotLaunch.Chosen(setting)?.Arguments ?? [], windowed);
+        Dictionary<string, string> variables = new(GodotExecutables.EnvironmentOf(start.Leading, userFolders), StringComparer.Ordinal);
         if (Environment.GetEnvironmentVariable(BinaryVariable) is { Length: > 0 })
         {
             return new Given(variables, null, start);

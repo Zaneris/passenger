@@ -5,6 +5,7 @@ using ModelContextProtocol.Client;
 using Passenger.App;
 using Passenger.App.Mcp;
 using Passenger.App.Run;
+using Passenger.App.Testing;
 using Passenger.Core;
 
 namespace Passenger.Tests;
@@ -113,6 +114,43 @@ public sealed class GodotUnseenTests : McpRig
         {
             unseen.Close();
         }
+    }
+
+    /// <summary>A plan's environment reaches a game the debugger or the terminal starts: a window nobody sees plans its headless
+    /// game without SDL's HID gamepads, and a person's window leaves its game's alone.</summary>
+    [AvaloniaFact]
+    public void A_game_planned_headless_goes_without_SDLs_HID_gamepads_and_one_in_a_persons_window_keeps_them()
+    {
+        foreach ((bool unseen, string? gamepads) in ((bool, string?)[])[(false, null), (true, GodotExecutables.HidGamepadsOff)])
+        {
+            MainWindow window = Open(unseen);
+            try
+            {
+                RunConfiguration generated = window.Configurations.Single(c => c.Generated && c.Name == Lonely);
+                (LaunchPlan? plan, string? problem) = Ui.Await(window.Builds.ResolvePlanAsync(generated, null), "the game's plan", TimeSpan.FromMinutes(1));
+                Assert.True(plan is not null, $"The game has no plan: {problem}");
+                Assert.True(plan.Environment.GetValueOrDefault(GodotExecutables.HidGamepads) == gamepads,
+                    $"A window {(unseen ? "nobody sees" : "of a person's")} planned Godot with {string.Join(' ', plan.Arguments)} and the environment {string.Join(", ", plan.Environment)}");
+            }
+            finally
+            {
+                window.Close();
+            }
+            Ui.Settle();
+        }
+    }
+
+    /// <summary>GdUnit4's adapter starts its Godots itself, so only its test host's variables reach them: a run in no window has
+    /// them go without SDL's HID gamepads, and a run the person asked to see leaves its game's alone.</summary>
+    [Fact]
+    public void A_test_run_in_no_window_has_its_godots_go_without_SDLs_HID_gamepads_and_one_shown_keeps_them()
+    {
+        Dictionary<string, string> folders = new() { ["HOME"] = godot.Folder };
+        IReadOnlyDictionary<string, string> headless = GodotTestRuns.Variables(godot.Executable, folders).Variables;
+        Assert.Equal(GodotExecutables.HidGamepadsOff, headless.GetValueOrDefault(GodotExecutables.HidGamepads));
+        Assert.Equal(godot.Folder, headless.GetValueOrDefault("HOME"));
+        Assert.False(GodotTestRuns.Variables(godot.Executable, folders, windowed: true).Variables.ContainsKey(GodotExecutables.HidGamepads),
+            "Tests the person asked to see in a window lost SDL's HID gamepads");
     }
 
     /// <summary>A window on the game, Godot the stand-in, the game's configuration chosen.</summary>

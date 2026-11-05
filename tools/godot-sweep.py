@@ -473,7 +473,7 @@ def main():
     os.makedirs(os.path.join(run_folder, "logs"), exist_ok=True)
     with open(os.path.join(run_folder, "check_res.gd"), "w") as written:
         written.write(CHECK_SCRIPT)
-    godot_env = {**os.environ, **homes(os.path.join(run_folder, "home", "godot"))}
+    godot_env = {**os.environ, **homes(os.path.join(run_folder, "home", "godot")), "SDL_JOYSTICK_HIDAPI": "0"}
     passenger_home = os.path.join(run_folder, "home", "passenger")
     os.makedirs(passenger_home, exist_ok=True)
     passenger_env = {**os.environ, "GODOT": godot, "PASSENGER_GODOT_HOME": passenger_home}
