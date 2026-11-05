@@ -131,6 +131,35 @@ public sealed class ProjectTelemetryTests : McpRig
         window.Close();
     }
 
+    /// <summary>A run inherits Passenger's environment: an endpoint named there sends its records where it says, so they are
+    /// left to go there and no dashboard is started for it.</summary>
+    [AvaloniaFact]
+    public void A_project_run_that_inherits_an_OTLP_endpoint_is_left_to_it_and_starts_no_dashboard()
+    {
+        (string folder, int port) = Shop();
+        MainWindow window = ContainerRunsTests.Open(folder, engine: new ContainerEngine(cli: null, search: false));
+        Collect(window);
+        string? had = Environment.GetEnvironmentVariable(OtelVariables.ExporterEndpoint);
+        OwnEnvironment.Set(OtelVariables.ExporterEndpoint, "http://collector.passenger-test.invalid:4318");
+        try
+        {
+            string? refused = Ui.Await(window.RunAsync(), "the project to run on its inherited endpoint", TimeSpan.FromMinutes(5));
+            Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
+            string? answered = null;
+            Assert.True(Ui.Pumped(() => (answered = Answer(port)) == "in stock", TimeSpan.FromMinutes(1)), $"web did not answer: {answered}\n{ContainerRunsTests.Run(window)}");
+            string said = ContainerRunsTests.Run(window);
+            Assert.Contains($"{Name} sends its logs and traces where its own {OtelVariables.ExporterEndpoint} says, so Passenger's dashboard is not started for it", said, StringComparison.Ordinal);
+            Assert.Empty(window.Session.Dashboards);
+        }
+        finally
+        {
+            OwnEnvironment.Set(OtelVariables.ExporterEndpoint, had);
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.IsRunning, "Stop to end the project's run");
+        }
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_project_run_that_ends_with_an_error_keeps_its_last_log_and_trace_in_the_Run_windows_Telemetry_until_Stop_takes_its_dashboard_down()
     {

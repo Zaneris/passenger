@@ -64,4 +64,83 @@ public sealed class OtlpEnvironmentTests
         Assert.Equal("tenant=shop,x-otlp-api-key=key", Told((OtelVariables.ExporterHeaders, "tenant=shop"))!.Told[OtelVariables.ExporterHeaders]);
         Assert.Equal("x-otlp-api-key=key", Told((OtelVariables.ExporterHeaders, string.Empty))!.Told[OtelVariables.ExporterHeaders]);
     }
+
+    [Fact]
+    public void A_signal_with_an_endpoint_of_its_own_never_gets_the_key_the_rest_being_told_apart()
+    {
+        OtlpEnvironment told = Told((OtelVariables.TracesEndpoint, "https://collector.example/v1/traces"))!;
+        Assert.True(told.Told.Keys.All(variable => variable is not (OtelVariables.ExporterHeaders or OtelVariables.ExporterEndpoint or OtelVariables.TracesHeaders or OtelVariables.TracesEndpoint)),
+            $"The common headers reach a signal's own endpoint, so the key would go to the collector: {string.Join(", ", told.Told.Keys)}");
+        Assert.Equal(Grpc, told.Told[OtelVariables.LogsEndpoint]);
+        Assert.Equal("x-otlp-api-key=key", told.Told[OtelVariables.LogsHeaders]);
+        Assert.Equal(Grpc, told.Told[OtelVariables.MetricsEndpoint]);
+        Assert.Equal("x-otlp-api-key=key", told.Told[OtelVariables.MetricsHeaders]);
+        Assert.Equal([OtelVariables.TracesEndpoint], told.Elsewhere);
+        Assert.Equal(["logs", "metrics"], told.Sent);
+    }
+
+    [Fact]
+    public void Signals_told_apart_over_HTTP_are_given_their_whole_address_as_a_signals_endpoint_is_read()
+    {
+        OtlpEnvironment told = Told((OtelVariables.LogsEndpoint, "https://collector.example/v1/logs"), (OtelVariables.ExporterProtocol, "http/protobuf"))!;
+        Assert.Equal($"{Http}/v1/traces", told.Told[OtelVariables.TracesEndpoint]);
+        Assert.Equal($"{Http}/v1/metrics", told.Told[OtelVariables.MetricsEndpoint]);
+    }
+
+    [Fact]
+    public void The_common_headers_stay_the_programs_own_where_a_signal_goes_elsewhere_and_the_rest_carry_them_with_the_key()
+    {
+        OtlpEnvironment told = Told((OtelVariables.MetricsEndpoint, "https://collector.example/v1/metrics"), (OtelVariables.ExporterHeaders, "tenant=shop"))!;
+        Assert.False(told.Told.ContainsKey(OtelVariables.ExporterHeaders), "The key was added to the headers the metrics' own endpoint is sent");
+        Assert.Equal("tenant=shop,x-otlp-api-key=key", told.Told[OtelVariables.LogsHeaders]);
+        Assert.Equal("tenant=shop,x-otlp-api-key=key", told.Told[OtelVariables.TracesHeaders]);
+    }
+
+    [Fact]
+    public void A_program_sending_every_signal_elsewhere_is_left_to_it_each_endpoint_named()
+    {
+        (string, string)[] own = [(OtelVariables.LogsEndpoint, "http://a/"), (OtelVariables.TracesEndpoint, "http://b/"), (OtelVariables.MetricsEndpoint, "http://c/")];
+        Assert.Null(Told(own));
+        Assert.Equal([OtelVariables.LogsEndpoint, OtelVariables.TracesEndpoint, OtelVariables.MetricsEndpoint],
+            OtlpEnvironment.NoneComes(own.ToDictionary(set => set.Item1, set => set.Item2)));
+    }
+
+    [Fact]
+    public void A_blank_endpoint_is_none_as_OpenTelemetry_reads_it()
+    {
+        Assert.Equal(Grpc, Told((OtelVariables.ExporterEndpoint, " "))!.Told[OtelVariables.ExporterEndpoint]);
+        Assert.Empty(Told((OtelVariables.TracesEndpoint, string.Empty))!.Elsewhere);
+    }
+
+    [Fact]
+    public void A_signals_own_headers_replace_the_common_ones_so_coming_to_the_dashboard_they_carry_the_key_too()
+    {
+        OtlpEnvironment told = Told((OtelVariables.TracesHeaders, "tenant=shop"))!;
+        Assert.Equal(Grpc, told.Told[OtelVariables.ExporterEndpoint]);
+        Assert.Equal("tenant=shop,x-otlp-api-key=key", told.Told[OtelVariables.TracesHeaders]);
+        Assert.Equal("x-otlp-api-key=key", told.Told[OtelVariables.ExporterHeaders]);
+    }
+
+    [Fact]
+    public void A_signal_over_a_protocol_of_its_own_is_told_that_protocols_endpoint()
+    {
+        OtlpEnvironment told = Told((OtelVariables.TracesProtocol, "http/protobuf"))!;
+        Assert.Equal($"{Http}/v1/traces", told.Told[OtelVariables.TracesEndpoint]);
+        Assert.Equal(Grpc, told.Told[OtelVariables.LogsEndpoint]);
+        Assert.False(told.Told.ContainsKey(OtelVariables.ExporterEndpoint), "One endpoint can't serve two protocols");
+        Assert.Empty(told.Elsewhere);
+    }
+
+    [Fact]
+    public void What_a_program_inherits_counts_as_what_it_sets_its_own_over_it()
+    {
+        KeyValuePair<string, string>[] inherited = [new(OtelVariables.ExporterEndpoint, "http://collector:4318"), new(OtelVariables.ExporterProtocol, "http/protobuf")];
+        Assert.Equal([OtelVariables.ExporterEndpoint], OtlpEnvironment.NoneComes(OtlpEnvironment.Effective(inherited, new Dictionary<string, string>())));
+
+        IReadOnlyDictionary<string, string> onlyProtocol = OtlpEnvironment.Effective(inherited[1..], new Dictionary<string, string>());
+        Assert.Equal(Http, OtlpEnvironment.Of(Grpc, Http, "key", "Web", onlyProtocol)!.Told[OtelVariables.ExporterEndpoint]);
+
+        IReadOnlyDictionary<string, string> over = OtlpEnvironment.Effective(inherited, new Dictionary<string, string> { ["otel_exporter_otlp_endpoint"] = string.Empty });
+        Assert.Empty(OtlpEnvironment.NoneComes(over));
+    }
 }

@@ -87,18 +87,21 @@ public sealed class RunDashboard : ITelemetryRun, IDisposable
 
     /// <summary>The plan of a project run that collects its logs and traces, with what it says of them (<see cref="LaunchPlan.Notes"/>):
     /// its program told to send them to a dashboard of its own, brought up on <paramref name="engine"/>, which the plan holds
-    /// (<see cref="LaunchPlan.Dashboard"/>), unless its own environment names where they go (launchSettings.json, the
-    /// configuration's), each variable it sets kept as its own; or, where no dashboard can come up, why, the plan run as it
-    /// is. Canceled, what came up is taken down.</summary>
+    /// (<see cref="LaunchPlan.Dashboard"/>), unless the environment it runs in, what it inherits with its own over it, sends
+    /// them all elsewhere, a signal sent elsewhere said so and each variable it sets kept; or, where no dashboard can come up,
+    /// why, the plan run as it is. Canceled, what came up is taken down.</summary>
     public static async Task<LaunchPlan> CollectAsync(LaunchPlan plan, ContainerEngine engine, FolderContainers containers, string? folder, string stateFolder,
         CancellationToken cancel)
     {
         UiThread.Check();
-        if (OtlpEnvironment.Own(plan.Environment, OtelVariables.ExporterEndpoint) is not null)
+        IReadOnlyDictionary<string, string> own = OtlpEnvironment.Effective(
+            Environment.GetEnvironmentVariables().Cast<System.Collections.DictionaryEntry>().Select(set => KeyValuePair.Create((string)set.Key, (string?)set.Value ?? string.Empty)),
+            plan.Environment);
+        if (OtlpEnvironment.NoneComes(own) is { Count: > 0 } elsewhere)
         {
             return plan with
             {
-                Notes = [.. plan.Notes, $"{plan.Name} sends its logs and traces where its own {OtelVariables.ExporterEndpoint} says, so Passenger's dashboard is not started for it"],
+                Notes = [.. plan.Notes, $"{plan.Name} sends its logs and traces where its own {Plural.Listed(elsewhere)} {(elsewhere.Count == 1 ? "says" : "say")}, so Passenger's dashboard is not started for it"],
             };
         }
         (RunDashboard? dashboard, string? why) = await StartAsync(plan.Name, engine, containers, folder, stateFolder, cancel);
@@ -107,15 +110,20 @@ public sealed class RunDashboard : ITelemetryRun, IDisposable
             return plan with { Notes = [.. plan.Notes, $"{plan.Name} runs without its logs and traces collected: {why}"] };
         }
         string named = Path.GetFileNameWithoutExtension(plan.Project ?? plan.ProgramName);
-        OtlpEnvironment told = OtlpEnvironment.Of(dashboard.Grpc!, dashboard.Http!, dashboard.OtlpKey!, named, plan.Environment)!;
-        dashboard.Records = OtlpEnvironment.NameOf(named, plan.Environment);
+        OtlpEnvironment told = OtlpEnvironment.Of(dashboard.Grpc!, dashboard.Http!, dashboard.OtlpKey!, named, own)!;
+        dashboard.Records = OtlpEnvironment.NameOf(named, own);
         Dictionary<string, string> environment = new(plan.Environment);
         foreach ((string variable, string value) in told.Told)
         {
             environment[variable] = value;
         }
-        List<string> notes = [.. plan.Notes, $"{plan.Name}'s logs and traces go to Aspire's dashboard ({dashboard.ProjectName}), which the Containers window's "
+        string sent = told.Elsewhere.Count == 0 ? "logs and traces" : Plural.Listed(told.Sent);
+        List<string> notes = [.. plan.Notes, $"{plan.Name}'s {sent} go to Aspire's dashboard ({dashboard.ProjectName}), which the Containers window's "
             + "Telemetry tab and an agent's telemetry read"];
+        if (told.Elsewhere.Count > 0)
+        {
+            notes.Add($"The rest of what {plan.Name} sends goes where its own {Plural.Listed(told.Elsewhere)} {(told.Elsewhere.Count == 1 ? "says" : "say")}, without the dashboard's key");
+        }
         if (told.Kept.Count > 0)
         {
             notes.Add($"{plan.Name} keeps its own {Plural.Listed(told.Kept)}, as its environment sets");

@@ -80,6 +80,33 @@ public static class OtelVariables
     /// <summary>The protocol an app sends its telemetry over: grpc or http/protobuf.</summary>
     public const string ExporterProtocol = "OTEL_EXPORTER_OTLP_PROTOCOL";
 
+    /// <summary>Where an app sends its logs alone, over <see cref="ExporterEndpoint"/>; over HTTP the whole address, path and all.</summary>
+    public const string LogsEndpoint = "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT";
+
+    /// <summary>The headers of its logs alone, in place of <see cref="ExporterHeaders"/>.</summary>
+    public const string LogsHeaders = "OTEL_EXPORTER_OTLP_LOGS_HEADERS";
+
+    /// <summary>The protocol of its logs alone, over <see cref="ExporterProtocol"/>.</summary>
+    public const string LogsProtocol = "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL";
+
+    /// <summary>Where an app sends its traces alone, over <see cref="ExporterEndpoint"/>; over HTTP the whole address, path and all.</summary>
+    public const string TracesEndpoint = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT";
+
+    /// <summary>The headers of its traces alone, in place of <see cref="ExporterHeaders"/>.</summary>
+    public const string TracesHeaders = "OTEL_EXPORTER_OTLP_TRACES_HEADERS";
+
+    /// <summary>The protocol of its traces alone, over <see cref="ExporterProtocol"/>.</summary>
+    public const string TracesProtocol = "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL";
+
+    /// <summary>Where an app sends its metrics alone, over <see cref="ExporterEndpoint"/>; over HTTP the whole address, path and all.</summary>
+    public const string MetricsEndpoint = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT";
+
+    /// <summary>The headers of its metrics alone, in place of <see cref="ExporterHeaders"/>.</summary>
+    public const string MetricsHeaders = "OTEL_EXPORTER_OTLP_METRICS_HEADERS";
+
+    /// <summary>The protocol of its metrics alone, over <see cref="ExporterProtocol"/>.</summary>
+    public const string MetricsProtocol = "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL";
+
     /// <summary>How long, in milliseconds, an app holds its logs before sending them.</summary>
     public const string LogsDelay = "OTEL_BLRP_SCHEDULE_DELAY";
 
