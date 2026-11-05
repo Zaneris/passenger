@@ -217,8 +217,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - `Passenger.Roslyn.Extension`: Passenger's handlers inside Roslyn's server (`src/Publicize.targets`); a handler reads
   the solution, never changes it.
 - `Passenger.Host`: MSBuild in a process per SDK and global.json (`ProjectHosts`); `hold` keeps design-time builds off
-  while Passenger builds (Windows lets one writer have a file). File-based programs `ProgramFiles`; `dotnet run-api`'s
-  Content holds real paths, never escaped: the SDK decodes a directive's text once and writes it raw.
+  while Passenger builds (Windows lets one writer have a file). File-based programs `ProgramFiles`; `dotnet run-api`
+  decodes a directive's text once and writes it unescaped: `#:ref`'s metadata is the real file, a Compile's Include is
+  read again by MSBuild.
 - `Passenger.Vcs`, `Passenger.Workspace`, `Passenger.Packages`: UI-free Git, folder and NuGet code. A revision's text
   `Git.BytesAtAsync` in the open file's encoding, never `git show` decoded as UTF-8; every git call but a clone through
   `Git.RunAsync<T>`; paths on git's input, never its command line; git's questions only through `GitAskPass`, GPG's
