@@ -321,7 +321,7 @@ public sealed class GodotLiveValuesTests : IClassFixture<GodotLiveValuesTests.Ga
             Ui.Hold(TimeSpan.FromSeconds(1.5), "one more beat, whose read of the script's members would show a read since");
             Assert.True(Hint(script, reads) == chosen, $"The game's nodes coming and going read the node chosen again, running its getter: {chosen} became {Hint(script, reads)}");
 
-            Ui.Run(window, AppActions.LiveTreeRefresh);
+            Assert.True(window.Perform(AppActions.LiveTreeRefresh), window.Status);
             Ui.WaitFor(() => Hint(script, reads) != chosen, () => $"Refresh to read the node again, its getter with it ({Hints(script)})", TimeSpan.FromSeconds(20));
         }
         finally

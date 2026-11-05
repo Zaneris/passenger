@@ -178,7 +178,8 @@ public sealed class TagClosingTests
             Ui.Settle();
             Ui.Run(window, EditorActions.Backspace);
             Ui.Run(window, EditorActions.Backspace);
-            TypeEach(window, "div>");
+            Ui.Run(window, EditorActions.Backspace);
+            TypeEach(window, "/div>");
             Assert.Equal("    </div>|", XamlTests.CaretLine(editor));
             Assert.Equal(Joined, editor.Document.Snapshot.ToString());
         }
