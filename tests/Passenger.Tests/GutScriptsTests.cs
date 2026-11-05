@@ -22,7 +22,7 @@ public sealed class GutScriptsTests
         Passenger.App.Testing.FileTests read = Read("test/base_test.gd", "class_name BaseTest\nextends GutTest\n\n\nfunc helper():\n\tpass\n");
         Assert.Equal(["BaseTest", "res://test/base_test.gd"], read.Attributes.Order(StringComparer.Ordinal));
         Assert.Empty(read.Tests);
-        Assert.Equal(["res://test/plain.gd"], Read("test/plain.gd", "extends 'res://addons/gut/test.gd'\n\n\nfunc test_adds():\n\tpass\n").Attributes.Order(StringComparer.Ordinal));
+        Assert.Equal(["res://test/plain.gd", GutBases.Entry("res://test/plain.gd", "test_adds")], Read("test/plain.gd", "extends 'res://addons/gut/test.gd'\n\n\nfunc test_adds():\n\tpass\n").Attributes.Order(StringComparer.Ordinal));
         Assert.Empty(Read("test/node.gd", "class_name Spinner\nextends Node\n\n\nfunc test_spins():\n\tpass\n").Attributes);
     }
 

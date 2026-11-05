@@ -1353,6 +1353,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await Until(() => ended.IsCompleted || app is { State: not LiveTree.LiveAppState.Waiting } || game is { Monitors: not null } or { State: LiveTree.LiveAppState.Ended }
                 || serving.Serves(), TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), cancel);
         }
+        if (app is { State: LiveTree.LiveAppState.Refused })
+        {
+            // An app ended for the person's screen says so as it exits, and an answer is not to call it running.
+            await Until(() => ended.IsCompleted, Waits.Of(TimeSpan.FromSeconds(3)), cancel);
+        }
         int? code = ended.IsCompletedSuccessfully ? ended.Result : null;
         string output = AppHostOutput(200) ?? RunOutput(200);
         // A game or a XAML app Run attached to quietly takes hot_reload; one asked for with it and not attached says why not.
