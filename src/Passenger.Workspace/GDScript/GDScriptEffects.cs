@@ -176,8 +176,8 @@ internal sealed class GDScriptEffects
         method is not { IsConst: true, Varargs: false } || method.Parameters.Any(p => p.Type == "Callable") ? GDScriptEffect.Acts
         : onOwnValue ? GDScriptEffect.None : GDScriptEffect.Reads;
 
-    /// <summary>Whether an expression makes a new array, dictionary or object each time it runs, its identity another's.</summary>
-    public bool Makes(GDScriptExpression expression) => InOrder(expression).Any(n => n is GDScriptArray or GDScriptDictionary
+    /// <summary>Whether an expression makes a new array, dictionary, callable or object each time it runs, its identity another's.</summary>
+    public bool Makes(GDScriptExpression expression) => InOrder(expression).Any(n => n is GDScriptArray or GDScriptDictionary or GDScriptLambda
         || n is GDScriptCall { Callee: GDScriptIdentifier { Name: var type } } && GDScriptConversions.IsShared(type)
         || n is GDScriptCall { Callee: GDScriptSubscript { IsAttribute: true, Attribute.Name: "new" } });
 

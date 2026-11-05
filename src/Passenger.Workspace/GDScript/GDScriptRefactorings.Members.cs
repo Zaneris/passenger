@@ -444,7 +444,7 @@ public static partial class GDScriptRefactorings
             int bodyStart = target.Offset + body.Start;
             string inlined = own.Text[bodyStart..(target.Offset + body.End)];
             List<(int Start, int End, string Text)> swaps = [];
-            List<(string Text, GDScriptEffect Effect)> passed = [];
+            List<(string Text, GDScriptEffect Effect, int Ran)> passed = [];
             HashSet<GDScriptExpression> late = [];
             for (int i = 0; i < function.Parameters.Count; i++)
             {
@@ -469,8 +469,10 @@ public static partial class GDScriptRefactorings
                 {
                     return GDScriptRefactored.No($"'{given}' would run only as the function's body says: {Conditional(sometimes, only, bodyParents)}", [GDScriptUses.Place(use.Script, use.Offset, call, "calls it")]);
                 }
-                passed.Add((given, effect));
-                if (value is not null && at.MayBeLate(value))
+                // Godot reads a plain variable passed as the call runs, after every other argument.
+                bool lateRead = value is not null && at.MayBeLate(value);
+                passed.Add((given, effect, lateRead ? function.Parameters.Count + i : i));
+                if (lateRead)
                 {
                     late.UnionWith(read);
                 }
@@ -501,9 +503,10 @@ public static partial class GDScriptRefactorings
         return new GDScriptRefactored([.. edits.Select(e => new GDScriptEdits(e.Key, [.. e.Value.OrderBy(x => x.Start)]))], null, []);
     }
 
-    /// <summary>Why a call's arguments can't stand where a body reads its parameters: one would run after an argument passed
-    /// after it, or after what the body runs first, where the two can't change places; null where each can.</summary>
-    private static string? Disordered(GDScriptEffects inBody, GDScriptNode body, Dictionary<int, List<GDScriptIdentifier>> reads, List<(string Text, GDScriptEffect Effect)> passed,
+    /// <summary>Why a call's arguments can't stand where a body reads its parameters: one would run after an argument that
+    /// ran after it (<c>Ran</c> their order at the call), or after what the body runs first, where the two can't change
+    /// places; null where each can.</summary>
+    private static string? Disordered(GDScriptEffects inBody, GDScriptNode body, Dictionary<int, List<GDScriptIdentifier>> reads, List<(string Text, GDScriptEffect Effect, int Ran)> passed,
         HashSet<GDScriptExpression> late, string text, int offset)
     {
         Dictionary<GDScriptNode, int> parameterOf = [];
@@ -522,9 +525,9 @@ public static partial class GDScriptRefactorings
                 foreach (GDScriptNode earlier in ran)
                 {
                     bool other = parameterOf.TryGetValue(earlier, out int read);
-                    if (other && read > reading && !GDScriptEffects.Commute(passed[read].Effect, passed[reading].Effect))
+                    if (other && passed[read].Ran > passed[reading].Ran && !GDScriptEffects.Commute(passed[read].Effect, passed[reading].Effect))
                     {
-                        return $"'{passed[reading].Text}' would run after '{passed[read].Text}', passed after it";
+                        return $"'{passed[reading].Text}' would run after '{passed[read].Text}', which ran after it";
                     }
                     if (!other && !GDScriptEffects.Commute(inBody.Own(earlier), passed[reading].Effect))
                     {

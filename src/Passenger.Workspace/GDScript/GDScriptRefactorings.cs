@@ -552,7 +552,8 @@ public static partial class GDScriptRefactorings
         {
             return GDScriptRefactored.No($"it reads '{text[(located.Offset + changing.Start)..(located.Offset + changing.End)]}', which a default would read as the function is called");
         }
-        if (effects.Makes(expression) && Repeats(expression, Parents(body)))
+        Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(body);
+        if (effects.Makes(expression) && Repeats(expression, parents))
         {
             return GDScriptRefactored.No("it makes a new one each time round, and a default makes one for the call");
         }
@@ -560,7 +561,6 @@ public static partial class GDScriptRefactorings
         {
             return GDScriptRefactored.No($"'{name}' is already a parameter or local there");
         }
-        Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(body);
         if (Below(body).OfType<GDScriptIdentifier>().FirstOrDefault(i => i.Name == name && ReadsAsAName(i, parents)) is { } shadowed)
         {
             return GDScriptRefactored.No($"'{name}' is read in the function, and would read the parameter",

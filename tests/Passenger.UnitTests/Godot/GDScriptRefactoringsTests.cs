@@ -463,6 +463,7 @@ public class GDScriptRefactoringsTests
         Assert.Contains("'hp' reads what it may change", Refused("\tvar old = bump()\n\tvar seen = hp\n\tprint(old, seen)\n"));
         // An array read twice is one array, its value written twice two.
         Assert.Contains("makes a new one each time", Refused("\tvar old = []\n\told.append(1)\n\tprint(old)\n"));
+        Assert.Contains("makes a new one each time", Refused("\tvar old = func(): pass\n\tvalues.connect(old)\n\tvalues.disconnect(old)\n"));
 
         string kept = "func f(values):\n\tvar old = values[0]\n\tvalues[0] = old + 1\n";
         Assert.Equal("func f(values):\n\tvalues[0] = values[0] + 1\n", After(GDScriptRefactorings.InlineVariable(One(kept), kept.IndexOf("old =", StringComparison.Ordinal)), "res://main.gd", kept));
@@ -564,6 +565,9 @@ public class GDScriptRefactoringsTests
         Assert.Contains("'second()' would run after 'first()', which the function runs", Inlined("func subject(a):\n\treturn first() + a", "subject(second())"));
         // Godot reads a plain variable only as what takes it runs, so here after the call beside it, where the argument was read before.
         Assert.Contains("'hp' would run after 'first()', which the function runs", Inlined("func subject(a):\n\treturn a + first()", "subject(hp)"));
+        // And as the inlined call's own argument, read before the call beside it, where it was read after.
+        Assert.Contains("'first()' would run after 'hp'", Inlined("func subject(a, b):\n\treturn str(a) + b", "subject(hp, first())"));
+        Assert.Contains("print(hp + first())", Inlined("func subject(a, b):\n\treturn a + b", "subject(hp, first())"));
         Assert.Contains("'second()' would run only as the function's body says", Inlined("func subject(a, b):\n\treturn a and b", "subject(first(), second())"));
         Assert.Contains("would be read 2 times", Inlined("func subject(a = first()):\n\treturn a + a", "subject()"));
         Assert.Contains("print(first() - second())", Inlined("func subject(a, b):\n\treturn a - b", "subject(first(), second())"));
