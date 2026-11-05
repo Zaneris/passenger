@@ -100,14 +100,28 @@ public static partial class GodotExecutables
     public static bool TakesPointerInPoints(string? version) => version is not null && Numbers(version) >= new Version(4, 7);
 
     /// <summary>Whether Godot given these arguments runs headless: <see cref="Headless"/>, or the headless display driver.</summary>
-    public static bool RunsHeadless(IReadOnlyList<string> arguments) =>
-        arguments.Contains(Headless) || arguments.Zip(arguments.Skip(1)).Any(pair => pair is ("--display-driver", "headless"));
+    public static bool RunsHeadless(IReadOnlyList<string> arguments)
+    {
+        string[] engine = [.. EngineArguments(arguments)];
+        return engine.Contains(Headless) || engine.Zip(engine.Skip(1)).Any(pair => pair is ("--display-driver", "headless"));
+    }
 
     /// <summary>Whether Godot given these arguments opens its editor on the project rather than its game.</summary>
-    public static bool OpensEditor(IReadOnlyList<string> arguments) => arguments.Any(IsEditorFlag);
+    public static bool OpensEditor(IReadOnlyList<string> arguments) => EngineArguments(arguments).Any(IsEditorFlag);
+
+    /// <summary>Godot's arguments without its flags that open the editor, for a launch that opens it itself, the game's own kept.</summary>
+    public static IReadOnlyList<string> WithoutEditorFlags(IReadOnlyList<string> arguments) =>
+        [.. EngineArguments(arguments).Where(a => !IsEditorFlag(a)), .. arguments.SkipWhile(a => !IsSeparator(a))];
 
     /// <summary>Whether an argument is the flag that opens Godot's editor (<c>--editor</c>, <c>-e</c>).</summary>
     public static bool IsEditorFlag(string argument) => argument is "--editor" or "-e";
+
+    /// <summary>Whether an argument is Godot's separator: every argument after it is the game's own, whatever it looks like, read
+    /// through <c>OS.get_cmdline_user_args()</c>.</summary>
+    public static bool IsSeparator(string argument) => argument is "--" or "++";
+
+    /// <summary>The arguments Godot reads itself: those before its separator (<see cref="IsSeparator"/>).</summary>
+    public static IEnumerable<string> EngineArguments(IEnumerable<string> arguments) => arguments.TakeWhile(a => !IsSeparator(a));
 
     /// <summary>Whether a Godot command line (its words, the program first) opens Godot's editor on a project folder, given
     /// canonical: an editor flag with a <c>--path</c> naming that folder whole, or that folder's project.godot named, which
@@ -115,18 +129,19 @@ public static partial class GodotExecutables
     public static bool OpensEditorOn(IReadOnlyList<string> words, string project)
     {
         string folder = Path.TrimEndingDirectorySeparator(project);
-        bool editor = words.Any(IsEditorFlag);
-        for (int i = 0; i < words.Count; i++)
+        string[] engine = [.. EngineArguments(words)];
+        bool editor = engine.Any(IsEditorFlag);
+        for (int i = 0; i < engine.Length; i++)
         {
             string? named = null;
-            if (words[i] == "--path" && i + 1 < words.Count)
+            if (engine[i] == "--path" && i + 1 < engine.Length)
             {
-                named = editor ? words[i + 1] : null;
+                named = editor ? engine[i + 1] : null;
                 i++;
             }
-            else if (Path.GetFileName(words[i]) == "project.godot")
+            else if (Path.GetFileName(engine[i]) == "project.godot")
             {
-                named = Path.GetDirectoryName(words[i]);
+                named = Path.GetDirectoryName(engine[i]);
             }
             if (named is not null && Path.IsPathFullyQualified(named) && PathNames.Same(Path.TrimEndingDirectorySeparator(PathNames.Canonical(named)), folder))
             {
@@ -137,13 +152,15 @@ public static partial class GodotExecutables
     }
 
     /// <summary>Godot's arguments without each <c>--path</c> naming the project's <paramref name="folder"/> (from the working
-    /// folder <paramref name="working"/>), for a launch that names it itself; null where one names another folder.</summary>
+    /// folder <paramref name="working"/>), for a launch that names it itself; null where one names another folder. A game's own
+    /// arguments, after Godot's separator, are kept as they are.</summary>
     public static IReadOnlyList<string>? WithoutPath(IReadOnlyList<string> arguments, string working, string folder)
     {
         List<string> kept = [];
-        for (int i = 0; i < arguments.Count; i++)
+        int engine = EngineArguments(arguments).Count();
+        for (int i = 0; i < engine; i++)
         {
-            if (arguments[i] != "--path" || i + 1 == arguments.Count)
+            if (arguments[i] != "--path" || i + 1 == engine)
             {
                 kept.Add(arguments[i]);
                 continue;
@@ -154,6 +171,7 @@ public static partial class GodotExecutables
                 return null;
             }
         }
+        kept.AddRange(arguments.Skip(engine));
         return kept;
     }
 

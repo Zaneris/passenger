@@ -372,7 +372,7 @@ public static class GodotScripts
             using (process)
             {
                 if (process.Id != Environment.ProcessId && DotnetProcesses.Describe(process.Id) is { } running && running.CommandWords is var words
-                    && !words.Contains("--lsp-port") && GodotExecutables.OpensEditorOn(words, project))
+                    && !GodotExecutables.EngineArguments(words).Contains("--lsp-port") && GodotExecutables.OpensEditorOn(words, project))
                 {
                     return process.Id;
                 }

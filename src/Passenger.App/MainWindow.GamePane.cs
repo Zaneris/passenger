@@ -71,7 +71,7 @@ public partial class MainWindow
         for (int i = plan.Leading; i < plan.Arguments.Count; i++)
         {
             string argument = plan.Arguments[i];
-            past |= argument is "--" or "++";
+            past |= GodotExecutables.IsSeparator(argument);
             if (!past && Godot.GameWindows.Placing.TryGetValue(argument, out bool valued))
             {
                 i += valued ? 1 : 0;

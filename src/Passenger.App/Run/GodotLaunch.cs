@@ -93,7 +93,7 @@ public static class GodotLaunch
             // A launch profile running Godot names the project itself, which the launch names once below.
             own = GodotExecutables.WithoutPath(own, working, folder) ?? throw new LaunchException($"{configuration.Name} cannot run: it runs Godot with a --path that is not "
                 + $"{project.Name}'s Godot project ({folder}): make its --path name that folder, or leave it out");
-            own = configuration.GodotEditor ? [.. own.Where(a => !GodotExecutables.IsEditorFlag(a))] : own;
+            own = configuration.GodotEditor ? GodotExecutables.WithoutEditorFlags(own) : own;
             if (string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable(GodotExecutables.Variable))
                 && !environment.Keys.Any(k => string.Equals(k, GodotExecutables.Variable, StringComparison.OrdinalIgnoreCase)))
             {
@@ -110,7 +110,7 @@ public static class GodotLaunch
                 : throw new LaunchException($"{configuration.Name} cannot run: it starts in the scene open in the editor, and none of {game.Name ?? project.Name} is "
                     + "(a .tscn, or a script a scene's node runs)");
         }
-        if (!configuration.GodotEditor && starts is null && string.IsNullOrEmpty(game.MainScene) && !own.Any(IsScene))
+        if (!configuration.GodotEditor && starts is null && string.IsNullOrEmpty(game.MainScene) && !NamesScene(own))
         {
             throw new LaunchException($"{configuration.Name} cannot run: its {GodotProject.FileName} names no main scene for the game to start in: choose one in Godot's editor "
                 + "(Project Settings, Application, Run, Main Scene), or give one in the configuration's arguments (res://main.tscn)");
@@ -147,7 +147,7 @@ public static class GodotLaunch
         {
             arguments.Add("--editor");
             // The scene at hand, or one its script is attached in, opens in the editor, unless the configuration names one.
-            if (atHand is not null && !own.Any(IsScene) && await BackgroundWork.Run(() => GodotProject.SceneOf(folder, atHand, game.MainScene)) is { } scene)
+            if (atHand is not null && !NamesScene(own) && await BackgroundWork.Run(() => GodotProject.SceneOf(folder, atHand, game.MainScene)) is { } scene)
             {
                 arguments.Add(GodotProject.ResourcePath(folder, scene));
             }
@@ -184,6 +184,6 @@ public static class GodotLaunch
         };
     }
 
-    /// <summary>Whether an argument names a scene for Godot to start in.</summary>
-    private static bool IsScene(string argument) => GodotProject.IsScene(argument);
+    /// <summary>Whether arguments name a scene for Godot to start in: one of Godot's own, never one the game is given.</summary>
+    private static bool NamesScene(IReadOnlyList<string> arguments) => GodotExecutables.EngineArguments(arguments).Any(GodotProject.IsScene);
 }

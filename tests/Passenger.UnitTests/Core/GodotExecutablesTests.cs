@@ -189,6 +189,28 @@ public sealed class GodotExecutablesTests : IDisposable
         }
     }
 
+    [Theory]
+    [InlineData("--")]
+    [InlineData("++")]
+    public void A_games_arguments_after_godots_separator_are_never_read_as_godots_flags(string separator)
+    {
+        string game = Folder("game");
+        string[] words = ["godot", "--path", game, separator, "--editor", "-e", "--headless", "--path", "save", "--lsp-port", Path.Combine(game, "project.godot")];
+        Assert.False(GodotExecutables.RunsHeadless(["--path", game, separator, "--headless"]),
+            "A game's own --headless was taken for Godot's, so a launch nobody sees left out its own and the game could open a window");
+        Assert.False(GodotExecutables.RunsHeadless(["--path", game, separator, "--display-driver", "headless"]), "A game's own --display-driver was taken for Godot's");
+        Assert.True(GodotExecutables.RunsHeadless(["--headless", separator, "--anything"]), "Godot's own --headless before the separator went unread");
+        Assert.False(GodotExecutables.OpensEditor(["--path", ".", separator, "--editor"]), "A game's own --editor made its launch profile the editor's, which waits for a game that never connects");
+        Assert.False(GodotExecutables.OpensEditor([separator, "-e"]), "A game's own -e was taken for opening the editor");
+        Assert.True(GodotExecutables.OpensEditor(["--editor", separator, "--level"]), "Godot's own --editor before the separator went unread");
+        Assert.False(GodotExecutables.OpensEditorOn(words, game), "A game given --editor and its project's file was taken for the person's editor on the project");
+        Assert.Equal(["--verbose", separator, "--path", "save"], GodotExecutables.WithoutPath(["--verbose", separator, "--path", "save"], game, game));
+        Assert.Equal(["--verbose", separator, "--path", "save"], GodotExecutables.WithoutPath(["--path", game, "--verbose", separator, "--path", "save"], game, game));
+        Assert.Null(GodotExecutables.WithoutPath(["--path", "../other", separator, "--level"], game, game));
+        Assert.Equal(["--verbose", separator, "--editor", "-e"], GodotExecutables.WithoutEditorFlags(["-e", "--verbose", "--editor", separator, "--editor", "-e"]));
+        Assert.Equal(["--path", game], GodotExecutables.EngineArguments(["--path", game, separator, "--headless", separator, "x"]));
+    }
+
     private string Folder(string name) => Directory.CreateDirectory(Path.Combine(root, name)).FullName;
 
     private static string Touch(string file)
