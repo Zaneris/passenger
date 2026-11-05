@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace Passenger.Workspace.GodotShader;
 
 /// <summary>Godot's reading of a block of statements (shader_language.cpp, MIT): declarations, control flow, return, discard,
@@ -6,6 +8,11 @@ public sealed partial class GodotShaderLanguage
 {
     private Err ParseBlock(BlockNode pBlock, FunctionInfo pFunctionInfo, bool pJustOne = false, bool pCanBreak = false, bool pCanContinue = false)
     {
+        if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
+        {
+            SetError(TooDeep);
+            return Err.ParseError;
+        }
         while (true)
         {
             TkPos pos = GetTkPos();

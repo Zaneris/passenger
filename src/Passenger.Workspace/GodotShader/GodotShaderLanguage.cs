@@ -457,6 +457,9 @@ public sealed partial class GodotShaderLanguage
         isConstDecl = false;
     }
 
+    /// <summary>What is said where a shader goes past the stack its parse has left: a stack that ran out ends the process.</summary>
+    internal const string TooDeep = "This is nested too deeply for Passenger to read.";
+
     private void SetError(string message)
     {
         if (errorSet)

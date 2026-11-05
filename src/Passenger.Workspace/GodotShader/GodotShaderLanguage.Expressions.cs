@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace Passenger.Workspace.GodotShader;
 
 /// <summary>Godot's reading of an expression (shader_language.cpp, MIT): operands, calls, constructors, members, swizzles and
@@ -375,6 +377,11 @@ public sealed partial class GodotShaderLanguage
 
     private Node? ParseExpression(BlockNode? pBlock, FunctionInfo pFunctionInfo, ExpressionInfo? pPreviousExpressionInfo = null)
     {
+        if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
+        {
+            SetError(TooDeep);
+            return null;
+        }
         List<Expression> expression = [];
 
         //List<Tk> operators;
@@ -2673,7 +2680,7 @@ public sealed partial class GodotShaderLanguage
 
     private Node ReduceExpression(BlockNode? pBlock, Node pNode)
     {
-        if (pNode.Type != NodeType.Operator)
+        if (pNode.Type != NodeType.Operator || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
         {
             return pNode;
         }

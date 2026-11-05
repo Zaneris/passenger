@@ -297,6 +297,34 @@ public class GodotShaderLanguageTests
             result.Messages.Select(m => (m.Line, m.Text)));
     }
 
+    /// <summary>A shader nested far past the stack its parse has left says so, where a stack that ran out would end the IDE
+    /// with it.</summary>
+    [Theory]
+    [InlineData("float a = ", "(", "1.0", ")")]
+    [InlineData("float a = ", "sin(", "1.0", ")")]
+    [InlineData("float a = ", "true ? 1.0 : ", "1.0", "")]
+    [InlineData("", "{\n", "", "}")]
+    [InlineData("", "if (true) {\n", "", "}")]
+    public void A_shader_nested_too_deeply_says_so_and_ends_nothing(string start, string open, string inside, string close)
+    {
+        string nested = string.Concat(Enumerable.Repeat(open, 20_000)) + inside + string.Concat(Enumerable.Repeat(close, 20_000));
+        GodotShaderChecked result = Check($"shader_type spatial;\n\nvoid fragment() {{\n\t{start}{nested};\n}}\n");
+        Assert.Contains(GodotShaderLanguage.TooDeep, result.Messages.Select(m => m.Text));
+    }
+
+    /// <summary>A chain of signs, read as a list and only then a tree, and a preprocessor's condition nested past the stack,
+    /// by brackets or by an operator chain's links, come to an end.</summary>
+    [Theory]
+    [InlineData("void fragment() {\n\tfloat a = ", "- ", "1.0;\n}", "", 20_000)]
+    [InlineData("#if ", "(", "1", ")", 20_000)]
+    [InlineData("#if ", "- ", "1", "", 10_000)]
+    [InlineData("#if ", "1 + ", "1", "", 10_000)]
+    public void Chains_too_long_for_the_stack_end_nothing(string start, string open, string inside, string close, int times)
+    {
+        string nested = string.Concat(Enumerable.Repeat(open, times)) + inside + string.Concat(Enumerable.Repeat(close, times));
+        Assert.NotNull(Check($"shader_type spatial;\n\n{start}{nested}\n").Messages);
+    }
+
     private static GodotShaderChecked Check(string code, GodotShaderCheckOptions options) =>
         GodotShaderCheck.Check(new GodotShaderUnit("res://shader.gdshader", code, new Dictionary<string, string>(), []), GodotShaderTable.Carried, options);
 
