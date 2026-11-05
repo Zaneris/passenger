@@ -284,7 +284,6 @@ public partial class MainWindow
                 return;
             }
             Dotnet.Use(installed.Root);
-            await BackgroundWork.Run(() => DotnetInstall.FirstRunAsync(sdk, installed.Root, stage => UiThread.Post(() => installing.Say(stage)), installing.Stopping));
             string pathSaid = path && onPath is not null ? await MakePathAsync(onPath) : string.Empty;
             if (!await ReadDotnetAsync())
             {

@@ -19,8 +19,9 @@ namespace Passenger.Tests;
 /// DOTNET_ROOT): the banner over the window says so on the Welcome screen and over a C# folder, which edits and commits
 /// while what needs .NET is refused in the banner's words; Install .NET SDK asks, then installs the SDK a stand-in of
 /// Microsoft's release metadata names into the person's own folder, its SHA-512 checked, a wrong one refused with nothing
-/// installed, after which the folder's project loads with it and new shells find it; an SDK where no PATH names it is
-/// found and named. It changes what Passenger finds and the process's PATH and DOTNET_ROOT, so it runs alone.</summary>
+/// installed, after which the folder's project loads with it and new shells find it, an SDK that does not run taken out
+/// again saying why; an SDK where no PATH names it is found and named. It changes what Passenger finds and the process's
+/// PATH and DOTNET_ROOT, so it runs alone.</summary>
 [Collection(Alone.Name)]
 public sealed class NoDotnetTests : IAsyncDisposable
 {
@@ -293,6 +294,60 @@ public sealed class NoDotnetTests : IAsyncDisposable
         window.Close();
     }
 
+    /// <summary>A person's <c>shared</c> folder may be a link to another disk: the runtime goes where it leads, or the SDK
+    /// beside it could never start.</summary>
+    [AvaloniaFact]
+    public void Install_dotnet_SDK_puts_the_runtime_through_a_link_in_the_persons_folder_and_the_SDK_runs()
+    {
+        StandIn sdk = Archive.Value;
+        using StandInHttp feed = Feed(sdk, sdk.Sha512);
+        string elsewhere = Directory.CreateDirectory(Path.Combine(folder, "another-disk", "shared")).FullName;
+        Directory.CreateDirectory(Installs);
+        try
+        {
+            Directory.CreateSymbolicLink(Path.Combine(Installs, "shared"), elsewhere);
+        }
+        catch (Exception refused) when (OperatingSystem.IsWindows() && refused is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip($"Windows lets this user make no symlink: {refused.Message}");
+        }
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+        window.Show();
+        Ui.Settle();
+
+        Ui.ClickButton(Asked(window), "Install");
+        Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null, () => $"the install to end ({window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage})", TimeSpan.FromMinutes(5));
+
+        Assert.True(window.Status?.StartsWith($"The .NET SDK {sdk.Version} is installed in ", StringComparison.Ordinal) == true, $"The install said: {window.Status}");
+        Assert.True(Directory.EnumerateDirectories(Path.Combine(elsewhere, "Microsoft.NETCore.App")).Any(), $"The runtime did not go through the link to {elsewhere}");
+        Assert.Contains(sdk.Version, DotnetInstallation.Read(Installs).Sdks);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_archive_without_the_runtime_its_SDK_runs_on_is_refused_with_nothing_of_it_left_and_what_the_folder_held_kept()
+    {
+        Refused(new Dictionary<string, string>
+        {
+            [DotnetName] = "a host\n",
+            ["sdk/10.0.999/dotnet.dll"] = "the CLI\n",
+            ["sdk/10.0.999/dotnet.runtimeconfig.json"] = Runs("10.0.99"),
+        }, $"The .NET SDK 10.0.999's archive gave {PathNames.Shown(Installs, null)} no sdk/10.0.999 folder with the runtime it runs on, so it did not install");
+    }
+
+    /// <summary>The stand-in's host is no program, as a host that cannot start on this system would be.</summary>
+    [AvaloniaFact]
+    public void An_SDK_that_does_not_start_is_taken_out_again_saying_so_and_what_the_folder_held_is_kept()
+    {
+        Refused(new Dictionary<string, string>
+        {
+            [DotnetName] = "no program\n",
+            ["sdk/10.0.999/dotnet.dll"] = "the CLI\n",
+            ["sdk/10.0.999/dotnet.runtimeconfig.json"] = Runs("10.0.99"),
+            ["shared/Microsoft.NETCore.App/10.0.99/System.Private.CoreLib.dll"] = "the runtime\n",
+        }, "The .NET SDK 10.0.999 did not start, so it was not installed: ");
+    }
+
     [AvaloniaFact]
     public void An_SDK_in_the_home_dotnet_folder_no_PATH_names_is_found_named_and_used_and_Add_to_PATH_puts_it_there()
     {
@@ -390,6 +445,62 @@ public sealed class NoDotnetTests : IAsyncDisposable
         Ui.Settle();
         Assert.Equal($"{Refusals.NoDotnet}. {Refusals.LooseWithoutSdk("Basket.cs")}", window.DotnetSaid);
         window.Close();
+    }
+
+    /// <summary>Install .NET SDK of an archive of these entries, refused in words starting <paramref name="said"/>: what the
+    /// person's folder held is all it holds after.</summary>
+    private void Refused(IReadOnlyDictionary<string, string> entries, string said)
+    {
+        StandIn sdk = Packed("10.0.999", entries);
+        using StandInHttp feed = Feed(sdk, sdk.Sha512);
+        string kept = TestFolders.Write(Installs, "kept.txt", "the person's\n");
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+        window.Show();
+        Ui.Settle();
+
+        Ui.ClickButton(Asked(window), "Install");
+        Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null, () => $"the install to end ({window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage})", TimeSpan.FromMinutes(1));
+
+        Assert.True(window.Status?.StartsWith(said, StringComparison.Ordinal) == true, $"The install said: {window.Status}");
+        Assert.Equal([kept], Directory.EnumerateFileSystemEntries(Installs));
+        Assert.Equal(Refusals.NoDotnet, window.DotnetSaid);
+        Assert.Null(Environment.GetEnvironmentVariable(RuntimeVariables.Root));
+        window.Close();
+    }
+
+    private static string Runs(string runtime) => $$"""{ "runtimeOptions": { "framework": { "name": "Microsoft.NETCore.App", "version": "{{runtime}}" } } }""";
+
+    /// <summary>A stand-in archive of these entries, each with these words, for this system.</summary>
+    private StandIn Packed(string version, IReadOnlyDictionary<string, string> entries)
+    {
+        string from = Path.Combine(folder, "packed");
+        foreach ((string entry, string text) in entries)
+        {
+            TestFolders.Write(from, entry, text);
+        }
+        string archive = Path.Combine(folder, OperatingSystem.IsWindows() ? "packed.zip" : "packed.tar.gz");
+        using (FileStream into = File.Create(archive))
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                using ZipArchive zip = new(into, ZipArchiveMode.Create);
+                foreach (string entry in entries.Keys)
+                {
+                    zip.CreateEntryFromFile(Path.Combine(from, entry), entry, CompressionLevel.Fastest);
+                }
+            }
+            else
+            {
+                using GZipStream gzip = new(into, CompressionLevel.Fastest);
+                using TarWriter tar = new(gzip);
+                foreach (string entry in entries.Keys)
+                {
+                    tar.WriteEntry(Path.Combine(from, entry), entry);
+                }
+            }
+        }
+        using FileStream read = File.OpenRead(archive);
+        return new StandIn(archive, version, Convert.ToHexStringLower(SHA512.HashData(read)));
     }
 
     /// <summary>A window keeping its state in <paramref name="state"/>, as the window a person uses does.</summary>

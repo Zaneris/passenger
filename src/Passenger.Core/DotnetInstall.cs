@@ -8,7 +8,8 @@ namespace Passenger.Core;
 
 /// <summary>Installs a .NET SDK into the person's own folder, with no administrator rights: its archive downloaded over
 /// HTTPS (http only to this machine) through <see cref="OutboundHttp"/>, its SHA-512 taken as it comes and held to the one
-/// Microsoft publishes, unpacked beside the folder's files and moved in, what the folder holds already kept as it is.</summary>
+/// Microsoft publishes, unpacked beside the folder's files, moved in (<see cref="DotnetMerge"/>), what the folder holds
+/// already kept as it is, and run once. An SDK that does not get that far is taken out again.</summary>
 public static class DotnetInstall
 {
     /// <summary>How long a download may go without a byte before it is given up.</summary>
@@ -28,10 +29,10 @@ public static class DotnetInstall
     /// <summary>HTTPS, or http to this machine alone.</summary>
     public static bool Secure(Uri url) => url.Scheme == Uri.UriSchemeHttps || (url.Scheme == Uri.UriSchemeHttp && url.IsLoopback);
 
-    /// <summary>Downloads, checks, unpacks and moves <paramref name="sdk"/> into <paramref name="into"/>, saying each step as
-    /// it begins and logging how long it took (<see cref="Steps"/>); what it installed read back. A
+    /// <summary>Downloads, checks, unpacks and moves <paramref name="sdk"/> into <paramref name="into"/> and runs it once,
+    /// saying each step as it begins and logging how long it took (<see cref="Steps"/>); what it installed read back. A
     /// <see cref="DotnetInstallFailed"/> saying why when it does not, nothing of it left behind, its folder neither where it
-    /// made it.</summary>
+    /// made it, and what could not be taken out named.</summary>
     public static async Task<DotnetInstallation> InstallAsync(SdkDownload sdk, string into, Action<string> stage, CancellationToken cancel)
     {
         if (!Secure(sdk.Url))
@@ -41,7 +42,47 @@ public static class DotnetInstall
         bool made = !Directory.Exists(into);
         string staging = Path.Combine(into, $".passenger-install-{Guid.NewGuid():N}");
         Steps steps = new(sdk.Version);
-        bool moved = false;
+        DotnetMerge merge = new(sdk.Version, stage);
+        bool installed = false;
+        try
+        {
+            DotnetInstallation read = await PlaceAsync(sdk, into, staging, merge, stage, steps, cancel).ConfigureAwait(false);
+            installed = true;
+            return read;
+        }
+        catch (Exception failed)
+        {
+            await TakeBackAsync(merge, failed).ConfigureAwait(false);
+            throw;
+        }
+        finally
+        {
+            Remove(staging);
+            // A folder the install made for itself goes with it, where nothing else came into it meanwhile.
+            if (!installed && made && Directory.Exists(into) && !Directory.EnumerateFileSystemEntries(into).Any())
+            {
+                Remove(into);
+            }
+            steps.Log(installed, merge);
+        }
+    }
+
+    /// <summary>Whatever ended an install, what it placed taken out again: an SDK short of its last step is no SDK. A
+    /// <see cref="DotnetInstallFailed"/> saying why it ended and naming what could not be.</summary>
+    private static async Task TakeBackAsync(DotnetMerge merge, Exception ended)
+    {
+        IReadOnlyList<string> left = await merge.TakeBackAsync().ConfigureAwait(false);
+        if (left.Count > 0)
+        {
+            string named = string.Join(", ", left.Select(path => PathNames.Shown(path, null)));
+            throw new DotnetInstallFailed($"{ended.Message}. These could not be taken out again and are yours to delete: {named}", ended);
+        }
+    }
+
+    /// <summary>The steps of an install, each failing in the words a person is told: the archive read and held to its
+    /// SHA-512, unpacked into <paramref name="staging"/>, moved in, read back as a whole SDK, and run.</summary>
+    private static async Task<DotnetInstallation> PlaceAsync(SdkDownload sdk, string into, string staging, DotnetMerge merge, Action<string> stage, Steps steps, CancellationToken cancel)
+    {
         try
         {
             Directory.CreateDirectory(staging);
@@ -57,27 +98,19 @@ public static class DotnetInstall
             string files = Path.Combine(staging, "files");
             await steps.TimedAsync("unpack", () => UnpackAsync(archive, files, cancel)).ConfigureAwait(false);
             stage($"Moving the .NET SDK {sdk.Version} into {PathNames.Shown(into, null)}");
-            await steps.TimedAsync("move", () => MergeAsync(files, into, stage, steps, cancel)).ConfigureAwait(false);
-            moved = true;
+            await steps.TimedAsync("move", () => merge.IntoAsync(files, into, cancel)).ConfigureAwait(false);
+            DotnetInstallation read = DotnetInstallation.Read(into);
+            if (!read.Sdks.Contains(sdk.Version))
+            {
+                throw new DotnetInstallFailed($"The .NET SDK {sdk.Version}'s archive gave {PathNames.Shown(into, null)} no sdk/{sdk.Version} folder with the runtime it runs on, so it did not install");
+            }
+            await steps.TimedAsync("first run", () => FirstRunAsync(sdk, into, stage, cancel)).ConfigureAwait(false);
+            return read;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
         {
             throw new DotnetInstallFailed($"The .NET SDK {sdk.Version} could not be installed into {PathNames.Shown(into, null)}: {error.Message}", error);
         }
-        finally
-        {
-            Remove(staging);
-            // A folder the install made for itself goes with it, where nothing else came into it meanwhile.
-            if (!moved && made && Directory.Exists(into) && !Directory.EnumerateFileSystemEntries(into).Any())
-            {
-                Remove(into);
-            }
-            steps.Log(moved);
-        }
-        DotnetInstallation installed = DotnetInstallation.Read(into);
-        return installed.Sdks.Contains(sdk.Version)
-            ? installed
-            : throw new DotnetInstallFailed($"The .NET SDK {sdk.Version}'s archive holds no sdk/{sdk.Version} folder, so it did not install");
     }
 
     /// <summary>The archive written to <paramref name="path"/> as it comes, its stage said each megabyte; its SHA-512 in hex.</summary>
@@ -153,78 +186,39 @@ public static class DotnetInstall
         await TarFile.ExtractToDirectoryAsync(unzipped, into, overwriteFiles: false, cancel).ConfigureAwait(false);
     }
 
-    /// <summary>Moves what was unpacked into the installation, folder by folder: what the installation has already (an SDK, a
-    /// runtime, the dotnet host) stays as it is, and what it lacks moves in whole.</summary>
-    private static async Task MergeAsync(string from, string into, Action<string> stage, Steps steps, CancellationToken cancel)
-    {
-        Directory.CreateDirectory(into);
-        foreach (string entry in Directory.EnumerateFileSystemEntries(from))
-        {
-            string target = Path.Combine(into, Path.GetFileName(entry));
-            bool folder = Directory.Exists(entry) && new DirectoryInfo(entry).LinkTarget is null;
-            if (!File.Exists(target) && !Directory.Exists(target))
-            {
-                await MoveAsync(folder ? () => Directory.Move(entry, target) : () => File.Move(entry, target), entry, stage, steps, cancel).ConfigureAwait(false);
-            }
-            else if (folder && Directory.Exists(target) && new DirectoryInfo(target).LinkTarget is null)
-            {
-                await MergeAsync(entry, target, stage, steps, cancel).ConfigureAwait(false);
-            }
-        }
-    }
-
-    /// <summary>How long a move waits on Windows for what holds the files it moves.</summary>
-    private static readonly TimeSpan HeldLimit = TimeSpan.FromSeconds(30);
-
-    /// <summary>A move, tried again on Windows while it is refused for a while: a virus scanner reading the files just
-    /// unpacked holds them, and their folder, until it is done, which the stage says while it waits and the log counts.</summary>
-    private static async Task MoveAsync(Action move, string moving, Action<string> stage, Steps steps, CancellationToken cancel)
-    {
-        long began = Stopwatch.GetTimestamp();
-        bool said = false;
-        while (true)
-        {
-            try
-            {
-                move();
-                steps.Waited(Stopwatch.GetElapsedTime(began), said);
-                return;
-            }
-            catch (Exception held) when (OperatingSystem.IsWindows() && (held is IOException or UnauthorizedAccessException) && Stopwatch.GetElapsedTime(began) < HeldLimit)
-            {
-                if (!said)
-                {
-                    said = true;
-                    stage($"Waiting for Windows to let go of the .NET SDK's {Path.GetFileName(moving)}, which another program (a virus scanner reading the files just unpacked, most likely) holds");
-                    PassengerLog.Write($"Install .NET SDK {steps.Version}: {moving} is held ({held.Message}); waiting for it");
-                }
-                await Task.Delay(TimeSpan.FromMilliseconds(250), cancel).ConfigureAwait(false);
-            }
-        }
-    }
-
-    /// <summary>The installed SDK run once, as its first use would be (<c>dotnet --version</c>, its telemetry off): on
-    /// Windows a virus scanner reads its host and assemblies as they first load, which the stage names and the log times.
-    /// Whether it answered its own version.</summary>
-    public static async Task<bool> FirstRunAsync(SdkDownload sdk, string root, Action<string> stage, CancellationToken cancel)
+    /// <summary>The installed SDK run once by the dotnet beside it, as its first use would be, whatever global.json is over
+    /// the folder (its own dotnet.dll asked its version, its telemetry off): on Windows a virus scanner reads its host and
+    /// assemblies as they first load, which the stage names and the log times. A <see cref="DotnetInstallFailed"/> saying what
+    /// it said where it did not run; one that outlasts the limit is slow, not broken, and stays.</summary>
+    private static async Task FirstRunAsync(SdkDownload sdk, string root, Action<string> stage, CancellationToken cancel)
     {
         stage($"Starting the .NET SDK {sdk.Version} for the first time");
         long began = Stopwatch.GetTimestamp();
-        string? answer;
+        string? answer = null;
+        string said;
         try
         {
-            answer = (await ChildProcesses.AnswerAsync(ChildProcesses.DotnetQuestion(["--version"], root), line => line.Trim().Length > 0, limit: FirstRunLimit, cancel: cancel)
-                .ConfigureAwait(false)).Answer?.Trim();
+            string cli = Path.Combine(root, "sdk", sdk.Version, "dotnet.dll");
+            ChildAnswer run = await ChildProcesses.AnswerAsync(ChildProcesses.DotnetQuestion(Path.Combine(root, Dotnet.HostName), [cli, "--version"], root),
+                line => string.Equals(line.Trim(), sdk.Version, StringComparison.OrdinalIgnoreCase), limit: FirstRunLimit, cancel: cancel).ConfigureAwait(false);
+            answer = run.Answer?.Trim();
+            said = run.Said;
         }
-        catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or InvalidOperationException or TimeoutException)
+        catch (TimeoutException slow)
         {
-            answer = null;
-            PassengerLog.Write($"Install .NET SDK {sdk.Version}: its first run failed: {error.Message}");
+            PassengerLog.Write($"Install .NET SDK {sdk.Version}: its first run gave no answer in time, so nothing says it does not run: {slow.Message}");
+            return;
         }
-        bool answered = string.Equals(answer, sdk.Version, StringComparison.OrdinalIgnoreCase);
+        catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            said = error.Message;
+        }
         PassengerLog.Write(string.Create(CultureInfo.InvariantCulture,
-            $"Install .NET SDK {sdk.Version}: first run {Stopwatch.GetElapsedTime(began).TotalSeconds:0.0} s, answering {answer ?? "nothing"}"));
-        return answered;
+            $"Install .NET SDK {sdk.Version}: first run {Stopwatch.GetElapsedTime(began).TotalSeconds:0.0} s, answering {answer ?? said}"));
+        if (answer is null)
+        {
+            throw new DotnetInstallFailed($"The .NET SDK {sdk.Version} did not start, so it was not installed: {ChildResult.FirstLineOf(said)}");
+        }
     }
 
     /// <summary>How long the installed SDK's first run may take: a scanner on a slow machine reads for a while.</summary>
@@ -235,10 +229,6 @@ public static class DotnetInstall
     private sealed class Steps(string version)
     {
         private readonly List<(string Step, TimeSpan Took)> took = [];
-        private TimeSpan held;
-        private int heldMoves;
-
-        public string Version => version;
 
         public async Task<T> TimedAsync<T>(string step, Func<Task<T>> work)
         {
@@ -272,21 +262,11 @@ public static class DotnetInstall
             }
         }
 
-        /// <summary>A move done, after waiting this long, where something held what it moved.</summary>
-        public void Waited(TimeSpan waited, bool wasHeld)
-        {
-            if (wasHeld)
-            {
-                held += waited;
-                heldMoves++;
-            }
-        }
-
-        public void Log(bool installed)
+        public void Log(bool installed, DotnetMerge merge)
         {
             string each = string.Join(", ", took.Select(t => string.Create(CultureInfo.InvariantCulture, $"{t.Step} {t.Took.TotalSeconds:0.0} s")));
-            string waits = heldMoves > 0
-                ? string.Create(CultureInfo.InvariantCulture, $"; the moves waited {held.TotalSeconds:0.0} s in all for Windows to let go of {heldMoves} held entries")
+            string waits = merge.HeldSteps > 0
+                ? string.Create(CultureInfo.InvariantCulture, $"; the moves waited {merge.Held.TotalSeconds:0.0} s in all for Windows to let go of {merge.HeldSteps} held entries")
                 : string.Empty;
             PassengerLog.Write($"Install .NET SDK {version}: {(installed ? "installed" : "not installed")}; {each}{waits}");
         }

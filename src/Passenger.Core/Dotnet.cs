@@ -84,6 +84,9 @@ public static partial class Dotnet
     /// <summary>What <see cref="Host"/> throws with no .NET command line found.</summary>
     public const string NotFound = "No .NET command line found: install the .NET SDK, or set DOTNET_ROOT to where it is.";
 
+    /// <summary>The name of the .NET command line's program on this system.</summary>
+    public static string HostName => OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+
     /// <summary>The <c>dotnet</c> that runs this app (framework-dependent, its runtime three folders under the host), else
     /// one on DOTNET_ROOT or the PATH, else where the installers put it.</summary>
     public static string Host() => HostSearch is { } standIn ? standIn() : Find()?.Host ?? throw new FileNotFoundException(NotFound);
@@ -103,7 +106,7 @@ public static partial class Dotnet
             }
         }
         ShellEnvironment.Ready();
-        string name = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+        string name = HostName;
         string fromRuntime = Path.GetFullPath(Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", name));
         if (PlacesStandIn is null && File.Exists(fromRuntime))
         {

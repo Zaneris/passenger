@@ -174,9 +174,14 @@ public static class ChildProcesses
     /// comes (<see cref="AnswerAsync"/>): <see cref="DotnetCommand"/> with the command line's telemetry off, so it ends
     /// with its answer, where it would send its telemetry for seconds after it, its folder held meanwhile on Windows (no
     /// one could delete or rename it).</summary>
-    public static ProcessStartInfo DotnetQuestion(IEnumerable<string> arguments, string folder)
+    public static ProcessStartInfo DotnetQuestion(IEnumerable<string> arguments, string folder) => Asked(DotnetCommand(arguments, folder));
+
+    /// <summary><see cref="DotnetQuestion(IEnumerable{string}, string)"/> of the dotnet at <paramref name="host"/>, an
+    /// installation's own, in place of <see cref="Dotnet.Host"/>.</summary>
+    public static ProcessStartInfo DotnetQuestion(string host, IEnumerable<string> arguments, string folder) => Asked(AsDotnet(Command(host, arguments, folder)));
+
+    private static ProcessStartInfo Asked(ProcessStartInfo start)
     {
-        ProcessStartInfo start = DotnetCommand(arguments, folder);
         start.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
         return start;
     }
