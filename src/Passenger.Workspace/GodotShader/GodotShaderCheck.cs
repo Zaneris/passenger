@@ -178,8 +178,8 @@ public static class GodotShaderCheck
     /// <summary>Every error of the code, the first as Godot gives it, then each Godot would give once the statements of
     /// those before were taken out: a condition or a local's initializer first, so the rest is still read, else the
     /// statement whole, else what holds it. What a taken-out declaration would make wrong after it (a use of its name, a function left
-    /// with no return, a <c>switch</c> left with no <c>case</c>) is left unsaid, and all past where a compile ran out of stack. With the
-    /// last compile, whose shader is the one read furthest.</summary>
+    /// with no return, a <c>switch</c> left with no <c>case</c>, labels of another type than its condition taken out) is left unsaid, and
+    /// all past where a compile ran out of stack. With the last compile, whose shader is the one read furthest.</summary>
     private static (GodotShaderLanguage Language, List<GodotShaderLanguage.CompileError> Errors) Compiled(string code, GodotShaderLanguage.ShaderCompileInfo info)
     {
         List<GodotShaderLanguage.CompileError> errors = [];
@@ -190,6 +190,7 @@ public static class GodotShaderCheck
         HashSet<GodotShaderStatements.Span> blanked = [];
         bool returnGone = false;
         bool caseGone = false;
+        bool switchKept = false;
         GodotShaderLanguage language = new();
         for (int pass = 0; pass < MostErrors; pass++)
         {
@@ -207,7 +208,8 @@ public static class GodotShaderCheck
             GodotShaderLanguage.CompileError error = language.Errors[0];
             bool follows = Quoted(error.Message).Any(gone.Contains)
                 || returnGone && error.Message.StartsWith("Expected at least one 'return' statement", StringComparison.Ordinal)
-                || caseGone && error.Message.StartsWith("Expected a 'case'", StringComparison.Ordinal);
+                || caseGone && error.Message.StartsWith("Expected a 'case'", StringComparison.Ordinal)
+                || switchKept && error.Message is "Expected an integer constant." or "Expected an unsigned integer constant.";
             if (!follows && !errors.Any(e => e.Message == error.Message && e.Offset == error.Offset))
             {
                 errors.Add(error);
@@ -224,10 +226,19 @@ public static class GodotShaderCheck
                 }
                 span = around;
             }
-            if (softened.Add((span, error.Offset)) && (GodotShaderStatements.WithoutCondition(code, span, error.Offset) ?? GodotShaderStatements.WithoutInitializer(code, span)) is { } kept)
+            if (softened.Add((span, error.Offset)))
             {
-                code = kept;
-                continue;
+                if (GodotShaderStatements.WithoutCondition(code, span, error.Offset) is ({ } condition, bool ofSwitch))
+                {
+                    code = condition;
+                    switchKept |= ofSwitch;
+                    continue;
+                }
+                if (GodotShaderStatements.WithoutInitializer(code, span) is { } kept)
+                {
+                    code = kept;
+                    continue;
+                }
             }
             string text = code[span.Start..span.End];
             gone.UnionWith(GodotShaderStatements.NamesDeclared(text));

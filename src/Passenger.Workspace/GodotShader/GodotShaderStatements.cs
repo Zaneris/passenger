@@ -190,9 +190,9 @@ internal static partial class GodotShaderStatements
 
     /// <summary>The code with the condition of the <c>if</c>, <c>while</c> or <c>switch</c> holding an offset made one that
     /// reads (<c>true</c>, a switch's <c>0</c>), written at the end of its last line, so what the statement holds is still
-    /// read and every other character keeps its place; null where no condition holds it, or none has its room
-    /// (<see cref="WithRoomInConditions"/>).</summary>
-    public static string? WithoutCondition(string code, Span span, int offset)
+    /// read and every other character keeps its place, with whether it was a switch's; null where no condition holds it, or
+    /// none has its room (<see cref="WithRoomInConditions"/>).</summary>
+    public static (string Code, bool OfSwitch)? WithoutCondition(string code, Span span, int offset)
     {
         for (int open = Opening(code, span.Start, offset); open > span.Start; open = Opening(code, span.Start, open))
         {
@@ -211,7 +211,7 @@ internal static partial class GodotShaderStatements
                 return null;
             }
             string blank = Blanked(code, new Span(open + 1, close));
-            return string.Concat(blank.AsSpan(0, close - kept.Length), kept, blank.AsSpan(close));
+            return (string.Concat(blank.AsSpan(0, close - kept.Length), kept, blank.AsSpan(close)), keyword == "switch");
         }
         return null;
     }

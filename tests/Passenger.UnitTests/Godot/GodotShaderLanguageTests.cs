@@ -365,6 +365,16 @@ public class GodotShaderLanguageTests
         Assert.Equal([(4, "Unknown identifier in expression: 'x'."), (6, "Unknown identifier in expression: 'y'.")], result.Messages.Select(m => (m.Line, m.Text)));
     }
 
+    /// <summary>A switch's condition taken out reads as an int, which says nothing of what its labels should be.</summary>
+    [Theory]
+    [InlineData("case 1u:\n\t\t\tbreak;\n\t\tcase 2u:\n\t\t\tbreak;")]
+    [InlineData("case 1u:\n\t\t\tbreak;\n\t\tdefault:\n\t\t\tbreak;")]
+    public void A_switch_s_condition_in_error_says_nothing_of_its_labels_types(string cases)
+    {
+        GodotShaderMessage said = Assert.Single(Check($"shader_type spatial;\n\nvoid fragment() {{\n\tswitch (bad) {{\n\t\t{cases}\n\t}}\n}}\n", new GodotShaderCheckOptions { Warnings = null }).Messages);
+        Assert.Equal((4, "Unknown identifier in expression: 'bad'."), (said.Line, said.Text));
+    }
+
     /// <summary>A condition across lines keeps them: every line after it is still the line Godot's words name.</summary>
     [Theory]
     [InlineData("if (x\n\t\t&& z) {\n\t}")]
