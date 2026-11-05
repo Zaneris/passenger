@@ -180,6 +180,16 @@ public class PageStylesTests
     }
 
     [Fact]
+    public void A_link_an_expression_makes_says_so_and_an_html_pages_at_sign_is_part_of_its_address()
+    {
+        LinkedSheet made = Assert.Single(PageLinks.Stylesheets("<link rel=\"stylesheet\" href=\"@Theme.Sheet\" />", razor: true));
+        Assert.True(made.IsExpression, "A stylesheet an expression names was taken for an address, as if it could be read");
+        Assert.Equal("@Theme.Sheet", made.Href);
+        Assert.Empty(PageLinks.Stylesheets("<link rel=\"stylesheet\" href=\"\" />", razor: true));
+        Assert.Equal([new LinkedSheet("lib/pkg@1.2/x.css", null)], PageLinks.Stylesheets("<link rel=\"stylesheet\" href=\"lib/pkg@1.2/x.css\" />", razor: false));
+    }
+
+    [Fact]
     public void A_pages_style_blocks_read_as_a_stylesheet_at_the_pages_own_places()
     {
         const string Page = "<head>\n<style>\n.inline-note { color: red; }\n</style>\n</head>\n<p class=\"inline-note\">x</p>\n";

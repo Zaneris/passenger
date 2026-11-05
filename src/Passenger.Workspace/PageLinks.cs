@@ -4,7 +4,11 @@ namespace Passenger.Workspace;
 
 /// <summary>A stylesheet a page links: the address it names as the page is served (a Razor <c>@Assets["…"]</c> read as the
 /// path it names, a view's <c>~/</c> as the app's root), and the hashes its <c>integrity</c> gives, if any.</summary>
-public sealed record LinkedSheet(string Href, string? Integrity);
+public sealed record LinkedSheet(string Href, string? Integrity)
+{
+    /// <summary>Whether an expression makes its address, known only as the app runs: <see cref="Href"/> is what is written.</summary>
+    public bool IsExpression { get; init; }
+}
 
 /// <summary>The stylesheets a page's <c>&lt;link rel="stylesheet"&gt;</c>s name, and whether a stylesheet's bytes are what
 /// a link's <c>integrity</c> says, as a browser checks them: one of the strongest hashes it gives matches. Pure.</summary>
@@ -26,10 +30,15 @@ public static class PageLinks
             {
                 continue;
             }
-            if (Address(markup[href.ValueStart..href.ValueEnd]) is { } written && Served(written, based) is { } address)
+            string value = markup[href.ValueStart..href.ValueEnd].Trim();
+            if (Address(value, razor) is { } written && Served(written, based) is { } address)
             {
                 string? integrity = tag.Attribute("integrity") is { } hashes ? markup[hashes.ValueStart..hashes.ValueEnd].Trim() : null;
                 found.Add(new LinkedSheet(address, integrity is { Length: > 0 } ? integrity : null));
+            }
+            else if (value.Length > 0)
+            {
+                found.Add(new LinkedSheet(value, null) { IsExpression = true });
             }
         }
         return found;
@@ -100,8 +109,8 @@ public static class PageLinks
         return end < 0 ? null : props[(at + "<BasePath>".Length)..end].Trim().Trim('/') is { Length: > 0 } path ? path : null;
     }
 
-    /// <summary>The address an href's value names; null for one an expression makes.</summary>
-    private static string? Address(string value)
+    /// <summary>The address an href's value names; null for none, or one an expression makes.</summary>
+    private static string? Address(string value, bool razor)
     {
         string href = value.Trim();
         foreach (string asset in (string[])["@Assets[\"", "@(Assets[\""])
@@ -112,7 +121,7 @@ public static class PageLinks
                 return close > asset.Length ? href[asset.Length..close] : null;
             }
         }
-        if (href.Contains('@', StringComparison.Ordinal) && !href.Contains("://", StringComparison.Ordinal))
+        if (razor && href.Contains('@', StringComparison.Ordinal) && !href.Contains("://", StringComparison.Ordinal))
         {
             return null;
         }

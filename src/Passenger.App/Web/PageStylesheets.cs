@@ -11,8 +11,9 @@ namespace Passenger.App.Web;
 /// component's scoped class is not.</summary>
 public sealed record DefinedClass(string Name, string Sheet, string Path, CssSheet Text, CssClassRule Rule, bool Offered);
 
-/// <summary>The classes the stylesheets a markup file's pages link define, with their rules; why each linked stylesheet that
-/// could not be read was not; and whether every one was, so that a class none defines is one no stylesheet gives.</summary>
+/// <summary>The classes the stylesheets a markup file's pages link define, with their rules; why each stylesheet or page that
+/// could not be read, or import cut off, was not; and whether every one was, so that a class none defines is one no
+/// stylesheet gives.</summary>
 public sealed record PageClasses(IReadOnlyDictionary<string, IReadOnlyList<DefinedClass>> Classes, IReadOnlyList<string> Unread, int Sheets)
 {
     public static PageClasses None { get; } = new(new Dictionary<string, IReadOnlyList<DefinedClass>>(StringComparer.Ordinal), [], 0);
@@ -34,11 +35,10 @@ public sealed class PageStylesheets
     private const int ImportDepth = 8;
 
     private readonly ConcurrentDictionary<string, CssSheet> sheets = new(PathNames.Comparer);
-    private readonly ConcurrentDictionary<string, IReadOnlyList<LinkedSheet>> links = new(PathNames.Comparer);
     private readonly ConcurrentDictionary<string, RestoredVersions> restored = new(PathNames.Comparer);
 
-    /// <summary>A page's <c>&lt;style&gt;</c> blocks' rules, by the page (none for a page without).</summary>
-    private readonly ConcurrentDictionary<string, CssSheet?> styles = new(PathNames.Comparer);
+    /// <summary>What each page read from disk gives its classes.</summary>
+    private readonly ConcurrentDictionary<string, PageText> pages = new(PathNames.Comparer);
 
     /// <summary>A component's markup, for which components it renders.</summary>
     private readonly ConcurrentDictionary<string, string> markup = new(PathNames.Comparer);
@@ -75,9 +75,8 @@ public sealed class PageStylesheets
         if (every)
         {
             sheets.Clear();
-            links.Clear();
+            pages.Clear();
             restored.Clear();
-            styles.Clear();
             markup.Clear();
             Changed?.Invoke(this, EventArgs.Empty);
             return;
@@ -85,7 +84,7 @@ public sealed class PageStylesheets
         bool touched = false;
         foreach (string path in paths)
         {
-            touched |= sheets.TryRemove(path, out _) | links.TryRemove(path, out _) | restored.TryRemove(path, out _) | styles.TryRemove(path, out _)
+            touched |= sheets.TryRemove(path, out _) | pages.TryRemove(path, out _) | restored.TryRemove(path, out _)
                 | markup.TryRemove(path, out _) || path.EndsWith(".css", StringComparison.OrdinalIgnoreCase);
         }
         if (touched)
@@ -133,10 +132,13 @@ public sealed class PageStylesheets
         int count = 0;
         bool razor = RazorFiles.Is(path);
         ProjectModel? project = projects.Where(p => !p.IsProgram && PathNames.Within(path, p.Folder)).MaxBy(p => p.Folder.Length);
+        // Not counted: alone, it says nothing of the stylesheets of the pages that show the component.
         if (razor && ScopedSheetOf(path) is { } own && File.Exists(own))
         {
-            count++;
-            Take(own, Path.GetFileName(own), Read(own, texts), _ => true);
+            if (Read(own, texts, unread) is { } scoped)
+            {
+                Take(own, Path.GetFileName(own), scoped, _ => true);
+            }
             seen.Add(own);
         }
         // The components that render this one, whose scoped rules' ::deep classes reach it.
@@ -144,13 +146,23 @@ public sealed class PageStylesheets
         foreach ((string page, ProjectModel? serving) in Pages(path, razor, project, projects, root, files))
         {
             cancel.ThrowIfCancellationRequested();
-            if (StyleOf(page, texts) is { } inline)
+            if (PageOf(page, texts, unread) is not { } read)
+            {
+                continue;
+            }
+            if (read.Style is { } inline)
             {
                 count++;
                 Take(page, $"<style> in {Path.GetFileName(page)}", inline, _ => true);
             }
-            foreach (LinkedSheet link in LinksOf(page, texts))
+            foreach (LinkedSheet link in read.Links)
             {
+                if (link.IsExpression)
+                {
+                    count++;
+                    unread.Add($"{link.Href} is made by an expression, so which stylesheet it names is known only as the app runs");
+                    continue;
+                }
                 await FollowAsync(link.Href, link.Integrity, page, serving, 0);
             }
         }
@@ -158,8 +170,13 @@ public sealed class PageStylesheets
 
         async Task FollowAsync(string href, string? integrity, string from, ProjectModel? serving, int depth)
         {
-            if (depth > ImportDepth || !seen.Add(Key(href, from)))
+            if (!seen.Add(Key(href, from)))
             {
+                return;
+            }
+            if (depth > ImportDepth)
+            {
+                unread.Add($"{href} is not read: @imports are followed {ImportDepth} deep");
                 return;
             }
             if (WebAddress(href) is { } address)
@@ -182,12 +199,14 @@ public sealed class PageStylesheets
             }
             if (Bundle(href, serving, root, files) is { } bundled)
             {
+                count++;
                 foreach (string scoped in bundled.Where(s => seen.Add(s)))
                 {
-                    count++;
                     string component = Path.GetFileNameWithoutExtension(scoped[..^4]);
-                    Take(scoped, Path.GetFileName(scoped), Read(scoped, texts),
-                        rule => rule.Deep && razor && (parents ??= Parents(path, bundled, texts)).Contains(component));
+                    if (Read(scoped, texts, unread) is { } rules)
+                    {
+                        Take(scoped, Path.GetFileName(scoped), rules, rule => rule.Deep && razor && (parents ??= Parents(path, bundled, texts)).Contains(component));
+                    }
                 }
                 return;
             }
@@ -201,7 +220,10 @@ public sealed class PageStylesheets
             {
                 return;
             }
-            CssSheet local = Read(file, texts);
+            if (Read(file, texts, unread) is not { } local)
+            {
+                return;
+            }
             Take(file, Path.GetFileName(file), local, _ => true);
             foreach (string imported in local.Imports)
             {
@@ -250,25 +272,31 @@ public sealed class PageStylesheets
         }
     }
 
-    /// <summary>A page's <c>&lt;style&gt;</c> blocks' rules, as the editor has it, else as last read from disk; null for none.</summary>
-    private CssSheet? StyleOf(string page, OpenTexts texts)
+    /// <summary>What a page gives its classes, as the editor has it, else as last read from disk: null for a page gone, and for
+    /// one that could not be read, which <paramref name="unread"/> is told of and which is read again next time.</summary>
+    private PageText? PageOf(string page, OpenTexts texts, List<string> unread)
     {
         if (texts.Open(page) is { } open)
         {
-            return PageLinks.StyleText(open.ToString(), RazorFiles.Is(page)) is { } text ? CssRules.Read(text) : null;
+            return PageText.Of(open.ToString(), RazorFiles.Is(page));
         }
-        return styles.GetOrAdd(page, file =>
+        if (pages.TryGetValue(page, out PageText? kept))
         {
-            try
-            {
-                string text = File.ReadAllText(file);
-                return text.Contains("<style", StringComparison.OrdinalIgnoreCase) && PageLinks.StyleText(text, RazorFiles.Is(file)) is { } css ? CssRules.Read(css) : null;
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                return null;
-            }
-        });
+            return kept;
+        }
+        try
+        {
+            return pages[page] = PageText.Of(File.ReadAllText(page), RazorFiles.Is(page));
+        }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            unread.Add($"{Path.GetFileName(page)} could not be read: {error.Message}");
+            return null;
+        }
     }
 
     /// <summary>The components that render a component, directly or through others, by name: among those of the scoped
@@ -365,45 +393,27 @@ public sealed class PageStylesheets
         return own;
     }
 
-    /// <summary>The stylesheets a page links, as the editor has it, else as last read from disk.</summary>
-    private IReadOnlyList<LinkedSheet> LinksOf(string page, OpenTexts texts)
-    {
-        if (texts.Open(page) is { } open)
-        {
-            return PageLinks.Stylesheets(open.ToString(), RazorFiles.Is(page));
-        }
-        return links.GetOrAdd(page, file =>
-        {
-            try
-            {
-                string text = File.ReadAllText(file);
-                return text.Contains("stylesheet", StringComparison.OrdinalIgnoreCase) ? PageLinks.Stylesheets(text, RazorFiles.Is(file)) : [];
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                return [];
-            }
-        });
-    }
-
-    /// <summary>A stylesheet's rules, as the editor has it, else as last read from disk.</summary>
-    private CssSheet Read(string file, OpenTexts texts)
+    /// <summary>A stylesheet's rules, as the editor has it, else as last read from disk: null for one that could not be read,
+    /// which <paramref name="unread"/> is told of and which is read again next time.</summary>
+    private CssSheet? Read(string file, OpenTexts texts, List<string> unread)
     {
         if (texts.Open(file) is { } open)
         {
             return CssRules.Read(open.ToString());
         }
-        return sheets.GetOrAdd(file, path =>
+        if (sheets.TryGetValue(file, out CssSheet? kept))
         {
-            try
-            {
-                return CssRules.Read(File.ReadAllText(path));
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                return CssSheet.Empty;
-            }
-        });
+            return kept;
+        }
+        try
+        {
+            return sheets[file] = CssRules.Read(File.ReadAllText(file));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            unread.Add($"{Path.GetFileName(file)} could not be read: {error.Message}");
+            return null;
+        }
     }
 
     /// <summary>A component's or page's own scoped stylesheet's path (Counter.razor.css).</summary>
@@ -575,5 +585,14 @@ public sealed class PageStylesheets
                 return RestoredVersions.None;
             }
         });
+    }
+
+    /// <summary>What a page gives its classes: the stylesheets it links, and its <c>&lt;style&gt;</c> blocks' rules, if any.</summary>
+    private sealed record PageText(IReadOnlyList<LinkedSheet> Links, CssSheet? Style)
+    {
+        /// <summary>A page's text read, passed over where it says nothing of either, as most of a project's components do.</summary>
+        public static PageText Of(string text, bool razor) => new(
+            text.Contains("stylesheet", StringComparison.OrdinalIgnoreCase) ? PageLinks.Stylesheets(text, razor) : [],
+            text.Contains("<style", StringComparison.OrdinalIgnoreCase) && PageLinks.StyleText(text, razor) is { } css ? CssRules.Read(css) : null);
     }
 }

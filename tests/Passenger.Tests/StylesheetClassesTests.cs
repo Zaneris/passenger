@@ -215,6 +215,63 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         again.Close();
     }
 
+    [AvaloniaFact]
+    public void A_stylesheet_that_cannot_be_read_is_said_and_read_again_once_it_can_be()
+    {
+        MainWindow window = app.Open(null, languageServer: false);
+        using (new FileStream(app.PathOf("Gear/wwwroot/css/locked.css"), FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            PageClasses held = Classes(window, "locked.html");
+            Assert.False(held.Complete, "A stylesheet no one could read counted as read, so its classes would be marked as defined by nothing");
+            Assert.Contains("locked.css", Assert.Single(held.Unread), StringComparison.Ordinal);
+            Assert.DoesNotContain("locked-note", held.Classes.Keys);
+        }
+        PageClasses free = Classes(window, "locked.html");
+        Assert.True(free.Complete, string.Join("; ", free.Unread));
+        Assert.Contains("locked-note", free.Classes.Keys);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_import_past_the_depth_followed_is_said_never_passed_over()
+    {
+        MainWindow window = app.Open(null, languageServer: false);
+        PageClasses found = Classes(window, "deep.html");
+        Assert.False(found.Complete, "An import cut off counted as every stylesheet read, so a class of the last would be marked as defined by nothing");
+        Assert.Contains("depth9.css", Assert.Single(found.Unread), StringComparison.Ordinal);
+        Assert.Contains("at-depth-8", found.Classes.Keys);
+        Assert.DoesNotContain("at-depth-9", found.Classes.Keys);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_link_an_expression_makes_is_a_stylesheet_unread()
+    {
+        MainWindow window = app.Open("Components/Pages/Child.razor", languageServer: false);
+        OpenDocument document = window.EditorArea.Active!;
+        Typing.Replace(window, "<p class=\"\">Child</p>", "<link rel=\"stylesheet\" href=\"@Theme.Sheet\" />");
+        PageClasses found = Ui.Landed(window.Session.Stylesheets.ClassesAsync(document.Path, CancellationToken.None), "the classes of a component whose link is an expression");
+        Assert.False(found.Complete, "A stylesheet only the running app can name counted as read");
+        Assert.Contains(found.Unread, why => why.Contains("@Theme.Sheet", StringComparison.Ordinal));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_components_own_scoped_stylesheet_alone_never_makes_its_classes_complete()
+    {
+        string folder = TestFolders.Create("lone-component-");
+        File.WriteAllText(Path.Combine(folder, "Card.razor"), "<div class=\"kept hosted\"></div>\n");
+        File.WriteAllText(Path.Combine(folder, "Card.razor.css"), ".kept {\n    color: red;\n}\n");
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        PageClasses found = Ui.Landed(window.Session.Stylesheets.ClassesAsync(PathNames.Canonical(Path.Combine(folder, "Card.razor")), CancellationToken.None), "a lone component's classes");
+        Assert.Contains("kept", found.Classes.Keys);
+        Assert.False(found.Complete, "A component no known page shows was told its page's stylesheets define none of its other classes");
+        window.Close();
+    }
+
     private MainWindow OpenAllowingDownloads() => app.Open(null, before: w => w.ApplySettings(w.Settings with { DownloadStylesheets = true }), languageServer: false);
 
     /// <summary>The classes a page of the library's wwwroot links, once its evaluation says it serves that folder.</summary>
@@ -371,6 +428,13 @@ public sealed class StyledShop : SharedProject
         Write("latest-before.html", LinkOf(LatestBefore));
         Write("latest-after.html", LinkOf(LatestAfter));
         Write("latest-ahead.html", LinkOf(".from-ahead{color:blue}"));
+        Write("css/locked.css", ".locked-note {\n    color: teal;\n}\n");
+        Write("locked.html", "<link rel=\"stylesheet\" href=\"css/locked.css\" />\n");
+        for (int depth = 0; depth < 10; depth++)
+        {
+            Write($"deep/depth{depth}.css", (depth < 9 ? $"@import \"depth{depth + 1}.css\";\n" : string.Empty) + $".at-depth-{depth} {{\n    color: teal;\n}}\n");
+        }
+        Write("deep.html", "<link rel=\"stylesheet\" href=\"deep/depth0.css\" />\n");
     }
 
     public override async ValueTask DisposeAsync()
