@@ -363,28 +363,7 @@ public sealed class GodotDefinitions
         {
             return FramesOf(player, framed, frames);
         }
-        Dictionary<string, (string Res, GodotValue Value)> libraries = new(StringComparer.Ordinal);
-        foreach ((string res, GodotNode section) in player.Written)
-        {
-            if (!scenes.Files.TryGetValue(res, out GodotFile? file))
-            {
-                continue;
-            }
-            foreach (GodotEntry property in section.Section.Properties)
-            {
-                if (property.Key.StartsWith("libraries/", StringComparison.Ordinal))
-                {
-                    libraries[property.Key["libraries/".Length..]] = (res, property.Value);
-                }
-                else if (property.Key == "libraries")
-                {
-                    foreach (Entry entry in DictionaryOf(file.Text, property.Value))
-                    {
-                        libraries[entry.Key] = (res, entry.Value);
-                    }
-                }
-            }
-        }
+        Dictionary<string, (string Res, GodotValue Value)> libraries = LibrariesOf(player);
         Dictionary<string, List<GodotPlace>> found = new(StringComparer.Ordinal);
         bool whole = true;
         foreach ((string library, (string res, GodotValue value)) in libraries)
@@ -418,6 +397,53 @@ public sealed class GodotDefinitions
             }
         }
         return ([.. found.Select(f => new GodotDefined(f.Key, $"animation of {player.Name}", f.Value))], whole);
+    }
+
+    /// <summary>The animations of a player's libraries that a text file writes: each by that file and its section.</summary>
+    internal IEnumerable<(string Res, GodotSection Animation)> AnimationSections(GodotTreeNode player)
+    {
+        foreach ((string res, GodotValue value) in LibrariesOf(player).Values)
+        {
+            if (Resource(res, value) is not ({ } at, { } section) || section.Property("_data") is not { } data)
+            {
+                continue;
+            }
+            foreach (Entry entry in DictionaryOf(scenes.Files[at].Text, data.Value))
+            {
+                if (Resource(at, entry.Value) is ({ } own, { } animation))
+                {
+                    yield return (own, animation);
+                }
+            }
+        }
+    }
+
+    /// <summary>The libraries a player's sections give it, by name, each with the file and value naming it.</summary>
+    private Dictionary<string, (string Res, GodotValue Value)> LibrariesOf(GodotTreeNode player)
+    {
+        Dictionary<string, (string Res, GodotValue Value)> libraries = new(StringComparer.Ordinal);
+        foreach ((string res, GodotNode section) in player.Written)
+        {
+            if (!scenes.Files.TryGetValue(res, out GodotFile? file))
+            {
+                continue;
+            }
+            foreach (GodotEntry property in section.Section.Properties)
+            {
+                if (property.Key.StartsWith("libraries/", StringComparison.Ordinal))
+                {
+                    libraries[property.Key["libraries/".Length..]] = (res, property.Value);
+                }
+                else if (property.Key == "libraries")
+                {
+                    foreach (Entry entry in DictionaryOf(file.Text, property.Value))
+                    {
+                        libraries[entry.Key] = (res, entry.Value);
+                    }
+                }
+            }
+        }
+        return libraries;
     }
 
     /// <summary>An animated sprite's animations, by the names its SpriteFrames' <c>animations</c> give them, each with the

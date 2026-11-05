@@ -524,8 +524,9 @@ public sealed class GodotScenes
 
     /// <summary>The edits each scene takes as a node is renamed: its <c>name</c> where it is declared and where a scene over
     /// that one changes it, and in every scene holding it the paths through it (a node's <c>parent</c>, a connection's <c>from</c> and <c>to</c>,
-    /// an <c>[editable]</c> path, and each NodePath a node's property holds, at any depth of its value, led from that node as
-    /// Godot leads it: a <c>%Name</c> to the unique node it finds). By res:// path.</summary>
+    /// an <c>[editable]</c> path, each NodePath a node's property holds, at any depth of its value, led from that node as
+    /// Godot leads it: a <c>%Name</c> to the unique node it finds, and each animation track's path, led from its player's
+    /// root, an external animation's file among the edits). By res:// path.</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<TextEdit>> Renames(GodotTreeNode node, string name)
     {
         Dictionary<string, List<TextEdit>> edits = new(StringComparer.Ordinal);
@@ -565,13 +566,30 @@ public sealed class GodotScenes
                 {
                     foreach ((string path, int start, int end) in section.Section.Properties.SelectMany(p => file.CallsIn(p.Value, "NodePath")))
                     {
-                        Names(scene, path, start, end, [.. Resolve(holder, path).Steps.Where(s => s.Node.Same(node) && path[s.Start..s.End] != "..")
-                            .Select(s => (s.Start + (path[s.Start] == '%' ? 1 : 0), s.End))]);
+                        Names(scene, path, start, end, Through(holder, path));
+                    }
+                }
+                foreach (GodotTreeNode player in copy.Root.Below().Where(GodotDefinitions.IsPlayer))
+                {
+                    if (TracksRoot(player) is not { } root)
+                    {
+                        continue;
+                    }
+                    foreach ((string res, GodotSection animation) in Defined.AnimationSections(player))
+                    {
+                        foreach ((string path, int start, int end) in TrackPaths(animation).SelectMany(p => Files[res].CallsIn(p.Value, "NodePath")))
+                        {
+                            Names(res, path, start, end, Through(root, path));
+                        }
                     }
                 }
             }
         }
         return edits.ToDictionary(e => e.Key, e => (IReadOnlyList<TextEdit>)[.. e.Value.Distinct().OrderBy(t => t.Start)], StringComparer.Ordinal);
+
+        // Where a path led from a node names the one renamed, a %Name's '%' left out.
+        List<(int Start, int End)> Through(GodotTreeNode from, string path) => [.. Resolve(from, path).Steps.Where(s => s.Node.Same(node) && path[s.Start..s.End] != "..")
+            .Select(s => (s.Start + (path[s.Start] == '%' ? 1 : 0), s.End))];
 
         // A path's characters are places in the file only where no escape is written among them; one that holds one is written anew whole.
         void Names(string scene, string said, int start, int end, List<(int Start, int End)> names)
@@ -595,6 +613,29 @@ public sealed class GodotScenes
             list.Add(edit);
         }
     }
+
+    /// <summary>The node a player's track paths lead from: its <c>root_node</c>, its parent unless it says; null for one no
+    /// node answers, or an AnimationTree playing another player's animations, whose tracks that player leads.</summary>
+    private GodotTreeNode? TracksRoot(GodotTreeNode player) => NodePathOf(player, "anim_player") is { Length: > 0 } other && Resolve(player, other).Found is { Type: "AnimationPlayer" }
+        ? null : Resolve(player, NodePathOf(player, "root_node") ?? "..").Found;
+
+    /// <summary>What the last section of a node setting a NodePath property says; null where none sets it.</summary>
+    private string? NodePathOf(GodotTreeNode node, string key)
+    {
+        foreach ((string scene, GodotNode section) in Enumerable.Reverse(node.Written))
+        {
+            if (section.Section.Property(key) is { } set && Files.TryGetValue(scene, out GodotFile? file))
+            {
+                return file.CallsIn(set.Value, "NodePath").Select(c => c.Argument).FirstOrDefault() ?? string.Empty;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>An animation's track paths but those of tracks its import makes anew, which Godot leaves as they are.</summary>
+    private static IEnumerable<GodotEntry> TrackPaths(GodotSection animation) =>
+        animation.Properties.Where(p => p.Key.StartsWith("tracks/", StringComparison.Ordinal) && p.Key.EndsWith("/path", StringComparison.Ordinal)
+            && animation.Property($"{p.Key[..^"path".Length]}imported")?.Value.Word != "true");
 
     /// <summary>The edits a GDScript's text takes as nodes are renamed: each path its own node leads (<see cref="GDScriptNodePaths.In"/>)
     /// that reaches one from a node of any scene whose class takes in the script, each name of it written as what holds it writes

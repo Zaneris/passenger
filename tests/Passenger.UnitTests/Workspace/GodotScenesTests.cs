@@ -347,6 +347,155 @@ public class GodotScenesTests
         Assert.Equal(["speed = 3", "speed\" = 7", "speed = 42"], keys.Select(k => (k.Res == "res://main.tscn" ? main : stats)[k.Key.NameStart..].Split('\n')[0]));
     }
 
+    private const string Animated = """
+        [gd_scene format=3]
+
+        [ext_resource type="Animation" path="res://blink.tres" id="1_blink"]
+
+        [sub_resource type="Animation" id="Animation_walk"]
+        resource_name = "walk"
+        tracks/0/type = "value"
+        tracks/0/imported = false
+        tracks/0/path = NodePath("Hud/Score:text")
+        tracks/1/type = "method"
+        tracks/1/imported = false
+        tracks/1/path = NodePath("Hud")
+        tracks/2/type = "value"
+        tracks/2/imported = true
+        tracks/2/path = NodePath("Hud/Score:modulate")
+        tracks/3/type = "bezier"
+        tracks/3/imported = false
+        tracks/3/path = NodePath("Other:position:x")
+        tracks/4/type = "value"
+        tracks/4/imported = false
+        tracks/4/path = NodePath("%Score:visible")
+
+        [sub_resource type="AnimationLibrary" id="AnimationLibrary_1"]
+        _data = {
+        &"walk": SubResource("Animation_walk"),
+        &"blink": ExtResource("1_blink")
+        }
+
+        [node name="Main" type="Node2D"]
+
+        [node name="Hud" type="CanvasLayer" parent="."]
+
+        [node name="Score" type="Label" parent="Hud"]
+        unique_name_in_owner = true
+
+        [node name="Other" type="Node2D" parent="."]
+
+        [node name="Moves" type="AnimationPlayer" parent="."]
+        libraries/ = SubResource("AnimationLibrary_1")
+
+        """;
+
+    private const string Blink = """
+        [gd_resource type="Animation" format=3]
+
+        [resource]
+        resource_name = "blink"
+        tracks/0/type = "value"
+        tracks/0/imported = false
+        tracks/0/path = NodePath("Hud/Score:modulate")
+
+        """;
+
+    private static GodotScenes AnimatedScenes(string scene) => new("/game", new Dictionary<string, GodotFile>
+    {
+        ["res://main.tscn"] = GodotFile.Parse(scene),
+        ["res://blink.tres"] = GodotFile.Parse(Blink),
+    });
+
+    /// <summary>Godot's editor rewrites a track's path as a node goes by another name, its property kept, and leaves an
+    /// imported track to its import: a rename left without it stops the animation reaching the node.</summary>
+    [Fact]
+    public void A_nodes_rename_follows_the_paths_of_its_players_animation_tracks_their_properties_kept()
+    {
+        GodotScenes scenes = AnimatedScenes(Animated);
+
+        IReadOnlyDictionary<string, IReadOnlyList<TextEdit>> edits = scenes.Renames(scenes.Tree("res://main.tscn")!.Child("Hud")!, "Overlay");
+
+        string renamed = Apply(Animated, edits["res://main.tscn"]);
+        Assert.Contains("tracks/0/path = NodePath(\"Overlay/Score:text\")", renamed, StringComparison.Ordinal);
+        Assert.Contains("tracks/1/path = NodePath(\"Overlay\")", renamed, StringComparison.Ordinal);
+        Assert.Contains("tracks/2/path = NodePath(\"Hud/Score:modulate\")", renamed, StringComparison.Ordinal);
+        Assert.Contains("tracks/3/path = NodePath(\"Other:position:x\")", renamed, StringComparison.Ordinal);
+        Assert.Contains("tracks/0/path = NodePath(\"Overlay/Score:modulate\")", Apply(Blink, edits["res://blink.tres"]), StringComparison.Ordinal);
+
+        string unique = Apply(Animated, scenes.Renames(scenes.Tree("res://main.tscn")!.Child("Hud")!.Child("Score")!, "Points")["res://main.tscn"]);
+        Assert.Contains("tracks/0/path = NodePath(\"Hud/Points:text\")", unique, StringComparison.Ordinal);
+        Assert.Contains("tracks/4/path = NodePath(\"%Points:visible\")", unique, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_players_track_paths_lead_from_its_root_node()
+    {
+        string scene = Animated.Replace("NodePath(\"Hud/Score:text\")", "NodePath(\"Score:text\")", StringComparison.Ordinal)
+            .Replace("libraries/ = SubResource(\"AnimationLibrary_1\")", "root_node = NodePath(\"../Hud\")\nlibraries = {\n&\"\": SubResource(\"AnimationLibrary_1\")\n}", StringComparison.Ordinal);
+        GodotScenes scenes = AnimatedScenes(scene);
+
+        string renamed = Apply(scene, scenes.Renames(scenes.Tree("res://main.tscn")!.Child("Hud")!.Child("Score")!, "Points")["res://main.tscn"]);
+
+        Assert.Contains("tracks/0/path = NodePath(\"Points:text\")", renamed, StringComparison.Ordinal);
+    }
+
+    /// <summary>An AnimationTree told to play a player's animations has that player's root: its own libraries are read by none.</summary>
+    [Fact]
+    public void A_tree_playing_another_players_animations_leads_no_track_of_its_own()
+    {
+        string scene = Animated.Replace("[node name=\"Moves\" type=\"AnimationPlayer\" parent=\".\"]\nlibraries/ = SubResource(\"AnimationLibrary_1\")\n",
+            "[node name=\"Moves\" type=\"AnimationPlayer\" parent=\".\"]\n\n[node name=\"Tree\" type=\"AnimationTree\" parent=\".\"]\nanim_player = NodePath(\"../Moves\")\nlibraries/ = SubResource(\"AnimationLibrary_1\")\n",
+            StringComparison.Ordinal);
+        Assert.Contains("anim_player", scene, StringComparison.Ordinal);
+        GodotScenes scenes = AnimatedScenes(scene);
+
+        string renamed = Apply(scene, scenes.Renames(scenes.Tree("res://main.tscn")!.Child("Hud")!, "Overlay")["res://main.tscn"]);
+
+        Assert.Contains("tracks/0/path = NodePath(\"Hud/Score:text\")", renamed, StringComparison.Ordinal);
+    }
+
+    /// <summary>A track's player may stand in a scene over the one declaring the node, through its editable children: the
+    /// rename reaches the track from that scene's tree.</summary>
+    [Fact]
+    public void A_players_track_through_an_instanced_scene_follows_a_rename_of_a_node_in_that_scene()
+    {
+        const string Over = """
+            [gd_scene format=3]
+
+            [ext_resource type="PackedScene" path="res://player.tscn" id="1_player"]
+
+            [sub_resource type="Animation" id="Animation_hit"]
+            tracks/0/type = "value"
+            tracks/0/imported = false
+            tracks/0/path = NodePath("Player/Sprite:modulate")
+
+            [sub_resource type="AnimationLibrary" id="AnimationLibrary_1"]
+            _data = {
+            &"hit": SubResource("Animation_hit")
+            }
+
+            [node name="Level" type="Node2D"]
+
+            [node name="Player" parent="." instance=ExtResource("1_player")]
+
+            [node name="Moves" type="AnimationPlayer" parent="."]
+            libraries/ = SubResource("AnimationLibrary_1")
+
+            [editable path="Player"]
+
+            """;
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>
+        {
+            ["res://level.tscn"] = GodotFile.Parse(Over),
+            ["res://player.tscn"] = GodotFile.Parse(Player),
+        });
+
+        IReadOnlyDictionary<string, IReadOnlyList<TextEdit>> edits = scenes.Renames(scenes.Tree("res://player.tscn")!.Child("Sprite")!, "Body");
+
+        Assert.Contains("tracks/0/path = NodePath(\"Player/Body:modulate\")", Apply(Over, edits["res://level.tscn"]), StringComparison.Ordinal);
+    }
+
     private static string Apply(string text, IReadOnlyList<TextEdit> edits)
     {
         foreach (TextEdit edit in edits.OrderByDescending(e => e.Start))
