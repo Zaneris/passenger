@@ -111,7 +111,7 @@ public static class GodotWrites
             : WithSetting(text, "input", SettingKey(name), ActionValue(NewlineOf(text)));
 
     /// <summary>project.godot's text without a setting of a section, its whole line or lines, and without the section where
-    /// it was the last, as Godot's own save writes no empty one; null where it sets none.</summary>
+    /// it was the last and no comment is written there, as Godot's own save writes no empty one; null where it sets none.</summary>
     public static string? WithoutSetting(string text, string section, string key)
     {
         GodotFile file = GodotFile.Parse(text);
@@ -119,17 +119,32 @@ public static class GodotWrites
         {
             return null;
         }
-        if (found.Properties.All(p => p.Key == key))
+        int next = file.Sections.ToList().IndexOf(found) + 1;
+        int sectionEnd = next < file.Sections.Count ? file.Sections[next].Start : text.Length;
+        if (found.Properties.All(p => p.Key == key) && !Commented(text, found, sectionEnd))
         {
-            int at = file.Sections.ToList().IndexOf(found);
-            return at + 1 < file.Sections.Count ? text[..found.Start] + text[file.Sections[at + 1].Start..]
-                : text[..found.Start].TrimEnd('\r', '\n') + NewlineOf(text);
+            return sectionEnd < text.Length ? text[..found.Start] + text[sectionEnd..] : text[..found.Start].TrimEnd('\r', '\n') + NewlineOf(text);
         }
         int start = set.KeyStart == 0 ? 0 : text.LastIndexOf('\n', set.KeyStart - 1) + 1;
         int end = LineEnd(text, set.Value.End);
         end += end < text.Length && text[end] == '\r' ? 1 : 0;
         end += end < text.Length && text[end] == '\n' ? 1 : 0;
         return text[..start] + text[end..];
+    }
+
+    /// <summary>Whether a section holds anything beside its tag and entries before <paramref name="end"/>: a person's comment.</summary>
+    private static bool Commented(string text, GodotSection section, int end)
+    {
+        int at = section.End;
+        foreach (GodotEntry entry in section.Properties)
+        {
+            if (!text.AsSpan(at, entry.KeyStart - at).IsWhiteSpace())
+            {
+                return true;
+            }
+            at = entry.Value.End;
+        }
+        return !text.AsSpan(at, end - at).IsWhiteSpace();
     }
 
     /// <summary>project.godot's text with an event added last to an input action's events, as Godot writes them (the first

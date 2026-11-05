@@ -214,6 +214,26 @@ public class GodotProjectReadsTests
         Assert.Null(GodotWrites.WithoutSetting(Project, "input", "dash"));
     }
 
+    /// <summary>A comment in a section whose last setting goes is the person's own, whether it says something of the section
+    /// or of the next, so it and the section stay; a section holding nothing else goes, as Godot's save writes no empty one.</summary>
+    [Theory]
+    [InlineData("[input]\n\n; The player's keys.\ndash={\n\"deadzone\": 0.2,\n\"events\": []\n}\n\n[rendering]\n\nx=1\n", "[input]\n\n; The player's keys.\n\n[rendering]\n\nx=1\n")]
+    [InlineData("[input]\n\ndash={\n\"deadzone\": 0.2,\n\"events\": []\n}\n\n; Keep this low.\n[rendering]\n\nx=1\n", "[input]\n\n\n; Keep this low.\n[rendering]\n\nx=1\n")]
+    [InlineData("[input] ; The player's keys.\n\ndash=1\n", "[input] ; The player's keys.\n\n")]
+    [InlineData("[input]\n\n# The player's keys.\ndash=1\n", "[input]\n\n# The player's keys.\n")]
+    [InlineData("[input]\r\n\r\n; The player's keys.\r\ndash=1\r\n\r\n[rendering]\r\n", "[input]\r\n\r\n; The player's keys.\r\n\r\n[rendering]\r\n")]
+    public void A_comment_in_a_section_keeps_the_section_as_its_last_setting_goes(string text, string left)
+    {
+        Assert.Equal(left, GodotWrites.WithoutSetting(text, "input", "dash"));
+        Assert.True(GodotFile.Parse(left).Sections[0].Properties.Count == 0, $"The setting taken out was to leave its section none:\n{left}");
+    }
+
+    [Fact]
+    public void A_comment_before_a_section_whose_last_setting_goes_stays_as_the_section_does_not()
+    {
+        Assert.Equal("; The player's keys.\n[rendering]\n\nx=1\n", GodotWrites.WithoutSetting("; The player's keys.\n[input]\n\ndash=1\n\n[rendering]\n\nx=1\n", "input", "dash"));
+    }
+
     /// <summary>The events the page gives are written as Godot's editor writes them, a key by its place and a button by its
     /// index, and read back as the names they were given by.</summary>
     [Fact]
