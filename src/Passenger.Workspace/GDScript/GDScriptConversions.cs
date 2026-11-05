@@ -20,6 +20,12 @@ public static class GDScriptConversions
         "PackedColorArray", "PackedVector2Array", "PackedVector3Array", "PackedVector4Array",
     ];
 
+    /// <summary>Whether a name is a built-in type's, one GDScript makes by a call of its name.</summary>
+    internal static bool IsBuiltin(string name) => name is not ("Nil" or "Object") && Array.IndexOf(Order, name) >= 0;
+
+    /// <summary>Whether a built-in type's values are shared by whatever holds one, rather than copied.</summary>
+    internal static bool IsShared(string name) => name is "Array" or "Dictionary" or "Object" or "Callable" or "Signal" || Array.IndexOf(PackedArrays, name) >= 0;
+
     /// <summary>Each type with the types that convert strictly to it, as can_convert_strict's table lists them.</summary>
     private static readonly Dictionary<string, string[]> Into = new(StringComparer.Ordinal)
     {

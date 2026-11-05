@@ -115,7 +115,7 @@ public static partial class GDScriptRefactorings
         return parents;
     }
 
-    private static IEnumerable<GDScriptNode> Below(GDScriptNode root)
+    internal static IEnumerable<GDScriptNode> Below(GDScriptNode root)
     {
         Stack<GDScriptNode> left = new([root]);
         while (left.Count > 0)
@@ -281,7 +281,8 @@ public static partial class GDScriptRefactorings
     };
 
     /// <summary>Extract Variable: the expression selected given a local of a name, declared before the statement it is in
-    /// (<c>:=</c> where its type is known), the expression replaced by the name.</summary>
+    /// (<c>:=</c> where its type is known), the expression replaced by the name; refused where it can't run ahead of what
+    /// runs before it in the statement.</summary>
     public static GDScriptRefactored ExtractVariable(GDScriptAnalysis analysis, TextRange selection, string name)
     {
         if (analysis.Tree is not { } tree)
@@ -313,6 +314,13 @@ public static partial class GDScriptRefactorings
         if (Conditional(expression, statement, parents) is { } runs)
         {
             return GDScriptRefactored.No($"the expression can't move before its statement: {runs}");
+        }
+        GDScriptEffects effects = analysis.Effects;
+        if (effects.RunsFirst(expression, statement, effects.Of(expression), effects.MayBeLate(expression)) is { } first)
+        {
+            string earlier = text[(located.Offset + first.Start)..(located.Offset + first.End)];
+            return GDScriptRefactored.No($"the expression can't move before its statement: '{earlier}' runs first",
+                [new GDScriptPlace(analysis.Path, located.Offset + first.Start, located.Offset + first.End, "runs first")]);
         }
         if (Taken(analysis, located.Offset + statement.Start, name) is { } taken)
         {

@@ -20,6 +20,11 @@ public sealed class GDScriptAnalysis
     /// <summary>The script's res:// path.</summary>
     public string Path { get; }
 
+    private GDScriptEffects? effects;
+
+    /// <summary>What the script's expressions do and the order they run in, read once.</summary>
+    internal GDScriptEffects Effects => effects ??= new GDScriptEffects(this);
+
     /// <summary>The script's class and each class it is built on, itself first, to the engine's Object where every base
     /// was read.</summary>
     public IReadOnlyList<GDScriptType> Lineage { get; internal set; } = [];

@@ -234,6 +234,42 @@ public class GDScriptRefactoringsTests
     }
 
     [Fact]
+    public void Extract_variable_is_refused_where_something_that_runs_before_the_expression_could_tell()
+    {
+        const string Prelude = "var hp = 5\n\n\nfunc first():\n\thp = 1\n\treturn 1\n\n\nfunc second():\n\treturn 2\n\n\nfunc consume(a, b):\n\tprint(a, b)\n\n\n";
+        void Refused(string statement, string selected, string runsFirst)
+        {
+            string text = Prelude + $"func f(n):\n\t{statement}\n";
+            GDScriptRefactored made = GDScriptRefactorings.ExtractVariable(One(text), Over(text, selected, text.Split(selected).Length - 2), "x");
+            Assert.True(made.Refused?.Contains($"'{runsFirst}' runs first", StringComparison.Ordinal) == true, $"Extracting {selected} from {statement} runs it ahead of {runsFirst}; it answered: {made.Refused ?? "made"}");
+        }
+        void Made(string statement, string selected, string extracted)
+        {
+            string text = Prelude + $"func f(n):\n\t{statement}\n";
+            string after = After(GDScriptRefactorings.ExtractVariable(One(text), Over(text, selected, text.Split(selected).Length - 2), "x"), "res://main.gd", text);
+            Assert.EndsWith(extracted, after);
+        }
+        Refused("consume(first(), second())", "second()", "first()");
+        Refused("print(first() + second())", "second()", "first()");
+        Refused("print([first(), second()])", "second()", "first()");
+        Refused("print({first(): second()})", "second()", "first()");
+        // A call's arguments run before what it is called on, whichever is written first.
+        Refused("first().size(second())", "first()", "second()");
+        // What a call may change reads otherwise after it; the plain variable alone is read as the call it is passed to runs.
+        Refused("consume(first(), hp)", "hp", "first()");
+        Refused("consume(hp, first())", "hp", "first()");
+        Refused("consume(hp + 1, first())", "first()", "hp");
+        Made("consume(hp, first())", "first()", "\tvar x = first()\n\tconsume(hp, x)\n");
+        Made("hp.size(first())", "first()", "\tvar x = first()\n\thp.size(x)\n");
+        Made("consume(first(), n + 1)", "n + 1", "\tvar x = n + 1\n\tconsume(first(), x)\n");
+        Made("consume(first(), 2)", "2", "\tvar x := 2\n\tconsume(first(), x)\n");
+        Made("consume(first(), Vector2(1, 2))", "Vector2(1, 2)", "\tvar x := Vector2(1, 2)\n\tconsume(first(), x)\n");
+        Made("consume(first(), abs(n))", "abs(n)", "\tvar x = abs(n)\n\tconsume(first(), x)\n");
+        Made("hp = first()", "first()", "\tvar x = first()\n\thp = x\n");
+        Made("print(second() if n else 1)", "n", "\tvar x = n\n\tprint(second() if x else 1)\n");
+    }
+
+    [Fact]
     public void Inline_variable_puts_its_value_at_each_read_in_parentheses_where_it_needs_them()
     {
         string text = "func f(a):\n\tvar b = a + 1\n\tprint(b * 2)\n\tprint(b)\n";
