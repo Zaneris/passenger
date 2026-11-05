@@ -6,11 +6,11 @@ using Passenger.Core;
 namespace Passenger.App.Godot;
 
 /// <summary>The Game window's game on macOS, as Godot's editor holds one it embeds: drawn as the layer the game's embedded
-/// display shares (<see cref="GameLayer"/>), told the pane's size in pixels and the display's state, and given what the
-/// person does over it, the pointer and the keys, in Godot's input codec (<see cref="GodotInputCodec"/>) through its
-/// debugger's <c>embed:</c> messages, with the window's focus and the pointer's coming and going. The mouse mode the game
-/// asks for is followed: the pointer hidden, and held at the pane's middle while captured, its moves told as relative ones;
-/// Alt+Escape lets a captured pointer go, as in Godot's editor.</summary>
+/// display shares (<see cref="GameLayer"/>), told the display's state and then the size of its place (<see cref="Fitted"/>)
+/// in pixels at the window's scale, and given what the person does over it, the pointer and the keys, in Godot's input codec
+/// (<see cref="GodotInputCodec"/>) through its debugger's <c>embed:</c> messages, with the window's focus and the pointer's
+/// coming and going. The mouse mode the game asks for is followed: the pointer hidden, and held at the pane's middle while
+/// captured, its moves told as relative ones; Alt+Escape lets a captured pointer go, as in Godot's editor.</summary>
 public sealed partial class GamePane
 {
     private const int MouseEnter = 0;
@@ -26,7 +26,8 @@ public sealed partial class GamePane
 
     private GameLayer? layer;
     private bool layered;
-    private PixelSize sentSize;
+    private (int Width, int Height) sentSize;
+    private double toldScale;
     private Point? lastPointer;
     private int mouseMode;
     private double wheelX;
@@ -73,13 +74,8 @@ public sealed partial class GamePane
         }
     }
 
-    /// <summary>Its size in pixels, the screens' greatest scale and the window's: what the embedded display is told.</summary>
-    private (PixelSize Size, double MaxScale, double Scale) Measured()
-    {
-        double scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
-        double most = TopLevel.GetTopLevel(this)?.Screens?.All.Select(s => s.Scaling).DefaultIfEmpty(scale).Max() ?? scale;
-        return (new PixelSize((int)Math.Round(Bounds.Width * scale), (int)Math.Round(Bounds.Height * scale)), most, scale);
-    }
+    /// <summary>The scale of the window the pane is in: every size the embedded display is told is in its pixels.</summary>
+    private double Scale => TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
 
     private void ContextTold(object? sender, EventArgs e)
     {
@@ -87,12 +83,8 @@ public sealed partial class GamePane
         {
             return;
         }
-        (_, double most, double scale) = Measured();
         IdeLog.Write(IdeLog.Ide, $"Game window: {told.Name}'s layer shared through context {shared}");
-        layer.Show(shared, most);
-        // The display's state as Godot's editor gives it: its dots per inch AppKit's 72 a point, at the window's scale.
-        told.Embed(GodotWords.EmbedState, GodotInputCodec.DisplayState((float)most, (float)(72 * scale), (float)scale, layer.DisplayId()));
-        sentSize = default;
+        toldScale = 0;
         SendSize();
         if (IsFocused)
         {
@@ -100,18 +92,29 @@ public sealed partial class GamePane
         }
     }
 
-    /// <summary>The pane's size in pixels told the layered game as it changes, as its window's.</summary>
+    /// <summary>What the embedded display is told, as Godot's editor tells it: its state at the window's scale as that comes
+    /// or changes, then the size of the game's place in pixels at that scale as it changes, which the display divides by the
+    /// scale it holds. The state's dots per inch are AppKit's 72 a point.</summary>
     private void SendSize()
     {
-        if (!Layered || game?.EmbeddedContext is null)
+        if (!Layered || game is not { EmbeddedContext: { } shared } told || layer is null)
         {
             return;
         }
-        (PixelSize size, _, _) = Measured();
-        if (size.Width > 0 && size.Height > 0 && size != sentSize)
+        double scale = Scale;
+        if (scale != toldScale)
         {
-            sentSize = size;
-            game.Embed(GodotWords.EmbedWindowSize, new GodotMath(GodotType.Vector2I, [size.Width, size.Height]));
+            toldScale = scale;
+            sentSize = default;
+            layer.Show(shared, scale);
+            told.Embed(GodotWords.EmbedState, GodotInputCodec.DisplayState((float)scale, (float)(72 * scale), (float)scale, layer.DisplayId()));
+        }
+        GamePlace place = Fitted(scale);
+        layer.Fit(new Point(place.X / scale, place.Y / scale));
+        if (place.Width > 0 && place.Height > 0 && (place.Width, place.Height) != sentSize)
+        {
+            sentSize = (place.Width, place.Height);
+            told.Embed(GodotWords.EmbedWindowSize, new GodotMath(GodotType.Vector2I, [place.Width, place.Height]));
         }
     }
 
@@ -233,7 +236,10 @@ public sealed partial class GamePane
         }
         Focus();
         PointerPoint point = e.GetCurrentPoint(this);
-        SendButton(point, e.KeyModifiers, pressed: true, e.ClickCount == 2);
+        if (GameFit.Over(point.Position.X, point.Position.Y, Fitted(Scale), Scale))
+        {
+            SendButton(point, e.KeyModifiers, pressed: true, e.ClickCount == 2);
+        }
         e.Handled = true;
     }
 
@@ -277,7 +283,7 @@ public sealed partial class GamePane
         PointerPoint point = e.GetCurrentPoint(this);
         Point at = point.Position;
         Point from = lastPointer ?? at;
-        double scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
+        double scale = PointerScale;
         (float x, float y) = Pixels(mouseMode == Captured && IsFocused ? from : at);
         game!.Embed(GodotWords.EmbedEvent, GodotInputCodec.MouseMotion(ModifiersOf(e.KeyModifiers), x, y,
             (float)((at.X - from.X) * scale), (float)((at.Y - from.Y) * scale), MaskOf(point.Properties)));
@@ -319,12 +325,16 @@ public sealed partial class GamePane
         }
     }
 
-    /// <summary>A place over the pane in the game's window's pixels.</summary>
+    /// <summary>A place over the pane as the game's display takes it, from the game's top left and inside it.</summary>
     private (float X, float Y) Pixels(Point at)
     {
-        double scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
-        return ((float)(at.X * scale), (float)(at.Y * scale));
+        (double x, double y) = GameFit.Inside(at.X, at.Y, Fitted(Scale), Scale);
+        return ((float)(x * PointerScale), (float)(y * PointerScale));
     }
+
+    /// <summary>What the display takes the pointer in, for each of the pane's logical units: points, which is 1, from Godot
+    /// 4.7, before that its window's pixels.</summary>
+    private double PointerScale => GodotExecutables.TakesPointerInPoints(game?.Version) ? 1 : Scale;
 
     private static GodotModifiers ModifiersOf(KeyModifiers modifiers) =>
         (modifiers.HasFlag(KeyModifiers.Shift) ? GodotModifiers.Shift : GodotModifiers.None)

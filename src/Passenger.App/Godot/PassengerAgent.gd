@@ -62,6 +62,17 @@ func keys_back(ask: int, key: String, modifiers: int) -> void:
     _say(ask, _keys_back != KEY_NONE, [] if _keys_back != KEY_NONE else ["Godot has no key %s" % key])
 
 
+## A game whose project draws at its window's size in pixels laid out at the project's size and scaled to its window, so it
+## shows whole however small the Game window holds it. One that set its own stretch by now keeps it.
+func scale_to_window(ask: int) -> void:
+    var root := get_tree().root
+    if root.content_scale_mode == Window.CONTENT_SCALE_MODE_DISABLED:
+        root.content_scale_size = Vector2i(int(ProjectSettings.get_setting("display/window/size/viewport_width", 1152)), int(ProjectSettings.get_setting("display/window/size/viewport_height", 648)))
+        root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
+        root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+    _say(ask, true, [root.content_scale_mode, root.content_scale_size.x, root.content_scale_size.y])
+
+
 func _input(event: InputEvent) -> void:
     var key := event as InputEventKey
     if _keys_back == KEY_NONE or key == null or not key.pressed or key.echo or key.keycode != _keys_back:

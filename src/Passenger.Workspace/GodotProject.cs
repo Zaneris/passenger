@@ -39,12 +39,17 @@ public sealed record GodotProject(string Folder, string? Name, string? MainScene
             values.GetValueOrDefault("dotnet/project/assembly_name"))
         {
             WindowSize = (width > 0 ? width : 1152, height > 0 ? height : 648),
+            Stretches = values.GetValueOrDefault("display/window/stretch/mode") is { } mode && mode != "disabled",
         };
     }
 
     /// <summary>The size its game's window opens at: the window's override where project.godot gives one, else its viewport's,
     /// Godot's 1152 by 648 where it says neither.</summary>
     public (int Width, int Height) WindowSize { get; init; } = (1152, 648);
+
+    /// <summary>Whether its game scales what it draws to its window, as project.godot's stretch mode says: left off, it draws
+    /// at the window's size in pixels whatever size it was made for.</summary>
+    public bool Stretches { get; init; }
 
     /// <summary>The scenes Godot's editor opens from its command line, as their extensions say.</summary>
     public static bool IsScene(string path) =>

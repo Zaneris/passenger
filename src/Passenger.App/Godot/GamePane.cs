@@ -152,7 +152,10 @@ public sealed partial class GamePane : Border, IOwnKeys
         }
     }
 
-    /// <summary>The pane's place on the screen in its pixels, which a game's window is held on; null while it is laid out in
+    /// <summary>The size the game's window opens at, whose shape it shows in here: the whole pane while none is known.</summary>
+    public (int Width, int Height) OwnSize { get; set; }
+
+    /// <summary>The game's place on the screen in its pixels, which its window is held on; null while the pane is laid out in
     /// no window or has no size.</summary>
     public PixelRect? ScreenPlace()
     {
@@ -160,8 +163,17 @@ public sealed partial class GamePane : Border, IOwnKeys
         {
             return null;
         }
-        double scale = main.RenderScaling;
-        return new PixelRect(this.PointToScreen(new Point(0, 0)), new PixelSize((int)Math.Round(Bounds.Width * scale), (int)Math.Round(Bounds.Height * scale)));
+        return OnScreen(main.RenderScaling);
+    }
+
+    /// <summary>The game's place over the pane at a scale, in pixels from the pane's top left.</summary>
+    private GamePlace Fitted(double scale) => GameFit.Within(((int)Math.Round(Bounds.Width * scale), (int)Math.Round(Bounds.Height * scale)), OwnSize);
+
+    private PixelRect OnScreen(double scale)
+    {
+        GamePlace fitted = Fitted(scale);
+        PixelPoint pane = this.PointToScreen(new Point(0, 0));
+        return new PixelRect(pane.X + fitted.X, pane.Y + fitted.Y, fitted.Width, fitted.Height);
     }
 
     /// <summary>Says a game's window never came, in Godot's own words where its console has errors: a renderer that could
@@ -194,9 +206,7 @@ public sealed partial class GamePane : Border, IOwnKeys
                 now.PropertyChanged += MainChanged;
             }
         }
-        double scale = main.RenderScaling;
-        PixelPoint at = this.PointToScreen(new Point(0, 0));
-        PixelRect place = new(at, new PixelSize((int)Math.Round(Bounds.Width * scale), (int)Math.Round(Bounds.Height * scale)));
+        PixelRect place = OnScreen(main.RenderScaling);
         bool showing = IsEffectivelyVisible && place.Width > 0 && place.Height > 0 && main is not Window { WindowState: WindowState.Minimized };
         if (force || held != place || shown != showing)
         {

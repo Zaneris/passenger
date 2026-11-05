@@ -79,9 +79,12 @@ public partial class MainWindow
             }
             own.Add(argument);
         }
-        // On the pane's place where it has one, as Godot's editor starts an embedded game; on macOS its display at the pane's size.
-        PixelSize size = GamePane.ScreenPlace()?.Size ?? new PixelSize(1280, 720);
-        IReadOnlyList<string> embedding = holds == Godot.GamePaneHolds.Layer ? GodotExecutables.EmbeddedIn(size.Width, size.Height) : windows!.ArgumentsAt(GamePane.ScreenPlace());
+        // On its place in the pane where it has one, as Godot's editor starts an embedded game; on macOS its display at that size.
+        GamePane.OwnSize = Godot.GameFit.OwnSize([.. plan.Arguments.Skip(plan.Leading)], plan.GodotSize);
+        PixelRect? place = GamePane.ScreenPlace();
+        IReadOnlyList<string> embedding = holds == Godot.GamePaneHolds.Layer
+            ? GodotExecutables.EmbeddedIn(place?.Width ?? GamePane.OwnSize.Width, place?.Height ?? GamePane.OwnSize.Height)
+            : windows!.ArgumentsAt(place);
         List<string> arguments = [.. plan.Arguments.Take(plan.Leading), .. embedding, .. own];
         Dock.ShowBehind(ToolWindowIds.Game);
         if (holds == Godot.GamePaneHolds.Layer)
@@ -92,6 +95,10 @@ public partial class MainWindow
         {
             GamePane.Hold(game);
             IdeErrors.Observe(HandKeysBackAsync(game));
+        }
+        if (!plan.GodotStretches)
+        {
+            IdeErrors.Observe(ScaleGameAsync(game));
         }
         return plan with { Arguments = arguments, Leading = plan.Leading + embedding.Count };
     }
@@ -127,6 +134,21 @@ public partial class MainWindow
         catch (LiveAppException unheard)
         {
             status.Text = $"Only a click in Passenger takes the keys back from {game.Name}: {unheard.Message}";
+        }
+    }
+
+    /// <summary>A game whose project stretches nothing, which would show only the part of it its place holds, scaled to its
+    /// place by Passenger's helper once its first scene is open; where the helper cannot hear, it draws as its project says.</summary>
+    private async Task ScaleGameAsync(Godot.GodotGame game)
+    {
+        try
+        {
+            await game.FirstSceneAsync(TimeSpan.FromMinutes(1), CancellationToken.None);
+            await game.AskAsync(Godot.GodotAgent.ScaleToWindow);
+        }
+        catch (LiveAppException unheard)
+        {
+            status.Text = $"{game.Name} shows in the Game window as its project draws it: {unheard.Message}";
         }
     }
 

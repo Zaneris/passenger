@@ -95,6 +95,10 @@ public static partial class GodotExecutables
     /// <summary>Whether a Godot of a version draws a game through macOS's embedded display, which the Game window shows: from 4.5.</summary>
     public static bool DrawsEmbedded(string? version) => version is not null && Numbers(version) >= new Version(4, 5);
 
+    /// <summary>Whether a Godot of a version takes the pointer on macOS's embedded display in points, which it scales to its
+    /// window's pixels itself: from 4.7, before that in those pixels.</summary>
+    public static bool TakesPointerInPoints(string? version) => version is not null && Numbers(version) >= new Version(4, 7);
+
     /// <summary>Whether Godot given these arguments runs headless: <see cref="Headless"/>, or the headless display driver.</summary>
     public static bool RunsHeadless(IReadOnlyList<string> arguments) =>
         arguments.Contains(Headless) || arguments.Zip(arguments.Skip(1)).Any(pair => pair is ("--display-driver", "headless"));

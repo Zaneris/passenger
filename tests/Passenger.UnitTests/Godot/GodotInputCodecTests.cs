@@ -122,8 +122,9 @@ public sealed class GodotInputCodecTests
     {
         byte[] data = GodotInputCodec.DisplayState(2f, 144f, 2f, 69734662);
 
-        Assert.Equal(16, data.Length);
+        Assert.Equal(32, data.Length);
         Assert.Equal((2f, 144f, 2f, 69734662u), (BinaryPrimitives.ReadSingleLittleEndian(data), BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(4)),
             BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(8)), BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(12))));
+        Assert.Equal((1d, 1d), (BinaryPrimitives.ReadDoubleLittleEndian(data.AsSpan(16)), BinaryPrimitives.ReadDoubleLittleEndian(data.AsSpan(24))));
     }
 }

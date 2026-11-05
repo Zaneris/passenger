@@ -26,6 +26,9 @@ public static partial class GodotAgent
     /// <summary>Its call that sets the keys it hears for <see cref="KeysAsked"/>: a key's Godot name and its modifier flags.</summary>
     public const string KeysBack = "keys_back";
 
+    /// <summary>The call that has a game whose project stretches nothing drawn at its project's size and scaled to its window.</summary>
+    public const string ScaleToWindow = "scale_to_window";
+
     /// <summary>The call every other comes through, by its name, its ask and its other arguments, which waits while the
     /// helper's own members are still being made.</summary>
     public const string Asked = "asked";

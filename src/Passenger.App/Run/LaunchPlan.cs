@@ -164,6 +164,12 @@ public sealed partial record LaunchPlan
     /// <summary>Whether its Godot game is to draw in the window's Game window (<see cref="RunConfiguration.GodotInPane"/>).</summary>
     public bool GodotInPane { get; init; }
 
+    /// <summary>The size its Godot game's window opens at, by its project (<see cref="Passenger.Workspace.GodotProject.WindowSize"/>).</summary>
+    public (int Width, int Height) GodotSize { get; init; }
+
+    /// <summary>Whether its Godot game scales what it draws to its window (<see cref="Passenger.Workspace.GodotProject.Stretches"/>).</summary>
+    public bool GodotStretches { get; init; }
+
     /// <summary>Whether it runs a Godot game of GDScript alone (<see cref="Passenger.Workspace.ProjectModel.IsScriptGame"/>): no
     /// C# of its own to build, debug or sample, its GDScript debugged by its GDScript session alone.</summary>
     public bool ScriptsAlone { get; init; }

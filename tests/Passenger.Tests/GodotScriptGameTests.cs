@@ -62,6 +62,30 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
         }
     }
 
+    /// <summary>A game whose project stretches nothing draws at its window's size in pixels, so the Game window has Passenger's
+    /// helper lay it out at its project's size and scale it to its window, and a place smaller than that still shows it whole.</summary>
+    [AvaloniaFact]
+    public void The_helper_has_a_game_that_stretches_nothing_laid_out_at_its_projects_size_and_scaled_to_its_window()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Choose(window);
+            Ui.Launched(window, window.RunAsync(), "the game's start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.Session.Game is { State: Passenger.App.LiveTree.LiveAppState.Connected }, () => $"the game to connect ({window.Status})", TimeSpan.FromMinutes(1));
+            Passenger.App.Godot.GodotGame game = window.Session.Game!;
+
+            List<object?> said = Ui.Await(game.AskAsync(Passenger.App.Godot.GodotAgent.ScaleToWindow), "the helper's answer", TimeSpan.FromMinutes(1));
+
+            Assert.True(said is [1L, 1152L, 648L], $"The game is left drawing at its window's size, so a smaller Game window would crop it: the helper said {string.Join(", ", said)}");
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>A configuration that starts the game in Passenger's Game window runs it in a window of its own where it cannot
     /// draw there: a headless game has no picture, so the Game window says why, holds no game, and the game runs as ever.</summary>
     [AvaloniaFact]

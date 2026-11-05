@@ -77,15 +77,18 @@ public static class GodotInputCodec
         return data;
     }
 
-    /// <summary>The embedded display's state (16 bytes): the screens' greatest scale, the screen's dots per inch, the scale of
-    /// the window it is shown in, and that window's display's id.</summary>
+    /// <summary>The embedded display's state (32 bytes, of which Godot before 4.7 reads the first 16): the scale sizes it is
+    /// told are in, the screen's dots per inch, the scale of the window it is shown in, that window's display's id, and the
+    /// display's brightest values, those of a display of no extended range.</summary>
     public static byte[] DisplayState(float maxScale, float dpi, float windowScale, uint display)
     {
-        byte[] data = new byte[16];
+        byte[] data = new byte[32];
         BinaryPrimitives.WriteSingleLittleEndian(data.AsSpan(0), maxScale);
         BinaryPrimitives.WriteSingleLittleEndian(data.AsSpan(4), dpi);
         BinaryPrimitives.WriteSingleLittleEndian(data.AsSpan(8), windowScale);
         BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(12), display);
+        BinaryPrimitives.WriteDoubleLittleEndian(data.AsSpan(16), 1);
+        BinaryPrimitives.WriteDoubleLittleEndian(data.AsSpan(24), 1);
         return data;
     }
 

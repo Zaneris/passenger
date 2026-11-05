@@ -8,14 +8,16 @@ namespace Passenger.App.Godot;
 /// <summary>A Godot game drawn in the Game window on macOS, as Godot's editor shows one it embeds: the game, started on its
 /// embedded display, shares the layer it draws to across processes by a context's id (<c>game_view:set_context_id</c>), and
 /// a CALayerHost (QuartzCore's, which Godot's editor and Chromium use) given that id shows it, a sublayer of an NSView of
-/// Passenger's own hosted here, its top left at the view's. The view takes no input of its own: AppKit hands what it is
-/// sent on to Passenger's window, so the pane hears the pointer and keys and sends them on. Of the UI thread, AppKit's.</summary>
+/// Passenger's own hosted here, its top left at the place it fits (<see cref="Fit"/>), clipped to the view whatever size
+/// the game took. The view takes no input of its own: AppKit hands what it is sent on to Passenger's window, so the pane
+/// hears the pointer and keys and sends them on. Of the UI thread, AppKit's.</summary>
 public sealed partial class GameLayer : NativeControlHost
 {
     private nint view;
     private nint host;
     private uint context;
     private double scale = 1;
+    private Point fit;
 
     /// <summary>Whether this macOS has the CALayerHost a game's layer is shown through: a class of QuartzCore's no SDK names.</summary>
     public static bool Hosts => OperatingSystem.IsMacOS() && MacObjC.Class("CALayerHost") != 0;
@@ -29,10 +31,19 @@ public sealed partial class GameLayer : NativeControlHost
         Attach();
     }
 
+    /// <summary>The game's top left in the view, in its logical units.</summary>
+    public void Fit(Point at)
+    {
+        UiThread.Check();
+        fit = at;
+        Place(Bounds.Height);
+    }
+
     protected override IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
         view = MacObjC.Send(MacObjC.Send(MacObjC.Class("NSView"), MacObjC.Selector("alloc")), MacObjC.Selector("initWithFrame:"), default(MacObjC.CGRect));
         MacObjC.Send(view, MacObjC.Selector("setWantsLayer:"), true);
+        MacObjC.Send(MacObjC.Send(view, MacObjC.Selector("layer")), MacObjC.Selector("setMasksToBounds:"), true);
         Attach();
         return new PlatformHandle(view, "NSView");
     }
@@ -82,7 +93,7 @@ public sealed partial class GameLayer : NativeControlHost
         Place(Bounds.Height);
     }
 
-    /// <summary>The host's place: the view's top left, in the layer's points from its bottom, where the game's layer hangs from.</summary>
+    /// <summary>The host's place, in the layer's points from its bottom, where the game's layer hangs from.</summary>
     private void Place(double height)
     {
         if (host == 0)
@@ -92,14 +103,18 @@ public sealed partial class GameLayer : NativeControlHost
         nint transaction = MacObjC.Class("CATransaction");
         MacObjC.Send(transaction, MacObjC.Selector("begin"));
         MacObjC.Send(transaction, MacObjC.Selector("setDisableActions:"), true);
-        MacObjC.Send(host, MacObjC.Selector("setPosition:"), new MacObjC.CGPoint(0, height));
+        MacObjC.Send(host, MacObjC.Selector("setPosition:"), new MacObjC.CGPoint(fit.X, height - fit.Y));
         MacObjC.Send(transaction, MacObjC.Selector("commit"));
     }
 
     /// <summary>The display the view's window is on, as CoreGraphics numbers it (NSScreen's NSScreenNumber); the main
-    /// display's while the view is in no window.</summary>
+    /// display's while the view is in no window; 0 off macOS.</summary>
     public uint DisplayId()
     {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return 0;
+        }
         nint window = view == 0 ? 0 : MacObjC.Send(view, MacObjC.Selector("window"));
         nint screen = window == 0 ? 0 : MacObjC.Send(window, MacObjC.Selector("screen"));
         if (screen == 0)

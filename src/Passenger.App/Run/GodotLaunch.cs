@@ -177,6 +177,8 @@ public static class GodotLaunch
             GodotUnseen = unseen,
             OwnDesktop = ownDesktop,
             GodotInPane = configuration.GodotInPane && !configuration.GodotEditor && !configuration.GodotInEditor,
+            GodotSize = game.WindowSize,
+            GodotStretches = game.Stretches,
             ScriptsAlone = project.IsScriptGame,
             GameName = project.IsScriptGame ? project.Name : null,
         };

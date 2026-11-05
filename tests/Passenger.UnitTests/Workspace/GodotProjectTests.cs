@@ -86,6 +86,9 @@ public class GodotProjectTests
     public void A_games_window_size_is_its_override_else_its_viewports_else_Godots_default()
     {
         Assert.Equal((1152, 648), GodotProject.Parse("/game", "config_version=5\n\n[application]\n\nconfig/name=\"Game\"\n").WindowSize);
+        Assert.False(GodotProject.Parse("/game", "[display]\n\nwindow/size/viewport_width=640\n").Stretches);
+        Assert.False(GodotProject.Parse("/game", "[display]\n\nwindow/stretch/mode=\"disabled\"\n").Stretches);
+        Assert.True(GodotProject.Parse("/game", "[display]\n\nwindow/stretch/mode=\"canvas_items\"\n").Stretches);
         Assert.Equal((640, 360), GodotProject.Parse("/game", "[display]\n\nwindow/size/viewport_width=640\nwindow/size/viewport_height=360\n").WindowSize);
         Assert.Equal((1280, 360), GodotProject.Parse("/game", "[display]\n\nwindow/size/viewport_width=640\nwindow/size/viewport_height=360\nwindow/size/window_width_override=1280\n").WindowSize);
     }
