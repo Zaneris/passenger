@@ -54,6 +54,19 @@ public sealed class UnseenAppsTests : IDisposable
         Assert.Null(UnseenApps.Inspected(named));
     }
 
+    /// <summary>A console project's plan says nothing of what a <c>dotnet run --project OTHER</c> it names starts.</summary>
+    [Fact]
+    public void A_named_dotnet_run_of_another_project_is_kept_off_the_screen_by_what_that_project_is()
+    {
+        string other = Path.Combine(folder, "Gui", "Gui.csproj");
+        LaunchPlan named = Plan(Dotnet.Host()) with
+        {
+            Arguments = ["run", "--project", other], Target = Carrying("Console.dll", "Tool.dll"), DesktopProject = "a GTK app", NamedProject = other,
+        };
+        KeptOff(named, "a GTK app");
+        Assert.Null(UnseenApps.Inspected(named));
+    }
+
     [Fact]
     public void An_avalonia_app_dotnet_watch_would_start_is_kept_off_the_screen()
     {

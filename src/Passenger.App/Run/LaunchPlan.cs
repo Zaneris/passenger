@@ -72,8 +72,11 @@ public sealed partial record LaunchPlan
     public string? Target { get; init; }
 
     /// <summary>What desktop app its project says it is (<see cref="DesktopPrograms.OfProject"/>), for a program no build has
-    /// made yet; null for any other project.</summary>
+    /// made yet; null for any other project. A project named in its place says for it.</summary>
     public string? DesktopProject { get; init; }
+
+    /// <summary>The project a named <c>dotnet run</c> runs in place of the plan's (<see cref="DesktopPrograms.NamedProject"/>); null for none.</summary>
+    public string? NamedProject { get; init; }
 
     public ConsoleKind Console { get; init; }
 
@@ -335,6 +338,7 @@ public sealed partial record LaunchPlan
             ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(project.Folder, folder)))
             : System.IO.Path.GetDirectoryName(target)!;
         Dictionary<string, string> environment = Variables();
+        string? other = DesktopPrograms.NamedProject(program, arguments, working) is { } runs && !PathNames.Same(runs, project.Path) && !PathNames.Same(runs, project.Folder) ? runs : null;
         if (SandboxedState(built ?? program, environment, stateFolder) is { } sandbox)
         {
             environment[StateStore.Variable] = sandbox;
@@ -355,7 +359,8 @@ public sealed partial record LaunchPlan
             Build = configuration.BuildBeforeLaunch ? new BuildStep(project.Path, framework) : null,
             Built = built,
             Target = target,
-            DesktopProject = DesktopPrograms.OfProject(project, projects),
+            DesktopProject = other is null ? DesktopPrograms.OfProject(project, projects) : DesktopPrograms.OfNamed(other, projects),
+            NamedProject = other,
             Console = configuration.Console,
             BrowserUrl = configuration.LaunchBrowser && configuration.BrowserUrl.Length > 0 ? Expand(configuration.BrowserUrl) : null,
             Page = configuration.BrowserUrl.Length > 0 ? BrowserLaunch.Address(Expand(configuration.BrowserUrl)) is { } page ? BrowserLaunch.Shown(page) : null : null,

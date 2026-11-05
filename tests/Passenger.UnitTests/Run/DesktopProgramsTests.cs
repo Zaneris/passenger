@@ -1,12 +1,15 @@
+using System.Text;
 using Passenger.App.Run;
 using Passenger.Core;
+using Passenger.UnitTests.Core;
 using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Run;
 
 /// <summary>What desktop app a program's start runs, read from the start as it stands in a temporary folder: the program a
-/// configuration names, the assembly a <c>dotnet</c> is given and the project a <c>dotnet run</c> builds, whatever the
-/// project's own build left, so a Passenger nobody sees knows what it would put on the person's screen.</summary>
+/// configuration names, native or managed, the assembly a <c>dotnet</c> is given and the project a <c>dotnet run</c> builds
+/// or names, whatever the project's own build left, so a Passenger nobody sees knows what it would put on the person's
+/// screen.</summary>
 public sealed class DesktopProgramsTests : IDisposable
 {
     private const string Dotnet = "/usr/local/share/dotnet/dotnet";
@@ -122,9 +125,122 @@ public sealed class DesktopProgramsTests : IDisposable
         Assert.Equal(DesktopPrograms.Avalonia, DesktopPrograms.OfProject(head, [head, shared]));
     }
 
+    [Theory]
+    [InlineData("/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit")]
+    [InlineData("/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa")]
+    [InlineData("/System/Library/Frameworks/SwiftUI.framework/Versions/A/SwiftUI")]
+    [InlineData("@rpath/QtWidgets.framework/Versions/A/QtWidgets")]
+    [InlineData("@rpath/libSDL2-2.0.0.dylib")]
+    [InlineData("/opt/homebrew/lib/libglfw.3.dylib")]
+    public void A_mac_program_linking_what_opens_windows_is_a_desktop_app(string library)
+    {
+        string program = WriteBytes("native/Viewer", MachOBytes.Universal(MachOBytes.Thin("/usr/lib/libSystem.B.dylib", library)));
+        DesktopProgram? found = DesktopPrograms.Started(program, [], root, null, null, null);
+        Assert.True(found is { Called: "a native macOS app", PastHooks: null } && found.File == program, $"A native program linking {library} read as {found}, so a Passenger nobody sees would start it on the person's screen");
+    }
+
+    [Fact]
+    public void A_mac_program_linking_nothing_that_opens_windows_is_no_desktop_app()
+    {
+        Assert.Null(DesktopPrograms.Of(WriteBytes("native/tool", MachOBytes.Thin("/usr/lib/libSystem.B.dylib", "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation"))));
+    }
+
+    /// <summary>A bundle's program links what it likes, or is a script: an Electron app's links only the framework beside it.</summary>
+    [Fact]
+    public void A_program_in_a_macs_app_bundle_is_a_desktop_app_whatever_it_links()
+    {
+        Assert.Equal("a native macOS app", DesktopPrograms.Of(WriteBytes(Path.Join("Viewer.app", "Contents", "MacOS", "Viewer"), MachOBytes.Thin("@rpath/Electron Framework.framework/Electron Framework"))));
+        Assert.Equal("a native macOS app", DesktopPrograms.Of(Write(Path.Join("Script.app", "Contents", "MacOS", "Script"), "#!/bin/sh\n")));
+    }
+
+    [Fact]
+    public void An_avalonia_app_in_a_macs_app_bundle_stays_an_avalonia_app_the_inspector_goes_into()
+    {
+        string program = Write(Path.Join("App.app", "Contents", "MacOS", "App"));
+        Write(Path.Join("App.app", "Contents", "MacOS", "Avalonia.Base.dll"));
+        Assert.Equal(DesktopPrograms.Avalonia, DesktopPrograms.Of(program));
+    }
+
+    /// <summary>A single-file publish lists what it holds by name, with nothing beside it to read. The inspector reads an app's
+    /// assemblies from its folder, so such an app is no Avalonia app to it, and no start goes through it.</summary>
+    [Fact]
+    public void A_single_file_publish_on_a_mac_is_known_by_the_ui_framework_inside_it_and_goes_past_the_inspector()
+    {
+        string program = WriteBytes("single/App", [.. MachOBytes.Thin("/usr/lib/libSystem.B.dylib"), .. new byte[100], .. Encoding.UTF8.GetBytes("Avalonia.Base.dll"), .. new byte[100]]);
+        DesktopProgram? found = DesktopPrograms.Started(program, [], root, null, null, null);
+        Assert.True(found is { Called: "an Avalonia app, published as a single file" }, $"A single-file Avalonia app read as {found}");
+        Assert.NotEqual(DesktopPrograms.Avalonia, found!.Called);
+    }
+
+    [Fact]
+    public void A_ui_framework_named_across_two_reads_of_a_large_program_is_found_all_the_same()
+    {
+        const int Read = 1024 * 1024;
+        byte[] header = MachOBytes.Thin("/usr/lib/libSystem.B.dylib");
+        byte[] name = Encoding.UTF8.GetBytes("Eto.dll");
+        byte[] program = new byte[(2 * Read) + 100];
+        header.CopyTo(program, 0);
+        name.CopyTo(program, Read - 3);
+        Assert.Equal("an Eto.Forms app, published as a single file", DesktopPrograms.Of(WriteBytes("single/Large", program)));
+    }
+
+    [Theory]
+    [InlineData("run", "--project", "../Other/Other.csproj")]
+    [InlineData("run", "-p", "../Other/Other.csproj")]
+    [InlineData("watch", "--project", "../Other/Other.csproj")]
+    public void A_dotnet_run_naming_a_project_names_it_past_the_folder_it_starts_in(string command, string option, string project)
+    {
+        string folder = Path.Combine(root, "app");
+        Assert.Equal(PathNames.Canonical(Path.Combine(folder, project)), DesktopPrograms.NamedProject(Dotnet, [command, "--no-build", option, project], folder));
+    }
+
+    [Fact]
+    public void A_dotnet_run_names_a_project_or_a_program_file_however_it_is_written_and_no_argument_of_the_program()
+    {
+        Assert.Equal(PathNames.Canonical(Path.Combine(root, "o.csproj")), DesktopPrograms.NamedProject(Dotnet, ["run", "--project=o.csproj"], root));
+        Assert.Equal(PathNames.Canonical(Path.Combine(root, "app.cs")), DesktopPrograms.NamedProject(Dotnet, ["run", "app.cs"], root));
+        Assert.Equal(PathNames.Canonical(Path.Combine(root, "app.cs")), DesktopPrograms.NamedProject(Dotnet, ["run", "--file", "app.cs"], root));
+        Assert.Null(DesktopPrograms.NamedProject(Dotnet, ["run", "--", "--project", "o.csproj"], root));
+        Assert.Null(DesktopPrograms.NamedProject(Dotnet, ["run", "--no-build"], root));
+        Assert.Null(DesktopPrograms.NamedProject(Dotnet, ["run", "--property:Extra=a.cs"], root));
+        Assert.Null(DesktopPrograms.NamedProject(Dotnet, ["build", "--project", "o.csproj"], root));
+        Assert.Null(DesktopPrograms.NamedProject("/bin/other", ["run", "--project", "o.csproj"], root));
+    }
+
+    /// <summary>The plan's own project says nothing of what such a run starts, in either direction.</summary>
+    [Fact]
+    public void A_dotnet_run_naming_another_project_is_what_that_project_says_never_what_the_plans_built()
+    {
+        string target = Write("console/Tool.dll");
+        string other = Path.Combine(root, "gui", "Gui.csproj");
+        ProjectModel gui = Model("Gui", "Exe", "GtkSharp") with { Path = other };
+        Assert.Equal("a GTK app", DesktopPrograms.OfNamed(other, [gui]));
+        Assert.Equal("a GTK app", DesktopPrograms.OfNamed(Path.GetDirectoryName(other)!, [gui]));
+
+        DesktopProgram? found = DesktopPrograms.Started(Dotnet, ["run", "--project", other], root, null, target, "a GTK app", other);
+        Assert.True(found is { Called: "a GTK app", PastHooks: not null } && found.File == other, $"dotnet run of a GTK project read as {found}");
+
+        string avalonia = Write("avalonia/App.dll");
+        Write("avalonia/Avalonia.Base.dll");
+        Assert.Null(DesktopPrograms.Started(Dotnet, ["run", "--project", other], root, null, avalonia, null, other));
+    }
+
+    [Fact]
+    public void A_dotnet_run_of_a_project_no_window_loaded_is_refused_for_what_cannot_be_read_but_on_linux_which_has_no_display()
+    {
+        Assert.Equal(OperatingSystem.IsLinux() ? null : DesktopPrograms.UnreadProject, DesktopPrograms.OfNamed(Path.Combine(root, "elsewhere", "Far.csproj"), []));
+    }
+
     [Fact]
     public void A_project_built_as_a_windowed_program_says_so() =>
         Assert.Equal("a windowed program (OutputType WinExe)", DesktopPrograms.OfProject(Model("App", "WinExe"), []));
+
+    private string WriteBytes(string relative, byte[] bytes)
+    {
+        string file = Write(relative);
+        File.WriteAllBytes(file, bytes);
+        return file;
+    }
 
     private string Write(string relative, string text = "")
     {

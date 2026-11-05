@@ -45,5 +45,5 @@ public static class UnseenApps
     /// <summary>What desktop app a plan starts where nobody is to see it; null for a plan people see run, a Godot game's (whose
     /// launch hides it itself), or a program with no windows of its own.</summary>
     private static DesktopProgram? Hidden(LaunchPlan plan) =>
-        plan.Unseen && plan.Godot is null ? DesktopPrograms.Started(plan.Program, plan.Arguments, plan.WorkingDirectory, plan.Built, plan.Target, plan.DesktopProject) : null;
+        plan.Unseen && plan.Godot is null ? DesktopPrograms.Started(plan.Program, plan.Arguments, plan.WorkingDirectory, plan.Built, plan.Target, plan.DesktopProject, plan.NamedProject) : null;
 }
