@@ -266,6 +266,72 @@ public sealed class GoDotTestTests : IDisposable
         }
     }
 
+    /// <summary>Two classes of one name in two namespaces, each test saying it ran by a file of its own.</summary>
+    private const string TwoOfOneName = """
+        namespace Spinner.Tests
+        {
+            using System.IO;
+            using Chickensoft.GoDotTest;
+            using Godot;
+
+            public class SpinnerTest : TestClass
+            {
+                public SpinnerTest(Node testScene) : base(testScene) { }
+
+                [Test]
+                public void Spins() => File.WriteAllText(ProjectSettings.GlobalizePath("res://first-ran"), "ran");
+            }
+        }
+
+        namespace Spinner.Others
+        {
+            using System.IO;
+            using Chickensoft.GoDotTest;
+            using Godot;
+
+            public class SpinnerTest : TestClass
+            {
+                public SpinnerTest(Node testScene) : base(testScene) { }
+
+                [Test]
+                public void Spins() => File.WriteAllText(ProjectSettings.GlobalizePath("res://second-ran"), "ran");
+            }
+        }
+
+        """;
+
+    /// <summary>A test of one of two classes GoDotTest knows by one name is refused saying why, Godot left unstarted, where a
+    /// run by name would have run the other class's; both chosen together run, as a suite takes them.</summary>
+    [AvaloniaFact]
+    public void A_test_of_one_of_two_classes_of_one_name_is_refused_saying_why_and_both_chosen_run_together()
+    {
+        Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
+        GoDotTestGame.Make(folder, godot!, testCode: TwoOfOneName);
+        Restore.Run(Path.Combine(folder, "Spinner.csproj"));
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        window.Show();
+        TestNode? Named(string fullName) => window.Tests.Tree.Methods.FirstOrDefault(m => m.FullName == fullName);
+        try
+        {
+            window.OpenFolder(folder);
+            Ui.WaitFor(() => Named("Spinner.Tests.SpinnerTest.Spins") is not null && Named("Spinner.Others.SpinnerTest.Spins") is not null,
+                () => $"both classes' tests shown ({string.Join(", ", window.Tests.Tree.Methods.Select(m => m.FullName))}; {window.Tests.Tree.EmptyText})");
+            TestNode second = Named("Spinner.Others.SpinnerTest.Spins")!;
+            Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [second]), "the refused run", TimeSpan.FromMinutes(5));
+            Assert.True(second.State == TestState.Skipped, $"The test GoDotTest cannot run alone was told as {second.State}: {second.Details}");
+            Assert.Contains("Spinner.Tests.SpinnerTest", second.Details, StringComparison.Ordinal);
+            Assert.False(File.Exists(Path.Combine(folder, "first-ran")) || File.Exists(Path.Combine(folder, "second-ran")), "Godot ran a test of a run that was refused");
+
+            Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [Named("Spinner.Tests.SpinnerTest.Spins")!, second]), "the run of both", TimeSpan.FromMinutes(5));
+            Assert.True(File.Exists(Path.Combine(folder, "first-ran")) && File.Exists(Path.Combine(folder, "second-ran")),
+                $"Both classes chosen did not both run ({window.BottomPanel.Tests.Status}; {window.BottomPanel.Build.Document.Snapshot})");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Two tests, one ending a moment after it starts and the next waiting until the test lets it go (a file in the
     /// game's folder), under a main scene giving GoDotTest's tests two minutes each.</summary>
     private const string Stepping = """

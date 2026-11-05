@@ -48,6 +48,43 @@ public class GoDotTestsTests
         Assert.Equal([Spins], runs[1].Tests);
     }
 
+    /// <summary>GoDotTest's run of Suite.Method takes the first class of the name, so a method both classes have is run by the
+    /// suite, which takes both, whatever their tests' names come to.</summary>
+    [Fact]
+    public void Two_classes_of_one_name_chosen_whole_run_as_their_suite_though_their_tests_share_a_name()
+    {
+        Assert.Equal(["--run-tests=SpinnerTest"], GoDotTests.Runs([Spins, Spins, Turns], [Spins, Spins, Turns, Stops]).Select(r => r.Argument).Take(1));
+    }
+
+    [Fact]
+    public void A_test_of_one_of_two_classes_of_one_name_cannot_run_as_chosen_and_the_classes_are_named()
+    {
+        IReadOnlyDictionary<string, IReadOnlyList<string>> alike = GoDotTests.Alike(["Game.B.SpinnerTest.Spins"], ["Game.A.SpinnerTest.Spins", "Game.B.SpinnerTest.Spins", "Game.TurnTest.Turns"]);
+        Assert.Equal(["Game.A.SpinnerTest", "Game.B.SpinnerTest"], Assert.Single(alike).Value);
+        Assert.Equal("SpinnerTest", Assert.Single(alike).Key);
+    }
+
+    /// <summary>A nested class is known by its own name too, and a test of its namesake is no less shut out.</summary>
+    [Fact]
+    public void A_nested_class_shares_its_name_with_a_namespaces_class_of_it()
+    {
+        Assert.Single(GoDotTests.Alike(["Game.SpinnerTest.Spins"], ["Game.SpinnerTest.Spins", "Game.Outer+SpinnerTest.Adds"]));
+    }
+
+    [Fact]
+    public void Every_test_of_both_classes_chosen_or_none_of_them_leaves_nothing_to_refuse()
+    {
+        string[] declared = ["Game.A.SpinnerTest.Spins", "Game.B.SpinnerTest.Adds", "Game.TurnTest.Turns"];
+        Assert.Empty(GoDotTests.Alike(declared[..2], declared));
+        Assert.Empty(GoDotTests.Alike(["Game.TurnTest.Turns"], declared));
+    }
+
+    [Fact]
+    public void A_class_alone_with_its_name_is_chosen_in_part_as_ever()
+    {
+        Assert.Empty(GoDotTests.Alike(["Game.SpinnerTest.Spins"], ["Game.SpinnerTest.Spins", "Game.SpinnerTest.Adds"]));
+    }
+
     [Fact]
     public void A_test_chosen_twice_runs_once()
     {

@@ -54,7 +54,7 @@ public static partial class GoDotTests
         List<(string Argument, IReadOnlyList<Named> Tests)> runs = [];
         foreach (IGrouping<string, Named> suite in chosen.Distinct().GroupBy(t => t.Suite, StringComparer.Ordinal))
         {
-            if (suite.Count() > 1 && suites.Contains(suite.Key) && suites[suite.Key].All(picked.Contains))
+            if (suites.Contains(suite.Key) && suites[suite.Key].Count() > 1 && suites[suite.Key].All(picked.Contains))
             {
                 runs.Add(($"{RunTests}={suite.Key}", [.. suite]));
             }
@@ -64,6 +64,25 @@ public static partial class GoDotTests
             }
         }
         return runs;
+    }
+
+    /// <summary>Of a game's tests (<paramref name="chosen"/> and <paramref name="declared"/> by full name), the classes of each
+    /// suite GoDotTest cannot run as chosen, by the suite: it knows a class by its own name alone, so of classes sharing one a
+    /// test's run takes the first in the assembly and a suite's run all of them, and its output tells them apart nowhere. A
+    /// suite chosen whole, every class of it, runs as a suite.</summary>
+    public static IReadOnlyDictionary<string, IReadOnlyList<string>> Alike(IReadOnlyList<string> chosen, IReadOnlyList<string> declared)
+    {
+        HashSet<string> picked = new(chosen, StringComparer.Ordinal);
+        Dictionary<string, IReadOnlyList<string>> alike = new(StringComparer.Ordinal);
+        foreach (IGrouping<string, string> suite in declared.GroupBy(test => Named.Of(test).Suite, StringComparer.Ordinal))
+        {
+            List<string> classes = [.. suite.Select(test => test[..test.LastIndexOf('.')]).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+            if (classes.Count > 1 && suite.Any(picked.Contains) && !suite.All(picked.Contains))
+            {
+                alike[suite.Key] = classes;
+            }
+        }
+        return alike;
     }
 
     /// <summary>Where a game's run of its tests starts: the scene its run settings name (<see cref="SceneParameter"/>), else

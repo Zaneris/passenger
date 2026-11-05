@@ -8,9 +8,10 @@ namespace Passenger.App.Testing;
 /// <see cref="GoDotTests.StartOf"/>; a game none does refused before Godot starts), given <c>--run-tests</c> for the chosen
 /// suite or test and <c>--quit-on-finish</c>. Each test's end is told as its line is heard (its output, or under Debug its
 /// debug session's), timed from its start; once Godot ends, its log of the run gives each outcome whole, a failure with its
-/// exception and frames, and what it printed (<see cref="GoDotTests"/>), a test it ran beside them told too. Debugged, the
-/// game starts under the debugger as Debug starts it. Its tests are those the code declares (<paramref name="declared"/>,
-/// by the game's project).</summary>
+/// exception and frames, and what it printed (<see cref="GoDotTests"/>), a test it ran beside them told too. A test whose
+/// class GoDotTest cannot tell from another is refused (<see cref="GoDotTests.Alike"/>). Debugged, the game starts under the
+/// debugger as Debug starts it. Its tests are those the code declares (<paramref name="declared"/>, by the game's
+/// project).</summary>
 public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declared, Func<string, Task<GoDotTests.Start>>? startOf = null) : ITestRunner
 {
     public bool IsUsable => true;
@@ -38,6 +39,18 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
                 continue;
             }
             IReadOnlyList<TestItem> code = declared(project.Key);
+            IReadOnlyDictionary<string, IReadOnlyList<string>> alike = GoDotTests.Alike([.. chosen.Select(t => t.Method)], [.. code.Select(t => t.Method)]);
+            if (alike.Count > 0)
+            {
+                List<TestItem> kept = [.. chosen.Where(t => !alike.ContainsKey(GoDotTests.Named.Of(t.Method).Suite))];
+                RunSummary refused = RefuseAlike([.. chosen.Except(kept)], alike, whole: kept.Count == 0, outcomes, log);
+                summary = summary is null ? refused : summary.And(refused);
+                chosen = kept;
+            }
+            if (chosen.Count == 0)
+            {
+                continue;
+            }
             List<GoDotTests.Named> all = [.. code.Select(t => GoDotTests.Named.Of(t.Method))];
             foreach ((string argument, IReadOnlyList<GoDotTests.Named> runs) in GoDotTests.Runs([.. chosen.Select(t => GoDotTests.Named.Of(t.Method))], all))
             {
@@ -52,6 +65,24 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
             }
         }
         return summary ?? new RunSummary(TimeSpan.Zero, cancel.IsCancellationRequested, false, null);
+    }
+
+    /// <summary>Tests left unrun, each told as skipped saying why: another class has their class's name
+    /// (<see cref="GoDotTests.Alike"/>), so what GoDotTest ran for them might be that class's. With <paramref name="whole"/>
+    /// they are all that was asked, and the run says so.</summary>
+    private static RunSummary RefuseAlike(IReadOnlyList<TestItem> tests, IReadOnlyDictionary<string, IReadOnlyList<string>> alike, bool whole,
+        Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log)
+    {
+        List<TestOutcome> told = [];
+        foreach (TestItem test in tests)
+        {
+            string suite = GoDotTests.Named.Of(test.Method).Suite;
+            told.Add(Outcome(test, GoDotTests.Ending.Skipped, TimeSpan.Zero) with { Message = Refusals.GoDotTestAlike(suite, alike[suite]) });
+        }
+        string said = string.Join("; ", alike.OrderBy(a => a.Key, StringComparer.Ordinal).Select(a => Refusals.GoDotTestAlike(a.Key, a.Value)));
+        log?.Invoke(said);
+        outcomes(told);
+        return new RunSummary(TimeSpan.Zero, false, whole, whole ? said : null) { Outcomes = told };
     }
 
     /// <summary>One run of a game from a scene (its main scene where none is named) with its <c>--run-tests</c> argument,

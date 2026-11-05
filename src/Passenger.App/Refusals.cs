@@ -165,6 +165,10 @@ public static class Refusals
     public static string GoDotTestNeverRuns(string game) =>
         $"{game} never runs its GoDotTest tests: no scene of it calls GoTest.RunTests, neither its main scene nor a test scene (GoDotTest's README makes one in {Testing.GoDotTests.TestFolder}), so Godot is not started for them";
 
+    /// <summary>A test chosen of one of the classes GoDotTest cannot tell apart (<see cref="Testing.GoDotTests.Alike"/>).</summary>
+    public static string GoDotTestAlike(string suite, IReadOnlyList<string> classes) =>
+        $"Not run: GoDotTest knows {Plural.Listed(classes)} by one name ({suite}), so it can run neither alone. Rename one, or choose all of their tests together";
+
     /// <summary>A game's GoDotTest tests asked to run where they cannot start (<see cref="Testing.GoDotTests.Start"/>): no
     /// scene runs them, or the scene its run settings name is not the game's or runs none; null where they can.</summary>
     public static string? GoDotTestStart(string game, Testing.GoDotTests.Start start)
