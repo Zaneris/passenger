@@ -80,6 +80,18 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         IdeErrors.Observe(TypeAsync(document));
     }
 
+    /// <summary>The exports a scene's script gives a node, its own and those of the scripts it extends, read from its text as
+    /// it stands against the project.</summary>
+    public async Task<IReadOnlyList<GodotScriptExport>> ExportsAsync(GodotScenes scenes, string res, string text)
+    {
+        GodotEngineApi? api = await apis.ApiAsync();
+        return await BackgroundWork.Run(() =>
+        {
+            GDScriptTree tree = GDScriptTree.Parse(text);
+            return GDScriptExports.Of(tree, res, ProjectOf(scenes, api, res, tree, null));
+        });
+    }
+
     /// <summary>Who marks an open file, as an agent is told while the check is under way; null for one this takes no part in.</summary>
     public string? CheckOf(OpenDocument document) => documents.ContainsKey(document) ? Checker : null;
 

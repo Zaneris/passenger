@@ -219,8 +219,8 @@ public sealed class GodotSceneValues(string path, string node, string name, stri
         }
         foreach (GodotScriptExport export in exports.Where(e => listed.Add(e.Name)))
         {
-            declared.Add((new GodotProperty(export.Name, (GodotType)export.Type, export.Hint, export.HintString, 6, null, script ?? "Script"),
-                export.Default, $"Default of {script ?? "its script"}"));
+            declared.Add((new GodotProperty(export.Name, (GodotType)export.Type, export.Hint, export.HintString, 6, null, export.Inherited ?? script ?? "Script"),
+                export.Default, $"Default of {export.Inherited ?? script ?? "its script"}"));
         }
         if (type is not null && classes is not null)
         {

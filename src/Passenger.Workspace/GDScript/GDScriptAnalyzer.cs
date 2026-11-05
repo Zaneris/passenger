@@ -18,6 +18,7 @@ public sealed partial class GDScriptAnalyzer
     private readonly GDScriptProject project;
     private readonly Dictionary<GDScriptNode, GDScriptType> memberTypes = [];
     private readonly HashSet<GDScriptNode> resolving = [];
+    private readonly Dictionary<GDScriptEnum, (Dictionary<string, long> Values, bool Partial)> enumValues = [];
 
     /// <summary>Each inline setter's parameter's property, whose type it is given.</summary>
     private readonly Dictionary<GDScriptParameter, GDScriptVariable> setterProperties = [];
@@ -263,7 +264,7 @@ public sealed partial class GDScriptAnalyzer
     // Classes and their members.
 
     /// <summary>The members a class declares itself, each with the offset its positions count from.</summary>
-    private IEnumerable<(GDScriptNode Node, int Offset)> OwnMembers(GDScriptType type)
+    internal IEnumerable<(GDScriptNode Node, int Offset)> OwnMembers(GDScriptType type)
     {
         if (type.Class is not { } node || type.Script is not { } path)
         {
@@ -393,26 +394,38 @@ public sealed partial class GDScriptAnalyzer
 
     private GDScriptType EnumType(GDScriptEnum node, GDScriptType owner, bool meta)
     {
-        Dictionary<string, long> values = new(StringComparer.Ordinal);
-        long next = 0;
-        bool partial = false;
-        foreach ((GDScriptIdentifier name, GDScriptExpression? value) in node.Values)
-        {
-            long? written = value switch
-            {
-                null => next,
-                GDScriptLiteral { Value: long given } => given,
-                GDScriptUnary { Operator: GDScriptTokenKind.Minus, Operand: GDScriptLiteral { Value: long negated } } => -negated,
-                _ => null,
-            };
-            partial |= written is null;
-            next = written ?? next;
-            values[name.Name] = next++;
-        }
+        (Dictionary<string, long> values, bool partial) = EnumValues(node, owner);
         return new GDScriptType(GDScriptTypeKind.Enum, node.Identifier?.Name ?? AnonymousEnum)
         {
             Values = values, ValuesPartial = partial, Owner = Fqcn(owner), Script = owner.Script, Meta = meta, Class = owner.Class, Offset = owner.Offset,
         };
+    }
+
+    /// <summary>An enum's values as Godot gives them, each what it writes (<see cref="IntegerValue"/>) else one past the last,
+    /// and whether one is only partly known: written as what only Godot can fold, or reaching its own enum.</summary>
+    private (Dictionary<string, long> Values, bool Partial) EnumValues(GDScriptEnum node, GDScriptType owner)
+    {
+        if (enumValues.TryGetValue(node, out (Dictionary<string, long> Values, bool Partial) kept))
+        {
+            return kept;
+        }
+        bool entered = resolving.Add(node);
+        Dictionary<string, long> values = new(StringComparer.Ordinal);
+        long next = 0;
+        bool partial = !entered;
+        foreach ((GDScriptIdentifier name, GDScriptExpression? value) in node.Values)
+        {
+            long? written = value is null ? next : entered ? IntegerValue(value, owner, values) : null;
+            partial |= written is null;
+            next = written ?? next;
+            values[name.Name] = next++;
+        }
+        if (entered)
+        {
+            resolving.Remove(node);
+            enumValues[node] = (values, partial);
+        }
+        return (values, partial);
     }
 
     /// <summary>A class's fully qualified name as Godot's parser gives it (its fqcn): its script's path, then each class it
@@ -426,6 +439,14 @@ public sealed partial class GDScriptAnalyzer
         List<GDScriptType> enclosing = Enclosing(ScriptClass(tree, path), tree.Members.Select(m => (m.Node, m.Offset)), node);
         return string.Concat([path, .. enclosing.Skip(1).Select(c => "::" + c.Name), "::", owner.Name]);
     }
+
+    /// <summary>The type a class's member writes, read in the class's scope.</summary>
+    internal GDScriptType TypeWritten(GDScriptTypeNode written, GDScriptType owner, int offset) =>
+        ResolveType(written, new Context(new GDScriptAnalysis(null, owner.Script ?? string.Empty), owner.Instance, offset, null, null));
+
+    /// <summary>The enum a name stands for in a class's scope, its own, one it inherits or an outer class's; null for none.</summary>
+    internal GDScriptType? EnumNamed(string name, GDScriptType scope) =>
+        ScopeClasses(scope).Select(c => OwnEnum(c, name)).FirstOrDefault(e => e is not null) ?? (Member(scope, name) is { Kind: "enum" } inherited ? inherited.Type : null);
 
     /// <summary>A member a type has by a name: its own, then its base classes' (script classes, then the engine's); null for none.</summary>
     public GDScriptMemberInfo? Member(GDScriptType type, string name)

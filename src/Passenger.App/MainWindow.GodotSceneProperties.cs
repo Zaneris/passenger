@@ -62,7 +62,7 @@ public partial class MainWindow
         }
         else if (script is not null && script.EndsWith(".gd", StringComparison.Ordinal) && scenes.FileOf(script) is { } gdscript && Editors.TextOf(gdscript)?.ToString() is { } source)
         {
-            exports = await BackgroundWork.Run(() => GDScriptExports.Of(source));
+            exports = await session.GodotScriptTypes.ExportsAsync(scenes, script, source);
         }
         if (asked != sceneNodeAsked)
         {
