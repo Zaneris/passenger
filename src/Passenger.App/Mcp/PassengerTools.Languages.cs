@@ -292,7 +292,7 @@ public sealed partial class PassengerTools
         {
             return $"{newName} is its name already";
         }
-        if (await window.Assist.Languages.Xaml.XamlRenameAsync(xaml.Document.Path, named.Value, newName) is not { } renamed)
+        if (await window.Assist.Languages.Xaml.XamlRenameAsync(xaml.Document.Path, named.Value, newName, patience) is not { } renamed)
         {
             throw new InvalidOperationException($"{Path.GetFileName(xaml.Document.Path)} is no longer XAML Passenger reads");
         }

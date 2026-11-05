@@ -1,6 +1,7 @@
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Lsp;
+using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App.CSharp;
@@ -51,6 +52,7 @@ public sealed class ServerWatches : IDisposable
         watched = server.WatchedFiles;
         this.folder = folder;
         watched.Changed += OnRegistered;
+        FileText.Writing += OnWriting;
         Refresh();
     }
 
@@ -118,6 +120,7 @@ public sealed class ServerWatches : IDisposable
     public void Dispose()
     {
         watched.Changed -= OnRegistered;
+        FileText.Writing -= OnWriting;
         List<Watched> stopped;
         lock (gate)
         {
@@ -129,6 +132,22 @@ public sealed class ServerWatches : IDisposable
     }
 
     private void OnRegistered(object? sender, EventArgs e) => Refresh();
+
+    /// <summary>A file of the open folder Passenger is saving is kept as changing from now, on whatever thread saves it: a
+    /// command asked before the folder's watcher hears of the save still waits for the server to read it.</summary>
+    private void OnWriting(string path)
+    {
+        string? open;
+        lock (gate)
+        {
+            open = folder;
+        }
+        string saved = PathNames.Canonical(path);
+        if (open is not null && PathNames.IsUnder(saved, open))
+        {
+            watched.Hearing([saved]);
+        }
+    }
 
     /// <summary>What changed in a folder, each file told as made, changed or gone; with changes lost there, every other file
     /// in it (and in the folders under it when <paramref name="recursive"/>, but those <paramref name="passedOver"/> names)

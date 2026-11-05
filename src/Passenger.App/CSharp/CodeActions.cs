@@ -501,6 +501,31 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
     }
 
+    /// <summary>Writes in the IDE's log a rename the server answered with nothing, none of its files known to be behind: where
+    /// it says the name is declared, and each file of its solution written in the last minute, how long before the
+    /// request, and whether it holds the file as the disk has it.</summary>
+    private async Task NoteNothingToRenameAsync(string name, IReadOnlyList<LspLocation> definitions, Asked asked)
+    {
+        if (context.CSharp?.Session is not { } session)
+        {
+            return;
+        }
+        string files;
+        try
+        {
+            WrittenLately lately = await session.WrittenSinceAsync(asked.Since - TimeSpan.FromMinutes(1));
+            IReadOnlyList<Roslyn.Extension.TextHeld> held = await session.HeldTextsAsync([.. lately.Written.Select(w => w.Path)]);
+            // Each file read off the window's thread, as files of any size may have been written.
+            files = await BackgroundWork.Run(() => string.Join("; ", held.Select(t => $"{Path.GetFileName(t.Path)} {(asked.Since - File.GetLastWriteTimeUtc(t.Path)).TotalSeconds:0.00} s before, "
+                + (t.Hash is { } hash && HeldTexts.OnDisk(t.Path, hash) == true ? "held as on disk" : "held otherwise"))));
+        }
+        catch (LanguageServerFailed failed)
+        {
+            files = failed.Reason;
+        }
+        IdeLog.Write(IdeLog.Ide, $"Rename of {name}: the language server renames nothing there, declaring it at [{string.Join(", ", definitions.Select(d => d.Uri))}]; written lately: {files}");
+    }
+
     /// <summary>A name renamed from a place held on it (<see cref="HeldAt"/>), the server asked where the place is then.</summary>
     private async Task<RefactorOutcome> RenameSymbolAsync(OpenDocument document, Anchor at, string name, bool renameFiles, Patience? patience)
     {
@@ -519,11 +544,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             return twice is not null ? RefactorOutcome.Refused($"Rename was not applied: {twice}") : await RenameInScriptAsync(script, memberAt, name, patience);
         }
         // A named element's field is made from its XAML, so it is renamed as the element is, there and in the code-behind.
-        if (document.Language == Languages.Language.CSharp
-            && await context.Languages.Xaml.NamedElementOfAsync(document, await context.Now(document).DefinitionAsync(at.Offset), at.Offset) is { Path: { } elementFile } element)
+        IReadOnlyList<LspLocation> definitions = document.Language == Languages.Language.CSharp ? await context.Now(document).DefinitionAsync(at.Offset) : [];
+        if (document.Language == Languages.Language.CSharp && await context.Languages.Xaml.NamedElementOfAsync(document, definitions, at.Offset) is { Path: { } elementFile } element)
         {
             return element.Name == name ? new RefactorOutcome($"{name} is its name already", null, [], [])
-                : await context.Languages.Xaml.XamlRenameAsync(elementFile, element.Name, name) ?? RefactorOutcome.Refused($"{Path.GetFileName(elementFile)} is not XAML Passenger reads");
+                : await context.Languages.Xaml.XamlRenameAsync(elementFile, element.Name, name, patience) ?? RefactorOutcome.Refused($"{Path.GetFileName(elementFile)} is not XAML Passenger reads");
         }
         // A component's file at its start is the class Razor makes of it, which the server takes in the C# made of the file.
         TypeRename.Component? component = context.WebOf(document) is null
@@ -558,8 +583,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         if (renamed is not { } edit)
         {
             // Asked a moment after a file it reads from disk was written (a XAML file making a field), the server may not know the name yet.
-            return await StaleAsync(document, NoEdit, asked, patience) is { } unread ? RefactorOutcome.Refused($"Rename was not applied: {unread}")
-                : new RefactorOutcome("This can't be renamed", null, [], []);
+            if (await StaleAsync(document, NoEdit, asked, patience) is { } unread)
+            {
+                return RefactorOutcome.Refused($"Rename was not applied: {unread}");
+            }
+            await NoteNothingToRenameAsync(old, definitions, asked);
+            return new RefactorOutcome("This can't be renamed", null, [], []);
         }
         TypeRename.Markup markup = type is null ? new([], null) : await TypeRename.MarkupAsync(context.Xaml?.Invoke(), type, name, renameFiles);
         NamedSymbol? symbol = component is null && document.Language == Languages.Language.CSharp ? godot?.Symbol ?? await context.Now(document).SymbolAtAsync(at.Offset) : null;

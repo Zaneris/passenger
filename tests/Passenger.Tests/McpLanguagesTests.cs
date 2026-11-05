@@ -111,9 +111,13 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         // The element's field renamed from the code-behind renames the element.
         string fromCode = (await Call(client, McpTools.Rename, new(At(File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml.cs")), "MainWindow.axaml.cs", "        Sta"))
             { ["newName"] = "Begin" })).GetString()!;
-        Assert.Equal("Renamed in 2 files: MainWindow.axaml, MainWindow.axaml.cs", fromCode);
+        Assert.True(fromCode == "Renamed in 2 files: MainWindow.axaml, MainWindow.axaml.cs", $"The field's rename from the code-behind, a moment after the element's, said: {fromCode}{Said()}");
         Assert.Contains("Begin.Content = \"Start\";", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml.cs")), StringComparison.Ordinal);
         Assert.Contains("<Button Name=\"Begin\"", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml")), StringComparison.Ordinal);
+        // The element renamed at once from its XAML, the server yet to read what was just written there: its field's uses still follow.
+        string atOnce = (await Call(client, McpTools.Rename, new(At(File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml")), "MainWindow.axaml", "Name=\"Beg")) { ["newName"] = "Go" })).GetString()!;
+        Assert.True(atOnce == "Renamed Begin to Go in 2 files: MainWindow.axaml, MainWindow.axaml.cs" && File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml.cs")).Contains("Go.Content = \"Start\";", StringComparison.Ordinal),
+            $"The element's rename a moment after the field's said {atOnce}, leaving the code-behind:\n{File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml.cs"))}");
         // A bound property renamed by its name takes the window's binding along.
         string followed = (await Call(client, McpTools.Rename, new() { ["symbol"] = "MainViewModel.Greeting", ["newName"] = "Salutation" })).GetString()!;
         Assert.True(followed.StartsWith("Renamed in 2 files: ", StringComparison.Ordinal)

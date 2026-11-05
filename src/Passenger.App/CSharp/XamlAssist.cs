@@ -720,9 +720,16 @@ internal sealed partial class XamlAssist : LanguageAssist
                 {
                     return;
                 }
-                if (await XamlRenameAsync(xaml.Document.Path, old, name) is { } renamed)
+                try
                 {
-                    context.Say(renamed.Problem ?? renamed.Said);
+                    if (await context.PatientlyAsync(AppActions.Rename, patience => XamlRenameAsync(xaml.Document.Path, old, name, patience), made => made?.Problem is not null) is { } renamed)
+                    {
+                        context.Say(renamed.Problem ?? renamed.Said);
+                    }
+                }
+                catch (LanguageServerFailed failed)
+                {
+                    context.Failed("Rename", failed);
                 }
             });
             return;
@@ -803,8 +810,9 @@ internal sealed partial class XamlAssist : LanguageAssist
     /// <summary>An element's name renamed where its XAML file (<paramref name="path"/>, open or not) names it and where its
     /// code-behind uses its field, as one command undone whole: the files it changed, once written, and the words for it;
     /// refused where the name cannot be the field's (a C# keyword, another element's of its name scope, or what the
-    /// code-behind's class declares) or a file could not be written; null when the project's XAML is not read.</summary>
-    internal async Task<RefactorOutcome?> XamlRenameAsync(string path, string old, string name)
+    /// code-behind's class declares), a file could not be written, or the server the <paramref name="patience"/> waits for
+    /// may not know the field's uses yet; null when the project's XAML is not read.</summary>
+    internal async Task<RefactorOutcome?> XamlRenameAsync(string path, string old, string name, Patience? patience)
     {
         if (!Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name))
         {
@@ -839,6 +847,11 @@ internal sealed partial class XamlAssist : LanguageAssist
             Add(Location(file.Path, read, use.Start, use.End), null);
         }
         (IReadOnlyList<LspLocation> behind, int? answered) = await CodeBehindUses(file, old);
+        // A server that has yet to read the XAML knows no field of this name, and so no use of it.
+        if (behind.Count == 0 && await Unread(asked, patience) is { } unread)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {unread}");
+        }
         foreach (LspLocation use in behind)
         {
             Add(use, answered);
@@ -865,6 +878,14 @@ internal sealed partial class XamlAssist : LanguageAssist
             : files > 1 ? $"Renamed in {files} files" : "Renamed", null, [.. changes.Keys.Select(DocumentUris.ToPath)
                 .Where(p => !(context.Editors.Find(p) is { } open && dropped.Contains(open.Name))).Select(p => new RefactoredFile(p, "changed", []))], dropped);
     }
+
+    /// <summary>Why the C# server's word that it knows nothing may be from files as they were (<see cref="WorkspaceEdits.StaleAsync"/>);
+    /// null with no server, or none of its files behind.</summary>
+    private Task<string?> Unread(Asked asked, Patience? patience) => context.CSharp?.Session is { } session
+        ? WorkspaceEdits.StaleAsync(context.Editors, paths => session.HeldTextsAsync(paths), NoEdit, asked.Since, patience, elsewhere: after => session.WrittenSinceAsync(after))
+        : Task.FromResult<string?>(null);
+
+    private static readonly JsonElement NoEdit = JsonSerializer.SerializeToElement(new { });
 
     /// <summary>Show Context Actions in XAML: the fixes of the problems on the caret's line, the file checked as it stands,
     /// then the refactorings there; Refactor This (<paramref name="refactor"/>): Rename where a name is, then those.</summary>

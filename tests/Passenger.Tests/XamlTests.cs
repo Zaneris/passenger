@@ -1754,6 +1754,69 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A XAML file saved, which the language server reads from disk, is kept as changing from its save, before the
+    /// folder's watcher can tell of it: a command asked past the moment after the write still waits for the server to read
+    /// it, however late the watcher's word comes on a loaded machine.</summary>
+    [AvaloniaFact]
+    public void A_xaml_file_saved_is_kept_for_the_language_server_to_read_before_the_folders_watcher_tells_of_it()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        OpenDocument view = window.EditorArea.Active!;
+        Ui.Settle();
+        Passenger.Lsp.WatchedFiles watched = window.CSharpService!.Session!.Server.WatchedFiles;
+        Replace(window.EditorArea.CodeEditor, "Content=\"Go\"", "Content=\"Begin\"");
+        long before = watched.Changing().AsOf;
+        // No turn of the window's loop between the save and the look: the watcher's word comes by one.
+        Assert.True(window.EditorArea.Save(view), "The XAML file was not saved");
+        (IReadOnlyList<string> changing, long asOf) = watched.Changing();
+        Assert.True(asOf > before && changing.Any(p => PathNames.Same(p, view.Path)),
+            $"The save was not kept for the server to read until the folder's watcher told of it, so a command asked past the moment after the write takes nothing for behind: {string.Join(", ", changing)}");
+        window.Close();
+    }
+
+    /// <summary>Rename on an element's name in its XAML a moment after the XAML was written, the language server not yet told
+    /// of it and so knowing no field of that name: the rename waits for the server, rather than leave the code-behind's uses
+    /// of the field under the old name, then renames both.</summary>
+    [AvaloniaFact]
+    public void An_elements_rename_in_its_xaml_a_moment_after_the_xaml_was_written_waits_for_the_server_and_renames_the_code_behinds_uses()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
+        OpenDocument behind = window.EditorArea.Active!;
+        Ui.Settle();
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        TaskCompletionSource told = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNext(Passenger.Lsp.LspMethods.DidChangeWatchedFiles,
+            p => System.Text.Json.JsonSerializer.Serialize(p).Contains("MainWindow.axaml\"", StringComparison.Ordinal), told.Task);
+        try
+        {
+            TestFolders.Write(app.Folder, "MainWindow.axaml", Gallery.Window.Replace("Name=\"Go\"", "Name=\"Start\"", StringComparison.Ordinal).Replace("#Go.", "#Start.", StringComparison.Ordinal));
+            Replace(window.EditorArea.CodeEditor, "Go.Content", "Start.Content");
+            window.OpenFile(app.PathOf("MainWindow.axaml"));
+            Ui.WaitFor(() => window.EditorArea.Active?.Text.Snapshot.ToString().Contains("Name=\"Start\"", StringComparison.Ordinal) == true, "the XAML as it was written, open");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "<Button Name=\"St");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "Start", "the rename box on the button's name");
+            window.KeyTextInput("Begin");
+            Ui.Press(window, "ENTER", settle: false);
+            TimeSpan within = Passenger.App.CSharp.Patience.Limit;
+            Assert.True(Ui.Pumped(() => window.Status?.StartsWith("Waiting for the language server to read MainWindow.axaml", StringComparison.Ordinal) == true, within),
+                $"Within {within.Scaled().TotalSeconds:0} s the rename did not say it waits for the language server to read the XAML written a moment before, "
+                + $"which knows no field of that name, so none of its uses ({(held.IsCompleted ? "the XAML's change was held unsent to the server" : "the watcher had not told the server of the XAML's change")}): "
+                + $"the status says {window.Status}");
+        }
+        finally
+        {
+            told.TrySetResult();
+        }
+        Ui.WaitFor(() => window.Status?.Contains("ename", StringComparison.Ordinal) == true, () => $"the rename's word, the status saying {window.Status}");
+        Ui.Settle();
+        OpenDocument view = window.EditorArea.Active!;
+        Assert.True(window.Status == "Renamed in 2 files" && behind.Text.Snapshot.ToString() == Gallery.CodeBehind.Replace("Go.Content", "Begin.Content", StringComparison.Ordinal)
+            && view.Text.Snapshot.ToString() == Gallery.Window.Replace("Name=\"Go\"", "Name=\"Begin\"", StringComparison.Ordinal).Replace("#Go.", "#Begin.", StringComparison.Ordinal),
+            $"The element's rename said {window.Status}, leaving the code-behind\n{behind.Text.Snapshot}\nand the XAML\n{view.Text.Snapshot}");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_key_one_theme_variant_lacks_is_warned_of_where_defined_and_used_and_the_fix_adds_it_to_that_variant()
     {
