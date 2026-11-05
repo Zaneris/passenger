@@ -299,14 +299,19 @@ public partial class MainWindow
     /// Passenger at its start as a malformed flag does.</summary>
     public Task<string?> StartedRun { get; private set; } = Task.FromResult<string?>(null);
 
+    /// <summary>Why the start the command line's <c>--run</c> or <c>--debug</c> handed over came to nothing (its build failed,
+    /// its program did not start), which the log and standard error say beside what a person's Run says; the window stays
+    /// open on it. Null where it runs, or with neither given.</summary>
+    public string? NotStarted { get; private set; }
+
     private static async Task<string?> StartOnceBegunAsync(Task<MainWindow> begun, ConfigurationStart start) =>
         await (await begun).StartConfigurationAsync(start);
 
     /// <summary>Runs or debugs a configuration through Run's or Debug's action, as the person's key runs it, once the
     /// folder's run configurations are made from its projects as MSBuild evaluated them: the one named chosen first, as the
     /// toolbar's menu chooses it. Null once the action ran and handed its start over, its build, console and Game pane the
-    /// person's Run's (a failed build said as theirs is); else why not: no folder open, a name none of the folder's
-    /// configurations has (those it has listed), or why the action is greyed.</summary>
+    /// person's Run's, one that came to nothing said as theirs is and in <see cref="NotStarted"/>; else why not: no folder
+    /// open, a name none of the folder's configurations has (those it has listed), or why the action is greyed.</summary>
     public async Task<string?> StartConfigurationAsync(ConfigurationStart start)
     {
         UiThread.Check();
@@ -346,9 +351,14 @@ public partial class MainWindow
         }
         if (why is not null)
         {
-            return $"{start.Flag}: {configurations.Chosen?.Name ?? shown} cannot {start.Verb}: {why}";
+            return start.Cannot(configurations.Chosen?.Name ?? shown, why);
         }
         await heard.DoneAsync(CancellationToken.None);
+        if (heard.Outcome is { Failed: true, Said: { } failed })
+        {
+            NotStarted = start.Cannot(configurations.Chosen?.Name ?? shown, failed, reading.Problems.Find(p => p.Severity == ProblemSeverity.Error) is { } first ? $"{first.Where}: {first.Message}" : null);
+            Program.SayNotStarted(NotStarted);
+        }
         return null;
     }
 

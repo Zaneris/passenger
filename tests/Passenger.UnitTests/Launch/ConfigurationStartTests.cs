@@ -43,6 +43,14 @@ public class ConfigurationStartTests
     }
 
     [Fact]
+    public void A_start_that_came_to_nothing_says_why_and_a_failed_builds_first_error()
+    {
+        Assert.Equal("--run: Greenhouse cannot run: Build failed: 1 error, 0 warnings; Problems lists them (Greenhouse.cs:8:5: Invalid token)",
+            new ConfigurationStart("Greenhouse", Debug: false).Cannot("Greenhouse", "Build failed: 1 error, 0 warnings; Problems lists them", "Greenhouse.cs:8:5: Invalid token"));
+        Assert.Equal("--debug: Hello cannot debug: it has ended", new ConfigurationStart(null, Debug: true).Cannot("Hello", "it has ended"));
+    }
+
+    [Fact]
     public void A_name_no_configuration_has_is_refused_listing_the_folders_configurations()
     {
         string? why = new ConfigurationStart("Nope", Debug: false).WhyNot("hello", ["Hello", "Hello: https", "Worker"]);

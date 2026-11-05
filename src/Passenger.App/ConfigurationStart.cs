@@ -19,6 +19,11 @@ public sealed record ConfigurationStart(string? Name, bool Debug)
     public string NoFolder =>
         $"{Flag} starts a run configuration of the folder Passenger opens, and none is given: passenger FOLDER {Flag} [NAME], the folder first";
 
+    /// <summary>Why a configuration (by its name) did not start: greyed, or begun and come to nothing; a failed build's first
+    /// error beside its count, for a log or a shell that shows no Problems window.</summary>
+    public string Cannot(string configuration, string why, string? firstError = null) =>
+        $"{Flag}: {configuration} cannot {Verb}: {why}{(firstError is null ? string.Empty : $" ({firstError})")}";
+
     /// <summary>The start a <c>--run</c> or <c>--debug</c> at <paramref name="at"/> asks for, its name the word after it
     /// unless that is another flag or empty, which <paramref name="at"/> then moves past.</summary>
     public static ConfigurationStart Read(IReadOnlyList<string> args, ref int at)

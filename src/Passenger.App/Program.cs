@@ -148,10 +148,16 @@ internal static class Program
     {
         if (await window.StartedRun is { } refused)
         {
-            IdeErrors.Write($"Launch: {refused}");
-            Console.Error.WriteLine($"passenger: {refused}");
+            SayNotStarted(refused);
             end(2);
         }
+    }
+
+    /// <summary>Says in the log and on standard error why what the command line asked to start did not.</summary>
+    public static void SayNotStarted(string why)
+    {
+        IdeErrors.Write($"Launch: {why}");
+        Console.Error.WriteLine($"passenger: {why}");
     }
 
     /// <summary>The theme, its dark or light and the code's colours the command line names, over those in force.</summary>

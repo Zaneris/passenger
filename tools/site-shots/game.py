@@ -59,6 +59,15 @@ def logged(text):
     return False
 
 
+def refused():
+    """The line of the IDE's log saying why --run did not start the game, if it has said."""
+    path = os.path.join(logs, "passenger.log")
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return next((line.strip() for line in f if " Launch: " in line), None)
+    return None
+
+
 # The folder's state as a person's window keeps it: Explorer closed, Game open beside the code, the game drawn in it.
 workspace = os.path.join(state, "workspaces", f"{os.path.basename(folder)}-{hashlib.sha256(folder.encode()).hexdigest()[:12]}")
 write(os.path.join(workspace, "layout.json"), {"version": 1, "windows": {
@@ -83,6 +92,8 @@ for theme in themes:
             for _ in range(1200):
                 if ide.poll() is not None:
                     fail(f"Passenger ended with exit code {ide.returncode} before the game drew (passenger-{theme}.log)")
+                if said := refused():
+                    fail(said)
                 shown = shown or window(ide.pid, "id")
                 if shown and logged(DRAWN):
                     break

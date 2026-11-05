@@ -252,7 +252,7 @@ public static class Screenshot
         {
             throw new StepRefused($"{start.Flag}: {starting.Exception!.GetBaseException().Message}");
         }
-        return starting.IsCompletedSuccessfully && starting.Result is { } refused ? throw new StepRefused(refused) : settled;
+        return starting.IsCompletedSuccessfully && (starting.Result ?? window.NotStarted) is { } refused ? throw new StepRefused(refused) : settled;
     }
 
     /// <summary>A step the window cannot take as asked, which ends the screenshot with exit code 2 and why.</summary>

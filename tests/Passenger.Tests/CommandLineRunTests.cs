@@ -62,6 +62,35 @@ public sealed class CommandLineRunTests : IClassFixture<RestoredFolders>, IDispo
         }
     }
 
+    /// <summary>A configuration that can't build leaves the window open on its failure, as a person's Run does, its status bar
+    /// and Problems saying so, and says why in the log too, its first error named, for whoever started it from a shell or a
+    /// script that sees no window: nothing waits in silence for a run that will never come.</summary>
+    [AvaloniaFact]
+    public void Run_of_a_configuration_that_cannot_build_says_why_in_the_log_and_the_window_and_runs_nothing()
+    {
+        File.WriteAllText(Path.Combine(folder, "Program.cs"), "manConsole.WriteLine(\"Hello from --run\");\n");
+        MainWindow window = Start([folder, "--run", "Hello"]);
+        try
+        {
+            string? refused = Ui.Await(window.StartedRun, "--run's answer, once its build ended", TimeSpan.FromMinutes(2));
+            Ui.Settle();
+
+            Assert.True(refused is null, $"A failed build ends a person's Run with its window open, its errors to fix; --run came to: {refused}");
+            string said = window.NotStarted ?? string.Empty;
+            Assert.True(said.StartsWith("--run: Hello cannot run: Build failed: 1 error", StringComparison.Ordinal) && said.Contains("Program.cs:1:", StringComparison.Ordinal),
+                $"--run was to say the build's failure and its first error; it says: {said}");
+            Assert.True(window.Status?.StartsWith("Build failed", StringComparison.Ordinal) == true, $"The window was to say the build failed; its status says: {window.Status}");
+            IdeLog.Flush();
+            string log = Ui.Shared(IdeLog.PathOf(IdeLog.Ide));
+            Assert.True(log.Contains($"Launch: {said}", StringComparison.Ordinal), $"The log was to say why the run never came:\n{log}");
+            Assert.True(!window.IsRunning && !Output(window).Contains("Process finished", StringComparison.Ordinal), $"--run ran something with no build: {Output(window)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A person's window started as Passenger's command line starts it, with no language server, which Run needs none of.</summary>
     private static MainWindow Start(IReadOnlyList<string> args)
     {

@@ -1855,6 +1855,7 @@ public sealed partial class BuildRunController
             UnfollowWatched();
             parts.Views.Run.SetRunning(false);
             RunningChanged?.Invoke(this, EventArgs.Empty);
+            ActionWork.Tell(false, problem);
             parts.Say(problem);
         }
         else
@@ -1864,10 +1865,11 @@ public sealed partial class BuildRunController
         return problem;
     }
 
-    /// <summary>Says why a launch did not happen, unless its folder has ended (the window says the next one's then), and gives
-    /// it back.</summary>
+    /// <summary>Says why a launch did not happen, unless its folder has ended (the window says the next one's then), tells it
+    /// to the action heard in its flow, and gives it back.</summary>
     private string Said(string problem)
     {
+        ActionWork.Tell(false, problem);
         if (!session.IsEnded)
         {
             parts.Say(problem);
