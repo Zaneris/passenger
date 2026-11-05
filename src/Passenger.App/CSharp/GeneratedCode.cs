@@ -9,9 +9,10 @@ namespace Passenger.App.CSharp;
 
 /// <summary>The code source generators made, where Go to Declaration, Find Usages, the hierarchies and an agent's places
 /// lead into it: each document copied from the C# server under the state's cache (<see cref="Folder"/>), named by its hint
-/// name, shown read-only and never given to the server as a file of its own. While a copy's tab is open its text is taken
-/// from the server again as what it is made from changes, and its banner says when no generator makes it now, or when it
-/// was copied in an earlier run and is no longer followed. A UI-thread object.</summary>
+/// name, shown read-only and never given to the server as a file of its own: what is asked at a place in it names the
+/// server's document (<see cref="AskableAsync"/>). While a copy's tab is open its text is taken from the server again as
+/// what it is made from changes, and its banner says when no generator makes it now, or when it was copied in an earlier
+/// run and is no longer followed. A UI-thread object.</summary>
 public sealed class GeneratedCode
 {
     /// <summary>How long after a change the open copies are asked for again.</summary>
@@ -91,6 +92,34 @@ public sealed class GeneratedCode
         return [.. places.Select(p => copies.TryGetValue(p.Uri, out string? copy) ? p with { Uri = copy } : p)];
     }
 
+    /// <summary>A copy as the document the server has now, to ask about (<see cref="RoslynSession.Unopened"/>), else why it
+    /// can't be asked. The copy takes the server's text first, so a place in it is a place in that document.</summary>
+    public async Task<(LspDocument? Lsp, string? Why)> AskableAsync(OpenDocument copy, CancellationToken cancel = default)
+    {
+        UiThread.Check();
+        string unanswered = Refusals.Generated(copy.Name, OriginOf(copy.Path));
+        if (server() is not { } session || session.Server.ExtensionProblem is not null)
+        {
+            return (null, unanswered);
+        }
+        return await MadeAsync(session, copy.Path, cancel) is not { } made ? (null, Refusals.GeneratedNoLonger(copy.Name))
+            : await TakeAsync(made) is null ? (null, unanswered)
+            : (session.Unopened(made.Uri, copy.Text), null);
+    }
+
+    /// <summary>What the server holds of a copy now, null where no generator makes it: one of this run's by the document it
+    /// came from, an earlier run's by the place each document of its project and name would be copied to.</summary>
+    private async Task<Extension.GeneratedText?> MadeAsync(RoslynSession session, string copy, CancellationToken cancel)
+    {
+        if (sources.TryGetValue(copy, out Source? source))
+        {
+            return (await session.GeneratedAsync([source.Asked], cancel))?[0];
+        }
+        IReadOnlyList<Extension.GeneratedText?> named = GeneratedCopies.ProjectNameOf(Folder, copy) is { } project
+            ? await session.GeneratedNamedAsync(project, Path.GetFileName(copy), cancel) ?? [] : [];
+        return named.FirstOrDefault(made => made is not null && PathNames.Same(PlaceOf(made), copy));
+    }
+
     /// <summary>A copy opened in a tab, followed while it is open.</summary>
     public void Opened(OpenDocument document)
     {
@@ -153,7 +182,7 @@ public sealed class GeneratedCode
             }
             else if (open.Contains(followed[i]))
             {
-                followed[i].Notice = $"No generator makes {followed[i].Name} now: shown as it was last made";
+                followed[i].Notice = Refusals.GeneratedNoLonger(followed[i].Name);
             }
         }
     }
@@ -162,7 +191,7 @@ public sealed class GeneratedCode
     /// (another window's write of it too); the copy's path, or null when it could not be written.</summary>
     private async Task<string?> TakeAsync(Extension.GeneratedText made)
     {
-        string copy = GeneratedCopies.PlaceOf(Folder, made.ProjectPath, made.ProjectName, made.Generator, DocumentUris.GeneratedName(made.Uri) ?? "generated.cs");
+        string copy = PlaceOf(made);
         bool? written = await BackgroundWork.Run(() => Write(copy, made.Text));
         if (written is null)
         {
@@ -183,6 +212,10 @@ public sealed class GeneratedCode
         }
         return copy;
     }
+
+    /// <summary>Where a generator's document is copied.</summary>
+    private static string PlaceOf(Extension.GeneratedText made) =>
+        GeneratedCopies.PlaceOf(Folder, made.ProjectPath, made.ProjectName, made.Generator, DocumentUris.GeneratedName(made.Uri) ?? "generated.cs");
 
     /// <summary>Writes a copy's text unless the copy holds it already: whether it wrote, or null when it could not.</summary>
     private static bool? Write(string copy, string text)

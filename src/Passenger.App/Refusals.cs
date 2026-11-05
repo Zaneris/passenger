@@ -286,9 +286,13 @@ public static class Refusals
     public static string HeldInGodot(string held) => $"{held}, which only the person may choose to write over: save it in Godot first";
 
     /// <summary>A source generator's code copied to read (<see cref="CSharp.GeneratedCode"/>), which the C# language server
-    /// answers nothing in, with what made it and for which project where known (<see cref="CSharp.GeneratedCode.OriginOf"/>).</summary>
+    /// holds no file of, with what made it and for which project where known (<see cref="CSharp.GeneratedCode.OriginOf"/>).</summary>
     public static string Generated(string name, string? origin = null) =>
         $"{name} is a source generator's code{(origin is null ? string.Empty : $", {origin},")} copied to read: the C# language server answers in the code it is made from";
+
+    /// <summary>A copy of a source generator's code whose document the C# language server no longer has, shown as it was
+    /// last made.</summary>
+    public static string GeneratedNoLonger(string name) => $"No generator makes {name} now: shown as it was last made";
 
     /// <summary>A file whose grammar has yet to read it whole, so the lines inside its strings are not yet known.</summary>
     public static string ReadingStrings(string name) => $"{name} is still being read, to tell the lines inside its strings";

@@ -273,6 +273,49 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             $"outline of the generator's code copied is not what its text declares, Word() on line {line}:\n{outline}");
     }
 
+    /// <summary>hierarchy at a place in a source generator's code copied, where usages and definition led the agent, answers
+    /// as in the code it is made from, the server asked of its own document: the regex generator's half of a partial method
+    /// has that method's callers and what its body calls, and the JSON generator's half of a class what derives from it.</summary>
+    [Fact]
+    public async Task An_agent_follows_the_hierarchy_from_a_place_in_a_generators_code()
+    {
+        await TakeFolderAsync();
+        Write("Words.cs", Words);
+        Write("Shapes.cs", Shapes);
+        Write("Deep.cs", "sealed class DeepContext : ShapeContext\n{\n}\n");
+        await using McpClient client = await Start(["--mcp", Folder]);
+        (string regex, int line, int column, _) = Used(await Call(client, McpTools.Usages, new() { ["path"] = "Words.cs", ["line"] = 6, ["column"] = 34 }))[^1];
+
+        JsonElement callers = await Call(client, McpTools.Hierarchy, new() { ["path"] = regex, ["line"] = line, ["column"] = column });
+        Assert.Equal(["Words.Count(string)", "Words.Count(string, int)"], callers.EnumerateArray().Select(c => c.GetProperty("name").GetString()).Order(StringComparer.Ordinal));
+        JsonElement callee = Assert.Single((await Call(client, McpTools.Hierarchy, new() { ["path"] = regex, ["line"] = line, ["column"] = column, ["direction"] = "callees" })).EnumerateArray());
+        Assert.True(callee.GetProperty("path").GetString() == regex && callee.GetProperty("name").GetString()!.EndsWith(".Instance", StringComparison.Ordinal),
+            $"callees of the generator's half of Word answered no place in its code: {callee.GetRawText()}");
+
+        string context = Assert.Single((await Call(client, McpTools.Definition, new() { ["path"] = "Shapes.cs", ["line"] = 10, ["column"] = 48 })).EnumerateArray()).GetProperty("path").GetString()!;
+        int declared = Array.FindIndex(File.ReadAllLines(context), l => l.Contains("partial class ShapeContext", StringComparison.Ordinal)) + 1;
+        JsonElement derived = await Call(client, McpTools.Hierarchy, new() { ["path"] = context, ["line"] = declared, ["column"] = 25, ["direction"] = "subtypes" });
+        Assert.Equal(["DeepContext Deep.cs:1"], derived.EnumerateArray().Select(d => $"{d.GetProperty("name").GetString()} {d.GetProperty("path").GetString()}:{d.GetProperty("line").GetInt32()}"));
+    }
+
+    /// <summary>A partial member's two halves are one member to hierarchy: asked at the half that declares it or the half with
+    /// its body, it answers the callers, bound to the one, and the callees, written in the other.</summary>
+    [Fact]
+    public async Task Either_half_of_a_partial_method_answers_its_callers_and_what_its_body_calls()
+    {
+        await TakeFolderAsync();
+        Write("Halves.cs", "static partial class Halves\n{\n    public static partial int Twice(int value);\n\n    public static int Quad(int value) => Twice(Twice(value));\n}\n\n"
+            + "static partial class Halves\n{\n    public static partial int Twice(int value) => Helper(value) * 2;\n\n    private static int Helper(int value) => value;\n}\n");
+        await using McpClient client = await Start(["--mcp", Folder]);
+        foreach (int line in new[] { 3, 10 })
+        {
+            Assert.Equal(["Halves.Quad(int)"], (await Call(client, McpTools.Hierarchy, new() { ["path"] = "Halves.cs", ["line"] = line, ["column"] = 31 }))
+                .EnumerateArray().Select(c => c.GetProperty("name").GetString()));
+            Assert.Equal(["Halves.Helper(int)"], (await Call(client, McpTools.Hierarchy, new() { ["path"] = "Halves.cs", ["line"] = line, ["column"] = 31, ["direction"] = "callees" }))
+                .EnumerateArray().Select(c => c.GetProperty("name").GetString()));
+        }
+    }
+
     [Fact]
     public async Task An_agent_names_a_symbol_in_place_of_its_place_finds_names_exactly_and_tells_overloads_apart_by_their_documentation_ids()
     {

@@ -18,12 +18,14 @@ public sealed class GeneratedTexts : IExtensionWorkspaceMessageHandler<Generated
         foreach (GeneratedSource source in message.Documents)
         {
             SourceGeneratedDocument? document = await FindAsync(context.Solution, source, cancellationToken).ConfigureAwait(false);
-            found.Add(document is null ? null : new GeneratedText(SourceGeneratedDocumentUri.Create(document.Identity).UriString,
-                (await document.GetTextAsync(cancellationToken).ConfigureAwait(false)).ToString(), document.Project.FilePath ?? string.Empty,
-                document.Project.Name, document.Identity.Generator.TypeName));
+            found.Add(document is null ? null : await TextOfAsync(document, cancellationToken).ConfigureAwait(false));
         }
         return new GeneratedFound(found);
     }
+
+    internal static async Task<GeneratedText> TextOfAsync(SourceGeneratedDocument document, CancellationToken cancel) =>
+        new(SourceGeneratedDocumentUri.Create(document.Identity).UriString, (await document.GetTextAsync(cancel).ConfigureAwait(false)).ToString(),
+            document.Project.FilePath ?? string.Empty, document.Project.Name, document.Identity.Generator.TypeName);
 
     private static async Task<SourceGeneratedDocument?> FindAsync(Solution solution, GeneratedSource source, CancellationToken cancel)
     {
@@ -51,5 +53,26 @@ public sealed class GeneratedTexts : IExtensionWorkspaceMessageHandler<Generated
             }
         }
         return null;
+    }
+}
+
+/// <summary>The texts of the documents source generators make under a file name for the projects of a name, for a document
+/// known by no URI: what an earlier run copied.</summary>
+public sealed class GeneratedNamed : IExtensionWorkspaceMessageHandler<GeneratedNameAsked, GeneratedFound>
+{
+    public async Task<GeneratedFound> ExecuteAsync(GeneratedNameAsked message, ExtensionMessageContext context, CancellationToken cancellationToken)
+    {
+        List<GeneratedText?> found = [];
+        foreach (Project project in context.Solution.Projects.Where(p => (p.FilePath is { Length: > 0 } file ? Path.GetFileNameWithoutExtension(file) : p.Name) == message.Project))
+        {
+            foreach (SourceGeneratedDocument document in await project.GetSourceGeneratedDocumentsAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (Path.GetFileName(document.HintName) == message.File)
+                {
+                    found.Add(await GeneratedTexts.TextOfAsync(document, cancellationToken).ConfigureAwait(false));
+                }
+            }
+        }
+        return new GeneratedFound(found);
     }
 }

@@ -440,7 +440,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         CancellationToken cancel = default) => OnUi<IReadOnlyList<HierarchyEntry>>(cancel, async () =>
     {
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
-        (OpenDocument document, LspDocument lsp) = await Code(at.Path, cancel);
+        (OpenDocument document, LspDocument lsp) = await CodeOrCopy(at.Path, cancel);
         int offset = await SymbolOffset(new ServerServed(document, document.Language.Name, lsp), at.Line, at.Column, Offset(document, at.Line, at.Column));
         if (direction == "implementations")
         {
@@ -467,8 +467,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         IReadOnlyList<(HierarchyItem Item, LspRange At)> found = direction switch
         {
-            "callers" => [.. (await server.IncomingCallsAsync(item)).Select(c => (c.From, c.FromRanges.FirstOrDefault() ?? c.From.SelectionRange))],
-            "callees" => [.. (await server.OutgoingCallsAsync(item)).Select(c => (c.To, c.To.SelectionRange))],
+            "callers" => [.. (await csharp.IncomingCallsAsync(item)).Select(c => (c.From, c.FromRanges.FirstOrDefault() ?? c.From.SelectionRange))],
+            "callees" => [.. (await csharp.OutgoingCallsAsync(item)).Select(c => (c.To, c.To.SelectionRange))],
             "supertypes" => [.. (await server.SupertypesAsync(item)).Select(t => (t, t.SelectionRange))],
             _ => [.. (await server.SubtypesAsync(item)).Select(t => (t, t.SelectionRange))],
         };
@@ -2893,6 +2893,20 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         return (document, Session.CSharp?.For(document)?.Lsp
             ?? throw new TimeoutException($"The language server has not loaded {Path.GetFileName(document.Path)} ({Session.CSharp?.State ?? "none"})"));
+    }
+
+    /// <summary><see cref="Code"/>, or a source generator's code copied, as the document the server has now and only asked
+    /// about (<see cref="GeneratedCode.AskableAsync"/>).</summary>
+    private async Task<(OpenDocument Document, LspDocument Lsp)> CodeOrCopy(string path, CancellationToken cancel)
+    {
+        if (!GeneratedCode.IsCopy(Resolve(path)))
+        {
+            return await Code(path, cancel);
+        }
+        OpenDocument copy = await DocumentAsync(path, cancel);
+        await When(() => Session.CSharp is not { } csharp || csharp.IsReady, ServerLimit, cancel, ServerState());
+        (LspDocument? lsp, string? why) = Session.CSharp is { } service ? await service.Generated.AskableAsync(copy, cancel) : (null, Refusals.NoCSharp);
+        return lsp is null ? throw new InvalidOperationException(why) : (copy, lsp);
     }
 
     /// <summary>Refuses at once, in the window's words, a source generator's code copied to read (<see cref="GeneratedCode"/>),

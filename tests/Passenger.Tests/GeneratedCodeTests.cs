@@ -25,6 +25,7 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
         + "public static partial class Patterns\n{\n    [GeneratedRegex(\"a+b\")]\n    public static partial Regex Letters();\n\n"
         + "    public static bool Check(string text) => Letters().IsMatch(text);\n}\n\npublic sealed record Square(int Side);\n\n"
         + "[JsonSerializable(typeof(Square))]\npublic partial class ShapeContext : JsonSerializerContext\n{\n}\n\n"
+        + "public sealed class DeepContext : ShapeContext\n{\n}\n\n"
         + "public static class UsesContext\n{\n    public static object Info => ShapeContext.Default.Square;\n}\n";
 
     private readonly GeneratorsApp app;
@@ -77,19 +78,7 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
         MainWindow window = app.Open(app.PathOf("Patterns.cs"));
         try
         {
-            FindView find = window.Find;
-            Ui.PlaceAfter(window.EditorArea.CodeEditor, "=> Lette");
-            Ui.Run(window, AppActions.FindUsages);
-            Ui.WaitFor(() => find.Rows.Any(r => r.Usage is not null), () => $"the usages of Letters in the Find window ({window.Status})");
-            FindRow? generated = find.Rows.FirstOrDefault(r => r.Usage?.Path.EndsWith($"{Path.DirectorySeparatorChar}RegexGenerator.g.cs", StringComparison.Ordinal) == true);
-            Assert.True(generated?.Usage is { Project: "Gallery" } usage && usage.LineText.Contains("Regex Letters()", StringComparison.Ordinal),
-                $"Find Usages of a GeneratedRegex method did not list the generator's declaration under the project with its code: "
-                + string.Join("; ", find.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Label} [{r.Usage?.Project}]")));
-
-            find.Selected = generated;
-            find.FocusRows();
-            Ui.Press(window, "ENTER");
-            OpenDocument shown = Shown(window, "RegexGenerator.g.cs", "Enter on the generator's row in the Find window");
+            (OpenDocument shown, FindRow generated) = FromFindUsages(window);
             Assert.Equal(new TextPosition(generated.Usage!.Line, generated.Usage.Column), window.EditorArea.CodeEditor.CaretPosition);
             Assert.Contains("<code>a+b</code>", shown.Text.Snapshot.ToString(), StringComparison.Ordinal);
 
@@ -103,6 +92,118 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
         {
             window.Close();
         }
+    }
+
+    /// <summary>Call Hierarchy at the regex generator's half of a GeneratedRegex method lists that method's caller and what
+    /// the generator's body calls, where it said no method was at the caret; and as the server is only asked about the
+    /// document, never given it, the tab still takes the generator's code again once the pattern is typed anew.</summary>
+    [AvaloniaFact]
+    public void Call_hierarchy_in_a_generators_code_lists_the_methods_callers_and_callees_and_leaves_the_code_following_its_pattern()
+    {
+        MainWindow window = app.Open(app.PathOf("Patterns.cs"));
+        try
+        {
+            (OpenDocument shown, _) = FromFindUsages(window);
+            Assert.Null(Ui.Await(window.ShowCallHierarchyAsync(), "the call hierarchy in the generator's code"));
+            CalledFromCheck(window);
+
+            Task callees = window.Hierarchy.ChooseAsync(first: false);
+            Ui.WaitFor(() => callees.IsCompleted, "the callees of the generator's Letters");
+            Assert.True(window.Hierarchy.Rows.Any(r => r.Depth == 1 && r.Node.Item.Name.EndsWith(".Instance", StringComparison.Ordinal) && GeneratedCode.IsCopy(r.Node.Path)),
+                $"The generator's Letters calls no Instance in its own code: {Listed(window)}");
+
+            window.OpenFile(app.PathOf("Patterns.cs"));
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "GeneratedRegex(\"a+");
+            window.KeyTextInput("c+");
+            Ui.WaitFor(() => shown.Text.Snapshot.ToString().Contains("<code>a+c+b</code>", StringComparison.Ordinal),
+                () => "the generator's code asked about in Call Hierarchy to follow the pattern typed, as a document the server held frozen would not");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Type Hierarchy at the JSON generator's half of a context lists what derives from the class, as it does at the
+    /// half written by hand.</summary>
+    [AvaloniaFact]
+    public void Type_hierarchy_in_a_generators_code_lists_what_derives_from_the_class_it_completes()
+    {
+        MainWindow window = app.Open(app.PathOf("Patterns.cs"));
+        try
+        {
+            Declared(window, "ShapeContext.Defa", "ShapeContext.g.cs", " Default ");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "partial class ShapeCon");
+            Assert.Null(Ui.Await(window.ShowTypeHierarchyAsync(), "the type hierarchy in the generator's code"));
+            Task subtypes = window.Hierarchy.ChooseAsync(first: false);
+            Ui.WaitFor(() => subtypes.IsCompleted, "the subtypes of the generator's ShapeContext");
+            Assert.True(window.Hierarchy.Rows is [_, { Depth: 1 } derived] && derived.Node.Item.Name == "DeepContext" && PathNames.Same(derived.Node.Path, app.PathOf("Patterns.cs")),
+                $"Type Hierarchy in the generator's code does not list DeepContext alone: {Listed(window)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A copy an earlier run made, which a tab kept from then shows, knows no document of the server's: Call Hierarchy
+    /// there finds it by the place its documents would be copied to, and the tab follows it from then on.</summary>
+    [AvaloniaFact]
+    public void Call_hierarchy_in_a_copy_an_earlier_run_made_finds_its_document_and_follows_it_again()
+    {
+        string copy;
+        MainWindow earlier = app.Open(app.PathOf("Patterns.cs"));
+        try
+        {
+            copy = FromFindUsages(earlier).Shown.Path;
+        }
+        finally
+        {
+            earlier.Close();
+        }
+        MainWindow window = app.Open(app.PathOf("Patterns.cs"));
+        try
+        {
+            window.OpenFile(copy);
+            Ui.WaitFor(() => window.EditorArea.ActiveGroup.BannerText?.Contains("Copied in an earlier run", StringComparison.Ordinal) == true,
+                () => $"the banner to say the copy is an earlier run's: it says '{window.EditorArea.ActiveGroup.BannerText}'");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "RegularExpressions.Regex Lett");
+            Assert.Null(Ui.Await(window.ShowCallHierarchyAsync(), "the call hierarchy in an earlier run's copy"));
+            CalledFromCheck(window);
+            Ui.WaitFor(() => window.EditorArea.ActiveGroup.BannerText?.Contains("Made by RegexGenerator", StringComparison.Ordinal) == true,
+                () => $"the banner to say the copy is followed again: it says '{window.EditorArea.ActiveGroup.BannerText}'");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The Hierarchy window shows Letters called from Check alone, at its line of the code written by hand.</summary>
+    private void CalledFromCheck(MainWindow window) =>
+        Assert.True(window.Hierarchy.Rows is [_, { Depth: 1 } caller] && caller.Node.Item.Name.Contains("Check", StringComparison.Ordinal) && PathNames.Same(caller.Node.Path, app.PathOf("Patterns.cs")),
+            $"Call Hierarchy in the generator's code does not list Check alone: {Listed(window)}");
+
+    private static string Listed(MainWindow window) =>
+        $"{string.Join("; ", window.Hierarchy.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Node.Item.Name} [{r.Node.Path}]"))} ({window.Status})";
+
+    /// <summary>Find Usages of Letters, its row in the regex generator's code, and Enter on that row: the tab it opens, the
+    /// caret on the generator's half of the method.</summary>
+    private static (OpenDocument Shown, FindRow Row) FromFindUsages(MainWindow window)
+    {
+        FindView find = window.Find;
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "=> Lette");
+        Ui.Run(window, AppActions.FindUsages);
+        Ui.WaitFor(() => find.Rows.Any(r => r.Usage is not null), () => $"the usages of Letters in the Find window ({window.Status})");
+        FindRow? generated = find.Rows.FirstOrDefault(r => r.Usage?.Path.EndsWith($"{Path.DirectorySeparatorChar}RegexGenerator.g.cs", StringComparison.Ordinal) == true);
+        Assert.True(generated?.Usage is { Project: "Gallery" } usage && usage.LineText.Contains("Regex Letters()", StringComparison.Ordinal),
+            $"Find Usages of a GeneratedRegex method did not list the generator's declaration under the project with its code: "
+            + string.Join("; ", find.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Label} [{r.Usage?.Project}]")));
+
+        find.Selected = generated;
+        find.FocusRows();
+        Ui.Press(window, "ENTER");
+        return (Shown(window, "RegexGenerator.g.cs", "Enter on the generator's row in the Find window"), generated!);
     }
 
     /// <summary>Go to Declaration from after a piece of the file shown, which lands in a generator's code: the tab of

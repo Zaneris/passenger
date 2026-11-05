@@ -35,6 +35,8 @@ public static class Handlers
     public const string WrittenPlaces = "Passenger.Roslyn.Extension.WrittenPlaces";
     public const string ComponentClass = "Passenger.Roslyn.Extension.ComponentClass";
     public const string GeneratedTexts = "Passenger.Roslyn.Extension.GeneratedTexts";
+    public const string GeneratedNamed = "Passenger.Roslyn.Extension.GeneratedNamed";
+    public const string PartialHalf = "Passenger.Roslyn.Extension.PartialHalf";
     public const string JsInteropCalls = "Passenger.Roslyn.Extension.JsInteropCalls";
     public const string GodotCode = "Passenger.Roslyn.Extension.GodotCode";
     public const string GodotNames = "Passenger.Roslyn.Extension.GodotNames";
@@ -49,7 +51,7 @@ public static class Handlers
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, ReferencesRead, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
-        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
+        ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames,
     ];
 }
 
@@ -132,6 +134,13 @@ public sealed record UriSpan(
 /// generated document's in the file its generator wrote it from, any other as it was.</summary>
 public sealed record WrittenSpans([property: JsonPropertyName("spans")] IReadOnlyList<UriSpan> Spans);
 
+/// <summary>A place naming a partial member, and which of its halves is asked for: the one with its body, or the one that
+/// declares it.</summary>
+public sealed record HalfAsked([property: JsonPropertyName("at")] UriSpan At, [property: JsonPropertyName("body")] bool Body);
+
+/// <summary>Where the half asked for is named, or null where the place names no other half.</summary>
+public sealed record HalfFound([property: JsonPropertyName("half")] UriSpan? Half);
+
 /// <summary>Documents source generators made, whose texts are asked for.</summary>
 public sealed record GeneratedAsked([property: JsonPropertyName("documents")] IReadOnlyList<GeneratedSource> Documents);
 
@@ -141,6 +150,10 @@ public sealed record GeneratedSource(
     [property: JsonPropertyName("uri")] string Uri,
     [property: JsonPropertyName("projectPath")] string? ProjectPath,
     [property: JsonPropertyName("projectName")] string? ProjectName);
+
+/// <summary>Documents source generators make under a file name, for the projects of a name (a project's file without its
+/// extension, or its name where it has no file).</summary>
+public sealed record GeneratedNameAsked([property: JsonPropertyName("project")] string Project, [property: JsonPropertyName("file")] string File);
 
 /// <summary>Each document asked for, in order, or null for one no generator makes now.</summary>
 public sealed record GeneratedFound([property: JsonPropertyName("texts")] IReadOnlyList<GeneratedText?> Texts);

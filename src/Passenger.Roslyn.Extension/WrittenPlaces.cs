@@ -47,6 +47,6 @@ public sealed class WrittenPlaces : IExtensionWorkspaceMessageHandler<WrittenSpa
         return new UriSpan(ProtocolConversions.CreateAbsoluteDocumentUri(path).UriString, top, top);
     }
 
-    private static int Offset(SourceText text, Place at) =>
+    internal static int Offset(SourceText text, Place at) =>
         at.Line >= text.Lines.Count ? text.Length : Math.Min(text.Lines[at.Line].Start + at.Character, text.Lines[at.Line].End);
 }

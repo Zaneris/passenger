@@ -335,6 +335,14 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
             ? (await ExtensionAsync<Roslyn.Extension.GeneratedFound>(Roslyn.Extension.Handlers.GeneratedTexts, new Roslyn.Extension.GeneratedAsked(documents), cancel).ConfigureAwait(false)).Texts
             : null;
 
+    /// <summary>The texts of the documents source generators make under a file name for the projects of a name (Passenger's
+    /// extension's <see cref="Roslyn.Extension.GeneratedNameAsked"/>), each with its project and generator; null when the
+    /// server has no extension to ask.</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.GeneratedText?>?> GeneratedNamedAsync(string project, string file, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? (await ExtensionAsync<Roslyn.Extension.GeneratedFound>(Roslyn.Extension.Handlers.GeneratedNamed, new Roslyn.Extension.GeneratedNameAsked(project, file), cancel).ConfigureAwait(false)).Texts
+            : null;
+
     /// <summary>The class a Razor component's file makes, and where the server takes it (Passenger's extension's
     /// <see cref="Roslyn.Extension.ComponentAsked"/>); null when the server has no extension to ask.</summary>
     public async Task<Roslyn.Extension.ComponentFound?> ComponentAsync(string path, CancellationToken cancel = default) =>
@@ -350,6 +358,35 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     /// <summary>Every place the symbol at a place of a document no editor has open is used, its declaration included.</summary>
     public Task<IReadOnlyList<LspLocation>> ReferencesAsync(Roslyn.Extension.UriSpan at, CancellationToken cancel = default) =>
         LspDocument.ReferencesAsync(Server, new TextDocumentIdentifier(at.Uri), new LspPosition(at.Start.Line, at.Start.Character), cancel);
+
+    /// <summary>A hierarchy item's callers, each with where the calls are: of a partial member, the half's that declares it,
+    /// which every call to it is bound to.</summary>
+    public async Task<IReadOnlyList<IncomingCall>> IncomingCallsAsync(HierarchyItem item, CancellationToken cancel = default) =>
+        await Server.IncomingCallsAsync(await HalfAsync(item, body: false, cancel).ConfigureAwait(false), cancel).ConfigureAwait(false);
+
+    /// <summary>What a hierarchy item calls: of a partial member, what the half with its body calls.</summary>
+    public async Task<IReadOnlyList<OutgoingCall>> OutgoingCallsAsync(HierarchyItem item, CancellationToken cancel = default) =>
+        await Server.OutgoingCallsAsync(await HalfAsync(item, body: true, cancel).ConfigureAwait(false), cancel).ConfigureAwait(false);
+
+    /// <summary>The item of the half of a partial member asked for (Passenger's extension's <see cref="Roslyn.Extension.HalfAsked"/>);
+    /// the item itself for any other member, and where the server has no extension to ask.</summary>
+    private async Task<HierarchyItem> HalfAsync(HierarchyItem item, bool body, CancellationToken cancel)
+    {
+        if (Server.ExtensionProblem is not null)
+        {
+            return item;
+        }
+        Roslyn.Extension.UriSpan at = new(item.Uri, new Roslyn.Extension.Place(item.SelectionRange.Start.Line, item.SelectionRange.Start.Character),
+            new Roslyn.Extension.Place(item.SelectionRange.End.Line, item.SelectionRange.End.Character));
+        Roslyn.Extension.HalfFound found = await ExtensionAsync<Roslyn.Extension.HalfFound>(Roslyn.Extension.Handlers.PartialHalf, new Roslyn.Extension.HalfAsked(at, body), cancel).ConfigureAwait(false);
+        return found.Half is not { } half ? item
+            : (await LspDocument.PrepareCallHierarchyAsync(Server, new TextDocumentIdentifier(half.Uri), new LspPosition(half.Start.Line, half.Start.Character), cancel).ConfigureAwait(false)) ?? item;
+    }
+
+    /// <summary>A document the server makes itself (a source generator's, by its URI) to ask about at places in a text showing
+    /// it, and never opened there: a generator's document opened in the server would stay as it is, in every compilation,
+    /// whatever the code it is made from becomes.</summary>
+    public LspDocument Unopened(string uri, TextDocument text) => new(this, uri, text, opened: false);
 
     /// <summary>Closes the documents, on the caller's thread as they are its, then ends the server without holding it.</summary>
     public async ValueTask DisposeAsync()
@@ -383,7 +420,7 @@ internal interface IDocumentHost
 /// <summary>One document as the server knows it: opened with its text, then sent every change as it
 /// happens (an LSP incremental sync), closed when the editor lets go. Each request is made against
 /// the document as it is now, and reports which version it answered for, so a late answer can be
-/// recognised and dropped.</summary>
+/// recognised and dropped. One the server makes itself is only asked about (<see cref="RoslynSession.Unopened"/>).</summary>
 public sealed class LspDocument : IDisposable
 {
     private readonly IDocumentHost session;
@@ -414,17 +451,21 @@ public sealed class LspDocument : IDisposable
     /// <summary>The last pull of each part (<see cref="DiagnosticPull"/>, by its value).</summary>
     private readonly Pulled?[] pulled = new Pulled?[3];
 
-    internal LspDocument(IDocumentHost session, string uri, TextDocument text, [IdentifierOf(typeof(LanguageIds))] string? languageId = null)
+    internal LspDocument(IDocumentHost session, string uri, TextDocument text, [IdentifierOf(typeof(LanguageIds))] string? languageId = null, bool opened = true)
     {
         this.session = session;
         Uri = uri;
         Text = text;
         IsRazor = languageId is null && RazorFiles.Is(uri);
         LanguageId = languageId ?? (IsRazor ? LanguageIds.Razor : LanguageIds.CSharp);
-        Sent(text.Version, changed: true);
-        session.Server.Notify(LspMethods.DidOpen,
-            new DidOpenTextDocumentParams(new TextDocumentItem(uri, LanguageId, text.Version, text.Snapshot.ToString())));
-        text.Changed += OnChanged;
+        closed = !opened;
+        if (opened)
+        {
+            Sent(text.Version, changed: true);
+            session.Server.Notify(LspMethods.DidOpen,
+                new DidOpenTextDocumentParams(new TextDocumentItem(uri, LanguageId, text.Version, text.Snapshot.ToString())));
+            text.Changed += OnChanged;
+        }
     }
 
     /// <summary>A text sent, before it goes, so a push that answers it, however soon it comes, is told so.</summary>
@@ -828,8 +869,11 @@ public sealed class LspDocument : IDisposable
     }
 
     /// <summary>The symbol at an offset as a call hierarchy's root, if it is one that calls or is called.</summary>
-    public async Task<HierarchyItem?> PrepareCallHierarchyAsync(int offset, CancellationToken cancel = default) =>
-        (await Server.RequestAsync<List<HierarchyItem>>(LspMethods.PrepareCallHierarchy, new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel))?.FirstOrDefault();
+    public Task<HierarchyItem?> PrepareCallHierarchyAsync(int offset, CancellationToken cancel = default) =>
+        PrepareCallHierarchyAsync(Server, Identifier, PositionOf(offset), cancel);
+
+    internal static async Task<HierarchyItem?> PrepareCallHierarchyAsync(LanguageServer server, TextDocumentIdentifier document, LspPosition at, CancellationToken cancel) =>
+        (await server.RequestAsync<List<HierarchyItem>>(LspMethods.PrepareCallHierarchy, new TextDocumentPositionParams(document, at), cancel).ConfigureAwait(false))?.FirstOrDefault();
 
     /// <summary>The type at an offset as a type hierarchy's root.</summary>
     public async Task<HierarchyItem?> PrepareTypeHierarchyAsync(int offset, CancellationToken cancel = default) =>

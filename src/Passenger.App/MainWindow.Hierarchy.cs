@@ -51,8 +51,8 @@ public partial class MainWindow
         }
         ShowToolWindow(ToolWindowIds.Hierarchy);
         await Hierarchy.ShowAsync($"Calls of {top.Item.Name}", top, new HierarchyDirection("Callers", async of =>
-            await NodesAsync([.. (await Running().Server.IncomingCallsAsync(of)).Select(call => (call.From, call.FromRanges.FirstOrDefault() ?? call.From.SelectionRange))])),
-            new HierarchyDirection("Callees", async of => await NodesAsync([.. (await Running().Server.OutgoingCallsAsync(of)).Select(call => (call.To, call.To.SelectionRange))])));
+            await NodesAsync([.. (await Running().IncomingCallsAsync(of)).Select(call => (call.From, call.FromRanges.FirstOrDefault() ?? call.From.SelectionRange))])),
+            new HierarchyDirection("Callees", async of => await NodesAsync([.. (await Running().OutgoingCallsAsync(of)).Select(call => (call.To, call.To.SelectionRange))])));
         return null;
     }
 
@@ -71,20 +71,26 @@ public partial class MainWindow
         return null;
     }
 
-    /// <summary>The symbol at the caret as a hierarchy's root, or why there is none, said in the status bar: nothing
-    /// there, the server not ready, or its failure.</summary>
+    /// <summary>The symbol at the caret as a hierarchy's root, in a file of the server's or a generator's code copied, or
+    /// why there is none, said in the status bar: nothing there, the server not ready, or its failure.</summary>
     private async Task<(HierarchyNode? Top, string? Why)> Prepare(string what, string none, Func<LspDocument, int, Task<HierarchyItem?>> prepare)
     {
-        if (Editors.Active is not { } active || session.CSharp?.For(active) is not { } features)
+        if (Editors.Active is not { } active || session.CSharp is not { } csharp || (csharp.For(active) is null && !GeneratedCode.IsCopy(active.Path)))
         {
             return (null, Said(none));
         }
-        if (features.Lsp is not { } lsp || !session.CSharp.IsReady)
+        CSharpDocument? features = csharp.For(active);
+        if (!csharp.IsReady || features is { Lsp: null })
         {
-            return (null, Said(session.CSharp.Unready(what)));
+            return (null, Said(csharp.Unready(what)));
         }
         try
         {
+            (LspDocument? lsp, string? refused) = features is null ? await csharp.Generated.AskableAsync(active) : (features.Lsp, null);
+            if (lsp is null || Editors.Active != active)
+            {
+                return (null, Said(refused ?? none));
+            }
             return await prepare(lsp, Editors.CodeEditor.Selections.Primary.Caret) is { } item ? ((await NodesAsync([(item, item.SelectionRange)]))[0], null) : (null, Said(none));
         }
         catch (LanguageServerFailed failed)
