@@ -41,6 +41,10 @@ public sealed class LiveMetrics : IAsyncDisposable
     public static readonly IReadOnlyList<string> Shipped =
         ["Microsoft.AspNetCore.Hosting", "Microsoft.AspNetCore.Server.Kestrel", "Microsoft.AspNetCore.Routing", "System.Net.Http", "System.Runtime"];
 
+    /// <summary>How long a program's runtime is given to take a session at its diagnostic port: one that never answers would
+    /// otherwise hold whoever asked for as long as it runs.</summary>
+    private static TimeSpan StartLimit => Waits.Of(TimeSpan.FromSeconds(10));
+
     private readonly EventPipeEventSource source;
     private readonly Func<Task> stop;
 
@@ -77,13 +81,19 @@ public sealed class LiveMetrics : IAsyncDisposable
     {
         string session = Guid.NewGuid().ToString();
         EventPipeSession started;
+        using CancellationTokenSource answered = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        answered.CancelAfter(StartLimit);
         try
         {
-            started = await new DiagnosticsClient(processId).StartEventPipeSessionAsync(Providers(session, meters), requestRundown: false, circularBufferMB: 16, cancel);
+            started = await new DiagnosticsClient(processId).StartEventPipeSessionAsync(Providers(session, meters), requestRundown: false, circularBufferMB: 16, answered.Token);
         }
         catch (Exception error) when (DiagnosticsFailures.Of(error))
         {
             throw new ProfilingException($"Its metrics could not be read: {error.Message}", error);
+        }
+        catch (OperationCanceledException unanswered) when (!cancel.IsCancellationRequested)
+        {
+            throw new ProfilingException($"Its metrics could not be read: its runtime took no session in {StartLimit.TotalSeconds:0} s", unanswered);
         }
         return Hear(started.EventStream, session, meters, heard, async () =>
         {

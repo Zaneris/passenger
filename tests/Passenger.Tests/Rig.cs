@@ -3109,7 +3109,7 @@ public static class ManagedStacks
         {
             using Microsoft.Diagnostics.Runtime.DataTarget target = Microsoft.Diagnostics.Runtime.DataTarget.AttachToProcess(processId, suspend: true,
                 new Microsoft.Diagnostics.Runtime.DataTargetOptions { FileLocator = NothingFound.Locator });
-            using Microsoft.Diagnostics.Runtime.ClrRuntime runtime = target.ClrVersions[0].CreateRuntime();
+            using Microsoft.Diagnostics.Runtime.ClrRuntime runtime = Passenger.Profiler.ProgramRuntimes.Open(target.ClrVersions[0]);
             List<string> threads = [];
             foreach (Microsoft.Diagnostics.Runtime.ClrThread thread in runtime.Threads.Where(t => t.IsAlive))
             {

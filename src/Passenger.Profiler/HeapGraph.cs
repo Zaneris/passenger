@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -65,9 +64,6 @@ internal sealed class HeapGraph
 
     /// <summary>A reference whose field or element is not known: the runtime's GC heap dump tells only what an object refers to.</summary>
     public const int UnnamedOffset = -2;
-
-    /// <summary>Each DAC a dump was read through, by its path, loaded once more so it is never unloaded (<see cref="Runtime"/>).</summary>
-    private static readonly ConcurrentDictionary<string, IntPtr> KeptDacs = new(StringComparer.Ordinal);
 
     public required ulong[] Address { get; init; }
     public required int[] Type { get; init; }
@@ -191,7 +187,7 @@ internal sealed class HeapGraph
             throw new InvalidOperationException("The dump has no .NET runtime in it");
         }
         ClrInfo clr = target.ClrVersions[0];
-        using ClrRuntime runtime = Runtime(clr);
+        using ClrRuntime runtime = ProgramRuntimes.Open(clr);
         ClrHeap heap;
         try
         {
@@ -215,28 +211,6 @@ internal sealed class HeapGraph
         graph.Walked = walked;
         graph.Analysed = clock.Elapsed - walked;
         return graph;
-    }
-
-    /// <summary>The runtime in a dump, read through the DAC in the program's own runtime folder, which on macOS and
-    /// Linux stays loaded for the IDE's life: the DAC leaves a thread-local destructor behind, which would run from
-    /// unmapped memory as a thread that used it ends once it was unloaded.</summary>
-    private static ClrRuntime Runtime(ClrInfo clr)
-    {
-        OSPlatform platform = OperatingSystem.IsWindows() ? OSPlatform.Windows : OperatingSystem.IsMacOS() ? OSPlatform.OSX : OSPlatform.Linux;
-        string? folder = Path.GetDirectoryName(clr.ModuleInfo.FileName);
-        string? dac = string.IsNullOrEmpty(folder) ? null : clr.DebuggingLibraries
-            .Where(l => l.Kind == DebugLibraryKind.Dac && l.Platform == platform && l.TargetArchitecture == RuntimeInformation.ProcessArchitecture)
-            .Select(l => Path.Combine(folder, Path.GetFileName(l.FileName)))
-            .FirstOrDefault(File.Exists);
-        if (dac is null)
-        {
-            throw new InvalidOperationException($"the program's .NET {clr.Version.Major}.{clr.Version.Minor} has no DAC beside it to read its heap with");
-        }
-        if (!OperatingSystem.IsWindows())
-        {
-            KeptDacs.GetOrAdd(dac, NativeLibrary.Load);
-        }
-        return clr.CreateRuntime(dac, ignoreMismatch: true);
     }
 
     /// <summary>ClrMD's file locator for what a dump lacks, which finds nothing: a program run here never needs
