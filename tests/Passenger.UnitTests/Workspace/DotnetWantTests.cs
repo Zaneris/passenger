@@ -91,7 +91,27 @@ public class DotnetWantTests
         Assert.False(GlobalJsonSdk.Of("/work/global.json", """{ "sdk": { "allowPrerelease": false } }""")?.AllowPrerelease);
         Assert.Null(GlobalJsonSdk.Of("/work/global.json", """{ "sdk": { "version": "10.0.500" } }""")?.AllowPrerelease);
         Assert.Null(GlobalJsonSdk.Of("/work/global.json", """{ "sdk": { "allowPrerelease": "yes" } }""")?.AllowPrerelease);
-        Assert.Equal(new SdkWanted(Channel: "11.0"), read.Rolling(new SdkWanted(Channel: "11.0")));
+    }
+
+    /// <summary>Asked before any dotnet could read the folder's global.json, the SDK wanted is the one it would take, so one
+    /// install gives the folder an SDK it uses.</summary>
+    [Fact]
+    public void A_folder_with_no_SDK_to_ask_wants_the_version_its_global_json_asks_for_as_it_lets_it_go_never_the_newest()
+    {
+        GlobalJsonSdk pinned = new("/work/global.json", "8.0.100", "latestFeature", 2, AllowPrerelease: false);
+        Assert.Equal(new SdkWanted("8.0.100", "latestFeature", AllowPrerelease: false), pinned.Rolling(SdkWanted.Newest));
+        Assert.Equal(SdkWanted.Newest, (pinned with { Version = null }).Rolling(SdkWanted.Newest));
+    }
+
+    /// <summary>A project's channel says nothing of prereleases: global.json does, for whatever it chooses, an RC it would then
+    /// refuse being no SDK the folder can use.</summary>
+    [Fact]
+    public void A_projects_channel_keeps_to_what_global_json_says_of_prereleases_and_to_nothing_else_it_asks()
+    {
+        GlobalJsonSdk asked = new("/work/global.json", "10.0.100", "latestPatch", 2, AllowPrerelease: false);
+        Assert.Equal(new SdkWanted(Channel: "11.0", AllowPrerelease: false), asked.Rolling(new SdkWanted(Channel: "11.0")));
+        Assert.Equal(new SdkWanted(Channel: "11.0", AllowPrerelease: true), (asked with { AllowPrerelease = true }).Rolling(new SdkWanted(Channel: "11.0")));
+        Assert.Equal(new SdkWanted(Channel: "11.0"), (asked with { AllowPrerelease = null }).Rolling(new SdkWanted(Channel: "11.0")));
     }
 
     [Fact]

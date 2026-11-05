@@ -274,6 +274,24 @@ public sealed class NoDotnetTests : IAsyncDisposable
         window.Close();
     }
 
+    /// <summary>The feed's newest is no SDK the folder takes: asking for it would need a second install of the one global.json pins.</summary>
+    [AvaloniaFact]
+    public void With_no_dotnet_Install_dotnet_SDK_asks_to_install_the_SDK_the_folders_global_json_pins_never_the_newest()
+    {
+        StandIn sdk = Archive.Value;
+        using StandInHttp feed = Feed(sdk, sdk.Sha512, newer: $"{Channel}.999");
+        TestFolders.Write(folder, "global.json", $$"""{ "sdk": { "version": "{{sdk.Version}}", "rollForward": "disable" } }""");
+        MainWindow window = Ui.OpenFolder(Shop(folder), languageServer: false);
+        Ui.WaitFor(() => window.DotnetWant.Lack == DotnetLack.NoDotnet && window.Session.Models.MissingSdk is not null, "the window to find no .NET", TimeSpan.FromMinutes(1));
+
+        ConfirmDialog dialog = Asked(window);
+
+        Assert.Equal($"Install the .NET SDK {sdk.Version}?", dialog.Title);
+        Ui.ClickButton(dialog, "Cancel");
+        Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null, "Install .NET SDK to end, turned down", TimeSpan.FromMinutes(1));
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void An_archive_whose_SHA_512_is_not_the_one_published_is_refused_with_nothing_installed()
     {
@@ -549,8 +567,9 @@ public sealed class NoDotnetTests : IAsyncDisposable
     /// <summary>A stand-in of an SDK's archive: where it is, the SDK's version, and its SHA-512.</summary>
     private sealed record StandIn(string Path, string Version, string Sha512);
 
-    /// <summary>The release metadata of one channel naming <paramref name="sdk"/> for this system, its hash given, and the archive.</summary>
-    private static StandInHttp Feed(StandIn sdk, string hash)
+    /// <summary>The release metadata of one channel naming <paramref name="sdk"/> for this system, its hash given, and the
+    /// archive; <paramref name="newer"/>, where given, a newer SDK of the channel, listed with no archive to fetch.</summary>
+    private static StandInHttp Feed(StandIn sdk, string hash, string? newer = null)
     {
         string system = DotnetReleases.ThisSystem();
         string name = $"dotnet-sdk-{system}{(OperatingSystem.IsWindows() ? ".zip" : ".tar.gz")}";
@@ -566,8 +585,10 @@ public sealed class NoDotnetTests : IAsyncDisposable
             else if (exchange.Path == $"/{Channel}/releases.json")
             {
                 await exchange.ReplyAsync(200, "application/json", $$"""
-                    { "channel-version": "{{Channel}}", "releases": [ { "release-version": "{{Channel}}.0", "sdk": { "version": "{{sdk.Version}}", "runtime-version": "",
-                      "files": [ { "name": "{{name}}", "rid": "{{system}}", "url": "{{at}}{{file}}", "hash": "{{hash}}" } ] } } ] }
+                    { "channel-version": "{{Channel}}", "releases": [ { "release-version": "{{Channel}}.0", "sdks": [ { "version": "{{sdk.Version}}", "runtime-version": "",
+                      "files": [ { "name": "{{name}}", "rid": "{{system}}", "url": "{{at}}{{file}}", "hash": "{{hash}}" } ] } {{(newer is null ? string.Empty : $$"""
+                      , { "version": "{{newer}}", "runtime-version": "", "files": [ { "name": "{{name}}", "rid": "{{system}}", "url": "{{at}}/Sdk/{{newer}}/{{name}}", "hash": "{{hash}}" } ] }
+                      """)}} ] } ] }
                     """);
             }
             else if (exchange.Path == file && exchange.Method == "HEAD")

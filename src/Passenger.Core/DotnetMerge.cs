@@ -7,10 +7,12 @@ namespace Passenger.Core;
 /// the dotnet host) stays as it is and what it lacks moves in whole, a folder of the installation being merged into
 /// wherever it leads, a link to another disk too. The sdk folder comes last, so what lands short of the end reads as no
 /// SDK, whatever stopped it.</summary>
-internal sealed class DotnetMerge(string version, Action<string> stage)
+internal sealed class DotnetMerge(string version, Action<string> stage, TimeSpan? heldLimit = null)
 {
-    /// <summary>How long a move or a removal waits on Windows for what holds the files it reaches.</summary>
+    /// <summary>How long a move or a removal waits on Windows for what holds the files it reaches, unless told.</summary>
     private static readonly TimeSpan HeldLimit = TimeSpan.FromSeconds(30);
+
+    private readonly TimeSpan limit = heldLimit ?? HeldLimit;
 
     /// <summary>Everything placed, in the order it came.</summary>
     private readonly List<string> placed = [];
@@ -120,7 +122,7 @@ internal sealed class DotnetMerge(string version, Action<string> stage)
                 }
                 return;
             }
-            catch (Exception held) when (OperatingSystem.IsWindows() && (held is IOException or UnauthorizedAccessException) && Stopwatch.GetElapsedTime(began) < HeldLimit)
+            catch (Exception held) when (OperatingSystem.IsWindows() && (held is IOException or UnauthorizedAccessException) && Stopwatch.GetElapsedTime(began) < limit)
             {
                 if (!said)
                 {

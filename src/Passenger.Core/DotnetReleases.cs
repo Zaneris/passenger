@@ -90,8 +90,16 @@ public static class DotnetReleases
                 return chosen;
             }
         }
-        throw new DotnetInstallFailed($"Microsoft publishes no .NET SDK {wanted.Shown} for {system}" + (wanted.RollForward is { } roll ? $" (global.json's rollForward {roll})" : string.Empty));
+        throw new DotnetInstallFailed(NonePublished(wanted, system));
     }
+
+    /// <summary>Why no SDK is chosen for what is wanted, in words a person reads.</summary>
+    public static string NonePublished(SdkWanted wanted, string system) => $"Microsoft publishes no .NET SDK {wanted.Shown} for {system}" + wanted switch
+    {
+        { RollForward: { } roll } => $" (global.json's rollForward {roll})",
+        { Channel: not null, TakesPrerelease: false } => " but prereleases, which global.json's allowPrerelease refuses",
+        _ => string.Empty,
+    };
 
     /// <summary>The channels the index lists, as it orders them (newest first).</summary>
     public static IReadOnlyList<DotnetChannel> Channels(JsonElement index) =>
@@ -182,13 +190,13 @@ public static class DotnetReleases
     public static bool Satisfies(SdkWanted wanted, string version)
     {
         bool prerelease = VersionOrder.IsPrerelease(version);
-        if (wanted.Version is not { } asked)
-        {
-            return wanted.Channel is { } channel ? version.StartsWith(channel + ".", StringComparison.Ordinal) : !prerelease;
-        }
         if (prerelease && !wanted.TakesPrerelease)
         {
             return false;
+        }
+        if (wanted.Version is not { } asked)
+        {
+            return wanted.Channel is { } channel ? version.StartsWith(channel + ".", StringComparison.Ordinal) : !prerelease;
         }
         if (Parts(asked) is not { } a || Parts(version) is not { } v)
         {

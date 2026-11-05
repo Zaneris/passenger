@@ -9,8 +9,15 @@ namespace Passenger.Workspace;
 /// what it asks for, and its allowPrerelease, null where it does not say.</summary>
 public sealed record GlobalJsonSdk(string Path, string? Version, string? RollForward, int Line, bool? AllowPrerelease = null)
 {
-    /// <summary>The SDK wanted as this global.json lets a version of it go, by its rollForward and allowPrerelease.</summary>
-    public SdkWanted Rolling(SdkWanted wanted) => wanted.Version is null ? wanted : wanted with { RollForward = RollForward, AllowPrerelease = AllowPrerelease };
+    /// <summary>The SDK wanted as this global.json has dotnet take it: a version as its rollForward and allowPrerelease let it
+    /// go, a channel by its allowPrerelease, and the newest, which no one has asked dotnet about yet, the version it asks
+    /// for, where it asks for one, so one install gives the folder an SDK it will use.</summary>
+    public SdkWanted Rolling(SdkWanted wanted) => wanted switch
+    {
+        { Channel: not null } => wanted with { AllowPrerelease = AllowPrerelease },
+        { Version: null } when Version is null => wanted,
+        _ => wanted with { Version = wanted.Version ?? Version, RollForward = RollForward, AllowPrerelease = AllowPrerelease },
+    };
 
     /// <summary>What the global.json at a path asks, read from the disk; null for no path, or a file that does not read.</summary>
     public static GlobalJsonSdk? Read(string? path)

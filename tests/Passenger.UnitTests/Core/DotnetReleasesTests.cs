@@ -166,6 +166,21 @@ public class DotnetReleasesTests
     }
 
     [Fact]
+    public void A_projects_channel_global_json_refuses_prereleases_of_takes_a_release_alone_and_says_why_where_it_has_none()
+    {
+        SdkWanted releases = new(Channel: "10.0", AllowPrerelease: false);
+        Assert.False(DotnetReleases.Satisfies(releases, "10.0.100-rc.2.25502.107"), "An RC global.json then refuses was taken for the project's channel");
+        Assert.Equal("10.0.403", Choose(releases)!.Version);
+        SdkWanted previewOnly = new(Channel: "11.0", AllowPrerelease: false);
+        using JsonDocument eleven = JsonDocument.Parse(Eleven);
+        Assert.Null(DotnetReleases.Choose(previewOnly, eleven.RootElement, "osx-arm64"));
+        Assert.Equal("Microsoft publishes no .NET SDK .NET 11.0's newest for osx-arm64 but prereleases, which global.json's allowPrerelease refuses",
+            DotnetReleases.NonePublished(previewOnly, "osx-arm64"));
+        Assert.Equal("Microsoft publishes no .NET SDK 10.0.999 for osx-arm64 (global.json's rollForward disable)",
+            DotnetReleases.NonePublished(new SdkWanted("10.0.999", "disable"), "osx-arm64"));
+    }
+
+    [Fact]
     public void This_system_is_named_as_Microsoft_names_its_archives()
     {
         Assert.Matches(@"^(osx|win|linux|linux-musl|freebsd)-(arm64|x64|x86|arm|s390x|ppc64le|riscv64|loongarch64)$", DotnetReleases.ThisSystem());

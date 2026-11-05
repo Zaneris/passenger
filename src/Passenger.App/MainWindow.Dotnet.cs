@@ -230,8 +230,10 @@ public partial class MainWindow
             SdkDownload sdk;
             try
             {
-                string? globalJson = DotnetWant.Missing?.GlobalJson;
-                wanted = await BackgroundWork.Run(() => GlobalJsonSdk.Read(globalJson)?.Rolling(wanted) ?? wanted);
+                // With no dotnet to ask, nothing names the folder's global.json but the folder.
+                string? globalJson = DotnetWant.GlobalJson;
+                string? folder = Folder;
+                wanted = await BackgroundWork.Run(() => GlobalJsonSdk.Read(globalJson ?? (folder is null ? null : Dotnet.GlobalJsonIn(folder)?.FullName))?.Rolling(wanted) ?? wanted);
                 sdk = await BackgroundWork.Run(() => DotnetReleases.ChooseAsync(wanted, DotnetReleases.ThisSystem(), installing.Stopping));
             }
             catch (DotnetInstallFailed failed)

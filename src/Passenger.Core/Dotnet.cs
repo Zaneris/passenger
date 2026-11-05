@@ -60,17 +60,21 @@ public static partial class Dotnet
     private static partial Regex SdkVersion();
 
     /// <summary>The global.json dotnet reads in a folder (the nearest over it) with its last write and length; empty for none.</summary>
-    public static string GlobalJsonOver(string folder)
+    public static string GlobalJsonOver(string folder) =>
+        GlobalJsonIn(folder) is { } file ? $"{file.FullName}\n{file.LastWriteTimeUtc.Ticks}\n{file.Length}" : string.Empty;
+
+    /// <summary>The global.json dotnet reads in a folder, the nearest over it; null for none.</summary>
+    public static FileInfo? GlobalJsonIn(string folder)
     {
         for (string? at = folder; at is not null; at = Path.GetDirectoryName(at))
         {
             FileInfo file = new(Path.Combine(at, "global.json"));
             if (file.Exists)
             {
-                return $"{file.FullName}\n{file.LastWriteTimeUtc.Ticks}\n{file.Length}";
+                return file;
             }
         }
-        return string.Empty;
+        return null;
     }
 
     /// <summary>A test's stand-in for the search <see cref="Host"/> makes, a machine with no .NET's throwing what the search

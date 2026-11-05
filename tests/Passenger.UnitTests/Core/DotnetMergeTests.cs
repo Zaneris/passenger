@@ -4,16 +4,19 @@ using Passenger.Core;
 namespace Passenger.UnitTests.Core;
 
 /// <summary>An unpacked SDK moved into an installation as one change: what the installation has stays, what it lacks comes
-/// whole, through a folder that is a link too, the sdk folder last; and whatever stops it or follows it, taking it back puts
-/// the installation as it was, so no half of an SDK is left to read as one.</summary>
+/// whole, through a folder that is a link too, onto another volume too, the sdk folder last; and whatever stops it or
+/// follows it, taking it back puts the installation as it was, so no half of an SDK is left to read as one. Windows refuses
+/// a move or a removal for a file another program holds, which is waited out, said, and named where it outlasts the wait.</summary>
 public sealed class DotnetMergeTests : IDisposable
 {
     private const string Sdk = "10.0.403";
     private const string Runtime = "10.0.14";
 
     private readonly string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
-    private readonly DotnetMerge merge = new(Sdk, _ => { });
     private readonly List<string> shut = [];
+    private readonly List<FileStream> held = [];
+    private readonly List<string> stages = [];
+    private readonly DotnetMerge merge;
 
     private string Unpacked => Path.Join(root, "unpacked");
 
@@ -25,6 +28,7 @@ public sealed class DotnetMergeTests : IDisposable
 
     public DotnetMergeTests()
     {
+        merge = new DotnetMerge(Sdk, stages.Add, TimeSpan.FromSeconds(1));
         Write(Unpacked, "dotnet", "new host\n");
         Write(Unpacked, "LICENSE.txt", "licence\n");
         Write(Unpacked, Path.Join("host", "fxr", Runtime, "libhostfxr"), "fxr\n");
@@ -35,6 +39,7 @@ public sealed class DotnetMergeTests : IDisposable
 
     public void Dispose()
     {
+        held.ForEach(file => file.Dispose());
         if (!OperatingSystem.IsWindows())
         {
             foreach (string folder in shut)
@@ -124,13 +129,8 @@ public sealed class DotnetMergeTests : IDisposable
     [Fact]
     public async Task A_runtime_refused_its_place_leaves_no_SDK_to_read_as_installed_and_taking_back_leaves_the_installation_as_it_was()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Skip("Windows has no folder mode to refuse the move with");
-            return;
-        }
         Write(Installation, Path.Join("shared", "Microsoft.NETCore.App", "9.0.1", "System.Private.CoreLib.dll"), "older runtime\n");
-        Shut(Path.Join(Installation, "shared", "Microsoft.NETCore.App"));
+        Refuse(Path.Join(Installation, "shared", "Microsoft.NETCore.App"), Path.Join(Unpacked, RuntimeFolder, "System.Private.CoreLib.dll"));
         List<string> before = Listed(Installation);
 
         await Assert.ThrowsAnyAsync<IOException>(() => merge.IntoAsync(Unpacked, Installation, CancellationToken.None));
@@ -144,13 +144,8 @@ public sealed class DotnetMergeTests : IDisposable
     [Fact]
     public async Task A_move_refused_at_its_last_step_has_what_came_before_it_taken_out_again()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Skip("Windows has no folder mode to refuse the move with");
-            return;
-        }
         Write(Installation, Path.Join("sdk", "9.0.319", "dotnet.dll"), "older cli\n");
-        Shut(Path.Join(Installation, "sdk"));
+        Refuse(Path.Join(Installation, "sdk"), Path.Join(Unpacked, SdkFolder, "dotnet.dll"));
         List<string> before = Listed(Installation);
 
         await Assert.ThrowsAnyAsync<IOException>(() => merge.IntoAsync(Unpacked, Installation, CancellationToken.None));
@@ -158,6 +153,88 @@ public sealed class DotnetMergeTests : IDisposable
         Assert.True(File.Exists(Path.Join(Installation, RuntimeFolder, "System.Private.CoreLib.dll")), "The sdk folder did not come last, so this refusal took nothing back");
         Assert.Empty(await merge.TakeBackAsync());
         Assert.Equal(before, Listed(Installation));
+    }
+
+    /// <summary>What a virus scanner does to files just unpacked: the move waits, saying so, and goes on once let go.</summary>
+    [Fact]
+    public async Task A_file_held_in_what_moves_is_waited_for_saying_so_and_the_merge_lands_once_it_is_let_go()
+    {
+        WindowsAlone();
+        FileStream file = Hold(Path.Join(Unpacked, RuntimeFolder, "System.Private.CoreLib.dll"));
+        DotnetMerge waiting = new(Sdk, said =>
+        {
+            stages.Add(said);
+            file.Dispose();
+        });
+
+        await waiting.IntoAsync(Unpacked, Installation, CancellationToken.None);
+
+        Assert.Contains(stages, said => said.StartsWith("Waiting for Windows to let go of the .NET SDK's ", StringComparison.Ordinal));
+        Assert.True(waiting.HeldSteps == 1 && waiting.Held > TimeSpan.Zero, $"The wait was not counted: {waiting.HeldSteps} steps, {waiting.Held}");
+        Assert.Equal([Sdk], DotnetInstallation.Read(Installation).Sdks);
+    }
+
+    /// <summary>Taking back waits as the move does: what it reaches may be held by the same scanner.</summary>
+    [Fact]
+    public async Task A_file_held_as_taking_back_reaches_it_is_waited_for_saying_so_and_taken_out_once_it_is_let_go()
+    {
+        WindowsAlone();
+        Write(Installation, Path.Join("shared", "Microsoft.NETCore.App", "9.0.1", "System.Private.CoreLib.dll"), "older runtime\n");
+        List<string> before = Listed(Installation);
+        FileStream? file = null;
+        DotnetMerge waiting = new(Sdk, said =>
+        {
+            stages.Add(said);
+            file?.Dispose();
+        });
+        await waiting.IntoAsync(Unpacked, Installation, CancellationToken.None);
+        file = Hold(Path.Join(Installation, RuntimeFolder, "System.Private.CoreLib.dll"));
+
+        Assert.Empty(await waiting.TakeBackAsync());
+
+        Assert.Contains(stages, said => said.StartsWith("Waiting for Windows to let go of the .NET SDK's ", StringComparison.Ordinal));
+        Assert.Equal(before, Listed(Installation));
+    }
+
+    [Fact]
+    public async Task What_stays_held_past_the_wait_is_named_and_all_the_rest_is_taken_out_again()
+    {
+        WindowsAlone();
+        Write(Installation, Path.Join("shared", "Microsoft.NETCore.App", "9.0.1", "System.Private.CoreLib.dll"), "older runtime\n");
+        await merge.IntoAsync(Unpacked, Installation, CancellationToken.None);
+        Hold(Path.Join(Installation, RuntimeFolder, "System.Private.CoreLib.dll"));
+
+        IReadOnlyList<string> left = await merge.TakeBackAsync();
+
+        Assert.Equal([Path.Join(Installation, RuntimeFolder)], left);
+        Assert.False(Directory.Exists(Path.Join(Installation, "sdk")), "The SDK stayed behind the file that could not be taken out");
+        Assert.False(File.Exists(Path.Join(Installation, "dotnet")), "The host stayed behind the file that could not be taken out");
+    }
+
+    /// <summary>The folder a link leads to lies on a volume of its own, so nothing of the SDK can be renamed there.</summary>
+    [Fact]
+    public async Task A_merge_through_a_link_onto_another_volume_lands_whole_and_is_taken_out_whole()
+    {
+        string elsewhere = AnotherVolume();
+        try
+        {
+            Write(elsewhere, Path.Join("Microsoft.NETCore.App", "9.0.1", "kept.dll"), "kept\n");
+            Directory.CreateDirectory(Installation);
+            Link(() => Directory.CreateSymbolicLink(Path.Join(Installation, "shared"), elsewhere));
+            List<string> before = Listed(elsewhere);
+
+            await merge.IntoAsync(Unpacked, Installation, CancellationToken.None);
+
+            Assert.Equal("runtime\n", File.ReadAllText(Path.Join(elsewhere, "Microsoft.NETCore.App", Runtime, "System.Private.CoreLib.dll")));
+            Assert.DoesNotContain(Directory.EnumerateFileSystemEntries(Path.Join(elsewhere, "Microsoft.NETCore.App")), entry => Path.GetFileName(entry).StartsWith('.'));
+            Assert.Equal([Sdk], DotnetInstallation.Read(Installation).Sdks);
+            Assert.Empty(await merge.TakeBackAsync());
+            Assert.Equal(before, Listed(elsewhere));
+        }
+        finally
+        {
+            Directory.Delete(elsewhere, recursive: true);
+        }
     }
 
     [Fact]
@@ -235,6 +312,50 @@ public sealed class DotnetMergeTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, text);
         return path;
+    }
+
+    /// <summary>The move of an entry of the SDK refused: on Windows, which has no folder mode to do it with, by a file under
+    /// the entry held, else by the folder it goes into shut.</summary>
+    private void Refuse(string into, string file)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Hold(file);
+        }
+        else
+        {
+            Shut(into);
+        }
+    }
+
+    /// <summary>A file held as a virus scanner holds it, shared with nothing, let go as the test ends if it has not been.</summary>
+    private FileStream Hold(string file)
+    {
+        FileStream stream = new(file, FileMode.Open, FileAccess.Read, FileShare.None);
+        held.Add(stream);
+        return stream;
+    }
+
+    private static void WindowsAlone() => Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses a move or a removal for a file another program holds");
+
+    /// <summary>A new folder on a volume other than the test's, the test skipped where this system has none to hand.</summary>
+    private string AnotherVolume()
+    {
+        const string Memory = "/dev/shm";
+        Assert.SkipUnless(Directory.Exists(Memory), $"No volume to hand beside the test's: this system has no {Memory}");
+        string elsewhere = Path.Join(Memory, $"passenger-unit-{Guid.NewGuid():N}");
+        string probe = Directory.CreateDirectory(Path.Join(root, "probe")).FullName;
+        try
+        {
+            Directory.Move(probe, elsewhere);
+        }
+        catch (IOException)
+        {
+            return Directory.CreateDirectory(elsewhere).FullName;
+        }
+        Directory.Delete(elsewhere);
+        Assert.Skip($"{Memory} lies on the test's own volume");
+        return elsewhere;
     }
 
     /// <summary>A folder nothing may be moved into, opened again as the test ends.</summary>
