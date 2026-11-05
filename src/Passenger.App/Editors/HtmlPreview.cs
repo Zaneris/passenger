@@ -13,8 +13,8 @@ namespace Passenger.App.Editors;
 /// from it, <see cref="ServedPage"/>), and given it again as typing pauses, at the place it was scrolled to
 /// (<see cref="PagePlace"/>). The web view keeps nothing between runs (its data under the state's cache, private). A link
 /// followed in it opens where Passenger opens one, a web page in the browser and a file in the editor, the page itself
-/// staying. A Linux without WebKitGTK 4.1 says so in the page's place; a window nobody sees is given the page with no web
-/// view to show it.</summary>
+/// staying. A page setting no background stands on a browser's white, whatever the window's look. A Linux without
+/// WebKitGTK 4.1 says so in the page's place; a window nobody sees is given the page with no web view to show it.</summary>
 public sealed class HtmlPreview : Panel
 {
     /// <summary>How long typing pauses before the page is given the text again.</summary>
@@ -169,10 +169,14 @@ public sealed class HtmlPreview : Panel
         }
     }
 
-    /// <summary>A web view ready, again once shown again: its WebView2 is asked to serve the page, which is given now, as
-    /// the new web view holds no page yet.</summary>
+    /// <summary>A web view ready, again once shown again: a WKWebView draws its ground, and a WebView2 is asked to serve the
+    /// page, which is given now, as the new web view holds no page yet.</summary>
     private void OnAdapter(object? sender, WebViewAdapterEventArgs e)
     {
+        if (e.TryGetPlatformHandle() is IAppleWKWebViewPlatformHandle apple)
+        {
+            DrawGround(apple.WKWebView);
+        }
         if (!OperatingSystem.IsWindows())
         {
             return;
@@ -184,6 +188,16 @@ public sealed class HtmlPreview : Panel
         {
             IdeErrors.Observe(GiveAsync());
         }
+    }
+
+    /// <summary>A WKWebView left to draw no ground shows the window through a page setting no background. Drawn by the web
+    /// view, the ground lies under the page: a background given to the page's html would stop its body's filling the
+    /// view.</summary>
+    private static void DrawGround(nint web)
+    {
+        nint key = MacObjC.Send(MacObjC.Class("NSString"), MacObjC.Selector("stringWithUTF8String:"), "drawsBackground");
+        nint yes = MacObjC.Send(MacObjC.Class("NSNumber"), MacObjC.Selector("numberWithBool:"), true);
+        MacObjC.Send(web, MacObjC.Selector("setValue:forKey:"), yes, key);
     }
 
     private void OnAdapterGone(object? sender, WebViewAdapterEventArgs e)
@@ -244,7 +258,7 @@ public sealed class HtmlPreview : Panel
         {
             return view;
         }
-        view = new NativeWebView();
+        view = new NativeWebView { Background = Avalonia.Media.Brushes.White };
         view.EnvironmentRequested += (_, e) => Private(e);
         view.NavigationStarted += OnNavigating;
         view.NavigationCompleted += OnLanded;
@@ -253,11 +267,8 @@ public sealed class HtmlPreview : Panel
             e.Handled = true;
             Follow(e.Request);
         };
-        if (OperatingSystem.IsWindows())
-        {
-            view.AdapterCreated += OnAdapter;
-            view.AdapterDestroyed += OnAdapterGone;
-        }
+        view.AdapterCreated += OnAdapter;
+        view.AdapterDestroyed += OnAdapterGone;
         Children.Add(view);
         return view;
     }

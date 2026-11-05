@@ -1,8 +1,10 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
+using Avalonia.Platform;
 using Passenger.App;
 using Passenger.App.Editors;
 using Passenger.Core;
@@ -13,9 +15,9 @@ namespace Passenger.Tests;
 /// draws: what the page is given and when, the text as the editor has it with the file's folder for its relative
 /// addresses, again once typing pauses and not before; off until the strip's toggle turns it on; a Linux without
 /// WebKitGTK 4.1 saying so in the page's place; and, where a window is seen, the page given again at the place it was
-/// scrolled to, the open folder's stylesheet and picture loaded, and a page over WebView2's 2 MB for a text shown
-/// whole.</summary>
-public sealed class HtmlPreviewTests : IDisposable
+/// scrolled to, the open folder's stylesheet and picture loaded, a page over WebView2's 2 MB for a text shown whole, and a
+/// page with no background on the web view's own ground.</summary>
+public sealed partial class HtmlPreviewTests : IDisposable
 {
     private const string Page = "<!doctype html>\n<html>\n  <head><link rel=\"stylesheet\" href=\"site.css\"></head>\n  <body><h1>Hello</h1></body>\n</html>\n";
 
@@ -191,6 +193,41 @@ public sealed class HtmlPreviewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A page setting no background stands on white whatever the window's look, the web view drawing that ground
+    /// under the page, where a page's own, on its html or body, still fills the view. Only a web view of the system's draws,
+    /// so headless this skips, run by hand where Passenger's window is seen.</summary>
+    [AvaloniaFact]
+    public void An_HTML_page_with_no_background_stands_on_a_ground_of_the_web_views_own()
+    {
+        if (PassengerApp.ShowsNoWindow)
+        {
+            Assert.Skip("A window nobody sees makes no web view of the system's, the only one to draw a page: this runs where Passenger's window is seen");
+        }
+        if (HtmlPreview.WhyNone() is { } why)
+        {
+            Assert.Skip($"This system shows no page: {why}");
+        }
+        string index = Path.Combine(folder, "index.html");
+        File.WriteAllText(index, "<!doctype html>\n<html>\n  <body><h1>Hello</h1></body>\n</html>\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Assert.Null(window.OpenFile(index));
+        Ui.Settle();
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        Ui.Click(group.PreviewToggle);
+        HtmlPreview preview = group.Html ?? throw new Xunit.Sdk.XunitException("The toggle showed no page beside the HTML file");
+        NativeWebView web = Assert.Single(preview.GetLogicalChildren().OfType<NativeWebView>());
+        Ui.WaitFor(() => preview.Landed == 1, () => $"the page's first load ({preview.Loads} given, {preview.Landed} loaded)");
+
+        Assert.True(web.Background is Avalonia.Media.ISolidColorBrush { Color: var ground } && ground == Avalonia.Media.Colors.White,
+            $"The web view's ground is {web.Background}, so a page with no background shows the window's look");
+        if (web.TryGetPlatformHandle() is IAppleWKWebViewPlatformHandle apple)
+        {
+            Assert.True(ObjC.DrawsBackground(apple.WKWebView), "The WKWebView draws no ground, so the window shows through a page with no background");
+        }
+        Assert.Equal("rgba(0, 0, 0, 0)", Script(web, "getComputedStyle(document.documentElement).backgroundColor")?.Trim('"'));
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_system_without_a_web_view_for_the_page_says_so_in_its_place()
     {
@@ -233,6 +270,33 @@ public sealed class HtmlPreviewTests : IDisposable
             Assert.Equal("0", Script(web, "document.getElementById('up').naturalWidth")?.Trim('"'));
             Assert.Equal("0", Script(web, "document.getElementById('whole').naturalWidth")?.Trim('"'));
         }
+    }
+
+    /// <summary>What a WKWebView says of itself, asked through the Objective-C runtime.</summary>
+    private static partial class ObjC
+    {
+        private const string Runtime = "/usr/lib/libobjc.A.dylib";
+
+        public static bool DrawsBackground(nint web)
+        {
+            nint key = Send(Class("NSString"), Selector("stringWithUTF8String:"), "drawsBackground");
+            return (Send(Send(web, Selector("valueForKey:"), key), Selector("boolValue")) & 0xFF) != 0;
+        }
+
+        [LibraryImport(Runtime, EntryPoint = "objc_getClass", StringMarshalling = StringMarshalling.Utf8)]
+        private static partial nint Class(string name);
+
+        [LibraryImport(Runtime, EntryPoint = "sel_registerName", StringMarshalling = StringMarshalling.Utf8)]
+        private static partial nint Selector(string name);
+
+        [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
+        private static partial nint Send(nint receiver, nint selector);
+
+        [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
+        private static partial nint Send(nint receiver, nint selector, nint argument);
+
+        [LibraryImport(Runtime, EntryPoint = "objc_msgSend", StringMarshalling = StringMarshalling.Utf8)]
+        private static partial nint Send(nint receiver, nint selector, string argument);
     }
 
     /// <summary>The page's answer to a script, the window's loop running while it is asked.</summary>

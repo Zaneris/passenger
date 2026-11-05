@@ -20,6 +20,9 @@ internal static partial class MacObjC
     [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
     public static partial nint Send(nint receiver, nint selector, nint argument);
 
+    [LibraryImport(Runtime, EntryPoint = "objc_msgSend")]
+    public static partial nint Send(nint receiver, nint selector, nint argument, nint second);
+
     [LibraryImport(Runtime, EntryPoint = "objc_msgSend", StringMarshalling = StringMarshalling.Utf8)]
     public static partial nint Send(nint receiver, nint selector, string argument);
 
