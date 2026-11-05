@@ -215,7 +215,7 @@ internal static class MarkupIndent
     private static string? EndTagAt(TextSnapshot text, int at, int limit)
     {
         int end = at + 2;
-        while (end < limit && end - at < 256 && MarkupNames.IsNameChar(text[end]))
+        while (end < limit && MarkupNames.IsNameChar(text[end]))
         {
             end++;
         }

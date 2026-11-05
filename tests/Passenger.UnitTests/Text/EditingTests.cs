@@ -106,6 +106,31 @@ public class EditingTests
     }
 
     [Theory]
+    [InlineData("<नाम>|")]
+    [InlineData("<cafe\u0301>|")]
+    [InlineData("<a\u00B7b>|")]
+    public void A_start_tags_close_writes_the_whole_of_an_xml_name_its_combining_marks_included(string before)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(before);
+        string? after = Marked.After(text, TextEditing.CloseTag(text, selections, ">", MarkupKind.Xml));
+        string name = before[1..^2];
+        Assert.Equal($"<{name}>|</{name}>", after);
+        Assert.Equal(name, System.Xml.Linq.XDocument.Parse(after!.Replace("|", string.Empty, StringComparison.Ordinal)).Root!.Name.LocalName);
+    }
+
+    [Fact]
+    public void A_start_tags_close_and_an_end_tags_slash_write_a_name_past_the_basic_plane_and_a_long_name_whole()
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse("<\U0001D4B3y>|");
+        Assert.Equal("<\U0001D4B3y>|</\U0001D4B3y>", Marked.After(text, TextEditing.CloseTag(text, selections, ">", MarkupKind.Xml)));
+        string name = new('n', 300);
+        (text, selections) = Marked.Parse($"<{name}>|");
+        Assert.Equal($"<{name}>|</{name}>", Marked.After(text, TextEditing.CloseTag(text, selections, ">", MarkupKind.Xml)));
+        (text, selections) = Marked.Parse($"<{name}>x</|");
+        Assert.Equal($"<{name}>x</{name}>|", Marked.After(text, TextEditing.CloseTag(text, selections, "/", MarkupKind.Xml)));
+    }
+
+    [Theory]
     [InlineData("<Grid />|", ">", MarkupKind.Xml)]
     [InlineData("<StackPanel></Grid>|", ">", MarkupKind.Xml)]
     [InlineData("<Grid>|\n    <Button />\n</Grid>", ">", MarkupKind.Xml)]

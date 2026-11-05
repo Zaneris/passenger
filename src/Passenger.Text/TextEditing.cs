@@ -165,7 +165,7 @@ public static class TextEditing
     private static string? NameAt(TextSnapshot text, int at, int limit)
     {
         int end = at;
-        while (end < limit && end - at < 256 && MarkupNames.IsNameChar(text[end]))
+        while (end < limit && MarkupNames.IsNameChar(text[end]))
         {
             end++;
         }
