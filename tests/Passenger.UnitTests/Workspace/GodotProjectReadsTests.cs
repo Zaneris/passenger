@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Workspace;
@@ -83,6 +84,29 @@ public class GodotProjectReadsTests
         Assert.Equal(Path.Combine("/Users/ann", "Library", "Application Support", "Godot", "export_templates", "4.7.2.stable.mono"),
             GodotExports.TemplatesFolder("/Applications/Godot.app/Contents/MacOS/Godot", "4.7.2.stable.mono", windows: false, macOS: true,
                 new Dictionary<string, string> { ["HOME"] = "/Users/ann" }.GetValueOrDefault, _ => false));
+    }
+
+    /// <summary>What an install takes from a template archive is named as one file of its folder, as Godot's templates are:
+    /// an entry Windows would read as leaving the folder, a drive, or another file's stream is none of them on any system.</summary>
+    [Fact]
+    public void A_template_archives_entry_that_could_leave_its_folder_is_not_chosen_whatever_this_system_reads_it_as()
+    {
+        string[] templates = ["version.txt", "icudt_godot.dat", "linux_release.x86_64", "windows_debug_x86_64_console.exe", "web_dlink_nothreads_release.zip", "macos.zip"];
+        string[] crafted = [@"..\..\victim.txt", @"C:\victim.txt", "C:victim.txt", @"\\server\share\victim.txt", "macos.zip:stream", "..", ".", ".. ", "victim.txt.", "victim.txt ",
+            "nested/victim.txt", "folder/"];
+        using MemoryStream held = new();
+        using (ZipArchive written = new(held, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (string name in templates.Concat(crafted))
+            {
+                written.CreateEntry("templates/" + name);
+            }
+        }
+        held.Position = 0;
+        using ZipArchive read = new(held, ZipArchiveMode.Read);
+
+        Assert.Equal(templates, GodotExports.Chosen(read, null).Select(c => c.Name));
+        Assert.Equal(["macos.zip"], GodotExports.Chosen(read, new HashSet<string>(["macos.zip", @"C:\victim.txt"])).Select(c => c.Name));
     }
 
     [Fact]

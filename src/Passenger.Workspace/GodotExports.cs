@@ -151,10 +151,15 @@ public static class GodotExports
         archive.GetEntry(Inside + VersionFile) is { } entry ? ReadAll(entry).Trim() : null;
 
     /// <summary>The templates of an archive an install takes (<paramref name="needed"/>, or all for null), by name with
-    /// their sizes, in the archive's order.</summary>
+    /// their sizes, in the archive's order; an entry no file of a templates folder can be named after is none of them.</summary>
     public static IReadOnlyList<(string Name, long Size)> Chosen(ZipArchive archive, IReadOnlySet<string>? needed) =>
-        [.. archive.Entries.Where(e => e.FullName.StartsWith(Inside, StringComparison.Ordinal) && e.FullName.Length > Inside.Length && !e.FullName.EndsWith('/'))
-            .Select(e => (Name: e.FullName[Inside.Length..], Size: e.Length)).Where(e => !e.Name.Contains('/') && (needed is null || needed.Contains(e.Name)))];
+        [.. archive.Entries.Where(e => e.FullName.StartsWith(Inside, StringComparison.Ordinal) && e.FullName.Length > Inside.Length)
+            .Select(e => (Name: e.FullName[Inside.Length..], Size: e.Length)).Where(e => IsFileName(e.Name) && (needed is null || needed.Contains(e.Name)))];
+
+    /// <summary>Whether a name is a template's file in its version's folder on every system, as all of Godot's are: letters,
+    /// digits, dots, dashes and underscores, no dot at either end. Windows would read a backslash, colon or end dot of any
+    /// other name as leading out of the folder, into a drive or to another file.</summary>
+    private static bool IsFileName(string name) => name[0] != '.' && name[^1] != '.' && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_');
 
     /// <summary>Installs an archive's templates of a Godot's version into its folder, each written whole as it is read
     /// (<see cref="AtomicFile"/>), the version file last so a folder cut short is never taken for one installed; null once
