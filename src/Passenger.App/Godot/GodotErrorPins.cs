@@ -66,12 +66,20 @@ public sealed class GodotErrorPins
 
     public IReadOnlyList<GodotPin> In(string path) => [.. pins.Where(p => Passenger.Core.PathNames.Same(p.Path, path))];
 
-    /// <summary>A game launched: the last run's pins go, and this one's errors pin as they come.</summary>
+    /// <summary>The game whose errors pin, and what hears them.</summary>
+    private (GodotGame Game, EventHandler<GodotError> Heard)? following;
+
+    /// <summary>A game launched: the last run's pins go, and this one's errors pin as they come, the last game's no longer,
+    /// though it runs on.</summary>
     public void Follow(GodotGame game, Func<string, TextSnapshot?> textOf, Func<string, TextDocument?> openText)
     {
         UiThread.Check();
         Clear();
-        game.Raised += (_, error) =>
+        if (following is { } last)
+        {
+            last.Game.Raised -= last.Heard;
+        }
+        void Heard(object? sender, GodotError error)
         {
             (string? path, int line) = error.PlaceIn(game.Folder, game.PathOf);
             if (path is null || line < 1)
@@ -96,7 +104,9 @@ public sealed class GodotErrorPins
             }
             pin.Add(new GodotOccurrence(error.Milliseconds, error.Said, error.Warning, error.Frames));
             Told(path);
-        };
+        }
+        game.Raised += Heard;
+        following = (game, Heard);
     }
 
     /// <summary>Files whose pins were counted since they were last told of.</summary>
