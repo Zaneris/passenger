@@ -38,7 +38,7 @@ public sealed class BrowserRefresh : IDisposable
     private readonly CancellationTokenSource closing = new();
     private readonly List<Page> pages = [];
     private readonly SemaphoreSlim telling = new(1, 1);
-    private readonly Dictionary<string, (DateTime Written, long Length)> told = new(StringComparer.Ordinal);
+    private readonly ToldFiles told = new();
     private ((DateTime Written, long Length) Stamp, DevelopmentAssets? Assets)? served;
     private readonly RSA? own;
     private readonly string? keyFile;
@@ -168,8 +168,8 @@ public sealed class BrowserRefresh : IDisposable
 
     /// <summary>Files changed on disk, told to the pages off the window's thread, one change at a time: each file the app serves,
     /// as its build's map of what it serves names it, a stylesheet applied in place and anything else reloading them, and a
-    /// component's scoped CSS bundled again by its project first, the app's or one it references; a file unchanged since it
-    /// was told is passed over.</summary>
+    /// component's scoped CSS, written or deleted, bundled again by its project first, the app's or one it references; a file
+    /// unchanged since it was told is passed over.</summary>
     public void Changed(IEnumerable<string> paths)
     {
         UiThread.Check();
@@ -183,23 +183,6 @@ public sealed class BrowserRefresh : IDisposable
     /// <summary>Whether a file is a component's or a page's scoped CSS, which its build bundles.</summary>
     internal static bool IsScopedCss(string path) =>
         path.EndsWith(".razor.css", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".cshtml.css", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>Whether a file there now was written since the pages were last told of it.</summary>
-    private bool New(string path)
-    {
-        FileInfo file = new(path);
-        if (!file.Exists)
-        {
-            return false;
-        }
-        (DateTime, long) now = (file.LastWriteTimeUtc, file.Length);
-        if (told.TryGetValue(path, out (DateTime, long) last) && last == now)
-        {
-            return false;
-        }
-        told[path] = now;
-        return true;
-    }
 
     /// <summary>An update applied to the app: its pages refreshed as the SDK refreshes them (a Blazor page renders again,
     /// any other reloads).</summary>
@@ -235,16 +218,24 @@ public sealed class BrowserRefresh : IDisposable
         string app = Path.GetFileNameWithoutExtension(project);
         List<string> urls = [];
         List<(string Project, string? Framework)> scoped = [];
+        HashSet<string> lostSheet = new(PathNames.Comparer);
         foreach (string path in changed)
         {
             if (IsScopedCss(path))
             {
-                if (ProjectOf(path) is { } owner && New(path) && !scoped.Contains(owner))
+                if (ProjectOf(path) is { } owner && told.WrittenOrGone(path))
                 {
-                    scoped.Add(owner);
+                    if (!scoped.Contains(owner))
+                    {
+                        scoped.Add(owner);
+                    }
+                    if (!File.Exists(path))
+                    {
+                        lostSheet.Add(owner.Project);
+                    }
                 }
             }
-            else if (UrlOf(assets, path) is { } url && New(path) && !urls.Contains(url))
+            else if (UrlOf(assets, path) is { } url && told.Written(path) && !urls.Contains(url))
             {
                 urls.Add(url);
             }
@@ -257,7 +248,7 @@ public sealed class BrowserRefresh : IDisposable
             {
                 Say($"Hot Reload: {name}'s scoped CSS is not in {app}'s pages, as {app}'s build took in none of it: build {app} again to have it", true);
             }
-            else if (await BundleAsync(bundled, own ? null : framework, own) is { } failed)
+            else if (await BundleAsync(bundled, own ? null : framework, own, lostSheet.Contains(bundled) ? assets?.BundleFileOf(bundled, own) : null) is { } failed)
             {
                 Say($"Hot Reload: {name}'s scoped CSS could not be bundled again: {failed}", true);
             }
@@ -331,8 +322,10 @@ public sealed class BrowserRefresh : IDisposable
     }
 
     /// <summary>A project's scoped CSS bundled again by its build's own targets, with no compile, the app's as its build is
-    /// given, one it references for its own framework: null once done, else why not.</summary>
-    private async Task<string?> BundleAsync(string bundled, string? framework, bool own)
+    /// given, one it references for its own framework: null once done, else why not. Where a sheet of it went, the bundle the
+    /// app serves is emptied first: those targets write it whole from what is left, and with no sheet left they write none,
+    /// which would keep the rules of the last. What it held is put back unless the targets ran.</summary>
+    private async Task<string?> BundleAsync(string bundled, string? framework, bool own, string? emptied)
     {
         IEnumerable<KeyValuePair<string, string>> properties = own ? build.Properties
             : build.Properties.Where(p => !p.Key.Equals(MSBuildNames.TargetFramework, StringComparison.OrdinalIgnoreCase));
@@ -343,8 +336,49 @@ public sealed class BrowserRefresh : IDisposable
         List<string> arguments = ["msbuild", bundled, "-nologo", "-verbosity:quiet",
             $"-target:{MSBuildNames.GenerateComputedBuildStaticWebAssets};{MSBuildNames.ResolveReferencedProjectsStaticWebAssets}",
             .. properties.Select(p => $"-property:{p.Key}={p.Value}")];
-        ChildResult made = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(arguments, Path.GetDirectoryName(bundled)), cancel: closing.Token);
-        return made.Succeeded ? null : $"{made.Output}{made.Error}".Trim() is { Length: > 0 } said ? said : ExitCodes.Said(made.ExitCode);
+        byte[]? held = emptied is not null ? Emptied(emptied) : null;
+        bool ran = false;
+        try
+        {
+            ChildResult made = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(arguments, Path.GetDirectoryName(bundled)), cancel: closing.Token);
+            ran = made.Succeeded;
+            return ran ? null : $"{made.Output}{made.Error}".Trim() is { Length: > 0 } said ? said : ExitCodes.Said(made.ExitCode);
+        }
+        finally
+        {
+            if (!ran && held is not null)
+            {
+                Filled(emptied!, held);
+            }
+        }
+    }
+
+    /// <summary>A bundle emptied, and what it held; null where it could not be, which leaves it as it was.</summary>
+    private static byte[]? Emptied(string bundle)
+    {
+        try
+        {
+            byte[] held = File.ReadAllBytes(bundle);
+            AtomicFile.Write(bundle, []);
+            return held;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>What a bundle held put back.</summary>
+    private static void Filled(string bundle, byte[] held)
+    {
+        try
+        {
+            AtomicFile.Write(bundle, held);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // The app holds it: the next bundling writes it whole.
+        }
     }
 
     private void Say(string line, bool error) => UiThread.Post(() => Says?.Invoke(line, error));

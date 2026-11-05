@@ -10,7 +10,7 @@ namespace Passenger.Tests;
 /// <summary>The SDK's own browser refresh under the debugger with Hot Reload, keeping a page up as dotnet watch does: a Blazor
 /// app (<see cref="BellApp"/>) debugged, the page's refresh client the test's own, speaking as the SDK's client in a page does
 /// with no browser (<see cref="RefreshClient"/>). A wwwroot stylesheet saved in the editor is applied in place and served
-/// as saved, a component's scoped CSS another program wrote is bundled again and applied, another static file changed
+/// as saved, a component's scoped CSS another program wrote or deleted is bundled again and applied, another static file changed
 /// reloads the page, and an applied update refreshes it: on the SDK the machine builds with, and on .NET 10's SDK, which
 /// speaks the earlier way, where one is installed; and a Blazor Web App with WebAssembly components, whose client's build
 /// makes its pages' browser tools, is kept up too, as are a referenced Razor class library's stylesheet and scoped CSS; where a
@@ -96,7 +96,8 @@ public sealed class BrowserRefreshTests : IDisposable
 
     /// <summary>A Razor class library Bell references, as the SDK's template makes one, with a stylesheet and a component's
     /// scoped CSS: under debug, its stylesheet saved in the editor is applied in place by the URL the app serves it at, and
-    /// its scoped CSS another program wrote is bundled again by the library and applied, each served as written.</summary>
+    /// its scoped CSS another program wrote is bundled again by the library and applied, each served as written; deleted, the
+    /// library's only sheet leaves none of its rules served.</summary>
     [AvaloniaFact]
     public void Under_debug_a_referenced_Razor_class_librarys_stylesheet_and_scoped_CSS_apply_in_place()
     {
@@ -142,6 +143,10 @@ public sealed class BrowserRefreshTests : IDisposable
             File.AppendAllText(scoped, "\n.kit-scoped {\n    color: rebeccapurple;\n}\n");
             Told(window, client, "UpdateStaticFile", "_content/Kit/Kit.bundle.scp.css", console);
             Assert.Contains("kit-scoped", Served(port, "/_content/Kit/Kit.bundle.scp.css"), StringComparison.Ordinal);
+
+            File.Delete(scoped);
+            Told(window, client, "UpdateStaticFile", "_content/Kit/Kit.bundle.scp.css", console, times: 2);
+            Assert.DoesNotContain("kit-scoped", Served(port, "/_content/Kit/Kit.bundle.scp.css"), StringComparison.Ordinal);
         }
         finally
         {
@@ -204,6 +209,12 @@ public sealed class BrowserRefreshTests : IDisposable
             Told(window, client, "UpdateStaticFile", "Bell.styles.css", console);
             Assert.Contains("kept-up-scoped", Served(port, "/Bell.styles.css"), StringComparison.Ordinal);
 
+            File.Delete(Path.Combine(folder, "Components", "Layout", "MainLayout.razor.css"));
+            Told(window, client, "UpdateStaticFile", "Bell.styles.css", console, times: 2);
+            string bundled = Served(port, "/Bell.styles.css");
+            Assert.DoesNotContain("kept-up-scoped", bundled, StringComparison.Ordinal);
+            Assert.Contains("NavMenu.razor", bundled, StringComparison.Ordinal);
+
             string favicon = Path.Combine(folder, "wwwroot", "favicon.png");
             File.WriteAllBytes(favicon, [.. File.ReadAllBytes(favicon), 0]);
             Told(window, client, "UpdateStaticFile", "favicon.png", console);
@@ -233,9 +244,9 @@ public sealed class BrowserRefreshTests : IDisposable
         window.Close();
     }
 
-    /// <summary>Waits for the page to be told a message of <paramref name="type"/> (for a path, of it).</summary>
-    private static void Told(MainWindow window, RefreshClient client, string type, string? path, Func<string> console) =>
-        Ui.WaitFor(() => client.Heard(type, path), () => $"the page to be told {type} {path} ({window.Status}); it heard:\n{client.Said}\nThe console has:\n{console()}",
+    /// <summary>Waits for the page to be told a message of <paramref name="type"/> (for a path, of it) so many times.</summary>
+    private static void Told(MainWindow window, RefreshClient client, string type, string? path, Func<string> console, int times = 1) =>
+        Ui.WaitFor(() => client.Heard(type, path, times), () => $"the page to be told {type} {path} {times} times ({window.Status}); it heard:\n{client.Said}\nThe console has:\n{console()}",
             TimeSpan.FromMinutes(2));
 
     /// <summary>A file the app serves, as it serves it now.</summary>

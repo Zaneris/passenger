@@ -6,8 +6,8 @@ namespace Passenger.UnitTests.Web;
 
 /// <summary>A web app's development manifest read as the app serves its files by it: each file by the URL it is served at,
 /// a Razor class library's under its own and its folder's files come since too, the library's scoped CSS by its bundle's URL
-/// without the fingerprint, and where the browser tools its pages load were written, a Blazor Web App's by its WebAssembly
-/// client's build.</summary>
+/// without the fingerprint, the file each project's scoped CSS is served from, and where the browser tools its pages load were
+/// written, a Blazor Web App's by its WebAssembly client's build.</summary>
 public class DevelopmentAssetsTests
 {
     private static readonly string Solution = Path.Combine(Path.GetTempPath(), "solution");
@@ -81,6 +81,20 @@ public class DevelopmentAssetsTests
         Assert.True(assets.BundleUrlOf(Path.Combine(Solution, "Kit", "Kit.csproj")) == "_content/Kit/Kit.bundle.scp.css",
             $"Kit's scoped CSS was told as {assets.BundleUrlOf(Path.Combine(Solution, "Kit", "Kit.csproj"))}, not the bundle the app serves at its own name");
         Assert.Null(assets.BundleUrlOf(Path.Combine(Solution, "Plain", "Plain.csproj")));
+    }
+
+    [Fact]
+    public void A_projects_scoped_CSS_is_served_from_its_bundle_the_apps_own_or_a_referenced_librarys()
+    {
+        string bundles = Folder("Bell", "obj", "Debug", "net10.0", "scopedcss", "bundle");
+        string library = Folder("Kit", "obj", "Debug", "net10.0", "scopedcss", "projectbundle");
+        DevelopmentAssets? read = DevelopmentAssets.Read(Manifest([bundles, library], Children(
+            ("Bell.styles.css", Asset(0, "Bell.styles.css")),
+            ("_content", Children(("Kit", Children(("Kit.h77jbnbuq3.bundle.scp.css", Asset(1, "Kit.bundle.scp.css")))))))));
+        Assert.NotNull(read);
+        Assert.Equal(Path.Combine(bundles, "Bell.styles.css"), read.BundleFileOf(Path.Combine(Solution, "Bell", "Bell.csproj"), own: true));
+        Assert.Equal(Path.Combine(library, "Kit.bundle.scp.css"), read.BundleFileOf(Path.Combine(Solution, "Kit", "Kit.csproj"), own: false));
+        Assert.Null(read.BundleFileOf(Path.Combine(Solution, "Plain", "Plain.csproj"), own: false));
     }
 
     [Fact]

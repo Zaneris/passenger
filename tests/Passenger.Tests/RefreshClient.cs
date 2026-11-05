@@ -29,16 +29,16 @@ internal sealed class RefreshClient : IAsyncDisposable
         }
     }
 
-    public bool Heard(string type, string? path)
+    public bool Heard(string type, string? path, int times = 1)
     {
         lock (said)
         {
-            return said.Any(message =>
+            return said.Count(message =>
             {
                 using JsonDocument read = JsonDocument.Parse(message);
                 return read.RootElement.GetProperty("type").GetString() == type
                     && (path is null || read.RootElement.TryGetProperty("path", out JsonElement told) && told.GetString() == path);
-            });
+            }) >= times;
         }
     }
 

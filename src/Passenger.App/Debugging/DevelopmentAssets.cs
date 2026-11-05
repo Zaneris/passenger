@@ -20,6 +20,9 @@ public sealed class DevelopmentAssets
     /// <summary>How a referenced project's scoped CSS, bundled by its build, is named after it.</summary>
     private const string ScopedBundle = ".bundle.scp.css";
 
+    /// <summary>How the app's own scoped CSS, with what it takes in of those it references, is named after it.</summary>
+    private const string AppBundle = ".styles.css";
+
     /// <summary>Each file the app serves, by the shortest URL it serves it at.</summary>
     private readonly Dictionary<string, string> urls = new(PathNames.Comparer);
 
@@ -128,5 +131,13 @@ public sealed class DevelopmentAssets
             }
         }
         return null;
+    }
+
+    /// <summary>The file the app serves a project's scoped CSS from: its own bundle, or that of a project it references;
+    /// null where it serves none.</summary>
+    public string? BundleFileOf(string project, bool own)
+    {
+        string bundle = Path.GetFileNameWithoutExtension(project) + (own ? AppBundle : ScopedBundle);
+        return urls.Keys.FirstOrDefault(file => string.Equals(Path.GetFileName(file), bundle, StringComparison.OrdinalIgnoreCase));
     }
 }
