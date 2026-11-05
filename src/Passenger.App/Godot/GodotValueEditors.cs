@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Passenger.App.LiveTree;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Inspector;
 
@@ -14,10 +15,10 @@ namespace Passenger.App.Godot;
 /// typed as its value reads (as the property's element type where it names one, else as the item's own, else as the text
 /// reads), taken at Enter or as the field is left; Add makes one more, a row's remove takes it away. An item that is itself
 /// an array or a dictionary opens its own form under the rows, and one that is an object its own properties. Each change
-/// sends the whole value to the game (a nested item's through the form it is in), and the rows then show what it holds.</summary>
+/// sends the whole value to the game (a nested item's through the form it is in), and the rows then show what it holds;
+/// changes go one at a time, each made on what the one before left.</summary>
 public sealed class GodotItemsEditor : Border
 {
-    private readonly GodotGame game;
     private readonly string name;
     private readonly GodotType type;
     private readonly GodotHint hint;
@@ -28,6 +29,9 @@ public sealed class GodotItemsEditor : Border
 
     /// <summary>Tells what holds the value that it has settled in the game.</summary>
     private readonly Action settled;
+
+    /// <summary>The form of an object an item holds, by its id and where it is held.</summary>
+    private readonly Func<ulong, string, Control> objectForm;
 
     // Clear of the scroll bar, which shows over the rows' right.
     private readonly StackPanel rows = new() { Spacing = 2, Margin = new Thickness(0, 0, 14, 0) };
@@ -43,26 +47,35 @@ public sealed class GodotItemsEditor : Border
     private readonly GodotElement items;
     private readonly GodotElement keys;
     private object? shown;
-    private bool sending;
+
+    /// <summary>What stands for each row, by its index, whatever the rows taken out before it: a change a row asked for is
+    /// made on the row it was, however long it waited for its turn.</summary>
+    private readonly List<object> rowsNow = [];
+
+    /// <summary>Whether the rows are being cleared: a field going with them hands on nothing.</summary>
+    private bool showing;
+
+    /// <summary>The last change asked for, the next one's turn coming once it ends.</summary>
+    private Task lastChange = Task.CompletedTask;
 
     public GodotItemsEditor(GodotGame game, long element, GodotProperty property, GodotHint hint, IGodotTuner tuner)
-        : this(game, property.Name, property.Type, property.Value, hint, tuner, async value =>
+        : this(property.Name, property.Type, property.Value, hint, tuner, async value =>
         {
             await game.SetValueAsync(element, property.Name, value);
             GodotObjectState state = await game.InspectAsync((ulong)element);
             return state.Properties.FirstOrDefault(p => p.Name == property.Name)?.Value ?? value;
-        }, () => tuner.Settled(element))
+        }, () => tuner.Settled(element), (held, named) => new GodotResourceEditor(game, held, named, tuner))
     {
     }
 
     /// <summary>The form of a value held somewhere <paramref name="send"/> sends it to: a property's, or an item's of another form.</summary>
-    private GodotItemsEditor(GodotGame game, string name, GodotType type, object? value, GodotHint hint, IGodotTuner tuner, Func<object?, Task<object?>> send, Action settled)
+    public GodotItemsEditor(string name, GodotType type, object? value, GodotHint hint, IGodotTuner tuner, Func<object?, Task<object?>> send, Action settled, Func<ulong, string, Control> objectForm)
     {
-        this.game = game;
         this.tuner = tuner;
         this.hint = hint;
         this.send = send;
         this.settled = settled;
+        this.objectForm = objectForm;
         this.name = name;
         this.type = type;
         (items, keys) = value switch
@@ -78,7 +91,7 @@ public sealed class GodotItemsEditor : Border
         Padding = new Thickness(8);
         empty = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = Entries ? "No entries" : "No items" };
         Button add = new() { Classes = { StyleClasses.Compact }, Content = Entries ? "Add Entry" : "Add Item", HorizontalAlignment = HorizontalAlignment.Left };
-        add.Click += (_, _) => IdeErrors.Observe(AddAsync());
+        add.Click += (_, _) => IdeErrors.Observe(InTurnAsync(AddAsync));
         Add = add;
         string of = itemType == GodotType.Nil && keyType == GodotType.Nil ? GodotVariant.TypeName(type)
             : Entries ? $"Dictionary[{Named(keyType, keys)}, {Named(itemType, items)}]" : $"{type}[{Named(itemType, items)}]";
@@ -117,9 +130,16 @@ public sealed class GodotItemsEditor : Border
     private void Show(object? value)
     {
         shown = value;
+        showing = true;
         rows.Children.Clear();
         fields.Clear();
+        showing = false;
         int count = Entries ? Pairs.Count : Listed.Count;
+        rowsNow.RemoveRange(Math.Min(count, rowsNow.Count), Math.Max(0, rowsNow.Count - count));
+        while (rowsNow.Count < count)
+        {
+            rowsNow.Add(new object());
+        }
         for (int i = 0; i < count; i++)
         {
             rows.Children.Add(Entries ? EntryRow(i) : ItemRow(i));
@@ -127,14 +147,40 @@ public sealed class GodotItemsEditor : Border
         empty.IsVisible = count == 0;
     }
 
+    /// <summary>A change made once those asked for before it have ended, so it reads the value they left.</summary>
+    private Task InTurnAsync(Func<Task> change)
+    {
+        lastChange = Next(lastChange);
+        return lastChange;
+
+        async Task Next(Task before)
+        {
+            if (!before.IsCompleted)
+            {
+                await before.Ended();
+            }
+            await change();
+        }
+    }
+
+    /// <summary>A change a row asked for, in its turn, at the index the row is at by then; none where it has gone.</summary>
+    private void InTurn(object row, Func<int, Task> change) => IdeErrors.Observe(InTurnAsync(async () =>
+    {
+        if (rowsNow.IndexOf(row) is >= 0 and int at)
+        {
+            await change(at);
+        }
+    }));
+
     private Control ItemRow(int index)
     {
         Grid row = new() { ColumnDefinitions = new ColumnDefinitions("32,*,Auto") };
+        object asked = rowsNow[index];
         TextBlock at = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, Text = index.ToString(System.Globalization.CultureInfo.InvariantCulture), VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
-        Control field = Opens(Listed[index], $"{name}[{index}]", held => Replaced(index, held)) is { } opens ? opens
-            : Field(Listed[index], text => IdeErrors.Observe(SetItemAsync(index, text)));
+        Control field = Opens(Listed[index], $"{name}[{index}]", asked, Replaced) is { } opens ? opens
+            : Field(Listed[index], text => InTurn(asked, now => SetItemAsync(now, text)));
         Grid.SetColumn(field, 1);
-        Button remove = ToolButtons.Of(IconKeys.Close, $"Remove item {index}", () => IdeErrors.Observe(RemoveAsync(index)));
+        Button remove = ToolButtons.Of(IconKeys.Close, $"Remove item {index}", () => InTurn(asked, RemoveAsync));
         Grid.SetColumn(remove, 2);
         row.Children.Add(at);
         row.Children.Add(field);
@@ -146,12 +192,13 @@ public sealed class GodotItemsEditor : Border
     {
         Grid row = new() { ColumnDefinitions = new ColumnDefinitions("2*,3*,Auto") };
         KeyValuePair<object?, object?> entry = Pairs[index];
-        TextBox key = Field(entry.Key, text => IdeErrors.Observe(SetEntryAsync(index, text, key: true)));
-        Control value = Opens(entry.Value, $"{name}[{GodotVariant.Shown(entry.Key, quoted: true)}]", held => ReplacedValue(index, held)) is { } opens ? opens
-            : Field(entry.Value, text => IdeErrors.Observe(SetEntryAsync(index, text, key: false)));
+        object asked = rowsNow[index];
+        TextBox key = Field(entry.Key, text => InTurn(asked, now => SetEntryAsync(now, text, key: true)));
+        Control value = Opens(entry.Value, $"{name}[{GodotVariant.Shown(entry.Key, quoted: true)}]", asked, ReplacedValue) is { } opens ? opens
+            : Field(entry.Value, text => InTurn(asked, now => SetEntryAsync(now, text, key: false)));
         value.Margin = new Thickness(4, 0, 0, 0);
         Grid.SetColumn(value, 1);
-        Button remove = ToolButtons.Of(IconKeys.Close, $"Remove {GodotVariant.Shown(entry.Key, quoted: true)}", () => IdeErrors.Observe(RemoveAsync(index)));
+        Button remove = ToolButtons.Of(IconKeys.Close, $"Remove {GodotVariant.Shown(entry.Key, quoted: true)}", () => InTurn(asked, RemoveAsync));
         Grid.SetColumn(remove, 2);
         row.Children.Add(key);
         row.Children.Add(value);
@@ -160,9 +207,9 @@ public sealed class GodotItemsEditor : Border
     }
 
     /// <summary>The button an item that is a form of its own opens it with, under the rows: an array's or a dictionary's,
-    /// whose changes send this whole value with the item <paramref name="within"/> puts in its place; an object's own
+    /// whose changes send this whole value with the item <paramref name="within"/> puts at its row's index; an object's own
     /// properties. Null for an item typed as text.</summary>
-    private Button? Opens(object? item, string named, Func<object?, object?> within)
+    private Button? Opens(object? item, string named, object row, Func<int, object?, object?> within)
     {
         GodotType of = GodotVariant.TypeOf(item);
         bool nested = of is GodotType.Array or GodotType.Dictionary || of >= GodotType.PackedByteArray;
@@ -183,13 +230,28 @@ public sealed class GodotItemsEditor : Border
         button.Click += (_, _) =>
         {
             Control form = item is GodotObjectId held
-                ? new GodotResourceEditor(game, held.Id, named, tuner)
-                : new GodotItemsEditor(game, named, of, item, new GodotHint(of == GodotType.Dictionary ? GodotEditing.Entries : GodotEditing.Items) { Element = GodotVariant.ElementOf(of) },
-                    tuner, async changed => Pick(await SendWholeAsync(within(changed)), named, item), settled);
+                ? objectForm(held.Id, named)
+                : new GodotItemsEditor(named, of, item, new GodotHint(of == GodotType.Dictionary ? GodotEditing.Entries : GodotEditing.Items) { Element = GodotVariant.ElementOf(of) },
+                    tuner, changed => SendItemAsync(row, changed, within, named, item), settled, objectForm);
             slot.Child = form;
             slot.IsVisible = true;
         };
         return button;
+    }
+
+    /// <summary>A nested form's change, in this value's turn: the whole value sent with it, the item held then answered; the
+    /// item as it was where its row has gone.</summary>
+    private async Task<object?> SendItemAsync(object row, object? changed, Func<int, object?, object?> within, string named, object? item)
+    {
+        object? held = item;
+        await InTurnAsync(async () =>
+        {
+            if (rowsNow.IndexOf(row) is >= 0 and int at)
+            {
+                held = Pick(await SendWholeAsync(within(at, changed)), named, item);
+            }
+        });
+        return held;
     }
 
     /// <summary>This value with the item at an index replaced.</summary>
@@ -246,7 +308,7 @@ public sealed class GodotItemsEditor : Border
 
         void Take()
         {
-            if (field.Text is { } text && text != was && !sending)
+            if (field.Text is { } text && text != was && !showing)
             {
                 was = text;
                 taken(text);
@@ -339,20 +401,21 @@ public sealed class GodotItemsEditor : Border
     /// <summary>Entries as a dictionary typed as the one the game sent.</summary>
     private GodotDictionary Typed(IReadOnlyList<KeyValuePair<object?, object?>> entries) => new(entries) { KeyType = keys, ValueType = items };
 
+    /// <summary>An item or an entry taken out, the form of one nested in this value closed with it: it names its item by the
+    /// index it had. A row refused stays the row it was.</summary>
     private async Task RemoveAsync(int index)
     {
-        if (Entries && index < Pairs.Count)
-        {
-            await SendAsync(Typed([.. Pairs.Where((_, i) => i != index)]));
-        }
-        else if (!Entries && index < Listed.Count)
-        {
-            await SendAsync(GodotVariant.Packed(type, [.. Listed.Where((_, i) => i != index)], items));
-        }
+        object? left = Entries ? Typed([.. Pairs.Where((_, i) => i != index)]) : GodotVariant.Packed(type, [.. Listed.Where((_, i) => i != index)], items);
+        object row = rowsNow[index];
+        rowsNow.RemoveAt(index);
+        slot.Child = null;
+        slot.IsVisible = false;
+        await SendAsync(left, () => rowsNow.Insert(index, row));
     }
 
-    /// <summary>Sends the whole value, then shows what the game holds, the properties pane's row read again with it.</summary>
-    private async Task SendAsync(object? value)
+    /// <summary>Sends the whole value, then shows what the game holds, the properties pane's row read again with it;
+    /// <paramref name="refused"/> runs first where it was not set.</summary>
+    private async Task SendAsync(object? value, Action? refused = null)
     {
         try
         {
@@ -360,6 +423,7 @@ public sealed class GodotItemsEditor : Border
         }
         catch (LiveAppException failed)
         {
+            refused?.Invoke();
             Refused($"{name} was not set: {failed.Message}");
             return;
         }
@@ -370,17 +434,9 @@ public sealed class GodotItemsEditor : Border
     /// comes this way too, so its rows and these show the same.</summary>
     private async Task<object?> SendWholeAsync(object? value)
     {
-        sending = true;
-        try
-        {
-            object? held = await send(value);
-            Show(held);
-            return held;
-        }
-        finally
-        {
-            sending = false;
-        }
+        object? held = await send(value);
+        Show(held);
+        return held;
     }
 
     private void Refused(string why)
