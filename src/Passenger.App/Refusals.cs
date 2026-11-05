@@ -259,6 +259,10 @@ public static class Refusals
     /// saves.</summary>
     public static string ReadOnly(string name) => $"{name} is read-only";
 
+    /// <summary>Why edits found in a file as Passenger read it are not made once the file is another text.</summary>
+    public static string ChangedSinceRead(string file) =>
+        $"{file} changed after Passenger read it, so the places found there may be where they were before: nothing was changed; try again in a moment";
+
     /// <summary>An agent's act in Godot's editor from its own Passenger (<c>--mcp</c>), which no editor of the person's reaches.</summary>
     public const string GodotEditorOfPerson = $"{Mcp.McpTools.GodotEditor} acts in the person's own Godot editor, which connects to the Passenger window they use, never to an agent's own: attach to that window (--mcp-attach)";
 

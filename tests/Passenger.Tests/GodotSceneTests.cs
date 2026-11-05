@@ -656,6 +656,33 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
+    /// <summary>A scene saved a moment before a rename, the folder's watcher yet to tell of it (here, never to), holds its keys
+    /// where the save put them: the rename changes the key it names, never whatever now lies where the key was read.</summary>
+    [AvaloniaFact]
+    public void Renaming_an_export_changes_a_scene_saved_a_moment_before_as_the_save_left_it()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
+            window.FolderWatcher!.Dispose();
+            File.WriteAllText(ScenePath, Scene.Replace("Speed = 2.5", "Other = 1\nSpeed = 2.5", StringComparison.Ordinal));
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "public float Spe");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "Speed", () => $"Rename's box on the export ({window.Assist.Renaming}; {window.Status})");
+            window.KeyTextInput("Power");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => File.ReadAllText(ScenePath).Contains("Power = 2.5", StringComparison.Ordinal),
+                () => $"the scene's key to follow its export ({window.Status}): {File.ReadAllText(ScenePath)}", TimeSpan.FromMinutes(1));
+            Assert.Contains("Other = 1", File.ReadAllText(ScenePath), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Find Usages of a signal's delegate lists its uses by what Godot's source generator makes of it and the scene's
     /// connection; its rename renames those wherever the code uses them (its event, its SignalName, its EmitSignal call) and
     /// the strings Godot's calls take naming it, in its own script and another, and the scene's connection to it: the game

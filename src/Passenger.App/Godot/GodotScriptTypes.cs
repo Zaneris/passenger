@@ -207,13 +207,13 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
     /// <summary>How long after a script is written the folder's watcher may not yet have told of it.</summary>
     private static readonly TimeSpan Telling = TimeSpan.FromSeconds(10);
 
-    /// <summary>The project's closed scripts written within <see cref="Telling"/> whose text on disk is not the one the
-    /// index holds: written since the index read them, the watcher not yet heard.</summary>
+    /// <summary>The project's closed scripts and scenes written within <see cref="Telling"/> whose text on disk is not the one
+    /// the index holds: written since the index read them, the watcher not yet heard.</summary>
     private static List<string> Unheard(GodotScenes scenes, IReadOnlyDictionary<string, string> open)
     {
         DateTime since = DateTime.UtcNow - Telling;
         List<string> unheard = [];
-        foreach ((string res, string text) in scenes.Texts.Where(t => GodotScriptDeclarations.IsScript(t.Key)))
+        foreach ((string res, string text) in scenes.Texts.Where(t => GodotScriptDeclarations.IsScript(t.Key)).Concat(scenes.Files.Select(f => KeyValuePair.Create(f.Key, f.Value.Text))))
         {
             if (scenes.FileOf(res) is { } file && !open.ContainsKey(file) && WrittenAt(file) >= since && EditorArea.ReadText(file) is { } now && now != text)
             {

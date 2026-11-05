@@ -150,6 +150,9 @@ public static class TypeRename
     /// <summary>A workspace edit with one more file's edit after its own, in the shape it came in.</summary>
     public static JsonElement With(JsonElement edit, string path, LspTextEdit change) => With(edit, [(path, [change])]);
 
+    /// <summary>A workspace edit with more edits in the files they name (<see cref="With(JsonElement, IReadOnlyList{ValueTuple{string, IReadOnlyList{LspTextEdit}}})"/>).</summary>
+    public static JsonElement With(JsonElement edit, IReadOnlyList<PlacedEdits> files) => With(edit, [.. files.Select(f => (f.Path, f.Edits))]);
+
     /// <summary>A workspace edit with more files' edits after its own, in the shape it came in: a file it edits already
     /// takes them among its own, placed in the same text.</summary>
     public static JsonElement With(JsonElement edit, IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> files)

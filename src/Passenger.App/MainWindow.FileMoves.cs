@@ -293,6 +293,7 @@ public partial class MainWindow
         {
             return null;
         }
+        using Asked asked = WorkspaceEdits.Track(Editors);
         (IReadOnlyList<(string Path, IReadOnlyList<Lsp.LspTextEdit> Edits)> files, IReadOnlyList<(string From, string To)> beside) = await assist.Languages.CSharp.GodotFollowAsync(moved);
         foreach ((string from, string to) in beside)
         {
@@ -309,7 +310,7 @@ public partial class MainWindow
         List<string> dropped = [];
         try
         {
-            await FollowingAsync([.. files.Select(f => f.Path)], recording, () => WorkspaceEdits.ApplyAsCommand(Editors, edit, recording, null, dropped));
+            await FollowingAsync([.. files.Select(f => f.Path)], recording, () => WorkspaceEdits.ApplyAsCommand(Editors, edit, recording, asked, dropped));
         }
         catch (WorkspaceEditFailed failed)
         {

@@ -163,6 +163,26 @@ public static class WorkspaceEdits
             .Where(d => listed.Add(d.Path) && Reads(d.Path) && (d.Gone || !patience.Trusts(d.Path)))];
     }
 
+    /// <summary>The first file whose edits were placed in a text Passenger read (<see cref="PlacedEdits.Read"/>) that is no
+    /// longer that text: an open file's as the request found it (<paramref name="asked"/>), what is typed since being carried
+    /// through; another's as the disk has it now, read off the window's thread. Null when each is as read.</summary>
+    public static async Task<string?> OutOfDateAsync(EditorArea editors, IReadOnlyList<PlacedEdits> files, Asked? asked)
+    {
+        List<PlacedEdits> closed = [];
+        foreach (PlacedEdits file in files.Where(f => f.Read is not null))
+        {
+            if (editors.Find(file.Path) is not { HoldsText: true } open)
+            {
+                closed.Add(file);
+            }
+            else if ((asked?.Trackers.GetValueOrDefault(open)?.Snapshot ?? open.Text.Snapshot).ToString() != file.Read)
+            {
+                return file.Path;
+            }
+        }
+        return closed.Count == 0 ? null : await BackgroundWork.Run(() => closed.FirstOrDefault(f => EditorArea.ReadText(f.Path) != f.Read)?.Path);
+    }
+
     /// <summary>Why an edit is not made in a file not open written once its server was asked.</summary>
     private static string ChangedMeanwhile(string path) =>
         $"{Path.GetFileName(path)} changed on disk as the language server worked this out, so the places it gave there "
@@ -592,6 +612,11 @@ public sealed record UnchangedUse(string Path, int Line, int Column, string Why)
 /// <summary>A file a refactoring changed: created, changed, moved (to <paramref name="To"/>) or deleted, with the lines its
 /// edits start on, from one, as the editor counts the text as it was.</summary>
 public sealed record RefactoredFile(string Path, string Change, IReadOnlyList<int> Lines, string? To = null);
+
+/// <summary>A file's edits in the server's places, with the text they were found in where Passenger read the file itself (a
+/// Godot scene as its project's index holds it), which they fit only while the file is that text
+/// (<see cref="WorkspaceEdits.OutOfDateAsync"/>); null for places a language server gave, which its own checks judge.</summary>
+public sealed record PlacedEdits(string Path, IReadOnlyList<LspTextEdit> Edits, string? Read = null);
 
 /// <summary>A workspace edit that could not be made, and why: a file it renames onto is there already, one it renames
 /// or deletes is not, an open file it moves could not be saved first, or the disk refused. An MCP tool says it as its

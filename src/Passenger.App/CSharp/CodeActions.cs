@@ -571,8 +571,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             return RefactorOutcome.Refused($"Rename was not applied: {unfollowed}");
         }
         // Its uses in a Godot project's scenes: a connection's method or signal, an exported member's key.
-        (IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> inScenes, string? unscened) = symbol is not null
-            ? await context.Languages.CSharp.GodotRenameAsync(symbol, own) : ([], null);
+        (IReadOnlyList<PlacedEdits> inScenes, string? unscened) = symbol is not null ? await context.Languages.CSharp.GodotRenameAsync(symbol, own) : ([], null);
         if (unscened is not null)
         {
             return RefactorOutcome.Refused($"Rename was not applied: {unscened}");
@@ -589,7 +588,8 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             edit = TypeRename.With(edit, CSharpAssist.GodotNameEdits(godot, written));
         }
         // A GDScript's member's uses its own language's server never reads: its scenes' connections, the C# strings naming it.
-        if (Passenger.Workspace.GodotScriptDeclarations.IsScript(document.Path) && await context.Languages.CSharp.GodotScriptRenameAsync(document, at.Offset, name) is { Count: > 0 } scripted)
+        IReadOnlyList<PlacedEdits> scripted = Passenger.Workspace.GodotScriptDeclarations.IsScript(document.Path) ? await context.Languages.CSharp.GodotScriptRenameAsync(document, at.Offset, name) : [];
+        if (scripted.Count > 0)
         {
             edit = TypeRename.With(edit, scripted);
         }
@@ -620,13 +620,18 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         List<(string From, string To)> moves = [.. (renameFiles ? type?.Files ?? [] : []).Select(f => (From: f, To: TypeRename.Renamed(f, name))).Concat(markup.Moves)
             .Where(m => m.From != m.To && File.Exists(m.From) && !edited.Any(f => f.Change == "moved" && PathNames.Same(f.Path, m.From))).Distinct()];
         // A Godot script's file moved: the scenes that load it follow, and its .uid goes beside it.
-        (IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> loading, IReadOnlyList<(string From, string To)> beside) = await context.Languages.CSharp.GodotMovedAsync(moves);
+        (IReadOnlyList<PlacedEdits> loading, IReadOnlyList<(string From, string To)> beside) = await context.Languages.CSharp.GodotMovedAsync(moves);
         if (loading.Count > 0)
         {
             edit = TypeRename.With(edit, loading);
             edited = [.. edited, .. loading.Where(l => !edited.Any(f => PathNames.Same(f.Path, l.Path))).Select(l => new RefactoredFile(l.Path, "changed", [.. l.Edits.Select(e => e.Range.Start.Line + 1)]))];
         }
         moves.AddRange(beside);
+        // A scene's places were read from the project's index, which a save the folder's watcher has yet to tell of leaves behind.
+        if (await context.Languages.CSharp.GodotOutOfDateAsync([.. inScenes, .. scripted, .. loading], asked, patience) is { } overtaken)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {overtaken}");
+        }
         List<string> dropped = [];
         string command = $"Rename {old} to {name}";
         using CommandHistory.Recording recording = context.Editors.Commands.Record(command);

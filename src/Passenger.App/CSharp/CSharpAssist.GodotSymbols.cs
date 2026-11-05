@@ -1,3 +1,4 @@
+using Passenger.App.Editors;
 using Passenger.App.Godot;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -185,10 +186,9 @@ internal sealed partial class CSharpAssist
     /// <summary>The edits a GDScript member's C# calls by its name take as its signature changes: each call's arguments after
     /// the name (<c>Call("f", 1, 2)</c>, <c>EmitSignal("s", 1)</c>) given as <paramref name="rearranged"/> makes them, by
     /// file, in the server's places.</summary>
-    internal async Task<IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)>> GodotScriptCallEditsAsync(OpenDocument document, int offset,
-        Func<IReadOnlyList<string>, IReadOnlyList<string>> rearranged) =>
+    internal async Task<IReadOnlyList<PlacedEdits>> GodotScriptCallEditsAsync(OpenDocument document, int offset, Func<IReadOnlyList<string>, IReadOnlyList<string>> rearranged) =>
         await GodotScriptNamedWithCallsAsync(document, offset) is { } named
-            ? [.. named.Calls.Where(c => c.Rest is not null).GroupBy(c => c.File, PathNames.Comparer).Select(file => (file.Key, (IReadOnlyList<LspTextEdit>)[.. file.Select(c =>
+            ? [.. named.Calls.Where(c => c.Rest is not null).GroupBy(c => c.File, PathNames.Comparer).Select(file => new PlacedEdits(file.Key, [.. file.Select(c =>
             {
                 IReadOnlyList<string> made = rearranged(c.Rest!.Arguments);
                 return new LspTextEdit(new LspRange(new LspPosition(c.Rest.From.Line, c.Rest.From.Character), new LspPosition(c.Rest.To.Line, c.Rest.To.Character)),
@@ -275,10 +275,10 @@ internal sealed partial class CSharpAssist
     /// <summary>The edits a GDScript's member's uses beside its own language's take as it is renamed to <paramref name="name"/>
     /// (<see cref="GodotScriptNamedAsync"/>): each scene's connection's method or signal and each string of the C# naming it,
     /// by file, in the server's places.</summary>
-    internal async Task<IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)>> GodotScriptRenameAsync(OpenDocument document, int offset, string name) =>
-        await GodotScriptNamedAsync(document, offset) is { } named
-            ? [.. named.Scenes.Concat(named.Code).GroupBy(u => new Uri(u.Uri).LocalPath, PathNames.Comparer)
-                .Select(file => (file.Key, (IReadOnlyList<LspTextEdit>)[.. file.Select(u => new LspTextEdit(u.Range, name))]))]
+    internal async Task<IReadOnlyList<PlacedEdits>> GodotScriptRenameAsync(OpenDocument document, int offset, string name) =>
+        await GodotScriptNamedWithCallsAsync(document, offset) is { } named
+            ? [.. named.Scenes.Concat(named.Sets).Concat(named.Code).GroupBy(u => new Uri(u.Uri).LocalPath, PathNames.Comparer)
+                .Select(file => new PlacedEdits(file.Key, [.. file.Select(u => new LspTextEdit(u.Range, name))], named.Read.ResPathOf(file.Key) is { } res && named.Read.Files.TryGetValue(res, out GodotFile? read) ? read.Text : null))]
             : [];
 
     /// <summary>The uses of a GDScript's member at an offset (the name there, where its class, it or a script it extends,
@@ -290,7 +290,7 @@ internal sealed partial class CSharpAssist
 
     /// <summary><see cref="GodotScriptNamedAsync"/> with the scenes' connections apart from their keys setting a variable,
     /// and the C# uses as the extension gave them, each call's arguments after the name among them.</summary>
-    private async Task<(IReadOnlyList<LspLocation> Scenes, IReadOnlyList<LspLocation> Sets, IReadOnlyList<LspLocation> Code, IReadOnlyList<GodotKindUse> Calls)?>
+    private async Task<(IReadOnlyList<LspLocation> Scenes, IReadOnlyList<LspLocation> Sets, IReadOnlyList<LspLocation> Code, IReadOnlyList<GodotKindUse> Calls, GodotScenes Read)?>
         GodotScriptNamedWithCallsAsync(OpenDocument document, int offset)
     {
         TextSnapshot text = document.Text.Snapshot;
@@ -320,7 +320,7 @@ internal sealed partial class CSharpAssist
         IReadOnlyList<LspLocation> sets = member.Kind == GodotScriptKind.Variable ? [.. await BackgroundWork.Run(() => SceneSets(scenes, script, member.Name))] : [];
         if (member.Kind is not (GodotScriptKind.Function or GodotScriptKind.Signal or GodotScriptKind.Variable) || context.CSharp?.Session is not { } session)
         {
-            return (uses, sets, [], []);
+            return (uses, sets, [], [], scenes);
         }
         GodotNameKind kind = member.Kind switch { GodotScriptKind.Function => GodotNameKind.Method, GodotScriptKind.Signal => GodotNameKind.Signal, _ => GodotNameKind.Property };
         GodotKindUses found;
@@ -330,11 +330,11 @@ internal sealed partial class CSharpAssist
         }
         catch (LanguageServerFailed)
         {
-            return (uses, sets, [], []);
+            return (uses, sets, [], [], scenes);
         }
         List<GodotKindUse> calls = [.. found.Uses.Where(u => GodotChecks.Told(scenes, u.Scripts, u.Node, u.Export).Told.Any(n => GodotChecks.ChainOf(scenes, n)?.Runs(script) == true))];
         return (uses, sets, [.. calls.Select(u => new LspLocation(DocumentUris.FromPath(u.File), new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character))))],
-            calls);
+            calls, scenes);
 
         // Each scene's connection naming the member as its method or signal, on a node whose class takes in its script.
         static IEnumerable<LspLocation> SceneUses(GodotScenes scenes, string script, GodotScriptDeclared member)
@@ -402,7 +402,7 @@ internal sealed partial class CSharpAssist
     /// or signal, an exported member's key where it is set; or why the rename cannot follow them (a <c>[Signal]</c> delegate's
     /// name that would not end with EventHandler, which Godot's source generator needs). None for a script's class, whose
     /// scenes follow its file instead (<see cref="GodotMovedAsync"/>).</summary>
-    internal async Task<(IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> Files, string? Problem)> GodotRenameAsync(NamedSymbol? symbol, string name)
+    internal async Task<(IReadOnlyList<PlacedEdits> Files, string? Problem)> GodotRenameAsync(NamedSymbol? symbol, string name)
     {
         if (await GodotNamedAsync(symbol) is not { Kind: not GodotKind.Script } named)
         {
@@ -420,7 +420,7 @@ internal sealed partial class CSharpAssist
         return ([.. GodotUses(named).Select(file =>
         {
             ServerLines lines = ServerLines.Of(TextSnapshot.From(file.Text));
-            return (file.Path, (IReadOnlyList<LspTextEdit>)[.. file.Uses.Select(use => new LspTextEdit(lines.RangeOf(use), written))]);
+            return new PlacedEdits(file.Path, [.. file.Uses.Select(use => new LspTextEdit(lines.RangeOf(use), written))], file.Text);
         })], null);
     }
 
@@ -519,10 +519,9 @@ internal sealed partial class CSharpAssist
 
     /// <summary>The edits the scenes take as a rename moves files of a Godot project: each scene's or resource's res:// path
     /// of a moved file written anew; and the moves Godot's own files beside a moved one take with it (a script's .uid).</summary>
-    internal async Task<(IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> Files, IReadOnlyList<(string From, string To)> Moves)> GodotMovedAsync(
-        IReadOnlyList<(string From, string To)> moves)
+    internal async Task<(IReadOnlyList<PlacedEdits> Files, IReadOnlyList<(string From, string To)> Moves)> GodotMovedAsync(IReadOnlyList<(string From, string To)> moves)
     {
-        List<(string, IReadOnlyList<LspTextEdit>)> files = [];
+        List<PlacedEdits> files = [];
         List<(string, string)> beside = [];
         if (context.CSharp is not { GodotScenes: { } index } csharp)
         {
@@ -550,17 +549,33 @@ internal sealed partial class CSharpAssist
                 if (edits.Count > 0 && scenes.FileOf(res) is { } path)
                 {
                     ServerLines lines = ServerLines.Of(TextSnapshot.From(file.Text));
-                    files.Add((path, [.. edits.Select(e => new LspTextEdit(lines.RangeOf(new TextRange(e.Start, e.Length)), e.Text))]));
+                    files.Add(new PlacedEdits(path, [.. edits.Select(e => new LspTextEdit(lines.RangeOf(new TextRange(e.Start, e.Length)), e.Text))], file.Text));
                 }
             }
         }
         return (files, beside);
     }
 
+    /// <summary>Why a Godot project's files must not take edits placed in them as they were read: the words for the first
+    /// whose text is another now (<see cref="WorkspaceEdits.OutOfDateAsync"/>), saved before the folder's watcher told of it.
+    /// The index reads it again at once, so that a command's next attempt (<paramref name="patience"/>) finds its places in
+    /// it as it is. Null when each is as read.</summary>
+    internal async Task<string?> GodotOutOfDateAsync(IReadOnlyList<PlacedEdits> files, Asked? asked, Patience? patience)
+    {
+        if (await WorkspaceEdits.OutOfDateAsync(context.Editors, files, asked) is not { } path)
+        {
+            return null;
+        }
+        context.GodotScenes?.Invoke()?.FilesChanged([path]);
+        string said = Refusals.ChangedSinceRead(Path.GetFileName(path));
+        return patience?.Behind([path], null, said, said) ?? said;
+    }
+
     /// <summary>The edits the Godot projects' files take once files and folders of theirs have moved (the Explorer's move or
     /// rename, already made): every res:// path naming a moved file, or a file inside a moved folder, written anew in each
-    /// scene, resource and project.godot and in each C# string; by file at its path now, in the server's places. With the
-    /// .uid and .import files beside each moved file, which go with it, an .import's own path to its file following.</summary>
+    /// scene, resource and project.godot and in each C# string; by file at its path now, in the server's places, each read as
+    /// it stands as this is asked, whatever the index has heard. With the .uid and .import files beside each moved file, which
+    /// go with it, an .import's own path to its file following.</summary>
     internal async Task<(IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> Files, IReadOnlyList<(string From, string To)> Beside)> GodotFollowAsync(
         IReadOnlyList<(string From, string To)> moved)
     {
@@ -571,6 +586,7 @@ internal sealed partial class CSharpAssist
             return (files, beside);
         }
         Func<string, string?> godotOf = index.GameOf;
+        OpenTexts open = context.Editors.Texts();
         // The index takes the moves in first, so the scenes are read where they are now.
         index.CameOrWent([.. moved.SelectMany(m => new[] { m.From, m.To })]);
         foreach (IGrouping<string, (string From, string To)> project in moved.Where(m => godotOf(m.To) is { } folder && PathNames.Same(godotOf(m.From) ?? string.Empty, folder))
@@ -598,12 +614,11 @@ internal sealed partial class CSharpAssist
                 continue;
             }
             GodotScenes scenes = await index.ScenesAsync(folder);
-            // Each text the moves reach, at its path once every move is made: the scenes, project.godot, the .import files moving.
-            List<(string Path, string? Text)> texts = [.. scenes.Files.Select(f => (scenes.FileOf(f.Key)!, (string?)f.Value.Text)),
-                (Path.Combine(folder, "project.godot"), context.Editors.TextOf(Path.Combine(folder, "project.godot"))?.ToString()),
-                .. beside.Where(b => b.Item1.EndsWith(".import", StringComparison.OrdinalIgnoreCase)).Select(b => (b.Item2, context.Editors.TextOf(b.Item1)?.ToString()))];
+            // Each text the moves reach, where it is read from and its path once every move is made: the scenes, project.godot, the .import files moving.
+            List<(string Path, string From)> texts = [.. scenes.Files.Keys.Select(scenes.FileOf).OfType<string>().Select(f => (f, f)), (Path.Combine(folder, "project.godot"), Path.Combine(folder, "project.godot")),
+                .. beside.Where(b => b.Item1.EndsWith(".import", StringComparison.OrdinalIgnoreCase)).Select(b => (b.Item2, b.Item1))];
             IReadOnlyList<(string Path, string Text, IReadOnlyList<TextEdit> Edits)> edited = await BackgroundWork.Run(() => (IReadOnlyList<(string, string, IReadOnlyList<TextEdit>)>)
-                [.. texts.Where(t => t.Text is not null).Select(t => (t.Path, t.Text!, GodotScenes.MovedEdits(GodotFile.Parse(t.Text!), paths))).Where(t => t.Item3.Count > 0)]);
+                [.. texts.Select(t => (t.Path, Text: open.Text(t.From))).Where(t => t.Text is not null).Select(t => (t.Path, t.Text!, GodotScenes.MovedEdits(GodotFile.Parse(t.Text!), paths))).Where(t => t.Item3.Count > 0)]);
             foreach ((string path, string text, IReadOnlyList<TextEdit> edits) in edited)
             {
                 ServerLines lines = ServerLines.Of(TextSnapshot.From(text));

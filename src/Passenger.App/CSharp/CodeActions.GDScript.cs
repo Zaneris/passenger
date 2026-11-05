@@ -177,7 +177,7 @@ internal sealed partial class CodeActions
             || kind is not (GDScriptRefactoring.Inline or GDScriptRefactoring.SafeDelete or GDScriptRefactoring.ChangeSignature or GDScriptRefactoring.Move) ? []
             : await context.Languages.CSharp.GodotScriptElsewhereAsync(document, asked, followingCalls: kind == GDScriptRefactoring.ChangeSignature,
                 withScenes: !(kind == GDScriptRefactoring.ChangeSignature && target.Node is GDScriptSignal));
-        List<(string Path, IReadOnlyList<LspTextEdit> Edits)> beside = [];
+        List<PlacedEdits> beside = [];
         GDScriptRefactored made;
         switch (kind)
         {
@@ -246,11 +246,15 @@ internal sealed partial class CodeActions
     /// parsing clean after it, the files <paramref name="beside"/> the scripts (the scenes' connections, C# strings) with
     /// them; what it came to, or why not, said as <paramref name="title"/>'s.</summary>
     private async Task<RefactorOutcome> ApplyGDScriptAsync(string title, string command, GDScriptRefactored made, IReadOnlyList<GDScriptRead> scripts, string? folder,
-        OpenDocument document, List<(string Path, IReadOnlyList<LspTextEdit> Edits)> beside, string? done = null)
+        OpenDocument document, List<PlacedEdits> beside, string? done = null)
     {
         if ((made.Refused ?? GDScriptRefactorings.WhyNotChanged(scripts)) is { } refused)
         {
             return RefactorOutcome.Refused($"{title} was not applied: {refused}");
+        }
+        if (await context.Languages.CSharp.GodotOutOfDateAsync(beside, null, null) is { } unread)
+        {
+            return RefactorOutcome.Refused($"{title} was not applied: {unread}");
         }
         // Every script it touches must read clean after it.
         List<XamlFileChange> changes = [];
@@ -269,7 +273,7 @@ internal sealed partial class CodeActions
             TextSnapshot before = TextSnapshot.From(found);
             files.Add(new RefactoredFile(path, "changed", [.. edits.Edits.Select(e => before.GetLineFromOffset(e.Start) + 1).Distinct()]));
         }
-        foreach (IGrouping<string, (string Path, IReadOnlyList<LspTextEdit> Edits)> file in beside.GroupBy(b => b.Path, PathNames.Comparer))
+        foreach (IGrouping<string, PlacedEdits> file in beside.GroupBy(b => b.Path, PathNames.Comparer))
         {
             string path = file.Key;
             List<LspTextEdit> edits = [.. file.SelectMany(f => f.Edits).DistinctBy(e => e.Range)];
@@ -305,7 +309,7 @@ internal sealed partial class CodeActions
         {
             return RefactorOutcome.Refused($"{title} was not applied: {Refusals.ReadOnly(document.Name)}");
         }
-        List<(string Path, IReadOnlyList<LspTextEdit> Edits)> beside = [];
+        List<PlacedEdits> beside = [];
         GDScriptRefactored made;
         if (GDScriptRefactorings.DeclarationAt(scripts, own, offset) is { } target)
         {
