@@ -531,6 +531,20 @@ public class GodotChecksTests
         Assert.False(GodotChecks.Named(scenes, GodotStringKind.Animation, ["res://Main.cs"], null, null, null).Whole, "a player the code does not tell is never checked");
     }
 
+    /// <summary>A GetNodeOrNull asks whether a node is there, so an autoload or a node of one that isn't is no fault.</summary>
+    [Fact]
+    public void A_get_node_or_null_of_an_autoload_or_its_node_that_is_not_there_is_no_finding()
+    {
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile>
+        {
+            ["res://main.tscn"] = GodotFile.Parse(Scene),
+            ["res://hud.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[node name=\"Hud\" type=\"CanvasLayer\"]\n\n[node name=\"Score\" type=\"Label\" parent=\".\"]\n"),
+        }, texts: new Dictionary<string, string> { ["res://project.godot"] = "[autoload]\n\nHud=\"*res://hud.tscn\"\n" });
+        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
+        GodotCodeFound found = Found(asked, [Call("/root/Optional", null, orNull: true), Call("/root/Hud/Optional", null, orNull: true)]);
+        Assert.DoesNotContain(GodotChecks.Findings(scenes, asked, found, _ => true), f => f.Message.Contains("Optional", StringComparison.Ordinal));
+    }
+
     /// <summary>Nodes whose shaders are all known say which uniforms there are, one shader shared among them or each its own;
     /// a node with none known leaves it open.</summary>
     [Theory]

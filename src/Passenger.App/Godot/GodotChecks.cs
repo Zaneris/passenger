@@ -1074,8 +1074,9 @@ internal static class GodotChecks
     }
 
     /// <summary>A GetNode path through <c>/root/Name</c>'s finding: a name no autoload has and no scene's root is named
-    /// (the scene running is one of /root's children by its root's name), a node under an autoload's scene its tree lacks,
-    /// or an autoload's node not of the type asked for; null where it holds or is not known.</summary>
+    /// (the scene running is one of /root's children by its root's name), a node under an autoload's scene its tree lacks
+    /// (a GetNodeOrNull's of either never counts), or an autoload's node not of the type asked for; null where it holds or
+    /// is not known.</summary>
     private static Finding? AutoloadFinding(GodotScenes scenes, GodotCodeFound found, GodotNodeCall call)
     {
         if (!call.Exact || AutoloadIn(call.Path) is not ({ } name, _, int end) || !scenes.Texts.ContainsKey(GodotDefinitions.ProjectRes))
@@ -1087,7 +1088,7 @@ internal static class GodotChecks
         {
             bool aRoot = scenes.Files.Where(f => f.Value.Header?.Tag == "gd_scene").Any(f => scenes.Tree(f.Key)?.Name == name);
             int start = AutoloadIn(call.Path)!.Value.Start;
-            return aRoot ? null : new Finding(call.At, call.End, true, $"No autoload '{name}' is in project.godot's [autoload], nor is a scene's root node so named")
+            return aRoot || call.OrNull ? null : new Finding(call.At, call.End, true, $"No autoload '{name}' is in project.godot's [autoload], nor is a scene's root node so named")
             {
                 Offer = call.Exact ? new GodotOffer
                 {
@@ -1102,7 +1103,7 @@ internal static class GodotChecks
             GodotResolved resolved = GodotScenes.Resolve(tree, rest);
             if (resolved is { Found: null, Unknown: false, Missing: ({ } start, { } stop) })
             {
-                return new Finding(call.At, call.End, true, $"{Place(scenes, loaded, tree)} has no node '{rest}' under {tree.Name}, the autoload {name}: {resolved.Reached?.Name ?? tree.Name} has no child {rest[start..stop]}");
+                return call.OrNull ? null : new Finding(call.At, call.End, true, $"{Place(scenes, loaded, tree)} has no node '{rest}' under {tree.Name}, the autoload {name}: {resolved.Reached?.Name ?? tree.Name} has no child {rest[start..stop]}");
             }
             if (resolved.Found is { } target && call.Type is { } wanted && Fits(wanted, target, found) == false)
             {
