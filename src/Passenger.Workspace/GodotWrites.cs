@@ -269,5 +269,8 @@ public static class GodotWrites
     }
 
     /// <summary>A string as Godot's text writes it, its quotes and backslashes escaped.</summary>
-    public static string Quoted(string value) => "\"" + value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
+    public static string Quoted(string value) => "\"" + Escaped(value) + "\"";
+
+    /// <summary>A string's characters as Godot's text files write them between its quotes.</summary>
+    public static string Escaped(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
 }

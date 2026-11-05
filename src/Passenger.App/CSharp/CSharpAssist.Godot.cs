@@ -530,7 +530,7 @@ internal sealed partial class CSharpAssist
                         if (nodes.Any(n => n.Same(step)) && written != "..")
                         {
                             int skip = written.StartsWith('%') ? 1 : 0;
-                            paths.Add(new TextEdit(at + from + skip, to - from - skip, name));
+                            paths.Add(new TextEdit(at + from + skip, to - from - skip, name.Replace("\\", "\\\\", StringComparison.Ordinal)));
                         }
                     }
                 }

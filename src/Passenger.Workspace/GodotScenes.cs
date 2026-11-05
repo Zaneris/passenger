@@ -490,7 +490,7 @@ public sealed class GodotScenes
     /// it in any scene that holds it has already.</summary>
     public string? RenameProblem(GodotTreeNode node, string name)
     {
-        if (name.Length == 0 || name.Trim() != name)
+        if (name.Length == 0 || name.Trim() != name || name.Any(char.IsControl))
         {
             return $"'{name}' is no node's name";
         }
@@ -529,10 +529,11 @@ public sealed class GodotScenes
     public IReadOnlyDictionary<string, IReadOnlyList<TextEdit>> Renames(GodotTreeNode node, string name)
     {
         Dictionary<string, List<TextEdit>> edits = new(StringComparer.Ordinal);
+        string escaped = GodotWrites.Escaped(name);
         (string declaring, GodotNode declared) = node.Declared;
-        if (declared.Section.Attribute("name")?.Value is { Plain: true } written)
+        if (declared.Section.Attribute("name")?.Value is { Text: not null } written)
         {
-            Edit(declaring, new TextEdit(written.TextStart, written.TextEnd - written.TextStart, name));
+            Edit(declaring, new TextEdit(written.TextStart, written.TextEnd - written.TextStart, escaped));
         }
         HashSet<string> led = new(StringComparer.Ordinal);
         foreach ((string scene, GodotTreeNode copy) in CopiesOf(node))
@@ -540,9 +541,9 @@ public sealed class GodotScenes
             // A scene over the one declaring it names it again where it changes it (an instance's editable children).
             foreach ((string over, GodotNode changing) in copy.Written.Skip(1).Where(w => w.Scene == scene))
             {
-                if (changing.Section.Attribute("name")?.Value is { Plain: true } again)
+                if (changing.Section.Attribute("name")?.Value is { Text: not null } again)
                 {
-                    Edit(over, new TextEdit(again.TextStart, again.TextEnd - again.TextStart, name));
+                    Edit(over, new TextEdit(again.TextStart, again.TextEnd - again.TextStart, escaped));
                 }
             }
             string through = copy.Path;
@@ -551,9 +552,9 @@ public sealed class GodotScenes
             {
                 foreach (string key in section.Tag switch { "node" => ["parent"], "connection" => ["from", "to"], "editable" => ["path"], _ => Array.Empty<string>() })
                 {
-                    if (section.Attribute(key)?.Value is { Plain: true } value && Segment(value.Text!, through) is { } at)
+                    if (section.Attribute(key)?.Value is { Text: { } said } value && Segment(said, through) is { } at)
                     {
-                        Edit(scene, new TextEdit(value.TextStart + at.Start, at.Length, name));
+                        Names(scene, said, value.TextStart, value.TextEnd, [(at.Start, at.Start + at.Length)]);
                     }
                 }
             }
@@ -564,22 +565,26 @@ public sealed class GodotScenes
                 {
                     foreach ((string path, int start, int end) in section.Section.Properties.SelectMany(p => file.CallsIn(p.Value, "NodePath")))
                     {
-                        // A path's text is a place in the file only where no escape is written in it; one edit then writes it whole.
-                        List<(int Start, int End)> names = [.. Resolve(holder, path).Steps.Where(s => s.Node.Same(node) && path[s.Start..s.End] != "..")
-                            .Select(s => (s.Start + (path[s.Start] == '%' ? 1 : 0), s.End))];
-                        if (end - start == path.Length)
-                        {
-                            names.ForEach(n => Edit(scene, new TextEdit(start + n.Start, n.End - n.Start, name)));
-                        }
-                        else if (names.Count > 0)
-                        {
-                            Edit(scene, new TextEdit(start, end - start, Enumerable.Reverse(names).Aggregate(path, (said, n) => said[..n.Start] + name + said[n.End..])));
-                        }
+                        Names(scene, path, start, end, [.. Resolve(holder, path).Steps.Where(s => s.Node.Same(node) && path[s.Start..s.End] != "..")
+                            .Select(s => (s.Start + (path[s.Start] == '%' ? 1 : 0), s.End))]);
                     }
                 }
             }
         }
         return edits.ToDictionary(e => e.Key, e => (IReadOnlyList<TextEdit>)[.. e.Value.Distinct().OrderBy(t => t.Start)], StringComparer.Ordinal);
+
+        // A path's characters are places in the file only where no escape is written among them; one that holds one is written anew whole.
+        void Names(string scene, string said, int start, int end, List<(int Start, int End)> names)
+        {
+            if (end - start == said.Length)
+            {
+                names.ForEach(n => Edit(scene, new TextEdit(start + n.Start, n.End - n.Start, escaped)));
+            }
+            else if (names.Count > 0)
+            {
+                Edit(scene, new TextEdit(start, end - start, GodotWrites.Escaped(Enumerable.Reverse(names).Aggregate(said, (text, n) => text[..n.Start] + name + text[n.End..]))));
+            }
+        }
 
         void Edit(string scene, TextEdit edit)
         {

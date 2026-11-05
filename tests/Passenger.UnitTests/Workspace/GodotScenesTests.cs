@@ -258,6 +258,34 @@ public class GodotScenesTests
             .Replace("/root/Hud/Points", "/root/Hud/Score", StringComparison.Ordinal), renamed);
     }
 
+    /// <summary>A node's name may hold a backslash, which Godot's text writes doubled: a new name is written so wherever it goes,
+    /// and a name written so is read through its escape, its name and every path through it renamed.</summary>
+    [Fact]
+    public void A_nodes_name_holding_a_backslash_is_written_as_godot_writes_it_in_a_scene()
+    {
+        const string plain = """
+            [gd_scene format=3]
+
+            [node name="Main" type="Node2D"]
+            Target = NodePath("Hud/Score:text")
+
+            [node name="Hud" type="CanvasLayer" parent="."]
+
+            [node name="Score" type="Label" parent="Hud"]
+
+            [node name="Label" type="Label" parent="Hud/Score"]
+
+            [connection signal="hit" from="Hud/Score" to="." method="OnHit"]
+
+            """;
+        string escaped = plain.Replace("Score", "A\\\\B", StringComparison.Ordinal);
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(plain) });
+        Assert.Equal(escaped, Apply(plain, scenes.Renames(scenes.Tree("res://main.tscn")!.Child("Hud")!.Child("Score")!, "A\\B")["res://main.tscn"]));
+        GodotScenes written = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(escaped) });
+        GodotTreeNode node = written.Tree("res://main.tscn")!.Child("Hud")!.Child("A\\B")!;
+        Assert.Equal(plain, Apply(escaped, written.Renames(node, "Score")["res://main.tscn"]));
+    }
+
     [Fact]
     public void A_name_godot_refuses_or_one_beside_it_already_is_no_rename()
     {
@@ -265,6 +293,7 @@ public class GodotScenesTests
         GodotTreeNode score = scenes.Tree("res://main.tscn")!.Child("Hud")!.Child("Score")!;
         Assert.Equal("Hud has a node named Start already, in main.tscn", scenes.RenameProblem(score, "Start"));
         Assert.Equal("A node's name never holds '/', so Score keeps its name", scenes.RenameProblem(score, "A/B"));
+        Assert.Equal("'A\nB' is no node's name", scenes.RenameProblem(score, "A\nB"));
         Assert.Null(scenes.RenameProblem(score, "Points"));
     }
 

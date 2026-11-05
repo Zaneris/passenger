@@ -262,6 +262,31 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
+    /// <summary>A node's name may hold a backslash: the code's strings take it escaped as C# escapes it, the scene's as Godot does,
+    /// so the string still says the name and the scene still loads it.</summary>
+    [AvaloniaFact]
+    public void Renaming_a_node_to_a_name_holding_a_backslash_writes_it_for_each_file_it_goes_in()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "GetNode<Label>(\"Hud/Sc");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "Score", () => $"Rename's box on the node Score ({window.Assist.Renaming}; {window.Status})");
+            window.KeyTextInput("Sc\\ore");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => File.ReadAllText(ScenePath).Contains("[node name=\"Sc\\\\ore\" type=\"Label\" parent=\"Hud\"]", StringComparison.Ordinal),
+                () => $"the scene to name the node as Godot writes it ({window.Status}): {File.ReadAllText(ScenePath)}");
+            Assert.Contains("GetNode<Label>(\"Hud/Sc\\\\ore\")", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>The scene's connection to a method Main lacks is an error on Main's name, and one whose signal gives an argument
     /// the handler does not take is one on the handler's, each naming the scene and its line; Find Usages of the handler lists
     /// the connection calling it, and Go to Declaration from that connection's method in the scene goes back to the handler, as
