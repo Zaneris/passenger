@@ -103,7 +103,7 @@ public static class MSBuildNavigation
             }
             (string entry, TextRange range) = MSBuildSyntax.EntryAt(text, attribute.ValueStart, attribute.ValueEnd, offset);
             return entry.Length == 0 || MSBuildSyntax.IsExpression(entry) || entry.IndexOfAny(['*', '?']) >= 0 ? null
-                : new MSBuildSymbol(MSBuildSymbolKind.File, entry, range, element);
+                : new MSBuildSymbol(MSBuildSymbolKind.File, Core.ItemPaths.Unescaped(entry), range, element);
         }
         return null;
     }

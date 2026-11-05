@@ -720,6 +720,21 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     }
 
     /// <summary>A tool's path, line and column (from 1) just after the first <paramref name="after"/> in a file's text.</summary>
+    [Fact]
+    public async Task An_item_written_escaped_goes_to_the_file_it_names()
+    {
+        string folder = TestFolders.Create("mcp-escaped-item-");
+        TestFolders.Write(folder, "per%cent/notes.txt", "Notes\n");
+        string project = $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n"
+            + "  <ItemGroup>\n    <None Include=\"per%25cent/notes.txt\" />\n  </ItemGroup>\n</Project>\n";
+        TestFolders.Write(folder, "Shop.csproj", project);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+
+        JsonElement found = Assert.Single((await Call(client, McpTools.Definition, At(project, "Shop.csproj", "Include=\"per"))).EnumerateArray());
+
+        Assert.EndsWith("notes.txt", found.GetProperty("path").GetString()!, StringComparison.Ordinal);
+    }
+
     private static Dictionary<string, object?> At(string text, string path, string after)
     {
         int at = text.IndexOf(after, StringComparison.Ordinal);

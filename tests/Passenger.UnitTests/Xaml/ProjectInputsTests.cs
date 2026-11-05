@@ -5,7 +5,8 @@ namespace Passenger.UnitTests.Xaml;
 
 /// <summary>A multi-targeted project's XAML is read against the restore of the framework chosen: its packages' compile
 /// assets, its shared frameworks and its implicit usings, wherever the restore names its targets by their long names; with
-/// none chosen, or one the restore lacks, against its first target, as a project of one framework is.</summary>
+/// none chosen, or one the restore lacks, against its first target, as a project of one framework is. A path its file writes
+/// reads as MSBuild reads it.</summary>
 public sealed class ProjectInputsTests : IDisposable
 {
     private readonly string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
@@ -66,6 +67,40 @@ public sealed class ProjectInputsTests : IDisposable
         Assert.True(ProjectInputs.InFolderOf(Path.Combine(bin, "debug_net10.0", "App.dll"), "net10.0", bin));
         Assert.False(ProjectInputs.InFolderOf(Path.Combine(bin, "Debug", "net10.0", "App.dll"), "net11.0", bin));
         Assert.False(ProjectInputs.InFolderOf(Path.Combine(bin, "Debug", "net10.0-windows", "App.dll"), "net10.0", bin));
+    }
+
+    [Fact]
+    public void A_project_reference_written_escaped_is_the_project_msbuild_finds()
+    {
+        string project = Write("App/App.csproj", """<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="..\per%25cent%3Bsemi\Lib.csproj" /></ItemGroup></Project>""");
+
+        ProjectInputs read = ProjectInputs.Read(project, null);
+
+        Assert.Equal([Path.Combine(root, "per%cent;semi", "Lib.csproj")], read.ProjectReferences);
+    }
+
+    [Theory]
+    [InlineData("per%25cent/a%3Bb.png", "per%cent/a;b.png")]
+    [InlineData("per%2525cent/**", "per%cent/a;b.png")]
+    [InlineData("per%2525cent/*%253Bb.png", "per%cent/a;b.png")]
+    [InlineData("per%2525cent/?;Other/nothing", "per%cent/z")]
+    public void An_item_written_escaped_is_the_file_msbuild_finds(string include, string found)
+    {
+        Write("App/per%cent/a;b.png", string.Empty);
+        Write("App/per%cent/z", string.Empty);
+        string project = Write("App/App.csproj", $"""<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><AvaloniaResource Include="{include}" /></ItemGroup></Project>""");
+
+        Assert.Contains(found, ProjectInputs.Read(project, null).Items("AvaloniaResource"));
+    }
+
+    [Fact]
+    public void A_remove_written_escaped_takes_out_the_file_it_names_and_a_property_stays_unread()
+    {
+        Write("App/per%cent/a.png", string.Empty);
+        Write("App/per%cent/b.png", string.Empty);
+        string project = Write("App/App.csproj", """<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><AvaloniaResource Include="per%2525cent/**;$(Assets)/c.png" Remove="per%25cent/a.png" /></ItemGroup></Project>""");
+
+        Assert.Equal(["per%cent/b.png"], ProjectInputs.Read(project, null).Items("AvaloniaResource"));
     }
 
     /// <summary>A restore of two frameworks, each with its own version of a package and its own shared framework.</summary>

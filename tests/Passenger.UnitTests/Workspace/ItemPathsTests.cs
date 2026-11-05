@@ -1,4 +1,4 @@
-using Passenger.Workspace;
+using Passenger.Core;
 
 namespace Passenger.UnitTests.Workspace;
 
@@ -112,5 +112,14 @@ public class ItemPathsTests
 
         Assert.Equal("old;one", read.Path);
         Assert.Equal(@"new%3Btwo\", read.At("new;two"));
+    }
+
+    [Theory]
+    [InlineData("per%25cent/a%3Bb.png", "per%cent/a;b.png")]
+    [InlineData("per%2525cent/*%253Bb.png", "per%cent/*;b.png")]
+    [InlineData("**/*.png", "**/*.png")]
+    public void All_a_value_says_is_read_as_msbuild_reads_it_its_wildcards_kept(string written, string whole)
+    {
+        Assert.Equal(whole, ItemPaths.Read(written)?.Whole);
     }
 }

@@ -112,7 +112,7 @@ public sealed record ProjectInputs(
         {
             if (reference.Attribute("Include")?.Value is { Length: > 0 } include)
             {
-                string full = Path.GetFullPath(Path.Combine(folder, include.Replace('\\', Path.DirectorySeparatorChar)));
+                string full = Path.GetFullPath(Path.Combine(folder, ItemPaths.Unescaped(include).Replace('\\', Path.DirectorySeparatorChar)));
                 if (!projectReferences.Contains(full, StringComparer.Ordinal))
                 {
                     projectReferences.Add(full);
@@ -210,15 +210,16 @@ public sealed record ProjectInputs(
     private static IEnumerable<string> Split(string? value) =>
         value is null ? [] : value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    /// <summary>The project folder's files a glob names (<c>Assets/**</c>, <c>Assets/*.png</c>), bin and obj left out.</summary>
+    /// <summary>The project folder's files a glob names (<c>Assets/**</c>, <c>Assets/*.png</c>), read as MSBuild reads it, bin
+    /// and obj left out.</summary>
     private static IEnumerable<string> Glob(string folder, string pattern)
     {
-        string normal = pattern.Replace('\\', '/');
-        if (normal.Contains("$(", StringComparison.Ordinal))
+        if (ItemPaths.Read(pattern) is not { } read)
         {
             yield break;
         }
-        if (!normal.Contains('*', StringComparison.Ordinal))
+        string normal = read.Whole.Replace('\\', '/');
+        if (!read.Glob)
         {
             if (File.Exists(Path.Combine(folder, normal)))
             {
@@ -226,10 +227,7 @@ public sealed record ProjectInputs(
             }
             yield break;
         }
-        int star = normal.IndexOf('*', StringComparison.Ordinal);
-        int slash = normal.LastIndexOf('/', star);
-        string root = slash < 0 ? string.Empty : normal[..slash];
-        string start = Path.Combine(folder, root);
+        string start = Path.Combine(folder, read.Path.Replace('\\', '/'));
         if (!Directory.Exists(start))
         {
             yield break;

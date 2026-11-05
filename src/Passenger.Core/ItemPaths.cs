@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Passenger.Workspace;
+namespace Passenger.Core;
 
 /// <summary>A path as a project file says it, so that a folder of any legal name reads back as that folder: MSBuild takes
 /// '%', ';', '$', '@', '*' and '?' for more than themselves unless written %XX. A glob differs: an Include, Remove or Update
@@ -97,6 +97,9 @@ public static class ItemPaths
 /// written, a glob's wildcards or a folder's last slash; and how a new path is written in its place.</summary>
 public sealed record ItemPath(string Path, string Rest, bool Glob, bool Twice)
 {
+    /// <summary>All the value says as MSBuild reads it, a glob's wildcards kept.</summary>
+    public string Whole => Path + (Twice ? ItemPaths.Unescaped(ItemPaths.Unescaped(Rest)) : ItemPaths.Unescaped(Rest));
+
     /// <summary>The value naming another path, as this one is written.</summary>
     public string At(string path) => (Glob ? ItemPaths.FolderOfGlob(path, Twice) : ItemPaths.Named(path)) + Rest;
 }
