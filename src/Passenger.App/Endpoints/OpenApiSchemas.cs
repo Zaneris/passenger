@@ -227,9 +227,13 @@ public static class OpenApiSchemas
     private static bool Same(JsonElement one, JsonElement other) =>
         JsonMarshal.GetRawUtf8Value(one).Overlaps(JsonMarshal.GetRawUtf8Value(other), out int offset) && offset == 0;
 
+    /// <summary>A schema's parts: its <c>allOf</c>'s, then its <c>anyOf</c>'s and <c>oneOf</c>'s, each option or, without
+    /// <paramref name="everyOption"/>, the first alone, which a body is made of.</summary>
+    internal static IEnumerable<JsonElement> Parts(JsonElement schema, bool everyOption) =>
+        ((string[])["allOf", "anyOf", "oneOf"]).SelectMany(joining => JsonMembers.Items(schema, joining).Take(everyOption || joining == "allOf" ? int.MaxValue : 1));
+
     /// <summary>A schema and those held over the same value with it: what its <c>$ref</c> names, beside which 3.1 may write
-    /// more, its <c>allOf</c>'s, and its <c>anyOf</c>'s and <c>oneOf</c>'s, each option or, without
-    /// <paramref name="everyOption"/>, the first alone, which a body is made of; each reference followed once.</summary>
+    /// more, and its <see cref="Parts"/>; each reference followed once.</summary>
     private static IEnumerable<JsonElement> Joined(OpenApiDocument document, JsonElement written, bool everyOption)
     {
         HashSet<string> followed = [];
@@ -241,12 +245,9 @@ public static class OpenApiSchemas
                 waiting.Push(named);
             }
             yield return schema;
-            foreach (string joining in (string[])["allOf", "anyOf", "oneOf"])
+            foreach (JsonElement part in Parts(schema, everyOption))
             {
-                foreach (JsonElement part in JsonMembers.Items(schema, joining).Take(everyOption || joining == "allOf" ? int.MaxValue : 1))
-                {
-                    waiting.Push(part);
-                }
+                waiting.Push(part);
             }
         }
     }
@@ -326,9 +327,9 @@ public static class OpenApiSchemas
     private static string Escaped(string name) => name.Replace("~", "~0", StringComparison.Ordinal).Replace("/", "~1", StringComparison.Ordinal);
 
     /// <summary>A value made from a schema, as a request's body starts: its example or default where it gives one, else its
-    /// first enum value, else what its parts make, else of its first type (an object's every member, an array of one item,
-    /// a string by its format, 0, false), what a request does not send left out at every depth (<see cref="LeftOut"/>); null
-    /// where the schema says nothing of what it is.</summary>
+    /// first enum value, else what its <see cref="Parts"/> make, else of its first type (an object's every member, an array
+    /// of one item, a string by its format, 0, false), what a request does not send left out at every depth
+    /// (<see cref="LeftOut"/>); null where the schema says nothing of what it is.</summary>
     public static JsonNode? Sample(OpenApiDocument document, JsonElement schema)
     {
         JsonNode? made = Make(document, schema, 0, []);
@@ -376,9 +377,9 @@ public static class OpenApiSchemas
     public static string SampleText(OpenApiDocument document, JsonElement schema) =>
         Sample(document, schema)?.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) ?? "{}";
 
-    /// <summary>What the parts held over a schema's value make: an object of their members and then its own <c>properties</c>,
-    /// a member written again taking the last, where any of those is an object; else the last value one made, as a part
-    /// narrows those before it; null where none made one.</summary>
+    /// <summary>What a schema's parts make: an object of their members and then its own <c>properties</c>, a member written
+    /// again taking the last, where any of those is an object; else the last value one made, as a part narrows those before
+    /// it; null where none made one.</summary>
     private static JsonNode? MakeOfParts(OpenApiDocument document, JsonElement schema, IEnumerable<JsonElement> parts, int depth, HashSet<string> referred)
     {
         JsonObject? merged = null;
@@ -436,13 +437,9 @@ public static class OpenApiSchemas
             {
                 return JsonNode.Parse(listed.GetRawText());
             }
-            if (JsonMembers.Items(schema, "allOf") is { Count: > 0 } parts && MakeOfParts(document, schema, parts, depth, referred) is { } joined)
+            if (Parts(schema, everyOption: false).ToList() is { Count: > 0 } parts && MakeOfParts(document, schema, parts, depth, referred) is { } joined)
             {
                 return joined;
-            }
-            if ((JsonMembers.Items(schema, "oneOf") is [var one, ..] ? one : JsonMembers.Items(schema, "anyOf") is [var any, ..] ? any : (JsonElement?)null) is { } choice)
-            {
-                return Make(document, choice, depth + 1, referred);
             }
             IReadOnlyList<string> types = TypesOf(schema);
             string? kind = ((string[])["object", "array", "integer", "number", "boolean", "string"]).FirstOrDefault(types.Contains)
@@ -554,7 +551,7 @@ public static partial class OpenApiRequests
             else if (operation.MultipartSchema is { } multipart)
             {
                 written.Append("Content-Type: multipart/form-data; boundary=").Append(Boundary).Append("\n\n");
-                foreach ((string name, JsonElement field) in Fields(document, multipart).Where(f => !OpenApiSchemas.LeftOut(document, multipart, f.Name)))
+                foreach ((string name, JsonElement field) in Fields(document, multipart, []).Where(f => !OpenApiSchemas.LeftOut(document, multipart, f.Name)))
                 {
                     written.Append("--").Append(Boundary).Append('\n');
                     if (IsFile(document, field))
@@ -617,13 +614,17 @@ public static partial class OpenApiRequests
     /// <summary>The boundary between a multipart body's parts.</summary>
     private const string Boundary = "passenger";
 
-    /// <summary>An object schema's fields in order, its <c>allOf</c> parts' too.</summary>
-    private static IEnumerable<(string Name, JsonElement Schema)> Fields(OpenApiDocument document, JsonElement written)
+    /// <summary>An object schema's fields in order, those of its parts first as a body's are, each reference followed once.</summary>
+    private static IEnumerable<(string Name, JsonElement Schema)> Fields(OpenApiDocument document, JsonElement written, HashSet<string> followed)
     {
-        JsonElement schema = document.Resolve(written);
-        foreach (JsonElement part in JsonMembers.Items(schema, "allOf"))
+        if (JsonMembers.Text(written, "$ref") is { } reference && !followed.Add(reference))
         {
-            foreach ((string Name, JsonElement Schema) field in Fields(document, part))
+            yield break;
+        }
+        JsonElement schema = document.Resolve(written);
+        foreach (JsonElement part in OpenApiSchemas.Parts(schema, everyOption: false))
+        {
+            foreach ((string Name, JsonElement Schema) field in Fields(document, part, followed))
             {
                 yield return field;
             }

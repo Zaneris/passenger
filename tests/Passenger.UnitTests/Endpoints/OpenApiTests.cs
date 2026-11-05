@@ -351,6 +351,67 @@ public sealed class OpenApiTests
         Assert.Contains("@status = new\n", OpenApiRequests.Entries(given, given.Operations, string.Empty, "host", null), StringComparison.Ordinal);
     }
 
+    /// <summary>A choice holds over a value with what is written beside it: a schema's own members join its first option's,
+    /// what it writes again over theirs, an allOf's and the other choice's joining in too. An option saying only which members
+    /// are required makes none, and an option making no object leaves the schema's own type.</summary>
+    [Fact]
+    public void A_body_made_from_a_choice_holds_the_members_written_beside_it()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse("""
+            { "openapi": "3.1.1", "paths": {}, "components": { "schemas": {
+              "Cat": { "type": "object", "properties": { "purrs": { "type": "boolean" }, "name": { "type": "integer" } } },
+              "Dog": { "type": "object", "properties": { "barks": { "type": "boolean" } } },
+              "Base": { "type": "object", "properties": { "id": { "type": "integer" } } },
+              "OneOf": { "type": "object", "oneOf": [ { "$ref": "#/components/schemas/Cat" }, { "$ref": "#/components/schemas/Dog" } ],
+                "properties": { "name": { "type": "string" }, "id": { "type": "integer", "readOnly": true } } },
+              "AnyOf": { "anyOf": [ { "$ref": "#/components/schemas/Cat" }, { "$ref": "#/components/schemas/Dog" } ], "properties": { "name": { "type": "string" } } },
+              "Requiring": { "type": "object", "properties": { "email": { "type": "string" }, "phone": { "type": "string" } },
+                "oneOf": [ { "required": [ "email" ] }, { "required": [ "phone" ] } ] },
+              "BesideAllOf": { "allOf": [ { "$ref": "#/components/schemas/Base" } ], "oneOf": [ { "$ref": "#/components/schemas/Dog" }, { "$ref": "#/components/schemas/Cat" } ] },
+              "BothChoices": { "anyOf": [ { "$ref": "#/components/schemas/Dog" } ], "oneOf": [ { "$ref": "#/components/schemas/Cat" } ] },
+              "Typed": { "type": "string", "oneOf": [ { "pattern": "^a" }, { "pattern": "^b" } ] },
+              "Values": { "oneOf": [ { "type": "integer" }, { "type": "string" } ] },
+              "Nullable": { "oneOf": [ { "type": "null" }, { "$ref": "#/components/schemas/Dog" } ] } } } }
+            """)!;
+        string? Sampled(string schema)
+        {
+            using JsonDocument held = JsonDocument.Parse($$"""{ "$ref": "#/components/schemas/{{schema}}" }""");
+            return OpenApiSchemas.Sample(given, held.RootElement)?.ToJsonString();
+        }
+        Assert.Equal("""{"purrs":false,"name":"string"}""", Sampled("OneOf"));
+        Assert.Equal("""{"purrs":false,"name":"string"}""", Sampled("AnyOf"));
+        Assert.Equal("""{"email":"string","phone":"string"}""", Sampled("Requiring"));
+        Assert.Equal("""{"id":0,"barks":false}""", Sampled("BesideAllOf"));
+        Assert.Equal("""{"barks":false,"purrs":false,"name":0}""", Sampled("BothChoices"));
+        Assert.Equal("\"string\"", Sampled("Typed"));
+        Assert.Equal("0", Sampled("Values"));
+        Assert.Null(Sampled("Nullable"));
+    }
+
+    /// <summary>A multipart body is made of what a sample is, a choice's first option and what is written beside it, and a
+    /// schema referring to itself stops where it would go round again.</summary>
+    [Fact]
+    public void A_multipart_body_holds_a_choices_first_option_and_what_is_written_beside_it()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse("""
+            { "openapi": "3.1.1", "paths": {
+              "/files": { "post": { "operationId": "File", "requestBody": { "content": { "multipart/form-data": { "schema": { "$ref": "#/components/schemas/Upload" } } } },
+                "responses": { "204": { "description": "None" } } } },
+              "/loops": { "post": { "operationId": "Loop", "requestBody": { "content": { "multipart/form-data": { "schema": { "$ref": "#/components/schemas/Loop" } } } },
+                "responses": { "204": { "description": "None" } } } } },
+              "components": { "schemas": {
+                "Picture": { "type": "object", "properties": { "picture": { "type": "string", "format": "binary" } } },
+                "Sound": { "type": "object", "properties": { "sound": { "type": "string", "format": "binary" } } },
+                "Upload": { "oneOf": [ { "$ref": "#/components/schemas/Picture" }, { "$ref": "#/components/schemas/Sound" } ], "properties": { "title": { "type": "string" } } },
+                "Loop": { "allOf": [ { "$ref": "#/components/schemas/Loop" } ], "properties": { "round": { "type": "string" } } } } } }
+            """)!;
+        string written = OpenApiRequests.Entries(given, given.Operations, string.Empty, "host", null);
+        Assert.Contains("name=\"picture\"; filename=\"picture.txt\"", written, StringComparison.Ordinal);
+        Assert.Contains("name=\"title\"", written, StringComparison.Ordinal);
+        Assert.DoesNotContain("name=\"sound\"", written, StringComparison.Ordinal);
+        Assert.Contains("name=\"round\"", written, StringComparison.Ordinal);
+    }
+
     /// <summary>A form's and a multipart body's fields are made from a schema too, so what a server sets is no field of either.</summary>
     [Fact]
     public void A_form_or_multipart_request_written_for_an_operation_has_no_field_its_schema_marks_read_only()
