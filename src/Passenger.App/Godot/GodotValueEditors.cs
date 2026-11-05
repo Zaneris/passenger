@@ -301,7 +301,7 @@ public sealed class GodotItemsEditor : Border
             Refused($"{(key ? "A key of " : string.Empty)}{name}{(key ? string.Empty : $"[{GodotVariant.Shown(entry.Key, quoted: true)}]")} takes {wanted}");
             return;
         }
-        if (key && Pairs.Where((_, i) => i != index).Any(p => GodotTuning.Same(p.Key, read)))
+        if (key && Pairs.Where((_, i) => i != index).Any(p => GodotVariant.Same(p.Key, read)))
         {
             Refused($"{GodotVariant.Shown(read, quoted: true)} is a key of {name} already");
             return;
@@ -340,7 +340,7 @@ public sealed class GodotItemsEditor : Border
         {
             string text = n == 1 ? "key" : $"key {n}";
             object key = type == GodotType.StringName ? new GodotName(text) : text;
-            if (!entries.Any(e => GodotTuning.Same(e.Key, key)))
+            if (!entries.Any(e => GodotVariant.Same(e.Key, key)))
             {
                 return key;
             }

@@ -776,6 +776,19 @@ public static class GodotVariant
         _ => value.ToString() ?? string.Empty,
     };
 
+    /// <summary>Whether two values a game holds are alike, whole: a byte array by its bytes, an array's, a dictionary's and an
+    /// object's parts each so, any other value as <see cref="Shown"/> writes it.</summary>
+    public static bool Same(object? a, object? b) => (a, b) switch
+    {
+        (byte[] left, byte[] right) => left.AsSpan().SequenceEqual(right),
+        (List<object?> left, List<object?> right) => left.Count == right.Count && left.Zip(right).All(p => Same(p.First, p.Second)),
+        (GodotDictionary left, GodotDictionary right) => left.Entries.Count == right.Entries.Count
+            && left.Entries.Zip(right.Entries).All(p => Same(p.First.Key, p.Second.Key) && Same(p.First.Value, p.Second.Value)),
+        (GodotObject left, GodotObject right) => left.Class == right.Class && left.Properties.Count == right.Properties.Count
+            && left.Properties.Zip(right.Properties).All(p => p.First.Key == p.Second.Key && Same(p.First.Value, p.Second.Value)),
+        _ => Shown(a, quoted: true) == Shown(b, quoted: true),
+    };
+
     /// <summary>A value of several vectors in its parts, as it is typed back: a 2D transform's x and y axes and origin, a
     /// basis's rows, a 3D transform's basis and origin, a box's position and size, a plane's normal and distance, a
     /// projection's columns.</summary>

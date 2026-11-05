@@ -169,7 +169,7 @@ public sealed class GodotTuneTests : IClassFixture<GodotTuneTests.Game>
             Ui.WaitFor(() => window.Unkept is { Values.Count: 1 }, () => $"the values not kept to be listed as the game ends ({window.Status})");
             GodotUnkeptPanel unkept = window.Unkept!;
             Assert.Equal("Spinner on Godot ended with 1 value changed and not kept. Keep one where it comes from, or all of them:", unkept.Said);
-            Assert.True(unkept.Values[0] is { Name: "Speed", NodeName: "Main" } listed && GodotTuning.Same(listed.Original, 1.0) && GodotTuning.Same(listed.Value, 3.0),
+            Assert.True(unkept.Values[0] is { Name: "Speed", NodeName: "Main" } listed && GodotVariant.Same(listed.Original, 1.0) && GodotVariant.Same(listed.Value, 3.0),
                 $"The list holds {string.Join(", ", unkept.Values.Select(v => $"{v.NodeName}.{v.Name} {v.Original} → {v.Value}"))}");
             Ui.Click(unkept.KeepAllButton);
             Ui.WaitFor(() => window.KeepPreview is not null, "Keep All to show what it writes");

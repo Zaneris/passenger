@@ -74,6 +74,19 @@ public class GodotContainersTests
         Assert.Equal("{ \"C:\\\\new\": \"a\\\"b\" }", GodotVariant.Shown(new GodotDictionary([new("C:\\new", "a\"b")])));
     }
 
+    [Fact]
+    public void Two_byte_arrays_of_one_length_differ_by_their_bytes_wherever_they_are_held()
+    {
+        Assert.True(GodotVariant.Same(new byte[] { 1, 2 }, new byte[] { 1, 2 }), "One byte array held twice would be marked changed");
+        Assert.False(GodotVariant.Same(new byte[] { 1, 2 }, new byte[] { 3, 4 }), "A byte changed would be left out of Keep");
+        Assert.False(GodotVariant.Same(new GodotArray([new byte[] { 1 }]), new GodotArray([new byte[] { 2 }])), "A byte array in an array");
+        Assert.False(GodotVariant.Same(new GodotDictionary([new("a", new byte[] { 1 })]), new GodotDictionary([new("a", new byte[] { 2 })])), "A byte array in a dictionary");
+        Assert.False(GodotVariant.Same(new GodotObject("Thing", [new("data", new byte[] { 1 })]), new GodotObject("Thing", [new("data", new byte[] { 2 })])), "A byte array in an object");
+        Assert.True(GodotVariant.Same(new GodotArray([1L, "a"]), new GodotArray([1L, "a"])), "Arrays alike");
+        Assert.False(GodotVariant.Same(new GodotArray([1L]), new GodotArray([1L, 2L])), "Arrays of different lengths");
+        Assert.Equal("[2 bytes]", GodotVariant.Shown(new byte[] { 1, 2 }));
+    }
+
     [Theory]
     [InlineData("int", GodotType.Int)]
     [InlineData("Vector2i", GodotType.Vector2I)]

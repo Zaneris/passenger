@@ -28,7 +28,7 @@ public sealed class GodotTuned(ulong node, GodotNodePlace place, GodotProperty p
     public object? Value { get; internal set; } = property.Value;
 
     /// <summary>Whether the value differs from the one it had, or was last kept.</summary>
-    public bool Changed => !GodotTuning.Same(Original, Value);
+    public bool Changed => !GodotVariant.Same(Original, Value);
 }
 
 /// <summary>The values a running game's nodes were given from the properties pane, each marked while it differs from
@@ -72,7 +72,7 @@ public sealed class GodotTuning(string folder)
         bool moved = false;
         foreach (GodotProperty property in state.Properties)
         {
-            if (tuned.TryGetValue((state.Id, property.Name), out GodotTuned? record) && !Same(record.Value, property.Value))
+            if (tuned.TryGetValue((state.Id, property.Name), out GodotTuned? record) && !GodotVariant.Same(record.Value, property.Value))
             {
                 record.Value = property.Value;
                 moved = true;
@@ -100,7 +100,4 @@ public sealed class GodotTuning(string folder)
         }
         Changed?.Invoke(this, EventArgs.Empty);
     }
-
-    /// <summary>Whether two values a game holds are alike, as they are written.</summary>
-    public static bool Same(object? a, object? b) => GodotVariant.Shown(a, quoted: true) == GodotVariant.Shown(b, quoted: true);
 }
