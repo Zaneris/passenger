@@ -1462,6 +1462,9 @@ public sealed class GodotAddonTests : IDisposable
             TypeValue(window, "Steps", "PackedInt32Array(1, 5, 3)");
             main[3] = "Steps = PackedInt32Array(1, 5, 3)";
             Lines(window, "Main", main, "an element of the Steps array typed");
+            TypeValue(window, "Steps", "not_a_value");
+            Ui.WaitFor(() => window.Status == "Steps was not set: Godot would not load it: not_a_value is no value", () => $"text Godot can't load to be refused ({window.Status})");
+            Lines(window, "Main", main, "the scene left as it was by text Godot can't load");
 
             Choose(window, "Foe");
             Ui.WaitFor(() => shown().Shown?.Name == "Foe" && shown().Rows.Any(r => r is { Property.Name: "position", Text: "Vector2(10, 20)", Set: false, Source: "Set in enemy.tscn:4" }),

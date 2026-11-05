@@ -76,7 +76,7 @@ public sealed class GodotSceneValues(string path, string node, string name, stri
     }
 
     /// <summary>A property's value written as Godot's variant text (an array, a dictionary, a resource, any value), checked
-    /// as the scene's reader reads it first; text the same as what it is unset removes its line.</summary>
+    /// as Godot's reader reads it first; text the same as what it is unset removes its line.</summary>
     public async Task SetTextAsync(string property, string written)
     {
         if (properties.FirstOrDefault(p => p.Property.Name == property) is not { } shown)
@@ -84,7 +84,7 @@ public sealed class GodotSceneValues(string path, string node, string name, stri
             throw new LiveAppException($"{name} has no {property}");
         }
         string trimmed = written.Trim();
-        if (WhyNotText(property, trimmed) is { } why)
+        if (WhyNotText(property, trimmed, GodotFile.Parse(textOf(path) ?? string.Empty)) is { } why)
         {
             throw new LiveAppException(why);
         }
@@ -92,17 +92,15 @@ public sealed class GodotSceneValues(string path, string node, string name, stri
         await WriteAsync(shown, unset ? null : trimmed, null, unset);
     }
 
-    /// <summary>Why text is no value of Godot's variant text for a property, as the scene's reader reads it; null where it is.</summary>
-    public static string? WhyNotText(string property, string written)
+    /// <summary>Why text is no value of Godot's variant text for a property of a scene, as Godot's reader reads it; null
+    /// where it is.</summary>
+    public static string? WhyNotText(string property, string written, GodotFile scene)
     {
         if (written.Length == 0 || written.Contains('\n'))
         {
             return $"{property} takes one value on its line";
         }
-        GodotFile read = GodotFile.Parse($"[node name=\"Node\" type=\"Node\"]\n{property} = {written}\n");
-        int start = $"[node name=\"Node\" type=\"Node\"]\n{property} = ".Length;
-        return read.Nodes is [{ Section: var section }] && section.Property(property) is { Value: var value } && value.Start == start && value.End == start + written.Length
-            ? null : $"{written} is no value Godot reads";
+        return GodotVariantText.WhyNot(written, scene) is { } why ? $"Godot would not load it: {why}" : null;
     }
 
     /// <summary>Writes a property's value as text into the node's section, or set back to what it is unset
