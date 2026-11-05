@@ -532,6 +532,12 @@ public static partial class GDScriptRefactorings
         {
             return GDScriptRefactored.No($"'{name}' is already a parameter or local there");
         }
+        Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(body);
+        if (Below(body).OfType<GDScriptIdentifier>().FirstOrDefault(i => i.Name == name && ReadsAsAName(i, parents)) is { } shadowed)
+        {
+            return GDScriptRefactored.No($"'{name}' is read in the function, and would read the parameter",
+                [new GDScriptPlace(analysis.Path, located.Offset + shadowed.Start, located.Offset + shadowed.End, "reads it")]);
+        }
         GDScriptType type = analysis.TypeOf(expression);
         string written = text[(located.Offset + expression.Start)..(located.Offset + expression.End)];
         string parameter = $"{name} {(type.IsVariant || type.IsVoid ? "=" : ":=")} {written}";

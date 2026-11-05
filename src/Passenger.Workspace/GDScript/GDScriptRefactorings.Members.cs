@@ -319,8 +319,8 @@ public static partial class GDScriptRefactorings
     /// <summary>Inline Function: each call of a function whose body is one statement given that statement, its parameters
     /// read as the arguments passed (a default where none is), the function then taken out. Refused where it is used other
     /// than by a call on itself, named by a string or <paramref name="elsewhere"/>, awaits, where an argument that is more
-    /// than a name or a literal would be read other than once, or one that calls only sometimes, or where the arguments
-    /// would no longer run in their order, ahead of the body.</summary>
+    /// than a name or a literal would be read other than once, or one that calls only sometimes, where the arguments would
+    /// no longer run in their order, ahead of the body, or where a name the body reads is a local at the call.</summary>
     public static GDScriptRefactored InlineFunction(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target, IReadOnlyList<GDScriptPlace> elsewhere)
     {
         if (target.Node is not GDScriptFunction { Body.Statements: [var only] } function || function.Rest is not null)
@@ -411,6 +411,10 @@ public static partial class GDScriptRefactorings
                 {
                     swaps.Add((target.Offset + name.Start - bodyStart, target.Offset + name.End - bodyStart, Placed(given, name, compound, bodyParents)));
                 }
+            }
+            if (Below(body).OfType<GDScriptIdentifier>().FirstOrDefault(n => !reads.Values.Any(r => r.Contains(n)) && ReadsAsAName(n, bodyParents) && LocalOver(call, n.Name, parents)) is { } captured)
+            {
+                return GDScriptRefactored.No($"'{captured.Name}' would read the local where it is called, not the member", [GDScriptUses.Place(use.Script, use.Offset, call, "calls it")]);
             }
             if (Disordered(inBody, only, reads, passed, late, own.Text, target.Offset) is { } disordered)
             {

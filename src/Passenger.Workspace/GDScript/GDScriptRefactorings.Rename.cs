@@ -19,11 +19,37 @@ public static partial class GDScriptRefactorings
         return new GDScriptNamePlaces(places, uses.Unsure);
     }
 
+    /// <summary>Whether a name stands where a local of its name would be read in its place: alone, not after a dot, as what a
+    /// call calls (which looks only at the class) or in a type.</summary>
+    private static bool ReadsAsAName(GDScriptIdentifier name, Dictionary<GDScriptNode, GDScriptNode?> parents) => parents.GetValueOrDefault(name) switch
+    {
+        GDScriptSubscript { IsAttribute: true } attribute => attribute.Attribute != name,
+        GDScriptCall call => call.Callee != name,
+        GDScriptTypeNode => false,
+        _ => true,
+    };
+
+    /// <summary>Whether a local or parameter of a name stands over a place: declared before it in a block around it, or a
+    /// parameter before the one whose default it is in.</summary>
+    private static bool LocalOver(GDScriptNode place, string name, Dictionary<GDScriptNode, GDScriptNode?> parents)
+    {
+        for (GDScriptNode? at = parents.GetValueOrDefault(place); at is not null; at = parents.GetValueOrDefault(at))
+        {
+            if (at is GDScriptSuite { Locals: { } locals } && locals.TryGetValue(name, out (string Kind, GDScriptNode Node) local) && local.Node.End <= place.Start
+                || at is GDScriptFunction function && function.Parameters.Any(p => p.Identifier?.Name == name && p.End <= place.Start))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>Rename of a member of a script's class: its declaration, each name resolved to it and each string a call
     /// names it by, in every script, a function's overrides with it (<see cref="FamilyOf"/>). Refused where the name is no
-    /// GDScript name or a class it renames in, or one built on them or they on it, has a member of it, the member is
-    /// Godot's own (<c>_ready</c>, an engine class's), or a place may use it where Passenger can't see whose member it
-    /// reads (<see cref="GDScriptUses.Unsure"/>), unless <paramref name="anyway"/>, which leaves them, naming them.</summary>
+    /// GDScript name or a class it renames in, or one built on them or they on it, has a member of it, a use would read a
+    /// local of the name instead, the member is Godot's own (<c>_ready</c>, an engine class's), or a place may use it where
+    /// Passenger can't see whose member it reads (<see cref="GDScriptUses.Unsure"/>), unless <paramref name="anyway"/>, which
+    /// leaves them, naming them.</summary>
     public static GDScriptRefactored Rename(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target, string name, bool anyway = false)
     {
         if (WhyNotName(name) is { } bad)
@@ -64,6 +90,16 @@ public static partial class GDScriptRefactorings
             return GDScriptRefactored.No($"{taken.Script} declares a '{name}' too, in a class built on this one or that this one is built on");
         }
         List<GDScriptUses> found = [.. family.Select(member => UsesOf(scripts, member))];
+        List<GDScriptPlace> captured = [.. found.SelectMany(u => u.Names).GroupBy(u => u.Within).SelectMany(within =>
+        {
+            Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(within.Key);
+            return within.Where(u => ReadsAsAName(u.Name, parents) && LocalOver(u.Name, name, parents))
+                .Select(u => GDScriptUses.Place(u.Script, u.Offset, u.Name, $"reads it where a local '{name}' stands"));
+        })];
+        if (captured.Count > 0)
+        {
+            return GDScriptRefactored.No($"'{name}' would read the local, not the member ({Places(captured)})", captured);
+        }
         List<GDScriptPlace> blocking = [.. found.SelectMany(u => u.Unsure).Distinct()];
         if (blocking.Count > 0 && !anyway)
         {

@@ -212,6 +212,55 @@ public class GDScriptRefactoringsTests
     }
 
     [Fact]
+    public void Renaming_a_member_is_refused_where_a_use_would_read_a_local_of_the_new_name()
+    {
+        string? Renamed(string body, string to = "health")
+        {
+            string text = $"var hp := 5\n\n\nfunc go(list):\n{body}";
+            IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
+            return GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("hp", StringComparison.Ordinal))!, to).Refused;
+        }
+        Assert.Contains("'health' would read the local, not the member", Renamed("\tvar health := 9\n\tprint(hp)\n"));
+        Assert.Contains("reads it where a local 'health' stands", Renamed("\tvar health := 9\n\thp = 1\n"));
+        Assert.Contains("would read the local", Renamed("\tconst health = 9\n\tprint(hp)\n"));
+        Assert.Contains("would read the local", Renamed("\tfor health in list:\n\t\tprint(hp)\n"));
+        Assert.Contains("would read the local", Renamed("\tmatch list:\n\t\tvar health:\n\t\t\tprint(hp)\n"));
+        Assert.Contains("would read the local", Renamed("\tvar health := 9\n\tvar f := func(): return hp\n"));
+        Assert.Contains("would read the local", Renamed("\tvar f := func(health): return hp\n"));
+        Assert.Contains("would read the local", Renamed("\tprint(hp)\n", "list"));
+        // Where a local of the name stands over no use, and where the name can't be the local's.
+        Assert.Null(Renamed("\tprint(hp)\n\tvar health := 9\n\tprint(health)\n"));
+        Assert.Null(Renamed("\tif list:\n\t\tvar health := 9\n\t\tprint(health)\n\tprint(hp)\n"));
+        Assert.Null(Renamed("\tvar health := 9\n\tprint(self.hp, health)\n"));
+        Assert.Null(Renamed("\tvar health := hp\n\tprint(health)\n"));
+
+        const string Own = "var hp := 5\n\n\nfunc go(hurt):\n\thurt()\n\n\nfunc other():\n\tvar health := 1\n\tgo(health)\n";
+        IReadOnlyList<GDScriptRead> called = Read(("res://main.gd", Own));
+        Assert.Null(GDScriptRefactorings.Rename(called, GDScriptRefactorings.MemberAt(called, called[0], Own.IndexOf("go(hurt", StringComparison.Ordinal))!, "health").Refused);
+
+        // A use in another script, and a property's own setter.
+        const string Base = "class_name Base\nextends Node\n\nvar hp := 5\n";
+        const string Child = "extends Base\n\n\nfunc go():\n\tvar health := 9\n\tprint(hp, health)\n";
+        IReadOnlyList<GDScriptRead> family = Read(("res://base.gd", Base), ("res://child.gd", Child));
+        Assert.Contains("res://child.gd", GDScriptRefactorings.Rename(family, GDScriptRefactorings.MemberAt(family, family[0], Base.IndexOf("hp", StringComparison.Ordinal))!, "health").Refused);
+        const string Setter = "var hp := 5:\n\tset(value):\n\t\thp = value\n";
+        IReadOnlyList<GDScriptRead> set = Read(("res://main.gd", Setter));
+        Assert.Contains("would read the local", GDScriptRefactorings.Rename(set, GDScriptRefactorings.MemberAt(set, set[0], 4)!, "value").Refused);
+    }
+
+    [Fact]
+    public void Inlining_a_function_and_introducing_a_parameter_are_refused_where_a_name_would_read_a_local_in_a_members_place()
+    {
+        string text = "var hp := 5\n\n\nfunc read_hp():\n\treturn hp\n\n\nfunc go():\n\tvar hp2 := 1\n\tvar other = 2\n\tprint(read_hp(), hp2, other)\n\n\nfunc shadowed():\n\tvar hp := 9\n\tprint(read_hp(), hp)\n";
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
+        GDScriptRefactored inlined = GDScriptRefactorings.InlineFunction(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("read_hp", StringComparison.Ordinal))!, []);
+        Assert.Contains("'hp' would read the local where it is called", inlined.Refused);
+        string step = "var step := 2\n\n\nfunc go(a):\n\tprint(step)\n\treturn a + 10\n";
+        Assert.Contains("'step' is read in the function", GDScriptRefactorings.IntroduceParameter(One(step), Over(step, "10"), "step").Refused);
+        Assert.Contains("func go(a, size := 10):", After(GDScriptRefactorings.IntroduceParameter(One(step), Over(step, "10"), "size"), "res://main.gd", step));
+    }
+
+    [Fact]
     public void Extract_variable_declares_the_expression_before_its_statement_and_reads_it_there()
     {
         // Typed by := where its type is read, as an int literal's is; without the engine's operators, a product's is not.
