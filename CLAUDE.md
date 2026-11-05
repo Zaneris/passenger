@@ -319,7 +319,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `VsTestRunner` is the only file that knows VSTest's object model (VSTest starts a debugged .NET test host itself and
   asks to attach: `LaunchTestHost` is never called for one); the person's `GODOT_BIN` wins; GUT's tests are chosen by
   `GutRuns.Hook`, never `-gunit_test_name` or `-ginner_class`, which take substrings; what a read depends on is taken
-  inside `TestFinder.ReadFile`'s parse, never captured by a listing.
+  inside `TestFinder.ReadFile`'s parse, never captured by a listing. A case named in place of its method is a row from
+  its source (`TestItem.NamedCase`), never by `NUnit.ClassName`, the declaring type; the Testing Platform's VSTest
+  bridge says no file or line unless run settings ask (`TestingPlatformRunner.SourcesAsked`).
 - **The rest.** `Packages` is every package change's one path (one command of Undo, put back when it fails; credentials
   only to their feed's host); `SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`;
   templates drive what is offered, Passenger's config only layered on (`ProjectTemplates`); only an installed copy
