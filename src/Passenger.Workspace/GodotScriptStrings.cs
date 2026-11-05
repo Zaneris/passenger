@@ -114,6 +114,11 @@ public static class GodotScriptStrings
     public static IEnumerable<GodotScriptToken> GivenTo(IReadOnlyList<GodotScriptToken> tokens, IReadOnlyDictionary<string, int[]> calls) =>
         tokens.Where(t => !t.Word && t.Whole && t.Call is { } call && calls.TryGetValue(call, out int[]? arguments) && arguments.Contains(t.Argument));
 
+    /// <summary>What a string of a quote writes for some characters so that it says them, its escapes as Godot's tokenizer reads
+    /// them; null for a raw string, whose only escape keeps its backslash, holding its own quote.</summary>
+    public static string? Written(string said, char quote, bool raw) => raw ? said.Contains(quote) ? null : said
+        : said.Replace("\\", "\\\\", StringComparison.Ordinal).Replace(quote.ToString(), $"\\{quote}", StringComparison.Ordinal);
+
     /// <summary>Whether what comes after a string, past blanks and comments, ends its argument: a ',', a ')', or an <c>if</c>.</summary>
     private static bool Closes(string text, int at)
     {

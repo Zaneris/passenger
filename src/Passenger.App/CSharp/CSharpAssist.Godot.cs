@@ -479,7 +479,8 @@ internal sealed partial class CSharpAssist
 
     /// <summary>Nodes renamed, as one command of global undo: in each scene, where it is declared and every path through it
     /// (<see cref="GodotScenes.Renames"/>), and in the code of every script of the scenes that hold it, each GetNode path whose
-    /// name leads to it; refused for a name Godot would not take or one beside it has, or a file changed since it was read.
+    /// name leads to it, C#'s and GDScript's (<see cref="GodotScenes.ScriptRenames"/>, the scripts they extend too); refused for
+    /// a name Godot would not take or one beside it has, a file changed since it was read, or a string that can't say the name.
     /// The window's and an agent's alike.</summary>
     internal async Task<RefactorOutcome> RenameNodesAsync(GodotRead read, IReadOnlyList<GodotTreeNode> nodes, string old, string name)
     {
@@ -539,6 +540,24 @@ internal sealed partial class CSharpAssist
             {
                 made[code] = text.ToString();
                 Add(code, paths);
+            }
+        }
+        List<string> gdscripts = [.. copies.SelectMany(c => c.Node.Root.Below()).Select(n => n.Script).OfType<string>().Where(GodotScriptDeclarations.IsScript).Distinct(StringComparer.Ordinal)
+            .SelectMany(s => scenes.ChainOf(s).Scripts.Select(c => c.Script)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+        OpenTexts open = context.Editors.Texts();
+        List<(string File, string Text, IReadOnlyList<TextEdit>? Paths)> scripted = await BackgroundWork.Run(() => gdscripts.Select(s => (File: scenes.FileOf(s), Script: s))
+            .Where(s => s.File is not null).Select(s => (s.File!, s.Script, Text: open.Text(s.File!))).Where(s => s.Text is not null)
+            .Select(s => (s.Item1, s.Text!, scenes.ScriptRenames(s.Script, s.Text!, nodes, name))).ToList());
+        foreach ((string file, string text, IReadOnlyList<TextEdit>? paths) in scripted)
+        {
+            if (paths is null)
+            {
+                return RefactorOutcome.Refused($"{old} was not renamed: a raw string of {Path.GetFileName(file)} can't say {name}");
+            }
+            if (paths.Count > 0)
+            {
+                made[file] = text;
+                Add(file, paths);
             }
         }
         List<XamlFileChange> changes = [.. edits.Select(e =>

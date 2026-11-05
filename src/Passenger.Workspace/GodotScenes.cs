@@ -1,5 +1,6 @@
 using Passenger.Core;
 using Passenger.Text;
+using Passenger.Workspace.GDScript;
 
 namespace Passenger.Workspace;
 
@@ -594,6 +595,30 @@ public sealed class GodotScenes
             }
             list.Add(edit);
         }
+    }
+
+    /// <summary>The edits a GDScript's text takes as nodes are renamed: each path its own node leads (<see cref="GDScriptNodePaths.In"/>)
+    /// that reaches one from a node of any scene whose class takes in the script, each name of it written as what holds it writes
+    /// it, a <c>%</c> kept; null where a string can't say the name.</summary>
+    public IReadOnlyList<TextEdit>? ScriptRenames(string script, string text, IReadOnlyList<GodotTreeNode> nodes, string name)
+    {
+        List<GodotTreeNode> runners = [.. Files.Where(f => f.Value.Header?.Tag == "gd_scene").SelectMany(f => Tree(f.Key)?.Below() ?? [])
+            .Where(n => n.Script is { } running && GodotScriptDeclarations.IsScript(running) && ChainOf(running).Runs(script))];
+        List<TextEdit> edits = [];
+        foreach (GDScriptNodePath path in GDScriptNodePaths.In(GDScriptTree.Parse(text)))
+        {
+            List<(int Start, int End)> names = [.. runners.SelectMany(r => Resolve(r, path.Path).Steps).Where(s => nodes.Any(n => n.Same(s.Node)) && path.Path[s.Start..s.End] != "..")
+                .Select(s => (s.Start + (path.Path[s.Start] == '%' ? 1 : 0), s.End)).Distinct().OrderBy(n => n.Item1)];
+            if (names.Count > 0)
+            {
+                if (path.Renamed(names, name) is not { } renamed)
+                {
+                    return null;
+                }
+                edits.AddRange(renamed);
+            }
+        }
+        return edits;
     }
 
     /// <summary>A res:// path once files and folders moved (each by its res:// path, a folder's ending in '/'): a moved file's

@@ -258,6 +258,35 @@ public class GodotScenesTests
             .Replace("/root/Hud/Points", "/root/Hud/Score", StringComparison.Ordinal), renamed);
     }
 
+    /// <summary>A GDScript's own paths follow a node's rename wherever they reach it from the node the script runs on, or a node
+    /// running a script built on it; a path reaching another node of the name is left.</summary>
+    [Fact]
+    public void A_nodes_rename_reaches_the_paths_a_gdscript_leads_from_its_node()
+    {
+        const string scene = """
+            [gd_scene format=3]
+
+            [ext_resource type="Script" path="res://main.gd" id="1"]
+
+            [node name="Main" type="Node"]
+            script = ExtResource("1")
+
+            [node name="Score" type="Label" parent="."]
+            unique_name_in_owner = true
+
+            [node name="Other" type="Node" parent="."]
+
+            [node name="Score" type="Label" parent="Other"]
+
+            """;
+        const string based = "extends Node\n\n\nfunc go():\n\t$Score.show()\n\t%Score.hide()\n\tget_node(\"./Score\")\n\tget_node(\"Other/Score\")\n\tget_node(\"Other\")\n";
+        Dictionary<string, string> texts = new(StringComparer.Ordinal) { ["res://main.gd"] = "extends \"res://base.gd\"\n", ["res://base.gd"] = based };
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) }, texts: texts);
+        GodotTreeNode score = scenes.Tree("res://main.tscn")!.Child("Score")!;
+        Assert.Equal(based.Replace("$Score", "$Points", StringComparison.Ordinal).Replace("%Score", "%Points", StringComparison.Ordinal).Replace("./Score", "./Points", StringComparison.Ordinal),
+            Apply(based, scenes.ScriptRenames("res://base.gd", based, [score], "Points")!));
+    }
+
     /// <summary>A node's name may hold a backslash, which Godot's text writes doubled: a new name is written so wherever it goes,
     /// and a name written so is read through its escape, its name and every path through it renamed.</summary>
     [Fact]

@@ -262,6 +262,35 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
+    /// <summary>A node a GDScript of the same scene names follows a rename begun in C#: its $ path and its get_node string, one
+    /// step of Undo with the rest, or that script no longer finds its node.</summary>
+    [AvaloniaFact]
+    public void Renaming_a_node_from_the_csharp_also_renames_it_in_the_gdscripts_of_its_scenes()
+    {
+        const string gdscript = "extends CanvasLayer\n\n@onready var score = $Score\n\n\nfunc _ready():\n\tget_node(\"Score\").hide()\n";
+        string script = game.PathOf("hud.gd");
+        File.WriteAllText(script, gdscript);
+        File.WriteAllText(ScenePath, Scene.Replace("res://Hud.cs", "res://hud.gd", StringComparison.Ordinal));
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "GetNode<Label>(\"Hud/Sc");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "Score", () => $"Rename's box on the node Score ({window.Assist.Renaming}; {window.Status})");
+            window.KeyTextInput("Points");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => File.ReadAllText(script) == gdscript.Replace("Score", "Points", StringComparison.Ordinal),
+                () => $"the GDScript's paths to follow the node ({window.Status}): {File.ReadAllText(script)}");
+        }
+        finally
+        {
+            window.Close();
+            File.Delete(script);
+        }
+    }
+
     /// <summary>A node's name may hold a backslash: the code's strings take it escaped as C# escapes it, the scene's as Godot does,
     /// so the string still says the name and the scene still loads it.</summary>
     [AvaloniaFact]
