@@ -1,4 +1,5 @@
 using Passenger.Workspace;
+using Passenger.Workspace.GodotShader;
 
 namespace Passenger.UnitTests.Workspace;
 
@@ -195,6 +196,58 @@ public class GodotShadersTests
         GodotShaderMark mark = Assert.Single(unit.MarksIn(null, messages));
         Assert.Equal(("../lib/gone.gdshaderinc", "Shader include file does not exist: res://lib/gone.gdshaderinc"), (shader[mark.Start..mark.End], mark.Message));
         Assert.Equal("res://shaders/a.gdshaderinc", GodotShaderUnit.Resolved("res://level.tscn::Shader_x", "shaders/./a.gdshaderinc"));
+    }
+
+    /// <summary>Godot's preprocessor never reads an include in a branch it leaves out, so no file answering it is no fault.</summary>
+    [Theory]
+    [InlineData("#if 0\n#include \"gone.gdshaderinc\"\n#endif\n")]
+    [InlineData("#ifdef NEVER_DEFINED\n#include \"gone.gdshaderinc\"\n#endif\n")]
+    [InlineData("#if 1\n#else\n#include \"gone.gdshaderinc\"\n#endif\n")]
+    [InlineData("#if CURRENT_RENDERER == RENDERER_MOBILE\n#include \"gone.gdshaderinc\"\n#endif\n")]
+    public void An_include_in_a_branch_left_out_is_no_mark_though_no_file_answers_it(string branch)
+    {
+        Assert.Empty(MarkedOf($"shader_type spatial;\n{branch}void fragment() {{}}\n", _ => null));
+    }
+
+    [Fact]
+    public void Every_include_the_branches_reach_that_no_file_answers_is_marked_on_its_path_and_no_other()
+    {
+        string shader = "shader_type spatial;\n#include \"a.gdshaderinc\"\n#if 0\n#include \"off.gdshaderinc\"\n#else\n#include \"../b.gdshaderinc\"\n#endif\nvoid fragment() {}\n";
+        Assert.Equal(["a.gdshaderinc", "../b.gdshaderinc"], MarkedOf(shader, _ => null, "res://fx/water.gdshader").Select(m => shader[m.Start..m.End]));
+    }
+
+    /// <summary>Godot's words name the include's whole path; said on the include once, never again on its line.</summary>
+    [Fact]
+    public void A_relative_include_no_file_answers_is_marked_once()
+    {
+        string shader = "shader_type spatial;\n#include \"../lib/gone.gdshaderinc\"\nvoid fragment() {}\n";
+        GodotShaderMark mark = Assert.Single(MarkedOf(shader, _ => null, "res://fx/water.gdshader"));
+        Assert.Equal(("../lib/gone.gdshaderinc", "Shader include file does not exist: res://lib/gone.gdshaderinc"), (shader[mark.Start..mark.End], mark.Message));
+    }
+
+    [Fact]
+    public void An_include_an_include_reaches_that_no_file_answers_is_marked_on_the_include_leading_to_it()
+    {
+        string shader = "shader_type spatial;\n#include \"a.gdshaderinc\"\nvoid fragment() {}\n";
+        GodotShaderMark mark = Assert.Single(MarkedOf(shader, path => path == "res://a.gdshaderinc" ? "#if 0\n#include \"off.gdshaderinc\"\n#endif\n#include \"gone.gdshaderinc\"\n" : null));
+        Assert.Equal(("a.gdshaderinc", "res://a.gdshaderinc:4: Shader include file does not exist: res://gone.gdshaderinc"), (shader[mark.Start..mark.End], mark.Message));
+    }
+
+    /// <summary>Passing an include no file answers to find the next is only for those: what the shader goes on to say past it
+    /// is Godot's to say once the include is there.</summary>
+    [Fact]
+    public void Past_an_include_no_file_answers_nothing_but_another_is_said()
+    {
+        string shader = "shader_type spatial;\n#include \"a.gdshaderinc\"\n#error nothing reads this\n#include \"b.gdshaderinc\"\nvoid fragment() {}\n";
+        GodotShaderMark mark = Assert.Single(MarkedOf(shader, _ => null));
+        Assert.Equal("a.gdshaderinc", shader[mark.Start..mark.End]);
+    }
+
+    /// <summary>The marks a check of a shader puts on its own text, its includes read through a file's text by res:// path.</summary>
+    private static IReadOnlyList<GodotShaderMark> MarkedOf(string shader, Func<string, string?> textOf, string res = "res://water.gdshader")
+    {
+        GodotShaderUnit unit = GodotShaderUnit.Of(res, shader, textOf);
+        return unit.MarksIn(null, GodotShaderCheck.Check(unit, GodotShaderTable.Carried, new GodotShaderCheckOptions { Warnings = null }).Messages);
     }
 
     /// <summary>A bracket closing straight after <c>render_mode</c> ends the statement before any mode.</summary>

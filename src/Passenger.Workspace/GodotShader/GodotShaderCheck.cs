@@ -82,8 +82,9 @@ public sealed partial record GodotShaderCheckOptions
 }
 
 /// <summary>What Godot's front end made of a shader or an include: its messages, as Godot's editor gives them (a
-/// preprocessor's error, else every error of the compile and, where it compiled, its warnings by line), the shader type
-/// it was read as, and the uniforms it declares as the compile read them.</summary>
+/// preprocessor's error, every include its branches reach that no file answers beside the first, else every error of the
+/// compile and, where it compiled, its warnings by line), the shader type it was read as, and the uniforms it declares as
+/// the compile read them.</summary>
 public sealed record GodotShaderChecked(IReadOnlyList<GodotShaderMessage> Messages, string ShaderType,
     IReadOnlyList<KeyValuePair<string, GodotShaderLanguage.Uniform>> Uniforms);
 
@@ -106,16 +107,21 @@ public static class GodotShaderCheck
     public static GodotShaderChecked Check(GodotShaderUnit unit, GodotShaderTable table, GodotShaderCheckOptions options)
     {
         bool isInclude = unit.Res.EndsWith(".gdshaderinc", StringComparison.Ordinal);
-        GodotShaderPreprocessed preprocessed = GodotShaderPreprocessor.Preprocess(unit.Code, unit.Res, options.RenderingMethod, Included, options.Godot);
-        if (preprocessed.Error is { } error)
+        HashSet<string> passed = new(StringComparer.Ordinal);
+        string? unanswered = null;
+        GodotShaderPreprocessed preprocessed = Preprocessed();
+        if (preprocessed.Error is not null)
         {
-            GodotShaderFilePosition first = preprocessed.ErrorPositions.Count > 0 ? preprocessed.ErrorPositions[0] : new GodotShaderFilePosition(unit.Res, 1);
-            GodotShaderFilePosition last = preprocessed.ErrorPositions.Count > 0 ? preprocessed.ErrorPositions[^1] : first;
-            bool stopped = error == GodotShaderLanguage.TooDeep;
-            GodotShaderMessage message = preprocessed.ErrorPositions.Count > 1
-                ? new GodotShaderMessage(!stopped, last.File, last.Line, error, stopped)
-                : new GodotShaderMessage(!stopped, string.Empty, first.Line, error, stopped);
-            return new GodotShaderChecked([message], string.Empty, []);
+            List<GodotShaderMessage> stopped = [PreprocessorMessage(unit, preprocessed)];
+            while (IsNoInclude(preprocessed) && passed.Add(unanswered!))
+            {
+                preprocessed = Preprocessed();
+                if (IsNoInclude(preprocessed))
+                {
+                    stopped.Add(PreprocessorMessage(unit, preprocessed));
+                }
+            }
+            return new GodotShaderChecked(stopped, string.Empty, []);
         }
 
         string shaderType = isInclude ? string.Empty : GodotShaderLanguage.GetShaderType(preprocessed.Code);
@@ -141,9 +147,32 @@ public static class GodotShaderCheck
         }
         return new GodotShaderChecked(messages, shaderType, [.. language.Shader.Uniforms]);
 
-        GodotShaderIncluded? Included(string path) => unit.Includes.TryGetValue(path, out string? text)
-            ? new GodotShaderIncluded(true, path.EndsWith(".gdshaderinc", StringComparison.Ordinal), text)
-            : null;
+        GodotShaderPreprocessed Preprocessed() => GodotShaderPreprocessor.Preprocess(unit.Code, unit.Res, options.RenderingMethod, Included, options.Godot);
+
+        // An include passed reads as an empty one, so the preprocessor goes on to the next it reaches that no file answers.
+        GodotShaderIncluded? Included(string path)
+        {
+            if (unit.Includes.TryGetValue(path, out string? text))
+            {
+                return new GodotShaderIncluded(true, path.EndsWith(".gdshaderinc", StringComparison.Ordinal), text);
+            }
+            unanswered = path;
+            return passed.Contains(path) ? new GodotShaderIncluded(true, true, string.Empty) : null;
+        }
+    }
+
+    private static bool IsNoInclude(GodotShaderPreprocessed preprocessed) => preprocessed.Error?.StartsWith(GodotShaderUnit.NoInclude, StringComparison.Ordinal) == true;
+
+    /// <summary>A preprocessor's error as a message, at its line of the shader or of the include it happened in.</summary>
+    private static GodotShaderMessage PreprocessorMessage(GodotShaderUnit unit, GodotShaderPreprocessed preprocessed)
+    {
+        string error = preprocessed.Error!;
+        GodotShaderFilePosition first = preprocessed.ErrorPositions.Count > 0 ? preprocessed.ErrorPositions[0] : new GodotShaderFilePosition(unit.Res, 1);
+        GodotShaderFilePosition last = preprocessed.ErrorPositions.Count > 0 ? preprocessed.ErrorPositions[^1] : first;
+        bool stopped = error == GodotShaderLanguage.TooDeep;
+        return preprocessed.ErrorPositions.Count > 1
+            ? new GodotShaderMessage(!stopped, last.File, last.Line, error, stopped)
+            : new GodotShaderMessage(!stopped, string.Empty, first.Line, error, stopped);
     }
 
     /// <summary>Every error of the code, the first as Godot gives it, then each Godot would give once the statements of
@@ -154,11 +183,13 @@ public static class GodotShaderCheck
     private static (GodotShaderLanguage Language, List<GodotShaderLanguage.CompileError> Errors) Compiled(string code, GodotShaderLanguage.ShaderCompileInfo info)
     {
         List<GodotShaderLanguage.CompileError> errors = [];
+        code = GodotShaderStatements.WithRoomInConditions(code);
         List<GodotShaderStatements.Span> spans = GodotShaderStatements.Of(code);
         HashSet<string> gone = new(StringComparer.Ordinal);
         HashSet<(GodotShaderStatements.Span, int)> softened = [];
         HashSet<GodotShaderStatements.Span> blanked = [];
         bool returnGone = false;
+        bool caseGone = false;
         GodotShaderLanguage language = new();
         for (int pass = 0; pass < MostErrors; pass++)
         {
@@ -184,13 +215,11 @@ public static class GodotShaderCheck
             if (GodotShaderStatements.At(spans, code, error.Offset) is not { } span || code.AsSpan(span.Start).TrimStart().StartsWith("shader_type"))
             {
                 break;
-        code = GodotShaderStatements.WithRoomInConditions(code);
             }
             while (blanked.Contains(span))
             {
                 if (GodotShaderStatements.Around(spans, span) is not { } around)
                 {
-        bool caseGone = false;
                     return (language, errors);
                 }
                 span = around;
@@ -203,6 +232,7 @@ public static class GodotShaderCheck
             string text = code[span.Start..span.End];
             gone.UnionWith(GodotShaderStatements.NamesDeclared(text));
             returnGone |= text.Contains("return", StringComparison.Ordinal);
+            caseGone |= text.Contains("case", StringComparison.Ordinal) || text.Contains("default", StringComparison.Ordinal);
             blanked.Add(span);
             code = GodotShaderStatements.Blanked(code, span);
         }
@@ -232,7 +262,6 @@ public static class GodotShaderCheck
         GodotShaderType? type = shaderType is null ? null : table.TypeOf(shaderType) ?? table.TypeOf("spatial");
         return new GodotShaderLanguage.ShaderCompileInfo
         {
-            caseGone |= text.Contains("case", StringComparison.Ordinal) || text.Contains("default", StringComparison.Ordinal);
             Functions = type is null ? new(StringComparer.Ordinal) : FunctionsOf(type, options.Godot),
             RenderModes = type is null ? [] : ModesOf(type.Modes),
             StencilModes = type is null ? [] : ModesOf(type.StencilModes),

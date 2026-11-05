@@ -89,29 +89,24 @@ public sealed record GodotShaderUnit(string Res, string Code, IReadOnlyDictionar
 
     /// <summary>The marks a compile's messages put on one of the unit's texts: the shader's own (<paramref name="include"/>
     /// null) or an include's. A message on a line of the text is marked there, on the name it quotes where the line writes
-    /// it; one in a file the text includes is marked on the <c>#include</c> leading to it, naming its place; an include no
-    /// file answers is marked on its path with Godot's preprocessor's words, which its message then says again.</summary>
+    /// it; one in a file the text includes is marked on the <c>#include</c> leading to it, naming its place; one saying no
+    /// file answers an include is marked on the path the line writes. A check says that only of what Godot's preprocessor
+    /// reaches, so an include a branch leaves out is no mark.</summary>
     public IReadOnlyList<GodotShaderMark> MarksIn(string? include, IReadOnlyList<GodotShaderMessage> messages)
     {
         string res = include ?? Res;
         string text = include is null ? Code : Includes.GetValueOrDefault(include) ?? string.Empty;
         GodotShaderCode code = GodotShaderCode.Read(text);
         List<GodotShaderMark> marks = [];
-        foreach (GodotShaderInclude written in code.Includes)
+        foreach (GodotShaderMessage message in messages)
         {
-            if (Missing.Contains(Resolved(res, written.Path)))
+            bool here = message.File.Length == 0 ? include is null : message.File == include;
+            if (here && message.Text.StartsWith(NoInclude, StringComparison.Ordinal)
+                && code.Includes.FirstOrDefault(i => i.Line + 1 == message.Line && Missing.Contains(Resolved(res, i.Path))) is { } written)
             {
                 marks.Add(new GodotShaderMark(written.Start, written.End, true, $"{NoInclude} {Resolved(res, written.Path)}"));
             }
-        }
-        foreach (GodotShaderMessage message in messages)
-        {
-            if (message.Text.StartsWith(NoInclude, StringComparison.Ordinal) && marks.Any(m => m.Message == message.Text))
-            {
-                continue;
-            }
-            bool here = message.File.Length == 0 ? include is null : message.File == include;
-            if (here)
+            else if (here)
             {
                 (int start, int end) = OnLine(text, message.Line, message.Text);
                 marks.Add(new GodotShaderMark(start, end, message.Error, message.Text, message.Note));
