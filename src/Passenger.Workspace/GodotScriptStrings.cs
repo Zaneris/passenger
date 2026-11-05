@@ -3,20 +3,32 @@ namespace Passenger.Workspace;
 /// <summary>A word or string of a GDScript's code: what it says, where its characters lie, whether they are written as it
 /// says (no escape among them), and for a string given straight to a call, the function's name and which argument it is
 /// (from zero); for a word, whether a '.' comes before it, so it names a member of what is before.</summary>
-public sealed record GodotScriptToken(bool Word, string Text, int Start, int End, bool Plain, string? Call, int Argument, bool AfterDot);
+public sealed record GodotScriptToken(bool Word, string Text, int Start, int End, bool Plain, string? Call, int Argument, bool AfterDot)
+{
+    /// <summary>What a string's call is made on: null for no receiver, the word before the call's '.', or empty for anything
+    /// else (a call's result, a chain of members).</summary>
+    public string? Receiver { get; init; }
+
+    /// <summary>Whether a string is the whole of an argument, joined to nothing (<c>"a" + "b"</c> is neither's), and no parameter's
+    /// default; a branch of an <c>if</c> expression is whole, as the argument is that string when it is taken.</summary>
+    public bool Whole { get; init; }
+}
 
 /// <summary>A GDScript's words and strings as Godot's tokenizer reads them: its comments passed over, a string's quotes
 /// (single, double or tripled), its <c>r</c>, <c>&amp;</c> and <c>^</c> prefixes and its escapes read, and each string
-/// written straight in a call's parentheses told by the call's name and its place among the arguments, so what a script
-/// gives Godot's calls by name (<c>Input.is_action_pressed("jump")</c>) is read without its types. Pure.</summary>
+/// written straight in a call's parentheses told by the call's name, what it is made on and its place among the arguments,
+/// so what a script gives Godot's calls by name (<c>Input.is_action_pressed("jump")</c>) is read without its types. Pure.</summary>
 public static class GodotScriptStrings
 {
     public static IReadOnlyList<GodotScriptToken> Read(string text)
     {
         List<GodotScriptToken> tokens = [];
-        // Each open bracket: the call it opens (null for an array, a dictionary or a group) and the argument it is at.
-        List<(string? Call, int Argument)> open = [];
+        // Each open bracket: the call it opens (null for an array, a dictionary or a group), the argument it is at and what the call is made on.
+        List<(string? Call, int Argument, string? Receiver)> open = [];
         string? lastWord = null;
+        string? lastReceiver = null;
+        string dotted = string.Empty;
+        bool lastDotted = false;
         bool wordLast = false;
         char before = '\0';
         int at = 0;
@@ -33,8 +45,13 @@ public static class GodotScriptStrings
                 bool raw = c == 'r';
                 int quote = c is '"' or '\'' ? at : at + 1;
                 (string said, int start, int stop, int next) = Quoted(text, quote, raw);
-                (string? call, int argument) = open.Count > 0 ? open[^1] : (null, 0);
-                tokens.Add(new GodotScriptToken(false, said, start, stop, stop - start == said.Length, call, argument, false));
+                (string? call, int argument, string? receiver) = open.Count > 0 ? open[^1] : (null, 0, null);
+                bool opens = before is '(' or ',' || wordLast && lastWord == "else";
+                tokens.Add(new GodotScriptToken(false, said, start, stop, stop - start == said.Length, call, argument, false)
+                {
+                    Receiver = receiver,
+                    Whole = opens && Closes(text, next),
+                });
                 at = next;
                 wordLast = false;
                 before = '"';
@@ -48,7 +65,9 @@ public static class GodotScriptStrings
                     at++;
                 }
                 string word = text[start..at];
-                tokens.Add(new GodotScriptToken(true, word, start, at, true, null, 0, before == '.'));
+                lastDotted = before == '.';
+                tokens.Add(new GodotScriptToken(true, word, start, at, true, null, 0, lastDotted));
+                lastReceiver = lastDotted ? dotted : null;
                 lastWord = word;
                 wordLast = true;
                 before = 'a';
@@ -66,7 +85,8 @@ public static class GodotScriptStrings
             }
             if (c is '(' or '[' or '{')
             {
-                open.Add((c == '(' && wordLast ? lastWord : null, 0));
+                bool called = c == '(' && wordLast;
+                open.Add((called ? lastWord : null, 0, called ? lastReceiver : null));
             }
             else if (c is ')' or ']' or '}' && open.Count > 0)
             {
@@ -74,7 +94,11 @@ public static class GodotScriptStrings
             }
             else if (c == ',' && open.Count > 0)
             {
-                open[^1] = (open[^1].Call, open[^1].Argument + 1);
+                open[^1] = open[^1] with { Argument = open[^1].Argument + 1 };
+            }
+            else if (c == '.')
+            {
+                dotted = wordLast && !lastDotted ? lastWord! : string.Empty;
             }
             if (!char.IsWhiteSpace(c))
             {
@@ -86,9 +110,31 @@ public static class GodotScriptStrings
         return tokens;
     }
 
-    /// <summary>The strings a script gives straight to a call by one of some names, at the argument each takes the name in.</summary>
+    /// <summary>The strings a script gives straight to a call by one of some names, each the whole of the argument that takes the name.</summary>
     public static IEnumerable<GodotScriptToken> GivenTo(IReadOnlyList<GodotScriptToken> tokens, IReadOnlyDictionary<string, int[]> calls) =>
-        tokens.Where(t => !t.Word && t.Call is { } call && calls.TryGetValue(call, out int[]? arguments) && arguments.Contains(t.Argument));
+        tokens.Where(t => !t.Word && t.Whole && t.Call is { } call && calls.TryGetValue(call, out int[]? arguments) && arguments.Contains(t.Argument));
+
+    /// <summary>Whether what comes after a string, past blanks and comments, ends its argument: a ',', a ')', or an <c>if</c>.</summary>
+    private static bool Closes(string text, int at)
+    {
+        while (at < text.Length)
+        {
+            char c = text[at];
+            if (c == '#')
+            {
+                at = text.IndexOf('\n', at) is var end and >= 0 ? end : text.Length;
+            }
+            else if (char.IsWhiteSpace(c) || c == '\\')
+            {
+                at++;
+            }
+            else
+            {
+                return c is ')' or ',' || string.CompareOrdinal(text, at, "if", 0, 2) == 0 && (at + 2 >= text.Length || !IsWordChar(text[at + 2]));
+            }
+        }
+        return false;
+    }
 
     private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
 

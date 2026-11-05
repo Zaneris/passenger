@@ -16,6 +16,20 @@ public class GodotScriptStringsTests
         Assert.All(strings, s => Assert.Equal(s.Text, text[s.Start..s.End]));
     }
 
+    /// <summary>A call's string says what the call is made on, and a default or a string joined to another that it is no
+    /// argument's whole, while each branch of an <c>if</c> expression is.</summary>
+    [Fact]
+    public void A_string_tells_what_its_call_is_made_on_and_whether_it_is_the_whole_of_an_argument()
+    {
+        const string text = "func go(label = \"a\"):\n\tInput.go(\"b\")\n\tthing.other.go(\"c\")\n\tmake().go(\"d\")\n\tgo(\"e\" + \"f\")\n\tgo(\"g\" if on else \"h\")\n\tgo(\"i\", # why\n\t\t&\"j\")\n";
+        IReadOnlyList<GodotScriptToken> strings = [.. GodotScriptStrings.Read(text).Where(t => !t.Word)];
+        Assert.Equal([("a", null), ("b", "Input"), ("c", string.Empty), ("d", string.Empty), ("e", null), ("f", null), ("g", null), ("h", null), ("i", null), ("j", null)],
+            strings.Select(s => (s.Text, s.Receiver)));
+        Assert.Equal(["a", "e", "f"], strings.Where(s => !s.Whole).Select(s => s.Text));
+        Dictionary<string, int[]> calls = new(StringComparer.Ordinal) { ["go"] = [0, 1] };
+        Assert.Equal(["b", "c", "d", "g", "h", "i", "j"], GodotScriptStrings.GivenTo(strings, calls).Select(s => s.Text));
+    }
+
     [Fact]
     public void Comments_are_passed_over_and_quotes_escapes_and_prefixes_are_read_as_godot_reads_them()
     {

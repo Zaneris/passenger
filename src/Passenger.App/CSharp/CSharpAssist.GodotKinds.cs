@@ -282,7 +282,7 @@ internal sealed partial class CSharpAssist
         {
             return $"'{name}' is no {what}'s name";
         }
-        if (named.Places.FirstOrDefault(p => !p.Plain) is { } escaped)
+        if (named.Places.FirstOrDefault(p => !p.Plain && !p.Unsure) is { } escaped)
         {
             return $"{old} is written with escapes at {escaped.Shown}, which Passenger does not rename";
         }
@@ -322,8 +322,9 @@ internal sealed partial class CSharpAssist
 
     /// <summary>A name of a kind renamed, as one command of global undo: every place Godot's files write it
     /// (<see cref="KindNamed.Places"/>), and every string of the code's naming it that reaches those places (an animation
-    /// player's, a material's: those told to another are left), its files changed as they were read; refused as
-    /// <see cref="KindRenameProblem"/> says. The window's and an agent's alike.</summary>
+    /// player's, a material's: those told to another are left), its files changed as they were read; a place that only may name
+    /// it left as it is, said (<see cref="GodotPlace.Unsure"/>); refused as <see cref="KindRenameProblem"/> says. The window's and
+    /// an agent's alike.</summary>
     internal async Task<RefactorOutcome> RenameKindAsync(KindNamed named, string name)
     {
         if (KindRenameProblem(named, name) is { } problem)
@@ -336,7 +337,7 @@ internal sealed partial class CSharpAssist
         int own = named.Kind == GodotStringKind.Animation ? old.LastIndexOf('/') + 1 : 0;
         Dictionary<string, List<TextEdit>> edits = new(PathNames.Comparer);
         Dictionary<string, string> made = new(PathNames.Comparer);
-        foreach (GodotPlace place in named.Places)
+        foreach (GodotPlace place in named.Places.Where(p => !p.Unsure))
         {
             if (scenes.FileOf(place.Res) is not { } file || scenes.Defined.TextOf(place.Res) is not { } text)
             {
@@ -389,7 +390,9 @@ internal sealed partial class CSharpAssist
         {
             return RefactorOutcome.Refused(refused);
         }
-        return new RefactorOutcome($"Renamed {old} to {name} in {Plural.Of(changes.Count, "file")}", null,
+        List<string> left = [.. named.Places.Where(p => p.Unsure).Select(p => p.Shown)];
+        string leaving = left.Count == 0 ? string.Empty : $", leaving {Plural.Listed(left)}, which may not name the {GodotChecks.What(named.Kind)}";
+        return new RefactorOutcome($"Renamed {old} to {name} in {Plural.Of(changes.Count, "file")}{leaving}", null,
             [.. edits.Select(e => new RefactoredFile(e.Key, "changed", [.. e.Value.Select(t => TextSnapshot.From(made[e.Key]).GetLineFromOffset(t.Start) + 1).Distinct()]))], []);
 
         void Add(string file, TextEdit edit)

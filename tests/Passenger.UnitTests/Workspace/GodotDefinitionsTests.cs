@@ -428,6 +428,50 @@ public class GodotDefinitionsTests
         Assert.All(animations[1].Places, p => Assert.Equal("run", At(Tree, p)));
     }
 
+    /// <summary>Only Input, InputMap and an input event take an action's name: a string given to a function of the name on
+    /// the script's own class, or as a default where it is declared, names nothing; one joined to another names neither; and
+    /// one on what the script does not say is an event may name it, which a rename leaves.</summary>
+    [Fact]
+    public void A_string_names_an_input_action_only_given_whole_to_what_takes_one()
+    {
+        const string script = """
+            extends Node
+
+            var kept: InputEventAction
+            var custom = Custom.new()
+
+            func is_action_pressed(label = "jump"):
+            	return label == "jump"
+
+            func _input(event):
+            	if event.is_action_pressed("jump") or Input.is_action_pressed(&"jump") or InputMap.has_action('jump'):
+            		kept.is_action("jump")
+
+            func check(typed: InputEvent, cast, unknown):
+            	var made = InputEventAction.new()
+            	var key := cast as InputEventKey
+            	typed.is_action("jump")
+            	made.is_action("jump")
+            	key.is_action("jump")
+            	Input.is_action_pressed("jump" if unknown else "jump")
+            	is_action_pressed("jump")
+            	self.is_action_pressed("jump")
+            	Input.is_action_pressed("jump" + "_fast")
+            	custom.is_action_pressed("jump")
+            	unknown.is_action("jump")
+            	unknown.chain.is_action("jump")
+
+            """;
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { ["res://project.godot"] = Named, ["res://player.gd"] = script });
+        GodotDefined jump = scenes.Defined.Actions.Single();
+        string[] lines = script.Split('\n');
+        IReadOnlyList<string> Said(bool unsure) => [.. jump.Places.Where(p => p.Res == "res://player.gd" && p.Unsure == unsure).Select(p => lines[script[..p.Start].Count(c => c == '\n')].Trim())];
+        string input = lines.Single(l => l.Contains("InputMap", StringComparison.Ordinal)).Trim();
+        string either = lines.Single(l => l.Contains(" if unknown else ", StringComparison.Ordinal)).Trim();
+        Assert.Equal([.. Enumerable.Repeat(input, 3), "kept.is_action(\"jump\")", "typed.is_action(\"jump\")", "made.is_action(\"jump\")", "key.is_action(\"jump\")", either, either], Said(false));
+        Assert.Equal(["custom.is_action_pressed(\"jump\")", "unknown.is_action(\"jump\")", "unknown.chain.is_action(\"jump\")"], Said(true));
+    }
+
     [Fact]
     public void A_gdscripts_strings_and_words_and_a_scenes_node_paths_are_places_of_the_names_they_give_godot()
     {

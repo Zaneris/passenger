@@ -1,5 +1,6 @@
 using System.Text;
 using Passenger.Core;
+using Passenger.Workspace.GDScript;
 
 namespace Passenger.Workspace;
 
@@ -9,6 +10,10 @@ public sealed record GodotPlace(string Res, int Start, int End, bool Defines, st
 {
     /// <summary>Whether its characters are written as the name says, no escape among them, so a rename can write over them.</summary>
     public bool Plain { get; init; } = true;
+
+    /// <summary>Whether it only may name it: a string given to a call of the right name on something Passenger cannot read as
+    /// what takes it, which Find Usages lists and a rename leaves, saying so.</summary>
+    public bool Unsure { get; init; }
 }
 
 /// <summary>A name a Godot project defines, what it is as shown beside it, and every place its files write it.</summary>
@@ -75,6 +80,7 @@ public sealed class GodotDefinitions
     private readonly Lazy<(IReadOnlyList<GodotThemeItem> Defined, IReadOnlyList<GodotThemeItem> Overridden, IReadOnlyDictionary<string, string> Variations)> themes;
     private readonly Dictionary<string, (IReadOnlyList<GodotDefined> Names, bool Whole)> uniforms = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int[]> lines = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, GDScriptTree> trees = new(StringComparer.Ordinal);
     private readonly Lock reading = new();
 
     public GodotDefinitions(GodotScenes scenes)
@@ -83,7 +89,7 @@ public sealed class GodotDefinitions
         project = new(() => scenes.Texts.TryGetValue(ProjectRes, out string? text) ? GodotFile.Parse(text) : null);
         scripts = new(() => [.. scenes.Texts.Where(t => GodotScriptDeclarations.IsScript(t.Key)).OrderBy(t => t.Key, StringComparer.Ordinal)
             .Select(t => (t.Key, GodotScriptStrings.Read(t.Value)))]);
-        actions = new(() => Scripted(Keys("input", "input action"), ActionCalls));
+        actions = new(() => Scripted(Keys("input", "input action"), ActionCalls, ActionUse));
         autoloads = new(() => Autoloaded(Keys("autoload", "autoload")));
         groups = new(() => Scripted(ReadGroups(), GroupCalls));
         globals = new(() => Scripted(ReadGlobals(), GlobalCalls));
@@ -519,18 +525,43 @@ public sealed class GodotDefinitions
         return whole;
     }
 
-    /// <summary>A name's places with those the project's GDScripts write it at: each string given straight to one of some calls.</summary>
-    private IReadOnlyList<GodotDefined> Scripted(IReadOnlyList<GodotDefined> names, IReadOnlyDictionary<string, int[]> calls)
+    /// <summary>A name's places with those the project's GDScripts write it at: each string given straight to one of some calls,
+    /// as <paramref name="use"/> reads what the call is made on (every call, unasked).</summary>
+    private IReadOnlyList<GodotDefined> Scripted(IReadOnlyList<GodotDefined> names, IReadOnlyDictionary<string, int[]> calls, Func<string, GodotScriptToken, bool?>? use = null)
     {
         Dictionary<string, List<GodotPlace>> more = new(StringComparer.Ordinal);
+        HashSet<string> named = [.. names.Select(n => n.Name)];
         foreach ((string res, IReadOnlyList<GodotScriptToken> tokens) in scripts.Value)
         {
-            foreach (GodotScriptToken token in GodotScriptStrings.GivenTo(tokens, calls))
+            foreach (GodotScriptToken token in GodotScriptStrings.GivenTo(tokens, calls).Where(t => named.Contains(t.Text)))
             {
-                Add(more, token.Text, ScriptPlace(res, token.Start, token.End, token.Plain));
+                if ((use is null ? true : use(res, token)) is { } sure)
+                {
+                    Add(more, token.Text, ScriptPlace(res, token.Start, token.End, token.Plain) with { Unsure = !sure });
+                }
             }
         }
         return [.. names.Select(n => more.TryGetValue(n.Name, out List<GodotPlace>? places) ? n with { Places = [.. n.Places, .. places] } : n)];
+    }
+
+    /// <summary>Whether a string given to one of <see cref="ActionCalls"/> names an input action: only Input, InputMap and an
+    /// input event take one, so a call on the script's own class is its own function's (null, none); false where what the
+    /// call is made on may be one, its script not saying.</summary>
+    private bool? ActionUse(string res, GodotScriptToken token) => token.Receiver switch
+    {
+        null or "self" => null,
+        "Input" or "InputMap" => true,
+        { Length: > 0 } word when GDScriptScopes.IsInputEvent(TreeOf(res), word, token.Start) => true,
+        _ => false,
+    };
+
+    /// <summary>A GDScript's syntax, read once where a name's place asks for it.</summary>
+    private GDScriptTree TreeOf(string res)
+    {
+        lock (reading)
+        {
+            return trees.TryGetValue(res, out GDScriptTree? kept) ? kept : trees[res] = GDScriptTree.Parse(scenes.Texts[res]);
+        }
     }
 
     /// <summary>The autoloads' places with those each is named at elsewhere: the name in a node path through /root, in a
