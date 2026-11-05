@@ -241,7 +241,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; every editor through `ForEachEditor`; the one
   close `CloseTab`). A diff is an `OpenDocument.OfDiff` of no file, never in `Documents`, every one through
   `MainWindow.ShowDiff`. An SVG preview is a drawing (`ZoomedPicture`), never a bitmap; an HTML preview is never made in
-  a window nobody sees (WebView2 refuses a non-STA thread).
+  a window nobody sees (WebView2 refuses a non-STA thread), on Windows is served (`ServedPage`, `WebView2Pages`),
+  `NavigateToString` only where WebView2 refuses, and its white is the web view's own (`DrawGround`), never CSS: a
+  background on html stops a body's reaching the canvas.
 - **Docking.** A kept layout records windows by `ToolWindowIds`, so a value never changes; one `Dock.Add` per window. A
   view is built when first shown: what the IDE writes while it's hidden lives in a model, reached only through a
   property that builds the view for a person's action. A view letting go on `DetachedFromVisualTree` shows itself again
