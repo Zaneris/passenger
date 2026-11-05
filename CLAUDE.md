@@ -403,16 +403,18 @@ a new name, and `just site-shots` retakes its images.
   name: find a start's resource by `service.instance.id`, never by name, and key its hold, attach and recording by
   `ServiceRun.KeyOf`. DCP renames replicas every run and never tells their index, so a choice for one replica is every
   replica's next run.
-- **Godot, running.** It starts .NET through hostfxr with no startup hook, so Hot Reload, under Run too, goes through
-  the debugger, never dotnet watch; its assembly comes from a stream (no `Location`). It writes logs and settings under
-  the user's folders (on macOS whatever XDG says): a test gives it HOME/APPDATA of its own and always `--headless`.
-  Windows' Godot .exe writes to no console, so every terminal run goes through its wrapper (`GodotConsole`), the
-  debugger taking the game's own process. Its .NET host rolls forward only to released runtimes. A pre-release says 4.8
-  while its Godot.NET.Sdk is 4.8.0-beta.2: compare versions as numbers. A launch profile running Godot on the project
-  (`%GODOT%`) is the game's configuration, its `--path` the launch's. A macOS export of an arm64 or universal game needs
-  `textures/vram_compression/import_etc2_astc`. A headless game's window is 64×64 (the helper sets
-  `display/window/size`); it has no picture, picks no 3D mesh without a collision shape, and never pauses again after
-  Next Frame (the helper's `step` ends it).
+- **Godot, running.** A headless Godot goes without SDL's HID driver (`GodotExecutables.HidGamepads`, given by
+  `ChildProcesses.Command`): its search runs the main run loop as Godot ends, after the CameraServer is gone, whose
+  observer any `CameraTexture` starts, doc generation included. It starts .NET through hostfxr with no startup hook, so
+  Hot Reload, under Run too, goes through the debugger, never dotnet watch; its assembly comes from a stream (no
+  `Location`). It writes logs and settings under the user's folders (on macOS whatever XDG says): a test gives it
+  HOME/APPDATA of its own and always `--headless`. Windows' Godot .exe writes to no console, so every terminal run goes
+  through its wrapper (`GodotConsole`), the debugger taking the game's own process. Its .NET host rolls forward only to
+  released runtimes. A pre-release says 4.8 while its Godot.NET.Sdk is 4.8.0-beta.2: compare versions as numbers. A
+  launch profile running Godot on the project (`%GODOT%`) is the game's configuration, its `--path` the launch's. A
+  macOS export of an arm64 or universal game needs `textures/vram_compression/import_etc2_astc`. A headless game's
+  window is 64×64 (the helper sets `display/window/size`); it has no picture, picks no 3D mesh without a collision
+  shape, and never pauses again after Next Frame (the helper's `step` ends it).
 - **Godot's headless editor** writes project.godot (a plugin's `ProjectSettings.save()` writes all it holds),
   `editor_layout.cfg`, `script_editor_cache.cfg` and `ide_messaging_meta.txt` into the project, imports and exports too,
   which `GodotScripts` puts back (a Passenger save meanwhile stays the person's); from 4.5 it runs `--recovery-mode`,
