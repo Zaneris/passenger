@@ -1083,7 +1083,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Workspace = Models.Apply(before);
         Configurations.Configure(Projects);
         // A project evaluated again is loaded again by the language server too, which watches only some imports.
-        CSharp?.Reload([.. before.Projects.Where(p => changed.Contains(p.Path) && p.Evaluated is { Complete: true }).Select(p => p.Path).Distinct(StringComparer.Ordinal)]);
+        CSharp?.Reload([.. before.Projects.Where(p => changed.Contains(p.Path) && !Unloaded.Contains(p.Path) && p.Evaluated is { Complete: true }).Select(p => p.Path).Distinct(StringComparer.Ordinal)]);
         bool tests = !before.Projects.Where(p => p.IsTestProject).Select(p => p.Path).SequenceEqual(Workspace.Projects.Where(p => p.IsTestProject).Select(p => p.Path))
             || before.Projects.Zip(Workspace.Projects).Any(p => changed.Contains(p.First.Path) && TestFinder.HoldsTests(p.Second)
                 && !ReferenceEquals(CompilationSymbols.Of(p.First), CompilationSymbols.Of(p.Second)))

@@ -65,7 +65,7 @@ public sealed partial class CSharpService
         {
             return [];
         }
-        IReadOnlyList<ProjectModel> projects = opened.Projects;
+        IReadOnlyList<ProjectModel> projects = ProjectsNow?.Invoke() ?? opened.Projects;
         DateTime since = DateTime.UtcNow - Unheard;
         foreach ((string path, string project, DateTime written) in looking ? await BackgroundWork.Run(() => WrittenNow(projects, since), cancel) : [])
         {

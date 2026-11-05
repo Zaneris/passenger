@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Passenger.App;
 using Passenger.App.Mcp;
 using Passenger.Core;
 
@@ -80,6 +81,48 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         {
             JsonElement place = Assert.Single((await Call(client, McpTools.Definition, new() { ["path"] = "App/Program.cs", ["line"] = 2, ["column"] = 34 })).EnumerateArray());
             return (place.GetProperty("path").GetString()!, place.GetProperty("line").GetInt32());
+        }
+    }
+
+    /// <summary>Unload Project takes the project out of the language server: nothing is answered from the text the server
+    /// read of it, so Go to Declaration from what references it finds the line where it is now, its symbols are found no
+    /// more, and a file come under it is neither waited for nor brings it back; Reload Project has it loaded again.</summary>
+    [Fact]
+    public async Task Unload_Project_takes_a_project_out_of_the_language_server_until_Reload_Project_loads_it_again()
+    {
+        string folder = await AppWithoutItsLibraryAsync();
+        await using McpClient client = await Start(["--mcp", Path.Combine(folder, "Shop.slnx")]);
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The solution did not build: {built}");
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 7), await DeclaredAsync());
+        Assert.NotEmpty(await FoundAsync("Greeter"));
+
+        await ChosenAsync(AppActions.UnloadProject);
+        Assert.Empty(await FoundAsync("Greeter"));
+        TestFolders.Write(folder, "Lib/Greeter.cs", "// A line above.\n" + File.ReadAllText(Path.Combine(folder, "Lib/Greeter.cs")));
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 8), await DeclaredAsync());
+
+        TestFolders.Write(folder, "Lib/Fresh.cs", "namespace Lib;\n\npublic sealed class Fresh;\n");
+        CallToolResult none = await Result(client, McpTools.SymbolInfo, new() { ["symbol"] = "Fresh" });
+        Assert.True(none.IsError == true && Text(none).Contains("No symbol of the solution's own code is named Fresh", StringComparison.Ordinal),
+            $"A file come under an unloaded project was waited for, or loaded the project again: {Text(none)}");
+
+        await ChosenAsync(AppActions.ReloadProject);
+        await Until(async () => (await FoundAsync("Fresh")).Length > 0, "Reload Project to load the project with the file come under it");
+
+        async Task<(string Path, int Line)> DeclaredAsync()
+        {
+            JsonElement place = Assert.Single((await Call(client, McpTools.Definition, new() { ["path"] = "App/Program.cs", ["line"] = 2, ["column"] = 34 })).EnumerateArray());
+            return (place.GetProperty("path").GetString()!, place.GetProperty("line").GetInt32());
+        }
+
+        async Task<JsonElement[]> FoundAsync(string name) => [.. (await Call(client, McpTools.FindSymbol, new() { ["query"] = name })).EnumerateArray()];
+
+        // The Explorer's row chosen, which is what the action acts on.
+        async Task ChosenAsync(string action)
+        {
+            await Call(client, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "ListBox#Rows/\"Lib\"" });
+            await Call(client, McpTools.IdeAction, new() { ["action"] = action });
         }
     }
 

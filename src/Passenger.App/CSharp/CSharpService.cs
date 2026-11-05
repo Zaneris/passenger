@@ -119,6 +119,38 @@ public sealed partial class CSharpService : IAsyncDisposable
         session?.Reload(projects);
     }
 
+    /// <summary>Has the server let go of projects the window no longer loads, so nothing it says comes from the text it read
+    /// of them: what references one goes on from its assembly. Done once it has; a server started again loads only what
+    /// the window does.</summary>
+    public async Task UnloadAsync(IReadOnlyList<string> projects)
+    {
+        UiThread.Check();
+        if (session is not { } running)
+        {
+            return;
+        }
+        try
+        {
+            await running.UnloadAsync(projects);
+        }
+        catch (LanguageServerFailed)
+        {
+            return;
+        }
+        if (session == running)
+        {
+            ProjectsChanged();
+        }
+    }
+
+    /// <summary>The projects the server holds changed: the files' projects may be others.</summary>
+    private void ProjectsChanged()
+    {
+        Each(document => document.FindContexts());
+        Generated.Changed();
+        ProjectsLoaded?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>Done once the server holds what the last build wrote of the assemblies its projects reference: one a
     /// project it does not load makes, say, which what it answers from then on knows.</summary>
     public Task ReferencesHeld { get; private set; } = Task.CompletedTask;
@@ -827,8 +859,9 @@ public sealed partial class CSharpService : IAsyncDisposable
         {
             return null;
         }
-        return ProjectModel.Owning(opened.Projects, path)?.Path
-            ?? opened.Projects.FirstOrDefault(p => p.IsProgram && !p.IsEvaluated && PathNames.Same(p.Folder, Path.GetDirectoryName(path)!))?.Path;
+        IReadOnlyList<ProjectModel> projects = ProjectsNow?.Invoke() ?? opened.Projects;
+        return ProjectModel.Owning(projects, path)?.Path
+            ?? projects.FirstOrDefault(p => p.IsProgram && !p.IsEvaluated && PathNames.Same(p.Folder, Path.GetDirectoryName(path)!))?.Path;
     }
 
     /// <summary>A server has said a project loaded, with problems or none: its files open are opened in it.</summary>
@@ -1032,13 +1065,8 @@ public sealed partial class CSharpService : IAsyncDisposable
                 }
                 Generated.Changed();
             });
-            // Projects loaded (the file shown's first, then the rest, or one loaded again): the files' projects may be others.
-            EventHandler onProjects = (_, _) => UiThread.Post(() =>
-            {
-                Each(document => document.FindContexts());
-                Generated.Changed();
-                ProjectsLoaded?.Invoke(this, EventArgs.Empty);
-            });
+            // Projects loaded: the file shown's first, then the rest, or one loaded again.
+            EventHandler onProjects = (_, _) => UiThread.Post(ProjectsChanged);
             EventHandler<ProjectGiven> onGiven = (_, built) => OnProjectGiven(started.Server, built);
             EventHandler<string> onExited = (_, _) =>
             {

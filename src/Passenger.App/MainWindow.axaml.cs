@@ -929,16 +929,20 @@ public partial class MainWindow : IdeWindow
         });
     }
 
-    /// <summary>Unload Project: the project shows dimmed with nothing under it, and leaves the run configurations, the
-    /// solution's builds and the test runner until it is reloaded, which the language server loads it for (one a solution
-    /// filter left out too); the folder keeps the choice.</summary>
+    /// <summary>Unload Project: the project shows dimmed with nothing under it, and leaves the language server, the run
+    /// configurations, the solution's builds and the test runner until it is reloaded, which the server loads it for (one a
+    /// solution filter left out too); the folder keeps the choice.</summary>
     public void SetUnloaded(string project, bool unloaded)
     {
         if (!session.ChooseUnloaded(project, unloaded))
         {
             return;
         }
-        if (!unloaded)
+        if (unloaded)
+        {
+            IdeErrors.Observe(LeaveLanguageServerAsync(project));
+        }
+        else
         {
             session.CSharp?.Reload([project]);
         }
@@ -948,6 +952,14 @@ public partial class MainWindow : IdeWindow
         FindTests();
         ShowSolutionProblems();
         KeepWorkspace();
+    }
+
+    /// <summary>The language server let go of a project unloaded, the action under way until it has, so what an agent asks
+    /// next has none of it.</summary>
+    private async Task LeaveLanguageServerAsync(string project)
+    {
+        using Working? work = actions!.Work.Begin(AppActions.UnloadProject, $"Unloading {Path.GetFileNameWithoutExtension(project)}", stoppable: false);
+        await (session.CSharp?.UnloadAsync([project]) ?? Task.CompletedTask);
     }
 
     /// <summary>A breakpoint's properties beside its line in the gutter, its condition ready to type.</summary>
