@@ -206,6 +206,66 @@ public sealed class GoDotTestTests : IDisposable
         }
     }
 
+    /// <summary>Three tests of a suite, the third writing a file and failing, which a run of the suite would run unasked.</summary>
+    private const string ThreeOfASuite = """
+        namespace Spinner.Tests;
+
+        using System;
+        using System.IO;
+        using Chickensoft.GoDotTest;
+        using Godot;
+
+        public class SpinnerTest : TestClass
+        {
+            public SpinnerTest(Node testScene) : base(testScene) { }
+
+            [Test]
+            public void Adds()
+            {
+            }
+
+            [Test]
+            public void Spins()
+            {
+            }
+
+            [Test]
+            public void Stops()
+            {
+                File.WriteAllText(ProjectSettings.GlobalizePath("res://stops-ran"), "ran");
+                throw new InvalidOperationException("the test nobody chose");
+            }
+        }
+
+        """;
+
+    /// <summary>Two of a suite's three tests chosen run those two: the third never runs, so neither its side effects nor its
+    /// failure come of a run that did not ask for it.</summary>
+    [AvaloniaFact]
+    public void Two_tests_of_a_suites_three_run_and_the_third_does_not()
+    {
+        Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
+        GoDotTestGame.Make(folder, godot!, testCode: ThreeOfASuite);
+        Restore.Run(Path.Combine(folder, "Spinner.csproj"));
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
+        window.Show();
+        try
+        {
+            window.OpenFolder(folder);
+            Ui.WaitFor(() => Method(window, "Stops") is not null && Method(window, "Spins") is not null && Method(window, "Adds") is not null,
+                () => $"the three tests shown ({string.Join(", ", window.Tests.Tree.Methods.Select(m => m.Name))}; {window.Tests.Tree.EmptyText})");
+            Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [Method(window, "Adds")!, Method(window, "Spins")!]), "the run of two of the three", TimeSpan.FromMinutes(5));
+            Assert.True(Method(window, "Adds")!.State == TestState.Passed && Method(window, "Spins")!.State == TestState.Passed,
+                $"The chosen tests did not pass: {Method(window, "Adds")!.State}, {Method(window, "Spins")!.State} ({window.BottomPanel.Tests.Status}; {window.BottomPanel.Build.Document.Snapshot})");
+            Assert.False(File.Exists(Path.Combine(folder, "stops-ran")), "The test nobody chose ran");
+            Assert.True(Method(window, "Stops")!.State == TestState.NotRun, $"The test nobody chose has a result: {Method(window, "Stops")!.Details}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Two tests, one ending a moment after it starts and the next waiting until the test lets it go (a file in the
     /// game's folder), under a main scene giving GoDotTest's tests two minutes each.</summary>
     private const string Stepping = """

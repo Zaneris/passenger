@@ -29,12 +29,36 @@ public class GoDotTestsTests
     }
 
     [Fact]
-    public void A_suite_runs_alone_and_a_test_alone_where_only_it_is_chosen_of_its_suite()
+    public void A_suite_chosen_whole_runs_alone_and_a_test_alone_where_only_it_is_chosen_of_its_suite()
     {
         IReadOnlyList<(string Argument, IReadOnlyList<GoDotTests.Named> Tests)> runs = GoDotTests.Runs([Adds, Spins, Turns], [Adds, Spins, Turns, Stops]);
         Assert.Equal(["--run-tests=SpinnerTest", "--run-tests=TurnTest.Turns"], runs.Select(r => r.Argument));
         Assert.Equal([Adds, Spins], runs[0].Tests);
         Assert.Equal([Turns], runs[1].Tests);
+    }
+
+    /// <summary>A suite's run is every test of it: choosing two of three by it would run the third, unasked and untold.</summary>
+    [Fact]
+    public void Tests_chosen_of_part_of_a_suite_run_one_by_one_and_the_rest_of_it_not_at_all()
+    {
+        GoDotTests.Named third = Spins with { Method = "Stops" };
+        IReadOnlyList<(string Argument, IReadOnlyList<GoDotTests.Named> Tests)> runs = GoDotTests.Runs([Adds, Spins], [Adds, Spins, third]);
+        Assert.Equal(["--run-tests=SpinnerTest.Adds", "--run-tests=SpinnerTest.Spins"], runs.Select(r => r.Argument));
+        Assert.Equal([Adds], runs[0].Tests);
+        Assert.Equal([Spins], runs[1].Tests);
+    }
+
+    [Fact]
+    public void A_test_chosen_twice_runs_once()
+    {
+        Assert.Equal(["--run-tests=SpinnerTest.Adds"], GoDotTests.Runs([Adds, Adds], [Adds, Spins]).Select(r => r.Argument));
+    }
+
+    /// <summary>With no tests declared to compare with, all the chosen are no reason to run the game's every suite.</summary>
+    [Fact]
+    public void Tests_the_code_no_longer_declares_run_by_name_and_never_as_the_whole_game()
+    {
+        Assert.Equal(["--run-tests=SpinnerTest.Adds", "--run-tests=SpinnerTest.Spins"], GoDotTests.Runs([Adds, Spins], []).Select(r => r.Argument));
     }
 
     /// <summary>A run's log as Godot 4.7 writes it with GoDotTest 2.0: a test passing with what it printed, one failing,

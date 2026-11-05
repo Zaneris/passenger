@@ -39,21 +39,31 @@ public static partial class GoDotTests
         public string Key => $"{Suite}::{Method}";
     }
 
-    /// <summary>The runs of a game that take the chosen tests of the <paramref name="declared"/> ones: one of every suite
-    /// where all are chosen, else one a suite, the suite's one test where only one of it is chosen (GoDotTest takes one
-    /// suite or test a run). Each with the <c>--run-tests</c> it is given and the chosen tests it tells.</summary>
+    /// <summary>The runs of a game that take the chosen tests of the <paramref name="declared"/> ones and no other: one of every
+    /// suite where all are chosen, else one of each suite chosen whole and one of each test of a suite chosen in part
+    /// (GoDotTest takes one suite or test a run, and a suite's run is every test of it). Each with the <c>--run-tests</c> it is
+    /// given and the chosen tests it tells.</summary>
     public static IReadOnlyList<(string Argument, IReadOnlyList<Named> Tests)> Runs(IReadOnlyList<Named> chosen, IReadOnlyList<Named> declared)
     {
         HashSet<Named> picked = [.. chosen];
-        if (declared.All(picked.Contains))
+        if (declared.Count > 0 && declared.All(picked.Contains))
         {
             return [(RunTests, [.. picked])];
         }
-        return [.. chosen.GroupBy(t => t.Suite, StringComparer.Ordinal).Select(suite => suite.Distinct().ToList() switch
+        ILookup<string, Named> suites = declared.ToLookup(t => t.Suite, StringComparer.Ordinal);
+        List<(string Argument, IReadOnlyList<Named> Tests)> runs = [];
+        foreach (IGrouping<string, Named> suite in chosen.Distinct().GroupBy(t => t.Suite, StringComparer.Ordinal))
         {
-            [{ } one] => ($"{RunTests}={one.Suite}.{one.Method}", (IReadOnlyList<Named>)[one]),
-            List<Named> several => ($"{RunTests}={suite.Key}", several),
-        })];
+            if (suite.Count() > 1 && suites.Contains(suite.Key) && suites[suite.Key].All(picked.Contains))
+            {
+                runs.Add(($"{RunTests}={suite.Key}", [.. suite]));
+            }
+            else
+            {
+                runs.AddRange(suite.Select(one => ($"{RunTests}={one.Suite}.{one.Method}", (IReadOnlyList<Named>)[one])));
+            }
+        }
+        return runs;
     }
 
     /// <summary>Where a game's run of its tests starts: the scene its run settings name (<see cref="SceneParameter"/>), else

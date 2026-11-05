@@ -8,8 +8,9 @@ namespace Passenger.App.Testing;
 /// <see cref="GoDotTests.StartOf"/>; a game none does refused before Godot starts), given <c>--run-tests</c> for the chosen
 /// suite or test and <c>--quit-on-finish</c>. Each test's end is told as its line is heard (its output, or under Debug its
 /// debug session's), timed from its start; once Godot ends, its log of the run gives each outcome whole, a failure with its
-/// exception and frames, and what it printed (<see cref="GoDotTests"/>). Debugged, the game starts under the debugger as
-/// Debug starts it. Its tests are those the code declares (<paramref name="declared"/>, by the game's project).</summary>
+/// exception and frames, and what it printed (<see cref="GoDotTests"/>), a test it ran beside them told too. Debugged, the
+/// game starts under the debugger as Debug starts it. Its tests are those the code declares (<paramref name="declared"/>,
+/// by the game's project).</summary>
 public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declared, Func<string, Task<GoDotTests.Start>>? startOf = null) : ITestRunner
 {
     public bool IsUsable => true;
@@ -36,11 +37,12 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
                 summary = summary is null ? refused : summary.And(refused);
                 continue;
             }
-            List<GoDotTests.Named> all = [.. declared(project.Key).Select(t => GoDotTests.Named.Of(t.Method))];
+            IReadOnlyList<TestItem> code = declared(project.Key);
+            List<GoDotTests.Named> all = [.. code.Select(t => GoDotTests.Named.Of(t.Method))];
             foreach ((string argument, IReadOnlyList<GoDotTests.Named> runs) in GoDotTests.Runs([.. chosen.Select(t => GoDotTests.Named.Of(t.Method))], all))
             {
                 HashSet<GoDotTests.Named> told = [.. runs];
-                RunSummary part = await RunGameAsync(project.Key, start.Scene, argument, [.. chosen.Where(t => told.Contains(GoDotTests.Named.Of(t.Method)))], outcomes, log, debugger,
+                RunSummary part = await RunGameAsync(project.Key, start.Scene, argument, [.. chosen.Where(t => told.Contains(GoDotTests.Named.Of(t.Method)))], code, outcomes, log, debugger,
                     environment ?? new Dictionary<string, string>(), godot ?? GodotStart.Headless, cancel);
                 summary = summary is null ? part : summary.And(part);
                 if (part.Canceled)
@@ -53,9 +55,9 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
     }
 
     /// <summary>One run of a game from a scene (its main scene where none is named) with its <c>--run-tests</c> argument,
-    /// telling these tests.</summary>
-    private static async Task<RunSummary> RunGameAsync(string project, string? scene, string runTests, IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes,
-        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string> environment, GodotStart start, CancellationToken cancel)
+    /// telling these tests, and any other it ran as the test of <paramref name="code"/> it is, or one no row shows.</summary>
+    private static async Task<RunSummary> RunGameAsync(string project, string? scene, string runTests, IReadOnlyList<TestItem> tests, IReadOnlyList<TestItem> code,
+        Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string> environment, GodotStart start, CancellationToken cancel)
     {
         long began = Stopwatch.GetTimestamp();
         string? godot = environment.GetValueOrDefault(GodotTestRuns.BinaryVariable) ?? Environment.GetEnvironmentVariable(GodotTestRuns.BinaryVariable);
@@ -139,8 +141,23 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
                 });
             }
         }
+        List<TestOutcome> beside = [.. results.Where(r => !byKey.Contains(r.Key)).OrderBy(r => r.Key, StringComparer.Ordinal).Select(r => Beside(project, code, r.Key, r.Value))];
+        told.AddRange(beside);
         outcomes(told);
+        if (GodotTestRuns.RanBeside(GoDotTests.Framework, beside) is { } alsoRan)
+        {
+            log?.Invoke(alsoRan);
+        }
         return new RunSummary(Stopwatch.GetElapsedTime(began), false, false, null) { Outcomes = told };
+    }
+
+    /// <summary>The outcome of a test a run told that none chosen is: the test of the code it is, else one of its suite's and
+    /// method's names, which no row shows.</summary>
+    private static TestOutcome Beside(string project, IReadOnlyList<TestItem> code, string key, GoDotTests.Result result)
+    {
+        TestItem test = code.FirstOrDefault(t => GoDotTests.Named.Of(t.Method).Key == key)
+            ?? new TestItem(project, key.Replace("::", ".", StringComparison.Ordinal), key[(key.LastIndexOf(':') + 1)..]) { Framework = GoDotTests.Framework };
+        return Outcome(test, result.State, TimeSpan.Zero) with { Message = result.Message, StackTrace = result.StackTrace, Output = result.Output };
     }
 
     /// <summary>The game's output heard to its end, each line told (<see cref="Telling"/>); what it printed is read whole
