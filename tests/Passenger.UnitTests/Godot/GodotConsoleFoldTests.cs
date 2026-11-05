@@ -186,4 +186,88 @@ public class GodotConsoleFoldTests
         Assert.Equal((fold.Entries[1], 0), Assert.Single(shown.Made));
         Assert.Contains(fold.Entries[0], shown.Again);
     }
+
+    [Fact]
+    public void An_entry_split_anywhere_by_two_batches_is_one_entry_shown_as_written_and_a_repeat_split_so_is_counted()
+    {
+        for (int cut = 1; cut < Every.Length; cut++)
+        {
+            GodotConsoleFold fold = new();
+            string first = Every[..cut];
+            string rest = Every[cut..];
+            GodotFolded began = fold.Take(first, Start);
+            GodotFolded ended = fold.Take(rest, Start);
+            Assert.True(Shown(first, began) + Shown(rest, ended) == Every, $"Split after {first}, the console shows {Shown(first, began) + Shown(rest, ended)}");
+            Assert.True(fold.Entries is [{ Header: "ERROR: every frame", Count: 1 }],
+                $"Split after {first}, the fold holds {string.Join(" | ", fold.Entries.Select(e => $"{e.Header} x{e.Count}"))}: the Errors filter and its count would leave it out");
+
+            GodotFolded again = fold.Take(first, Start.AddSeconds(1));
+            GodotFolded over = fold.Take(rest, Start.AddSeconds(1));
+            Assert.True(Shown(first, again) + Shown(rest, over) == string.Empty, $"A repeat split after {first} showed {Shown(first, again) + Shown(rest, over)}");
+            Assert.True(fold.Entries is [{ Count: 2 }], $"A repeat split after {first} left the count at {fold.Entries[0].Count}");
+        }
+    }
+
+    [Fact]
+    public void A_header_split_shows_from_its_start_and_its_entry_is_placed_there()
+    {
+        GodotConsoleFold fold = new();
+        Assert.Equal(string.Empty, Shown("ER", fold.Take("ER", Start)));
+        const string Rest = "ROR: split header\n   at: res://main.gd:7\n";
+        GodotFolded shown = fold.Take(Rest, Start);
+        Assert.Equal("ER", shown.Held);
+        Assert.Equal("ERROR: split header\n   at: res://main.gd:7\n", Shown(Rest, shown));
+        Assert.Equal((fold.Entries[0], 0), Assert.Single(shown.Made));
+    }
+
+    [Fact]
+    public void A_line_that_only_began_as_a_header_shows_as_written_and_the_entry_before_it_ends_there()
+    {
+        GodotConsoleFold fold = new();
+        fold.Take(Every + "WAR", Start);
+        const string Rest = "M UP\n   indented\n";
+        Assert.Equal("WARM UP\n   indented\n", Shown(Rest, fold.Take(Rest, Start)));
+        Assert.True(fold.Entries is [{ Text: Every, Count: 1 }], $"The entry before the line became {fold.Entries[0].Text}");
+
+        string longer = "SCRIPT";
+        Assert.Equal(string.Empty, Shown(longer, fold.Take(longer, Start)));
+        Assert.Equal(string.Empty, Shown(" ERR", fold.Take(" ERR", Start)));
+        Assert.Equal("SCRIPT ERROR: split twice\n", Shown("OR: split twice\n", fold.Take("OR: split twice\n", Start)));
+        Assert.Equal("SCRIPT ERROR: split twice", fold.Entries[^1].Header);
+    }
+
+    [Fact]
+    public void The_games_own_lines_between_the_halves_of_a_header_are_kept_and_the_header_is_read_whole()
+    {
+        GodotConsoleFold fold = new();
+        fold.Take("ER", Start);
+        const string Between = "frame 1\nROR: split header\n";
+        GodotFolded shown = fold.Take(Between, Start, at => at >= "frame 1\n".Length);
+        Assert.Equal("ERframe 1\nROR: split header\n", Shown(Between, shown));
+        Assert.Equal("ERROR: split header", Assert.Single(fold.Entries).Header);
+
+        fold.Take("ER", Start);
+        Assert.Equal("frame 2\n", Shown("frame 2\n", fold.Take("frame 2\n", Start, _ => false)));
+        Assert.Equal(string.Empty, Shown("ROR: split header\n", fold.Take("ROR: split header\n", Start)));
+        Assert.Equal(2, fold.Entries[0].Count);
+    }
+
+    [Fact]
+    public void The_start_of_a_line_whose_rest_never_comes_is_given_up_as_written_and_a_line_of_the_games_own_is_never_held()
+    {
+        GodotConsoleFold fold = new();
+        Assert.Equal("frame 1\n", Shown("frame 1\nSCRIPT E", fold.Take("frame 1\nSCRIPT E", Start)));
+        Assert.Equal("SCRIPT E", fold.LetGo());
+        Assert.Null(fold.LetGo());
+        Assert.Equal("ERROR\n", Shown("ERROR\n", fold.Take("ERROR\n", Start)));
+        Assert.Empty(fold.Entries);
+
+        const string Own = "WARN";
+        Assert.Equal(Own, Shown(Own, fold.Take(Own, Start, _ => false)));
+        Assert.Null(fold.LetGo());
+
+        fold.Take("ER", Start);
+        fold.Clear();
+        Assert.Null(fold.LetGo());
+    }
 }

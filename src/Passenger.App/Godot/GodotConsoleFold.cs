@@ -31,8 +31,8 @@ public sealed class GodotFoldEntry(string text, bool warning, DateTime first)
 
 /// <summary>What a console shows of a batch of a game's output: the stretches of the batch's text it keeps, in order, after
 /// <see cref="Held"/>; the entries the batch saw first, each with where it starts among the text shown; and those it saw
-/// again. Held is the start of an entry an earlier batch ended in, taken then for one seen, that this batch showed to be
-/// another: shown first, as it came before the rest.</summary>
+/// again. Held is what an earlier batch ended in and this one showed to be shown after all, before the rest as it came first:
+/// the start of an entry taken then for one seen, or of a line that might have been an entry's header.</summary>
 public sealed record GodotFolded(IReadOnlyList<(int Start, int Length)> Kept, IReadOnlyList<(GodotFoldEntry Entry, int At)> Made, IReadOnlyList<GodotFoldEntry> Again,
     string Held);
 
@@ -40,7 +40,8 @@ public sealed record GodotFolded(IReadOnlyList<(int Start, int Length)> Kept, IR
 /// <c>WARNING:</c> line and the indented lines after it, its stack among them) shown where it was first seen and only
 /// counted when it comes again, however Godot's own frames came (<see cref="KeyOf"/>), with when it last did; every other
 /// line kept as written. An entry a batch ends in may go on in the next: one that may yet be an entry seen is counted as
-/// that one until the next batch says what it is.</summary>
+/// that one until the next batch says what it is. A batch may end inside a header's first word: that much of the line waits
+/// for the rest, and <see cref="LetGo"/> gives it up once no more will come.</summary>
 public sealed class GodotConsoleFold
 {
     private static readonly string[] Headers = ["ERROR: ", "WARNING: ", "SCRIPT ERROR: ", "SCRIPT WARNING: ", "USER ERROR: ", "USER WARNING: ",
@@ -64,6 +65,10 @@ public sealed class GodotConsoleFold
     /// <summary>Whether the last batch ended inside a line of the entry it ended in, which the next batch's first line ends.</summary>
     private bool midLine;
 
+    /// <summary>The start of a line of Godot's errors' stream that may yet be a header, held for the rest of it: a batch ended
+    /// inside its first word. Never beside <see cref="midLine"/> or <see cref="carried"/>: holding it ends the entry before it.</summary>
+    private string? begun;
+
     /// <summary>The entries in the order first seen.</summary>
     public IReadOnlyList<GodotFoldEntry> Entries => entries;
 
@@ -73,6 +78,19 @@ public sealed class GodotConsoleFold
         foreach (string header in Headers)
         {
             if (line.StartsWith(header, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Whether a line's start, its end still to come, may yet be a header: too short to tell.</summary>
+    private static bool MayBeHeader(ReadOnlySpan<char> start)
+    {
+        foreach (string header in Headers)
+        {
+            if (start.Length < header.Length && header.AsSpan().StartsWith(start, StringComparison.Ordinal))
             {
                 return true;
             }
@@ -236,10 +254,22 @@ public sealed class GodotConsoleFold
                 at = end;
                 continue;
             }
-            bool indented = line.Length > 0 && line[0] is ' ' or '\t' && !line.Trim().IsEmpty;
+            string? start = begun;
+            begun = null;
+            if (start is not null)
+            {
+                line = string.Concat(start, line);
+            }
+            // A batch may end inside a line's indentation, whose words are still to come.
+            bool indented = line.Length > 0 && line[0] is ' ' or '\t' && (newline < 0 || !line.Trim().IsEmpty);
             bool rest = cut;
             cut = false;
-            if (rest && reading is not null)
+            if (!rest && newline < 0 && MayBeHeader(line))
+            {
+                Finish();
+                begun = line.ToString();
+            }
+            else if (rest && reading is not null)
             {
                 // The rest of the line the last batch's entry ended inside.
                 reading.Append(line);
@@ -255,6 +285,7 @@ public sealed class GodotConsoleFold
             {
                 Finish();
                 reading = new System.Text.StringBuilder().Append(line);
+                earlier = start;
                 began = now;
                 current.Add(pieces.Count);
                 pieces.Add((at, end - at));
@@ -276,12 +307,13 @@ public sealed class GodotConsoleFold
                 Finish();
                 open = null;
                 atStart = false;
+                held = start ?? held;
                 pieces.Add((at, end - at));
             }
             at = end;
         }
         Finish(atEnd: true);
-        midLine = (text.Length > 0 ? text[^1] != '\n' && errors?.Invoke(last) != false : cut) && (open is not null || carried is not null);
+        midLine = begun is null && (text.Length > 0 ? text[^1] != '\n' && errors?.Invoke(last) != false : cut) && (open is not null || carried is not null);
         List<(int Start, int Length)> kept = [];
         List<(GodotFoldEntry, int)> made = [.. madeAt.Where(m => m.Piece < 0).Select(m => (m.Entry, 0))];
         int shownAt = held.Length;
@@ -360,6 +392,15 @@ public sealed class GodotConsoleFold
         }
     }
 
+    /// <summary>The start of a line that waited for the rest, which will never come now (its program ended, or the console
+    /// speaks next), to be shown as written; null for none.</summary>
+    public string? LetGo()
+    {
+        string? held = begun;
+        begun = null;
+        return held;
+    }
+
     /// <summary>A shown entry gone on: its text, and so its key, takes the lines that came.</summary>
     private void Grow(GodotFoldEntry entry, string more)
     {
@@ -393,5 +434,6 @@ public sealed class GodotConsoleFold
         open = null;
         carried = null;
         midLine = false;
+        begun = null;
     }
 }

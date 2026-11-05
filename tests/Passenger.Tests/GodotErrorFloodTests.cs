@@ -8,7 +8,8 @@ using Passenger.Text;
 namespace Passenger.Tests;
 
 /// <summary>A Godot game that raises an error every frame, a long session's worth of them: what a burst of them costs the
-/// window's thread stays what it cost after a hundred, in Problems' Godot tab and in the console that folds them.</summary>
+/// window's thread stays what it cost after a hundred, in Problems' Godot tab and in the console that folds them, which
+/// folds an error whole wherever its reads end.</summary>
 public sealed class GodotErrorFloodTests
 {
     [AvaloniaFact]
@@ -48,6 +49,37 @@ public sealed class GodotErrorFloodTests
             Assert.True(large < small * 2 + 65536,
                 $"100 errors written after 3,200 allocated {large:N0} bytes on the window's thread, and after 100 {small:N0}: each batch walks every error folded before it");
             Assert.Contains("ERROR: frame 3299 went wrong", console.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A flood's reads end anywhere: a header cut inside its first word shows whole with the rest of it and is an entry
+    /// of the console's errors, and the start of a line whose rest never comes still shows, before what the console says next.</summary>
+    [AvaloniaFact]
+    public void An_error_cut_between_two_reads_shows_and_folds_whole_and_a_start_with_no_rest_shows_as_the_console_speaks()
+    {
+        OutputView console = new() { Fold = new GodotConsoleFold() };
+        Window window = new() { Width = 900, Height = 500, Content = console };
+        window.Show();
+        try
+        {
+            Ui.Settle();
+            console.Sink.Write("ER", ConsoleStream.Error);
+            console.Flush();
+            console.Sink.Write("ROR: cut between reads\n   at: res://main.gd:7\n", ConsoleStream.Error);
+            console.Flush();
+            const string Whole = "ERROR: cut between reads\n   at: res://main.gd:7\n";
+            Assert.Equal(Whole, console.Document.Snapshot.ToString());
+            Assert.True(console.Fold!.Entries is [{ Header: "ERROR: cut between reads" }],
+                $"The fold holds {console.Fold.Entries.Count} entries: the Errors filter and its count leave out an error cut between two reads");
+
+            console.Sink.Write("SCRIPT E", ConsoleStream.Error);
+            console.Flush();
+            console.Append("Process finished\n");
+            Assert.Equal(Whole + "SCRIPT EProcess finished\n", console.Document.Snapshot.ToString());
         }
         finally
         {

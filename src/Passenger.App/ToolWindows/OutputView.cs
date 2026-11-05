@@ -295,6 +295,10 @@ public sealed class OutputView : DockPanel
     {
         UiThread.Check();
         Flush();
+        if (fold?.LetGo() is { } unfinished)
+        {
+            Insert(unfinished, [new ConsoleRun(0, unfinished.Length, ConsoleStream.Error)]);
+        }
         Insert(text, [new ConsoleRun(0, text.Length, error ? ConsoleStream.Error : ConsoleStream.System)]);
     }
 
