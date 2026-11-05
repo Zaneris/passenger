@@ -327,8 +327,20 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     public event EventHandler<int>? MouseModeAsked;
 
     /// <summary>Tells a game on the embedded display what the program it is shown in gives it (<see cref="GodotWords.EmbedEvent"/>
-    /// and the rest), answered by nothing.</summary>
-    public void Embed(string what, object? value) => Send(what, value);
+    /// and the rest), answered by nothing; a game yet to connect, or gone, hears none of it.</summary>
+    public void Embed(string what, object? value) => IdeErrors.Observe(EmbedAsync(what, value));
+
+    private async Task EmbedAsync(string what, object? value)
+    {
+        try
+        {
+            await SendAsync(what, value);
+        }
+        catch (LiveAppException)
+        {
+            // The person's pointer and focus go on before a game connects and after it ends: no one is there to hear them.
+        }
+    }
 
     /// <summary>The scene Godot's editor edits, for a relayed game: what its live editing is set back to after Passenger's.</summary>
     public string EditorScene { get; set; } = string.Empty;

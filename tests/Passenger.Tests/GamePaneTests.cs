@@ -119,6 +119,21 @@ public sealed class GamePaneTests
         Assert.Equal(ToolAnchor.RightBottom, dock[ToolWindowIds.LiveTree].Anchor);
     }
 
+    [AvaloniaFact]
+    public void A_pointer_over_the_pane_before_the_game_connects_is_said_as_no_error()
+    {
+        using Rig rig = Rig.Open();
+        rig.Hold(FourByThree, connects: false);
+
+        Point middle = rig.Pane.TranslatePoint(new Point(rig.Pane.Bounds.Width / 2, rig.Pane.Bounds.Height / 2), rig.Window)!.Value;
+        rig.Window.MouseMove(middle);
+        rig.Window.MouseMove(new Point(1, 1));
+        Ui.Settle();
+
+        // FailOnIdeErrors fails the test on what the status bar would call an IDE error; the check here says which.
+        Assert.DoesNotContain(IdeErrors.Errors, e => e.Message.Contains("is not connected", StringComparison.Ordinal));
+    }
+
     /// <summary>A headless window on a Godot project of GDScript alone, with what the tests hold of it.</summary>
     private sealed class Rig : IDisposable
     {
