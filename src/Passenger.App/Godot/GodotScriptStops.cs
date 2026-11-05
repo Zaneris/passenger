@@ -109,6 +109,7 @@ public static class GodotScriptValues
             [.. names.Select((name, i) => (name, expression is null ? null : $"{expression}.{name}", IsWhole(math.Type) ? (object?)(long)math.Values[i] : math.Values[i]))],
         string[] strings => [.. strings.Select((s, i) => ($"[{i}]", Indexed(expression, $"{i}"), (object?)s))],
         byte[] => [],
+        GodotPackedMath packed => [.. packed.Items.Select((item, i) => ($"[{i}]", Indexed(expression, $"{i}"), (object?)item))],
         Array packed => [.. packed.Cast<object?>().Select((item, i) => ($"[{i}]", Indexed(expression, $"{i}"), item is float f ? (double)f : item is int n ? (long)n : item))],
         _ => [],
     };
@@ -150,6 +151,7 @@ public static class GodotScriptValues
         float[] => GodotType.PackedFloat32Array,
         double[] => GodotType.PackedFloat64Array,
         string[] => GodotType.PackedStringArray,
+        GodotPackedMath packed => packed.Type,
         _ => GodotType.Array,
     };
 

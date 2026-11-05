@@ -61,8 +61,8 @@ public static class GodotText
             ? Typed($"{{{string.Join(", ", parts.Chunk(2).Select(p => $"{p[0]}: {p[1]}"))}}}", dictionary.KeyType, dictionary.ValueType)
             : null,
         List<object?> items => Each(items) is { } parts ? Typed($"[{string.Join(", ", parts)}]", items is GodotArray typed ? typed.Element : default, null) : null,
-        string[] or byte[] or int[] or long[] or float[] or double[] or GodotMath[] => GodotVariant.Items(value) is { } items && Each(items) is { } parts
-            ? $"{SceneName(GodotVariant.TypeOf(value))}({string.Join(", ", value is GodotMath[] ? parts.Select(p => p[(p.IndexOf('(', StringComparison.Ordinal) + 1)..^1]) : parts)})"
+        string[] or byte[] or int[] or long[] or float[] or double[] or GodotPackedMath => GodotVariant.Items(value) is { } items && Each(items) is { } parts
+            ? $"{SceneName(GodotVariant.TypeOf(value))}({string.Join(", ", value is GodotPackedMath ? parts.Select(p => p[(p.IndexOf('(', StringComparison.Ordinal) + 1)..^1]) : parts)})"
             : null,
         _ => null,
     };

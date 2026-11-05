@@ -31,10 +31,26 @@ public class GodotContainersTests
         Assert.Equal(new[] { 3, -4 }, GodotVariant.Read(GodotVariant.Write(new[] { 3, -4 })));
         Assert.Equal(new[] { 1.5f, 2f }, GodotVariant.Read(GodotVariant.Write(new[] { 1.5f, 2f })));
         Assert.Equal(new byte[] { 1, 2, 3 }, GodotVariant.Read(GodotVariant.Write(new byte[] { 1, 2, 3 })));
-        GodotMath[] points = [new(GodotType.Vector2, [1, 2]), new(GodotType.Vector2, [3, 4])];
+        GodotPackedMath points = new(GodotType.PackedVector2Array, [new(GodotType.Vector2, [1, 2]), new(GodotType.Vector2, [3, 4])]);
         Assert.Equal(points, GodotVariant.Read(GodotVariant.Write(points)));
         Assert.Equal(GodotType.PackedVector2Array, GodotVariant.TypeOf(points));
         Assert.Equal(new[] { 7, 8 }, GodotVariant.Packed(GodotType.PackedInt32Array, [7L, 8L]));
+    }
+
+    [Theory]
+    [InlineData(GodotType.PackedVector2Array)]
+    [InlineData(GodotType.PackedVector3Array)]
+    [InlineData(GodotType.PackedVector4Array)]
+    [InlineData(GodotType.PackedColorArray)]
+    public void An_empty_packed_array_stays_its_own_type_sent_read_back_and_written_in_a_scene(GodotType type)
+    {
+        object? empty = GodotVariant.Packed(type, []);
+        Assert.Equal(type, GodotVariant.TypeOf(empty));
+        byte[] sent = GodotVariant.Write(empty);
+        Assert.True(sent[0] == (byte)type, $"The last item removed from a {type} would send a {(GodotType)sent[0]}, which Godot leaves the property unchanged for");
+        Assert.Equal(type, GodotVariant.TypeOf(GodotVariant.Read(sent)));
+        Assert.Equal($"{type}()", GodotText.Scene(empty));
+        Assert.Equal(type, GodotVariant.TypeOf(GodotVariant.Default(type)));
     }
 
     [Theory]
@@ -66,7 +82,7 @@ public class GodotContainersTests
         Assert.Equal("Array[int]([1, 5])", GodotText.Scene(new GodotArray([1L, 5L]) { Element = GodotElement.Of(GodotType.Int) }));
         Assert.Equal("[1, \"two\"]", GodotText.Scene(new List<object?> { 1L, "two" }));
         Assert.Equal("{\"red\": 1, \"blue\": 7}", GodotText.Scene(new GodotDictionary([new("red", 1L), new("blue", 7L)])));
-        Assert.Equal("PackedVector2Array(1, 2, 3, 4)", GodotText.Scene(new GodotMath[] { new(GodotType.Vector2, [1, 2]), new(GodotType.Vector2, [3, 4]) }));
+        Assert.Equal("PackedVector2Array(1, 2, 3, 4)", GodotText.Scene(new GodotPackedMath(GodotType.PackedVector2Array, [new(GodotType.Vector2, [1, 2]), new(GodotType.Vector2, [3, 4])])));
         Assert.Null(GodotText.Scene(new List<object?> { new GodotObjectId(5) }));
     }
 }

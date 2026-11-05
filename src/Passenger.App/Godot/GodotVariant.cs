@@ -39,6 +39,17 @@ public sealed record GodotMath(GodotType Type, IReadOnlyList<double> Values)
     public override int GetHashCode() => HashCode.Combine(Type, Values.Count);
 }
 
+/// <summary>A packed array of vectors or colours, by its own type (<c>PackedVector3Array</c>), which it keeps where it holds
+/// no item to tell it by.</summary>
+public sealed record GodotPackedMath(GodotType Type, IReadOnlyList<GodotMath> Items)
+{
+    public override string ToString() => $"[{string.Join(", ", Items)}]";
+
+    public bool Equals(GodotPackedMath? other) => other is not null && Type == other.Type && Items.SequenceEqual(other.Items);
+
+    public override int GetHashCode() => HashCode.Combine(Type, Items.Count);
+}
+
 /// <summary>An object named by its id alone, as a debugged game sends one.</summary>
 public sealed record GodotObjectId(ulong Id)
 {
@@ -102,8 +113,8 @@ public sealed class GodotVariantException(string message) : Exception(message);
 /// <summary>Godot's binary Variant encoding (its marshalls), read and written: a header of four bytes (the type in its low
 /// byte, flags above: 64-bit numbers, an object sent as its id, a typed container's element type) and then the value, little
 /// endian, a string as its UTF-8 length and bytes padded to four. Read into plain values: null, bool, long, double, string,
-/// <see cref="GodotName"/>, <see cref="GodotNodePath"/>, <see cref="GodotMath"/>, lists for arrays, arrays for packed ones,
-/// and the records here for the rest. Written for what a debugger sends: those plain values, lists, dictionaries and numbers.</summary>
+/// <see cref="GodotName"/>, <see cref="GodotNodePath"/>, <see cref="GodotMath"/>, lists for arrays, arrays for packed ones
+/// (<see cref="GodotPackedMath"/> for vectors' and colours'), and the records here for the rest. Written for what a debugger sends: those plain values, lists, dictionaries and numbers.</summary>
 public static class GodotVariant
 {
     private const int Type = 0xFF;
@@ -315,7 +326,7 @@ public static class GodotVariant
                     PutLong(bytes, BitConverter.DoubleToInt64Bits(item));
                 }
                 break;
-            case GodotMath[] packed:
+            case GodotPackedMath packed:
                 WritePacked(bytes, packed);
                 break;
             case GodotDictionary dictionary:
@@ -346,20 +357,12 @@ public static class GodotVariant
     }
 
     /// <summary>Vectors or colours as the packed array of their type, in single precision as Godot keeps them.</summary>
-    private static void WritePacked(List<byte> bytes, GodotMath[] packed)
+    private static void WritePacked(List<byte> bytes, GodotPackedMath packed)
     {
-        GodotType each = packed.Length > 0 ? packed[0].Type : GodotType.Vector2;
-        GodotType type = each switch
-        {
-            GodotType.Vector2 => GodotType.PackedVector2Array,
-            GodotType.Vector3 => GodotType.PackedVector3Array,
-            GodotType.Vector4 => GodotType.PackedVector4Array,
-            GodotType.Color => GodotType.PackedColorArray,
-            _ => throw new GodotVariantException($"A {each} has no packed array"),
-        };
-        Put(bytes, (uint)type);
-        Put(bytes, (uint)packed.Length);
-        foreach (GodotMath item in packed)
+        GodotType each = ElementOf(packed.Type);
+        Put(bytes, (uint)packed.Type);
+        Put(bytes, (uint)packed.Items.Count);
+        foreach (GodotMath item in packed.Items)
         {
             if (item.Type != each)
             {
@@ -410,14 +413,7 @@ public static class GodotVariant
         float[] => GodotType.PackedFloat32Array,
         double[] => GodotType.PackedFloat64Array,
         string[] => GodotType.PackedStringArray,
-        GodotMath[] { Length: > 0 } packed => packed[0].Type switch
-        {
-            GodotType.Vector3 => GodotType.PackedVector3Array,
-            GodotType.Vector4 => GodotType.PackedVector4Array,
-            GodotType.Color => GodotType.PackedColorArray,
-            _ => GodotType.PackedVector2Array,
-        },
-        GodotMath[] => GodotType.PackedVector2Array,
+        GodotPackedMath packed => packed.Type,
         _ => GodotType.Array,
     };
 
@@ -440,6 +436,7 @@ public static class GodotVariant
         _ when Count(type) > 0 => new GodotMath(type, new double[Count(type)]),
         GodotType.Array => new GodotArray([]),
         GodotType.Dictionary => new GodotDictionary([]),
+        >= GodotType.PackedByteArray => Packed(type, []),
         _ => null,
     };
 
@@ -462,7 +459,7 @@ public static class GodotVariant
     {
         List<object?> items => items,
         string[] strings => strings,
-        GodotMath[] packed => packed,
+        GodotPackedMath packed => packed.Items,
         byte[] packed => [.. packed.Select(b => (object?)(long)b)],
         int[] packed => [.. packed.Select(i => (object?)(long)i)],
         long[] packed => [.. packed.Select(i => (object?)i)],
@@ -481,7 +478,7 @@ public static class GodotVariant
         GodotType.PackedFloat32Array => items.Select(i => (float)Convert.ToDouble(i, CultureInfo.InvariantCulture)).ToArray(),
         GodotType.PackedFloat64Array => items.Select(i => Convert.ToDouble(i, CultureInfo.InvariantCulture)).ToArray(),
         GodotType.PackedStringArray => items.Select(i => i as string ?? string.Empty).ToArray(),
-        GodotType.PackedVector2Array or GodotType.PackedVector3Array or GodotType.PackedVector4Array or GodotType.PackedColorArray => items.OfType<GodotMath>().ToArray(),
+        GodotType.PackedVector2Array or GodotType.PackedVector3Array or GodotType.PackedVector4Array or GodotType.PackedColorArray => new GodotPackedMath(type, [.. items.OfType<GodotMath>()]),
         _ => new GodotArray(items) { Element = element },
     };
 
@@ -667,15 +664,10 @@ public static class GodotVariant
         return read;
     }
 
-    private static GodotMath[] PackedMath(ReadOnlySpan<byte> bytes, ref int at, GodotType type, bool wide)
+    private static GodotPackedMath PackedMath(ReadOnlySpan<byte> bytes, ref int at, GodotType type, bool wide)
     {
-        (GodotType each, int numbers) = type switch
-        {
-            GodotType.PackedVector2Array => (GodotType.Vector2, 2),
-            GodotType.PackedVector3Array => (GodotType.Vector3, 3),
-            GodotType.PackedVector4Array => (GodotType.Vector4, 4),
-            _ => (GodotType.Color, 4),
-        };
+        GodotType each = ElementOf(type);
+        int numbers = Count(each);
         bool doubles = wide && type != GodotType.PackedColorArray;
         int count = Length(bytes, ref at, numbers * (doubles ? 8 : 4));
         GodotMath[] read = new GodotMath[count];
@@ -683,7 +675,7 @@ public static class GodotVariant
         {
             read[i] = Real(bytes, ref at, each, numbers, doubles);
         }
-        return read;
+        return new GodotPackedMath(type, read);
     }
 
     /// <summary>A count read, checked against the bytes left for items of the size given.</summary>
