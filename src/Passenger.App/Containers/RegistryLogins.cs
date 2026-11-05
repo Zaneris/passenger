@@ -3,73 +3,86 @@ using Passenger.Core;
 
 namespace Passenger.App.Containers;
 
-/// <summary>Whether docker's own configuration holds a login for a registry, as its CLI and the SDK's push read it: the
-/// config.json of DOCKER_CONFIG (else ~/.docker), its auths and credHelpers, and the servers its credsStore's helper lists,
-/// names alone, never a secret. Passenger only asks; a person logs in with docker login, never through Passenger, and the
-/// SDK takes the login from docker's configuration itself.</summary>
+/// <summary>Whether a push would find a login for a registry, looked for as the SDK looks: the pair of variables it reads
+/// first (<see cref="RegistryVariables"/>), then each file it reads, Podman's auth.json before docker's config.json, for the
+/// registry's credHelpers entry, a credsStore or the registry's auths entry. A helper answers only as it is asked, so what it
+/// lists proves nothing and it is left to answer the SDK. Names alone, never a secret. Passenger only asks; a person logs in
+/// with docker login, never through Passenger, and the SDK takes the login itself.</summary>
 public static class RegistryLogins
 {
     /// <summary>Docker Hub's key in docker's configuration, which docker.io and its other names log in to.</summary>
     private const string DockerHub = "https://index.docker.io/v1/";
 
-    private static readonly TimeSpan ListLimit = TimeSpan.FromSeconds(10);
-
-    /// <summary>Why a push to a registry would find no login, saying how to make one; null where docker's configuration has
-    /// one, or for a registry on this machine (localhost), which asks for none.</summary>
-    public static async Task<string?> WhyNotAsync(string registry, string? cli, CancellationToken cancel)
+    /// <summary>Why a push to a registry would find no login, saying how to make one; null where the SDK would find one, or
+    /// for a registry on this machine (localhost), which asks for none. The files are read off the window's thread.</summary>
+    public static Task<string?> WhyNotAsync(string registry, CancellationToken cancel)
     {
-        string host = HostOf(registry);
-        if (IsLocal(host))
-        {
-            return null;
-        }
-        string folder = Environment.GetEnvironmentVariable(EngineVariables.DockerConfig) is { Length: > 0 } named ? named
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".docker");
-        string config = Path.Combine(folder, "config.json");
-        string refused = $"No docker login for {host} was found in {PathNames.Shown(config, null)}: run docker login {host} in a terminal, then publish again";
-        JsonElement root;
-        try
-        {
-            using JsonDocument read = JsonDocument.Parse(await File.ReadAllTextAsync(config, cancel));
-            root = read.RootElement.Clone();
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return refused;
-        }
-        if (JsonMembers.Properties(root, "auths").Concat(JsonMembers.Properties(root, "credHelpers")).Any(login => Same(login.Name, host)))
-        {
-            return null;
-        }
-        if (JsonMembers.Text(root, "credsStore") is { Length: > 0 } store && await ListedAsync(store, cli, cancel) is { } listed && listed.Any(server => Same(server, host)))
-        {
-            return null;
-        }
-        return refused;
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return BackgroundWork.Run(() => WhyNot(registry, Environment.GetEnvironmentVariable, home, Read), cancel);
     }
 
-    /// <summary>The servers a credential helper holds logins for (its list, names and users alone); null where it is not
-    /// found or does not answer.</summary>
-    private static async Task<IReadOnlyList<string>?> ListedAsync(string store, string? cli, CancellationToken cancel)
+    /// <summary>As <see cref="WhyNotAsync"/>, in the variables and folder given, <paramref name="read"/> giving a file's text,
+    /// or null for one not there or not read.</summary>
+    public static string? WhyNot(string registry, Func<string, string?> variable, string home, Func<string, string?> read)
     {
-        string name = $"docker-credential-{store}";
-        string? helper = Programs.OnPath(name)
-            ?? (cli is not null && Path.GetDirectoryName(cli) is { } beside && Directory.EnumerateFiles(beside, name + "*").FirstOrDefault() is { } found ? found : null);
-        if (helper is null)
+        string host = HostOf(registry);
+        if (IsLocal(host) || Given(variable) is not null)
         {
             return null;
         }
+        IReadOnlyList<string> files = ConfigFiles(variable, home);
+        return files.Any(file => read(file) is { } text && Answers(text, host)) ? null
+            : $"No docker login for {host} was found in {PathNames.Shown(files[^1], null)}: run docker login {host} in a terminal, then publish again";
+    }
+
+    /// <summary>How a push to a registry logs in, as Publish says it.</summary>
+    public static string With(string registry) => Given(Environment.GetEnvironmentVariable) is { } pair
+        ? $"with the login {pair.User} and {pair.Password} give"
+        : $"with docker's login for {HostOf(registry)} (docker login)";
+
+    /// <summary>The first pair of variables a push reads a login from whose name and password are both set, its values never
+    /// looked at again.</summary>
+    private static (string User, string Password)? Given(Func<string, string?> variable) =>
+        RegistryVariables.PushLogins.Where(pair => !string.IsNullOrEmpty(variable(pair.User)) && !string.IsNullOrEmpty(variable(pair.Password)))
+            .Select(pair => ((string User, string Password)?)pair).FirstOrDefault();
+
+    /// <summary>The files a login is read from, in the SDK's order: <see cref="RegistryVariables.AuthFile"/> alone where it is
+    /// set, else Podman's two auth.json and docker's config.json.</summary>
+    private static IReadOnlyList<string> ConfigFiles(Func<string, string?> variable, string home)
+    {
+        if (variable(RegistryVariables.AuthFile) is { Length: > 0 } named)
+        {
+            return [named];
+        }
+        string config = variable(RegistryVariables.ConfigFolder) is { Length: > 0 } folder ? folder : Path.Combine(home, ".config");
+        string docker = variable(EngineVariables.DockerConfig) is { Length: > 0 } dockers ? dockers : Path.Combine(home, ".docker");
+        return [.. variable(SocketFolders.RuntimeVariable) is { Length: > 0 } runtime ? [Path.Combine(runtime, "containers", "auth.json")] : (string[])[],
+            Path.Combine(config, "containers", "auth.json"), Path.Combine(docker, "config.json")];
+    }
+
+    /// <summary>Whether a file's text gives a host's login, or a helper that is asked for it; one that does not read gives none.</summary>
+    private static bool Answers(string text, string host)
+    {
         try
         {
-            ChildResult listed = await ChildProcesses.RunAsync(ChildProcesses.Command(helper, ["list"]), limit: ListLimit, cancel: cancel);
-            if (!listed.Succeeded)
-            {
-                return null;
-            }
-            using JsonDocument servers = JsonDocument.Parse(listed.Output);
-            return servers.RootElement.ValueKind == JsonValueKind.Object ? [.. servers.RootElement.EnumerateObject().Select(server => server.Name)] : null;
+            using JsonDocument read = JsonDocument.Parse(text);
+            JsonElement root = read.RootElement;
+            return JsonMembers.Text(root, "credsStore") is { Length: > 0 }
+                || JsonMembers.Properties(root, "auths").Concat(JsonMembers.Properties(root, "credHelpers")).Any(login => Same(login.Name, host));
         }
-        catch (Exception error) when (error is JsonException or TimeoutException or IOException or System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string? Read(string file)
+    {
+        try
+        {
+            return File.ReadAllText(file);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return null;
         }

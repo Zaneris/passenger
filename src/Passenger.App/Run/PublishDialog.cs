@@ -612,7 +612,7 @@ public sealed class PublishDialog : IdeWindow
         string[] platforms = Several(Runtimes) is { Length: > 0 } runtimes ? runtimes.Split(';') : [];
         string made = Plural.Listed([.. tags.Select(tag => $"{repository}:{tag}")]) + (platforms.Length > 0 ? $" for {Plural.Listed(platforms)}" : string.Empty);
         imageSaid.Text = Registry.Trim() is { Length: > 0 } registry
-            ? $"Pushes {RegistryLogins.HostOf(registry)}/{made} with docker's login for {RegistryLogins.HostOf(registry)} (docker login)"
+            ? $"Pushes {RegistryLogins.HostOf(registry)}/{made} {RegistryLogins.With(registry)}"
             : $"Makes {made} in the engine on this machine";
         command.Text = $"dotnet publish {ChildProcesses.Quote(System.IO.Path.GetRelativePath(open, project.Path))} {string.Join(' ', request.Command().Select(ChildProcesses.Quote))}";
         if (folderNamed)

@@ -27,7 +27,7 @@ public static partial class ContainerSecrets
     /// URL's signature among them (an Azure SAS's sig, SharedAccessSignature, X-Amz-Signature, X-Goog-Signature).</summary>
     private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> Whole = new HashSet<string>(StringComparer.Ordinal)
     {
-        "PASS", "PW", "PWD", "KEY", "AUTHORIZATION", "SIG", "SIGNATURE",
+        "PASS", "PW", "PWD", "PWORD", "KEY", "AUTHORIZATION", "SIG", "SIGNATURE",
     }.GetAlternateLookup<ReadOnlySpan<char>>();
 
     /// <summary>The words that end in KEY and name no key (a word ending in KEY otherwise is one: APIKEY, ACCESSKEY).</summary>

@@ -94,9 +94,9 @@ public sealed partial class BuildRunController
         BuildOutcome Refused(string why) => Said(new BuildOutcome(BuildStatus.Refused, why));
     }
 
-    /// <summary>What a container publish needs before it starts: for a registry, a login docker holds for it (never asked
-    /// for here, nor given on a command line); for the engine on this machine, an engine that answers. The engine's CLI is
-    /// first on the publish's PATH, so the SDK loads the image through it. The request, or why not.</summary>
+    /// <summary>What a container publish needs before it starts: for a registry, a login the SDK would find for it (never
+    /// asked for here, nor given on a command line); for the engine on this machine, an engine that answers. The engine's CLI
+    /// is first on the publish's PATH, so the SDK loads the image through it. The request, or why not.</summary>
     private async Task<(PublishRequest? Ready, string? Refused)> ImageReadyAsync(PublishRequest request, Working work)
     {
         ContainerEngine engine = session.Containers.Engine;
@@ -104,8 +104,8 @@ public sealed partial class BuildRunController
         {
             if (request.Registry is { } registry)
             {
-                work.Say($"Looking for a docker login for {registry}…");
-                if (await RegistryLogins.WhyNotAsync(registry, engine.Cli, work.Stopping) is { } none)
+                work.Say($"Looking for a login for {registry}…");
+                if (await RegistryLogins.WhyNotAsync(registry, work.Stopping) is { } none)
                 {
                     return (null, $"{request.Shown} was not pushed: {none}");
                 }

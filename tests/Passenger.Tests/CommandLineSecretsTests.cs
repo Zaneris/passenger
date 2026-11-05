@@ -14,6 +14,17 @@ public sealed class CommandLineSecretsTests
 {
     private const string Masked = ContainerSecrets.Masked;
 
+    /// <summary>The SDK's registry password goes by a word of its own, its name beside it no secret.</summary>
+    [Fact]
+    public void The_SDKs_registry_password_is_a_secret_by_its_name()
+    {
+        foreach ((string user, string password) in RegistryVariables.PushLogins)
+        {
+            Assert.True(ContainerSecrets.Secret(password), $"{password} would show unmasked");
+            Assert.False(ContainerSecrets.Secret(user), $"{user} would be masked, though it says only who logs in");
+        }
+    }
+
     /// <summary>A secret given as the word after its flag (<c>--password hunter2</c>, <c>--api-key sk-live-123</c>, PuTTY's
     /// <c>-pw</c>) is masked where it stands, in double quotes still when it was, its spacing kept; a flag that says it takes
     /// no value leaves the next flag as it is, which is read in turn.</summary>

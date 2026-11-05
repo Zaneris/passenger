@@ -34,6 +34,9 @@
     <Compile Include="../../src/Passenger.App/Containers/ComposeFiles.cs" Link="App/ComposeFiles.cs" />
     <Compile Include="../../src/Passenger.App/Containers/ContainerPaths.cs" Link="App/ContainerPaths.cs" />
     <Compile Include="../../src/Passenger.App/Containers/DockerRunWords.cs" Link="App/DockerRunWords.cs" />
+    <Compile Include="../../src/Passenger.App/Containers/EngineVariables.cs" Link="App/EngineVariables.cs" />
+    <Compile Include="../../src/Passenger.App/Containers/RegistryLogins.cs" Link="App/RegistryLogins.cs" />
+    <Compile Include="../../src/Passenger.App/Containers/DockerfileImages.cs" Link="App/DockerfileImages.cs" />
     <Compile Include="../../src/Passenger.App/Containers/DockerfileStages.cs" Link="App/DockerfileStages.cs" />
   </ItemGroup>
 

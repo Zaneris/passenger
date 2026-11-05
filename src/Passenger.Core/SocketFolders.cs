@@ -12,6 +12,9 @@ namespace Passenger.Core;
 /// in .sock.</summary>
 public static partial class SocketFolders
 {
+    /// <summary>The variable naming the user's folder of this login's sockets and other run-time files on Linux.</summary>
+    public const string RuntimeVariable = "XDG_RUNTIME_DIR";
+
     /// <summary>A state folder's socket folder.</summary>
     public static string For(string state)
     {
@@ -69,7 +72,7 @@ public static partial class SocketFolders
         }
         if (OperatingSystem.IsLinux())
         {
-            return Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") is { Length: > 0 } runtime && Path.IsPathFullyQualified(runtime) && Directory.Exists(runtime)
+            return Environment.GetEnvironmentVariable(RuntimeVariable) is { Length: > 0 } runtime && Path.IsPathFullyQualified(runtime) && Directory.Exists(runtime)
                 ? runtime
                 : "/tmp";
         }
