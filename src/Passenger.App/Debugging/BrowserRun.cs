@@ -54,8 +54,16 @@ public sealed partial class BrowserRun : IAsyncDisposable
         {
             // Another debugging holds the kept profile: this one's is its own, gone with it.
             apart = Path.Combine(profiles, $"browser-{Guid.NewGuid():N}");
-            started = await StartBrowserAsync(debugging.Browser, apart, cancel)
-                ?? throw new InvalidOperationException($"{debugging.Browser.Name} ended as it started, with no remote debugging");
+            try
+            {
+                started = await StartBrowserAsync(debugging.Browser, apart, cancel)
+                    ?? throw new InvalidOperationException($"{debugging.Browser.Name} ended as it started, with no remote debugging");
+            }
+            catch
+            {
+                Delete(apart);
+                throw;
+            }
         }
         (Process browser, int port) = started.Value;
         Process? proxy = null;
@@ -107,7 +115,7 @@ public sealed partial class BrowserRun : IAsyncDisposable
     /// <summary>The browser started on a profile with remote debugging on a port it chooses, once it has written which
     /// (DevToolsActivePort in the profile); null where it ended at once with exit code 0, handing its page to another browser
     /// on that profile. One that ended otherwise throws <see cref="InvalidOperationException"/> with its own last words, and
-    /// where the system refused its sandbox, what lets Chromium run.</summary>
+    /// where the system refused its sandbox, what lets Chromium run. Given up or failed, it leaves no browser running.</summary>
     private static async Task<(Process Browser, int Port)?> StartBrowserAsync(ChromiumFound found, string profile, CancellationToken cancel)
     {
         Containers.OwnFiles.Folder(profile);
@@ -165,35 +173,47 @@ public sealed partial class BrowserRun : IAsyncDisposable
         }
         Task heard = ChildProcesses.Hear(browser, Heard, Heard, longest: 2000);
         IdeErrors.Observe(heard);
-        long began = Stopwatch.GetTimestamp();
-        while (Stopwatch.GetElapsedTime(began) < Waits.Of(StartLimit))
+        bool listening = false;
+        try
         {
-            cancel.ThrowIfCancellationRequested();
-            if (Port(written) is int port)
+            long began = Stopwatch.GetTimestamp();
+            while (Stopwatch.GetElapsedTime(began) < Waits.Of(StartLimit))
             {
-                return (browser, port);
-            }
-            if (!DotnetProcesses.Runs(browser.Id))
-            {
-                // What it wrote as it ended may still be on its way through its pipes.
-                await Task.WhenAny(refused.Task, heard, Task.Delay(Waits.Of(LastWords), cancel));
                 cancel.ThrowIfCancellationRequested();
-                if (refused.Task.IsCompleted)
+                if (Port(written) is int port)
                 {
-                    throw new InvalidOperationException(ChromiumBrowsers.SandboxRefused(found));
+                    listening = true;
+                    return (browser, port);
                 }
-                string[] words;
-                lock (last)
+                if (!DotnetProcesses.Runs(browser.Id))
                 {
-                    words = [.. last];
+                    // What it wrote as it ended may still be on its way through its pipes.
+                    await Task.WhenAny(refused.Task, heard, Task.Delay(Waits.Of(LastWords), cancel));
+                    cancel.ThrowIfCancellationRequested();
+                    if (refused.Task.IsCompleted)
+                    {
+                        throw new InvalidOperationException(ChromiumBrowsers.SandboxRefused(found));
+                    }
+                    string[] words;
+                    lock (last)
+                    {
+                        words = [.. last];
+                    }
+                    int? code = await ExitCodeAsync(browser);
+                    return code == 0 || (code is null && words.Length == 0) ? null : throw new InvalidOperationException(EndedSaying(found, code, words));
                 }
-                int? code = await ExitCodeAsync(browser);
-                return code == 0 || (code is null && words.Length == 0) ? null : throw new InvalidOperationException(EndedSaying(found, code, words));
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancel);
             }
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancel);
+            throw new InvalidOperationException($"{found.Name} did not start its remote debugging within {Waits.Of(StartLimit).TotalSeconds:0} s");
         }
-        ChildProcesses.Kill(browser);
-        throw new InvalidOperationException($"{found.Name} did not start its remote debugging within {Waits.Of(StartLimit).TotalSeconds:0} s");
+        finally
+        {
+            if (!listening)
+            {
+                ChildProcesses.Kill(browser);
+                browser.Dispose();
+            }
+        }
     }
 
     /// <summary>How many of a browser's last lines say why it ended as it started.</summary>
