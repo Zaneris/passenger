@@ -60,7 +60,7 @@ internal static class JsInteropSource
             Dictionary<ISymbol, string> modules = new(SymbolEqualityComparer.Default);
             foreach ((InvocationExpressionSyntax call, ExpressionSyntax identifier, string name, IMethodSymbol method) in found)
             {
-                if (name == Import && ModulePath(call, identifier, model, cancel) is ({ } given, { } module))
+                if (name == Import && JsInteropImport.ModulePath(call, method, model, cancel) is ({ } given, { } module))
                 {
                     Add(given, Import, module);
                     if (AssignedTo(call, model, cancel) is { } holder)
@@ -151,19 +151,6 @@ internal static class JsInteropSource
         INamedTypeSymbol type = (method.ReducedFrom ?? method).ContainingType;
         return type.ContainingNamespace?.ToDisplayString() == Namespace && Types.Contains(type.Name)
             && (method.ReducedFrom ?? method).Parameters.Any(p => p.Name == "identifier" && p.Type.SpecialType == SpecialType.System_String);
-    }
-
-    /// <summary>The path an "import" call gives, its expression and value: the first argument after the identifier.</summary>
-    private static (ExpressionSyntax? Given, string? Path) ModulePath(InvocationExpressionSyntax call, ExpressionSyntax identifier, SemanticModel model, CancellationToken cancel)
-    {
-        SeparatedSyntaxList<ArgumentSyntax> arguments = call.ArgumentList.Arguments;
-        int index = arguments.IndexOf(a => a.Expression == identifier);
-        if (index < 0 || index + 1 >= arguments.Count)
-        {
-            return (null, null);
-        }
-        ExpressionSyntax given = arguments[index + 1].Expression;
-        return Constant(given, model, cancel) is { } path ? (given, path) : (null, null);
     }
 
     /// <summary>The field, property, local or parameter an "import" call's module is assigned or initialized to, through its

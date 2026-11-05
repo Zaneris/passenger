@@ -190,6 +190,13 @@
     <Compile Include="../../src/Passenger.Lsp/LanguageServerFailed.cs" Link="Lsp/LanguageServerFailed.cs" />
   </ItemGroup>
 
+  <!-- Which argument of a JS interop call names its module, by the overload a compilation of the call binds it to,
+       compiled in since their project is built against Roslyn's server. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.Roslyn.Extension/SyntaxReads.cs" Link="Roslyn/SyntaxReads.cs" />
+    <Compile Include="../../src/Passenger.Roslyn.Extension/JsInteropImport.cs" Link="Roslyn/JsInteropImport.cs" />
+  </ItemGroup>
+
   <!-- Where a launch profile's browser opens, read from its URLs alone, the Node.js versions a package.json's engines
        range takes, read from its text alone, a game's copies' names and arguments, and whether a project's inputs changed
        since a build began, read from a temporary folder, compiled in since their project is the app's. -->

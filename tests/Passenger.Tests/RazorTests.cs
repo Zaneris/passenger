@@ -408,7 +408,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
     /// the call in the .razor, and going to the caller opens the .razor at that line.</summary>
     /// <summary>Go to Declaration from a JS interop call's identifier in a component lands on the JavaScript function: one
     /// its collocated script declares there first, one only the app's scripts declare in them; from a call on a module
-    /// imported by its path, in that module; and from the import's path, on the module's file.</summary>
+    /// imported by its path, in that module, whichever overload imported it; and from the import's path, on the module's file.</summary>
     [AvaloniaFact]
     public void Go_to_declaration_from_a_js_interop_call_goes_to_its_function_in_the_collocated_script_the_apps_scripts_or_its_module()
     {
@@ -419,6 +419,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
         Goes(window, bell, "InvokeVoidAsync(\"gr", app.Named("wwwroot/js/site.js"), "function greet(name) {", "site.js's greet, which no collocated script declares");
         Goes(window, bell, "InvokeVoidAsync(\"hu", script, "export function hush() {", "the imported module's hush");
         Goes(window, bell, "\"./Components/Pa", script, "// Rings the bell, and hushes it.", "the module the import's path names");
+        Goes(window, bell, "tower.InvokeVoidAsync(\"ri", app.Named("wwwroot/js/tower.js"), "export function ring(times) {", "the ring of the module imported with a cancellation token");
         window.Close();
 
         static void Goes(MainWindow window, string from, string after, string to, string line, string what)
@@ -644,9 +645,11 @@ public sealed class BlazorShop : SharedProject
     /// <summary>A component calling JavaScript through JS interop: a function of the app's scripts, one of its collocated script,
     /// and one of that script imported as a module.</summary>
     public const string Bell = "@page \"/bell\"\n@inject IJSRuntime JS\n\n<div class=\"bell ringing\" id=\"chime\">\n    <button @onclick=\"RingAsync\">Ring</button>\n</div>\n\n@code {\n"
-        + "    private IJSObjectReference? module;\n\n    private async Task RingAsync()\n    {\n        await JS.InvokeVoidAsync(\"greet\", \"Ada\");\n"
+        + "    private IJSObjectReference? module;\n    private IJSObjectReference? tower;\n\n    private async Task RingAsync()\n    {\n        await JS.InvokeVoidAsync(\"greet\", \"Ada\");\n"
         + "        await JS.InvokeVoidAsync(\"ring\", 3);\n        module = await JS.InvokeAsync<IJSObjectReference>(\"import\", \"./Components/Pages/Bell.razor.js\");\n"
-        + "        await module.InvokeVoidAsync(\"hush\");\n    }\n}\n";
+        + "        await module.InvokeVoidAsync(\"hush\");\n"
+        + "        tower = await JS.InvokeAsync<IJSObjectReference>(\"import\", System.Threading.CancellationToken.None, \"./js/tower.js\");\n"
+        + "        await tower.InvokeVoidAsync(\"ring\", 1);\n    }\n}\n";
 
     /// <summary>The component's scoped stylesheet: a rule through <c>::deep</c>, and an empty one, which the CSS server warns of.</summary>
     public const string BellStyle = ".bell ::deep button {\n    color: #1b6ec2;\n}\n\n#chime {\n}\n";
@@ -654,6 +657,9 @@ public sealed class BlazorShop : SharedProject
     /// <summary>The component's collocated script.</summary>
     public const string BellScript = "// Rings the bell, and hushes it.\nexport function ring(times) {\n    console.log(\"ring \".repeat(times));\n}\n\n"
         + "export function hush() {\n    console.log(\"hush\");\n}\n";
+
+    /// <summary>A module of the app's own, its ring another than the collocated script's.</summary>
+    public const string TowerScript = "// Rings the tower's bell.\nexport function ring(times) {\n    console.log(\"toll \".repeat(times));\n}\n";
 
     /// <summary>VS Code's settings, a comment in them as VS Code writes one, and a comma missing: the error a check finds.</summary>
     public const string VsCodeSettings = "{\n  // Laid out on save, as the team's editors do.\n  \"editor.formatOnSave\": true\n  \"files.trimTrailingWhitespace\": true\n}\n";
@@ -673,6 +679,7 @@ public sealed class BlazorShop : SharedProject
         ("Pages/Hello.cshtml.cs", "using Microsoft.AspNetCore.Mvc.RazorPages;\n\nnamespace Shop.Pages;\n\npublic class HelloModel : PageModel\n{\n"
             + "    public string Greeting { get; set; } = \"Hi\";\n\n    public int Count { get; set; }\n\n    public void OnGet()\n    {\n        Count = 3;\n    }\n}\n"),
         ("wwwroot/js/site.js", Script),
+        ("wwwroot/js/tower.js", TowerScript),
         ("Scripts/items.ts", Items),
         ("Scripts/cart.ts", Cart),
         ("tsconfig.json", Config),
