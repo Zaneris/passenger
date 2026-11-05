@@ -17,10 +17,10 @@ public class GodotScriptTemplatesTests
     {
         string root = Path.Combine(Path.GetTempPath(), "repo");
 
-        Assert.Equal("script_templates/**", GodotScriptTemplates.Excluded(root, root));
-        Assert.Equal("game/script_templates/**", GodotScriptTemplates.Excluded(root, Path.Combine(root, "game")));
-        Assert.Equal("games/one/script_templates/**", GodotScriptTemplates.Excluded(root, Path.Combine(root, "games", "one")));
-        Assert.Equal("../game/script_templates/**", GodotScriptTemplates.Excluded(Path.Combine(root, "code"), Path.Combine(root, "game")));
+        Assert.Equal("script_templates", GodotScriptTemplates.Excluded(root, root));
+        Assert.Equal("game/script_templates", GodotScriptTemplates.Excluded(root, Path.Combine(root, "game")));
+        Assert.Equal("games/one/script_templates", GodotScriptTemplates.Excluded(root, Path.Combine(root, "games", "one")));
+        Assert.Equal("../game/script_templates", GodotScriptTemplates.Excluded(Path.Combine(root, "code"), Path.Combine(root, "game")));
     }
 
     [Fact]

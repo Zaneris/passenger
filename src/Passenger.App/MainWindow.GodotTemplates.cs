@@ -141,16 +141,16 @@ public partial class MainWindow
         leavingTemplatesOut = true;
         try
         {
-            string glob = GodotScriptTemplates.Excluded(project.Folder, folder);
+            string templates = GodotScriptTemplates.Excluded(project.Folder, folder);
             bool taken = await BackgroundWork.Run(() => GodotScriptTemplates.Bases.Any(b => GodotScriptTemplates.PathOf(folder, b) is var path && File.Exists(path)
-                && FileText.Load(path)?.Text is { } text && GodotScriptTemplates.IsPassengers(text)) && !RemovesTemplates(project.Path, glob));
+                && FileText.Load(path)?.Text is { } text && GodotScriptTemplates.IsPassengers(text)) && !RemovesTemplates(project.Path, templates));
             if (!taken)
             {
                 return;
             }
             string name = Path.GetFileName(project.Path);
             string? refused = await ChangeFileAsync("Leave C# Script Templates Out of the Build", [project.Path],
-                () => ProjectEdits.RemoveCompiled(project.Path, glob));
+                () => ProjectEdits.RemoveCompiled(project.Path, templates));
             status.Say(refused is null
                 ? $"{name} was written again without leaving Passenger's C# script templates for Godot out of its build, so they are left out again"
                 : $"{name} builds Passenger's C# script templates for Godot as its own code, and they could not be left out again: {refused}", refused is null ? null : ProblemSeverity.Warning);
@@ -161,11 +161,11 @@ public partial class MainWindow
         }
 
         // A project that cannot be read is no project to add to.
-        static bool RemovesTemplates(string project, string glob)
+        static bool RemovesTemplates(string project, string templates)
         {
             try
             {
-                return ProjectEdits.RemovesCompiled(project, glob);
+                return ProjectEdits.RemovesCompiled(project, templates);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
