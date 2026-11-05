@@ -337,6 +337,21 @@ public sealed class FilePropertiesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A YAML file's block scalar keeps every line, the first whose indentation the scalar takes its own from among
+    /// them, as the lines around it convert; tabs, which no YAML indents with, are refused saying why.</summary>
+    [AvaloniaFact]
+    public void Converting_YAML_leaves_a_block_scalars_lines_and_refuses_tabs()
+    {
+        Write("data.yaml", "list: [\n\t1,\n\t2\n]\nkey: |\n \tfirst\n second\nafter: 1\n");
+        MainWindow window = Open("data.yaml");
+        Assert.Equal(Refusals.SpacesAlone("data.yaml", "YAML"), window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
+        Click(window, "IndentButton");
+        Choose(window, "Convert Indentation to Spaces");
+        Assert.Equal("list: [\n  1,\n  2\n]\nkey: |\n \tfirst\n second\nafter: 1\n", Text(window));
+        Assert.EndsWith("; 1 line inside strings left as it is", window.Status, StringComparison.Ordinal);
+        window.Close();
+    }
+
     /// <summary>A click on the caret's place in the status bar opens Go to Line:Column, and the line given is where the
     /// caret goes.</summary>
     [AvaloniaFact]

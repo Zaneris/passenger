@@ -136,8 +136,9 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
 
     /// <summary>The lines of <paramref name="text"/> that begin inside one of the grammar's strings (a CDATA section, a
     /// template literal, a heredoc, a block scalar), whose leading whitespace is the string's own; never a YAML plain
-    /// scalar's next line, whose leading whitespace YAML folds away. Null until the grammar has read the whole text as it
-    /// stands (<see cref="HasRead"/>).</summary>
+    /// scalar's next line, whose leading whitespace YAML folds away. A block scalar's string has no end to read and, with
+    /// its indentation left to its first line, opens on that line: each of its lines is one that ends in it, under a line
+    /// that ends in the scalar. Null until the grammar has read the whole text as it stands (<see cref="HasRead"/>).</summary>
     public IReadOnlySet<int>? StringLines(TextSnapshot text)
     {
         if (!HasRead(text) || table is not { } lines)
@@ -147,18 +148,33 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         HashSet<int> inside = [];
         for (int line = 1; line < lines.Count; line++)
         {
-            for (AttributedScopeStack? scope = lines[line - 1].End?.Scopes; scope is not null; scope = scope.Parent)
+            StateStack? before = lines[line - 1].End;
+            if (InScope(before, IsRunningString) || (InScope(before, IsBlockScalar) && InScope(lines[line].End, IsBlockString)))
             {
-                if (scope.ScopeName.StartsWith("string.", StringComparison.Ordinal)
-                    && !scope.ScopeName.StartsWith("string.unquoted.plain", StringComparison.Ordinal))
-                {
-                    inside.Add(line);
-                    break;
-                }
+                inside.Add(line);
             }
         }
         return inside;
     }
+
+    private static bool InScope(StateStack? state, Func<string, bool> matches)
+    {
+        for (AttributedScopeStack? scope = state?.Scopes; scope is not null; scope = scope.Parent)
+        {
+            if (matches(scope.ScopeName))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsRunningString(string scope) =>
+        scope.StartsWith("string.", StringComparison.Ordinal) && !IsBlockString(scope) && !scope.StartsWith("string.unquoted.plain", StringComparison.Ordinal);
+
+    private static bool IsBlockString(string scope) => scope.StartsWith("string.unquoted.block", StringComparison.Ordinal);
+
+    private static bool IsBlockScalar(string scope) => scope.StartsWith("meta.scalar", StringComparison.Ordinal);
 
     public void Dispose()
     {
