@@ -233,6 +233,26 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
             () => $"Go to Declaration from {after} to open {file} on '{line}' ({window.EditorArea.Active?.Name}: {editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)}; {window.Status})");
     }
 
+    /// <summary>A new name holding a quote is written for each string it goes in: escaped in a GDScript's single quotes, as it
+    /// is in project.godot and C#, or the script no longer parses.</summary>
+    [AvaloniaFact]
+    public void Renaming_an_action_to_a_name_holding_a_quote_escapes_it_in_a_gdscripts_single_quoted_string()
+    {
+        File.WriteAllText(HudPath, Hud.Replace("\"jump\"", "'jump'", StringComparison.Ordinal));
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Renamed(window, "IsActionPressed(\"ju", "jump", "player's_jump");
+            Ui.WaitFor(() => TextOf(window, HudPath).Contains("is_action_pressed('player\\'s_jump')", StringComparison.Ordinal), () => $"hud.gd to escape the quote: {TextOf(window, HudPath)}");
+            Assert.Contains("player's_jump={", File.ReadAllText(game.PathOf("project.godot")), StringComparison.Ordinal);
+            Assert.Contains("IsActionPressed(\"player's_jump\")", window.EditorArea.CodeEditor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Rename at a place in Main.cs, from the name to another, once the status says it was made.</summary>
     private void Renamed(MainWindow window, string after, string old, string name)
     {

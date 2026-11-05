@@ -472,6 +472,16 @@ public class GodotDefinitionsTests
         Assert.Equal(["custom.is_action_pressed(\"jump\")", "unknown.is_action(\"jump\")", "unknown.chain.is_action(\"jump\")"], Said(true));
     }
 
+    /// <summary>A name is written for each string it goes in: a quote like the string's own escaped, one a raw string can't say
+    /// told as none, and project.godot's key as it is.</summary>
+    [Fact]
+    public void A_new_name_is_written_for_the_quotes_of_each_string_it_goes_in()
+    {
+        const string script = "extends Node\n\n\nfunc _process(_delta):\n\tInput.is_action_pressed('jump')\n\tInput.is_action_pressed(\"jump\")\n\tInput.is_action_pressed(r'jump')\n";
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { ["res://project.godot"] = Named, ["res://player.gd"] = script });
+        Assert.Equal(["player's_jump", "player\\'s_jump", "player's_jump", null], scenes.Defined.Actions.Single().Places.Select(p => p.Written("player's_jump")));
+    }
+
     [Fact]
     public void A_gdscripts_strings_and_words_and_a_scenes_node_paths_are_places_of_the_names_they_give_godot()
     {

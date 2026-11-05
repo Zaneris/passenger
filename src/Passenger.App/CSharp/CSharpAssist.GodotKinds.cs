@@ -260,7 +260,8 @@ internal sealed partial class CSharpAssist
     }
 
     /// <summary>Why a name of a kind may not take a new name, else null: a name Godot's files would not hold as written, one
-    /// a name beside it has already, Godot's own input action, an animation's library left, or a place written with escapes.</summary>
+    /// a name beside it has already, Godot's own input action, an animation's library left, a place written with escapes, or a
+    /// raw string that can't say it.</summary>
     internal static string? KindRenameProblem(KindNamed named, string name)
     {
         string what = GodotChecks.What(named.Kind);
@@ -285,6 +286,10 @@ internal sealed partial class CSharpAssist
         if (named.Places.FirstOrDefault(p => !p.Plain && !p.Unsure) is { } escaped)
         {
             return $"{old} is written with escapes at {escaped.Shown}, which Passenger does not rename";
+        }
+        if (named.Places.FirstOrDefault(p => !p.Unsure && p.Written(name) is null) is { } raw)
+        {
+            return $"{old} is written in a raw string at {raw.Shown}, which can't say {name}";
         }
         if (named.Kind == GodotStringKind.Action && !named.Places.Any(p => p.Defines))
         {
@@ -348,7 +353,7 @@ internal sealed partial class CSharpAssist
                 return RefactorOutcome.Refused($"{old} was not renamed: {Path.GetFileName(file)} changed as it was read");
             }
             made[file] = text;
-            Add(file, new TextEdit(place.Start, place.End - place.Start, name[own..]));
+            Add(file, new TextEdit(place.Start, place.End - place.Start, place.Written(name[own..])!));
         }
         if (context.CSharp?.Session is { } session)
         {

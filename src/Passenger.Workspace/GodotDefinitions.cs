@@ -14,6 +14,14 @@ public sealed record GodotPlace(string Res, int Start, int End, bool Defines, st
     /// <summary>Whether it only may name it: a string given to a call of the right name on something Passenger cannot read as
     /// what takes it, which Find Usages lists and a rename leaves, saying so.</summary>
     public bool Unsure { get; init; }
+
+    /// <summary>The quote of a GDScript's string it lies in, and whether the string is raw; none elsewhere.</summary>
+    public char? Quote { get; init; }
+
+    public bool Raw { get; init; }
+
+    /// <summary>A name as it is written here: escaped for the string it lies in; null for a raw string that can't say it.</summary>
+    public string? Written(string name) => Quote is { } quote ? GodotScriptStrings.Written(name, quote, Raw) : name;
 }
 
 /// <summary>A name a Godot project defines, what it is as shown beside it, and every place its files write it.</summary>
@@ -537,7 +545,7 @@ public sealed class GodotDefinitions
             {
                 if ((use is null ? true : use(res, token)) is { } sure)
                 {
-                    Add(more, token.Text, ScriptPlace(res, token.Start, token.End, token.Plain) with { Unsure = !sure });
+                    Add(more, token.Text, ScriptPlace(res, token, token.Start, token.End) with { Unsure = !sure });
                 }
             }
         }
@@ -578,7 +586,7 @@ public sealed class GodotDefinitions
                 if (name is not null && named.Contains(name))
                 {
                     int start = token.Word ? token.Start : token.Start + RootPath.Length;
-                    Add(more, name, ScriptPlace(res, start, start + name.Length, token.Plain));
+                    Add(more, name, ScriptPlace(res, token, start, start + name.Length));
                 }
             }
         }
@@ -610,9 +618,9 @@ public sealed class GodotDefinitions
         }
     }
 
-    /// <summary>A place in a GDScript, a use of a name, as its words name it ("player.gd:12").</summary>
-    private GodotPlace ScriptPlace(string res, int start, int end, bool plain) =>
-        new(res, start, end, false, $"{Path.GetFileName(res)}:{LineOf(res, start) + 1}") { Plain = plain };
+    /// <summary>A place in a word or string of a GDScript, a use of a name, as its words name it ("player.gd:12").</summary>
+    private GodotPlace ScriptPlace(string res, GodotScriptToken token, int start, int end) =>
+        new(res, start, end, false, $"{Path.GetFileName(res)}:{LineOf(res, start) + 1}") { Plain = token.Plain, Quote = token.Word ? null : token.Quote, Raw = token.Raw };
 
     /// <summary>project.godot's global shader uniforms, each with every shader's <c>global uniform</c> declaring it and its uses there.</summary>
     private IReadOnlyList<GodotDefined> ReadGlobals()
