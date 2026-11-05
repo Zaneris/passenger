@@ -299,7 +299,9 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `Collection/Start` and `Collection/Stop`, and a histogram's count is the interval's.
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
   environment only; Endpoints sends nothing but on Test or Send, and a send taking the person's environment asks first.
-  `ResourceFiles` is the one reader and writer of `.resx` and `xlf/*.xlf`, a table's change one edit of the open text.
+  An app's OpenAPI document is asked only at its origin (`OpenApiAddresses`), and what's made from one with no app asked
+  comes from `AppDocuments`, never a process-wide cache. `ResourceFiles` is the one reader and writer of `.resx` and
+  `xlf/*.xlf`, a table's change one edit of the open text.
 - **Debugging.** `DebugController`, `DebugSession`; Variables and the hover card are one list. A row's expression is the
   debugger's `evaluateName`, never built in the window. A library's types are shown as the App tells the debugger at
   launch (`DapTypePresentation`), never by engine code naming a library. An exception is read from what it stores, a
