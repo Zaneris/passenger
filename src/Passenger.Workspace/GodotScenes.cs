@@ -524,7 +524,8 @@ public sealed class GodotScenes
 
     /// <summary>The edits each scene takes as a node is renamed: its <c>name</c> where it is declared and where a scene over
     /// that one changes it, and in every scene holding it the paths through it (a node's <c>parent</c>, a connection's <c>from</c> and <c>to</c>,
-    /// an <c>[editable]</c> path and a NodePath value relative to the node it is set on). By res:// path.</summary>
+    /// an <c>[editable]</c> path, and each NodePath a node's property holds, at any depth of its value, led from that node as
+    /// Godot leads it: a <c>%Name</c> to the unique node it finds). By res:// path.</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<TextEdit>> Renames(GodotTreeNode node, string name)
     {
         Dictionary<string, List<TextEdit>> edits = new(StringComparer.Ordinal);
@@ -533,6 +534,7 @@ public sealed class GodotScenes
         {
             Edit(declaring, new TextEdit(written.TextStart, written.TextEnd - written.TextStart, name));
         }
+        HashSet<string> led = new(StringComparer.Ordinal);
         foreach ((string scene, GodotTreeNode copy) in CopiesOf(node))
         {
             // A scene over the one declaring it names it again where it changes it (an instance's editable children).
@@ -554,13 +556,24 @@ public sealed class GodotScenes
                         Edit(scene, new TextEdit(value.TextStart + at.Start, at.Length, name));
                     }
                 }
-                if (section.Tag == "node" && new GodotNode(section) is var holder)
+            }
+            // Every copy in a scene is the same node to a path, so a scene's paths are led through once.
+            if (led.Add(scene))
+            {
+                foreach ((GodotTreeNode holder, GodotNode section) in copy.Root.Below().SelectMany(n => n.Written.Where(w => w.Scene == scene).Select(w => (n, w.Node))))
                 {
-                    foreach (GodotEntry property in section.Properties)
+                    foreach ((string path, int start, int end) in section.Section.Properties.SelectMany(p => file.CallsIn(p.Value, "NodePath")))
                     {
-                        if (property.Value is { Call: "NodePath", Plain: true } path && Through(holder.PathInScene, path.Text!, through) is { } at)
+                        // A path's text is a place in the file only where no escape is written in it; one edit then writes it whole.
+                        List<(int Start, int End)> names = [.. Resolve(holder, path).Steps.Where(s => s.Node.Same(node) && path[s.Start..s.End] != "..")
+                            .Select(s => (s.Start + (path[s.Start] == '%' ? 1 : 0), s.End))];
+                        if (end - start == path.Length)
                         {
-                            Edit(scene, new TextEdit(path.TextStart + at.Start, at.Length, name));
+                            names.ForEach(n => Edit(scene, new TextEdit(start + n.Start, n.End - n.Start, name)));
+                        }
+                        else if (names.Count > 0)
+                        {
+                            Edit(scene, new TextEdit(start, end - start, Enumerable.Reverse(names).Aggregate(path, (said, n) => said[..n.Start] + name + said[n.End..])));
                         }
                     }
                 }
@@ -630,42 +643,6 @@ public sealed class GodotScenes
         {
             int last = through.LastIndexOf('/') + 1;
             return (last, through.Length - last);
-        }
-        return null;
-    }
-
-    /// <summary>Where a NodePath set on a node (at <paramref name="holder"/> from the root) names the last name of a path
-    /// from the root: that name's place in it; null where it does not lead through it.</summary>
-    internal static (int Start, int Length)? Through(string holder, string path, string through)
-    {
-        int colon = path.IndexOf(':');
-        string names = colon >= 0 ? path[..colon] : path;
-        if (names.StartsWith('/') || through == ".")
-        {
-            return null;
-        }
-        List<string> at = holder == "." ? [] : [.. holder.Split('/')];
-        string[] target = through.Split('/');
-        int start = 0;
-        foreach (string name in names.Split('/'))
-        {
-            if (name == "..")
-            {
-                if (at.Count == 0)
-                {
-                    return null;
-                }
-                at.RemoveAt(at.Count - 1);
-            }
-            else if (name.Length > 0 && name != ".")
-            {
-                at.Add(name);
-                if (at.Count == target.Length && at.SequenceEqual(target))
-                {
-                    return (start, name.Length);
-                }
-            }
-            start += name.Length + 1;
         }
         return null;
     }

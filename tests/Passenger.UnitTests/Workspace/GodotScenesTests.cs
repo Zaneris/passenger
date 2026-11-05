@@ -222,6 +222,42 @@ public class GodotScenesTests
         Assert.Contains("[node name=\"Body\" parent=\"Player\" index=\"0\"]", Apply(Main, edits["res://main.tscn"]), StringComparison.Ordinal);
     }
 
+    /// <summary>A NodePath is a path through a node wherever a node's property holds it, in an array or a dictionary at any
+    /// depth, and led as Godot leads it from the node holding it, a <c>%Name</c> finding the unique node it names.</summary>
+    [Fact]
+    public void A_nodes_rename_follows_a_unique_name_and_every_node_path_a_property_holds_at_any_depth()
+    {
+        const string scene = """
+            [gd_scene format=3]
+
+            [node name="Main" type="Node2D"]
+            Unique = NodePath("%Score")
+            Below = NodePath("%Score/Label:text")
+            Listed = [NodePath("Hud/Score"), NodePath("Hud/Start")]
+            Typed = Array[NodePath]([NodePath("Hud/Score:text")])
+            Mapped = { "a": NodePath("Hud/Score"), "b": [NodePath("%Score")] }
+            Words = "NodePath(\"Hud/Score\")"
+            Far = NodePath("/root/Hud/Score")
+
+            [node name="Hud" type="CanvasLayer" parent="."]
+            Near = NodePath("Score")
+            Up = NodePath("../Hud/Score")
+
+            [node name="Score" type="Label" parent="Hud"]
+            unique_name_in_owner = true
+
+            [node name="Label" type="Label" parent="Hud/Score"]
+
+            [node name="Start" type="Button" parent="Hud"]
+
+            """;
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) });
+        string renamed = Apply(scene, scenes.Renames(scenes.Tree("res://main.tscn")!.Child("Hud")!.Child("Score")!, "Points")["res://main.tscn"]);
+        Assert.Equal(scene.Replace("%Score", "%Points", StringComparison.Ordinal).Replace("Hud/Score", "Hud/Points", StringComparison.Ordinal).Replace("NodePath(\"Score\")", "NodePath(\"Points\")", StringComparison.Ordinal)
+            .Replace("name=\"Score\"", "name=\"Points\"", StringComparison.Ordinal).Replace("NodePath(\\\"Hud/Points\\\")", "NodePath(\\\"Hud/Score\\\")", StringComparison.Ordinal)
+            .Replace("/root/Hud/Points", "/root/Hud/Score", StringComparison.Ordinal), renamed);
+    }
+
     [Fact]
     public void A_name_godot_refuses_or_one_beside_it_already_is_no_rename()
     {
