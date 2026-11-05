@@ -160,9 +160,9 @@ public sealed class GutRunner(Func<string, IReadOnlyList<TestItem>>? declared = 
     }
 
     /// <summary>Each test's outcome as GUT's results and output give it (<see cref="GutRuns.Read"/>), a failure's line told
-    /// as a frame of the test's file, which the window links; a chosen test GUT told nothing of left out, and every other
-    /// test it told added, whose result a run owes the person whether or not a row shows it.</summary>
-    private static IReadOnlyList<TestOutcome> Outcomes(string xml, string project, string folder, IReadOnlyList<TestItem> tests, string output)
+    /// as a frame of the file declaring the test, which the window links; a chosen test GUT told nothing of left out, and every
+    /// other test it told added, whose result a run owes the person whether or not a row shows it.</summary>
+    public static IReadOnlyList<TestOutcome> Outcomes(string xml, string project, string folder, IReadOnlyList<TestItem> tests, string output)
     {
         IReadOnlyDictionary<string, GutRuns.Result> results = GutRuns.Read(xml, output);
         List<TestOutcome> told = [];
@@ -173,7 +173,7 @@ public sealed class GutRunner(Func<string, IReadOnlyList<TestItem>>? declared = 
             chosen.Add(parts.Key);
             if (results.TryGetValue(parts.Key, out GutRuns.Result? result))
             {
-                told.Add(Outcome(test, parts, result, GutScripts.ScriptOf(folder, test.Method[..test.Method.LastIndexOf('.')], test.Path).Path));
+                told.Add(Outcome(test, parts, result, test.DeclaredIn ?? GutScripts.ScriptOf(folder, test.Method[..test.Method.LastIndexOf('.')], test.Path).Path));
             }
         }
         foreach ((string key, GutRuns.Result result) in results.Where(r => !chosen.Contains(r.Key)).OrderBy(r => r.Key, StringComparer.Ordinal))

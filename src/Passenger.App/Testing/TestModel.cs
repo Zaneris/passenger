@@ -17,6 +17,10 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
 
     public string? Path { get; init; }
 
+    /// <summary>The file declaring a test its <see cref="Path"/> inherits, whose lines a failure's are; null for a test declared
+    /// where it is.</summary>
+    public string? DeclaredIn { get; init; }
+
     /// <summary>The line its name is on, from one; zero when unknown.</summary>
     public int Line { get; init; }
 

@@ -111,4 +111,25 @@ public sealed class GutScriptsTests
         Assert.True(Code(Script, "test_adds") != Code(Script.Replace("a b", "ab", StringComparison.Ordinal), "test_adds"), "A test whose expected text lost a space reads as unchanged, so its old result stands");
         Assert.Equal(Code(Script, "test_turns"), Code(Script.Replace("a b", "ab", StringComparison.Ordinal), "test_turns"));
     }
+
+    private const string Failed = """
+        <testsuites><testsuite name="test/test_spinner.gd">
+          <testcase name="test_turns" status="fail" time="0"><failure><![CDATA[[1] expected to equal [2]:
+              at line 9]]></failure></testcase>
+        </testsuite></testsuites>
+        """;
+
+    /// <summary>GUT counts a failure's line in the function that failed, so its link goes to the script declaring that: the
+    /// deriving script's line of that number is any other code, or past its end.</summary>
+    [Fact]
+    public void A_failure_of_a_test_a_script_inherits_links_the_script_declaring_it()
+    {
+        string spinner = Path.Combine(Folder, "test", "test_spinner.gd");
+        string tester = Path.Combine(Folder, "tools", "spin_tester.gd");
+        TestItem inherited = new(Path.Combine(Folder, "project.godot"), "test.test_spinner.test_turns", "test_turns") { Path = spinner, DeclaredIn = tester, Line = 1 };
+        TestOutcome told = Assert.Single(GutRunner.Outcomes(Failed, inherited.Project, Folder, [inherited], string.Empty));
+        Assert.Equal($"   at test.test_spinner.test_turns() in {tester}:line 9", told.StackTrace);
+        TestOutcome own = Assert.Single(GutRunner.Outcomes(Failed, inherited.Project, Folder, [inherited with { DeclaredIn = null }], string.Empty));
+        Assert.Equal($"   at test.test_spinner.test_turns() in {spinner}:line 9", own.StackTrace);
+    }
 }

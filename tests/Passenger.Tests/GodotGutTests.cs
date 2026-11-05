@@ -374,6 +374,8 @@ public sealed class GodotGutTests : IDisposable
             Assert.True(Method(window, "test_inherited")!.State == TestState.Failed, $"The inherited test's row shows {Method(window, "test_inherited")!.State}:\n{Method(window, "test_inherited")!.Details}");
             TestOutcome inherited = Assert.Single(window.Tests.RunOutcomes, o => o.Test.FullyQualifiedName == "test.test_spinner.test_inherited");
             Assert.True(inherited.State == TestState.Failed, $"The inherited test's failure was told as {inherited.State}");
+            string spinTester = Path.Combine(folder, "tools", "spin_tester.gd");
+            Assert.True(inherited.StackTrace?.Contains($" in {spinTester}:line 6", StringComparison.Ordinal) == true, $"The failure's link goes to another file than the line it counts: {inherited.StackTrace}");
             Assert.True(window.BottomPanel.Tests.Status.StartsWith("Tests passed: 1, failed: 1 of 2", StringComparison.Ordinal), $"The run's tally leaves it out: {window.BottomPanel.Tests.Status}");
 
             Assert.False(Method(window, "test_inherited")!.CodeChanged, "An inherited test whose code did not change says it did");
@@ -603,6 +605,9 @@ public sealed class GodotGutTests : IDisposable
                 "An inherited test is to be the script's that runs it, which is the script GUT is given");
             Assert.Null(Ui.Await(window.Tests.DiscoverAsync(window.Folder!), "the tests found for a run"));
             Assert.All(inherited, name => Assert.True(Named(name)!.Items.Count > 0, $"{name} has a row and nothing a run would take for it, so no run of it or its script runs it"));
+            string tester = PathNames.Canonical(Path.Combine(folder, "test", "tools", "spin_tester.gd"));
+            Assert.All(inherited, name => Assert.All(Named(name)!.Items, item => Assert.True(item.DeclaredIn is { } declaring && PathNames.Same(declaring, tester),
+                $"{name} says it is declared in {item.DeclaredIn}, so a failure's link names a file other than the one its line counts in")));
 
             TestFolders.Write(folder, "test/tools/spin_tester.gd", "class_name SpinTester\nextends GutTest\n\n\nfunc test_turns():\n\tpass\n");
             Ui.WaitFor(() => window.Tests.Tree.Methods.All(m => m.Name != "test_spins"), () => $"the test its base no longer has to leave them all ({Shown()})");

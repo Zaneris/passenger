@@ -538,6 +538,7 @@ public sealed class TestFinder
                 tests.AddRange(read.Tests.Where(t => !t.Abstract).Select(t => new TestItem(project.Path, $"{t.Type}.{t.Method}", t.Method)
                 {
                     Path = path,
+                    DeclaredIn = t.DeclaredIn,
                     Line = t.Line + 1,
                     Traits = t.Traits,
                     Cases = t.Cases,
