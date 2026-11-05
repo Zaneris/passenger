@@ -858,6 +858,19 @@ public sealed partial class LiveTreeController
         await ShowDetailsAsync(shown.Id);
     }
 
+    /// <summary>Shows the window, a game's beside the Game window it may be drawn in, which stays in view.</summary>
+    private void ShowWindow()
+    {
+        if (app is Godot.GodotGame)
+        {
+            parts.Dock.ShowBeside(window.Id, ToolWindowIds.Game);
+        }
+        else
+        {
+            parts.Dock.Show(window.Id);
+        }
+    }
+
     private void OnAppState(object? sender, EventArgs e)
     {
         if (sender != app)
@@ -871,7 +884,7 @@ public sealed partial class LiveTreeController
         }
         if (app!.State == LiveAppState.Connected)
         {
-            parts.Dock.Show(window.Id);
+            ShowWindow();
             IdeErrors.Observe(RefreshAsync());
             IdeErrors.Observe(SyncWatchesAsync());
         }
@@ -1240,7 +1253,7 @@ public sealed partial class LiveTreeController
         Picking(false);
         outlined = true;
         Choose((long)picked.Id);
-        parts.Dock.Show(window.Id);
+        ShowWindow();
         IdeErrors.Observe(RefreshAsync());
     }
 
@@ -1263,7 +1276,7 @@ public sealed partial class LiveTreeController
             return false;
         }
         Choose(id);
-        parts.Dock.Show(window.Id);
+        ShowWindow();
         IdeErrors.Observe(RefreshAsync());
         return true;
     }
@@ -1279,7 +1292,7 @@ public sealed partial class LiveTreeController
         if (id is long element)
         {
             Choose(element);
-            parts.Dock.Show(window.Id);
+            ShowWindow();
             IdeErrors.Observe(PickedAsync(element));
         }
     }

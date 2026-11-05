@@ -104,6 +104,21 @@ public sealed class GamePaneTests
             $"The click 10,20 in from the game's top left reached Godot {version} at {x},{y}, where it takes {unit} to a logical unit");
     }
 
+    [AvaloniaFact]
+    public void The_live_tree_comes_below_the_game_window_as_a_game_connects_and_the_game_window_stays_shown()
+    {
+        using Rig rig = Rig.Open();
+        DockHost dock = rig.Window.DockHost;
+        Assert.Equal(dock[ToolWindowIds.Game].Anchor, dock[ToolWindowIds.LiveTree].Anchor);
+
+        Game game = rig.Hold(FourByThree, taken: true);
+        Ui.WaitFor(() => dock[ToolWindowIds.LiveTree].IsShown, () => $"the Live Tree to show as the game connects ({game.Listened.State})");
+
+        Assert.True(dock[ToolWindowIds.Game].IsShown, "The Live Tree took the Game window's place as the game connected, so the person who chose the Game window doesn't see the game");
+        Assert.Equal(ToolAnchor.RightTop, dock[ToolWindowIds.Game].Anchor);
+        Assert.Equal(ToolAnchor.RightBottom, dock[ToolWindowIds.LiveTree].Anchor);
+    }
+
     /// <summary>A headless window on a Godot project of GDScript alone, with what the tests hold of it.</summary>
     private sealed class Rig : IDisposable
     {

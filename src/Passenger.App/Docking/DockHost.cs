@@ -197,6 +197,28 @@ public sealed class DockHost : Grid
     /// windowed one already open stays where it is, and one opened comes without the keys (an agent's asking).</summary>
     public void ShowBehind([IdentifierOf(typeof(ToolWindowIds))] string id) => Show(id, forward: false);
 
+    /// <summary>Shows a window as <see cref="Show(string)"/> does, but never in the place of one that is to stay in view:
+    /// docked where <paramref name="stays"/> is shown, it goes to the other half of that side first.</summary>
+    public void ShowBeside([IdentifierOf(typeof(ToolWindowIds))] string id, [IdentifierOf(typeof(ToolWindowIds))] string stays)
+    {
+        ToolWindow window = this[id];
+        if (this[stays] is { IsShown: true, Mode: ToolMode.Docked } kept && window.Mode == ToolMode.Docked && window.Anchor == kept.Anchor)
+        {
+            Move(window, OtherHalf(window.Anchor));
+        }
+        Show(id);
+    }
+
+    private static ToolAnchor OtherHalf(ToolAnchor anchor) => anchor switch
+    {
+        ToolAnchor.LeftTop => ToolAnchor.LeftBottom,
+        ToolAnchor.LeftBottom => ToolAnchor.LeftTop,
+        ToolAnchor.RightTop => ToolAnchor.RightBottom,
+        ToolAnchor.RightBottom => ToolAnchor.RightTop,
+        ToolAnchor.BottomLeft => ToolAnchor.BottomRight,
+        _ => ToolAnchor.BottomLeft,
+    };
+
     private void Show(string id, bool forward)
     {
         ToolWindow window = this[id];

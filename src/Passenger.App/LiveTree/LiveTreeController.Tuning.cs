@@ -99,7 +99,7 @@ public sealed partial class LiveTreeController : IGodotTuner
             () => game.Tuning.Discard());
         unkept.Show(values);
         view?.ShowAside(unkept);
-        parts.Dock.Show(window.Id);
+        ShowWindow();
         parts.Say($"{game.Name} ended with {Plural.Of(values.Count, "value")} changed and not kept: the Live Visual Tree lists them to keep");
     }
 
