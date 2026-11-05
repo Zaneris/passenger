@@ -206,7 +206,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
 - `Passenger.Languages`: C# by Roslyn's parser in-process, each open file's one syntax (`OpenDocument.Syntax`), never a
   fresh parse, every parse's options from `CSharpParsing`, never its own; the rest by TextMate grammars through Tint
   (`TextMateHighlighter`, `ScopeColours`). A new language: one `Language` entry, its grammar and a notices entry;
-  compare entries, never names. A finder never tells its answer inside a document's `Changed`.
+  compare entries, never names. A finder never tells its answer inside a document's `Changed`. A recursive reader of a
+  person's text goes through `DeepestNesting` or a stack check: no text ends the IDE.
 - `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a
   binding's path is read once (`BindingPath`) for the check, Go to Declaration, uses and completion.
 - `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project), `LspDocument` (never a change
@@ -243,7 +244,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `MainWindow.ShowDiff`. An SVG preview is a drawing (`ZoomedPicture`), never a bitmap; an HTML preview is never made in
   a window nobody sees (WebView2 refuses a non-STA thread), on Windows is served (`ServedPage`, `WebView2Pages`),
   `NavigateToString` only where WebView2 refuses, and its white is the web view's own (`DrawGround`), never CSS: a
-  background on html stops a body's reaching the canvas.
+  background on html stops a body's reaching the canvas. Convert Indentation has one refusal
+  (`OpenDocument.WhyNotConverted`), a language's literals beyond its strings go in `Language.Literals`.
 - **Docking.** A kept layout records windows by `ToolWindowIds`, so a value never changes; one `Dock.Add` per window. A
   view is built when first shown: what the IDE writes while it's hidden lives in a model, reached only through a
   property that builds the view for a person's action. A view letting go on `DetachedFromVisualTree` shows itself again
