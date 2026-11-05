@@ -319,7 +319,8 @@ public sealed partial class Git
 {
     /// <summary>Sets commits signed as chosen, in the scope chosen, each setting by git config; for SSH, the key listed in
     /// the allowed signers file (made where there is none) for the committer's email, and the file named in the same
-    /// scope where git's config names none. The first git that fails is the answer.</summary>
+    /// scope where none reaches that scope: one this repository names alone reaches no other, so it never counts for a
+    /// global setting. The first git that fails is the answer.</summary>
     public async Task<GitResult> SetSigningAsync(SigningChoice choice)
     {
         string scope = choice.Global ? "--global" : "--local";
@@ -347,7 +348,7 @@ public sealed partial class Git
         {
             return new GitResult(0, string.Empty, string.Empty);
         }
-        GitResult named = await RunAsync(Root, ["config", "--type=path", "--get", "gpg.ssh.allowedSignersFile"], answers: [1]);
+        GitResult named = await RunAsync(Root, ["config", .. choice.Global ? [scope] : Array.Empty<string>(), "--type=path", "--get", "gpg.ssh.allowedSignersFile"], answers: [1]);
         string file = named.Succeeded && named.Output.Trim() is { Length: > 0 } listed ? System.IO.Path.GetFullPath(listed, Root)
             : choice.AllowedSigners ?? System.IO.Path.Combine(GitDir, "allowed_signers");
         GitResult email = await RunAsync(Root, ["config", "--get", "user.email"], answers: [1]);
