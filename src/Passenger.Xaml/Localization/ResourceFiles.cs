@@ -446,7 +446,11 @@ public static class ResourceFiles
             {
                 return text;
             }
-            int before = data.Children.Where(c => c.End <= held.Start).Select(c => c.End).DefaultIfEmpty(data.StartTagEnd).Max();
+            int before = held.Start;
+            while (before > data.StartTagEnd && char.IsWhiteSpace(text[before - 1]))
+            {
+                before--;
+            }
             return text[..before] + text[held.End..];
         }
         string written = XmlEntities.Encode(comment);

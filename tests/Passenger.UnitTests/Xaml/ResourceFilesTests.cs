@@ -150,6 +150,16 @@ public class ResourceFilesTests
     }
 
     [Fact]
+    public void Clearing_a_comment_takes_the_white_space_before_it_and_keeps_an_xml_comment_beside_it()
+    {
+        const string Text = "<root>\n  <data name=\"A\"><value>a</value><!-- translator note --><comment>old</comment></data>\n"
+            + "  <data name=\"B\">\n    <value>b</value>\n    <!-- kept -->\n    <comment>old</comment>\n  </data>\n</root>\n";
+        IReadOnlyList<ResourceEntry> entries = Read(Text);
+        Assert.Equal(Text.Replace("<comment>old</comment></data>", "</data>", StringComparison.Ordinal), ResourceFiles.WithComment(Text, entries[0], ""));
+        Assert.Equal(Text.Replace("\n    <comment>old</comment>\n  </data>", "\n  </data>", StringComparison.Ordinal), ResourceFiles.WithComment(Text, entries[1], ""));
+    }
+
+    [Fact]
     public void Entries_taken_out_of_a_resx_take_their_lines_with_them_and_one_sharing_its_line_only_itself()
     {
         const string Text = "<root>\r\n  <data name=\"A\"><value>a</value></data>\r\n  <data name=\"B\">\r\n    <value>b</value>\r\n  </data>\r\n"
