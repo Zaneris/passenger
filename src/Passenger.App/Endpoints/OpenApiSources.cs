@@ -25,23 +25,6 @@ public static partial class OpenApiSources
 
     private static readonly ConcurrentDictionary<string, (Task<OpenApiDocument?> Read, long At)> Read = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The documents read from apps that answered with one, newest first.</summary>
-    public static IReadOnlyList<OpenApiDocument> Known
-    {
-        get
-        {
-            List<OpenApiDocument> known = [];
-            foreach ((Task<OpenApiDocument?> read, _) in Read.Values.OrderByDescending(r => r.At))
-            {
-                if (read.IsCompletedSuccessfully && read.Result is { } document)
-                {
-                    known.Add(document);
-                }
-            }
-            return known;
-        }
-    }
-
     /// <summary>The document an app at <paramref name="address"/> serves (its own path <paramref name="mapped"/> first, then the
     /// defaults); null where none answers with one, or the address is no loopback one, which is never asked.</summary>
     public static Task<OpenApiDocument?> FromAppAsync(Uri address, IReadOnlyList<string> mapped, CancellationToken cancel)

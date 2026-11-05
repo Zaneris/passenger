@@ -40,8 +40,7 @@ public sealed class InteractiveTestDialog : IdeWindow
         Params.Set(SplitQuery(request.Url).Pairs.Select(p => (true, p.Key, p.Value)));
         Headers = new KeyValueGrid("Header", "Value");
         Headers.Set(request.Headers.Select(h => (true, h.Key, h.Value)));
-        // A body left empty is completed from the request schema of an OpenAPI document its app gave a test or a generate.
-        Body = Mono(request.Body.Length == 0 && SchemaBody(request) is { } completed ? completed : request.Body, multiline: true);
+        Body = Mono(request.Body, multiline: true);
         Body.PlaceholderText = "The request's body; < ./file.json sends that file";
         Criteria = Mono(string.Join("\n", request.Expectations.Select(e => e.ToString())), multiline: true);
         Criteria.PlaceholderText = "status 2xx\ntime < 500\nheader Content-Type contains json\njson $.id exists";
@@ -120,6 +119,10 @@ public sealed class InteractiveTestDialog : IdeWindow
         Closed += (_, _) => endpoints.Stop();
         Content = DialogFooter.Page(panes, DialogFooter.Bar(DialogFooter.Of(Send, close), problem));
         Paint(problem, TokenKeys.Error);
+        if (request.Body.Length == 0)
+        {
+            IdeErrors.Observe(CompleteBodyAsync());
+        }
     }
 
     public ComboBox Method { get; }
@@ -128,29 +131,27 @@ public sealed class InteractiveTestDialog : IdeWindow
     public KeyValueGrid Headers { get; }
     public TextBox Body { get; }
 
-    /// <summary>A body made from the request schema the operation a request calls has, in the newest OpenAPI document read of
-    /// its app that has one; null for a method that takes no body, or where none is known.</summary>
-    private static string? SchemaBody(EndpointRequest request)
-    {
-        if (request.Method is "GET" or "HEAD" or "DELETE" or "OPTIONS" || OpenApiRequests.RoutePath(request.Url) is not { } path)
-        {
-            return null;
-        }
-        foreach (OpenApiDocument document in OpenApiSources.Known)
-        {
-            if (document.OperationFor(request.Method, path)?.RequestSchema is { } schema)
-            {
-                return OpenApiSchemas.SampleText(document, schema);
-            }
-        }
-        return null;
-    }
     public TextBox Criteria { get; }
     public NumericUpDown Timeout { get; }
     public CheckBox FollowRedirects { get; }
     public CheckBox AcceptAnyCertificate { get; }
     public Button Send { get; }
     public ResponseView Response { get; }
+
+    /// <summary>A body left empty, completed from the request schema of the document the app the request goes to gave a test
+    /// or a generate, unless the person has begun to change it, or where it goes, by then.</summary>
+    private async Task CompleteBodyAsync()
+    {
+        string? completed = await endpoints.SchemaBodyAsync(request);
+        if (completed is not null && string.IsNullOrEmpty(Body.Text) && Url.Text == request.Url && Method.SelectedItem as string == request.Method)
+        {
+            Body.Text = completed;
+            if (PageShown == 0 && SplitQuery(request.Url).Pairs.Count == 0)
+            {
+                ShowPage(2);
+            }
+        }
+    }
 
     /// <summary>Why the request as it stands cannot go, empty when it can.</summary>
     public string Problem => problem.Text ?? string.Empty;

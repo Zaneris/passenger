@@ -22,7 +22,7 @@ public partial class MainWindow
         // Built as it is first shown or asked for (a route's request sent), over the session's files and routes then.
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Endpoints, "Endpoints", IconKeys.Endpoints, () =>
         {
-            EndpointsView view = new(new EndpointsParts(work, () => session.EndpointGrants, text => status.Text = text, RowMenuItem) { DocumentOf = RunningDocumentAsync });
+            EndpointsView view = new(new EndpointsParts(work, () => session.EndpointGrants, text => status.Text = text, RowMenuItem) { DocumentOf = RunningDocumentAsync, KnownDocument = address => session.AppDocuments.Of(address) });
             endpoints = view;
             view.GoToRequested += (_, request) => NavigateTo(request.File, new TextPosition(request.Line, 0));
             view.InteractiveRequested += (_, request) => OpenInteractiveTest(request);

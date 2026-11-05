@@ -12,9 +12,9 @@ namespace Passenger.Tests;
 /// <summary>A minimal API that describes itself with MapOpenApi, its document read from the running app on this machine:
 /// Generate Requests from OpenAPI writes a request per operation into its project's .http file, bodies from the request
 /// schemas, one Undo taking them back; a request's answer is held to its response schema, a member that breaks it said at
-/// that member; and Interactive Test completes a request's empty body from its schema; and a document the build writes
-/// makes the requests of an app not running; an app whose code names no document is held to the one the person names. Its
-/// packages come from the package cache alone, Microsoft.AspNetCore.OpenApi's
+/// that member; and Interactive Test completes a request's empty body from its schema, of the app it goes to alone; and a
+/// document the build writes makes the requests of an app not running; an app whose code names no document is held to the
+/// one the person names. Its packages come from the package cache alone, Microsoft.AspNetCore.OpenApi's
 /// and Microsoft.Extensions.ApiDescription.Server's from the AspireGraphs restore.</summary>
 public sealed class OpenApiEndpointsTests
 {
@@ -195,6 +195,68 @@ public sealed class OpenApiEndpointsTests
             window.Close();
         }
     }
+
+    /// <summary>Two apps with one route, each the folder's environments' address, as tests of each would have left their
+    /// documents: Interactive Test completes a body from the document of the app the environment chosen sends it to, from
+    /// none with no address to go to, and another folder asking after those addresses from none.</summary>
+    [AvaloniaFact]
+    public void Interactive_test_completes_a_body_from_the_document_of_the_app_it_goes_to_alone()
+    {
+        const string Orders = "POST {{host}}/orders\nContent-Type: application/json\n";
+        string folder = TestFolders.Create("openapi-apps-");
+        TestFolders.Write(folder, "orders.http", Orders);
+        TestFolders.Write(folder, HttpVariables.PublicFile, """{ "first": { "host": "http://localhost:1111" }, "second": { "host": "http://localhost:2222" } }""");
+        MainWindow window = Ui.OpenFolder(PathNames.Canonical(folder), languageServer: false);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Endpoints);
+            Ui.WaitFor(() => window.Endpoints.Requests.Count == 1, "the request listed");
+            EndpointRequest orders = window.Endpoints.Requests[0];
+            window.Session.AppDocuments.Took(new Uri("http://localhost:1111"), OrdersOf("customer"));
+            window.Session.AppDocuments.Took(new Uri("http://localhost:2222"), OrdersOf("supplier"));
+
+            window.Endpoints.ChooseEnvironment("first");
+            Assert.Contains("customer", Completed(window, orders), StringComparison.Ordinal);
+            window.Endpoints.ChooseEnvironment("second");
+            Assert.Contains("supplier", Completed(window, orders), StringComparison.Ordinal);
+            window.Endpoints.ChooseEnvironment("No environment");
+            Assert.Equal(string.Empty, Completed(window, orders));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        string another = TestFolders.Create("openapi-other-");
+        TestFolders.Write(another, "orders.http", "@host = http://localhost:1111\n\n" + Orders);
+        MainWindow elsewhere = Ui.OpenFolder(PathNames.Canonical(another), languageServer: false);
+        try
+        {
+            elsewhere.ShowToolWindow(ToolWindowIds.Endpoints);
+            Ui.WaitFor(() => elsewhere.Endpoints.Requests.Count == 1, "the other folder's request listed");
+            Assert.Equal(string.Empty, Completed(elsewhere, elsewhere.Endpoints.Requests[0]));
+        }
+        finally
+        {
+            elsewhere.Close();
+        }
+    }
+
+    /// <summary>What Interactive Test opens with as the body of a request written with none.</summary>
+    private static string Completed(MainWindow window, EndpointRequest request)
+    {
+        InteractiveTestDialog dialog = window.OpenInteractiveTest(request);
+        Ui.Settle();
+        string body = dialog.Body.Text ?? string.Empty;
+        dialog.Close();
+        Ui.Settle();
+        return body;
+    }
+
+    private static OpenApiDocument OrdersOf(string member) => OpenApiDocument.Parse($$"""
+        { "openapi": "3.1.1", "paths": { "/orders": { "post": { "requestBody": { "content": { "application/json": { "schema": {
+          "type": "object", "properties": { "{{member}}": { "type": "string" } } } } } }, "responses": { "200": { "description": "OK" } } } } } }
+        """)!;
 
     /// <summary>One minimal API on <c>MapOpenApi</c>, its launch profile on a port of its own: an item by id, one added, and
     /// one route whose answer breaks the schema its document gives it (a number for the name, a word for the price).</summary>

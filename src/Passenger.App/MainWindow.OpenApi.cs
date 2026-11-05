@@ -34,6 +34,7 @@ public partial class MainWindow
                 IReadOnlyList<string> code = await CodeOfAsync(model);
                 document = current.OpenApiNames.Of(project) is { } named ? await OpenApiSources.FromNamedAsync(named, running, working.Stopping)
                     : await OpenApiSources.FromAppAsync(running, OpenApiSources.MappedIn(code), working.Stopping);
+                current.AppDocuments.Took(running, document);
             }
             if (document is null && model is not null && !working.IsStopped)
             {
@@ -88,24 +89,34 @@ public partial class MainWindow
     }
 
     /// <summary>The OpenAPI document of the app a request went to (<see cref="EndpointsParts.DocumentOf"/>): of a project the
-    /// folder runs at that address whose code has it describe itself, asked of it there; null for any other.</summary>
+    /// folder runs at that address whose code has it describe itself, asked of it there and kept as what that app gave the
+    /// folder; null for any other.</summary>
     private async Task<OpenApiDocument?> RunningDocumentAsync(Uri sent, CancellationToken cancel)
     {
+        ProjectSession current = session;
         string origin = sent.GetLeftPart(UriPartial.Authority);
-        foreach (string project in session.Running.Select(p => p.Project).OfType<string>().Distinct(PathNames.Comparer).ToList())
+        foreach (string project in current.Running.Select(p => p.Project).OfType<string>().Distinct(PathNames.Comparer).ToList())
         {
             if (await RunningAddressAsync(project) is { } address && Uri.TryCreate(address, UriKind.Absolute, out Uri? at)
                 && string.Equals(at.GetLeftPart(UriPartial.Authority), origin, StringComparison.OrdinalIgnoreCase))
             {
-                if (session.OpenApiNames.Of(project) is { } named)
-                {
-                    return await OpenApiSources.FromNamedAsync(named, sent, cancel);
-                }
-                IReadOnlyList<string> code = await CodeOfAsync(Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)));
-                return OpenApiSources.Describes(code) ? await OpenApiSources.FromAppAsync(sent, OpenApiSources.MappedIn(code), cancel) : null;
+                OpenApiDocument? document = await DocumentAtAsync(current, project, sent, cancel);
+                current.AppDocuments.Took(sent, document);
+                return document;
             }
         }
         return null;
+    }
+
+    /// <summary>The document a project's app serves at an address: the one named for it, else what its code has it describe.</summary>
+    private async Task<OpenApiDocument?> DocumentAtAsync(ProjectSession current, string project, Uri address, CancellationToken cancel)
+    {
+        if (current.OpenApiNames.Of(project) is { } named)
+        {
+            return await OpenApiSources.FromNamedAsync(named, address, cancel);
+        }
+        IReadOnlyList<string> code = await CodeOfAsync(Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)));
+        return OpenApiSources.Describes(code) ? await OpenApiSources.FromAppAsync(address, OpenApiSources.MappedIn(code), cancel) : null;
     }
 
     /// <summary>Name OpenAPI Document for a web project: the person asked where its app serves the document its code names

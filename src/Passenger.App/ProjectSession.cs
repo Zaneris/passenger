@@ -847,6 +847,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The OpenAPI documents the person named for the folder's web projects whose code names none.</summary>
     public Endpoints.OpenApiNames OpenApiNames { get; } = new();
 
+    /// <summary>The OpenAPI document each of the folder's apps last gave a test or a generate.</summary>
+    public Endpoints.AppDocuments AppDocuments { get; } = new();
+
     /// <summary>The routes the folder's web projects declare in their code, as the language server's extension last read them.</summary>
     public Endpoints.RouteCatalog Routes { get; } = new();
 

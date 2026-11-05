@@ -145,6 +145,33 @@ public sealed class OpenApiTests
             OpenApiSchemas.Check(given, given.OperationFor("GET", "/files/a.json")!.ResponseSchema(200)!.Value, answer.RootElement));
     }
 
+    private static OpenApiDocument Orders(string member) => OpenApiDocument.Parse($$"""
+        { "openapi": "3.1.1", "paths": { "/orders": { "post": { "requestBody": { "content": { "application/json": { "schema": {
+          "type": "object", "properties": { "{{member}}": { "type": "string" } } } } } }, "responses": { "200": { "description": "OK" } } } } } }
+        """)!;
+
+    /// <summary>Two apps serving one route give a body each from its own document, however late the other came; another
+    /// folder's documents hold neither, and an app that now gives none leaves none of what it gave.</summary>
+    [Fact]
+    public void A_body_is_made_from_the_document_of_the_app_at_the_address_alone()
+    {
+        AppDocuments folder = new();
+        Uri first = new("http://localhost:1111/orders");
+        Uri second = new("http://localhost:2222/");
+        folder.Took(first, Orders("customer"));
+        Assert.Contains("customer", OpenApiRequests.BodyFor(folder.Of(first), "POST", "/orders"), StringComparison.Ordinal);
+        folder.Took(second, Orders("supplier"));
+        Assert.Contains("customer", OpenApiRequests.BodyFor(folder.Of(new Uri("http://LOCALHOST:1111")), "POST", "/orders"), StringComparison.Ordinal);
+        Assert.Contains("supplier", OpenApiRequests.BodyFor(folder.Of(second), "POST", "/orders"), StringComparison.Ordinal);
+        Assert.Null(folder.Of(new Uri("http://localhost:3333/orders")));
+        Assert.Null(new AppDocuments().Of(first));
+        Assert.Null(OpenApiRequests.BodyFor(folder.Of(first), "GET", "/orders"));
+        Assert.Null(OpenApiRequests.BodyFor(folder.Of(first), "POST", "/invoices"));
+        folder.Took(first, null);
+        Assert.Null(folder.Of(first));
+        Assert.NotNull(folder.Of(second));
+    }
+
     /// <summary>A path lies at its app's origin however it is written, or nowhere: a reference to another host, or to
     /// another port of this one, is asked of no one.</summary>
     [Fact]

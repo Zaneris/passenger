@@ -520,6 +520,13 @@ public static partial class OpenApiRequests
             && RoutePath(request.Url) is { } path && document.OperationFor(operation.Method, path) == operation))];
     }
 
+    /// <summary>A body made from the request schema of the operation a request calls in its app's document; null for a method
+    /// that takes no body, or where the document, if there is one, gives none.</summary>
+    public static string? BodyFor(OpenApiDocument? document, string method, string path) =>
+        method is not ("GET" or "HEAD" or "DELETE" or "OPTIONS") && document?.OperationFor(method, path)?.RequestSchema is { } schema
+            ? OpenApiSchemas.SampleText(document, schema)
+            : null;
+
     /// <summary>The path a request's URL asks for, after its leading <c>{{variable}}</c> or <c>scheme://host</c>.</summary>
     public static string? RoutePath(string url)
     {

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -34,6 +35,31 @@ public sealed record OpenApiOperation(string Method, string Path, string? Operat
             : Responses.TryGetValue($"{code[0]}XX", out JsonElement range) ? range
             : Responses.TryGetValue("default", out JsonElement fallback) ? fallback
             : null;
+    }
+}
+
+/// <summary>The OpenAPI document each of a folder's apps last gave a test or a generate, by the origin the app answers at, for
+/// what is made from a document with no app asked: the same route of another app, or of another folder's, is another's
+/// schema. Any thread.</summary>
+public sealed class AppDocuments
+{
+    private readonly ConcurrentDictionary<string, OpenApiDocument> byOrigin = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The document the app at an address last gave, or null.</summary>
+    public OpenApiDocument? Of(Uri address) => byOrigin.GetValueOrDefault(address.GetLeftPart(UriPartial.Authority));
+
+    /// <summary>What the app at an address gave, in place of what it gave before: its document, or none.</summary>
+    public void Took(Uri address, OpenApiDocument? document)
+    {
+        string origin = address.GetLeftPart(UriPartial.Authority);
+        if (document is null)
+        {
+            byOrigin.TryRemove(origin, out _);
+        }
+        else
+        {
+            byOrigin[origin] = document;
+        }
     }
 }
 

@@ -154,16 +154,16 @@ public static class EndpointClient
             }
             resolvedBody = string.Empty;
         }
-        if (!resolvedUrl.Contains("://", StringComparison.Ordinal))
-        {
-            resolvedUrl = "http://" + resolvedUrl;
-        }
+        resolvedUrl = WithScheme(resolvedUrl);
         if (!Uri.TryCreate(resolvedUrl, UriKind.Absolute, out Uri? uri) || uri.Scheme is not ("http" or "https"))
         {
             return (null, $"\"{resolvedUrl}\" is no http or https URL");
         }
         return (new EndpointCall(method.Trim().ToUpperInvariant(), uri.AbsoluteUri, resolvedHeaders, resolvedBody) { BodyFile = bodyFile, Reads = reads }, null);
     }
+
+    /// <summary>A resolved URL as it goes: http's where it names no scheme.</summary>
+    internal static string WithScheme(string url) => url.Contains("://", StringComparison.Ordinal) ? url : "http://" + url;
 
     /// <summary>Sends the call, its body's file read first, within the timeout and the stop. A redirect is followed (when
     /// the options say so) with the request's headers only to the same origin (scheme, host and port): to another, it goes

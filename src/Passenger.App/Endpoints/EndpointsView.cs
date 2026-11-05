@@ -18,6 +18,9 @@ public sealed record EndpointsParts(ActionWork Work, Func<EndpointGrants> Grants
     /// <summary>The OpenAPI document of the app a request went to, where the folder runs it and it describes itself; null for
     /// any other.</summary>
     public Func<Uri, CancellationToken, Task<OpenApiDocument?>>? DocumentOf { get; init; }
+
+    /// <summary>The OpenAPI document the app at an address last gave the folder, no app asked; null for none.</summary>
+    public Func<Uri, OpenApiDocument?>? KnownDocument { get; init; }
 }
 
 /// <summary>A request as it is to be sent: as written, or as changed in the Interactive Test dialog.</summary>
@@ -386,6 +389,22 @@ public sealed class EndpointsView : DockPanel
                 sending = null;
             }
         }
+    }
+
+    /// <summary>A body for a request written with none, from the document the app it goes to last gave the folder, its address
+    /// read in the environment chosen, off the window's thread; null where none is known. Nothing is sent.</summary>
+    internal async Task<string?> SchemaBodyAsync(EndpointRequest request)
+    {
+        UiThread.Check();
+        if (parts.KnownDocument is not { } known || OpenApiRequests.RoutePath(request.Url) is not { } path)
+        {
+            return null;
+        }
+        HttpFile file = FileOf(request);
+        string? environment = Environment;
+        string? folder = root;
+        string url = await BackgroundWork.Run(() => HttpVariables.Resolve(request.Url, HttpVariables.For(file, environment, folder), new HttpVariables.Filling()).Trim());
+        return Uri.TryCreate(EndpointClient.WithScheme(url), UriKind.Absolute, out Uri? app) ? OpenApiRequests.BodyFor(known(app), request.Method, path) : null;
     }
 
     /// <summary>The web project of the row chosen: its heading's, or a route's.</summary>
