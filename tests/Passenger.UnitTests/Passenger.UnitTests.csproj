@@ -213,6 +213,8 @@
     <Compile Include="../../src/Passenger.App/Godot/GodotIdeRetry.cs" Link="App/GodotIdeRetry.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GutBases.cs" Link="App/GutBases.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GutRuns.cs" Link="App/GutRuns.cs" />
+    <Compile Include="../../src/Passenger.App/Testing/GutScripts.cs" Link="App/GutScripts.cs" />
+    <Compile Include="../../src/Passenger.App/Testing/FileTests.cs" Link="App/FileTests.cs" />
     <Compile Include="../../src/Passenger.App/Testing/TestCode.cs" Link="App/TestCode.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GoDotTests.cs" Link="App/GoDotTests.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GdUnit4Settings.cs" Link="App/GdUnit4Settings.cs" />

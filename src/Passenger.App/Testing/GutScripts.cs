@@ -242,6 +242,8 @@ public static partial class GutScripts
                     types.Insert(owner == type ? 0 : types.Count, (owner, line));
                 }
                 tests.Add(new DeclaredTest(owner, method, line, [], false));
+                // A method of the file as far as a runner's test of it goes, which would read as gone otherwise.
+                methods.Add(method);
             }
         }
         List<string> passedOn = [.. tests.Where(t => t.Type == type).Select(t => t.Method)];

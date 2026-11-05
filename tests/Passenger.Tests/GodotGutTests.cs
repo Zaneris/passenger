@@ -558,6 +558,8 @@ public sealed class GodotGutTests : IDisposable
             Assert.Equal(2, Named("test.test_chain.test_spins")!.FromCode!.Line);
             Assert.True(PathNames.Same(Named("test.test_chain.test_spins")!.FromCode!.Path!, PathNames.Canonical(Path.Combine(folder, "test", "test_chain.gd"))),
                 "An inherited test is to be the script's that runs it, which is the script GUT is given");
+            Assert.Null(Ui.Await(window.Tests.DiscoverAsync(window.Folder!), "the tests found for a run"));
+            Assert.All(inherited, name => Assert.True(Named(name)!.Items.Count > 0, $"{name} has a row and nothing a run would take for it, so no run of it or its script runs it"));
 
             TestFolders.Write(folder, "test/tools/spin_tester.gd", "class_name SpinTester\nextends GutTest\n\n\nfunc test_turns():\n\tpass\n");
             Ui.WaitFor(() => window.Tests.Tree.Methods.All(m => m.Name != "test_spins"), () => $"the test its base no longer has to leave them all ({Shown()})");
