@@ -171,6 +171,7 @@
     <Compile Include="../../src/Passenger.App/Endpoints/Expectation.cs" Link="App/Expectation.cs" />
     <Compile Include="../../src/Passenger.App/Endpoints/EndpointClient.cs" Link="App/EndpointClient.cs" />
     <Compile Include="../../src/Passenger.App/Endpoints/HttpVariables.cs" Link="App/HttpVariables.cs" />
+    <Compile Include="../../src/Passenger.App/Endpoints/MultipartBody.cs" Link="App/MultipartBody.cs" />
     <Compile Include="../../src/Passenger.App/Endpoints/RouteRequests.cs" Link="App/RouteRequests.cs" />
     <Compile Include="../../src/Passenger.App/Endpoints/OpenApiAddresses.cs" Link="App/OpenApiAddresses.cs" />
     <Compile Include="../../src/Passenger.App/Endpoints/OpenApiDocument.cs" Link="App/OpenApiDocument.cs" />

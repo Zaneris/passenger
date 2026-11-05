@@ -139,10 +139,9 @@ public static class EndpointClient
             return (null, $"No value for {string.Join(", ", unresolved.Select(u => "{{" + u + "}}"))}: set it in the file (@{unresolved.First()} = …) or in {HttpVariables.PublicFile}");
         }
         List<EndpointRead> reads = [.. filling.Environment.Select(name => new EndpointRead(IsFile: false, name, filling.Unset.Contains(name)))];
-        // A multipart body's lines end in CRLF, by which its parts are found; an .http file's are the editor's.
-        if (resolvedHeaders.Any(h => h.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase) && h.Value.TrimStart().StartsWith("multipart/", StringComparison.OrdinalIgnoreCase)))
+        if (resolvedHeaders.FirstOrDefault(h => h.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)).Value is { } contentType)
         {
-            resolvedBody = resolvedBody.ReplaceLineEndings("\r\n");
+            resolvedBody = MultipartBody.Framed(resolvedBody, contentType);
         }
         // A body "< ./file.json" alone is that file's text; one outside the folder (a link's too) is the person's to allow.
         string? bodyFile = null;
