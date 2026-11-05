@@ -1,4 +1,4 @@
-using NuGet.Frameworks;
+using Passenger.App.Run;
 using Passenger.Packages;
 using Passenger.Workspace;
 
@@ -29,7 +29,7 @@ public static class BrowserProxy
         {
             return null;
         }
-        string? framework = FrameworkOf(project.TargetFrameworks, launched);
+        string? framework = LaunchedFrameworks.Of(project.TargetFrameworks, launched);
         foreach (string package in packages)
         {
             string? version = restored.Of(framework, package);
@@ -39,22 +39,5 @@ public static class BrowserProxy
             }
         }
         return null;
-    }
-
-    /// <summary>Which of a project's several frameworks a launch of <paramref name="launched"/> builds: that one, else the
-    /// nearest it can reference, as a project reference takes one, or with no launch's named the first. Null for a project
-    /// of one, whose restore names none, and where it has none the launch can take.</summary>
-    internal static string? FrameworkOf(IReadOnlyList<string> frameworks, string? launched)
-    {
-        if (frameworks.Count <= 1)
-        {
-            return null;
-        }
-        if (launched is null)
-        {
-            return frameworks[0];
-        }
-        return frameworks.FirstOrDefault(f => f.Equals(launched, StringComparison.OrdinalIgnoreCase))
-            ?? NuGetFrameworkUtility.GetNearest(frameworks, NuGetFramework.ParseFolder(launched), NuGetFramework.ParseFolder);
     }
 }

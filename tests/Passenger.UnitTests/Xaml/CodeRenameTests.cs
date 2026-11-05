@@ -29,7 +29,31 @@ public sealed class CodeRenameTests
             private string _name = "";
 
             [RelayCommand]
-            private void BuyAsync()
+            private Task BuyAsync() => Task.CompletedTask;
+
+            [RelayCommand]
+            private void SaveAsync()
+            {
+            }
+
+            [RelayCommand]
+            private System.Threading.Tasks.Task<int> Load() => Task.FromResult(1);
+
+            [RelayCommand]
+            private void Keep()
+            {
+            }
+
+            [RelayCommand]
+            private void OnRefresh()
+            {
+            }
+
+            [RelayCommand]
+            private Task OnSendAsync() => Task.CompletedTask;
+
+            [RelayCommand]
+            private void Online()
             {
             }
         }
@@ -58,6 +82,12 @@ public sealed class CodeRenameTests
                 <TextBlock Text="{Binding Title}" />
                 <TextBlock Text="{Binding Name}" />
                 <Button Command="{Binding BuyCommand}" Click="OnBought" />
+                <Button Command="{Binding SaveAsyncCommand}" />
+                <Button Command="{Binding LoadCommand}" />
+                <Button Command="{Binding KeepCommand}" />
+                <Button Command="{Binding RefreshCommand}" />
+                <Button Command="{Binding SendCommand}" />
+                <Button Command="{Binding OnlineCommand}" />
             </StackPanel>
         </UserControl>
         """;
@@ -70,6 +100,11 @@ public sealed class CodeRenameTests
         Assert.Equal("heading", CodeSymbol.NameFor("title", "Title", "Heading"));
         Assert.Equal("SellAsync", CodeSymbol.NameFor("BuyAsync", "BuyCommand", "SellCommand"));
         Assert.Equal("Sell", CodeSymbol.NameFor("Buy", "BuyCommand", "SellCommand"));
+        Assert.Equal("Sell", CodeSymbol.NameFor("BuyAsync", "BuyAsyncCommand", "SellCommand"));
+        Assert.Equal("SellAsync", CodeSymbol.NameFor("BuyAsync", "BuyAsyncCommand", "SellAsyncCommand"));
+        Assert.Equal("OnSell", CodeSymbol.NameFor("OnBuy", "BuyCommand", "SellCommand"));
+        Assert.Equal("OnSellAsync", CodeSymbol.NameFor("OnBuyAsync", "BuyCommand", "SellCommand"));
+        Assert.Equal("Sell", CodeSymbol.NameFor("Online", "OnlineCommand", "SellCommand"));
         Assert.Equal("Salutation", CodeSymbol.NameFor("Greeting", "Greeting", "Salutation"));
         Assert.Equal("Large", CodeSymbol.NameFor("Big", "big", "Large"));
     }
@@ -109,6 +144,32 @@ public sealed class CodeRenameTests
         Assert.Equal(View.Replace("Binding Title", "Binding Heading", StringComparison.Ordinal), Renamed("F:Shop.ShopViewModel._title", "_title", "heading"));
         Assert.Equal(View.Replace("BuyCommand", "OrderCommand", StringComparison.Ordinal), Renamed("M:Shop.ShopViewModel.BuyAsync", "BuyAsync", "Order"));
         Assert.Equal(View, Renamed("M:Shop.ShopViewModel.BuyAsync", "BuyAsync", "Buy"));
+    }
+
+    [Theory]
+    [InlineData("BuyAsync", "BuyCommand", "OrderAsync", "OrderCommand")]
+    [InlineData("SaveAsync", "SaveAsyncCommand", "StoreAsync", "StoreAsyncCommand")]
+    [InlineData("SaveAsync", "SaveAsyncCommand", "Store", "StoreCommand")]
+    [InlineData("Load", "LoadCommand", "FetchAsync", "FetchCommand")]
+    [InlineData("Load", "LoadCommand", "LoadAsync", "LoadCommand")]
+    [InlineData("Keep", "KeepCommand", "HoldAsync", "HoldAsyncCommand")]
+    [InlineData("OnRefresh", "RefreshCommand", "OnReload", "ReloadCommand")]
+    [InlineData("OnRefresh", "RefreshCommand", "Reload", "ReloadCommand")]
+    [InlineData("OnSendAsync", "SendCommand", "OnPostAsync", "PostCommand")]
+    [InlineData("Online", "OnlineCommand", "Offline", "OfflineCommand")]
+    [InlineData("Online", "OnlineCommand", "OnLine", "LineCommand")]
+    public void A_relay_method_renamed_respells_its_command_as_the_toolkit_names_it_by_what_the_method_returns(string method, string command, string name, string respelled)
+    {
+        Assert.Equal(View.Replace(command, respelled, StringComparison.Ordinal), Renamed($"M:Shop.ShopViewModel.{method}", method, name));
+    }
+
+    [Fact]
+    public void A_file_writing_either_of_a_methods_commands_may_use_it()
+    {
+        CodeSymbol handler = Assert.IsType<CodeSymbol>(CodeSymbol.Of("M:Shop.ShopViewModel.OnSaveAsync", null));
+        Assert.True(handler.MayBeIn("{Binding SaveCommand}"), "A Task's command was taken for no use of its method");
+        Assert.True(handler.MayBeIn("{Binding SaveAsyncCommand}"), "A void method's command was taken for no use of it");
+        Assert.False(handler.MayBeIn("{Binding Save}"), "A file writing neither command, nor the name, was read for one");
     }
 
     [Fact]

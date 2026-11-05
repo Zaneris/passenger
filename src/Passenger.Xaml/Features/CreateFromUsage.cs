@@ -113,9 +113,9 @@ public static class CreateFromUsage
         bool toolkit = observable && types.Find("CommunityToolkit.Mvvm.ComponentModel.ObservablePropertyAttribute") is not null;
         bool relay = uses && types.Find("CommunityToolkit.Mvvm.Input.RelayCommandAttribute") is not null;
         string field = "_" + char.ToLowerInvariant(name[0]) + name[1..];
-        if (command && relay && name.EndsWith("Command", StringComparison.Ordinal) && name.Length > "Command".Length)
+        if (command && relay && ToolkitNames.MethodFor(string.Empty, name, task: false) is { } method)
         {
-            return new Planned($"[RelayCommand]\nprivate void {name[..^"Command".Length]}()\n{{\n}}", Placement.Method, ["CommunityToolkit.Mvvm.Input"], true, "[RelayCommand]");
+            return new Planned($"[RelayCommand]\nprivate void {method}()\n{{\n}}", Placement.Method, ["CommunityToolkit.Mvvm.Input"], true, "[RelayCommand]");
         }
         List<string> usings = [];
         string type = command ? Nullable("ICommand", true, nullable) : target is null ? Nullable("object", true, nullable) : CSharp(types, file.Dialect.ValueTypeOf(target.ValueType), usings, nullable);

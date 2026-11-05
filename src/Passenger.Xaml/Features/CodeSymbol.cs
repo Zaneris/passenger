@@ -52,7 +52,7 @@ public sealed class CodeSymbol
     {
         'T' => name.EndsWith("Extension", StringComparison.Ordinal) && name.Length > "Extension".Length ? [name, name[..^"Extension".Length]] : [name],
         'F' when ToolkitNames.PropertyOf(name) is { } property => [name, property],
-        'M' => [name, ToolkitNames.CommandOf(name), ToolkitNames.CancelCommandOf(name)],
+        'M' => [name, ToolkitNames.CommandOf(name, task: false), ToolkitNames.CommandOf(name, task: true), ToolkitNames.CancelCommandOf(name)],
         _ => [name],
     };
 
@@ -89,8 +89,8 @@ public sealed class CodeSymbol
     /// <summary>Whether a use written as <paramref name="written"/> spells the symbol's name (its own, a markup extension's
     /// without Extension, or the property or a command the MVVM Toolkit makes of it), and how once the symbol is named
     /// <paramref name="name"/> (a C# name, an @ before a keyword): <paramref name="renamed"/>, null where the new name makes
-    /// no such member.</summary>
-    public bool Respells(string written, string name, out string? renamed)
+    /// no such member. A method's command goes by what <paramref name="types"/> say it returns, else by how it is written.</summary>
+    public bool Respells(string written, string name, out string? renamed, TypeSystem? types = null)
     {
         string bare = name.StartsWith('@') ? name[1..] : name;
         const string Extension = "Extension";
@@ -107,9 +107,9 @@ public sealed class CodeSymbol
         {
             renamed = ToolkitNames.PropertyOf(bare);
         }
-        else if (kind == 'M' && written == ToolkitNames.CommandOf(this.name))
+        else if (kind == 'M' && ToolkitNames.ReturnsTask(this.name, written) is { } task)
         {
-            renamed = ToolkitNames.CommandOf(bare);
+            renamed = ToolkitNames.CommandOf(bare, ReturnsTask(types) ?? task);
         }
         else if (kind == 'M' && written == ToolkitNames.CancelCommandOf(this.name))
         {
@@ -133,12 +133,17 @@ public sealed class CodeSymbol
     public static string? NameFor(string declared, string written, string typed) =>
         written == declared ? typed
         : written == ToolkitNames.PropertyOf(declared) ? ToolkitNames.FieldFor(declared, typed)
-        : written == ToolkitNames.CommandOf(declared) ? ToolkitNames.MethodFor(declared, typed)
+        : ToolkitNames.ReturnsTask(declared, written) is { } task ? ToolkitNames.MethodFor(declared, typed, task)
         : written == ToolkitNames.CancelCommandOf(declared) ? ToolkitNames.MethodForCancel(declared, typed)
         : typed;
 
     /// <summary>Whether a member is declared where the symbol is: the symbol itself, or a member the MVVM Toolkit makes of it.</summary>
     public bool IsDeclaredAs(ClrMember member) => IsDeclared(member.Place);
+
+    /// <summary>Whether the method returns a Task, as the command its type's source makes of it says; null where none says.</summary>
+    private bool? ReturnsTask(TypeSystem? types) =>
+        types is not null && Owner(types)?.Members.FirstOrDefault(m => m.Kind == MemberKind.Property && IsDeclared(m.Place)) is { } made
+            ? made.Type.Name == ToolkitNames.CommandTypeOf(task: true) : null;
 
     /// <summary>The type a member is declared in, its nested types' names joined with '+' as metadata joins them where a
     /// documentation id joins them with '.'.</summary>

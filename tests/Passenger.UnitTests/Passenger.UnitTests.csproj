@@ -76,6 +76,7 @@
     <Compile Include="../../src/Passenger.App/Debugging/DevelopmentAssets.cs" Link="App/DevelopmentAssets.cs" />
     <Compile Include="../../src/Passenger.App/Debugging/ToldFiles.cs" Link="App/ToldFiles.cs" />
     <Compile Include="../../src/Passenger.App/Debugging/BrowserProxy.cs" Link="App/BrowserProxy.cs" />
+    <Compile Include="../../src/Passenger.App/Run/LaunchedFrameworks.cs" Link="App/LaunchedFrameworks.cs" />
   </ItemGroup>
 
   <!-- How XAML Hot Reload compares two texts of a XAML file's root, and which file an app's build recorded is the one asked

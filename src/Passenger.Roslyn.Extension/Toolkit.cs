@@ -38,7 +38,8 @@ public sealed class ToolkitRenames : IExtensionDocumentMessageHandler<ToolkitAsk
                 }
                 break;
             case IMethodSymbol { MethodKind: MethodKind.Ordinary, ContainingType: { } type } method when Marked(method, RelayCommand):
-                foreach (Func<string, string> command in (Func<string, string>[])[ToolkitNames.CommandOf, ToolkitNames.CancelCommandOf])
+                bool task = ReturnsTask(method);
+                foreach (Func<string, string> command in (Func<string, string>[])[name => ToolkitNames.CommandOf(name, task), ToolkitNames.CancelCommandOf])
                 {
                     made.AddRange(type.GetMembers(command(method.Name)).OfType<IPropertySymbol>().Where(p => IsGenerated(p, solution))
                         .Select(p => ((ISymbol)p, (string?)command(bare))));
@@ -92,6 +93,19 @@ public sealed class ToolkitRenames : IExtensionDocumentMessageHandler<ToolkitAsk
             uses.Add(new ToolkitUse(path, PlaceAt(text, span.Start), PlaceAt(text, span.End), name));
         }
         return uses;
+    }
+
+    /// <summary>Whether a method returns a Task or a type made from one, what the toolkit takes for asynchronous.</summary>
+    private static bool ReturnsTask(IMethodSymbol method)
+    {
+        for (ITypeSymbol? type = method.ReturnType; type is not null; type = type.BaseType)
+        {
+            if (type is { Name: "Task", ContainingNamespace: { } home } && home.ToDisplayString() == "System.Threading.Tasks")
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static bool Marked(ISymbol symbol, string attribute) => symbol.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == attribute);

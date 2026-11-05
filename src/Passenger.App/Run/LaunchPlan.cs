@@ -380,12 +380,9 @@ public sealed partial record LaunchPlan
         }
         // MSBuild writes its default folders with backslashes, which only Windows takes for separators.
         string folder = System.IO.Path.DirectorySeparatorChar == '\\' ? intermediate : intermediate.Replace('\\', System.IO.Path.DirectorySeparatorChar);
-        string? runsOn = framework ?? project.TargetFrameworks.FirstOrDefault();
         return new WebBuild(System.IO.Path.TrimEndingDirectorySeparator(sdk), PathNames.Canonical(System.IO.Path.Combine(project.Folder, folder)), globals)
         {
-            // A project of several frameworks is built for the app's where it has it, as the app's build takes it.
-            Referenced = [.. project.WithReferenced(projects).Skip(1)
-                .Select(p => (p.Path, p.TargetFrameworks.Count > 1 && runsOn is not null && p.TargetFrameworks.Contains(runsOn, StringComparer.OrdinalIgnoreCase) ? runsOn : null))],
+            Referenced = LaunchedFrameworks.Referenced(project, framework ?? project.TargetFrameworks.FirstOrDefault(), projects),
         };
     }
 

@@ -144,7 +144,7 @@ public static partial class XamlRefactorings
             written = written.Trim();
             int last = written.LastIndexOfAny(".:|+");
             string part = written[(last + 1)..].ToString();
-            if (!symbol.Respells(part, name, out string? renamed) || renamed == part)
+            if (!symbol.Respells(part, name, out string? renamed, file.Types) || renamed == part)
             {
                 continue;
             }

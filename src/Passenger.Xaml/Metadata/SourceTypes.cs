@@ -215,10 +215,11 @@ public sealed class SourceTypes
                         members.Add(new ClrMember(type, method.Identifier.ValueText, MemberKind.Method, Reference(method.ReturnType, inside), isStatic, visible, false,
                             [.. method.ParameterList.Parameters.Select(p => p.Type is { } t ? Reference(t, inside) : TypeRef.Named("System.Object"))],
                             [.. method.ParameterList.Parameters.Select(p => p.Identifier.ValueText)], memberAttributes, Place(method.Identifier)));
-                        // And a command of a method marked [RelayCommand]: SaveCommand from Save or SaveAsync, with SaveCancelCommand where it asks for one.
+                        // And a command of a method marked [RelayCommand]: SaveCommand from Save or a Task's SaveAsync, with SaveCancelCommand where it asks for one.
                         if (memberAttributes.FirstOrDefault(a => a.ShortName == "RelayCommand") is { } relayed)
                         {
-                            members.Add(new ClrMember(type, ToolkitNames.CommandOf(method.Identifier.ValueText), MemberKind.Property, TypeRef.Named("CommunityToolkit.Mvvm.Input.IRelayCommand"), false, true, false,
+                            bool task = IsTask(method.ReturnType);
+                            members.Add(new ClrMember(type, ToolkitNames.CommandOf(method.Identifier.ValueText, task), MemberKind.Property, TypeRef.Named(ToolkitNames.CommandTypeOf(task)), false, true, false,
                                 attributes: memberAttributes, place: Place(method.Identifier)));
                             if (relayed.Named.Any(n => n is { Key: "IncludeCancelCommand", Value: true }))
                             {
@@ -342,6 +343,15 @@ public sealed class SourceTypes
             return new SourcePlace(path, start.Line, start.Character);
         }
     }
+
+    /// <summary>Whether a type written in source is a Task, of a result or not, however its name is qualified.</summary>
+    private static bool IsTask(TypeSyntax syntax) => syntax switch
+    {
+        QualifiedNameSyntax qualified => IsTask(qualified.Right),
+        AliasQualifiedNameSyntax aliased => IsTask(aliased.Name),
+        SimpleNameSyntax name => name.Identifier.ValueText == "Task",
+        _ => false,
+    };
 
     /// <summary>A type written in source as a reference to resolve in its scope.</summary>
     public static TypeRef Reference(TypeSyntax syntax, SourceScope scope)

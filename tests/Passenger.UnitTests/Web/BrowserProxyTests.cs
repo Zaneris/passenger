@@ -1,4 +1,5 @@
 using Passenger.App.Debugging;
+using Passenger.App.Run;
 using Passenger.Core;
 using Passenger.Host;
 using Passenger.Workspace;
@@ -105,7 +106,20 @@ public sealed class BrowserProxyTests : IDisposable
     [InlineData(null, "net8.0")]
     public void A_launch_builds_the_framework_a_reference_would_take(string? launched, string? built)
     {
-        string? taken = BrowserProxy.FrameworkOf(["net8.0", "net10.0"], launched);
+        string? taken = LaunchedFrameworks.Of(["net8.0", "net10.0"], launched);
         Assert.True(taken == built, $"A launch of {launched ?? "no framework"} took {taken ?? "none"}, not {built ?? "none"}");
+    }
+
+    [Fact]
+    public void A_project_an_app_references_is_read_for_the_framework_the_apps_build_takes_of_it()
+    {
+        ProjectModel Project(string name, IReadOnlyList<string> frameworks, params string[] references) => new(Path.Combine(root, name, $"{name}.csproj"), name, null, frameworks, [], references, true);
+        ProjectModel one = Project("One", ["net8.0"]);
+        ProjectModel older = Project("Older", ["net8.0", "net9.0"], one.Path);
+        ProjectModel same = Project("Same", ["net8.0", "net10.0"]);
+        ProjectModel newer = Project("Newer", ["net11.0", "net12.0"]);
+        ProjectModel app = Project("App", ["net10.0"], older.Path, same.Path, newer.Path);
+
+        Assert.Equal([(older.Path, "net9.0"), (same.Path, "net10.0"), (newer.Path, null), (one.Path, null)], LaunchedFrameworks.Referenced(app, "net10.0", [app, one, older, same, newer]));
     }
 }
