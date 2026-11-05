@@ -590,6 +590,36 @@ public class GDScriptRefactoringsTests
             After(made, "res://main.gd", Hitter));
     }
 
+    [Theory]
+    [InlineData("int", true)]
+    [InlineData("Node", true)]
+    [InlineData("Outer.Inner", true)]
+    [InlineData("void", true)]
+    [InlineData("Array", true)]
+    [InlineData("Array[Node]", true)]
+    [InlineData("Array[Outer.Inner]", true)]
+    [InlineData("Dictionary[String, int]", true)]
+    [InlineData("Dictionary[String,int]", true)]
+    [InlineData("Array[", false)]
+    [InlineData("Array[Node]]", false)]
+    [InlineData("Array[Array[int]]", false)]
+    [InlineData("1x", false)]
+    [InlineData("int = 3", false)]
+    [InlineData("int:\n\tpass\n\n\nfunc g() -> int", false)]
+    [InlineData("A.", false)]
+    public void A_type_is_what_gdscripts_parser_reads_as_one(string text, bool type) => Assert.Equal(type, GDScriptRefactorings.IsType(text));
+
+    [Fact]
+    public void Change_signature_keeps_a_parameter_of_a_typed_collection_as_written()
+    {
+        string text = "func count(nodes: Array[Node], table: Dictionary[String, int] = {}) -> int:\n\treturn nodes.size() + table.size()\n\n\nfunc go():\n\tprint(count([]))\n";
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
+        GDScriptTarget target = GDScriptRefactorings.MemberAt(scripts, scripts[0], 5)!;
+        IReadOnlyList<GDScriptParameterChange> shown = GDScriptRefactorings.ParametersOf(scripts[0], target);
+        Assert.Equal(["Array[Node]", "Dictionary[String, int]"], shown.Select(p => p.Type));
+        Assert.Contains("func tally(nodes: Array[Node], table: Dictionary[String, int] = {}) -> int:\n", After(GDScriptRefactorings.ChangeSignature(scripts, target, "tally", shown, []), "res://main.gd", text));
+    }
+
     [Fact]
     public void Change_signature_is_refused_where_a_calls_arguments_would_not_run_as_they_did()
     {

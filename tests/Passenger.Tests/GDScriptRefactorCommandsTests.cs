@@ -210,6 +210,44 @@ public sealed class GDScriptRefactorCommandsTests
         }
     }
 
+    /// <summary>The dialog takes a parameter and a return of a typed collection as written, so a name beside them can change.</summary>
+    [AvaloniaFact]
+    public void Change_signature_changes_the_name_of_a_function_taking_typed_collections()
+    {
+        const string Typed = "extends Node\n\n\nfunc count(nodes: Array[Node], table: Dictionary[String, int]) -> Array[int]:\n\treturn [nodes.size(), table.size()]\n\n\n"
+            + "func _ready():\n\tprint(count([], {}))\n";
+        TestFolders.Write(folder, "typed.gd", Typed);
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home"), GodotHeadlessAtOpen = true };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<int>? held = godot is { Exists: true } ? window.Session.Web?.HoldNextConfigure(release.Task) : null;
+        try
+        {
+            Assert.Null(window.OpenFile(Path.Combine(folder, "typed.gd")));
+            if (held is not null)
+            {
+                Ui.AwaitPumped(held, "Godot's GDScript server held at its start", TimeSpan.FromMinutes(1));
+            }
+            OpenDocument document = window.EditorArea.Active!;
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "func coun");
+            ChangeSignatureDialog renaming = Dialog(window);
+            renaming.NameBox.Text = "tally";
+            Ui.PumpUntil(() => renaming.Preview.Contains("tally(", StringComparison.Ordinal), "the new name in the preview", TimeSpan.FromSeconds(30));
+            Assert.True(renaming.Problem.Length == 0, $"A typed collection's type is taken for no type: {renaming.Problem}");
+            Ui.Click(renaming.NextButton, settle: false);
+            Ui.PumpUntil(() => !renaming.IsVisible || renaming.Problem.Length > 0, "Change Signature to be made", TimeSpan.FromSeconds(30));
+            Assert.False(renaming.IsVisible, $"Change Signature stayed open: {renaming.Problem}");
+            Assert.Equal(Typed.Replace("count(", "tally("), document.Text.Snapshot.ToString());
+        }
+        finally
+        {
+            window.Close();
+            release.SetResult();
+        }
+    }
+
     private static void Select(CodeEditor editor, string text, string? within = null)
     {
         string all = editor.Document.Snapshot.ToString();

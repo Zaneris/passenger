@@ -537,6 +537,15 @@ public static partial class GDScriptRefactorings
         return null;
     }
 
+    /// <summary>Whether a text is one type as GDScript's parser reads one: a name, an inner class's by dots, a typed collection
+    /// or <c>void</c>.</summary>
+    public static bool IsType(string text)
+    {
+        const string Before = "func f() -> ";
+        return GDScriptTree.Parse($"{Before}{text}:\n\tpass\n") is { Errors.Count: 0, Members: [{ Node: GDScriptFunction { ReturnType: { } type }, Offset: var offset }] }
+            && offset + type.End == Before.Length + text.Length;
+    }
+
     /// <summary>A function's signature as Change Signature shows it: each parameter's name, type and default as written.</summary>
     public static IReadOnlyList<GDScriptParameterChange> ParametersOf(GDScriptRead own, GDScriptTarget target) =>
         target.Node is GDScriptFunction function

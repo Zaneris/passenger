@@ -181,7 +181,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
     private bool IsName(string? text) => text is { } name && (GDScript ? Passenger.Workspace.GDScript.GDScriptRefactorings.WhyNotName(name.Trim()) is null
         : SyntaxFacts.IsValidIdentifier(name.Trim()) && SyntaxFacts.GetKeywordKind(name.Trim()) == SyntaxKind.None);
 
-    private bool IsType(string? text) => !string.IsNullOrWhiteSpace(text) && (GDScript ? text.Trim().Split('.').All(part => IsName(part) || part == "void")
+    private bool IsType(string? text) => !string.IsNullOrWhiteSpace(text) && (GDScript ? Passenger.Workspace.GDScript.GDScriptRefactorings.IsType(text.Trim())
         : !SyntaxFactory.ParseTypeName(text.Trim()).ContainsDiagnostics);
 
     /// <summary>A new parameter after the chosen one, its type to type first.</summary>
