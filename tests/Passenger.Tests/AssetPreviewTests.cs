@@ -138,6 +138,35 @@ public sealed class AssetPreviewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A picture needing less than the first zoom step to fit opens whole, and Zoom Out leaves it there rather than
+    /// raising it to that step, where Zoom In goes up to it.</summary>
+    [AvaloniaFact]
+    public void A_picture_too_large_for_the_first_zoom_step_opens_whole_and_zoom_out_never_raises_it()
+    {
+        using (SKBitmap bitmap = new(12000, 30))
+        {
+            bitmap.Erase(SKColors.Blue);
+            using SKImage source = SKImage.FromBitmap(bitmap);
+            using SKData encoded = source.Encode(SKEncodedImageFormat.Png, 100);
+            File.WriteAllBytes(Path.Combine(folder, "banner.png"), encoded.ToArray());
+        }
+        MainWindow window = Open();
+        Assert.Null(window.OpenFile("banner.png"));
+        Ui.Settle();
+        AssetPreviewControl preview = Preview(window.EditorArea.ActiveGroup);
+        ZoomedPicture picture = preview.Picture!;
+        Assert.True(picture.Zoom < 0.1 && picture.DrawnSize.Width <= picture.Bounds.Width - (2 * ZoomedPicture.Gap),
+            $"A picture 12,000 wide opened at {picture.Zoom:P1}, drawn {picture.DrawnSize} in a pane of {picture.Bounds.Size}, so part of it lay outside the view");
+        double fitted = picture.Zoom;
+        Assert.True(preview.Focus());
+        string command = OperatingSystem.IsMacOS() ? "meta" : "control";
+        Ui.Press(window, $"{command} MINUS");
+        Assert.Equal(fitted, picture.Zoom);
+        Ui.Press(window, $"{command} EQUALS");
+        Assert.Equal(0.1, picture.Zoom);
+        window.Close();
+    }
+
     /// <summary>An SVG opens as its text with its picture beside it, drawn as a drawing, so zoomed in its circle's edge is as
     /// sharp as at its size (a point half a unit outside it the ground's own colour, where an enlarged bitmap would blend
     /// them); its text edited, the picture follows; and the toggle hides and shows it.</summary>

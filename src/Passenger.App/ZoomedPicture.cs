@@ -100,12 +100,13 @@ public sealed class ZoomedPicture : ScrollViewer
 
     public void ZoomIn() => ZoomTo(Steps.FirstOrDefault(s => s > Zoom * 1.001, Steps[^1]));
 
-    public void ZoomOut() => ZoomTo(Steps.LastOrDefault(s => s < Zoom / 1.001, Steps[0]));
+    public void ZoomOut() => ZoomTo(Steps.LastOrDefault(s => s < Zoom / 1.001, Math.Min(Zoom, Steps[0])));
 
+    /// <summary>The picture at a zoom among the steps' reach; a fit below the first step stays as it is until zoomed in.</summary>
     public void ZoomTo(double zoom)
     {
         fitting = Fitting.None;
-        Show(zoom);
+        Show(Math.Clamp(zoom, Math.Min(Zoom, Steps[0]), Steps[^1]));
     }
 
     /// <summary>The zoom at which the whole picture fits its room, kept as the room changes.</summary>
@@ -145,13 +146,15 @@ public sealed class ZoomedPicture : ScrollViewer
             return false;
         }
         double room = Math.Min((Bounds.Width - (2 * Gap) - 2) / picture.Size.Width, (Bounds.Height - (2 * Gap) - 2) / picture.Size.Height);
-        Show(fitting == Fitting.Down ? Math.Min(1, room) : room);
+        // However large the picture, a fit shows it whole, down to a unit along its longer side where there is no room.
+        double least = 1 / Math.Max(1, Math.Max(picture.Size.Width, picture.Size.Height));
+        Show(Math.Min(Math.Max(room, least), fitting == Fitting.Down ? 1 : Steps[^1]));
         return true;
     }
 
     private void Show(double zoom)
     {
-        Zoom = Math.Clamp(zoom, Steps[0], Steps[^1]);
+        Zoom = zoom;
         if (Picture is { } picture)
         {
             image.Width = picture.Size.Width * Zoom;
