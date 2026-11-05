@@ -18,10 +18,12 @@ public static class PackageFolders
 
     /// <summary>The package folders a project's evaluation names, each made canonical the first time it is named; whether
     /// any was not known before.</summary>
-    public static bool Learn(ProjectModel project)
+    public static bool Learn(ProjectModel project) => Learn(new[] { project.Property(Host.CarriedProperties.NuGetPackageRoot) }.OfType<string>()
+        .Concat(project.Property(Host.CarriedProperties.NuGetPackageFolders)?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? []));
+
+    /// <summary>Package folders as an evaluation names them; whether any was not known before.</summary>
+    public static bool Learn(IEnumerable<string> named)
     {
-        IEnumerable<string> named = new[] { project.Property(Host.CarriedProperties.NuGetPackageRoot) }.OfType<string>()
-            .Concat(project.Property(Host.CarriedProperties.NuGetPackageFolders)?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? []);
         bool learned = false;
         lock (Learning)
         {
@@ -38,7 +40,8 @@ public static class PackageFolders
         return learned;
     }
 
-    /// <summary>Whether a file (a canonical path) is a package's, in a package folder below its id's and version's folders.</summary>
+    /// <summary>Whether a file (a canonical path) is a package's, in a package folder below folders NuGet laid out as its id's
+    /// and version's: a project may name an ancestor of its own source its package folder, whose other files are no package's.</summary>
     public static bool Holds(string path) => PackageFolder(path) is not null;
 
     /// <summary>The package a file (a canonical path) is part of, by its id and version as its nuspec gives them ("Kit
@@ -59,7 +62,11 @@ public static class PackageFolders
             {
                 string name = below[..id].ToString();
                 string at = below.Slice(id + 1, version).ToString();
-                return (Path.Combine(folder, name, at), name, at);
+                string package = Path.Combine(folder, name, at);
+                if (File.Exists(Path.Combine(package, ".nupkg.metadata")) || File.Exists(Path.Combine(package, $"{name}.nuspec")))
+                {
+                    return (package, name, at);
+                }
             }
         }
         return null;
