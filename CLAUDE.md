@@ -192,7 +192,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   the version `Product`; a log below the App `PassengerLog`, never `IdeLog`; an MSBuild name Passenger writes
   `MSBuildNames`; another program's or a person's JSON `JsonMembers` (`Value` for a member of any kind), never a bare
   `TryGetProperty`/`GetProperty` (PSG0008); a search by halving `Sorted`, never a loop of your own; a primitive
-  `PrimitiveTypes`.
+  `PrimitiveTypes`; an SDK into an installation `DotnetMerge`.
 - `Passenger.Text`: the rope, `TextDocument`, editing commands as pure functions to an `EditPlan`, `FileText`; an XML
   value through `XmlEntities`, never `SecurityElement.Escape` or a hand Replace; a place in the text held by an anchor
   (`AnchorAt`), never your own `TextEditing.Map*`; an end tag typed over by hand `EndTagTyping`, never a caret jump.
@@ -275,11 +275,12 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   (`GodotIdeLink`), never Passenger's headless editors.
 - **Web languages.** `WebLanguages`: one Node.js server per kind but GDScript's (Godot's editor over TCP, one per Godot
   project: `ServerPlace`), every per-kind switch naming each kind; `JsonSchemas` and `PageStylesheets` reach the web
-  only while Settings allows; in a macOS bundle the servers live under `Contents/Resources/web`. One tsserver, never
-  `useSyntaxServer` (it answers rename and usages from the open files alone); `typescript` stays on 6.x (7 carries no
-  `tsserver`); typescript-language-server keeps a file's first `formattingOptions`, so each open file tells tsserver its
-  indent. Razor forwards `_vs_onAutoInsert` to the client's HTML only for `=`: its `>` is Razor's own answer, its `</`
-  closed over its HTML.
+  only while Settings allows; a page's `<base href>` says nothing of the app's mount, so a link is the browser's address
+  first, `LinkedSheet.Mounted` second; in a macOS bundle the servers live under `Contents/Resources/web`. One tsserver,
+  never `useSyntaxServer` (it answers rename and usages from the open files alone); `typescript` stays on 6.x (7 carries
+  no `tsserver`); typescript-language-server keeps a file's first `formattingOptions`, so each open file tells tsserver
+  its indent. Razor forwards `_vs_onAutoInsert` to the client's HTML only for `=`: its `>` is Razor's own answer, its
+  `</` closed over its HTML.
 - **Build and run.** `BuildRunController`, every console through `ConsoleSink.PumpAsync`, `LaunchPlan` (one resolution
   for Run, Debug, Profile, Hot Reload and a debugged test host), `UpToDate`; a Passenger it launches keeps its state in
   `sandbox/`; `PASSENGER_DOTNET_RELEASES` is dead in tests. Godot: `GodotLaunch`, `GodotGame`; the Game window is an
