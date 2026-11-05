@@ -5,9 +5,9 @@ using Passenger.Workspace;
 namespace Passenger.UnitTests.Workspace;
 
 /// <summary>What a page's stylesheets give the markup that links them: every class a rule's selector names, nested in an
-/// at-rule too, escapes read; a rule described a declaration a line; the stylesheets <c>@import</c>s and a page's links
-/// name; the classes a page writes, a Razor expression's strings among them; and a link's integrity checked as a browser
-/// checks it.</summary>
+/// at-rule or a rule too, escapes read; a rule described a declaration a line; the stylesheets <c>@import</c>s, a page's
+/// links and its style blocks name, resolved as a browser resolves them; the classes a page writes, a Razor expression's
+/// strings among them; and a link's integrity checked as a browser checks it.</summary>
 public class PageStylesTests
 {
     private const string Css = """
@@ -170,13 +170,59 @@ public class PageStylesTests
     }
 
     [Fact]
-    public void A_pages_links_are_read_as_the_app_serves_them_under_its_base_href()
+    public void An_import_the_text_ends_is_read_and_one_inside_a_block_is_none_a_browser_takes()
+    {
+        Assert.Equal(["last.css"], CssRules.Read("@import url(\"last.css\")\n").Imports);
+        Assert.Equal(["first.css"], CssRules.Read("@import 'first.css';\n.x { @import 'no.css'; }\n@media print { @import 'nor.css'; }\n").Imports);
+    }
+
+    [Fact]
+    public void A_pages_links_are_what_a_browser_asks_for_under_its_base_href_and_without_its_path_for_an_app_mounted_there()
     {
         const string Page = "<base href=\"/app/\" />\n<link rel=\"stylesheet\" href=\"css/site.css\" />\n<link rel=\"stylesheet\" href=\"/app/css/based.css\" />\n"
             + "<link rel=\"stylesheet\" href=\"/other/x.css\" />\n<link rel=\"stylesheet\" href=\"https://cdn.example/x.css\" />\n<link rel=\"stylesheet\" href=\"@Assets[\"app.css\"]\" />";
-        Assert.Equal(["/css/site.css", "/css/based.css", "/other/x.css", "https://cdn.example/x.css", "/app.css"], PageLinks.Stylesheets(Page, razor: true).Select(l => l.Href));
-        // At the root, as written.
-        Assert.Equal(["css/site.css"], PageLinks.Stylesheets("<base href=\"/\" /><link rel=\"stylesheet\" href=\"css/site.css\" />", razor: false).Select(l => l.Href));
+        Assert.Equal(
+            [new LinkedSheet("/app/css/site.css", null, "/css/site.css"), new LinkedSheet("/app/css/based.css", null, "/css/based.css"), new LinkedSheet("/other/x.css", null),
+                new LinkedSheet("https://cdn.example/x.css", null), new LinkedSheet("/app/app.css", null, "/app.css")],
+            PageLinks.Stylesheets(Page, razor: true));
+        // At the root, or at a view's root wherever it is mounted, as written.
+        Assert.Equal([new LinkedSheet("css/site.css", null)], PageLinks.Stylesheets("<base href=\"/\" /><link rel=\"stylesheet\" href=\"css/site.css\" />", razor: false));
+        Assert.Equal([new LinkedSheet("css/site.css", null)], PageLinks.Stylesheets("<base href=\"~/\" /><link rel=\"stylesheet\" href=\"css/site.css\" />", razor: true));
+        // A base's last name is a file's, and an expression's is known only as the app runs.
+        Assert.Equal([new LinkedSheet("css/site.css", null)], PageLinks.Stylesheets("<base href=\"/app\" /><link rel=\"stylesheet\" href=\"css/site.css\" />", razor: false));
+        Assert.Equal([new LinkedSheet("/app/css/site.css", null, "/css/site.css")], PageLinks.Stylesheets("<base href=\"/app/index.html\" /><link rel=\"stylesheet\" href=\"css/site.css\" />", razor: false));
+        Assert.Equal([new LinkedSheet("css/site.css", null)], PageLinks.Stylesheets("<base href=\"@Nav.BaseUri\" /><link rel=\"stylesheet\" href=\"css/site.css\" />", razor: true));
+    }
+
+    [Fact]
+    public void A_base_on_another_host_makes_a_pages_links_addresses_on_that_host()
+    {
+        const string Page = "<base href=\"https://cdn.example/lib/\">\n<link rel=\"stylesheet\" href=\"css/a.css\" integrity=\"sha384-abc\">\n<link rel=\"stylesheet\" href=\"/b.css\">\n"
+            + "<link rel=\"stylesheet\" href=\"https://other.example/c.css\">\n";
+        Assert.Equal([new LinkedSheet("https://cdn.example/lib/css/a.css", "sha384-abc"), new LinkedSheet("https://cdn.example/b.css", null), new LinkedSheet("https://other.example/c.css", null)],
+            PageLinks.Stylesheets(Page, razor: false));
+        Assert.Equal([new LinkedSheet("https://cdn.example/lib/a.css", null)], PageLinks.Stylesheets("<base href=\"//cdn.example/lib/\"><link rel=\"stylesheet\" href=\"a.css\">", razor: false));
+    }
+
+    [Fact]
+    public void A_page_of_a_known_address_links_from_there_unless_its_base_says_otherwise()
+    {
+        const string Links = "<link rel=\"stylesheet\" href=\"a.css\"><link rel=\"stylesheet\" href=\"../b.css\"><link rel=\"stylesheet\" href=\"/c.css\">";
+        Assert.Equal(["/docs/guide/a.css", "/docs/b.css", "/c.css"], PageLinks.Stylesheets(Links, razor: false, "/docs/guide/index.html").Select(l => l.Href));
+        Assert.Equal(["/a.css", "/b.css", "/c.css"], PageLinks.Stylesheets("<base href=\"/\">" + Links, razor: false, "/docs/guide/index.html").Select(l => l.Href));
+        Assert.Equal(["/docs/guide/css/a.css", "/docs/guide/b.css", "/c.css"], PageLinks.Stylesheets("<base href=\"css/\">" + Links, razor: false, "/docs/guide/index.html").Select(l => l.Href));
+    }
+
+    [Fact]
+    public void An_import_is_read_from_its_stylesheets_address_a_parent_stopping_at_the_apps_root()
+    {
+        Assert.Equal("/colors.css", PageLinks.Imported("css/site.css", "../colors.css"));
+        Assert.Equal("/css/parts/a.css", PageLinks.Imported("/css/site.css", "parts/a.css"));
+        Assert.Equal("/colors.css", PageLinks.Imported("/css/site.css", "../../../colors.css"));
+        Assert.Equal("/_content/Kit/base.css", PageLinks.Imported("/_content/Kit/css/kit.css", "../base.css"));
+        Assert.Equal("/top.css", PageLinks.Imported("/css/site.css", "/top.css"));
+        Assert.Equal("https://cdn.example/a.css", PageLinks.Imported("/css/site.css", "//cdn.example/a.css"));
+        Assert.Equal("https://cdn.example/lib/b.css", PageLinks.Imported("https://cdn.example/lib/css/a.css", "../b.css"));
     }
 
     [Fact]
@@ -190,6 +236,25 @@ public class PageStylesTests
         Assert.False(PageLinks.IsBundle("css/site.styles.css", "Shop", null));
         Assert.False(PageLinks.IsBundle("css/Shop.styles.css", "Shop", null));
         Assert.False(PageLinks.IsBundle("Other.styles.css", "Shop", null));
+    }
+
+    [Fact]
+    public void A_style_blocks_imports_are_links_from_the_pages_base()
+    {
+        Assert.Equal([new LinkedSheet("/colors.css", null), new LinkedSheet("https://cdn.example/x.css", null)],
+            PageLinks.Stylesheets("<style>@import url(\"/colors.css\");\n@import 'https://cdn.example/x.css';\n.a { }</style>", razor: false));
+        Assert.Equal([new LinkedSheet("/app/colors.css", null, "/colors.css")], PageLinks.Stylesheets("<base href=\"/app/\"><style>@import \"colors.css\"</style>", razor: false));
+    }
+
+    [Fact]
+    public void A_razor_pages_style_block_is_read_as_css_its_doubled_at_signs_single()
+    {
+        Assert.Equal(["colors.css"], PageLinks.Stylesheets("<style>@@import \"colors.css\";</style>", razor: true).Select(l => l.Href));
+        const string Page = "<style>@@media print { .printed { top: 0 } }</style>";
+        string text = PageLinks.StyleText(Page, razor: true)!;
+        CssClassRule rule = Assert.Single(CssRules.Read(text).Rules);
+        Assert.Equal("printed", rule.Name);
+        Assert.Equal(Page.IndexOf(".printed", StringComparison.Ordinal) + 1, rule.At);
     }
 
     [Fact]

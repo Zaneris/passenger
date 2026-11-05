@@ -161,6 +161,11 @@ public static class CssRules
             }
             i++;
         }
+        // The text's end closes a statement as its ';' does.
+        if (depth == 0 && Import(css.AsSpan(start)) is { } last)
+        {
+            imports.Add(last);
+        }
         return new CssSheet(css, rules, imports);
     }
 

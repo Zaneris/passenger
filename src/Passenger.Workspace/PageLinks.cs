@@ -2,26 +2,31 @@ using System.Security.Cryptography;
 
 namespace Passenger.Workspace;
 
-/// <summary>A stylesheet a page links: the address it names as the page is served (a Razor <c>@Assets["…"]</c> read as the
-/// path it names, a view's <c>~/</c> as the app's root), and the hashes its <c>integrity</c> gives, if any.</summary>
-public sealed record LinkedSheet(string Href, string? Integrity)
+/// <summary>A stylesheet a page links, by a <c>&lt;link&gt;</c> or a <c>&lt;style&gt;</c> block's <c>@import</c>: the address
+/// a browser asks for (a Razor <c>@Assets["…"]</c> read as the path it names, a view's <c>~/</c> as the app's root); the
+/// hashes its <c>integrity</c> gives, if any; and under a page's <c>&lt;base href&gt;</c> that address without the base's
+/// path, where an app mounted at that path (<c>UsePathBase</c>) serves it: a page can't say which it is.</summary>
+public sealed record LinkedSheet(string Href, string? Integrity, string? Mounted = null)
 {
     /// <summary>Whether an expression makes its address, known only as the app runs: <see cref="Href"/> is what is written.</summary>
     public bool IsExpression { get; init; }
 }
 
-/// <summary>The stylesheets a page's <c>&lt;link rel="stylesheet"&gt;</c>s name, and whether a stylesheet's bytes are what
-/// a link's <c>integrity</c> says, as a browser checks them: one of the strongest hashes it gives matches. Pure.</summary>
+/// <summary>The stylesheets a page's <c>&lt;link rel="stylesheet"&gt;</c>s and <c>&lt;style&gt;</c> blocks name, resolved as a
+/// browser resolves them, and whether a stylesheet's bytes are what a link's <c>integrity</c> says, as a browser checks
+/// them: one of the strongest hashes it gives matches. Pure.</summary>
 public static class PageLinks
 {
-    /// <summary>Each stylesheet a page links, its address as the app serves it: a relative one taken from the page's
-    /// <c>&lt;base href&gt;</c>, and one under that base read from the app's root, as an app served under that path base
-    /// (<c>UsePathBase</c>) serves it.</summary>
-    public static IReadOnlyList<LinkedSheet> Stylesheets(string markup, bool razor)
+    /// <summary>The app's root as a URL no host answers, for an address to be resolved from it as a browser would.</summary>
+    private static readonly Uri AppRoot = new("https://app.invalid/");
+
+    /// <summary>Each stylesheet a page links: its address from the page's <c>&lt;base href&gt;</c> (a CDN's too), else from
+    /// the page's own address where that is known (<paramref name="page"/>, from the app's root), else as written.</summary>
+    public static IReadOnlyList<LinkedSheet> Stylesheets(string markup, bool razor, string? page = null)
     {
         List<LinkedSheet> found = [];
         IReadOnlyList<MarkupTag> tags = MarkupTags.Read(markup, razor);
-        string? based = BasePath(markup, tags);
+        (Uri? based, string? mount) = BaseOf(markup, tags, razor, page);
         foreach (MarkupTag tag in tags)
         {
             if (!tag.Name.Equals("link", StringComparison.OrdinalIgnoreCase) || tag.Attribute("rel") is not { } rel || tag.Attribute("href") is not { } href
@@ -31,48 +36,63 @@ public static class PageLinks
                 continue;
             }
             string value = markup[href.ValueStart..href.ValueEnd].Trim();
-            if (Address(value, razor) is { } written && Served(written, based) is { } address)
+            if (Address(value, razor) is { } written)
             {
                 string? integrity = tag.Attribute("integrity") is { } hashes ? markup[hashes.ValueStart..hashes.ValueEnd].Trim() : null;
-                found.Add(new LinkedSheet(address, integrity is { Length: > 0 } ? integrity : null));
+                found.Add(Linked(written, integrity is { Length: > 0 } ? integrity : null, based, mount));
             }
             else if (value.Length > 0)
             {
                 found.Add(new LinkedSheet(value, null) { IsExpression = true });
             }
         }
+        if (StyleText(markup, razor) is { } style)
+        {
+            found.AddRange(CssRules.Read(style).Imports.Select(imported => Linked(imported, null, based, mount)));
+        }
         return found;
     }
 
-    /// <summary>The path a page's <c>&lt;base href&gt;</c> names when it is another than the root (<c>/app/</c>, ending in
-    /// '/'); null for none, the root, or one on another host.</summary>
-    private static string? BasePath(string markup, IReadOnlyList<MarkupTag> tags)
+    /// <summary>What a page's addresses are resolved from (its <c>&lt;base href&gt;</c>, else its own address; null for neither
+    /// or the root, whose addresses stay as written), and the base's folder when it is on the app's own host, past the root.</summary>
+    private static (Uri? Url, string? Mount) BaseOf(string markup, IReadOnlyList<MarkupTag> tags, bool razor, string? page)
     {
+        Uri? own = page is not null && Uri.TryCreate(AppRoot, page, out Uri? address) ? address : null;
         if (tags.FirstOrDefault(t => t.Name.Equals("base", StringComparison.OrdinalIgnoreCase) && t.Attribute("href") is not null) is not { } tag)
         {
-            return null;
+            return (own, null);
         }
         MarkupAttribute href = tag.Attribute("href")!.Value;
-        string value = markup[href.ValueStart..href.ValueEnd].Trim();
-        if (value.Contains("://", StringComparison.Ordinal) || value.StartsWith("//", StringComparison.Ordinal) || value.Contains('@', StringComparison.Ordinal))
+        if (Address(markup[href.ValueStart..href.ValueEnd], razor) is not { } written || !Uri.TryCreate(own ?? AppRoot, written, out Uri? based))
         {
-            return null;
+            return (own, null);
         }
-        string path = "/" + value.Trim('/');
-        return path == "/" ? null : path + "/";
+        if (based.Host != AppRoot.Host)
+        {
+            return (based, null);
+        }
+        string folder = based.AbsolutePath[..(based.AbsolutePath.LastIndexOf('/') + 1)];
+        return folder == "/" ? (own is null ? null : based, null) : (based, folder);
     }
 
-    /// <summary>An address as the app serves it under a page's base: a relative one after the base, then one under the base
-    /// from the app's root; as written for one on the web, or with no base.</summary>
-    private static string? Served(string address, string? based)
+    /// <summary>A stylesheet as a page's base gives its address, and that address without the base's folder when it is under it.</summary>
+    private static LinkedSheet Linked(string written, string? integrity, Uri? based, string? mount)
     {
-        if (based is null || address.Contains("://", StringComparison.Ordinal) || address.StartsWith("//", StringComparison.Ordinal))
+        if (based is null || !Uri.TryCreate(based, written, out Uri? target))
         {
-            return address;
+            return new LinkedSheet(written, integrity);
         }
-        string full = address.StartsWith('/') ? address : based + address;
-        return full.StartsWith(based, StringComparison.OrdinalIgnoreCase) ? full[(based.Length - 1)..] : full;
+        string address = AddressOf(target);
+        return new LinkedSheet(address, integrity, mount is not null && address.StartsWith(mount, StringComparison.OrdinalIgnoreCase) ? address[(mount.Length - 1)..] : null);
     }
+
+    /// <summary>An address from the app's root, or whole on another host.</summary>
+    private static string AddressOf(Uri target) => target.Host == AppRoot.Host ? target.PathAndQuery : target.AbsoluteUri;
+
+    /// <summary>The address an <c>@import</c> names from its stylesheet's own, as a browser resolves it: a '..' stops at the
+    /// app's root, and one on another host is whole.</summary>
+    public static string Imported(string sheet, string import) =>
+        Uri.TryCreate(AppRoot, sheet, out Uri? from) && Uri.TryCreate(from, import, out Uri? target) ? AddressOf(target) : import;
 
     /// <summary>Whether an address is the CSS isolation bundle of a project of a package id: at the app's root, or the root of
     /// the static web assets' base path the project gives itself, as its build places it.</summary>
@@ -85,7 +105,8 @@ public static class PageLinks
     }
 
     /// <summary>A page's <c>&lt;style&gt;</c> blocks as a stylesheet's text: the page's text with everything outside them
-    /// blank (its line breaks kept), so a rule's places are the page's own; null for a page with none.</summary>
+    /// blank (its line breaks kept), so a rule's places are the page's own, an at-rule's '@' that Razor writes doubled single;
+    /// null for a page with none.</summary>
     public static string? StyleText(string markup, bool razor)
     {
         char[]? kept = null;
@@ -106,6 +127,13 @@ public static class PageLinks
                 }
             }
             markup.AsSpan(open + 1, close - open - 1).CopyTo(kept.AsSpan(open + 1));
+            for (int i = open + 1; razor && i + 1 < close; i++)
+            {
+                if (kept[i] == '@' && kept[i + 1] == '@')
+                {
+                    kept[i] = ' ';
+                }
+            }
         }
         return kept is null ? null : new string(kept);
     }

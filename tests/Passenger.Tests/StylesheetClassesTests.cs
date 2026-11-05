@@ -216,12 +216,44 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
     }
 
     [AvaloniaFact]
+    public void A_link_under_a_base_href_is_the_file_a_browser_asks_for_ahead_of_one_of_that_path_from_the_apps_root()
+    {
+        MainWindow window = app.Open(null, languageServer: false);
+        PageClasses found = Classes(window, "under-assets.html");
+        Assert.True(found.Complete, string.Join("; ", found.Unread));
+        Assert.Contains("asset-note", found.Classes.Keys);
+        Assert.DoesNotContain("asset-elsewhere", found.Classes.Keys);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_import_of_a_parent_folder_is_followed_from_its_stylesheet_and_a_page_in_a_folder_links_from_there()
+    {
+        MainWindow window = app.Open(null, languageServer: false);
+        PageClasses found = Classes(window, "imports-up.html");
+        Assert.True(found.Complete, string.Join("; ", found.Unread));
+        Assert.Contains("imported-colour", found.Classes.Keys);
+        Assert.Contains("imported-colour", Classes(window, "pages/up-a-folder.html").Classes.Keys);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_stylesheet_only_named_like_a_css_isolation_bundle_is_read_as_the_file_it_is()
     {
         MainWindow window = app.Open(null, languageServer: false);
         PageClasses found = Classes(window, "ordinary.html");
         Assert.True(found.Complete, string.Join("; ", found.Unread));
         Assert.Contains("ordinary", found.Classes.Keys);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_style_blocks_import_is_followed_as_a_links_is()
+    {
+        MainWindow window = app.Open(null, languageServer: false);
+        PageClasses found = Classes(window, "inline-import.html");
+        Assert.True(found.Complete, string.Join("; ", found.Unread));
+        Assert.Contains("imported-colour", found.Classes.Keys);
         window.Close();
     }
 
@@ -438,8 +470,16 @@ public sealed class StyledShop : SharedProject
         Write("latest-before.html", LinkOf(LatestBefore));
         Write("latest-after.html", LinkOf(LatestAfter));
         Write("latest-ahead.html", LinkOf(".from-ahead{color:blue}"));
+        Write("assets/css/asset.css", ".asset-note {\n    color: navy;\n}\n");
+        Write("css/asset.css", ".asset-elsewhere {\n    color: navy;\n}\n");
+        Write("under-assets.html", "<base href=\"/assets/\" />\n<link rel=\"stylesheet\" href=\"css/asset.css\" />\n");
+        Write("colors.css", ".imported-colour {\n    color: teal;\n}\n");
+        Write("css/up.css", "@import \"../colors.css\";\n");
+        Write("imports-up.html", "<link rel=\"stylesheet\" href=\"css/up.css\" />\n");
+        Write("pages/up-a-folder.html", "<link rel=\"stylesheet\" href=\"../colors.css\" />\n");
         Write("css/site.styles.css", ".ordinary {\n    color: teal;\n}\n");
         Write("ordinary.html", "<link rel=\"stylesheet\" href=\"css/site.styles.css\" />\n");
+        Write("inline-import.html", "<style>\n    @import url(\"/colors.css\");\n</style>\n");
         Write("css/locked.css", ".locked-note {\n    color: teal;\n}\n");
         Write("locked.html", "<link rel=\"stylesheet\" href=\"css/locked.css\" />\n");
         for (int depth = 0; depth < 10; depth++)

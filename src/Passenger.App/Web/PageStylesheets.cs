@@ -24,11 +24,12 @@ public sealed record PageClasses(IReadOnlyDictionary<string, IReadOnlyList<Defin
 /// <summary>The stylesheets a markup file's pages link, found as the app serves them: a Razor file's are those every page of
 /// its project links (and of the projects that reference it), an HTML file's its own; each page's <c>&lt;style&gt;</c>
 /// blocks; a component's own scoped stylesheet always, another's <c>::deep</c> rules where that one renders it. An address
-/// (after the page's <c>&lt;base href&gt;</c>) is the app's own <c>wwwroot</c>, a package's static web assets (under its
-/// own base path, <c>_content/Name/…</c> unless its build gives another) or a referenced project's <c>wwwroot</c>, the
-/// CSS isolation bundle, or a stylesheet on the web (<see cref="RemoteStylesheets"/>); each <c>@import</c> is followed.
-/// What is read from disk is kept until the folder's watcher says it was written; an open file is read as the editor has
-/// it. Asked on the UI thread; every read is made off it.</summary>
+/// (after the page's <c>&lt;base href&gt;</c>, with that base's path if the app serves nothing there) is the app's own
+/// <c>wwwroot</c>, a package's static web assets (under its own base path, <c>_content/Name/…</c> unless its build gives
+/// another) or a referenced project's <c>wwwroot</c>, a project's CSS isolation bundle, or a stylesheet on the web
+/// (<see cref="RemoteStylesheets"/>); each <c>@import</c> is followed from its stylesheet's address. What is read from disk
+/// is kept until the folder's watcher says it was written; an open file is read as the editor has it. Asked on the UI
+/// thread; every read is made off it.</summary>
 public sealed class PageStylesheets
 {
     /// <summary>How deep <c>@import</c>s are followed.</summary>
@@ -146,7 +147,7 @@ public sealed class PageStylesheets
         foreach ((string page, ProjectModel? serving) in Pages(path, razor, project, projects, root, files))
         {
             cancel.ThrowIfCancellationRequested();
-            if (PageOf(page, texts, unread) is not { } read)
+            if (PageOf(page, serving, texts, unread) is not { } read)
             {
                 continue;
             }
@@ -163,7 +164,7 @@ public sealed class PageStylesheets
                     unread.Add($"{link.Href} is made by an expression, so which stylesheet it names is known only as the app runs");
                     continue;
                 }
-                await FollowAsync(link.Href, link.Integrity, page, serving, 0);
+                await FollowAsync(Followed(link, page, serving, projects, texts), link.Integrity, page, serving, 0);
             }
         }
         return new PageClasses(classes.ToDictionary(c => c.Key, c => (IReadOnlyList<DefinedClass>)c.Value, StringComparer.Ordinal), unread, count);
@@ -193,7 +194,7 @@ public sealed class PageStylesheets
                 Take(copy, Path.GetFileName(address.AbsolutePath) is { Length: > 0 } name ? name : address.Host, sheet, _ => true);
                 foreach (string imported in sheet.Imports)
                 {
-                    await FollowAsync(new Uri(address, imported).AbsoluteUri, null, from, serving, depth + 1);
+                    await FollowAsync(PageLinks.Imported(address.AbsoluteUri, imported), null, from, serving, depth + 1);
                 }
                 return;
             }
@@ -212,7 +213,7 @@ public sealed class PageStylesheets
                 return;
             }
             count++;
-            if (Local(href, from, serving, projects) is not { } file || !File.Exists(file) && texts.Open(file) is null)
+            if (Local(href, from, serving, projects) is not { } file || !Exists(file, texts))
             {
                 unread.Add($"{href} is not among the files the app serves");
                 return;
@@ -228,7 +229,7 @@ public sealed class PageStylesheets
             Take(file, Path.GetFileName(file), local, _ => true);
             foreach (string imported in local.Imports)
             {
-                await FollowAsync(imported, null, file, serving, depth + 1);
+                await FollowAsync(serving is null ? imported : PageLinks.Imported(href, imported), null, file, serving, depth + 1);
             }
         }
 
@@ -245,6 +246,18 @@ public sealed class PageStylesheets
             }
         }
     }
+
+    /// <summary>The address a page's link is read from: the one a browser asks for where the app serves that, else that
+    /// address without the page's base, where the app serves that.</summary>
+    private string Followed(LinkedSheet link, string page, ProjectModel? serving, IReadOnlyList<ProjectModel> projects, OpenTexts texts)
+    {
+        return link.Mounted is { } mounted && !Found(link.Href) && Found(mounted) ? mounted : link.Href;
+
+        bool Found(string href) => BundleOf(href, serving, projects) is not null || Local(href, page, serving, projects) is { } file && Exists(file, texts);
+    }
+
+    /// <summary>Whether a stylesheet's file is there to be read.</summary>
+    private static bool Exists(string file, OpenTexts texts) => File.Exists(file) || texts.Open(file) is not null;
 
     /// <summary>What a link from a page names, told apart so each is followed once.</summary>
     private static string Key(string href, string from) => Uri.TryCreate(href, UriKind.Absolute, out Uri? absolute) && !absolute.IsFile ? absolute.AbsoluteUri : $"{from}|{href}";
@@ -275,11 +288,12 @@ public sealed class PageStylesheets
 
     /// <summary>What a page gives its classes, as the editor has it, else as last read from disk: null for a page gone, and for
     /// one that could not be read, which <paramref name="unread"/> is told of and which is read again next time.</summary>
-    private PageText? PageOf(string page, OpenTexts texts, List<string> unread)
+    private PageText? PageOf(string page, ProjectModel? serving, OpenTexts texts, List<string> unread)
     {
+        string? address = PageAddress(page, serving);
         if (texts.Open(page) is { } open)
         {
-            return PageText.Of(open.ToString(), RazorFiles.Is(page));
+            return PageText.Of(open.ToString(), RazorFiles.Is(page), address);
         }
         if (pages.TryGetValue(page, out PageText? kept))
         {
@@ -287,7 +301,7 @@ public sealed class PageStylesheets
         }
         try
         {
-            return pages[page] = PageText.Of(File.ReadAllText(page), RazorFiles.Is(page));
+            return pages[page] = PageText.Of(File.ReadAllText(page), RazorFiles.Is(page), address);
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -298,6 +312,18 @@ public sealed class PageStylesheets
             unread.Add($"{Path.GetFileName(page)} could not be read: {error.Message}");
             return null;
         }
+    }
+
+    /// <summary>A page's address as the project serving it serves it, where its file says it: an HTML file of its wwwroot;
+    /// null for a Razor file, whose address its routes say, and a page no project serves.</summary>
+    private static string? PageAddress(string page, ProjectModel? serving)
+    {
+        if (serving is null || RazorFiles.Is(page) || !PathNames.IsUnder(page, Path.Combine(serving.Folder, "wwwroot")))
+        {
+            return null;
+        }
+        string relative = Path.GetRelativePath(Path.Combine(serving.Folder, "wwwroot"), page);
+        return "/" + string.Join('/', relative.Split(Path.DirectorySeparatorChar).Select(Uri.EscapeDataString));
     }
 
     /// <summary>The components that render a component, directly or through others, by name: among those of the scoped
@@ -451,28 +477,31 @@ public sealed class PageStylesheets
         return [.. folders.SelectMany(folder => OwnFiles(folder, root, files)).Where(f => f.EndsWith(".css", StringComparison.OrdinalIgnoreCase) && RazorFiles.Is(f[..^4]))];
     }
 
-    /// <summary>An address's path from the app's root, without its query or fragment.</summary>
+    /// <summary>An address's path from the app's root as the file system names it: without its query or fragment, its escapes read.</summary>
     private static string UrlPath(string href)
     {
         int end = href.IndexOfAny(['?', '#']);
-        return (end < 0 ? href : href[..end]).Replace('\\', '/');
+        return Uri.UnescapeDataString(end < 0 ? href : href[..end]).Replace('\\', '/');
     }
 
-    /// <summary>The file an href names as the app serves it: from a page of a project, from its root; from an HTML page that no
-    /// project serves, or a stylesheet, from beside it.</summary>
+    /// <summary>The file an href names as the app serves it: of a project, an address from its root, which no address leaves;
+    /// of an HTML page that no project serves and its stylesheets, an address from beside the file that names it.</summary>
     private string? Local(string href, string from, ProjectModel? serving, IReadOnlyList<ProjectModel> projects)
     {
         string path = UrlPath(href);
-        if (path.Length == 0 || path.Contains("..", StringComparison.Ordinal) && serving is not null)
+        if (path.Length == 0)
         {
             return null;
         }
-        bool sheet = from.EndsWith(".css", StringComparison.OrdinalIgnoreCase);
-        if (serving is null || (sheet && !path.StartsWith('/')))
+        if (serving is null)
         {
             return PathNames.Canonical(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(from)!, path.TrimStart('/').Replace('/', System.IO.Path.DirectorySeparatorChar)));
         }
         string[] parts = path.TrimStart('/').Split('/');
+        if (parts.Any(part => part == ".." || System.IO.Path.IsPathRooted(part)))
+        {
+            return null;
+        }
         if (ReferencedAsset(serving, parts, projects) is { } referencedAsset)
         {
             return referencedAsset;
@@ -596,8 +625,8 @@ public sealed class PageStylesheets
     private sealed record PageText(IReadOnlyList<LinkedSheet> Links, CssSheet? Style)
     {
         /// <summary>A page's text read, passed over where it says nothing of either, as most of a project's components do.</summary>
-        public static PageText Of(string text, bool razor) => new(
-            text.Contains("stylesheet", StringComparison.OrdinalIgnoreCase) ? PageLinks.Stylesheets(text, razor) : [],
+        public static PageText Of(string text, bool razor, string? address) => new(
+            text.Contains("stylesheet", StringComparison.OrdinalIgnoreCase) || text.Contains("@import", StringComparison.OrdinalIgnoreCase) ? PageLinks.Stylesheets(text, razor, address) : [],
             text.Contains("<style", StringComparison.OrdinalIgnoreCase) && PageLinks.StyleText(text, razor) is { } css ? CssRules.Read(css) : null);
     }
 }
