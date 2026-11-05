@@ -1137,7 +1137,7 @@ public sealed partial class BuildRunController
             // A game's errors, which Godot writes every frame they happen, folded in its console.
             parts.Views.Run.Fold = godot && !chosen.GodotEditor ? new Godot.GodotConsoleFold() : null;
             // An Avalonia or WPF app's XAML edits reach it through the inspector, which the app dotnet watch starts never carries.
-            bool markup = wanted && !godot && RunsXamlApp(chosen);
+            bool markup = wanted && !godot && await RunsXamlAppAsync(chosen);
             bool watched = wanted && !godot && !markup;
             // A Godot game and a XAML app take their edits through the debugger, attached quietly as each starts held; Godot's editor loads its builds itself.
             bool reloaded = wanted && (godot && !chosen.GodotEditor || markup);
@@ -1526,11 +1526,17 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>Whether a configuration runs an Avalonia or WPF app of its project, whose XAML edits reach it through
-    /// Passenger's inspector, which the app dotnet watch starts never carries: Run's Hot Reload takes it through the debugger.</summary>
-    private bool RunsXamlApp(RunConfiguration chosen) =>
-        !chosen.IsContainer && chosen.Program.Length == 0 && session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, chosen.Project)) is { } project
-        && (project.Packages.Any(p => p.Name.Equals("Avalonia", StringComparison.OrdinalIgnoreCase))
-            || project.Evaluated?.Dependencies.Any(d => FrameworkNames.UsesWpf(d.FrameworkReferences)) == true);
+    /// Passenger's inspector, which the app dotnet watch starts never carries: Run's Hot Reload takes it through the debugger.
+    /// However it references Avalonia: its own packages, those of the projects it references, or what its restore resolved,
+    /// read off the window's thread only where they say nothing.</summary>
+    private async Task<bool> RunsXamlAppAsync(RunConfiguration chosen)
+    {
+        if (chosen.IsContainer || chosen.Program.Length > 0 || session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, chosen.Project)) is not { } project)
+        {
+            return false;
+        }
+        return DesktopPrograms.TakesXaml(project, session.Projects) || await BackgroundWork.Run(() => DesktopPrograms.RestoredXaml(Packages.FolderPackages.Restored(project)));
+    }
 
     /// <summary>A Godot game or a XAML app (its inspector in <paramref name="app"/>, its update handlers' hook <paramref name="handlers"/>)
     /// Run started held for Hot Reload, attached to quietly (<see cref="DebugController.AttachForHotReloadAsync"/>), which

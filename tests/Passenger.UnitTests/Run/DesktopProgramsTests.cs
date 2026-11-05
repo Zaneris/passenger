@@ -1,6 +1,7 @@
 using System.Text;
 using Passenger.App.Run;
 using Passenger.Core;
+using Passenger.Packages;
 using Passenger.UnitTests.Core;
 using Passenger.Workspace;
 
@@ -229,6 +230,49 @@ public sealed class DesktopProgramsTests : IDisposable
     public void A_dotnet_run_of_a_project_no_window_loaded_is_refused_for_what_cannot_be_read_but_on_linux_which_has_no_display()
     {
         Assert.Equal(OperatingSystem.IsLinux() ? null : DesktopPrograms.UnreadProject, DesktopPrograms.OfNamed(Path.Combine(root, "elsewhere", "Far.csproj"), []));
+    }
+
+    /// <summary>A desktop head names Avalonia.Desktop, or only the library holding its XAML: each is an Avalonia app.</summary>
+    [Theory]
+    [InlineData("Avalonia", true)]
+    [InlineData("Avalonia.Desktop", true)]
+    [InlineData("Avalonia.Themes.Fluent", true)]
+    [InlineData("Eto.Forms", false)]
+    [InlineData("Serilog", false)]
+    public void A_project_takes_xaml_by_any_package_of_avalonias_of_its_own_or_of_the_projects_it_references(string package, bool takes)
+    {
+        ProjectModel own = Model("App", "Exe", package);
+        ProjectModel shared = Model("Shared", "Library", package);
+        ProjectModel head = Model("Head", "Exe") with { ProjectReferences = [shared.Path] };
+        Assert.Equal(takes, DesktopPrograms.TakesXaml(own, [own]));
+        Assert.Equal(takes, DesktopPrograms.TakesXaml(head, [head, shared]));
+    }
+
+    [Fact]
+    public void A_restore_says_a_project_takes_xaml_where_a_package_of_another_name_brings_avalonia()
+    {
+        Assert.True(DesktopPrograms.RestoredXaml(Restored("Vendor.Controls", "Avalonia")));
+        Assert.False(DesktopPrograms.RestoredXaml(Restored("Serilog")));
+        Assert.False(DesktopPrograms.RestoredXaml(RestoredVersions.None));
+    }
+
+    /// <summary>Such a head runs where no inspector goes, and its Hot Reload is dotnet watch's, its Avalonia never mind.</summary>
+    [Theory]
+    [InlineData("Avalonia.Browser")]
+    [InlineData("Avalonia.Android")]
+    [InlineData("Avalonia.iOS")]
+    public void A_head_of_a_browser_or_a_device_is_no_xaml_app_of_this_desktop(string package)
+    {
+        ProjectModel shared = Model("Shared", "Library", "Avalonia");
+        ProjectModel head = Model("Head", "Exe", package) with { ProjectReferences = [shared.Path] };
+        Assert.False(DesktopPrograms.TakesXaml(head, [head, shared]));
+        Assert.False(DesktopPrograms.RestoredXaml(Restored(package, "Avalonia")));
+    }
+
+    private static RestoredVersions Restored(params string[] packages)
+    {
+        string libraries = string.Join(", ", packages.Select(package => $"\"{package}/1.0.0\": {{ \"type\": \"package\" }}"));
+        return RestoredVersions.Read(new MemoryStream(Encoding.UTF8.GetBytes($"{{ \"targets\": {{ \"net11.0\": {{ {libraries} }} }} }}")));
     }
 
     [Fact]

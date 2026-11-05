@@ -211,7 +211,7 @@ public sealed class FolderPackages
 
     /// <summary>What a project's restore resolved: its project.assets.json, where its evaluation says, else in its obj
     /// folder or an artifacts folder above it; none before it is restored, or while its file does not read.</summary>
-    private static RestoredVersions Restored(ProjectModel project)
+    internal static RestoredVersions Restored(ProjectModel project)
     {
         if ((project.Property(Passenger.Host.CarriedProperties.ProjectAssetsFile) ?? Passenger.Xaml.Projects.ProjectInputs.FindAssets(project.Path)) is not { } assets)
         {

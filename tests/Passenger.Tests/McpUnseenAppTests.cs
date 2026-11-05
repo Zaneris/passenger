@@ -117,24 +117,68 @@ public sealed class PlatformChoosingAppFolder : DesktopAgentAppFolder
         """;
 }
 
+/// <summary>tests/Debuggees/AgentApp laid out as a cross-platform Avalonia solution is: its XAML and code in a library, a
+/// desktop head holding its Main and naming Avalonia.Desktop alone, no package called Avalonia.</summary>
+public sealed class DesktopHeadAppFolder : IAsyncLifetime
+{
+    public string Folder { get; } = PathNames.Canonical(TestFolders.Create("desktophead-"));
+
+    public ValueTask InitializeAsync() => new(TestFolders.PrepareAsync(async () =>
+    {
+        string library = Directory.CreateDirectory(Path.Combine(Folder, "Shared")).FullName;
+        string head = Directory.CreateDirectory(Path.Combine(Folder, "Head")).FullName;
+        AvaloniaApp.Debuggee(library, "AgentApp", TestProjects.Library("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>").With(AvaloniaApp.Packages("Avalonia", "Avalonia.Themes.Fluent")));
+        File.Delete(Path.Combine(library, "Program.cs"));
+        File.WriteAllText(Path.Combine(head, "Head.csproj"), TestProjects.Console("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>")
+            .With(AvaloniaApp.Packages("Avalonia.Desktop", "Avalonia.Fonts.Inter")).With("  <ItemGroup>\n    <ProjectReference Include=\"../Shared/AgentApp.csproj\" />\n  </ItemGroup>\n"));
+        File.WriteAllText(Path.Combine(head, "Program.cs"), $$"""
+            using Avalonia;
+
+            namespace AgentApp;
+
+            public static class Program
+            {
+                public static int Main(string[] args)
+                {
+                    System.Console.WriteLine("{{DesktopAgentAppFolder.MainRan}}");
+                    return 3;
+                }
+
+                public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont();
+            }
+            """);
+        string solution = Path.Combine(Folder, "App.slnx");
+        File.WriteAllText(solution, "<Solution>\n  <Project Path=\"Head/Head.csproj\" />\n  <Project Path=\"Shared/AgentApp.csproj\" />\n</Solution>\n");
+        await Restore.RunAsync(solution);
+    }, Folder));
+
+    public ValueTask DisposeAsync()
+    {
+        TestFolders.Delete(Folder);
+        return ValueTask.CompletedTask;
+    }
+}
+
 /// <summary>An agent's own Passenger running a desktop app whose Main would open its window on the screen: the app's
 /// inspector starts it through its BuildAvaloniaApp() on Avalonia's headless platform in the Main's place, before the Main,
 /// so no window reaches a screen and the app tools see and use it as they do any app's.</summary>
 [Collection(Alone.Name)]
 public sealed class McpUnseenAppTests : McpRig, IClassFixture<DesktopAgentAppFolder>, IClassFixture<HeadlessCarryingAppFolder>, IClassFixture<PlatformChoosingAppFolder>,
-    IClassFixture<NamedProgramAppFolder>
+    IClassFixture<NamedProgramAppFolder>, IClassFixture<DesktopHeadAppFolder>
 {
     private readonly string appFolder;
     private readonly string carryingFolder;
     private readonly string choosingFolder;
     private readonly string namedFolder;
+    private readonly string headFolder;
 
-    public McpUnseenAppTests(DesktopAgentAppFolder app, HeadlessCarryingAppFolder carrying, PlatformChoosingAppFolder choosing, NamedProgramAppFolder named)
+    public McpUnseenAppTests(DesktopAgentAppFolder app, HeadlessCarryingAppFolder carrying, PlatformChoosingAppFolder choosing, NamedProgramAppFolder named, DesktopHeadAppFolder head)
     {
         appFolder = app.Folder;
         carryingFolder = carrying.Folder;
         choosingFolder = choosing.Folder;
         namedFolder = named.Folder;
+        headFolder = head.Folder;
     }
 
     /// <summary>Run with no window on any screen: its window and picture are the app's own, a click and a XAML edit Hot
@@ -179,6 +223,26 @@ public sealed class McpUnseenAppTests : McpRig, IClassFixture<DesktopAgentAppFol
         JsonElement frames = (await Call(client, McpTools.Profile, new() { ["arguments"] = "--quit-once-drawn" })).GetProperty("frames");
         Assert.True(frames.GetProperty("count").GetInt32() > 0, $"The profile of the desktop app on the headless platform has no frames: {frames}");
         Assert.DoesNotContain(DesktopAgentAppFolder.MainRan, Text(await Call(client, McpTools.Output)), StringComparison.Ordinal);
+    }
+
+    /// <summary>A desktop head is an Avalonia app to Run with Hot Reload, however little it says so itself: its inspector goes
+    /// in where dotnet watch's would not, and a XAML edit in the library holding its window reaches it.</summary>
+    [Fact]
+    public async Task A_desktop_heads_run_with_hot_reload_goes_through_its_inspector_and_a_xaml_edit_in_its_library_reaches_it()
+    {
+        await using McpClient client = await Start(["--mcp", headFolder], languageServer: false);
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The head did not build: {built}");
+
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 3600, ["hotReload"] = true });
+
+        Assert.True(ran.GetProperty("stillRunning").GetBoolean() && ran.GetProperty("status").GetString()!.Contains("its BuildAvaloniaApp() started in place of its Main", StringComparison.Ordinal),
+            $"The head was left to dotnet watch, which gives it no inspector: {ran}");
+        await Call(client, McpTools.Edit, new() { ["path"] = "Shared/MainWindow.axaml", ["oldText"] = "Text=\"Nobody greeted\"", ["newText"] = "Text=\"Greeted unseen\"" });
+        JsonElement reloaded = await Call(client, McpTools.HotReload);
+        Assert.True(reloaded.GetProperty("result").GetString() == "applied", $"The XAML edit in the head's library was not applied to the app: {reloaded}");
+        Assert.Contains("\"Greeted unseen\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Greeting" })), StringComparison.Ordinal);
+        await Call(client, McpTools.Stop);
     }
 
     /// <summary>No start of an agent's own Passenger has a display to reach, whatever it runs and however it starts: here the

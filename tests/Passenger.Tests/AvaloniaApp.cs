@@ -56,6 +56,10 @@ internal static class AvaloniaApp
         return hive;
     }
 
+    /// <summary>An item group referencing packages, on the Avalonia the tests run.</summary>
+    public static string Packages(params string[] names) =>
+        $"  <ItemGroup>\n{string.Concat(names.Select(p => $"    <PackageReference Include=\"{p}\" Version=\"{Version}\" />\n"))}  </ItemGroup>\n";
+
     /// <summary>The project file of a headless app of tests/Debuggees (LiveTreeApp, BindingErrorsApp, AgentApp), which have
     /// none of their own: on the Avalonia the tests run, so their restore already has its packages.</summary>
     public static string HeadlessProject()

@@ -2,6 +2,7 @@ using System.Reflection.PortableExecutable;
 using System.Text;
 using System.Text.Json;
 using Passenger.Core;
+using Passenger.Packages;
 using Passenger.Workspace;
 
 namespace Passenger.App.Run;
@@ -25,6 +26,12 @@ public static class DesktopPrograms
 
     private const string MacApp = "a native macOS app";
 
+    /// <summary>The package a project takes Avalonia by, or a package named under it.</summary>
+    private const string AvaloniaPackage = "Avalonia";
+
+    /// <summary>The packages of an Avalonia head that runs in a browser or on a device, where no inspector reaches it.</summary>
+    private static readonly string[] AvaloniaElsewhere = ["Avalonia.Browser", "Avalonia.Android", "Avalonia.iOS"];
+
     /// <summary>What a <c>dotnet run</c> of a project no window has loaded is, nothing having been read of it.</summary>
     public const string UnreadProject = "a project not loaded here, so of no known kind";
 
@@ -35,7 +42,7 @@ public static class DesktopPrograms
     /// it, and the package a project takes the framework by, or a package named under it.</summary>
     private static readonly (string File, string Called, string Package)[] Frameworks =
     [
-        ("Avalonia.Base.dll", Avalonia, "Avalonia"), ("Microsoft.WinUI.dll", "a WinUI app", "Microsoft.WindowsAppSDK"), ("Microsoft.Maui.dll", "a .NET MAUI app", "Microsoft.Maui.Controls"),
+        ("Avalonia.Base.dll", Avalonia, AvaloniaPackage), ("Microsoft.WinUI.dll", "a WinUI app", "Microsoft.WindowsAppSDK"), ("Microsoft.Maui.dll", "a .NET MAUI app", "Microsoft.Maui.Controls"),
         ("Uno.UI.dll", "an Uno Platform app", "Uno.WinUI"), ("Eto.dll", "an Eto.Forms app", "Eto.Forms"), ("GtkSharp.dll", "a GTK app", "GtkSharp"),
     ];
 
@@ -137,6 +144,16 @@ public static class DesktopPrograms
         }
         return string.Equals(project.OutputType, "WinExe", StringComparison.OrdinalIgnoreCase) ? Windowed : null;
     }
+
+    /// <summary>Whether a project is an Avalonia or WPF app of this computer's desktop by what it and the projects it references
+    /// say, as a desktop head is, with no <c>Avalonia</c> package of its own; a package bringing Avalonia only its restore
+    /// knows (<see cref="RestoredXaml"/>).</summary>
+    public static bool TakesXaml(ProjectModel project, IReadOnlyList<ProjectModel> projects) =>
+        (OfProject(project, projects) == Avalonia && !project.Packages.Any(p => AvaloniaElsewhere.Contains(p.Name, StringComparer.OrdinalIgnoreCase)))
+        || project.WithReferenced(projects).Any(p => p.Evaluated?.Dependencies.Any(d => FrameworkNames.UsesWpf(d.FrameworkReferences)) == true);
+
+    /// <summary>Whether a restore resolved Avalonia for this computer's desktop, whichever package or project brought it.</summary>
+    public static bool RestoredXaml(RestoredVersions restored) => restored.Holds(AvaloniaPackage) && !AvaloniaElsewhere.Any(restored.Holds);
 
     /// <summary>What desktop app a project named in a plan's project's place is by what the window has loaded: on Linux, where
     /// what it starts finds no display, nothing need be known of one it has not.</summary>

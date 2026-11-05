@@ -22,6 +22,9 @@ public sealed class RestoredVersions
         return packages?.GetValueOrDefault(id);
     }
 
+    /// <summary>Whether any framework's restore resolved a package, however the project came by it.</summary>
+    public bool Holds(string id) => byFramework.Values.Any(packages => packages.ContainsKey(id));
+
     /// <summary>The packages a framework's restore resolved, with their versions (a project of one framework names none).</summary>
     public IReadOnlyDictionary<string, string> All(string? framework) =>
         (framework is not null ? byFramework.GetValueOrDefault(framework) : byFramework.Count == 1 ? byFramework.Values.First() : null)
