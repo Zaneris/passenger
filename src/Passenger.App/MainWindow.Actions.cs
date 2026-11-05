@@ -86,8 +86,9 @@ public partial class MainWindow
 
     private string? NeedsFolder(ActionContext _) => Folder is null ? Refusals.NoFolder : null;
 
-    /// <summary>A folder open whose projects have a .NET SDK to build and run them with.</summary>
-    private string? NeedsSdk(ActionContext context) => NeedsFolder(context) ?? WithoutSdk();
+    /// <summary>A folder open whose tests can run: with a .NET SDK where a run builds first, and with none where it does not,
+    /// as GUT's tests of a game of GDScript alone.</summary>
+    private string? NeedsTestBuild(ActionContext context) => NeedsFolder(context) ?? (WithoutSdk() is { } none && session.Tests.Builds ? none : null);
 
     /// <summary>Why Expand All or Collapse All cannot run: no tool window with rows to open or close has the keys.</summary>
     private static string? NoTree(ActionContext context, Action? does, string verb) =>
@@ -384,14 +385,14 @@ public partial class MainWindow
         Add(A.RunTests, "Run Unit Tests", "Unit Tests", c => RunTestsInContext(c, debug: false), NoTestHere, ("Tests", 0, 0));
         Add(A.DebugTests, "Debug Unit Tests", "Unit Tests", c => RunTestsInContext(c, debug: true), NoTestHere, ("Tests", 0, 1), works: A.RunTests);
         Add(A.RunTestsUntilFailure, "Run Unit Tests Until Failure", "Unit Tests", c => RunTestsInContext(c, debug: false, untilFailure: true), NoTestHere, ("Tests", 0, 2), works: A.RunTests);
-        Add(A.RunAllTests, "Run All Tests", "Unit Tests", _ => RunTests(() => session.Tests.RunAsync(Folder!)), c => NeedsSdk(c) ?? session.Tests.NeverRuns(), ("Tests", 0, 3),
+        Add(A.RunAllTests, "Run All Tests", "Unit Tests", _ => RunTests(() => session.Tests.RunAsync(Folder!)), c => NeedsTestBuild(c) ?? session.Tests.NeverRuns(), ("Tests", 0, 3),
             works: A.RunTests);
-        Add(A.RerunTests, "Rerun Unit Tests", "Unit Tests", _ => RunTests(() => session.Tests.RerunAsync(Folder!)), NeedsSdk, ("Tests", 1, 0));
-        Add(A.RerunFailedTests, "Rerun Failed Tests", "Unit Tests", _ => RunTests(() => session.Tests.RerunFailedAsync(Folder!)), NeedsSdk, ("Tests", 1, 1));
+        Add(A.RerunTests, "Rerun Unit Tests", "Unit Tests", _ => RunTests(() => session.Tests.RerunAsync(Folder!)), NeedsTestBuild, ("Tests", 1, 0));
+        Add(A.RerunFailedTests, "Rerun Failed Tests", "Unit Tests", _ => RunTests(() => session.Tests.RerunFailedAsync(Folder!)), NeedsTestBuild, ("Tests", 1, 1));
         Add(A.StopTests, "Stop Unit Tests", "Unit Tests", _ => session.Tests.Stop(), NothingRunning, ("Tests", 1, 2));
 
         // Where the Explorer has the keys, its rows say what to run, never the editor's caret.
-        string? NoTestHere(ActionContext context) => NeedsSdk(context)
+        string? NoTestHere(ActionContext context) => NeedsTestBuild(context)
             ?? (ChosenTests(context) is { } chosen ? session.Tests.NeverRuns(chosen) : ChosenProjects(context) is not null ? null
                 : ExplorerHasKeys(context) ? "No project chosen in the Explorer holds tests"
                 : TestAtCaret(context) is null ? "No test is at the caret" : null);

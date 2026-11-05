@@ -244,6 +244,9 @@ public sealed class TestController : IAsyncDisposable
     /// projects not yet walked, or its test projects' files still being read.</summary>
     public bool IsLooking => awaitingProjects || Finder.IsLooking;
 
+    /// <summary>Whether a run builds before it starts: the folder has .NET projects, which a game of GDScript alone does not.</summary>
+    public bool Builds => projects().Any(p => p.Exists && !p.IsScriptGame);
+
     /// <summary>Builds, then finds the tests of every test project. Null once found, or what stopped it.</summary>
     public async Task<string?> DiscoverAsync(string workspace)
     {
@@ -697,7 +700,7 @@ public sealed class TestController : IAsyncDisposable
     private async Task<string?> DiscoverCore(string workspace, bool build, CancellationToken cancel)
     {
         // A folder of GDScript alone has nothing to build for GUT's tests.
-        if (build && projects().Any(p => p.Exists && !p.IsScriptGame) && await this.build(cancel) is { Succeeded: false } unbuilt)
+        if (build && Builds && await this.build(cancel) is { Succeeded: false } unbuilt)
         {
             return unbuilt.Message;
         }

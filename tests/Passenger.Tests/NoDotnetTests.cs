@@ -9,6 +9,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Explorer;
 using Passenger.App.Templates;
+using Passenger.App.Testing;
 using Passenger.Core;
 using Passenger.Workspace;
 
@@ -154,6 +155,62 @@ public sealed class NoDotnetTests : IAsyncDisposable
             && l.EndsWith($"for {folder}", StringComparison.Ordinal));
         Assert.True(servers == 1 && hosts == 0, $"With no .NET the C# language server started {servers} times and a project host {hosts} times for the folder");
         window.Close();
+    }
+
+    /// <summary>A Godot game of GDScript alone that carries GUT (the stand-in), one test under test/.</summary>
+    private void GutGame()
+    {
+        TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
+        GodotGutTests.WriteGut(folder);
+        TestFolders.Write(folder, "test/test_spinner.gd", "extends GutTest\n\n\nfunc test_adds():\n\tassert_eq(1 + 1, 2, \"adds\")\n");
+    }
+
+    /// <summary>A game of GDScript alone builds nothing, so its tests' actions stay open with no .NET, where a C# folder's
+    /// refuse (<see cref="A_csharp_folder_with_no_dotnet_says_so_refuses_what_needs_it_in_those_words_and_still_edits_and_commits"/>).
+    /// Needs no Godot: nothing runs.</summary>
+    [AvaloniaFact]
+    public void A_GDScript_only_games_tests_ask_no_dotnet_of_their_actions()
+    {
+        GutGame();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Tests.Tree.Methods.Any(m => m.Name == "test_adds"), () => $"the GUT test found in its GDScript ({window.Tests.Tree.EmptyText})");
+            Assert.Equal(DotnetLack.NoDotnet, window.DotnetWant.Lack);
+            ActionContext here = window.Actions.Context();
+            foreach (string action in (string[])[AppActions.RunAllTests, AppActions.RerunTests, AppActions.RerunFailedTests])
+            {
+                Assert.True(window.Actions.WhyNot(action, here) is null, $"{action} of a game of GDScript alone is refused with: {window.Actions.WhyNot(action, here)}");
+            }
+            Assert.True(window.Actions.WhyNot(AppActions.RunTests, here) != Refusals.NoDotnet, "Run Unit Tests of a game of GDScript alone is refused for want of .NET");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>With no .NET, Run All Tests runs a game of GDScript alone's GUT test on the Godot found, and it passes.</summary>
+    [AvaloniaFact]
+    public void A_GDScript_only_games_tests_run_on_Godot_with_no_dotnet()
+    {
+        GodotFound? godot = GodotExecutables.Find(null);
+        Assert.SkipWhen(godot is not { WhyNotScripts: null }, "No Godot 4 that runs GDScript was found: install one to run this test");
+        GutGame();
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(Path.Combine(folder, "godot-home")) };
+        window.Show();
+        try
+        {
+            window.OpenFolder(folder);
+            Ui.WaitFor(() => window.Tests.Tree.Methods.Any(m => m.Name == "test_adds"), () => $"the GUT test found in its GDScript ({window.Tests.Tree.EmptyText})");
+            Assert.True(window.Perform(AppActions.RunAllTests), $"Run All Tests refused: {window.Actions.WhyNot(AppActions.RunAllTests, window.Actions.Context())}");
+            Ui.WaitFor(() => !window.Tests.IsBusy && window.Tests.Tree.Methods.Single(m => m.Name == "test_adds").State == TestState.Passed,
+                () => $"the GUT test to pass ({window.BottomPanel.Tests.Status}; {window.BottomPanel.Build.Document.Snapshot})", TimeSpan.FromMinutes(3));
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     [AvaloniaFact]
