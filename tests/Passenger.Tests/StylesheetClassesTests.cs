@@ -216,6 +216,16 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
     }
 
     [AvaloniaFact]
+    public void A_stylesheet_only_named_like_a_css_isolation_bundle_is_read_as_the_file_it_is()
+    {
+        MainWindow window = app.Open(null, languageServer: false);
+        PageClasses found = Classes(window, "ordinary.html");
+        Assert.True(found.Complete, string.Join("; ", found.Unread));
+        Assert.Contains("ordinary", found.Classes.Keys);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_stylesheet_that_cannot_be_read_is_said_and_read_again_once_it_can_be()
     {
         MainWindow window = app.Open(null, languageServer: false);
@@ -428,6 +438,8 @@ public sealed class StyledShop : SharedProject
         Write("latest-before.html", LinkOf(LatestBefore));
         Write("latest-after.html", LinkOf(LatestAfter));
         Write("latest-ahead.html", LinkOf(".from-ahead{color:blue}"));
+        Write("css/site.styles.css", ".ordinary {\n    color: teal;\n}\n");
+        Write("ordinary.html", "<link rel=\"stylesheet\" href=\"css/site.styles.css\" />\n");
         Write("css/locked.css", ".locked-note {\n    color: teal;\n}\n");
         Write("locked.html", "<link rel=\"stylesheet\" href=\"css/locked.css\" />\n");
         for (int depth = 0; depth < 10; depth++)

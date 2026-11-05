@@ -233,6 +233,10 @@ public static class CarriedProperties
     /// its own), which a page that links them names.</summary>
     public const string StaticWebAssetBasePath = "StaticWebAssetBasePath";
 
+    /// <summary>The id a project packs under, its assembly's name unless it names another, which its CSS isolation bundle's
+    /// file takes (<c>Id.styles.css</c>).</summary>
+    public const string PackageId = "PackageId";
+
     /// <summary>The version of Aspire's AppHost SDK an AppHost builds with, whose Aspire.Hosting it references unless it
     /// names its own.</summary>
     public const string AspireHostingSDKVersion = "AspireHostingSDKVersion";
@@ -242,7 +246,7 @@ public static class CarriedProperties
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
         NuGetPackageRoot, NuGetPackageFolders, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
-        DirectoryPackagesPropsPath, GodotProjectDir, StaticWebAssetBasePath, AspireHostingSDKVersion,
+        DirectoryPackagesPropsPath, GodotProjectDir, StaticWebAssetBasePath, PackageId, AspireHostingSDKVersion,
     ];
 }
 

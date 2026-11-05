@@ -197,9 +197,10 @@ public sealed class PageStylesheets
                 }
                 return;
             }
-            if (Bundle(href, serving, root, files) is { } bundled)
+            if (BundleOf(href, serving, projects) is { } bundling)
             {
                 count++;
+                IReadOnlyList<string> bundled = Bundled(bundling, root, files);
                 foreach (string scoped in bundled.Where(s => seen.Add(s)))
                 {
                     string component = Path.GetFileNameWithoutExtension(scoped[..^4]);
@@ -429,20 +430,24 @@ public sealed class PageStylesheets
         return Uri.TryCreate(href, UriKind.Absolute, out Uri? address) && (address.Scheme == Uri.UriSchemeHttp || address.Scheme == Uri.UriSchemeHttps) ? address : null;
     }
 
-    /// <summary>The scoped stylesheets the CSS isolation bundle an href names takes in: every component's and page's of the
-    /// project that serves it and of the projects it references; null for another href.</summary>
-    private IReadOnlyList<string>? Bundle(string href, ProjectModel? serving, string? root, IReadOnlyList<string> files)
+    /// <summary>The project whose CSS isolation bundle an href names, as its build names and places it (a page may be shared
+    /// with the app that makes it); null for another href, however it ends.</summary>
+    private static ProjectModel? BundleOf(string href, ProjectModel? serving, IReadOnlyList<ProjectModel> projects)
     {
-        string name = Path.GetFileName(UrlPath(href));
-        if (serving is null || !name.EndsWith(".styles.css", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
+        string address = UrlPath(href);
+        return serving is null ? null : ((IEnumerable<ProjectModel>)[serving, .. projects]).FirstOrDefault(p =>
+            PageLinks.IsBundle(address, p.Property(Host.CarriedProperties.PackageId) ?? p.Name, p.Property(Host.CarriedProperties.StaticWebAssetBasePath)));
+    }
+
+    /// <summary>The scoped stylesheets a project's CSS isolation bundle takes in: every component's and page's of the project
+    /// and of the projects it references.</summary>
+    private IReadOnlyList<string> Bundled(ProjectModel bundling, string? root, IReadOnlyList<string> files)
+    {
         if (root is null)
         {
             return [];
         }
-        IEnumerable<string> folders = [serving.Folder, .. serving.ProjectReferences.Select(r => System.IO.Path.GetDirectoryName(r)!)];
+        IEnumerable<string> folders = [bundling.Folder, .. bundling.ProjectReferences.Select(r => System.IO.Path.GetDirectoryName(r)!)];
         return [.. folders.SelectMany(folder => OwnFiles(folder, root, files)).Where(f => f.EndsWith(".css", StringComparison.OrdinalIgnoreCase) && RazorFiles.Is(f[..^4]))];
     }
 

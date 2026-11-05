@@ -180,6 +180,19 @@ public class PageStylesTests
     }
 
     [Fact]
+    public void A_projects_bundle_is_its_package_ids_styles_css_where_its_build_places_it()
+    {
+        Assert.True(PageLinks.IsBundle("Shop.styles.css", "Shop", null));
+        Assert.True(PageLinks.IsBundle("/shop.STYLES.css", "Shop", "/"));
+        Assert.True(PageLinks.IsBundle("/Shop.styles.css", "Shop", "_content/Shop"));
+        Assert.True(PageLinks.IsBundle("/first/Shop.styles.css", "Shop", "first/"));
+        Assert.False(PageLinks.IsBundle("/Shop.styles.css", "Shop", "first"));
+        Assert.False(PageLinks.IsBundle("css/site.styles.css", "Shop", null));
+        Assert.False(PageLinks.IsBundle("css/Shop.styles.css", "Shop", null));
+        Assert.False(PageLinks.IsBundle("Other.styles.css", "Shop", null));
+    }
+
+    [Fact]
     public void A_link_an_expression_makes_says_so_and_an_html_pages_at_sign_is_part_of_its_address()
     {
         LinkedSheet made = Assert.Single(PageLinks.Stylesheets("<link rel=\"stylesheet\" href=\"@Theme.Sheet\" />", razor: true));

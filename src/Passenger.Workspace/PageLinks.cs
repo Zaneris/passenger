@@ -74,6 +74,16 @@ public static class PageLinks
         return full.StartsWith(based, StringComparison.OrdinalIgnoreCase) ? full[(based.Length - 1)..] : full;
     }
 
+    /// <summary>Whether an address is the CSS isolation bundle of a project of a package id: at the app's root, or the root of
+    /// the static web assets' base path the project gives itself, as its build places it.</summary>
+    public static bool IsBundle(string address, string package, string? basePath)
+    {
+        string served = basePath?.Replace('\\', '/').Trim('/') ?? string.Empty;
+        string bundle = $"{package}.styles.css";
+        string place = served.Length == 0 || served.Equals($"_content/{package}", StringComparison.OrdinalIgnoreCase) ? bundle : $"{served}/{bundle}";
+        return address.TrimStart('/').Equals(place, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>A page's <c>&lt;style&gt;</c> blocks as a stylesheet's text: the page's text with everything outside them
     /// blank (its line breaks kept), so a rule's places are the page's own; null for a page with none.</summary>
     public static string? StyleText(string markup, bool razor)
