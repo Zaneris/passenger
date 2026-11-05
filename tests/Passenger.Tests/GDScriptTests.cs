@@ -21,9 +21,9 @@ namespace Passenger.Tests;
 /// saves it; an error typed shows in Problems as typed, a warning with its name; and a project deleted under that editor
 /// is let go of, said once; what that editor makes (a script's .uid) is taken away, a plugin runs not there from Godot 4.5,
 /// another program's writes are kept, as is what the person's own editor (a stand-in) makes there, an editor on a project
-/// whose path begins with this one's being none on it, and the editor is let go once no script is open; and, as a person's window opens a
-/// script, none is started until something Passenger's own reading has no answer for asks for it. Without a Godot (GODOT, the PATH,
-/// Applications) each test skips saying why. A Godot editor of its own each, so run alone.</summary>
+/// whose path begins with this one's being none on it, and the editor is let go once no script is open, each project with one of
+/// its own; and, as a person's window opens a script, none is started until something Passenger's own reading has no answer for
+/// asks for it. Without a Godot (GODOT, the PATH, Applications) each test skips saying why. A Godot editor of its own each, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GDScriptTests
 {
@@ -555,6 +555,67 @@ public sealed class GDScriptTests
         }
         finally
         {
+            Environment.SetEnvironmentVariable(Passenger.App.Web.WebLanguages.GDScriptIdleVariable, was);
+        }
+    }
+
+    /// <summary>Two Godot projects side by side in the folder open: each script is served by an editor on its own project, never
+    /// the first opened's, each editor goes once no script of its project is open, the other's staying, and a project reopened
+    /// alone starts on itself.</summary>
+    [AvaloniaFact]
+    public void Each_godot_project_in_the_folder_has_a_server_of_its_own_let_go_alone_and_reopened_on_itself()
+    {
+        string root = TestFolders.Create("gdscript-siblings-");
+        string[] projects = [Path.Combine(root, "north"), Path.Combine(root, "south")];
+        foreach (string project in projects)
+        {
+            TestFolders.Write(project, "project.godot", $"; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"{Path.GetFileName(project)}\"\n");
+            TestFolders.Write(project, "main.gd", "extends Node\n");
+        }
+        string? was = Environment.GetEnvironmentVariable(Passenger.App.Web.WebLanguages.GDScriptIdleVariable);
+        Environment.SetEnvironmentVariable(Passenger.App.Web.WebLanguages.GDScriptIdleVariable, "1000");
+        MainWindow window = new()
+        {
+            Width = 1200,
+            Height = 800,
+            StartsLanguageServer = false,
+            GodotEnvironment = GodotTests.Game.Home(root + "-home"),
+            GodotHeadlessAtOpen = true,
+        };
+        try
+        {
+            window.Show();
+            window.OpenFolder(root);
+            Ui.Settle();
+            OpenDocument Served(string project)
+            {
+                Assert.Null(window.OpenFile(Path.Combine(project, "main.gd")));
+                Ui.Settle();
+                OpenDocument document = window.EditorArea.Active!;
+                Ui.WaitFor(() => window.Session.Web?.For(document)?.Lsp is not null && window.Session.Web.StateOf(document) is null,
+                    () => $"Godot's server for {document.Path}: {window.Session.Web?.StateOf(document)} {document.Notice}", TimeSpan.FromSeconds(90));
+                return document;
+            }
+
+            Served(projects[0]);
+            Served(projects[1]);
+            Assert.True(EditorsServing(projects[0]) == 1 && EditorsServing(projects[1]) == 1,
+                $"{EditorsServing(projects[0])} editors serve the first project and {EditorsServing(projects[1])} the second, where each script was to be answered by its own project's");
+
+            Ui.Run(window, AppActions.CloseTab);
+            Ui.WaitFor(() => EditorsServing(projects[1]) == 0, () => $"the second project's editor let go once no script of it was open ({EditorsServing(projects[1])} still run)", TimeSpan.FromSeconds(30));
+            Assert.True(EditorsServing(projects[0]) == 1, "The first project's editor went with the second's, though its script is open");
+
+            Ui.Run(window, AppActions.CloseTab);
+            Ui.WaitFor(() => EditorsServing(projects[0]) == 0, () => $"the first project's editor let go ({EditorsServing(projects[0])} still run)", TimeSpan.FromSeconds(30));
+
+            Served(projects[1]);
+            Assert.True(EditorsServing(projects[1]) == 1 && EditorsServing(projects[0]) == 0,
+                $"The second project reopened alone started {EditorsServing(projects[1])} editors on itself and {EditorsServing(projects[0])} on the project opened first");
+        }
+        finally
+        {
+            window.Close();
             Environment.SetEnvironmentVariable(Passenger.App.Web.WebLanguages.GDScriptIdleVariable, was);
         }
     }

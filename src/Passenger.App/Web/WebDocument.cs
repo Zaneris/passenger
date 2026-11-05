@@ -107,6 +107,9 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// but for a GDScript, whose server starts only so.</summary>
     public Action? AskServer { get; init; }
 
+    /// <summary>The Godot project a GDScript is in, whose editor is its server; null for another language's file or a script in none.</summary>
+    internal string? GodotProject { get; init; }
+
     public IReadOnlyList<Diagnostic> Diagnostics => diagnostics.Placed;
 
     /// <summary>ESLint's share of the file, while ESLint checks it.</summary>
