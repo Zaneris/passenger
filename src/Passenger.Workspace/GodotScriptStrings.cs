@@ -12,6 +12,14 @@ public sealed record GodotScriptToken(bool Word, string Text, int Start, int End
     /// <summary>Whether a string is the whole of an argument, joined to nothing (<c>"a" + "b"</c> is neither's), and no parameter's
     /// default; a branch of an <c>if</c> expression is whole, as the argument is that string when it is taken.</summary>
     public bool Whole { get; init; }
+
+    /// <summary>The quote around a string, and whether it is raw.</summary>
+    public char Quote { get; init; }
+
+    public bool Raw { get; init; }
+
+    /// <summary>Whether a string follows the word <c>extends</c>, a path to the script's base.</summary>
+    public bool Extends { get; init; }
 }
 
 /// <summary>A GDScript's words and strings as Godot's tokenizer reads them: its comments passed over, a string's quotes
@@ -51,6 +59,9 @@ public static class GodotScriptStrings
                 {
                     Receiver = receiver,
                     Whole = opens && Closes(text, next),
+                    Quote = text[quote],
+                    Raw = raw,
+                    Extends = wordLast && lastWord == "extends",
                 });
                 at = next;
                 wordLast = false;

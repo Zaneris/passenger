@@ -292,12 +292,11 @@ public sealed class GodotScenes
     }
 
     /// <summary>The res:// path a script's <c>extends</c> path names: a res:// or uid:// one as it is, another from the script's folder.</summary>
-    private string? Beside(string script, string path)
+    private string? Beside(string script, string path) => path.StartsWith(GodotUids.Scheme, StringComparison.Ordinal) ? ResOfUid(path) : BesideScript(script, path);
+
+    /// <summary>The res:// path a path a script writes names: a res:// one as it is, another from the script's folder.</summary>
+    private static string? BesideScript(string script, string path)
     {
-        if (path.StartsWith(GodotUids.Scheme, StringComparison.Ordinal))
-        {
-            return ResOfUid(path);
-        }
         if (path.StartsWith("res://", StringComparison.Ordinal) || !script.StartsWith("res://", StringComparison.Ordinal))
         {
             return path.StartsWith("res://", StringComparison.Ordinal) ? path : null;
@@ -654,8 +653,35 @@ public sealed class GodotScenes
                 int star = text.StartsWith("*res://", StringComparison.Ordinal) ? 1 : 0;
                 if ((star == 1 || text.StartsWith("res://", StringComparison.Ordinal)) && Moved(moves, text[star..]) is { } now)
                 {
-                    edits.Add(new TextEdit(value.TextStart + star, value.TextEnd - value.TextStart - star, now));
+                    edits.Add(new TextEdit(value.TextStart + star, value.TextEnd - value.TextStart - star, GodotWrites.Escaped(now)));
                 }
+            }
+        }
+        return edits;
+    }
+
+    /// <summary>The edits a GDScript (<paramref name="script"/>, its res:// path before the moves) takes as files and folders move
+    /// (<see cref="Moved"/>): each string saying a res:// path one moved, and each path written from the script's folder, as a
+    /// <c>preload</c> and <c>extends</c> may, that its own move or the file's leaves naming another, written anew from the top.</summary>
+    public static IReadOnlyList<TextEdit> MovedScriptEdits(string text, string script, IReadOnlyList<(string From, string To)> moves)
+    {
+        List<TextEdit> edits = [];
+        string now = Moved(moves, script) ?? script;
+        foreach (GodotScriptToken token in GodotScriptStrings.Read(text).Where(t => !t.Word))
+        {
+            string? path = null;
+            if (token.Text.StartsWith("res://", StringComparison.Ordinal))
+            {
+                path = Moved(moves, token.Text);
+            }
+            else if ((token.Extends || token.Call == "preload") && token.Text.Length > 0 && !token.Text.Contains("://", StringComparison.Ordinal) && BesideScript(script, token.Text) is { } was)
+            {
+                string went = Moved(moves, was) ?? was;
+                path = BesideScript(now, token.Text) == went ? null : went;
+            }
+            if (path is not null && GodotScriptStrings.Written(path, token.Quote, token.Raw) is { } written)
+            {
+                edits.Add(new TextEdit(token.Start, token.End - token.Start, written));
             }
         }
         return edits;

@@ -506,8 +506,9 @@ internal sealed partial class CSharpAssist
         static string Simple(string full) => full[(full.LastIndexOf('.') + 1)..];
     }
 
-    /// <summary>The edits the scenes take as a rename moves files of a Godot project: each scene's or resource's res:// path
-    /// of a moved file written anew; and the moves Godot's own files beside a moved one take with it (a script's .uid).</summary>
+    /// <summary>The edits the project's files take as a rename moves files of a Godot project: each scene's or resource's res://
+    /// path of a moved file written anew, and each GDScript's; and the moves Godot's own files beside a moved one take with it
+    /// (a script's .uid).</summary>
     internal async Task<(IReadOnlyList<PlacedEdits> Files, IReadOnlyList<(string From, string To)> Moves)> GodotMovedAsync(IReadOnlyList<(string From, string To)> moves)
     {
         List<PlacedEdits> files = [];
@@ -541,6 +542,15 @@ internal sealed partial class CSharpAssist
                     files.Add(new PlacedEdits(path, [.. edits.Select(e => new LspTextEdit(lines.RangeOf(new TextRange(e.Start, e.Length)), e.Text))], file.Text));
                 }
             }
+            List<(string From, string To)> paths = [.. renamed.Select(r => (r.Key, r.Value))];
+            foreach ((string res, string text) in scenes.Texts.Where(t => GodotScriptDeclarations.IsScript(t.Key)).OrderBy(t => t.Key, StringComparer.Ordinal))
+            {
+                if (GodotScenes.MovedScriptEdits(text, res, paths) is { Count: > 0 } edits && scenes.FileOf(res) is { } path)
+                {
+                    ServerLines lines = ServerLines.Of(TextSnapshot.From(text));
+                    files.Add(new PlacedEdits(path, [.. edits.Select(e => new LspTextEdit(lines.RangeOf(new TextRange(e.Start, e.Length)), e.Text))], text));
+                }
+            }
         }
         return (files, beside);
     }
@@ -562,7 +572,7 @@ internal sealed partial class CSharpAssist
 
     /// <summary>The edits the Godot projects' files take once files and folders of theirs have moved (the Explorer's move or
     /// rename, already made): every res:// path naming a moved file, or a file inside a moved folder, written anew in each
-    /// scene, resource and project.godot and in each C# string; by file at its path now, in the server's places, each read as
+    /// scene, resource, GDScript and project.godot and in each C# string; by file at its path now, in the server's places, each read as
     /// it stands as this is asked, whatever the index has heard. With the .uid and .import files beside each moved file, which
     /// go with it, an .import's own path to its file following.</summary>
     internal async Task<(IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> Files, IReadOnlyList<(string From, string To)> Beside)> GodotFollowAsync(
@@ -606,8 +616,13 @@ internal sealed partial class CSharpAssist
             // Each text the moves reach, where it is read from and its path once every move is made: the scenes, project.godot, the .import files moving.
             List<(string Path, string From)> texts = [.. scenes.Files.Keys.Select(scenes.FileOf).OfType<string>().Select(f => (f, f)), (Path.Combine(folder, "project.godot"), Path.Combine(folder, "project.godot")),
                 .. beside.Where(b => b.Item1.EndsWith(".import", StringComparison.OrdinalIgnoreCase)).Select(b => (b.Item2, b.Item1))];
+            // A script's text is read at its path now, its paths written from the folder it was in.
+            List<(string Path, string Res)> scripts = [.. scenes.Texts.Keys.Where(GodotScriptDeclarations.IsScript).Select(res => (Path: scenes.FileOf(res), res)).Where(s => s.Path is not null).Select(s => (s.Path!, s.res))];
+            List<(string, string)> back = [.. paths.Select(p => (p.To, p.From))];
             IReadOnlyList<(string Path, string Text, IReadOnlyList<TextEdit> Edits)> edited = await BackgroundWork.Run(() => (IReadOnlyList<(string, string, IReadOnlyList<TextEdit>)>)
-                [.. texts.Select(t => (t.Path, Text: open.Text(t.From))).Where(t => t.Text is not null).Select(t => (t.Path, t.Text!, GodotScenes.MovedEdits(GodotFile.Parse(t.Text!), paths))).Where(t => t.Item3.Count > 0)]);
+                [.. texts.Select(t => (t.Path, Text: open.Text(t.From))).Where(t => t.Text is not null).Select(t => (t.Path, t.Text!, GodotScenes.MovedEdits(GodotFile.Parse(t.Text!), paths))).Where(t => t.Item3.Count > 0),
+                .. scripts.Select(s => (s.Path, s.Res, Text: open.Text(s.Path))).Where(s => s.Text is not null)
+                    .Select(s => (s.Path, s.Text!, GodotScenes.MovedScriptEdits(s.Text!, GodotScenes.Moved(back, s.Res) ?? s.Res, paths))).Where(s => s.Item3.Count > 0)]);
             foreach ((string path, string text, IReadOnlyList<TextEdit> edits) in edited)
             {
                 ServerLines lines = ServerLines.Of(TextSnapshot.From(text));

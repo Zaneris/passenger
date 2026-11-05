@@ -643,6 +643,32 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
+    /// <summary>A scene moved in the Explorer takes a GDScript's paths along, its preload and its load, as one command with the
+    /// rest, or the script no longer loads it.</summary>
+    [AvaloniaFact]
+    public void A_scene_moved_in_the_explorer_is_followed_by_the_gdscripts_naming_it()
+    {
+        const string gdscript = "extends Node\n\nconst Player = preload(\"res://player.tscn\")\n\n\nfunc _ready():\n\tprint(load('res://player.tscn'))\n";
+        string script = game.PathOf("spawner.gd");
+        File.WriteAllText(script, gdscript);
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
+            Choose(window, game.PathOf("player.tscn"));
+            Ui.Run(window, EditorActions.Cut);
+            Choose(window, game.PathOf("actors"));
+            Ui.Run(window, EditorActions.Paste);
+            Ui.WaitFor(() => File.ReadAllText(script) == gdscript.Replace("res://player.tscn", "res://actors/player.tscn", StringComparison.Ordinal),
+                () => $"the GDScript's paths to follow the scene ({window.Status}): {File.ReadAllText(script)}");
+        }
+        finally
+        {
+            window.Close();
+            File.Delete(script);
+        }
+    }
+
     /// <summary>The Explorer's row of a file or folder chosen, with the keys.</summary>
     internal static void Choose(MainWindow window, string path)
     {

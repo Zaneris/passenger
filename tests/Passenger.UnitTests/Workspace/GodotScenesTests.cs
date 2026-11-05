@@ -355,6 +355,39 @@ public class GodotScenesTests
         return text;
     }
 
+    /// <summary>A GDScript's strings follow a move as Godot reads them: a res:// path in any string, each in its own quotes, and
+    /// a path written from the script's folder in a preload or extends where the move leaves it naming another; a comment, a
+    /// string that says no moved path, and a load's relative string, which Godot reads from the top, are left.</summary>
+    [Fact]
+    public void A_gdscripts_paths_follow_files_and_folders_moved()
+    {
+        const string script = """
+            extends "res://base.gd"
+
+            # load("res://player.tscn")
+            const Player = preload("res://player.tscn")
+            const Beside = preload("beside.tscn")
+            var enemy = load('res://enemy.tscn::1')
+            var other = load("res://other.tscn")
+            var relative = load("player.tscn")
+            var art = "res://art/hero.png"
+
+            """;
+        List<(string, string)> moves = [("res://player.tscn", "res://actors/player.tscn"), ("res://base.gd", "res://lib/base.gd"), ("res://enemy.tscn", "res://actors/enemy.tscn"), ("res://art/", "res://sprites/"),
+            ("res://beside.tscn", "res://actors/beside.tscn")];
+        string moved = Apply(script, GodotScenes.MovedScriptEdits(script, "res://main.gd", moves));
+        Assert.Equal(script.Replace("\"res://base.gd\"", "\"res://lib/base.gd\"", StringComparison.Ordinal).Replace("preload(\"res://player.tscn\")", "preload(\"res://actors/player.tscn\")", StringComparison.Ordinal)
+            .Replace("preload(\"beside.tscn\")", "preload(\"res://actors/beside.tscn\")", StringComparison.Ordinal).Replace("'res://enemy.tscn::1'", "'res://actors/enemy.tscn::1'", StringComparison.Ordinal)
+            .Replace("res://art/hero.png", "res://sprites/hero.png", StringComparison.Ordinal), moved);
+
+        // A script moved alone keeps naming what it named; one moved with what it names beside it keeps its words.
+        const string beside = "extends \"base.gd\"\n\nconst Kept = preload(\"../art/hero.png\")\n";
+        Assert.Equal("extends \"res://game/base.gd\"\n\nconst Kept = preload(\"res://art/hero.png\")\n",
+            Apply(beside, GodotScenes.MovedScriptEdits(beside, "res://game/main.gd", [("res://game/main.gd", "res://game/deep/main.gd")])));
+        Assert.Equal("extends \"base.gd\"\n\nconst Kept = preload(\"res://paint/hero.png\")\n",
+            Apply(beside, GodotScenes.MovedScriptEdits(beside, "res://game/main.gd", [("res://game/", "res://stage/"), ("res://art/", "res://paint/")])));
+    }
+
     /// <summary>As files and folders move, every res:// path a Godot text file gives naming one follows it: an external
     /// resource's, a sub-resource's with its "::", a property's, project.godot's main scene and an autoload's after its '*',
     /// and a path inside a moved folder; a call's argument, a path none moved and a uid are left as they are.</summary>
