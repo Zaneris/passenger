@@ -222,6 +222,9 @@ public static class Refusals
     /// <summary>Go to Declaration found nothing to go to where it was asked.</summary>
     public const string NoDeclaration = "Cannot find a declaration to go to";
 
+    /// <summary>Go to Declaration of an overload an unloaded project's source no longer declares, gone to by its name.</summary>
+    public const string OverloadNotInSource = "This overload is not in the source, which has changed since its assembly was built: went to the declarations of that name";
+
     /// <summary>What a start or an action under way was working in has ended: its folder was left or closed.</summary>
     public const string SolutionClosed = "The solution was closed";
 

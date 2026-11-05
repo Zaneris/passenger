@@ -13,44 +13,57 @@ namespace Passenger.App.CSharp;
 /// <summary>Where a symbol is declared in the source of a project the open folder has but C# does not load (a solution
 /// filter leaves it out, or the person unloaded it), which the server shows only as its assembly's metadata stub: the stub's
 /// declaration at the place, read by its syntax, found in that project's C# files by its namespace, containing types,
-/// kind, name and parameters' count. A stub of any other assembly, or one no source declares so, stays as it was.</summary>
+/// kind, name and parameters' types. A stub of any other assembly, or one no source declares so, stays as it was.</summary>
 internal static partial class UnloadedSources
 {
-    /// <summary>The places, each metadata stub's of an unloaded project's assembly given as its source's declarations.</summary>
-    public static async Task<IReadOnlyList<LspLocation>> OfAsync(IReadOnlyList<LspLocation> found, IReadOnlyList<ProjectModel> unloaded)
+    /// <summary>The places, each metadata stub's of an unloaded project's assembly given as its source's declarations, and
+    /// whether one of them is only of that name, the signature the stub shows being in no source.</summary>
+    public static async Task<(IReadOnlyList<LspLocation> Places, bool OnlyByName)> OfAsync(IReadOnlyList<LspLocation> found, IReadOnlyList<ProjectModel> unloaded)
     {
         if (unloaded.Count == 0 || !found.Any(l => IsStub(DocumentUris.ToPath(l.Uri))))
         {
-            return found;
+            return (found, false);
         }
-        return await BackgroundWork.Run(() => (IReadOnlyList<LspLocation>)[.. found.SelectMany(l => SourcesOf(l, unloaded) is { Count: > 0 } sources ? sources : [l])]);
+        return await BackgroundWork.Run(() =>
+        {
+            List<LspLocation> places = [];
+            bool onlyByName = false;
+            foreach (LspLocation location in found)
+            {
+                (IReadOnlyList<LspLocation> sources, bool named) = SourcesOf(location, unloaded);
+                places.AddRange(sources.Count > 0 ? sources : [location]);
+                onlyByName |= named;
+            }
+            return ((IReadOnlyList<LspLocation>)places, onlyByName);
+        });
     }
 
     /// <summary>Whether a file is the server's metadata stub of an assembly.</summary>
     private static bool IsStub(string path) =>
         path.Contains($"{Path.DirectorySeparatorChar}MetadataAsSource{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
 
-    /// <summary>A stub's place given as the declarations in its unloaded project's source; none where it is no such stub's.</summary>
-    private static IReadOnlyList<LspLocation> SourcesOf(LspLocation location, IReadOnlyList<ProjectModel> unloaded)
+    /// <summary>A stub's place given as the declarations in its unloaded project's source, and whether they are only of its
+    /// name; none where it is no such stub's.</summary>
+    private static (IReadOnlyList<LspLocation> Sources, bool OnlyByName) SourcesOf(LspLocation location, IReadOnlyList<ProjectModel> unloaded)
     {
         string stub = DocumentUris.ToPath(location.Uri);
         if (!IsStub(stub) || EditorArea.ReadText(stub) is not { } text || AssemblyLine().Match(text) is not { Success: true } assembly)
         {
-            return [];
+            return ([], false);
         }
         string name = assembly.Groups[1].Value;
         if (unloaded.FirstOrDefault(p => string.Equals(p.Evaluated?.AssemblyName ?? Path.GetFileNameWithoutExtension(p.Path), name, StringComparison.Ordinal)) is not { } project)
         {
-            return [];
+            return ([], false);
         }
         SyntaxTree tree = CSharpSyntaxTree.ParseText(text, CSharpParsing.Default);
         int position = tree.GetText().Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(location.Range.Start.Line, location.Range.Start.Character));
         if (Declared(tree.GetRoot().FindToken(position).Parent) is not { } wanted)
         {
-            return [];
+            return ([], false);
         }
         CSharpParseOptions options = CompilationSymbols.Of(project);
-        // Its overloads by name where none takes as many parameters: the assembly the server read may be older than its source.
+        // Its overloads by name where none takes these parameters: the assembly the server read may be older than its source.
         List<LspLocation> sources = [];
         List<LspLocation> named = [];
         foreach (string file in FilesOf(project))
@@ -62,7 +75,7 @@ internal static partial class UnloadedSources
             SyntaxTree read = CSharpSyntaxTree.ParseText(source, options, file);
             foreach (SyntaxNode node in read.GetRoot().DescendantNodes())
             {
-                if (DeclaredHere(node) is not { } declared || declared.Key with { Parameters = 0 } != wanted.Key with { Parameters = 0 })
+                if (DeclaredHere(node) is not { } declared || declared.Key with { Parameters = string.Empty } != wanted.Key with { Parameters = string.Empty })
                 {
                     continue;
                 }
@@ -72,7 +85,7 @@ internal static partial class UnloadedSources
                 (declared.Key == wanted.Key ? sources : named).Add(place);
             }
         }
-        return sources.Count > 0 ? sources : named;
+        return sources.Count > 0 ? (sources, false) : (named, named.Count > 0);
     }
 
     /// <summary>The project's C# files: its evaluation's compile items, else those in its own folders.</summary>
@@ -93,9 +106,10 @@ internal static partial class UnloadedSources
         Operator,
     }
 
-    /// <summary>What names a declaration across its stub and its source: its kind, its name, where it is declared and how many
-    /// parameters it takes (-1 where it takes none, a type's its type parameters').</summary>
-    private readonly record struct Key(Kind Kind, string Name, string Container, int Parameters);
+    /// <summary>What names a declaration across its stub and its source: its kind, its name, where it is declared and what
+    /// tells its overloads apart (<see cref="ParameterTypes"/>, a generic's type parameters' count before them, a type's
+    /// alone; empty where it takes none).</summary>
+    private readonly record struct Key(Kind Kind, string Name, string Container, string Parameters);
 
     /// <summary>The declaration a node is, or is inside the name of, with the token it is named by; null for none.</summary>
     private static (Key Key, SyntaxToken Name)? Declared(SyntaxNode? node)
@@ -118,21 +132,24 @@ internal static partial class UnloadedSources
     /// its stub declares one.</summary>
     private static (Key Key, SyntaxToken Name)? DeclaredHere(SyntaxNode node) => node switch
     {
-        BaseTypeDeclarationSyntax type => (new Key(Kind.Type, type.Identifier.Text, Container(type), (type as TypeDeclarationSyntax)?.TypeParameterList?.Parameters.Count ?? 0), type.Identifier),
-        DelegateDeclarationSyntax made => (new Key(Kind.Type, made.Identifier.Text, Container(made), made.TypeParameterList?.Parameters.Count ?? 0), made.Identifier),
-        MethodDeclarationSyntax method => (new Key(Kind.Method, method.Identifier.Text, Container(method), method.ParameterList.Parameters.Count), method.Identifier),
-        ConstructorDeclarationSyntax made => (new Key(Kind.Constructor, made.Modifiers.Any(SyntaxKind.StaticKeyword) ? ".cctor" : ".ctor", Container(made), made.ParameterList.Parameters.Count), made.Identifier),
-        PropertyDeclarationSyntax property => (new Key(Kind.Property, property.Identifier.Text, Container(property), -1), property.Identifier),
-        IndexerDeclarationSyntax indexer => (new Key(Kind.Indexer, "this", Container(indexer), indexer.ParameterList.Parameters.Count), indexer.ThisKeyword),
-        EventDeclarationSyntax raised => (new Key(Kind.Event, raised.Identifier.Text, Container(raised), -1), raised.Identifier),
-        VariableDeclaratorSyntax { Parent.Parent: EventFieldDeclarationSyntax raised } variable => (new Key(Kind.Event, variable.Identifier.Text, Container(raised), -1), variable.Identifier),
-        VariableDeclaratorSyntax { Parent.Parent: FieldDeclarationSyntax field } variable => (new Key(Kind.Field, variable.Identifier.Text, Container(field), -1), variable.Identifier),
-        EnumMemberDeclarationSyntax member => (new Key(Kind.Field, member.Identifier.Text, Container(member), -1), member.Identifier),
-        OperatorDeclarationSyntax operation => (new Key(Kind.Operator, operation.OperatorToken.Text, Container(operation), operation.ParameterList.Parameters.Count), operation.OperatorToken),
-        ConversionOperatorDeclarationSyntax conversion => (new Key(Kind.Operator, conversion.ImplicitOrExplicitKeyword.Text, Container(conversion), 1), conversion.ImplicitOrExplicitKeyword),
-        ParameterListSyntax { Parent: TypeDeclarationSyntax primary } list => (new Key(Kind.Constructor, ".ctor", Container(list), list.Parameters.Count), primary.Identifier),
+        BaseTypeDeclarationSyntax type => (new Key(Kind.Type, type.Identifier.Text, Container(type), Generic((type as TypeDeclarationSyntax)?.TypeParameterList)), type.Identifier),
+        DelegateDeclarationSyntax made => (new Key(Kind.Type, made.Identifier.Text, Container(made), Generic(made.TypeParameterList)), made.Identifier),
+        MethodDeclarationSyntax method => (new Key(Kind.Method, method.Identifier.Text, Container(method), Generic(method.TypeParameterList) + ParameterTypes.Of(method.ParameterList)), method.Identifier),
+        ConstructorDeclarationSyntax made => (new Key(Kind.Constructor, made.Modifiers.Any(SyntaxKind.StaticKeyword) ? ".cctor" : ".ctor", Container(made), ParameterTypes.Of(made.ParameterList)), made.Identifier),
+        PropertyDeclarationSyntax property => (new Key(Kind.Property, property.Identifier.Text, Container(property), string.Empty), property.Identifier),
+        IndexerDeclarationSyntax indexer => (new Key(Kind.Indexer, "this", Container(indexer), ParameterTypes.Of(indexer.ParameterList)), indexer.ThisKeyword),
+        EventDeclarationSyntax raised => (new Key(Kind.Event, raised.Identifier.Text, Container(raised), string.Empty), raised.Identifier),
+        VariableDeclaratorSyntax { Parent.Parent: EventFieldDeclarationSyntax raised } variable => (new Key(Kind.Event, variable.Identifier.Text, Container(raised), string.Empty), variable.Identifier),
+        VariableDeclaratorSyntax { Parent.Parent: FieldDeclarationSyntax field } variable => (new Key(Kind.Field, variable.Identifier.Text, Container(field), string.Empty), variable.Identifier),
+        EnumMemberDeclarationSyntax member => (new Key(Kind.Field, member.Identifier.Text, Container(member), string.Empty), member.Identifier),
+        OperatorDeclarationSyntax operation => (new Key(Kind.Operator, operation.OperatorToken.Text, Container(operation), ParameterTypes.Of(operation.ParameterList)), operation.OperatorToken),
+        ConversionOperatorDeclarationSyntax conversion => (new Key(Kind.Operator, conversion.ImplicitOrExplicitKeyword.Text, Container(conversion), $"{ParameterTypes.Named(conversion.Type)}{ParameterTypes.Of(conversion.ParameterList)}"), conversion.ImplicitOrExplicitKeyword),
+        ParameterListSyntax { Parent: TypeDeclarationSyntax primary } list => (new Key(Kind.Constructor, ".ctor", Container(list), ParameterTypes.Of(list)), primary.Identifier),
         _ => null,
     };
+
+    /// <summary>A generic's type parameters' count, as a type's or a method's overloads differ by it.</summary>
+    private static string Generic(TypeParameterListSyntax? list) => list is null ? string.Empty : $"`{list.Parameters.Count}";
 
     /// <summary>Where a declaration is declared: its namespaces and types, outermost first, a type by its name and type
     /// parameters' count, as a stub and a source both write them.</summary>

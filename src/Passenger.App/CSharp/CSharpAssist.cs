@@ -99,6 +99,10 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
             if (await DeclaredAsync(shown, offset) is { } declared && context.Editors.Active == shown)
             {
                 navigation.Go(declared, offset);
+                if (declared.Note is { } note)
+                {
+                    context.Say(note);
+                }
             }
         }
         catch (LanguageServerFailed failed)
@@ -141,8 +145,8 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
             return new Declared(found, Refusals.NoDeclaration);
         }
         // A project the folder has but C# does not load is declared in its own source, never its assembly's metadata stub.
-        found = await UnloadedSources.OfAsync(found, csharp.UnloadedNow?.Invoke() ?? []);
-        return new Declared(await csharp.Generated.CopiedAsync(found), Refusals.NoDeclaration);
+        (found, bool onlyByName) = await UnloadedSources.OfAsync(found, csharp.UnloadedNow?.Invoke() ?? []);
+        return new Declared(await csharp.Generated.CopiedAsync(found), Refusals.NoDeclaration) { Note = onlyByName ? Refusals.OverloadNotInSource : null };
     }
 
     public override async Task<bool> UsagesAsync(int offset, bool inPopup)

@@ -258,6 +258,9 @@ internal sealed record Declared(IReadOnlyList<LspLocation> Places, string None)
     /// <summary>A page that declares it in place of a file, which <see cref="None"/> names.</summary>
     public Uri? Page { get; init; }
 
+    /// <summary>What to tell the person of places that are not quite what was asked for; null where they are.</summary>
+    public string? Note { get; init; }
+
     /// <summary>Places in the editor's lines, as a language server names them (<see cref="ServerPlaces.ServerPositionOf"/>).</summary>
     public static IReadOnlyList<LspLocation> Served(IEnumerable<(string Path, TextPosition Position)> places, Func<string, TextSnapshot?> texts) =>
         [.. places.Select(p =>

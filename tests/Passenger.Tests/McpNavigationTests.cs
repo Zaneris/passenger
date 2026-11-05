@@ -57,6 +57,10 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         // Its source changed since its assembly was built: the method of that name, however many parameters it takes now.
         TestFolders.Write(folder, "Lib/Greeter.cs", File.ReadAllText(Path.Combine(folder, "Lib/Greeter.cs")).Replace("Greet(string greeting)", "Greet(string greeting, int times = 1)", StringComparison.Ordinal));
         Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 7), await DeclaredAsync(client, 2, 34));
+        // Beside an overload taking as many parameters of another type, the one the assembly's signature names, alone.
+        TestFolders.Write(folder, "Lib/Greeter.cs", File.ReadAllText(Path.Combine(folder, "Lib/Greeter.cs")).Replace("    public string Greet(string greeting, int times = 1)",
+            "    public string Greet(int times) => times.ToString();\n\n    public string Greet(string greeting)", StringComparison.Ordinal));
+        Assert.Equal((Path.Combine("Lib", "Greeter.cs"), 9), await DeclaredAsync(client, 2, 34));
         (string console, _) = await DeclaredAsync(client, 2, 16);
         Assert.Contains("MetadataAsSource", console, StringComparison.Ordinal);
 
