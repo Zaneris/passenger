@@ -1,10 +1,12 @@
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.Editors;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Inspector;
 using Passenger.Text;
 
@@ -269,6 +271,74 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
             window.Close();
         }
     }
+
+    /// <summary>C# applied beside XAML the app's compiler refuses: what comes of it is the XAML's error, but the program runs the
+    /// new C#, so the file's lines are the program's from then, and a breakpoint on the line the edit added stops there with
+    /// its new local.</summary>
+    [AvaloniaFact]
+    public void Csharp_applied_beside_xaml_that_failed_is_the_programs_code_and_a_breakpoint_on_its_new_line_stops_there()
+    {
+        string code = Path.Combine(folder, "MainWindow.axaml.cs");
+        File.WriteAllText(code, Beating);
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900);
+        try
+        {
+            Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.LiveApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
+
+            window.OpenFile(code);
+            Typing.Replace(window, "beats++;", "beats++;\n        int twice = beats * 2;\n        beats = twice - beats;");
+            window.OpenFile(Xaml);
+            Typing.Replace(window, Pin, $"<TextBlok Text=\"typo\" />\n{Pin}");
+            HotReloadOutcome? before = window.Debugger.LastApplied;
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            HotReloadOutcome applied = Said(window, before);
+            Assert.True(applied.Result == HotReloadResult.Errors, $"The misspelt element was not refused as an error: {applied.Said}");
+            Assert.Contains("C# changes applied", applied.Said, StringComparison.Ordinal);
+
+            window.OpenFile(code);
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            int added = Array.FindIndex(window.EditorArea.Active!.Text.Snapshot.ToString().Split('\n'), l => l.Contains("beats = twice", StringComparison.Ordinal));
+            editor.GoTo(new TextPosition(added, 8));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.Debugger.Stop is not null, "the app to stop at the breakpoint on the line C# added");
+            Ui.Settle();
+            Assert.Contains(new LineMark(added, LineMarkKind.ExecutionPoint), editor.LineMarks);
+            Ui.WaitFor(() => window.BottomPanel.Debug.Tree.Rows.Any(r => r.Name == "twice"), "the added local in Variables");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>The window's code for <see cref="Csharp_applied_beside_xaml_that_failed_is_the_programs_code_and_a_breakpoint_on_its_new_line_stops_there"/>:
+    /// a method the app calls as it runs, whatever the test's windows do.</summary>
+    private const string Beating = """
+        using System;
+        using Avalonia.Controls;
+        using Avalonia.Threading;
+
+        namespace LiveTreeApp;
+
+        public partial class MainWindow : Window
+        {
+            private int beats;
+
+            public MainWindow()
+            {
+                InitializeComponent();
+                DispatcherTimer.Run(Beat, TimeSpan.FromMilliseconds(50));
+            }
+
+            private bool Beat()
+            {
+                beats++;
+                return true;
+            }
+        }
+
+        """;
 
     /// <summary>Two files of one name in two folders, whose elements stand at the same lines and columns, are asked of apart:
     /// each answers its own elements' boxes, and not the other's.</summary>

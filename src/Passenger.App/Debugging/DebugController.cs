@@ -530,7 +530,7 @@ public sealed class DebugController : IDisposable
         foreach ((IHotReloadTarget target, HotReloadOutcome its) in quiet)
         {
             target.Say($"Hot Reload: {its.Said}", Unapplied(its));
-            if (its.Result == HotReloadResult.Applied && target is RunningReload run)
+            if (its.Code.Result == HotReloadResult.Applied && target is RunningReload run)
             {
                 ToldHandlers(run);
             }
@@ -610,11 +610,13 @@ public sealed class DebugController : IDisposable
     internal const string HandlersUnreached = "Hot Reload: Passenger's hook cannot reach a program in a container or on another machine, so its update handlers "
         + "are not called: a Blazor component shows an edit only as it next renders";
 
-    /// <summary>A tab's program that took an apply: the files' lines as the update was made of them are its program's from
-    /// now (the built lines forget the edits it took in), their breakpoints are bound again in the new code, and a paused
-    /// program's stop shown is read again where it now is. True when it took the edits, its marks to be drawn again.</summary>
-    private async Task<bool> TakenAsync(DebugTab tab, DebugSession? applied, HotReloadOutcome its)
+    /// <summary>A tab's program that took an apply's C#, whatever its XAML came to: the files' lines as the update was made of
+    /// them are its program's from now (the built lines forget the edits it took in), their breakpoints are bound again in the
+    /// new code, and a paused program's stop shown is read again where it now is. True when it took the edits, its marks to
+    /// be drawn again.</summary>
+    private async Task<bool> TakenAsync(DebugTab tab, DebugSession? applied, HotReloadOutcome outcome)
     {
+        HotReloadOutcome its = outcome.Code;
         if (its.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply) || disposed || tab.Session is not { } session || session != applied || !tab.IsLive)
         {
             return false;
