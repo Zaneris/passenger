@@ -14,11 +14,18 @@ namespace Passenger.App.CSharp;
 internal sealed partial class CSharpAssist
 {
     /// <summary>Closes the tag a '>' or a '/' just typed at every caret ends or begins, unless the person turned
-    /// closing tags off.</summary>
+    /// closing tags off. A "&lt;/" just before the end tag of the element open there waits for no answer, whatever is typed
+    /// next having to pass that tag rather than land before it.</summary>
     private void CloseRazorTag(string typed)
     {
         if (typed is ">" or "/" && context.Editor.ClosesTags && context.Editors.Active is { } shown && context.Current?.Lsp is { IsRazor: true } lsp)
         {
+            CodeEditor editor = context.Editor;
+            if (typed == "/" && TextEditing.CloseTag(editor.Document.Snapshot, editor.Selections, typed, MarkupKind.Html) is { EndTags.Ahead: true } joined)
+            {
+                editor.CloseEndTag(joined);
+                return;
+            }
             IdeErrors.Observe(ClosedAsync(typed == ">" ? EndTagAsync(shown, lsp) : EndTagNameAsync(lsp)));
         }
     }
@@ -206,7 +213,7 @@ internal sealed partial class CSharpAssist
         if (TextEditing.CloseTag(markup, asked, "/", MarkupKind.Html) is { } plan
             && plan.Edits.All(e => text.GetText(e.Start, e.Length) == markup.GetText(e.Start, e.Length) && text.GetText(e.Start - 2, 2) == "</"))
         {
-            editor.ApplyEdits(plan.Edits, plan.Selections);
+            editor.CloseEndTag(plan);
         }
     }
 

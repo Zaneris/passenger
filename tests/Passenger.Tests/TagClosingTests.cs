@@ -8,8 +8,8 @@ namespace Passenger.Tests;
 
 /// <summary>The end tags typing completes in markup, in the window, as a person types a key at a time: a start tag's '>'
 /// in XAML, an MSBuild file, XML and HTML writes its end tag after the caret, which one Undo takes away leaving the '>';
-/// "&lt;/" writes the open element's name and its '>', over the end tag a '>' wrote; a self-closed tag, a comment and
-/// HTML's empty elements get none; and the setting turns it off.</summary>
+/// "&lt;/" writes the open element's name and its '>', or joins the end tag a '>' wrote, which the keys then pass one by
+/// one; a self-closed tag, a comment and HTML's empty elements get none; and the setting turns it off.</summary>
 public sealed class TagClosingTests
 {
     [AvaloniaFact]
@@ -34,7 +34,7 @@ public sealed class TagClosingTests
             TypeEach(window, "<Button Content=\"a > b\" />");
             Assert.Equal("    <StackPanel><Button Content=\"a > b\" />|</StackPanel>", XamlTests.CaretLine(editor));
             TypeEach(window, "<Border></");
-            Assert.Equal("    <StackPanel><Button Content=\"a > b\" /><Border></Border>|</StackPanel>", XamlTests.CaretLine(editor));
+            Assert.Equal("    <StackPanel><Button Content=\"a > b\" /><Border></|Border></StackPanel>", XamlTests.CaretLine(editor));
             Ui.Run(window, EditorActions.Undo);
             Ui.Settle();
             Assert.Equal("    <StackPanel><Button Content=\"a > b\" /><Border></|</Border></StackPanel>", XamlTests.CaretLine(editor));
@@ -50,12 +50,89 @@ public sealed class TagClosingTests
             editor = Opened(window, Path.Combine(folder, "index.html"), "<body>\n    ");
             TypeEach(window, "<p>One<br>");
             Assert.Equal("    <p>One<br>|</p>", XamlTests.CaretLine(editor));
-            TypeEach(window, "<ul><li>Two</");
+            TypeEach(window, "<ul><li>Two</li>");
             Assert.Equal("    <p>One<br><ul><li>Two</li>|</ul></p>", XamlTests.CaretLine(editor));
 
             window.ApplySettings(window.Settings with { CloseTags = false });
             TypeEach(window, "<em>");
             Assert.Equal("    <p>One<br><ul><li>Two</li><em>|</ul></p>", XamlTests.CaretLine(editor));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void An_end_tag_typed_key_by_key_over_the_one_written_leaves_one_end_tag_in_html_xaml_and_a_project_file()
+    {
+        string folder = TestFolders.Create("tags-");
+        TestFolders.Write(folder, "View.axaml", "<UserControl xmlns=\"https://github.com/avaloniaui\">\n    \n</UserControl>\n");
+        TestFolders.Write(folder, "App.csproj", "<Project>\n  \n</Project>\n");
+        TestFolders.Write(folder, "index.html", "<body>\n    \n</body>\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            CodeEditor editor = Opened(window, Path.Combine(folder, "index.html"), "<body>\n    ");
+            TypeEach(window, "<div>x</div>");
+            Assert.Equal("    <div>x</div>|", XamlTests.CaretLine(editor));
+
+            editor = Opened(window, Path.Combine(folder, "View.axaml"), "avaloniaui\">\n    ");
+            TypeEach(window, "<Border>x</Border>");
+            Assert.Equal("    <Border>x</Border>|", XamlTests.CaretLine(editor));
+
+            editor = Opened(window, Path.Combine(folder, "App.csproj"), "<Project>\n  ");
+            TypeEach(window, "<PropertyGroup></PropertyGroup>");
+            Assert.Equal("  <PropertyGroup></PropertyGroup>|", XamlTests.CaretLine(editor));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void An_end_tag_of_another_name_typed_over_the_written_one_is_what_was_typed_and_a_child_element_goes_inside()
+    {
+        string folder = TestFolders.Create("tags-");
+        TestFolders.Write(folder, "index.html", "<body>\n    \n</body>\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            CodeEditor editor = Opened(window, Path.Combine(folder, "index.html"), "<body>\n    ");
+            TypeEach(window, "<div></span");
+            Assert.Equal("    <div></span|</div>", XamlTests.CaretLine(editor));
+            TypeEach(window, "><b>");
+            Assert.Equal("    <div></span><b>|</b></div>", XamlTests.CaretLine(editor));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Backspace_and_undo_over_an_end_tag_being_typed_over_leave_the_written_tag_whole()
+    {
+        string folder = TestFolders.Create("tags-");
+        TestFolders.Write(folder, "index.html", "<body>\n    \n</body>\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            CodeEditor editor = Opened(window, Path.Combine(folder, "index.html"), "<body>\n    ");
+            TypeEach(window, "<div></d");
+            Assert.Equal("    <div></d|iv>", XamlTests.CaretLine(editor));
+            Ui.Run(window, EditorActions.Backspace);
+            Assert.Equal("    <div></|div>", XamlTests.CaretLine(editor));
+            Ui.Run(window, EditorActions.Backspace);
+            Assert.Equal("    <div><|</div>", XamlTests.CaretLine(editor));
+            Ui.Run(window, EditorActions.Backspace);
+            Assert.Equal("    <div>|</div>", XamlTests.CaretLine(editor));
+            TypeEach(window, "</div>");
+            Assert.Equal("    <div></div>|", XamlTests.CaretLine(editor));
+            Ui.Run(window, EditorActions.Undo);
+            Ui.Settle();
+            Assert.Equal("    <div></|</div>", XamlTests.CaretLine(editor));
         }
         finally
         {

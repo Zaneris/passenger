@@ -173,6 +173,25 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
         window.Close();
     }
 
+    /// <summary>Typed without a pause, so no answer of Razor's lands between the keys: the end tag Razor wrote is passed all
+    /// the same, its text left one end tag with the caret after it.</summary>
+    [AvaloniaFact]
+    public void An_end_tag_typed_key_by_key_over_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come()
+    {
+        MainWindow window = app.Open("Components/Greeting.razor");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<p>Hello, @Name!</p>\n");
+        TypeEach(window, "<section>");
+        Ui.WaitFor(() => XamlTests.CaretLine(editor) == "<section>|</section>", () => $"Razor's end tag after the caret; the line reads {XamlTests.CaretLine(editor)}");
+        foreach (char c in "x</section>")
+        {
+            window.KeyTextInput(c.ToString());
+        }
+        Ui.Settle();
+        Assert.Equal("<section>x</section>|", XamlTests.CaretLine(editor));
+        window.Close();
+    }
+
     /// <summary>Text typed a key at a time, as a person types it.</summary>
     /// <summary>A start tag's end tag Razor gives after the person typed on inside the new element: written after what was
     /// typed, the caret before it, and one Undo takes the end tag alone away.</summary>

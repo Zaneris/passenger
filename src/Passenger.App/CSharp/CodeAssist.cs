@@ -120,6 +120,14 @@ public sealed class CodeAssist
                     completion.Typed(text);
                 }
             };
+            editor.TypedOverEndTag += (_, _) =>
+            {
+                if (editor == Editor)
+                {
+                    quickInfo.Hide();
+                    completion.Close();
+                }
+            };
             editor.SelectionChanged += (_, _) =>
             {
                 if (editor == Editor)

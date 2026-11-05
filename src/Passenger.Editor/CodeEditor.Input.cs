@@ -62,12 +62,24 @@ public sealed partial class CodeEditor
         }
         preedit = string.Empty;
         preeditCursor = null;
+        e.Handled = true;
+        if (PassesEndTag(typed))
+        {
+            TypedOverEndTag?.Invoke(this, EventArgs.Empty);
+            return;
+        }
         Apply(TextEditing.Type(document.Snapshot, selections, typed));
-        if (ClosesTags && TextEditing.CloseTag(document.Snapshot, selections, typed, Markup) is { } closing)
+        EditPlan? closing = ClosesTags ? TextEditing.CloseTag(document.Snapshot, selections, typed, Markup) : null;
+        if (closing is not null)
         {
             Apply(closing);
+            KeepTypingOver(closing.EndTags);
         }
-        e.Handled = true;
+        if (closing?.EndTags is { Ahead: true })
+        {
+            TypedOverEndTag?.Invoke(this, EventArgs.Empty);
+            return;
+        }
         Typed?.Invoke(this, typed);
     }
 

@@ -96,7 +96,7 @@ public class EditingTests
     [InlineData("<ul>\n    <li>|\n    <li>Two</li>\n</ul>", ">", MarkupKind.Html, "<ul>\n    <li>|</li>\n    <li>Two</li>\n</ul>")]
     [InlineData("<StackPanel>\n    <Grid>\n    </|", "/", MarkupKind.Xml, "<StackPanel>\n    <Grid>\n    </Grid>|")]
     [InlineData("<Grid><Button /></|>", "/", MarkupKind.Xml, "<Grid><Button /></Grid>|")]
-    [InlineData("<Grid><Border></|</Border></Grid>", "/", MarkupKind.Xml, "<Grid><Border></Border>|</Grid>")]
+    [InlineData("<Grid><Border></|</Border></Grid>", "/", MarkupKind.Xml, "<Grid><Border></|Border></Grid>")]
     [InlineData("<div><p>One</|", "/", MarkupKind.Html, "<div><p>One</p>|")]
     public void Typing_a_start_tags_close_writes_its_end_tag_after_the_caret_and_an_end_tags_slash_the_open_elements_name(string before, string typed,
         MarkupKind markup, string after)
@@ -125,6 +125,92 @@ public class EditingTests
     {
         (TextSnapshot text, SelectionSet selections) = Marked.Parse(before);
         Assert.Null(Marked.After(text, TextEditing.CloseTag(text, selections, typed, markup)));
+    }
+
+    [Theory]
+    [InlineData("<div>x|</div>", "</div>", MarkupKind.Html, "<div>x</div>|")]
+    [InlineData("<div>|</div>", "</div>", MarkupKind.Html, "<div></div>|")]
+    [InlineData("<div><p>|</p></div>", "</p></div>", MarkupKind.Html, "<div><p></p></div>|")]
+    [InlineData("<Grid.Row>x|</Grid.Row>", "</Grid.Row>", MarkupKind.Xml, "<Grid.Row>x</Grid.Row>|")]
+    [InlineData("<a>|</a>\n<a>|</a>", "</a>", MarkupKind.Xml, "<a></a>|\n<a></a>|")]
+    [InlineData("<a>|", "</a>", MarkupKind.Xml, "<a></a>|")]
+    [InlineData("<div>x\n</", "div>", MarkupKind.Html, "<div>x\n</div>|", "|")]
+    public void An_end_tag_typed_key_by_key_over_the_one_written_leaves_one_end_tag_the_caret_after_it(string before, string keys, MarkupKind markup, string after, string caretAt = "")
+    {
+        Assert.Equal(after, TypedKeyByKey(before + caretAt, caretAt.Length > 0 ? "/" + keys : keys, markup, caretAt.Length > 0));
+    }
+
+    [Theory]
+    [InlineData("<div>x|</div>", "</span", "<div>x</span|</div>")]
+    [InlineData("<div>x|</div>", "</dix", "<div>x</dix|</div>")]
+    [InlineData("<div>x|</div>", "<span", "<div>x<span|</div>")]
+    [InlineData("<div>|</div>", "</divx>", "<div></divx>|</div>")]
+    public void A_key_that_differs_from_the_end_tag_being_typed_over_lands_as_typed_the_tag_left_whole(string before, string keys, string after)
+    {
+        Assert.Equal(after, TypedKeyByKey(before, keys, MarkupKind.Html));
+    }
+
+    [Theory]
+    [InlineData("<p>hi</", "/ and", "<p>hi</p> and|")]
+    [InlineData("<p>hi</", "/pal", "<p>hi</p>pal|")]
+    public void Words_typed_after_an_end_tag_a_slash_wrote_go_after_it_a_letter_shared_with_its_name_included(string before, string keys, string after)
+    {
+        Assert.Equal(after, TypedKeyByKey(before + "|", keys, MarkupKind.Html, slashFirst: true));
+    }
+
+    [Fact]
+    public void Backspace_while_an_end_tag_is_typed_over_takes_back_a_key_and_never_a_letter_of_the_tag()
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse("<div>x</|</div>");
+        EditPlan joined = TextEditing.CloseTag(text, selections, "/", MarkupKind.Html)!;
+        EndTagTyping typing = joined.EndTags!;
+        TextSnapshot over = text.Apply(joined.Edits);
+        Assert.Equal("<div>x</|div>", Marked.Show(over, joined.Selections));
+        SelectionSet past = typing.Past(joined.Selections, "d");
+        EndTagTyping passed = typing.After("d")!;
+        Assert.Equal("<div>x</d|iv>", Marked.Show(over, past));
+        Assert.True(passed.CanStepBack);
+        SelectionSet back = passed.Back(over, past);
+        Assert.Equal("<div>x</|div>", Marked.Show(over, back));
+        Assert.False(passed.StepBack(over, past).CanStepBack);
+    }
+
+    /// <summary>Keys typed one at a time as the editor takes them: passing the end tag typed over, else that tag left whole
+    /// and the key typed, closing what it closes. With <paramref name="slashFirst"/> the text ends in the "&lt;" of an end tag
+    /// typed already, and the first key is its '/'.</summary>
+    private static string TypedKeyByKey(string before, string keys, MarkupKind markup, bool slashFirst = false)
+    {
+        (TextSnapshot text, SelectionSet selections) = Marked.Parse(before);
+        EndTagTyping? typing = null;
+        foreach (char key in keys)
+        {
+            string typed = key.ToString();
+            if (typing is not null && typing.Passes(typed))
+            {
+                selections = typing.Past(selections, typed);
+                typing = typing.After(typed);
+                continue;
+            }
+            if (typing?.PutBack(selections) is { } back)
+            {
+                text = text.Apply(back.Edits);
+                selections = back.Selections;
+            }
+            typing = null;
+            if (!(slashFirst && key == '/' && text[selections.Primary.Caret - 1] == '/'))
+            {
+                EditPlan plan = TextEditing.Type(text, selections, typed);
+                text = text.Apply(plan.Edits);
+                selections = plan.Selections;
+            }
+            if (TextEditing.CloseTag(text, selections, typed, markup) is { } closing)
+            {
+                text = text.Apply(closing.Edits);
+                selections = closing.Selections;
+                typing = closing.EndTags;
+            }
+        }
+        return Marked.Show(text, selections);
     }
 
     [Theory]
