@@ -1,4 +1,6 @@
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Passenger.Core;
 
 namespace Passenger.App.Endpoints;
@@ -20,6 +22,9 @@ public sealed record OpenApiOperation(string Method, string Path, string? Operat
     /// <summary>The operation's title: "GET /items/{id}".</summary>
     public string Title => $"{Method} {Path}";
 
+    /// <summary>Its path as a request's is held to it, segment by segment (<see cref="OpenApiDocument.OperationFor"/>).</summary>
+    internal string[] Shape { get; } = OpenApiDocument.TemplateShape(Path);
+
     /// <summary>The schema a response of this status is held to: its own, its class's (<c>2XX</c>), else <c>default</c>'s;
     /// null where the document gives no JSON body for it.</summary>
     public JsonElement? ResponseSchema(int status)
@@ -35,9 +40,16 @@ public sealed record OpenApiOperation(string Method, string Path, string? Operat
 /// <summary>The parts of an app's OpenAPI document (3.0 or 3.1, and Swagger 2.0's) the Endpoints window reads: its operations,
 /// and its schemas as written, a <c>$ref</c> followed into <c>components/schemas</c> (<c>definitions</c> in 2.0). Read as any
 /// other program's JSON (<see cref="JsonMembers"/>), so a member of an unexpected kind is passed over, never thrown on.</summary>
-public sealed class OpenApiDocument
+public sealed partial class OpenApiDocument
 {
     private static readonly string[] Methods = ["get", "put", "post", "delete", "options", "head", "patch", "trace"];
+
+    /// <summary>In a segment's shape, the first character of what a <c>{name}</c> or a <c>{{variable}}</c> holds, which
+    /// takes at least one.</summary>
+    private const char AnyOne = '\uFFFE';
+
+    /// <summary>In a segment's shape, what else a <c>{name}</c> or a <c>{{variable}}</c> holds, of any length.</summary>
+    private const char AnyMore = '\uFFFF';
 
     private readonly JsonElement root;
 
@@ -84,14 +96,22 @@ public sealed class OpenApiDocument
         }
     }
 
-    /// <summary>The operation a request calls: of its method, its path fitting the operation's template (a <c>{name}</c>
-    /// segment taking any value), the template with fewer parameters first; null where none does.</summary>
+    /// <summary>The operation a request calls: of its method, its path fitting the operation's template, the text around each
+    /// <c>{name}</c> alike in any case and the <c>{name}</c> taking what lies between (<c>/files/{id}.json</c> takes
+    /// <c>/files/a.json</c>), a request's <c>{{variable}}</c> as much. Of several, the template shaped as the path is (the one
+    /// a request was made from), then the one with fewer parameters, then with more text of its own; null where none fits.</summary>
     public OpenApiOperation? OperationFor(string method, string path)
     {
-        string[] asked = Segments(path);
-        return Operations.Where(o => string.Equals(o.Method, method, StringComparison.OrdinalIgnoreCase) && Fits(Segments(o.Path), asked))
-            .OrderBy(o => o.Path.Count(c => c == '{')).FirstOrDefault();
+        string[] asked = [.. Segments(path).Select(segment => Shaped(segment, Variable(), Uri.UnescapeDataString))];
+        return Operations.Where(o => string.Equals(o.Method, method, StringComparison.OrdinalIgnoreCase) && Fits(o.Shape, asked))
+            .OrderBy(o => !o.Shape.SequenceEqual(asked, StringComparer.OrdinalIgnoreCase))
+            .ThenBy(o => o.Path.Count(c => c == '{'))
+            .ThenByDescending(o => o.Shape.Sum(segment => segment.Length))
+            .FirstOrDefault();
     }
+
+    /// <summary>An operation's path as <see cref="OperationFor"/> holds a request's to it.</summary>
+    internal static string[] TemplateShape(string path) => [.. Segments(path).Select(segment => Shaped(segment, RouteRequests.Parameter(), text => text))];
 
     /// <summary>A schema with its <c>$ref</c> followed, as far as the document's own schemas go (a chain of them too); the
     /// schema as it is where its reference names none of them.</summary>
@@ -195,8 +215,21 @@ public sealed class OpenApiDocument
         return (end < 0 ? path : path[..end]).Split('/', StringSplitOptions.RemoveEmptyEntries);
     }
 
-    /// <summary>Whether a path's segments fit a template's: as many, each literal alike in any case, a segment holding a
-    /// <c>{name}</c> (or a request's <c>{{variable}}</c>) taking any value.</summary>
+    /// <summary>A segment with what stands for a value, as <paramref name="stands"/> finds it, in <see cref="AnyOne"/> and
+    /// <see cref="AnyMore"/>, and its text around that as <paramref name="read"/> reads it.</summary>
+    private static string Shaped(string segment, Regex stands, Func<string, string> read)
+    {
+        StringBuilder shape = new();
+        int at = 0;
+        foreach (Match value in stands.Matches(segment))
+        {
+            shape.Append(read(segment[at..value.Index])).Append(AnyOne).Append(AnyMore);
+            at = value.Index + value.Length;
+        }
+        return shape.Append(read(segment[at..])).ToString();
+    }
+
+    /// <summary>Whether a path's segments fit a template's: as many, each of the two able to be one text.</summary>
     private static bool Fits(string[] template, string[] path)
     {
         if (template.Length != path.Length)
@@ -205,12 +238,57 @@ public sealed class OpenApiDocument
         }
         for (int i = 0; i < template.Length; i++)
         {
-            if (!template[i].Contains('{', StringComparison.Ordinal) && !path[i].Contains("{{", StringComparison.Ordinal)
-                && !string.Equals(template[i], Uri.UnescapeDataString(path[i]), StringComparison.OrdinalIgnoreCase))
+            if (!Meet(template[i], path[i]))
             {
                 return false;
             }
         }
         return true;
     }
+
+    /// <summary>Whether two segments' shapes can be one text, either holding values, as a request's may: every pair of places
+    /// in them the same text can reach, from their starts to their ends.</summary>
+    private static bool Meet(string one, string other)
+    {
+        if (!one.Contains(AnyMore, StringComparison.Ordinal) && !other.Contains(AnyMore, StringComparison.Ordinal))
+        {
+            return string.Equals(one, other, StringComparison.OrdinalIgnoreCase);
+        }
+        bool[,] reached = new bool[one.Length + 1, other.Length + 1];
+        reached[0, 0] = true;
+        for (int i = 0; i <= one.Length; i++)
+        {
+            for (int j = 0; j <= other.Length; j++)
+            {
+                if (!reached[i, j])
+                {
+                    continue;
+                }
+                bool moreHere = i < one.Length && one[i] == AnyMore;
+                bool moreThere = j < other.Length && other[j] == AnyMore;
+                if (moreHere)
+                {
+                    reached[i + 1, j] = true;
+                    reached[i, Math.Min(j + 1, other.Length)] = true;
+                }
+                if (moreThere)
+                {
+                    reached[i, j + 1] = true;
+                    reached[Math.Min(i + 1, one.Length), j] = true;
+                }
+                if (!moreHere && !moreThere && i < one.Length && j < other.Length && SameCharacter(one[i], other[j]))
+                {
+                    reached[i + 1, j + 1] = true;
+                }
+            }
+        }
+        return reached[one.Length, other.Length];
+    }
+
+    private static bool SameCharacter(char one, char other) =>
+        one == AnyOne || other == AnyOne || char.ToUpperInvariant(one) == char.ToUpperInvariant(other);
+
+    /// <summary>A request's <c>{{variable}}</c>, to the end of its segment where it is left open.</summary>
+    [GeneratedRegex(@"\{\{.*?(?:\}\}|$)")]
+    private static partial Regex Variable();
 }

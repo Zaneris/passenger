@@ -74,6 +74,77 @@ public sealed class OpenApiTests
         Assert.Equal("id", Assert.Single(Document.Operations[0].Parameters).Name);
     }
 
+    private const string Files = """
+        {
+          "openapi": "3.1.1",
+          "paths": {
+            "/files/{id}.json": { "get": { "operationId": "Json", "responses": { "200": { "description": "OK", "content": { "application/json": {
+              "schema": { "type": "object", "required": [ "json" ] } } } } } } },
+            "/files/{id}.xml": { "get": { "operationId": "Xml", "responses": { "200": { "description": "OK", "content": { "application/json": {
+              "schema": { "type": "object", "required": [ "xml" ] } } } } } } },
+            "/files/{id}": { "get": { "operationId": "Plain", "responses": { "200": { "description": "OK" } } } },
+            "/files/new": { "get": { "operationId": "New", "responses": { "200": { "description": "OK" } } } },
+            "/reports/{year}-{month}": { "get": { "operationId": "Report", "responses": { "200": { "description": "OK" } } } },
+            "/v{version}/items": { "get": { "operationId": "Versioned", "responses": { "200": { "description": "OK" } } } }
+          }
+        }
+        """;
+
+    /// <summary>A template's literal text in a segment beside its <c>{name}</c> is held to as any other literal: each
+    /// <c>{name}</c> takes at least a character, and of two templates that fit, the one with more text of its own is called,
+    /// whichever the document lists first.</summary>
+    [Fact]
+    public void A_template_with_text_around_a_parameter_takes_only_a_segment_with_that_text()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse(Files)!;
+        Assert.Equal("Json", given.OperationFor("GET", "/files/a.json")?.OperationId);
+        Assert.Equal("Xml", given.OperationFor("GET", "/files/a.xml")?.OperationId);
+        Assert.Equal("Xml", given.OperationFor("GET", "/FILES/a.XML")?.OperationId);
+        Assert.Equal("Plain", given.OperationFor("GET", "/files/a.txt")?.OperationId);
+        Assert.Equal("Plain", given.OperationFor("GET", "/files/.json")?.OperationId);
+        Assert.Equal("New", given.OperationFor("GET", "/files/new")?.OperationId);
+        Assert.Equal("Report", given.OperationFor("GET", "/reports/2026-11")?.OperationId);
+        Assert.Null(given.OperationFor("GET", "/reports/2026"));
+        Assert.Null(given.OperationFor("GET", "/reports/-11"));
+        Assert.Equal("Versioned", given.OperationFor("GET", "/v2/items")?.OperationId);
+        Assert.Null(given.OperationFor("GET", "/x2/items"));
+    }
+
+    /// <summary>A request's <c>{{variable}}</c> may hold anything, the text beside it none the less held to: a request made
+    /// from a template is shaped as that template, and calls it over any other a variable could also spell.</summary>
+    [Fact]
+    public void A_requests_variable_takes_any_text_and_the_text_beside_it_still_chooses_the_operation()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse(Files)!;
+        Assert.Equal("Xml", given.OperationFor("GET", "/files/{{id}}.xml")?.OperationId);
+        Assert.Equal("Plain", given.OperationFor("GET", "/files/{{id}}")?.OperationId);
+        Assert.Equal("Report", given.OperationFor("GET", "/reports/{{year}}-{{month}}")?.OperationId);
+        Assert.Equal("Report", given.OperationFor("GET", "/reports/{{period}}")?.OperationId);
+        Assert.Equal("Plain", given.OperationFor("GET", "/files/{{id}}.txt")?.OperationId);
+        Assert.Null(given.OperationFor("GET", "/reports/{{year}}/x"));
+    }
+
+    [Fact]
+    public void Requests_are_made_for_the_templates_a_file_does_not_call_each_told_from_the_rest_by_its_text()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse(Files)!;
+        const string Existing = "@host = http://localhost:5123\n\nGET {{host}}/files/{{id}}.xml\n\n###\nGET {{host}}/files/{{id}}\n\n###\n";
+        Assert.Equal(["Json", "New", "Report", "Versioned"], OpenApiRequests.Uncalled(given, Existing).Select(o => o.OperationId));
+        string written = OpenApiRequests.Entries(given, OpenApiRequests.Uncalled(given, Existing), Existing, "host", "http://localhost:5123");
+        Assert.Contains("GET {{host}}/files/{{id}}.json\n", written, StringComparison.Ordinal);
+        Assert.Empty(OpenApiRequests.Uncalled(given, Existing + written));
+    }
+
+    [Fact]
+    public void A_response_is_held_to_the_schema_of_the_operation_its_literal_text_calls()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse(Files)!;
+        using JsonDocument answer = JsonDocument.Parse("""{ "xml": 1 }""");
+        Assert.Empty(OpenApiSchemas.Check(given, given.OperationFor("GET", "/files/a.xml")!.ResponseSchema(200)!.Value, answer.RootElement));
+        Assert.Equal([new SchemaBreak("/json", "is missing, though its schema requires it")],
+            OpenApiSchemas.Check(given, given.OperationFor("GET", "/files/a.json")!.ResponseSchema(200)!.Value, answer.RootElement));
+    }
+
     /// <summary>A path lies at its app's origin however it is written, or nowhere: a reference to another host, or to
     /// another port of this one, is asked of no one.</summary>
     [Fact]
