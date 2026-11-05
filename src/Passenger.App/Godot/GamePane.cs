@@ -13,8 +13,8 @@ public enum GamePaneHolds
 }
 
 /// <summary>The Game window: a Godot game whose configuration draws it in Passenger (<see cref="Run.RunConfiguration.GodotInPane"/>)
-/// held over it, the game's own window kept on the pane's place on the screen as the pane moves, resizes, shows and hides,
-/// and hidden while the main window is minimized (<see cref="GameWindows"/>). The game takes the keys as the person clicks
+/// held over it, the game's own window kept on its place in the pane (<see cref="GameFit"/>) as the pane moves, resizes,
+/// shows and hides, and hidden while the main window is minimized (<see cref="GameWindows"/>). The game takes the keys as the person clicks
 /// it or the pane takes them; Passenger takes them back as the person clicks anywhere in it, as the pane loses them, and on
 /// the keys the game's helper hears for it (<see cref="KeysAsked"/>). On macOS a game draws in it as a layer instead
 /// (<see cref="HoldLayer"/>). While it holds no game it says why.</summary>
@@ -23,8 +23,7 @@ public sealed partial class GamePane : Border, IOwnKeys
     /// <summary>How long a game's window is looked for once its process is known.</summary>
     private static readonly TimeSpan Finding = TimeSpan.FromSeconds(60);
 
-    /// <summary>How long a game's window found is watched as its game starts, held on the pane's place again wherever Godot's
-    /// own sizing as it starts moves it.</summary>
+    /// <summary>How long a game's window found is watched closely as its game starts, Godot's own sizing moving it.</summary>
     private static readonly TimeSpan Settling = TimeSpan.FromSeconds(10);
 
     private readonly TextBlock words;
@@ -118,7 +117,7 @@ public sealed partial class GamePane : Border, IOwnKeys
                 {
                     GiveKeys();
                 }
-                await SettleAsync(started, found);
+                await KeepHeldAsync(started, found);
                 return;
             }
             await Task.Delay(TimeSpan.FromMilliseconds(200));
@@ -130,15 +129,16 @@ public sealed partial class GamePane : Border, IOwnKeys
         }
     }
 
-    /// <summary>Holds a game's window found on the pane's place again while its game starts, wherever the game's own sizing
-    /// puts it (Godot sizes its window as it starts, after it has made it), saying so in the log the first time.</summary>
-    private async Task SettleAsync(GodotGame started, nint found)
+    /// <summary>Holds a game's window found on its place again wherever it goes while its game runs, so it never covers what
+    /// lies outside the pane: often while it starts, as Godot sizes its window after making it, then each second, as a slow
+    /// start or the game's own code may move it later. Says so in the log the first time.</summary>
+    private async Task KeepHeldAsync(GodotGame started, nint found)
     {
         long began = System.Diagnostics.Stopwatch.GetTimestamp();
         bool told = false;
-        while (game == started && window == found && System.Diagnostics.Stopwatch.GetElapsedTime(began) < Settling)
+        while (game == started && window == found)
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(250));
+            await Task.Delay(System.Diagnostics.Stopwatch.GetElapsedTime(began) < Settling ? TimeSpan.FromMilliseconds(250) : TimeSpan.FromSeconds(1));
             if (game != started || window != found || windows is null || held is not { } place || !shown || windows.PlaceOf(found) is not { } at || at == place)
             {
                 continue;
@@ -185,7 +185,7 @@ public sealed partial class GamePane : Border, IOwnKeys
         words.IsVisible = true;
     }
 
-    /// <summary>The game's window on the pane's place, shown while the pane is and the main window is not minimized.</summary>
+    /// <summary>The game's window on its place, shown while the pane is and the main window is not minimized.</summary>
     private void Follow(bool force = false)
     {
         if (window == 0 || windows is null || TopLevel.GetTopLevel(this) is not { } main)
