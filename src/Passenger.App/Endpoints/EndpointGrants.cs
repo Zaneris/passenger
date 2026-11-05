@@ -20,7 +20,7 @@ public sealed record EndpointsState : IStateDocument<EndpointsState>
     public EndpointsState Clamped() => this with
     {
         Allowed = [.. (Allowed ?? []).Where(a => a is not null).Distinct()],
-        OpenApiDocuments = (OpenApiDocuments ?? []).Where(d => d.Key is { Length: > 0 } && OpenApiSources.Named(d.Value).Document is not null)
+        OpenApiDocuments = (OpenApiDocuments ?? []).Where(d => d.Key is { Length: > 0 } && OpenApiAddresses.Named(d.Value).Document is not null)
             .ToDictionary(d => d.Key, d => d.Value, StringComparer.Ordinal),
     };
 }

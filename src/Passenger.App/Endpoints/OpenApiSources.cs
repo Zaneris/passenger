@@ -10,9 +10,9 @@ namespace Passenger.App.Endpoints;
 
 /// <summary>Where an app's OpenAPI document is read, and nowhere else: from the app itself on this machine's loopback
 /// (MapOpenApi's <c>/openapi/v1.json</c>, Swashbuckle's and NSwag's <c>/swagger/v1/swagger.json</c>, or the path its code
-/// gives MapOpenApi), or from the file its build writes (Microsoft.Extensions.ApiDescription.Server's, in its
-/// <c>OpenApiDocumentsDirectory</c>). An app's documents are kept a moment by its address, so a run of tests asks it once.
-/// Any thread.</summary>
+/// gives MapOpenApi), each address and redirect held to that app (<see cref="OpenApiAddresses"/>), or from the file
+/// its build writes (Microsoft.Extensions.ApiDescription.Server's, in its <c>OpenApiDocumentsDirectory</c>). An app's
+/// documents are kept a moment by its address, so a run of tests asks it once. Any thread.</summary>
 public static partial class OpenApiSources
 {
     /// <summary>The paths an app serves its document at by default: MapOpenApi's, then Swashbuckle's and NSwag's.</summary>
@@ -21,7 +21,7 @@ public static partial class OpenApiSources
     /// <summary>How long a document read from an app stands before it is asked again.</summary>
     private static readonly TimeSpan Fresh = TimeSpan.FromSeconds(10);
 
-    private static readonly HttpClient Client = OutboundHttp.Client(TimeSpan.FromSeconds(10), 16 * 1024 * 1024);
+    private static readonly HttpClient Client = OutboundHttp.Client(TimeSpan.FromSeconds(10), 16 * 1024 * 1024, followsRedirects: false);
 
     private static readonly ConcurrentDictionary<string, (Task<OpenApiDocument?> Read, long At)> Read = new(StringComparer.OrdinalIgnoreCase);
 
@@ -56,20 +56,18 @@ public static partial class OpenApiSources
         {
             return known.Read.WaitAsync(cancel);
         }
-        Task<OpenApiDocument?> reading = AskAsync(origin, [.. mapped.Concat(Defaults).Distinct(StringComparer.OrdinalIgnoreCase)]);
+        Task<OpenApiDocument?> reading = AskAsync(new Uri(origin), [.. mapped.Concat(Defaults).Distinct(StringComparer.OrdinalIgnoreCase)]);
         Read[key] = (reading, Stopwatch.GetTimestamp());
         return reading.WaitAsync(cancel);
     }
 
-    private static async Task<OpenApiDocument?> AskAsync(string origin, IReadOnlyList<string> paths)
+    private static async Task<OpenApiDocument?> AskAsync(Uri origin, IReadOnlyList<string> paths)
     {
         foreach (string path in paths)
         {
             try
             {
-                using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Get, new Uri(new Uri(origin), path));
-                using HttpResponseMessage answer = await Client.SendAsync(request).ConfigureAwait(false);
-                if (answer.IsSuccessStatusCode && OpenApiDocument.Parse(await answer.Content.ReadAsStringAsync().ConfigureAwait(false)) is { } document)
+                if (OpenApiAddresses.At(origin, path) is { } address && await ReadAsync(address).ConfigureAwait(false) is { } document)
                 {
                     return document;
                 }
@@ -78,6 +76,27 @@ public static partial class OpenApiSources
             {
                 // The app is not up, or serves nothing there: the next path, else none.
             }
+        }
+        return null;
+    }
+
+    /// <summary>The document at an address of an app, a redirect followed only while it stays with the app
+    /// (<see cref="OpenApiAddresses.Stays"/>); null for any other answer.</summary>
+    private static async Task<OpenApiDocument?> ReadAsync(Uri address)
+    {
+        for (int redirects = 0; redirects <= EndpointClient.MostRedirects; redirects++)
+        {
+            using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Get, address);
+            using HttpResponseMessage answer = await Client.SendAsync(request).ConfigureAwait(false);
+            if (EndpointClient.Redirect(answer, address) is not { } next)
+            {
+                return answer.IsSuccessStatusCode ? OpenApiDocument.Parse(await answer.Content.ReadAsStringAsync().ConfigureAwait(false)) : null;
+            }
+            if (!OpenApiAddresses.Stays(address, next))
+            {
+                return null;
+            }
+            address = next;
         }
         return null;
     }
@@ -123,24 +142,8 @@ public static partial class OpenApiSources
     [GeneratedRegex(@"\bMapOpenApi\s*\(\s*(?:pattern\s*:\s*)?""([^""]+)""")]
     private static partial Regex Mapped();
 
-    /// <summary>A document as the person names it, or why it is none: a path the app serves it at (<c>/docs/v1.json</c>), or
-    /// an http or https URL on this machine's loopback; never another host, which is never asked.</summary>
-    public static (string? Document, string? Why) Named(string? text)
-    {
-        string given = (text ?? string.Empty).Trim();
-        if (given.StartsWith('/') && Uri.TryCreate("http://localhost" + given, UriKind.Absolute, out _))
-        {
-            return (given, null);
-        }
-        if (!Uri.TryCreate(given, UriKind.Absolute, out Uri? address) || address.Scheme is not ("http" or "https"))
-        {
-            return (null, "Name the path the app serves its OpenAPI document at (/openapi/v1.json), or its URL on this machine");
-        }
-        return address.IsLoopback ? (address.ToString(), null) : (null, $"{address.Host} is not this machine: Passenger asks for a document only of the app on this machine");
-    }
-
-    /// <summary>The document named for an app (<see cref="Named"/>) asked of it: a path at the address its request went to,
-    /// a URL as named; null where it answers with none.</summary>
+    /// <summary>The document named for an app (<see cref="OpenApiAddresses.Named"/>) asked of it: a path at the address its
+    /// request went to, a URL as named; null where it answers with none.</summary>
     public static Task<OpenApiDocument?> FromNamedAsync(string named, Uri address, CancellationToken cancel) =>
         named.StartsWith('/') ? FromAppAsync(address, [named], cancel)
         : Uri.TryCreate(named, UriKind.Absolute, out Uri? url) ? FromAppAsync(url, [url.PathAndQuery], cancel) : Task.FromResult<OpenApiDocument?>(null);

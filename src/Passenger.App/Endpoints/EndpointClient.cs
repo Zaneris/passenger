@@ -315,7 +315,7 @@ public static class EndpointClient
     }
 
     /// <summary>Where a redirect answer sends the request next, or null for an answer that is none.</summary>
-    private static Uri? Redirect(HttpResponseMessage response, Uri from) =>
+    internal static Uri? Redirect(HttpResponseMessage response, Uri from) =>
         (int)response.StatusCode is 300 or 301 or 302 or 303 or 307 or 308 && response.Headers.Location is { } location
             && (location.IsAbsoluteUri ? location : new Uri(from, location)) is { Scheme: "http" or "https" } next
             ? next

@@ -4,7 +4,7 @@ using Avalonia.Threading;
 namespace Passenger.App.Endpoints;
 
 /// <summary>Name OpenAPI Document: where a web project's app serves the document its code names nowhere, a path or a URL on
-/// this machine (<see cref="OpenApiSources.Named"/>), asked of the person; OK is pressable once what is typed is one. OK
+/// this machine (<see cref="OpenApiAddresses.Named"/>), asked of the person; OK is pressable once what is typed is one. OK
 /// closes it with <see cref="Document"/>; Cancel, Escape or a close, with none.</summary>
 public sealed class OpenApiDocumentDialog : IdeWindow
 {
@@ -38,14 +38,14 @@ public sealed class OpenApiDocumentDialog : IdeWindow
 
     private void Check()
     {
-        (string? document, string? said) = OpenApiSources.Named(Address.Text);
+        (string? document, string? said) = OpenApiAddresses.Named(Address.Text);
         Ok.IsEnabled = document is not null;
         why.Text = (Address.Text ?? string.Empty).Trim().Length == 0 ? string.Empty : said ?? string.Empty;
     }
 
     private void Accept()
     {
-        if (OpenApiSources.Named(Address.Text).Document is { } document)
+        if (OpenApiAddresses.Named(Address.Text).Document is { } document)
         {
             Document = document;
             Close(true);

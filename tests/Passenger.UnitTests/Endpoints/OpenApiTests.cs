@@ -74,6 +74,43 @@ public sealed class OpenApiTests
         Assert.Equal("id", Assert.Single(Document.Operations[0].Parameters).Name);
     }
 
+    /// <summary>A path lies at its app's origin however it is written, or nowhere: a reference to another host, or to
+    /// another port of this one, is asked of no one.</summary>
+    [Fact]
+    public void A_path_lies_at_its_apps_origin_and_one_written_to_leave_it_lies_nowhere()
+    {
+        Uri app = new("http://127.0.0.1:5000");
+        Assert.Equal("http://127.0.0.1:5000/docs/v1.json?full=1", OpenApiAddresses.At(app, "/docs/v1.json?full=1")?.AbsoluteUri);
+        Assert.Null(OpenApiAddresses.At(app, "//10.0.0.8:5000/spec.json"));
+        Assert.Null(OpenApiAddresses.At(app, "//127.0.0.1:5001/spec.json"));
+        Assert.Null(OpenApiAddresses.At(app, "http://10.0.0.8:5000/spec.json"));
+        Assert.Null(OpenApiAddresses.At(app, @"\\10.0.0.8\spec.json"));
+    }
+
+    /// <summary>A redirect stays with an app at its origin, or as it moves a caller from HTTP to its secure address on the
+    /// same host; another host or port, or a move off HTTPS, is another server's.</summary>
+    [Fact]
+    public void A_redirect_stays_with_an_app_at_its_origin_or_moving_to_https_on_its_host()
+    {
+        Uri app = new("http://localhost:5000/openapi/v1.json");
+        Assert.True(OpenApiAddresses.Stays(app, new Uri("http://LOCALHOST:5000/moved.json")));
+        Assert.True(OpenApiAddresses.Stays(app, new Uri("https://localhost:7001/openapi/v1.json")));
+        Assert.False(OpenApiAddresses.Stays(app, new Uri("http://localhost:5001/openapi/v1.json")));
+        Assert.False(OpenApiAddresses.Stays(app, new Uri("http://10.0.0.8:5000/openapi/v1.json")));
+        Assert.False(OpenApiAddresses.Stays(app, new Uri("https://10.0.0.8:7001/openapi/v1.json")));
+        Assert.False(OpenApiAddresses.Stays(new Uri("https://localhost:7001/"), new Uri("http://localhost:5000/")));
+        Assert.False(OpenApiAddresses.Stays(new Uri("https://localhost:7001/"), new Uri("https://localhost:7002/")));
+    }
+
+    [Fact]
+    public void A_document_named_by_a_reference_to_another_host_is_refused_as_a_url_of_another_machine_is()
+    {
+        Assert.Equal("/spec.json", OpenApiAddresses.Named("/spec.json").Document);
+        Assert.Equal("http://127.0.0.1:5000/spec.json", OpenApiAddresses.Named("http://127.0.0.1:5000/spec.json").Document);
+        Assert.Null(OpenApiAddresses.Named("//10.0.0.8:5000/spec.json").Document);
+        Assert.Null(OpenApiAddresses.Named("http://10.0.0.8:5000/spec.json").Document);
+    }
+
     [Fact]
     public void Text_that_is_no_OpenAPI_document_is_read_as_none()
     {
