@@ -234,6 +234,28 @@ public class GodotProjectReadsTests
         Assert.Equal("; The player's keys.\n[rendering]\n\nx=1\n", GodotWrites.WithoutSetting("; The player's keys.\n[input]\n\ndash=1\n\n[rendering]\n\nx=1\n", "input", "dash"));
     }
 
+    /// <summary>Godot reads a key's last line, so an earlier one comes back into force once that goes, and it reads a tag
+    /// written twice as one section: every line goes, whatever stands beside them.</summary>
+    [Theory]
+    [InlineData("[input]\n\ndash=1\nrun=2\ndash=3\n", "[input]\n\nrun=2\n")]
+    [InlineData("[input]\n\ndash=1\n; Keep this.\nrun=2\ndash={\n\"deadzone\": 0.2\n}\nwalk=4\n", "[input]\n\n; Keep this.\nrun=2\nwalk=4\n")]
+    [InlineData("[input]\r\n\r\ndash=1\r\nrun=2\r\ndash=3\r\n", "[input]\r\n\r\nrun=2\r\n")]
+    [InlineData("[input]\n\n; The player's keys.\ndash=1\ndash=2\n", "[input]\n\n; The player's keys.\n")]
+    [InlineData("[input]\n\ndash=1\ndash=2\n\n[rendering]\n\nx=1\n", "[rendering]\n\nx=1\n")]
+    [InlineData("[input]\n\ndash=1\nrun=2\n\n[rendering]\n\nx=1\n\n[input]\n\ndash=3\n", "[input]\n\nrun=2\n\n[rendering]\n\nx=1\n")]
+    public void A_setting_written_twice_goes_from_every_line_that_gives_it(string text, string left)
+    {
+        Assert.Equal(left, GodotWrites.WithoutSetting(text, "input", "dash"));
+        Assert.True(!GodotFile.Parse(left).Sections.Any(s => s.Tag == "input" && s.Property("dash") is not null),
+            $"A line of the key was left, so the setting taken out is still in force:\n{left}");
+    }
+
+    [Fact]
+    public void A_key_of_another_section_stays_as_a_setting_of_its_name_goes()
+    {
+        Assert.Equal("[rendering]\n\ndash=9\n", GodotWrites.WithoutSetting("[input]\n\ndash=1\ndash=2\n\n[rendering]\n\ndash=9\n", "input", "dash"));
+    }
+
     /// <summary>The events the page gives are written as Godot's editor writes them, a key by its place and a button by its
     /// index, and read back as the names they were given by.</summary>
     [Fact]

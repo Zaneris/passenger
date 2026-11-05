@@ -110,12 +110,25 @@ public static class GodotWrites
         GodotFile.Parse(text).Sections.FirstOrDefault(s => s.Tag == "input")?.Property(name) is not null ? null
             : WithSetting(text, "input", SettingKey(name), ActionValue(NewlineOf(text)));
 
-    /// <summary>project.godot's text without a setting of a section, its whole line or lines, and without the section where
-    /// it was the last and no comment is written there, as Godot's own save writes no empty one; null where it sets none.</summary>
+    /// <summary>project.godot's text without a setting of a section, every line giving it, the last of which Godot reads and
+    /// an earlier one once that goes, and without the section where nothing else is left and no comment is written there, as
+    /// Godot's own save writes no empty one; null where it sets none.</summary>
     public static string? WithoutSetting(string text, string section, string key)
     {
+        string? without = null;
+        while (WithoutLastLine(without ?? text, section, key) is { } less)
+        {
+            without = less;
+        }
+        return without;
+    }
+
+    /// <summary>project.godot's text without the last line giving a setting in the first section of that tag holding it (Godot
+    /// reads a tag written twice as one section), and without that section where that line was all it held.</summary>
+    private static string? WithoutLastLine(string text, string section, string key)
+    {
         GodotFile file = GodotFile.Parse(text);
-        if (file.Sections.FirstOrDefault(s => s.Tag == section) is not { } found || found.Property(key) is not { } set)
+        if (file.Sections.FirstOrDefault(s => s.Tag == section && s.Property(key) is not null) is not { } found || found.Property(key) is not { } set)
         {
             return null;
         }
