@@ -892,10 +892,20 @@ public sealed partial class LiveTreeController
 
     private void OnTreeChanged(object? sender, EventArgs e)
     {
-        if (sender == app)
+        if (sender != app)
         {
-            IdeErrors.Observe(RefreshAsync());
+            return;
         }
+        // A game's nodes come and go many times a minute, and reading the node chosen runs its script's getters: only its tree is asked.
+        if (app is Godot.GodotGame game && window.IsShown && !Paused)
+        {
+            if (!following)
+            {
+                IdeErrors.Observe(FollowAsync(game));
+            }
+            return;
+        }
+        IdeErrors.Observe(RefreshAsync());
     }
 
     private void OnWindowChanged(object? sender, PropertyChangedEventArgs e)
@@ -1130,6 +1140,7 @@ public sealed partial class LiveTreeController
             if (ask == detailAsks && app == live)
             {
                 ShowDetails(AppPlaces.InEditor(details, parts.Editors), null);
+                view?.ShowRead((live as Godot.GodotGame)?.RanByReading(id));
                 watchedShown = WatchedNow();
                 ShowKeepAll();
             }

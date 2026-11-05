@@ -1394,6 +1394,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         string? name = state.Properties.FirstOrDefault(p => p.Name == "name")?.Value?.ToString();
         string? script = state.Properties.FirstOrDefault(p => p.Name == "script")?.Value as string;
         SourcePlace? source = script is { Length: > 0 } && File.Exists(PathOf(script)) ? new SourcePlace(PathOf(script), 0, 0) : null;
+        ranByReading[(ulong)element] = source is null ? [] : await BackgroundWork.Run(() => GodotMembers.RunByReading(script!, TextOf));
         List<PropertyValue> properties = [.. state.Properties.Where(p => p.Name is not ("name" or "script"))
             .Select(p => new PropertyValue(p.Name, p.Category, false, p.Type.ToString(), GodotVariant.Shown(p.Value), p.Category, null, null))];
         Box none = new(0, 0, 0, 0);
@@ -1401,6 +1402,27 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         return new ElementDetails(element, state.Class, state.Class, name, [], [], source, source is null ? "A node with no script of the project's" : null, null,
             new LayoutInfo(none, null, 0, 0, flat, null, null, string.Empty, string.Empty), properties, []);
     }
+
+    private readonly Dictionary<ulong, IReadOnlyList<string>> ranByReading = [];
+
+    /// <summary>A file of the project as the game read it, by its <c>res://</c> path; null for one not there. Off the UI thread.</summary>
+    private string? TextOf(string res)
+    {
+        try
+        {
+            return File.ReadAllText(PathOf(res));
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>What its last reading of a node ran of its script, said for the person or agent who asked for it, there being
+    /// no reading a node's properties through Godot without its getters; null where it ran none.</summary>
+    public string? RanByReading(long element) => ranByReading.GetValueOrDefault((ulong)element) is { Count: > 0 } ran
+        ? $"Godot runs a script's getters to read its node: {Plural.Listed(ran)} ran as this was read, and run again on each read"
+        : null;
 
     /// <summary>The values set from the properties pane, kept or not.</summary>
     public GodotTuning Tuning { get; }

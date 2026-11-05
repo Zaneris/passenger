@@ -233,7 +233,7 @@ public sealed partial class PassengerTools
         return new AppElementDetails(AppQuery.Short(element.Element), details.Type, details.FullType, details.Name, [], [],
             details.Source is { } source ? Placed(source) : null, details.Source is null ? details.NoSource : null, null, null,
             [.. details.Properties.Where(p => typed.Length == 0 || p.Name.Contains(typed, StringComparison.OrdinalIgnoreCase))
-                .Select(p => new AppProperty(p.Name, p.Value, p.Type, p.Source, null, null, null))], []);
+                .Select(p => new AppProperty(p.Name, p.Value, p.Type, p.Source, null, null, null))], []) { Ran = game.RanByReading(element.Element.Id) };
     }
 
     /// <summary>Sets a node's property to the value a text gives, as the Live Visual Tree's are typed, and says what the game

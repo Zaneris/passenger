@@ -102,6 +102,63 @@ public class GodotLiveValuesTests
     }
 
     [Fact]
+    public void What_reading_a_node_runs_is_each_getter_and_get_of_its_script_and_those_it_extends_by_path_or_by_class_name()
+    {
+        Dictionary<string, string> files = new()
+        {
+            ["res://enemy.gd"] = "extends \"base.gd\"\n\nvar hp: int:\n\tget:\n\t\treturn 1\nvar plain := 1\nvar kept := 2: set = _keep\n",
+            ["res://base.gd"] = "extends Actor\n\nvar armour: int: get = _armour\nstatic var made: int:\n\tget:\n\t\treturn 1\n\n\nfunc _armour() -> int:\n\treturn 1\n",
+            ["res://actor.gd"] = "class_name Actor\nextends Node\n\n\nfunc _get(_property: StringName) -> Variant:\n\treturn null\n\n\nfunc _get_property_list() -> Array:\n\treturn []\n",
+            ["res://.godot/global_script_class_cache.cfg"] = "list=[{\n\"base\": &\"Node\",\n\"class\": &\"Actor\",\n\"icon\": \"\",\n\"path\": \"res://actor.gd\"\n}]\n",
+        };
+        Assert.Equal(["hp", "armour", "made", "_get", "_get_property_list"], GodotMembers.RunByReading("res://enemy.gd", res => files.GetValueOrDefault(res)));
+        Assert.Empty(GodotMembers.RunByReading("res://gone.gd", res => files.GetValueOrDefault(res)));
+    }
+
+    [Fact]
+    public void A_script_extending_itself_is_read_once()
+    {
+        Assert.Equal(["a"], GodotMembers.RunByReading("res://a.gd", _ => "extends \"a.gd\"\n\nvar a: int:\n\tget:\n\t\treturn 1\n"));
+    }
+
+    [Fact]
+    public void What_reading_a_node_runs_of_a_csharp_script_is_each_property_with_a_getter_of_the_persons_and_its_Get()
+    {
+        const string Script = """
+            namespace Game;
+
+            public partial class Player : Node
+            {
+                public int Auto { get; set; }
+
+                public int Bodied { get { return 1; } }
+
+                public int Arrow => 2;
+
+                public int Accessor { get => 3; set { } }
+
+                public int SetOnly { set { } }
+
+                public static int Shared => 4;
+
+                public override Variant _Get(StringName property) => default;
+
+                public class Nested
+                {
+                    public int Inside => 5;
+                }
+            }
+
+            public partial class Other : Node
+            {
+                public int Beside => 6;
+            }
+
+            """;
+        Assert.Equal(["Bodied", "Arrow", "Accessor", "_Get"], GodotMembers.RunByReading("res://Player.cs", res => res == "res://Player.cs" ? Script : null));
+    }
+
+    [Fact]
     public void A_gdscript_member_with_a_getter_of_its_own_is_never_read_however_it_is_written()
     {
         const string Script = """

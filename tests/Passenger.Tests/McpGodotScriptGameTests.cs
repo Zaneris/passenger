@@ -93,6 +93,42 @@ public sealed class McpGodotScriptGameTests : McpRig
         await Call(client, McpTools.Stop);
     }
 
+    /// <summary>A control whose script names a <c>text</c>, <c>disabled</c> and <c>editable</c> of its own, each read counted:
+    /// its getter, its <c>_get</c>, and a plain <c>note</c>.</summary>
+    private const string Counting = "extends Control\n\nvar getter_reads := 0\nvar get_reads := 0\nvar text := \"stored\":\n\tget:\n\t\tgetter_reads += 1\n\t\treturn \"by getter\"\n"
+        + "var disabled := true\nvar editable := \"not a flag\"\nvar note := \"plain note\"\n\n\nfunc _get(_property: StringName) -> Variant:\n\tget_reads += 1\n\treturn null\n";
+
+    /// <summary>app_tree reads what a node's class holds past its script, and a GDScript's own text as stored: looking at
+    /// the tree, named properties among it, runs no getter and no <c>_get</c>, which app_details, reading through Godot's
+    /// own inspection, runs and says it did.</summary>
+    [Fact]
+    public async Task App_tree_runs_no_getter_of_a_script_and_keeps_its_text_and_app_details_says_what_it_ran()
+    {
+        File.WriteAllText(Path.Combine(folder, "main.tscn"), "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://counting.gd\" id=\"1\"]\n\n"
+            + "[node name=\"Main\" type=\"Control\"]\nscript = ExtResource(\"1\")\n\n[node name=\"Press\" type=\"Button\" parent=\".\"]\noffset_right = 120.0\noffset_bottom = 40.0\n"
+            + "text = \"Press\"\ndisabled = true\n");
+        File.WriteAllText(Path.Combine(folder, "counting.gd"), Counting);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false,
+            environment: new() { [Passenger.App.Godot.GodotUserFolders.HomeVariable] = folder + "-home" });
+        await Call(client, McpTools.Run, new() { ["configuration"] = "Ticker", ["arguments"] = "--headless", ["waitSeconds"] = 10 });
+        await Until(async () => await Result(client, McpTools.AppTree) is { IsError: not true } tree && Text(tree).Contains("#Press", StringComparison.Ordinal), "the game's button");
+
+        string looked = Text(await Call(client, McpTools.AppTree, new() { ["properties"] = new[] { "note", "text", "custom_minimum_size" } }));
+        Assert.Contains("#Main \"stored\"", looked, StringComparison.Ordinal);
+        Assert.Contains("[disabled]", looked.Split('\n').First(l => l.Contains("#Main", StringComparison.Ordinal)), StringComparison.Ordinal);
+        Assert.Contains("note=plain note", looked, StringComparison.Ordinal);
+        Assert.Contains("custom_minimum_size=(0, 0)", looked, StringComparison.Ordinal);
+        Assert.Contains("#Press \"Press\"", looked, StringComparison.Ordinal);
+        string members = Text(await Call(client, McpTools.AppDetails, new() { ["control"] = "#Main", ["members"] = true }));
+        Assert.True(members.Contains("\"name\":\"getter_reads\",\"line\":3,\"value\":\"0\"", StringComparison.Ordinal)
+            && members.Contains("\"name\":\"get_reads\",\"line\":4,\"value\":\"0\"", StringComparison.Ordinal),
+            $"Looking at the tree ran the game's code, so that looking changed it: {members}");
+
+        JsonElement details = await Call(client, McpTools.AppDetails, new() { ["control"] = "#Main" });
+        Assert.Contains("text and _get ran as this was read", details.GetProperty("ran").GetString(), StringComparison.Ordinal);
+        await Call(client, McpTools.Stop);
+    }
+
     /// <summary>Members false to a game's <c>if</c> though no plain reading of the value says so, each a line's condition, then
     /// a member true.</summary>
     private const string Truths = "extends Node\n\nvar empty_list := []\nvar empty_map := {}\nvar zero_vector := Vector2.ZERO\nvar empty_name := &\"\"\n"

@@ -117,29 +117,46 @@ func _box(node: Node) -> Array:
         if node == get_tree().root:
             var seen: Vector2 = node.get_visible_rect().size
             return [true, 0.0, 0.0, seen.x, seen.y]
-        return [true, float(node.position.x), float(node.position.y), float(node.size.x), float(node.size.y)]
+        var place: Vector2i = ClassDB.class_get_property(node, "position")
+        var size: Vector2i = ClassDB.class_get_property(node, "size")
+        return [true, float(place.x), float(place.y), float(size.x), float(size.y)]
     if node is Node2D:
-        var at: Vector2 = node.global_position
+        var at: Vector2 = ClassDB.class_get_property(node, "global_position")
         return [true, at.x, at.y, 0.0, 0.0]
     return [false, 0.0, 0.0, 0.0, 0.0]
+
+
+## A GDScript's members as its node stores them, past their getters; nothing for any other script, or one of no file of its
+## own, which inst_to_dict refuses.
+func _stored(node: Node) -> Dictionary:
+    var script := node.get_script() as GDScript
+    if script == null or not script.resource_path.begins_with("res://") or script.resource_path.contains("::"):
+        return {}
+    return inst_to_dict(node)
+
+
+## What a node holds under a name with none of the game's code run: the engine class's property, read past the script's
+## getters and _get, which a plain get or in would ask first; else what its GDScript stores. Null for neither.
+func _held(node: Node, property: String) -> Variant:
+    var value = ClassDB.class_get_property(node, property)
+    return value if value != null else _stored(node).get(StringName(property))
 
 
 func _text(node: Node) -> Variant:
     if node == null:
         return null
     if node is Window:
-        return node.title
-    if node is LineEdit and node.secret:
-        return "•".repeat(node.text.length())
-    if "text" in node:
-        var text = node.get("text")
-        if text is String:
-            return text
-    return null
+        return ClassDB.class_get_property(node, "title")
+    if node is LineEdit and ClassDB.class_get_property(node, "secret"):
+        return "•".repeat(ClassDB.class_get_property(node, "text").length())
+    var text = _held(node, "text")
+    return text if text is String else null
 
 
 func _disabled(node: Node) -> bool:
-    return ("disabled" in node and node.get("disabled") == true) or ("editable" in node and node.get("editable") == false)
+    var disabled = _held(node, "disabled")
+    var editable = _held(node, "editable")
+    return (disabled is bool and disabled) or (editable is bool and not editable)
 
 
 func _flags(node: Node, view: Rect2) -> int:
@@ -152,6 +169,17 @@ func _flags(node: Node, view: Rect2) -> int:
         if not view.intersects(node.get_global_rect(), true):
             flags |= 4
     return flags
+
+
+## A property an agent named, in a list of its own, none for a node without it. A C# script's member has no way to it but its
+## getter, which only such a name asks.
+func _read_named(node: Node, property: String) -> Array:
+    var held = _held(node, property)
+    if held != null:
+        return [held]
+    if node.get_script() is GDScript:
+        return [null] if _stored(node).has(StringName(property)) else []
+    return [node.get(property)] if property in node else []
 
 
 ## Each node's id, box, text and flags, and the values of those of its properties named.
@@ -167,8 +195,9 @@ func _walk(node: Node, nodes: Array, view: Rect2, names: Array) -> void:
     var box := _box(node)
     var values: Array = []
     for property in names:
-        if property in node:
-            values.append([property, node.get(property)])
+        var read := _read_named(node, property)
+        if not read.is_empty():
+            values.append([property, read[0]])
     nodes.append([node.get_instance_id(), box[0], box[1], box[2], box[3], box[4], _text(node), _flags(node, view), values])
     for child in node.get_children():
         _walk(child, nodes, view, names)
@@ -190,7 +219,8 @@ func _windows(node: Node, found: Array) -> void:
             owner_id = above.get_instance_id()
         var box := _box(node)
         var scale: float = node.get_final_transform().get_scale().x
-        found.append([node.get_instance_id(), node.get_class(), String(node.name), node.title, box[3], box[4], scale, node.has_focus(), node.visible, owner_id])
+        found.append([node.get_instance_id(), node.get_class(), String(node.get_name()), ClassDB.class_get_property(node, "title"), box[3], box[4], scale, node.has_focus(),
+            ClassDB.class_get_property(node, "visible"), owner_id])
     for child in node.get_children():
         _windows(child, found)
 
@@ -213,7 +243,7 @@ func _frames(count: int) -> void:
 
 
 func _named(node: Node) -> String:
-    return "%s %s" % [node.get_class(), node.name]
+    return "%s %s" % [node.get_class(), node.get_name()]
 
 
 ## The point a pointer goes to in the viewport, or null once why not is said: the middle of what is in view of a Control, or
@@ -499,9 +529,9 @@ func _described(value: Variant) -> String:
         if not is_instance_valid(value):
             return "freed"
         if value is Node:
-            return "%s (%s)" % [value.name, value.get_class()]
-        if value is Resource and not value.resource_path.is_empty():
-            return value.resource_path
+            return "%s (%s)" % [value.get_name(), value.get_class()]
+        if value is Resource and not value.get_path().is_empty():
+            return value.get_path()
         return "<%s>" % value.get_class()
     if typeof(value) == TYPE_DICTIONARY:
         return _item(value, 3).left(200) if value.size() <= 4 else "{%d entries}" % value.size()
@@ -574,7 +604,7 @@ func values(ask: int, asks: Array) -> void:
         if is_instance_valid(found):
             for name in wanted[2]:
                 read.append(_value(found, name))
-            answers.append([nodes.size(), found.get_instance_id(), String(found.name), read])
+            answers.append([nodes.size(), found.get_instance_id(), String(found.get_name()), read])
         else:
             for name in wanted[2]:
                 read.append([])

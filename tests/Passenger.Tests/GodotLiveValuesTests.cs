@@ -16,7 +16,7 @@ namespace Passenger.Tests;
 /// values at their lines' ends, read again as the game runs (a frame count climbing, a vector's parts, a node path's node),
 /// the hint hovered shows its last minute as a line, Settings turns them off and on, and Stop takes them away; a script two
 /// nodes run says so until one is chosen in the Live Visual Tree, whose values it then shows; a GDScript's vars show alike,
-/// none of the game's code run to read them. Godot runs headless, its user folders the run's; without a Godot 4 .NET build
+/// none of the game's code run to read them; a node chosen is read once, saying what that ran. Godot runs headless, its user folders the run's; without a Godot 4 .NET build
 /// each test skips saying why. Its game runs and is stopped, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotLiveValuesTests : IClassFixture<GodotLiveValuesTests.Game>
@@ -257,6 +257,72 @@ public sealed class GodotLiveValuesTests : IClassFixture<GodotLiveValuesTests.Ga
             Assert.True(Hint(script, LineOf("spark.gd", "var counted")) is null, $"A member with a getter of its own was read: {Hints(script)}");
             Assert.Equal("notes: [<RefCounted>]", Hint(script, LineOf("spark.gd", "var notes :=")));
             Assert.Equal("notes_by_name: { \"first\": <RefCounted> }", Hint(script, LineOf("spark.gd", "var notes_by_name")));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>A spark whose getter counts its reads, among children coming and going every beat of the game's monitors.</summary>
+    private const string Busy = """
+        extends Node
+
+        var reads := 0
+        var counted: int:
+            get:
+                reads += 1
+                return reads
+        var clock := 0.0
+
+
+        func _process(delta: float) -> void:
+            clock += delta
+            if clock > 0.3:
+                clock = 0.0
+                if get_child_count() > 0:
+                    get_child(0).queue_free()
+                else:
+                    add_child(Node.new())
+
+        """;
+
+    /// <summary>Choosing a node reads it through Godot's own inspection, which runs its getters, so the pane says it did; the
+    /// game's nodes then coming and going, its tree follows and the node is read no more, so what the getter counts stands
+    /// still, until Refresh reads it again.</summary>
+    [AvaloniaFact]
+    public void A_node_chosen_in_the_Live_Visual_Tree_is_read_once_saying_its_getters_ran_and_never_again_as_the_games_nodes_come_and_go()
+    {
+        game.Rewrite("spark.gd", Busy);
+        MainWindow window = Started("spark.gd");
+        try
+        {
+            OpenDocument script = window.EditorArea.Active!;
+            int reads = LineOf("spark.gd", "var reads");
+            Ui.WaitFor(() => Hint(script, reads) == "reads: 0", () => $"the read count's hint ({Unread(window, script)})", TimeSpan.FromMinutes(1));
+            LiveTreeView tree = window.LiveTree;
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Main"), () => $"the game's nodes ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
+            if (tree.Rows.First(r => r.Element.Name == "Main") is { IsExpanded: false } closed)
+            {
+                tree.Toggle(closed);
+            }
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Spark"), () => $"Main's nodes ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})");
+            tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Spark");
+            Ui.WaitFor(() => tree.ReadShown is not null, () => $"the pane to say what reading the node ran (it shows {tree.Details?.Name})", TimeSpan.FromSeconds(20));
+            Assert.Contains("counted ran as this was read", tree.ReadShown, StringComparison.Ordinal);
+
+            Ui.WaitFor(() => Hint(script, reads) != "reads: 0", () => $"the count of what choosing the node ran ({Hints(script)})", TimeSpan.FromSeconds(20));
+            Ui.Hold(TimeSpan.FromSeconds(1.5), "the game's next beat, so the count read holds all choosing it ran");
+            string chosen = Hint(script, reads)!;
+            double nodes = window.Session.Game!.Monitors!.Nodes;
+            Ui.WaitFor(() => window.Session.Game!.Monitors!.Nodes != nodes, () => $"the game's nodes to change from {nodes}", TimeSpan.FromSeconds(20));
+            nodes = window.Session.Game!.Monitors!.Nodes;
+            Ui.WaitFor(() => window.Session.Game!.Monitors!.Nodes != nodes, () => $"the game's nodes to change again from {nodes}", TimeSpan.FromSeconds(20));
+            Ui.Hold(TimeSpan.FromSeconds(1.5), "one more beat, whose read of the script's members would show a read since");
+            Assert.True(Hint(script, reads) == chosen, $"The game's nodes coming and going read the node chosen again, running its getter: {chosen} became {Hint(script, reads)}");
+
+            Ui.Run(window, AppActions.LiveTreeRefresh);
+            Ui.WaitFor(() => Hint(script, reads) != chosen, () => $"Refresh to read the node again, its getter with it ({Hints(script)})", TimeSpan.FromSeconds(20));
         }
         finally
         {

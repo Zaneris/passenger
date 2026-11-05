@@ -694,7 +694,11 @@ public sealed record AppBindingError(string App, string Level, string Control, s
 /// or why none (a Godot node's script), the template it is a part of, its layout (none for a Godot node), its properties with their
 /// sources (a Godot node's, their categories) and its styles with why each applies or not.</summary>
 public sealed record AppElementDetails(string Element, string Type, string FullType, string? Name, IReadOnlyList<string> Classes, IReadOnlyList<string> PseudoClasses,
-    string? Xaml, string? NoXaml, string? TemplatedParent, AppLayout? Layout, IReadOnlyList<AppProperty> Properties, IReadOnlyList<AppStyle> Styles);
+    string? Xaml, string? NoXaml, string? TemplatedParent, AppLayout? Layout, IReadOnlyList<AppProperty> Properties, IReadOnlyList<AppStyle> Styles)
+{
+    /// <summary>What reading a Godot node ran of its script; null for none.</summary>
+    public string? Ran { get; init; }
+}
 
 /// <summary>A Godot game's script members as app_details' members reads them: for each node read, the node, its script
 /// (its file and class) and each member its code declares that the node holds, by its line, with its value as the code's

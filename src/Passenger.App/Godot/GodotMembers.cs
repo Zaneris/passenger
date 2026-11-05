@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.Languages.CSharp;
 using Passenger.Text;
 using Passenger.Workspace.GDScript;
 
@@ -98,6 +99,67 @@ public static partial class GodotMembers
         string file = path[(path.LastIndexOf('/') + 1)..];
         return new GodotScriptMembers(path, named ?? Path.GetFileNameWithoutExtension(file), Math.Max(0, classLine), members);
     }
+
+    /// <summary>What of a GDScript's own class Godot's reading of a node runs: each <c>var</c> with a getter of its own,
+    /// static ones too, then its <c>_get</c> and <c>_get_property_list</c> where it writes them.</summary>
+    public static IReadOnlyList<string> RunByReading(GDScriptTree tree) =>
+    [
+        .. tree.Members.Select(m => m.Node).OfType<GDScriptVariable>().Where(v => v.Getter is not null || v.GetterName is not null).Select(v => v.Identifier?.Name).OfType<string>(),
+        .. tree.Members.Select(m => m.Node).OfType<GDScriptFunction>().Select(f => f.Identifier?.Name).OfType<string>().Where(n => n is "_get" or "_get_property_list"),
+    ];
+
+    /// <summary>What of a C# script's class (the file's class of its name, <paramref name="file"/>) Godot's reading of a node
+    /// runs: each property with a getter of the person's, then its <c>_Get</c> and <c>_GetPropertyList</c> where it writes them.</summary>
+    public static IReadOnlyList<string> RunByReading(SyntaxNode root, string file)
+    {
+        string name = Path.GetFileNameWithoutExtension(file);
+        IReadOnlyList<MemberDeclarationSyntax> members = [.. root.DescendantNodes(n => n is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax)
+            .OfType<ClassDeclarationSyntax>().Where(c => c.Identifier.ValueText == name).SelectMany(c => c.Members)];
+        return
+        [
+            .. members.OfType<PropertyDeclarationSyntax>().Where(p => !IsAuto(p) && !p.Modifiers.Any(m => m.IsKind(SyntaxKind.StaticKeyword) || m.IsKind(SyntaxKind.AbstractKeyword)) && HasGetter(p))
+                .Select(p => p.Identifier.ValueText),
+            .. members.OfType<MethodDeclarationSyntax>().Select(m => m.Identifier.ValueText).Where(n => n is "_Get" or "_GetPropertyList"),
+        ];
+    }
+
+    private static bool HasGetter(PropertyDeclarationSyntax property) =>
+        property.ExpressionBody is not null || property.AccessorList?.Accessors.Any(a => a.IsKind(SyntaxKind.GetAccessorDeclaration)) == true;
+
+    /// <summary>What Godot's reading of a node running a script (a <c>res://</c> path) runs of it and of the scripts it extends,
+    /// by path or by class name, as <paramref name="read"/> reads a <c>res://</c> path (null for none); nearest first, each once.</summary>
+    public static IReadOnlyList<string> RunByReading(string script, Func<string, string?> read)
+    {
+        Dictionary<string, string> classes = read(ClassCache) is { } cache
+            ? CachedClass().Matches(cache).DistinctBy(m => m.Groups[1].Value).ToDictionary(m => m.Groups[1].Value, m => m.Groups[2].Value, StringComparer.Ordinal)
+            : [];
+        List<string> run = [];
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        string? at = script;
+        while (at is not null && seen.Add(at) && read(at) is { } text)
+        {
+            if (at.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+            {
+                run.AddRange(RunByReading(CSharpSyntaxTree.ParseText(text, CSharpParsing.Default).GetRoot(), at));
+                break;
+            }
+            GDScriptTree tree = GDScriptTree.Parse(text);
+            run.AddRange(RunByReading(tree));
+            at = tree.Class.ExtendsPath is { Length: > 0 } written ? Beside(written, at)
+                : tree.Class.Extends is [{ } named, ..] ? classes.GetValueOrDefault(named.Name) : null;
+        }
+        return [.. run.Distinct(StringComparer.Ordinal)];
+    }
+
+    /// <summary>A script <c>extends</c> names by path, written whole or beside the script it is written in.</summary>
+    private static string Beside(string written, string script) =>
+        written.Contains("://", StringComparison.Ordinal) ? written : $"{script[..(script.LastIndexOf('/') + 1)]}{written}";
+
+    /// <summary>The file Godot lists a project's <c>class_name</c>s in.</summary>
+    private const string ClassCache = "res://.godot/global_script_class_cache.cfg";
+
+    [GeneratedRegex(@"""class"": &""(\w+)""[^}]*?""path"": ""([^""]+)""")]
+    private static partial Regex CachedClass();
 
     [GeneratedRegex(@"^class_name\s+([A-Za-z_]\w*)")]
     private static partial Regex ClassName();

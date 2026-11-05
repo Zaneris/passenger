@@ -743,6 +743,7 @@ public sealed class LiveTreeView : DockPanel
             heading.Children.Add(link);
         }
         heading.Children.Add(failures);
+        heading.Children.Add(read);
         ShowProperties();
         foreach (StyleReport style in details.Styles)
         {
@@ -773,6 +774,19 @@ public sealed class LiveTreeView : DockPanel
         {
             failures.Children.Add(Colored(new TextBlock { Text = message, FontSize = 12, TextWrapping = TextWrapping.Wrap }, TokenKeys.Error));
         }
+    }
+
+    /// <summary>What reading the chosen node ran of the game's code, under its heading.</summary>
+    private readonly TextBlock read = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
+
+    /// <summary>What reading the chosen node ran of the game's code as shown; null for none.</summary>
+    public string? ReadShown => read.IsVisible ? read.Text : null;
+
+    /// <summary>Says what reading the chosen node ran of the game's code; null for nothing.</summary>
+    public void ShowRead(string? ran)
+    {
+        read.Text = ran;
+        read.IsVisible = ran is not null;
     }
 
     /// <summary>The chosen control's link to its XAML, while it has one.</summary>
