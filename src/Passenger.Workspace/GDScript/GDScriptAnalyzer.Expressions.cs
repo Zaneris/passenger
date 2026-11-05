@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using K = Passenger.Workspace.GDScript.GDScriptTokenKind;
 
 namespace Passenger.Workspace.GDScript;
@@ -7,6 +8,10 @@ public sealed partial class GDScriptAnalyzer
 {
     private void Walk(GDScriptAnalysis analysis, GDScriptNode member, Context context)
     {
+        if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
+        {
+            return;
+        }
         MemberNameErrors(member, context);
         AnnotationArgumentErrors(member, context);
         switch (member)
@@ -198,6 +203,10 @@ public sealed partial class GDScriptAnalyzer
     /// <summary>A statement walked; whether every way through it returns.</summary>
     private bool WalkStatement(GDScriptNode statement, Context context, Scope scope)
     {
+        if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
+        {
+            return true;
+        }
         GDScriptAnalysis analysis = context.Analysis;
         switch (statement)
         {
@@ -418,10 +427,12 @@ public sealed partial class GDScriptAnalyzer
         return element with { Hard = list.Hard && element.Hard };
     }
 
-    /// <summary>An expression's type, recorded for it in the analysis where one is being made.</summary>
+    /// <summary>An expression's type, recorded for it in the analysis where one is being made. Variant where the stack this
+    /// reading has left runs short: members' values read one another however long the chain, and a stack that ran out ends
+    /// the process.</summary>
     private GDScriptType Reduce(GDScriptExpression? expression, Context context, bool root = false, bool awaited = false)
     {
-        if (expression is null)
+        if (expression is null || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
         {
             return GDScriptType.Variant;
         }
@@ -564,6 +575,10 @@ public sealed partial class GDScriptAnalyzer
     /// may be a type on its own (a built-in type, a global enum, an engine's enum), any other expression as it is.</summary>
     private GDScriptType ReduceBase(GDScriptExpression? taken, Context context)
     {
+        if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
+        {
+            return GDScriptType.Variant;
+        }
         GDScriptType type = taken switch
         {
             GDScriptIdentifier name => Identifier(name, context, asBase: true),
@@ -660,7 +675,7 @@ public sealed partial class GDScriptAnalyzer
 
     /// <summary>Whether Godot holds what an attribute is taken of constant, as a class read through it must be for its
     /// members to be looked up: a constant, a class or engine class by its name, a preload, or a class held so of one.</summary>
-    private bool HeldConstant(GDScriptExpression? taken, Context context) => taken switch
+    private bool HeldConstant(GDScriptExpression? taken, Context context) => RuntimeHelpers.TryEnsureSufficientExecutionStack() && taken switch
     {
         GDScriptPreload => true,
         GDScriptIdentifier name when context.Scope?.Find(name.Name) is { } local => local.Local?.Kind == LocalKind.Constant,

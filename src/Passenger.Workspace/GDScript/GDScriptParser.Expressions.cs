@@ -105,6 +105,15 @@ internal sealed partial class GDScriptParser
 
     private GDScriptExpression? ParsePrecedence(Precedence precedence, bool canAssign, bool stopOnAssign = false)
     {
+        int outer = nesting;
+        GDScriptExpression? parsed = Deeper() ? ParseOperators(precedence, canAssign, stopOnAssign) : null;
+        nesting = outer;
+        return parsed;
+    }
+
+    /// <summary>A prefix and the infix operators binding at least as tightly, each link a level of the tree it makes.</summary>
+    private GDScriptExpression? ParseOperators(Precedence precedence, bool canAssign, bool stopOnAssign)
+    {
         if (current.Kind is K.ParenthesisOpen or K.BraceOpen or K.BracketOpen)
         {
             PushMultiline(true);
@@ -118,7 +127,7 @@ internal sealed partial class GDScriptParser
         GDScriptExpression? left = Run(prefix, null, canAssign);
         while (precedence <= RuleOf(current.Kind).Precedence)
         {
-            if (left is null || stopOnAssign && current.Kind == K.Equal || lambdaEnded)
+            if (left is null || stopOnAssign && current.Kind == K.Equal || lambdaEnded || !Deeper())
             {
                 return left;
             }
@@ -751,6 +760,8 @@ internal sealed partial class GDScriptParser
         {
             bool first = true;
             GDScriptTypeNode? made = type;
+            int outer = nesting;
+            Deeper();
             do
             {
                 GDScriptTypeNode? element = ParseType();
@@ -772,6 +783,7 @@ internal sealed partial class GDScriptParser
                 first = false;
             }
             while (Match(K.Comma));
+            nesting = outer;
             Consume(K.BracketClose, "Expected closing \"]\" after collection type.");
             if (made is not null)
             {

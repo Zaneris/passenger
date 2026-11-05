@@ -333,7 +333,10 @@ internal sealed partial class GDScriptParser
             ParseExtends();
             EndStatement("superclass");
         }
+        int outerNesting = nesting;
+        Deeper();
         ParseClassBody(multiline, null);
+        nesting = outerNesting;
         Complete(node);
         if (multiline)
         {

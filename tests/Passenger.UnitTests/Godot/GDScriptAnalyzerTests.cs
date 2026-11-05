@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Passenger.Text;
 using Passenger.Workspace.GDScript;
@@ -61,6 +62,23 @@ public class GDScriptAnalyzerTests
         Dictionary<string, string> classNames = trees.Where(t => t.Value.Class.Identifier is not null).ToDictionary(t => t.Value.Class.Identifier!.Name, t => t.Key, StringComparer.Ordinal);
         GDScriptAnalyzer analyzer = new(new GDScriptProject(Engine, path => trees.GetValueOrDefault(path), classNames, autoloads ?? []));
         return (analyzer.Analyze(trees["res://main.gd"], "res://main.gd"), analyzer);
+    }
+
+    /// <summary>Members whose values read one another, however long the chain and however each reads the next, are read to
+    /// an end with no error said of them, where a stack that ran out would end the IDE.</summary>
+    [Theory]
+    [InlineData("var x{0} = x{1}\n", "var x{0} = 1\n")]
+    [InlineData("var x{0} := x{1}\n", "var x{0} := 1\n")]
+    [InlineData("const X{0} = X{1}\n", "const X{0} = 1\n")]
+    [InlineData("var x{0} = x{1} + 1\n", "var x{0} = 1\n")]
+    [InlineData("var x{0} = [x{1}]\n", "var x{0} = 1\n")]
+    public void A_chain_of_members_thousands_long_comes_to_an_end_with_no_error(string link, string last)
+    {
+        const int Links = 5_000;
+        string script = "extends Node\n\n" + string.Concat(Enumerable.Range(0, Links).Select(i => string.Format(CultureInfo.InvariantCulture, link, i, i + 1)))
+            + string.Format(CultureInfo.InvariantCulture, last, Links);
+        (GDScriptAnalysis analysis, _) = Analyze(script);
+        Assert.Empty(analysis.Findings(GDScriptWarningSettings.Of(null)).Where(f => f.IsError).Select(f => f.Message));
     }
 
     [Fact]

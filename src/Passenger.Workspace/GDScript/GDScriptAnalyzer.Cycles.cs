@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace Passenger.Workspace.GDScript;
 
 /// <summary>Godot's analyzer's errors of a class's members that reach themselves as Godot resolves them (resolve_class_member,
@@ -74,9 +76,10 @@ public sealed partial class GDScriptAnalyzer
             Resolve(member);
         }
 
+        // A member past the stack the walk has left is resolved in its turn from the top of it, by the walk above.
         void Resolve(Resolved member)
         {
-            if (state.ContainsKey(member))
+            if (state.ContainsKey(member) || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
             {
                 return;
             }
@@ -133,6 +136,10 @@ public sealed partial class GDScriptAnalyzer
     /// none inside a lambda's body, nor one its parameters or an enum's own values take.</summary>
     private static IEnumerable<(GDScriptIdentifier Name, bool Attribute, string? Within)> Reads(GDScriptNode node, HashSet<string> hidden, GDScriptEnum? within)
     {
+        if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
+        {
+            yield break;
+        }
         switch (node)
         {
             case GDScriptIdentifier name when !hidden.Contains(name.Name) && within?.Values.Any(v => v.Name.Name == name.Name) != true:

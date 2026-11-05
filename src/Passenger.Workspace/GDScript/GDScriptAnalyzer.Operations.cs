@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using K = Passenger.Workspace.GDScript.GDScriptTokenKind;
 
 namespace Passenger.Workspace.GDScript;
@@ -171,7 +172,7 @@ public sealed partial class GDScriptAnalyzer
     /// <summary>Whether Godot holds an expression constant: true for a constant, a built-in type's constructor given
     /// constants among them; false for a variable, an array or dictionary written out, self or a call of the script's
     /// function; null where Passenger can't say.</summary>
-    private bool? Constancy(GDScriptExpression expression, Context context) => Folded(expression, context) ? true : expression switch
+    private bool? Constancy(GDScriptExpression expression, Context context) => !RuntimeHelpers.TryEnsureSufficientExecutionStack() ? null : Folded(expression, context) ? true : expression switch
     {
         GDScriptArray or GDScriptDictionary or GDScriptSelf => false,
         GDScriptIdentifier name when context.Scope?.Find(name.Name) is not null => false,

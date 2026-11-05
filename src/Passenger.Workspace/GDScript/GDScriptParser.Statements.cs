@@ -7,6 +7,15 @@ internal sealed partial class GDScriptParser
 {
     private GDScriptSuite ParseSuite(string context, GDScriptSuite? given = null, bool forLambda = false)
     {
+        int outer = nesting;
+        Deeper();
+        GDScriptSuite suite = ParseStatements(context, given, forLambda);
+        nesting = outer;
+        return suite;
+    }
+
+    private GDScriptSuite ParseStatements(string context, GDScriptSuite? given, bool forLambda)
+    {
         GDScriptSuite suite = given ?? Alloc<GDScriptSuite>();
         suite.Parent = currentSuite;
         currentSuite = suite;
@@ -345,7 +354,10 @@ internal sealed partial class GDScriptParser
             elseBlock.Parent = currentSuite;
             GDScriptSuite? outer = currentSuite;
             currentSuite = elseBlock;
+            int outerNesting = nesting;
+            Deeper();
             elseBlock.Statements.Add(ParseIf("elif"));
+            nesting = outerNesting;
             Complete(elseBlock);
             node.False = elseBlock;
             currentSuite = outer;
@@ -523,6 +535,14 @@ internal sealed partial class GDScriptParser
     }
 
     private GDScriptPattern? ParseMatchPattern(GDScriptPattern? root)
+    {
+        int outer = nesting;
+        GDScriptPattern? pattern = Deeper() ? ParsePattern(root) : null;
+        nesting = outer;
+        return pattern;
+    }
+
+    private GDScriptPattern? ParsePattern(GDScriptPattern? root)
     {
         GDScriptPattern pattern = Alloc<GDScriptPattern>();
         ResetExtents(pattern, current);

@@ -171,6 +171,80 @@ public class GDScriptParserTests
         }
     }
 
+    /// <summary>Text nested far past what a tree holds, each way a script can nest, reads with the one error at the first
+    /// place past it, and what walks the tree comes to its end: a stack that ran out would end the IDE with it.</summary>
+    [Theory]
+    [InlineData("brackets")]
+    [InlineData("arrays")]
+    [InlineData("dictionaries")]
+    [InlineData("calls in calls")]
+    [InlineData("a chain of operators")]
+    [InlineData("a chain of attributes")]
+    [InlineData("a chain of subscripts")]
+    [InlineData("a chain of calls")]
+    [InlineData("signs")]
+    [InlineData("ternaries")]
+    [InlineData("lambdas")]
+    [InlineData("typed arrays")]
+    [InlineData("patterns")]
+    [InlineData("elifs")]
+    [InlineData("blocks")]
+    [InlineData("classes")]
+    public void Text_nested_past_what_a_tree_holds_is_said_once_and_ends_nothing(string what)
+    {
+        string text = Nested(what);
+        GDScriptTree tree = GDScriptTree.Parse(text);
+        Assert.Equal(1, tree.Errors.Count(e => e.Message == TooDeep));
+        GDScriptAnalysis analysis = new GDScriptAnalyzer(GDScriptProject.Alone(null)).Analyze(tree, "res://deep.gd");
+        Assert.Contains(analysis.Findings(GDScriptWarningSettings.Of(null)), f => f.Message == TooDeep);
+        Assert.NotNull(analysis.Colours());
+        Assert.NotNull(GDScriptFormatter.Format(text, new GDScriptFormatOptions()).Text);
+    }
+
+    private static string Nested(string what)
+    {
+        const int Deep = 100_000;
+        const int Blocks = 3_000;
+        return what switch
+        {
+            "brackets" => "var x = " + new string('(', Deep) + "1" + new string(')', Deep) + "\n",
+            "arrays" => "var x = " + new string('[', Deep) + new string(']', Deep) + "\n",
+            "dictionaries" => "var x = " + Repeated("{1:", Deep) + "1" + new string('}', Deep) + "\n",
+            "calls in calls" => "var x = " + Repeated("f(", Deep) + "1" + new string(')', Deep) + "\n",
+            "a chain of operators" => "var x = 1" + Repeated(" + 1", Deep) + "\n",
+            "a chain of attributes" => "var x = a" + Repeated(".a", Deep) + "\n",
+            "a chain of subscripts" => "var x = a" + Repeated("[0]", Deep) + "\n",
+            "a chain of calls" => "var x = a" + Repeated("()", Deep) + "\n",
+            "signs" => "var x = " + Repeated("- ", Deep) + "1\n",
+            "ternaries" => "var x = " + Repeated("1 if a else ", Deep) + "1\n",
+            "lambdas" => "var x = " + Repeated("func(): return ", Deep) + "1\n",
+            "typed arrays" => "var x: " + Repeated("Array[", Deep) + "int" + new string(']', Deep) + "\n",
+            "patterns" => "func f():\n\tmatch a:\n\t\t" + new string('[', Deep) + "1" + new string(']', Deep) + ":\n\t\t\tpass\n",
+            "elifs" => "func f():\n\tif a:\n\t\tpass\n" + Repeated("\telif a:\n\t\tpass\n", Deep),
+            "blocks" => "func f():\n" + string.Concat(Enumerable.Range(1, Blocks).Select(i => new string('\t', i) + "if a:\n")) + new string('\t', Blocks + 1) + "pass\n",
+            _ => string.Concat(Enumerable.Range(0, Blocks).Select(i => new string('\t', i) + $"class C{i}:\n")) + new string('\t', Blocks) + "pass\n",
+        };
+
+        static string Repeated(string text, int times) => string.Concat(Enumerable.Repeat(text, times));
+    }
+
+    /// <summary>What Passenger says where a script goes past what it reads, in the words the parser has.</summary>
+    private const string TooDeep = "This is nested too deeply for Passenger to read, so the script is left unread from here.";
+
+    [Fact]
+    public void A_long_chain_of_operators_and_the_members_after_a_script_too_deep_for_it_read_as_written()
+    {
+        string sum = "var total = 1" + string.Concat(Enumerable.Repeat(" + 1", 400)) + "\nvar after = 2\n";
+        GDScriptTree tree = GDScriptTree.Parse(sum);
+        Assert.True(tree.Errors.Count == 0, $"A sum of 400 terms, valid in Godot, reads as an error: {tree.Errors.FirstOrDefault().Message}");
+        Assert.Equal(["total", "after"], tree.Members.Select(m => NameOf(m.Node)));
+        string fixedAgain = "var before = 1\n" + sum;
+        string deep = "var before = 1\nvar total = 1" + string.Concat(Enumerable.Repeat(" + 1", 700)) + "\nvar after = 2\n";
+        GDScriptTree tooDeep = GDScriptTree.Parse(deep);
+        Assert.Equal(["before", "total"], tooDeep.Members.Select(m => NameOf(m.Node)));
+        Assert.Empty(tooDeep.Reparse(fixedAgain, new TextEdit("var before = 1\nvar total = 1".Length + 400 * " + 1".Length, 300 * " + 1".Length, string.Empty)).Errors);
+    }
+
     private static string Shape(GDScriptTree tree) =>
         string.Join("\n", tree.Members.Select(m => $"{m.Node.GetType().Name} {NameOf(m.Node)} {m.Start}-{m.End}").Concat(tree.Errors.Select(e => $"! {e.Start}-{e.End} {e.Message}")));
 

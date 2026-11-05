@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using K = Passenger.Workspace.GDScript.GDScriptTokenKind;
 
 namespace Passenger.Workspace.GDScript;
@@ -9,7 +10,7 @@ public sealed partial class GDScriptAnalyzer
 {
     /// <summary>Whether Godot holds an expression as no constant, as far as Passenger can be sure: a variable or parameter,
     /// self, a node path, an await, a call of the script's own function, or what is made of one; false where it may be one.</summary>
-    private bool NonConstant(GDScriptExpression? expression, Context context) => expression switch
+    private bool NonConstant(GDScriptExpression? expression, Context context) => RuntimeHelpers.TryEnsureSufficientExecutionStack() && expression switch
     {
         null or GDScriptLiteral => false,
         GDScriptSelf or GDScriptGetNode or GDScriptAwait => true,
@@ -39,7 +40,7 @@ public sealed partial class GDScriptAnalyzer
 
     /// <summary>Whether an expression's type is one Godot holds weak, which <c>:=</c> can't infer from: a variable or
     /// parameter of no type written nor inferred, a signal awaited, or a ternary with one of those.</summary>
-    private bool SurelyWeak(GDScriptExpression expression, Context context) => expression switch
+    private bool SurelyWeak(GDScriptExpression expression, Context context) => RuntimeHelpers.TryEnsureSufficientExecutionStack() && expression switch
     {
         GDScriptIdentifier name when context.Scope?.Find(name.Name) is { } local => local.Local?.Node is GDScriptAssignable { Type: null, Infers: false } and not GDScriptConstant,
         GDScriptIdentifier name => Member(context.Class, name.Name) is { Kind: "var", Declaration: { Script: { } script, Start: var start } } && Tree(script) is { } tree
