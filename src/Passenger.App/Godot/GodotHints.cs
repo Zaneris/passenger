@@ -24,10 +24,13 @@ public enum GodotEditing
 public sealed record GodotRange(double Min, double Max, double Step, bool OrGreater = false, bool OrLess = false, bool Exponential = false,
     bool Degrees = false, string? Suffix = null, bool Tracked = true)
 {
+    /// <summary>A value kept within the ends a value typed may not pass.</summary>
+    public double Within(double value) => Math.Clamp(value, OrLess ? double.MinValue : Min, OrGreater ? double.MaxValue : Max);
+
     /// <summary>A value within the range as the slider takes it, at its step from the range's start.</summary>
     public double Snapped(double value)
     {
-        double clamped = Math.Clamp(value, OrLess ? double.MinValue : Min, OrGreater ? double.MaxValue : Max);
+        double clamped = Within(value);
         return Step > 0 ? Math.Round(Math.Round((clamped - Min) / Step) * Step + Min, 10) : clamped;
     }
 

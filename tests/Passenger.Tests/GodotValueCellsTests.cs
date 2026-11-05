@@ -4,13 +4,14 @@ using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App.Godot;
 using Passenger.App.LiveTree;
+using Passenger.Inspector;
 
 namespace Passenger.Tests;
 
 /// <summary>The properties pane's value editors over a stand-in for what holds the value, a game's answer held back as
 /// long as a test needs: an item form's changes go one at a time, each made on what the one before left, whichever way the
-/// person moved on, and a dictionary's Add gives a key of its type. No game runs: what reaches a game is held by
-/// GodotValueFormsTests.</summary>
+/// person moved on; a dictionary's Add gives a key of its type; and a row handed another property's range keeps to that
+/// range. No game runs: what reaches a game is held by GodotValueFormsTests.</summary>
 public sealed class GodotValueCellsTests
 {
     /// <summary>What a form sends, each held until the test lets it land as the game's answer.</summary>
@@ -176,5 +177,49 @@ public sealed class GodotValueCellsTests
         Ui.Click(form.Add);
         Assert.True(sends.Sent.Count == 1, "A dictionary of bool keys holding both has no key left to send");
         Assert.Contains("No new bool key can be made for waves", tuner.Said);
+    }
+
+    /// <summary>Two properties a row is handed in turn, each set where it says.</summary>
+    private sealed class Ranges : IGodotValues
+    {
+        private readonly List<GodotProperty> properties =
+        [
+            new("volume", GodotType.Float, GodotHints.Range, "0,10,1", 6, 5.0, "Main"),
+            new("health", GodotType.Float, GodotHints.Range, "0,100,1", 6, 5.0, "Main"),
+        ];
+
+        public List<(string Name, object? Value)> Set { get; } = [];
+
+        public GodotProperty? PropertyOf(long element, string name) => properties.FirstOrDefault(p => p.Name == name);
+
+        public string? WhyNotSet(long element, string name) => null;
+
+        public Task SetValueAsync(long element, string name, object? value, bool settles)
+        {
+            Set.Add((name, value));
+            return Task.CompletedTask;
+        }
+
+        public GodotTuned? TunedOf(long element, string name) => null;
+    }
+
+    private static PropertyValue Row(string name) => new(name, "Main", false, "Float", "5", "Main", null, null);
+
+    [AvaloniaFact]
+    public void A_row_handed_another_property_takes_a_number_within_the_range_it_shows_now()
+    {
+        Ranges values = new();
+        LiveValueCell cell = new GodotValueCells(values, new Tuner()).Make();
+        new Window { Width = 400, Height = 120, Content = cell.Editor }.Show();
+        cell.Show(1, Row("volume"));
+        cell.Show(1, Row("health"));
+        Ui.Settle();
+        ScrubField number = cell.Editor.GetVisualDescendants().OfType<ScrubField>().Single(f => f.IsEffectivelyVisible);
+
+        Type(number.Box, "50");
+        Assert.True(values.Set.Count > 0 && Equals(values.Set[^1], ("health", (object?)50.0)), $"A row last given 0 to 10 set health to {values.Set.LastOrDefault()}, where it goes to 100");
+
+        Type(number.Box, "500");
+        Assert.True(Equals(values.Set[^1], ("health", (object?)100.0)), $"A number past the end the row shows now set health to {values.Set[^1]}");
     }
 }

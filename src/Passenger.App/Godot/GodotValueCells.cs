@@ -236,10 +236,11 @@ internal sealed class GodotValueCell : LiveValueCell
         string unit = given.Suffix is { Length: > 0 } suffix ? $" {suffix}" : given.Degrees ? "°" : string.Empty;
         ToolTip.SetTip(rangeSlider, $"From {GodotText.Number(given.Min)}{unit} to {GodotText.Number(given.Max)}{unit}{(given.OrGreater ? ", or more as typed" : string.Empty)}");
         return rangePanel;
-
-        // A number typed past an end is taken where the range allows it.
-        double Taken(double typed) => Math.Clamp(typed, given.OrLess ? double.MinValue : given.Min, given.OrGreater ? double.MaxValue : given.Max);
     }
+
+    /// <summary>A number typed past an end, taken where the range the row shows now allows it: a row is handed one property
+    /// after another.</summary>
+    private double Taken(double typed) => hint.Range?.Within(typed) ?? typed;
 
     /// <summary>A number as the range shows it: an angle in degrees.</summary>
     private double Shown(object? value)

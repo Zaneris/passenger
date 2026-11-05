@@ -36,6 +36,7 @@ public class GodotTuningTests
         Assert.Equal(2.5, range.At(0.26));
         Assert.Equal(10, range.Snapped(12));
         Assert.Equal(12, (range with { OrGreater = true }).Snapped(12));
+        Assert.Equal((10, 12, -3, 0), (range.Within(12), (range with { OrGreater = true }).Within(12), (range with { OrLess = true }).Within(-3), range.Within(-3)));
         Assert.Equal(0.25, range.Fraction(2.5));
         GodotRange exponential = new(1, 100, 0, Exponential: true);
         Assert.Equal(10, exponential.At(0.5), 6);
