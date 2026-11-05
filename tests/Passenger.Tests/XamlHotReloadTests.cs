@@ -270,6 +270,64 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
         }
     }
 
+    /// <summary>Two files of one name in two folders, whose elements stand at the same lines and columns, are asked of apart:
+    /// each answers its own elements' boxes, and not the other's.</summary>
+    [AvaloniaFact]
+    public void A_xaml_files_boxes_in_the_running_app_are_its_own_and_not_those_of_a_file_of_its_name_in_another_folder()
+    {
+        foreach ((string inside, string shows) in new[] { ("A", "First"), ("B", "Second") })
+        {
+            Directory.CreateDirectory(Path.Combine(folder, inside));
+            File.WriteAllText(Path.Combine(folder, inside, "Card.axaml"), $"""
+                <UserControl xmlns="https://github.com/avaloniaui"
+                             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                             x:Class="LiveTreeApp.{inside}.Card">
+                    <TextBlock Text="{shows}" Height="40" />
+                </UserControl>
+
+                """);
+            File.WriteAllText(Path.Combine(folder, inside, "Card.axaml.cs"), $$"""
+                using Avalonia.Controls;
+
+                namespace LiveTreeApp.{{inside}};
+
+                public partial class Card : UserControl
+                {
+                    public Card() => InitializeComponent();
+                }
+
+                """);
+        }
+        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("x:Class=\"LiveTreeApp.MainWindow\"",
+            "xmlns:a=\"using:LiveTreeApp.A\" xmlns:b=\"using:LiveTreeApp.B\" x:Class=\"LiveTreeApp.MainWindow\"", StringComparison.Ordinal)
+            .Replace(Pin, $"<a:Card />\n<b:Card />\n{Pin}", StringComparison.Ordinal));
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
+            LiveApp app = window.Session.RunApp!;
+            IReadOnlyList<PlacedBox> first = [];
+            IReadOnlyList<PlacedBox> second = [];
+            Ui.WaitFor(() =>
+            {
+                first = Ui.Await(app.PlacedAsync(Path.Combine(folder, "A", "Card.axaml")), "where the first card shows");
+                second = Ui.Await(app.PlacedAsync(Path.Combine(folder, "B", "Card.axaml")), "where the second card shows");
+                return first.Count > 0 && second.Count > 0;
+            }, "the app to show both cards");
+            Assert.Empty(first.Select(p => p.Box).Intersect(second.Select(p => p.Box)));
+        }
+        finally
+        {
+            if (window.Runner.IsRunning)
+            {
+                Ui.Run(window, AppActions.Stop);
+                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
+            }
+            window.Close();
+        }
+    }
+
     /// <summary>What the Run window says.</summary>
     private static string Run(MainWindow window)
     {

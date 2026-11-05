@@ -84,7 +84,6 @@ internal sealed class Inspector : Inspecting<DependencyObject>
     /// the first.</summary>
     protected override XamlValues MadeAt(XamlRead read)
     {
-        string name = Path.GetFileName(read.File);
         HashSet<string> classes = [.. read.Elements.Select(e => e.Class).OfType<string>()];
         List<(DependencyObject Made, SourcePlace? Place)> all = [];
         Queue<DependencyObject> next = new(TopLevels());
@@ -95,19 +94,19 @@ internal sealed class Inspector : Inspecting<DependencyObject>
             {
                 continue;
             }
-            SourcePlace? place = Sources.Place(at);
-            all.Add((at, place is not null && string.Equals(Path.GetFileName(place.File), name, StringComparison.OrdinalIgnoreCase) ? place : null));
+            all.Add((at, Sources.Place(at)));
             int count = at is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetChildrenCount(at) : 0;
             for (int i = 0; i < count; i++)
             {
                 next.Enqueue(VisualTreeHelper.GetChild(at, i));
             }
         }
+        string? inFile = XamlPlaces.FileOf(all.Select(a => a.Place?.File).OfType<string>(), read.File);
         DependencyObject? chosen = Find(read.Chosen);
         List<ElementValues> elements = [];
         foreach (XamlSpot spot in read.Elements)
         {
-            List<DependencyObject> instances = [.. all.Where(a => a.Place is { } p && p.Line == spot.Line && (p.Column == spot.Column || p.Column == spot.Column - 1)
+            List<DependencyObject> instances = [.. all.Where(a => a.Place is { } p && p.File == inFile && p.Line == spot.Line && (p.Column == spot.Column || p.Column == spot.Column - 1)
                 || (spot.Class is { } root && classes.Contains(root) && a.Made.GetType().FullName == root)).Select(a => a.Made)];
             if (instances.Count > 0)
             {

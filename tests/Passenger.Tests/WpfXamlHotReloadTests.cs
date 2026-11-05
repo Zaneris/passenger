@@ -183,6 +183,61 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
         }
     }
 
+    /// <summary>Two files of one name in two folders, whose elements stand at the same lines and columns: asked what it made at
+    /// a place in one, the app answers that file's element and not the other's.</summary>
+    [AvaloniaFact]
+    public void An_element_asked_of_at_a_place_in_a_xaml_file_is_that_files_and_not_one_of_a_file_of_its_name_in_another_folder()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        foreach (string inside in (string[])["A", "B"])
+        {
+            Directory.CreateDirectory(Path.Combine(folder, inside));
+            File.WriteAllText(Path.Combine(folder, inside, "Card.xaml"), $"""
+                <UserControl x:Class="WpfTreeApp.{inside}.Card"
+                             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    <TextBlock Text="In {inside}" x:Name="In{inside}" />
+                </UserControl>
+
+                """);
+            File.WriteAllText(Path.Combine(folder, inside, "Card.xaml.cs"), $$"""
+                using System.Windows.Controls;
+
+                namespace WpfTreeApp.{{inside}};
+
+                public partial class Card : UserControl
+                {
+                    public Card() => InitializeComponent();
+                }
+
+                """);
+        }
+        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("x:Class=\"WpfTreeApp.MainWindow\"",
+            "x:Class=\"WpfTreeApp.MainWindow\" xmlns:a=\"clr-namespace:WpfTreeApp.A\" xmlns:b=\"clr-namespace:WpfTreeApp.B\"", StringComparison.Ordinal)
+            .Replace(Counter, $"<a:Card />\n<b:Card />\n{Counter}", StringComparison.Ordinal));
+        MainWindow window = Ui.OpenFolder(folder, 1400, 900, languageServer: false);
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
+            LiveApp app = window.Session.RunApp!;
+            Element shown = Find(Ui.Await(app.TreeAsync(), "the app's tree").Roots, "InB") ?? throw new InvalidOperationException("The app shows no second card");
+            XamlSpot spot = new(4, 6, null, []);
+            ElementValues made = Assert.Single(Ui.Await(app.MadeAsync(new XamlRead(Path.Combine(folder, "B", "Card.xaml"), [spot], null)), "what the app made in the second card").Elements);
+            Assert.Equal(shown.Id, made.Id);
+            Assert.Equal(1, made.Instances);
+        }
+        finally
+        {
+            if (window.Runner.IsRunning)
+            {
+                Ui.Run(window, AppActions.Stop);
+                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
+            }
+            window.Close();
+        }
+    }
+
     /// <summary>The caption's colour as the running app has it.</summary>
     private static string Caption(LiveApp app) =>
         Find(Ui.Await(app.AgentTreeAsync(["Foreground"]), "the app's tree").Roots, "Caption")?.Values?.GetValueOrDefault("Foreground") ?? string.Empty;

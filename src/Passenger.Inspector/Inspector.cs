@@ -102,21 +102,28 @@ internal sealed class Inspector : Inspecting<Visual>
 
     protected override XamlValues MadeAt(XamlRead read) => BindingReader.Made(this, read);
 
-    /// <summary>Each shown element Avalonia recorded a place of in a XAML file of this name, with its box in its window
-    /// (transforms aside): in a designer's design view, else in the newest window of the app's that shows any.</summary>
+    /// <summary>Each shown element Avalonia recorded a place of in this XAML file (<see cref="XamlPlaces.FileOf"/>), with its box
+    /// in its window (transforms aside): in a designer's design view, else in the newest window of the app's that shows any.</summary>
     protected override List<PlacedBox> PlacedIn(string file)
     {
-        string name = Path.GetFileName(file);
         // A designer's last load is what its frame shows, whatever earlier ones it keeps.
         IEnumerable<TopLevel> tops = DesignLoads.Last is Visual designed && (designed as TopLevel ?? TopLevel.GetTopLevel(designed)) is { } shown
             ? [shown] : TopLevels().Reverse();
         foreach (TopLevel top in tops)
         {
-            List<PlacedBox> placed = [];
+            List<(Visual Visual, SourcePlace Place)> recorded = [];
             foreach (Visual visual in top.GetVisualDescendants().Prepend(top))
             {
-                if (visual.IsEffectivelyVisible && Details.Place(visual) is { } place && string.Equals(Path.GetFileName(place.File), name, StringComparison.OrdinalIgnoreCase)
-                    && visual.TranslatePoint(default, top) is { } at)
+                if (visual.IsEffectivelyVisible && Details.Place(visual) is { } place)
+                {
+                    recorded.Add((visual, place));
+                }
+            }
+            string? inFile = XamlPlaces.FileOf(recorded.Select(r => r.Place.File), file);
+            List<PlacedBox> placed = [];
+            foreach ((Visual visual, SourcePlace place) in recorded.Where(r => r.Place.File == inFile))
+            {
+                if (visual.TranslatePoint(default, top) is { } at)
                 {
                     placed.Add(new PlacedBox(place.Line, place.Column, new Box(at.X, at.Y, visual.Bounds.Width, visual.Bounds.Height)));
                 }
@@ -126,7 +133,7 @@ internal sealed class Inspector : Inspecting<Visual>
                 return placed;
             }
         }
-        InspectorTrace.Step($"no element shown was made from {name}, among {TopLevels().Count} top levels");
+        InspectorTrace.Step($"no element shown was made from {Path.GetFileName(file)}, among {TopLevels().Count} top levels");
         return [];
     }
 
