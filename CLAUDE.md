@@ -269,15 +269,17 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   generator assigns every field in generated code, so a field's values come from the code's own documents. Edits placed
   in text Passenger read carry that text (`PlacedEdits`), checked before anything is written. A GDScript refactoring
   moving code asks `GDScriptEffects`: a call's arguments run before what it is called on, and an object's script
-  variable with no getter is read only as what takes it runs. Shader marks are Passenger's port of Godot's front end
-  (`GodotShaderChecker`). The person's Godot editor is asked through IDE messaging (`GodotIdeLink`), never Passenger's
-  headless editors.
-- **Web languages.** `WebLanguages`: one Node.js server per kind but GDScript's (Godot's editor over TCP), every
-  per-kind switch naming each kind; `JsonSchemas` and `PageStylesheets` reach the web only while Settings allows; in a
-  macOS bundle the servers live under `Contents/Resources/web`. One tsserver, never `useSyntaxServer` (it answers rename
-  and usages from the open files alone); `typescript` stays on 6.x (7 carries no `tsserver`); typescript-language-server
-  keeps a file's first `formattingOptions`, so each open file tells tsserver its indent. Razor forwards
-  `_vs_onAutoInsert` to the client's HTML only for `=`: its `>` is Razor's own answer, its `</` closed over its HTML.
+  variable with no getter is read only as what takes it runs. Text typed for a scene is checked by `GodotVariantText`,
+  never `GodotFile`, which keeps what it doesn't know; values kept together go through `GodotKeeping`. Shader marks are
+  Passenger's port of Godot's front end (`GodotShaderChecker`). The person's Godot editor is asked through IDE messaging
+  (`GodotIdeLink`), never Passenger's headless editors.
+- **Web languages.** `WebLanguages`: one Node.js server per kind but GDScript's (Godot's editor over TCP, one per Godot
+  project: `ServerPlace`), every per-kind switch naming each kind; `JsonSchemas` and `PageStylesheets` reach the web
+  only while Settings allows; in a macOS bundle the servers live under `Contents/Resources/web`. One tsserver, never
+  `useSyntaxServer` (it answers rename and usages from the open files alone); `typescript` stays on 6.x (7 carries no
+  `tsserver`); typescript-language-server keeps a file's first `formattingOptions`, so each open file tells tsserver its
+  indent. Razor forwards `_vs_onAutoInsert` to the client's HTML only for `=`: its `>` is Razor's own answer, its `</`
+  closed over its HTML.
 - **Build and run.** `BuildRunController`, every console through `ConsoleSink.PumpAsync`, `LaunchPlan` (one resolution
   for Run, Debug, Profile, Hot Reload and a debugged test host), `UpToDate`; a Passenger it launches keeps its state in
   `sandbox/`; `PASSENGER_DOTNET_RELEASES` is dead in tests. Godot: `GodotLaunch`, `GodotGame`; the Game window is an
@@ -305,7 +307,8 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   Every breakpoint through one pipeline (`IHitBreakpoint`).
 - **Tests window.** `TestFinder`; tests are keyed by themselves (`TestItem.ById`), never a key string per test;
   `VsTestRunner` is the only file that knows VSTest's object model (VSTest starts a debugged .NET test host itself and
-  asks to attach: `LaunchTestHost` is never called for one); the person's `GODOT_BIN` wins.
+  asks to attach: `LaunchTestHost` is never called for one); the person's `GODOT_BIN` wins; GUT's tests are chosen by
+  `GutRuns.Hook`, never `-gunit_test_name` or `-ginner_class`, which take substrings.
 - **The rest.** `Packages` is every package change's one path (one command of Undo, put back when it fails; credentials
   only to their feed's host); `SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`;
   templates drive what is offered, Passenger's config only layered on (`ProjectTemplates`); only an installed copy
@@ -415,17 +418,18 @@ a new name, and `just site-shots` retakes its images.
   change to project.godot counts as Godot's only where that temp was heard, `GodotSafeSave`). Run imports a project
   lacking `.import` files first. `script_templates/` is C# the build compiles unless removed; without a .sln Godot
   rewrites the csproj as it makes a C# script. On Windows a test's editor is two processes, both `--editor`.
-- **Godot's wire.** Its debug peer takes only `[name, thread id 1, data]`; packed strings end with a NUL;
-  `scene:inspect_objects` answers a few objects (inspect one at a time); a warning comes as an error with its flag set;
-  its JSON reads every number as a float; from 4.7 an embedded game's state is 32 bytes and its pointer in points. Its
-  language server takes whole texts, reads `Content-Length` at a fixed offset, needs `rootPath`, has no shutdown, and
-  names a warning by `(NAME): ` to 4.7, by `code` from 4.8. Its script debugger: a message to a stopped thread carries
-  its id; an `evaluate` in a frame with no instance, or a `break` while stopped, lets the game go on; an evaluation's
-  errors come after its answer (`get_stack_dump` after each); `reload_scripts` keeps members by name, an added one null.
-  IDE messaging: `Play` plays only the main scene, `DebugPlay`'s debugger fields are dead in Godot 4, `ReloadScripts`
-  reloads the running games' scripts (GodotTools' watcher reloads the editor's own assemblies every 0.5 s); its
-  completion kinds lack font sizes, so send the engine's numbers; an editor importing as it opens answers no handshake
-  until done (`GodotIdeLink` retries after 10 s).
+- **Godot's wire.** A scan of Godot's flags stops at its separator (`EngineArguments`); a condition's truth is the
+  game's (`GodotScriptBreakpoints.Truth`). Its debug peer takes only `[name, thread id 1, data]`; packed strings end
+  with a NUL; `scene:inspect_objects` answers a few objects (inspect one at a time); a warning comes as an error with
+  its flag set; its JSON reads every number as a float; from 4.7 an embedded game's state is 32 bytes and its pointer in
+  points. Its language server takes whole texts, reads `Content-Length` at a fixed offset, needs `rootPath`, has no
+  shutdown, and names a warning by `(NAME): ` to 4.7, by `code` from 4.8. Its script debugger: a message to a stopped
+  thread carries its id; an `evaluate` in a frame with no instance, or a `break` while stopped, lets the game go on; an
+  evaluation's errors come after its answer (`get_stack_dump` after each); `reload_scripts` keeps members by name, an
+  added one null. IDE messaging: `Play` plays only the main scene, `DebugPlay`'s debugger fields are dead in Godot 4,
+  `ReloadScripts` reloads the running games' scripts (GodotTools' watcher reloads the editor's own assemblies every 0.5
+  s); its completion kinds lack font sizes, so send the engine's numbers; an editor importing as it opens answers no
+  handshake until done (`GodotIdeLink` retries after 10 s).
 - **Godot's game.** Stop ends a game before its debug session: wait for the session too; a session is ended once its
   adapter says so or its process is gone after Exited without Terminated (`ProgramGone`). An agent's call on a game has
   one limit (`GodotGame.Within`); app_ tools wait for the first scene, no evaluation. The frame counter runs on while
