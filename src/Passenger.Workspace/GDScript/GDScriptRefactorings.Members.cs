@@ -29,12 +29,16 @@ public sealed record GDScriptUses(IReadOnlyList<GDScriptUses.Use> Names, IReadOn
     /// member of its script it lies in.</summary>
     public sealed record Use(GDScriptRead Script, GDScriptIdentifier Name, int Offset, GDScriptCall? Call, GDScriptExpression? Receiver, GDScriptNode Within);
 
-    /// <summary>A string naming the member as an argument of a call (<c>call("f")</c>).</summary>
-    public sealed record Named(GDScriptRead Script, GDScriptLiteral Literal, int Offset, GDScriptCall Call);
+    /// <summary>A string naming the member and where it does: as an argument of a call (<c>call("f")</c>), an index
+    /// (<c>self["f"]</c>) or what <c>in</c> looks for.</summary>
+    public sealed record Named(GDScriptRead Script, GDScriptLiteral Literal, int Offset, GDScriptExpression Site)
+    {
+        public GDScriptCall? Call => Site as GDScriptCall;
+    }
 
     public IEnumerable<GDScriptPlace> Places =>
         Names.Select(u => Place(u.Script, u.Offset, u.Call is { } c ? c : u.Name, u.Call is null ? "takes it as a value" : "calls it"))
-            .Concat(Strings.Select(s => Place(s.Script, s.Offset, s.Call, "names it in a string")));
+            .Concat(Strings.Select(s => Place(s.Script, s.Offset, s.Site, "names it in a string")));
 
     internal static GDScriptPlace Place(GDScriptRead script, int offset, GDScriptNode node, string what) =>
         new(script.Script, offset + node.Start, offset + node.End, what);
@@ -49,6 +53,20 @@ public static partial class GDScriptRefactorings
         "_shortcut_input", "_gui_input", "_draw", "_notification", "_get", "_set", "_get_property_list", "_to_string", "_static_init",
         "_integrate_forces", "_get_configuration_warnings", "_can_drop_data", "_drop_data", "_get_drag_data", "_has_point", "_validate_property",
         "_property_can_revert", "_property_get_revert", "_iter_init", "_iter_next", "_iter_get",
+    };
+
+    /// <summary>The functions that read or write a property by its name, and which argument names it; those that take the
+    /// object first name it second.</summary>
+    private static readonly Dictionary<string, int> PropertyCalls = new(StringComparer.Ordinal)
+    {
+        ["get"] = 0, ["set"] = 0, ["set_deferred"] = 0, ["set_thread_safe"] = 0, ["set_deferred_thread_group"] = 0, ["get_indexed"] = 0, ["set_indexed"] = 0,
+        ["property_can_revert"] = 0, ["property_get_revert"] = 0, ["tween_property"] = 1, ["add_do_property"] = 1, ["add_undo_property"] = 1,
+    };
+
+    /// <summary>The functions that reach every node of a group by a member's name, and which argument names it.</summary>
+    private static readonly Dictionary<string, int> GroupCalls = new(StringComparer.Ordinal)
+    {
+        ["call_group"] = 1, ["call_group_flags"] = 2, ["set_group"] = 1, ["set_group_flags"] = 2,
     };
 
     /// <summary>The member of a script's own class a name at an offset declares or refers to; null for none.</summary>
@@ -128,15 +146,43 @@ public static partial class GDScriptRefactorings
         _ => null,
     };
 
-    /// <summary>A member's uses in every script: the names the analyzer resolves to it, the strings calls name it by, and,
-    /// as unsure, a call naming a method by what is built at run time, and a member of its name the analyzer resolves to
-    /// nothing (on a value of an engine class, or of no type written); a string or a call only on an object that may run
-    /// the member's class (<see cref="MayRun"/>).</summary>
+    /// <summary>A member's uses in every script: the names the analyzer resolves to it, the strings naming it (a call's,
+    /// <c>get</c>'s and <c>set</c>'s, <c>self["f"]</c>, <c>"f" in self</c>), and, as unsure, one built at run time, a group's
+    /// nodes reached by its name, a member of its name the analyzer resolves to nothing (on a value of an engine class, or of
+    /// no type written) and a property's name on a value of no type read, which may be a dictionary's key; a string or a call
+    /// only on an object that may run the member's class (<see cref="MayRun"/>).</summary>
     public static GDScriptUses UsesOf(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target)
     {
         List<GDScriptUses.Use> names = [];
         List<GDScriptUses.Named> strings = [];
         List<GDScriptPlace> unsure = [];
+        // A name as get() or an index reads it: every member of a class but the values of a named enum.
+        void ByName(GDScriptRead script, int offset, GDScriptExpression site, GDScriptExpression named, GDScriptType on)
+        {
+            if (on.Kind == GDScriptTypeKind.Builtin || target is { IsEnumValue: true, Node: GDScriptEnum { Identifier: not null } } || !MayRun(scripts, on, target))
+            {
+                return;
+            }
+            if (named is GDScriptLiteral { Value: string text } literal)
+            {
+                if (text != target.Named && !text.StartsWith($"{target.Named}:", StringComparison.Ordinal))
+                {
+                    return;
+                }
+                if (on.IsVariant)
+                {
+                    unsure.Add(GDScriptUses.Place(script, offset, site, "may name it, on a value whose type is not read"));
+                }
+                else
+                {
+                    strings.Add(new GDScriptUses.Named(script, literal, offset, site));
+                }
+            }
+            else if (target.Node is GDScriptVariable && !on.IsVariant && named is not GDScriptLiteral)
+            {
+                unsure.Add(GDScriptUses.Place(script, offset, site, "names a property by what it reads at run time"));
+            }
+        }
         foreach (GDScriptRead script in scripts)
         {
             foreach (GDScriptMember member in script.Tree.Members)
@@ -179,9 +225,31 @@ public static partial class GDScriptRefactorings
                                 unsure.Add(GDScriptUses.Place(script, member.Offset, call, "names a method by what it reads at run time"));
                             }
                             break;
-                        case GDScriptCall { FunctionName: "emit_signal" or "connect" or "disconnect" or "has_signal", Arguments: [GDScriptLiteral { Value: string signal } named, ..] } emitting
+                        case GDScriptCall { FunctionName: { } function, Arguments: var arguments } call when PropertyCalls.TryGetValue(function, out int property) && arguments.Count > property:
+                            ByName(script, member.Offset, call, arguments[property], property == 1 ? script.Analysis.TypeOf(arguments[0]) : ReceiverOf(call, script, self));
+                            break;
+                        case GDScriptCall { FunctionName: { } function, Arguments: var arguments } call when GroupCalls.TryGetValue(function, out int group) && arguments.Count > group
+                            && arguments[group] is GDScriptLiteral { Value: string reached } && reached == target.Named:
+                            unsure.Add(GDScriptUses.Place(script, member.Offset, call, "names it for the nodes of a group"));
+                            break;
+                        case GDScriptBinary { Operator: GDScriptTokenKind.In, Left: GDScriptLiteral { Value: string } named, Right: { } on } test:
+                            ByName(script, member.Offset, test, named, script.Analysis.TypeOf(on));
+                            break;
+                        case GDScriptSubscript { IsAttribute: false, Index: GDScriptLiteral { Value: string } named, Base: { } on } indexed:
+                            ByName(script, member.Offset, indexed, named, script.Analysis.TypeOf(on));
+                            break;
+                        case GDScriptCall { FunctionName: "emit_signal" or "connect" or "disconnect" or "has_signal" or "is_connected" or "get_signal_connection_list",
+                            Arguments: [GDScriptLiteral { Value: string signal } named, ..] } emitting
                             when signal == target.Named && target.Node is GDScriptSignal && MayRun(scripts, ReceiverOf(emitting, script, self), target):
                             strings.Add(new GDScriptUses.Named(script, named, member.Offset, emitting));
+                            break;
+                        case GDScriptCall { FunctionName: "Signal", Callee: GDScriptIdentifier, Arguments: [_, GDScriptLiteral { Value: string signal } named] } made
+                            when signal == target.Named && target.Node is GDScriptSignal && MayRun(scripts, ReceiverOf(made, script, self), target):
+                            strings.Add(new GDScriptUses.Named(script, named, member.Offset, made));
+                            break;
+                        case GDScriptCall { FunctionName: "emit_signal" or "has_signal", Arguments: [not GDScriptLiteral, ..] } emitting
+                            when target.Node is GDScriptSignal && MayRun(scripts, ReceiverOf(emitting, script, self), target):
+                            unsure.Add(GDScriptUses.Place(script, member.Offset, emitting, "names a signal by what it reads at run time"));
                             break;
                     }
                 }
@@ -190,11 +258,11 @@ public static partial class GDScriptRefactorings
         return new GDScriptUses(names, strings, unsure);
     }
 
-    /// <summary>What a call naming a member runs on: a Callable's object (<c>Callable(o, "f")</c>), the object it is called
-    /// on, else <paramref name="self"/>.</summary>
+    /// <summary>What a call naming a member runs on: a Callable's or Signal's object (<c>Callable(o, "f")</c>), the object it
+    /// is called on, else <paramref name="self"/>.</summary>
     private static GDScriptType ReceiverOf(GDScriptCall call, GDScriptRead script, GDScriptType self) => call switch
     {
-        { FunctionName: "Callable", Callee: GDScriptIdentifier, Arguments: [{ } on, ..] } => script.Analysis.TypeOf(on),
+        { FunctionName: "Callable" or "Signal", Callee: GDScriptIdentifier, Arguments: [{ } on, ..] } => script.Analysis.TypeOf(on),
         { IsSuper: false, Callee: GDScriptSubscript { IsAttribute: true, Base: { } on } } => script.Analysis.TypeOf(on),
         _ => self,
     };
@@ -340,7 +408,7 @@ public static partial class GDScriptRefactorings
         }
         bool returns = only is GDScriptReturn;
         GDScriptUses uses = UsesOf(scripts, target);
-        List<GDScriptPlace> blocking = [.. uses.Strings.Select(s => GDScriptUses.Place(s.Script, s.Offset, s.Call, "names it in a string")), .. uses.Unsure, .. elsewhere,
+        List<GDScriptPlace> blocking = [.. uses.Strings.Select(s => GDScriptUses.Place(s.Script, s.Offset, s.Site, "names it in a string")), .. uses.Unsure, .. elsewhere,
             .. uses.Names.Where(u => u.Call is null || u.Receiver is not (null or GDScriptSelf)).Select(u => GDScriptUses.Place(u.Script, u.Offset, u.Name, u.Call is null ? "takes it as a value" : "calls it on another object"))];
         if (blocking.Count > 0)
         {
@@ -525,8 +593,8 @@ public static partial class GDScriptRefactorings
             blocking.AddRange(elsewhere);
             blocking.AddRange(uses.Names.Where(u => u.Call is null && followed?.Contains(u.Name) != true)
                 .Select(u => GDScriptUses.Place(u.Script, u.Offset, u.Name, "takes it as a value, whose callers can't be followed")));
-            blocking.AddRange(uses.Strings.Where(s => s.Call.FunctionName is not ("call" or "call_deferred" or "rpc" or "rpc_id" or "has_method") && followed?.Contains(s.Literal) != true)
-                .Select(s => GDScriptUses.Place(s.Script, s.Offset, s.Call, "names it for a later call")));
+            blocking.AddRange(uses.Strings.Where(s => s.Call?.FunctionName is not ("call" or "call_deferred" or "rpc" or "rpc_id" or "has_method") && followed?.Contains(s.Literal) != true)
+                .Select(s => GDScriptUses.Place(s.Script, s.Offset, s.Site, "names it for a later call")));
             foreach (GDScriptUses.Use use in uses.Names)
             {
                 if (use.Call is { } call && Disarranged(use.Script, use.Offset, call, 0, parameters) is { } why)
@@ -536,10 +604,10 @@ public static partial class GDScriptRefactorings
             }
             foreach (GDScriptUses.Named named in uses.Strings)
             {
-                if (named.Call.FunctionName is "call" or "call_deferred" or "rpc" or "rpc_id"
-                    && Disarranged(named.Script, named.Offset, named.Call, named.Call.FunctionName == "rpc_id" ? 2 : 1, parameters) is { } why)
+                if (named.Call is { FunctionName: "call" or "call_deferred" or "rpc" or "rpc_id" } passing
+                    && Disarranged(named.Script, named.Offset, passing, passing.FunctionName == "rpc_id" ? 2 : 1, parameters) is { } why)
                 {
-                    blocking.Add(GDScriptUses.Place(named.Script, named.Offset, named.Call, why));
+                    blocking.Add(GDScriptUses.Place(named.Script, named.Offset, passing, why));
                 }
             }
         }
@@ -611,8 +679,8 @@ public static partial class GDScriptRefactorings
         foreach (GDScriptUses.Named named in uses.Strings)
         {
             string? literal = renamed ? Requoted(named.Script.Text[(named.Offset + named.Literal.Start)..(named.Offset + named.Literal.End)], name) : null;
-            if (reshaped && named.Call.FunctionName is "call" or "call_deferred" or "rpc" or "rpc_id"
-                && Reargued(named.Script.Text, named.Offset, named.Call, named.Call.FunctionName == "rpc_id" ? 2 : 1, was, parameters, (named.Literal, literal)) is { } argued)
+            if (reshaped && named.Call is { FunctionName: "call" or "call_deferred" or "rpc" or "rpc_id" } passing
+                && Reargued(named.Script.Text, named.Offset, passing, passing.FunctionName == "rpc_id" ? 2 : 1, was, parameters, (named.Literal, literal)) is { } argued)
             {
                 Edit(named.Script.Script, argued);
             }

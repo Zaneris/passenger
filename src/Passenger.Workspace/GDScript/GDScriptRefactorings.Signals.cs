@@ -99,19 +99,19 @@ public static partial class GDScriptRefactorings
         foreach (GDScriptUses.Named named in uses.Strings)
         {
             string? literal = renamed ? Requoted(named.Script.Text[(named.Offset + named.Literal.Start)..(named.Offset + named.Literal.End)], name) : null;
-            if (reshaped && named.Call.FunctionName == "emit_signal")
+            if (reshaped && named.Call is { FunctionName: "emit_signal" } emitting)
             {
-                if (Disarranged(named.Script, named.Offset, named.Call, 1, parameters) is { } why)
+                if (Disarranged(named.Script, named.Offset, emitting, 1, parameters) is { } why)
                 {
-                    blocking.Add(GDScriptUses.Place(named.Script, named.Offset, named.Call, why));
+                    blocking.Add(GDScriptUses.Place(named.Script, named.Offset, emitting, why));
                 }
-                else if (Emitted(named.Script, named.Offset, named.Call, 1, was, parameters, (named.Literal, literal)) is { } emitted)
+                else if (Emitted(named.Script, named.Offset, emitting, 1, was, parameters, (named.Literal, literal)) is { } emitted)
                 {
                     Edit(named.Script.Script, emitted);
                 }
                 else
                 {
-                    blocking.Add(GDScriptUses.Place(named.Script, named.Offset, named.Call, "emits it with fewer arguments than it declares"));
+                    blocking.Add(GDScriptUses.Place(named.Script, named.Offset, emitting, "emits it with fewer arguments than it declares"));
                 }
                 continue;
             }
@@ -119,7 +119,11 @@ public static partial class GDScriptRefactorings
             {
                 Edit(named.Script.Script, new TextEdit(named.Offset + named.Literal.Start, named.Literal.End - named.Literal.Start, literal));
             }
-            switch (reshaped ? named.Call.FunctionName : null)
+            if (!reshaped)
+            {
+                continue;
+            }
+            switch (named.Call?.FunctionName)
             {
                 case "connect":
                     if (named.Call.Arguments is [_, var callable, ..] && HandlerOf(scripts, named.Script, named.Offset, callable) is { } handler)
@@ -128,8 +132,13 @@ public static partial class GDScriptRefactorings
                     }
                     else
                     {
-                        blocking.Add(GDScriptUses.Place(named.Script, named.Offset, named.Call, "connects a handler it can't follow"));
+                        blocking.Add(GDScriptUses.Place(named.Script, named.Offset, named.Site, "connects a handler it can't follow"));
                     }
+                    break;
+                case "disconnect" or "has_signal" or "is_connected" or "get_signal_connection_list":
+                    break;
+                default:
+                    blocking.Add(GDScriptUses.Place(named.Script, named.Offset, named.Site, "takes it as a value"));
                     break;
             }
         }

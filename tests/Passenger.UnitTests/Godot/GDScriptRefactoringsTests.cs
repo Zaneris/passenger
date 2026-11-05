@@ -13,7 +13,7 @@ public class GDScriptRefactoringsTests
         {
           "global_enums": [], "global_constants": [], "utility_functions": [], "singletons": [],
           "builtin_classes": [{ "name": "String", "methods": [] }, { "name": "StringName", "methods": [] }, { "name": "Callable", "methods": [] },
-            { "name": "Array", "indexing_return_type": "Variant", "methods": [] }],
+            { "name": "Array", "indexing_return_type": "Variant", "methods": [] }, { "name": "Dictionary", "indexing_return_type": "Variant", "methods": [] }],
           "classes": [
             { "name": "Object", "methods": [{ "name": "call", "is_vararg": true, "return_value": { "type": "Variant" }, "arguments": [{ "name": "method", "type": "StringName" }] },
               { "name": "call_deferred", "is_vararg": true, "return_value": { "type": "Variant" }, "arguments": [{ "name": "method", "type": "StringName" }] }] },
@@ -141,6 +141,59 @@ public class GDScriptRefactoringsTests
             GDScriptRefactored anyway = GDScriptRefactorings.Rename(held, GDScriptRefactorings.MemberAt(held, held[0], Helper.IndexOf("clear", StringComparison.Ordinal))!, "wipe", anyway: true);
             Assert.Contains("func wipe() -> void:", After(anyway, "res://helper.gd", Helper));
             Assert.Equal(refused.Places, anyway.Places);
+        }
+    }
+
+    [Fact]
+    public void A_member_a_string_names_for_get_set_or_is_connected_is_found_renamed_and_holds_back_a_safe_delete()
+    {
+        string text = "extends Node\n\nsignal done\nvar score := 5\n\n\nfunc cb():\n\tpass\n\n\nfunc _ready():\n\tprint(get(\"score\"), self.get(\"score\"))\n\tset(\"score\", 1)\n"
+            + "\tset_deferred(\"score\", 2)\n\tprint(get_indexed(\"score:x\"), self[\"score\"], \"score\" in self)\n\tcreate_tween().tween_property(self, \"score\", 1, 1.0)\n"
+            + "\tprint(is_connected(\"done\", cb), Signal(self, \"done\"), get_signal_connection_list(\"done\"))\n";
+        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
+        GDScriptTarget score = GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("score", StringComparison.Ordinal))!;
+        GDScriptTarget done = GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("done", StringComparison.Ordinal))!;
+        string renamed = After(GDScriptRefactorings.Rename(scripts, score, "points"), "res://main.gd", text);
+        Assert.Equal(text.Replace("score", "points"), renamed);
+        Assert.Equal(text.Replace("done", "finished"), After(GDScriptRefactorings.Rename(scripts, done, "finished"), "res://main.gd", text));
+        Assert.Equal(9, GDScriptRefactorings.PlacesOf(scripts, score).Places.Count);
+        Assert.Contains("names it in a string", GDScriptRefactorings.SafeDelete(scripts, score, []).Refused);
+        Assert.Contains("names it in a string", GDScriptRefactorings.SafeDelete(scripts, done, []).Refused);
+        // A signal taken as a value can't follow a change of what it passes; one only asked about can.
+        Assert.Contains("takes it as a value", GDScriptRefactorings.ChangeSignalSignature(scripts, done, "done", [new GDScriptParameterChange(-1, "n", string.Empty, string.Empty, "1")], [], []).Refused);
+    }
+
+    [Fact]
+    public void A_string_on_a_value_that_may_not_be_the_members_class_leaves_a_rename_to_the_person_or_alone()
+    {
+        const string Scored = "class_name Scored\nextends Node2D\n\nvar score := 5\n\n\nfunc die():\n\tpass\n";
+        (string? Refused, bool Unseen, string User) Renamed(string body, string name = "score", string to = "points")
+        {
+            string user = $"extends Node\n\nvar typed: Scored\nvar other: Timer\nvar known := {{}}\n\n\nfunc go(data, map: Dictionary, key):\n{body}";
+            IReadOnlyList<GDScriptRead> scripts = ReadWith(Engine, ("res://scored.gd", Scored), ("res://user.gd", user));
+            GDScriptRefactored made = GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], Scored.IndexOf(name, StringComparison.Ordinal))!, to);
+            return (made.Refused, made.Unseen, made.Refused is null ? After(made, "res://user.gd", user) : string.Empty);
+        }
+        // On its own class it is the member, on a dictionary or an engine class beside it a name of theirs.
+        Assert.Contains("\tprint(typed.get(\"points\"))\n", Renamed("\tprint(typed.get(\"score\"))\n").User);
+        Assert.Contains("\tprint(map.get(\"score\"), known.get(\"score\"), map[\"score\"], \"score\" in map)\n", Renamed("\tprint(map.get(\"score\"), known.get(\"score\"), map[\"score\"], \"score\" in map)\n").User);
+        Assert.Contains("\tprint(other.get(\"score\"))\n", Renamed("\tprint(other.get(\"score\"))\n").User);
+        // On a value of no type read it may be a dictionary's key, so the person says, and every other string of no such name goes on.
+        foreach (string read in new[] { "\tprint(data.get(\"score\"))\n", "\tprint(data[\"score\"])\n", "\tprint(\"score\" in data)\n" })
+        {
+            (string? refused, bool unseen, _) = Renamed(read);
+            Assert.True(unseen && refused?.Contains("may name it, on a value whose type is not read", StringComparison.Ordinal) == true, $"{read}: {refused}");
+        }
+        Assert.Null(Renamed("\tprint(data.get(\"scorer\"), data.get(key))\n").Refused);
+        Assert.Contains("names a property by what it reads at run time", Renamed("\tprint(typed.get(key))\n").Refused);
+        Assert.Contains("names it for the nodes of a group", Renamed("\tget_tree().call_group(\"enemies\", \"die\")\n", "die", "fall").Refused);
+        Assert.Contains("names a signal by what it reads at run time", SignalRefused("\temit_signal(key)\n"));
+
+        static string? SignalRefused(string body)
+        {
+            string text = $"extends Node\n\nsignal done\n\n\nfunc go(key):\n{body}";
+            IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
+            return GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("done", StringComparison.Ordinal))!, "finished").Refused;
         }
     }
 

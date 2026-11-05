@@ -59,7 +59,7 @@ public static partial class GDScriptRefactorings
         if (!inherited)
         {
             blocking.AddRange(elsewhere);
-            blocking.AddRange(uses.Strings.Select(s => GDScriptUses.Place(s.Script, s.Offset, s.Call, "names it on an object of its own script")));
+            blocking.AddRange(uses.Strings.Select(s => GDScriptUses.Place(s.Script, s.Offset, s.Site, "names it on an object of its own script")));
             foreach (GDScriptUses.Use use in uses.Names)
             {
                 bool inside = use.Script.Script == target.Script && use.Offset == target.Offset && use.Name.Start >= function.Start && use.Name.End <= function.End;
