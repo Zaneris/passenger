@@ -17,9 +17,10 @@ namespace Passenger.Tests;
 
 /// <summary>The Game window and a game on macOS's embedded display, against a stand-in that connects to Passenger as the
 /// game's remote debugger, shares a layer and keeps what it is told: the display told the window's scale and then the size
-/// of the game's place at it, as Godot's editor tells them, a pointer given in what its Godot takes, and nothing said wrong
-/// of a person's pointer before the game connects. The Live Tree comes beside the Game window as a game connects, and a
-/// generated configuration chooses the Game window. Nothing here draws a game: the picture is looked at in a real window.</summary>
+/// of the game's place at it, as Godot's editor tells them, a pointer given in what its Godot takes, nothing said wrong of a
+/// person's pointer before the game connects, and a pointer the game moves going on from where it named. The Live Tree comes
+/// beside the Game window as a game connects, and a generated configuration chooses the Game window. Nothing here draws a
+/// game or moves the screen's pointer: the picture and the pointer's place are looked at in a real window.</summary>
 public sealed class GamePaneTests
 {
     private static readonly (int Width, int Height) FourByThree = (720, 540);
@@ -102,6 +103,54 @@ public sealed class GamePaneTests
         (float x, float y) = game.LastPointer;
         Assert.True(Math.Abs(x - (10 * unit)) < 0.5 && Math.Abs(y - (20 * unit)) < 0.5,
             $"The click 10,20 in from the game's top left reached Godot {version} at {x},{y}, where it takes {unit} to a logical unit");
+    }
+
+    [AvaloniaTheory]
+    [InlineData("4.7.2", 1)]
+    [InlineData("4.6.2", 2)]
+    public void A_pointer_the_game_moves_goes_on_from_the_place_it_named_in_what_its_godot_says(string version, double unit)
+    {
+        using Rig rig = Rig.Open(version);
+        rig.Window.SetRenderScaling(2);
+        Ui.Settle();
+        Game game = rig.Hold(FourByThree);
+        game.Shares(4242);
+        game.TwoTold();
+        GamePlace place = rig.Place(2);
+        Point gameAt = new(place.X / 2.0, place.Y / 2.0);
+        rig.Pane.Focus();
+        Ui.Settle();
+        Assert.True(rig.Pane.IsFocused, "The pane took no keys, so no game's move of the pointer reaches it");
+        rig.MoveOver(gameAt + new Point(5, 5));
+        game.HearsMove();
+
+        game.Warps((int)(100 * unit), (int)(60 * unit));
+        rig.MoveOver(gameAt + new Point(103, 64));
+
+        game.HearsMove();
+        (float x, float y) = game.LastMove;
+        Assert.True(Math.Abs(x - (3 * unit)) < 0.5 && Math.Abs(y - (4 * unit)) < 0.5,
+            $"The pointer moved 3,4 on from the place the game put it reached Godot {version} as a move of {x},{y}, so a game that recentres the pointer sees it leap by as far as it was put");
+    }
+
+    [AvaloniaFact]
+    public void A_game_moves_no_pointer_while_the_pane_lacks_the_keys()
+    {
+        using Rig rig = Rig.Open();
+        Game game = rig.Hold(FourByThree);
+        game.Shares(4242);
+        game.TwoTold();
+        GamePlace place = rig.Place(1);
+        Point gameAt = new(place.X, place.Y);
+        rig.MoveOver(gameAt + new Point(5, 5));
+        game.HearsMove();
+        Assert.False(rig.Pane.IsFocused, "The pane has the keys though nothing gave them to it");
+
+        game.Warps(100, 60);
+        rig.MoveOver(gameAt + new Point(8, 9));
+
+        game.HearsMove();
+        Assert.Equal((3f, 4f), game.LastMove);
     }
 
     [AvaloniaFact]
@@ -192,6 +241,13 @@ public sealed class GamePaneTests
         /// <summary>The game's place in the pane at a scale, as it fits there.</summary>
         public GamePlace Place(double scale) => GameFit.Within(((int)Math.Round(Pane.Bounds.Width * scale), (int)Math.Round(Pane.Bounds.Height * scale)), Pane.OwnSize);
 
+        /// <summary>The pointer moved to a place over the pane, in its logical units.</summary>
+        public void MoveOver(Point inPane)
+        {
+            Window.MouseMove(Pane.TranslatePoint(inPane, Window)!.Value);
+            Ui.Settle();
+        }
+
         /// <summary>A game of a size held in the Game window, shown, its stand-in connected unless it is to stay away; one
         /// taken is among the session's games as it connects, as a launch's is.</summary>
         public Game Hold((int Width, int Height) size, bool connects = true, bool taken = false)
@@ -228,9 +284,14 @@ public sealed class GamePaneTests
         /// <summary>The length of a mouse button's event in Godot's codec, its place at bytes 3 and 7.</summary>
         private const int ButtonEvent = 12;
 
+        /// <summary>The length of a mouse's move in Godot's codec, how far it went at bytes 22 and 26.</summary>
+        private const int MotionEvent = 31;
+
         private readonly TcpClient? standIn;
         private readonly byte[] head = new byte[4];
         private readonly ConcurrentQueue<GodotMessage> told = new();
+        private int moves;
+        private int movesHeard;
 
         public Game(GodotGame listened, LaunchPlan plan, bool connects)
         {
@@ -254,11 +315,31 @@ public sealed class GamePaneTests
 
         public (float X, float Y) LastPointer { get; private set; }
 
+        public (float X, float Y) LastMove { get; private set; }
+
         /// <summary>The game shares its layer through a context of an id.</summary>
         public void Shares(long context)
         {
             standIn!.GetStream().Write(GodotMessage.Frame(GodotWords.EmbeddedContext, context));
             Ui.WaitFor(() => Listened.EmbeddedContext is not null, () => "Passenger to hear the layer's context");
+        }
+
+        /// <summary>The game moves the pointer to a place of its window, heard by Passenger before this returns.</summary>
+        public void Warps(int x, int y)
+        {
+            bool heard = false;
+            void Heard(object? sender, (int X, int Y) named) => heard = true;
+            Listened.PointerWarped += Heard;
+            standIn!.GetStream().Write(GodotMessage.Frame(GodotWords.EmbeddedWarpMouse, new GodotMath(GodotType.Vector2I, [x, y])));
+            Ui.WaitFor(() => heard, () => "Passenger to hear the game move the pointer");
+            Listened.PointerWarped -= Heard;
+        }
+
+        /// <summary>Waits for the pointer's next move to come, past those waited for before.</summary>
+        public void HearsMove()
+        {
+            Ui.WaitFor(() => Read() && moves > movesHeard, () => "the game to hear the pointer move");
+            movesHeard = moves;
         }
 
         /// <summary>The first two messages of what comes next for the display, of its state and its size, as told in turn.</summary>
@@ -310,6 +391,10 @@ public sealed class GamePaneTests
                 case GodotWords.EmbedEvent when message.Data is [byte[] { Length: ButtonEvent } button]:
                     ToldEvents++;
                     LastPointer = (BinaryPrimitives.ReadSingleLittleEndian(button.AsSpan(3)), BinaryPrimitives.ReadSingleLittleEndian(button.AsSpan(7)));
+                    break;
+                case GodotWords.EmbedEvent when message.Data is [byte[] { Length: MotionEvent } motion]:
+                    moves++;
+                    LastMove = (BinaryPrimitives.ReadSingleLittleEndian(motion.AsSpan(22)), BinaryPrimitives.ReadSingleLittleEndian(motion.AsSpan(26)));
                     break;
             }
         }

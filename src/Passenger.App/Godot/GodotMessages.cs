@@ -86,6 +86,9 @@ public static class GodotWords
     /// <summary>A game on the embedded display asks for a mouse mode (visible, hidden, captured, confined).</summary>
     public const string EmbeddedMouseMode = "game_view:mouse_set_mode";
 
+    /// <summary>A game on the embedded display moved the pointer to a place of its window (<see cref="GameFit.Warped"/>).</summary>
+    public const string EmbeddedWarpMouse = "game_view:warp_mouse";
+
     /// <summary>What the embedded display takes from the program it is shown in: its size in pixels, an input event in its
     /// codec's bytes, its state, a window event, an application notification, and the mouse mode it is to take.</summary>
     public const string EmbedWindowSize = "embed:window_size";

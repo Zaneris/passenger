@@ -127,15 +127,16 @@ public sealed partial class GameLayer : NativeControlHost
         return number == 0 ? MainDisplay() : (uint)MacObjC.Send(number, MacObjC.Selector("unsignedIntValue"));
     }
 
-    /// <summary>The pointer put at a place of the screen, in its pixels at a window's scale, as a captured pointer is held:
-    /// moved with no event of its own, and the pointer let move again at once, as a move made so holds it still a moment.</summary>
-    public static void Warp(PixelPoint at, double windowScale)
+    /// <summary>The pointer put at a place of the screen as Avalonia's PointToScreen says it, which on macOS is in points
+    /// whatever its type, from the top left of the main display as CoreGraphics counts too: moved with no event of its own, and
+    /// the pointer let move again at once, as a move made so holds it still a moment. A view in no window of macOS's moves none.</summary>
+    public void Warp(PixelPoint at)
     {
-        if (!OperatingSystem.IsMacOS())
+        if (view == 0)
         {
             return;
         }
-        WarpPointer(new MacObjC.CGPoint(at.X / windowScale, at.Y / windowScale));
+        WarpPointer(new MacObjC.CGPoint(at.X, at.Y));
         AssociatePointer(true);
     }
 

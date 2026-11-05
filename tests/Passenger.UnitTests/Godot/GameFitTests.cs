@@ -4,7 +4,8 @@ using Passenger.Core;
 namespace Passenger.UnitTests.Godot;
 
 /// <summary>Where a game shows in the Game window: its own shape as large as the pane holds it, at the pane's middle, never
-/// past the pane's edges, and what a pointer over the pane comes to in the game.</summary>
+/// past the pane's edges, what a pointer over the pane comes to in the game, and where a place the game names comes to over
+/// the pane.</summary>
 public class GameFitTests
 {
     [Fact]
@@ -75,6 +76,55 @@ public class GameFitTests
         Assert.False(GameFit.Over(100, 100, place, 2));
         Assert.True(GameFit.Over(350, 100, place, 2));
         Assert.False(GameFit.Over(600, 100, place, 2));
+    }
+
+    [Fact]
+    public void A_games_warp_of_the_pointer_reads_as_the_place_it_names_as_godot_sends_one()
+    {
+        byte[] frame = GodotMessage.Frame(GodotWords.EmbeddedWarpMouse, new GodotMath(GodotType.Vector2I, [320, -4]));
+
+        GodotMessage read = GodotMessage.Read(frame.AsSpan(4));
+
+        Assert.Equal("game_view:warp_mouse", read.Name);
+        Assert.Equal((320, -4), GameFit.Warped(read.Data));
+    }
+
+    [Fact]
+    public void A_warp_message_of_any_other_form_names_no_place()
+    {
+        Assert.Null(GameFit.Warped([]));
+        Assert.Null(GameFit.Warped([320L, 4L]));
+        Assert.Null(GameFit.Warped([new GodotMath(GodotType.Vector2, [320, 4])]));
+    }
+
+    [Fact]
+    public void A_place_a_game_names_comes_to_the_pane_from_the_games_own_top_left_in_what_its_godot_says()
+    {
+        GamePlace place = new(382, 40, 635, 476);
+        Assert.Equal((291d, 70d), GameFit.FromGame(100, 50, place, scale: 2, perUnit: 1));
+        Assert.Equal((241d, 45d), GameFit.FromGame(100, 50, place, scale: 2, perUnit: 2));
+        Assert.Equal((482d, 90d), GameFit.FromGame(100, 50, new GamePlace(382, 40, 635, 476), scale: 1, perUnit: 1));
+    }
+
+    [Fact]
+    public void A_place_a_game_names_past_its_edges_stays_on_the_game()
+    {
+        GamePlace place = new(382, 40, 635, 476);
+        Assert.Equal((191d, 20d), GameFit.FromGame(-30, -30, place, scale: 2, perUnit: 1));
+        (double x, double y) = GameFit.FromGame(5000, 5000, place, scale: 2, perUnit: 1);
+        Assert.True(GameFit.Over(x, y, place, 2), $"A place past the game's far corner came to {x},{y}, off the game placed at {place}, on what lies beside the pane");
+    }
+
+    [Fact]
+    public void A_place_a_game_names_is_where_a_pointer_there_reaches_it_again()
+    {
+        GamePlace place = new(382, 40, 635, 476);
+        foreach (double perUnit in new[] { 1d, 2d })
+        {
+            (double x, double y) = GameFit.FromGame(120, 90, place, 2, perUnit);
+            (double backX, double backY) = GameFit.Inside(x, y, place, 2);
+            Assert.Equal((120d, 90d), (backX * perUnit, backY * perUnit));
+        }
     }
 
     [Fact]

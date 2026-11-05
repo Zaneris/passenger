@@ -3,8 +3,8 @@ namespace Passenger.App.Godot;
 /// <summary>A game's place in the Game window, in pixels from the pane's top left.</summary>
 public readonly record struct GamePlace(int X, int Y, int Width, int Height);
 
-/// <summary>Where a game shows in the Game window: its own shape as large as the pane holds it, at the pane's middle, and
-/// where a pointer over the pane falls in it.</summary>
+/// <summary>Where a game shows in the Game window: its own shape as large as the pane holds it, at the pane's middle, where
+/// a pointer over the pane falls in it, and where a place the game names falls over the pane.</summary>
 public static class GameFit
 {
     /// <summary>The largest place of a game's shape in a pane of a size in pixels, up or down from the game's own size, at the
@@ -35,6 +35,17 @@ public static class GameFit
     /// inside the game: a press held past its edge stays the game's.</summary>
     public static (double X, double Y) Inside(double x, double y, GamePlace place, double scale) =>
         (Math.Clamp(x - (place.X / scale), 0, place.Width / scale), Math.Clamp(y - (place.Y / scale), 0, place.Height / scale));
+
+    /// <summary>The place a game's <see cref="GodotWords.EmbeddedWarpMouse"/> names; null for a message of any other form.</summary>
+    public static (int X, int Y)? Warped(IReadOnlyList<object?> data) =>
+        data is [GodotMath { Type: GodotType.Vector2I, Values: [double x, double y] }] ? ((int)x, (int)y) : null;
+
+    /// <summary>A place a game names, from its top left in what its display takes the pointer in, <paramref name="perUnit"/>
+    /// of them to one of the pane's logical units, as a place over the pane in those units; held on the game, as a place past
+    /// its edge would put the pointer on what lies beside the pane.</summary>
+    public static (double X, double Y) FromGame(double x, double y, GamePlace place, double scale, double perUnit) =>
+        ((place.X / scale) + Math.Clamp(x / perUnit, 0, Math.Max(0, (place.Width / scale) - 1)),
+            (place.Y / scale) + Math.Clamp(y / perUnit, 0, Math.Max(0, (place.Height / scale) - 1)));
 
     /// <summary>Whether a place over the pane, in its logical units, falls on a game placed in it at a scale.</summary>
     public static bool Over(double x, double y, GamePlace place, double scale) =>

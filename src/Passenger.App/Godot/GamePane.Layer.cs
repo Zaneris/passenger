@@ -10,7 +10,8 @@ namespace Passenger.App.Godot;
 /// in pixels at the window's scale, and given what the person does over it, the pointer and the keys, in Godot's input codec
 /// (<see cref="GodotInputCodec"/>) through its debugger's <c>embed:</c> messages, with the window's focus and the pointer's
 /// coming and going. The mouse mode the game asks for is followed: the pointer hidden, and held at the pane's middle while
-/// captured, its moves told as relative ones; Alt+Escape lets a captured pointer go, as in Godot's editor.</summary>
+/// captured, its moves told as relative ones; Alt+Escape lets a captured pointer go, as in Godot's editor. A pointer the game
+/// moves is moved while the game has the keys (<see cref="GameMovedPointer"/>).</summary>
 public sealed partial class GamePane
 {
     private const int MouseEnter = 0;
@@ -62,6 +63,7 @@ public sealed partial class GamePane
         started.StateChanged += GameStateChanged;
         started.EmbeddedContextTold += ContextTold;
         started.MouseModeAsked += MouseModeTold;
+        started.PointerWarped += GameMovedPointer;
         if (TopLevel.GetTopLevel(this) is Window window)
         {
             activated = window;
@@ -157,16 +159,31 @@ public sealed partial class GamePane
         }
     }
 
-    /// <summary>The pointer put back at the pane's middle, where a captured pointer's next move is measured from.</summary>
-    private void Recenter()
+    /// <summary>The pointer put where the game named, as a game moves it in its own window; the person's own while the pane
+    /// lacks the keys or the window isn't in front, and held still while captured, where a game's own window moves it nowhere.</summary>
+    private void GameMovedPointer(object? sender, (int X, int Y) named)
     {
-        if (TopLevel.GetTopLevel(this) is not { } main)
+        if (sender != game || !IsFocused || mouseMode == Captured || TopLevel.GetTopLevel(this) is not WindowBase { IsActive: true })
         {
             return;
         }
-        Point middle = new(Bounds.Width / 2, Bounds.Height / 2);
-        GameLayer.Warp(this.PointToScreen(middle), main.RenderScaling);
-        lastPointer = middle;
+        double scale = Scale;
+        (double x, double y) = GameFit.FromGame(named.X, named.Y, Fitted(scale), scale, PointerScale);
+        PutPointer(new Point(x, y));
+    }
+
+    /// <summary>The pointer put back at the pane's middle, where a captured pointer's next move is measured from.</summary>
+    private void Recenter() => PutPointer(new Point(Bounds.Width / 2, Bounds.Height / 2));
+
+    /// <summary>The pointer put at a place over the pane, which its next move is measured from.</summary>
+    private void PutPointer(Point at)
+    {
+        if (TopLevel.GetTopLevel(this) is null)
+        {
+            return;
+        }
+        layer?.Warp(this.PointToScreen(at));
+        lastPointer = at;
     }
 
     public bool TakesKey(KeyEventArgs e) => Layered && IsFocused && Keeps?.Invoke(e) != true;
@@ -351,6 +368,7 @@ public sealed partial class GamePane
     {
         was.EmbeddedContextTold -= ContextTold;
         was.MouseModeAsked -= MouseModeTold;
+        was.PointerWarped -= GameMovedPointer;
         if (activated is { } window)
         {
             window.Activated -= WindowActivated;

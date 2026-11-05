@@ -326,6 +326,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// 2 captured, 3 confined, 4 confined and hidden.</summary>
     public event EventHandler<int>? MouseModeAsked;
 
+    /// <summary>A game on the embedded display moved the pointer to a place of its window, in what that display takes the
+    /// pointer in (<see cref="GodotExecutables.TakesPointerInPoints"/>).</summary>
+    public event EventHandler<(int X, int Y)>? PointerWarped;
+
     /// <summary>Tells a game on the embedded display what the program it is shown in gives it (<see cref="GodotWords.EmbedEvent"/>
     /// and the rest), answered by nothing; a game yet to connect, or gone, hears none of it.</summary>
     public void Embed(string what, object? value) => IdeErrors.Observe(EmbedAsync(what, value));
@@ -600,6 +604,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
                 break;
             case GodotWords.EmbeddedMouseMode when message.Data is [long mode]:
                 MouseModeAsked?.Invoke(this, (int)mode);
+                break;
+            case GodotWords.EmbeddedWarpMouse when GameFit.Warped(message.Data) is { } named:
+                PointerWarped?.Invoke(this, named);
                 break;
             case GodotWords.Screenshotted when message.Data is [long id, long width, long height, string path]:
                 picturesAsked.GetValueOrDefault(id)?.TrySetResult(((int)width, (int)height, path));
