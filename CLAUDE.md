@@ -195,7 +195,7 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   `PrimitiveTypes`.
 - `Passenger.Text`: the rope, `TextDocument`, editing commands as pure functions to an `EditPlan`, `FileText`; an XML
   value through `XmlEntities`, never `SecurityElement.Escape` or a hand Replace; a place in the text held by an anchor
-  (`AnchorAt`), never your own `TextEditing.Map*`.
+  (`AnchorAt`), never your own `TextEditing.Map*`; an end tag typed over by hand `EndTagTyping`, never a caret jump.
 - `Passenger.Editor`: `CodeEditor`, `Keymap`, `EditorActions`; the code font is `CodeFonts.Key`, never a `FontFamily`
   written elsewhere; the editor names no debugger, test or VCS concept (`IGutterColumn`, EditorRulesTests); a file's
   editors draw its one `DocumentDecorations`, never fed per split.
@@ -266,9 +266,12 @@ Projects in `src/`; `find_symbol` finds the rest from the names here. A pointer'
   headless one only when asked (`WebLanguages.AskGodot`; a test of Godot's own server opens with
   `MainWindow.GodotHeadlessAtOpen`); a function's argument count only `GodotScriptDeclared.Takes`; `GDScriptFormatter`
   refuses unless `Differs` finds the same tokens, comments and tree, and Reformat Code never runs `OrderParts`. Godot's
-  generator assigns every field in generated code, so a field's values come from the code's own documents. Shader marks
-  are Passenger's port of Godot's front end (`GodotShaderChecker`). The person's Godot editor is asked through IDE
-  messaging (`GodotIdeLink`), never Passenger's headless editors.
+  generator assigns every field in generated code, so a field's values come from the code's own documents. Edits placed
+  in text Passenger read carry that text (`PlacedEdits`), checked before anything is written. A GDScript refactoring
+  moving code asks `GDScriptEffects`: a call's arguments run before what it is called on, and an object's script
+  variable with no getter is read only as what takes it runs. Shader marks are Passenger's port of Godot's front end
+  (`GodotShaderChecker`). The person's Godot editor is asked through IDE messaging (`GodotIdeLink`), never Passenger's
+  headless editors.
 - **Web languages.** `WebLanguages`: one Node.js server per kind but GDScript's (Godot's editor over TCP), every
   per-kind switch naming each kind; `JsonSchemas` and `PageStylesheets` reach the web only while Settings allows; in a
   macOS bundle the servers live under `Contents/Resources/web`. One tsserver, never `useSyntaxServer` (it answers rename
@@ -414,14 +417,15 @@ a new name, and `just site-shots` retakes its images.
   rewrites the csproj as it makes a C# script. On Windows a test's editor is two processes, both `--editor`.
 - **Godot's wire.** Its debug peer takes only `[name, thread id 1, data]`; packed strings end with a NUL;
   `scene:inspect_objects` answers a few objects (inspect one at a time); a warning comes as an error with its flag set;
-  its JSON reads every number as a float. Its language server takes whole texts, reads `Content-Length` at a fixed
-  offset, needs `rootPath`, has no shutdown, and names a warning by `(NAME): ` to 4.7, by `code` from 4.8. Its script
-  debugger: a message to a stopped thread carries its id; an `evaluate` in a frame with no instance, or a `break` while
-  stopped, lets the game go on; an evaluation's errors come after its answer (`get_stack_dump` after each);
-  `reload_scripts` keeps members by name, an added one null. IDE messaging: `Play` plays only the main scene,
-  `DebugPlay`'s debugger fields are dead in Godot 4, `ReloadScripts` reloads the running games' scripts (GodotTools'
-  watcher reloads the editor's own assemblies every 0.5 s); its completion kinds lack font sizes, so send the engine's
-  numbers; an editor importing as it opens answers no handshake until done (`GodotIdeLink` retries after 10 s).
+  its JSON reads every number as a float; from 4.7 an embedded game's state is 32 bytes and its pointer in points. Its
+  language server takes whole texts, reads `Content-Length` at a fixed offset, needs `rootPath`, has no shutdown, and
+  names a warning by `(NAME): ` to 4.7, by `code` from 4.8. Its script debugger: a message to a stopped thread carries
+  its id; an `evaluate` in a frame with no instance, or a `break` while stopped, lets the game go on; an evaluation's
+  errors come after its answer (`get_stack_dump` after each); `reload_scripts` keeps members by name, an added one null.
+  IDE messaging: `Play` plays only the main scene, `DebugPlay`'s debugger fields are dead in Godot 4, `ReloadScripts`
+  reloads the running games' scripts (GodotTools' watcher reloads the editor's own assemblies every 0.5 s); its
+  completion kinds lack font sizes, so send the engine's numbers; an editor importing as it opens answers no handshake
+  until done (`GodotIdeLink` retries after 10 s).
 - **Godot's game.** Stop ends a game before its debug session: wait for the session too; a session is ended once its
   adapter says so or its process is gone after Exited without Terminated (`ProgramGone`). An agent's call on a game has
   one limit (`GodotGame.Within`); app_ tools wait for the first scene, no evaluation. The frame counter runs on while
@@ -462,9 +466,10 @@ a new name, and `just site-shots` retakes its images.
   checks the face); Chrome waits for good on a keychain where HOME has none (`--use-mock-keychain`); a hardened-runtime
   program without `get-task-allow` (Godot's release build) can't be dumped, so its snapshot comes from its GC heap dump;
   a variadic libc call through P/Invoke (`fcntl`, `ioctl` with an argument) loses its variadic arguments on arm64;
-  `poll` never says a named pipe's writer has gone (`select`); a Unix socket path holds 104 bytes; `codesign` takes a
-  dotted folder under `Contents/MacOS` for a bundle (so the web servers live in Resources); TMPDIR goes through the /var
-  link, so build a test's project by its real path (two spellings restored at once collide).
+  `poll` never says a named pipe's writer has gone (`select`); a Unix socket path holds 104 bytes; `Screen.Scaling` is 1
+  on Retina, so a pixel size goes with `RenderScaling`; `codesign` takes a dotted folder under `Contents/MacOS` for a
+  bundle (so the web servers live in Resources); TMPDIR goes through the /var link, so build a test's project by its
+  real path (two spellings restored at once collide).
 - **.NET's watcher on macOS passes over FSEvents' word that it dropped events** (dotnet/runtime#136577), so a folder is
   watched only through `WatchedTree`, never a bare `FileSystemWatcher` (#607, #609); settings.json, watched alone, is
   read again on its watcher's error and as a window comes in front (`SettingsStore.LookAgain`).
@@ -491,7 +496,8 @@ a new name, and `just site-shots` retakes its images.
   permitted", so a test reading a shell's lines allows others between them.
 - **Avalonia 12's lists** re-attach, and so re-style, every recycled container and never reuse a `DataTemplate`'s
   content: rows go through `ReusedRows`, made once with their containers (UiRulesTests).
-- **Avalonia 12.1 counts a run of clicks per button**: a press of another button starts a new run (`ClickCount` 1).
+- **Avalonia 12.1 counts a run of clicks per button**: a press of another button starts a new run (`ClickCount` 1); a
+  control with no background is no pointer target.
 - **Avalonia 12's ListBox re-points its keys' row by the chosen row's new index before moving rows**, so a focused row
   loses the keys when rows come above it, and moves a Shift range's anchor only with its first chosen row: every tree
   goes through `TreeKeys.Attach`.
