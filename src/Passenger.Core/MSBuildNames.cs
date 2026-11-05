@@ -31,6 +31,9 @@ public static class MSBuildNames
     /// (NETSDK1100).</summary>
     public const string EnableWindowsTargeting = "EnableWindowsTargeting";
 
+    /// <summary>"true" has a restore fetch only the targeting packs of frameworks a project references itself.</summary>
+    public const string DisableTransitiveFrameworkReferenceDownloads = "DisableTransitiveFrameworkReferenceDownloads";
+
     /// <summary>The design-time targets Razor's generator runs in, which the design-time builds are given.</summary>
     public const string RazorDesignTimeTargets = "RazorDesignTimeTargets";
 

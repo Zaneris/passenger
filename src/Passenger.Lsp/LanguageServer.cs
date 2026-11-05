@@ -445,6 +445,8 @@ public sealed class LanguageServer : IAsyncDisposable
         if (!OperatingSystem.IsWindows() && !start.Environment.ContainsKey(MSBuildNames.EnableWindowsTargeting))
         {
             start.Environment[MSBuildNames.EnableWindowsTargeting] = "true";
+            // Or every project, a plain one too, would fetch the Windows packs it never uses, and fail to restore offline.
+            start.Environment.TryAdd(MSBuildNames.DisableTransitiveFrameworkReferenceDownloads, "true");
         }
         // The server collector kept 3 to 5 times the live heap and never gave it back; the workstation one holds near it (#559).
         if (!start.Environment.ContainsKey(RuntimeVariables.GcServer))
