@@ -433,19 +433,19 @@ internal sealed partial class CSharpAssist
             return null;
         }
         (int start, _) = StringAround(lsp.Text.Snapshot, offset);
-        if (CallAt(lsp, read, offset, start) is not { Exact: true } call || call.Class >= read.Found.Classes.Count)
+        if (CallAt(lsp, read, offset, start) is not { } call || !call.Exact && !call.Literal || call.Class >= read.Found.Classes.Count)
         {
             return null;
         }
-        int at = offset - OffsetOf(lsp, call.At);
+        int written = OffsetOf(lsp, call.At);
+        int at = call.Exact ? offset - written : CSharpLiterals.ValueOffset(lsp.Text.Snapshot.GetText(written, OffsetOf(lsp, call.End) - written), offset - written);
         List<GodotTreeNode> nodes = [];
         string? name = null;
         foreach ((string scene, GodotTreeNode node) in read.Found.Classes[call.Class].Scripts.SelectMany(read.Scenes.RunsOf))
         {
             foreach ((int from, int to, GodotTreeNode step) in GodotScenes.Resolve(node, call.Path).Steps)
             {
-                string written = call.Path[from..to];
-                if (from <= at && at <= to && written != ".." && !nodes.Any(n => n.Same(step)))
+                if (from <= at && at <= to && call.Path[from..to] != ".." && !nodes.Any(n => n.Same(step)))
                 {
                     nodes.Add(step);
                     name = step.Name;
@@ -518,24 +518,25 @@ internal sealed partial class CSharpAssist
             }
             ServerLines lines = ServerLines.Of(text);
             List<TextEdit> paths = [];
-            foreach (GodotNodeCall call in of.Found.Calls.Where(c => c.Exact && c.Class < of.Found.Classes.Count))
+            foreach (GodotNodeCall call in of.Found.Calls.Where(c => (c.Exact || c.Literal) && c.Class < of.Found.Classes.Count))
             {
                 int at = lines.OffsetOf(new LspPosition(call.At.Line, call.At.Character));
-                if (at + call.Path.Length > text.Length || text.GetText(at, call.Path.Length) != call.Path)
+                int end = lines.OffsetOf(new LspPosition(call.End.Line, call.End.Character));
+                string said = end <= text.Length ? text.GetText(at, end - at) : string.Empty;
+                if (call.Exact ? said != call.Path : !CSharpLiterals.Says(said, call.Path))
                 {
                     return RefactorOutcome.Refused(Overtaken(code, old, patience));
                 }
-                foreach ((string scene, GodotTreeNode runner) in of.Found.Classes[call.Class].Scripts.SelectMany(scenes.RunsOf))
+                List<(int From, int To)> names = [.. of.Found.Classes[call.Class].Scripts.SelectMany(scenes.RunsOf).SelectMany(r => GodotScenes.Resolve(r.Node, call.Path).Steps)
+                    .Where(s => nodes.Any(n => n.Same(s.Node)) && call.Path[s.Start..s.End] != "..").Select(s => (s.Start + (call.Path[s.Start] == '%' ? 1 : 0), s.End)).Distinct().OrderBy(n => n.Item1)];
+                if (call.Exact)
                 {
-                    foreach ((int from, int to, GodotTreeNode step) in GodotScenes.Resolve(runner, call.Path).Steps)
-                    {
-                        string written = call.Path[from..to];
-                        if (nodes.Any(n => n.Same(step)) && written != "..")
-                        {
-                            int skip = written.StartsWith('%') ? 1 : 0;
-                            paths.Add(new TextEdit(at + from + skip, to - from - skip, name.Replace("\\", "\\\\", StringComparison.Ordinal)));
-                        }
-                    }
+                    paths.AddRange(names.Select(n => new TextEdit(at + n.From, n.To - n.From, CSharpLiterals.Escaped(name))));
+                }
+                else if (names.Count > 0)
+                {
+                    // A literal's characters are places in its value only where it writes no escape, so it is written anew whole.
+                    paths.Add(new TextEdit(at, end - at, CSharpLiterals.Written(Enumerable.Reverse(names).Aggregate(call.Path, (whole, n) => whole[..n.From] + name + whole[n.To..]), said)));
                 }
             }
             if (paths.Count > 0)

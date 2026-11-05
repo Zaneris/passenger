@@ -316,6 +316,42 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
+    /// <summary>The string a rename wrote with an escape in it names the node as any other does: the next rename, from that very
+    /// string, writes it again, and a verbatim string saying the path follows too.</summary>
+    [AvaloniaFact]
+    public void A_name_holding_a_backslash_is_renamed_again_from_the_string_that_writes_it_escaped()
+    {
+        File.WriteAllText(ScriptPath, Script.Replace("GetNode<Label>(\"Hud/Score\")", "GetNode<Label>(\"Hud/Score\") ?? GetNode<Label>(@\"Hud/Score\")", StringComparison.Ordinal));
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Renamed(window, editor, "GetNode<Label>(\"Hud/Sc", "Score", "Sc\\ore");
+            Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("GetNode<Label>(@\"Hud/Sc\\ore\")", StringComparison.Ordinal),
+                () => $"the verbatim string to take the name as it writes it ({window.Status}): {editor.Document.Snapshot}");
+            Assert.Contains("GetNode<Label>(\"Hud/Sc\\\\ore\")", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            Renamed(window, editor, "GetNode<Label>(\"Hud/Sc", "Sc\\ore", "Points");
+            Ui.WaitFor(() => File.ReadAllText(ScenePath).Contains("[node name=\"Points\" type=\"Label\" parent=\"Hud\"]", StringComparison.Ordinal),
+                () => $"the scene to name the node again ({window.Status}): {File.ReadAllText(ScenePath)}");
+            Assert.Contains("GetNode<Label>(\"Hud/Points\") ?? GetNode<Label>(@\"Hud/Points\")", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static void Renamed(MainWindow window, CodeEditor editor, string after, string old, string name)
+        {
+            Ui.PlaceAfter(editor, after);
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == old, () => $"Rename's box on the node {old} ({window.Assist.Renaming}; {window.Status})");
+            window.KeyTextInput(name);
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => window.Status?.StartsWith($"Renamed {old} to {name}", StringComparison.Ordinal) == true, () => $"{old}'s rename to be made ({window.Status})");
+        }
+    }
+
     /// <summary>The scene's connection to a method Main lacks is an error on Main's name, and one whose signal gives an argument
     /// the handler does not take is one on the handler's, each naming the scene and its line; Find Usages of the handler lists
     /// the connection calling it, and Go to Declaration from that connection's method in the scene goes back to the handler, as

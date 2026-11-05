@@ -561,7 +561,8 @@ public sealed record GodotExported(
 
 /// <summary>A call of GetNode or GetNodeOrNull on the node the code runs on: the path it is given and where its string is
 /// written (its characters, when <paramref name="Exact"/>: a string written as it says, no escape in it), the class it is
-/// called in (by its index in the answer's), and the type it asks for; none for the call that takes no type.</summary>
+/// called in (by its index in the answer's), and the type it asks for; none for the call that takes no type.
+/// <paramref name="Literal"/> says one not exact is a string literal all the same, plain or verbatim, whole from At to End.</summary>
 public sealed record GodotNodeCall(
     [property: JsonPropertyName("path")] string Path,
     [property: JsonPropertyName("at")] Place At,
@@ -569,7 +570,8 @@ public sealed record GodotNodeCall(
     [property: JsonPropertyName("exact")] bool Exact,
     [property: JsonPropertyName("class")] int Class,
     [property: JsonPropertyName("type")] GodotTypeRef? Type,
-    [property: JsonPropertyName("orNull")] bool OrNull);
+    [property: JsonPropertyName("orNull")] bool OrNull,
+    [property: JsonPropertyName("literal")] bool Literal = false);
 
 /// <summary>A type as a node's is matched against it: an engine class by Godot's name, else a class or interface of the
 /// code by its full name; with its name as shown.</summary>

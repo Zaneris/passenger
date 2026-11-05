@@ -265,7 +265,8 @@ internal static partial class GodotSource
             bool exact = written is LiteralExpressionSyntax { Token: var token } && Exact(token);
             TextSpan span = written.Span;
             yield return exact ? new GodotNodeCall(path, PlaceAt(text, span.Start + 1), PlaceAt(text, span.End - 1), true, index, asked, method.Name == "GetNodeOrNull")
-                : new GodotNodeCall(path, PlaceAt(text, span.Start), PlaceAt(text, span.End), false, index, asked, method.Name == "GetNodeOrNull");
+                : new GodotNodeCall(path, PlaceAt(text, span.Start), PlaceAt(text, span.End), false, index, asked, method.Name == "GetNodeOrNull",
+                    written is LiteralExpressionSyntax { Token: var literal } && literal.IsKind(SyntaxKind.StringLiteralToken));
         }
     }
 
