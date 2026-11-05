@@ -3,7 +3,7 @@ using Passenger.Core;
 namespace Passenger.UnitTests.Core;
 
 /// <summary>What an installation's folder is read as holding: an SDK only with the runtime it runs on, as the host would
-/// find one.</summary>
+/// find one; and the installation chosen found before the dotnet running this program.</summary>
 public sealed class DotnetInstallationTests : IDisposable
 {
     private readonly string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
@@ -64,6 +64,26 @@ public sealed class DotnetInstallationTests : IDisposable
     {
         Sdk("10.0.403", config);
         Assert.Equal(["10.0.403"], DotnetInstallation.Read(root).Sdks);
+    }
+
+    [Fact]
+    public void The_installation_chosen_comes_before_the_dotnet_running_this_program_while_its_dotnet_is_there()
+    {
+        string host = Path.Join(root, Dotnet.HostName);
+        File.WriteAllText(host, "the installed host\n");
+        Dotnet.Chosen = root;
+        try
+        {
+            Assert.Equal(new DotnetFound(host, DotnetPlace.Installed), Dotnet.Find());
+            Assert.Equal(host, Dotnet.Host());
+
+            File.Delete(host);
+            Assert.NotEqual(host, Dotnet.Find()?.Host);
+        }
+        finally
+        {
+            Dotnet.Chosen = null;
+        }
     }
 
     private static string Runs(string runtime) => $$"""{ "runtimeOptions": { "tfm": "net10.0", "framework": { "name": "Microsoft.NETCore.App", "version": "{{runtime}}" } } }""";

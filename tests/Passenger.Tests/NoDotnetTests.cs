@@ -348,6 +348,20 @@ public sealed class NoDotnetTests : IAsyncDisposable
         }, "The .NET SDK 10.0.999 did not start, so it was not installed: ");
     }
 
+    /// <summary>The test's own process is framework-dependent, so the dotnet running it is there to be found first.</summary>
+    [Fact]
+    public void The_installation_Passenger_was_told_to_use_comes_before_the_dotnet_running_it()
+    {
+        Dotnet.PlacesStandIn = null;
+        Assert.Equal(DotnetPlace.Runtime, Dotnet.Find()?.Place);
+        string host = TestFolders.Write(Installs, DotnetName, "the installed host\n");
+
+        Dotnet.Use(Installs);
+
+        Assert.Equal(new DotnetFound(host, DotnetPlace.Installed), Dotnet.Find());
+        Assert.True(PathNames.Same(Dotnet.Root(), Installs), $"With {Installs} chosen, Passenger starts the dotnet in {Dotnet.Root()}");
+    }
+
     [AvaloniaFact]
     public void An_SDK_in_the_home_dotnet_folder_no_PATH_names_is_found_named_and_used_and_Add_to_PATH_puts_it_there()
     {
