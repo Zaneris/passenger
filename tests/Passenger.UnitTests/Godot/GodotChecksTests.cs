@@ -531,6 +531,28 @@ public class GodotChecksTests
         Assert.False(GodotChecks.Named(scenes, GodotStringKind.Animation, ["res://Main.cs"], null, null, null).Whole, "a player the code does not tell is never checked");
     }
 
+    /// <summary>Nodes whose shaders are all known say which uniforms there are, one shader shared among them or each its own;
+    /// a node with none known leaves it open.</summary>
+    [Theory]
+    [InlineData("one", "one", true, "alpha")]
+    [InlineData("one", "other", true, "alpha, beta")]
+    [InlineData("one", null, false, "alpha, beta, gamma")]
+    public void A_shader_parameter_s_names_are_whole_where_every_node_told_has_a_shader_shared_or_not(string first, string? second, bool whole, string names)
+    {
+        static GodotFile Running(string? shader) => GodotFile.Parse("[gd_scene format=3]\n\n[ext_resource type=\"Script\" path=\"res://Main.cs\" id=\"1\"]\n"
+            + (shader is null ? string.Empty : $"[ext_resource type=\"Shader\" path=\"res://{shader}.gdshader\" id=\"2\"]\n\n[sub_resource type=\"ShaderMaterial\" id=\"m\"]\nshader = ExtResource(\"2\")\n")
+            + "\n[node name=\"Main\" type=\"Node2D\"]\nscript = ExtResource(\"1\")\n\n[node name=\"Sprite\" type=\"Sprite2D\" parent=\".\"]\n"
+            + (shader is null ? string.Empty : "material = SubResource(\"m\")\n"));
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://a.tscn"] = Running(first), ["res://b.tscn"] = Running(second) }, texts: new Dictionary<string, string>
+        {
+            ["res://one.gdshader"] = "shader_type canvas_item;\nuniform float alpha;\n",
+            ["res://other.gdshader"] = "shader_type canvas_item;\nuniform float beta;\n",
+            ["res://unrelated.gdshader"] = "shader_type canvas_item;\nuniform float gamma;\n",
+        });
+        GodotChecks.Candidates candidates = GodotChecks.Named(scenes, GodotStringKind.ShaderParameter, ["res://Main.cs"], "Sprite", null, "material");
+        Assert.Equal((whole, names), (candidates.Whole, string.Join(", ", candidates.Names.Select(n => n.Name).Order(StringComparer.Ordinal))));
+    }
+
     /// <summary>A theme item's name that neither Godot's default theme nor the project's themes give the class it is looked
     /// up in is an error naming the class; one a class deriving from it has (which the node may be), one the code adds, or
     /// one looked up in a class Passenger does not know, never. Its candidates are the project theme's first, then the

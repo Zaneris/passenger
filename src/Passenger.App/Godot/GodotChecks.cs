@@ -804,11 +804,12 @@ internal static class GodotChecks
             }
             return new Candidates(Merged(parameters), whole ? $"made by the tree of {listed}" : "made by any AnimationTree of the project's scenes", whole);
         }
-        List<string> shaders = [.. whole && member is not null ? told.Select(t => defined.ShaderOf(t, member)).OfType<string>().Distinct(StringComparer.Ordinal) : []];
-        if (!whole || member is null || shaders.Count < told.Count)
+        List<string?> each = [.. whole && member is not null ? told.Select(t => defined.ShaderOf(t, member)) : []];
+        if (!whole || member is null || each.Contains(null))
         {
             return new Candidates(Merged([.. defined.Shaders.SelectMany(s => defined.Uniforms(s).Names)]), "a uniform of any shader of the project", false);
         }
+        List<string> shaders = [.. each.OfType<string>().Distinct(StringComparer.Ordinal)];
         List<GodotDefined> uniforms = [];
         foreach (string shader in shaders)
         {
