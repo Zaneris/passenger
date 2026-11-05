@@ -14,7 +14,9 @@ namespace Passenger.Tests;
 /// its MainWindow.xaml edited in the editor (a colour, a text, a button added that names the window's own handler) and
 /// saved, and the app's own window, the same object, showing the edit; a click on the button added runs the handler, which
 /// writes to the counter through its x:Name field; an element WPF has not is refused with its line, the window left as it
-/// was; and a resource dictionary App.xaml merges, saved, reaching what uses it. WPF's window shows on the screen, and WPF runs on Windows alone, so elsewhere the tests skip; run alone.</summary>
+/// was, its name scope too; a resource dictionary App.xaml merges, saved, reaching what uses it; what the app added in code
+/// kept through both; and two files of one name told apart. WPF's window shows on the screen, and WPF runs on Windows alone,
+/// so elsewhere the tests skip; run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDisposable
 {
@@ -181,6 +183,86 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
             }
             window.Close();
         }
+    }
+
+    /// <summary>What the app added itself, in code, stays through a saved edit and through an edit WPF refuses part way through
+    /// its load: the resources added before and after the window's XAML loaded, with the XAML's look-ups of them, a merged
+    /// dictionary, a trigger, an input and a command binding, and the one handler the root's XAML names.</summary>
+    [AvaloniaFact]
+    public void What_a_running_wpf_app_added_in_code_stays_through_a_saved_edit_and_a_refused_one()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        string code = Path.Combine(folder, "MainWindow.xaml.cs");
+        File.WriteAllText(code, File.ReadAllText(code).Replace("using System.Windows.Input;\n", "using System.Windows.Input;\nusing System.Windows.Threading;\n", StringComparison.Ordinal)
+            .Replace("using System.Windows.Input;\r\n", "using System.Windows.Input;\r\nusing System.Windows.Threading;\r\n", StringComparison.Ordinal)
+            .Replace("private int clicks;", "private int clicks;\n    private int told;\n    private int beats;", StringComparison.Ordinal)
+            .Replace("InitializeComponent();", "Resources[\"Early\"] = \"Early resource\";\n        InitializeComponent();", StringComparison.Ordinal)
+            .Replace("DataContext = new MainViewModel();", Adding, StringComparison.Ordinal)
+            .Replace("private void OnCount(", "private void OnTold(object sender, RoutedEventArgs e) => told++;\n\n    private void OnCount(", StringComparison.Ordinal));
+        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("Title=\"WPF Tree App\"", "Title=\"WPF Tree App\" GotFocus=\"OnTold\"", StringComparison.Ordinal)
+            .Replace(Counter, $"<TextBlock x:Name=\"Early\" Text=\"{{StaticResource Early}}\" />\n<TextBlock x:Name=\"Coded\" Text=\"{{DynamicResource Coded}}\" />\n"
+                + $"<TextBlock x:Name=\"Merged\" Text=\"{{DynamicResource Merged}}\" />\n<TextBlock x:Name=\"Counts\" />\n{Counter}", StringComparison.Ordinal));
+        MainWindow window = Ui.OpenFolder(folder, 1400, 900, languageServer: false);
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
+            LiveApp app = window.Session.RunApp!;
+            HoldsWhatItAdded(app);
+
+            Edit(window);
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() =>
+            {
+                OutputView run = window.BottomPanel.Run;
+                run.Flush();
+                return run.Document.Snapshot.ToString().Contains("Hot Reload: XAML changes applied: MainWindow.xaml (MainWindow)", StringComparison.Ordinal);
+            }, () => $"the Run window to say the XAML applied ({window.Status})");
+            HoldsWhatItAdded(app);
+
+            Typing.Replace(window, Counter, $"<TextBlok Text=\"typo\" />\n{Counter}");
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() => window.Status?.Contains("TextBlok", StringComparison.Ordinal) == true, () => $"the status bar to say why the edit did not apply ({window.Status})");
+            HoldsWhatItAdded(app);
+        }
+        finally
+        {
+            if (window.Runner.IsRunning)
+            {
+                Ui.Run(window, AppActions.Stop);
+                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
+            }
+            window.Close();
+        }
+    }
+
+    /// <summary>What <see cref="What_a_running_wpf_app_added_in_code_stays_through_a_saved_edit_and_a_refused_one"/>'s window adds,
+    /// and how much of each it holds, said at each beat as the app runs.</summary>
+    private const string Adding = """
+        DataContext = new MainViewModel();
+                Resources["Coded"] = "Coded resource";
+                Resources.MergedDictionaries.Add(new ResourceDictionary { ["Merged"] = "Merged resource" });
+                Triggers.Add(new EventTrigger(LoadedEvent));
+                InputBindings.Add(new KeyBinding(ApplicationCommands.Help, Key.F9, ModifierKeys.None));
+                CommandBindings.Add(new CommandBinding(ApplicationCommands.Help));
+                DispatcherTimer beat = new() { Interval = TimeSpan.FromMilliseconds(50) };
+                beat.Tick += (_, _) =>
+                {
+                    int before = told;
+                    RaiseEvent(new RoutedEventArgs(GotFocusEvent, this));
+                    Counts.Text = $"{Resources.Keys.Count} resources, {Resources.MergedDictionaries.Count} merged, {Triggers.Count} triggers, {InputBindings.Count} keys, "
+                        + $"{CommandBindings.Count} commands, {told - before} handlers, beat {++beats}";
+                };
+                beat.Start();
+        """;
+
+    /// <summary>The app, at its next beat, holds all it added and no more than it should.</summary>
+    private static void HoldsWhatItAdded(LiveApp app)
+    {
+        Beats(app, "Counts", "2 resources, 1 merged, 1 triggers, 1 keys, 1 commands, 1 handlers, beat ");
+        Assert.Equal("Early resource", Text(app, "Early"));
+        Assert.Equal("Coded resource", Text(app, "Coded"));
+        Assert.Equal("Merged resource", Text(app, "Merged"));
     }
 
     /// <summary>What a text the app writes at each beat says at its next one.</summary>

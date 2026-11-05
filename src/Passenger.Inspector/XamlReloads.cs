@@ -20,9 +20,10 @@ namespace Passenger.Inspector;
 /// loader to what the app made from it: each open instance of its x:Class populated again in place (the object, its
 /// DataContext and its code's state kept), or for a file of styles or resources without one, the object its build made
 /// from it swapped for one made from the text. What populating adds to (styles, resources, templates, key bindings,
-/// classes, the root's event handlers) is cleared first and put back if the text fails, so the app stays as it was. A root
-/// property the edit did not change keeps what the app holds in it now; the name generator's x:Name fields point at the
-/// new controls; an instance made later takes the newest text as it loads.</summary>
+/// classes, the root's event handlers) is cleared of what the text before wrote and put back if the text fails, so the app
+/// stays as it was; what the app put there itself stays. A root property the edit did not change keeps what the app holds
+/// in it now; the name generator's x:Name fields point at the new controls; an instance made later takes the newest text as
+/// it loads.</summary>
 internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
 {
     /// <summary>The newest text applied of each x:Class, by its type, with the text its build made instances from.</summary>
@@ -122,15 +123,15 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
     {
         XamlRoot now = XamlRoot.Read(change.Text);
         XamlRoot? was = XamlReloading.Readable(before);
-        Held held = new(made);
-        held.Reset(now, was);
+        Held held = new(made, change.File);
         try
         {
+            held.Reset(now, was);
             Load(change, made, made.GetType().Assembly, said);
         }
         catch (Exception error)
         {
-            held.PutBack();
+            held.PutBack(now);
             throw new Refusal(Why(change, error, said, made.GetType()));
         }
         held.Keep(now, was);
@@ -312,10 +313,12 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
     }
 
     /// <summary>What populating an object again adds to, taken away first and kept to put back: its styles, resources,
-    /// data templates, key bindings and classes, its root's handlers, and its own local values.</summary>
+    /// data templates, key bindings and classes, its root's handlers, and its own local values. What of these the text
+    /// before did not write is the app's own, kept through a load that succeeds.</summary>
     private sealed class Held
     {
         private readonly AvaloniaObject made;
+        private readonly string file;
         private readonly IList<IStyle>? styles;
         private readonly List<IStyle> heldStyles;
         private readonly IResourceDictionary? resources;
@@ -327,9 +330,19 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
         private readonly Dictionary<AvaloniaProperty, object?> locals;
         private readonly List<(EventInfo Event, Delegate Handler)> unhooked = [];
 
-        public Held(AvaloniaObject made)
+        /// <summary>The app's own resources, lent to the dictionary a text fills so what it looks up as it loads finds them.</summary>
+        private readonly ResourceDictionary lent = new();
+        private (List<IStyle> First, List<IStyle> Last) ownStyles = ([], []);
+        private (List<IDataTemplate> First, List<IDataTemplate> Last) ownTemplates = ([], []);
+        private (List<KeyBinding> First, List<KeyBinding> Last) ownKeys = ([], []);
+        private (List<IResourceProvider> First, List<IResourceProvider> Last) ownMerged = ([], []);
+        private List<KeyValuePair<ThemeVariant, IThemeVariantProvider>> ownThemes = [];
+        private List<string> ownClasses = [];
+
+        public Held(AvaloniaObject made, string file)
         {
             this.made = made;
+            this.file = file;
             (styles, resources, templates) = made switch
             {
                 Application app => ((IList<IStyle>?)app.Styles, (IResourceDictionary?)app.Resources, (IList<IDataTemplate>?)app.DataTemplates),
@@ -348,34 +361,32 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
         /// <summary>Clears what populating adds to, and what the text before set on the root that the text now does not.</summary>
         public void Reset(XamlRoot now, XamlRoot? was)
         {
+            ownStyles = XamlRoot.Own(heldStyles, was?.Items.GetValueOrDefault("Styles"), Origin);
+            ownTemplates = XamlRoot.Own(heldTemplates, was?.Items.GetValueOrDefault("DataTemplates"), Origin);
+            ownKeys = XamlRoot.Own(heldKeys, was?.Items.GetValueOrDefault("KeyBindings"), Origin);
             styles?.Clear();
             templates?.Clear();
             keys?.Clear();
             switch (made)
             {
                 case Application app:
-                    app.Resources = new ResourceDictionary();
+                    app.Resources = Fresh(now, was);
                     break;
                 case StyledElement element:
-                    element.Resources = new ResourceDictionary();
-                    if (now.Attributes.ContainsKey("Classes") || was?.Attributes.ContainsKey("Classes") == true)
-                    {
-                        element.Classes.RemoveAll(heldClasses);
-                    }
+                    element.Resources = Fresh(now, was);
+                    List<string> written = [.. heldClasses.Where(c => was?.Classes.Contains(c) == true)];
+                    ownClasses = [.. heldClasses.Except(written)];
+                    element.Classes.RemoveAll(written);
                     break;
             }
             if (was is null)
             {
                 return;
             }
-            foreach ((string name, string value) in was.Attributes)
+            foreach ((EventInfo handled, Delegate handler) in Handlers(was))
             {
-                if (made.GetType().GetEvent(name, BindingFlags.Public | BindingFlags.Instance) is { EventHandlerType: { } kind } handled
-                    && Handler(kind, value) is { } handler)
-                {
-                    handled.RemoveEventHandler(made, handler);
-                    unhooked.Add((handled, handler));
-                }
+                handled.RemoveEventHandler(made, handler);
+                unhooked.Add((handled, handler));
             }
             foreach (string dropped in was.Dropped(now))
             {
@@ -386,9 +397,37 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
             }
         }
 
-        /// <summary>The text failed: the object as it was.</summary>
-        public void PutBack()
+        /// <summary>The dictionary a text fills, holding meanwhile what the app put in the one it replaces, which stays as it is
+        /// until the text applied. An entry neither text writes is the app's; Avalonia records the place of each one XAML made.</summary>
+        private ResourceDictionary Fresh(XamlRoot now, XamlRoot? was)
         {
+            ResourceDictionary fresh = new();
+            if (resources is null)
+            {
+                return fresh;
+            }
+            foreach (object key in resources.Keys.Where(k => XamlSourceInfo.GetXamlSourceInfo(resources, k) is null && was?.Resources.Writes(k) != true && !now.Resources.Writes(k)).ToList())
+            {
+                lent[key] = resources[key];
+            }
+            ownMerged = XamlRoot.Own([.. resources.MergedDictionaries], was?.Resources.Merged, Origin);
+            ownThemes = [.. resources.ThemeDictionaries.Where(t => XamlSourceInfo.GetXamlSourceInfo(t.Value) is null
+                && was?.Resources.Themes.Contains(t.Key.ToString()) != true && !now.Resources.Themes.Contains(t.Key.ToString()))];
+            fresh.MergedDictionaries.Add(lent);
+            foreach (IResourceProvider merged in ownMerged.First.Concat(ownMerged.Last))
+            {
+                fresh.MergedDictionaries.Add(merged);
+            }
+            return fresh;
+        }
+
+        /// <summary>The text failed: the object as it was.</summary>
+        public void PutBack(XamlRoot now)
+        {
+            foreach ((EventInfo handled, Delegate handler) in Handlers(now))
+            {
+                handled.RemoveEventHandler(made, handler);
+            }
             if (styles is not null)
             {
                 styles.Clear();
@@ -438,10 +477,16 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
             }
         }
 
-        /// <summary>The text applied: a root property it sets as the text before did keeps what the app held in it, unless
-        /// that is part of the tree (a control, which the text made again).</summary>
+        /// <summary>The text applied: what the app put in the root's collections goes back where it stood, and a root property
+        /// the text sets as the text before did keeps what the app held in it, unless that is part of the tree (a control,
+        /// which the text made again).</summary>
         public void Keep(XamlRoot now, XamlRoot? was)
         {
+            Around(styles, ownStyles);
+            Around(templates, ownTemplates);
+            Around(keys, ownKeys);
+            KeepResources();
+            (made as StyledElement)?.Classes.AddRange(ownClasses);
             if (was is null)
             {
                 return;
@@ -451,6 +496,69 @@ internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
                 if (value is not (Visual or ILogical or IStyle) && was.Keeps(now, NameOf(property)) && !Equals(made.GetValue(property), value))
                 {
                     made.SetValue(property, value);
+                }
+            }
+        }
+
+        /// <summary>The app's own resources in the dictionary the text left, which may be another than it filled (one the text
+        /// writes itself), a key the text now writes its own.</summary>
+        private void KeepResources()
+        {
+            IResourceDictionary? held = made switch
+            {
+                Application app => app.Resources,
+                StyledElement element => element.Resources,
+                _ => null,
+            };
+            if (held is not { } current)
+            {
+                return;
+            }
+            current.MergedDictionaries.Remove(lent);
+            foreach (object key in lent.Keys.Where(k => !current.ContainsKey(k)).ToList())
+            {
+                current.Add(key, lent[key]);
+            }
+            Around(current.MergedDictionaries, ownMerged);
+            foreach ((ThemeVariant variant, IThemeVariantProvider theme) in ownThemes)
+            {
+                current.ThemeDictionaries.TryAdd(variant, theme);
+            }
+        }
+
+        /// <summary>A list as a text left it, with the app's own back before and after what the text made.</summary>
+        private static void Around<T>(IList<T>? list, (List<T> First, List<T> Last) own)
+        {
+            if (list is null)
+            {
+                return;
+            }
+            foreach (T item in own.First.Concat(own.Last))
+            {
+                list.Remove(item);
+            }
+            for (int i = 0; i < own.First.Count; i++)
+            {
+                list.Insert(i, own.First[i]);
+            }
+            foreach (T item in own.Last)
+            {
+                list.Add(item);
+            }
+        }
+
+        private XamlOrigin Origin(object item) =>
+            XamlSourceInfo.GetXamlSourceInfo(item) is null ? XamlOrigin.Unrecorded : From(item, file) ? XamlOrigin.ThisFile : XamlOrigin.AnotherFile;
+
+        /// <summary>The event handlers a text names on the root, as its XAML makes them: equal to them, so they can be taken off.</summary>
+        private IEnumerable<(EventInfo Event, Delegate Handler)> Handlers(XamlRoot text)
+        {
+            foreach ((string name, string value) in text.Attributes)
+            {
+                if (made.GetType().GetEvent(name, BindingFlags.Public | BindingFlags.Instance) is { EventHandlerType: { } kind } handled
+                    && Handler(kind, value) is { } handler)
+                {
+                    yield return (handled, handler);
                 }
             }
         }

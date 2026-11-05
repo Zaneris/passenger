@@ -16,8 +16,10 @@ namespace Passenger.Tests;
 /// Debug, its MainWindow.axaml edited in the editor (a text, a colour, a control added) and saved, and the app's own window,
 /// the same object, showing the edit in its live visual tree; an edit the app's XAML compiler refuses said with its line,
 /// the app left as it was; a handler added in C# with the button that names it in XAML, applied together, C#'s first; the
-/// XAML written on disk while not open, App.axaml's styles and resources, and Run with Hot Reload through the debugger.
-/// The app is headless, so nothing shows on the screen. It runs and is debugged through the window, so the tests run alone.</summary>
+/// XAML written on disk while not open, App.axaml's styles and resources, and Run with Hot Reload through the debugger;
+/// what the app added in code kept through an edit and a refusal, C# applied beside XAML that failed, and two files of one
+/// name told apart. The app is headless, so nothing shows on the screen. It runs and is debugged through the window, so the
+/// tests run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDisposable
 {
@@ -270,6 +272,102 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
             }
             window.Close();
         }
+    }
+
+    /// <summary>What the app added itself, in code, stays through a saved edit and through an edit that fails as it loads: the
+    /// resources added before and after its window's XAML loaded, with the XAML's look-ups of them, a merged dictionary, a
+    /// style, a template, a key binding, a class, and the one handler the root's XAML names.</summary>
+    [AvaloniaFact]
+    public void What_a_running_app_added_in_code_stays_through_a_saved_edit_and_through_one_that_fails_as_it_loads()
+    {
+        File.WriteAllText(Path.Combine(folder, "MainWindow.axaml.cs"), Adding);
+        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("x:Class=\"LiveTreeApp.MainWindow\"", "x:Class=\"LiveTreeApp.MainWindow\" DataContextChanged=\"OnContext\"", StringComparison.Ordinal)
+            .Replace(Pin, $"<TextBlock x:Name=\"Early\" Text=\"{{StaticResource Early}}\" />\n<TextBlock x:Name=\"Coded\" Text=\"{{DynamicResource Coded}}\" />\n"
+                + $"<TextBlock x:Name=\"Merged\" Text=\"{{DynamicResource Merged}}\" />\n<TextBlock x:Name=\"Counts\" />\n{Pin}", StringComparison.Ordinal));
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
+            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
+            LiveApp app = window.Session.RunApp!;
+            HoldsWhatItAdded(app);
+
+            Edit(window);
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() => RunSays(window, "Hot Reload: XAML changes applied: MainWindow.axaml (MainWindow)"), () => $"the Run window to say the XAML applied ({window.Status})");
+            HoldsWhatItAdded(app);
+
+            Typing.Replace(window, "    <Window.Styles>", "    <Window.Resources>\n        <SolidColorBrush x:Key=\"Twice\" Color=\"Red\" />\n"
+                + "        <SolidColorBrush x:Key=\"Twice\" Color=\"Blue\" />\n    </Window.Resources>\n    <Window.Styles>");
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() => window.Status?.Contains("same key", StringComparison.Ordinal) == true, () => $"the status bar to say the resources' key is written twice ({window.Status})");
+            HoldsWhatItAdded(app);
+        }
+        finally
+        {
+            if (window.Runner.IsRunning)
+            {
+                Ui.Run(window, AppActions.Stop);
+                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
+            }
+            window.Close();
+        }
+    }
+
+    /// <summary>The window's code for <see cref="What_a_running_app_added_in_code_stays_through_a_saved_edit_and_through_one_that_fails_as_it_loads"/>:
+    /// what it adds, and how much of each it holds, said as the app runs.</summary>
+    private const string Adding = """
+        using System;
+        using Avalonia.Controls;
+        using Avalonia.Controls.Templates;
+        using Avalonia.Input;
+        using Avalonia.Styling;
+        using Avalonia.Threading;
+
+        namespace LiveTreeApp;
+
+        public partial class MainWindow : Window
+        {
+            private int told;
+            private int beats;
+
+            public MainWindow()
+            {
+                Resources["Early"] = "Early resource";
+                InitializeComponent();
+                Resources["Coded"] = "Coded resource";
+                Resources.MergedDictionaries.Add(new ResourceDictionary { ["Merged"] = "Merged resource" });
+                Styles.Add(new Style(x => x.OfType<TextBlock>().Name("Greeting")) { Setters = { new Setter(TextBlock.FontSizeProperty, 31d) } });
+                DataTemplates.Add(new FuncDataTemplate<int>((_, _) => new TextBlock()));
+                KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.F9) });
+                Classes.Add("coded");
+                DispatcherTimer.Run(() =>
+                {
+                    int before = told;
+                    DataContext = new object();
+                    Counts.Text = $"{Styles.Count} styles, {DataTemplates.Count} templates, {KeyBindings.Count} keys, {Resources.Count} resources, "
+                        + $"{Resources.MergedDictionaries.Count} merged, {told - before} handlers, beat {++beats}";
+                    return true;
+                }, TimeSpan.FromMilliseconds(50));
+            }
+
+            private void OnContext(object? sender, EventArgs e) => told++;
+        }
+
+        """;
+
+    /// <summary>The app holds all it added and no more than it should: <see cref="Adding"/>'s, beside the one style its XAML writes.</summary>
+    private static void HoldsWhatItAdded(LiveApp app)
+    {
+        const string Held = "2 styles, 1 templates, 1 keys, 2 resources, 1 merged, 1 handlers, beat ";
+        string? seen = Text(app, "Counts");
+        Ui.WaitFor(() => Text(app, "Counts") is { } said && said != seen && said.StartsWith(Held, StringComparison.Ordinal),
+            () => $"the app, at its next beat, to hold what it added: {Held} ({Text(app, "Counts")})");
+        Assert.Equal("Early resource", Text(app, "Early"));
+        Assert.Equal("Coded resource", Text(app, "Coded"));
+        Assert.Equal("Merged resource", Text(app, "Merged"));
+        Assert.Equal("31", Greeting(app).GetValueOrDefault("FontSize"));
+        Assert.Contains("coded", Ui.Await(app.TreeAsync(), "the app's tree").Roots.Single(r => r.Type == "MainWindow").Classes);
     }
 
     /// <summary>C# applied beside XAML the app's compiler refuses: what comes of it is the XAML's error, but the program runs the

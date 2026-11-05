@@ -22,18 +22,23 @@ internal static class Sources
     public static string? Project { get; set; }
 
     /// <summary>Where WPF recorded an object was made in XAML, or null.</summary>
-    public static SourcePlace? Place(object made)
+    public static SourcePlace? Place(object made) =>
+        Info(made) is { SourceUri: { } uri, LineNumber: > 0 } info && FileOf(uri) is { } file ? new SourcePlace(file, info.LineNumber, info.LinePosition) : null;
+
+    /// <summary>Where an object of a root's collection came from, as far as WPF recorded: the XAML file given, another, or none.</summary>
+    public static XamlOrigin Origin(object made, string file) =>
+        Info(made) is null ? XamlOrigin.Unrecorded : Place(made) is { } place && PathNames.Same(place.File, file) ? XamlOrigin.ThisFile : XamlOrigin.AnotherFile;
+
+    private static XamlSourceInfo? Info(object made)
     {
-        XamlSourceInfo? info;
         try
         {
-            info = VisualDiagnostics.GetXamlSourceInfo(made);
+            return VisualDiagnostics.GetXamlSourceInfo(made);
         }
         catch (Exception error) when (error is MissingMethodException or TypeLoadException or InvalidOperationException)
         {
             return null;
         }
-        return info is { SourceUri: { } uri, LineNumber: > 0 } && FileOf(uri) is { } file ? new SourcePlace(file, info.LineNumber, info.LinePosition) : null;
     }
 
     /// <summary>The file a BAML's URI names: a file URI's path, or a pack URI's component in its assembly's project.</summary>
