@@ -524,9 +524,9 @@ public sealed class GodotScenes
 
     /// <summary>The edits each scene takes as a node is renamed: its <c>name</c> where it is declared and where a scene over
     /// that one changes it, and in every scene holding it the paths through it (a node's <c>parent</c>, a connection's <c>from</c> and <c>to</c>,
-    /// an <c>[editable]</c> path, each NodePath a node's property holds, at any depth of its value, led from that node as
-    /// Godot leads it: a <c>%Name</c> to the unique node it finds, and each animation track's path, led from its player's
-    /// root, an external animation's file among the edits). By res:// path.</summary>
+    /// an <c>[editable]</c> path, each NodePath a node's property or built-in resource holds (<see cref="BuiltInPaths"/>), led
+    /// from that node as Godot leads it, a <c>%Name</c> to the unique node it finds, and each animation track's path, led from
+    /// its player's root, an external animation's file among the edits). By res:// path.</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<TextEdit>> Renames(GodotTreeNode node, string name)
     {
         Dictionary<string, List<TextEdit>> edits = new(StringComparer.Ordinal);
@@ -562,11 +562,25 @@ public sealed class GodotScenes
             // Every copy in a scene is the same node to a path, so a scene's paths are led through once.
             if (led.Add(scene))
             {
+                Dictionary<string, GodotSection> builtIn = [];
+                foreach (GodotSection resource in file.Sections.Where(s => s.Tag == "sub_resource"))
+                {
+                    builtIn.TryAdd(resource.Text("id") ?? string.Empty, resource);
+                }
                 foreach ((GodotTreeNode holder, GodotNode section) in copy.Root.Below().SelectMany(n => n.Written.Where(w => w.Scene == scene).Select(w => (n, w.Node))))
                 {
                     foreach ((string path, int start, int end) in section.Section.Properties.SelectMany(p => file.CallsIn(p.Value, "NodePath")))
                     {
                         Names(scene, path, start, end, Through(holder, path));
+                    }
+                    foreach ((string path, int start, int end, bool fromRoot) in BuiltInPaths(file, section.Section, builtIn))
+                    {
+                        // A resource may name what no node of this scene is, which is no path to follow.
+                        GodotTreeNode from = fromRoot ? copy.Root : holder;
+                        if (Resolve(from, path).Found is not null)
+                        {
+                            Names(scene, path, start, end, Through(from, path));
+                        }
                     }
                 }
                 foreach (GodotTreeNode player in copy.Root.Below().Where(GodotDefinitions.IsPlayer))
@@ -611,6 +625,34 @@ public sealed class GodotScenes
                 edits[scene] = list = [];
             }
             list.Add(edit);
+        }
+    }
+
+    /// <summary>Each NodePath of the built-in resources a node's section holds, at any depth of them, with whether it leads
+    /// from the scene's root, as a ViewportTexture's does, rather than from that node. An Animation's lead from its player, and
+    /// an external resource holds no scene's paths.</summary>
+    private static IEnumerable<(string Path, int Start, int End, bool FromRoot)> BuiltInPaths(GodotFile file, GodotSection section, Dictionary<string, GodotSection> builtIn)
+    {
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        Stack<GodotEntry> entries = new(section.Properties);
+        while (entries.TryPop(out GodotEntry? entry))
+        {
+            foreach ((string id, _, _) in file.CallsIn(entry.Value, "SubResource"))
+            {
+                if (!seen.Add(id) || !builtIn.TryGetValue(id, out GodotSection? resource) || resource.Text("type") == "Animation")
+                {
+                    continue;
+                }
+                foreach (GodotEntry property in resource.Properties)
+                {
+                    entries.Push(property);
+                    bool fromRoot = property.Key == "viewport_path" && resource.Text("type") == "ViewportTexture";
+                    foreach ((string path, int start, int end) in file.CallsIn(property.Value, "NodePath"))
+                    {
+                        yield return (path, start, end, fromRoot);
+                    }
+                }
+            }
         }
     }
 

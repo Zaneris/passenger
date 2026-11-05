@@ -496,6 +496,168 @@ public class GodotScenesTests
         Assert.Contains("tracks/0/path = NodePath(\"Player/Body:modulate\")", Apply(Over, edits["res://level.tscn"]), StringComparison.Ordinal);
     }
 
+    /// <summary>As Godot 4.7.2 saved it: a script's resource on a node's metadata holding another, and a ViewportTexture on a
+    /// sprite and one inside a mesh's material.</summary>
+    private const string BuiltIn = """
+        [gd_scene format=3]
+
+        [ext_resource type="Script" path="res://aim.gd" id="1_ldub0"]
+
+        [sub_resource type="ViewportTexture" id="ViewportTexture_ag75j"]
+        viewport_path = NodePath("Hud/View")
+
+        [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_fycry"]
+        albedo_texture = SubResource("ViewportTexture_ag75j")
+
+        [sub_resource type="ViewportTexture" id="ViewportTexture_s3u02"]
+        viewport_path = NodePath("Hud/View")
+
+        [sub_resource type="Resource" id="Resource_g8drb"]
+        script = ExtResource("1_ldub0")
+        target = NodePath("../Hud/Score")
+
+        [sub_resource type="Resource" id="Resource_fji0u"]
+        script = ExtResource("1_ldub0")
+        target = NodePath("../Hud/Score:text")
+        others = Array[NodePath]([NodePath("../Hud")])
+        inner = SubResource("Resource_g8drb")
+
+        [node name="Main" type="Node2D" unique_id=1964523380]
+
+        [node name="Hud" type="Node2D" parent="." unique_id=566957418]
+
+        [node name="Score" type="Label" parent="Hud" unique_id=1535000078]
+
+        [node name="View" type="SubViewport" parent="Hud" unique_id=1916850243]
+
+        [node name="Mesh" type="MeshInstance3D" parent="Hud" unique_id=568256544]
+        material_override = SubResource("StandardMaterial3D_fycry")
+
+        [node name="Screen" type="Sprite2D" parent="." unique_id=1890275947]
+        texture = SubResource("ViewportTexture_s3u02")
+        metadata/aim = SubResource("Resource_fji0u")
+
+        """;
+
+    private static GodotScenes BuiltInScenes(string scene) => new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) });
+
+    /// <summary>Godot's editor walks a node's built-in resources as it walks the node: left out, a resource's path goes on
+    /// naming a node that is gone, the name kept only in the scene's own sections.</summary>
+    [Fact]
+    public void A_nodes_rename_follows_the_paths_of_the_built_in_resources_a_node_holds_led_from_that_node_at_any_depth()
+    {
+        GodotScenes scenes = BuiltInScenes(BuiltIn);
+        GodotTreeNode hud = scenes.Tree("res://main.tscn")!.Child("Hud")!;
+
+        string score = Apply(BuiltIn, scenes.Renames(hud.Child("Score")!, "Points")["res://main.tscn"]);
+        Assert.Contains("target = NodePath(\"../Hud/Points:text\")", score, StringComparison.Ordinal);
+        Assert.Contains("target = NodePath(\"../Hud/Points\")", score, StringComparison.Ordinal);
+
+        string overlay = Apply(BuiltIn, scenes.Renames(hud, "Overlay")["res://main.tscn"]);
+        Assert.Contains("others = Array[NodePath]([NodePath(\"../Overlay\")])", overlay, StringComparison.Ordinal);
+        Assert.Contains("target = NodePath(\"../Overlay/Score:text\")", overlay, StringComparison.Ordinal);
+    }
+
+    /// <summary>A ViewportTexture's path is from the scene's root whoever holds it, as its Viewport keeps it: read from the
+    /// mesh inside Hud, it would lead nowhere and stay.</summary>
+    [Fact]
+    public void A_viewport_textures_path_leads_from_the_scenes_root_whatever_holds_it_a_material_among_them()
+    {
+        GodotScenes scenes = BuiltInScenes(BuiltIn);
+        GodotTreeNode hud = scenes.Tree("res://main.tscn")!.Child("Hud")!;
+
+        string renamed = Apply(BuiltIn, scenes.Renames(hud.Child("View")!, "Screen")["res://main.tscn"]);
+
+        Assert.DoesNotContain("viewport_path = NodePath(\"Hud/View\")", renamed, StringComparison.Ordinal);
+        Assert.Equal(2, renamed.Split("viewport_path = NodePath(\"Hud/Screen\")").Length - 1);
+    }
+
+    /// <summary>A resource's path may name what is not in the scene, as Godot's editor allows: one with the renamed node's
+    /// name that leads to no node is another's.</summary>
+    [Fact]
+    public void A_path_of_a_built_in_resource_that_reaches_no_node_stays_as_it_is()
+    {
+        string scene = BuiltIn.Replace("NodePath(\"../Hud/Score\")", "NodePath(\"../Hud/Score/Gone\")", StringComparison.Ordinal);
+        GodotScenes scenes = BuiltInScenes(scene);
+
+        string renamed = Apply(scene, scenes.Renames(scenes.Tree("res://main.tscn")!.Child("Hud")!.Child("Score")!, "Points")["res://main.tscn"]);
+
+        Assert.Contains("target = NodePath(\"../Hud/Score/Gone\")", renamed, StringComparison.Ordinal);
+    }
+
+    /// <summary>A track is led from its player, never the node that holds its animation, and a resource no node holds is
+    /// dropped by Godot as it saves.</summary>
+    [Fact]
+    public void An_animation_a_node_holds_and_a_resource_no_node_holds_are_no_built_in_paths_of_that_node()
+    {
+        const string Held = """
+            [gd_scene format=3]
+
+            [sub_resource type="Animation" id="Animation_1"]
+            tracks/0/path = NodePath("../Hud:visible")
+
+            [sub_resource type="Resource" id="Resource_1"]
+            target = NodePath("../Hud")
+
+            [node name="Main" type="Node2D"]
+
+            [node name="Hud" type="Node2D" parent="."]
+
+            [node name="Holder" type="Node2D" parent="."]
+            metadata/moves = SubResource("Animation_1")
+
+            """;
+        GodotScenes scenes = BuiltInScenes(Held);
+
+        string renamed = Apply(Held, scenes.Renames(scenes.Tree("res://main.tscn")!.Child("Hud")!, "Overlay")["res://main.tscn"]);
+
+        Assert.Contains("tracks/0/path = NodePath(\"../Hud:visible\")", renamed, StringComparison.Ordinal);
+        Assert.Contains("target = NodePath(\"../Hud\")", renamed, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Resources_holding_each_other_are_walked_once_each()
+    {
+        const string Round = """
+            [gd_scene format=3]
+
+            [sub_resource type="Resource" id="Resource_a"]
+            next = SubResource("Resource_b")
+            target = NodePath("../Hud")
+
+            [sub_resource type="Resource" id="Resource_b"]
+            next = SubResource("Resource_a")
+
+            [node name="Main" type="Node2D"]
+
+            [node name="Hud" type="Node2D" parent="."]
+
+            [node name="Holder" type="Node2D" parent="."]
+            metadata/aim = SubResource("Resource_a")
+
+            """;
+        GodotScenes scenes = BuiltInScenes(Round);
+
+        Assert.Contains("target = NodePath(\"../Overlay\")", Apply(Round, scenes.Renames(scenes.Tree("res://main.tscn")!.Child("Hud")!, "Overlay")["res://main.tscn"]), StringComparison.Ordinal);
+    }
+
+    /// <summary>A chain of resources as long as a file can hold is walked with no stack to run out of.</summary>
+    [Fact]
+    public void A_long_chain_of_built_in_resources_is_followed_to_its_end()
+    {
+        const int Length = 20000;
+        System.Text.StringBuilder chain = new("[gd_scene format=3]\n\n[sub_resource type=\"Resource\" id=\"R_0\"]\ntarget = NodePath(\"../Hud\")\n\n");
+        for (int i = 1; i < Length; i++)
+        {
+            chain.Append($"[sub_resource type=\"Resource\" id=\"R_{i}\"]\nnext = SubResource(\"R_{i - 1}\")\n\n");
+        }
+        chain.Append($"[node name=\"Main\" type=\"Node2D\"]\n\n[node name=\"Hud\" type=\"Node2D\" parent=\".\"]\n\n[node name=\"Holder\" type=\"Node2D\" parent=\".\"]\nmetadata/aim = SubResource(\"R_{Length - 1}\")\n");
+        string scene = chain.ToString();
+        GodotScenes scenes = BuiltInScenes(scene);
+
+        Assert.Contains("target = NodePath(\"../Overlay\")", Apply(scene, scenes.Renames(scenes.Tree("res://main.tscn")!.Child("Hud")!, "Overlay")["res://main.tscn"]), StringComparison.Ordinal);
+    }
+
     private static string Apply(string text, IReadOnlyList<TextEdit> edits)
     {
         foreach (TextEdit edit in edits.OrderByDescending(e => e.Start))
