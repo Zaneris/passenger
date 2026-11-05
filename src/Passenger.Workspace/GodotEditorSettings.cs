@@ -137,9 +137,9 @@ public static class GodotEditorSettings
         return found;
     }
 
-    /// <summary>The text with each value set: the line that gives a key its value replaced, else the key added at the end of
-    /// the <c>[resource]</c> section, every other line as it was and in its line endings; a text with no such section (no
-    /// file yet) made the one a new settings file begins as.</summary>
+    /// <summary>The text with each value set: the line that gives a key its value replaced (its last, which Godot reads, where
+    /// the key is set twice), else the key added at the end of the <c>[resource]</c> section, every other line as it was and in
+    /// its line endings; a text with no such section (no file yet) made the one a new settings file begins as.</summary>
     public static string With(string text, IReadOnlyList<KeyValuePair<string, object>> values)
     {
         string ending = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
@@ -148,15 +148,18 @@ public static class GodotEditorSettings
             text = (text.Trim().Length == 0 ? $"[gd_resource type=\"EditorSettings\" format=3]{ending}" : text.TrimEnd() + ending) + $"{ending}{Section}{ending}";
         }
         Dictionary<string, object> left = values.ToDictionary(v => v.Key, v => v.Value, StringComparer.Ordinal);
+        Dictionary<string, Entry> lasts = new(StringComparer.Ordinal);
+        foreach (Entry entry in Entries(text).Where(e => left.ContainsKey(e.Key)))
+        {
+            lasts[entry.Key] = entry;
+        }
         StringBuilder written = new();
         int at = 0;
-        foreach (Entry entry in Entries(text))
+        foreach (Entry entry in lasts.Values.OrderBy(e => e.Start))
         {
-            if (left.Remove(entry.Key, out object? value))
-            {
-                written.Append(text, at, entry.Start - at).Append(entry.Key).Append(" = ").Append(Written(value));
-                at = TrimmedEnd(text, entry);
-            }
+            written.Append(text, at, entry.Start - at).Append(entry.Key).Append(" = ").Append(Written(left[entry.Key]));
+            left.Remove(entry.Key);
+            at = TrimmedEnd(text, entry);
         }
         written.Append(text, at, text.Length - at);
         if (left.Count > 0)

@@ -68,6 +68,35 @@ public class GodotEditorSettingsTests
             $"A value the file gave was to be set on its own line, and one it lacked added at the section's end:\n{text}");
     }
 
+    /// <summary>Godot reads a key set twice as its last line says, so a value written at an earlier line would be reported
+    /// set and do nothing.</summary>
+    [Fact]
+    public void A_key_the_file_sets_twice_is_set_at_its_last_line_which_is_the_one_Godot_reads()
+    {
+        const string Twice = """
+            [gd_resource type="EditorSettings" format=3]
+
+            [resource]
+            text_editor/external/use_external_editor = false
+            interface/editor/display_scale = 0
+            text_editor/external/use_external_editor = false
+
+            """;
+
+        string text = GodotEditorSettings.With(Twice, [new(GodotEditorSettings.UseExternalEditor, true)]);
+
+        Assert.Equal(true, GodotEditorSettings.Read(text, [GodotEditorSettings.UseExternalEditor])[GodotEditorSettings.UseExternalEditor]);
+        Assert.Equal("""
+            [gd_resource type="EditorSettings" format=3]
+
+            [resource]
+            text_editor/external/use_external_editor = false
+            interface/editor/display_scale = 0
+            text_editor/external/use_external_editor = true
+
+            """, text);
+    }
+
     [Fact]
     public void A_path_with_backslashes_and_quotes_is_escaped_and_reads_back_as_it_was()
     {
