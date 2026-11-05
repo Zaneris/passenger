@@ -1,6 +1,7 @@
 using Passenger.App.Godot;
 using Passenger.Roslyn.Extension;
 using Passenger.Workspace;
+using Passenger.Workspace.GDScript;
 
 namespace Passenger.UnitTests.Godot;
 
@@ -38,6 +39,54 @@ public class GodotChecksTests
     private static readonly Place End = new(9, 40);
 
     private static GodotScenes Scenes() => new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Scene) });
+
+    /// <summary>Two scripts' signals of one name are two declarations: a handler both connect to can't take a change of one
+    /// without breaking the other, while the one signal's connections from each node running its script all follow it.</summary>
+    [Fact]
+    public void A_handler_shared_with_another_scripts_signal_of_the_same_name_is_one_a_change_of_signature_cannot_follow()
+    {
+        const string scene = """
+            [gd_scene format=3]
+
+            [ext_resource type="Script" path="res://first.gd" id="1"]
+            [ext_resource type="Script" path="res://second.gd" id="2"]
+            [ext_resource type="Script" path="res://main.gd" id="3"]
+
+            [node name="Main" type="Node"]
+            script = ExtResource("3")
+
+            [node name="One" type="Node" parent="."]
+            script = ExtResource("1")
+
+            [node name="Again" type="Node" parent="."]
+            script = ExtResource("1")
+
+            [node name="Two" type="Node" parent="."]
+            script = ExtResource("2")
+
+            [connection signal="changed" from="One" to="." method="on_changed"]
+            [connection signal="changed" from="Again" to="." method="on_changed"]
+            [connection signal="changed" from="Two" to="." method="on_changed"]
+            [connection signal="moved" from="One" to="." method="on_moved"]
+            [connection signal="moved" from="Again" to="." method="on_moved"]
+
+            """;
+        Dictionary<string, string> scripts = new(StringComparer.Ordinal)
+        {
+            ["res://first.gd"] = "extends Node\n\nsignal changed(value)\nsignal moved(value)\n",
+            ["res://second.gd"] = "extends Node\n\nsignal changed(value)\n",
+            ["res://main.gd"] = "extends Node\n\nfunc on_changed(value):\n\tpass\n\nfunc on_moved(value):\n\tpass\n",
+        };
+        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) }, texts: scripts);
+
+        (IReadOnlyList<GDScriptHandler> handlers, IReadOnlyList<GDScriptPlace> unfollowed) = GodotChecks.SignalHandlers(scenes, "res://first.gd", "changed");
+        Assert.Empty(handlers);
+        Assert.Equal(["its handler on_changed is connected to another signal too", "its handler on_changed is connected to another signal too"], unfollowed.Select(p => p.What));
+
+        (handlers, unfollowed) = GodotChecks.SignalHandlers(scenes, "res://first.gd", "moved");
+        Assert.Equal(["on_moved", "on_moved"], handlers.Select(h => h.Name));
+        Assert.Empty(unfollowed);
+    }
 
     private static GodotClassFound Main => new("Main", "Main", new Place(2, 21), new Place(2, 25), "Node2D", ["res://Main.cs"], [], []);
 

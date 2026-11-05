@@ -1,5 +1,6 @@
 using Passenger.Roslyn.Extension;
 using Passenger.Workspace;
+using Passenger.Workspace.GDScript;
 
 namespace Passenger.App.Godot;
 
@@ -302,6 +303,41 @@ internal static class GodotChecks
     /// node of a C# script, or of another kind of script.</summary>
     public static GodotScriptChain? ChainOf(GodotScenes scenes, GodotTreeNode node) =>
         node.Script is null ? GodotScriptChain.Of(node.Type) : GodotScriptDeclarations.IsScript(node.Script) ? scenes.ChainOf(node.Script) : null;
+
+    /// <summary>The functions the scenes' connections of a GDScript's signal (of <paramref name="script"/>, a res:// path) call,
+    /// from nodes whose class takes in its script, by the script each runs and its name; and the connections a change of the
+    /// signal's parameters can't follow: one binding values, one to a node no GDScript runs, one whose handler a connection of
+    /// any other signal calls too, as another signal is another declaration, whatever it is called.</summary>
+    public static (IReadOnlyList<GDScriptHandler> Handlers, IReadOnlyList<GDScriptPlace> Unfollowed) SignalHandlers(GodotScenes scenes, string script, string signal)
+    {
+        List<GDScriptHandler> handlers = [];
+        List<GDScriptPlace> unfollowed = [];
+        List<Connected> all = [.. scenes.Files.Where(f => f.Value.Header?.Tag == "gd_scene").SelectMany(f => Connections(scenes, f.Key))];
+        bool OfIt(Connected connected) => connected.Connection.Signal == signal && connected.From is { } from && ChainOf(scenes, from)?.Runs(script) == true;
+        foreach (Connected connected in all.Where(OfIt))
+        {
+            int line = scenes.Files[connected.Scene].Text[..connected.Connection.Section.Start].Count(c => c == '\n') + 1;
+            GDScriptPlace at = new($"{Path.GetFileName(scenes.FileOf(connected.Scene) ?? connected.Scene)}:{line}", 0, 0, "a scene's connection names it");
+            string method = connected.Connection.Method;
+            if (connected.Connection.Bound > 0 || connected.Connection.Unbinds > 0)
+            {
+                unfollowed.Add(at with { What = "a scene's connection binds values to its handler" });
+            }
+            else if (connected.To?.Script is not { } handlerScript || !GodotScriptDeclarations.IsScript(handlerScript))
+            {
+                unfollowed.Add(at with { What = $"a scene's connection calls {method} on a node no GDScript runs" });
+            }
+            else if (all.Any(other => other.Connection.Method == method && other.To?.Script == handlerScript && !OfIt(other)))
+            {
+                unfollowed.Add(at with { What = $"its handler {method} is connected to another signal too" });
+            }
+            else
+            {
+                handlers.Add(new GDScriptHandler(handlerScript, method, at));
+            }
+        }
+        return (handlers, unfollowed);
+    }
 
     /// <summary>The names of a kind a node of GDScript, or of no script, has, where it lacks the one asked for: none of its
     /// scripts declares it and they are all its class has beside its engine class, which lacks it too, as the extension

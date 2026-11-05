@@ -227,8 +227,7 @@ internal sealed partial class CSharpAssist
     }
 
     /// <summary>The functions the scenes' connections of a GDScript's signal (of <paramref name="script"/>, a res:// path) call,
-    /// from nodes whose class takes in its script, by the script each runs and its name; and the connections a change of the signal's parameters can't
-    /// follow: one binding values, one to a node no GDScript runs, one whose handler another connection calls too.</summary>
+    /// and the connections a change of its parameters can't follow (<see cref="GodotChecks.SignalHandlers"/>).</summary>
     internal async Task<(IReadOnlyList<Passenger.Workspace.GDScript.GDScriptHandler> Handlers, IReadOnlyList<Passenger.Workspace.GDScript.GDScriptPlace> Unfollowed)> GodotSignalHandlersAsync(
         string path, string script, string signal)
     {
@@ -237,39 +236,7 @@ internal sealed partial class CSharpAssist
             return ([], []);
         }
         GodotScenes scenes = await index.ScenesAsync(folder);
-        return await BackgroundWork.Run(() =>
-        {
-            List<Passenger.Workspace.GDScript.GDScriptHandler> handlers = [];
-            List<Passenger.Workspace.GDScript.GDScriptPlace> unfollowed = [];
-            List<GodotChecks.Connected> all = [.. scenes.Files.Where(f => f.Value.Header?.Tag == "gd_scene").SelectMany(f => GodotChecks.Connections(scenes, f.Key))];
-            foreach (GodotChecks.Connected connected in all)
-            {
-                if (connected.Connection.Signal != signal || connected.From is null || GodotChecks.ChainOf(scenes, connected.From)?.Runs(script) != true)
-                {
-                    continue;
-                }
-                int line = scenes.Files[connected.Scene].Text[..connected.Connection.Section.Start].Count(c => c == '\n') + 1;
-                Passenger.Workspace.GDScript.GDScriptPlace at = new($"{Path.GetFileName(scenes.FileOf(connected.Scene) ?? connected.Scene)}:{line}", 0, 0, "a scene's connection names it");
-                string method = connected.Connection.Method;
-                if (connected.Connection.Bound > 0 || connected.Connection.Unbinds > 0)
-                {
-                    unfollowed.Add(at with { What = "a scene's connection binds values to its handler" });
-                }
-                else if (connected.To?.Script is not { } handlerScript || !GodotScriptDeclarations.IsScript(handlerScript))
-                {
-                    unfollowed.Add(at with { What = $"a scene's connection calls {method} on a node no GDScript runs" });
-                }
-                else if (all.Any(other => other.Connection.Method == method && other.To?.Script == handlerScript && other.Connection.Signal != signal))
-                {
-                    unfollowed.Add(at with { What = $"its handler {method} is connected to another signal too" });
-                }
-                else
-                {
-                    handlers.Add(new Passenger.Workspace.GDScript.GDScriptHandler(handlerScript, method, at));
-                }
-            }
-            return ((IReadOnlyList<Passenger.Workspace.GDScript.GDScriptHandler>)handlers, (IReadOnlyList<Passenger.Workspace.GDScript.GDScriptPlace>)unfollowed);
-        });
+        return await BackgroundWork.Run(() => GodotChecks.SignalHandlers(scenes, script, signal));
     }
 
     /// <summary>The edits a GDScript's member's uses beside its own language's take as it is renamed to <paramref name="name"/>
