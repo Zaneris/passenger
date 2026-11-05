@@ -115,6 +115,44 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
         }
     }
 
+    /// <summary>Run's import of a game whose editor plugin saves the project's settings leaves project.godot byte for byte as
+    /// it was: Godot's save is its own by the safe save's file the folder's watcher hears, a word that may come only after the
+    /// import has ended, and is put back before the game starts.</summary>
+    [AvaloniaFact]
+    public void Run_puts_back_the_project_settings_an_editor_plugin_saves_in_its_import()
+    {
+        string folder = PathNames.Canonical(game.Folder);
+        string settings = Path.Combine(folder, "project.godot");
+        string icon = Path.Combine(folder, "icon.svg");
+        string marker = Path.Combine(folder, ".godot", "saver_saved");
+        string original = File.ReadAllText(settings);
+        File.WriteAllText(settings, original + "\n[editor_plugins]\n\nenabled=PackedStringArray(\"res://addons/saver/plugin.cfg\")\n");
+        TestFolders.Write(folder, Path.Combine("addons", "saver", "plugin.cfg"), "[plugin]\n\nname=\"Saver\"\ndescription=\"Saves the settings.\"\nauthor=\"Tests\"\nversion=\"1.0\"\nscript=\"plugin.gd\"\n");
+        TestFolders.Write(folder, Path.Combine("addons", "saver", "plugin.gd"), "@tool\nextends EditorPlugin\n\n\nfunc _enter_tree() -> void:\n\tProjectSettings.save()\n"
+            + "\tFileAccess.open(\"res://.godot/saver_saved\", FileAccess.WRITE).store_string(\"saved\")\n");
+        File.WriteAllText(icon, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><rect width=\"16\" height=\"16\" fill=\"#478cbf\"/></svg>\n");
+        byte[] before = File.ReadAllBytes(settings);
+        MainWindow window = Open();
+        try
+        {
+            Choose(window);
+            Ui.Launched(window, window.RunAsync(), "the game's import and start", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => Run(window).Contains("tick 20", StringComparison.Ordinal), () => $"the game to say its word ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
+            Assert.True(File.Exists(marker), "The plugin never ran in Run's import, so nothing here saved project.godot");
+            Assert.True(File.ReadAllBytes(settings).AsSpan().SequenceEqual(before), $"project.godot as it was, not as Godot's import saved it:\n{File.ReadAllText(settings)}");
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+            File.WriteAllText(settings, original);
+            Directory.Delete(Path.Combine(folder, "addons"), recursive: true);
+            File.Delete(marker);
+            File.Delete(icon);
+            File.Delete(icon + ".import");
+        }
+    }
+
     /// <summary>Debug starts the game under its GDScript session alone, in one tab of the configuration's name: a breakpoint in
     /// _process stops it there, a local's Set Value is greyed saying Godot sets no local, and the script's word set from
     /// Variables is what the game says once it runs on.</summary>

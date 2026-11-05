@@ -337,13 +337,68 @@ public sealed class GDScriptTests
     }
 
     /// <summary>project.godot written in place by another program as the headless editor starts is the person's and is kept,
-    /// never put back as if the editor had written it: the editor's own saves replace the file, a write in place does not. On
-    /// Windows, which does not tell the two apart, the test skips.</summary>
+    /// never put back as if the editor had written it: no word of Godot's own safe save came with it.</summary>
     [AvaloniaFact]
     public void Project_settings_another_program_writes_as_the_headless_editor_starts_are_kept()
     {
-        Assert.SkipUnless(FileIdentity.Told, "Windows tells no file replaced from one written in place");
         string settings = Path.Combine(folder, "project.godot");
+        (MainWindow window, OpenDocument document) = HeadlessStarting();
+        // As the server starts: another program adds a setting of its own, in place.
+        File.AppendAllText(settings, "\n[passenger_test]\n\nkept=true\n");
+        Ui.WaitFor(() => window.Session.Web?.For(document)?.Lsp is not null && window.Session.Web.StateOf(document) is null,
+            () => $"Godot's server for {document.Name}: {window.Session.Web?.StateOf(document)} {document.Notice}", TimeSpan.FromSeconds(90));
+        Ui.Hold(TimeSpan.FromSeconds(12), "the headless editor's first seconds, whose writes over the project's files are put back, to pass");
+        Assert.True(File.ReadAllText(settings).Contains("kept=true", StringComparison.Ordinal),
+            $"The setting another program wrote in place as the headless editor started was put back over:\n{File.ReadAllText(settings)}");
+        window.Close();
+    }
+
+    /// <summary>project.godot replaced by another program alone, as an editor's atomic save writes a file and nothing comes
+    /// with it, is the person's and kept as the headless editor starts: a file replaced says nothing of who replaced it, and
+    /// no word of Godot's own safe save came with this one.</summary>
+    [AvaloniaFact]
+    public void Project_settings_another_programs_atomic_save_replaces_alone_as_the_headless_editor_starts_are_kept()
+    {
+        string settings = Path.Combine(folder, "project.godot");
+        string shown = Path.Combine(PathNames.Canonical(folder), "project.godot");
+        (MainWindow window, _) = HeadlessStarting();
+        // As the server starts: a new name for the game, written whole beside the file and moved over it.
+        SavedThrough(settings + ".saving", settings, File.ReadAllText(settings).Replace("config/name=\"Turns\"", "config/name=\"Renamed\"", StringComparison.Ordinal));
+        Ui.WaitFor(() => Ui.Shared(IdeLog.PathOf(IdeLog.Ide)).Contains($"GDScript: {shown} was written by another program than Passenger's headless editor, so it is kept as written", StringComparison.Ordinal),
+            () => $"the save another program made to be kept:\n{File.ReadAllText(settings)}", TimeSpan.FromSeconds(30));
+        Assert.True(File.ReadAllText(settings).Contains("config/name=\"Renamed\"", StringComparison.Ordinal),
+            $"An atomic save of project.godot by another program was put back over as if the headless editor had written it:\n{File.ReadAllText(settings)}");
+        window.Close();
+    }
+
+    /// <summary>project.godot saved through Godot's own safe save, its file of a dash and six letters or digits heard beside it,
+    /// is the headless editor's and put back, as another program's atomic save is not. The save is the test's own, so it is
+    /// there to put back whatever the Godot found writes.</summary>
+    [AvaloniaFact]
+    public void Project_settings_saved_through_Godots_safe_save_as_the_headless_editor_starts_are_put_back()
+    {
+        string settings = Path.Combine(folder, "project.godot");
+        string shown = Path.Combine(PathNames.Canonical(folder), "project.godot");
+        byte[] before = File.ReadAllBytes(settings);
+        (MainWindow window, _) = HeadlessStarting();
+        SavedThrough(settings + "-a1B2c3", settings, File.ReadAllText(settings) + "\n[dotnet]\n\nproject/assembly_name=\"Turns\"\n");
+        Ui.WaitFor(() => Ui.Shared(IdeLog.PathOf(IdeLog.Ide)).Contains($"GDScript: {shown}, which Godot's headless editor wrote over, is put back as it was", StringComparison.Ordinal),
+            () => $"Godot's safe save of project.godot to be put back:\n{File.ReadAllText(settings)}", TimeSpan.FromSeconds(30));
+        Assert.True(File.ReadAllBytes(settings).AsSpan().SequenceEqual(before), $"project.godot as it was, not as Godot's safe save left it:\n{File.ReadAllText(settings)}");
+        window.Close();
+    }
+
+    /// <summary>A file written whole under another name beside it, then moved over it, as a safe save writes one.</summary>
+    private static void SavedThrough(string temporary, string path, string text)
+    {
+        File.WriteAllText(temporary, text);
+        File.Move(temporary, path, overwrite: true);
+    }
+
+    /// <summary>A window on the project whose headless Godot editor has started and whose server has yet to answer, with the
+    /// script that asked for it.</summary>
+    private (MainWindow Window, OpenDocument Script) HeadlessStarting()
+    {
         MainWindow window = new()
         {
             Width = 1200,
@@ -359,14 +414,7 @@ public sealed class GDScriptTests
         OpenDocument document = window.EditorArea.Active!;
         Ui.PumpUntil(() => HeadlessEditorsOn(folder) > 0, "Passenger's headless Godot editor to start on the project", TimeSpan.FromSeconds(60));
         Assert.True(window.Session.Web?.For(document)?.Lsp is null, "Godot's server answered before the test could write as it starts");
-        // As the server starts: another program adds a setting of its own, in place.
-        File.AppendAllText(settings, "\n[passenger_test]\n\nkept=true\n");
-        Ui.WaitFor(() => window.Session.Web?.For(document)?.Lsp is not null && window.Session.Web.StateOf(document) is null,
-            () => $"Godot's server for {document.Name}: {window.Session.Web?.StateOf(document)} {document.Notice}", TimeSpan.FromSeconds(90));
-        Ui.Hold(TimeSpan.FromSeconds(12), "the headless editor's first seconds, whose writes over the project's files are put back, to pass");
-        Assert.True(File.ReadAllText(settings).Contains("kept=true", StringComparison.Ordinal),
-            $"The setting another program wrote in place as the headless editor started was put back over:\n{File.ReadAllText(settings)}");
-        window.Close();
+        return (window, document);
     }
 
     /// <summary>A file the person's own Godot editor makes as it opens the project while Passenger's headless editor does its

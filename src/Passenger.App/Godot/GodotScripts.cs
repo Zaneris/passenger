@@ -203,7 +203,11 @@ public static class GodotScripts
         }
         finally
         {
-            await BackgroundWork.Run(() => before.PutBack([], final: true));
+            await BackgroundWork.Run(async () =>
+            {
+                await before.HeardAsync();
+                before.PutBack([], final: true);
+            });
         }
     }
 
@@ -380,7 +384,8 @@ public static class GodotScripts
     /// <summary>The files of <see cref="Kept"/> as they were before a headless editor ran (null for one not there), with
     /// their times, and the files it would make that were not there. A change is the editor's to put back only where
     /// nothing says it is another's: a save of Passenger's (the person's own from then on), a write in place, the person's
-    /// own Godot editor running, Passenger's Git writing the work tree, or other files coming with it, as one operation.</summary>
+    /// own Godot editor running, Passenger's Git writing the work tree, other files coming with it, as one operation, or
+    /// for project.godot, which the folder's watcher hears, no word of Godot's own safe save of it.</summary>
     private sealed class Before : IDisposable
     {
         /// <summary>How long a change found waits before it is put back, for the folder's watcher to say what came with it.</summary>
@@ -408,6 +413,9 @@ public static class GodotScripts
 
         /// <summary>The changes found and not yet put back (a kept file's name, a made file's path), with when each was first found.</summary>
         private readonly Dictionary<string, long> pending = new(StringComparer.Ordinal);
+
+        /// <summary>project.godot as it stood when Godot's own safe save of it was last heard; null for none heard.</summary>
+        private (ulong? Identity, DateTime Written)? safeSaved;
 
         /// <summary>Held over each file's put back and each save or batch heard, so a save that begins as a file is put back lands after it.</summary>
         private readonly Lock gate = new();
@@ -545,18 +553,19 @@ public static class GodotScripts
 
         /// <summary>A batch the folder's watcher handed over: a kept file's change or a made file that came with another existing
         /// file of the project's, as a checkout brings them, is that operation's, never put back or taken away. Not counted:
-        /// Godot's writes (its cache, what it makes beside files, its safe save's <c>name-XXXXXX</c> of a file there), a file gone (a temporary
-        /// one renamed away), Git's folder, a folder, Passenger's saves. A batch whose changes the watcher lost leaves the kept
-        /// files' changes waiting the other's, never what Godot made.</summary>
+        /// Godot's writes (its cache, what it makes beside files, its safe save's <c>name-XXXXXX</c> of a file there, noted for
+        /// project.godot), a file gone (a temporary one renamed away), Git's folder, a folder, Passenger's saves. A batch whose
+        /// changes the watcher lost leaves the kept files' changes waiting the other's, never what Godot made.</summary>
         public void Heard(Workspace.FolderChanges changes)
         {
             long now = Stopwatch.GetTimestamp();
             List<string> theirs = [];
             string? another = null;
+            string settings = Path.Combine(Project, GodotProject.FileName);
             lock (gate)
             {
                 // A project gone, deleted whole, is let go of by the next look, which says so.
-                if (disposed || !File.Exists(Path.Combine(Project, GodotProject.FileName)))
+                if (disposed || !File.Exists(settings))
                 {
                     return;
                 }
@@ -565,6 +574,10 @@ public static class GodotScripts
                     if (!PathNames.IsUnder(path, Project))
                     {
                         continue;
+                    }
+                    if (GodotSafeSave.Saves(path, settings))
+                    {
+                        safeSaved = Stamp(settings);
                     }
                     string relative = Path.GetRelativePath(Project, path);
                     if (Kept.FirstOrDefault(k => PathNames.Same(relative, k)) is { } name)
@@ -603,9 +616,8 @@ public static class GodotScripts
                 }
             }
 
-            // Whether a path is Godot's safe save's file: a file's own, there or in the batch, a dash and mkstemp's six letters or digits.
-            static bool SafeSaved(string path, IReadOnlySet<string> batch) =>
-                Path.GetFileName(path).Length > 7 && path[^7] == '-' && path[^6..].All(char.IsAsciiLetterOrDigit) && (batch.Contains(path[..^7]) || File.Exists(path[..^7]));
+            // Whether a path is Godot's safe save's file: named after a file there or in the batch.
+            static bool SafeSaved(string path, IReadOnlySet<string> batch) => GodotSafeSave.FileOf(path) is { } file && (batch.Contains(file) || File.Exists(file));
 
             // Whether a path of the project's is a folder or lies in it.
             static bool Within(string relative, string folder) =>
@@ -755,11 +767,39 @@ public static class GodotScripts
             return Stopwatch.GetElapsedTime(first, now) < Settle;
         }
 
-        /// <summary>Whether a file changed since it was looked at was another program's change: one written in place, which
-        /// Godot's safe save, replacing it, never makes, or any, made, written over or deleted, while the person's own Godot
-        /// editor runs on the project (<paramref name="persons"/>).</summary>
+        /// <summary>Whether a file changed since it was looked at was another program's change: project.godot not as Godot's
+        /// safe save was heard to leave it, as replacing a file says nothing of who did; one written in place, which that save
+        /// never makes; or any, made, written over or deleted, while the person's own Godot editor runs on the project
+        /// (<paramref name="persons"/>).</summary>
         private bool ByAnother(string name, string path, Lazy<int?> persons) =>
-            FileIdentity.Told && identities.GetValueOrDefault(name) is { } was && FileIdentity.Of(path) == was || persons.Value is not null;
+            name == GodotProject.FileName && Stamp(path) != safeSaved
+            || FileIdentity.Told && identities.GetValueOrDefault(name) is { } was && FileIdentity.Of(path) == was || persons.Value is not null;
+
+        /// <summary>What tells a file as it stands from itself as it stood, without reading it.</summary>
+        private static (ulong? Identity, DateTime Written) Stamp(string path) => (FileIdentity.Of(path), File.GetLastWriteTimeUtc(path));
+
+        /// <summary>Waits as a change found does (<see cref="Settle"/>, at most) for the folder's watcher to say Godot saved
+        /// project.godot, where it changed with no such word yet: a run's last save is heard a moment after the run ends.</summary>
+        public async Task HeardAsync()
+        {
+            long began = Stopwatch.GetTimestamp();
+            while (Unsaid() && Stopwatch.GetElapsedTime(began) < Settle)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(100));
+            }
+        }
+
+        /// <summary>Whether project.godot stands changed with no word of a safe save that left it so, and is not another's yet.</summary>
+        private bool Unsaid()
+        {
+            string name = GodotProject.FileName;
+            lock (gate)
+            {
+                (ulong? Identity, DateTime Written) now = Stamp(Path.Combine(Project, name));
+                return files.TryGetValue(name, out (byte[]? Bytes, DateTime Written) was) && !saved.Contains(name) && !others.Contains(name)
+                    && now != (identities.GetValueOrDefault(name), was.Written) && now != safeSaved;
+            }
+        }
 
         /// <summary>The person's own Godot editor on the project as one look finds it, the processes scanned only once that
         /// look has a change to decide, and only once.</summary>
