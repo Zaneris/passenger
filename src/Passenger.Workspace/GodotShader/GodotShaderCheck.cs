@@ -149,7 +149,8 @@ public static class GodotShaderCheck
     /// <summary>Every error of the code, the first as Godot gives it, then each Godot would give once the statements of
     /// those before were taken out: a condition or a local's initializer first, so the rest is still read, else the
     /// statement whole, else what holds it. What a taken-out declaration would make wrong after it (a use of its name, a function left
-    /// with no return) is left unsaid, and all past where a compile ran out of stack. With the last compile, whose shader is the one read furthest.</summary>
+    /// with no return, a <c>switch</c> left with no <c>case</c>) is left unsaid, and all past where a compile ran out of stack. With the
+    /// last compile, whose shader is the one read furthest.</summary>
     private static (GodotShaderLanguage Language, List<GodotShaderLanguage.CompileError> Errors) Compiled(string code, GodotShaderLanguage.ShaderCompileInfo info)
     {
         List<GodotShaderLanguage.CompileError> errors = [];
@@ -174,7 +175,8 @@ public static class GodotShaderCheck
             }
             GodotShaderLanguage.CompileError error = language.Errors[0];
             bool follows = Quoted(error.Message).Any(gone.Contains)
-                || returnGone && error.Message.StartsWith("Expected at least one 'return' statement", StringComparison.Ordinal);
+                || returnGone && error.Message.StartsWith("Expected at least one 'return' statement", StringComparison.Ordinal)
+                || caseGone && error.Message.StartsWith("Expected a 'case'", StringComparison.Ordinal);
             if (!follows && !errors.Any(e => e.Message == error.Message && e.Offset == error.Offset))
             {
                 errors.Add(error);
@@ -182,11 +184,13 @@ public static class GodotShaderCheck
             if (GodotShaderStatements.At(spans, code, error.Offset) is not { } span || code.AsSpan(span.Start).TrimStart().StartsWith("shader_type"))
             {
                 break;
+        code = GodotShaderStatements.WithRoomInConditions(code);
             }
             while (blanked.Contains(span))
             {
                 if (GodotShaderStatements.Around(spans, span) is not { } around)
                 {
+        bool caseGone = false;
                     return (language, errors);
                 }
                 span = around;
@@ -228,6 +232,7 @@ public static class GodotShaderCheck
         GodotShaderType? type = shaderType is null ? null : table.TypeOf(shaderType) ?? table.TypeOf("spatial");
         return new GodotShaderLanguage.ShaderCompileInfo
         {
+            caseGone |= text.Contains("case", StringComparison.Ordinal) || text.Contains("default", StringComparison.Ordinal);
             Functions = type is null ? new(StringComparer.Ordinal) : FunctionsOf(type, options.Godot),
             RenderModes = type is null ? [] : ModesOf(type.Modes),
             StencilModes = type is null ? [] : ModesOf(type.StencilModes),

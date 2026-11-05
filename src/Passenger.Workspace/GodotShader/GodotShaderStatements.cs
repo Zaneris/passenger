@@ -1,14 +1,52 @@
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Passenger.Workspace.GodotShader;
 
 /// <summary>The statements and declarations of the code Godot's compiler is given, found by brackets and semicolons
 /// alone, so a compile that stopped at an error can go on past the statement it was in: each a span of the code
-/// (a compound one, an <c>if</c> with its <c>else</c> or a function, whole, beside the ones in its braces), never
-/// across an include's marker line. Pure.</summary>
+/// (a compound one, an <c>if</c> with its <c>else</c> or a function, whole, beside the ones in its braces; a <c>case</c>'s
+/// label apart from what it holds), never across an include's marker line. Pure.</summary>
 internal static partial class GodotShaderStatements
 {
     internal readonly record struct Span(int Start, int End);
+
+    /// <summary>The characters of a condition's last line <see cref="WithoutCondition"/> writes in, the longest word it leaves.</summary>
+    private const int ConditionRoom = 4;
+
+    /// <summary>The code with room for <see cref="WithoutCondition"/> in every condition: spaces before its ')' where its last
+    /// line is too short, which Godot's compiler reads past, so a change of a condition after it moves no offset of this
+    /// code's and no line of any.</summary>
+    public static string WithRoomInConditions(string code)
+    {
+        StringBuilder roomy = new(code.Length);
+        Stack<int> opens = new();
+        int copied = 0;
+        for (int i = 0; i < code.Length; i++)
+        {
+            char c = code[i];
+            if (IsMarkerLine(code, i))
+            {
+                int next = code.IndexOf('\n', i);
+                i = next < 0 ? code.Length : next;
+            }
+            else if (c == '"')
+            {
+                int close = code.IndexOf('"', i + 1);
+                i = close < 0 ? code.Length : close;
+            }
+            else if (c == '(')
+            {
+                opens.Push(i);
+            }
+            else if (c == ')' && opens.TryPop(out int open) && ConditionWord(code, 0, open) is not null && LastLineRoom(code, open, i) is var room and < ConditionRoom)
+            {
+                roomy.Append(code, copied, i - copied).Append(' ', ConditionRoom - room);
+                copied = i;
+            }
+        }
+        return roomy.Append(code, copied, code.Length - copied).ToString();
+    }
 
     /// <summary>Every statement's span, in the order each ends.</summary>
     public static List<Span> Of(string code)
@@ -20,7 +58,7 @@ internal static partial class GodotShaderStatements
         for (int i = 0; i < code.Length; i++)
         {
             char c = code[i];
-            if ((i == 0 || code[i - 1] == '\n') && (code.AsSpan(i).StartsWith("@@>") || code.AsSpan(i).StartsWith("@@<")))
+            if (IsMarkerLine(code, i))
             {
                 Close(i);
                 int next = code.IndexOf('\n', i);
@@ -48,6 +86,7 @@ internal static partial class GodotShaderStatements
                     parens = Math.Max(0, parens - 1);
                     break;
                 case ';' when parens == 0:
+                case ':' when parens == 0 && (StartsWord(code, start, "case") || StartsWord(code, start, "default")):
                     spans.Add(new Span(start, i + 1));
                     start = -1;
                     break;
@@ -150,23 +189,14 @@ internal static partial class GodotShaderStatements
     }
 
     /// <summary>The code with the condition of the <c>if</c>, <c>while</c> or <c>switch</c> holding an offset made one that
-    /// reads (<c>true</c>, a switch's <c>0</c>), so what the statement holds is still read; null where no condition holds it.</summary>
+    /// reads (<c>true</c>, a switch's <c>0</c>), written at the end of its last line, so what the statement holds is still
+    /// read and every other character keeps its place; null where no condition holds it, or none has its room
+    /// (<see cref="WithRoomInConditions"/>).</summary>
     public static string? WithoutCondition(string code, Span span, int offset)
     {
         for (int open = Opening(code, span.Start, offset); open > span.Start; open = Opening(code, span.Start, open))
         {
-            int word = open;
-            while (word > span.Start && char.IsWhiteSpace(code[word - 1]))
-            {
-                word--;
-            }
-            int begin = word;
-            while (begin > span.Start && IsWordChar(code[begin - 1]))
-            {
-                begin--;
-            }
-            string keyword = code[begin..word];
-            if (keyword is not ("if" or "while" or "switch"))
+            if (ConditionWord(code, span.Start, open) is not { } keyword)
             {
                 continue;
             }
@@ -176,12 +206,40 @@ internal static partial class GodotShaderStatements
                 return null;
             }
             string kept = keyword == "switch" ? "0" : "true";
-            Span inside = new(open + 1, close);
-            string blank = Blanked(code, inside);
-            return string.Concat(blank.AsSpan(0, open + 1), kept, blank.AsSpan(open + 1 + kept.Length));
+            if (LastLineRoom(code, open, close) < kept.Length)
+            {
+                return null;
+            }
+            string blank = Blanked(code, new Span(open + 1, close));
+            return string.Concat(blank.AsSpan(0, close - kept.Length), kept, blank.AsSpan(close));
         }
         return null;
     }
+
+    /// <summary>The word of the <c>if</c>, <c>while</c> or <c>switch</c> whose condition a '(' opens, back to a start; null
+    /// for any other bracket.</summary>
+    private static string? ConditionWord(string code, int start, int open)
+    {
+        int end = open;
+        while (end > start && char.IsWhiteSpace(code[end - 1]))
+        {
+            end--;
+        }
+        int begin = end;
+        while (begin > start && IsWordChar(code[begin - 1]))
+        {
+            begin--;
+        }
+        string word = code[begin..end];
+        return word is "if" or "while" or "switch" ? word : null;
+    }
+
+    /// <summary>The characters between brackets on the line of their ')'.</summary>
+    private static int LastLineRoom(string code, int open, int close) => close - Math.Max(open, code.LastIndexOf('\n', close - 1, close - open - 1)) - 1;
+
+    /// <summary>Whether an include's marker line starts at an offset.</summary>
+    private static bool IsMarkerLine(string code, int at) =>
+        (at == 0 || code[at - 1] == '\n') && (code.AsSpan(at).StartsWith("@@>") || code.AsSpan(at).StartsWith("@@<"));
 
     /// <summary>The unmatched '(' before an offset, back to a start; -1 for none.</summary>
     private static int Opening(string code, int start, int offset)
@@ -257,13 +315,12 @@ internal static partial class GodotShaderStatements
         {
             return true;
         }
-        ReadOnlySpan<char> rest = code.AsSpan(at);
-        if (rest.StartsWith("else") && (rest.Length == 4 || !IsWordChar(rest[4])))
-        {
-            return true;
-        }
-        return rest.StartsWith("while") && code.AsSpan(owner).StartsWith("do") && (owner + 2 >= code.Length || !IsWordChar(code[owner + 2]));
+        return StartsWord(code, at, "else") || code.AsSpan(at).StartsWith("while") && StartsWord(code, owner, "do");
     }
+
+    /// <summary>Whether a word stands at an offset, whole.</summary>
+    private static bool StartsWord(string code, int at, string word) =>
+        code.AsSpan(at).StartsWith(word) && (at + word.Length >= code.Length || !IsWordChar(code[at + word.Length]));
 
     private static bool IsWordChar(char c) => char.IsAsciiLetterOrDigit(c) || c == '_';
 

@@ -343,6 +343,64 @@ public class GodotShaderLanguageTests
         Assert.DoesNotContain(Check($"shader_type spatial;\n\n{start}{nested}{end}\n").Messages, m => m.Error);
     }
 
+    /// <summary>A condition taken out reads as <c>true</c> or <c>0</c> however little was written between its brackets, so
+    /// nothing after it is overwritten and what it holds is read on as Godot would read it.</summary>
+    [Theory]
+    [InlineData("if (x) {\n\t\tfloat a = y;\n\t}")]
+    [InlineData("if(x){\n\t\tfloat a = y;\n\t}")]
+    [InlineData("if (x)\n\t\tfloat a = y;\n\t;")]
+    [InlineData("while (x) {\n\t\tfloat a = y;\n\t}")]
+    [InlineData("if (x) {\n\t\tfloat a = y;\n\t} else {\n\t\tfloat b = 1.0;\n\t}")]
+    public void A_short_condition_in_error_is_said_alone_and_what_it_holds_is_read_on(string statement)
+    {
+        GodotShaderChecked result = Check($"shader_type spatial;\n\nvoid fragment() {{\n\t{statement}\n}}\n", new GodotShaderCheckOptions { Warnings = null });
+        Assert.Equal([(4, "Unknown identifier in expression: 'x'."), (5, "Unknown identifier in expression: 'y'.")], result.Messages.Select(m => (m.Line, m.Text)));
+    }
+
+    [Fact]
+    public void A_switch_s_short_condition_in_error_is_said_alone_and_its_cases_are_read_on()
+    {
+        GodotShaderChecked result = Check("shader_type spatial;\n\nvoid fragment() {\n\tswitch (x) {\n\t\tcase 0:\n\t\t\tfloat a = y;\n\t\t\tbreak;\n\t}\n}\n",
+            new GodotShaderCheckOptions { Warnings = null });
+        Assert.Equal([(4, "Unknown identifier in expression: 'x'."), (6, "Unknown identifier in expression: 'y'.")], result.Messages.Select(m => (m.Line, m.Text)));
+    }
+
+    /// <summary>A condition across lines keeps them: every line after it is still the line Godot's words name.</summary>
+    [Theory]
+    [InlineData("if (x\n\t\t&& z) {\n\t}")]
+    [InlineData("if (\n\t\tx\n\t) {\n\t}")]
+    [InlineData("if (x\n\n\n) {\n\t}")]
+    public void A_condition_across_lines_in_error_leaves_later_lines_where_they_are(string statement)
+    {
+        string code = $"shader_type spatial;\n\nvoid fragment() {{\n\t{statement}\n\tfloat a = y;\n}}\n";
+        GodotShaderMessage last = Check(code, new GodotShaderCheckOptions { Warnings = null }).Messages[^1];
+        Assert.Equal((code.Split('\n').ToList().FindIndex(l => l.Contains("= y", StringComparison.Ordinal)) + 1, "Unknown identifier in expression: 'y'."), (last.Line, last.Text));
+    }
+
+    /// <summary>A string's text and an include's path are what they are, whatever they look like.</summary>
+    [Fact]
+    public void Room_for_a_condition_is_made_in_conditions_alone()
+    {
+        const string code = "@@>res://if(1).gdshaderinc\nuniform int a : hint_enum(\"if(x)\");\n@@<res://if(1).gdshaderinc\nvoid f() {\n\tif(x) {}\n\tnotif(x);\n\tif (long_enough) {}\n}\n";
+        Assert.Equal(code.Replace("\tif(x)", "\tif(x   )", StringComparison.Ordinal), GodotShaderStatements.WithRoomInConditions(code));
+    }
+
+    /// <summary>Text being typed ends anywhere, a condition's end or brackets with nothing in them among those.</summary>
+    [Theory]
+    [InlineData("if(x)")]
+    [InlineData("if (x)")]
+    [InlineData("if ()")]
+    [InlineData("if(")]
+    [InlineData("while(x)")]
+    [InlineData("while ()")]
+    [InlineData("switch(x)")]
+    [InlineData("switch ()")]
+    [InlineData("do {} while(x)")]
+    public void A_shader_ending_at_a_condition_is_checked_with_its_errors_said(string end)
+    {
+        Assert.Contains(Check($"shader_type spatial;\n\nvoid fragment() {{\n\t{end}").Messages, m => m.Error);
+    }
+
     private static GodotShaderChecked Check(string code, GodotShaderCheckOptions options) =>
         GodotShaderCheck.Check(new GodotShaderUnit("res://shader.gdshader", code, new Dictionary<string, string>(), []), GodotShaderTable.Carried, options);
 
