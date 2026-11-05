@@ -79,7 +79,7 @@ public sealed class SolutionViewTests : IDisposable
         Ui.ClickRow(window, Show(window, catalog));
         Ui.Run(window, EditorActions.Paste);
         string moved = Path.Combine(catalog, "Order.cs");
-        Assert.Equal("Moved Order.cs to Catalog", window.Status);
+        Assert.True(window.Status == "Moved Order.cs to Catalog", $"The status bar says, whole: {window.Status}");
         Assert.False(File.Exists(order), "The file cut and pasted is still where it was");
         Assert.Equal(Order.Replace("Total;", "Total; // the sum", StringComparison.Ordinal), File.ReadAllText(moved));
         Assert.True(ReferenceEquals(document, Assert.Single(window.EditorArea.Documents)), "The moved file's tab was closed and opened again, losing its undo");
@@ -164,7 +164,7 @@ public sealed class SolutionViewTests : IDisposable
         Ui.ClickRow(window, Row(window, NodeKind.Project, "Shop.Core"));
         Ui.Run(window, EditorActions.Paste);
         string copy = Path.Combine(folder, "Shop.Core", "Models");
-        Assert.Equal("Copied Models to Shop.Core", window.Status);
+        Assert.True(window.Status == "Copied Models to Shop.Core", $"The status bar says, whole: {window.Status}");
         Assert.Equal(Order, File.ReadAllText(Path.Combine(copy, "Order.cs")));
         Assert.True(File.Exists(Path.Combine(copy, "Lines", "Line.cs")), "The folder inside the folder copied was left behind");
         Assert.Equal(Order, File.ReadAllText(Path.Combine(models, "Order.cs")));
@@ -211,7 +211,7 @@ public sealed class SolutionViewTests : IDisposable
         Ui.Settle();
         Assert.False(overlay.IsVisible, "The drop place stayed lit after the drop");
         string moved = Path.Combine(catalog, "Order.cs");
-        Assert.Equal("Moved Order.cs to Catalog", window.Status);
+        Assert.True(window.Status == "Moved Order.cs to Catalog", $"The status bar says, whole: {window.Status}");
         Assert.False(File.Exists(order), "The file dragged away is still where it was");
         Assert.Equal(Order, File.ReadAllText(moved));
         Assert.Equal(moved, Assert.Single(window.EditorArea.Documents).Path);

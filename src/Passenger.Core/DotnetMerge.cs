@@ -39,16 +39,20 @@ internal sealed class DotnetMerge(string version, Action<string> stage, TimeSpan
                 placed.Add(target);
                 await WhileHeldAsync(folder ? () => Land(entry, target) : () => File.Move(entry, target), entry, cancel).ConfigureAwait(false);
             }
-            else if (folder && Directory.Exists(target))
+            else if (folder && IsFolder(target))
             {
                 await IntoAsync(entry, target, cancel).ConfigureAwait(false);
             }
-            else if (folder || Directory.Exists(target))
+            else if (folder || IsFolder(target))
             {
                 throw new DotnetInstallFailed($"The .NET SDK {version} was not installed: {PathNames.Shown(target, null)} is {(folder ? "no folder, where the SDK has one" : "a folder, where the SDK has a file")}");
             }
         }
     }
+
+    /// <summary>Whether a folder stands at a path, through a link too: Windows calls a link to nothing a folder.</summary>
+    private static bool IsFolder(string path) =>
+        Directory.Exists(path) && new DirectoryInfo(path).ResolveLinkTarget(returnFinalTarget: true) is not { Exists: false };
 
     /// <summary>A folder renamed to where it goes, else, on another volume, carried (<see cref="Carried"/>).</summary>
     private void Land(string folder, string target)
@@ -98,7 +102,7 @@ internal sealed class DotnetMerge(string version, Action<string> stage, TimeSpan
         {
             Directory.Delete(path, recursive: true);
         }
-        else
+        else if (IsFolder(Path.GetDirectoryName(path)!))
         {
             File.Delete(path);
         }

@@ -113,7 +113,7 @@ public sealed class GodotGamesTests : IDisposable
         string problem = Assert.IsType<string>(Evaluated(written.Replace("{root}", root, StringComparison.Ordinal), $"{root}/", $"{root}/.godot/mono/temp/bin/Debug/Game.dll").GodotLayoutProblem);
 
         Assert.Contains($"Godot's source generators name its scripts from {root}/", problem, StringComparison.Ordinal);
-        Assert.Contains($"its build goes to {root}/.godot/mono/temp/bin/Debug", problem, StringComparison.Ordinal);
+        Assert.Contains($"its build goes to {Path.GetDirectoryName($"{root}/.godot/mono/temp/bin/Debug/Game.dll")}", problem, StringComparison.Ordinal);
         Assert.Contains("Set GodotProjectDir to a full path in a PropertyGroup before <Import Project=\"Sdk.props\"", problem, StringComparison.Ordinal);
     }
 
