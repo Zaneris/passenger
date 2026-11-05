@@ -151,13 +151,15 @@
     <AssemblyMetadata Include="TargetFramework" Value="$(TargetFramework)" />
   </ItemGroup>
   <!-- This machine's .NET runtime pack at the SDK's own version, for the self-contained app PublishTests publish for this
-       system at the tests' own target, ASP.NET Core's, which a restore for a runtime takes beside it whether or not the app
-       references ASP.NET Core, and the trimmer's tasks, which a single file's publish takes: its restore finds them in the
-       package cache, never reaching nuget.org. -->
+       system at the tests' own target, ASP.NET Core's and on Windows WindowsDesktop's, which a restore for a runtime takes
+       beside it whether or not the app references either, and the trimmer's tasks, which a single file's publish takes: its
+       restore finds them in the package cache, never reaching nuget.org. -->
   <ItemGroup>
     <PackageDownload Include="Microsoft.NETCore.App.Runtime.$(NETCoreSdkRuntimeIdentifier)" Version="[$(BundledNETCoreAppPackageVersion)]" />
     <PackageDownload Include="Microsoft.AspNetCore.App.Runtime.$(NETCoreSdkRuntimeIdentifier)"
                      Version="[@(KnownFrameworkReference->WithMetadataValue('Identity', 'Microsoft.AspNetCore.App')->WithMetadataValue('TargetFramework', '$(BundledNETCoreAppTargetFramework)')->'%(LatestRuntimeFrameworkVersion)')]" />
+    <PackageDownload Include="Microsoft.WindowsDesktop.App.Runtime.$(NETCoreSdkRuntimeIdentifier)" Condition="$([MSBuild]::IsOSPlatform('Windows'))"
+                     Version="[@(KnownFrameworkReference->WithMetadataValue('Identity', 'Microsoft.WindowsDesktop.App')->WithMetadataValue('TargetFramework', '$(BundledNETCoreAppTargetFramework)')->'%(LatestRuntimeFrameworkVersion)')]" />
     <PackageDownload Include="Microsoft.NET.ILLink.Tasks"
                      Version="[@(KnownILLinkPack->WithMetadataValue('TargetFramework', '$(BundledNETCoreAppTargetFramework)')->'%(ILLinkPackVersion)')]" />
   </ItemGroup>
