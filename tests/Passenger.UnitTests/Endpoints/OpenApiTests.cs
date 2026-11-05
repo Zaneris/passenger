@@ -278,6 +278,47 @@ public sealed class OpenApiTests
         Assert.Empty(Checked("""{ "anyOf": [ { "type": "integer" }, { "type": "number" } ] }""", "3"));
     }
 
+    /// <summary>A required member marked write-only is a request's alone, so a response is not asked for it, wherever its
+    /// schema marks it: on the member, through its reference, beside it, in an allOf, or in another part of an allOf than the
+    /// one requiring it. A read-only member stays required, a write-only one that comes is still held to its type, and the
+    /// same name in an object beneath keeps its own schema's word.</summary>
+    [Fact]
+    public void A_required_write_only_member_is_not_asked_of_a_response_wherever_its_schema_marks_it()
+    {
+        OpenApiDocument given = OpenApiDocument.Parse("""
+            { "openapi": "3.1.1", "paths": {}, "components": { "schemas": {
+              "Text": { "type": "string" },
+              "Secret": { "type": "string", "writeOnly": true },
+              "Account": { "type": "object", "required": [ "id", "password" ], "properties": {
+                "id": { "type": "integer", "readOnly": true }, "password": { "type": "string", "writeOnly": true } } },
+              "ByReference": { "type": "object", "required": [ "password" ], "properties": { "password": { "$ref": "#/components/schemas/Secret" } } },
+              "BesideReference": { "type": "object", "required": [ "password" ], "properties": { "password": { "$ref": "#/components/schemas/Text", "writeOnly": true } } },
+              "InAllOf": { "type": "object", "required": [ "password" ], "properties": { "password": { "allOf": [ { "$ref": "#/components/schemas/Text" }, { "writeOnly": true } ] } } },
+              "Base": { "type": "object", "properties": { "password": { "type": "string", "writeOnly": true } } },
+              "Derived": { "allOf": [ { "$ref": "#/components/schemas/Base" }, { "required": [ "password" ] } ] },
+              "RequiredOver": { "required": [ "password" ], "allOf": [ { "$ref": "#/components/schemas/Base" } ] },
+              "Holder": { "type": "object", "required": [ "password", "inner" ], "properties": { "password": { "type": "string", "writeOnly": true },
+                "inner": { "type": "object", "required": [ "password" ], "properties": { "password": { "type": "string" } } } } },
+              "Loop": { "required": [ "name" ], "allOf": [ { "$ref": "#/components/schemas/Loop" }, { "$ref": "#/components/schemas/Loop" } ] } } } }
+            """)!;
+        IReadOnlyList<SchemaBreak> Checked(string schema, string json)
+        {
+            using JsonDocument held = JsonDocument.Parse($$"""{ "$ref": "#/components/schemas/{{schema}}" }""");
+            using JsonDocument value = JsonDocument.Parse(json);
+            return OpenApiSchemas.Check(given, held.RootElement, value.RootElement);
+        }
+        Assert.Empty(Checked("Account", """{ "id": 1 }"""));
+        Assert.Equal([new SchemaBreak("/id", "is missing, though its schema requires it")], Checked("Account", "{}"));
+        Assert.Equal([new SchemaBreak("/password", "a string was expected, not the number 5")], Checked("Account", """{ "id": 1, "password": 5 }"""));
+        Assert.Empty(Checked("ByReference", "{}"));
+        Assert.Empty(Checked("BesideReference", "{}"));
+        Assert.Empty(Checked("InAllOf", "{}"));
+        Assert.Empty(Checked("Derived", "{}"));
+        Assert.Empty(Checked("RequiredOver", "{}"));
+        Assert.Equal([new SchemaBreak("/inner/password", "is missing, though its schema requires it")], Checked("Holder", """{ "inner": {} }"""));
+        Assert.Equal([new SchemaBreak("/name", "is missing, though its schema requires it")], Checked("Loop", "{}"));
+    }
+
     /// <summary>A schema whose choice's options both refer back to it (a tree's node) is checked against a body 40 levels deep
     /// to its last member, each option of each level judged once: a body twice as deep costs about twice as much to check,
     /// where judging each option's subtree anew doubles the cost with every level.</summary>

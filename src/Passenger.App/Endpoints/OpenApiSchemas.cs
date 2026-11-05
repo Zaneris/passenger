@@ -15,11 +15,12 @@ public sealed record SchemaBreak(string At, string Said)
     public override string ToString() => $"at {At}: {Said}";
 }
 
-/// <summary>An OpenAPI document's schemas put to use: a value held to one, each place it breaks it said
+/// <summary>An OpenAPI document's schemas put to use: a response's value held to one, each place it breaks it said
 /// (<see cref="Check"/>), and a value made from one for a request's body (<see cref="Sample"/>). The parts read are those a
-/// response's or a request's body is checked by: types (with 3.0's <c>nullable</c> and 3.1's lists), <c>enum</c>, a string's
-/// <c>pattern</c>, an object's <c>required</c>, <c>properties</c> and <c>additionalProperties</c>, an array's <c>items</c>, and
-/// <c>allOf</c>, <c>anyOf</c> and <c>oneOf</c>; the rest (lengths, bounds, formats) is not checked.</summary>
+/// response's body is checked by: types (with 3.0's <c>nullable</c> and 3.1's lists), <c>enum</c>, a string's <c>pattern</c>,
+/// an object's <c>required</c>, which a <c>writeOnly</c> member keeps to requests, <c>properties</c> and
+/// <c>additionalProperties</c>, an array's <c>items</c>, and <c>allOf</c>, <c>anyOf</c> and <c>oneOf</c>; the rest (lengths,
+/// bounds, formats) is not checked.</summary>
 public static class OpenApiSchemas
 {
     /// <summary>How deep into a value a check goes.</summary>
@@ -28,17 +29,18 @@ public static class OpenApiSchemas
     /// <summary>How many breaks a check says at most.</summary>
     private const int Most = 50;
 
-    /// <summary>The places a value breaks its schema, in the order met; none where it keeps to it.</summary>
+    /// <summary>The places a response's value breaks its schema, in the order met; none where it keeps to it.</summary>
     public static IReadOnlyList<SchemaBreak> Check(OpenApiDocument document, JsonElement schema, JsonElement value)
     {
         Checking checking = new(document, value);
-        checking.Walk(schema, string.Empty, value, string.Empty, 0);
+        checking.Walk(schema, string.Empty, value, string.Empty, 0, schema);
         return checking.Breaks;
     }
 
     /// <summary>One check of a value, each pair of a schema and a value beneath it judged once: a schema by where it lies (the
     /// <c>$ref</c> it was found by, else its path beneath the schema checked), a value by where it starts in the value
-    /// checked. <see cref="Walk"/> says each break; <see cref="Fits"/> asks only whether a choice's option holds.</summary>
+    /// checked. <see cref="Walk"/> says each break; <see cref="Fits"/> asks only whether a choice's option holds. Each is given
+    /// the schema its value was first held to, whole, whose parts may declare what another part requires.</summary>
     private sealed class Checking(OpenApiDocument document, JsonElement checkedValue)
     {
         private readonly HashSet<(string Schema, int Value)> walked = [];
@@ -46,16 +48,16 @@ public static class OpenApiSchemas
 
         public List<SchemaBreak> Breaks { get; } = [];
 
-        public void Walk(JsonElement written, string place, JsonElement value, string at, int depth)
+        public void Walk(JsonElement written, string place, JsonElement value, string at, int depth, JsonElement whole)
         {
             (JsonElement schema, string key) = Resolved(written, place);
             if (depth <= Deepest && Breaks.Count < Most && walked.Add((key, Start(value))))
             {
-                Judge(schema, key, value, at, depth, Breaks);
+                Judge(schema, key, value, at, depth, Breaks, whole);
             }
         }
 
-        public bool Fits(JsonElement written, string place, JsonElement value, string at, int depth)
+        public bool Fits(JsonElement written, string place, JsonElement value, string at, int depth, JsonElement whole)
         {
             if (depth > Deepest)
             {
@@ -69,12 +71,12 @@ public static class OpenApiSchemas
             }
             // Asked again before it is answered, of the same value, a schema that refers to itself holds nothing more.
             fitting[pair] = true;
-            return fitting[pair] = Judge(schema, key, value, at, depth, null);
+            return fitting[pair] = Judge(schema, key, value, at, depth, null, whole);
         }
 
         /// <summary>Whether the value keeps to the schema: each break said into <paramref name="breaks"/> where given, else
         /// the answer given at the first.</summary>
-        private bool Judge(JsonElement schema, string key, JsonElement value, string at, int depth, List<SchemaBreak>? breaks)
+        private bool Judge(JsonElement schema, string key, JsonElement value, string at, int depth, List<SchemaBreak>? breaks, JsonElement whole)
         {
             if (schema.ValueKind == JsonValueKind.False)
             {
@@ -88,7 +90,7 @@ public static class OpenApiSchemas
             IReadOnlyList<JsonElement> parts = JsonMembers.Items(schema, "allOf");
             for (int part = 0; part < parts.Count && (kept || breaks is not null); part++)
             {
-                kept &= Down(parts[part], $"{key}/allOf/{Numbered(part)}", value, at, depth, breaks);
+                kept &= Down(parts[part], $"{key}/allOf/{Numbered(part)}", value, at, depth, breaks, whole);
             }
             if (!kept && breaks is null)
             {
@@ -96,7 +98,7 @@ public static class OpenApiSchemas
             }
             foreach (string choice in (string[])["anyOf", "oneOf"])
             {
-                if (Chosen(schema, key, choice, value, at, depth) is { } said)
+                if (Chosen(schema, key, choice, value, at, depth, whole) is { } said)
                 {
                     return Broken(breaks, at, said);
                 }
@@ -115,12 +117,12 @@ public static class OpenApiSchemas
                 case JsonValueKind.String when JsonMembers.Text(schema, "pattern") is { } pattern && Matches(pattern, value.GetString()!) == false:
                     return Broken(breaks, at, $"{Describe(value)} does not match its pattern {pattern}");
                 case JsonValueKind.Object:
-                    return JudgeObject(schema, key, value, at, depth, breaks) && kept;
+                    return JudgeObject(schema, key, value, at, depth, breaks, whole) && kept;
                 case JsonValueKind.Array when JsonMembers.Object(schema, "items") is { } items:
                     int index = 0;
                     foreach (JsonElement item in value.EnumerateArray())
                     {
-                        if (!Down(items, $"{key}/items", item, $"{at}/{Numbered(index++)}", depth + 1, breaks) && breaks is null)
+                        if (!Down(items, $"{key}/items", item, $"{at}/{Numbered(index++)}", depth + 1, breaks, items) && breaks is null)
                         {
                             return false;
                         }
@@ -130,12 +132,12 @@ public static class OpenApiSchemas
             return kept;
         }
 
-        private bool JudgeObject(JsonElement schema, string key, JsonElement value, string at, int depth, List<SchemaBreak>? breaks)
+        private bool JudgeObject(JsonElement schema, string key, JsonElement value, string at, int depth, List<SchemaBreak>? breaks, JsonElement whole)
         {
             bool kept = true;
             foreach (string required in JsonMembers.Texts(schema, "required"))
             {
-                if (JsonMembers.Value(value, required) is null)
+                if (JsonMembers.Value(value, required) is null && !WriteOnly(whole, required))
                 {
                     kept = Broken(breaks, $"{at}/{Escaped(required)}", "is missing, though its schema requires it");
                     if (breaks is null)
@@ -151,9 +153,9 @@ public static class OpenApiSchemas
             {
                 string place = $"{at}/{Escaped(member.Name)}";
                 bool held = JsonMembers.Value(properties, member.Name) is { } own
-                    ? Down(own, $"{key}/properties/{Escaped(member.Name)}", member.Value, place, depth + 1, breaks)
+                    ? Down(own, $"{key}/properties/{Escaped(member.Name)}", member.Value, place, depth + 1, breaks, own)
                     : closed ? Broken(breaks, place, "is not a member its schema has")
-                    : others is not { } kind || Down(kind, $"{key}/additionalProperties", member.Value, place, depth + 1, breaks);
+                    : others is not { } kind || Down(kind, $"{key}/additionalProperties", member.Value, place, depth + 1, breaks, kind);
                 if (!held && breaks is null)
                 {
                     return false;
@@ -163,15 +165,44 @@ public static class OpenApiSchemas
             return kept;
         }
 
+        /// <summary>Whether any schema of those held over an object marks a member write-only, which is never in a
+        /// response.</summary>
+        private bool WriteOnly(JsonElement whole, string name) =>
+            Joined(whole).Any(schema => JsonMembers.Value(JsonMembers.Object(schema, "properties"), name) is { } member
+                && Joined(member).Any(part => JsonMembers.Bool(part, "writeOnly") == true));
+
+        /// <summary>A schema and those held over the same value with it: what its <c>$ref</c> names, beside which 3.1 may write
+        /// more, and its <c>allOf</c>'s, <c>anyOf</c>'s and <c>oneOf</c>'s, each reference followed once.</summary>
+        private IEnumerable<JsonElement> Joined(JsonElement written)
+        {
+            HashSet<string> followed = [];
+            Stack<JsonElement> waiting = new([written]);
+            while (waiting.TryPop(out JsonElement schema))
+            {
+                if (JsonMembers.Text(schema, "$ref") is { } reference && followed.Add(reference) && document.Resolve(schema) is var named && !Same(named, schema))
+                {
+                    waiting.Push(named);
+                }
+                yield return schema;
+                foreach (string joining in (string[])["allOf", "anyOf", "oneOf"])
+                {
+                    foreach (JsonElement part in JsonMembers.Items(schema, joining))
+                    {
+                        waiting.Push(part);
+                    }
+                }
+            }
+        }
+
         /// <summary>What a choice says of a value that keeps to none of its options, or to more than one of a
         /// <c>oneOf</c>'s; null where it keeps to it.</summary>
-        private string? Chosen(JsonElement schema, string key, string choice, JsonElement value, string at, int depth)
+        private string? Chosen(JsonElement schema, string key, string choice, JsonElement value, string at, int depth, JsonElement whole)
         {
             IReadOnlyList<JsonElement> options = JsonMembers.Items(schema, choice);
             List<int> held = [];
             for (int option = 0; option < options.Count && held.Count < (choice == "oneOf" ? 2 : 1); option++)
             {
-                if (Fits(options[option], $"{key}/{choice}/{Numbered(option)}", value, at, depth))
+                if (Fits(options[option], $"{key}/{choice}/{Numbered(option)}", value, at, depth, whole))
                 {
                     held.Add(option);
                 }
@@ -182,13 +213,13 @@ public static class OpenApiSchemas
         }
 
         /// <summary>A schema beneath another walked, its breaks said, or asked whether it holds.</summary>
-        private bool Down(JsonElement written, string place, JsonElement value, string at, int depth, List<SchemaBreak>? breaks)
+        private bool Down(JsonElement written, string place, JsonElement value, string at, int depth, List<SchemaBreak>? breaks, JsonElement whole)
         {
             if (breaks is null)
             {
-                return Fits(written, place, value, at, depth);
+                return Fits(written, place, value, at, depth, whole);
             }
-            Walk(written, place, value, at, depth);
+            Walk(written, place, value, at, depth, whole);
             return true;
         }
 
