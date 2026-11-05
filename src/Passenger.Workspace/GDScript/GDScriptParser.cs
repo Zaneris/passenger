@@ -1,10 +1,10 @@
 using System.Runtime.CompilerServices;
+using Passenger.Text;
 using K = Passenger.Workspace.GDScript.GDScriptTokenKind;
 
 namespace Passenger.Workspace.GDScript;
 
-/// <summary>One error the parser found: Godot's own words, or <see cref="GDScriptParser.TooDeep"/>'s, and where it lies
-/// (offsets, its end exclusive).</summary>
+/// <summary>One error the parser found: Godot's own words and where it lies (offsets, its end exclusive).</summary>
 public readonly record struct GDScriptError(string Message, int Start, int End);
 
 /// <summary>GDScript parsed as Godot's own parser does (a port of modules/gdscript/gdscript_parser.cpp, MIT): a recursive
@@ -17,8 +17,9 @@ internal sealed partial class GDScriptParser
     /// them: what walks a tree recurses as deep, on a thread's stack, and a stack that ran out ends the process.</summary>
     private const int DeepestNesting = 512;
 
-    /// <summary>What is said where a script goes past <see cref="DeepestNesting"/> or past the stack the parse has left.</summary>
-    internal const string TooDeep = "This is nested too deeply for Passenger to read, so the script is left unread from here.";
+    /// <summary>What is said where a script goes past <see cref="DeepestNesting"/> or past the stack the parse has left: no
+    /// error, as Godot may well read it, and with what follows unread nothing else is said of the script but its parse's errors.</summary>
+    internal const string TooDeep = "Passenger read no deeper than this, so the rest of the script is unread and unmarked and the script's types and warnings aren't checked.";
 
     [Flags]
     private enum Targets
@@ -81,7 +82,6 @@ internal sealed partial class GDScriptParser
     private GDScriptSuite? currentSuite;
     private int origin;
     private int nesting;
-    private bool tooDeep;
 
     private GDScriptParser(string text, int from, char indentChar)
     {
@@ -149,7 +149,7 @@ internal sealed partial class GDScriptParser
     private void PushError(string message, GDScriptNode? node = null)
     {
         panic = true;
-        if (tooDeep)
+        if (Stopped is not null)
         {
             return;
         }
@@ -159,23 +159,25 @@ internal sealed partial class GDScriptParser
     private void PushError(string message, GDScriptToken token)
     {
         panic = true;
-        if (tooDeep)
+        if (Stopped is not null)
         {
             return;
         }
         errors.Add(new GDScriptError(message, token.Start, token.End));
     }
 
-    /// <summary>Goes a level deeper, the caller putting <see cref="nesting"/> back as it leaves; false past the deepest,
-    /// where the error is said once, what is left of the text read as its end and what unwinds from here says nothing.</summary>
+    /// <summary>Where the parse stopped past the deepest, the text after it unread; null while it reads on.</summary>
+    public TextRange? Stopped { get; private set; }
+
+    /// <summary>Goes a level deeper, the caller putting <see cref="nesting"/> back as it leaves; false past the deepest, where
+    /// the place is kept, what is left of the text read as its end and what unwinds from here says nothing.</summary>
     private bool Deeper()
     {
         if (++nesting <= DeepestNesting && RuntimeHelpers.TryEnsureSufficientExecutionStack())
         {
             return true;
         }
-        PushError(TooDeep, current);
-        tooDeep = true;
+        Stopped ??= TextRange.FromBounds(current.Start, current.End);
         current = new GDScriptToken(K.Eof, text.Length, text.Length);
         return false;
     }

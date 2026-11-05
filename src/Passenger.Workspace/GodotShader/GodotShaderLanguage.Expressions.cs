@@ -2680,8 +2680,13 @@ public sealed partial class GodotShaderLanguage
 
     private Node ReduceExpression(BlockNode? pBlock, Node pNode)
     {
-        if (pNode.Type != NodeType.Operator || !RuntimeHelpers.TryEnsureSufficientExecutionStack())
+        if (pNode.Type != NodeType.Operator)
         {
+            return pNode;
+        }
+        if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
+        {
+            SetError(TooDeep);
             return pNode;
         }
 

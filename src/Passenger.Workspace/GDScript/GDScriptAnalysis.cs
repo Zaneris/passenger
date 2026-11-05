@@ -161,11 +161,11 @@ public sealed class GDScriptAnalysis
         }
     }
 
-    /// <summary>Godot's findings in the script as a project's settings give them (Godot's push_warning and
-    /// apply_pending_warnings): its parser's errors, then the analyzer's errors and warnings, a warning its level passes over,
-    /// its folder silences or a <c>@warning_ignore</c> covers left out, one the project makes an error said as one; each
-    /// once, by line as Godot orders its errors and its warnings (the first on a line Godot's primary one), on a line its
-    /// errors, then the warnings it makes errors, then its warnings, each as the analyzer found them.</summary>
+    /// <summary>Godot's findings as a project's settings give them (push_warning, apply_pending_warnings): its parser's errors,
+    /// then the analyzer's errors and warnings, less a warning its level, its folder or a <c>@warning_ignore</c> leaves out, one
+    /// the project makes an error said as one; each once, by line as Godot orders them (the first on a line its primary one),
+    /// on a line errors, the warnings made errors, then warnings. A script read only in part has its parser's errors and a
+    /// note where reading stopped: what the analyzer said stood on a class it never saw whole.</summary>
     public IReadOnlyList<GDScriptFinding> Findings(GDScriptWarningSettings settings)
     {
         if (Tree is null)
@@ -173,6 +173,11 @@ public sealed class GDScriptAnalysis
             return [];
         }
         List<GDScriptFinding> found = [.. Tree.Errors.Select(e => new GDScriptFinding(e.Start, e.End, null, e.Message))];
+        if (Tree.Stopped is { } stopped)
+        {
+            found.Add(new GDScriptFinding(stopped.Start, stopped.End, null, GDScriptParser.TooDeep, IsNote: true));
+            return found;
+        }
         if (found.Count > 0)
         {
             // Godot's analyzer runs only on a script that parses, and its warnings are given only once it has.

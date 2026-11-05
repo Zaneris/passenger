@@ -111,9 +111,10 @@ public static class GodotShaderCheck
         {
             GodotShaderFilePosition first = preprocessed.ErrorPositions.Count > 0 ? preprocessed.ErrorPositions[0] : new GodotShaderFilePosition(unit.Res, 1);
             GodotShaderFilePosition last = preprocessed.ErrorPositions.Count > 0 ? preprocessed.ErrorPositions[^1] : first;
+            bool stopped = error == GodotShaderLanguage.TooDeep;
             GodotShaderMessage message = preprocessed.ErrorPositions.Count > 1
-                ? new GodotShaderMessage(true, last.File, last.Line, error)
-                : new GodotShaderMessage(true, string.Empty, first.Line, error);
+                ? new GodotShaderMessage(!stopped, last.File, last.Line, error, stopped)
+                : new GodotShaderMessage(!stopped, string.Empty, first.Line, error, stopped);
             return new GodotShaderChecked([message], string.Empty, []);
         }
 
@@ -123,9 +124,10 @@ public static class GodotShaderCheck
         List<GodotShaderMessage> messages = [];
         foreach (GodotShaderLanguage.CompileError compiled in errors)
         {
+            bool stopped = compiled.Message == GodotShaderLanguage.TooDeep;
             messages.Add(compiled.Positions.Count > 1
-                ? new GodotShaderMessage(true, compiled.Positions[^1].File, compiled.Positions[^1].Line, compiled.Message)
-                : new GodotShaderMessage(true, string.Empty, compiled.Line, compiled.Message));
+                ? new GodotShaderMessage(!stopped, compiled.Positions[^1].File, compiled.Positions[^1].Line, compiled.Message, stopped)
+                : new GodotShaderMessage(!stopped, string.Empty, compiled.Line, compiled.Message, stopped));
         }
         if (errors.Count == 0)
         {
@@ -147,7 +149,7 @@ public static class GodotShaderCheck
     /// <summary>Every error of the code, the first as Godot gives it, then each Godot would give once the statements of
     /// those before were taken out: a condition or a local's initializer first, so the rest is still read, else the
     /// statement whole, else what holds it. What a taken-out declaration would make wrong after it (a use of its name, a function left
-    /// with no return) is left unsaid. With the last compile, whose shader is the one read furthest.</summary>
+    /// with no return) is left unsaid, and all past where a compile ran out of stack. With the last compile, whose shader is the one read furthest.</summary>
     private static (GodotShaderLanguage Language, List<GodotShaderLanguage.CompileError> Errors) Compiled(string code, GodotShaderLanguage.ShaderCompileInfo info)
     {
         List<GodotShaderLanguage.CompileError> errors = [];
@@ -160,7 +162,13 @@ public static class GodotShaderCheck
         for (int pass = 0; pass < MostErrors; pass++)
         {
             language = new GodotShaderLanguage();
-            if (language.Compile(code, info) == GodotShaderLanguage.Err.Ok || language.Errors.Count == 0)
+            GodotShaderLanguage.Err compiled = language.Compile(code, info);
+            if (language.Errors is [{ Message: GodotShaderLanguage.TooDeep } stopped, ..])
+            {
+                errors.Add(stopped);
+                break;
+            }
+            if (compiled == GodotShaderLanguage.Err.Ok || language.Errors.Count == 0)
             {
                 break;
             }

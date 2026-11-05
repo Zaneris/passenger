@@ -2,10 +2,11 @@ namespace Passenger.Workspace;
 
 /// <summary>What Godot's front end said of a shader: an error or a warning, the file it names (empty for the shader itself,
 /// else an include's res:// path), its line (from one) and Godot's words.</summary>
-public sealed record GodotShaderMessage(bool Error, string File, int Line, string Text);
+public sealed record GodotShaderMessage(bool Error, string File, int Line, string Text, bool Note = false);
 
-/// <summary>A mark a compile's messages put on a file's text: where, whether an error, and its words.</summary>
-public sealed record GodotShaderMark(int Start, int End, bool Error, string Message);
+/// <summary>A mark a compile's messages put on a file's text: where, whether an error, its words, and whether a note of
+/// Passenger's own reading, which says nothing is wrong with the shader.</summary>
+public sealed record GodotShaderMark(int Start, int End, bool Error, string Message, bool Note = false);
 
 /// <summary>A shader as Godot is given it to compile: its res:// path (a scene's own Shader by its file's path and the
 /// section's id, <c>res://level.tscn::Shader_x</c>, as Godot names it), its code, and the text of every file its
@@ -113,11 +114,11 @@ public sealed record GodotShaderUnit(string Res, string Code, IReadOnlyDictionar
             if (here)
             {
                 (int start, int end) = OnLine(text, message.Line, message.Text);
-                marks.Add(new GodotShaderMark(start, end, message.Error, message.Text));
+                marks.Add(new GodotShaderMark(start, end, message.Error, message.Text, message.Note));
             }
             else if (message.File.Length > 0 && code.Includes.FirstOrDefault(i => Reaches(Resolved(res, i.Path), message.File, 0)) is { } leading)
             {
-                marks.Add(new GodotShaderMark(leading.Start, leading.End, message.Error, $"{message.File}:{message.Line}: {message.Text}"));
+                marks.Add(new GodotShaderMark(leading.Start, leading.End, message.Error, $"{message.File}:{message.Line}: {message.Text}", message.Note));
             }
         }
         return marks;

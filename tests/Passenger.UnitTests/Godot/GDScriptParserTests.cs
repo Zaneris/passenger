@@ -171,8 +171,9 @@ public class GDScriptParserTests
         }
     }
 
-    /// <summary>Text nested far past what a tree holds, each way a script can nest, reads with the one error at the first
-    /// place past it, and what walks the tree comes to its end: a stack that ran out would end the IDE with it.</summary>
+    /// <summary>Text nested far past what a tree holds, each way a script can nest, is no error of the script's: reading stops
+    /// at the first place past it, said once as a note, and what walks the tree comes to its end, where a stack that ran out
+    /// would end the IDE with it.</summary>
     [Theory]
     [InlineData("brackets")]
     [InlineData("arrays")]
@@ -190,13 +191,15 @@ public class GDScriptParserTests
     [InlineData("elifs")]
     [InlineData("blocks")]
     [InlineData("classes")]
-    public void Text_nested_past_what_a_tree_holds_is_said_once_and_ends_nothing(string what)
+    public void Text_nested_past_what_a_tree_holds_has_a_note_no_error_and_ends_nothing(string what)
     {
         string text = Nested(what);
         GDScriptTree tree = GDScriptTree.Parse(text);
-        Assert.Equal(1, tree.Errors.Count(e => e.Message == TooDeep));
+        Assert.NotNull(tree.Stopped);
+        Assert.DoesNotContain(tree.Errors, e => e.Message == GDScriptParser.TooDeep);
         GDScriptAnalysis analysis = new GDScriptAnalyzer(GDScriptProject.Alone(null)).Analyze(tree, "res://deep.gd");
-        Assert.Contains(analysis.Findings(GDScriptWarningSettings.Of(null)), f => f.Message == TooDeep);
+        GDScriptFinding note = Assert.Single(analysis.Findings(GDScriptWarningSettings.Of(null)), f => f.IsNote);
+        Assert.Equal((GDScriptParser.TooDeep, false), (note.Message, note.IsError));
         Assert.NotNull(analysis.Colours());
         Assert.NotNull(GDScriptFormatter.Format(text, new GDScriptFormatOptions()).Text);
     }
@@ -228,11 +231,8 @@ public class GDScriptParserTests
         static string Repeated(string text, int times) => string.Concat(Enumerable.Repeat(text, times));
     }
 
-    /// <summary>What Passenger says where a script goes past what it reads, in the words the parser has.</summary>
-    private const string TooDeep = "This is nested too deeply for Passenger to read, so the script is left unread from here.";
-
     [Fact]
-    public void A_long_chain_of_operators_and_the_members_after_a_script_too_deep_for_it_read_as_written()
+    public void A_long_chain_of_operators_reads_whole_and_one_too_long_reads_whole_once_it_is_shortened()
     {
         string sum = "var total = 1" + string.Concat(Enumerable.Repeat(" + 1", 400)) + "\nvar after = 2\n";
         GDScriptTree tree = GDScriptTree.Parse(sum);
@@ -242,7 +242,11 @@ public class GDScriptParserTests
         string deep = "var before = 1\nvar total = 1" + string.Concat(Enumerable.Repeat(" + 1", 700)) + "\nvar after = 2\n";
         GDScriptTree tooDeep = GDScriptTree.Parse(deep);
         Assert.Equal(["before", "total"], tooDeep.Members.Select(m => NameOf(m.Node)));
-        Assert.Empty(tooDeep.Reparse(fixedAgain, new TextEdit("var before = 1\nvar total = 1".Length + 400 * " + 1".Length, 300 * " + 1".Length, string.Empty)).Errors);
+        Assert.Empty(tooDeep.Errors);
+        Assert.NotNull(tooDeep.Stopped);
+        GDScriptTree shortened = tooDeep.Reparse(fixedAgain, new TextEdit("var before = 1\nvar total = 1".Length + 400 * " + 1".Length, 300 * " + 1".Length, string.Empty));
+        Assert.Null(shortened.Stopped);
+        Assert.Equal(["before", "total", "after"], shortened.Members.Select(m => NameOf(m.Node)));
     }
 
     private static string Shape(GDScriptTree tree) =>

@@ -447,10 +447,11 @@ internal sealed class GodotShaderExpression
     };
 
     /// <summary>A node's value as Variant's operators make it, a long or a bool; null where they have none.</summary>
-    private static object? Evaluate(Node node)
+    private object? Evaluate(Node node)
     {
         if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
         {
+            SetError(GodotShaderLanguage.TooDeep);
             return null;
         }
         switch (node)

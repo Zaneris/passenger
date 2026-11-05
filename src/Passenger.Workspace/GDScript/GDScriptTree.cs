@@ -19,7 +19,8 @@ public sealed class GDScriptTree
 {
     /// <summary>One run: the text from one clean member start to the next, its members and errors counted from its
     /// start, and the indentation character the file had chosen there.</summary>
-    private sealed record Run(int Length, IReadOnlyList<GDScriptNode> Members, IReadOnlyList<GDScriptError> Errors, IReadOnlyList<GDScriptAnnotation> Regions, char IndentChar);
+    private sealed record Run(int Length, IReadOnlyList<GDScriptNode> Members, IReadOnlyList<GDScriptError> Errors, IReadOnlyList<GDScriptAnnotation> Regions, char IndentChar,
+        TextRange? Stopped = null);
 
     private readonly Run[] runs;
     private readonly int[] starts;
@@ -59,6 +60,10 @@ public sealed class GDScriptTree
     public IReadOnlyList<GDScriptError> Errors => allErrors ??= [.. runs.SelectMany((run, i) => run.Errors.Select(e => e with { Start = Clamped(e.Start + starts[i]), End = Clamped(e.End + starts[i]) }))
         .Concat(GDScriptParser.Duplicates(Members.Select(m => (m.Node, m.Offset))))
         .Concat(GDScriptParser.RegionErrors(Text, runs.SelectMany((run, i) => run.Regions.Select(a => (a, starts[i])))))];
+
+    /// <summary>Where the parser stopped, nested past what it reads (<see cref="GDScriptParser.TooDeep"/>), the text after it
+    /// unread and its members unknown; null for a script read to its end.</summary>
+    public TextRange? Stopped => runs[^1].Stopped is { } stopped ? TextRange.FromBounds(Clamped(stopped.Start + starts[^1]), Clamped(stopped.End + starts[^1])) : null;
 
     private int Clamped(int offset) => Math.Clamp(offset, 0, Text.Length);
 
@@ -143,7 +148,8 @@ public sealed class GDScriptTree
         if (kept < 0)
         {
             parser.Finish();
-            made.Add(new Run(text.Length - runStart, parser.TakeMembers(), Relative(parser.TakeErrors(), runStart), parser.TakeRegions(), runIndent));
+            TextRange? stopped = parser.Stopped is { } at ? TextRange.FromBounds(at.Start - runStart, at.End - runStart) : null;
+            made.Add(new Run(text.Length - runStart, parser.TakeMembers(), Relative(parser.TakeErrors(), runStart), parser.TakeRegions(), runIndent, stopped));
         }
         return kept;
     }

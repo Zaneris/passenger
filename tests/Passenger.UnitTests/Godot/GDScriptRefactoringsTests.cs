@@ -438,4 +438,16 @@ public class GDScriptRefactoringsTests
             [was[0], new GDScriptParameterChange(-1, "times", "int", string.Empty, "2"), was[1]]));
         Assert.Equal(["\"a\"", "2"], GDScriptRefactorings.Rearranged(["\"a\""], was, [was[0], new GDScriptParameterChange(-1, "times", "int", string.Empty, "2"), was[1]]));
     }
+
+    /// <summary>A change across scripts is refused while one is read only in part, as a use after where reading stopped would
+    /// go unseen and keep the old name.</summary>
+    [Fact]
+    public void No_change_is_made_across_a_script_read_only_in_part()
+    {
+        static GDScriptRead Read(string path, string text) => new(path, new GDScriptAnalyzer(GDScriptProject.Alone(null)).Analyze(GDScriptTree.Parse(text), path));
+        GDScriptRead whole = Read("res://whole.gd", "var a = 1\n");
+        GDScriptRead part = Read("res://part.gd", "var deep = " + new string('(', 2_000) + "1" + new string(')', 2_000) + "\nvar uses = a\n");
+        Assert.Null(GDScriptRefactorings.WhyNotChanged([whole]));
+        Assert.StartsWith("part.gd is nested too deeply", GDScriptRefactorings.WhyNotChanged([whole, part]), StringComparison.Ordinal);
+    }
 }

@@ -140,10 +140,10 @@ internal sealed class GodotShaderMarks(GodotSceneIndex index, Func<string, strin
         GodotShaderUnit unit = await BackgroundWork.Run(() => GodotShaderUnit.Of(res, text, path => path == res ? text : scenes.Texts.GetValueOrDefault(path) ?? ShaderCodeOf(scenes, path)));
         GodotShaderChecked result = await checker.CheckAsync(unit, scenes);
         IReadOnlyList<GodotShaderMark> marks = await BackgroundWork.Run(() => unit.MarksIn(null, result.Messages));
-        if (Show(document, version, [.. marks.Select(m => new Marker(TextRange.FromBounds(m.Start, Math.Max(m.Start, m.End)), m.Error ? MarkerKind.Error : MarkerKind.Warning, m.Message))], null))
+        if (Show(document, version, [.. marks.Select(m => new Marker(TextRange.FromBounds(m.Start, Math.Max(m.Start, m.End)), KindOf(m), m.Message))], null))
         {
             // A check that read no uniform for an error leaves what the last one read standing until one reads them again.
-            if (result.Uniforms.Count > 0 || !result.Messages.Any(m => m.Error))
+            if (result.Uniforms.Count > 0 || !result.Messages.Any(m => m.Error || m.Note))
             {
                 uniforms[document] = result.Uniforms.Select(u => GodotShaderUniform.Of(u.Key, u.Value)).ToDictionary(u => u.Name, StringComparer.Ordinal);
             }
@@ -151,6 +151,9 @@ internal sealed class GodotShaderMarks(GodotSceneIndex index, Func<string, strin
     }
 
     /// <summary>A shader's marks and banner, where it is open still as they were made for; whether they stand for its text.</summary>
+    /// <summary>The kind of mark a compile's mark is.</summary>
+    internal static MarkerKind KindOf(GodotShaderMark mark) => mark.Note ? MarkerKind.Info : mark.Error ? MarkerKind.Error : MarkerKind.Warning;
+
     private bool Show(OpenDocument document, int version, IReadOnlyList<Marker> marks, string? notice)
     {
         if (!documents.ContainsKey(document) || document.Text.Version != version)

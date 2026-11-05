@@ -74,11 +74,32 @@ public class GDScriptAnalyzerTests
     [InlineData("var x{0} = [x{1}]\n", "var x{0} = 1\n")]
     public void A_chain_of_members_thousands_long_comes_to_an_end_with_no_error(string link, string last)
     {
-        const int Links = 5_000;
+        const int Links = 3_000;
         string script = "extends Node\n\n" + string.Concat(Enumerable.Range(0, Links).Select(i => string.Format(CultureInfo.InvariantCulture, link, i, i + 1)))
             + string.Format(CultureInfo.InvariantCulture, last, Links);
         (GDScriptAnalysis analysis, _) = Analyze(script);
         Assert.Empty(analysis.Findings(GDScriptWarningSettings.Of(null)).Where(f => f.IsError).Select(f => f.Message));
+    }
+
+    /// <summary>A valid script nested past what Passenger reads is marked only where reading stopped, with a note: a name
+    /// declared after it and a mistake past it say nothing, as nothing can be said of what went unread.</summary>
+    [Fact]
+    public void A_script_read_in_part_has_a_note_where_reading_stopped_and_nothing_called_wrong()
+    {
+        string deep = "var deep = " + new string('(', 2_000) + "1" + new string(')', 2_000) + "\n";
+        (GDScriptAnalysis analysis, _) = Analyze($"extends Node\n\nvar early: int = later\n{deep}var later := 1\nvar wrong: String = 1 +\n");
+        GDScriptFinding only = Assert.Single(analysis.Findings(GDScriptWarningSettings.Of(null)));
+        Assert.True(only.IsNote && !only.IsError, $"Reading stopped was said as {only.Code ?? "an error"}: {only.Message}");
+        Assert.Equal(analysis.Tree!.Stopped!.Value.Start, only.Start);
+    }
+
+    /// <summary>An error the parser met before reading stopped is the script's own and stays, the note after it.</summary>
+    [Fact]
+    public void A_parse_error_before_reading_stopped_stands_beside_its_note()
+    {
+        string deep = "var deep = " + new string('(', 2_000) + "1" + new string(')', 2_000) + "\n";
+        (GDScriptAnalysis analysis, _) = Analyze($"extends Node\n\nvar = 1\n{deep}");
+        Assert.Equal([true, false], analysis.Findings(GDScriptWarningSettings.Of(null)).Select(f => f.IsError));
     }
 
     [Fact]

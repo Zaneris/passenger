@@ -297,32 +297,50 @@ public class GodotShaderLanguageTests
             result.Messages.Select(m => (m.Line, m.Text)));
     }
 
-    /// <summary>A shader nested far past the stack its parse has left says so, where a stack that ran out would end the IDE
-    /// with it.</summary>
+    /// <summary>A shader nested far past the stack its parse has left is no error of the shader's: reading stops there, said
+    /// as a note, where a stack that ran out would end the IDE with it.</summary>
     [Theory]
     [InlineData("float a = ", "(", "1.0", ")")]
     [InlineData("float a = ", "sin(", "1.0", ")")]
     [InlineData("float a = ", "true ? 1.0 : ", "1.0", "")]
     [InlineData("", "{\n", "", "}")]
     [InlineData("", "if (true) {\n", "", "}")]
-    public void A_shader_nested_too_deeply_says_so_and_ends_nothing(string start, string open, string inside, string close)
+    public void A_shader_nested_too_deeply_has_a_note_and_no_error(string start, string open, string inside, string close)
     {
         string nested = string.Concat(Enumerable.Repeat(open, 20_000)) + inside + string.Concat(Enumerable.Repeat(close, 20_000));
-        GodotShaderChecked result = Check($"shader_type spatial;\n\nvoid fragment() {{\n\t{start}{nested};\n}}\n");
-        Assert.Contains(GodotShaderLanguage.TooDeep, result.Messages.Select(m => m.Text));
+        GodotShaderMessage note = Assert.Single(Check($"shader_type spatial;\n\nvoid fragment() {{\n\t{start}{nested};\n}}\n").Messages);
+        Assert.Equal((GodotShaderLanguage.TooDeep, false, true), (note.Text, note.Error, note.Note));
+    }
+
+    [Fact]
+    public void Where_reading_stopped_is_marked_as_a_note()
+    {
+        string code = "shader_type spatial;\n\nvoid fragment() {\n\tfloat a = " + new string('(', 20_000) + "1.0" + new string(')', 20_000) + ";\n}\n";
+        GodotShaderMark mark = Assert.Single(new GodotShaderUnit("res://shader.gdshader", code, new Dictionary<string, string>(), []).MarksIn(null, Check(code).Messages));
+        Assert.Equal((false, true), (mark.Error, mark.Note));
+    }
+
+    /// <summary>An error before reading stopped is the shader's own and stays; a mistake past it is unread and says nothing.</summary>
+    [Fact]
+    public void An_error_before_reading_stopped_stands_and_nothing_past_it_is_said()
+    {
+        string nested = new string('(', 20_000) + "1.0" + new string(')', 20_000);
+        GodotShaderChecked result = Check($"shader_type spatial;\n\nvoid vertex() {{\n\tfloat a = before;\n}}\n\nvoid fragment() {{\n\tfloat b = {nested};\n\tfloat c = after;\n}}\n");
+        Assert.Equal([(true, false), (false, true)], result.Messages.Select(m => (m.Error, m.Note)));
+        Assert.DoesNotContain(result.Messages, m => m.Text.Contains("'after'", StringComparison.Ordinal));
     }
 
     /// <summary>A chain of signs, read as a list and only then a tree, and a preprocessor's condition nested past the stack,
-    /// by brackets or by an operator chain's links, come to an end.</summary>
+    /// by brackets or by an operator chain's links, are no errors of the shader's and come to an end.</summary>
     [Theory]
-    [InlineData("void fragment() {\n\tfloat a = ", "- ", "1.0;\n}", "", 20_000)]
-    [InlineData("#if ", "(", "1", ")", 20_000)]
-    [InlineData("#if ", "- ", "1", "", 10_000)]
-    [InlineData("#if ", "1 + ", "1", "", 10_000)]
-    public void Chains_too_long_for_the_stack_end_nothing(string start, string open, string inside, string close, int times)
+    [InlineData("void fragment() {\n\tfloat a = ", "- ", "1.0;\n}", "", "", 20_000)]
+    [InlineData("#if ", "(", "1", ")", "\n#endif", 20_000)]
+    [InlineData("#if ", "- ", "1", "", "\n#endif", 10_000)]
+    [InlineData("#if ", "1 + ", "1", "", "\n#endif", 10_000)]
+    public void Chains_too_long_for_the_stack_are_no_errors(string start, string open, string inside, string close, string end, int times)
     {
         string nested = string.Concat(Enumerable.Repeat(open, times)) + inside + string.Concat(Enumerable.Repeat(close, times));
-        Assert.NotNull(Check($"shader_type spatial;\n\n{start}{nested}\n").Messages);
+        Assert.DoesNotContain(Check($"shader_type spatial;\n\n{start}{nested}{end}\n").Messages, m => m.Error);
     }
 
     private static GodotShaderChecked Check(string code, GodotShaderCheckOptions options) =>

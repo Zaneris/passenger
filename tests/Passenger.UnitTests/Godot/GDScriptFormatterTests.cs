@@ -175,4 +175,15 @@ public class GDScriptFormatterTests
         Assert.Equal(new GDScriptFormatOptions(false, 2, 2, 0, 1, false),
             new GDScriptFormatSettings { WrapLongLines = false, BlankLinesAroundFunctions = 1, TrailingCommas = false }.Options(false, 2, 2));
     }
+
+    /// <summary>A script nested past what Passenger reads is left as it is, its result having no tree to be read back against.</summary>
+    [Fact]
+    public void A_script_read_only_in_part_is_neither_laid_out_nor_ordered()
+    {
+        string text = "func b( ):\n\tpass\nvar deep = " + new string('(', 2_000) + "1" + new string(')', 2_000) + "\nvar a=1\n";
+        foreach (GDScriptFormatted refused in (GDScriptFormatted[])[GDScriptFormatter.Format(text, new GDScriptFormatOptions()), GDScriptFormatter.OrderParts(text)])
+        {
+            Assert.Equal((text, "the script is nested too deeply for Passenger to read whole"), (refused.Text, refused.Refused));
+        }
+    }
 }

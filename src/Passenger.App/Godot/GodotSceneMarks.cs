@@ -181,7 +181,7 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
                 return unit.MarksIn(null, compiled.Messages).Select(m =>
                 {
                     (int start, int end) = GodotStringPlaces.RangeOf(places, m.Start, m.End);
-                    return new Marker(TextRange.FromBounds(start, end), m.Error ? MarkerKind.Error : MarkerKind.Warning, m.Message);
+                    return new Marker(TextRange.FromBounds(start, end), GodotShaderMarks.KindOf(m), m.Message);
                 }).ToList();
             }));
         }

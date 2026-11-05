@@ -37,12 +37,19 @@ public static partial class GDScriptFormatter
     /// bracket depth, and whether it is the first on its line.</summary>
     private readonly record struct Laid(GDScriptToken Token, int Level, int Depth, bool First);
 
+    /// <summary>Why a script nested past what Passenger reads is left as it is: its result could not be read back against it.</summary>
+    private const string ReadInPart = "the script is nested too deeply for Passenger to read whole";
+
     public static GDScriptFormatted Format(string text, GDScriptFormatOptions options)
     {
         GDScriptTree tree = GDScriptTree.Parse(text);
         if (tree.Errors.Count > 0)
         {
             return new GDScriptFormatted([], text, $"the script does not parse: {tree.Errors[0].Message}");
+        }
+        if (tree.Stopped is not null)
+        {
+            return new GDScriptFormatted([], text, ReadInPart);
         }
         if (Scanned(text) is not { } tokens)
         {

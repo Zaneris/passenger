@@ -26,6 +26,10 @@ public static partial class GDScriptFormatter
         {
             return new GDScriptFormatted([], text, $"the script does not parse: {tree.Errors[0].Message}");
         }
+        if (tree.Stopped is not null)
+        {
+            return new GDScriptFormatted([], text, ReadInPart);
+        }
         if (tree.Members.Count < 2)
         {
             return new GDScriptFormatted([], text, null);

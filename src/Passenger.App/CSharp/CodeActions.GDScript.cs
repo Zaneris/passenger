@@ -248,7 +248,7 @@ internal sealed partial class CodeActions
     private async Task<RefactorOutcome> ApplyGDScriptAsync(string title, string command, GDScriptRefactored made, IReadOnlyList<GDScriptRead> scripts, string? folder,
         OpenDocument document, List<(string Path, IReadOnlyList<LspTextEdit> Edits)> beside, string? done = null)
     {
-        if (made.Refused is { } refused)
+        if ((made.Refused ?? GDScriptRefactorings.WhyNotChanged(scripts)) is { } refused)
         {
             return RefactorOutcome.Refused($"{title} was not applied: {refused}");
         }

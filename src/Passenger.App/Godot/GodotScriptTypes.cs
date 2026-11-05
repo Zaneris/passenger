@@ -344,8 +344,8 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
             GDScriptWarningSettings settings = GDScriptWarningSettings.Of(scenes?.Texts.GetValueOrDefault("res://" + GodotProject.FileName));
             IReadOnlyList<GDScriptFinding> findings = [.. analysis.Findings(settings).Where(f => f.End <= text.Length)];
             // In the order of their places, as the editor keeps them, those at one place in Godot's.
-            Marker[] marks = [.. findings.OrderBy(f => f.Start).Select(f => Marker.Coded(TextRange.FromBounds(f.Start, f.End), f.IsError ? MarkerKind.Error : MarkerKind.Warning,
-                f.IsError ? null : f.Code, f.Message))];
+            Marker[] marks = [.. findings.OrderBy(f => f.Start).Select(f => Marker.Coded(TextRange.FromBounds(f.Start, f.End),
+                f.IsNote ? MarkerKind.Info : f.IsError ? MarkerKind.Error : MarkerKind.Warning, f.IsError ? null : f.Code, f.Message))];
             SyntaxSpan[] colours = [.. analysis.Colours().Select(c => new SyntaxSpan(c.Start, c.Length, KindOf(c.Colour)))];
             // Read whole with no edit to carry the last through, every name may differ.
             TextRange? differ = made is null && text != treeText ? TextRange.FromBounds(0, text.Length)

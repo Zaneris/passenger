@@ -645,7 +645,7 @@ public sealed class GodotShaderPreprocessor
         }
         if (expression.Value() is not { } value)
         {
-            SetError("Condition evaluation error.", line);
+            SetError(expression.Error ?? "Condition evaluation error.", line);
             return;
         }
         if (!elif)

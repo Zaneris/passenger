@@ -9,11 +9,12 @@ public enum GDScriptWarnLevel
 }
 
 /// <summary>One of Godot's findings in a script, where Passenger's reading gives it: its range in the text, Godot's name for
-/// it where it is a warning (<c>UNUSED_VARIABLE</c>; null for an error), and its words as Godot's own.</summary>
-public readonly record struct GDScriptFinding(int Start, int End, string? Code, string Message)
+/// it where it is a warning (<c>UNUSED_VARIABLE</c>; null for an error), and its words as Godot's own; or, a note, Passenger's
+/// word of its own reading, which says nothing is wrong with the script.</summary>
+public readonly record struct GDScriptFinding(int Start, int End, string? Code, string Message, bool IsNote = false)
 {
     /// <summary>Whether it is an error: one of Godot's, or a warning the project treats as one.</summary>
-    public bool IsError => Code is null || Message.EndsWith(GDScriptWarnings.TreatedAsError, StringComparison.Ordinal);
+    public bool IsError => !IsNote && (Code is null || Message.EndsWith(GDScriptWarnings.TreatedAsError, StringComparison.Ordinal));
 }
 
 /// <summary>Godot's GDScript warnings (modules/gdscript/gdscript_warning.h, MIT): each one's name, in Godot's order, and the
