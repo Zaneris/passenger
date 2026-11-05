@@ -404,9 +404,10 @@ a new name, and `just site-shots` retakes its images.
   `editor_layout.cfg`, `script_editor_cache.cfg` and `ide_messaging_meta.txt` into the project, imports and exports too,
   which `GodotScripts` puts back (a Passenger save meanwhile stays the person's); from 4.5 it runs `--recovery-mode`,
   but with a GDExtension its writes are put back only through its start, never where another program wrote
-  (`GodotScripts.FolderChanged`; Godot's safe-save temp is `<file>-XXXXXX`). Run imports a project lacking `.import`
-  files first. `script_templates/` is C# the build compiles unless removed; without a .sln Godot rewrites the csproj as
-  it makes a C# script. On Windows a test's editor is two processes, both `--editor`.
+  (`GodotScripts.FolderChanged`; Godot's safe-save temp is `<file>-XXXXXX`, `<file><digits>.tmp` on Windows, and a
+  change to project.godot counts as Godot's only where that temp was heard, `GodotSafeSave`). Run imports a project
+  lacking `.import` files first. `script_templates/` is C# the build compiles unless removed; without a .sln Godot
+  rewrites the csproj as it makes a C# script. On Windows a test's editor is two processes, both `--editor`.
 - **Godot's wire.** Its debug peer takes only `[name, thread id 1, data]`; packed strings end with a NUL;
   `scene:inspect_objects` answers a few objects (inspect one at a time); a warning comes as an error with its flag set;
   its JSON reads every number as a float. Its language server takes whole texts, reads `Content-Length` at a fixed
