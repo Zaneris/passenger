@@ -25,8 +25,9 @@ public sealed record GDScriptTarget(string Script, GDScriptNode Node, int Offset
 /// string a call names it by, and each place that may use it unseen.</summary>
 public sealed record GDScriptUses(IReadOnlyList<GDScriptUses.Use> Names, IReadOnlyList<GDScriptUses.Named> Strings, IReadOnlyList<GDScriptPlace> Unsure)
 {
-    /// <summary>A name resolved to the member, and the call it is called by (its callee), with the call's receiver.</summary>
-    public sealed record Use(GDScriptRead Script, GDScriptIdentifier Name, int Offset, GDScriptCall? Call, GDScriptExpression? Receiver);
+    /// <summary>A name resolved to the member, the call it is called by (its callee), with the call's receiver, and the
+    /// member of its script it lies in.</summary>
+    public sealed record Use(GDScriptRead Script, GDScriptIdentifier Name, int Offset, GDScriptCall? Call, GDScriptExpression? Receiver, GDScriptNode Within);
 
     /// <summary>A string naming the member as an argument of a call (<c>call("f")</c>).</summary>
     public sealed record Named(GDScriptRead Script, GDScriptLiteral Literal, int Offset, GDScriptCall Call);
@@ -155,7 +156,7 @@ public static partial class GDScriptRefactorings
                                     && through.Callee == attribute => (through, attribute.Base),
                                 _ => ((GDScriptCall?)null, (GDScriptExpression?)null),
                             };
-                            names.Add(new GDScriptUses.Use(script, identifier, member.Offset, calling, receiver));
+                            names.Add(new GDScriptUses.Use(script, identifier, member.Offset, calling, receiver, member.Node));
                             break;
                         case GDScriptSubscript { IsAttribute: true, Attribute: { } attribute, Base: { } on } when attribute.Name == target.Named
                             && script.Analysis.DeclarationOf(attribute) is null && MayRun(scripts, script.Analysis.TypeOf(on), target):
@@ -298,8 +299,9 @@ public static partial class GDScriptRefactorings
 
     /// <summary>Inline Function: each call of a function whose body is one statement given that statement, its parameters
     /// read as the arguments passed (a default where none is), the function then taken out. Refused where it is used other
-    /// than by a call on itself, named by a string or <paramref name="elsewhere"/>, awaits, or where an argument that is
-    /// more than a name or a literal would be read other than once.</summary>
+    /// than by a call on itself, named by a string or <paramref name="elsewhere"/>, awaits, where an argument that is more
+    /// than a name or a literal would be read other than once, or one that calls only sometimes, or where the arguments
+    /// would no longer run in their order, ahead of the body.</summary>
     public static GDScriptRefactored InlineFunction(IReadOnlyList<GDScriptRead> scripts, GDScriptTarget target, IReadOnlyList<GDScriptPlace> elsewhere)
     {
         if (target.Node is not GDScriptFunction { Body.Statements: [var only] } function || function.Rest is not null)
@@ -337,6 +339,7 @@ public static partial class GDScriptRefactorings
         }
         Dictionary<GDScriptNode, GDScriptNode?> bodyParents = Parents(only);
         Dictionary<string, List<TextEdit>> edits = [];
+        GDScriptEffects inBody = own.Analysis.Effects;
         foreach (GDScriptUses.Use use in uses.Names)
         {
             GDScriptCall call = use.Call!;
@@ -345,7 +348,7 @@ public static partial class GDScriptRefactorings
             {
                 return GDScriptRefactored.No("its calls nest", [GDScriptUses.Place(use.Script, use.Offset, call, "calls it inside a call of it")]);
             }
-            Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(use.Script.Tree.Members.First(m => m.Offset == use.Offset).Node);
+            Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(use.Within);
             if (!returns && parents.GetValueOrDefault(call) is not GDScriptSuite)
             {
                 return GDScriptRefactored.No("it returns nothing, and a call reads its value", [GDScriptUses.Place(use.Script, use.Offset, call, "reads its value")]);
@@ -354,6 +357,8 @@ public static partial class GDScriptRefactorings
             int bodyStart = target.Offset + body.Start;
             string inlined = own.Text[bodyStart..(target.Offset + body.End)];
             List<(int Start, int End, string Text)> swaps = [];
+            List<(string Text, GDScriptEffect Effect)> passed = [];
+            HashSet<GDScriptExpression> late = [];
             for (int i = 0; i < function.Parameters.Count; i++)
             {
                 GDScriptParameter parameter = function.Parameters[i];
@@ -365,16 +370,32 @@ public static partial class GDScriptRefactorings
                     return GDScriptRefactored.No($"a call passes no '{parameter.Identifier?.Name}'", [GDScriptUses.Place(use.Script, use.Offset, call, "calls it")]);
                 }
                 List<GDScriptIdentifier> read = reads.GetValueOrDefault(i) ?? [];
-                bool simple = argument is null or GDScriptIdentifier or GDScriptLiteral or GDScriptSelf;
+                GDScriptEffects at = argument is not null ? use.Script.Analysis.Effects : inBody;
+                GDScriptExpression? value = argument ?? parameter.Initializer;
+                GDScriptEffect effect = value is not null ? at.Of(value) : GDScriptEffect.None;
+                bool simple = argument is GDScriptIdentifier or GDScriptLiteral or GDScriptSelf || argument is null && effect != GDScriptEffect.Acts && !inBody.Makes(value!);
                 if (!simple && read.Count != 1)
                 {
                     return GDScriptRefactored.No($"'{given}' would be read {read.Count} times", [GDScriptUses.Place(use.Script, use.Offset, call, "calls it")]);
+                }
+                if (effect == GDScriptEffect.Acts && read.FirstOrDefault(r => Conditional(r, only, bodyParents) is not null) is { } sometimes)
+                {
+                    return GDScriptRefactored.No($"'{given}' would run only as the function's body says: {Conditional(sometimes, only, bodyParents)}", [GDScriptUses.Place(use.Script, use.Offset, call, "calls it")]);
+                }
+                passed.Add((given, effect));
+                if (value is not null && at.MayBeLate(value))
+                {
+                    late.UnionWith(read);
                 }
                 bool compound = argument is not null ? Compound(argument) : parameter.Initializer is { } d && Compound(d);
                 foreach (GDScriptIdentifier name in read)
                 {
                     swaps.Add((target.Offset + name.Start - bodyStart, target.Offset + name.End - bodyStart, Placed(given, name, compound, bodyParents)));
                 }
+            }
+            if (Disordered(inBody, only, reads, passed, late, own.Text, target.Offset) is { } disordered)
+            {
+                return GDScriptRefactored.No(disordered, [GDScriptUses.Place(use.Script, use.Offset, call, "calls it")]);
             }
             foreach ((int start, int end, string swapped) in swaps.OrderByDescending(s => s.Start))
             {
@@ -387,6 +408,42 @@ public static partial class GDScriptRefactorings
         TextRange lines = MemberLines(own.Text, target);
         (edits.TryGetValue(target.Script, out List<TextEdit>? ownEdits) ? ownEdits : edits[target.Script] = []).Add(new TextEdit(lines.Start, lines.Length, string.Empty));
         return new GDScriptRefactored([.. edits.Select(e => new GDScriptEdits(e.Key, [.. e.Value.OrderBy(x => x.Start)]))], null, []);
+    }
+
+    /// <summary>Why a call's arguments can't stand where a body reads its parameters: one would run after an argument passed
+    /// after it, or after what the body runs first, where the two can't change places; null where each can.</summary>
+    private static string? Disordered(GDScriptEffects inBody, GDScriptNode body, Dictionary<int, List<GDScriptIdentifier>> reads, List<(string Text, GDScriptEffect Effect)> passed,
+        HashSet<GDScriptExpression> late, string text, int offset)
+    {
+        Dictionary<GDScriptNode, int> parameterOf = [];
+        foreach ((int index, List<GDScriptIdentifier> names) in reads)
+        {
+            foreach (GDScriptIdentifier name in names)
+            {
+                parameterOf[name] = index;
+            }
+        }
+        List<GDScriptNode> ran = [];
+        foreach (GDScriptNode node in inBody.InOrder(body, late))
+        {
+            if (parameterOf.TryGetValue(node, out int reading))
+            {
+                foreach (GDScriptNode earlier in ran)
+                {
+                    bool other = parameterOf.TryGetValue(earlier, out int read);
+                    if (other && read > reading && !GDScriptEffects.Commute(passed[read].Effect, passed[reading].Effect))
+                    {
+                        return $"'{passed[reading].Text}' would run after '{passed[read].Text}', passed after it";
+                    }
+                    if (!other && !GDScriptEffects.Commute(inBody.Own(earlier), passed[reading].Effect))
+                    {
+                        return $"'{passed[reading].Text}' would run after '{Written(text, offset, earlier)}', which the function runs after it";
+                    }
+                }
+            }
+            ran.Add(node);
+        }
+        return null;
     }
 
     /// <summary>A function's signature as Change Signature shows it: each parameter's name, type and default as written.</summary>

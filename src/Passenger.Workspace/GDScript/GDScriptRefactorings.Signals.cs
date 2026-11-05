@@ -56,7 +56,7 @@ public static partial class GDScriptRefactorings
             {
                 Edit(use.Script.Script, new TextEdit(use.Offset + use.Name.Start, use.Name.End - use.Name.Start, name));
             }
-            Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(use.Script.Tree.Members.First(m => m.Offset == use.Offset).Node);
+            Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(use.Within);
             // The signal as written: its name, or self.name.
             GDScriptNode named = parents.GetValueOrDefault(use.Name) is GDScriptSubscript { IsAttribute: true } owner && owner.Attribute == use.Name ? owner : use.Name;
             if (parents.GetValueOrDefault(named) is not GDScriptSubscript { IsAttribute: true, Attribute.Name: var method } member || member.Base != named

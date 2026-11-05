@@ -384,6 +384,30 @@ public class GDScriptRefactoringsTests
     }
 
     [Fact]
+    public void Inline_function_is_refused_where_the_arguments_would_not_run_as_the_call_ran_them()
+    {
+        string Inlined(string function, string call)
+        {
+            string text = $"var hp = 5\n\n\nfunc first():\n\thp = 1\n\treturn 1\n\n\nfunc second():\n\treturn 2\n\n\n{function}\n\n\nfunc go(n):\n\tprint({call})\n";
+            IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
+            GDScriptRefactored made = GDScriptRefactorings.InlineFunction(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("func subject", StringComparison.Ordinal) + 5)!, []);
+            return made.Refused ?? After(made, "res://main.gd", text)[text.IndexOf("func subject", StringComparison.Ordinal)..];
+        }
+        const string Subtract = "func subject(a, b):\n\treturn b - a";
+        Assert.Contains("'first()' would run after 'second()'", Inlined(Subtract, "subject(first(), second())"));
+        Assert.Contains("'hp + 0' would run after 'first()'", Inlined(Subtract, "subject(hp + 0, first())"));
+        Assert.Contains("'second()' would run after 'first()', which the function runs", Inlined("func subject(a):\n\treturn first() + a", "subject(second())"));
+        // Godot reads a plain variable only as what takes it runs, so here after the call beside it, where the argument was read before.
+        Assert.Contains("'hp' would run after 'first()', which the function runs", Inlined("func subject(a):\n\treturn a + first()", "subject(hp)"));
+        Assert.Contains("'second()' would run only as the function's body says", Inlined("func subject(a, b):\n\treturn a and b", "subject(first(), second())"));
+        Assert.Contains("would be read 2 times", Inlined("func subject(a = first()):\n\treturn a + a", "subject()"));
+        Assert.Contains("print(first() - second())", Inlined("func subject(a, b):\n\treturn a - b", "subject(first(), second())"));
+        Assert.Contains("print(2 - first())", Inlined(Subtract, "subject(first(), 2)"));
+        Assert.Contains("print(n - first())", Inlined(Subtract, "subject(first(), n)"));
+        Assert.Contains("print(hp + 1)", Inlined("func subject(a):\n\treturn a + 1", "subject(hp)"));
+    }
+
+    [Fact]
     public void Safe_delete_takes_out_a_member_nothing_names_and_refuses_one_a_script_or_scene_still_does()
     {
         string text = "extends Node\n\n\nfunc unused():\n\tpass\n\n\nfunc used():\n\tpass\n\n\nfunc _ready():\n\tused()\n\tcall(\"used\")\n";

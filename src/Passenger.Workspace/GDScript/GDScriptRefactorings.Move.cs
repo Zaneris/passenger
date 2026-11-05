@@ -72,7 +72,7 @@ public static partial class GDScriptRefactorings
                     blocking.Add(GDScriptUses.Place(use.Script, use.Offset, use.Name, $"uses it on an object of its own script, which {destination}'s are not"));
                     continue;
                 }
-                Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(use.Script.Tree.Members.First(m => m.Offset == use.Offset).Node);
+                Dictionary<GDScriptNode, GDScriptNode?> parents = Parents(use.Within);
                 if (parents.GetValueOrDefault(use.Name) is GDScriptSubscript { IsAttribute: true, Base: { } owner } attribute && attribute.Attribute == use.Name)
                 {
                     if (owner is not (GDScriptSelf or GDScriptIdentifier))
