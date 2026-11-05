@@ -83,6 +83,18 @@ public class DotnetWantTests
     }
 
     [Fact]
+    public void A_global_json_says_whether_it_allows_prereleases_and_the_SDK_wanted_rolls_as_it_lets_it()
+    {
+        GlobalJsonSdk? read = GlobalJsonSdk.Of("/work/global.json", """{ "sdk": { "version": "10.0.500", "rollForward": "latestMajor", "allowPrerelease": true } }""");
+        Assert.True(read?.AllowPrerelease, "global.json's allowPrerelease was not read");
+        Assert.Equal(new SdkWanted("10.0.500", "latestMajor", AllowPrerelease: true), read!.Rolling(new SdkWanted("10.0.500")));
+        Assert.False(GlobalJsonSdk.Of("/work/global.json", """{ "sdk": { "allowPrerelease": false } }""")?.AllowPrerelease);
+        Assert.Null(GlobalJsonSdk.Of("/work/global.json", """{ "sdk": { "version": "10.0.500" } }""")?.AllowPrerelease);
+        Assert.Null(GlobalJsonSdk.Of("/work/global.json", """{ "sdk": { "allowPrerelease": "yes" } }""")?.AllowPrerelease);
+        Assert.Equal(new SdkWanted(Channel: "11.0"), read.Rolling(new SdkWanted(Channel: "11.0")));
+    }
+
+    [Fact]
     public void Frameworks_the_SDK_builds_and_those_not_of_dotnet_lack_nothing()
     {
         DotnetWant want = DotnetWant.Of(Machine(DotnetPlace.Path, "11.0.100-rc.3.26522.148", "10.0.403"), null, "11.0.100-rc.3.26522.148",

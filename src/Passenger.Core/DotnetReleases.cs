@@ -3,11 +3,15 @@ using System.Text.Json;
 
 namespace Passenger.Core;
 
-/// <summary>The .NET SDK a machine or a folder wants: a version a global.json asks for with its rollForward, a channel
-/// ("11.0") a project's framework needs, or neither for the newest Microsoft supports.</summary>
-public sealed record SdkWanted(string? Version = null, string? RollForward = null, string? Channel = null)
+/// <summary>The .NET SDK a machine or a folder wants: a version a global.json asks for with its rollForward and
+/// allowPrerelease, a channel ("11.0") a project's framework needs, or neither for the newest Microsoft supports.</summary>
+public sealed record SdkWanted(string? Version = null, string? RollForward = null, string? Channel = null, bool? AllowPrerelease = null)
 {
     public static readonly SdkWanted Newest = new();
+
+    /// <summary>Whether the version asked may be met by a prerelease, as dotnet reads global.json: unless its allowPrerelease
+    /// says not, and always where the version asked is one.</summary>
+    public bool TakesPrerelease => AllowPrerelease != false || (Version is { } asked && VersionOrder.IsPrerelease(asked));
 
     /// <summary>As a person is told what is installed: the version asked, the channel's newest, or the newest there is.</summary>
     public string Shown => Version ?? (Channel is { } channel ? $".NET {channel}'s newest" : "the newest supported");
@@ -26,6 +30,9 @@ public sealed record DotnetChannel(string Version, string Support, Uri Releases)
 {
     /// <summary>Microsoft supports it in production: neither a preview nor at its end of life.</summary>
     public bool Supported => Support is "active" or "maintenance";
+
+    /// <summary>Its SDKs are prereleases yet.</summary>
+    public bool InPreview => Support is "go-live" or "preview";
 }
 
 /// <summary>Microsoft's release metadata of .NET, read through <see cref="OutboundHttp"/>: the index of its channels, and
@@ -97,8 +104,9 @@ public static class DotnetReleases
 
     /// <summary>The channels that may hold the SDK wanted, in the order they are read: the one asked for (a channel, or the
     /// version's own), then, where global.json's rollForward lets a version go past its minor or major, the supported ones
-    /// newest first, a latestMinor or latestMajor reading them all newest first, the asked one in its place; with nothing
-    /// asked, the newest supported.</summary>
+    /// newest first, a latestMinor or latestMajor reading them all newest first, the asked one in its place, and last those
+    /// in preview, where a prerelease may meet it: among the rest by age only where global.json asks for prereleases, so
+    /// that one is installed unasked only where no release will do. With nothing asked, the newest supported.</summary>
     public static IEnumerable<DotnetChannel> ChannelsFor(SdkWanted wanted, IReadOnlyList<DotnetChannel> channels)
     {
         if (wanted.Channel is { } asked)
@@ -107,7 +115,7 @@ public static class DotnetReleases
         }
         if (wanted.Version is not { } version)
         {
-            return channels.Where(c => c.Supported).OrderByDescending(c => c.Version, VersionOrder.Instance).Take(1);
+            return Newest(channels.Where(c => c.Supported)).Take(1);
         }
         string own = string.Join('.', version.Split('.').Take(2));
         IEnumerable<DotnetChannel> first = channels.Where(c => c.Version == own);
@@ -115,12 +123,20 @@ public static class DotnetReleases
         {
             return first;
         }
-        IEnumerable<DotnetChannel> newer = channels.Where(c => c.Supported && c.Version != own && Satisfies(wanted, c.Version + ".0"));
+        IEnumerable<DotnetChannel> reached = channels.Where(c => c.Version != own && Satisfies(wanted, c.Version + ".0"));
+        IEnumerable<DotnetChannel> newer = reached.Where(c => c.Supported);
         // A latest… rollForward takes the newest SDK it may, so the newest channel is read first, the asked one in its place.
-        return wanted.RollForward?.StartsWith("latest", StringComparison.OrdinalIgnoreCase) == true
-            ? first.Concat(newer).OrderByDescending(c => c.Version, VersionOrder.Instance)
-            : first.Concat(newer.OrderByDescending(c => c.Version, VersionOrder.Instance));
+        bool latest = wanted.RollForward?.StartsWith("latest", StringComparison.OrdinalIgnoreCase) == true;
+        IEnumerable<DotnetChannel> released = latest ? Newest(first.Concat(newer)) : first.Concat(Newest(newer));
+        if (!wanted.TakesPrerelease)
+        {
+            return released;
+        }
+        IEnumerable<DotnetChannel> previews = Newest(reached.Where(c => c.InPreview));
+        return latest && wanted.AllowPrerelease == true ? Newest(released.Concat(previews)) : released.Concat(previews);
     }
+
+    private static IEnumerable<DotnetChannel> Newest(IEnumerable<DotnetChannel> channels) => channels.OrderByDescending(c => c.Version, VersionOrder.Instance);
 
     /// <summary>The newest SDK a channel's releases.json lists that the wanted takes, with this system's archive (a .zip on
     /// Windows, a .tar.gz elsewhere); null for none.</summary>
@@ -162,7 +178,7 @@ public static class DotnetReleases
 
     /// <summary>Whether an SDK's version is one the wanted takes: with nothing asked, any release; with a channel, any of
     /// it; with a version, that one or one its rollForward rolls to (a patch within its feature band, say), a prerelease
-    /// only where the version asked is one.</summary>
+    /// only where it may (<see cref="SdkWanted.TakesPrerelease"/>).</summary>
     public static bool Satisfies(SdkWanted wanted, string version)
     {
         bool prerelease = VersionOrder.IsPrerelease(version);
@@ -170,7 +186,7 @@ public static class DotnetReleases
         {
             return wanted.Channel is { } channel ? version.StartsWith(channel + ".", StringComparison.Ordinal) : !prerelease;
         }
-        if (prerelease && !VersionOrder.IsPrerelease(asked))
+        if (prerelease && !wanted.TakesPrerelease)
         {
             return false;
         }

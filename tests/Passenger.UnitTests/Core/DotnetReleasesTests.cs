@@ -39,6 +39,14 @@ public class DotnetReleasesTests
         ] }
         """;
 
+    /// <summary>11.0's releases, in preview: prereleases alone.</summary>
+    private static readonly string Eleven = $$"""
+        { "channel-version": "11.0", "releases": [
+          { "release-version": "11.0.0-rc.3.26522.148", "sdk": {{Sdk("11.0.100-rc.3.26522.148", "11.0.0-rc.3.26522.148")}} },
+          { "release-version": "11.0.0-rc.2.26504.105", "sdk": {{Sdk("11.0.100-rc.2.26504.105", "11.0.0-rc.2.26504.105")}} }
+        ] }
+        """;
+
     private static IReadOnlyList<DotnetChannel> Channels()
     {
         using JsonDocument index = JsonDocument.Parse(Index);
@@ -92,15 +100,61 @@ public class DotnetReleasesTests
     public void A_version_reads_its_own_channel_and_a_rollForward_past_its_minor_the_newer_supported_ones_newest_first()
     {
         Assert.Equal(["10.0"], DotnetReleases.ChannelsFor(new SdkWanted("10.0.100"), Channels()).Select(c => c.Version));
-        Assert.Equal(["9.0", "10.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "major"), Channels()).Select(c => c.Version));
+        Assert.Equal(["9.0", "10.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "major", AllowPrerelease: false), Channels()).Select(c => c.Version));
         Assert.Equal(["9.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "latestMinor"), Channels()).Select(c => c.Version));
     }
 
     [Fact]
     public void A_latestMajor_rollForward_reads_the_newest_channel_first_its_own_in_its_place()
     {
-        Assert.Equal(["10.0", "9.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "latestMajor"), Channels()).Select(c => c.Version));
-        Assert.Equal(["10.0", "9.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "LatestMajor"), Channels()).Select(c => c.Version));
+        Assert.Equal(["10.0", "9.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "latestMajor", AllowPrerelease: false), Channels()).Select(c => c.Version));
+        Assert.Equal(["10.0", "9.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "LatestMajor", AllowPrerelease: false), Channels()).Select(c => c.Version));
+    }
+
+    [Fact]
+    public void A_global_json_allowing_prereleases_takes_the_preview_its_rollForward_reaches_where_dotnet_itself_would()
+    {
+        SdkWanted wanted = new("10.0.500", "latestMajor", AllowPrerelease: true);
+        Assert.True(DotnetReleases.Satisfies(wanted, "11.0.100-rc.3.26522.148"), "A preview global.json allows is refused, though dotnet takes it");
+        Assert.Equal(["11.0", "10.0"], DotnetReleases.ChannelsFor(wanted, Channels()).Select(c => c.Version));
+        using JsonDocument releases = JsonDocument.Parse(Eleven);
+        Assert.Equal("11.0.100-rc.3.26522.148", DotnetReleases.Choose(wanted, releases.RootElement, "osx-arm64")?.Version);
+    }
+
+    [Fact]
+    public void A_global_json_allowing_prereleases_still_rolls_only_as_far_as_its_rollForward_lets_it()
+    {
+        Assert.False(DotnetReleases.Satisfies(new SdkWanted("10.0.500", "latestMinor", AllowPrerelease: true), "11.0.100-rc.3.26522.148"));
+        Assert.False(DotnetReleases.Satisfies(new SdkWanted("11.0.100", "latestMajor", AllowPrerelease: true), "11.0.100-rc.3.26522.148"));
+        Assert.Equal(["10.0"], DotnetReleases.ChannelsFor(new SdkWanted("10.0.500", "latestFeature", AllowPrerelease: true), Channels()).Select(c => c.Version));
+        Assert.Equal(["10.0"], DotnetReleases.ChannelsFor(new SdkWanted("10.0.500", "latestMinor", AllowPrerelease: true), Channels()).Select(c => c.Version));
+    }
+
+    [Fact]
+    public void A_channel_at_its_end_is_read_for_no_prerelease()
+    {
+        IReadOnlyList<DotnetChannel> ended = [new("9.0", "active", new Uri("https://example.test/9.0.json")), new("10.0", "eol", new Uri("https://example.test/10.0.json"))];
+        Assert.Equal(["9.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "latestMajor", AllowPrerelease: true), ended).Select(c => c.Version));
+    }
+
+    [Fact]
+    public void A_global_json_saying_nothing_of_prereleases_takes_one_as_dotnet_does_but_reads_every_release_first()
+    {
+        SdkWanted wanted = new("10.0.500", "latestMajor");
+        Assert.True(DotnetReleases.Satisfies(wanted, "11.0.100-rc.3.26522.148"), "A preview dotnet takes where global.json says nothing is refused");
+        Assert.Equal(["10.0", "11.0"], DotnetReleases.ChannelsFor(wanted, Channels()).Select(c => c.Version));
+        Assert.Equal(["10.0", "9.0", "11.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "latestMajor"), Channels()).Select(c => c.Version));
+        Assert.Equal(["9.0", "10.0", "11.0"], DotnetReleases.ChannelsFor(new SdkWanted("9.0.100", "major"), Channels()).Select(c => c.Version));
+    }
+
+    [Fact]
+    public void A_global_json_refusing_prereleases_reads_no_preview_unless_the_version_it_asks_for_is_one()
+    {
+        SdkWanted wanted = new("10.0.500", "latestMajor", AllowPrerelease: false);
+        Assert.False(DotnetReleases.Satisfies(wanted, "11.0.100-rc.3.26522.148"));
+        Assert.Equal(["10.0"], DotnetReleases.ChannelsFor(wanted, Channels()).Select(c => c.Version));
+        Assert.True(DotnetReleases.Satisfies(new SdkWanted("11.0.100-rc.2.26504.105", "latestPatch", AllowPrerelease: false), "11.0.100-rc.3.26522.148"),
+            "dotnet passes over allowPrerelease false for a version that is a prerelease, as this does not");
     }
 
     [Fact]

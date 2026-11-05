@@ -5,10 +5,13 @@ using Passenger.Core;
 namespace Passenger.Workspace;
 
 /// <summary>What a global.json asks of the .NET SDK, as dotnet reads it to choose the SDK a folder's projects build with:
-/// the file, its sdk section's version and rollForward, and the line (from zero) its version is on, where a person changes
-/// what it asks for.</summary>
-public sealed record GlobalJsonSdk(string Path, string? Version, string? RollForward, int Line)
+/// the file, its sdk section's version and rollForward, the line (from zero) its version is on, where a person changes
+/// what it asks for, and its allowPrerelease, null where it does not say.</summary>
+public sealed record GlobalJsonSdk(string Path, string? Version, string? RollForward, int Line, bool? AllowPrerelease = null)
 {
+    /// <summary>The SDK wanted as this global.json lets a version of it go, by its rollForward and allowPrerelease.</summary>
+    public SdkWanted Rolling(SdkWanted wanted) => wanted.Version is null ? wanted : wanted with { RollForward = RollForward, AllowPrerelease = AllowPrerelease };
+
     /// <summary>What the global.json at a path asks, read from the disk; null for no path, or a file that does not read.</summary>
     public static GlobalJsonSdk? Read(string? path)
     {
@@ -39,7 +42,7 @@ public sealed record GlobalJsonSdk(string Path, string? Version, string? RollFor
                 return null;
             }
             JsonElement? sdk = JsonMembers.Object(read.RootElement, "sdk");
-            return new GlobalJsonSdk(path, JsonMembers.Text(sdk, "version"), JsonMembers.Text(sdk, "rollForward"), VersionLine(bytes));
+            return new GlobalJsonSdk(path, JsonMembers.Text(sdk, "version"), JsonMembers.Text(sdk, "rollForward"), VersionLine(bytes), JsonMembers.Bool(sdk, "allowPrerelease"));
         }
         catch (JsonException)
         {

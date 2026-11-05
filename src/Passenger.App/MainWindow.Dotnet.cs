@@ -230,7 +230,8 @@ public partial class MainWindow
             SdkDownload sdk;
             try
             {
-                wanted = await BackgroundWork.Run(() => WithRollForward(wanted, DotnetWant.Missing?.GlobalJson));
+                string? globalJson = DotnetWant.Missing?.GlobalJson;
+                wanted = await BackgroundWork.Run(() => GlobalJsonSdk.Read(globalJson)?.Rolling(wanted) ?? wanted);
                 sdk = await BackgroundWork.Run(() => DotnetReleases.ChooseAsync(wanted, DotnetReleases.ThisSystem(), installing.Stopping));
             }
             catch (DotnetInstallFailed failed)
@@ -315,10 +316,6 @@ public partial class MainWindow
             _ => $"Nobody at the window answered within {Mcp.AgentConnection.Limit(this)} whether to install the .NET SDK {sdk.Version}, so nothing was installed",
         };
     }
-
-    /// <summary>The SDK wanted with the rollForward of the global.json that asks for it, read off the UI thread.</summary>
-    private static SdkWanted WithRollForward(SdkWanted wanted, string? globalJson) =>
-        wanted.Version is null || globalJson is null ? wanted : wanted with { RollForward = GlobalJsonSdk.Read(globalJson)?.RollForward };
 
     /// <summary>Add .NET to the Shell's PATH: the change said and asked, then made; it says what it came to.</summary>
     private async Task AddDotnetToPathAsync()
