@@ -6,7 +6,7 @@ namespace Passenger.Xaml.Features;
 /// <summary>A symbol of a project's C# as its XAML names it, from its documentation id (<c>P:App.MainViewModel.Greeting</c>)
 /// and where the name of its declaration is: a type by its name (a markup extension's without <c>Extension</c> too), a
 /// property, field, method or event of one by its own, and the members the MVVM Toolkit makes of it (a field's property, a
-/// method's command), which share its place. A method is named by XAML without its parameters, so every overload is it.
+/// method's command and cancel command), which share its place. A method is named by XAML without its parameters, so every overload is it.
 /// Its uses in a file are those <see cref="XamlNavigation.Uses"/> finds by its names and <see cref="Is"/>.</summary>
 public sealed class CodeSymbol
 {
@@ -46,13 +46,13 @@ public sealed class CodeSymbol
     }
 
     /// <summary>The words a XAML file must hold to use it, known without its project's types: its name, a markup
-    /// extension's without <c>Extension</c> too, and the property and the command the MVVM Toolkit makes of a field and a
+    /// extension's without <c>Extension</c> too, and the property and the commands the MVVM Toolkit makes of a field and a
     /// method. A file holding none of them has no use of it, so its project's C# need not be read to know.</summary>
     public IReadOnlyList<string> Spellings => kind switch
     {
         'T' => name.EndsWith("Extension", StringComparison.Ordinal) && name.Length > "Extension".Length ? [name, name[..^"Extension".Length]] : [name],
         'F' when ToolkitNames.PropertyOf(name) is { } property => [name, property],
-        'M' => [name, ToolkitNames.CommandOf(name)],
+        'M' => [name, ToolkitNames.CommandOf(name), ToolkitNames.CancelCommandOf(name)],
         _ => [name],
     };
 
@@ -83,7 +83,7 @@ public sealed class CodeSymbol
     }
 
     /// <summary>Whether a use written as <paramref name="written"/> spells the symbol's name (its own, a markup extension's
-    /// without Extension, or the property or command the MVVM Toolkit makes of it), and how once the symbol is named
+    /// without Extension, or the property or a command the MVVM Toolkit makes of it), and how once the symbol is named
     /// <paramref name="name"/> (a C# name, an @ before a keyword): <paramref name="renamed"/>, null where the new name makes
     /// no such member.</summary>
     public bool Respells(string written, string name, out string? renamed)
@@ -107,6 +107,10 @@ public sealed class CodeSymbol
         {
             renamed = ToolkitNames.CommandOf(bare);
         }
+        else if (kind == 'M' && written == ToolkitNames.CancelCommandOf(this.name))
+        {
+            renamed = ToolkitNames.CancelCommandOf(bare);
+        }
         else if (string.Equals(written, this.name, StringComparison.OrdinalIgnoreCase))
         {
             // A name XAML matches in any case (an enum's member) takes the new name's.
@@ -120,12 +124,13 @@ public sealed class CodeSymbol
     }
 
     /// <summary>The name a C# symbol named <paramref name="declared"/> takes for a XAML use written <paramref name="written"/>
-    /// to read <paramref name="typed"/>: the field or method the MVVM Toolkit makes that property or command of, where the
+    /// to read <paramref name="typed"/>: the field or method the MVVM Toolkit makes that property or a command of, where the
     /// use is one (null where the toolkit makes no such name of any), else the name typed.</summary>
     public static string? NameFor(string declared, string written, string typed) =>
         written == declared ? typed
         : written == ToolkitNames.PropertyOf(declared) ? ToolkitNames.FieldFor(declared, typed)
         : written == ToolkitNames.CommandOf(declared) ? ToolkitNames.MethodFor(declared, typed)
+        : written == ToolkitNames.CancelCommandOf(declared) ? ToolkitNames.MethodForCancel(declared, typed)
         : typed;
 
     /// <summary>Whether a member is declared where the symbol is: the symbol itself, or a member the MVVM Toolkit makes of it.</summary>

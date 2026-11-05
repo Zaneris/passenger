@@ -9,7 +9,9 @@ namespace Passenger.Tests;
 /// app from Avalonia's template whose view model uses the toolkit (its package from the package cache, its generators
 /// running in the language server): Rename on a binding renames the view model's property, its C# uses and every other
 /// binding, one step of Undo taking it all back; Rename on an <c>[ObservableProperty]</c> field renames its property's C#
-/// uses, its OnXChanged and the bindings to it, and Rename on such a binding renames the field so it makes the name typed.</summary>
+/// uses, its OnXChanged and the bindings to it, and Rename on such a binding renames the field so it makes the name typed;
+/// Rename on a <c>[RelayCommand]</c> method renames its command's and cancel command's uses, and Rename on a binding to the
+/// cancel command renames the method.</summary>
 public sealed class XamlRenameTests : IClassFixture<XamlRenameTests.Shop>
 {
     private const string ViewModel = """
@@ -168,6 +170,101 @@ public sealed class XamlRenameTests : IClassFixture<XamlRenameTests.Shop>
         Assert.Contains("{Binding Bargain}", File.ReadAllText(shop.PathOf("MainWindow.axaml")), StringComparison.Ordinal);
         window.Close();
     }
+
+    /// <summary>Rename on a <c>[RelayCommand(IncludeCancelCommand = true)]</c> method renames what the toolkit makes of it, which
+    /// Roslyn's rename of the method alone leaves: the C# uses and bindings of both its commands, so the code goes on
+    /// compiling; then Rename on a binding to the cancel command renames the method, keeping its Async.</summary>
+    [AvaloniaFact]
+    public void Renaming_a_RelayCommand_method_renames_its_command_and_cancel_commands_uses_and_a_binding_to_the_cancel_command_renames_the_method()
+    {
+        shop.Write([("ViewModels/Loader.cs", Loader), ("ViewModels/Starter.cs", Starter), ("Views/LoadCard.axaml", LoadCard), ("Views/LoadCard.axaml.cs", LoadCardCode)]);
+        string starter = shop.PathOf("ViewModels/Starter.cs");
+        string view = shop.PathOf("Views/LoadCard.axaml");
+        MainWindow window = shop.Open(shop.PathOf("ViewModels/Loader.cs"));
+        OpenDocument model = window.EditorArea.Active!;
+
+        XamlTests.RenameInCode(window, "async Task Loa", "RefreshAsync");
+
+        Ui.WaitFor(() => File.ReadAllText(starter).Contains("loader.RefreshCancelCommand", StringComparison.Ordinal),
+            () => $"the cancel command's C# use renamed with the method: {window.Status}\n{File.ReadAllText(starter)}");
+        Assert.Contains("private async Task RefreshAsync(", model.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Contains("loader.RefreshCommand", File.ReadAllText(starter), StringComparison.Ordinal);
+        Assert.Contains("{Binding RefreshCommand}", File.ReadAllText(view), StringComparison.Ordinal);
+        Assert.Contains("{Binding RefreshCancelCommand}", File.ReadAllText(view), StringComparison.Ordinal);
+
+        window.OpenFile(view);
+        Ui.Settle();
+        XamlTests.RenameInCode(window, "{Binding RefreshCan", "ReloadCancelCommand");
+
+        Ui.WaitFor(() => model.Text.Snapshot.ToString().Contains("private async Task ReloadAsync(", StringComparison.Ordinal),
+            () => $"the method renamed from a binding to its cancel command: {window.Status}\n{model.Text.Snapshot}");
+        Assert.Contains("loader.ReloadCommand", File.ReadAllText(starter), StringComparison.Ordinal);
+        Assert.Contains("loader.ReloadCancelCommand", File.ReadAllText(starter), StringComparison.Ordinal);
+        Assert.Contains("{Binding ReloadCancelCommand}", window.EditorArea.Active!.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    private const string Loader = """
+        using System.Threading;
+        using System.Threading.Tasks;
+        using CommunityToolkit.Mvvm.ComponentModel;
+        using CommunityToolkit.Mvvm.Input;
+
+        namespace Shop.ViewModels;
+
+        public partial class Loader : ObservableObject
+        {
+            [RelayCommand(IncludeCancelCommand = true)]
+            private async Task LoadAsync(CancellationToken token)
+            {
+                await Task.Delay(1, token);
+            }
+        }
+
+        """;
+
+    private const string Starter = """
+        namespace Shop.ViewModels;
+
+        public static class Starter
+        {
+            public static void Start(Loader loader)
+            {
+                loader.LoadCommand.Execute(null);
+                loader.LoadCancelCommand.Execute(null);
+            }
+        }
+
+        """;
+
+    private const string LoadCard = """
+        <UserControl xmlns="https://github.com/avaloniaui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                     xmlns:vm="using:Shop.ViewModels"
+                     x:Class="Shop.Views.LoadCard"
+                     x:DataType="vm:Loader">
+            <StackPanel>
+                <Button Command="{Binding LoadCommand}" />
+                <Button Command="{Binding LoadCancelCommand}" />
+            </StackPanel>
+        </UserControl>
+
+        """;
+
+    private const string LoadCardCode = """
+        using Avalonia.Controls;
+
+        namespace Shop.Views;
+
+        public partial class LoadCard : UserControl
+        {
+            public LoadCard()
+            {
+                InitializeComponent();
+            }
+        }
+
+        """;
 
     /// <summary>The app from Avalonia's template with the MVVM Toolkit referenced, a view model of a plain property and an
     /// <c>[ObservableProperty]</c> field, a C# file reading both, and two views binding both.</summary>

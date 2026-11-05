@@ -131,6 +131,70 @@ public sealed class CodeRenameTests
         Assert.True(symbol.Respells(written, name, out string? renamed) && renamed == expected, $"{written} of {id} renamed to {name} was respelled {renamed ?? "as nothing"}");
     }
 
+    [Theory]
+    [InlineData("M:Shop.Order.LoadAsync", "LoadCancelCommand", "RefreshAsync", "RefreshCancelCommand")]
+    [InlineData("M:Shop.Order.Load", "LoadCancelCommand", "Refresh", "RefreshCancelCommand")]
+    [InlineData("M:Shop.Order.OnSave", "SaveCommand", "OnStore", "StoreCommand")]
+    [InlineData("M:Shop.Order.OnSave", "SaveCancelCommand", "Store", "StoreCancelCommand")]
+    [InlineData("M:Shop.Order.Onboard", "OnboardCommand", "Enrol", "EnrolCommand")]
+    public void A_commands_use_is_respelled_as_the_toolkit_names_the_command_of_the_new_method(string id, string written, string name, string expected)
+    {
+        CodeSymbol symbol = Assert.IsType<CodeSymbol>(CodeSymbol.Of(id, null));
+        Assert.True(symbol.Respells(written, name, out string? renamed) && renamed == expected, $"{written} of {id} renamed to {name} was respelled {renamed ?? "as nothing"}");
+    }
+
+    [Fact]
+    public void A_name_typed_for_a_cancel_command_or_a_command_of_an_On_method_renames_the_method_written_as_it_is()
+    {
+        Assert.Equal("RefreshAsync", CodeSymbol.NameFor("LoadAsync", "LoadCancelCommand", "RefreshCancelCommand"));
+        Assert.Equal("Refresh", CodeSymbol.NameFor("Load", "LoadCancelCommand", "RefreshCancelCommand"));
+        Assert.Equal("OnStore", CodeSymbol.NameFor("OnSave", "SaveCommand", "StoreCommand"));
+        Assert.Null(CodeSymbol.NameFor("Load", "LoadCancelCommand", "Refresh"));
+    }
+
+    [Fact]
+    public void A_cancel_command_the_method_asks_for_is_a_member_of_its_type_and_a_binding_to_it_follows_the_rename()
+    {
+        const string Model = """
+            namespace Shop;
+
+            public partial class Loader
+            {
+                [RelayCommand(IncludeCancelCommand = true)]
+                private async Task LoadAsync(CancellationToken cancel)
+                {
+                }
+
+                [RelayCommand]
+                private async Task FetchAsync(CancellationToken cancel)
+                {
+                }
+            }
+
+            """;
+        const string Markup = """
+            <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         xmlns:vm="using:Shop" x:Class="Shop.LoadView" x:DataType="vm:Loader">
+                <StackPanel>
+                    <Button Command="{Binding LoadCommand}" />
+                    <Button Command="{Binding LoadCancelCommand}" />
+                    <Button Command="{Binding FetchCommand}" />
+                </StackPanel>
+            </UserControl>
+            """;
+        XamlFile view = XamlFiles.Read("LoadView.axaml", Markup, AvaloniaDialect.Instance, ("Loader.cs", Model));
+        int at = Model.IndexOf("LoadAsync", StringComparison.Ordinal);
+        SourcePlace place = new(XamlFiles.PathOf("Loader.cs"), Model.AsSpan(0, at).Count('\n'), at - (Model.LastIndexOf('\n', at - 1) + 1));
+        CodeSymbol symbol = Assert.IsType<CodeSymbol>(CodeSymbol.Of("M:Shop.Loader.LoadAsync(System.Threading.CancellationToken)", place));
+
+        Assert.Contains("LoadCancelCommand", symbol.NamesIn(view.Types));
+        Assert.DoesNotContain("FetchCancelCommand", view.Types.Find("Shop.Loader")!.Members.Select(m => m.Name));
+        (IReadOnlyList<TextEdit> edits, string? problem) = XamlRefactorings.CodeRename(view, symbol, XamlNavigation.Uses(view, symbol.NamesIn(view.Types), symbol.Is), "RefreshAsync");
+        Assert.True(problem is null, $"Renaming LoadAsync was refused: {problem}");
+        Assert.Equal(Markup.Replace("LoadCommand", "RefreshCommand", StringComparison.Ordinal).Replace("LoadCancelCommand", "RefreshCancelCommand", StringComparison.Ordinal),
+            XamlFiles.Applied(Markup, edits));
+    }
+
     [Fact]
     public void A_use_that_does_not_spell_the_symbols_name_is_not_respelled()
     {

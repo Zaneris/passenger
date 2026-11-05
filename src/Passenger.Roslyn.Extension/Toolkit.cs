@@ -9,8 +9,8 @@ namespace Passenger.Roslyn.Extension;
 
 /// <summary>What the MVVM Toolkit's generators make of the field or method at a caret, which no rename of its own name
 /// reaches: an <c>[ObservableProperty]</c> field's property and the code's own OnXChanging and OnXChanged, a
-/// <c>[RelayCommand]</c> method's command; each use of them in the solution's own files, with the name it takes once the
-/// field or method has the name asked (<see cref="ToolkitAsked.Name"/>).</summary>
+/// <c>[RelayCommand]</c> method's command and, where it asks for one, its cancel command; each use of them in the solution's
+/// own files, with the name it takes once the field or method has the name asked (<see cref="ToolkitAsked.Name"/>).</summary>
 public sealed class ToolkitRenames : IExtensionDocumentMessageHandler<ToolkitAsked, ToolkitFound>
 {
     private const string ObservableProperty = "CommunityToolkit.Mvvm.ComponentModel.ObservablePropertyAttribute";
@@ -38,8 +38,11 @@ public sealed class ToolkitRenames : IExtensionDocumentMessageHandler<ToolkitAsk
                 }
                 break;
             case IMethodSymbol { MethodKind: MethodKind.Ordinary, ContainingType: { } type } method when Marked(method, RelayCommand):
-                made.AddRange(type.GetMembers(ToolkitNames.CommandOf(method.Name)).OfType<IPropertySymbol>().Where(p => IsGenerated(p, solution))
-                    .Select(p => ((ISymbol)p, (string?)ToolkitNames.CommandOf(bare))));
+                foreach (Func<string, string> command in (Func<string, string>[])[ToolkitNames.CommandOf, ToolkitNames.CancelCommandOf])
+                {
+                    made.AddRange(type.GetMembers(command(method.Name)).OfType<IPropertySymbol>().Where(p => IsGenerated(p, solution))
+                        .Select(p => ((ISymbol)p, (string?)command(bare))));
+                }
                 break;
             default:
                 return ToolkitFound.None;
